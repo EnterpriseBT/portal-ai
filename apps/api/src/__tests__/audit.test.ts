@@ -51,10 +51,6 @@ function walkTsFiles(dir: string): string[] {
 
 const apiFiles = walkTsFiles(apiSrcRoot);
 const webFiles = walkTsFiles(webSrcRoot);
-// The audit references its own forbidden strings; exclude it from scans
-// that would otherwise flag itself.
-const AUDIT_SELF = path.resolve(here, "audit.test.ts");
-
 describe("Phase 10 audit — parser module owns spreadsheet-parsing concepts", () => {
   it("no file in apps/api/src/ defines the Orientation union as a local type alias", () => {
     const offenders: string[] = [];

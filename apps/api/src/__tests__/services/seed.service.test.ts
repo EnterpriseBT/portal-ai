@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- escape hatches for drizzle ORM and JSONB typings; values are validated upstream. */
 import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import type { ColumnDataType } from "@portalai/core/models";
 
@@ -17,7 +18,6 @@ const VALID_COLUMN_DATA_TYPES: ColumnDataType[] = [
 const KEY_PATTERN = /^[a-z][a-z0-9_]*$/;
 
 // Mock DbService before importing SeedService
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockUpsertByKey = jest.fn<any>().mockResolvedValue({});
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {

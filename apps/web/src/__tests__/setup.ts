@@ -72,15 +72,12 @@ if (typeof window !== "undefined" && !("PointerEvent" in window)) {
 // setPointerCapture / releasePointerCapture aren't implemented on jsdom
 // Elements either; stubs keep the drag handlers from throwing.
 if (typeof Element !== "undefined") {
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (!Element.prototype.setPointerCapture) {
     Element.prototype.setPointerCapture = () => {};
   }
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (!Element.prototype.releasePointerCapture) {
     Element.prototype.releasePointerCapture = () => {};
   }
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (!Element.prototype.hasPointerCapture) {
     Element.prototype.hasPointerCapture = () => false;
   }

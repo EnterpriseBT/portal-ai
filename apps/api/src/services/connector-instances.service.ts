@@ -72,7 +72,6 @@ export function redactInstance(
     args;
   const accountInfo = projectAccountInfo(instance.credentials ?? null, slug);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { credentials: _omit, ...rest } = instance;
   const redacted = {
     ...rest,

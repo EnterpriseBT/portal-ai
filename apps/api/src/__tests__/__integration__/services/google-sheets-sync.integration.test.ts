@@ -20,10 +20,9 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq, isNull } from "drizzle-orm";
 import postgres from "postgres";
 
-import type { LayoutPlan, WorkbookData } from "@portalai/core/contracts";
+import type { LayoutPlan } from "@portalai/core/contracts";
 
 import * as schema from "../../../db/schema/index.js";
-import type { DbClient } from "../../../db/repositories/base.repository.js";
 import {
   generateId,
   seedUserAndOrg,
@@ -158,26 +157,6 @@ function makePlan(opts: {
     ],
     confidence: { overall: 0.9, perRegion: { r1: 0.9 } },
   } as unknown as LayoutPlan;
-}
-
-function makeWorkbook(rows: { email: string; name: string }[]): WorkbookData {
-  const cells: WorkbookData["sheets"][number]["cells"] = [
-    { row: 1, col: 1, value: "email" },
-    { row: 1, col: 2, value: "name" },
-  ];
-  for (let i = 0; i < rows.length; i++) {
-    cells.push({ row: 2 + i, col: 1, value: rows[i]!.email });
-    cells.push({ row: 2 + i, col: 2, value: rows[i]!.name });
-  }
-  return {
-    sheets: [
-      {
-        name: "Sheet1",
-        dimensions: { rows: 1 + rows.length, cols: 2 },
-        cells,
-      },
-    ],
-  };
 }
 
 /** Mocks the Sheets API's `spreadsheets.get` response. */

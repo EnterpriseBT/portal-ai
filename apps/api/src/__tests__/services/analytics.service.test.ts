@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- escape hatches for drizzle ORM and JSONB typings; values are validated upstream. */
 import {
   jest,
   describe,

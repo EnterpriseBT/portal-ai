@@ -49,7 +49,6 @@ const {
   fieldMappings,
   entityGroups,
   entityGroupMembers,
-  organizations,
   jobs,
 } = schema;
 
@@ -308,7 +307,7 @@ describe("Field Mapping Router", () => {
 
   describe("GET /api/field-mappings", () => {
     it("should return an empty list when no field mappings exist", async () => {
-      const { connectorEntityId, organizationId } = await seedFullChain(
+      const { connectorEntityId } = await seedFullChain(
         db as ReturnType<typeof drizzle>
       );
 
@@ -541,7 +540,7 @@ describe("Field Mapping Router", () => {
     });
 
     it("should create a field mapping successfully", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } =
+      const { connectorEntityId, columnDefinitionId } =
         await seedFullChain(db as ReturnType<typeof drizzle>);
 
       const res = await request(app)
@@ -642,7 +641,7 @@ describe("Field Mapping Router", () => {
     });
 
     it("created field mapping should be retrievable via GET", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } =
+      const { connectorEntityId, columnDefinitionId } =
         await seedFullChain(db as ReturnType<typeof drizzle>);
 
       const createRes = await request(app)

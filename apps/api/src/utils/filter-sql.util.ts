@@ -8,14 +8,11 @@
 import { sql, type SQL } from "drizzle-orm";
 
 import {
-  OPERATORS_BY_COLUMN_TYPE,
-  MAX_FILTER_DEPTH,
   validateFilterLimits,
   validateOperatorTypeCompat,
   FilterExpressionSchema,
 } from "@portalai/core/contracts";
 import type {
-  FilterExpression,
   FilterGroup,
   FilterCondition,
   FilterOperator,

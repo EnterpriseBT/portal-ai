@@ -492,7 +492,7 @@ describe("Entity Group Member Router", () => {
       );
 
       // Add two members, first as primary
-      const res1 = await request(app)
+      await request(app)
         .post(`/api/entity-groups/${groupId}/members`)
         .set("Authorization", "Bearer test-token")
         .send({

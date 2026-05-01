@@ -36,6 +36,14 @@ export default [
         },
       ],
       "@typescript-eslint/no-explicit-any": "warn",
+      // TypeScript validates these natively; the base ESLint rules emit
+      // false positives for Node 18+ globals (fetch, URL, URLSearchParams,
+      // RequestInit, Response, setImmediate) and for legitimate function
+      // overload signatures. Disable per typescript-eslint's official
+      // guidance — see https://typescript-eslint.io/users/troubleshooting
+      // /faqs/eslint/#i-get-errors-from-the-no-undef-rule.
+      "no-undef": "off",
+      "no-redeclare": "off",
     },
   },
   {

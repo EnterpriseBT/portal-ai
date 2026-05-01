@@ -125,12 +125,15 @@ export type PortalResultListRequestQuery = z.infer<
   typeof PortalResultListRequestQuerySchema
 >;
 
-const PortalResultWithIncludesSchema = PortalResultSchema.extend({
-  portalName: z.string().nullable().optional(),
-});
-
+// Defined inline rather than as a named const because the schema is only
+// referenced via z.infer; ESLint flags a named const-as-type as unused
+// since no value-position consumer reads it.
 export type PortalResultWithIncludes = z.infer<
-  typeof PortalResultWithIncludesSchema
+  ReturnType<
+    typeof PortalResultSchema.extend<{
+      portalName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }>
+  >
 >;
 
 // ── Pin Result ────────────────────────────────────────────────────────

@@ -3,7 +3,6 @@ import {
   recordsAxisOf,
   type AxisMember,
   type BindingSourceLocator,
-  type ColumnBinding,
   type ExtractedRecord,
   type Region,
   type Segment,
@@ -27,10 +26,6 @@ function cellText(cell: WorkbookCell | undefined): string {
   if (cell.value instanceof Date) return cell.value.toISOString();
   if (typeof cell.value === "boolean") return cell.value ? "true" : "false";
   return String(cell.value);
-}
-
-function oppositeAxis(axis: AxisMember): AxisMember {
-  return axis === "row" ? "column" : "row";
 }
 
 function startCoordAlong(axis: AxisMember, bounds: ResolvedBounds): number {

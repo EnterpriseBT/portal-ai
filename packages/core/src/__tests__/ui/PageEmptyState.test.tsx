@@ -44,7 +44,7 @@ describe("PageEmptyState Component", () => {
     });
 
     it("should not render an icon container when icon is not provided", () => {
-      const { container } = render(<PageEmptyState title="No results" />);
+      render(<PageEmptyState title="No results" />);
       expect(screen.queryByTestId("empty-icon")).not.toBeInTheDocument();
       // The title should still render
       expect(screen.getByText("No results")).toBeInTheDocument();

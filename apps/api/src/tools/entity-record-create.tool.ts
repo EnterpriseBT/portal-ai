@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- escape hatches for drizzle ORM and JSONB typings; values are validated upstream. */
 import { z } from "zod";
 import { tool } from "ai";
 import { v4 as uuidv4 } from "uuid";

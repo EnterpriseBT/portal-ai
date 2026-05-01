@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -185,10 +185,14 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
   });
 
   // Mirror the workbook into a ref so loadSlice/interpret can read the
-  // freshest value without dep-array gymnastics.
-  if (workflow.workbook && workflow.workbook !== workbookRef.current) {
-    workbookRef.current = workflow.workbook;
-  }
+  // freshest value without dep-array gymnastics. Effect (post-render)
+  // is the canonical place to mutate refs — doing it during render trips
+  // react-hooks/refs and can race with concurrent rendering.
+  useEffect(() => {
+    if (workflow.workbook && workflow.workbook !== workbookRef.current) {
+      workbookRef.current = workflow.workbook;
+    }
+  }, [workflow.workbook]);
 
   void organizationId;
 
