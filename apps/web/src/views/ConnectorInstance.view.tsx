@@ -273,21 +273,26 @@ export const ConnectorInstanceView = ({
                     primaryAction={primaryAction}
                     secondaryActions={secondaryActions}
                   >
+                    {/*
+                      Sync feedback floats in a closeable toast (Snackbar)
+                      anchored bottom-right — keeps the view surface
+                      uncluttered while the job runs. The component renders
+                      nothing when there's no in-flight job and no
+                      finished result/error to show.
+                    */}
                     {isSyncConfigured ? (
-                      <Box sx={{ mt: 1, mb: 2 }}>
-                        <ConnectorInstanceSyncFeedbackUI
-                          jobStatus={syncState.jobStatus}
-                          progress={syncState.progress}
-                          recordCounts={syncState.recordCounts}
-                          errorMessage={syncState.errorMessage}
-                          onDismissResult={syncState.onDismissResult}
-                          showReconnect={isAuthFailureMessage(
-                            syncState.errorMessage
-                          )}
-                          onReconnect={reconnectState.onReconnect}
-                          isReconnecting={reconnectState.isReconnecting}
-                        />
-                      </Box>
+                      <ConnectorInstanceSyncFeedbackUI
+                        jobStatus={syncState.jobStatus}
+                        progress={syncState.progress}
+                        recordCounts={syncState.recordCounts}
+                        errorMessage={syncState.errorMessage}
+                        onDismissResult={syncState.onDismissResult}
+                        showReconnect={isAuthFailureMessage(
+                          syncState.errorMessage
+                        )}
+                        onReconnect={reconnectState.onReconnect}
+                        isReconnecting={reconnectState.isReconnecting}
+                      />
                     ) : null}
                     <MetadataList
                       items={[
