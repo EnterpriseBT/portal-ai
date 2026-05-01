@@ -245,12 +245,12 @@ export const ConnectorInstanceView = ({
               const secondaryActions = [
                 ...(isInError || isSyncConfigured
                   ? [
-                      {
-                        label: "Edit",
-                        icon: <EditIcon />,
-                        onClick: () => setEditDialogOpen(true),
-                      },
-                    ]
+                    {
+                      label: "Edit",
+                      icon: <EditIcon />,
+                      onClick: () => setEditDialogOpen(true),
+                    },
+                  ]
                   : []),
                 {
                   label: "Delete",
@@ -273,27 +273,6 @@ export const ConnectorInstanceView = ({
                     primaryAction={primaryAction}
                     secondaryActions={secondaryActions}
                   >
-                    {/*
-                      Sync feedback floats in a closeable toast (Snackbar)
-                      anchored bottom-right — keeps the view surface
-                      uncluttered while the job runs. The component renders
-                      nothing when there's no in-flight job and no
-                      finished result/error to show.
-                    */}
-                    {isSyncConfigured ? (
-                      <ConnectorInstanceSyncFeedbackUI
-                        jobStatus={syncState.jobStatus}
-                        progress={syncState.progress}
-                        recordCounts={syncState.recordCounts}
-                        errorMessage={syncState.errorMessage}
-                        onDismissResult={syncState.onDismissResult}
-                        showReconnect={isAuthFailureMessage(
-                          syncState.errorMessage
-                        )}
-                        onReconnect={reconnectState.onReconnect}
-                        isReconnecting={reconnectState.isReconnecting}
-                      />
-                    ) : null}
                     <MetadataList
                       items={[
                         {
@@ -367,19 +346,19 @@ export const ConnectorInstanceView = ({
 
                             const makeHandler =
                               (flag: "write" | "sync" | "push") =>
-                              (
-                                _e: React.ChangeEvent<HTMLInputElement>,
-                                checked: boolean
-                              ) => {
-                                handleCapabilityChange({
-                                  name: ci.name,
-                                  enabledCapabilityFlags: {
-                                    ...flags,
-                                    read: true,
-                                    [flag]: checked,
-                                  },
-                                });
-                              };
+                                (
+                                  _e: React.ChangeEvent<HTMLInputElement>,
+                                  checked: boolean
+                                ) => {
+                                  handleCapabilityChange({
+                                    name: ci.name,
+                                    enabledCapabilityFlags: {
+                                      ...flags,
+                                      read: true,
+                                      [flag]: checked,
+                                    },
+                                  });
+                                };
 
                             return (
                               <Stack
@@ -567,6 +546,27 @@ export const ConnectorInstanceView = ({
                       name: ci.name,
                     }}
                   />
+                  {/*
+                      Sync feedback floats in a closeable toast (Snackbar)
+                      anchored bottom-right — keeps the view surface
+                      uncluttered while the job runs. The component renders
+                      nothing when there's no in-flight job and no
+                      finished result/error to show.
+                    */}
+                  {isSyncConfigured ? (
+                    <ConnectorInstanceSyncFeedbackUI
+                      jobStatus={syncState.jobStatus}
+                      progress={syncState.progress}
+                      recordCounts={syncState.recordCounts}
+                      errorMessage={syncState.errorMessage}
+                      onDismissResult={syncState.onDismissResult}
+                      showReconnect={isAuthFailureMessage(
+                        syncState.errorMessage
+                      )}
+                      onReconnect={reconnectState.onReconnect}
+                      isReconnecting={reconnectState.isReconnecting}
+                    />
+                  ) : null}
                 </Stack>
               );
             }}
