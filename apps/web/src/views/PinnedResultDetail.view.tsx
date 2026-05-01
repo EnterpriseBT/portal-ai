@@ -148,6 +148,8 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
           ]}
         >
           <MetadataList
+            direction="vertical"
+            layout="responsive"
             items={[
               {
                 label: "Type",

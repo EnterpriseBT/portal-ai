@@ -17,8 +17,6 @@ import {
   IconName,
   MetadataList,
   PageEmptyState,
-  PageGrid,
-  PageGridItem,
   PageHeader,
   PageSection,
   Stack,
@@ -244,155 +242,142 @@ export const ColumnDefinitionDetailView: React.FC<
                       cd.system
                         ? []
                         : [
-                            {
-                              label: "Delete",
-                              icon: <DeleteIcon />,
-                              onClick: () => setDeleteDialogOpen(true),
-                              color: "error",
-                            },
-                          ]
+                          {
+                            label: "Delete",
+                            icon: <DeleteIcon />,
+                            onClick: () => setDeleteDialogOpen(true),
+                            color: "error",
+                          },
+                        ]
                     }
                   >
                     <MetadataList
+                      direction="vertical"
+                      layout="responsive"
                       items={[
                         {
                           label: "Origin",
                           value: (
-                            <Chip
-                              label={cd.system ? "System" : "Custom"}
-                              size="small"
-                              color={cd.system ? "default" : "primary"}
-                              variant="outlined"
-                            />
+                            <Box>
+                              <Chip
+                                label={cd.system ? "System" : "Custom"}
+                                size="small"
+                                color={cd.system ? "default" : "primary"}
+                                variant="outlined"
+                              />
+                            </Box>
                           ),
                           variant: "chip",
                         },
                         {
                           label: "Type",
                           value: (
-                            <Chip
-                              label={cd.type}
-                              size="small"
-                              color={TYPE_COLOR[cd.type] ?? "default"}
-                              variant="outlined"
-                            />
+                            <Box>
+                              <Chip
+                                label={cd.type}
+                                size="small"
+                                color={TYPE_COLOR[cd.type] ?? "default"}
+                                variant="outlined"
+                              />
+                            </Box>
                           ),
                           variant: "chip",
+                        },
+                        { label: "Key", value: cd.key, variant: "mono" },
+                        {
+                          label: "Description",
+                          value: cd.description ?? "",
+                          hidden: !cd.description,
+                        },
+                        {
+                          label: "Validation Pattern",
+                          value: cd.validationPattern ?? "",
+                          hidden: !cd.validationPattern,
+                          variant: "mono",
+                        },
+                        {
+                          label: "Validation Message",
+                          value: cd.validationMessage ?? "",
+                          hidden: !cd.validationMessage,
+                        },
+                        {
+                          label: "Canonical Format",
+                          value: cd.canonicalFormat ?? "",
+                          hidden: !cd.canonicalFormat,
+                          variant: "mono",
+                        },
+                        {
+                          label: "Created",
+                          value: new Date(cd.created).toLocaleString(),
                         },
                       ]}
                     />
                   </PageHeader>
 
-                  <PageGrid columns={{ xs: 1, lg: 2 }}>
-                    {/* Details Section */}
-                    <PageGridItem>
-                      <PageSection title="Details" variant="outlined">
-                        <MetadataList
-                          items={[
-                            { label: "Key", value: cd.key, variant: "mono" },
-                            {
-                              label: "Description",
-                              value: cd.description ?? "",
-                              hidden: !cd.description,
-                            },
-                            {
-                              label: "Validation Pattern",
-                              value: cd.validationPattern ?? "",
-                              hidden: !cd.validationPattern,
-                              variant: "mono",
-                            },
-                            {
-                              label: "Validation Message",
-                              value: cd.validationMessage ?? "",
-                              hidden: !cd.validationMessage,
-                            },
-                            {
-                              label: "Canonical Format",
-                              value: cd.canonicalFormat ?? "",
-                              hidden: !cd.canonicalFormat,
-                              variant: "mono",
-                            },
-                            {
-                              label: "Created",
-                              value: new Date(cd.created).toLocaleString(),
-                            },
-                          ]}
-                        />
-                      </PageSection>
-                    </PageGridItem>
+                  <PageSection
+                    title="Field Mappings"
+                    icon={<Icon name={IconName.Link} />}
+                    primaryAction={
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<AddIcon />}
+                        onClick={() => setCreateFieldMappingOpen(true)}
+                      >
+                        Create
+                      </Button>
+                    }
+                  >
+                    <PaginationToolbar {...mappingsPagination.toolbarProps} />
 
-                    {/* Field Mappings Section */}
-                    <PageGridItem>
-                      <PageSection
-                        title="Field Mappings"
-                        icon={<Icon name={IconName.Link} />}
-                        primaryAction={
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<AddIcon />}
-                            onClick={() => setCreateFieldMappingOpen(true)}
-                          >
-                            Create
-                          </Button>
+                    <Box sx={{ mt: 2 }}>
+                      <FieldMappingDataList<FieldMappingListWithConnectorEntityResponsePayload>
+                        query={
+                          {
+                            columnDefinitionId,
+                            include: "connectorEntity",
+                            ...mappingsPagination.queryParams,
+                          } as FieldMappingListRequestQuery
                         }
                       >
-                        <PaginationToolbar
-                          {...mappingsPagination.toolbarProps}
-                        />
-
-                        <Box sx={{ mt: 2 }}>
-                          <FieldMappingDataList<FieldMappingListWithConnectorEntityResponsePayload>
-                            query={
-                              {
-                                columnDefinitionId,
-                                include: "connectorEntity",
-                                ...mappingsPagination.queryParams,
-                              } as FieldMappingListRequestQuery
-                            }
+                        {(mappingsResult) => (
+                          <SyncTotal
+                            total={mappingsResult.data?.total}
+                            setTotal={mappingsPagination.setTotal}
                           >
-                            {(mappingsResult) => (
-                              <SyncTotal
-                                total={mappingsResult.data?.total}
-                                setTotal={mappingsPagination.setTotal}
-                              >
-                                <DataResult
-                                  results={{ mappings: mappingsResult }}
-                                >
-                                  {({
-                                    mappings,
-                                  }: {
-                                    mappings: FieldMappingListWithConnectorEntityResponsePayload;
-                                  }) => {
-                                    if (mappings.fieldMappings.length === 0) {
-                                      return (
-                                        <PageEmptyState
-                                          icon={<Icon name={IconName.Link} />}
-                                          title="No field mappings found"
-                                        />
-                                      );
-                                    }
+                            <DataResult results={{ mappings: mappingsResult }}>
+                              {({
+                                mappings,
+                              }: {
+                                mappings: FieldMappingListWithConnectorEntityResponsePayload;
+                              }) => {
+                                if (mappings.fieldMappings.length === 0) {
+                                  return (
+                                    <PageEmptyState
+                                      icon={<Icon name={IconName.Link} />}
+                                      title="No field mappings found"
+                                    />
+                                  );
+                                }
 
-                                    return (
-                                      <FieldMappingTable
-                                        fieldMappings={mappings.fieldMappings}
-                                        onEdit={(fm) =>
-                                          setEditingFieldMapping(fm)
-                                        }
-                                        onDelete={(fm) =>
-                                          setDeletingFieldMapping(fm)
-                                        }
-                                      />
-                                    );
-                                  }}
-                                </DataResult>
-                              </SyncTotal>
-                            )}
-                          </FieldMappingDataList>
-                        </Box>
-                      </PageSection>
-                    </PageGridItem>
-                  </PageGrid>
+                                return (
+                                  <FieldMappingTable
+                                    fieldMappings={mappings.fieldMappings}
+                                    onEdit={(fm) =>
+                                      setEditingFieldMapping(fm)
+                                    }
+                                    onDelete={(fm) =>
+                                      setDeletingFieldMapping(fm)
+                                    }
+                                  />
+                                );
+                              }}
+                            </DataResult>
+                          </SyncTotal>
+                        )}
+                      </FieldMappingDataList>
+                    </Box>
+                  </PageSection>
                   <CreateFieldMappingDialog
                     open={createFieldMappingOpen}
                     onClose={() => setCreateFieldMappingOpen(false)}
@@ -413,25 +398,25 @@ export const ColumnDefinitionDetailView: React.FC<
                     fieldMapping={
                       editingFieldMapping
                         ? {
-                            ...editingFieldMapping,
-                            columnDefinitionLabel: cd.label,
-                            connectorEntityLabel:
-                              editingFieldMapping.connectorEntity?.label,
-                          }
+                          ...editingFieldMapping,
+                          columnDefinitionLabel: cd.label,
+                          connectorEntityLabel:
+                            editingFieldMapping.connectorEntity?.label,
+                        }
                         : {
-                            sourceField: "",
-                            normalizedKey: "",
-                            isPrimaryKey: false,
-                            required: false,
-                            defaultValue: null,
-                            format: null,
-                            enumValues: null,
-                            columnDefinitionId: "",
-                            columnDefinitionLabel: "",
-                            connectorEntityLabel: "",
-                            refNormalizedKey: null,
-                            refEntityKey: null,
-                          }
+                          sourceField: "",
+                          normalizedKey: "",
+                          isPrimaryKey: false,
+                          required: false,
+                          defaultValue: null,
+                          format: null,
+                          enumValues: null,
+                          columnDefinitionId: "",
+                          columnDefinitionLabel: "",
+                          connectorEntityLabel: "",
+                          refNormalizedKey: null,
+                          refEntityKey: null,
+                        }
                     }
                     onSubmit={handleFieldMappingUpdate}
                     onSearchConnectorEntitiesForRefKey={
@@ -558,45 +543,45 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
     () =>
       onEdit || onDelete
         ? {
-            key: "actions",
-            label: "Actions",
-            render: (_value: unknown, row: Record<string, unknown>) => {
-              const fm = fieldMappings.find((f) => f.id === row.id);
-              if (!fm) return null;
-              const writeEnabled =
-                fm.connectorEntity?.connectorInstance?.enabledCapabilityFlags
-                  ?.write === true;
-              return (
-                <Stack direction="row" spacing={0.5}>
-                  {onEdit && writeEnabled && (
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEdit(fm);
-                      }}
-                      aria-label="Edit field mapping"
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                  )}
-                  {onDelete && writeEnabled && (
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete(fm);
-                      }}
-                      aria-label="Delete field mapping"
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  )}
-                </Stack>
-              );
-            },
-          }
+          key: "actions",
+          label: "Actions",
+          render: (_value: unknown, row: Record<string, unknown>) => {
+            const fm = fieldMappings.find((f) => f.id === row.id);
+            if (!fm) return null;
+            const writeEnabled =
+              fm.connectorEntity?.connectorInstance?.enabledCapabilityFlags
+                ?.write === true;
+            return (
+              <Stack direction="row" spacing={0.5}>
+                {onEdit && writeEnabled && (
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEdit(fm);
+                    }}
+                    aria-label="Edit field mapping"
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                )}
+                {onDelete && writeEnabled && (
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(fm);
+                    }}
+                    aria-label="Delete field mapping"
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                )}
+              </Stack>
+            );
+          },
+        }
         : null,
     [onEdit, onDelete, fieldMappings]
   );

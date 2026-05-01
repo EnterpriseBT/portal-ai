@@ -321,6 +321,8 @@ export const EntityRecordDetailViewUI: React.FC<
               {groups.length > 0 && (
                 <MetadataList
                   data-testid="entity-groups-metadata"
+                  direction="vertical"
+                  layout="responsive"
                   items={[
                     {
                       label: "Entity Groups",
@@ -352,6 +354,8 @@ export const EntityRecordDetailViewUI: React.FC<
           <PageGridItem span={{ xs: 1, md: 2 }}>
             <PageSection title="Fields" variant="outlined">
               <MetadataList
+                direction="vertical"
+                layout="responsive"
                 spacing={2}
                 items={columns.map((col) => ({
                   // Use normalizedKey (field-mapping-level identifier) so

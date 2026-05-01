@@ -22,9 +22,9 @@ export interface MetadataListProps {
   items: MetadataItem[];
   /**
    * Layout mode.
-   * - "responsive" — label and value side-by-side on sm+, stacked on xs (default)
+   * - "stacked" — label above value, always vertical (default)
+   * - "responsive" — label and value side-by-side on sm+, stacked on xs
    * - "inline" — label and value on one line separated by a colon
-   * - "stacked" — label above value, always vertical
    */
   layout?: "inline" | "stacked" | "responsive";
   /** Show a divider between items. Default: false. */
@@ -35,6 +35,12 @@ export interface MetadataListProps {
   size?: "small" | "medium";
   /** When true, wraps the list in an outlined Paper card. Default: false. */
   raised?: boolean;
+  /**
+   * How items flow within the list.
+   * - "wrap" — items render horizontally and wrap to new lines as needed (default)
+   * - "vertical" — items stack vertically, one per row
+   */
+  direction?: "wrap" | "vertical";
   className?: string;
   [key: `data-${string}`]: string;
 }
@@ -112,21 +118,21 @@ const ResponsiveRow: React.FC<{
   item: MetadataItem;
   size: "small" | "medium";
 }> = ({ item, size }) => {
-  const typographyVariant = size === "small" ? "body2" : "body1";
+  const labelVariant = size === "small" ? "caption" : "body2";
 
   return (
     <Box
       sx={{
         display: "flex",
         flexDirection: { xs: "column", sm: "row" },
-        gap: { xs: 0.5, sm: 2 },
-        alignItems: { xs: "flex-start", sm: "center" },
+        gap: { xs: 0.25, sm: 1 },
+        alignItems: "flex-start",
       }}
     >
       <MuiTypography
-        variant={typographyVariant}
+        variant={labelVariant}
         color="text.secondary"
-        sx={{ flexShrink: 0 }}
+        sx={{ flexShrink: 0, fontWeight: 400 }}
       >
         {item.label}
       </MuiTypography>
@@ -141,11 +147,15 @@ const StackedRow: React.FC<{
   item: MetadataItem;
   size: "small" | "medium";
 }> = ({ item, size }) => {
-  const labelVariant = size === "small" ? "body2" : "body1";
+  const labelVariant = size === "small" ? "caption" : "body2";
 
   return (
-    <Stack spacing={0.5}>
-      <MuiTypography variant={labelVariant} color="text.secondary">
+    <Stack spacing={0.25}>
+      <MuiTypography
+        variant={labelVariant}
+        color="text.secondary"
+        sx={{ fontWeight: 400 }}
+      >
         {item.label}
       </MuiTypography>
       <MetadataValue item={item} size={size} />
@@ -157,38 +167,63 @@ export const MetadataList = React.forwardRef<HTMLDivElement, MetadataListProps>(
   (
     {
       items,
-      layout = "responsive",
+      layout = "stacked",
       dividers = false,
       spacing = 1.5,
       size = "small",
       raised = false,
+      direction = "wrap",
       className,
       ...rest
     },
     ref
   ) => {
     const visible = items.filter((i) => !i.hidden);
+    const verticalGap = dividers ? spacing / 2 : spacing;
 
-    const list = (
-      <Stack
-        ref={raised ? undefined : ref}
-        spacing={dividers ? spacing / 2 : spacing}
-        className={raised ? undefined : className}
-        data-testid="metadata-list"
-        {...(raised ? {} : rest)}
-      >
-        {visible.map((item, i) => (
-          <React.Fragment key={`${item.label}-${i}`}>
-            {layout === "inline" && <InlineRow item={item} size={size} />}
-            {layout === "responsive" && (
-              <ResponsiveRow item={item} size={size} />
-            )}
-            {layout === "stacked" && <StackedRow item={item} size={size} />}
-            {dividers && i < visible.length - 1 && <Divider />}
-          </React.Fragment>
-        ))}
-      </Stack>
-    );
+    const renderRow = (item: MetadataItem) => {
+      if (layout === "inline") return <InlineRow item={item} size={size} />;
+      if (layout === "stacked") return <StackedRow item={item} size={size} />;
+      return <ResponsiveRow item={item} size={size} />;
+    };
+
+    const list =
+      direction === "wrap" ? (
+        <Box
+          ref={raised ? undefined : ref}
+          className={raised ? undefined : className}
+          data-testid="metadata-list"
+          sx={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "flex-start",
+            columnGap: spacing * 2,
+            rowGap: spacing,
+          }}
+          {...(raised ? {} : rest)}
+        >
+          {visible.map((item, i) => (
+            <Box key={`${item.label}-${i}`} sx={{ minWidth: 0 }}>
+              {renderRow(item)}
+            </Box>
+          ))}
+        </Box>
+      ) : (
+        <Stack
+          ref={raised ? undefined : ref}
+          spacing={verticalGap}
+          className={raised ? undefined : className}
+          data-testid="metadata-list"
+          {...(raised ? {} : rest)}
+        >
+          {visible.map((item, i) => (
+            <React.Fragment key={`${item.label}-${i}`}>
+              {renderRow(item)}
+              {dividers && i < visible.length - 1 && <Divider />}
+            </React.Fragment>
+          ))}
+        </Stack>
+      );
 
     if (raised) {
       return (

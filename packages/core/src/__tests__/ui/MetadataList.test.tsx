@@ -126,7 +126,7 @@ describe("MetadataList", () => {
       expect(screen.getByText("ext_123")).toBeInTheDocument();
     });
 
-    it("should render responsive layout by default", () => {
+    it("should render stacked layout by default", () => {
       render(<MetadataList items={[{ label: "Name", value: "Test" }]} />);
       expect(screen.getByText("Name")).toBeInTheDocument();
       expect(screen.getByText("Test")).toBeInTheDocument();
@@ -135,16 +135,26 @@ describe("MetadataList", () => {
 
   describe("Dividers", () => {
     it("should render dividers between items when dividers=true", () => {
-      const { container } = render(<MetadataList dividers items={baseItems} />);
+      const { container } = render(
+        <MetadataList direction="vertical" dividers items={baseItems} />
+      );
       const dividers = container.querySelectorAll("hr");
-      // dividers appear between items, so count = items - 1
       expect(dividers).toHaveLength(baseItems.length - 1);
     });
 
     it("should not render dividers by default", () => {
-      const { container } = render(<MetadataList items={baseItems} />);
+      const { container } = render(
+        <MetadataList direction="vertical" items={baseItems} />
+      );
       const dividers = container.querySelectorAll("hr");
       expect(dividers).toHaveLength(0);
+    });
+
+    it("should ignore dividers in wrap direction", () => {
+      const { container } = render(
+        <MetadataList dividers items={baseItems} />
+      );
+      expect(container.querySelectorAll("hr")).toHaveLength(0);
     });
   });
 

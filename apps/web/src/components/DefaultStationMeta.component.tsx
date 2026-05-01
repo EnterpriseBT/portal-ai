@@ -53,7 +53,6 @@ export const DefaultStationMeta: React.FC = () => (
 
           return (
             <MetadataList
-              layout="responsive"
               items={[
                 {
                   label: "Default Station",
