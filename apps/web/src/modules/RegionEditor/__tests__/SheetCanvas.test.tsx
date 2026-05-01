@@ -538,7 +538,12 @@ describe("SheetCanvasUI", () => {
     });
   });
 
-  describe("touch pointer path requires long-press to engage gestures", () => {
+  // Body-cell drafting on the bare grid still goes through the long-press
+  // primer because the scroll container is `pan-x pan-y` — it has to share
+  // the gesture surface with native pan. Dedicated affordances (headers,
+  // region body, resize handles, segment dividers, editable intersections)
+  // each set local `touchAction: "none"` and engage immediately on touch.
+  describe("touch pointer path", () => {
     beforeEach(() => {
       jest.useFakeTimers();
     });
@@ -770,7 +775,7 @@ describe("SheetCanvasUI", () => {
       expect(onSelect).not.toHaveBeenCalled();
     });
 
-    test("touch long-press on a column header drafts a column band", () => {
+    test("touch on a column header drafts a column band immediately", () => {
       const onDraft = jest.fn();
       render(
         <SheetCanvasUI
@@ -791,9 +796,6 @@ describe("SheetCanvasUI", () => {
         clientX: 188,
         clientY: 12,
       });
-      act(() => {
-        jest.advanceTimersByTime(350);
-      });
       fireEvent.pointerUp(colHdr, {
         pointerId: 1,
         pointerType: "touch",
@@ -810,7 +812,7 @@ describe("SheetCanvasUI", () => {
       );
     });
 
-    test("touch long-press on a row header drafts a row band", () => {
+    test("touch on a row header drafts a row band immediately", () => {
       const onDraft = jest.fn();
       render(
         <SheetCanvasUI
@@ -830,9 +832,6 @@ describe("SheetCanvasUI", () => {
         clientX: 22,
         clientY: 24 + 2 * 28 + 14,
       });
-      act(() => {
-        jest.advanceTimersByTime(350);
-      });
       fireEvent.pointerUp(rowHdr, {
         pointerId: 1,
         pointerType: "touch",
@@ -849,7 +848,7 @@ describe("SheetCanvasUI", () => {
       );
     });
 
-    test("touch long-press on the corner header drafts whole-sheet", () => {
+    test("touch on the corner header drafts whole-sheet immediately", () => {
       const onDraft = jest.fn();
       render(
         <SheetCanvasUI
@@ -869,9 +868,6 @@ describe("SheetCanvasUI", () => {
         clientX: 22,
         clientY: 12,
       });
-      act(() => {
-        jest.advanceTimersByTime(350);
-      });
       fireEvent.pointerUp(corner, {
         pointerId: 1,
         pointerType: "touch",
@@ -886,7 +882,7 @@ describe("SheetCanvasUI", () => {
       });
     });
 
-    test("touch tap on a region body selects it synchronously (no timer wait)", () => {
+    test("touch tap on a region body selects it without committing a move", () => {
       const onSelect = jest.fn();
       const onResize = jest.fn();
       const region: RegionDraft = {
@@ -907,13 +903,15 @@ describe("SheetCanvasUI", () => {
         />
       );
       const overlay = screen.getByLabelText(/Region/i);
+      // Region body has local touchAction: "none" — pointerdown selects
+      // synchronously and primes a move op that commits only if the
+      // pointer moves before release.
       fireEvent.pointerDown(overlay, {
         pointerId: 1,
         pointerType: "touch",
         clientX: 200,
         clientY: 60,
       });
-      // Selection happens immediately, before the 350ms timer.
       expect(onSelect).toHaveBeenCalledWith("r1");
       fireEvent.pointerUp(overlay, {
         pointerId: 1,
@@ -924,7 +922,54 @@ describe("SheetCanvasUI", () => {
       expect(onResize).not.toHaveBeenCalled();
     });
 
-    test("touch long-press on a segment divider fires onSegmentResize", () => {
+    test("touch drag on a resize handle commits the new bounds via onRegionResize", () => {
+      const onResize = jest.fn();
+      const region: RegionDraft = {
+        id: "r1",
+        sheetId: "s1",
+        bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 3 },
+        targetEntityDefinitionId: "ent_a",
+      };
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[region]}
+          entityOrder={["ent_a"]}
+          selectedRegionId="r1"
+          onRegionSelect={jest.fn()}
+          onRegionDraft={jest.fn()}
+          onRegionResize={onResize}
+        />
+      );
+      const seHandle = screen.getByLabelText("Resize region se");
+      // Resize handles set local touchAction: "none" and engage immediately.
+      fireEvent.pointerDown(seHandle, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 44 + 3 * 96 + 48,
+        clientY: 24 + 3 * 28 + 14,
+      });
+      fireEvent.pointerMove(seHandle, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 44 + 4 * 96 + 48,
+        clientY: 24 + 4 * 28 + 14,
+      });
+      fireEvent.pointerUp(seHandle, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 44 + 4 * 96 + 48,
+        clientY: 24 + 4 * 28 + 14,
+      });
+      expect(onResize).toHaveBeenCalledWith("r1", {
+        startRow: 1,
+        endRow: 4,
+        startCol: 1,
+        endCol: 4,
+      });
+    });
+
+    test("touch drag on a segment divider fires onSegmentResize", () => {
       const region: RegionDraft = {
         id: "r1",
         sheetId: "s1",
@@ -957,9 +1002,6 @@ describe("SheetCanvasUI", () => {
         clientX: 44 + 2 * 96 + 48,
         clientY: 24 + 1 * 28 + 14,
       });
-      act(() => {
-        jest.advanceTimersByTime(350);
-      });
       fireEvent.pointerMove(divider, {
         pointerId: 1,
         pointerType: "touch",
@@ -975,7 +1017,7 @@ describe("SheetCanvasUI", () => {
       expect(onSegmentResize).toHaveBeenCalledWith("r1", "row", 0, 3, 1);
     });
 
-    test("touch long-press on a pivot×pivot intersection opens the editor popover", () => {
+    test("touch on a pivot×pivot intersection opens the editor popover immediately", () => {
       const region: RegionDraft = {
         id: "r1",
         sheetId: "s1",
@@ -1018,21 +1060,13 @@ describe("SheetCanvasUI", () => {
         />
       );
       const overlay = screen.getByTestId("intersection-overlay-r1-rp1__cp1");
-      // Tap (no timer advance): popover should NOT open yet.
+      // Editable intersections set local touchAction: "none" and engage on
+      // pointerdown for every pointer type — touch matches mouse here.
       fireEvent.pointerDown(overlay, {
         pointerId: 1,
         pointerType: "touch",
         clientX: 200,
         clientY: 100,
-      });
-      expect(
-        screen.queryByRole("textbox", {
-          name: /cell-value field name for this intersection/i,
-        })
-      ).not.toBeInTheDocument();
-      // Hold past the threshold: popover opens.
-      act(() => {
-        jest.advanceTimersByTime(350);
       });
       expect(
         screen.getByRole("textbox", {

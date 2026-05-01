@@ -174,6 +174,10 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           boxShadow: selected ? `0 0 0 2px ${color}80` : undefined,
           borderBottomStyle: extendsDown ? "dashed" : "solid",
           borderRightStyle: extendsRight ? "dashed" : "solid",
+          // The scroll container uses `pan-x pan-y` so empty cells pan
+          // natively; the region body is a deliberate target, so it claims
+          // every touch immediately and JS owns the move/select decision.
+          touchAction: "none",
         }}
         aria-label={`Region ${region.proposedLabel ?? formatBounds(bounds)}`}
       >
@@ -254,6 +258,9 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                // Local override against the scroll container's `pan-x pan-y`
+                // so a finger on the handle never races the browser's pan.
+                touchAction: "none",
                 ...anchorOffset(h.anchor, "top", "bottom"),
                 ...anchorOffset(h.cross, "left", "right"),
               }}

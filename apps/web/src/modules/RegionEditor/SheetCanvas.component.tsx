@@ -513,32 +513,33 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       if (readOnly) return;
       const target = e.target as HTMLElement | null;
       const pointerId = e.pointerId;
-      if (e.pointerType === "touch") {
-        // Body taps select the region under the finger (matching the
-        // desktop "single-click outside drag" semantics). Header taps and
-        // corner taps do nothing — those affordances exist only as
-        // press-to-draft on touch.
-        const isBody =
-          !target?.closest("[data-col-header]") &&
-          !target?.closest("[data-row-header]") &&
-          !target?.closest("[data-corner-header]");
+      const isHeaderTarget =
+        !!target?.closest("[data-col-header]") ||
+        !!target?.closest("[data-row-header]") ||
+        !!target?.closest("[data-corner-header]");
+      if (e.pointerType === "touch" && !isHeaderTarget) {
+        // Body cells share the gesture surface with native pan (the
+        // scroll container is `pan-x pan-y`), so we still defer drafting
+        // behind the long-press timer. A short tap selects the region
+        // under the finger and otherwise clears selection.
         primeLongPress(e, {
           commit: (cx, cy) => commitGridPress(target, cx, cy, pointerId),
-          tap: isBody
-            ? (cx, cy) => {
-                const coord = clientToCell(cx, cy);
-                if (!coord) return;
-                const hit = regions.find(
-                  (r) =>
-                    r.sheetId === sheet.id && coordInBounds(coord, r.bounds)
-                );
-                onRegionSelect(hit?.id ?? null);
-              }
-            : undefined,
+          tap: (cx, cy) => {
+            const coord = clientToCell(cx, cy);
+            if (!coord) return;
+            const hit = regions.find(
+              (r) =>
+                r.sheetId === sheet.id && coordInBounds(coord, r.bounds)
+            );
+            onRegionSelect(hit?.id ?? null);
+          },
         });
         return;
       }
-      e.preventDefault();
+      // Mouse, pen, or touch on a dedicated header/corner target — engage
+      // immediately. Headers carry their own `touchAction: "none"` so the
+      // browser won't race us for the gesture.
+      if (e.pointerType !== "touch") e.preventDefault();
       commitGridPress(target, e.clientX, e.clientY, pointerId);
     },
     [
@@ -556,10 +557,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     (regionId: string, originalBounds: CellBounds) =>
       (e: React.PointerEvent) => {
         e.stopPropagation();
-        // Selection runs synchronously on every pointerdown (mouse/pen/touch)
-        // so tap-to-select feels snappy. The MOVE op is what's gated behind
-        // the long-press on touch.
-        if (e.pointerType !== "touch") e.preventDefault();
+        e.preventDefault();
         onRegionSelect(regionId);
         if (readOnly || !onRegionResize) return;
         // Once a region carries segments, its bounds are locked — moving it
@@ -570,26 +568,22 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           (target?.segmentsByAxis?.row?.length ?? 0) > 0 ||
           (target?.segmentsByAxis?.column?.length ?? 0) > 0;
         if (hasSegments) return;
-        const pointerId = e.pointerId;
-        const startMove = (clientX: number, clientY: number) => {
-          capturePointerById(pointerId);
-          const coord = clientToCell(clientX, clientY) ?? {
-            row: originalBounds.startRow,
-            col: originalBounds.startCol,
-          };
-          setActiveOp({
-            kind: "move",
-            regionId,
-            originalBounds,
-            pointerStart: coord,
-            current: coord,
-          });
+        // The region body sets local `touchAction: "none"`, so touch and
+        // mouse take the same synchronous path: capture the pointer and
+        // start a move op. A pointerup with no movement is still a clean
+        // selection (handlePointerUp skips committing a zero-distance move).
+        capturePointerById(e.pointerId);
+        const coord = clientToCell(e.clientX, e.clientY) ?? {
+          row: originalBounds.startRow,
+          col: originalBounds.startCol,
         };
-        if (e.pointerType === "touch") {
-          primeLongPress(e, { commit: startMove });
-          return;
-        }
-        startMove(e.clientX, e.clientY);
+        setActiveOp({
+          kind: "move",
+          regionId,
+          originalBounds,
+          pointerStart: coord,
+          current: coord,
+        });
       },
     [
       readOnly,
@@ -598,7 +592,6 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       capturePointerById,
       clientToCell,
       regions,
-      primeLongPress,
     ]
   );
 
@@ -607,29 +600,24 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       (e: React.PointerEvent) => {
         if (readOnly) return;
         e.stopPropagation();
-        if (e.pointerType !== "touch") e.preventDefault();
-        const pointerId = e.pointerId;
-        const startResize = (clientX: number, clientY: number) => {
-          capturePointerById(pointerId);
-          const coord = clientToCell(clientX, clientY) ?? {
-            row: originalBounds.startRow,
-            col: originalBounds.startCol,
-          };
-          setActiveOp({
-            kind: "resize",
-            regionId,
-            handle,
-            originalBounds,
-            current: coord,
-          });
+        e.preventDefault();
+        // Resize handles carry local `touchAction: "none"`, so we engage
+        // synchronously on every pointer type — no long-press, no race
+        // with native pan.
+        capturePointerById(e.pointerId);
+        const coord = clientToCell(e.clientX, e.clientY) ?? {
+          row: originalBounds.startRow,
+          col: originalBounds.startCol,
         };
-        if (e.pointerType === "touch") {
-          primeLongPress(e, { commit: startResize });
-          return;
-        }
-        startResize(e.clientX, e.clientY);
+        setActiveOp({
+          kind: "resize",
+          regionId,
+          handle,
+          originalBounds,
+          current: coord,
+        });
       },
-    [readOnly, clientToCell, capturePointerById, primeLongPress]
+    [readOnly, clientToCell, capturePointerById]
   );
 
   const handleSegmentDividerPointerDown = useCallback(
@@ -644,36 +632,30 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       (e: React.PointerEvent) => {
         if (readOnly || !onSegmentResize) return;
         e.stopPropagation();
-        if (e.pointerType !== "touch") e.preventDefault();
-        const pointerId = e.pointerId;
-        const startSegmentResize = (clientX: number, clientY: number) => {
-          capturePointerById(pointerId);
-          // The pointer's initial cell may be at the divider boundary; seed
-          // `current` to the axis-index of the existing split so no move is
-          // recorded if the user releases without dragging.
-          const initialCoord = clientToCell(clientX, clientY) ?? {
-            row: 0,
-            col: 0,
-          };
-          setActiveOp({
-            kind: "resizeSegment",
-            regionId: args.regionId,
-            axis: args.axis,
-            segmentIndex: args.segmentIndex,
-            originalLeft: args.originalLeft,
-            originalRight: args.originalRight,
-            combined: args.originalLeft + args.originalRight,
-            pairStart: args.pairStart,
-            current: initialCoord,
-          });
+        e.preventDefault();
+        // The divider already carries local `touchAction: "none"`, so engage
+        // synchronously for every pointer type.
+        capturePointerById(e.pointerId);
+        // The pointer's initial cell may be at the divider boundary; seed
+        // `current` to the axis-index of the existing split so no move is
+        // recorded if the user releases without dragging.
+        const initialCoord = clientToCell(e.clientX, e.clientY) ?? {
+          row: 0,
+          col: 0,
         };
-        if (e.pointerType === "touch") {
-          primeLongPress(e, { commit: startSegmentResize });
-          return;
-        }
-        startSegmentResize(e.clientX, e.clientY);
+        setActiveOp({
+          kind: "resizeSegment",
+          regionId: args.regionId,
+          axis: args.axis,
+          segmentIndex: args.segmentIndex,
+          originalLeft: args.originalLeft,
+          originalRight: args.originalRight,
+          combined: args.originalLeft + args.originalRight,
+          pairStart: args.pairStart,
+          current: initialCoord,
+        });
       },
-    [readOnly, onSegmentResize, capturePointerById, clientToCell, primeLongPress]
+    [readOnly, onSegmentResize, capturePointerById, clientToCell]
   );
 
   const handlePointerMove = useCallback(
@@ -979,6 +961,10 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       color: "rgba(0,0,0,0.6)",
       boxSizing: "border-box",
       cursor: headerCursor,
+      // Headers are deliberate draw-this-band targets; the local override
+      // against the scroll container's `pan-x pan-y` lets a finger engage
+      // the column-band draw immediately without racing native pan.
+      touchAction: "none",
     }),
     [cellWidth, headerCursor]
   );
@@ -1001,6 +987,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       color: "rgba(0,0,0,0.6)",
       boxSizing: "border-box",
       cursor: headerCursor,
+      // See colHeaderStyle — draw-row-band engages immediately on touch.
+      touchAction: "none",
     }),
     [cellHeight, headerCursor]
   );
@@ -1061,6 +1049,9 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             left: 0,
             zIndex: 4,
             background: "#f3f4f6",
+            // Same rationale as col/row headers — engage the
+            // whole-sheet selection immediately on touch.
+            touchAction: "none",
           }}
           aria-label="Select entire sheet"
         />
@@ -1492,35 +1483,26 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                     isEditable && o.label
                       ? (event) => {
                           event.stopPropagation();
-                          if (event.pointerType !== "touch") {
-                            event.preventDefault();
-                          }
-                          // Capture the anchor synchronously — pooled
-                          // events null `currentTarget` after the handler
-                          // returns, and the long-press timer fires after
-                          // the handler has long since exited.
+                          event.preventDefault();
+                          // Editable intersections claim the gesture
+                          // immediately — they carry local `touchAction:
+                          // "none"`, so there is no race with native pan
+                          // and no long-press wait on touch.
                           const anchor = event.currentTarget;
-                          const open = () => {
-                            // Selecting the region keeps the side panel in
-                            // sync — clicking an intersection on a region
-                            // that's currently unselected should still
-                            // promote it to the active region the way a
-                            // body-click would.
-                            onRegionSelect(previewRegion.id);
-                            setEditingIntersection({
-                              regionId: previewRegion.id,
-                              intersectionId: o.id,
-                              rowPivotSegmentId: o.rowPivotSegmentId!,
-                              colPivotSegmentId: o.colPivotSegmentId!,
-                              label: o.label!,
-                              anchor,
-                            });
-                          };
-                          if (event.pointerType === "touch") {
-                            primeLongPress(event, { commit: open });
-                            return;
-                          }
-                          open();
+                          // Selecting the region keeps the side panel in
+                          // sync — clicking an intersection on a region
+                          // that's currently unselected should still
+                          // promote it to the active region the way a
+                          // body-click would.
+                          onRegionSelect(previewRegion.id);
+                          setEditingIntersection({
+                            regionId: previewRegion.id,
+                            intersectionId: o.id,
+                            rowPivotSegmentId: o.rowPivotSegmentId!,
+                            colPivotSegmentId: o.colPivotSegmentId!,
+                            label: o.label!,
+                            anchor,
+                          });
                         }
                       : undefined
                   }
@@ -1568,6 +1550,11 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                     alignItems: "flex-start",
                     justifyContent: "center",
                     overflow: "hidden",
+                    // Editable blocks claim every touch — no pan race,
+                    // no long-press wait. Non-editable blocks have
+                    // pointerEvents: "none" already, so the value is
+                    // moot for them.
+                    touchAction: isEditable ? "none" : undefined,
                     "&:hover, &:focus-visible":
                       isEditable
                         ? {
