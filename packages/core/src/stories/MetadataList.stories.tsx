@@ -19,6 +19,10 @@ const meta = {
       control: "select",
       options: ["responsive", "inline", "stacked"],
     },
+    direction: {
+      control: "select",
+      options: ["wrap", "vertical"],
+    },
     size: {
       control: "select",
       options: ["small", "medium"],
@@ -67,6 +71,7 @@ export const Inline: Story = {
 export const InlineWithDividers: Story = {
   args: {
     layout: "inline",
+    direction: "vertical",
     dividers: true,
     size: "medium",
     items: [
@@ -178,9 +183,22 @@ export const Raised: Story = {
   },
 };
 
+export const Vertical: Story = {
+  args: {
+    direction: "vertical",
+    items: [
+      { label: "ID", value: "usr_abc123def456", variant: "mono" },
+      { label: "Name", value: "Acme Corporation" },
+      { label: "Status", value: "Active", variant: "chip" },
+      { label: "Created", value: "March 15, 2026" },
+    ],
+  },
+};
+
 export const RaisedWithDividers: Story = {
   args: {
     raised: true,
+    direction: "vertical",
     dividers: true,
     size: "medium",
     items: [

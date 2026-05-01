@@ -291,6 +291,8 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
           }
         >
           <MetadataList
+            direction="vertical"
+            layout="responsive"
             items={[
               { label: "Key", value: entity.key, variant: "mono" },
               {

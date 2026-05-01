@@ -274,6 +274,8 @@ export const ConnectorInstanceView = ({
                     secondaryActions={secondaryActions}
                   >
                     <MetadataList
+                      direction="vertical"
+                      layout="responsive"
                       items={[
                         {
                           label: "Status",

@@ -381,6 +381,8 @@ export const EntityGroupDetailViewUI: React.FC<
           ]}
         >
           <MetadataList
+            direction="vertical"
+            layout="responsive"
             size="medium"
             items={[
               {

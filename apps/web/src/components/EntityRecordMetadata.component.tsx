@@ -27,6 +27,8 @@ export const EntityRecordMetadata: React.FC<EntityRecordMetadataProps> = ({
   return (
     <Stack spacing={1}>
       <MetadataList
+        direction="vertical"
+        layout="responsive"
         items={[
           { label: "ID", value: record.id, variant: "mono" },
           { label: "Source ID", value: record.sourceId, variant: "mono" },

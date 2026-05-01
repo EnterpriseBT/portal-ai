@@ -105,7 +105,6 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
           </Link>
         </Stack>
         <MetadataList
-          layout="stacked"
           items={[
             {
               label: "Description",

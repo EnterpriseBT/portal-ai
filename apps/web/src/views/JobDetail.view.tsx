@@ -80,29 +80,16 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                         ) : undefined
                       }
                     >
-                      <Box>
-                        <StatusBadge status={status} />
-                      </Box>
-                    </PageHeader>
-
-                    {status === "active" && (
-                      <Progress
-                        value={progress}
-                        height={10}
-                        color="info"
-                        animated
-                      />
-                    )}
-
-                    <PageSection
-                      title="Details"
-                      icon={<Icon name={IconName.Info} />}
-                      variant="outlined"
-                    >
                       <MetadataList
+                        direction="vertical"
                         layout="responsive"
-                        size="medium"
                         items={[
+                          {
+                            label: "Status",
+                            value: <Box>
+                              <StatusBadge status={status} />
+                            </Box>
+                          },
                           { label: "Job ID", value: job.id, variant: "mono" },
                           { label: "Type", value: job.type },
                           {
@@ -121,7 +108,16 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                           },
                         ]}
                       />
-                    </PageSection>
+                    </PageHeader>
+
+                    {status === "active" && (
+                      <Progress
+                        value={progress}
+                        height={10}
+                        color="info"
+                        animated
+                      />
+                    )}
 
                     {error && (
                       <PageSection

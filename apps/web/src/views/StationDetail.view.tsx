@@ -198,6 +198,8 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                         </Typography>
                       )}
                       <MetadataList
+                        direction="vertical"
+                        layout="responsive"
                         items={[
                           {
                             label: "Tool Packs",
