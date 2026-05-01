@@ -712,7 +712,11 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       const bounds = normalizeBounds(activeOp.start, activeOp.end);
       const isSingleClick =
         bounds.startRow === bounds.endRow && bounds.startCol === bounds.endCol;
-      if (!isSingleClick) {
+      // A touch draw op only exists because the user already crossed the
+      // long-press threshold — i.e. the gesture is intentional. Commit the
+      // single cell instead of falling through to the desktop "click ⇒
+      // select" semantic, which would silently lose the user's hold.
+      if (!isSingleClick || e.pointerType === "touch") {
         onRegionDraft(bounds);
       } else {
         const hit = regions.find(

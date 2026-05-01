@@ -705,6 +705,48 @@ describe("SheetCanvasUI", () => {
       });
     });
 
+    test("touch hold ≥ 350ms with no drag drafts the single cell", () => {
+      const onDraft = jest.fn();
+      const onSelect = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={onSelect}
+          onRegionDraft={onDraft}
+        />
+      );
+      const cell = screen.getByTestId("cell-1-1");
+      fireEvent.pointerDown(cell, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 188,
+        clientY: 66,
+      });
+      // Cross the long-press threshold so the timer fires and the draw op
+      // is engaged on a single cell.
+      act(() => {
+        jest.advanceTimersByTime(350);
+      });
+      // Lift without ever moving — the user's hold should persist as a
+      // single-cell draft, not collapse into a select.
+      fireEvent.pointerUp(cell, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 188,
+        clientY: 66,
+      });
+      expect(onDraft).toHaveBeenCalledWith({
+        startRow: 1,
+        endRow: 1,
+        startCol: 1,
+        endCol: 1,
+      });
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
     test("touch hold < 350ms then drag does NOT draw", () => {
       const onDraft = jest.fn();
       render(
