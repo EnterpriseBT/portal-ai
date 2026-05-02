@@ -122,9 +122,90 @@ MicrosoftAuthService.exchangeCode =
 MicrosoftAuthService.fetchUserProfile =
   fetchUserProfileMock as unknown as typeof MicrosoftAuthService.fetchUserProfile;
 
+// ── Phase B mocks: access-token cache + Microsoft Graph ──────────────
+
+const { MicrosoftAccessTokenCacheService } = await import(
+  "../../../services/microsoft-access-token-cache.service.js"
+);
+const getOrRefreshMock = jest.fn<(id: string) => Promise<string>>();
+const originalGetOrRefresh =
+  MicrosoftAccessTokenCacheService.getOrRefresh.bind(
+    MicrosoftAccessTokenCacheService
+  );
+MicrosoftAccessTokenCacheService.getOrRefresh =
+  getOrRefreshMock as unknown as typeof MicrosoftAccessTokenCacheService.getOrRefresh;
+
+const { MicrosoftGraphService } = await import(
+  "../../../services/microsoft-graph.service.js"
+);
+const searchWorkbooksMock =
+  jest.fn<
+    (
+      accessToken: string,
+      query: string
+    ) => Promise<
+      Array<{
+        driveItemId: string;
+        name: string;
+        lastModifiedDateTime: string;
+        lastModifiedBy: string | null;
+      }>
+    >
+  >();
+const headWorkbookMock =
+  jest.fn<
+    (
+      accessToken: string,
+      driveItemId: string
+    ) => Promise<{ size: number; name: string }>
+  >();
+const downloadWorkbookMock =
+  jest.fn<
+    (
+      accessToken: string,
+      driveItemId: string
+    ) => Promise<{
+      stream: ReadableStream<Uint8Array>;
+      contentLength: number;
+    }>
+  >();
+const originalSearch = MicrosoftGraphService.searchWorkbooks.bind(
+  MicrosoftGraphService
+);
+const originalHead = MicrosoftGraphService.headWorkbook.bind(
+  MicrosoftGraphService
+);
+const originalDownload = MicrosoftGraphService.downloadWorkbook.bind(
+  MicrosoftGraphService
+);
+MicrosoftGraphService.searchWorkbooks =
+  searchWorkbooksMock as unknown as typeof MicrosoftGraphService.searchWorkbooks;
+MicrosoftGraphService.headWorkbook =
+  headWorkbookMock as unknown as typeof MicrosoftGraphService.headWorkbook;
+MicrosoftGraphService.downloadWorkbook =
+  downloadWorkbookMock as unknown as typeof MicrosoftGraphService.downloadWorkbook;
+// Identity passthrough for Web → Node stream conversion in tests.
+MicrosoftGraphService.toNodeReadable =
+  ((stream: ReadableStream<Uint8Array>) =>
+    stream) as unknown as typeof MicrosoftGraphService.toNodeReadable;
+
+// Mock the xlsx adapter to avoid needing a real .xlsx fixture in tests.
+const xlsxToWorkbookMock =
+  jest.fn<(stream: unknown) => Promise<unknown>>();
+jest.unstable_mockModule(
+  "../../../services/workbook-adapters/xlsx.adapter.js",
+  () => ({
+    xlsxToWorkbook: xlsxToWorkbookMock,
+  })
+);
+
 afterAll(() => {
   MicrosoftAuthService.exchangeCode = originalExchange;
   MicrosoftAuthService.fetchUserProfile = originalFetchProfile;
+  MicrosoftAccessTokenCacheService.getOrRefresh = originalGetOrRefresh;
+  MicrosoftGraphService.searchWorkbooks = originalSearch;
+  MicrosoftGraphService.headWorkbook = originalHead;
+  MicrosoftGraphService.downloadWorkbook = originalDownload;
 });
 
 const { app } = await import("../../../app.js");
@@ -471,5 +552,380 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
       .select()
       .from(connectorInstances);
     expect(rows).toHaveLength(0);
+  });
+});
+
+// ── GET /workbooks ───────────────────────────────────────────────────
+
+async function insertMicrosoftExcelInstance(
+  db: ReturnType<typeof drizzle>,
+  organizationId: string,
+  definitionId: string,
+  upn: string,
+  tenantId: string
+): Promise<string> {
+  const { encryptCredentials } = await import("../../../utils/crypto.util.js");
+  const id = crypto.randomUUID();
+  await db.insert(connectorInstances).values({
+    id,
+    connectorDefinitionId: definitionId,
+    organizationId,
+    name: `Microsoft 365 Excel (${upn})`,
+    status: "pending",
+    config: null,
+    credentials: encryptCredentials({
+      refresh_token: "0.AX-old",
+      scopes: ["openid", "offline_access"],
+      microsoftAccountUpn: upn,
+      microsoftAccountEmail: upn,
+      microsoftAccountDisplayName: upn,
+      tenantId,
+      lastRefreshedAt: 0,
+    }),
+    lastSyncAt: null,
+    lastErrorMessage: null,
+    enabledCapabilityFlags: null,
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  } as never);
+  return id;
+}
+
+function fakeStream(): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array([0x50, 0x4b]));
+      controller.close();
+    },
+  });
+}
+
+describe("Microsoft Excel Connector Router — GET /workbooks", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: DbClient;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL not set");
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+    await teardownOrg(db as ReturnType<typeof drizzle>);
+    getOrRefreshMock.mockReset();
+    searchWorkbooksMock.mockReset();
+    getOrRefreshMock.mockResolvedValue("access-token-x");
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  it("returns 400 MICROSOFT_EXCEL_INVALID_INSTANCE_ID when missing", async () => {
+    await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+    const res = await request(app)
+      .get("/api/connectors/microsoft-excel/workbooks")
+      .set("Authorization", "Bearer test-token");
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.MICROSOFT_EXCEL_INVALID_INSTANCE_ID);
+  });
+
+  it("returns 404 when the instance doesn't exist", async () => {
+    await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+    const res = await request(app)
+      .get(
+        "/api/connectors/microsoft-excel/workbooks?connectorInstanceId=does-not-exist"
+      )
+      .set("Authorization", "Bearer test-token");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 403 when the instance belongs to a different org", async () => {
+    await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+    const definitionId = await insertMicrosoftExcelDefinition(
+      db as ReturnType<typeof drizzle>
+    );
+    const id = await insertMicrosoftExcelInstance(
+      db as ReturnType<typeof drizzle>,
+      crypto.randomUUID(),
+      definitionId,
+      "stranger@contoso.com",
+      "tenant-x"
+    );
+    const res = await request(app)
+      .get(
+        `/api/connectors/microsoft-excel/workbooks?connectorInstanceId=${id}`
+      )
+      .set("Authorization", "Bearer test-token");
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 200 with mapped items on the happy path", async () => {
+    const { organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const definitionId = await insertMicrosoftExcelDefinition(
+      db as ReturnType<typeof drizzle>
+    );
+    const id = await insertMicrosoftExcelInstance(
+      db as ReturnType<typeof drizzle>,
+      organizationId,
+      definitionId,
+      "alice@contoso.com",
+      "tenant-A"
+    );
+
+    searchWorkbooksMock.mockResolvedValueOnce([
+      {
+        driveItemId: "01ABC",
+        name: "Q3 Forecast.xlsx",
+        lastModifiedDateTime: "2026-04-01T12:00:00Z",
+        lastModifiedBy: "Alice",
+      },
+    ]);
+
+    const res = await request(app)
+      .get(
+        `/api/connectors/microsoft-excel/workbooks?connectorInstanceId=${id}&search=Q3`
+      )
+      .set("Authorization", "Bearer test-token");
+    expect(res.status).toBe(200);
+    expect(res.body.payload.items).toHaveLength(1);
+    expect(res.body.payload.items[0]).toEqual({
+      driveItemId: "01ABC",
+      name: "Q3 Forecast.xlsx",
+      lastModifiedDateTime: "2026-04-01T12:00:00Z",
+      lastModifiedBy: "Alice",
+    });
+    expect(searchWorkbooksMock).toHaveBeenCalledWith("access-token-x", "Q3");
+  });
+});
+
+// ── POST /instances/:id/select-workbook + GET /sheet-slice ───────────
+
+describe("Microsoft Excel Connector Router — POST /instances/:id/select-workbook", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: DbClient;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL not set");
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+    await teardownOrg(db as ReturnType<typeof drizzle>);
+    getOrRefreshMock.mockReset();
+    headWorkbookMock.mockReset();
+    downloadWorkbookMock.mockReset();
+    xlsxToWorkbookMock.mockReset();
+    getOrRefreshMock.mockResolvedValue("access-token-x");
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  it("returns 400 when driveItemId is missing", async () => {
+    const { organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const definitionId = await insertMicrosoftExcelDefinition(
+      db as ReturnType<typeof drizzle>
+    );
+    const id = await insertMicrosoftExcelInstance(
+      db as ReturnType<typeof drizzle>,
+      organizationId,
+      definitionId,
+      "alice@contoso.com",
+      "tenant-A"
+    );
+    const res = await request(app)
+      .post(`/api/connectors/microsoft-excel/instances/${id}/select-workbook`)
+      .set("Authorization", "Bearer test-token")
+      .send({});
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.MICROSOFT_EXCEL_INVALID_PAYLOAD);
+  });
+
+  it("returns 413 MICROSOFT_EXCEL_FILE_TOO_LARGE without attempting the download", async () => {
+    const { organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const definitionId = await insertMicrosoftExcelDefinition(
+      db as ReturnType<typeof drizzle>
+    );
+    const id = await insertMicrosoftExcelInstance(
+      db as ReturnType<typeof drizzle>,
+      organizationId,
+      definitionId,
+      "alice@contoso.com",
+      "tenant-A"
+    );
+
+    // 600 MB > the env default of 500 MB UPLOAD_MAX_FILE_SIZE_BYTES.
+    headWorkbookMock.mockResolvedValueOnce({
+      size: 600 * 1024 * 1024,
+      name: "Huge.xlsx",
+    });
+
+    const res = await request(app)
+      .post(`/api/connectors/microsoft-excel/instances/${id}/select-workbook`)
+      .set("Authorization", "Bearer test-token")
+      .send({ driveItemId: "01ABC" });
+    expect(res.status).toBe(413);
+    expect(res.body.code).toBe(ApiCode.MICROSOFT_EXCEL_FILE_TOO_LARGE);
+    expect(res.body.details?.sizeBytes).toBe(600 * 1024 * 1024);
+    expect(typeof res.body.details?.capBytes).toBe("number");
+    expect(downloadWorkbookMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 415 MICROSOFT_EXCEL_UNSUPPORTED_FORMAT for non-.xlsx files", async () => {
+    const { organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const definitionId = await insertMicrosoftExcelDefinition(
+      db as ReturnType<typeof drizzle>
+    );
+    const id = await insertMicrosoftExcelInstance(
+      db as ReturnType<typeof drizzle>,
+      organizationId,
+      definitionId,
+      "alice@contoso.com",
+      "tenant-A"
+    );
+    headWorkbookMock.mockResolvedValueOnce({
+      size: 1024,
+      name: "Macros.xlsm",
+    });
+    const res = await request(app)
+      .post(`/api/connectors/microsoft-excel/instances/${id}/select-workbook`)
+      .set("Authorization", "Bearer test-token")
+      .send({ driveItemId: "01ABC" });
+    expect(res.status).toBe(415);
+    expect(res.body.code).toBe(ApiCode.MICROSOFT_EXCEL_UNSUPPORTED_FORMAT);
+    expect(downloadWorkbookMock).not.toHaveBeenCalled();
+  });
+
+  it("happy path: downloads, parses, caches, updates config, returns title", async () => {
+    const { organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const definitionId = await insertMicrosoftExcelDefinition(
+      db as ReturnType<typeof drizzle>
+    );
+    const id = await insertMicrosoftExcelInstance(
+      db as ReturnType<typeof drizzle>,
+      organizationId,
+      definitionId,
+      "alice@contoso.com",
+      "tenant-A"
+    );
+
+    headWorkbookMock.mockResolvedValueOnce({
+      size: 1024,
+      name: "Q3 Forecast.xlsx",
+    });
+    downloadWorkbookMock.mockResolvedValueOnce({
+      stream: fakeStream(),
+      contentLength: 1024,
+    });
+    xlsxToWorkbookMock.mockResolvedValueOnce({
+      sheets: [
+        {
+          name: "Sheet1",
+          dimensions: { rows: 1, cols: 1 },
+          cells: [{ row: 0, col: 0, value: "hello" }],
+          merges: [],
+        },
+      ],
+    });
+
+    const res = await request(app)
+      .post(`/api/connectors/microsoft-excel/instances/${id}/select-workbook`)
+      .set("Authorization", "Bearer test-token")
+      .send({ driveItemId: "01ABC" });
+    expect(res.status).toBe(200);
+    expect(res.body.payload.title).toBe("Q3 Forecast");
+    expect(res.body.payload.sheets).toHaveLength(1);
+
+    const rows = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(connectorInstances)
+      .where(eq(connectorInstances.id, id));
+    expect(rows).toHaveLength(1);
+    const cfg = rows[0]!.config as {
+      driveItemId?: string;
+      name?: string;
+      fetchedAt?: number;
+    } | null;
+    expect(cfg?.driveItemId).toBe("01ABC");
+    expect(cfg?.name).toBe("Q3 Forecast.xlsx");
+    expect(typeof cfg?.fetchedAt).toBe("number");
+  });
+});
+
+describe("Microsoft Excel Connector Router — GET /instances/:id/sheet-slice", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: DbClient;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL not set");
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+    await teardownOrg(db as ReturnType<typeof drizzle>);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  it("returns 404 FILE_UPLOAD_SESSION_NOT_FOUND when no workbook is cached", async () => {
+    const { organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const definitionId = await insertMicrosoftExcelDefinition(
+      db as ReturnType<typeof drizzle>
+    );
+    const id = await insertMicrosoftExcelInstance(
+      db as ReturnType<typeof drizzle>,
+      organizationId,
+      definitionId,
+      "alice@contoso.com",
+      "tenant-A"
+    );
+    const res = await request(app)
+      .get(
+        `/api/connectors/microsoft-excel/instances/${id}/sheet-slice?sheetId=sheet_0_sheet1&rowStart=0&rowEnd=1&colStart=0&colEnd=1`
+      )
+      .set("Authorization", "Bearer test-token");
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(ApiCode.FILE_UPLOAD_SESSION_NOT_FOUND);
+  });
+
+  it("returns 400 when query parameters are missing or malformed", async () => {
+    const { organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const definitionId = await insertMicrosoftExcelDefinition(
+      db as ReturnType<typeof drizzle>
+    );
+    const id = await insertMicrosoftExcelInstance(
+      db as ReturnType<typeof drizzle>,
+      organizationId,
+      definitionId,
+      "alice@contoso.com",
+      "tenant-A"
+    );
+    const res = await request(app)
+      .get(`/api/connectors/microsoft-excel/instances/${id}/sheet-slice`)
+      .set("Authorization", "Bearer test-token");
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.MICROSOFT_EXCEL_INVALID_PAYLOAD);
   });
 });

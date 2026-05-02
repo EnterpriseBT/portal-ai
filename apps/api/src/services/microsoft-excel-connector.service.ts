@@ -18,16 +18,27 @@
  */
 
 import type { PublicAccountInfo } from "@portalai/core/contracts";
+import type { WorkbookData } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
 import { DbService } from "./db.service.js";
+import { MicrosoftAccessTokenCacheService } from "./microsoft-access-token-cache.service.js";
 import {
   MicrosoftAuthError,
   MicrosoftAuthService,
   type MicrosoftUserProfile,
   type TokenBundle,
 } from "./microsoft-auth.service.js";
+import {
+  MicrosoftGraphError,
+  MicrosoftGraphService,
+  type MicrosoftGraphWorkbookListItem,
+} from "./microsoft-graph.service.js";
+import { WorkbookCacheService } from "./workbook-cache.service.js";
+import { xlsxToWorkbook } from "./workbook-adapters/xlsx.adapter.js";
+import { environment } from "../environment.js";
+import { workbookCacheKey } from "../utils/connector-cache-keys.util.js";
 import { decryptCredentials } from "../utils/crypto.util.js";
 import {
   OAuthStateError,
@@ -35,6 +46,14 @@ import {
 } from "../utils/oauth-state.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
+import {
+  findSheetById,
+  inflateSheetPreview,
+  sliceWorkbookRectangle,
+  type PreviewSheet,
+  type SliceQuery,
+  type SliceResult,
+} from "../utils/workbook-preview.util.js";
 
 const logger = createLogger({ module: "microsoft-excel-connector" });
 
@@ -48,6 +67,28 @@ export interface HandleCallbackInput {
 export interface HandleCallbackResult {
   connectorInstanceId: string;
   accountInfo: PublicAccountInfo;
+}
+
+export interface SearchWorkbooksInput {
+  connectorInstanceId: string;
+  search?: string;
+}
+
+export interface SearchWorkbooksResult {
+  items: MicrosoftGraphWorkbookListItem[];
+}
+
+export interface SelectWorkbookInput {
+  connectorInstanceId: string;
+  driveItemId: string;
+  organizationId: string;
+  userId: string;
+}
+
+export interface SelectWorkbookResult {
+  title: string;
+  sheets: PreviewSheet[];
+  sliced?: true;
 }
 
 function buildAccountInfo(profile: MicrosoftUserProfile): PublicAccountInfo {
@@ -155,6 +196,190 @@ export class MicrosoftExcelConnectorService {
   }
 
   /**
+   * List the user's `.xlsx` workbooks. Empty `search` returns the
+   * recently-modified set; non-empty hits Graph search with `q=`. The
+   * graph service post-filters to `.xlsx` mime + extension; this
+   * method only marshals the auth + result shape.
+   */
+  static async searchWorkbooks(
+    input: SearchWorkbooksInput
+  ): Promise<SearchWorkbooksResult> {
+    const accessToken = await MicrosoftAccessTokenCacheService.getOrRefresh(
+      input.connectorInstanceId
+    );
+    const items = await MicrosoftGraphService.searchWorkbooks(
+      accessToken,
+      input.search ?? ""
+    );
+    return { items };
+  }
+
+  /**
+   * Pre-flight (size + extension), download, parse, cache, and update
+   * `instance.config`. Returns the same inline-or-sliced preview shape
+   * the file-upload `parseSession` returns so the RegionEditor (Phase
+   * C) treats both pipelines the same.
+   *
+   * The size check uses Graph's lightweight metadata endpoint BEFORE
+   * the content download — an oversized workbook is refused with a
+   * clean `MICROSOFT_EXCEL_FILE_TOO_LARGE` (status 413) without ever
+   * draining bytes through the API process. The extension check is
+   * also pre-download.
+   */
+  static async selectWorkbook(
+    input: SelectWorkbookInput
+  ): Promise<SelectWorkbookResult> {
+    const accessToken = await MicrosoftAccessTokenCacheService.getOrRefresh(
+      input.connectorInstanceId
+    );
+
+    const head = await MicrosoftGraphService.headWorkbook(
+      accessToken,
+      input.driveItemId
+    );
+
+    const cap = environment.UPLOAD_MAX_FILE_SIZE_BYTES;
+    if (head.size > cap) {
+      throw new ApiError(
+        413,
+        ApiCode.MICROSOFT_EXCEL_FILE_TOO_LARGE,
+        `Workbook exceeds the configured byte cap (${head.size} > ${cap})`,
+        { sizeBytes: head.size, capBytes: cap }
+      );
+    }
+
+    if (!head.name.toLowerCase().endsWith(".xlsx")) {
+      throw new ApiError(
+        415,
+        ApiCode.MICROSOFT_EXCEL_UNSUPPORTED_FORMAT,
+        `Only .xlsx workbooks are supported (got "${head.name}")`
+      );
+    }
+
+    let download;
+    try {
+      download = await MicrosoftGraphService.downloadWorkbook(
+        accessToken,
+        input.driveItemId
+      );
+    } catch (err) {
+      throw mapGraphError(err);
+    }
+
+    const nodeStream = MicrosoftGraphService.toNodeReadable(download.stream);
+    const workbook = await xlsxToWorkbook(nodeStream);
+
+    await WorkbookCacheService.set(
+      workbookCacheKey(MICROSOFT_EXCEL_SLUG, input.connectorInstanceId),
+      workbook
+    );
+
+    await DbService.repository.connectorInstances.update(
+      input.connectorInstanceId,
+      {
+        config: {
+          driveItemId: input.driveItemId,
+          name: head.name,
+          fetchedAt: Date.now(),
+        },
+        updatedBy: input.userId,
+      }
+    );
+
+    const title = stripXlsxExtension(head.name);
+    const inlineCellsMax = environment.FILE_UPLOAD_INLINE_CELLS_MAX;
+    let sliced = false;
+    const sheets: PreviewSheet[] = workbook.sheets.map((sheet, i) => {
+      const inflated = inflateSheetPreview(sheet, i, inlineCellsMax);
+      if (inflated.sliced) sliced = true;
+      return inflated.sheet;
+    });
+
+    return sliced ? { title, sheets, sliced: true } : { title, sheets };
+  }
+
+  /**
+   * Cell-rectangle endpoint backed by the cached `WorkbookData`. Cache
+   * miss is fatal — the editor session is responsible for re-calling
+   * `selectWorkbook` to refill the cache after TTL.
+   */
+  static async sheetSlice(input: {
+    connectorInstanceId: string;
+    sheetId: string;
+    rowStart: number;
+    rowEnd: number;
+    colStart: number;
+    colEnd: number;
+  }): Promise<SliceResult> {
+    const workbook = await WorkbookCacheService.get(
+      workbookCacheKey(MICROSOFT_EXCEL_SLUG, input.connectorInstanceId)
+    );
+    if (!workbook) {
+      throw new ApiError(
+        404,
+        ApiCode.FILE_UPLOAD_SESSION_NOT_FOUND,
+        `No cached workbook for instance ${input.connectorInstanceId} — call select-workbook first`
+      );
+    }
+    const match = findSheetById(workbook, input.sheetId);
+    if (!match) {
+      throw new ApiError(
+        404,
+        ApiCode.FILE_UPLOAD_SLICE_OUT_OF_BOUNDS,
+        `Sheet ${input.sheetId} not present in workbook`
+      );
+    }
+    const query: SliceQuery = {
+      rowStart: input.rowStart,
+      rowEnd: input.rowEnd,
+      colStart: input.colStart,
+      colEnd: input.colEnd,
+    };
+    return sliceWorkbookRectangle(match.sheet, query);
+  }
+
+  /**
+   * Resolve the cached `WorkbookData` for the layout-plan-draft
+   * dispatcher. Mirrors `GoogleSheetsConnectorService.resolveWorkbook`
+   * — cache miss is fatal, no S3 fallback (sync uses
+   * `fetchWorkbookForSync` instead, landed in Phase D).
+   */
+  static async resolveWorkbook(
+    connectorInstanceId: string,
+    organizationId: string
+  ): Promise<WorkbookData> {
+    const instance =
+      await DbService.repository.connectorInstances.findById(
+        connectorInstanceId
+      );
+    if (!instance) {
+      throw new ApiError(
+        404,
+        ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+        `Connector instance ${connectorInstanceId} not found`
+      );
+    }
+    if (instance.organizationId !== organizationId) {
+      throw new ApiError(
+        403,
+        ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+        "Connector instance belongs to a different organization"
+      );
+    }
+    const cached = await WorkbookCacheService.get(
+      workbookCacheKey(MICROSOFT_EXCEL_SLUG, connectorInstanceId)
+    );
+    if (!cached) {
+      throw new ApiError(
+        404,
+        ApiCode.FILE_UPLOAD_SESSION_NOT_FOUND,
+        `No cached workbook for instance ${connectorInstanceId} — call select-workbook first`
+      );
+    }
+    return cached;
+  }
+
+  /**
    * Linear scan over the org's microsoft-excel instances; matches by
    * `(tenantId, microsoftAccountUpn)`. O(N) — acceptable for v1 (one
    * human, 1–3 Microsoft accounts). Promote to a dedicated repository
@@ -183,6 +408,55 @@ export class MicrosoftExcelConnectorService {
     }
     return undefined;
   }
+}
+
+function stripXlsxExtension(name: string): string {
+  return name.replace(/\.xlsx$/i, "");
+}
+
+function mapGraphError(err: unknown): ApiError {
+  if (err instanceof ApiError) return err;
+  if (
+    err instanceof MicrosoftGraphError ||
+    (err as Error)?.name === "MicrosoftGraphError"
+  ) {
+    const kind = (err as MicrosoftGraphError).kind;
+    const message = (err as Error).message;
+    const details = (err as MicrosoftGraphError).details;
+    switch (kind) {
+      case "file_too_large":
+        return new ApiError(
+          413,
+          ApiCode.MICROSOFT_EXCEL_FILE_TOO_LARGE,
+          message,
+          details
+        );
+      case "search_failed":
+        return new ApiError(
+          502,
+          ApiCode.MICROSOFT_EXCEL_LIST_FAILED,
+          message
+        );
+      case "head_failed":
+      case "download_failed":
+        return new ApiError(
+          502,
+          ApiCode.MICROSOFT_EXCEL_FETCH_FAILED,
+          message
+        );
+      default:
+        return new ApiError(
+          502,
+          ApiCode.MICROSOFT_EXCEL_FETCH_FAILED,
+          message
+        );
+    }
+  }
+  return new ApiError(
+    500,
+    ApiCode.MICROSOFT_EXCEL_FETCH_FAILED,
+    err instanceof Error ? err.message : "Unknown error"
+  );
 }
 
 function readCredentialsObject(
