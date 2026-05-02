@@ -485,6 +485,45 @@ export function patchBinding<S extends BindingPatchableState>(
   return { ...prev, regions: nextRegions, plan: nextPlan };
 }
 
+// ── Identity-strategy mirror (draft → plan) ──────────────────────────
+
+type PlanIdentityStrategy = NonNullable<
+  LayoutPlan["regions"][number]["identityStrategy"]
+>;
+
+/**
+ * Convert the editor's `RegionDraft.identityStrategy` shape into the
+ * canonical `LayoutPlan` shape so `onRegionUpdate` can mirror the
+ * IdentityPanel's pick onto the plan that commit ships. The draft uses
+ * `rawLocator` to preserve the structured Locator (the panel never
+ * synthesizes the display string `sourceLocator`), while the plan uses
+ * `sourceLocator: Locator` directly.
+ *
+ * Returns `undefined` for shapes the IdentityPanel can't currently
+ * produce (e.g. composite, or column without `rawLocator`); callers
+ * leave the plan untouched in that case rather than corrupt it.
+ */
+export function draftIdentityStrategyToPlan(
+  strat: NonNullable<RegionDraft["identityStrategy"]>
+): PlanIdentityStrategy | undefined {
+  if (strat.kind === "rowPosition") {
+    return {
+      kind: "rowPosition",
+      confidence: strat.confidence ?? 0,
+      ...(strat.source ? { source: strat.source } : {}),
+    };
+  }
+  if (strat.kind === "column" && strat.rawLocator) {
+    return {
+      kind: "column",
+      sourceLocator: strat.rawLocator,
+      confidence: strat.confidence ?? 0.7,
+      ...(strat.source ? { source: strat.source } : {}),
+    };
+  }
+  return undefined;
+}
+
 // ── The shared hook ─────────────────────────────────────────────────
 
 export function useSpreadsheetWorkflow(
@@ -542,12 +581,30 @@ export function useSpreadsheetWorkflow(
     (regionId: string, updates: Partial<RegionDraft>) => {
       setState((prev) => {
         if (!prev.regions.some((r) => r.id === regionId)) return prev;
-        return {
-          ...prev,
-          regions: prev.regions.map((r) =>
-            r.id === regionId ? { ...r, ...updates } : r
-          ),
-        };
+        const nextRegions = prev.regions.map((r) =>
+          r.id === regionId ? { ...r, ...updates } : r
+        );
+        // Identity edits arrive here through the IdentityPanel in the review
+        // step. Commit ships state.plan, not state.regions, so without this
+        // mirror the user's override is silently dropped and the server
+        // syncs against the heuristic identity from interpret().
+        let nextPlan = prev.plan;
+        if ("identityStrategy" in updates && prev.plan) {
+          const planStrategy = updates.identityStrategy
+            ? draftIdentityStrategyToPlan(updates.identityStrategy)
+            : undefined;
+          if (planStrategy) {
+            nextPlan = {
+              ...prev.plan,
+              regions: prev.plan.regions.map((pr) =>
+                pr.id === regionId
+                  ? { ...pr, identityStrategy: planStrategy }
+                  : pr
+              ),
+            };
+          }
+        }
+        return { ...prev, regions: nextRegions, plan: nextPlan };
       });
     },
     []

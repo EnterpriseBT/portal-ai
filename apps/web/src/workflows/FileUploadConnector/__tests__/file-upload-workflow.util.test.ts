@@ -443,6 +443,117 @@ describe("useFileUploadWorkflow — onCommit", () => {
     expect(result.current.isCommitting).toBe(false);
   });
 
+  test("user-locked identityStrategy from onRegionUpdate flows into the plan handed to runCommit", async () => {
+    // Arrange a runInterpret that returns a plan with one region whose
+    // heuristic identityStrategy points at column 3, plus a matching draft
+    // region carrying the same strategy. The id is derived from the
+    // freshly-drafted region so the mirror in onRegionUpdate has a region
+    // to find on both sides.
+    const runInterpret = jest
+      .fn<FileUploadWorkflowCallbacks["runInterpret"]>()
+      .mockImplementation(async (drafts) => {
+        const draft = drafts[0];
+        return {
+          regions: [
+            {
+              ...draft,
+              identityStrategy: {
+                kind: "column",
+                source: "heuristic",
+                confidence: 1,
+                rawLocator: {
+                  kind: "column",
+                  sheet: "Row",
+                  col: 3,
+                },
+              },
+            },
+          ],
+          plan: {
+            planVersion: "1.0.0",
+            workbookFingerprint: {
+              sheetNames: [],
+              dimensions: {},
+              anchorCells: [],
+            },
+            regions: [
+              {
+                id: draft.id,
+                sheet: "Row",
+                bounds: {
+                  startRow: 1,
+                  startCol: 1,
+                  endRow: 7,
+                  endCol: 4,
+                },
+                identityStrategy: {
+                  kind: "column",
+                  sourceLocator: {
+                    kind: "column",
+                    sheet: "Row",
+                    col: 3,
+                  },
+                  confidence: 1,
+                  source: "heuristic",
+                },
+              },
+            ],
+            confidence: { overall: 0.9, perRegion: { [draft.id]: 0.9 } },
+          } as unknown as import("@portalai/core/contracts").LayoutPlan,
+          overallConfidence: 0.9,
+        };
+      });
+    const runCommit = jest
+      .fn<FileUploadWorkflowCallbacks["runCommit"]>()
+      .mockResolvedValue({ connectorInstanceId: "ci_user_identity" });
+    const { result } = renderHook(() =>
+      useFileUploadWorkflow(makeCallbacks({ runInterpret, runCommit }))
+    );
+    act(() => result.current.addFiles([SAMPLE_FILE]));
+    await act(async () => {
+      await result.current.startParse();
+    });
+    act(() =>
+      result.current.onRegionDraft({
+        sheetId: DEMO_WORKBOOK.sheets[0].id,
+        bounds: { startRow: 0, endRow: 6, startCol: 0, endCol: 3 },
+      })
+    );
+    const regionId = result.current.regions[0].id;
+    await act(async () => {
+      await result.current.onInterpret();
+    });
+
+    // The user picks "id" (col 4) instead of the heuristic's pick (col 3).
+    act(() =>
+      result.current.onRegionUpdate(regionId, {
+        identityStrategy: {
+          kind: "column",
+          source: "user",
+          confidence: 0.7,
+          rawLocator: {
+            kind: "column",
+            sheet: "Row",
+            col: 4,
+          },
+        },
+      })
+    );
+
+    await act(async () => {
+      await result.current.onCommit();
+    });
+
+    expect(runCommit).toHaveBeenCalledTimes(1);
+    const committedPlan = runCommit.mock.calls[0][0];
+    expect(committedPlan.regions[0].identityStrategy).toEqual({
+      kind: "column",
+      sourceLocator: { kind: "column", sheet: "Row", col: 4 },
+      confidence: 0.7,
+      source: "user",
+    });
+  });
+
   test("sets serverError on commit failure", async () => {
     const runCommit = jest
       .fn<FileUploadWorkflowCallbacks["runCommit"]>()
