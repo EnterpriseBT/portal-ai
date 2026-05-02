@@ -649,8 +649,8 @@ describe("Layout Plans Draft Router", () => {
 
   /**
    * Seed a pending google-sheets ConnectorInstance + cache its workbook
-   * in the mocked Redis under `gsheets:wb:{id}`. Mirrors what
-   * `GoogleSheetsConnectorService.selectSheet` writes in production.
+   * in the mocked Redis under `connector:wb:google-sheets:{id}`. Mirrors
+   * what `GoogleSheetsConnectorService.selectSheet` writes in production.
    */
   async function seedPendingGoogleSheetsInstance(
     db: Db,
@@ -676,12 +676,15 @@ describe("Layout Plans Draft Router", () => {
       deleted: null,
       deletedBy: null,
     } as never);
-    redisStore.set(`gsheets:wb:${instanceId}`, JSON.stringify(workbook));
+    redisStore.set(
+      `connector:wb:google-sheets:${instanceId}`,
+      JSON.stringify(workbook)
+    );
     return instanceId;
   }
 
   describe("POST /api/layout-plans/interpret — connectorInstanceId path", () => {
-    it("reads the workbook from gsheets:wb:{id} cache and returns the plan", async () => {
+    it("reads the workbook from connector:wb:google-sheets:{id} cache and returns the plan", async () => {
       const emailId = await seedColumnDefinition(
         db as Db,
         organizationId,

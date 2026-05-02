@@ -174,3 +174,39 @@ export class GoogleSheetsConnectorDefinitionModelFactory extends ModelFactory<
     return model;
   }
 }
+
+// ── Microsoft Excel Connector Definition ─────────────────────────────
+
+export const MicrosoftExcelConnectorDefinitionSchema =
+  ConnectorDefinitionSchema.extend({});
+
+export type MicrosoftExcelConnectorDefinition = z.infer<
+  typeof MicrosoftExcelConnectorDefinitionSchema
+>;
+
+export class MicrosoftExcelConnectorDefinitionModel extends CoreModel<MicrosoftExcelConnectorDefinition> {
+  get schema() {
+    return MicrosoftExcelConnectorDefinitionSchema;
+  }
+
+  parse(): MicrosoftExcelConnectorDefinition {
+    return this.schema.parse(this._model);
+  }
+
+  validate(): z.ZodSafeParseResult<MicrosoftExcelConnectorDefinition> {
+    return this.schema.safeParse(this._model);
+  }
+}
+
+export class MicrosoftExcelConnectorDefinitionModelFactory extends ModelFactory<
+  MicrosoftExcelConnectorDefinition,
+  MicrosoftExcelConnectorDefinitionModel
+> {
+  create(createdBy: string): MicrosoftExcelConnectorDefinitionModel {
+    const baseModel = this._coreModelFactory.create(createdBy);
+    const model = new MicrosoftExcelConnectorDefinitionModel(
+      baseModel.toJSON()
+    );
+    return model;
+  }
+}

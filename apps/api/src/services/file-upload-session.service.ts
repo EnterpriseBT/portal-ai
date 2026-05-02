@@ -47,8 +47,9 @@ import {
 
 /**
  * Cache key for an upload-session-scoped workbook. The cache service is
- * shared with google-sheets (`gsheets:wb:{id}`) — the prefix lives here
- * so the file-upload pipeline owns its namespace.
+ * shared with OAuth-driven connectors (`connector:wb:<slug>:{id}` — see
+ * `utils/connector-cache-keys.util.ts`); this prefix lives here so the
+ * file-upload pipeline owns its namespace.
  */
 function uploadSessionCacheKey(uploadSessionId: string): string {
   return `upload-session:${uploadSessionId}`;

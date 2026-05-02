@@ -5,8 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { sdk, queryKeys } from "../api/sdk";
 import {
   PopupClosedError,
-  useGooglePopupAuthorize,
-} from "../workflows/GoogleSheetsConnector/utils/google-sheets-popup.util";
+  useOAuthPopupAuthorize,
+} from "./oauth-popup.util";
 import { apiOrigin } from "./api-origin.util";
 
 export interface ConnectorInstanceReconnectState {
@@ -46,7 +46,12 @@ export const useReconnectConnectorInstance = (
 ): ConnectorInstanceReconnectState => {
   const queryClient = useQueryClient();
   const { mutateAsync: authorizeMutate } = sdk.googleSheets.authorize();
-  const popup = useGooglePopupAuthorize({ allowedOrigin: apiOrigin() });
+  // Reconnect is gsheets-only today; Phase E generalizes this to dispatch
+  // by the connector instance's definition slug.
+  const popup = useOAuthPopupAuthorize({
+    slug: "google-sheets",
+    allowedOrigin: apiOrigin(),
+  });
 
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

@@ -1,34 +1,41 @@
 /**
- * Redis-backed cache for the Google access token attached to a
- * `ConnectorInstance`'s credentials. Refreshes lazily on miss.
+ * Redis-backed cache for the Microsoft access token attached to a
+ * `ConnectorInstance`'s credentials, plus persistence of the rotated
+ * refresh token back into the credentials column.
  *
- * - Cache key: `connector:access:google-sheets:{connectorInstanceId}`.
+ * - Cache key: `connector:access:microsoft-excel:{connectorInstanceId}`.
  * - TTL: `expiresIn - 600s` (10-min safety margin so an in-flight call
  *   doesn't hold a token that expires mid-request). Floored at 60s.
  * - Single-flight de-dup via in-memory Map: concurrent misses wait on
  *   the same in-flight refresh promise. Sufficient for one API process;
- *   cross-process coordination via Redis SET NX is the next step if
- *   we scale beyond a single worker.
+ *   cross-process coordination via Redis SET NX is the next step
+ *   (Phase E) if scale forces it.
+ *
+ * **Microsoft-specific divergence from the Google cache:** Microsoft
+ * rotates the refresh token on every call. After a successful refresh
+ * we MUST update `connector_instances.credentials.refresh_token` (re-
+ * encrypted, preserving the other fields) before the next miss reads
+ * the now-consumed prior token from the DB. The base repository's
+ * `update` accepts the credentials object directly via the standard
+ * column path; the encryption layer handles re-encryption on write.
  *
  * On refresh failure (`invalid_grant` etc.), marks the instance
  * `status="error"` with `lastErrorMessage` so Phase E's reconnect flow
  * can surface a Reconnect button.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-B.plan.md` §Slice 3.
  */
 
 import { DbService } from "./db.service.js";
 import {
-  GoogleAuthError,
-  GoogleAuthService,
-} from "./google-auth.service.js";
+  MicrosoftAuthError,
+  MicrosoftAuthService,
+} from "./microsoft-auth.service.js";
 import { accessTokenCacheKey } from "../utils/connector-cache-keys.util.js";
 import { getRedisClient } from "../utils/redis.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
-const logger = createLogger({ module: "google-access-token-cache" });
+const logger = createLogger({ module: "microsoft-access-token-cache" });
 
-const SLUG = "google-sheets";
+const SLUG = "microsoft-excel";
 const TTL_SAFETY_MARGIN_SEC = 600;
 const TTL_FLOOR_SEC = 60;
 
@@ -38,7 +45,7 @@ function cacheKey(connectorInstanceId: string): string {
 
 const inflight = new Map<string, Promise<string>>();
 
-export const GoogleAccessTokenCacheService = {
+export const MicrosoftAccessTokenCacheService = {
   async getOrRefresh(connectorInstanceId: string): Promise<string> {
     const redis = getRedisClient();
     const cached = await redis.get(cacheKey(connectorInstanceId));
@@ -64,9 +71,7 @@ export const GoogleAccessTokenCacheService = {
   },
 };
 
-async function refreshAndStore(
-  connectorInstanceId: string
-): Promise<string> {
+async function refreshAndStore(connectorInstanceId: string): Promise<string> {
   const instance =
     await DbService.repository.connectorInstances.findById(
       connectorInstanceId
@@ -91,11 +96,16 @@ async function refreshAndStore(
     );
   }
 
-  let refreshed: { accessToken: string; expiresIn: number };
+  let refreshed: {
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+    scope: string;
+  };
   try {
-    refreshed = await GoogleAuthService.refreshAccessToken(refreshToken);
+    refreshed = await MicrosoftAuthService.refreshAccessToken(refreshToken);
   } catch (err) {
-    if (err instanceof GoogleAuthError && err.kind === "refresh_failed") {
+    if (err instanceof MicrosoftAuthError && err.kind === "refresh_failed") {
       await DbService.repository.connectorInstances
         .update(connectorInstanceId, {
           status: "error",
@@ -113,22 +123,45 @@ async function refreshAndStore(
         });
       logger.warn(
         { connectorInstanceId, message: err.message },
-        "Google refresh_token rejected — marked instance status=error"
+        "Microsoft refresh_token rejected — marked instance status=error"
       );
     }
     throw err;
   }
 
-  const ttl = Math.max(refreshed.expiresIn - TTL_SAFETY_MARGIN_SEC, TTL_FLOOR_SEC);
+  // Persist the rotated refresh token back to the encrypted credentials
+  // column. Spread the existing credentials so we preserve UPN, email,
+  // displayName, tenantId, scopes — only refresh_token + lastRefreshedAt
+  // change. Last-writer-wins is fine; concurrent rotations are guarded
+  // by the in-process inflight Map above.
+  const nextCredentials: Record<string, unknown> = {
+    ...credentials,
+    refresh_token: refreshed.refreshToken,
+    lastRefreshedAt: Date.now(),
+  };
+
+  await DbService.repository.connectorInstances.update(connectorInstanceId, {
+    credentials: nextCredentials as unknown as string,
+  });
+
+  const ttl = Math.max(
+    refreshed.expiresIn - TTL_SAFETY_MARGIN_SEC,
+    TTL_FLOOR_SEC
+  );
   const redis = getRedisClient();
-  await redis.set(cacheKey(connectorInstanceId), refreshed.accessToken, "EX", ttl);
+  await redis.set(
+    cacheKey(connectorInstanceId),
+    refreshed.accessToken,
+    "EX",
+    ttl
+  );
   logger.info(
     {
       connectorInstanceId,
       ttlSec: ttl,
-      event: "gsheets.access.refreshed",
+      event: "mexcel.access.refreshed",
     },
-    "Google access token refreshed and cached"
+    "Microsoft access token refreshed and rotated refresh token persisted"
   );
   return refreshed.accessToken;
 }

@@ -25,7 +25,7 @@ import {
   useGoogleSheetsWorkflow,
 } from "./utils/google-sheets-workflow.util";
 import type { GoogleSheetsWorkflowCallbacks } from "./utils/google-sheets-workflow.util";
-import { useGooglePopupAuthorize } from "./utils/google-sheets-popup.util";
+import { useOAuthPopupAuthorize } from "../../utils/oauth-popup.util";
 import { apiOrigin } from "../../utils/api-origin.util";
 import {
   entityOptionsFromWorkbook,
@@ -74,7 +74,10 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
   const { mutateAsync: interpretMutate } = sdk.layoutPlans.interpret();
   const { mutateAsync: commitMutate } = sdk.layoutPlans.commit();
 
-  const popup = useGooglePopupAuthorize({ allowedOrigin: apiOrigin() });
+  const popup = useOAuthPopupAuthorize({
+    slug: "google-sheets",
+    allowedOrigin: apiOrigin(),
+  });
 
   const connectorInstanceIdRef = useRef<string | null>(null);
   const workbookRef = useRef<Workbook | null>(null);

@@ -260,7 +260,8 @@ export class LayoutPlanDraftService {
  * session id the body carries:
  *   - `uploadSessionId`     → file-upload Redis cache (`upload-session:{id}`)
  *                             with S3 re-stream fallback on cache miss.
- *   - `connectorInstanceId` → google-sheets Redis cache (`gsheets:wb:{id}`).
+ *   - `connectorInstanceId` → connector workbook cache
+ *                             (`connector:wb:<slug>:{id}`).
  *                             No fallback; cache miss is a 404.
  *
  * The contract refinement guarantees exactly one is present.

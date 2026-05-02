@@ -64,7 +64,7 @@ const { GoogleAccessTokenCacheService } = await import(
 );
 
 const INSTANCE_ID = "ci-instance-1";
-const cacheKey = `gsheets:access:${INSTANCE_ID}`;
+const cacheKey = `connector:access:google-sheets:${INSTANCE_ID}`;
 
 beforeEach(() => {
   store.clear();

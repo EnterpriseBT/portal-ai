@@ -26,6 +26,7 @@ import {
   GoogleAuthService,
 } from "../services/google-auth.service.js";
 import { GoogleSheetsConnectorService } from "../services/google-sheets-connector.service.js";
+import { renderOAuthCallbackHtml } from "../utils/oauth-callback-html.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "google-sheets-connector" });
@@ -157,25 +158,19 @@ googleSheetsConnectorPublicRouter.get(
       return res
         .status(200)
         .type("html")
-        .send(renderCallbackHtml(result.connectorInstanceId, result.accountInfo));
+        .send(
+          renderOAuthCallbackHtml({
+            slug: "google-sheets",
+            connectorInstanceId: result.connectorInstanceId,
+            accountInfo: result.accountInfo,
+          })
+        );
     } catch (err) {
       return next(err);
     }
   }
 );
 
-/**
- * Minimal HTML the popup serves on success. `postMessage`s the result to
- * `window.opener` and closes itself. The `accountInfo` matches the shape
- * the redacted connector-instance API returns, so the workflow can render
- * the chip immediately without an extra fetch.
- *
- * Origin restriction is intentionally `*` for v1 — the popup window is
- * controlled by us and the message contains no secrets (just an instance
- * id and the public account email). When Phase C wires the workflow, we
- * can tighten to a specific origin once the prod web app's domain is
- * known to the API process.
- */
 /**
  * Resolve a `connectorInstanceId` to an owned `ConnectorInstance` row.
  * Used by every Phase B/D route that operates on a specific instance.
@@ -484,27 +479,3 @@ function parseIntStrict(value: unknown): number | undefined {
   return parseInt(value, 10);
 }
 
-function renderCallbackHtml(
-  connectorInstanceId: string,
-  accountInfo: unknown
-): string {
-  const payload = JSON.stringify({
-    type: "google-sheets-authorized",
-    connectorInstanceId,
-    accountInfo,
-  });
-  return `<!doctype html>
-<html><head><meta charset="utf-8"><title>Google Sheets connected</title></head>
-<body><script>
-(function () {
-  var payload = ${payload};
-  if (window.opener) {
-    try { window.opener.postMessage(payload, "*"); } catch (e) {}
-  }
-  window.close();
-})();
-</script>
-<p>Connected. You can close this window.</p>
-<p data-testid="connector-instance-id" hidden>${connectorInstanceId}</p>
-</body></html>`;
-}

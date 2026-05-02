@@ -78,3 +78,6 @@ export * from "./file-uploads.contract.js";
 
 /** Google Sheets connector endpoint contracts */
 export * from "./google-sheets.contract.js";
+
+/** Microsoft 365 Excel connector endpoint contracts */
+export * from "./microsoft-excel.contract.js";

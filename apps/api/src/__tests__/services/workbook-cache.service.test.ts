@@ -62,10 +62,10 @@ describe("WorkbookCacheService", () => {
 
   it("isolates entries across different cache keys (file-upload vs google-sheets)", async () => {
     await WorkbookCacheService.set("upload-session:abc", sampleWorkbook);
-    await WorkbookCacheService.set("gsheets:wb:abc", otherWorkbook);
+    await WorkbookCacheService.set("connector:wb:google-sheets:abc", otherWorkbook);
 
     const upload = await WorkbookCacheService.get("upload-session:abc");
-    const gsheets = await WorkbookCacheService.get("gsheets:wb:abc");
+    const gsheets = await WorkbookCacheService.get("connector:wb:google-sheets:abc");
 
     expect(upload?.sheets[0]?.cells[0]?.value).toBe("hello");
     expect(gsheets?.sheets[0]?.cells[0]?.value).toBe("world");
@@ -73,12 +73,12 @@ describe("WorkbookCacheService", () => {
 
   it("delete on one key does not affect the other", async () => {
     await WorkbookCacheService.set("upload-session:abc", sampleWorkbook);
-    await WorkbookCacheService.set("gsheets:wb:abc", sampleWorkbook);
+    await WorkbookCacheService.set("connector:wb:google-sheets:abc", sampleWorkbook);
 
     await WorkbookCacheService.delete("upload-session:abc");
 
     expect(await WorkbookCacheService.get("upload-session:abc")).toBeNull();
-    expect(await WorkbookCacheService.get("gsheets:wb:abc")).toEqual(
+    expect(await WorkbookCacheService.get("connector:wb:google-sheets:abc")).toEqual(
       sampleWorkbook
     );
   });

@@ -11,6 +11,7 @@ import { entityTagAssignments } from "./entity-tag-assignments.api";
 import { fieldMappings } from "./field-mappings.api";
 import { fileUploads } from "./file-uploads.api";
 import { googleSheets } from "./google-sheets.api";
+import { microsoftExcel } from "./microsoft-excel.api";
 import { health } from "./health.api";
 import { layoutPlans } from "./layout-plans.api";
 import { jobs } from "./jobs.api";
@@ -38,6 +39,7 @@ export const sdk = {
   fieldMappings,
   fileUploads,
   googleSheets,
+  microsoftExcel,
   health,
   layoutPlans,
   jobs,

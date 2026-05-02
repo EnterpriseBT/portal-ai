@@ -4,6 +4,7 @@ import {
   ColumnDefinitionModelFactory,
   FileUploadConnectorDefinitionModelFactory,
   GoogleSheetsConnectorDefinitionModelFactory,
+  MicrosoftExcelConnectorDefinitionModelFactory,
   SandboxConnectorDefinitionModelFactory,
 } from "@portalai/core/models";
 import type { ColumnDataType } from "@portalai/core/models";
@@ -365,6 +366,27 @@ export class SeedService {
           version: "1.0.0",
           iconUrl:
             "https://res.cloudinary.com/dvloutv7e/image/upload/v1777482548/500px-Google_Sheets_logo__2014-2020.svg_d7fj9r.png",
+        })
+        .parse(),
+      // Phase A seeds isActive: false; Phase C will flip it to true once
+      // the workflow shell + interpret/commit wiring lands.
+      new MicrosoftExcelConnectorDefinitionModelFactory()
+        .create(SystemUtilities.id.system)
+        .update({
+          slug: "microsoft-excel",
+          display: "Microsoft 365 Excel",
+          category: "File-based",
+          authType: "oauth2",
+          isActive: false,
+          configSchema: {},
+          capabilityFlags: {
+            sync: true,
+            read: true,
+            write: false,
+            push: false,
+          },
+          version: "1.0.0",
+          iconUrl: null,
         })
         .parse(),
     ];

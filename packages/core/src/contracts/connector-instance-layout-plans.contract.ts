@@ -108,9 +108,10 @@ export type LayoutPlanCommitResult = z.infer<
  *   - `uploadSessionId` — file-upload pipeline. Server reads from
  *     `WorkbookCacheService` under `upload-session:{id}` (or re-streams
  *     from S3 on cache miss).
- *   - `connectorInstanceId` — google-sheets pipeline (and any future
- *     spreadsheet connector that already owns a pending instance).
- *     Server reads from `gsheets:wb:{id}` cache.
+ *   - `connectorInstanceId` — OAuth-driven spreadsheet pipelines (e.g.
+ *     google-sheets, microsoft-excel) that already own a pending
+ *     instance. Server reads from the connector workbook cache under
+ *     `connector:wb:<slug>:{id}`.
  */
 export const LayoutPlanInterpretDraftRequestBodySchema = z
   .object({
