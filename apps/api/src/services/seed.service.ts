@@ -368,8 +368,9 @@ export class SeedService {
             "https://res.cloudinary.com/dvloutv7e/image/upload/v1777482548/500px-Google_Sheets_logo__2014-2020.svg_d7fj9r.png",
         })
         .parse(),
-      // Phase A seeds isActive: false; Phase C will flip it to true once
-      // the workflow shell + interpret/commit wiring lands.
+      // Phase C flipped this on once the workflow shell + interpret/commit
+      // wiring landed. Phase A originally seeded `isActive: false` to keep
+      // the UI from showing an unfinished connector.
       new MicrosoftExcelConnectorDefinitionModelFactory()
         .create(SystemUtilities.id.system)
         .update({
@@ -377,7 +378,7 @@ export class SeedService {
           display: "Microsoft 365 Excel",
           category: "File-based",
           authType: "oauth2",
-          isActive: false,
+          isActive: true,
           configSchema: {},
           capabilityFlags: {
             sync: true,

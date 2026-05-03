@@ -14,19 +14,18 @@ import {
 } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import type { ColumnDataType } from "@portalai/core/models";
-
-import GoogleIcon from "@mui/icons-material/Google";
+import MicrosoftIcon from "@mui/icons-material/Microsoft";
 
 import { OAuthAuthorizeStep } from "../../components/OAuthAuthorizeStep.component";
 import type { OAuthAuthorizeStepState } from "../../components/OAuthAuthorizeStep.component";
-import { SelectSheetStep } from "./SelectSheetStep.component";
-import { GoogleSheetsRegionDrawingStep } from "./GoogleSheetsRegionDrawingStep.component";
-import { GoogleSheetsReviewStep } from "./GoogleSheetsReviewStep.component";
+import { SelectWorkbookStep } from "./SelectWorkbookStep.component";
+import { MicrosoftExcelRegionDrawingStep } from "./MicrosoftExcelRegionDrawingStep.component";
+import { MicrosoftExcelReviewStep } from "./MicrosoftExcelReviewStep.component";
 import {
-  GOOGLE_SHEETS_WORKFLOW_STEPS,
-  useGoogleSheetsWorkflow,
-} from "./utils/google-sheets-workflow.util";
-import type { GoogleSheetsWorkflowCallbacks } from "./utils/google-sheets-workflow.util";
+  MICROSOFT_EXCEL_WORKFLOW_STEPS,
+  useMicrosoftExcelWorkflow,
+} from "./utils/microsoft-excel-workflow.util";
+import type { MicrosoftExcelWorkflowCallbacks } from "./utils/microsoft-excel-workflow.util";
 import { useOAuthPopupAuthorize } from "../../utils/oauth-popup.util";
 import { apiOrigin } from "../../utils/api-origin.util";
 import {
@@ -51,39 +50,40 @@ import type {
   Workbook,
 } from "../../modules/RegionEditor";
 
-// ---------------------------------------------------------------------------
-// Container
-// ---------------------------------------------------------------------------
+const MICROSOFT_SCOPES_DESCRIPTION =
+  "Authorize Portal.ai to read your Microsoft 365 Excel files in OneDrive. We only ever request read access — no writes, no deletions.";
+const FALLBACK_TITLE = "Microsoft 365 Excel";
 
-interface GoogleSheetsConnectorWorkflowProps {
+interface MicrosoftExcelConnectorWorkflowProps {
   open: boolean;
   onClose: () => void;
   organizationId: string;
   connectorDefinitionId: string;
 }
 
-
-export const GoogleSheetsConnectorWorkflow: React.FC<
-  GoogleSheetsConnectorWorkflowProps
+export const MicrosoftExcelConnectorWorkflow: React.FC<
+  MicrosoftExcelConnectorWorkflowProps
 > = ({ open, onClose, organizationId, connectorDefinitionId }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const { mutateAsync: authorizeMutate } = sdk.googleSheets.authorize();
-  const { mutateAsync: searchSheetsMutate } = sdk.googleSheets.searchSheets();
-  const { mutateAsync: selectSheetMutate } = sdk.googleSheets.selectSheet();
-  const { mutateAsync: sheetSliceMutate } = sdk.googleSheets.sheetSlice();
+  const { mutateAsync: authorizeMutate } = sdk.microsoftExcel.authorize();
+  const { mutateAsync: searchWorkbooksMutate } =
+    sdk.microsoftExcel.searchWorkbooks();
+  const { mutateAsync: selectWorkbookMutate } =
+    sdk.microsoftExcel.selectWorkbook();
+  const { mutateAsync: sheetSliceMutate } = sdk.microsoftExcel.sheetSlice();
   const { mutateAsync: interpretMutate } = sdk.layoutPlans.interpret();
   const { mutateAsync: commitMutate } = sdk.layoutPlans.commit();
 
   const popup = useOAuthPopupAuthorize({
-    slug: "google-sheets",
+    slug: "microsoft-excel",
     allowedOrigin: apiOrigin(),
   });
 
   const connectorInstanceIdRef = useRef<string | null>(null);
   const workbookRef = useRef<Workbook | null>(null);
-  const spreadsheetTitleRef = useRef<string>("Google Sheets");
+  const workbookTitleRef = useRef<string>(FALLBACK_TITLE);
 
   const loadSlice: LoadSliceFn = useCallback(
     async ({ sheetId, rowStart, rowEnd, colStart, colEnd }) => {
@@ -117,46 +117,51 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
 
   // ── Workflow callbacks ─────────────────────────────────────────────
 
-  const loadSheet: GoogleSheetsWorkflowCallbacks["loadSheet"] = useCallback(
-    async ({ connectorInstanceId, spreadsheetId }) => {
-      const res = await selectSheetMutate({ connectorInstanceId, spreadsheetId });
-      connectorInstanceIdRef.current = connectorInstanceId;
-      // Capture the workbook title so the commit's `name` field shows
-      // the user-recognizable spreadsheet name on the connector card
-      // (rather than the opaque spreadsheetId fallback).
-      spreadsheetTitleRef.current = res.title;
-      return res;
-    },
-    [selectSheetMutate]
-  );
+  const loadWorkbook: MicrosoftExcelWorkflowCallbacks["loadWorkbook"] =
+    useCallback(
+      async ({ connectorInstanceId, driveItemId }) => {
+        const res = await selectWorkbookMutate({
+          connectorInstanceId,
+          driveItemId,
+        });
+        connectorInstanceIdRef.current = connectorInstanceId;
+        // Capture the workbook title so the commit's `name` field shows
+        // the user-recognizable workbook name on the connector card
+        // (rather than the opaque driveItemId).
+        workbookTitleRef.current = res.title || FALLBACK_TITLE;
+        return res;
+      },
+      [selectWorkbookMutate]
+    );
 
-  const runInterpret: GoogleSheetsWorkflowCallbacks["runInterpret"] = useCallback(
-    async (regions) => {
-      const workbook = workbookRef.current;
-      const ciId = connectorInstanceIdRef.current;
-      if (!workbook) throw new Error("Workbook not loaded");
-      if (!ciId) throw new Error("Connector instance missing");
-      const res = await interpretMutate({
-        connectorInstanceId: ciId,
-        regionHints: regionDraftsToHints(workbook, regions),
-      });
-      const plan = preserveUserRegionConfig(res.plan, regions);
-      return {
-        regions: planRegionsToDrafts(plan, workbook),
-        plan,
-        overallConfidence: overallConfidenceFromPlan(plan),
-      };
-    },
-    [interpretMutate]
-  );
+  const runInterpret: MicrosoftExcelWorkflowCallbacks["runInterpret"] =
+    useCallback(
+      async (regions) => {
+        const workbook = workbookRef.current;
+        const ciId = connectorInstanceIdRef.current;
+        if (!workbook) throw new Error("Workbook not loaded");
+        if (!ciId) throw new Error("Connector instance missing");
+        const res = await interpretMutate({
+          connectorInstanceId: ciId,
+          regionHints: regionDraftsToHints(workbook, regions),
+        });
+        const plan = preserveUserRegionConfig(res.plan, regions);
+        return {
+          regions: planRegionsToDrafts(plan, workbook),
+          plan,
+          overallConfidence: overallConfidenceFromPlan(plan),
+        };
+      },
+      [interpretMutate]
+    );
 
-  const runCommit: GoogleSheetsWorkflowCallbacks["runCommit"] = useCallback(
+  const runCommit: MicrosoftExcelWorkflowCallbacks["runCommit"] = useCallback(
     async (plan) => {
       const ciId = connectorInstanceIdRef.current;
       if (!ciId) throw new Error("Connector instance missing");
       const res = await commitMutate({
         connectorDefinitionId,
-        name: spreadsheetTitleRef.current,
+        name: workbookTitleRef.current,
         plan,
         connectorInstanceId: ciId,
       });
@@ -176,8 +181,8 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
     [commitMutate, connectorDefinitionId, queryClient]
   );
 
-  const workflow = useGoogleSheetsWorkflow({
-    loadSheet,
+  const workflow = useMicrosoftExcelWorkflow({
+    loadWorkbook,
     runInterpret,
     runCommit,
     onCommitSuccess: (connectorInstanceId) => {
@@ -204,7 +209,7 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
   const handleClose = useCallback(() => {
     workbookRef.current = null;
     connectorInstanceIdRef.current = null;
-    spreadsheetTitleRef.current = "Google Sheets";
+    workbookTitleRef.current = FALLBACK_TITLE;
     setStagedEntities([]);
     workflow.reset();
     onClose();
@@ -236,27 +241,27 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
     }
   }, [authorizeMutate, popup, workflow]);
 
-  // ── Select-sheet step search ───────────────────────────────────────
+  // ── Select-workbook step search ────────────────────────────────────
 
-  const handleSearchSheets = useCallback(
+  const handleSearchWorkbooks = useCallback(
     async (query: string): Promise<SelectOption[]> => {
       const ciId = workflow.connectorInstanceId;
       if (!ciId) return [];
-      const res = await searchSheetsMutate({
+      const res = await searchWorkbooksMutate({
         connectorInstanceId: ciId,
         search: query,
       });
       return res.items.map((item) => ({
-        value: item.spreadsheetId,
+        value: item.driveItemId,
         label: item.name,
       }));
     },
-    [searchSheetsMutate, workflow.connectorInstanceId]
+    [searchWorkbooksMutate, workflow.connectorInstanceId]
   );
 
-  const handleSelectSheet = useCallback(
-    (spreadsheetId: string) => {
-      void workflow.selectSpreadsheet(spreadsheetId);
+  const handleSelectWorkbook = useCallback(
+    (driveItemId: string) => {
+      void workflow.selectWorkbook(driveItemId);
     },
     [workflow]
   );
@@ -391,7 +396,11 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
         return true;
       });
     },
-    [workflow.regions, connectorEntitySearch.labelMap, connectorEntitySearch.metaMap]
+    [
+      workflow.regions,
+      connectorEntitySearch.labelMap,
+      connectorEntitySearch.metaMap,
+    ]
   );
 
   const resolveReferenceFieldOptions = useCallback(
@@ -434,13 +443,13 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
     <Modal
       open={open}
       onClose={handleClose}
-      title="Connect Google Sheets"
+      title="Connect Microsoft 365 Excel"
       defaultMaximized
       maximizable
     >
       <Stack spacing={2} sx={{ minWidth: 0 }}>
         <Stepper
-          steps={GOOGLE_SHEETS_WORKFLOW_STEPS}
+          steps={MICROSOFT_EXCEL_WORKFLOW_STEPS}
           activeStep={workflow.step}
         >
           <StepPanel index={0} activeStep={workflow.step}>
@@ -451,25 +460,25 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
               onConnect={() => {
                 void handleConnect();
               }}
-              providerLabel="Google Sheets"
-              providerIcon={<GoogleIcon />}
-              scopesDescription="Authorize Portal.ai to read your Google Drive and Sheets. We only ever request read access — no writes, no deletions."
+              providerLabel="Microsoft 365"
+              providerIcon={<MicrosoftIcon />}
+              scopesDescription={MICROSOFT_SCOPES_DESCRIPTION}
             />
           </StepPanel>
 
           <StepPanel index={1} activeStep={workflow.step}>
-            <SelectSheetStep
-              value={workflow.spreadsheetId}
-              onSelect={handleSelectSheet}
-              searchFn={handleSearchSheets}
-              loading={workflow.isLoadingSheet}
+            <SelectWorkbookStep
+              value={workflow.driveItemId}
+              onSelect={handleSelectWorkbook}
+              searchFn={handleSearchWorkbooks}
+              loading={workflow.isLoadingWorkbook}
               serverError={workflow.serverError}
             />
           </StepPanel>
 
           <StepPanel index={2} activeStep={workflow.step}>
             {workflow.workbook ? (
-              <GoogleSheetsRegionDrawingStep
+              <MicrosoftExcelRegionDrawingStep
                 workbook={workflow.workbook}
                 regions={regionsWithResolvedLabels}
                 activeSheetId={resolvedActiveSheetId}
@@ -498,14 +507,14 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
             ) : (
               <Box sx={{ p: 3 }}>
                 <Typography color="text.secondary">
-                  Loading your spreadsheet…
+                  Loading your workbook…
                 </Typography>
               </Box>
             )}
           </StepPanel>
 
           <StepPanel index={3} activeStep={workflow.step}>
-            <GoogleSheetsReviewStep
+            <MicrosoftExcelReviewStep
               regions={regionsWithResolvedLabels}
               overallConfidence={workflow.overallConfidence}
               onJumpToRegion={workflow.onJumpToRegion}
