@@ -380,6 +380,91 @@ export class MicrosoftExcelConnectorService {
   }
 
   /**
+   * Re-fetch the workbook from Graph at sync time. Reads `driveItemId`
+   * from the instance's persisted `config` (sync runs against whichever
+   * workbook the user last picked), pre-flights size + extension, then
+   * downloads + parses. **Does NOT write the workbook cache** — sync
+   * wants fresh bytes on every run, and the cache is scoped to the
+   * interactive editor session.
+   *
+   * Mirrors `GoogleSheetsConnectorService.fetchWorkbookForSync`.
+   */
+  static async fetchWorkbookForSync(
+    connectorInstanceId: string,
+    organizationId: string
+  ): Promise<WorkbookData> {
+    const instance =
+      await DbService.repository.connectorInstances.findById(
+        connectorInstanceId
+      );
+    if (!instance) {
+      throw new ApiError(
+        404,
+        ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+        `Connector instance not found: ${connectorInstanceId}`
+      );
+    }
+    if (instance.organizationId !== organizationId) {
+      throw new ApiError(
+        403,
+        ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+        "Connector instance belongs to a different organization"
+      );
+    }
+    const cfg = instance.config as
+      | { driveItemId?: string }
+      | null
+      | undefined;
+    const driveItemId = cfg?.driveItemId;
+    if (!driveItemId) {
+      throw new ApiError(
+        400,
+        ApiCode.MICROSOFT_EXCEL_INVALID_PAYLOAD,
+        `Instance ${connectorInstanceId} has no driveItemId in config — call select-workbook first`
+      );
+    }
+
+    const accessToken = await MicrosoftAccessTokenCacheService.getOrRefresh(
+      connectorInstanceId
+    );
+
+    const head = await MicrosoftGraphService.headWorkbook(
+      accessToken,
+      driveItemId
+    );
+
+    const cap = environment.UPLOAD_MAX_FILE_SIZE_BYTES;
+    if (head.size > cap) {
+      throw new ApiError(
+        413,
+        ApiCode.MICROSOFT_EXCEL_FILE_TOO_LARGE,
+        `Workbook exceeds the configured byte cap (${head.size} > ${cap})`,
+        { sizeBytes: head.size, capBytes: cap }
+      );
+    }
+    if (!head.name.toLowerCase().endsWith(".xlsx")) {
+      throw new ApiError(
+        415,
+        ApiCode.MICROSOFT_EXCEL_UNSUPPORTED_FORMAT,
+        `Only .xlsx workbooks are supported (got "${head.name}")`
+      );
+    }
+
+    let download;
+    try {
+      download = await MicrosoftGraphService.downloadWorkbook(
+        accessToken,
+        driveItemId
+      );
+    } catch (err) {
+      throw mapGraphError(err);
+    }
+
+    const nodeStream = MicrosoftGraphService.toNodeReadable(download.stream);
+    return xlsxToWorkbook(nodeStream);
+  }
+
+  /**
    * Linear scan over the org's microsoft-excel instances; matches by
    * `(tenantId, microsoftAccountUpn)`. O(N) — acceptable for v1 (one
    * human, 1–3 Microsoft accounts). Promote to a dedicated repository
