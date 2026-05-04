@@ -1,6 +1,14 @@
-import React from "react";
-import { Box, Stack, Typography, Button, Divider } from "@portalai/core/ui";
-import MuiChip from "@mui/material/Chip";
+import React, { useMemo, useState } from "react";
+import {
+  Box,
+  Stack,
+  Typography,
+  Button,
+  Divider,
+  Icon,
+  IconName,
+} from "@portalai/core/ui";
+import TextField from "@mui/material/TextField";
 
 import { ConfidenceChipUI } from "./ConfidenceChip.component";
 import { IdentityPanelUI } from "./IdentityPanel.component";
@@ -10,10 +18,7 @@ import type {
 } from "./IdentityPanel.component";
 import { WarningRowUI } from "./WarningRow.component";
 import { formatBounds } from "./utils/a1-notation.util";
-import {
-  confidenceBand,
-  CONFIDENCE_BAND_PALETTE,
-} from "./utils/region-editor-colors.util";
+import { confidenceBand } from "./utils/region-editor-colors.util";
 import type { LocatorOption } from "./utils/identity-locator-options.util";
 import type { RegionDraft } from "./utils/region-editor.types";
 import type { RegionBindingErrors } from "./utils/region-editor-validation.util";
@@ -214,6 +219,23 @@ function buildChips(
   return chips;
 }
 
+function chipPriority(chip: ReviewChip): number {
+  if (!chip.excluded && chip.invalid) return 0;
+  if (!chip.excluded && !chip.invalid && chip.band === "red") return 1;
+  if (!chip.excluded) return 2;
+  return 3;
+}
+
+function sortChips(chips: ReviewChip[]): ReviewChip[] {
+  return [...chips].sort((a, b) => {
+    const dp = chipPriority(a) - chipPriority(b);
+    if (dp !== 0) return dp;
+    return a.source.localeCompare(b.source, undefined, {
+      sensitivity: "base",
+    });
+  });
+}
+
 function buildIdentitySelection(
   region: RegionDraft,
   options: LocatorOption[] | undefined
@@ -268,12 +290,27 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
   identityLocatorOptions,
   onIdentityUpdate,
 }) => {
-  const chips = buildChips(
-    region,
-    bindingErrors,
-    onEditBinding,
-    resolveColumnLabel
+  const chips = useMemo(
+    () =>
+      sortChips(
+        buildChips(region, bindingErrors, onEditBinding, resolveColumnLabel)
+      ),
+    [region, bindingErrors, onEditBinding, resolveColumnLabel]
   );
+  const [filter, setFilter] = useState("");
+  const showFilterInput = chips.length > 8;
+  const trimmedFilter = filter.trim().toLowerCase();
+  const filteredChips = useMemo(() => {
+    if (trimmedFilter === "") return chips;
+    return chips.filter(
+      (chip) =>
+        chip.source.toLowerCase().includes(trimmedFilter) ||
+        (chip.columnDefinitionLabel ?? "")
+          .toLowerCase()
+          .includes(trimmedFilter) ||
+        (chip.columnDefinitionId ?? "").toLowerCase().includes(trimmedFilter)
+    );
+  }, [chips, trimmedFilter]);
   const showIdentityPanel =
     identityLocatorOptions !== undefined &&
     onIdentityUpdate !== undefined &&
@@ -337,9 +374,57 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
       {chips.length > 0 && (
         <>
           <Divider sx={{ my: 1 }} />
+          {showFilterInput && (
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Filter fields…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              slotProps={{
+                htmlInput: { "aria-label": "Filter region fields" },
+              }}
+              sx={{ mb: 1 }}
+            />
+          )}
+          {filteredChips.length === 0 && trimmedFilter !== "" ? (
+            <Typography variant="caption" color="text.secondary">
+              No fields match.
+            </Typography>
+          ) : (
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            {chips.map((chip) => {
+            {filteredChips.map((chip) => {
               const interactive = chip.onClick !== undefined;
+              // Resolve the chip's status — drives the leading icon (the
+              // single visual axis the user scans for problems) and the
+              // chip's own background tint for the most-attention case.
+              // "invalid" requires a present `columnDefinitionId` — without
+              // one the chip is just unbound (catalog mismatch), not an
+              // active validation error.
+              const stateName: "bound" | "unbound" | "invalid" | "excluded" =
+                chip.excluded
+                  ? "excluded"
+                  : chip.invalid && chip.columnDefinitionId
+                    ? "invalid"
+                    : chip.invalid || chip.band === "red"
+                      ? "unbound"
+                      : "bound";
+              const iconName =
+                stateName === "excluded"
+                  ? IconName.Block
+                  : stateName === "invalid"
+                    ? IconName.Error
+                    : stateName === "unbound"
+                      ? IconName.Warning
+                      : IconName.CheckCircle;
+              const iconColor =
+                stateName === "excluded"
+                  ? "text.disabled"
+                  : stateName === "invalid"
+                    ? "error.main"
+                    : stateName === "unbound"
+                      ? "warning.main"
+                      : "success.main";
               // Native `<button>` styling resolves text color against
               // `buttontext` / `Canvas` instead of the document's
               // `text.primary`, which on the grey.50 card background
@@ -354,9 +439,7 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
                 py: 0.25,
                 borderRadius: 16,
                 border: "1px solid",
-                borderColor: chip.invalid
-                  ? "error.main"
-                  : CONFIDENCE_BAND_PALETTE[chip.band],
+                borderColor: "divider",
                 backgroundColor: chip.invalid
                   ? "error.light"
                   : "background.paper",
@@ -369,6 +452,11 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
               } as const;
               const inner = (
                 <>
+                  <Icon
+                    name={iconName}
+                    sx={{ fontSize: 16, color: iconColor }}
+                    data-testid={`chip-icon-${stateName}`}
+                  />
                   <Typography variant="caption" sx={{ fontWeight: 600 }}>
                     {chip.source}
                   </Typography>
@@ -378,30 +466,6 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
                       chip.columnDefinitionId ??
                       "—"}
                   </Typography>
-                  {chip.excluded ? (
-                    <MuiChip
-                      label="Excluded"
-                      size="small"
-                      variant="outlined"
-                      sx={{ height: 18, textDecoration: "none" }}
-                    />
-                  ) : chip.invalid ? (
-                    <MuiChip
-                      label={chip.columnDefinitionId ? "Invalid" : "Unbound"}
-                      size="small"
-                      color="error"
-                      sx={{ height: 18 }}
-                    />
-                  ) : (
-                    <Box
-                      sx={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        backgroundColor: CONFIDENCE_BAND_PALETTE[chip.band],
-                      }}
-                    />
-                  )}
                 </>
               );
               return interactive ? (
@@ -429,6 +493,7 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
               );
             })}
           </Stack>
+          )}
         </>
       )}
 

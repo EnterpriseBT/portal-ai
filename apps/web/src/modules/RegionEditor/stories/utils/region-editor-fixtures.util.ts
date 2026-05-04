@@ -700,3 +700,92 @@ export const BLOCKER_REGIONS: RegionDraft[] = [
     confidence: 0.48,
   },
 ];
+
+/**
+ * A single region carrying twelve `columnBindings` of mixed states — bound,
+ * unbound, invalid, excluded — so the review-step chip strip exercises the
+ * sort priority, the threshold-gated filter input (>8 chips), and each
+ * leading status icon in one fixture. Used by the long-region story.
+ */
+export const MANY_CHIPS_REGIONS: RegionDraft[] = [
+  {
+    ...PROPOSED_REGIONS[0],
+    id: "region_many_chips",
+    proposedLabel: "Customers (long region)",
+    columnBindings: [
+      {
+        sourceLocator: "header:row:Address",
+        columnDefinitionId: "coldef_address",
+        columnDefinitionLabel: "Address",
+        confidence: 0.92,
+      },
+      {
+        sourceLocator: "header:row:Birthday",
+        columnDefinitionId: "coldef_birthday",
+        columnDefinitionLabel: "Birthday",
+        confidence: 0.88,
+      },
+      {
+        sourceLocator: "header:row:City",
+        columnDefinitionId: "coldef_city",
+        columnDefinitionLabel: "City",
+        confidence: 0.91,
+      },
+      {
+        sourceLocator: "header:row:Email",
+        columnDefinitionId: "coldef_email",
+        columnDefinitionLabel: "Email",
+        confidence: 0.95,
+      },
+      {
+        sourceLocator: "header:row:FirstName",
+        columnDefinitionId: "coldef_first_name",
+        columnDefinitionLabel: "First Name",
+        confidence: 0.94,
+      },
+      {
+        sourceLocator: "header:row:LastName",
+        columnDefinitionId: "coldef_last_name",
+        columnDefinitionLabel: "Last Name",
+        confidence: 0.94,
+      },
+      {
+        sourceLocator: "header:row:Mystery",
+        columnDefinitionId: null,
+        confidence: 0.31,
+      },
+      {
+        sourceLocator: "header:row:Phone",
+        columnDefinitionId: "coldef_phone",
+        columnDefinitionLabel: "Phone",
+        confidence: 0.86,
+      },
+      {
+        sourceLocator: "header:row:State",
+        columnDefinitionId: "coldef_state",
+        columnDefinitionLabel: "State",
+        confidence: 0.9,
+      },
+      {
+        sourceLocator: "header:row:Note",
+        columnDefinitionId: "coldef_note",
+        columnDefinitionLabel: "Note",
+        confidence: 0.7,
+        excluded: true,
+      },
+      {
+        sourceLocator: "header:row:Nickname",
+        columnDefinitionId: "coldef_nickname",
+        columnDefinitionLabel: "Nickname",
+        confidence: 0.65,
+      },
+      {
+        sourceLocator: "header:row:Zip",
+        columnDefinitionId: "coldef_zip",
+        columnDefinitionLabel: "Zip",
+        confidence: 0.93,
+      },
+    ],
+    confidence: 0.84,
+  },
+];

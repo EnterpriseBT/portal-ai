@@ -8,9 +8,12 @@ import {
   Button,
   Checkbox,
   Divider,
+  Icon,
+  IconName,
   Select,
   Stack,
   TextInput,
+  Tooltip,
   Typography,
 } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
@@ -108,6 +111,66 @@ const REFERENCE_TYPES: ReadonlySet<ColumnDataType> = new Set([
   "reference-array",
 ]);
 
+type BindingState = "bound" | "unbound" | "invalid" | "excluded";
+
+interface StateMeta {
+  iconName: IconName;
+  iconColor: string;
+  tooltip: string;
+}
+
+/**
+ * Mirror of the chip-strip status logic on the live edit draft. Kept aligned
+ * with `RegionReviewCard.component.tsx` so the popover icon previews how the
+ * chip will render once Apply lands. "invalid" here covers form-level
+ * validation errors gating Apply; "unbound" covers a missing
+ * columnDefinitionId on a non-excluded, non-erroring draft.
+ */
+function bindingStateMeta(
+  draft: ColumnBindingDraft,
+  errors: FormErrors
+): { state: BindingState; meta: StateMeta } {
+  if (draft.excluded === true) {
+    return {
+      state: "excluded",
+      meta: {
+        iconName: IconName.Block,
+        iconColor: "text.disabled",
+        tooltip:
+          "Excluded — no field mapping will be created for this column.",
+      },
+    };
+  }
+  if (Object.keys(errors).length > 0) {
+    return {
+      state: "invalid",
+      meta: {
+        iconName: IconName.Error,
+        iconColor: "error.main",
+        tooltip: "Invalid — fix the field errors below before applying.",
+      },
+    };
+  }
+  if (!draft.columnDefinitionId) {
+    return {
+      state: "unbound",
+      meta: {
+        iconName: IconName.Warning,
+        iconColor: "warning.main",
+        tooltip: "Unbound — pick a column definition to map this column.",
+      },
+    };
+  }
+  return {
+    state: "bound",
+    meta: {
+      iconName: IconName.CheckCircle,
+      iconColor: "success.main",
+      tooltip: "Bound — this column is mapped to a column definition.",
+    },
+  };
+}
+
 export const BindingEditorPopoverUI: React.FC<BindingEditorPopoverUIProps> = ({
   open,
   anchorEl,
@@ -139,6 +202,10 @@ export const BindingEditorPopoverUI: React.FC<BindingEditorPopoverUIProps> = ({
     ? REFERENCE_TYPES.has(columnDefinitionType)
     : false;
   const hasErrors = Object.keys(errors).length > 0;
+  const { state: bindingState, meta: stateMeta } = bindingStateMeta(
+    draft,
+    errors
+  );
   // Default normalized key derives from the source field name. Commit uses
   // the same derivation when no override is set, so what the user sees here
   // is what gets written unless they edit it.
@@ -170,8 +237,21 @@ export const BindingEditorPopoverUI: React.FC<BindingEditorPopoverUIProps> = ({
       }}
     >
       <Stack spacing={1.5}>
-        {/* Header — source locator */}
+        {/* Header — status icon + source locator */}
         <Stack direction="row" spacing={1} alignItems="center">
+          <Tooltip title={stateMeta.tooltip} arrow>
+            <Box
+              component="span"
+              sx={{ display: "inline-flex", alignItems: "center" }}
+              data-testid={`binding-state-icon-${bindingState}`}
+              aria-label={stateMeta.tooltip}
+            >
+              <Icon
+                name={stateMeta.iconName}
+                sx={{ fontSize: 18, color: stateMeta.iconColor }}
+              />
+            </Box>
+          </Tooltip>
           <MuiChip size="small" label={title.kind} />
           <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
             {title.primary}
