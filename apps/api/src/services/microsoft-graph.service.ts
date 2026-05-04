@@ -22,9 +22,25 @@ import { Readable as NodeReadable } from "stream";
 import { environment } from "../environment.js";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
-const GRAPH_PAGE_SIZE = 25;
+const GRAPH_PAGE_SIZE = 200;
 const XLSX_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+/**
+ * Recursion depth and total-item caps for `searchWorkbooks`. OneDrive
+ * Personal's search index is unreliable (frequently returns 0 results
+ * for files that exist), so we enumerate the drive instead and apply
+ * the user's typed query as a substring filter on filenames.
+ *
+ * - Depth 3 covers `/Folder/Subfolder/Sub-subfolder/file.xlsx`.
+ * - Max items returned is 25 (the dropdown's display cap) so a deep
+ *   drive doesn't overflow the response.
+ * - The walk short-circuits once `MAX_NODES_VISITED` items have been
+ *   examined to bound API cost on enormous drives.
+ */
+const ENUMERATION_MAX_DEPTH = 3;
+const ENUMERATION_MAX_RESULTS = 25;
+const ENUMERATION_MAX_NODES_VISITED = 2000;
 
 export type MicrosoftGraphErrorKind =
   | "search_failed"
@@ -74,24 +90,17 @@ interface GraphDriveItem {
   name?: string;
   size?: number;
   file?: { mimeType?: string };
-  folder?: unknown;
+  folder?: { childCount?: number };
   lastModifiedDateTime?: string;
   lastModifiedBy?: { user?: { displayName?: string; email?: string } };
 }
 
-interface GraphSearchResponse {
+interface GraphChildrenResponse {
   value?: GraphDriveItem[];
+  ["@odata.nextLink"]?: string;
 }
 
 type FetchFn = typeof fetch;
-
-/**
- * OData escapes single quotes in string literals by doubling them.
- * Without this, a query containing `'` corrupts the predicate.
- */
-function escapeOData(value: string): string {
-  return value.replace(/'/g, "''");
-}
 
 function isXlsxItem(item: GraphDriveItem): boolean {
   if (item.folder) return false;
@@ -109,6 +118,11 @@ function mapItem(item: GraphDriveItem): MicrosoftGraphWorkbookListItem {
   };
 }
 
+function nameMatchesQuery(name: string, query: string): boolean {
+  if (!query) return true;
+  return name.toLowerCase().includes(query.toLowerCase());
+}
+
 async function safeReadText(res: Response): Promise<string> {
   try {
     return await res.text();
@@ -118,32 +132,89 @@ async function safeReadText(res: Response): Promise<string> {
 }
 
 export class MicrosoftGraphService {
+  /**
+   * List the user's `.xlsx` workbooks, optionally filtered by a
+   * filename substring.
+   *
+   * **Why enumeration instead of `/me/drive/search(q=…)`.** OneDrive
+   * Personal's search index is unreliable: it returns 0 hits for files
+   * that exist, ranks by content relevance rather than filename, and
+   * silently drops most files in the drive. We hit recursive
+   * `/children` listings instead and do the substring match in code,
+   * which is predictable across personal + business OneDrive and matches
+   * the user's expectation that "search" means "filter by filename".
+   *
+   * Walk shape: BFS from `/me/drive/root/children`, descending up to
+   * `ENUMERATION_MAX_DEPTH` levels. Each `.xlsx` whose name contains
+   * the query is collected; the walk short-circuits once
+   * `ENUMERATION_MAX_RESULTS` matches are found or
+   * `ENUMERATION_MAX_NODES_VISITED` items have been examined.
+   *
+   * Sorted by `lastModifiedDateTime` desc so the most recently edited
+   * workbooks float to the top of the dropdown.
+   */
   static async searchWorkbooks(
     accessToken: string,
     query: string,
     fetchFn: FetchFn = fetch
   ): Promise<MicrosoftGraphWorkbookListItem[]> {
-    const trimmed = query.trim();
-    const url =
-      trimmed.length === 0
-        ? `${GRAPH_BASE}/me/drive/recent?$top=${GRAPH_PAGE_SIZE}&$select=id,name,file,folder,lastModifiedDateTime,lastModifiedBy`
-        : `${GRAPH_BASE}/me/drive/search(q='${escapeOData(
-            trimmed
-          )}')?$top=${GRAPH_PAGE_SIZE}&$select=id,name,file,folder,lastModifiedDateTime,lastModifiedBy`;
+    const trimmedQuery = query.trim();
+    const matches: MicrosoftGraphWorkbookListItem[] = [];
+    const queue: Array<{ folderId: string; depth: number }> = [
+      { folderId: "root", depth: 0 },
+    ];
+    let visited = 0;
 
-    const res = await fetchFn(url, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!res.ok) {
-      const body = await safeReadText(res);
-      throw new MicrosoftGraphError(
-        "search_failed",
-        `Microsoft Graph search failed (${res.status}): ${body}`
-      );
+    while (queue.length > 0) {
+      if (matches.length >= ENUMERATION_MAX_RESULTS) break;
+      if (visited >= ENUMERATION_MAX_NODES_VISITED) break;
+
+      const next = queue.shift();
+      if (!next) break;
+      const { folderId, depth } = next;
+
+      let nextLink: string | null =
+        `${GRAPH_BASE}/me/drive/items/${encodeURIComponent(
+          folderId
+        )}/children?$top=${GRAPH_PAGE_SIZE}&$select=id,name,file,folder,lastModifiedDateTime,lastModifiedBy`;
+
+      while (nextLink) {
+        if (matches.length >= ENUMERATION_MAX_RESULTS) break;
+        if (visited >= ENUMERATION_MAX_NODES_VISITED) break;
+
+        const res = await fetchFn(nextLink, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!res.ok) {
+          const body = await safeReadText(res);
+          throw new MicrosoftGraphError(
+            "search_failed",
+            `Microsoft Graph children failed (${res.status}): ${body}`
+          );
+        }
+        const json = (await res.json()) as GraphChildrenResponse;
+        for (const item of json.value ?? []) {
+          visited++;
+          if (item.folder) {
+            if (depth + 1 < ENUMERATION_MAX_DEPTH && item.id) {
+              queue.push({ folderId: item.id, depth: depth + 1 });
+            }
+            continue;
+          }
+          if (!isXlsxItem(item)) continue;
+          if (!nameMatchesQuery(item.name as string, trimmedQuery)) continue;
+          matches.push(mapItem(item));
+          if (matches.length >= ENUMERATION_MAX_RESULTS) break;
+        }
+        nextLink = json["@odata.nextLink"] ?? null;
+      }
     }
-    const json = (await res.json()) as GraphSearchResponse;
-    return (json.value ?? []).filter(isXlsxItem).map(mapItem);
+
+    matches.sort((a, b) =>
+      b.lastModifiedDateTime.localeCompare(a.lastModifiedDateTime)
+    );
+    return matches;
   }
 
   static async headWorkbook(

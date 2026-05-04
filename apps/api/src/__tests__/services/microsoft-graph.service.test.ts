@@ -42,90 +42,52 @@ function mockJsonResponse({
 }
 
 describe("MicrosoftGraphService.searchWorkbooks", () => {
-  it("hits /me/drive/search(q='…') for a non-empty query", async () => {
-    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
-      mockJsonResponse({ body: { value: [] } })
-    );
-    await MicrosoftGraphService.searchWorkbooks("token-x", "Q3", fetchMock);
+  /** Build a fetch mock that returns a different body per URL. */
+  function mockChildren(byUrl: Record<string, unknown>) {
+    return jest.fn<typeof fetch>().mockImplementation(async (url) => {
+      const key = String(url);
+      // Match by the path segment that identifies which folder is being
+      // listed (e.g. /items/root/children, /items/01FOLDER/children).
+      const matchKey = Object.keys(byUrl).find((p) => key.includes(p));
+      if (!matchKey) {
+        return mockJsonResponse({
+          status: 404,
+          body: { error: `unmocked URL: ${key}` },
+        });
+      }
+      return mockJsonResponse({ body: byUrl[matchKey] });
+    });
+  }
 
-    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain(
-      "https://graph.microsoft.com/v1.0/me/drive/search(q='Q3')"
-    );
-    expect(url).toContain("$top=25");
-  });
-
-  it("hits /me/drive/recent for an empty query", async () => {
-    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
-      mockJsonResponse({ body: { value: [] } })
-    );
-    await MicrosoftGraphService.searchWorkbooks("token-x", "", fetchMock);
-
-    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain("https://graph.microsoft.com/v1.0/me/drive/recent");
-    expect(url).toContain("$top=25");
-  });
-
-  it("escapes single-quote literals in the OData query string", async () => {
-    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
-      mockJsonResponse({ body: { value: [] } })
-    );
-    await MicrosoftGraphService.searchWorkbooks(
-      "token-x",
-      "O'Brien",
-      fetchMock
-    );
-    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-    // OData escapes single quotes by doubling them inside string literals.
-    expect(url).toContain("(q='O''Brien')");
-  });
-
-  it("filters response items to .xlsx mime + extension", async () => {
-    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
-      mockJsonResponse({
-        body: {
-          value: [
-            {
-              id: "01ABC",
-              name: "Q3 Forecast.xlsx",
-              file: { mimeType: XLSX_MIME },
-              lastModifiedDateTime: "2026-04-01T12:00:00Z",
-              lastModifiedBy: {
-                user: { displayName: "Alice", email: "alice@contoso.com" },
-              },
+  it("walks /me/drive/items/root/children and returns matching .xlsx files", async () => {
+    const fetchMock = mockChildren({
+      "/items/root/children": {
+        value: [
+          {
+            id: "01ABC",
+            name: "Q3 Forecast.xlsx",
+            file: { mimeType: XLSX_MIME },
+            lastModifiedDateTime: "2026-04-01T12:00:00Z",
+            lastModifiedBy: {
+              user: { displayName: "Alice" },
             },
-            {
-              id: "01DEF",
-              name: "Macros.xlsm",
-              file: { mimeType: "application/vnd.ms-excel.sheet.macroEnabled.12" },
-              lastModifiedDateTime: "2026-04-02T12:00:00Z",
-            },
-            {
-              id: "01GHI",
-              name: "Notes.csv",
-              file: { mimeType: "text/csv" },
-              lastModifiedDateTime: "2026-04-03T12:00:00Z",
-            },
-            {
-              id: "01JKL",
-              name: "ProjectFolder",
-              folder: { childCount: 3 },
-              lastModifiedDateTime: "2026-04-04T12:00:00Z",
-            },
-            {
-              // .xlsx mime but folder-shadowed name (no extension)
-              id: "01MNO",
-              name: "wrong-ext",
-              file: { mimeType: XLSX_MIME },
-              lastModifiedDateTime: "2026-04-05T12:00:00Z",
-            },
-          ],
-        },
-      })
-    );
+          },
+          {
+            id: "01DEF",
+            name: "Macros.xlsm",
+            file: { mimeType: "application/vnd.ms-excel.sheet.macroEnabled.12" },
+          },
+          {
+            id: "01GHI",
+            name: "Notes.csv",
+            file: { mimeType: "text/csv" },
+          },
+        ],
+      },
+    });
     const items = await MicrosoftGraphService.searchWorkbooks(
       "token-x",
-      "anything",
+      "",
       fetchMock
     );
     expect(items).toHaveLength(1);
@@ -135,35 +97,155 @@ describe("MicrosoftGraphService.searchWorkbooks", () => {
       lastModifiedDateTime: "2026-04-01T12:00:00Z",
       lastModifiedBy: "Alice",
     });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain(
+      "https://graph.microsoft.com/v1.0/me/drive/items/root/children"
+    );
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      "Bearer token-x"
+    );
   });
 
-  it("falls back to lastModifiedBy: null when the user displayName is missing", async () => {
-    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
-      mockJsonResponse({
-        body: {
-          value: [
-            {
-              id: "01ABC",
-              name: "Q3.xlsx",
-              file: { mimeType: XLSX_MIME },
-              lastModifiedDateTime: "2026-04-01T12:00:00Z",
-            },
-          ],
-        },
-      })
-    );
+  it("recurses into subfolders up to the depth cap", async () => {
+    const fetchMock = mockChildren({
+      "/items/root/children": {
+        value: [
+          { id: "FOLDER1", name: "Reports", folder: { childCount: 1 } },
+        ],
+      },
+      "/items/FOLDER1/children": {
+        value: [
+          {
+            id: "01XYZ",
+            name: "nested.xlsx",
+            file: { mimeType: XLSX_MIME },
+            lastModifiedDateTime: "2026-04-02T00:00:00Z",
+          },
+        ],
+      },
+    });
     const items = await MicrosoftGraphService.searchWorkbooks(
       "token-x",
-      "Q3",
+      "",
+      fetchMock
+    );
+    expect(items.map((i) => i.name)).toEqual(["nested.xlsx"]);
+  });
+
+  it("filters by case-insensitive filename substring when query is non-empty", async () => {
+    const fetchMock = mockChildren({
+      "/items/root/children": {
+        value: [
+          {
+            id: "01A",
+            name: "Test Layout.xlsx",
+            file: { mimeType: XLSX_MIME },
+            lastModifiedDateTime: "2026-04-01T00:00:00Z",
+          },
+          {
+            id: "01B",
+            name: "Reformatted.xlsx",
+            file: { mimeType: XLSX_MIME },
+            lastModifiedDateTime: "2026-04-02T00:00:00Z",
+          },
+          {
+            id: "01C",
+            name: "Q3 Forecast.xlsx",
+            file: { mimeType: XLSX_MIME },
+            lastModifiedDateTime: "2026-04-03T00:00:00Z",
+          },
+        ],
+      },
+    });
+    const items = await MicrosoftGraphService.searchWorkbooks(
+      "token-x",
+      "test layout",
+      fetchMock
+    );
+    expect(items.map((i) => i.name)).toEqual(["Test Layout.xlsx"]);
+  });
+
+  it("returns all .xlsx matches when query is empty", async () => {
+    const fetchMock = mockChildren({
+      "/items/root/children": {
+        value: [
+          {
+            id: "01A",
+            name: "A.xlsx",
+            file: { mimeType: XLSX_MIME },
+            lastModifiedDateTime: "2026-04-01T00:00:00Z",
+          },
+          {
+            id: "01B",
+            name: "B.xlsx",
+            file: { mimeType: XLSX_MIME },
+            lastModifiedDateTime: "2026-04-02T00:00:00Z",
+          },
+        ],
+      },
+    });
+    const items = await MicrosoftGraphService.searchWorkbooks(
+      "token-x",
+      "",
+      fetchMock
+    );
+    expect(items).toHaveLength(2);
+  });
+
+  it("sorts results by lastModifiedDateTime descending", async () => {
+    const fetchMock = mockChildren({
+      "/items/root/children": {
+        value: [
+          {
+            id: "OLD",
+            name: "old.xlsx",
+            file: { mimeType: XLSX_MIME },
+            lastModifiedDateTime: "2024-01-01T00:00:00Z",
+          },
+          {
+            id: "NEW",
+            name: "new.xlsx",
+            file: { mimeType: XLSX_MIME },
+            lastModifiedDateTime: "2026-05-04T00:00:00Z",
+          },
+        ],
+      },
+    });
+    const items = await MicrosoftGraphService.searchWorkbooks(
+      "token-x",
+      "",
+      fetchMock
+    );
+    expect(items.map((i) => i.driveItemId)).toEqual(["NEW", "OLD"]);
+  });
+
+  it("falls back to lastModifiedBy: null when displayName is missing", async () => {
+    const fetchMock = mockChildren({
+      "/items/root/children": {
+        value: [
+          {
+            id: "01ABC",
+            name: "Q3.xlsx",
+            file: { mimeType: XLSX_MIME },
+            lastModifiedDateTime: "2026-04-01T12:00:00Z",
+          },
+        ],
+      },
+    });
+    const items = await MicrosoftGraphService.searchWorkbooks(
+      "token-x",
+      "",
       fetchMock
     );
     expect(items[0]?.lastModifiedBy).toBeNull();
   });
 
   it("throws MicrosoftGraphError('search_failed') on a 4xx", async () => {
-    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
-      mockJsonResponse({ status: 401, body: { error: "Unauthorized" } })
-    );
+    const fetchMock = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        mockJsonResponse({ status: 401, body: { error: "Unauthorized" } })
+      );
     try {
       await MicrosoftGraphService.searchWorkbooks("token-x", "x", fetchMock);
       throw new Error("expected throw");
