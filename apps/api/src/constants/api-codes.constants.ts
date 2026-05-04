@@ -232,6 +232,14 @@ export enum ApiCode {
   MICROSOFT_OAUTH_USERINFO_FAILED = "MICROSOFT_OAUTH_USERINFO_FAILED",
   MICROSOFT_OAUTH_DEFINITION_NOT_FOUND = "MICROSOFT_OAUTH_DEFINITION_NOT_FOUND",
   MICROSOFT_OAUTH_REFRESH_FAILED = "MICROSOFT_OAUTH_REFRESH_FAILED",
+  /**
+   * Surfaced when an `invalid_grant` from refresh appears to be a
+   * rotation race (another process already rotated the refresh token).
+   * The cache layer attempts a single retry against the freshly-read
+   * token; this code distinguishes "we tried to recover" from a
+   * first-time `MICROSOFT_OAUTH_REFRESH_FAILED`.
+   */
+  MICROSOFT_OAUTH_REFRESH_TOKEN_RACE = "MICROSOFT_OAUTH_REFRESH_TOKEN_RACE",
 
   // Microsoft Excel connector data ops
   MICROSOFT_EXCEL_INVALID_INSTANCE_ID = "MICROSOFT_EXCEL_INVALID_INSTANCE_ID",

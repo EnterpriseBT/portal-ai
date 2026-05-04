@@ -23,33 +23,31 @@ export interface ConnectorInstanceReconnectState {
 /**
  * Drives the connector-instance reconnect flow.
  *
- * Mints an OAuth consent URL, opens the popup, awaits the postMessage
- * handshake, then invalidates the connector instance query so the UI
- * picks up the server-side status reset (Phase E Slice 1: the callback
- * flips status `error → active` and clears `lastErrorMessage` when it
- * finds an existing instance to update).
+ * Mints an OAuth consent URL for the supplied connector slug, opens
+ * the popup with the slug-matching postMessage shape, then invalidates
+ * the connector instance query so the UI picks up the server-side
+ * `status: error → active` reset (callbacks flip status + clear
+ * `lastErrorMessage` when they find an existing instance to update).
  *
- * The hook surface mirrors `useConnectorInstanceSync` so the trigger
- * UI and any failure-feedback consumer can share state from one hook
- * call instead of fighting React's effect graph.
+ * Slug dispatch is hand-rolled here. Both SDK authorize hooks are
+ * called unconditionally (rules of hooks); the click handler picks
+ * which `mutateAsync` to invoke based on the supplied
+ * `definitionSlug`. The `useOAuthPopupAuthorize` hook is itself
+ * slug-parameterized so a single instance routes to the right
+ * postMessage type.
  *
- * Note: today this is gsheets-specific (the popup hook expects
- * Google's postMessage shape). When a second OAuth-driven connector
- * lands, lift the popup orchestration behind an adapter-routed
- * dispatch (the connector instance's definition slug picks the right
- * SDK + popup hook).
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-E.plan.md` §Slice 2.
+ * Promote to an adapter-routed dispatch if a third OAuth-driven
+ * connector lands.
  */
 export const useReconnectConnectorInstance = (
-  connectorInstanceId: string
+  connectorInstanceId: string,
+  definitionSlug: string
 ): ConnectorInstanceReconnectState => {
   const queryClient = useQueryClient();
-  const { mutateAsync: authorizeMutate } = sdk.googleSheets.authorize();
-  // Reconnect is gsheets-only today; Phase E generalizes this to dispatch
-  // by the connector instance's definition slug.
+  const { mutateAsync: googleAuthorize } = sdk.googleSheets.authorize();
+  const { mutateAsync: microsoftAuthorize } = sdk.microsoftExcel.authorize();
   const popup = useOAuthPopupAuthorize({
-    slug: "google-sheets",
+    slug: definitionSlug,
     allowedOrigin: apiOrigin(),
   });
 
@@ -60,7 +58,19 @@ export const useReconnectConnectorInstance = (
     setErrorMessage(null);
     setIsReconnecting(true);
     try {
-      const { url } = await authorizeMutate(undefined as never);
+      let url: string;
+      switch (definitionSlug) {
+        case "google-sheets":
+          ({ url } = await googleAuthorize(undefined as never));
+          break;
+        case "microsoft-excel":
+          ({ url } = await microsoftAuthorize(undefined as never));
+          break;
+        default:
+          throw new Error(
+            `Reconnect is not supported for connector slug "${definitionSlug}"`
+          );
+      }
       await popup.start(url);
       // The callback updated the instance row (status → active, error
       // cleared); refetch so the page state reflects the new server
@@ -75,7 +85,14 @@ export const useReconnectConnectorInstance = (
     } finally {
       setIsReconnecting(false);
     }
-  }, [authorizeMutate, popup, queryClient, connectorInstanceId]);
+  }, [
+    googleAuthorize,
+    microsoftAuthorize,
+    definitionSlug,
+    popup,
+    queryClient,
+    connectorInstanceId,
+  ]);
 
   const onDismissError = useCallback(() => {
     setErrorMessage(null);

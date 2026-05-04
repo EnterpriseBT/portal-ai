@@ -236,3 +236,121 @@ describe("MicrosoftAccessTokenCacheService.getOrRefresh", () => {
     ).rejects.toThrow(/not found/i);
   });
 });
+
+describe("MicrosoftAccessTokenCacheService.getOrRefresh — rotation-race retry", () => {
+  it("on invalid_grant, retries once against a freshly-read refresh_token if it has changed", async () => {
+    // First findById returns OLD; the upstream refresh fails because
+    // another process already consumed it. The retry path re-reads
+    // findById, sees a NEW refresh_token (persisted by the racing call),
+    // and succeeds.
+    findByIdMock
+      .mockResolvedValueOnce({
+        id: INSTANCE_ID,
+        credentials: { ...baselineCredentials, refresh_token: "0.AX-OLD" },
+      })
+      .mockResolvedValueOnce({
+        id: INSTANCE_ID,
+        credentials: {
+          ...baselineCredentials,
+          refresh_token: "0.AX-PERSISTED-BY-OTHER-PROCESS",
+        },
+      });
+
+    refreshAccessTokenMock
+      .mockRejectedValueOnce(
+        new MicrosoftAuthError("refresh_failed", "invalid_grant")
+      )
+      .mockResolvedValueOnce({
+        accessToken: "eyJ.fresh-after-retry",
+        refreshToken: "0.AX-ROTATED-2",
+        expiresIn: 3600,
+        scope: "openid offline_access",
+      });
+
+    const out = await MicrosoftAccessTokenCacheService.getOrRefresh(
+      INSTANCE_ID
+    );
+
+    expect(out).toBe("eyJ.fresh-after-retry");
+    expect(refreshAccessTokenMock).toHaveBeenNthCalledWith(1, "0.AX-OLD");
+    expect(refreshAccessTokenMock).toHaveBeenNthCalledWith(
+      2,
+      "0.AX-PERSISTED-BY-OTHER-PROCESS"
+    );
+    // The rotated refresh_token from the SUCCESSFUL retry was persisted —
+    // and the instance was NOT flipped to status=error.
+    const successWrite = updateInstanceMock.mock.calls
+      .map((c) => c[1] as Record<string, unknown>)
+      .find((patch) => patch.credentials !== undefined);
+    expect(successWrite).toBeDefined();
+    expect(
+      (successWrite!.credentials as Record<string, unknown>).refresh_token
+    ).toBe("0.AX-ROTATED-2");
+    const errorWrite = updateInstanceMock.mock.calls
+      .map((c) => c[1] as Record<string, unknown>)
+      .find((patch) => patch.status === "error");
+    expect(errorWrite).toBeUndefined();
+  });
+
+  it("does NOT retry when the freshly-read refresh_token is the same (no rotation happened)", async () => {
+    // Both findById calls return the same OLD token → no race; go straight
+    // to status=error and rethrow.
+    findByIdMock.mockResolvedValue({
+      id: INSTANCE_ID,
+      credentials: { ...baselineCredentials, refresh_token: "0.AX-OLD" },
+    });
+    refreshAccessTokenMock.mockRejectedValue(
+      new MicrosoftAuthError("refresh_failed", "AADSTS70008")
+    );
+
+    await expect(
+      MicrosoftAccessTokenCacheService.getOrRefresh(INSTANCE_ID)
+    ).rejects.toMatchObject({ kind: "refresh_failed" });
+
+    // Refresh attempted exactly once (no retry).
+    expect(refreshAccessTokenMock).toHaveBeenCalledTimes(1);
+
+    // Status flipped to error with the original message.
+    const errorWrite = updateInstanceMock.mock.calls
+      .map((c) => c[1] as Record<string, unknown>)
+      .find((patch) => patch.status === "error");
+    expect(errorWrite).toBeDefined();
+    expect(errorWrite!.lastErrorMessage).toContain("AADSTS70008");
+  });
+
+  it("when the retry also fails, marks status=error with MICROSOFT_OAUTH_REFRESH_TOKEN_RACE in the message", async () => {
+    findByIdMock
+      .mockResolvedValueOnce({
+        id: INSTANCE_ID,
+        credentials: { ...baselineCredentials, refresh_token: "0.AX-OLD" },
+      })
+      .mockResolvedValueOnce({
+        id: INSTANCE_ID,
+        credentials: {
+          ...baselineCredentials,
+          refresh_token: "0.AX-PERSISTED-BY-OTHER-PROCESS",
+        },
+      });
+
+    refreshAccessTokenMock
+      .mockRejectedValueOnce(
+        new MicrosoftAuthError("refresh_failed", "invalid_grant first attempt")
+      )
+      .mockRejectedValueOnce(
+        new MicrosoftAuthError("refresh_failed", "invalid_grant second attempt")
+      );
+
+    await expect(
+      MicrosoftAccessTokenCacheService.getOrRefresh(INSTANCE_ID)
+    ).rejects.toMatchObject({ kind: "refresh_failed" });
+
+    expect(refreshAccessTokenMock).toHaveBeenCalledTimes(2);
+    const errorWrite = updateInstanceMock.mock.calls
+      .map((c) => c[1] as Record<string, unknown>)
+      .find((patch) => patch.status === "error");
+    expect(errorWrite).toBeDefined();
+    expect(errorWrite!.lastErrorMessage).toContain(
+      "MICROSOFT_OAUTH_REFRESH_TOKEN_RACE"
+    );
+  });
+});

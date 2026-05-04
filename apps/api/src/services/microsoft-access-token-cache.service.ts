@@ -24,6 +24,7 @@
  * can surface a Reconnect button.
  */
 
+import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
 import {
   MicrosoftAuthError,
@@ -72,6 +73,75 @@ export const MicrosoftAccessTokenCacheService = {
 };
 
 async function refreshAndStore(connectorInstanceId: string): Promise<string> {
+  const { credentials, refreshToken } =
+    await loadCredentials(connectorInstanceId);
+
+  // First attempt against the currently-stored refresh token.
+  try {
+    return await refreshAndPersist(
+      connectorInstanceId,
+      refreshToken,
+      credentials
+    );
+  } catch (err) {
+    if (
+      !(err instanceof MicrosoftAuthError) ||
+      err.kind !== "refresh_failed"
+    ) {
+      throw err;
+    }
+
+    // Rotation-race retry: another process (or a recently-completed
+    // call from this process whose state was lost) may have already
+    // rotated the refresh token. Re-read the instance — if the
+    // refresh_token has changed, the OLD one is consumed and we should
+    // retry against the new one before flipping to status=error.
+    const fresh = await loadCredentials(connectorInstanceId);
+    if (fresh.refreshToken === refreshToken) {
+      // No rotation happened — original failure is real.
+      await markInstanceErrored(connectorInstanceId, err.message);
+      throw err;
+    }
+
+    logger.warn(
+      {
+        connectorInstanceId,
+        event: "mexcel.access.rotation_race_retry_attempted",
+      },
+      "Microsoft refresh failed; another process appears to have rotated — retrying once"
+    );
+    try {
+      const accessToken = await refreshAndPersist(
+        connectorInstanceId,
+        fresh.refreshToken,
+        fresh.credentials
+      );
+      logger.info(
+        {
+          connectorInstanceId,
+          event: "mexcel.access.rotation_race_retry_succeeded",
+        },
+        "Microsoft refresh-token rotation race resolved on retry"
+      );
+      return accessToken;
+    } catch (retryErr) {
+      const message = `${ApiCode.MICROSOFT_OAUTH_REFRESH_TOKEN_RACE}: first=${err.message} retry=${
+        retryErr instanceof Error ? retryErr.message : String(retryErr)
+      }`;
+      await markInstanceErrored(connectorInstanceId, message);
+      throw retryErr;
+    }
+  }
+}
+
+interface LoadedCredentials {
+  credentials: Record<string, unknown>;
+  refreshToken: string;
+}
+
+async function loadCredentials(
+  connectorInstanceId: string
+): Promise<LoadedCredentials> {
   const instance =
     await DbService.repository.connectorInstances.findById(
       connectorInstanceId
@@ -79,9 +149,6 @@ async function refreshAndStore(connectorInstanceId: string): Promise<string> {
   if (!instance) {
     throw new Error(`ConnectorInstance not found: ${connectorInstanceId}`);
   }
-
-  // The repository decrypts on read, so credentials should be a plain
-  // object. Defend against the rare path where it's still a string.
   const credentials =
     instance.credentials && typeof instance.credentials === "object"
       ? (instance.credentials as Record<string, unknown>)
@@ -90,44 +157,21 @@ async function refreshAndStore(connectorInstanceId: string): Promise<string> {
     credentials && typeof credentials.refresh_token === "string"
       ? credentials.refresh_token
       : "";
-  if (!refreshToken) {
+  if (!credentials || !refreshToken) {
     throw new Error(
       `ConnectorInstance ${connectorInstanceId} has no refresh_token in credentials`
     );
   }
+  return { credentials, refreshToken };
+}
 
-  let refreshed: {
-    accessToken: string;
-    refreshToken: string;
-    expiresIn: number;
-    scope: string;
-  };
-  try {
-    refreshed = await MicrosoftAuthService.refreshAccessToken(refreshToken);
-  } catch (err) {
-    if (err instanceof MicrosoftAuthError && err.kind === "refresh_failed") {
-      await DbService.repository.connectorInstances
-        .update(connectorInstanceId, {
-          status: "error",
-          lastErrorMessage: err.message,
-        })
-        .catch((updateErr) => {
-          logger.warn(
-            {
-              connectorInstanceId,
-              err:
-                updateErr instanceof Error ? updateErr.message : updateErr,
-            },
-            "Failed to update connector instance status after refresh failure"
-          );
-        });
-      logger.warn(
-        { connectorInstanceId, message: err.message },
-        "Microsoft refresh_token rejected — marked instance status=error"
-      );
-    }
-    throw err;
-  }
+async function refreshAndPersist(
+  connectorInstanceId: string,
+  refreshToken: string,
+  currentCredentials: Record<string, unknown>
+): Promise<string> {
+  const refreshed =
+    await MicrosoftAuthService.refreshAccessToken(refreshToken);
 
   // Persist the rotated refresh token back to the encrypted credentials
   // column. Spread the existing credentials so we preserve UPN, email,
@@ -135,7 +179,7 @@ async function refreshAndStore(connectorInstanceId: string): Promise<string> {
   // change. Last-writer-wins is fine; concurrent rotations are guarded
   // by the in-process inflight Map above.
   const nextCredentials: Record<string, unknown> = {
-    ...credentials,
+    ...currentCredentials,
     refresh_token: refreshed.refreshToken,
     lastRefreshedAt: Date.now(),
   };
@@ -164,4 +208,28 @@ async function refreshAndStore(connectorInstanceId: string): Promise<string> {
     "Microsoft access token refreshed and rotated refresh token persisted"
   );
   return refreshed.accessToken;
+}
+
+async function markInstanceErrored(
+  connectorInstanceId: string,
+  lastErrorMessage: string
+): Promise<void> {
+  await DbService.repository.connectorInstances
+    .update(connectorInstanceId, {
+      status: "error",
+      lastErrorMessage,
+    })
+    .catch((updateErr) => {
+      logger.warn(
+        {
+          connectorInstanceId,
+          err: updateErr instanceof Error ? updateErr.message : updateErr,
+        },
+        "Failed to update connector instance status after refresh failure"
+      );
+    });
+  logger.warn(
+    { connectorInstanceId, message: lastErrorMessage },
+    "Microsoft refresh_token rejected — marked instance status=error"
+  );
 }
