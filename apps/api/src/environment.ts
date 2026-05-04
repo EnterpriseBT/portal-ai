@@ -80,7 +80,7 @@ export const environment = {
   UPLOAD_S3_REGION: process.env.UPLOAD_S3_REGION || "us-east-1",
   UPLOAD_S3_PREFIX: process.env.UPLOAD_S3_PREFIX || "uploads",
   UPLOAD_S3_PRESIGN_EXPIRY_SEC: parseInt(
-    process.env.UPLOAD_S3_PRESIGN_EXPIRY_SEC || "600",
+    process.env.UPLOAD_S3_PRESIGN_EXPIRY_SEC || "1800",
     10
   ),
   UPLOAD_MAX_FILES_PER_SESSION: parseInt(
@@ -88,7 +88,7 @@ export const environment = {
     10
   ),
   UPLOAD_MAX_FILE_SIZE_BYTES: parseInt(
-    process.env.UPLOAD_MAX_FILE_SIZE_BYTES || String(500 * 1024 * 1024),
+    process.env.UPLOAD_MAX_FILE_SIZE_BYTES || String(250 * 1024 * 1024),
     10
   ),
   // Per-sheet cell-count threshold: sheets under it ship inline in the parse

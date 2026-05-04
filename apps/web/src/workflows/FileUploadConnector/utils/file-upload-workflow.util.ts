@@ -14,6 +14,10 @@ import {
   toServerErrorFromUnknown,
   useSpreadsheetWorkflow,
 } from "../../_shared/spreadsheet/use-spreadsheet-workflow.util";
+import {
+  MAX_UPLOAD_FILE_SIZE_BYTES,
+  MAX_UPLOAD_FILE_SIZE_LABEL,
+} from "./file-upload-fixtures.util";
 import type { FileUploadWorkflowState, UploadPhase } from "./file-upload-fixtures.util";
 
 /**
@@ -65,6 +69,12 @@ export interface FileUploadWorkflowCallbacks {
 
 export interface UseFileUploadWorkflowReturn extends FileUploadWorkflowState {
   fileProgressMap: Map<string, FileUploadProgress>;
+  /**
+   * Field-level errors surfaced by the upload step (e.g. oversize files
+   * rejected pre-flight). Cleared when a successful `addFiles` call
+   * accepts new content.
+   */
+  uploadErrors: { files?: string };
 
   addFiles: (files: File[]) => void;
   removeFile: (filename: string) => void;
@@ -111,6 +121,7 @@ interface FileUploadStageState {
   overallUploadPercent: number;
   fileProgress: Record<string, FileUploadProgress>;
   uploadSessionId: string | null;
+  uploadErrors: { files?: string };
 }
 
 const EMPTY_FILE_UPLOAD_STAGE: FileUploadStageState = {
@@ -119,6 +130,7 @@ const EMPTY_FILE_UPLOAD_STAGE: FileUploadStageState = {
   overallUploadPercent: 0,
   fileProgress: {},
   uploadSessionId: null,
+  uploadErrors: {},
 };
 
 /**
@@ -148,16 +160,27 @@ export function useFileUploadWorkflow(
     core.phase === "review" ? 2 : core.phase === "draw" ? 1 : 0;
 
   const addFiles = useCallback((next: File[]) => {
-    setStage((prev) => ({
-      ...prev,
-      files: mergeFilesByName(prev.files, next),
-    }));
+    const oversize = next.filter((f) => f.size > MAX_UPLOAD_FILE_SIZE_BYTES);
+    const accepted = next.filter((f) => f.size <= MAX_UPLOAD_FILE_SIZE_BYTES);
+    setStage((prev) => {
+      const nextErrors: { files?: string } = {};
+      if (oversize.length > 0) {
+        const names = oversize.map((f) => `"${f.name}"`).join(", ");
+        nextErrors.files = `${names} exceeds the ${MAX_UPLOAD_FILE_SIZE_LABEL} per-file upload limit.`;
+      }
+      return {
+        ...prev,
+        files: mergeFilesByName(prev.files, accepted),
+        uploadErrors: nextErrors,
+      };
+    });
   }, []);
 
   const removeFile = useCallback((filename: string) => {
     setStage((prev) => ({
       ...prev,
       files: prev.files.filter((f) => f.name !== filename),
+      uploadErrors: {},
     }));
   }, []);
 
@@ -269,6 +292,7 @@ export function useFileUploadWorkflow(
     fileProgress: stage.fileProgress,
     uploadSessionId: stage.uploadSessionId,
     fileProgressMap,
+    uploadErrors: stage.uploadErrors,
 
     addFiles,
     removeFile,

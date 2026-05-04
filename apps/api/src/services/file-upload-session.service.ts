@@ -200,10 +200,17 @@ export const FileUploadSessionService = {
         );
       }
       if (file.sizeBytes > environment.UPLOAD_MAX_FILE_SIZE_BYTES) {
+        const formatMB = (bytes: number): string =>
+          `${(bytes / 1024 / 1024).toFixed(1)} MB`;
         throw new ApiError(
           413,
           ApiCode.FILE_UPLOAD_PARSE_TOO_LARGE,
-          `"${file.fileName}" (${file.sizeBytes} bytes) exceeds ${environment.UPLOAD_MAX_FILE_SIZE_BYTES}`
+          `"${file.fileName}" is ${formatMB(file.sizeBytes)}, which exceeds the ${formatMB(environment.UPLOAD_MAX_FILE_SIZE_BYTES)} per-file upload limit.`,
+          {
+            fileName: file.fileName,
+            sizeBytes: file.sizeBytes,
+            capBytes: environment.UPLOAD_MAX_FILE_SIZE_BYTES,
+          }
         );
       }
     }

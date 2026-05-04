@@ -178,6 +178,11 @@ export interface FileUploadConnectorWorkflowUIProps {
 
   // Status
   errors?: RegionEditorErrors;
+  /**
+   * Field-level errors from the upload step (e.g. oversize files rejected
+   * pre-flight before any S3 upload). Surfaced via UploadStep's `errors.files`.
+   */
+  uploadErrors?: { files?: string };
   serverError: ServerError | null;
   isInterpreting: boolean;
   isCommitting: boolean;
@@ -233,6 +238,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
   onCommit,
   onBack,
   errors,
+  uploadErrors,
   serverError,
   isInterpreting,
   isCommitting,
@@ -263,6 +269,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
                 fileProgress={fileProgress}
                 overallUploadPercent={overallUploadPercent}
                 serverError={serverError}
+                errors={uploadErrors}
               />
             </StepPanel>
 
@@ -800,6 +807,7 @@ export const FileUploadConnectorWorkflow: React.FC<
         void workflow.onCommit();
       }}
       onBack={workflow.goBack}
+      uploadErrors={workflow.uploadErrors}
       serverError={workflow.serverError}
       isInterpreting={workflow.isInterpreting}
       isCommitting={workflow.isCommitting}
