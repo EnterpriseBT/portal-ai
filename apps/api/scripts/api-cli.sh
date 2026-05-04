@@ -54,6 +54,11 @@
 
 set -euo pipefail
 
+# AWS CLI v2 pipes long output through $PAGER (default `less`), which isn't
+# installed in the project dev container. Disable it so every `aws` call
+# writes directly to stdout.
+export AWS_PAGER=""
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -76,12 +81,15 @@ SECRETS=(
   "ANTHROPIC_API_KEY:anthropic-api-key"
   "TAVILY_API_KEY:tavily-api-key"
   "GOOGLE_OAUTH_CLIENT_SECRET:google-oauth-client-secret"
+  "MICROSOFT_OAUTH_CLIENT_SECRET:microsoft-oauth-client-secret"
   "OAUTH_STATE_SECRET:oauth-state-secret"
 )
 
 # Managed SSM parameters. Format: <ENV_VAR>:<param-name>:<type>
 PARAMS=(
   "GOOGLE_OAUTH_CLIENT_ID:google-oauth-client-id:String"
+  "MICROSOFT_OAUTH_CLIENT_ID:microsoft-oauth-client-id:String"
+  "MICROSOFT_OAUTH_TENANT:microsoft-oauth-tenant:String"
   "AUTH0_DOMAIN:auth0-domain:String"
   "AUTH0_AUDIENCE:auth0-audience:String"
   "CORS_ORIGIN:cors-origin:String"
@@ -560,7 +568,9 @@ vars_template() {
     echo
     echo "# ── SSM Parameter Store (config) ─"
     for entry in "${PARAMS[@]}"; do
-      local key="${entry%%:*}" rest="${entry#*:}" name="${rest%%:*}"
+      local key="${entry%%:*}"
+      local rest="${entry#*:}"
+      local name="${rest%%:*}"
       local val
       val=$(get_param "${SSM_PREFIX}/${name}" || true)
       printf '%s=%s\n' "$key" "$val"

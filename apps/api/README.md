@@ -362,14 +362,84 @@ If a run ever dies uncleanly, check for orphan plugins with `ps -ef | grep sessi
 
 #### Managing cloud variables (`vars` commands)
 
-Every Secrets Manager secret and SSM parameter wired into the ECS task definition has a stable `KEY` (the env-var name the API consumes). Inventory:
+The API task gets its runtime environment from **four** distinct sources. Only the first two are mutable through `api-cli.sh`; the other two require editing infrastructure-as-code.
 
-| Kind | Path prefix | Keys |
-|------|-------------|------|
-| Secret | `portalai/<env>/` | `DATABASE_URL`, `ENCRYPTION_KEY`, `AUTH0_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `GOOGLE_OAUTH_CLIENT_SECRET`, `OAUTH_STATE_SECRET` |
-| SSM | `/portalai/<env>/` | `GOOGLE_OAUTH_CLIENT_ID`, `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, `CORS_ORIGIN`, `NAMESPACE`, `SYSTEM_ID` |
+##### 1. Secrets Manager — sensitive values, mutable via `vars set`
 
-Commands:
+Path prefix: `portalai/<env>/`. Each entry is referenced by a `SecretArn*` CloudFormation parameter (whose value is supplied per-environment by GitHub Actions; see §4).
+
+| Env var | Secret name | Purpose |
+|---------|-------------|---------|
+| `DATABASE_URL` | `database-url` | Postgres connection string for the RDS instance (user, password, host, db, sslmode). |
+| `ENCRYPTION_KEY` | `encryption-key` | Base64-encoded 32-byte key used to encrypt OAuth tokens and other sensitive fields at rest. |
+| `AUTH0_WEBHOOK_SECRET` | `auth0-webhook-secret` | Shared secret Auth0 signs `post-login` webhook payloads with. |
+| `ANTHROPIC_API_KEY` | `anthropic-api-key` | API key for Claude (Anthropic) calls used by `interpret()`. |
+| `TAVILY_API_KEY` | `tavily-api-key` | API key for Tavily search-augmented retrieval. |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | `google-oauth-client-secret` | OAuth2 client secret for the google-sheets connector. |
+| `MICROSOFT_OAUTH_CLIENT_SECRET` | `microsoft-oauth-client-secret` | OAuth2 client secret for the microsoft-excel connector (Azure app registration). |
+| `OAUTH_STATE_SECRET` | `oauth-state-secret` | HMAC key used to sign the short-lived `state` token binding an OAuth callback to its requester. Distinct from `ENCRYPTION_KEY` (signing ≠ encryption). |
+
+##### 2. SSM Parameter Store — non-sensitive config, mutable via `vars set`
+
+Path prefix: `/portalai/<env>/`. Referenced directly by ARN in the task definition.
+
+| Env var | Parameter name | Purpose |
+|---------|----------------|---------|
+| `GOOGLE_OAUTH_CLIENT_ID` | `google-oauth-client-id` | OAuth2 client id for the google-sheets connector. |
+| `MICROSOFT_OAUTH_CLIENT_ID` | `microsoft-oauth-client-id` | OAuth2 client id for the microsoft-excel connector. |
+| `MICROSOFT_OAUTH_TENANT` | `microsoft-oauth-tenant` | Azure tenant id (or `common` for multi-tenant + personal MSAs). Single-tenant deployments override with their tenant id. |
+| `AUTH0_DOMAIN` | `auth0-domain` | Auth0 tenant domain used to validate JWTs. |
+| `AUTH0_AUDIENCE` | `auth0-audience` | Auth0 API audience (`aud` claim) the API accepts. |
+| `CORS_ORIGIN` | `cors-origin` | Comma-separated list of allowed origins for browser callers. |
+| `NAMESPACE` | `namespace` | Logical environment namespace (used in deterministic UUID generation and as a logical tenant scope). |
+| `SYSTEM_ID` | `system-id` | Identity used for system-authored writes (audit `created_by` / `updated_by`). |
+
+##### 3. CloudFormation literals — set per-deploy, mutable only by editing `infra/cloudformation/backend.yml`
+
+These are baked into the task definition's `Environment` block at deploy time. Changing them requires a CloudFormation update.
+
+| Env var | Source | Purpose |
+|---------|--------|---------|
+| `PORT` | literal `"3001"` | Container port the API listens on. |
+| `NODE_ENV` | literal `production` | Standard Node mode flag. |
+| `LOG_LEVEL` | literal `info` | Pino log level. |
+| `LOG_FORMAT` | literal `json` | Forces JSON log output for CloudWatch ingestion. |
+| `BUILD_VERSION` | `!Ref BuildVersion` | Build version label (defaults to `dev`); supplied by deploy pipeline. |
+| `BUILD_SHA` | `!Ref BuildSha` | Git SHA injected at deploy time. |
+| `UPLOAD_S3_BUCKET` | `!Ref UploadBucket` | Bucket created by this stack for streaming workbook uploads. |
+| `UPLOAD_S3_REGION` | `!Ref AWS::Region` | Region of the upload bucket. |
+| `UPLOAD_S3_PREFIX` | literal `uploads` | Key prefix under which streaming uploads are written. |
+| `GOOGLE_OAUTH_REDIRECT_URI` | `https://api-<env>.portalsai.io/api/connectors/google-sheets/callback` | Public redirect URI registered in the Google OAuth app. |
+| `MICROSOFT_OAUTH_REDIRECT_URI` | `https://api-<env>.portalsai.io/api/connectors/microsoft-excel/callback` | Public redirect URI registered in the Azure app. |
+| `REDIS_URL` | `redis://${ImportedEndpoint}:${ImportedPort}` | Resolves the Redis endpoint exported by the shared infra stack. |
+
+##### 4. GitHub Actions repo secrets — consumed by the deploy workflow
+
+Set under **Settings → Secrets and variables → Actions** in the GitHub repo. Read by `.github/workflows/deploy-dev.yml`.
+
+| Secret | Purpose |
+|--------|---------|
+| `AWS_ROLE_ARN` | OIDC role assumed by every job in the workflow. |
+| `DEV_HOSTED_ZONE_ID` | Route 53 hosted-zone id for `*.portalsai.io`. |
+| `DEV_SECRET_ARN_DATABASE_URL` | Full ARN of `portalai/dev/database-url`. |
+| `DEV_SECRET_ARN_ENCRYPTION_KEY` | Full ARN of `portalai/dev/encryption-key`. |
+| `DEV_SECRET_ARN_AUTH0_WEBHOOK_SECRET` | Full ARN of `portalai/dev/auth0-webhook-secret`. |
+| `DEV_SECRET_ARN_ANTHROPIC_API_KEY` | Full ARN of `portalai/dev/anthropic-api-key`. |
+| `DEV_SECRET_ARN_TAVILY_API_KEY` | Full ARN of `portalai/dev/tavily-api-key`. |
+| `DEV_SECRET_ARN_GOOGLE_OAUTH_CLIENT_SECRET` | Full ARN of `portalai/dev/google-oauth-client-secret`. |
+| `DEV_SECRET_ARN_MICROSOFT_OAUTH_CLIENT_SECRET` | Full ARN of `portalai/dev/microsoft-oauth-client-secret`. |
+| `DEV_SECRET_ARN_OAUTH_STATE_SECRET` | Full ARN of `portalai/dev/oauth-state-secret`. |
+| `DEV_VITE_AUTH0_DOMAIN` | Frontend build-time Auth0 tenant domain. |
+| `DEV_VITE_AUTH0_CLIENT_ID` | Frontend build-time Auth0 SPA client id. |
+| `DEV_VITE_AUTH0_AUDIENCE` | Frontend build-time Auth0 API audience. |
+
+Each `DEV_SECRET_ARN_*` secret holds the **full** ARN (including the random suffix) of the matching Secrets Manager entry — partial ARNs fail with `ResourceNotFoundException` at task startup. Retrieve an ARN with:
+
+```
+aws secretsmanager describe-secret --secret-id portalai/dev/<name> --query ARN --output text
+```
+
+##### Commands
 
 ```
 ./scripts/api-cli.sh vars describe              # inventory + backing paths
@@ -392,7 +462,7 @@ ENV=dev ./scripts/api-cli.sh vars template
 ENV=dev ./scripts/api-cli.sh vars apply ./cloud-vars.dev.env
 ```
 
-`apply` validates every key against the inventory before any write happens; an unknown key fails the whole batch. Setting a `KEY` that doesn't yet have a Secrets Manager secret will create it — the script then warns you to update the corresponding `SecretArn*` parameter in `.github/workflows/deploy-dev.yml` (and the matching CloudFormation parameter) before the next deploy.
+`apply` validates every key against the inventory before any write happens; an unknown key fails the whole batch. Setting a `KEY` that doesn't yet have a Secrets Manager secret will create it — the script then warns you to update the corresponding `SecretArn*` parameter in `infra/cloudformation/backend.yml` and add the matching `<ENV>_SECRET_ARN_<KEY>` GitHub repo secret (see §4) before the next deploy.
 
 ## Repositories
 

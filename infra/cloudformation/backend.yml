@@ -60,6 +60,9 @@ Parameters:
   SecretArnGoogleOauthClientSecret:
     Type: String
     Description: Full ARN of portalai/{env}/google-oauth-client-secret secret
+  SecretArnMicrosoftOauthClientSecret:
+    Type: String
+    Description: Full ARN of portalai/{env}/microsoft-oauth-client-secret secret
   SecretArnOauthStateSecret:
     Type: String
     Description: Full ARN of portalai/{env}/oauth-state-secret secret
@@ -441,6 +444,8 @@ Resources:
               Value: uploads
             - Name: GOOGLE_OAUTH_REDIRECT_URI
               Value: !Sub "https://api-${Environment}.portalsai.io/api/connectors/google-sheets/callback"
+            - Name: MICROSOFT_OAUTH_REDIRECT_URI
+              Value: !Sub "https://api-${Environment}.portalsai.io/api/connectors/microsoft-excel/callback"
             - Name: REDIS_URL
               Value: !Sub
                 - "redis://${Endpoint}:${Port}"
@@ -461,10 +466,16 @@ Resources:
               ValueFrom: !Ref SecretArnTavilyApiKey
             - Name: GOOGLE_OAUTH_CLIENT_SECRET
               ValueFrom: !Ref SecretArnGoogleOauthClientSecret
+            - Name: MICROSOFT_OAUTH_CLIENT_SECRET
+              ValueFrom: !Ref SecretArnMicrosoftOauthClientSecret
             - Name: OAUTH_STATE_SECRET
               ValueFrom: !Ref SecretArnOauthStateSecret
             - Name: GOOGLE_OAUTH_CLIENT_ID
               ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/google-oauth-client-id"
+            - Name: MICROSOFT_OAUTH_CLIENT_ID
+              ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/microsoft-oauth-client-id"
+            - Name: MICROSOFT_OAUTH_TENANT
+              ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/microsoft-oauth-tenant"
             - Name: AUTH0_DOMAIN
               ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/auth0-domain"
             - Name: AUTH0_AUDIENCE
