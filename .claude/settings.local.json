@@ -37,7 +37,8 @@
       "Bash(npm --workspace packages/spreadsheet-parsing run test -- schemas)",
       "Bash(NODE_OPTIONS=--experimental-vm-modules npx jest schemas --no-coverage)",
       "Bash(npm --workspace packages/spreadsheet-parsing run type-check)",
-      "Bash(npm --workspace packages/spreadsheet-parsing run test)"
+      "Bash(npm --workspace packages/spreadsheet-parsing run test)",
+      "Bash(git -C /workspace show babd698:docs/GOOGLE_SHEETS_CONNECTOR.discovery.md)"
     ]
   }
 }

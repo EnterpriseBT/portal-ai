@@ -387,7 +387,7 @@ export class SeedService {
             push: false,
           },
           version: "1.0.0",
-          iconUrl: null,
+          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1777847292/960px-Microsoft_Office_Excel__2019_2025.svg_oprgxb.png',
         })
         .parse(),
     ];

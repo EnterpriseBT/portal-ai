@@ -32,7 +32,8 @@
     "db:seed:ci": "node dist/db/seed.js",
     "db:reset:hard": "dotenv -e .env -- tsx src/db/reset-hard.ts",
     "db:reset": "dotenv -e .env -- tsx src/db/reset.ts",
-    "db:tunnel": "bash ./scripts/db-tunnel.sh",
+    "cli": "bash ./scripts/api-cli.sh",
+    "db:tunnel": "bash ./scripts/api-cli.sh db tunnel",
     "tunnel": "dotenv -e .env -- ngrok http 3001"
   },
   "dependencies": {
