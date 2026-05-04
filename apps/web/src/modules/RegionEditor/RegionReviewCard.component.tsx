@@ -7,6 +7,7 @@ import {
   Divider,
   Icon,
   IconName,
+  Tooltip,
 } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 
@@ -97,6 +98,23 @@ interface ReviewChip {
   excluded: boolean;
   invalid: boolean;
   /**
+   * Numeric AI-classifier confidence in the [0, 1] range, surfaced inline on
+   * the chip and in the tooltip so the user can see *why* the icon is what
+   * it is and whether to second-guess a low-confidence bound binding.
+   * Column bindings always carry a confidence; pivot / intersection /
+   * cellValueField chips don't have a numeric classifier confidence and
+   * leave this undefined.
+   */
+  confidence?: number;
+  /**
+   * First validation-error message for an invalid column binding, surfaced in
+   * the chip's tooltip so the user can see what's wrong without clicking
+   * into the popover. Logical-field chips (pivot / cellValueField /
+   * intersection) don't carry per-field validation errors and leave this
+   * undefined.
+   */
+  errorMessage?: string;
+  /**
    * Optional click handler. Logical-field chips (pivot axisName,
    * cellValueField) leave this undefined since this card doesn't yet support
    * editing those slots — they render as a static chip with the same shape.
@@ -115,7 +133,9 @@ function buildChips(
 
   for (const binding of region.columnBindings ?? []) {
     const excluded = binding.excluded === true;
-    const invalid = !excluded && bindingErrors?.[binding.sourceLocator] !== undefined;
+    const errors = bindingErrors?.[binding.sourceLocator];
+    const invalid = !excluded && errors !== undefined;
+    const errorMessage = invalid && errors ? Object.values(errors)[0] : undefined;
     const sourceLabel = bindingSourceLabel(binding.sourceLocator, binding);
     chips.push({
       key: `binding:${binding.sourceLocator}`,
@@ -125,6 +145,8 @@ function buildChips(
       band: confidenceBand(binding.confidence),
       excluded,
       invalid,
+      confidence: binding.confidence,
+      errorMessage,
       onClick: (anchor) => onEditBinding(binding.sourceLocator, anchor),
       ariaLabel: excluded
         ? `Excluded — click to edit: ${sourceLabel}`
@@ -396,17 +418,19 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
             {filteredChips.map((chip) => {
               const interactive = chip.onClick !== undefined;
               // Resolve the chip's status — drives the leading icon (the
-              // single visual axis the user scans for problems) and the
-              // chip's own background tint for the most-attention case.
-              // "invalid" requires a present `columnDefinitionId` — without
-              // one the chip is just unbound (catalog mismatch), not an
-              // active validation error.
+              // single visual axis the user scans for problems), the chip's
+              // own background tint for the most-attention case, and the
+              // tooltip copy. "Unbound" is gated strictly on the absence of
+              // a columnDefinitionId so the chip's icon matches the
+              // popover's icon for the same binding (popover uses the same
+              // rule). Confidence-band tinting is informational only and no
+              // longer participates in state classification.
               const stateName: "bound" | "unbound" | "invalid" | "excluded" =
                 chip.excluded
                   ? "excluded"
                   : chip.invalid && chip.columnDefinitionId
                     ? "invalid"
-                    : chip.invalid || chip.band === "red"
+                    : !chip.columnDefinitionId
                       ? "unbound"
                       : "bound";
               const iconName =
@@ -425,6 +449,24 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
                     : stateName === "unbound"
                       ? "warning.main"
                       : "success.main";
+              const targetLabel =
+                chip.columnDefinitionLabel ?? chip.columnDefinitionId ?? null;
+              const confidencePct =
+                chip.confidence !== undefined
+                  ? Math.round(chip.confidence * 100)
+                  : undefined;
+              const confidenceTooltipSuffix =
+                confidencePct !== undefined
+                  ? ` (${confidencePct}% AI confidence)`
+                  : "";
+              const tooltipCopy =
+                stateName === "excluded"
+                  ? `Excluded — no field mapping will be created for this column.${confidenceTooltipSuffix}`
+                  : stateName === "invalid"
+                    ? `Invalid — ${chip.errorMessage ?? "click to fix the binding."}${confidenceTooltipSuffix}`
+                    : stateName === "unbound"
+                      ? `Unbound — pick a column definition to map this column.${confidenceTooltipSuffix}`
+                      : `Bound${targetLabel ? ` to ${targetLabel}` : ""} — this column is mapped to a column definition.${confidenceTooltipSuffix}`;
               // Native `<button>` styling resolves text color against
               // `buttontext` / `Canvas` instead of the document's
               // `text.primary`, which on the grey.50 card background
@@ -466,30 +508,38 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
                       chip.columnDefinitionId ??
                       "—"}
                   </Typography>
+                  {confidencePct !== undefined && (
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      data-testid="chip-confidence"
+                      sx={{ ml: 0.25 }}
+                    >
+                      · {confidencePct}%
+                    </Typography>
+                  )}
                 </>
               );
               return interactive ? (
-                <Box
-                  key={chip.key}
-                  component="button"
-                  type="button"
-                  aria-label={chip.ariaLabel}
-                  onClick={(e) =>
-                    chip.onClick!(e.currentTarget as HTMLElement)
-                  }
-                  sx={sx}
-                >
-                  {inner}
-                </Box>
+                <Tooltip key={chip.key} title={tooltipCopy} arrow>
+                  <Box
+                    component="button"
+                    type="button"
+                    aria-label={chip.ariaLabel}
+                    onClick={(e) =>
+                      chip.onClick!(e.currentTarget as HTMLElement)
+                    }
+                    sx={sx}
+                  >
+                    {inner}
+                  </Box>
+                </Tooltip>
               ) : (
-                <Box
-                  key={chip.key}
-                  role="status"
-                  aria-label={chip.ariaLabel}
-                  sx={sx}
-                >
-                  {inner}
-                </Box>
+                <Tooltip key={chip.key} title={tooltipCopy} arrow>
+                  <Box role="status" aria-label={chip.ariaLabel} sx={sx}>
+                    {inner}
+                  </Box>
+                </Tooltip>
               );
             })}
           </Stack>

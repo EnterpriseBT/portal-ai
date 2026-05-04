@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { RegionReviewCardUI } from "../RegionReviewCard.component";
@@ -1012,5 +1012,232 @@ describe("RegionReviewCardUI — status icon", () => {
     });
     const chip = screen.getByRole("button", { name: /excluded/i });
     expect(chip).toHaveStyle({ textDecoration: "line-through" });
+  });
+
+  test("low-confidence bound chip renders the bound icon (matches popover)", () => {
+    // A binding with a present columnDefinitionId but low confidence
+    // (red band) used to render as the "unbound" warning icon — even
+    // though the popover for the same binding showed CheckCircle. The
+    // chip's icon now matches the popover's: bound iff columnDefinitionId
+    // is present.
+    setup({
+      columnBindings: [
+        {
+          sourceLocator: "header:LowConfBound",
+          columnDefinitionId: "coldef_email",
+          columnDefinitionLabel: "Email",
+          confidence: 0.45,
+        },
+      ],
+    });
+    expect(screen.getByTestId("chip-icon-bound")).toBeInTheDocument();
+    expect(screen.queryByTestId("chip-icon-unbound")).not.toBeInTheDocument();
+  });
+});
+
+describe("RegionReviewCardUI — chip tooltip", () => {
+  test("bound chip's tooltip names the bound column definition", async () => {
+    setup({
+      columnBindings: [
+        {
+          sourceLocator: "header:Email",
+          columnDefinitionId: "coldef_email",
+          columnDefinitionLabel: "Email",
+          confidence: 0.9,
+        },
+      ],
+    });
+    const chip = screen.getByRole("button", {
+      name: /edit binding.*header:email/i,
+    });
+    fireEvent.mouseOver(chip);
+    await waitFor(() =>
+      expect(screen.getByRole("tooltip")).toBeInTheDocument()
+    );
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      /^bound to email — this column is mapped/i
+    );
+  });
+
+  test("unbound chip's tooltip prompts the user to pick a definition", async () => {
+    setup({
+      columnBindings: [
+        {
+          sourceLocator: "header:Mystery",
+          columnDefinitionId: null,
+          confidence: 0.3,
+        },
+      ],
+    });
+    const chip = screen.getByRole("button", {
+      name: /edit binding.*header:mystery/i,
+    });
+    fireEvent.mouseOver(chip);
+    await waitFor(() =>
+      expect(screen.getByRole("tooltip")).toBeInTheDocument()
+    );
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      /^unbound — pick a column definition/i
+    );
+  });
+
+  test("invalid chip's tooltip surfaces the actual validation error", async () => {
+    setup(
+      {
+        columnBindings: [
+          {
+            sourceLocator: "header:Email",
+            columnDefinitionId: "coldef_email",
+            columnDefinitionLabel: "Email",
+            confidence: 0.9,
+          },
+        ],
+      },
+      {
+        "header:Email": {
+          normalizedKey: "duplicate normalizedKey override",
+        },
+      }
+    );
+    const chip = screen.getByRole("button", {
+      name: /invalid.*header:email/i,
+    });
+    fireEvent.mouseOver(chip);
+    await waitFor(() =>
+      expect(screen.getByRole("tooltip")).toBeInTheDocument()
+    );
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      /^invalid — duplicate normalizedKey override/i
+    );
+  });
+
+  test("excluded chip's tooltip explains no field mapping is created", async () => {
+    setup({
+      columnBindings: [
+        {
+          sourceLocator: "header:Skipped",
+          columnDefinitionId: "coldef_skip",
+          columnDefinitionLabel: "Skipped",
+          confidence: 0.9,
+          excluded: true,
+        },
+      ],
+    });
+    const chip = screen.getByRole("button", {
+      name: /excluded.*header:skipped/i,
+    });
+    fireEvent.mouseOver(chip);
+    await waitFor(() =>
+      expect(screen.getByRole("tooltip")).toBeInTheDocument()
+    );
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      /^excluded — no field mapping/i
+    );
+  });
+});
+
+describe("RegionReviewCardUI — chip confidence", () => {
+  test("renders the rounded confidence percentage inline on a column-binding chip", () => {
+    setup({
+      columnBindings: [
+        {
+          sourceLocator: "header:Email",
+          columnDefinitionId: "coldef_email",
+          columnDefinitionLabel: "Email",
+          confidence: 0.873,
+        },
+      ],
+    });
+    // Two chips render (Email + the default fixture's excluded col:3); pick
+    // the email one and assert the confidence badge under it.
+    const emailChip = screen.getByRole("button", {
+      name: /edit binding.*header:email/i,
+    });
+    expect(emailChip).toHaveTextContent(/· 87%/);
+  });
+
+  test("includes the confidence percentage in the chip tooltip", async () => {
+    setup({
+      columnBindings: [
+        {
+          sourceLocator: "header:Email",
+          columnDefinitionId: "coldef_email",
+          columnDefinitionLabel: "Email",
+          confidence: 0.45,
+        },
+      ],
+    });
+    const chip = screen.getByRole("button", {
+      name: /edit binding.*header:email/i,
+    });
+    fireEvent.mouseOver(chip);
+    await waitFor(() =>
+      expect(screen.getByRole("tooltip")).toBeInTheDocument()
+    );
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      /\(45% AI confidence\)/
+    );
+  });
+
+  test("low-confidence bound chip still surfaces the percentage so the user knows to verify", () => {
+    setup({
+      columnBindings: [
+        {
+          sourceLocator: "header:LowConf",
+          columnDefinitionId: "coldef_email",
+          columnDefinitionLabel: "Email",
+          confidence: 0.32,
+        },
+      ],
+    });
+    const chip = screen.getByRole("button", {
+      name: /edit binding.*header:lowconf/i,
+    });
+    expect(chip).toHaveTextContent(/· 32%/);
+    // And the icon is bound (the consistency fix), not unbound, so the
+    // user has both signals: "icon says bound, but confidence is low —
+    // worth a look."
+    expect(screen.getByTestId("chip-icon-bound")).toBeInTheDocument();
+  });
+
+  test("does not render a confidence badge for pivot-segment chips (no numeric confidence)", () => {
+    render(
+      <RegionReviewCardUI
+        region={makeRegion({
+          id: "region-pivot",
+          headerAxes: ["row"],
+          segmentsByAxis: {
+            row: [
+              {
+                kind: "pivot",
+                id: "pivot-1",
+                axisName: "month",
+                axisNameSource: "user",
+                positionCount: 6,
+                columnDefinitionId: "coldef_month",
+              },
+            ],
+          },
+          cellValueField: {
+            name: "sales",
+            nameSource: "user",
+            columnDefinitionId: "coldef_sales",
+          },
+          columnBindings: [],
+        })}
+        onJump={jest.fn()}
+        onEditBinding={jest.fn()}
+        resolveColumnLabel={(id) =>
+          id === "coldef_month"
+            ? "Month"
+            : id === "coldef_sales"
+              ? "Sales"
+              : undefined
+        }
+      />
+    );
+    // Pivot + cellValueField chips render but carry no confidence badge —
+    // only column-binding chips do.
+    expect(screen.queryByTestId("chip-confidence")).not.toBeInTheDocument();
   });
 });
