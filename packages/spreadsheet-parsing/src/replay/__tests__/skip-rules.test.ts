@@ -65,7 +65,7 @@ describe("extractRecords — skip rules", () => {
       skipRules: [{ kind: "blank" }],
     });
     const records = extractRecords(region, wb.sheets[0]);
-    const names = records.map((r) => r.fields["col-name"]);
+    const names = records.map((r) => r.fields["name"]);
     expect(names).toEqual(["alice", "bob"]);
   });
 
@@ -95,7 +95,7 @@ describe("extractRecords — skip rules", () => {
       ],
     });
     const records = extractRecords(region, wb.sheets[0]);
-    const names = records.map((r) => r.fields["col-name"]);
+    const names = records.map((r) => r.fields["name"]);
     expect(names).toEqual(["alice", "bob"]);
   });
 
@@ -125,7 +125,7 @@ describe("extractRecords — skip rules", () => {
       skipRules: [{ kind: "cellMatches", crossAxisIndex: 1, pattern: "^$" }],
     });
     const records = extractRecords(region, wb.sheets[0]);
-    const names = records.map((r) => r.fields["col-name"]);
+    const names = records.map((r) => r.fields["name"]);
     expect(names).toEqual(["alice", "carol"]);
   });
 

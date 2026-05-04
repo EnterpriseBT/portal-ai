@@ -680,6 +680,112 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(records[0].normalizedData).toHaveProperty("name");
     });
 
+    // Regression: two source columns mapped to the same ColumnDefinition
+    // (the AI had classified "Model" + "Organization" both as the generic
+    // "Name" type, and "Task" + "Authors" both as the generic "Array"
+    // type). Extract used to key `record.fields` by `columnDefinitionId`,
+    // so the right-most binding's value silently overwrote the left-most's
+    // — records ended up with the Authors value under the "task" mapping
+    // and an empty "authors" mapping. Keying by source-field name keeps
+    // each binding's value distinct and lets reconcile materialise one
+    // FieldMapping per source column.
+    it("two bindings sharing a columnDefinitionId produce two FieldMappings and preserve both source values", async () => {
+      const colNameTypeId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name_type"
+      );
+      const plan: LayoutPlan = {
+        planVersion: "1.0.0",
+        workbookFingerprint: {
+          sheetNames: ["Sheet1"],
+          dimensions: { Sheet1: { rows: 3, cols: 2 } },
+          anchorCells: [{ sheet: "Sheet1", row: 1, col: 1, value: "model" }],
+        },
+        regions: [
+          simpleRegion("r1", "things", colNameTypeId, colNameTypeId, {
+            columnBindings: [
+              {
+                sourceLocator: {
+                  kind: "byHeaderName",
+                  axis: "row",
+                  name: "model",
+                },
+                columnDefinitionId: colNameTypeId,
+                confidence: 0.9,
+              },
+              {
+                sourceLocator: {
+                  kind: "byHeaderName",
+                  axis: "row",
+                  name: "organization",
+                },
+                columnDefinitionId: colNameTypeId,
+                confidence: 0.9,
+              },
+            ],
+          }),
+        ],
+        confidence: { overall: 0.9, perRegion: { r1: 0.9 } },
+      };
+      const planId = await insertPlanRow(db as Db, plan);
+
+      const workbook: WorkbookData = {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 3, cols: 2 },
+            cells: [
+              { row: 1, col: 1, value: "model" },
+              { row: 1, col: 2, value: "organization" },
+              { row: 2, col: 1, value: "Claude" },
+              { row: 2, col: 2, value: "Anthropic" },
+              { row: 3, col: 1, value: "GPT" },
+              { row: 3, col: 2, value: "OpenAI" },
+            ],
+          },
+        ],
+      };
+
+      const res = await request(app)
+        .post(
+          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
+        )
+        .set("Authorization", "Bearer test-token")
+        .send({ workbook });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const mappings = await (db as Db).select().from(schema.fieldMappings);
+      expect(mappings).toHaveLength(2);
+      const normalizedKeys = mappings.map((m) => m.normalizedKey).sort();
+      expect(normalizedKeys).toEqual(["model", "organization"]);
+      // Both mappings reference the same columnDefinitionId — that's the
+      // shape this test exercises.
+      for (const m of mappings) {
+        expect(m.columnDefinitionId).toBe(colNameTypeId);
+      }
+
+      const records = await (db as Db).select().from(schema.entityRecords);
+      expect(records).toHaveLength(2);
+      const claude = records.find(
+        (r) =>
+          (r.normalizedData as Record<string, unknown>).model === "Claude"
+      );
+      expect(claude).toBeDefined();
+      expect(
+        (claude!.normalizedData as Record<string, unknown>).organization
+      ).toBe("Anthropic");
+      const gpt = records.find(
+        (r) => (r.normalizedData as Record<string, unknown>).model === "GPT"
+      );
+      expect(gpt).toBeDefined();
+      expect(
+        (gpt!.normalizedData as Record<string, unknown>).organization
+      ).toBe("OpenAI");
+    });
+
     it("pivot region: writes one FieldMapping for the pivot axisName + one for cellValueField, with records carrying normalized keys", async () => {
       // Single-axis pivot region: row 1 = "id, Jan, Feb, Mar". The pivot
       // segment's axisName ("month") and the cellValueField.name ("revenue")

@@ -1,6 +1,7 @@
 import {
   DEFAULT_UNTIL_BLANK_COUNT,
   recordsAxisOf,
+  sourceFieldFromBinding,
   type AxisMember,
   type BindingSourceLocator,
   type ExtractedRecord,
@@ -329,7 +330,7 @@ function extractHeaderless(
     for (const binding of region.columnBindings) {
       const resolved = resolveBindingCoord(binding.sourceLocator, sheet, bounds, {});
       if (!resolved) continue;
-      fields[binding.columnDefinitionId] = readBindingCell(
+      fields[sourceFieldFromBinding(binding)] = readBindingCell(
         resolved,
         recordRow,
         recordCol,
@@ -376,7 +377,13 @@ function extract1D(
 
   const out: ExtractedRecord[] = [];
 
-  // Pre-resolve columnBindings once — statics map: position coord → colDefId.
+  // Pre-resolve columnBindings once — statics map: position coord →
+  // sourceFieldKey (the binding's human-readable source name). We key on the
+  // source field rather than `columnDefinitionId` because two bindings on the
+  // same region may share a colDefId (the AI can map two distinct source
+  // columns to the same target column type), and the cell write below is
+  // last-write-wins per key — so colDefId-keyed writes silently overwrite the
+  // first binding's value with the second's.
   const staticsByPosition = new Map<number, string>();
   for (const binding of region.columnBindings) {
     const resolved = resolveBindingCoord(
@@ -386,7 +393,7 @@ function extract1D(
       headersByAxis
     );
     if (!resolved) continue;
-    staticsByPosition.set(resolved.coord, binding.columnDefinitionId);
+    staticsByPosition.set(resolved.coord, sourceFieldFromBinding(binding));
   }
 
   for (let entity = entityFirst; entity <= entityEnd; entity++) {
@@ -407,9 +414,9 @@ function extract1D(
     const statics: Record<string, unknown> = {};
     for (const position of positions) {
       if (position.segment.kind !== "field") continue;
-      const colDefId = staticsByPosition.get(position.coord);
-      if (!colDefId) continue;
-      statics[colDefId] =
+      const sourceFieldKey = staticsByPosition.get(position.coord);
+      if (!sourceFieldKey) continue;
+      statics[sourceFieldKey] =
         entityAxis === "row"
           ? cellValue(sheet.cell(entity, position.coord))
           : cellValue(sheet.cell(position.coord, entity));
@@ -486,8 +493,11 @@ function extract2D(
 
   // Statics bindings resolve once; on 2D, the binding's axis determines which
   // record-coord it crosses (entityRow for axis=row; entityCol for axis=column).
+  // Keyed by the binding's source-field name (not `columnDefinitionId`) so
+  // two bindings sharing a colDefId emit separate fields instead of
+  // last-write-wins clobbering each other.
   interface ResolvedStatic {
-    colDefId: string;
+    sourceFieldKey: string;
     resolved: ResolvedBindingCoord;
   }
   const statics: ResolvedStatic[] = [];
@@ -499,7 +509,10 @@ function extract2D(
       headersByAxis
     );
     if (!resolved) continue;
-    statics.push({ colDefId: binding.columnDefinitionId, resolved });
+    statics.push({
+      sourceFieldKey: sourceFieldFromBinding(binding),
+      resolved,
+    });
   }
 
   const out: ExtractedRecord[] = [];
@@ -534,7 +547,12 @@ function extract2D(
 
       // Statics: read each binding using (cellRow, cellCol) as record coords.
       for (const s of statics) {
-        fields[s.colDefId] = readBindingCell(s.resolved, cellRow, cellCol, sheet);
+        fields[s.sourceFieldKey] = readBindingCell(
+          s.resolved,
+          cellRow,
+          cellCol,
+          sheet
+        );
       }
 
       // Row-axis pivot contribution: label from row-header at this col.

@@ -1,3 +1,24 @@
+import type { ColumnBinding } from "./strategies.schema.js";
+
+/**
+ * Derive the human-readable "source field" string for a binding — the header
+ * cell's text for `byHeaderName`, a synthetic `<axis>_<index>` for
+ * `byPositionIndex`. Used everywhere a binding's value needs a stable,
+ * binding-unique key (extract-records' `record.fields`,
+ * `FieldMapping.sourceField`, the commit pipeline's `recordFieldKey`). Two
+ * bindings on the same region can share a `columnDefinitionId` (the AI may
+ * map two source columns to the same target type), but their source fields
+ * are unique because `byHeaderName` keys are deduped by the header layout
+ * resolver and `byPositionIndex` indices are unique per axis — so this
+ * function gives the per-binding identity that `columnDefinitionId` cannot.
+ */
+export function sourceFieldFromBinding(binding: ColumnBinding): string {
+  if (binding.sourceLocator.kind === "byHeaderName") {
+    return binding.sourceLocator.name;
+  }
+  return `${binding.sourceLocator.axis}_${binding.sourceLocator.index}`;
+}
+
 /**
  * Normalise a spreadsheet source-field name (typically a header cell's text
  * or a synthetic column-index label like `col_3`) into the snake_case key

@@ -80,16 +80,17 @@ function contactsWorkbook() {
 }
 
 describe("extractRecords — 1D headerAxes:['row'] (records-are-rows)", () => {
-  it("emits one record per data row with fields keyed by ColumnDefinition id", () => {
+  it("emits one record per data row with fields keyed by source-field name", () => {
     const records = extractRecords(
       contactsRegion(),
       contactsWorkbook().sheets[0]
     );
     expect(records).toHaveLength(3);
     expect(records[0].fields).toEqual({
-      "col-email": "a@x.com",
-      "col-name": "alice",
-      "col-age": 30,
+      email: "a@x.com",
+      name: "alice",
+      // byPositionIndex bindings synthesise a `${axis}_${index}` key.
+      row_3: 30,
     });
   });
 
@@ -149,8 +150,8 @@ describe("extractRecords — 1D headerAxes:['row'] (records-are-rows)", () => {
     const records = extractRecords(headerless, contactsWorkbook().sheets[0]);
     expect(records).toHaveLength(3);
     expect(records[0].fields).toEqual({
-      "col-email": "a@x.com",
-      "col-name": "alice",
+      row_1: "a@x.com",
+      row_2: "alice",
     });
   });
 
@@ -160,7 +161,34 @@ describe("extractRecords — 1D headerAxes:['row'] (records-are-rows)", () => {
       contactsWorkbook().sheets[0]
     );
     for (const r of records) {
-      expect(r.fields["col-email"]).not.toBe("email");
+      expect(r.fields["email"]).not.toBe("email");
     }
+  });
+
+  // Regression: two source columns the user/AI may have mapped to the same
+  // ColumnDefinition (e.g. "Model" and "Organization" both classified as
+  // generic "Name") used to collide in `record.fields` because keying was
+  // by `columnDefinitionId` — the right-most binding's value overwrote the
+  // earlier one's. Keying by source-field name keeps both intact.
+  it("emits separate fields for two bindings that share a columnDefinitionId", () => {
+    const region: Region = {
+      ...contactsRegion(),
+      columnBindings: [
+        {
+          sourceLocator: { kind: "byHeaderName", axis: "row", name: "email" },
+          columnDefinitionId: "shared-name-type",
+          confidence: 0.9,
+        },
+        {
+          sourceLocator: { kind: "byHeaderName", axis: "row", name: "name" },
+          columnDefinitionId: "shared-name-type",
+          confidence: 0.9,
+        },
+      ],
+    };
+    const records = extractRecords(region, contactsWorkbook().sheets[0]);
+    expect(records).toHaveLength(3);
+    expect(records[0].fields["email"]).toBe("a@x.com");
+    expect(records[0].fields["name"]).toBe("alice");
   });
 });

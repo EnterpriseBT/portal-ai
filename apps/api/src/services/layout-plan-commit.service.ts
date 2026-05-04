@@ -22,6 +22,7 @@ import type {
   WorkbookData,
 } from "@portalai/core/contracts";
 import { WorkbookSchema } from "@portalai/core/contracts";
+import { sourceFieldFromBinding } from "@portalai/spreadsheet-parsing";
 import { computeChecksum, replay } from "@portalai/spreadsheet-parsing/replay";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -167,12 +168,17 @@ export class LayoutPlanCommitService {
           .get(region.targetEntityDefinitionId) as PlanBindingWithSource[]);
 
       // Static field bindings — replay emits these in `record.fields` keyed
-      // by `columnDefinitionId`, so the recordFieldKey is the colDefId.
+      // by the binding's source-field name (the header text or a derived
+      // `<axis>_<index>` for byPositionIndex). Source-field keying is
+      // unique per binding even when two bindings share a
+      // `columnDefinitionId` — colDefId-keyed fields would silently
+      // overwrite each other in `record.fields`.
       for (const binding of region.columnBindings as ColumnBinding[]) {
+        const sourceField = sourceFieldFromBinding(binding);
         bucket.push({
           columnDefinitionId: binding.columnDefinitionId,
-          sourceField: sourceFieldFromBinding(binding),
-          recordFieldKey: binding.columnDefinitionId,
+          sourceField,
+          recordFieldKey: sourceField,
           isPrimaryKey: false,
           excluded: binding.excluded,
           normalizedKey: binding.normalizedKey,
@@ -695,12 +701,4 @@ interface PlanBindingWithSource {
   enumValues?: string[] | null;
   refEntityKey?: string | null;
   refNormalizedKey?: string | null;
-}
-
-function sourceFieldFromBinding(binding: ColumnBinding): string {
-  if (binding.sourceLocator.kind === "byHeaderName") {
-    return binding.sourceLocator.name;
-  }
-  // byPositionIndex fallback — synthesize a stable label.
-  return `${binding.sourceLocator.axis}_${binding.sourceLocator.index}`;
 }

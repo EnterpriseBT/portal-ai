@@ -83,6 +83,7 @@ export { WarningSchema } from "./warning.schema.js";
 export type { Warning } from "./warning.schema.js";
 
 export {
+  sourceFieldFromBinding,
   sourceFieldToNormalizedKey,
   sourceLocatorToNormalizedKey,
 } from "./normalized-key.js";

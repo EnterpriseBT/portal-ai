@@ -162,6 +162,7 @@ export type {
 
 // ── Normalized-key derivation ─────────────────────────────────────────────
 export {
+  sourceFieldFromBinding,
   sourceFieldToNormalizedKey,
   sourceLocatorToNormalizedKey,
 } from "@portalai/spreadsheet-parsing";

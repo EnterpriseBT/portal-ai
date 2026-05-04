@@ -107,8 +107,8 @@ describe("extractRecords — matrix id 1e (rows × 2 segments + statics)", () =>
   it("attaches statics from field-role positions to every emitted record", () => {
     const records = extractRecords(appleRegion(), appleWorkbook().sheets[0]);
     for (const r of records) {
-      expect(r.fields["col-name"]).toBe("Apple");
-      expect(r.fields["col-industry"]).toBe("Tech");
+      expect(r.fields["name"]).toBe("Apple");
+      expect(r.fields["industry"]).toBe("Tech");
     }
   });
 
@@ -362,8 +362,8 @@ describe("extractRecords — matrix id 1d (rows × statics + 1 segment)", () => 
     const records = extractRecords(region1d(), workbook1d().sheets[0]);
     expect(records).toHaveLength(3);
     for (const r of records) {
-      expect(r.fields["col-name"]).toBe("Apple");
-      expect(r.fields["col-industry"]).toBe("Tech");
+      expect(r.fields["name"]).toBe("Apple");
+      expect(r.fields["industry"]).toBe("Tech");
     }
     expect(records.map((r) => r.fields.quarter)).toEqual(["Q1", "Q2", "Q3"]);
     expect(records.map((r) => r.fields.revenue)).toEqual([10, 20, 30]);
@@ -552,20 +552,20 @@ describe("extractRecords — matrix id 2e (cols × statics + 2 segments)", () =>
     expect(records).toHaveLength(18);
     const byEntity = new Map<string, typeof records>();
     for (const r of records) {
-      const n = r.fields["col-name"] as string;
+      const n = r.fields["name"] as string;
       byEntity.set(n, [...(byEntity.get(n) ?? []), r]);
     }
     expect(byEntity.get("Apple")?.length).toBe(6);
     expect(byEntity.get("Berry")?.length).toBe(6);
     expect(byEntity.get("Cherry")?.length).toBe(6);
     for (const r of byEntity.get("Apple") ?? []) {
-      expect(r.fields["col-industry"]).toBe("Tech");
+      expect(r.fields["industry"]).toBe("Tech");
     }
   });
 
   it("emits the right quarter and month labels per entity", () => {
     const records = extractRecords(cols2eRegion(), cols2eWorkbook().sheets[0]);
-    const apple = records.filter((r) => r.fields["col-name"] === "Apple");
+    const apple = records.filter((r) => r.fields["name"] === "Apple");
     expect(
       apple.filter((r) => "quarter" in r.fields).map((r) => r.fields.quarter)
     ).toEqual(["Q1", "Q2", "Q3"]);
@@ -768,11 +768,11 @@ describe("extractRecords — matrix id 2d (cols × statics + 1 segment)", () => 
   it("emits 3 records per data column, each with statics", () => {
     const records = extractRecords(region2d(), workbook2d().sheets[0]);
     expect(records).toHaveLength(6);
-    const apple = records.filter((r) => r.fields["col-name"] === "Apple");
+    const apple = records.filter((r) => r.fields["name"] === "Apple");
     expect(apple).toHaveLength(3);
     expect(apple.map((r) => r.fields.quarter)).toEqual(["Q1", "Q2", "Q3"]);
     expect(apple.map((r) => r.fields.revenue)).toEqual([10, 20, 30]);
-    for (const r of apple) expect(r.fields["col-industry"]).toBe("Tech");
+    for (const r of apple) expect(r.fields["industry"]).toBe("Tech");
   });
 });
 
@@ -915,14 +915,14 @@ describe("extractRecords — matrix id 1a (rows × all-field, round-trip)", () =
     const records = extractRecords(tidyRegion(), tidyWorkbook().sheets[0]);
     expect(records).toHaveLength(2);
     expect(records[0].fields).toEqual({
-      "col-email": "a@x.com",
-      "col-name": "alice",
-      "col-age": 30,
+      email: "a@x.com",
+      name: "alice",
+      age: 30,
     });
     expect(records[1].fields).toEqual({
-      "col-email": "b@x.com",
-      "col-name": "bob",
-      "col-age": 25,
+      email: "b@x.com",
+      name: "bob",
+      age: 25,
     });
   });
 });

@@ -96,14 +96,14 @@ describe("extractRecords — 1D headerAxes:['column'] (records-are-columns)", ()
     expect(records).toHaveLength(4);
   });
 
-  it("keys each record's fields by ColumnDefinition id for row-labeled fields", () => {
+  it("keys each record's fields by the binding's source-field name for row-labeled fields", () => {
     const records = extractRecords(
       monthlyRegion(),
       monthlyWorkbook().sheets[0]
     );
-    expect(records[0].fields["col-revenue"]).toBe(100);
-    expect(records[0].fields["col-cost"]).toBe(80);
-    expect(records[2].fields["col-revenue"]).toBe(130);
+    expect(records[0].fields["Revenue"]).toBe(100);
+    expect(records[0].fields["Cost"]).toBe(80);
+    expect(records[2].fields["Revenue"]).toBe(130);
   });
 
   it("falls back to col-{N} source_id for rowPosition identity with records-are-columns", () => {

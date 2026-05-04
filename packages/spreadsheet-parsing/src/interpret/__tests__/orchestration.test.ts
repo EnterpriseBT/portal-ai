@@ -105,20 +105,20 @@ describe("interpret() — orchestration", () => {
       true
     );
     expect(records.every((r) => r.regionId === plan.regions[0].id)).toBe(true);
-    expect(records.map((r) => r.fields["col-email"])).toEqual([
+    expect(records.map((r) => r.fields["email"])).toEqual([
       "a@x.com",
       "b@x.com",
       "c@x.com",
     ]);
-    expect(records.map((r) => r.fields["col-name"])).toEqual([
+    expect(records.map((r) => r.fields["name"])).toEqual([
       "alice",
       "bob",
       "carol",
     ]);
-    expect(records.map((r) => r.fields["col-age"])).toEqual([30, 25, 40]);
+    expect(records.map((r) => r.fields["age"])).toEqual([30, 25, 40]);
   });
 
-  it("injected classifier round-trips through extractRecords — overrides appear as field keys", async () => {
+  it("injected classifier round-trips through extractRecords — fields keyed by source-header name", async () => {
     const input = contactsInput();
     const plan = await interpret(input, {
       classifier: async (candidates) =>
@@ -134,9 +134,9 @@ describe("interpret() — orchestration", () => {
     const sheet = makeSheetAccessor(input.workbook.sheets[0]);
     const records = extractRecords(plan.regions[0], sheet);
     expect(records).toHaveLength(3);
-    expect(records[0].fields["override-email"]).toBe("a@x.com");
-    expect(records[0].fields["override-name"]).toBe("alice");
-    expect(records[0].fields["override-age"]).toBe(30);
+    expect(records[0].fields["email"]).toBe("a@x.com");
+    expect(records[0].fields["name"]).toBe("alice");
+    expect(records[0].fields["age"]).toBe(30);
   });
 
   it("detect-segments classifies Jan/Feb as a month pivot and preserves the hint's user-supplied cellValueField", async () => {
