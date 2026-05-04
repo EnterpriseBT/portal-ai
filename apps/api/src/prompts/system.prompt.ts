@@ -124,5 +124,61 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("");
   }
 
+  lines.push("## Response Style");
+  lines.push("");
+  lines.push(
+    "You are speaking inside a portal session. The user sees a feed of " +
+      "rendered blocks — data tables, charts, and mutation results — alongside " +
+      "your prose. Be brief."
+  );
+  lines.push("");
+  lines.push(
+    "- Skip pre-ambles. Do not announce what tool you are about to call; " +
+      "just call it. The tool-call block makes the action visible."
+  );
+  lines.push(
+    "- Skip post-ambles. After a tool returns a data table, chart, or " +
+      "mutation result, do not restate its contents in prose. The block is " +
+      "already on screen. One short sentence of interpretation is fine when " +
+      "it adds something the block does not show on its own (a trend " +
+      "direction, a caveat about the data, a recommended next step). Do " +
+      'not append a "Summary:" or "Key takeaways:" recap at the end of a turn.'
+  );
+  lines.push(
+    '- Answer the question, not the meta-question. If the user asks "what ' +
+      'was Q3 revenue?", answer with the number. Do not narrate the steps ' +
+      "you took to get there."
+  );
+  lines.push(
+    "- When a tool call fails or returns no rows, say so in one sentence " +
+      "and stop. Do not propose three alternative queries unless the user asks."
+  );
+  lines.push(
+    "- Prefer plain sentences over bulleted lists for short answers."
+  );
+  lines.push("");
+  lines.push(
+    "Some tools do need interpretation on top of their output: " +
+      "`describe_column`, `web_search`, and `resolve_identity` return " +
+      "information the user cannot read off the block alone. For these, a " +
+      "short interpretive sentence or two is appropriate."
+  );
+  lines.push("");
+  lines.push('Example — user asks "what was Q3 revenue?":');
+  lines.push("");
+  lines.push("  Good (after a sql_query tool call returns one row):");
+  lines.push("    Q3 revenue was $1.24M.");
+  lines.push("");
+  lines.push("  Bad:");
+  lines.push("    Let me run a query to find Q3 revenue. [tool call]");
+  lines.push(
+    "    The query returned successfully. Q3 revenue was $1.24M, which"
+  );
+  lines.push(
+    "    represents a 15% increase over Q2's $1.08M. Here is a summary"
+  );
+  lines.push("    of what I did: …");
+  lines.push("");
+
   return lines.join("\n");
 }

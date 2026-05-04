@@ -203,3 +203,90 @@ describe("buildSystemPrompt — entity management notes", () => {
     expect(prompt).not.toContain("Entity Management Notes");
   });
 });
+
+describe("buildSystemPrompt — response style", () => {
+  it("includes ## Response Style for every toolPack composition", () => {
+    const compositions: StationContext["toolPacks"][] = [
+      [],
+      ["data_query"],
+      ["entity_management"],
+      ["data_query", "entity_management"],
+    ];
+
+    for (const toolPacks of compositions) {
+      const prompt = buildSystemPrompt(makeContext({ toolPacks }));
+      expect(prompt).toContain("## Response Style");
+    }
+  });
+
+  it("places ## Response Style after all other sections", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        toolPacks: ["data_query", "entity_management"],
+        entityGroups: [
+          {
+            id: "eg-1",
+            name: "People graph",
+            members: [
+              {
+                entityKey: "contacts",
+                linkColumnKey: "email",
+                linkColumnLabel: "Email",
+                isPrimary: true,
+              },
+              {
+                entityKey: "orders",
+                linkColumnKey: "customer_email",
+                linkColumnLabel: "Customer Email",
+                isPrimary: false,
+              },
+            ],
+          },
+        ],
+        entityCapabilities: {
+          "entity-1": { read: true, write: true, push: false },
+          "entity-2": { read: true, write: false, push: false },
+        },
+      })
+    );
+
+    const responseStyleIdx = prompt.indexOf("## Response Style");
+    expect(responseStyleIdx).toBeGreaterThan(prompt.indexOf("## Available Data"));
+    expect(responseStyleIdx).toBeGreaterThan(
+      prompt.indexOf("## Cross-Entity Relationships")
+    );
+    expect(responseStyleIdx).toBeGreaterThan(
+      prompt.indexOf("## Entity Management Notes")
+    );
+  });
+
+  it("contains all wording invariants", () => {
+    const prompt = buildSystemPrompt(makeContext());
+
+    const invariants = [
+      "## Response Style",
+      "Skip pre-ambles",
+      "Skip post-ambles",
+      "Summary:",
+      "Key takeaways:",
+      "describe_column",
+      "web_search",
+      "resolve_identity",
+      "Q3 revenue was $1.24M",
+    ];
+
+    for (const phrase of invariants) {
+      expect(prompt).toContain(phrase);
+    }
+  });
+
+  it("contains the good/bad example pair", () => {
+    const prompt = buildSystemPrompt(makeContext());
+
+    const goodIdx = prompt.indexOf("Good");
+    const badIdx = prompt.indexOf("Bad");
+    expect(goodIdx).toBeGreaterThan(-1);
+    expect(badIdx).toBeGreaterThan(goodIdx);
+    expect(badIdx - goodIdx).toBeLessThan(250);
+  });
+});

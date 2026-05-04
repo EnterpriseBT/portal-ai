@@ -32,10 +32,7 @@ import {
   preserveUserRegionConfig,
   regionDraftsToHints,
 } from "./utils/layout-plan-mapping.util";
-import {
-  buildIdentityUpdater,
-  resolveLocatorOptionsFor,
-} from "../../modules/RegionEditor/utils/identity-panel-wiring.util";
+import { lockPlanIdentityToRowPosition } from "./utils/lock-identity.util";
 
 import { sdk, queryKeys } from "../../api/sdk";
 import { putToS3 } from "../../api/file-uploads.api";
@@ -321,14 +318,6 @@ export const FileUploadConnectorWorkflowUI: React.FC<
                   resolveColumnDefinitionDescription
                 }
                 resolveColumnLabel={resolveColumnLabel}
-                resolveIdentityLocatorOptions={(region) =>
-                  resolveLocatorOptionsFor(workbook, region)
-                }
-                onIdentityUpdate={buildIdentityUpdater({
-                  workbook,
-                  regions,
-                  onRegionUpdate,
-                })}
                 onCommit={onCommit}
                 onBack={onBack}
                 isCommitting={isCommitting}
@@ -495,7 +484,9 @@ export const FileUploadConnectorWorkflow: React.FC<
         uploadSessionId,
         regionHints: regionDraftsToHints(workbook, regions),
       });
-      const plan = preserveUserRegionConfig(res.plan, regions);
+      const plan = lockPlanIdentityToRowPosition(
+        preserveUserRegionConfig(res.plan, regions)
+      );
       return {
         regions: planRegionsToDrafts(plan, workbook),
         plan,

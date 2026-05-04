@@ -171,3 +171,44 @@ describe("FileUploadReviewStepUI — server error", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+describe("FileUploadReviewStepUI — identity locked to row position", () => {
+  test("does not render the IdentityPanel when identity props are not wired", () => {
+    // The container intentionally omits `resolveIdentityLocatorOptions` and
+    // `onIdentityUpdate` for file-upload — every region is locked to
+    // rowPosition, so there's no identity decision for the user to make.
+    render(<FileUploadReviewStepUI {...makeProps()} />);
+    expect(screen.queryByText(/Record identity/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No stable identity/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Use position-based ids/i)
+    ).not.toBeInTheDocument();
+  });
+
+  test("does not surface ROW_POSITION_IDENTITY warning chips", () => {
+    // The lock helper strips ROW_POSITION_IDENTITY warnings before regions
+    // reach the review step; assert no warning surface displays the code
+    // even when other regions carry unrelated warnings.
+    const regionWithOtherWarning: RegionDraft = {
+      ...POST_INTERPRET_REGIONS[0],
+      warnings: [
+        {
+          code: "MULTIPLE_HEADER_CANDIDATES",
+          severity: "warn",
+          message: "Multiple rows scored similarly as the header.",
+        },
+      ],
+    };
+    render(
+      <FileUploadReviewStepUI
+        {...makeProps({ regions: [regionWithOtherWarning] })}
+      />
+    );
+    expect(
+      screen.queryByText(/ROW_POSITION_IDENTITY/i)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/falls back to row position/i)
+    ).not.toBeInTheDocument();
+  });
+});
