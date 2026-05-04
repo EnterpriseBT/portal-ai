@@ -197,4 +197,7 @@ export const queryKeys = {
   googleSheets: {
     root: ["googleSheets"] as const,
   },
+  microsoftExcel: {
+    root: ["microsoftExcel"] as const,
+  },
 };

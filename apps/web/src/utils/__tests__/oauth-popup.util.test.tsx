@@ -2,9 +2,9 @@ import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals
 import { renderHook, act } from "@testing-library/react";
 
 import {
-  useGooglePopupAuthorize,
   PopupClosedError,
-} from "../google-sheets-popup.util";
+  useOAuthPopupAuthorize,
+} from "../oauth-popup.util";
 
 const ALLOWED_ORIGIN = "http://localhost:3001";
 
@@ -40,10 +40,13 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-describe("useGooglePopupAuthorize", () => {
+describe("useOAuthPopupAuthorize — slug=google-sheets", () => {
   it("opens the consent URL synchronously inside the click handler", () => {
     const { result } = renderHook(() =>
-      useGooglePopupAuthorize({ allowedOrigin: ALLOWED_ORIGIN })
+      useOAuthPopupAuthorize({
+        slug: "google-sheets",
+        allowedOrigin: ALLOWED_ORIGIN,
+      })
     );
     let promise!: Promise<unknown>;
     act(() => {
@@ -52,10 +55,9 @@ describe("useGooglePopupAuthorize", () => {
     expect(openSpy).toHaveBeenCalledTimes(1);
     expect(openSpy).toHaveBeenCalledWith(
       "https://accounts.google.com/o/oauth2/auth",
-      expect.any(String),
+      "google-sheets-oauth",
       expect.any(String)
     );
-    // resolve the promise so afterEach doesn't leak.
     act(() => {
       dispatchMessage(
         {
@@ -71,7 +73,10 @@ describe("useGooglePopupAuthorize", () => {
 
   it("resolves with the postMessage payload on the right origin + type", async () => {
     const { result } = renderHook(() =>
-      useGooglePopupAuthorize({ allowedOrigin: ALLOWED_ORIGIN })
+      useOAuthPopupAuthorize({
+        slug: "google-sheets",
+        allowedOrigin: ALLOWED_ORIGIN,
+      })
     );
     let resolved!: { connectorInstanceId: string; accountInfo: unknown };
     let pending!: Promise<unknown>;
@@ -101,11 +106,10 @@ describe("useGooglePopupAuthorize", () => {
 
   it("falls back to the redirect_uri's origin when allowedOrigin is empty/wildcard", async () => {
     const { result } = renderHook(() =>
-      useGooglePopupAuthorize({ allowedOrigin: "" })
+      useOAuthPopupAuthorize({ slug: "google-sheets", allowedOrigin: "" })
     );
     let resolved: { connectorInstanceId: string } | null = null;
     let pending!: Promise<unknown>;
-    // Consent URL with redirect_uri pointing at the API origin.
     const consentUrl = `https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=${encodeURIComponent(
       "http://localhost:3001/api/connectors/google-sheets/callback"
     )}&client_id=x&response_type=code`;
@@ -114,8 +118,6 @@ describe("useGooglePopupAuthorize", () => {
         resolved = v;
       });
     });
-    // Message from the redirect_uri's origin must be accepted, even
-    // though `allowedOrigin: ""` was passed.
     act(() => {
       dispatchMessage(
         {
@@ -135,7 +137,10 @@ describe("useGooglePopupAuthorize", () => {
 
   it("ignores messages from the wrong origin (popup stays open)", () => {
     const { result } = renderHook(() =>
-      useGooglePopupAuthorize({ allowedOrigin: ALLOWED_ORIGIN })
+      useOAuthPopupAuthorize({
+        slug: "google-sheets",
+        allowedOrigin: ALLOWED_ORIGIN,
+      })
     );
     act(() => {
       void result.current.start("https://accounts.google.com/o/oauth2/auth");
@@ -149,16 +154,19 @@ describe("useGooglePopupAuthorize", () => {
     expect(fakePopup.closed).toBe(false);
   });
 
-  it("ignores messages whose type doesn't match", () => {
+  it("ignores messages whose type doesn't match the slug", () => {
     const { result } = renderHook(() =>
-      useGooglePopupAuthorize({ allowedOrigin: ALLOWED_ORIGIN })
+      useOAuthPopupAuthorize({
+        slug: "google-sheets",
+        allowedOrigin: ALLOWED_ORIGIN,
+      })
     );
     act(() => {
       void result.current.start("https://accounts.google.com/o/oauth2/auth");
     });
     act(() => {
       dispatchMessage(
-        { type: "something-else", connectorInstanceId: "x" },
+        { type: "microsoft-excel-authorized", connectorInstanceId: "x" },
         ALLOWED_ORIGIN
       );
     });
@@ -167,7 +175,10 @@ describe("useGooglePopupAuthorize", () => {
 
   it("rejects with PopupClosedError after the 5-minute timeout when no message arrives", async () => {
     const { result } = renderHook(() =>
-      useGooglePopupAuthorize({ allowedOrigin: ALLOWED_ORIGIN })
+      useOAuthPopupAuthorize({
+        slug: "google-sheets",
+        allowedOrigin: ALLOWED_ORIGIN,
+      })
     );
     let rejected: unknown;
     let pending!: Promise<unknown>;
@@ -178,9 +189,6 @@ describe("useGooglePopupAuthorize", () => {
           rejected = err;
         });
     });
-    // Advance past the 5-minute popup timeout. We don't poll
-    // popup.closed (Chrome lies about it under COOP) — only the
-    // timeout can reject.
     act(() => {
       jest.advanceTimersByTime(5 * 60 * 1000 + 100);
     });
@@ -190,10 +198,12 @@ describe("useGooglePopupAuthorize", () => {
 
   it("removes the message listener on resolve (no leftover listeners catch a second flow)", async () => {
     const { result } = renderHook(() =>
-      useGooglePopupAuthorize({ allowedOrigin: ALLOWED_ORIGIN })
+      useOAuthPopupAuthorize({
+        slug: "google-sheets",
+        allowedOrigin: ALLOWED_ORIGIN,
+      })
     );
 
-    // First start — resolve normally.
     let firstResolved: { connectorInstanceId: string } | null = null;
     let firstPending!: Promise<unknown>;
     act(() => {
@@ -219,11 +229,14 @@ describe("useGooglePopupAuthorize", () => {
       accountInfo: { identity: null, metadata: {} },
     });
 
-    // Reset popup so the second flow starts clean.
-    fakePopup = { closed: false, close() { this.closed = true; } };
+    fakePopup = {
+      closed: false,
+      close() {
+        this.closed = true;
+      },
+    };
     openSpy.mockReturnValue(fakePopup as unknown as Window);
 
-    // Second start — a fresh listener picks up the second message.
     let secondResolved: { connectorInstanceId: string } | null = null;
     let secondPending!: Promise<unknown>;
     act(() => {
@@ -244,11 +257,68 @@ describe("useGooglePopupAuthorize", () => {
       );
     });
     await secondPending;
-    // Must be ci-2 — if a stale listener from the first flow is still
-    // around, it would have re-resolved with ci-1 (or thrown).
     expect(secondResolved).toEqual({
       connectorInstanceId: "ci-2",
       accountInfo: { identity: null, metadata: {} },
+    });
+  });
+});
+
+describe("useOAuthPopupAuthorize — slug=microsoft-excel", () => {
+  it("opens with the slug-derived popup name and resolves only on the matching message type", async () => {
+    const { result } = renderHook(() =>
+      useOAuthPopupAuthorize({
+        slug: "microsoft-excel",
+        allowedOrigin: ALLOWED_ORIGIN,
+      })
+    );
+    let resolved: { connectorInstanceId: string } | null = null;
+    let pending!: Promise<unknown>;
+    act(() => {
+      pending = result.current
+        .start("https://login.microsoftonline.com/common/oauth2/v2.0/authorize")
+        .then((v) => {
+          resolved = v;
+        });
+    });
+    expect(openSpy).toHaveBeenCalledWith(
+      expect.any(String),
+      "microsoft-excel-oauth",
+      expect.any(String)
+    );
+    // A google-sheets message must be ignored even from the right origin.
+    act(() => {
+      dispatchMessage(
+        {
+          type: "google-sheets-authorized",
+          connectorInstanceId: "ci-google",
+          accountInfo: { identity: null, metadata: {} },
+        },
+        ALLOWED_ORIGIN
+      );
+    });
+    expect(resolved).toBeNull();
+    // The microsoft-excel message resolves.
+    act(() => {
+      dispatchMessage(
+        {
+          type: "microsoft-excel-authorized",
+          connectorInstanceId: "ci-msft",
+          accountInfo: {
+            identity: "alice@contoso.com",
+            metadata: { tenantId: "t-1" },
+          },
+        },
+        ALLOWED_ORIGIN
+      );
+    });
+    await pending;
+    expect(resolved).toEqual({
+      connectorInstanceId: "ci-msft",
+      accountInfo: {
+        identity: "alice@contoso.com",
+        metadata: { tenantId: "t-1" },
+      },
     });
   });
 });

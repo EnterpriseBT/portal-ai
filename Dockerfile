@@ -26,6 +26,10 @@ RUN apt-get update && apt-get install -y \
     && dpkg -i /tmp/ssm.deb \
     && rm /tmp/ssm.deb
 
+# AWS CLI v2 pages output through `less` by default; `less` isn't installed
+# in this image, so disable the pager globally.
+ENV AWS_PAGER=""
+
 # Install Docker CLI (for building/pushing images via host Docker socket)
 RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" \

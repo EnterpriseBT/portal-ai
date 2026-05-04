@@ -9,8 +9,9 @@ const logger = createLogger({ module: "workbook-cache" });
 /**
  * Redis-backed cache for parsed `WorkbookData`, TTL'd per
  * `FILE_UPLOAD_CACHE_TTL_SEC`. Callers own the cache key (and its
- * prefix) — `upload-session:{id}` for file-upload, `gsheets:wb:{id}`
- * for google-sheets, etc. Miss handling is the caller's
+ * prefix) — `upload-session:{id}` for file-upload,
+ * `connector:wb:<slug>:{id}` for OAuth-driven connectors (see
+ * `utils/connector-cache-keys.util.ts`). Miss handling is the caller's
  * responsibility: parse-from-source-and-refill is transparent to the
  * client.
  */

@@ -101,7 +101,18 @@ export const ConnectorInstanceView = ({
     enabled: deleteDialogOpen,
   });
   const syncState = useConnectorInstanceSync(connectorInstanceId);
-  const reconnectState = useReconnectConnectorInstance(connectorInstanceId);
+  // Read slug off the cached connector-instance query so the reconnect
+  // hook can dispatch to the right SDK group + popup hook. Same query
+  // key as `ConnectorInstanceDataItem` below — React Query dedups, so
+  // this isn't a second network round-trip.
+  const instanceQueryForSlug = sdk.connectorInstances.get(connectorInstanceId);
+  const definitionSlug =
+    instanceQueryForSlug.data?.connectorInstance.connectorDefinition?.slug ??
+    "";
+  const reconnectState = useReconnectConnectorInstance(
+    connectorInstanceId,
+    definitionSlug
+  );
 
   const handleDelete = useCallback(() => {
     deleteMutation.mutate(undefined, {

@@ -20,10 +20,12 @@ Parameters:
     Description: Origin allowed to PUT to the upload bucket (browser CORS)
   Cpu:
     Type: Number
-    Default: 256
+    Default: 1024
+    Description: Fargate task vCPU units. 1024 = 1 vCPU. Sized to give the synchronous XLSX parse path enough headroom under the 250 MB upload cap.
   Memory:
     Type: Number
-    Default: 512
+    Default: 2048
+    Description: Fargate task memory (MB). 2048 = 2 GB. ExcelJS holds the full workbook in memory plus a decompressed object tree (~6–9× input size); 2 GB keeps a 250 MB XLSX parse safely under the OOM cap with concurrent-request headroom.
   DesiredCount:
     Type: Number
     Default: 1
@@ -60,6 +62,9 @@ Parameters:
   SecretArnGoogleOauthClientSecret:
     Type: String
     Description: Full ARN of portalai/{env}/google-oauth-client-secret secret
+  SecretArnMicrosoftOauthClientSecret:
+    Type: String
+    Description: Full ARN of portalai/{env}/microsoft-oauth-client-secret secret
   SecretArnOauthStateSecret:
     Type: String
     Description: Full ARN of portalai/{env}/oauth-state-secret secret
@@ -336,6 +341,13 @@ Resources:
       LoadBalancerAttributes:
         - Key: routing.http.drop_invalid_header_fields.enabled
           Value: "true"
+        # Synchronous XLSX parse on the request handler can take 60–90 s for
+        # workbooks near the 250 MB upload cap (ExcelJS does a full buffer
+        # load + sync parse). The AWS default idle timeout of 60 s would
+        # 504 those requests even though the task is still working. Bump
+        # to 180 s; revisit if/when parse moves to a Bull worker.
+        - Key: idle_timeout.timeout_seconds
+          Value: "180"
       Tags:
         - Key: Name
           Value: !Sub "portalai-${Environment}-alb"
@@ -441,6 +453,8 @@ Resources:
               Value: uploads
             - Name: GOOGLE_OAUTH_REDIRECT_URI
               Value: !Sub "https://api-${Environment}.portalsai.io/api/connectors/google-sheets/callback"
+            - Name: MICROSOFT_OAUTH_REDIRECT_URI
+              Value: !Sub "https://api-${Environment}.portalsai.io/api/connectors/microsoft-excel/callback"
             - Name: REDIS_URL
               Value: !Sub
                 - "redis://${Endpoint}:${Port}"
@@ -461,10 +475,16 @@ Resources:
               ValueFrom: !Ref SecretArnTavilyApiKey
             - Name: GOOGLE_OAUTH_CLIENT_SECRET
               ValueFrom: !Ref SecretArnGoogleOauthClientSecret
+            - Name: MICROSOFT_OAUTH_CLIENT_SECRET
+              ValueFrom: !Ref SecretArnMicrosoftOauthClientSecret
             - Name: OAUTH_STATE_SECRET
               ValueFrom: !Ref SecretArnOauthStateSecret
             - Name: GOOGLE_OAUTH_CLIENT_ID
               ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/google-oauth-client-id"
+            - Name: MICROSOFT_OAUTH_CLIENT_ID
+              ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/microsoft-oauth-client-id"
+            - Name: MICROSOFT_OAUTH_TENANT
+              ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/microsoft-oauth-tenant"
             - Name: AUTH0_DOMAIN
               ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/auth0-domain"
             - Name: AUTH0_AUDIENCE

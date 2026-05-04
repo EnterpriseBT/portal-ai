@@ -11,7 +11,7 @@
  *
  * The OAuth callback HTML returns directly to the user's browser via
  * Google's redirect; that path doesn't go through the SDK — the popup
- * hook (`useGooglePopupAuthorize`) listens for the postMessage instead.
+ * hook (`useOAuthPopupAuthorize`) listens for the postMessage instead.
  */
 
 import type {

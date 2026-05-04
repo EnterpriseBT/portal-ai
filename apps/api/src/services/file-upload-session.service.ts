@@ -47,8 +47,9 @@ import {
 
 /**
  * Cache key for an upload-session-scoped workbook. The cache service is
- * shared with google-sheets (`gsheets:wb:{id}`) — the prefix lives here
- * so the file-upload pipeline owns its namespace.
+ * shared with OAuth-driven connectors (`connector:wb:<slug>:{id}` — see
+ * `utils/connector-cache-keys.util.ts`); this prefix lives here so the
+ * file-upload pipeline owns its namespace.
  */
 function uploadSessionCacheKey(uploadSessionId: string): string {
   return `upload-session:${uploadSessionId}`;
@@ -199,10 +200,17 @@ export const FileUploadSessionService = {
         );
       }
       if (file.sizeBytes > environment.UPLOAD_MAX_FILE_SIZE_BYTES) {
+        const formatMB = (bytes: number): string =>
+          `${(bytes / 1024 / 1024).toFixed(1)} MB`;
         throw new ApiError(
           413,
           ApiCode.FILE_UPLOAD_PARSE_TOO_LARGE,
-          `"${file.fileName}" (${file.sizeBytes} bytes) exceeds ${environment.UPLOAD_MAX_FILE_SIZE_BYTES}`
+          `"${file.fileName}" is ${formatMB(file.sizeBytes)}, which exceeds the ${formatMB(environment.UPLOAD_MAX_FILE_SIZE_BYTES)} per-file upload limit.`,
+          {
+            fileName: file.fileName,
+            sizeBytes: file.sizeBytes,
+            capBytes: environment.UPLOAD_MAX_FILE_SIZE_BYTES,
+          }
         );
       }
     }

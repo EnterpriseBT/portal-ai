@@ -3,6 +3,7 @@ import cors from "cors";
 import { ApiCode } from "./constants/api-codes.constants.js";
 import { healthRouter } from "./routes/health.router.js";
 import { googleSheetsConnectorPublicRouter } from "./routes/google-sheets-connector.router.js";
+import { microsoftExcelConnectorPublicRouter } from "./routes/microsoft-excel-connector.router.js";
 import { protectedRouter } from "./routes/protected.router.js";
 import { sseRouter } from "./routes/sse.router.js";
 import { webhookRouter } from "./routes/webhook.router.js";
@@ -46,6 +47,10 @@ app.use("/api/health", healthRouter);
 // mount before protectedRouter so jwtCheck doesn't reject them. The
 // signed `state` query param is the security boundary instead.
 app.use("/api/connectors/google-sheets", googleSheetsConnectorPublicRouter);
+app.use(
+  "/api/connectors/microsoft-excel",
+  microsoftExcelConnectorPublicRouter
+);
 // SSE routes use query-param auth (sseAuth) — mount before protectedRouter
 // so the router-level jwtCheck does not reject the headerless EventSource request.
 app.use("/api/sse", sseRouter);

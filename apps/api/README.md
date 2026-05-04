@@ -288,32 +288,45 @@ npm run db:push        # pushes schema directly (dev convenience)
 - `npm run db:studio` — Open Drizzle Studio GUI
 - `npm run db:seed` — Seed the database
 
-### Connecting to the dev database
+### Operator CLI (`scripts/api-cli.sh`)
 
-The `portalai-dev` RDS instance lives in private subnets and has no public endpoint. Tunnel through the SSM-managed bastion (`infra/cloudformation/bastion.yml`) using `scripts/db-tunnel.sh`:
+Operator tasks against a deployed environment go through `scripts/api-cli.sh`, a single bash CLI that bundles two groups of commands:
+
+- **`db`** — open an SSM tunnel to RDS through the bastion, run `psql`, truncate tables, run `db:seed:ci` as an ECS one-off task.
+- **`vars`** — manage every Secrets Manager secret and SSM parameter the API task definition consumes (see `infra/cloudformation/backend.yml`).
 
 ```
-./scripts/db-tunnel.sh tunnel       # open tunnel on localhost:15432; Ctrl+C to close
-./scripts/db-tunnel.sh psql         # interactive psql through the tunnel
-./scripts/db-tunnel.sh reset        # truncate all tables (destructive)
-./scripts/db-tunnel.sh seed         # run db:seed:ci as a one-off ECS task
-./scripts/db-tunnel.sh reset-seed   # truncate, then seed
+./scripts/api-cli.sh --help                  # full reference
+./scripts/api-cli.sh db <command>            # database operations
+./scripts/api-cli.sh vars <command>          # cloud configuration
 ```
 
-Point SQLTools / Drizzle Studio / any PostgreSQL client at `localhost:15432`. Credentials come from `portalai/dev/database-url` in Secrets Manager; the script fetches and prints them on tunnel start.
+Common env vars (apply to every group): `ENV` (default `dev`) and `REGION` (default `us-east-1`). The dev container (`/workspace/Dockerfile`) ships with `aws-cli`, `session-manager-plugin`, and `postgresql-client` preinstalled — no local setup required. AWS credentials must have `ssm:StartSession` on the bastion instance for `db` commands and the relevant `secretsmanager:*` / `ssm:*` permissions for `vars` commands. The bastion is created/updated by the `Deploy bastion stack` step in `.github/workflows/deploy-dev.yml`.
 
-The dev container (`/workspace/Dockerfile`) ships with `aws-cli`, `session-manager-plugin`, and `postgresql-client` preinstalled — no local setup required. AWS credentials must have `ssm:StartSession` on the bastion instance; the bastion itself is created/updated by the `Deploy bastion stack` step in `.github/workflows/deploy-dev.yml`.
+#### Connecting to the dev database (`db` commands)
 
-Override via env vars: `ENV=dev LOCAL_PORT=15432 ./scripts/db-tunnel.sh ...`.
+The `portalai-dev` RDS instance lives in private subnets and has no public endpoint. Tunnel through the SSM-managed bastion (`infra/cloudformation/bastion.yml`):
 
-#### Using SQLTools alongside `db-tunnel.sh`
+```
+./scripts/api-cli.sh db tunnel       # open tunnel on localhost:15432; Ctrl+C to close
+./scripts/api-cli.sh db psql         # interactive psql through the tunnel
+./scripts/api-cli.sh db reset        # truncate all tables (destructive)
+./scripts/api-cli.sh db seed         # run db:seed:ci as a one-off ECS task
+./scripts/api-cli.sh db reset-seed   # truncate, then seed
+```
 
-Keep a long-lived tunnel open for your SQLTools session, and run any destructive script (`reset`, `reset-seed`, `psql`) on a different local port so the two don't fight over `15432`.
+Point SQLTools / Drizzle Studio / any PostgreSQL client at `localhost:15432`. Credentials come from `portalai/<env>/database-url` in Secrets Manager; the tunnel command fetches and prints them on startup.
+
+Tunnel-specific overrides: `LOCAL_PORT` (default `15432`), `CLUSTER` and `SERVICE` (only used by `seed` / `reset-seed`).
+
+##### Using SQLTools alongside `db tunnel`
+
+Keep a long-lived tunnel open for your SQLTools session, and run any destructive command (`reset`, `reset-seed`, `psql`) on a different local port so the two don't fight over `15432`.
 
 1. **Open the persistent tunnel** in a dedicated terminal and leave it running:
 
    ```
-   ./scripts/db-tunnel.sh tunnel
+   ./scripts/api-cli.sh db tunnel
    ```
 
 2. **Configure SQLTools** to point at the tunnel. Add a connection to `.vscode/settings.json` (or use the SQLTools UI):
@@ -340,12 +353,116 @@ Keep a long-lived tunnel open for your SQLTools session, and run any destructive
 3. **Run destructive commands on a second port** so they don't collide with the SQLTools tunnel:
 
    ```
-   LOCAL_PORT=15433 ./scripts/db-tunnel.sh reset-seed
+   LOCAL_PORT=15433 ./scripts/api-cli.sh db reset-seed
    ```
 
    After `reset-seed`, reconnect in SQLTools (the Refresh icon on the connection) — its pooled connections still reference the pre-truncate snapshot.
 
 If a run ever dies uncleanly, check for orphan plugins with `ps -ef | grep session-manager-plugin` and kill any that are no longer a child of an `aws` process.
+
+#### Managing cloud variables (`vars` commands)
+
+The API task gets its runtime environment from **four** distinct sources. Only the first two are mutable through `api-cli.sh`; the other two require editing infrastructure-as-code.
+
+##### 1. Secrets Manager — sensitive values, mutable via `vars set`
+
+Path prefix: `portalai/<env>/`. Each entry is referenced by a `SecretArn*` CloudFormation parameter (whose value is supplied per-environment by GitHub Actions; see §4).
+
+| Env var | Secret name | Purpose |
+|---------|-------------|---------|
+| `DATABASE_URL` | `database-url` | Postgres connection string for the RDS instance (user, password, host, db, sslmode). |
+| `ENCRYPTION_KEY` | `encryption-key` | Base64-encoded 32-byte key used to encrypt OAuth tokens and other sensitive fields at rest. |
+| `AUTH0_WEBHOOK_SECRET` | `auth0-webhook-secret` | Shared secret Auth0 signs `post-login` webhook payloads with. |
+| `ANTHROPIC_API_KEY` | `anthropic-api-key` | API key for Claude (Anthropic) calls used by `interpret()`. |
+| `TAVILY_API_KEY` | `tavily-api-key` | API key for Tavily search-augmented retrieval. |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | `google-oauth-client-secret` | OAuth2 client secret for the google-sheets connector. |
+| `MICROSOFT_OAUTH_CLIENT_SECRET` | `microsoft-oauth-client-secret` | OAuth2 client secret for the microsoft-excel connector (Azure app registration). |
+| `OAUTH_STATE_SECRET` | `oauth-state-secret` | HMAC key used to sign the short-lived `state` token binding an OAuth callback to its requester. Distinct from `ENCRYPTION_KEY` (signing ≠ encryption). |
+
+##### 2. SSM Parameter Store — non-sensitive config, mutable via `vars set`
+
+Path prefix: `/portalai/<env>/`. Referenced directly by ARN in the task definition.
+
+| Env var | Parameter name | Purpose |
+|---------|----------------|---------|
+| `GOOGLE_OAUTH_CLIENT_ID` | `google-oauth-client-id` | OAuth2 client id for the google-sheets connector. |
+| `MICROSOFT_OAUTH_CLIENT_ID` | `microsoft-oauth-client-id` | OAuth2 client id for the microsoft-excel connector. |
+| `MICROSOFT_OAUTH_TENANT` | `microsoft-oauth-tenant` | Azure tenant id (or `common` for multi-tenant + personal MSAs). Single-tenant deployments override with their tenant id. |
+| `AUTH0_DOMAIN` | `auth0-domain` | Auth0 tenant domain used to validate JWTs. |
+| `AUTH0_AUDIENCE` | `auth0-audience` | Auth0 API audience (`aud` claim) the API accepts. |
+| `CORS_ORIGIN` | `cors-origin` | Comma-separated list of allowed origins for browser callers. |
+| `NAMESPACE` | `namespace` | Logical environment namespace (used in deterministic UUID generation and as a logical tenant scope). |
+| `SYSTEM_ID` | `system-id` | Identity used for system-authored writes (audit `created_by` / `updated_by`). |
+
+##### 3. CloudFormation literals — set per-deploy, mutable only by editing `infra/cloudformation/backend.yml`
+
+These are baked into the task definition's `Environment` block at deploy time. Changing them requires a CloudFormation update.
+
+| Env var | Source | Purpose |
+|---------|--------|---------|
+| `PORT` | literal `"3001"` | Container port the API listens on. |
+| `NODE_ENV` | literal `production` | Standard Node mode flag. |
+| `LOG_LEVEL` | literal `info` | Pino log level. |
+| `LOG_FORMAT` | literal `json` | Forces JSON log output for CloudWatch ingestion. |
+| `BUILD_VERSION` | `!Ref BuildVersion` | Build version label (defaults to `dev`); supplied by deploy pipeline. |
+| `BUILD_SHA` | `!Ref BuildSha` | Git SHA injected at deploy time. |
+| `UPLOAD_S3_BUCKET` | `!Ref UploadBucket` | Bucket created by this stack for streaming workbook uploads. |
+| `UPLOAD_S3_REGION` | `!Ref AWS::Region` | Region of the upload bucket. |
+| `UPLOAD_S3_PREFIX` | literal `uploads` | Key prefix under which streaming uploads are written. |
+| `GOOGLE_OAUTH_REDIRECT_URI` | `https://api-<env>.portalsai.io/api/connectors/google-sheets/callback` | Public redirect URI registered in the Google OAuth app. |
+| `MICROSOFT_OAUTH_REDIRECT_URI` | `https://api-<env>.portalsai.io/api/connectors/microsoft-excel/callback` | Public redirect URI registered in the Azure app. |
+| `REDIS_URL` | `redis://${ImportedEndpoint}:${ImportedPort}` | Resolves the Redis endpoint exported by the shared infra stack. |
+
+##### 4. GitHub Actions repo secrets — consumed by the deploy workflow
+
+Set under **Settings → Secrets and variables → Actions** in the GitHub repo. Read by `.github/workflows/deploy-dev.yml`.
+
+| Secret | Purpose |
+|--------|---------|
+| `AWS_ROLE_ARN` | OIDC role assumed by every job in the workflow. |
+| `DEV_HOSTED_ZONE_ID` | Route 53 hosted-zone id for `*.portalsai.io`. |
+| `DEV_SECRET_ARN_DATABASE_URL` | Full ARN of `portalai/dev/database-url`. |
+| `DEV_SECRET_ARN_ENCRYPTION_KEY` | Full ARN of `portalai/dev/encryption-key`. |
+| `DEV_SECRET_ARN_AUTH0_WEBHOOK_SECRET` | Full ARN of `portalai/dev/auth0-webhook-secret`. |
+| `DEV_SECRET_ARN_ANTHROPIC_API_KEY` | Full ARN of `portalai/dev/anthropic-api-key`. |
+| `DEV_SECRET_ARN_TAVILY_API_KEY` | Full ARN of `portalai/dev/tavily-api-key`. |
+| `DEV_SECRET_ARN_GOOGLE_OAUTH_CLIENT_SECRET` | Full ARN of `portalai/dev/google-oauth-client-secret`. |
+| `DEV_SECRET_ARN_MICROSOFT_OAUTH_CLIENT_SECRET` | Full ARN of `portalai/dev/microsoft-oauth-client-secret`. |
+| `DEV_SECRET_ARN_OAUTH_STATE_SECRET` | Full ARN of `portalai/dev/oauth-state-secret`. |
+| `DEV_VITE_AUTH0_DOMAIN` | Frontend build-time Auth0 tenant domain. |
+| `DEV_VITE_AUTH0_CLIENT_ID` | Frontend build-time Auth0 SPA client id. |
+| `DEV_VITE_AUTH0_AUDIENCE` | Frontend build-time Auth0 API audience. |
+
+Each `DEV_SECRET_ARN_*` secret holds the **full** ARN (including the random suffix) of the matching Secrets Manager entry — partial ARNs fail with `ResourceNotFoundException` at task startup. Retrieve an ARN with:
+
+```
+aws secretsmanager describe-secret --secret-id portalai/dev/<name> --query ARN --output text
+```
+
+##### Commands
+
+```
+./scripts/api-cli.sh vars describe              # inventory + backing paths
+./scripts/api-cli.sh vars list                  # current values (secrets masked)
+UNMASK=1 ./scripts/api-cli.sh vars list         # reveal secret values
+./scripts/api-cli.sh vars get <KEY>             # print one value, unmasked
+./scripts/api-cli.sh vars set <KEY> <VALUE>     # upsert one value
+./scripts/api-cli.sh vars set <KEY> -           # upsert from stdin
+./scripts/api-cli.sh vars apply <FILE>          # bulk upsert from KEY=VALUE file
+./scripts/api-cli.sh vars template [FILE]       # write a starter file pre-filled
+                                                # with current values
+                                                # (default: ./cloud-vars.<env>.env)
+```
+
+Bulk flow for setting up a new environment or rotating values:
+
+```
+ENV=dev ./scripts/api-cli.sh vars template
+# edit ./cloud-vars.dev.env (do NOT commit — it contains plaintext secrets)
+ENV=dev ./scripts/api-cli.sh vars apply ./cloud-vars.dev.env
+```
+
+`apply` validates every key against the inventory before any write happens; an unknown key fails the whole batch. Setting a `KEY` that doesn't yet have a Secrets Manager secret will create it — the script then warns you to update the corresponding `SecretArn*` parameter in `infra/cloudformation/backend.yml` and add the matching `<ENV>_SECRET_ARN_<KEY>` GitHub repo secret (see §4) before the next deploy.
 
 ## Repositories
 

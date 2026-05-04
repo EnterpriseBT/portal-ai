@@ -48,6 +48,17 @@ export const environment = {
   GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET || "",
   GOOGLE_OAUTH_REDIRECT_URI: process.env.GOOGLE_OAUTH_REDIRECT_URI || "",
   OAUTH_STATE_SECRET: process.env.OAUTH_STATE_SECRET || "",
+  // ── Microsoft OAuth (Phase A: docs/MICROSOFT_EXCEL_CONNECTOR.phase-A.plan.md)
+  //    Per-env Microsoft identity-platform v2.0 client for the
+  //    microsoft-excel connector. `MICROSOFT_OAUTH_TENANT` defaults to
+  //    `common` (personal MSAs + work/school accounts); single-tenant
+  //    deployments override with their tenant id.
+  MICROSOFT_OAUTH_CLIENT_ID: process.env.MICROSOFT_OAUTH_CLIENT_ID || "",
+  MICROSOFT_OAUTH_CLIENT_SECRET:
+    process.env.MICROSOFT_OAUTH_CLIENT_SECRET || "",
+  MICROSOFT_OAUTH_REDIRECT_URI:
+    process.env.MICROSOFT_OAUTH_REDIRECT_URI || "",
+  MICROSOFT_OAUTH_TENANT: process.env.MICROSOFT_OAUTH_TENANT || "common",
   // Redis configuration (BullMQ + Pub/Sub)
   REDIS_URL: process.env.REDIS_URL || "redis://localhost:6380",
   // Size cap for the legacy multipart POST /api/file-uploads/parse path.
@@ -69,7 +80,7 @@ export const environment = {
   UPLOAD_S3_REGION: process.env.UPLOAD_S3_REGION || "us-east-1",
   UPLOAD_S3_PREFIX: process.env.UPLOAD_S3_PREFIX || "uploads",
   UPLOAD_S3_PRESIGN_EXPIRY_SEC: parseInt(
-    process.env.UPLOAD_S3_PRESIGN_EXPIRY_SEC || "600",
+    process.env.UPLOAD_S3_PRESIGN_EXPIRY_SEC || "1800",
     10
   ),
   UPLOAD_MAX_FILES_PER_SESSION: parseInt(
@@ -77,7 +88,7 @@ export const environment = {
     10
   ),
   UPLOAD_MAX_FILE_SIZE_BYTES: parseInt(
-    process.env.UPLOAD_MAX_FILE_SIZE_BYTES || String(500 * 1024 * 1024),
+    process.env.UPLOAD_MAX_FILE_SIZE_BYTES || String(250 * 1024 * 1024),
     10
   ),
   // Per-sheet cell-count threshold: sheets under it ship inline in the parse

@@ -27,6 +27,7 @@ import { googleSheetsToWorkbook } from "./google-sheets-workbook.service.js";
 import { WorkbookCacheService } from "./workbook-cache.service.js";
 import { googleSheetsAdapter } from "../adapters/google-sheets/google-sheets.adapter.js";
 import { environment } from "../environment.js";
+import { workbookCacheKey } from "../utils/connector-cache-keys.util.js";
 import { decryptCredentials } from "../utils/crypto.util.js";
 import {
   OAuthStateError,
@@ -48,13 +49,6 @@ const SPREADSHEET_MIME_TYPE = "application/vnd.google-apps.spreadsheet";
 const SHEETS_GET_URL_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
 
 type FetchFn = typeof fetch;
-
-/** Cache key prefix for the parsed workbook of a google-sheets instance. */
-export function googleSheetsWorkbookCacheKey(
-  connectorInstanceId: string
-): string {
-  return `gsheets:wb:${connectorInstanceId}`;
-}
 
 export interface SelectSheetInput {
   connectorInstanceId: string;
@@ -280,7 +274,7 @@ export class GoogleSheetsConnectorService {
     const title = rawTitle ?? input.spreadsheetId;
 
     await WorkbookCacheService.set(
-      googleSheetsWorkbookCacheKey(input.connectorInstanceId),
+      workbookCacheKey(GOOGLE_SHEETS_SLUG, input.connectorInstanceId),
       workbook
     );
 
@@ -401,7 +395,7 @@ export class GoogleSheetsConnectorService {
       );
     }
     const cached = await WorkbookCacheService.get(
-      googleSheetsWorkbookCacheKey(connectorInstanceId)
+      workbookCacheKey(GOOGLE_SHEETS_SLUG, connectorInstanceId)
     );
     if (!cached) {
       throw new ApiError(
@@ -429,7 +423,7 @@ export class GoogleSheetsConnectorService {
     colEnd: number;
   }): Promise<SliceResult> {
     const workbook = await WorkbookCacheService.get(
-      googleSheetsWorkbookCacheKey(input.connectorInstanceId)
+      workbookCacheKey(GOOGLE_SHEETS_SLUG, input.connectorInstanceId)
     );
     if (!workbook) {
       throw new ApiError(

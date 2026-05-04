@@ -101,11 +101,11 @@ type Db = ReturnType<typeof drizzle>;
 
 const now = Date.now();
 
-function makeConnectorDefinition(id = generateId()) {
+function makeConnectorDefinition(id = generateId(), slug = "google-sheets") {
   return {
     id,
-    slug: `file-upload-${id.slice(0, 8)}`,
-    display: "File Upload",
+    slug,
+    display: slug,
     category: "file",
     authType: "none",
     configSchema: {},
@@ -648,21 +648,29 @@ describe("Layout Plans Draft Router", () => {
   // ── connectorInstanceId path (google-sheets et al.) ────────────────
 
   /**
-   * Seed a pending google-sheets ConnectorInstance + cache its workbook
-   * in the mocked Redis under `gsheets:wb:{id}`. Mirrors what
-   * `GoogleSheetsConnectorService.selectSheet` writes in production.
+   * Seed a pending ConnectorInstance + cache its workbook under
+   * `connector:wb:<slug>:{id}`. Slug controls which resolver the
+   * dispatcher picks (google-sheets vs. microsoft-excel).
    */
-  async function seedPendingGoogleSheetsInstance(
+  async function seedPendingConnectorInstance(
     db: Db,
     organizationId: string,
-    workbook: WorkbookData
+    workbook: WorkbookData,
+    options: { definitionId?: string; slug?: string } = {}
   ): Promise<string> {
+    const slug = options.slug ?? "google-sheets";
+    let definitionId = options.definitionId;
+    if (!definitionId) {
+      const def = makeConnectorDefinition(generateId(), slug);
+      await db.insert(connectorDefinitions).values(def as never);
+      definitionId = def.id;
+    }
     const instanceId = generateId();
     await db.insert(connectorInstances).values({
       id: instanceId,
       organizationId,
-      connectorDefinitionId,
-      name: "Pending GS instance",
+      connectorDefinitionId: definitionId,
+      name: `Pending ${slug} instance`,
       status: "pending" as const,
       config: null,
       credentials: null,
@@ -676,12 +684,16 @@ describe("Layout Plans Draft Router", () => {
       deleted: null,
       deletedBy: null,
     } as never);
-    redisStore.set(`gsheets:wb:${instanceId}`, JSON.stringify(workbook));
+    redisStore.set(
+      `connector:wb:${slug}:${instanceId}`,
+      JSON.stringify(workbook)
+    );
     return instanceId;
   }
 
+
   describe("POST /api/layout-plans/interpret — connectorInstanceId path", () => {
-    it("reads the workbook from gsheets:wb:{id} cache and returns the plan", async () => {
+    it("reads the workbook from connector:wb:google-sheets:{id} cache and returns the plan", async () => {
       const emailId = await seedColumnDefinition(
         db as Db,
         organizationId,
@@ -694,10 +706,11 @@ describe("Layout Plans Draft Router", () => {
       );
       mockAnalyze.mockResolvedValue(makePlan(emailId, nameId));
 
-      const ciId = await seedPendingGoogleSheetsInstance(
+      const ciId = await seedPendingConnectorInstance(
         db as Db,
         organizationId,
-        makeWorkbook()
+        makeWorkbook(),
+        { definitionId: connectorDefinitionId, slug: "google-sheets" }
       );
 
       const res = await request(app)
@@ -710,10 +723,11 @@ describe("Layout Plans Draft Router", () => {
     });
 
     it("rejects body with both uploadSessionId and connectorInstanceId", async () => {
-      const ciId = await seedPendingGoogleSheetsInstance(
+      const ciId = await seedPendingConnectorInstance(
         db as Db,
         organizationId,
-        makeWorkbook()
+        makeWorkbook(),
+        { definitionId: connectorDefinitionId, slug: "google-sheets" }
       );
       const uploadSessionId = await seedUploadSession(
         db as Db,
@@ -749,6 +763,39 @@ describe("Layout Plans Draft Router", () => {
       expect(res.status).toBe(404);
       expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
     });
+
+    it("dispatches to the microsoft-excel resolver when the connector definition slug is microsoft-excel", async () => {
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
+      mockAnalyze.mockResolvedValue(makePlan(emailId, nameId));
+
+      // Seed a microsoft-excel-shaped instance: cache key uses the
+      // microsoft-excel slug so only the right dispatcher branch finds
+      // it. If layout-plan-draft.service hardcoded gsheets again, the
+      // cache lookup would miss and this would 404.
+      const ciId = await seedPendingConnectorInstance(
+        db as Db,
+        organizationId,
+        makeWorkbook(),
+        { slug: "microsoft-excel" }
+      );
+
+      const res = await request(app)
+        .post("/api/layout-plans/interpret")
+        .set("Authorization", "Bearer test-token")
+        .send({ connectorInstanceId: ciId, regionHints: [] });
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.plan.regions).toHaveLength(1);
+    });
   });
 
   describe("POST /api/layout-plans/commit — connectorInstanceId path", () => {
@@ -763,10 +810,11 @@ describe("Layout Plans Draft Router", () => {
         organizationId,
         "name"
       );
-      const ciId = await seedPendingGoogleSheetsInstance(
+      const ciId = await seedPendingConnectorInstance(
         db as Db,
         organizationId,
-        makeWorkbook()
+        makeWorkbook(),
+        { definitionId: connectorDefinitionId, slug: "google-sheets" }
       );
 
       const res = await request(app)
@@ -798,10 +846,11 @@ describe("Layout Plans Draft Router", () => {
         "email"
       );
       // Use a definitely-bogus columnDefinitionId in the plan so commit fails.
-      const ciId = await seedPendingGoogleSheetsInstance(
+      const ciId = await seedPendingConnectorInstance(
         db as Db,
         organizationId,
-        makeWorkbook()
+        makeWorkbook(),
+        { definitionId: connectorDefinitionId, slug: "google-sheets" }
       );
 
       const res = await request(app)

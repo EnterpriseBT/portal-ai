@@ -31,6 +31,7 @@ import { FileUploadSessionService } from "./file-upload-session.service.js";
 import { GoogleSheetsConnectorService } from "./google-sheets-connector.service.js";
 import { LayoutPlanCommitService } from "./layout-plan-commit.service.js";
 import { LayoutPlanInterpretService } from "./layout-plan-interpret.service.js";
+import { MicrosoftExcelConnectorService } from "./microsoft-excel-connector.service.js";
 import { ApiError } from "./http.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -260,10 +261,19 @@ export class LayoutPlanDraftService {
  * session id the body carries:
  *   - `uploadSessionId`     → file-upload Redis cache (`upload-session:{id}`)
  *                             with S3 re-stream fallback on cache miss.
- *   - `connectorInstanceId` → google-sheets Redis cache (`gsheets:wb:{id}`).
- *                             No fallback; cache miss is a 404.
+ *   - `connectorInstanceId` → connector workbook cache
+ *                             (`connector:wb:<slug>:{id}`). The slug
+ *                             selects between google-sheets and
+ *                             microsoft-excel resolvers. No fallback;
+ *                             cache miss is a 404.
  *
- * The contract refinement guarantees exactly one is present.
+ * Slug-based dispatch is hand-rolled here for v1 since the only two
+ * spreadsheet-OAuth connectors are google-sheets and microsoft-excel.
+ * Promote to `ConnectorAdapter.resolveWorkbook` if a third spreadsheet
+ * connector lands.
+ *
+ * The contract refinement guarantees exactly one of the two ids is
+ * present.
  */
 async function resolveWorkbook(
   body:
@@ -278,14 +288,62 @@ async function resolveWorkbook(
     );
   }
   if (body.connectorInstanceId) {
-    return GoogleSheetsConnectorService.resolveWorkbook(
-      body.connectorInstanceId,
-      organizationId
-    );
+    const slug = await loadConnectorSlug(body.connectorInstanceId);
+    switch (slug) {
+      case "google-sheets":
+        return GoogleSheetsConnectorService.resolveWorkbook(
+          body.connectorInstanceId,
+          organizationId
+        );
+      case "microsoft-excel":
+        return MicrosoftExcelConnectorService.resolveWorkbook(
+          body.connectorInstanceId,
+          organizationId
+        );
+      default:
+        throw new ApiError(
+          400,
+          ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
+          `Connector slug "${slug}" does not support layout-plan workflows`
+        );
+    }
   }
   throw new ApiError(
     400,
     ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
     "Body must include either uploadSessionId or connectorInstanceId"
   );
+}
+
+/**
+ * Resolve the connector definition's slug for a connector instance.
+ * Two roundtrips (instance → definition) is fine on this code path —
+ * called once per interpret/commit request, not in a tight loop.
+ */
+async function loadConnectorSlug(
+  connectorInstanceId: string
+): Promise<string> {
+  const instance =
+    await DbService.repository.connectorInstances.findById(
+      connectorInstanceId
+    );
+  if (!instance) {
+    throw new ApiError(
+      404,
+      ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+      `Connector instance ${connectorInstanceId} not found`
+    );
+  }
+  const definition =
+    await DbService.repository.connectorDefinitions.findById(
+      instance.connectorDefinitionId
+    );
+  if (!definition) {
+    throw new ApiError(
+      500,
+      ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+      `Connector definition ${instance.connectorDefinitionId} not found for instance ${connectorInstanceId}`
+    );
+  }
+  return definition.slug;
 }

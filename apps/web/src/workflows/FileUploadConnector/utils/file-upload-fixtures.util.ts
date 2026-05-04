@@ -25,6 +25,12 @@ export const SPREADSHEET_FILE_EXTENSIONS = [
   ".tsv",
 ] as const;
 
+// Per-file upload cap. Mirrors the API's `UPLOAD_MAX_FILE_SIZE_BYTES`
+// default (apps/api/src/environment.ts) so we can surface a clear error
+// before the upload starts; the server still enforces the real limit.
+export const MAX_UPLOAD_FILE_SIZE_BYTES = 250 * 1024 * 1024;
+export const MAX_UPLOAD_FILE_SIZE_LABEL = "250 MB";
+
 export type UploadPhase = "idle" | "uploading" | "parsing" | "parsed" | "error";
 
 export interface FileUploadProgressEntry {

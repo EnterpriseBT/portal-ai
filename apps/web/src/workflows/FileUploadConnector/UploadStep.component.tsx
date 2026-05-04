@@ -5,7 +5,10 @@ import { Box, Stack, Typography, Progress, Button } from "@portalai/core/ui";
 import { FormAlert } from "../../components/FormAlert.component";
 import type { ServerError } from "../../utils/api.util";
 import type { FileUploadProgress } from "./utils/file-upload-workflow.util";
-import { SPREADSHEET_FILE_EXTENSIONS } from "./utils/file-upload-fixtures.util";
+import {
+  MAX_UPLOAD_FILE_SIZE_LABEL,
+  SPREADSHEET_FILE_EXTENSIONS,
+} from "./utils/file-upload-fixtures.util";
 import type { UploadPhase } from "./utils/file-upload-fixtures.util";
 import { SampleFiles } from "./SampleFiles.component";
 
@@ -127,8 +130,11 @@ export const UploadStep: React.FC<UploadStepUIProps> = ({
         <Typography variant="body2" color="text.secondary">
           Drag and drop spreadsheets here, or click to browse.
         </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" color="text.secondary" display="block">
           Accepted formats: {SPREADSHEET_FILE_EXTENSIONS.join(", ")}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" display="block">
+          Maximum file size: {MAX_UPLOAD_FILE_SIZE_LABEL}
         </Typography>
       </Box>
 

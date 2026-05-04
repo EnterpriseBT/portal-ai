@@ -2,7 +2,7 @@
  * Redis-backed cache for the Google access token attached to a
  * `ConnectorInstance`'s credentials. Refreshes lazily on miss.
  *
- * - Cache key: `gsheets:access:{connectorInstanceId}`.
+ * - Cache key: `connector:access:google-sheets:{connectorInstanceId}`.
  * - TTL: `expiresIn - 600s` (10-min safety margin so an in-flight call
  *   doesn't hold a token that expires mid-request). Floored at 60s.
  * - Single-flight de-dup via in-memory Map: concurrent misses wait on
@@ -22,16 +22,18 @@ import {
   GoogleAuthError,
   GoogleAuthService,
 } from "./google-auth.service.js";
+import { accessTokenCacheKey } from "../utils/connector-cache-keys.util.js";
 import { getRedisClient } from "../utils/redis.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "google-access-token-cache" });
 
+const SLUG = "google-sheets";
 const TTL_SAFETY_MARGIN_SEC = 600;
 const TTL_FLOOR_SEC = 60;
 
 function cacheKey(connectorInstanceId: string): string {
-  return `gsheets:access:${connectorInstanceId}`;
+  return accessTokenCacheKey(SLUG, connectorInstanceId);
 }
 
 const inflight = new Map<string, Promise<string>>();

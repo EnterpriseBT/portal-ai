@@ -15,8 +15,10 @@ import {
 import type { SelectOption } from "@portalai/core/ui";
 import type { ColumnDataType } from "@portalai/core/models";
 
-import { AuthorizeStep } from "./AuthorizeStep.component";
-import type { AuthorizeStepState } from "./AuthorizeStep.component";
+import GoogleIcon from "@mui/icons-material/Google";
+
+import { OAuthAuthorizeStep } from "../../components/OAuthAuthorizeStep.component";
+import type { OAuthAuthorizeStepState } from "../../components/OAuthAuthorizeStep.component";
 import { SelectSheetStep } from "./SelectSheetStep.component";
 import { GoogleSheetsRegionDrawingStep } from "./GoogleSheetsRegionDrawingStep.component";
 import { GoogleSheetsReviewStep } from "./GoogleSheetsReviewStep.component";
@@ -25,7 +27,7 @@ import {
   useGoogleSheetsWorkflow,
 } from "./utils/google-sheets-workflow.util";
 import type { GoogleSheetsWorkflowCallbacks } from "./utils/google-sheets-workflow.util";
-import { useGooglePopupAuthorize } from "./utils/google-sheets-popup.util";
+import { useOAuthPopupAuthorize } from "../../utils/oauth-popup.util";
 import { apiOrigin } from "../../utils/api-origin.util";
 import {
   entityOptionsFromWorkbook,
@@ -74,7 +76,10 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
   const { mutateAsync: interpretMutate } = sdk.layoutPlans.interpret();
   const { mutateAsync: commitMutate } = sdk.layoutPlans.commit();
 
-  const popup = useGooglePopupAuthorize({ allowedOrigin: apiOrigin() });
+  const popup = useOAuthPopupAuthorize({
+    slug: "google-sheets",
+    allowedOrigin: apiOrigin(),
+  });
 
   const connectorInstanceIdRef = useRef<string | null>(null);
   const workbookRef = useRef<Workbook | null>(null);
@@ -208,7 +213,7 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
   // ── Authorize step ─────────────────────────────────────────────────
 
   const [authorizeState, setAuthorizeState] =
-    useState<AuthorizeStepState>("idle");
+    useState<OAuthAuthorizeStepState>("idle");
   const [authorizeError, setAuthorizeError] = useState<string | undefined>();
 
   const handleConnect = useCallback(async () => {
@@ -439,13 +444,16 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
           activeStep={workflow.step}
         >
           <StepPanel index={0} activeStep={workflow.step}>
-            <AuthorizeStep
+            <OAuthAuthorizeStep
               state={authorizeState}
               accountIdentity={workflow.accountInfo?.identity ?? null}
               error={authorizeError}
               onConnect={() => {
                 void handleConnect();
               }}
+              providerLabel="Google Sheets"
+              providerIcon={<GoogleIcon />}
+              scopesDescription="Authorize Portal.ai to read your Google Drive and Sheets. We only ever request read access — no writes, no deletions."
             />
           </StepPanel>
 
