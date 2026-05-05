@@ -253,3 +253,62 @@ describe("BindingEditorPopoverUI — validation", () => {
     expect(screen.getByRole("button", { name: /^apply$/i })).toBeDisabled();
   });
 });
+
+describe("BindingEditorPopoverUI — header status icon", () => {
+  test("renders the bound status icon when the draft has a columnDefinitionId, no errors, and is not excluded", () => {
+    setup();
+    expect(
+      screen.getByTestId("binding-state-icon-bound")
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^bound — /i)).toBeInTheDocument();
+  });
+
+  test("renders the unbound status icon when the draft has no columnDefinitionId", () => {
+    setup({
+      draft: {
+        ...baseBinding,
+        columnDefinitionId: null,
+        columnDefinitionLabel: undefined,
+      },
+    });
+    expect(
+      screen.getByTestId("binding-state-icon-unbound")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/^unbound — pick a column definition/i)
+    ).toBeInTheDocument();
+  });
+
+  test("renders the invalid status icon when form errors are present", () => {
+    setup({ errors: { normalizedKey: "oops" } });
+    expect(
+      screen.getByTestId("binding-state-icon-invalid")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/^invalid — fix the field errors/i)
+    ).toBeInTheDocument();
+  });
+
+  test("renders the excluded status icon when the draft is excluded", () => {
+    setup({ draft: { ...baseBinding, excluded: true } });
+    expect(
+      screen.getByTestId("binding-state-icon-excluded")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/^excluded — no field mapping/i)
+    ).toBeInTheDocument();
+  });
+
+  test("excluded takes precedence over invalid form errors", () => {
+    setup({
+      draft: { ...baseBinding, excluded: true },
+      errors: { normalizedKey: "oops" },
+    });
+    expect(
+      screen.getByTestId("binding-state-icon-excluded")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("binding-state-icon-invalid")
+    ).not.toBeInTheDocument();
+  });
+});

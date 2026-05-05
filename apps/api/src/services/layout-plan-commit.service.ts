@@ -174,6 +174,13 @@ export class LayoutPlanCommitService {
       // `columnDefinitionId` — colDefId-keyed fields would silently
       // overwrite each other in `record.fields`.
       for (const binding of region.columnBindings as ColumnBinding[]) {
+        // Skip bindings without a columnDefinitionId — the schema's
+        // refinement enforces this can only happen when `excluded: true`,
+        // and excluded bindings contribute no FieldMapping row anyway
+        // (reconcile filters them at `field-mappings/reconcile.ts:133`).
+        // Skipping here keeps the bucket strictly typed and avoids a
+        // narrow-via-nonnull-assertion at the push site.
+        if (!binding.columnDefinitionId) continue;
         const sourceField = sourceFieldFromBinding(binding);
         bucket.push({
           columnDefinitionId: binding.columnDefinitionId,

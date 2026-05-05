@@ -7,6 +7,7 @@ import {
   PROPOSED_REGIONS,
   BLOCKER_REGIONS,
   DRIFT_REGIONS,
+  MANY_CHIPS_REGIONS,
 } from "./utils/region-editor-fixtures.util";
 
 const columnDefinitionSearch = {
@@ -41,6 +42,18 @@ export const MixedConfidence: Story = {
   args: {
     regions: PROPOSED_REGIONS,
     overallConfidence: 0.78,
+    onJumpToRegion: fn(),
+    onEditBinding: fn(),
+    onCommit: fn(),
+    onBack: fn(),
+  },
+};
+
+export const LongRegionWithFilter: Story = {
+  name: "Long region (>8 chips, filter input visible)",
+  args: {
+    regions: MANY_CHIPS_REGIONS,
+    overallConfidence: 0.84,
     onJumpToRegion: fn(),
     onEditBinding: fn(),
     onCommit: fn(),

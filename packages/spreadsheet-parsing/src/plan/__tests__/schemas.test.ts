@@ -1085,6 +1085,49 @@ describe("ColumnBindingSchema — user overrides", () => {
     }
     expect(result.success).toBe(true);
   });
+
+  it("accepts excluded: true with columnDefinitionId: null", () => {
+    // Real-world state: AI proposes a binding with confidence + rationale
+    // but no catalog match (e.g., a numeric "Citations" column with no
+    // number-typed ColumnDefinition in the org's catalog), and the user
+    // toggles Omit. Reconcile drops excluded bindings before any
+    // columnDefinitionId read, so a null here is safe.
+    const result = ColumnBindingSchema.safeParse({
+      ...baseBinding,
+      columnDefinitionId: null,
+      excluded: true,
+      rationale: "Numeric count value representing citation count",
+    });
+    if (!result.success) {
+      throw new Error(JSON.stringify(result.error.issues));
+    }
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects columnDefinitionId: null when the binding is not excluded", () => {
+    const result = ColumnBindingSchema.safeParse({
+      ...baseBinding,
+      columnDefinitionId: null,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) =>
+        i.path.includes("columnDefinitionId")
+      );
+      expect(issue?.message).toMatch(
+        /columnDefinitionId is required for non-excluded bindings/
+      );
+    }
+  });
+
+  it("rejects columnDefinitionId: null when excluded is explicitly false", () => {
+    const result = ColumnBindingSchema.safeParse({
+      ...baseBinding,
+      columnDefinitionId: null,
+      excluded: false,
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("IdentityStrategySchema — source field", () => {

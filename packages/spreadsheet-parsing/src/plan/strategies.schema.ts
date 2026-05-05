@@ -99,24 +99,42 @@ export type BindingSourceLocator = z.infer<typeof BindingSourceLocatorSchema>;
 // `FieldMappingSchema` so the plan and the materialised row agree.
 const NormalizedKeyPattern = /^[a-z][a-z0-9_]*$/;
 
-export const ColumnBindingSchema = z.object({
-  sourceLocator: BindingSourceLocatorSchema,
-  columnDefinitionId: z.string().min(1),
-  confidence: z.number().min(0).max(1),
-  rationale: z.string().optional(),
+export const ColumnBindingSchema = z
+  .object({
+    sourceLocator: BindingSourceLocatorSchema,
+    // Nullable to admit the legitimate "AI couldn't classify and the user
+    // opted out" state — a binding can carry confidence + rationale + a
+    // user override of `excluded: true` without ever picking a column
+    // definition. The refinement below keeps non-excluded bindings
+    // strictly bound. Reconcile + commit drop excluded bindings before
+    // any read of this field, so a `null` here never reaches downstream
+    // logic.
+    columnDefinitionId: z.string().min(1).nullable(),
+    confidence: z.number().min(0).max(1),
+    rationale: z.string().optional(),
 
-  // ── User overrides (see BINDING_OVERRIDES.spec.md) ────────────────
-  // All optional so prior plans without overrides remain parse-valid.
-  // Reconcile reads these at commit time and falls back to the catalog
-  // defaults when unset.
-  excluded: z.boolean().optional(),
-  normalizedKey: z.string().regex(NormalizedKeyPattern).optional(),
-  required: z.boolean().optional(),
-  defaultValue: z.string().nullable().optional(),
-  format: z.string().nullable().optional(),
-  enumValues: z.array(z.string()).nullable().optional(),
-  refEntityKey: z.string().nullable().optional(),
-  refNormalizedKey: z.string().nullable().optional(),
-});
+    // ── User overrides (see BINDING_OVERRIDES.spec.md) ────────────────
+    // All optional so prior plans without overrides remain parse-valid.
+    // Reconcile reads these at commit time and falls back to the catalog
+    // defaults when unset.
+    excluded: z.boolean().optional(),
+    normalizedKey: z.string().regex(NormalizedKeyPattern).optional(),
+    required: z.boolean().optional(),
+    defaultValue: z.string().nullable().optional(),
+    format: z.string().nullable().optional(),
+    enumValues: z.array(z.string()).nullable().optional(),
+    refEntityKey: z.string().nullable().optional(),
+    refNormalizedKey: z.string().nullable().optional(),
+  })
+  .refine(
+    (b) =>
+      b.excluded === true ||
+      (typeof b.columnDefinitionId === "string" &&
+        b.columnDefinitionId.length > 0),
+    {
+      message: "columnDefinitionId is required for non-excluded bindings",
+      path: ["columnDefinitionId"],
+    }
+  );
 
 export type ColumnBinding = z.infer<typeof ColumnBindingSchema>;
