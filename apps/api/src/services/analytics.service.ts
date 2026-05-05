@@ -20,6 +20,14 @@ import {
   BollingerBands,
   ATR,
   OBV,
+  Stochastic,
+  ADX,
+  VWAP,
+  WilliamsR,
+  CCI,
+  ROC,
+  PSAR,
+  IchimokuCloud,
 } from "technicalindicators";
 import * as financial from "financial";
 import { parse as vegaParse, View as VegaView } from "vega";
@@ -82,10 +90,21 @@ export interface DescribeColumnResult {
   mean: number;
   median: number;
   stddev: number;
+  /** Sample variance (n-1 divisor). */
+  variance: number;
+  /** Smallest value tied for highest frequency. */
+  mode: number;
   min: number;
   max: number;
   p25: number;
   p75: number;
+  /** Inter-quartile range: p75 - p25. */
+  iqr: number;
+  skewness: number;
+  /** Excess kurtosis (≈ 0 for normal, < 0 for uniform/platykurtic). */
+  kurtosis: number;
+  /** Optional map of arbitrary percentiles, keyed by the input number stringified. */
+  percentiles?: Record<string, number>;
 }
 
 export interface RegressionResult {
@@ -1063,6 +1082,7 @@ export class AnalyticsService {
   static describeColumn(params: {
     records: Record<string, unknown>[];
     column: string;
+    percentiles?: number[];
   }): DescribeColumnResult {
     const values = this.extractNumericColumn(params.records, params.column);
     if (values.length === 0) {
@@ -1071,23 +1091,45 @@ export class AnalyticsService {
         mean: 0,
         median: 0,
         stddev: 0,
+        variance: 0,
+        mode: 0,
         min: 0,
         max: 0,
         p25: 0,
         p75: 0,
+        iqr: 0,
+        skewness: 0,
+        kurtosis: 0,
       };
     }
 
-    return {
+    const p25 = ss.quantile(values, 0.25);
+    const p75 = ss.quantile(values, 0.75);
+    const result: DescribeColumnResult = {
       count: values.length,
       mean: ss.mean(values),
       median: ss.median(values),
       stddev: ss.standardDeviation(values),
+      variance: ss.sampleVariance(values),
+      mode: ss.mode(values),
       min: ss.min(values),
       max: ss.max(values),
-      p25: ss.quantile(values, 0.25),
-      p75: ss.quantile(values, 0.75),
+      p25,
+      p75,
+      iqr: p75 - p25,
+      skewness: ss.sampleSkewness(values),
+      kurtosis: ss.sampleKurtosis(values),
     };
+
+    if (params.percentiles !== undefined) {
+      const map: Record<string, number> = {};
+      for (const p of params.percentiles) {
+        map[String(p)] = ss.quantile(values, p);
+      }
+      result.percentiles = map;
+    }
+
+    return result;
   }
 
   /**
@@ -1414,7 +1456,22 @@ export class AnalyticsService {
     records: Record<string, unknown>[];
     dateColumn: string;
     valueColumn: string;
-    indicator: "SMA" | "EMA" | "RSI" | "MACD" | "BB" | "ATR" | "OBV";
+    indicator:
+      | "SMA"
+      | "EMA"
+      | "RSI"
+      | "MACD"
+      | "BB"
+      | "ATR"
+      | "OBV"
+      | "Stochastic"
+      | "ADX"
+      | "VWAP"
+      | "WilliamsR"
+      | "CCI"
+      | "ROC"
+      | "PSAR"
+      | "Ichimoku";
     params?: Record<string, unknown>;
   }): TechnicalIndicatorResult {
     const { records, dateColumn, valueColumn, indicator } = params;
@@ -1479,6 +1536,129 @@ export class AnalyticsService {
           Number(r[(extraParams.volumeColumn as string) ?? "volume"])
         );
         values = OBV.calculate({ close, volume });
+        break;
+      }
+      case "Stochastic": {
+        const stochPeriod = (extraParams.period as number) ?? 14;
+        const signalPeriod = (extraParams.signalPeriod as number) ?? 3;
+        const high = sorted.map((r) =>
+          Number(r[(extraParams.highColumn as string) ?? "high"])
+        );
+        const low = sorted.map((r) =>
+          Number(r[(extraParams.lowColumn as string) ?? "low"])
+        );
+        values = Stochastic.calculate({
+          period: stochPeriod,
+          signalPeriod,
+          high,
+          low,
+          close: closePrices,
+        }) as object[];
+        break;
+      }
+      case "ADX": {
+        const adxPeriod = (extraParams.period as number) ?? 14;
+        const high = sorted.map((r) =>
+          Number(r[(extraParams.highColumn as string) ?? "high"])
+        );
+        const low = sorted.map((r) =>
+          Number(r[(extraParams.lowColumn as string) ?? "low"])
+        );
+        values = ADX.calculate({
+          period: adxPeriod,
+          high,
+          low,
+          close: closePrices,
+        }) as object[];
+        break;
+      }
+      case "VWAP": {
+        const high = sorted.map((r) =>
+          Number(r[(extraParams.highColumn as string) ?? "high"])
+        );
+        const low = sorted.map((r) =>
+          Number(r[(extraParams.lowColumn as string) ?? "low"])
+        );
+        const volume = sorted.map((r) =>
+          Number(r[(extraParams.volumeColumn as string) ?? "volume"])
+        );
+        values = VWAP.calculate({
+          high,
+          low,
+          close: closePrices,
+          volume,
+        });
+        break;
+      }
+      case "WilliamsR": {
+        const wrPeriod = (extraParams.period as number) ?? 14;
+        const high = sorted.map((r) =>
+          Number(r[(extraParams.highColumn as string) ?? "high"])
+        );
+        const low = sorted.map((r) =>
+          Number(r[(extraParams.lowColumn as string) ?? "low"])
+        );
+        values = WilliamsR.calculate({
+          period: wrPeriod,
+          high,
+          low,
+          close: closePrices,
+        });
+        break;
+      }
+      case "CCI": {
+        const cciPeriod = (extraParams.period as number) ?? 20;
+        const high = sorted.map((r) =>
+          Number(r[(extraParams.highColumn as string) ?? "high"])
+        );
+        const low = sorted.map((r) =>
+          Number(r[(extraParams.lowColumn as string) ?? "low"])
+        );
+        values = CCI.calculate({
+          period: cciPeriod,
+          high,
+          low,
+          close: closePrices,
+        });
+        break;
+      }
+      case "ROC": {
+        const rocPeriod = (extraParams.period as number) ?? 12;
+        values = ROC.calculate({ period: rocPeriod, values: closePrices });
+        break;
+      }
+      case "PSAR": {
+        const step = (extraParams.step as number) ?? 0.02;
+        const max = (extraParams.max as number) ?? 0.2;
+        const high = sorted.map((r) =>
+          Number(r[(extraParams.highColumn as string) ?? "high"])
+        );
+        const low = sorted.map((r) =>
+          Number(r[(extraParams.lowColumn as string) ?? "low"])
+        );
+        values = PSAR.calculate({ step, max, high, low });
+        break;
+      }
+      case "Ichimoku": {
+        const conversionPeriod =
+          (extraParams.conversionPeriod as number) ?? 9;
+        const basePeriod = (extraParams.basePeriod as number) ?? 26;
+        const spanPeriod = (extraParams.spanPeriod as number) ?? 52;
+        const displacement = (extraParams.displacement as number) ?? 26;
+        const high = sorted.map((r) =>
+          Number(r[(extraParams.highColumn as string) ?? "high"])
+        );
+        const low = sorted.map((r) =>
+          Number(r[(extraParams.lowColumn as string) ?? "low"])
+        );
+        values = IchimokuCloud.calculate({
+          conversionPeriod,
+          basePeriod,
+          spanPeriod,
+          displacement,
+          high,
+          low,
+        }) as object[];
         break;
       }
       default:

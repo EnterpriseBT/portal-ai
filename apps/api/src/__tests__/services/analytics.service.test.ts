@@ -846,6 +846,120 @@ describe("AnalyticsService", () => {
       expect(result.count).toBe(0);
       expect(result.mean).toBe(0);
     });
+
+    it("includes variance, mode, skewness, kurtosis, and iqr as always-present fields", () => {
+      const result = AnalyticsService.describeColumn({
+        records: NUMERIC_RECORDS,
+        column: "x",
+      });
+      expect(typeof result.variance).toBe("number");
+      expect(Number.isFinite(result.variance)).toBe(true);
+      expect(typeof result.mode).toBe("number");
+      expect(typeof result.skewness).toBe("number");
+      expect(Number.isFinite(result.skewness)).toBe(true);
+      expect(typeof result.kurtosis).toBe("number");
+      expect(typeof result.iqr).toBe("number");
+      // 1..15 has sample variance = 280/14 = 20
+      expect(result.variance).toBeCloseTo(20, 9);
+      // Symmetric integer sequence — skewness ≈ 0
+      expect(Math.abs(result.skewness)).toBeLessThan(1e-9);
+      // Uniform-like — excess kurtosis is negative (platykurtic)
+      expect(result.kurtosis).toBeLessThan(0);
+    });
+
+    it("variance is the sample variance (n-1 divisor)", () => {
+      const records = [{ x: 1 }, { x: 2 }, { x: 3 }, { x: 4 }, { x: 5 }];
+      const result = AnalyticsService.describeColumn({ records, column: "x" });
+      // Sample variance of [1..5] = 10/4 = 2.5
+      expect(result.variance).toBe(2.5);
+    });
+
+    it("mode returns the smallest tied value on multimodal input", () => {
+      const records = [{ x: 1 }, { x: 1 }, { x: 2 }, { x: 2 }, { x: 3 }];
+      const result = AnalyticsService.describeColumn({ records, column: "x" });
+      // simple-statistics returns the smallest mode on ties
+      expect(result.mode).toBe(1);
+    });
+
+    it("skewness is positive for right-skewed data", () => {
+      const records = [
+        { x: 1 },
+        { x: 1 },
+        { x: 1 },
+        { x: 2 },
+        { x: 3 },
+        { x: 10 },
+      ];
+      const result = AnalyticsService.describeColumn({ records, column: "x" });
+      expect(result.skewness).toBeGreaterThan(0);
+    });
+
+    it("kurtosis is excess kurtosis (negative for uniform-like data)", () => {
+      const records = Array.from({ length: 100 }, (_, i) => ({ x: i }));
+      const result = AnalyticsService.describeColumn({ records, column: "x" });
+      expect(result.kurtosis).toBeLessThan(0);
+    });
+
+    it("iqr equals p75 - p25", () => {
+      const result = AnalyticsService.describeColumn({
+        records: NUMERIC_RECORDS,
+        column: "x",
+      });
+      expect(result.iqr).toBeCloseTo(result.p75 - result.p25, 9);
+    });
+
+    it("percentiles field is absent when the input is omitted", () => {
+      const result = AnalyticsService.describeColumn({
+        records: NUMERIC_RECORDS,
+        column: "x",
+      });
+      expect("percentiles" in result).toBe(false);
+    });
+
+    it("percentiles: [0.05, 0.95] returns string-keyed entries", () => {
+      const result = AnalyticsService.describeColumn({
+        records: NUMERIC_RECORDS,
+        column: "x",
+        percentiles: [0.05, 0.95],
+      });
+      expect(result.percentiles).toBeDefined();
+      expect(Object.keys(result.percentiles!)).toEqual(["0.05", "0.95"]);
+      expect(typeof result.percentiles!["0.05"]).toBe("number");
+      expect(typeof result.percentiles!["0.95"]).toBe("number");
+      expect(result.percentiles!["0.05"]).toBeLessThan(result.percentiles!["0.95"]);
+    });
+
+    it("percentiles: [0, 1] returns the min and max", () => {
+      const result = AnalyticsService.describeColumn({
+        records: NUMERIC_RECORDS,
+        column: "x",
+        percentiles: [0, 1],
+      });
+      expect(result.percentiles!["0"]).toBe(result.min);
+      expect(result.percentiles!["1"]).toBe(result.max);
+    });
+
+    it("percentiles: [] returns an empty (but present) percentiles map", () => {
+      const result = AnalyticsService.describeColumn({
+        records: NUMERIC_RECORDS,
+        column: "x",
+        percentiles: [],
+      });
+      expect(result.percentiles).toBeDefined();
+      expect(Object.keys(result.percentiles!)).toHaveLength(0);
+    });
+
+    it("empty records preserves the zero-fill behavior and omits percentiles", () => {
+      const result = AnalyticsService.describeColumn({
+        records: [],
+        column: "x",
+        percentiles: [0.5],
+      });
+      expect(result.count).toBe(0);
+      expect(result.mean).toBe(0);
+      expect(result.variance).toBe(0);
+      expect("percentiles" in result).toBe(false);
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -1496,6 +1610,193 @@ describe("AnalyticsService", () => {
           indicator: "INVALID",
         })
       ).toThrow("Unsupported indicator");
+    });
+
+    // Deterministic synthetic OHLCV fixture for the new indicators.
+    const makeOHLCV = (n: number) =>
+      Array.from({ length: n }, (_, i) => {
+        const close = 100 + Math.sin(i / 3) * 5 + i * 0.1;
+        return {
+          date: `2024-01-${String(i + 1).padStart(2, "0")}`,
+          high: close + 1,
+          low: close - 1,
+          close,
+          open: close - 0.5,
+          volume: 1000 + i * 10,
+        };
+      });
+
+    it("Stochastic returns objects with k always numeric and d numeric after the signal warmup", () => {
+      const records = makeOHLCV(30);
+      const result = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "Stochastic",
+      });
+      expect(result.values.length).toBeGreaterThan(0);
+      expect(result.dates.length).toBe(result.values.length);
+      // `k` is present on every output row; `d` is the signal SMA of `k`
+      // and is undefined during its warmup window.
+      for (const v of result.values) {
+        const obj = v as { k: number; d: number | undefined };
+        expect(typeof obj.k).toBe("number");
+      }
+      const withSignal = result.values.filter(
+        (v) => typeof (v as { d?: number }).d === "number"
+      );
+      expect(withSignal.length).toBeGreaterThan(0);
+    });
+
+    it("ADX returns objects with adx, pdi, mdi numeric fields", () => {
+      const records = makeOHLCV(30);
+      const result = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "ADX",
+      });
+      expect(result.values.length).toBeGreaterThan(0);
+      for (const v of result.values) {
+        const obj = v as { adx: number; pdi: number; mdi: number };
+        expect(typeof obj.adx).toBe("number");
+        expect(typeof obj.pdi).toBe("number");
+        expect(typeof obj.mdi).toBe("number");
+      }
+    });
+
+    it("VWAP returns numeric values aligned 1:1 with input rows", () => {
+      const records = makeOHLCV(30);
+      const result = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "VWAP",
+      });
+      expect(result.values.length).toBe(records.length);
+      expect(result.dates.length).toBe(records.length);
+      for (const v of result.values) {
+        expect(typeof v).toBe("number");
+      }
+    });
+
+    it("WilliamsR returns numeric values in [-100, 0]", () => {
+      const records = makeOHLCV(30);
+      const result = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "WilliamsR",
+      });
+      expect(result.values.length).toBeGreaterThan(0);
+      for (const v of result.values) {
+        const n = v as number;
+        expect(n).toBeLessThanOrEqual(0);
+        expect(n).toBeGreaterThanOrEqual(-100);
+      }
+    });
+
+    it("CCI returns numeric values", () => {
+      const records = makeOHLCV(30);
+      const result = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "CCI",
+      });
+      expect(result.values.length).toBeGreaterThan(0);
+      for (const v of result.values) {
+        expect(typeof v).toBe("number");
+      }
+    });
+
+    it("ROC returns numeric values", () => {
+      const records = makeOHLCV(30);
+      const result = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "ROC",
+      });
+      expect(result.values.length).toBeGreaterThan(0);
+      for (const v of result.values) {
+        expect(typeof v).toBe("number");
+      }
+    });
+
+    it("PSAR returns numeric values one-per-input-row (offset 0)", () => {
+      const records = makeOHLCV(30);
+      const result = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "PSAR",
+      });
+      expect(result.values.length).toBe(records.length);
+      for (const v of result.values) {
+        expect(typeof v).toBe("number");
+      }
+    });
+
+    it("Ichimoku returns objects with conversion, base, spanA, spanB numeric fields", () => {
+      const records = makeOHLCV(60);
+      const result = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "Ichimoku",
+      });
+      expect(result.values.length).toBeGreaterThan(0);
+      for (const v of result.values) {
+        const obj = v as {
+          conversion: number;
+          base: number;
+          spanA: number;
+          spanB: number;
+        };
+        expect(typeof obj.conversion).toBe("number");
+        expect(typeof obj.base).toBe("number");
+        expect(typeof obj.spanA).toBe("number");
+        expect(typeof obj.spanB).toBe("number");
+      }
+    });
+
+    it("custom params override the defaults", () => {
+      const records = makeOHLCV(30);
+      const stochDefault = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "Stochastic",
+      });
+      const stochCustom = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "Stochastic",
+        params: { period: 5, signalPeriod: 2 },
+      });
+      // Shorter periods produce more output rows.
+      expect(stochCustom.values.length).toBeGreaterThan(
+        stochDefault.values.length
+      );
+
+      const adxDefault = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "ADX",
+      });
+      const adxCustom = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "ADX",
+        params: { period: 5 },
+      });
+      expect(adxCustom.values.length).toBeGreaterThan(
+        adxDefault.values.length
+      );
     });
   });
 
