@@ -29,6 +29,7 @@ const InputSchema = z.object({
       "ROC",
       "PSAR",
       "Ichimoku",
+      "Donchian",
     ])
     .describe("Indicator type"),
   params: z
@@ -44,7 +45,7 @@ export class TechnicalIndicatorTool extends Tool<typeof InputSchema> {
   name = "Technical Indicator";
   description =
     "Compute a technical indicator (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, OBV, " +
-    "Stochastic, ADX, VWAP, Williams %R, CCI, ROC, PSAR, Ichimoku Cloud) on a time series.";
+    "Stochastic, ADX, VWAP, Williams %R, CCI, ROC, PSAR, Ichimoku Cloud, Donchian Channels) on a time series.";
 
   get schema() {
     return InputSchema;

@@ -1471,7 +1471,8 @@ export class AnalyticsService {
       | "CCI"
       | "ROC"
       | "PSAR"
-      | "Ichimoku";
+      | "Ichimoku"
+      | "Donchian";
     params?: Record<string, unknown>;
   }): TechnicalIndicatorResult {
     const { records, dateColumn, valueColumn, indicator } = params;
@@ -1659,6 +1660,28 @@ export class AnalyticsService {
           high,
           low,
         }) as object[];
+        break;
+      }
+      case "Donchian": {
+        // Hand-rolled — technicalindicators does not export Donchian.
+        // Upper = highest high over N periods, lower = lowest low,
+        // middle = (upper + lower) / 2. Output aligns to the right edge.
+        const dcPeriod = (extraParams.period as number) ?? 20;
+        const high = sorted.map((r) =>
+          Number(r[(extraParams.highColumn as string) ?? "high"])
+        );
+        const low = sorted.map((r) =>
+          Number(r[(extraParams.lowColumn as string) ?? "low"])
+        );
+        const out: { upper: number; middle: number; lower: number }[] = [];
+        for (let i = dcPeriod - 1; i < high.length; i++) {
+          const winHigh = high.slice(i - dcPeriod + 1, i + 1);
+          const winLow = low.slice(i - dcPeriod + 1, i + 1);
+          const upper = Math.max(...winHigh);
+          const lower = Math.min(...winLow);
+          out.push({ upper, middle: (upper + lower) / 2, lower });
+        }
+        values = out;
         break;
       }
       default:

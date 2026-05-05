@@ -1761,6 +1761,97 @@ describe("AnalyticsService", () => {
       }
     });
 
+    it("Donchian returns objects with upper, middle, lower numeric fields", () => {
+      const records = makeOHLCV(30);
+      const result = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "Donchian",
+        params: { period: 20 },
+      });
+      expect(result.values.length).toBeGreaterThan(0);
+      expect(result.dates.length).toBe(result.values.length);
+      for (const v of result.values) {
+        const obj = v as { upper: number; middle: number; lower: number };
+        expect(typeof obj.upper).toBe("number");
+        expect(typeof obj.middle).toBe("number");
+        expect(typeof obj.lower).toBe("number");
+        expect(obj.upper).toBeGreaterThanOrEqual(obj.middle);
+        expect(obj.middle).toBeGreaterThanOrEqual(obj.lower);
+        expect(obj.middle).toBeCloseTo((obj.upper + obj.lower) / 2, 9);
+      }
+    });
+
+    it("Donchian on a hand-computable fixture matches the rolling high/low", () => {
+      // 5-row fixture, period 3:
+      //   high = [10, 12, 11, 14, 13]
+      //   low  = [ 5,  6,  4,  7,  6]
+      // Window 1 (rows 0..2): upper=12, lower=4, middle=8
+      // Window 2 (rows 1..3): upper=14, lower=4, middle=9
+      // Window 3 (rows 2..4): upper=14, lower=4, middle=9
+      const records = [
+        { date: "2024-01-01", high: 10, low: 5, close: 7 },
+        { date: "2024-01-02", high: 12, low: 6, close: 9 },
+        { date: "2024-01-03", high: 11, low: 4, close: 8 },
+        { date: "2024-01-04", high: 14, low: 7, close: 12 },
+        { date: "2024-01-05", high: 13, low: 6, close: 10 },
+      ];
+      const result = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "Donchian",
+        params: { period: 3 },
+      });
+      expect(result.values).toHaveLength(3);
+      expect(result.values[0]).toEqual({ upper: 12, middle: 8, lower: 4 });
+      expect(result.values[1]).toEqual({ upper: 14, middle: 9, lower: 4 });
+      expect(result.values[2]).toEqual({ upper: 14, middle: 9, lower: 4 });
+    });
+
+    it("Donchian aligns dates to the right edge of each window", () => {
+      // Period 3 over 5 rows → 3 windows, dates align to the last row of each
+      const records = [
+        { date: "2024-01-01", high: 10, low: 5, close: 7 },
+        { date: "2024-01-02", high: 12, low: 6, close: 9 },
+        { date: "2024-01-03", high: 11, low: 4, close: 8 },
+        { date: "2024-01-04", high: 14, low: 7, close: 12 },
+        { date: "2024-01-05", high: 13, low: 6, close: 10 },
+      ];
+      const result = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "Donchian",
+        params: { period: 3 },
+      });
+      expect(result.dates).toEqual([
+        "2024-01-03",
+        "2024-01-04",
+        "2024-01-05",
+      ]);
+    });
+
+    it("Donchian default period is 20", () => {
+      const records = makeOHLCV(30);
+      const def = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "Donchian",
+      });
+      const explicit = AnalyticsService.technicalIndicator({
+        records,
+        dateColumn: "date",
+        valueColumn: "close",
+        indicator: "Donchian",
+        params: { period: 20 },
+      });
+      expect(def.values).toEqual(explicit.values);
+      expect(def.dates).toEqual(explicit.dates);
+    });
+
     it("custom params override the defaults", () => {
       const records = makeOHLCV(30);
       const stochDefault = AnalyticsService.technicalIndicator({
