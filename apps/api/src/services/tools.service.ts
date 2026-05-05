@@ -23,6 +23,8 @@ import { DescribeColumnTool } from "../tools/describe-column.tool.js";
 import { CorrelateTool } from "../tools/correlate.tool.js";
 import { DetectOutliersTool } from "../tools/detect-outliers.tool.js";
 import { ClusterTool } from "../tools/cluster.tool.js";
+import { AggregateTool } from "../tools/aggregate.tool.js";
+import { HypothesisTestTool } from "../tools/hypothesis-test.tool.js";
 import { RegressionTool } from "../tools/regression.tool.js";
 import { TrendTool } from "../tools/trend.tool.js";
 import { TechnicalIndicatorTool } from "../tools/technical-indicator.tool.js";
@@ -98,6 +100,8 @@ export class ToolService {
     "correlate",
     "detect_outliers",
     "cluster",
+    "aggregate",
+    "hypothesis_test",
     "regression",
     "trend",
     "technical_indicator",
@@ -214,6 +218,8 @@ export class ToolService {
       tools.correlate = new CorrelateTool().build(stationData);
       tools.detect_outliers = new DetectOutliersTool().build(stationData);
       tools.cluster = new ClusterTool().build(stationData);
+      tools.aggregate = new AggregateTool().build(stationData);
+      tools.hypothesis_test = new HypothesisTestTool().build(stationData);
     }
 
     // -------------------------------------------------------------------

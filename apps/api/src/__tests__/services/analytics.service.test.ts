@@ -1534,6 +1534,349 @@ describe("AnalyticsService", () => {
   });
 
   // -----------------------------------------------------------------------
+  // hypothesisTest
+  // -----------------------------------------------------------------------
+
+  describe("hypothesisTest()", () => {
+    it("t_test_one_sample returns p ≈ 0 when sample mean is far from μ₀", () => {
+      // n = 100 with mean ≈ 5; testing against μ = 0 should reject hard.
+      const records = Array.from({ length: 100 }, (_, i) => ({
+        x: 5 + (i % 5) * 0.01,
+      }));
+      const result = AnalyticsService.hypothesisTest({
+        test: "t_test_one_sample",
+        records,
+        columnA: "x",
+        mu: 0,
+      });
+      expect(result.pValue).toBeLessThan(1e-6);
+      expect(result.df).toBe(99);
+    });
+
+    it("t_test_one_sample returns p ≈ 1 when sample mean ≈ μ₀", () => {
+      // Symmetric data around 0 → t ≈ 0, p ≈ 1.
+      const records = [-2, -1, 0, 1, 2].map((x) => ({ x }));
+      const result = AnalyticsService.hypothesisTest({
+        test: "t_test_one_sample",
+        records,
+        columnA: "x",
+        mu: 0,
+      });
+      expect(result.statistic).toBeCloseTo(0, 9);
+      expect(result.pValue).toBeCloseTo(1, 9);
+      expect(result.df).toBe(4);
+    });
+
+    it("t_test_one_sample matches scipy on a [1..10] reference fixture", () => {
+      // scipy.stats.ttest_1samp([1..10], 0): t ≈ 5.7446, p ≈ 0.000277, df = 9
+      const records = Array.from({ length: 10 }, (_, i) => ({ x: i + 1 }));
+      const result = AnalyticsService.hypothesisTest({
+        test: "t_test_one_sample",
+        records,
+        columnA: "x",
+        mu: 0,
+      });
+      expect(result.statistic).toBeCloseTo(5.7446, 3);
+      expect(result.pValue).toBeCloseTo(0.000277, 4);
+      expect(result.df).toBe(9);
+    });
+
+    it("t_test_two_sample returns small p when groups differ", () => {
+      // a = [1..10], b = [5..14] — same shape, shifted by 4
+      const records = Array.from({ length: 10 }, (_, i) => ({
+        a: i + 1,
+        b: i + 5,
+      }));
+      const result = AnalyticsService.hypothesisTest({
+        test: "t_test_two_sample",
+        records,
+        columnA: "a",
+        columnB: "b",
+      });
+      expect(result.pValue).toBeLessThan(0.05);
+    });
+
+    it("t_test_two_sample returns large p when groups are identical", () => {
+      const records = Array.from({ length: 10 }, (_, i) => ({
+        a: i + 1,
+        b: i + 1,
+      }));
+      const result = AnalyticsService.hypothesisTest({
+        test: "t_test_two_sample",
+        records,
+        columnA: "a",
+        columnB: "b",
+      });
+      expect(result.statistic).toBeCloseTo(0, 9);
+      expect(result.pValue).toBeGreaterThan(0.5);
+    });
+
+    it("t_test_paired returns small p for a uniform shift", () => {
+      const records = [
+        { a: 5, b: 6 },
+        { a: 6, b: 7 },
+        { a: 7, b: 8 },
+        { a: 8, b: 9 },
+        { a: 9, b: 10 },
+      ];
+      const result = AnalyticsService.hypothesisTest({
+        test: "t_test_paired",
+        records,
+        columnA: "a",
+        columnB: "b",
+      });
+      expect(Math.abs(result.statistic)).toBeGreaterThan(1);
+      expect(result.pValue).toBeLessThan(0.001);
+      expect(result.df).toBe(4);
+    });
+
+    it("t_test_paired errors on length mismatch", () => {
+      // Build records where columnA has more numeric values than columnB.
+      const records = [
+        { a: 1, b: 2 },
+        { a: 2, b: 3 },
+        { a: 3 }, // b missing — extracted column will be shorter
+      ] as Record<string, unknown>[];
+      expect(() =>
+        AnalyticsService.hypothesisTest({
+          test: "t_test_paired",
+          records,
+          columnA: "a",
+          columnB: "b",
+        })
+      ).toThrow(/columns must be same length/);
+    });
+
+    it("mann_whitney returns small p when distributions differ wildly", () => {
+      const records = Array.from({ length: 10 }, (_, i) => ({
+        a: i + 1,
+        b: i + 100,
+      }));
+      const result = AnalyticsService.hypothesisTest({
+        test: "mann_whitney",
+        records,
+        columnA: "a",
+        columnB: "b",
+      });
+      expect(result.pValue).toBeLessThan(0.001);
+      expect(result.df).toBeUndefined();
+    });
+
+    it("mann_whitney returns a non-significant p when distributions are equal", () => {
+      const records = Array.from({ length: 10 }, (_, i) => ({
+        a: i + 1,
+        b: i + 1,
+      }));
+      const result = AnalyticsService.hypothesisTest({
+        test: "mann_whitney",
+        records,
+        columnA: "a",
+        columnB: "b",
+      });
+      // Fully-tied samples + simple-statistics' tie-handling quirk shift the
+      // rank sum off its theoretical mean, so |z| is non-zero. The p-value
+      // is well above the standard significance thresholds, which is what
+      // the test really asserts. Tool description warns about heavy-tie
+      // accuracy degradation.
+      expect(result.pValue).toBeGreaterThan(0.5);
+    });
+
+    it("chi_squared on a textbook fixture returns the expected statistic", () => {
+      // observed=[10,20,30,40], expected=[25,25,25,25]
+      // χ² = (15²+5²+5²+15²)/25 = 500/25 = 20; df=3; p < 1e-3
+      const result = AnalyticsService.hypothesisTest({
+        test: "chi_squared",
+        observed: [10, 20, 30, 40],
+        expected: [25, 25, 25, 25],
+      });
+      expect(result.statistic).toBeCloseTo(20, 9);
+      expect(result.df).toBe(3);
+      expect(result.pValue).toBeLessThan(1e-3);
+    });
+
+    it("chi_squared with observed === expected gives p ≈ 1", () => {
+      const result = AnalyticsService.hypothesisTest({
+        test: "chi_squared",
+        observed: [25, 25, 25, 25],
+        expected: [25, 25, 25, 25],
+      });
+      expect(result.statistic).toBe(0);
+      expect(result.pValue).toBeCloseTo(1, 9);
+    });
+
+    it("chi_squared honors a custom df override", () => {
+      const result = AnalyticsService.hypothesisTest({
+        test: "chi_squared",
+        observed: [10, 20, 30, 40],
+        expected: [25, 25, 25, 25],
+        df: 2,
+      });
+      expect(result.df).toBe(2);
+    });
+
+    it("missing required input throws an error naming the test and field", () => {
+      expect(() =>
+        AnalyticsService.hypothesisTest({
+          test: "t_test_two_sample",
+          records: [{ a: 1, b: 2 }],
+          columnA: "a",
+          // columnB omitted
+        })
+      ).toThrow(/Missing input for test="t_test_two_sample".*columnB/);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // aggregate
+  // -----------------------------------------------------------------------
+
+  describe("aggregate()", () => {
+    const SALES_RECORDS = [
+      { region: "A", quarter: "Q1", revenue: 100 },
+      { region: "A", quarter: "Q1", revenue: 200 },
+      { region: "A", quarter: "Q2", revenue: 300 },
+      { region: "B", quarter: "Q1", revenue: 150 },
+      { region: "B", quarter: "Q2", revenue: 250 },
+    ];
+
+    it("groups by a single column and sums", () => {
+      const result = AnalyticsService.aggregate({
+        records: SALES_RECORDS,
+        groupBy: ["region"],
+        metrics: [{ op: "sum", column: "revenue" }],
+      });
+      expect(result.rows).toHaveLength(2);
+      const a = result.rows.find((r) => r.region === "A")!;
+      const b = result.rows.find((r) => r.region === "B")!;
+      expect(a.sum_revenue).toBe(600);
+      expect(b.sum_revenue).toBe(400);
+    });
+
+    it("aggregates over the whole table when groupBy is empty", () => {
+      const result = AnalyticsService.aggregate({
+        records: SALES_RECORDS,
+        groupBy: [],
+        metrics: [{ op: "sum", column: "revenue" }],
+      });
+      expect(result.rows).toHaveLength(1);
+      expect(result.rows[0].sum_revenue).toBe(1000);
+    });
+
+    it("count metric works without a column", () => {
+      const result = AnalyticsService.aggregate({
+        records: SALES_RECORDS,
+        groupBy: ["region"],
+        metrics: [{ op: "count" }],
+      });
+      const a = result.rows.find((r) => r.region === "A")!;
+      const b = result.rows.find((r) => r.region === "B")!;
+      expect(a.count).toBe(3);
+      expect(b.count).toBe(2);
+    });
+
+    it("supports multiple metrics in one call", () => {
+      const result = AnalyticsService.aggregate({
+        records: SALES_RECORDS,
+        groupBy: ["region"],
+        metrics: [
+          { op: "sum", column: "revenue" },
+          { op: "mean", column: "revenue" },
+          { op: "count" },
+        ],
+      });
+      const a = result.rows.find((r) => r.region === "A")!;
+      expect(a.sum_revenue).toBe(600);
+      expect(a.mean_revenue).toBe(200);
+      expect(a.count).toBe(3);
+    });
+
+    it("honors custom aliases via `as`", () => {
+      const result = AnalyticsService.aggregate({
+        records: SALES_RECORDS,
+        groupBy: ["region"],
+        metrics: [
+          { op: "sum", column: "revenue", as: "total_rev" },
+        ],
+      });
+      const a = result.rows.find((r) => r.region === "A")!;
+      expect(a.total_rev).toBe(600);
+      expect("sum_revenue" in a).toBe(false);
+    });
+
+    it("stddev uses the sample (n-1) divisor (Arquero default)", () => {
+      const records = [
+        { x: 1 },
+        { x: 2 },
+        { x: 3 },
+        { x: 4 },
+        { x: 5 },
+      ];
+      const result = AnalyticsService.aggregate({
+        records,
+        groupBy: [],
+        metrics: [{ op: "stddev", column: "x" }],
+      });
+      // Sample variance of [1..5] = 10/4 = 2.5; stddev = √2.5
+      expect(result.rows[0].stddev_x as number).toBeCloseTo(Math.sqrt(2.5), 9);
+    });
+
+    it("p25 and p75 work over groups", () => {
+      const records = [
+        { region: "A", x: 1 },
+        { region: "A", x: 2 },
+        { region: "A", x: 3 },
+        { region: "A", x: 4 },
+        { region: "A", x: 5 },
+        { region: "B", x: 10 },
+        { region: "B", x: 20 },
+        { region: "B", x: 30 },
+        { region: "B", x: 40 },
+        { region: "B", x: 50 },
+      ];
+      const result = AnalyticsService.aggregate({
+        records,
+        groupBy: ["region"],
+        metrics: [
+          { op: "p25", column: "x" },
+          { op: "p75", column: "x" },
+        ],
+      });
+      const a = result.rows.find((r) => r.region === "A")!;
+      const b = result.rows.find((r) => r.region === "B")!;
+      expect(typeof a.p25_x).toBe("number");
+      expect(typeof a.p75_x).toBe("number");
+      // p25 < p75 within each group
+      expect(a.p25_x as number).toBeLessThan(a.p75_x as number);
+      expect(b.p25_x as number).toBeLessThan(b.p75_x as number);
+      // B's quartiles dominate A's
+      expect(b.p25_x as number).toBeGreaterThan(a.p75_x as number);
+    });
+
+    it("non-count op without column throws", () => {
+      expect(() =>
+        AnalyticsService.aggregate({
+          records: SALES_RECORDS,
+          groupBy: ["region"],
+          metrics: [{ op: "sum" }],
+        })
+      ).toThrow(/op "sum" requires a column/);
+    });
+
+    it("multi-column groupBy keys output rows by all fields", () => {
+      const result = AnalyticsService.aggregate({
+        records: SALES_RECORDS,
+        groupBy: ["region", "quarter"],
+        metrics: [{ op: "sum", column: "revenue" }],
+      });
+      expect(result.rows).toHaveLength(4);
+      const aQ1 = result.rows.find(
+        (r) => r.region === "A" && r.quarter === "Q1"
+      )!;
+      expect(aQ1.sum_revenue).toBe(300); // 100 + 200
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // technicalIndicator
   // -----------------------------------------------------------------------
 
@@ -2819,6 +3162,69 @@ describe("AnalyticsService", () => {
         });
         expect(result).toHaveLength(0);
       });
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Distribution CDFs (private helpers; tested via cast access)
+  // -----------------------------------------------------------------------
+
+  describe("distribution CDFs (private)", () => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const svc = AnalyticsService as any;
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    it("tCDF(0, df) is 0.5 for any df", () => {
+      for (const df of [1, 5, 10, 50, 100]) {
+        expect(svc.tCDF(0, df)).toBeCloseTo(0.5, 9);
+      }
+    });
+
+    it("tCDF matches scipy at df=10, t=1.812 (one-tailed 95%)", () => {
+      // scipy.stats.t.cdf(1.812, 10) ≈ 0.95
+      expect(svc.tCDF(1.812, 10)).toBeCloseTo(0.95, 3);
+    });
+
+    it("tCDF is symmetric: tCDF(-t, df) === 1 - tCDF(t, df)", () => {
+      for (const [t, df] of [
+        [0.5, 5],
+        [1.5, 10],
+        [2.0, 20],
+        [3.0, 50],
+      ]) {
+        expect(svc.tCDF(-t, df)).toBeCloseTo(1 - svc.tCDF(t, df), 6);
+      }
+    });
+
+    it("tCDF matches scipy at df=10, t=2.228 (two-tailed 95%)", () => {
+      // scipy.stats.t.cdf(2.228, 10) ≈ 0.975
+      expect(svc.tCDF(2.228, 10)).toBeCloseTo(0.975, 3);
+    });
+
+    it("chiSquaredCDF(0, df) is 0", () => {
+      for (const df of [1, 5, 10, 100]) {
+        expect(svc.chiSquaredCDF(0, df)).toBeCloseTo(0, 9);
+      }
+    });
+
+    it("chiSquaredCDF matches scipy at df=5, x=11.07 (95th percentile)", () => {
+      // scipy.stats.chi2.cdf(11.07, 5) ≈ 0.95
+      expect(svc.chiSquaredCDF(11.07, 5)).toBeCloseTo(0.95, 3);
+    });
+
+    it("chiSquaredCDF matches scipy at df=5, x=15.09 (99th percentile)", () => {
+      // scipy.stats.chi2.cdf(15.09, 5) ≈ 0.99
+      expect(svc.chiSquaredCDF(15.09, 5)).toBeCloseTo(0.99, 3);
+    });
+
+    it("chiSquaredCDF is monotonic non-decreasing in x", () => {
+      const df = 10;
+      let prev = -Infinity;
+      for (const x of [0, 1, 5, 10, 20, 50, 100]) {
+        const v = svc.chiSquaredCDF(x, df);
+        expect(v).toBeGreaterThanOrEqual(prev);
+        prev = v;
+      }
     });
   });
 });

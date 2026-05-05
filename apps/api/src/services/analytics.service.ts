@@ -1456,6 +1456,187 @@ export class AnalyticsService {
     };
   }
 
+  /**
+   * Run a hypothesis test (one-sample / two-sample / paired t-test,
+   * Mann-Whitney U, or chi-squared) and return the statistic and a
+   * two-tailed p-value.
+   */
+  static hypothesisTest(params: {
+    test:
+      | "t_test_one_sample"
+      | "t_test_two_sample"
+      | "t_test_paired"
+      | "mann_whitney"
+      | "chi_squared";
+    records?: Record<string, unknown>[];
+    columnA?: string;
+    columnB?: string;
+    mu?: number;
+    observed?: number[];
+    expected?: number[];
+    df?: number;
+  }): { statistic: number; pValue: number; df?: number } {
+    const { test } = params;
+
+    const requiredFor: Record<typeof test, (keyof typeof params)[]> = {
+      t_test_one_sample: ["records", "columnA"],
+      t_test_two_sample: ["records", "columnA", "columnB"],
+      t_test_paired: ["records", "columnA", "columnB"],
+      mann_whitney: ["records", "columnA", "columnB"],
+      chi_squared: ["observed", "expected"],
+    };
+    const missing = requiredFor[test].filter(
+      (k) => params[k] === undefined
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `Missing input for test="${test}": ${missing.join(", ")}`
+      );
+    }
+
+    switch (test) {
+      case "t_test_one_sample": {
+        const x = this.extractNumericColumn(params.records!, params.columnA!);
+        if (x.length < 2) {
+          throw new Error(
+            "t_test_one_sample: at least 2 values required"
+          );
+        }
+        const mu = params.mu ?? 0;
+        const t = this.studentT(x, mu);
+        const df = x.length - 1;
+        return { statistic: t, pValue: this.tTwoTailedPValue(t, df), df };
+      }
+      case "t_test_two_sample": {
+        const x = this.extractNumericColumn(params.records!, params.columnA!);
+        const y = this.extractNumericColumn(params.records!, params.columnB!);
+        if (x.length < 2 || y.length < 2) {
+          throw new Error(
+            "t_test_two_sample: degenerate inputs (each sample needs ≥ 2 values)"
+          );
+        }
+        const t = this.studentTTwoSample(x, y);
+        const df = x.length + y.length - 2;
+        return { statistic: t, pValue: this.tTwoTailedPValue(t, df), df };
+      }
+      case "t_test_paired": {
+        const x = this.extractNumericColumn(params.records!, params.columnA!);
+        const y = this.extractNumericColumn(params.records!, params.columnB!);
+        if (x.length !== y.length) {
+          throw new Error("columns must be same length for paired test");
+        }
+        if (x.length < 2) {
+          throw new Error("t_test_paired: at least 2 pairs required");
+        }
+        const diffs = x.map((xi, i) => xi - y[i]);
+        const t = this.studentT(diffs, 0);
+        const df = diffs.length - 1;
+        return { statistic: t, pValue: this.tTwoTailedPValue(t, df), df };
+      }
+      case "mann_whitney": {
+        const x = this.extractNumericColumn(params.records!, params.columnA!);
+        const y = this.extractNumericColumn(params.records!, params.columnB!);
+        const W = ss.wilcoxonRankSum(x, y);
+        const nx = x.length;
+        const ny = y.length;
+        const U = W - (nx * (nx + 1)) / 2;
+        const meanU = (nx * ny) / 2;
+        const sdU = Math.sqrt((nx * ny * (nx + ny + 1)) / 12);
+        const z = sdU === 0 ? 0 : (U - meanU) / sdU;
+        const p = 2 * (1 - this.normalCDF(Math.abs(z)));
+        return { statistic: z, pValue: p };
+      }
+      case "chi_squared": {
+        const observed = params.observed!;
+        const expected = params.expected!;
+        if (observed.length !== expected.length) {
+          throw new Error(
+            "observed and expected must have the same length"
+          );
+        }
+        let stat = 0;
+        for (let i = 0; i < observed.length; i++) {
+          const diff = observed[i] - expected[i];
+          stat += (diff * diff) / expected[i];
+        }
+        const df = params.df ?? observed.length - 1;
+        const p = 1 - this.chiSquaredCDF(stat, df);
+        return { statistic: stat, pValue: p, df };
+      }
+    }
+  }
+
+  /**
+   * Group-by + reduce backed by Arquero. Generic primitive that sidesteps
+   * the long tail of one-off count_by/sum_by tools.
+   */
+  static aggregate(params: {
+    records: Record<string, unknown>[];
+    groupBy: string[];
+    metrics: {
+      column?: string;
+      op:
+        | "count"
+        | "sum"
+        | "mean"
+        | "median"
+        | "min"
+        | "max"
+        | "stddev"
+        | "p25"
+        | "p75";
+      as?: string;
+    }[];
+  }): { rows: Record<string, unknown>[] } {
+    for (const m of params.metrics) {
+      if (m.op !== "count" && !m.column) {
+        throw new Error(`Aggregation op "${m.op}" requires a column`);
+      }
+    }
+
+    const dt = aq.from(params.records);
+    const grouped =
+      params.groupBy.length === 0 ? dt : dt.groupby(...params.groupBy);
+
+    const rollupArgs: Record<string, unknown> = {};
+    for (const m of params.metrics) {
+      const alias = m.as ?? (m.column ? `${m.op}_${m.column}` : "count");
+      const col = m.column!;
+      switch (m.op) {
+        case "count":
+          rollupArgs[alias] = aq.op.count();
+          break;
+        case "sum":
+          rollupArgs[alias] = aq.op.sum(col);
+          break;
+        case "mean":
+          rollupArgs[alias] = aq.op.mean(col);
+          break;
+        case "median":
+          rollupArgs[alias] = aq.op.median(col);
+          break;
+        case "min":
+          rollupArgs[alias] = aq.op.min(col);
+          break;
+        case "max":
+          rollupArgs[alias] = aq.op.max(col);
+          break;
+        case "stddev":
+          rollupArgs[alias] = aq.op.stdev(col);
+          break;
+        case "p25":
+          rollupArgs[alias] = aq.op.quantile(col, 0.25);
+          break;
+        case "p75":
+          rollupArgs[alias] = aq.op.quantile(col, 0.75);
+          break;
+      }
+    }
+
+    const out = grouped.rollup(rollupArgs as Parameters<typeof grouped.rollup>[0]);
+    return { rows: out.objects() as Record<string, unknown>[] };
+  }
+
   // -----------------------------------------------------------------------
   // Pack: financial
   // -----------------------------------------------------------------------
@@ -2222,6 +2403,163 @@ export class AnalyticsService {
     }
 
     return coeffs;
+  }
+
+  /**
+   * Regularized incomplete beta function I_x(a, b).
+   * Numerical Recipes §6.4 — Lentz continued fraction with the symmetry
+   * transformation for faster convergence.
+   */
+  private static regularizedIncompleteBeta(
+    x: number,
+    a: number,
+    b: number
+  ): number {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    if (x > (a + 1) / (a + b + 2)) {
+      return 1 - this.regularizedIncompleteBeta(1 - x, b, a);
+    }
+
+    const lnBeta = ss.gammaln(a) + ss.gammaln(b) - ss.gammaln(a + b);
+    const front = Math.exp(
+      a * Math.log(x) + b * Math.log(1 - x) - lnBeta - Math.log(a)
+    );
+
+    const eps = 1e-12;
+    const tiny = 1e-30;
+    let c = 1;
+    let d = 1 - ((a + b) * x) / (a + 1);
+    if (Math.abs(d) < tiny) d = tiny;
+    d = 1 / d;
+    let cf = d;
+
+    for (let m = 1; m <= 200; m++) {
+      const m2 = 2 * m;
+      // even step
+      let aa = (m * (b - m) * x) / ((a - 1 + m2) * (a + m2));
+      d = 1 + aa * d;
+      if (Math.abs(d) < tiny) d = tiny;
+      c = 1 + aa / c;
+      if (Math.abs(c) < tiny) c = tiny;
+      d = 1 / d;
+      cf *= d * c;
+      // odd step
+      aa = (-(a + m) * (a + b + m) * x) / ((a + m2) * (a + 1 + m2));
+      d = 1 + aa * d;
+      if (Math.abs(d) < tiny) d = tiny;
+      c = 1 + aa / c;
+      if (Math.abs(c) < tiny) c = tiny;
+      d = 1 / d;
+      const delta = d * c;
+      cf *= delta;
+      if (Math.abs(delta - 1) < eps) break;
+    }
+    return front * cf;
+  }
+
+  /**
+   * Regularized lower incomplete gamma γ(s, x) / Γ(s).
+   * Series for x < s+1, continued fraction otherwise (Numerical Recipes §6.2).
+   */
+  private static regularizedIncompleteGamma(s: number, x: number): number {
+    if (x < 0 || s <= 0) return 0;
+    if (x === 0) return 0;
+
+    if (x < s + 1) {
+      // series
+      let term = 1 / s;
+      let sum = term;
+      for (let n = 1; n <= 200; n++) {
+        term *= x / (s + n);
+        sum += term;
+        if (Math.abs(term) < Math.abs(sum) * 1e-12) break;
+      }
+      return sum * Math.exp(-x + s * Math.log(x) - ss.gammaln(s));
+    }
+
+    // continued fraction (Lentz)
+    const eps = 1e-12;
+    const tiny = 1e-30;
+    let b = x + 1 - s;
+    let c = 1e30;
+    let d = 1 / b;
+    let h = d;
+    for (let i = 1; i <= 200; i++) {
+      const an = -i * (i - s);
+      b += 2;
+      d = an * d + b;
+      if (Math.abs(d) < tiny) d = tiny;
+      c = b + an / c;
+      if (Math.abs(c) < tiny) c = tiny;
+      d = 1 / d;
+      const delta = d * c;
+      h *= delta;
+      if (Math.abs(delta - 1) < eps) break;
+    }
+    return 1 - h * Math.exp(-x + s * Math.log(x) - ss.gammaln(s));
+  }
+
+  /**
+   * Student's t-distribution CDF.
+   */
+  private static tCDF(t: number, df: number): number {
+    const x = df / (df + t * t);
+    const p = 0.5 * this.regularizedIncompleteBeta(x, df / 2, 0.5);
+    return t >= 0 ? 1 - p : p;
+  }
+
+  /**
+   * Chi-squared CDF.
+   */
+  private static chiSquaredCDF(x: number, df: number): number {
+    return this.regularizedIncompleteGamma(df / 2, x / 2);
+  }
+
+  /**
+   * Two-tailed p-value for a t-statistic with df degrees of freedom.
+   */
+  private static tTwoTailedPValue(t: number, df: number): number {
+    return 2 * (1 - this.tCDF(Math.abs(t), df));
+  }
+
+  /**
+   * Standard-normal CDF via the error function. More accurate than
+   * simple-statistics' cumulativeStdNormalProbability (which is a 4-sig-fig
+   * table lookup) — needed for tail p-values on Mann-Whitney.
+   */
+  private static normalCDF(z: number): number {
+    return 0.5 + 0.5 * ss.errorFunction(z / Math.sqrt(2));
+  }
+
+  /**
+   * Student's t-statistic with sample (n-1) standard deviation, matching
+   * scipy/Excel/R conventions. simple-statistics' built-in tTest uses the
+   * population (n) stddev, which differs at small n.
+   */
+  private static studentT(x: number[], mu: number): number {
+    const n = x.length;
+    const mean = ss.mean(x);
+    const sd = ss.sampleStandardDeviation(x);
+    if (sd === 0) return mean === mu ? 0 : Number.POSITIVE_INFINITY;
+    return (mean - mu) / (sd / Math.sqrt(n));
+  }
+
+  /**
+   * Pooled-variance two-sample t-statistic (Student's, equal-variance
+   * assumption). Matches scipy's `ttest_ind(equal_var=True)`.
+   */
+  private static studentTTwoSample(x: number[], y: number[]): number {
+    const nx = x.length;
+    const ny = y.length;
+    const xMean = ss.mean(x);
+    const yMean = ss.mean(y);
+    const xVar = ss.sampleVariance(x);
+    const yVar = ss.sampleVariance(y);
+    const pooledVar = ((nx - 1) * xVar + (ny - 1) * yVar) / (nx + ny - 2);
+    const se = Math.sqrt(pooledVar * (1 / nx + 1 / ny));
+    if (se === 0) return xMean === yMean ? 0 : Number.POSITIVE_INFINITY;
+    return (xMean - yMean) / se;
   }
 
   /**
