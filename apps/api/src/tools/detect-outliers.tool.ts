@@ -11,14 +11,25 @@ import { getRecords } from "../utils/tools.util.js";
 const InputSchema = z.object({
   entity: z.string().describe("Entity key (table name)"),
   column: z.string().describe("Numeric column key"),
-  method: z.enum(["iqr", "zscore"]).describe("Detection method: iqr or zscore"),
+  method: z
+    .enum(["iqr", "zscore", "mad"])
+    .describe(
+      "Detection method: iqr, zscore, or mad (median absolute deviation)"
+    ),
+  threshold: z
+    .number()
+    .positive()
+    .optional()
+    .describe(
+      "Cutoff: IQR multiplier (default 1.5), |z| cutoff (default 3), or |modified z| cutoff (default 3.5)"
+    ),
 });
 
 export class DetectOutliersTool extends Tool<typeof InputSchema> {
   slug = "detect_outliers";
   name = "Detect Outliers";
   description =
-    "Detect outliers in a numeric column using IQR or Z-score method.";
+    "Detect outliers in a numeric column using IQR, Z-score, or modified Z (MAD).";
 
   get schema() {
     return InputSchema;
@@ -29,9 +40,14 @@ export class DetectOutliersTool extends Tool<typeof InputSchema> {
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, column, method } = this.validate(input);
+        const { entity, column, method, threshold } = this.validate(input);
         const records = getRecords(stationData, entity);
-        return AnalyticsService.detectOutliers({ records, column, method });
+        return AnalyticsService.detectOutliers({
+          records,
+          column,
+          method,
+          threshold,
+        });
       },
     });
   }

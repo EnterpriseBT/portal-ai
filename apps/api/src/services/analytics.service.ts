@@ -1091,12 +1091,14 @@ export class AnalyticsService {
   }
 
   /**
-   * Pearson correlation between two numeric columns.
+   * Correlation between two numeric columns. Method defaults to Pearson;
+   * Spearman uses averaged ranks; Kendall uses τ-b with tie correction.
    */
   static correlate(params: {
     records: Record<string, unknown>[];
     columnA: string;
     columnB: string;
+    method?: "pearson" | "spearman" | "kendall";
   }): { correlation: number } {
     const a = this.extractNumericColumn(params.records, params.columnA);
     const b = this.extractNumericColumn(params.records, params.columnB);
@@ -1107,37 +1109,104 @@ export class AnalyticsService {
       );
     }
 
-    return { correlation: ss.sampleCorrelation(a, b) };
+    const method = params.method ?? "pearson";
+    let correlation: number;
+    switch (method) {
+      case "pearson":
+        correlation = ss.sampleCorrelation(a, b);
+        break;
+      case "spearman":
+        correlation = ss.sampleRankCorrelation(a, b);
+        break;
+      case "kendall":
+        correlation = this.kendallTau(a, b);
+        break;
+    }
+    return { correlation };
   }
 
   /**
-   * Detect outliers using IQR or Z-score method.
+   * Kendall's τ-b (with tie correction). Reference: Kendall (1938);
+   * SciPy convention returns 0 when the denominator collapses (fully tied).
+   */
+  private static kendallTau(a: number[], b: number[]): number {
+    const n = a.length;
+    if (n < 2) return 0;
+
+    let concordant = 0;
+    let discordant = 0;
+    let tiesA = 0;
+    let tiesB = 0;
+
+    for (let i = 0; i < n - 1; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const da = Math.sign(a[i] - a[j]);
+        const db = Math.sign(b[i] - b[j]);
+        if (da === 0 && db === 0) {
+          tiesA++;
+          tiesB++;
+        } else if (da === 0) {
+          tiesA++;
+        } else if (db === 0) {
+          tiesB++;
+        } else if (da === db) {
+          concordant++;
+        } else {
+          discordant++;
+        }
+      }
+    }
+
+    const n0 = (n * (n - 1)) / 2;
+    const denom = Math.sqrt((n0 - tiesA) * (n0 - tiesB));
+    if (denom === 0) return 0;
+    return (concordant - discordant) / denom;
+  }
+
+  /**
+   * Detect outliers using IQR, Z-score, or modified Z-score (MAD).
+   * Default thresholds: IQR 1.5, Z-score 3, modified Z (Iglewicz/Hoaglin) 3.5.
    */
   static detectOutliers(params: {
     records: Record<string, unknown>[];
     column: string;
-    method: "iqr" | "zscore";
+    method: "iqr" | "zscore" | "mad";
+    threshold?: number;
   }): { outliers: Record<string, unknown>[]; indices: number[] } {
     const values = this.extractNumericColumn(params.records, params.column);
     const indices: number[] = [];
+    const { method } = params;
 
-    if (params.method === "iqr") {
+    if (method === "iqr") {
+      const t = params.threshold ?? 1.5;
       const q1 = ss.quantile(values, 0.25);
       const q3 = ss.quantile(values, 0.75);
       const iqr = q3 - q1;
-      const lower = q1 - 1.5 * iqr;
-      const upper = q3 + 1.5 * iqr;
+      const lower = q1 - t * iqr;
+      const upper = q3 + t * iqr;
 
       values.forEach((v, i) => {
         if (v < lower || v > upper) indices.push(i);
       });
-    } else {
+    } else if (method === "zscore") {
+      const t = params.threshold ?? 3;
       const m = ss.mean(values);
       const std = ss.standardDeviation(values);
       if (std === 0) return { outliers: [], indices: [] };
 
       values.forEach((v, i) => {
-        if (Math.abs((v - m) / std) > 3) indices.push(i);
+        if (Math.abs((v - m) / std) > t) indices.push(i);
+      });
+    } else {
+      // mad — Iglewicz/Hoaglin modified z-score
+      const t = params.threshold ?? 3.5;
+      const median = ss.median(values);
+      const mad = ss.median(values.map((v) => Math.abs(v - median)));
+      if (mad === 0) return { outliers: [], indices: [] };
+
+      values.forEach((v, i) => {
+        const modZ = (0.6745 * (v - median)) / mad;
+        if (Math.abs(modZ) > t) indices.push(i);
       });
     }
 
@@ -1148,12 +1217,17 @@ export class AnalyticsService {
   }
 
   /**
-   * K-means clustering via ml-kmeans.
+   * K-means clustering via ml-kmeans. Optionally z-score each column before
+   * fitting; when `standardize` is true, centroids are returned in original-
+   * data units (un-standardized) so consumers can interpret them directly.
    */
   static cluster(params: {
     records: Record<string, unknown>[];
     columns: string[];
     k: number;
+    standardize?: boolean;
+    seed?: number;
+    maxIterations?: number;
   }): { clusters: number[]; centroids: number[][] } {
     const data = params.records.map((r) =>
       params.columns.map((col) => {
@@ -1167,13 +1241,48 @@ export class AnalyticsService {
       return { clusters: [], centroids: [] };
     }
 
-    const result = kmeans(data, params.k, {});
+    let fitData = data;
+    let means: number[] | null = null;
+    let stddevs: number[] | null = null;
+
+    if (params.standardize) {
+      const cols = params.columns.length;
+      means = new Array(cols).fill(0);
+      stddevs = new Array(cols).fill(0);
+      for (let c = 0; c < cols; c++) {
+        const colVals = data.map((row) => row[c]);
+        means[c] = ss.mean(colVals);
+        stddevs[c] = ss.standardDeviation(colVals);
+      }
+      fitData = data.map((row) =>
+        row.map((v, c) =>
+          stddevs![c] === 0 ? 0 : (v - means![c]) / stddevs![c]
+        )
+      );
+    }
+
+    const opts: { seed?: number; maxIterations?: number } = {};
+    if (params.seed !== undefined) opts.seed = params.seed;
+    if (params.maxIterations !== undefined) opts.maxIterations = params.maxIterations;
+
+    const result = kmeans(fitData, params.k, opts);
+
+    const rawCentroids = result.centroids.map((c: any) =>
+      Array.isArray(c) ? c : c.centroid
+    );
+
+    const centroids =
+      params.standardize && means && stddevs
+        ? rawCentroids.map((row: number[]) =>
+            row.map((v, c) =>
+              stddevs![c] === 0 ? means![c] : v * stddevs![c] + means![c]
+            )
+          )
+        : rawCentroids;
 
     return {
       clusters: result.clusters,
-      centroids: result.centroids.map((c: any) =>
-        Array.isArray(c) ? c : c.centroid
-      ),
+      centroids,
     };
   }
 
@@ -1398,22 +1507,44 @@ export class AnalyticsService {
   }
 
   /**
-   * Loan amortization schedule via financial.
+   * Loan amortization schedule via financial. Compounding selects the
+   * periods-per-year (default monthly = 12); extraPayment is added to the
+   * scheduled principal each period and may shorten the schedule.
    */
   static amortize(params: {
     principal: number;
     annualRate: number;
     periods: number;
+    compounding?: "weekly" | "biweekly" | "monthly" | "quarterly" | "annual";
+    extraPayment?: number;
   }): AmortizationRow[] {
     const { principal, annualRate, periods } = params;
-    const monthlyRate = annualRate / 12;
-    const payment = -financial.pmt(monthlyRate, periods, principal);
+    const periodsPerYear = {
+      weekly: 52,
+      biweekly: 26,
+      monthly: 12,
+      quarterly: 4,
+      annual: 1,
+    }[params.compounding ?? "monthly"];
+
+    const periodicRate = annualRate / periodsPerYear;
+    const basePayment =
+      periodicRate === 0
+        ? principal / periods
+        : -financial.pmt(periodicRate, periods, principal);
+    const extra = params.extraPayment ?? 0;
     const schedule: AmortizationRow[] = [];
     let balance = principal;
 
     for (let i = 1; i <= periods; i++) {
-      const interest = balance * monthlyRate;
-      const principalPart = payment - interest;
+      if (balance <= 0) break;
+      const interest = balance * periodicRate;
+      let principalPart = basePayment - interest + extra;
+      let payment = basePayment + extra;
+      if (principalPart > balance) {
+        principalPart = balance;
+        payment = principalPart + interest;
+      }
       balance -= principalPart;
 
       schedule.push({
@@ -1429,14 +1560,15 @@ export class AnalyticsService {
   }
 
   /**
-   * Sharpe ratio: (mean - riskFreeRate) / stddev.
-   * If annualize is true, multiplies by √252 for daily data.
+   * Sharpe ratio: (mean - riskFreeRate) / stddev. When `periodicity` is
+   * supplied, multiplies the raw ratio by the appropriate annualization
+   * factor (√252 for daily, √52 weekly, √12 monthly, 2 quarterly, 1 annual).
    */
   static sharpeRatio(params: {
     records: Record<string, unknown>[];
     valueColumn: string;
     riskFreeRate?: number;
-    annualize?: boolean;
+    periodicity?: "daily" | "weekly" | "monthly" | "quarterly" | "annual";
   }): { sharpeRatio: number } {
     const values = this.extractNumericColumn(
       params.records,
@@ -1460,9 +1592,17 @@ export class AnalyticsService {
       return { sharpeRatio: 0 };
     }
 
+    const annualizationFactor = {
+      daily: Math.sqrt(252),
+      weekly: Math.sqrt(52),
+      monthly: Math.sqrt(12),
+      quarterly: 2,
+      annual: 1,
+    };
+
     let ratio = (meanReturn - rfr) / stdReturn;
-    if (params.annualize) {
-      ratio *= Math.sqrt(252);
+    if (params.periodicity) {
+      ratio *= annualizationFactor[params.periodicity];
     }
 
     return { sharpeRatio: ratio };

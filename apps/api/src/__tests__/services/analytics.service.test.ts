@@ -873,6 +873,133 @@ describe("AnalyticsService", () => {
         })
       ).toThrow("at least 2 values");
     });
+
+    it("Spearman correlation is 1 on a perfectly monotonic non-linear relationship", () => {
+      // y = x^3 — strictly monotonic but Pearson < 1
+      const records = Array.from({ length: 10 }, (_, i) => ({
+        x: i + 1,
+        y: (i + 1) ** 3,
+      }));
+      const result = AnalyticsService.correlate({
+        records,
+        columnA: "x",
+        columnB: "y",
+        method: "spearman",
+      });
+      expect(result.correlation).toBeCloseTo(1, 9);
+    });
+
+    it("Spearman matches Pearson on a perfectly linear relationship", () => {
+      const records = Array.from({ length: 10 }, (_, i) => ({
+        x: i + 1,
+        y: 2 * (i + 1) + 3,
+      }));
+      const result = AnalyticsService.correlate({
+        records,
+        columnA: "x",
+        columnB: "y",
+        method: "spearman",
+      });
+      expect(result.correlation).toBeCloseTo(1, 9);
+    });
+
+    it("Spearman handles ties (averaged ranks)", () => {
+      const records = [
+        { x: 1, y: 10 },
+        { x: 2, y: 20 },
+        { x: 2, y: 20 },
+        { x: 3, y: 30 },
+        { x: 4, y: 40 },
+      ];
+      const result = AnalyticsService.correlate({
+        records,
+        columnA: "x",
+        columnB: "y",
+        method: "spearman",
+      });
+      expect(result.correlation).toBeCloseTo(1, 9);
+    });
+
+    it("Kendall correlation is 1 on a perfectly monotonic relationship", () => {
+      const records = Array.from({ length: 10 }, (_, i) => ({
+        x: i + 1,
+        y: (i + 1) ** 3,
+      }));
+      const result = AnalyticsService.correlate({
+        records,
+        columnA: "x",
+        columnB: "y",
+        method: "kendall",
+      });
+      expect(result.correlation).toBeCloseTo(1, 9);
+    });
+
+    it("Kendall correlation is -1 on a perfectly anti-monotonic relationship", () => {
+      const records = Array.from({ length: 10 }, (_, i) => ({
+        x: i + 1,
+        y: -(i + 1),
+      }));
+      const result = AnalyticsService.correlate({
+        records,
+        columnA: "x",
+        columnB: "y",
+        method: "kendall",
+      });
+      expect(result.correlation).toBeCloseTo(-1, 9);
+    });
+
+    it("Kendall τ-b on a known fixture (no ties) matches scipy.stats.kendalltau", () => {
+      // Reference: scipy.stats.kendalltau(
+      //   [4, 7, 5, 6, 2, 3, 1], [4, 5, 6, 7, 2, 3, 1]
+      // ).statistic === 0.8095238095238095  (== 17/21; concordant=19, discordant=2)
+      const records = [
+        { x: 4, y: 4 },
+        { x: 7, y: 5 },
+        { x: 5, y: 6 },
+        { x: 6, y: 7 },
+        { x: 2, y: 2 },
+        { x: 3, y: 3 },
+        { x: 1, y: 1 },
+      ];
+      const result = AnalyticsService.correlate({
+        records,
+        columnA: "x",
+        columnB: "y",
+        method: "kendall",
+      });
+      expect(result.correlation).toBeCloseTo(17 / 21, 9);
+    });
+
+    it("Kendall handles ties (τ-b denominator correction)", () => {
+      // Hand-computed: x=[1,1,2,3,4], y=[1,2,2,3,4]
+      // Pairs: 8 concordant, 0 discordant, 1 tied-only-on-x, 1 tied-only-on-y.
+      // n0 = 5*4/2 = 10. denom = sqrt((10-1)(10-1)) = 9. τ-b = 8/9.
+      const records = [
+        { x: 1, y: 1 },
+        { x: 1, y: 2 },
+        { x: 2, y: 2 },
+        { x: 3, y: 3 },
+        { x: 4, y: 4 },
+      ];
+      const result = AnalyticsService.correlate({
+        records,
+        columnA: "x",
+        columnB: "y",
+        method: "kendall",
+      });
+      expect(result.correlation).toBeCloseTo(8 / 9, 9);
+    });
+
+    it("respects the length-mismatch guard regardless of method", () => {
+      expect(() =>
+        AnalyticsService.correlate({
+          records: [{ x: 1, y: 2 }],
+          columnA: "x",
+          columnB: "y",
+          method: "spearman",
+        })
+      ).toThrow("at least 2 values");
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -910,6 +1037,84 @@ describe("AnalyticsService", () => {
       });
 
       expect(result.indices).toContain(15);
+    });
+
+    it("custom IQR threshold widens the inlier band", () => {
+      const records = [
+        ...NUMERIC_RECORDS,
+        { x: 100, y: 200, val: 999, date: "2024-01-16" },
+      ];
+      // High threshold (3.0) is permissive; the extreme outlier at index 15
+      // is still flagged but borderline points are not.
+      const result = AnalyticsService.detectOutliers({
+        records,
+        column: "x",
+        method: "iqr",
+        threshold: 3.0,
+      });
+      expect(result.indices).toContain(15);
+    });
+
+    it("custom Z-score threshold below default flags more points", () => {
+      const records = [
+        ...NUMERIC_RECORDS,
+        { x: 100, y: 200, val: 999, date: "2024-01-16" },
+      ];
+      const strict = AnalyticsService.detectOutliers({
+        records,
+        column: "x",
+        method: "zscore",
+        threshold: 1.5,
+      });
+      const loose = AnalyticsService.detectOutliers({
+        records,
+        column: "x",
+        method: "zscore",
+      });
+      expect(strict.indices.length).toBeGreaterThanOrEqual(loose.indices.length);
+      expect(strict.indices).toContain(15);
+    });
+
+    it("MAD method flags the extreme outlier with default threshold (3.5)", () => {
+      const records = [
+        ...NUMERIC_RECORDS,
+        { x: 100, y: 200, val: 999, date: "2024-01-16" },
+      ];
+      const result = AnalyticsService.detectOutliers({
+        records,
+        column: "x",
+        method: "mad",
+      });
+      expect(result.indices).toContain(15);
+    });
+
+    it("MAD method honors a tighter custom threshold", () => {
+      const records = [
+        ...NUMERIC_RECORDS,
+        { x: 100, y: 200, val: 999, date: "2024-01-16" },
+      ];
+      const tight = AnalyticsService.detectOutliers({
+        records,
+        column: "x",
+        method: "mad",
+        threshold: 1.5,
+      });
+      const loose = AnalyticsService.detectOutliers({
+        records,
+        column: "x",
+        method: "mad",
+      });
+      expect(tight.indices.length).toBeGreaterThanOrEqual(loose.indices.length);
+    });
+
+    it("MAD with zero spread returns no outliers", () => {
+      const records = Array.from({ length: 5 }, () => ({ x: 5 }));
+      const result = AnalyticsService.detectOutliers({
+        records,
+        column: "x",
+        method: "mad",
+      });
+      expect(result).toEqual({ outliers: [], indices: [] });
     });
   });
 
@@ -963,6 +1168,151 @@ describe("AnalyticsService", () => {
         })
       ).toThrow('Non-numeric value in column "a"');
     });
+
+    it("seed makes clustering deterministic across runs", () => {
+      const records = [
+        { a: 1, b: 1 },
+        { a: 1.5, b: 2 },
+        { a: 2, b: 1 },
+        { a: 10, b: 10 },
+        { a: 11, b: 10 },
+        { a: 10, b: 11 },
+      ];
+      const r1 = AnalyticsService.cluster({
+        records,
+        columns: ["a", "b"],
+        k: 2,
+        seed: 42,
+      });
+      const r2 = AnalyticsService.cluster({
+        records,
+        columns: ["a", "b"],
+        k: 2,
+        seed: 42,
+      });
+      expect(r2.clusters).toEqual(r1.clusters);
+      expect(r2.centroids).toEqual(r1.centroids);
+    });
+
+    it("standardize: true produces partition-equivalent assignments to a manually-standardized fit", () => {
+      const records = [
+        { a: 0.1, b: 100 },
+        { a: 0.2, b: 200 },
+        { a: 0.15, b: 150 },
+        { a: 0.8, b: 800 },
+        { a: 0.9, b: 900 },
+        { a: 0.85, b: 850 },
+      ];
+      const cols = ["a", "b"] as const;
+      const aVals = records.map((r) => r.a);
+      const bVals = records.map((r) => r.b);
+      const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+      const stddev = (xs: number[]) => {
+        const m = mean(xs);
+        return Math.sqrt(
+          xs.reduce((acc, v) => acc + (v - m) ** 2, 0) / (xs.length - 1)
+        );
+      };
+      const meanA = mean(aVals);
+      const meanB = mean(bVals);
+      const sdA = stddev(aVals);
+      const sdB = stddev(bVals);
+      const standardized = records.map((r) => ({
+        a: (r.a - meanA) / sdA,
+        b: (r.b - meanB) / sdB,
+      }));
+
+      const built = AnalyticsService.cluster({
+        records,
+        columns: [...cols],
+        k: 2,
+        standardize: true,
+        seed: 7,
+      });
+      const manual = AnalyticsService.cluster({
+        records: standardized,
+        columns: [...cols],
+        k: 2,
+        seed: 7,
+      });
+
+      // Cluster *labels* are not stable, but the partition is. Compare by
+      // mapping each cluster id to the canonical id of its first member.
+      const canonical = (clusters: number[]): number[] => {
+        const map = new Map<number, number>();
+        let next = 0;
+        return clusters.map((c) => {
+          if (!map.has(c)) map.set(c, next++);
+          return map.get(c)!;
+        });
+      };
+      expect(canonical(built.clusters)).toEqual(canonical(manual.clusters));
+    });
+
+    it("standardize: true returns centroids in original-data units", () => {
+      const records = [
+        { a: 0.1, b: 100 },
+        { a: 0.2, b: 200 },
+        { a: 0.15, b: 150 },
+        { a: 0.8, b: 800 },
+        { a: 0.9, b: 900 },
+        { a: 0.85, b: 850 },
+      ];
+      const result = AnalyticsService.cluster({
+        records,
+        columns: ["a", "b"],
+        k: 2,
+        standardize: true,
+        seed: 7,
+      });
+      // Each centroid's `b` component should land in the original [100, 900]
+      // range, not in the [-2, 2] standardized range.
+      for (const centroid of result.centroids) {
+        expect(centroid[1]).toBeGreaterThan(50);
+        expect(centroid[1]).toBeLessThan(1000);
+      }
+    });
+
+    it("standardize: true survives a zero-stddev column", () => {
+      const records = [
+        { a: 1, c: 7 },
+        { a: 2, c: 7 },
+        { a: 3, c: 7 },
+        { a: 10, c: 7 },
+        { a: 11, c: 7 },
+        { a: 12, c: 7 },
+      ];
+      const result = AnalyticsService.cluster({
+        records,
+        columns: ["a", "c"],
+        k: 2,
+        standardize: true,
+        seed: 7,
+      });
+      // The constant column rounds back to the original mean (7) on un-standardize.
+      for (const centroid of result.centroids) {
+        expect(centroid[1]).toBeCloseTo(7, 9);
+      }
+    });
+
+    it("maxIterations: 1 still returns valid result shape", () => {
+      const records = [
+        { a: 1, b: 1 },
+        { a: 1.5, b: 2 },
+        { a: 2, b: 1 },
+        { a: 10, b: 10 },
+        { a: 11, b: 10 },
+        { a: 10, b: 11 },
+      ];
+      const result = AnalyticsService.cluster({
+        records,
+        columns: ["a", "b"],
+        k: 2,
+        maxIterations: 1,
+      });
+      expect(result.clusters).toHaveLength(6);
+      expect(result.centroids).toHaveLength(2);
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -1014,6 +1364,27 @@ describe("AnalyticsService", () => {
           type: "linear",
         })
       ).toThrow("at least 2 values");
+    });
+
+    it("computes high-R² fit for cubic data with degree 3", () => {
+      // y = x³ + small noise on x ∈ [-10, 10]
+      const records = Array.from({ length: 21 }, (_, i) => {
+        const x = i - 10;
+        return { x, y: x ** 3 + (Math.random() - 0.5) * 2 };
+      });
+
+      const result = AnalyticsService.regression({
+        records,
+        x: "x",
+        y: "y",
+        type: "polynomial",
+        degree: 3,
+      });
+
+      expect(result.coefficients).toHaveLength(4); // [a0, a1, a2, a3]
+      expect(result.rSquared).toBeGreaterThan(0.99);
+      // a3 should be close to 1 (coefficient of x³)
+      expect(result.coefficients[3]).toBeCloseTo(1, 1);
     });
   });
 
@@ -1186,6 +1557,90 @@ describe("AnalyticsService", () => {
       expect(result[359].period).toBe(360);
       expect(result[359].balance).toBeCloseTo(0, 0);
     });
+
+    it("default behavior is byte-stable against the pre-change baseline", () => {
+      // Baseline captured before the compounding/extraPayment widening:
+      //   principal: 200000, annualRate: 0.06, periods: 360
+      //   row[0].payment === 1199.10
+      //   row[359].balance === 0
+      //   length === 360
+      const result = AnalyticsService.amortize({
+        principal: 200000,
+        annualRate: 0.06,
+        periods: 360,
+      });
+      expect(result).toHaveLength(360);
+      expect(result[0].payment).toBe(1199.1);
+      expect(result[359].balance).toBe(0);
+    });
+
+    it("quarterly compounding uses annualRate / 4 as the periodic rate", () => {
+      const result = AnalyticsService.amortize({
+        principal: 10000,
+        annualRate: 0.06,
+        periods: 20,
+        compounding: "quarterly",
+      });
+      expect(result).toHaveLength(20);
+      // periodic rate = 0.06 / 4 = 0.015 → row 1 interest = 10000 * 0.015 = 150
+      expect(result[0].interest).toBeCloseTo(150, 2);
+    });
+
+    it("annual compounding has interest = principal × annualRate in row 1", () => {
+      const result = AnalyticsService.amortize({
+        principal: 10000,
+        annualRate: 0.06,
+        periods: 5,
+        compounding: "annual",
+      });
+      expect(result).toHaveLength(5);
+      expect(result[0].interest).toBeCloseTo(600, 2);
+    });
+
+    it("extraPayment shortens the schedule and lands the final balance at 0", () => {
+      const baseline = AnalyticsService.amortize({
+        principal: 200000,
+        annualRate: 0.06,
+        periods: 360,
+      });
+      const accelerated = AnalyticsService.amortize({
+        principal: 200000,
+        annualRate: 0.06,
+        periods: 360,
+        extraPayment: 500,
+      });
+      expect(baseline).toHaveLength(360);
+      expect(accelerated.length).toBeLessThan(360);
+      expect(accelerated[accelerated.length - 1].balance).toBe(0);
+    });
+
+    it("each amortization row's principal + interest equals payment (within rounding)", () => {
+      const result = AnalyticsService.amortize({
+        principal: 200000,
+        annualRate: 0.06,
+        periods: 360,
+        extraPayment: 500,
+      });
+      for (const row of result) {
+        expect(Math.abs(row.principal + row.interest - row.payment)).toBeLessThan(0.02);
+      }
+    });
+
+    it("zero annualRate produces a flat schedule with no interest", () => {
+      const result = AnalyticsService.amortize({
+        principal: 1000,
+        annualRate: 0,
+        periods: 10,
+        compounding: "monthly",
+      });
+      expect(result).toHaveLength(10);
+      for (const row of result) {
+        expect(row.interest).toBe(0);
+        expect(row.principal).toBe(100);
+        expect(row.payment).toBe(100);
+      }
+      expect(result[9].balance).toBe(0);
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -1203,7 +1658,7 @@ describe("AnalyticsService", () => {
       expect(result.sharpeRatio).toBeGreaterThan(0); // generally positive since val trends up
     });
 
-    it("should annualize when requested", () => {
+    it("annualizes via periodicity: 'daily'", () => {
       const plain = AnalyticsService.sharpeRatio({
         records: NUMERIC_RECORDS,
         valueColumn: "val",
@@ -1212,13 +1667,105 @@ describe("AnalyticsService", () => {
       const annualized = AnalyticsService.sharpeRatio({
         records: NUMERIC_RECORDS,
         valueColumn: "val",
-        annualize: true,
+        periodicity: "daily",
       });
 
       // Annualized should be larger in magnitude (multiplied by √252)
       expect(Math.abs(annualized.sharpeRatio)).toBeGreaterThan(
         Math.abs(plain.sharpeRatio)
       );
+      expect(annualized.sharpeRatio).toBeCloseTo(
+        plain.sharpeRatio * Math.sqrt(252),
+        9
+      );
+    });
+
+    it("omitted periodicity returns the raw per-period ratio", () => {
+      // Reference series modeled after Hyndman/Athanasopoulos §3 — short
+      // monthly returns with positive drift.
+      const returns = [
+        0.012, -0.005, 0.018, 0.022, -0.008, 0.015, 0.003, 0.011, -0.002, 0.025,
+      ];
+      // Reconstruct as a price series so the (v[i] - v[i-1])/v[i-1] returns
+      // calculation yields the `returns` array exactly.
+      const records: { d: string; v: number }[] = [{ d: "2024-00", v: 100 }];
+      let v = 100;
+      for (let i = 0; i < returns.length; i++) {
+        v = v * (1 + returns[i]);
+        records.push({ d: `2024-${String(i + 1).padStart(2, "0")}`, v });
+      }
+
+      const result = AnalyticsService.sharpeRatio({
+        records,
+        valueColumn: "v",
+      });
+
+      // raw = mean(returns) / stddev(returns) — population stddev to match
+      // simple-statistics' ss.standardDeviation (divisor n, not n-1)
+      const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+      const stddev = (xs: number[]) => {
+        const m = mean(xs);
+        return Math.sqrt(
+          xs.reduce((acc, x) => acc + (x - m) ** 2, 0) / xs.length
+        );
+      };
+      const expected = mean(returns) / stddev(returns);
+      expect(result.sharpeRatio).toBeCloseTo(expected, 9);
+    });
+
+    it("periodicity: 'weekly' multiplies by √52", () => {
+      const raw = AnalyticsService.sharpeRatio({
+        records: NUMERIC_RECORDS,
+        valueColumn: "val",
+      });
+      const weekly = AnalyticsService.sharpeRatio({
+        records: NUMERIC_RECORDS,
+        valueColumn: "val",
+        periodicity: "weekly",
+      });
+      expect(weekly.sharpeRatio).toBeCloseTo(raw.sharpeRatio * Math.sqrt(52), 9);
+    });
+
+    it("periodicity: 'monthly' multiplies by √12", () => {
+      const raw = AnalyticsService.sharpeRatio({
+        records: NUMERIC_RECORDS,
+        valueColumn: "val",
+      });
+      const monthly = AnalyticsService.sharpeRatio({
+        records: NUMERIC_RECORDS,
+        valueColumn: "val",
+        periodicity: "monthly",
+      });
+      expect(monthly.sharpeRatio).toBeCloseTo(
+        raw.sharpeRatio * Math.sqrt(12),
+        9
+      );
+    });
+
+    it("periodicity: 'quarterly' multiplies by 2 exactly", () => {
+      const raw = AnalyticsService.sharpeRatio({
+        records: NUMERIC_RECORDS,
+        valueColumn: "val",
+      });
+      const quarterly = AnalyticsService.sharpeRatio({
+        records: NUMERIC_RECORDS,
+        valueColumn: "val",
+        periodicity: "quarterly",
+      });
+      expect(quarterly.sharpeRatio).toBeCloseTo(raw.sharpeRatio * 2, 9);
+    });
+
+    it("periodicity: 'annual' is a no-op", () => {
+      const raw = AnalyticsService.sharpeRatio({
+        records: NUMERIC_RECORDS,
+        valueColumn: "val",
+      });
+      const annual = AnalyticsService.sharpeRatio({
+        records: NUMERIC_RECORDS,
+        valueColumn: "val",
+        periodicity: "annual",
+      });
+      expect(annual.sharpeRatio).toBeCloseTo(raw.sharpeRatio, 9);
     });
 
     it("should throw for fewer than 2 values", () => {

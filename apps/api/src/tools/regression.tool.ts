@@ -13,6 +13,15 @@ const InputSchema = z.object({
   x: z.string().describe("Independent variable column"),
   y: z.string().describe("Dependent variable column"),
   type: z.enum(["linear", "polynomial"]).describe("Regression type"),
+  degree: z
+    .number()
+    .int()
+    .min(2)
+    .max(10)
+    .optional()
+    .describe(
+      "Polynomial degree (default 2). Ignored when type is 'linear'."
+    ),
 });
 
 export class RegressionTool extends Tool<typeof InputSchema> {
@@ -30,9 +39,9 @@ export class RegressionTool extends Tool<typeof InputSchema> {
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, x, y, type } = this.validate(input);
+        const { entity, x, y, type, degree } = this.validate(input);
         const records = getRecords(stationData, entity);
-        return AnalyticsService.regression({ records, x, y, type });
+        return AnalyticsService.regression({ records, x, y, type, degree });
       },
     });
   }
