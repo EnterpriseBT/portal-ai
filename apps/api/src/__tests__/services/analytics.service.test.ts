@@ -1930,6 +1930,338 @@ describe("AnalyticsService", () => {
   });
 
   // -----------------------------------------------------------------------
+  // tvm
+  // -----------------------------------------------------------------------
+
+  describe("tvm()", () => {
+    it("op: 'pv' matches the present-value of a $1,000/year 10-year annuity at 5%", () => {
+      // Reference: financial.pv(0.05, 10, -1000) === 7721.734929184817
+      const result = AnalyticsService.tvm({
+        op: "pv",
+        rate: 0.05,
+        nper: 10,
+        pmt: -1000,
+      });
+      expect(result.result).toBeCloseTo(7721.734929184817, 6);
+    });
+
+    it("op: 'fv' matches the future-value of $200/month at 6%/yr for 10 years", () => {
+      // Reference: financial.fv(0.005, 120, -200, 0) === 32775.8693612916
+      const result = AnalyticsService.tvm({
+        op: "fv",
+        rate: 0.005,
+        nper: 120,
+        pmt: -200,
+        pv: 0,
+      });
+      expect(result.result).toBeCloseTo(32775.8693612916, 6);
+    });
+
+    it("op: 'pmt' matches the mortgage payment for $200k @ 6%/yr over 30 years", () => {
+      // Reference: financial.pmt(0.005, 360, 200000) === -1199.10
+      const result = AnalyticsService.tvm({
+        op: "pmt",
+        rate: 0.005,
+        nper: 360,
+        pv: 200000,
+      });
+      expect(result.result).toBeCloseTo(-1199.1010503055138, 6);
+    });
+
+    it("op: 'nper' is finite and positive for a payable loan", () => {
+      const result = AnalyticsService.tvm({
+        op: "nper",
+        rate: 0.01,
+        pmt: -200,
+        pv: 10000,
+      });
+      expect(Number.isFinite(result.result)).toBe(true);
+      expect(result.result).toBeGreaterThan(0);
+      // Reference: financial.nper(0.01, -200, 10000) === 69.66
+      expect(result.result).toBeCloseTo(69.66071689357483, 4);
+    });
+
+    it("op: 'rate' round-trips against tvm/pv at a known rate", () => {
+      // pick rate = 0.04, derive pv, recover rate
+      const rate = 0.04;
+      const pv = AnalyticsService.tvm({
+        op: "pv",
+        rate,
+        nper: 10,
+        pmt: -100,
+      }).result;
+      const recovered = AnalyticsService.tvm({
+        op: "rate",
+        nper: 10,
+        pmt: -100,
+        pv,
+        fv: 0,
+      }).result;
+      expect(recovered).toBeCloseTo(rate, 6);
+    });
+
+    it("missing input throws an error naming the missing field", () => {
+      expect(() =>
+        AnalyticsService.tvm({
+          op: "pv",
+          rate: 0.05,
+          nper: 10,
+          // pmt omitted
+        })
+      ).toThrow(/Missing input for op="pv".*pmt/);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // xnpv
+  // -----------------------------------------------------------------------
+
+  describe("xnpv()", () => {
+    it("matches financial.npv on yearly cashflows in non-leap years", () => {
+      // Dates 2021-01-01..2024-01-01 — 365/730/1095 days from anchor, no
+      // leap-day offset, so xnpv exactly matches financial.npv at the same
+      // rate over the same flows.
+      const flows = [
+        { date: "2021-01-01", amount: -1000 },
+        { date: "2022-01-01", amount: 300 },
+        { date: "2023-01-01", amount: 400 },
+        { date: "2024-01-01", amount: 500 },
+      ];
+      const result = AnalyticsService.xnpv({ rate: 0.1, cashFlows: flows });
+      expect(result.xnpv).toBeCloseTo(-21.0368144252443, 6);
+    });
+
+    it("is order-independent — shuffling input gives the same xnpv", () => {
+      const flows = [
+        { date: "2021-01-01", amount: -1000 },
+        { date: "2022-01-01", amount: 300 },
+        { date: "2023-01-01", amount: 400 },
+        { date: "2024-01-01", amount: 500 },
+      ];
+      const sorted = AnalyticsService.xnpv({ rate: 0.1, cashFlows: flows });
+      const shuffled = AnalyticsService.xnpv({
+        rate: 0.1,
+        cashFlows: [flows[3], flows[0], flows[2], flows[1]],
+      });
+      expect(shuffled.xnpv).toBeCloseTo(sorted.xnpv, 9);
+    });
+
+    it("anchor is the earliest date — uniformly shifting all dates by N years preserves the xnpv", () => {
+      const a = AnalyticsService.xnpv({
+        rate: 0.1,
+        cashFlows: [
+          { date: "2021-01-01", amount: -1000 },
+          { date: "2022-01-01", amount: 300 },
+          { date: "2023-01-01", amount: 400 },
+        ],
+      });
+      // Pick another leap-year-free stretch so the day-spans match exactly.
+      const b = AnalyticsService.xnpv({
+        rate: 0.1,
+        cashFlows: [
+          { date: "2017-01-01", amount: -1000 },
+          { date: "2018-01-01", amount: 300 },
+          { date: "2019-01-01", amount: 400 },
+        ],
+      });
+      expect(a.xnpv).toBeCloseTo(b.xnpv, 6);
+    });
+
+    it("Zod rejects single-flow input (.min(2))", async () => {
+      const { XnpvTool } = await import("../../tools/xnpv.tool.js");
+      const tool = new XnpvTool();
+      const result = tool.schema.safeParse({
+        rate: 0.1,
+        cashFlows: [{ date: "2024-01-01", amount: 100 }],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("invalid date string throws", () => {
+      expect(() =>
+        AnalyticsService.xnpv({
+          rate: 0.1,
+          cashFlows: [
+            { date: "2024-01-01", amount: -100 },
+            { date: "not-a-date", amount: 200 },
+          ],
+        })
+      ).toThrow(/Invalid cash-flow date/);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // xirr
+  // -----------------------------------------------------------------------
+
+  describe("xirr()", () => {
+    // Reference fixture from Microsoft's XIRR documentation.
+    // Excel returns 0.373362535 (≈ 37.34%).
+    const MS_FIXTURE = [
+      { date: "2008-01-01", amount: -10000 },
+      { date: "2008-03-01", amount: 2750 },
+      { date: "2008-10-30", amount: 4250 },
+      { date: "2009-02-15", amount: 3250 },
+      { date: "2009-04-01", amount: 2750 },
+    ];
+
+    it("matches Excel's XIRR on the Microsoft reference fixture", () => {
+      const result = AnalyticsService.xirr({ cashFlows: MS_FIXTURE });
+      expect(result.xirr).toBeCloseTo(0.373362535, 4);
+    });
+
+    it("inverse-relationship to xnpv: xnpv(xirr, flows) ≈ 0", () => {
+      const { xirr } = AnalyticsService.xirr({ cashFlows: MS_FIXTURE });
+      const { xnpv } = AnalyticsService.xnpv({
+        rate: xirr,
+        cashFlows: MS_FIXTURE,
+      });
+      expect(Math.abs(xnpv)).toBeLessThan(1e-6);
+    });
+
+    it("throws when all flows are positive", () => {
+      expect(() =>
+        AnalyticsService.xirr({
+          cashFlows: [
+            { date: "2024-01-01", amount: 100 },
+            { date: "2024-06-01", amount: 200 },
+            { date: "2024-12-01", amount: 300 },
+          ],
+        })
+      ).toThrow(/at least one positive and one negative/);
+    });
+
+    it("throws when all flows are negative", () => {
+      expect(() =>
+        AnalyticsService.xirr({
+          cashFlows: [
+            { date: "2024-01-01", amount: -100 },
+            { date: "2024-06-01", amount: -200 },
+            { date: "2024-12-01", amount: -300 },
+          ],
+        })
+      ).toThrow(/at least one positive and one negative/);
+    });
+
+    it("converges from a non-default initial guess", () => {
+      // 100% guess vs. default 10% — still well above the true ~37% root,
+      // but in Newton-Raphson's basin of attraction.
+      const result = AnalyticsService.xirr({
+        cashFlows: MS_FIXTURE,
+        guess: 1.0,
+      });
+      expect(result.xirr).toBeCloseTo(0.373362535, 4);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // depreciation
+  // -----------------------------------------------------------------------
+
+  describe("depreciation()", () => {
+    it("straight-line schedule has constant per-period expense", () => {
+      const result = AnalyticsService.depreciation({
+        cost: 10000,
+        salvage: 1000,
+        life: 5,
+        method: "straight_line",
+      });
+      if ("schedule" in result) {
+        expect(result.schedule).toHaveLength(5);
+        for (const row of result.schedule) {
+          expect(row.depreciation).toBe(1800); // (10000 - 1000) / 5
+        }
+        expect(result.schedule[0].accumulated).toBe(1800);
+        expect(result.schedule[4].accumulated).toBe(9000);
+        expect(result.schedule[4].bookValue).toBe(1000);
+      } else {
+        throw new Error("expected schedule, got row");
+      }
+    });
+
+    it("single-period query returns a row field, not a schedule", () => {
+      const result = AnalyticsService.depreciation({
+        cost: 10000,
+        salvage: 1000,
+        life: 5,
+        method: "straight_line",
+        period: 3,
+      });
+      expect("row" in result).toBe(true);
+      expect("schedule" in result).toBe(false);
+      if ("row" in result) {
+        expect(result.row).toEqual({
+          period: 3,
+          depreciation: 1800,
+          accumulated: 5400,
+          bookValue: 4600,
+        });
+      }
+    });
+
+    it("double-declining-balance frontloads expense", () => {
+      const result = AnalyticsService.depreciation({
+        cost: 10000,
+        salvage: 1000,
+        life: 5,
+        method: "double_declining_balance",
+      });
+      if ("schedule" in result) {
+        // rate = 2/5 = 0.4
+        expect(result.schedule[0].depreciation).toBe(4000); // 0.4 * 10000
+        expect(result.schedule[1].depreciation).toBe(2400); // 0.4 * 6000
+        expect(result.schedule[result.schedule.length - 1].bookValue).toBe(
+          1000
+        );
+      } else {
+        throw new Error("expected schedule");
+      }
+    });
+
+    it("DDB final accumulated depreciation equals cost - salvage exactly", () => {
+      const result = AnalyticsService.depreciation({
+        cost: 10000,
+        salvage: 1000,
+        life: 5,
+        method: "double_declining_balance",
+      });
+      if ("schedule" in result) {
+        const total = result.schedule.reduce(
+          (sum, row) => sum + row.depreciation,
+          0
+        );
+        expect(Math.round(total * 100) / 100).toBe(9000);
+      }
+    });
+
+    it("declining-balance honors a custom factor", () => {
+      const result = AnalyticsService.depreciation({
+        cost: 10000,
+        salvage: 1000,
+        life: 5,
+        method: "declining_balance",
+        factor: 1.5,
+      });
+      if ("schedule" in result) {
+        // rate = 1.5/5 = 0.3
+        expect(result.schedule[0].depreciation).toBe(3000); // 0.3 * 10000
+      }
+    });
+
+    it("period > life throws a clear error", () => {
+      expect(() =>
+        AnalyticsService.depreciation({
+          cost: 10000,
+          salvage: 1000,
+          life: 5,
+          method: "straight_line",
+          period: 7,
+        })
+      ).toThrow(/period 7 exceeds life 5/);
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // amortize
   // -----------------------------------------------------------------------
 

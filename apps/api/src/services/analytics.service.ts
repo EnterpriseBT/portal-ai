@@ -131,6 +131,17 @@ export interface AmortizationRow {
   balance: number;
 }
 
+export interface DepreciationRow {
+  period: number;
+  depreciation: number;
+  accumulated: number;
+  bookValue: number;
+}
+
+export type DepreciationResult =
+  | { schedule: DepreciationRow[] }
+  | { row: DepreciationRow };
+
 export interface ResolveIdentityResult {
   entityGroupName: string;
   linkValue: string;
@@ -1707,6 +1718,231 @@ export class AnalyticsService {
    */
   static irr(params: { cashFlows: number[] }): { irr: number } {
     return { irr: financial.irr(params.cashFlows) };
+  }
+
+  /**
+   * NPV over irregular-date cash flows (Excel XNPV semantics, 365-day year).
+   */
+  static xnpv(params: {
+    rate: number;
+    cashFlows: { date: string; amount: number }[];
+  }): { xnpv: number } {
+    const sorted = this.parseAndSortFlows(params.cashFlows);
+    return { xnpv: this.xnpvOnSorted(params.rate, sorted) };
+  }
+
+  private static parseAndSortFlows(
+    flows: { date: string; amount: number }[]
+  ): { time: number; amount: number }[] {
+    const parsed = flows.map((f) => {
+      const t = Date.parse(f.date);
+      if (Number.isNaN(t)) {
+        throw new Error(`Invalid cash-flow date: ${f.date}`);
+      }
+      return { time: t, amount: f.amount };
+    });
+    parsed.sort((a, b) => a.time - b.time);
+    return parsed;
+  }
+
+  private static xnpvOnSorted(
+    rate: number,
+    sorted: { time: number; amount: number }[]
+  ): number {
+    const anchor = sorted[0].time;
+    const yearMs = 365 * 86400 * 1000;
+    let sum = 0;
+    for (const f of sorted) {
+      const years = (f.time - anchor) / yearMs;
+      sum += f.amount / Math.pow(1 + rate, years);
+    }
+    return sum;
+  }
+
+  /**
+   * IRR over irregular-date cash flows (Excel XIRR semantics).
+   * Newton-Raphson on xnpv with a 100-iteration cap.
+   */
+  static xirr(params: {
+    cashFlows: { date: string; amount: number }[];
+    guess?: number;
+  }): { xirr: number } {
+    const sorted = this.parseAndSortFlows(params.cashFlows);
+    const hasPositive = sorted.some((f) => f.amount > 0);
+    const hasNegative = sorted.some((f) => f.amount < 0);
+    if (!hasPositive || !hasNegative) {
+      throw new Error(
+        "xirr requires at least one positive and one negative amount"
+      );
+    }
+
+    const anchor = sorted[0].time;
+    const yearMs = 365 * 86400 * 1000;
+    const dxnpv = (rate: number): number => {
+      let sum = 0;
+      for (const f of sorted) {
+        const years = (f.time - anchor) / yearMs;
+        sum += (-years * f.amount) / Math.pow(1 + rate, years + 1);
+      }
+      return sum;
+    };
+
+    let rate = params.guess ?? 0.1;
+    for (let i = 0; i < 100; i++) {
+      const f = this.xnpvOnSorted(rate, sorted);
+      const fp = dxnpv(rate);
+      if (Math.abs(fp) < 1e-12) {
+        throw new Error("xirr did not converge (zero derivative)");
+      }
+      const next = rate - f / fp;
+      if (Math.abs(next - rate) < 1e-10) {
+        return { xirr: next };
+      }
+      rate = next;
+    }
+    throw new Error("xirr did not converge after 100 iterations");
+  }
+
+  /**
+   * Depreciation schedule (or single period) under straight-line,
+   * declining-balance, or double-declining-balance.
+   */
+  static depreciation(params: {
+    cost: number;
+    salvage: number;
+    life: number;
+    method:
+      | "straight_line"
+      | "declining_balance"
+      | "double_declining_balance";
+    period?: number;
+    factor?: number;
+  }): DepreciationResult {
+    const { cost, salvage, life, method, period } = params;
+    if (period !== undefined && period > life) {
+      throw new Error(`period ${period} exceeds life ${life}`);
+    }
+
+    const round2 = (n: number): number => Math.round(n * 100) / 100;
+    const schedule: DepreciationRow[] = [];
+
+    if (method === "straight_line") {
+      const expense = (cost - salvage) / life;
+      let accumulated = 0;
+      for (let i = 1; i <= life; i++) {
+        accumulated += expense;
+        schedule.push({
+          period: i,
+          depreciation: round2(expense),
+          accumulated: round2(accumulated),
+          bookValue: round2(cost - accumulated),
+        });
+      }
+    } else {
+      const factor =
+        params.factor ?? (method === "double_declining_balance" ? 2 : 1);
+      const rate = factor / life;
+      let bookValue = cost;
+      let accumulated = 0;
+      for (let i = 1; i <= life; i++) {
+        let expense = rate * bookValue;
+        if (bookValue - expense < salvage) expense = bookValue - salvage;
+        if (expense < 0) expense = 0;
+        accumulated += expense;
+        bookValue -= expense;
+        schedule.push({
+          period: i,
+          depreciation: round2(expense),
+          accumulated: round2(accumulated),
+          bookValue: round2(bookValue),
+        });
+      }
+    }
+
+    if (period !== undefined) {
+      return { row: schedule[period - 1] };
+    }
+    return { schedule };
+  }
+
+  /**
+   * Time-value-of-money. Picks one of pv/fv/pmt/nper/rate to solve for,
+   * given the others. Forwards to the `financial` package.
+   */
+  static tvm(params: {
+    op: "pv" | "fv" | "pmt" | "rate" | "nper";
+    rate?: number;
+    nper?: number;
+    pmt?: number;
+    pv?: number;
+    fv?: number;
+    guess?: number;
+  }): { result: number } {
+    const { op } = params;
+
+    const required: Record<typeof op, (keyof typeof params)[]> = {
+      pv: ["rate", "nper", "pmt"],
+      fv: ["rate", "nper", "pmt", "pv"],
+      pmt: ["rate", "nper", "pv"],
+      nper: ["rate", "pmt", "pv"],
+      rate: ["nper", "pmt", "pv", "fv"],
+    };
+    const missing = required[op].filter((k) => params[k] === undefined);
+    if (missing.length > 0) {
+      throw new Error(
+        `Missing input for op="${op}": ${missing.join(", ")}`
+      );
+    }
+
+    switch (op) {
+      case "pv":
+        return {
+          result: financial.pv(
+            params.rate!,
+            params.nper!,
+            params.pmt!,
+            params.fv ?? 0
+          ),
+        };
+      case "fv":
+        return {
+          result: financial.fv(
+            params.rate!,
+            params.nper!,
+            params.pmt!,
+            params.pv!
+          ),
+        };
+      case "pmt":
+        return {
+          result: financial.pmt(
+            params.rate!,
+            params.nper!,
+            params.pv!,
+            params.fv ?? 0
+          ),
+        };
+      case "nper":
+        return {
+          result: financial.nper(
+            params.rate!,
+            params.pmt!,
+            params.pv!,
+            params.fv ?? 0
+          ),
+        };
+      case "rate":
+        return {
+          result: financial.rate(
+            params.nper!,
+            params.pmt!,
+            params.pv!,
+            params.fv!,
+            undefined,
+            params.guess
+          ),
+        };
+    }
   }
 
   /**

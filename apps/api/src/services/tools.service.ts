@@ -28,6 +28,10 @@ import { TrendTool } from "../tools/trend.tool.js";
 import { TechnicalIndicatorTool } from "../tools/technical-indicator.tool.js";
 import { NpvTool } from "../tools/npv.tool.js";
 import { IrrTool } from "../tools/irr.tool.js";
+import { TvmTool } from "../tools/tvm.tool.js";
+import { XnpvTool } from "../tools/xnpv.tool.js";
+import { XirrTool } from "../tools/xirr.tool.js";
+import { DepreciationTool } from "../tools/depreciation.tool.js";
 import { AmortizeTool } from "../tools/amortize.tool.js";
 import { SharpeRatioTool } from "../tools/sharpe-ratio.tool.js";
 import { MaxDrawdownTool } from "../tools/max-drawdown.tool.js";
@@ -99,6 +103,10 @@ export class ToolService {
     "technical_indicator",
     "npv",
     "irr",
+    "tvm",
+    "xnpv",
+    "xirr",
+    "depreciation",
     "amortize",
     "sharpe_ratio",
     "max_drawdown",
@@ -225,6 +233,10 @@ export class ToolService {
       );
       tools.npv = new NpvTool().build();
       tools.irr = new IrrTool().build();
+      tools.tvm = new TvmTool().build();
+      tools.xnpv = new XnpvTool().build();
+      tools.xirr = new XirrTool().build();
+      tools.depreciation = new DepreciationTool().build();
       tools.amortize = new AmortizeTool().build();
       tools.sharpe_ratio = new SharpeRatioTool().build(stationData);
       tools.max_drawdown = new MaxDrawdownTool().build(stationData);
