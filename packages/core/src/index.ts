@@ -7,6 +7,7 @@ export * from "./ui/index.js";
 export * from "./models/station.model.js";
 export * from "./models/station-instance.model.js";
 export * from "./models/station-toolpack.model.js";
+export * from "./models/organization-toolpack.model.js";
 export * from "./models/portal.model.js";
 export * from "./models/portal-message.model.js";
 export * from "./models/portal-result.model.js";

@@ -60,3 +60,6 @@ export * from "./portal-result.model.js";
 
 /** Station toolpack join model schema & type */
 export * from "./station-toolpack.model.js";
+
+/** Organization toolpack model schema & type */
+export * from "./organization-toolpack.model.js";

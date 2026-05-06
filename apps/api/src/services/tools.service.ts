@@ -45,8 +45,7 @@ import { SharpeRatioTool } from "../tools/sharpe-ratio.tool.js";
 import { MaxDrawdownTool } from "../tools/max-drawdown.tool.js";
 import { RollingReturnsTool } from "../tools/rolling-returns.tool.js";
 import { WebSearchTool } from "../tools/web-search.tool.js";
-// `WebhookTool` is reintroduced in phase 2 to back custom toolpacks.
-// `callWebhook` below remains exported for that future caller.
+import { WebhookTool } from "../tools/webhook.tool.js";
 import { EntityRecordCreateTool } from "../tools/entity-record-create.tool.js";
 import { EntityRecordUpdateTool } from "../tools/entity-record-update.tool.js";
 import { EntityRecordDeleteTool } from "../tools/entity-record-delete.tool.js";
@@ -92,54 +91,57 @@ export type ToolPackName = (typeof ALL_TOOL_PACKS)[number];
 // Service
 // ---------------------------------------------------------------------------
 
+/** All built-in tool names — used to detect webhook name conflicts. */
+export const BUILTIN_TOOL_NAMES = new Set<string>([
+  "sql_query",
+  "visualize",
+  "visualize_tree",
+  "resolve_identity",
+  "describe_column",
+  "correlate",
+  "detect_outliers",
+  "cluster",
+  "aggregate",
+  "hypothesis_test",
+  "regression",
+  "logistic_regression",
+  "changepoint",
+  "decompose",
+  "forecast",
+  "trend",
+  "technical_indicator",
+  "npv",
+  "irr",
+  "tvm",
+  "xnpv",
+  "xirr",
+  "depreciation",
+  "var_cvar",
+  "portfolio_metrics",
+  "bond_math",
+  "amortize",
+  "sharpe_ratio",
+  "max_drawdown",
+  "rolling_returns",
+  "web_search",
+  "entity_record_create",
+  "entity_record_update",
+  "entity_record_delete",
+  "connector_entity_create",
+  "connector_entity_update",
+  "connector_entity_delete",
+  "field_mapping_create",
+  "field_mapping_update",
+  "field_mapping_delete",
+]);
+
 export class ToolService {
   // -----------------------------------------------------------------------
   // Static look-ups
   // -----------------------------------------------------------------------
 
-  /** All built-in tool names — used to detect webhook name conflicts. */
-  private static readonly PACK_TOOL_NAMES = new Set([
-    "sql_query",
-    "visualize",
-    "visualize_tree",
-    "resolve_identity",
-    "describe_column",
-    "correlate",
-    "detect_outliers",
-    "cluster",
-    "aggregate",
-    "hypothesis_test",
-    "regression",
-    "logistic_regression",
-    "changepoint",
-    "decompose",
-    "forecast",
-    "trend",
-    "technical_indicator",
-    "npv",
-    "irr",
-    "tvm",
-    "xnpv",
-    "xirr",
-    "depreciation",
-    "var_cvar",
-    "portfolio_metrics",
-    "bond_math",
-    "amortize",
-    "sharpe_ratio",
-    "max_drawdown",
-    "rolling_returns",
-    "web_search",
-    "entity_record_create",
-    "entity_record_update",
-    "entity_record_delete",
-    "connector_entity_create",
-    "connector_entity_update",
-    "connector_entity_delete",
-    "field_mapping_create",
-    "field_mapping_update",
-    "field_mapping_delete",
-  ]);
+  /** Re-exported for any caller still going via the class. */
+  static readonly PACK_TOOL_NAMES = BUILTIN_TOOL_NAMES;
 
   // -----------------------------------------------------------------------
   // Public API
@@ -197,18 +199,11 @@ export class ToolService {
     const builtinSlugs = enabledRows
       .map((r) => r.builtinSlug)
       .filter((s): s is string => s !== null);
-    const customRows = enabledRows.filter(
-      (r) => r.organizationToolpackId !== null
-    );
+    const customPackIds = enabledRows
+      .map((r) => r.organizationToolpackId)
+      .filter((id): id is string => id !== null);
 
-    if (customRows.length > 0) {
-      logger.warn(
-        { stationId, count: customRows.length },
-        "Custom toolpack rows present but not yet supported (phase 2)"
-      );
-    }
-
-    if (builtinSlugs.length === 0) {
+    if (builtinSlugs.length === 0 && customPackIds.length === 0) {
       throw new Error("Station must have at least one tool pack enabled");
     }
 
@@ -344,11 +339,44 @@ export class ToolService {
       }
     }
 
+    // -------------------------------------------------------------------
+    // Custom toolpacks
+    // -------------------------------------------------------------------
+    if (customPackIds.length > 0) {
+      const customPacks =
+        await repo.organizationToolpacks.findManyByIds(customPackIds, {
+          organizationId,
+        });
+      for (const pack of customPacks) {
+        for (const tool of pack.tools) {
+          if (tool.name in tools) {
+            throw new Error(
+              `Tool "${tool.name}" is provided by more than one enabled toolpack on this station`
+            );
+          }
+          tools[tool.name] = new WebhookTool(
+            tool.name,
+            tool.description,
+            tool.parameterSchema as Record<string, unknown>,
+            {
+              type: "webhook",
+              url: pack.endpoints.runtime,
+              headers:
+                (pack.authHeaders as Record<string, string> | null) ??
+                undefined,
+            },
+            stationId
+          ).build();
+        }
+      }
+    }
+
     logger.info(
       {
         stationId,
         toolCount: Object.keys(tools).length,
         packs: toolPacks,
+        customPackIds,
       },
       "Analytics tools built"
     );

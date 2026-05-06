@@ -119,4 +119,57 @@ describe("ToolpacksUI", () => {
     const headings = screen.getAllByText("Data Query");
     expect(headings.length).toBeGreaterThanOrEqual(1);
   });
+
+  // Case 110
+  it("renders Edit / Delete / Refresh actions for custom rows but not built-ins", () => {
+    const customPack: Toolpack = {
+      id: "otp-1",
+      kind: "custom",
+      slug: "customer_intel",
+      name: "customer_intel",
+      description: "External customer intelligence.",
+      iconSlug: "Extension",
+      tools: [
+        {
+          name: "lookup_company",
+          description: "Look up a company.",
+          parameterSchema: { type: "object", properties: {} },
+        },
+      ],
+      endpoints: {
+        schema: "https://example.com/schema",
+        runtime: "https://example.com/runtime",
+      },
+      authHeadersStatus: { has: false },
+      schemaFetchedAt: Date.now(),
+      metadataFetchedAt: null,
+    };
+
+    renderUI({
+      toolpacks: [PACKS[0], customPack],
+      onEdit: jest.fn(),
+      onDelete: jest.fn(),
+      onRefresh: jest.fn(),
+    });
+
+    // The custom row's three icon buttons render — at least one of each.
+    expect(
+      screen.getAllByLabelText("Edit toolpack").length
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByLabelText("Delete toolpack").length
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByLabelText("Refresh toolpack schema").length
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  // Case 111
+  it("renders the Register toolpack header button when onRegister is supplied", () => {
+    const onRegister = jest.fn();
+    renderUI({ onRegister });
+    const button = screen.getByRole("button", { name: /Register toolpack/i });
+    fireEvent.click(button);
+    expect(onRegister).toHaveBeenCalledTimes(1);
+  });
 });

@@ -34,6 +34,7 @@ import type {
   PortalMessage,
   PortalResult,
   StationToolpack,
+  OrganizationToolpack,
 } from "@portalai/core/models";
 import type {
   UserSelect,
@@ -56,6 +57,7 @@ import type {
   PortalMessageSelect,
   PortalResultSelect,
   StationToolpackSelect,
+  OrganizationToolpackSelect,
 } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { users } from "./users.table.js";
@@ -78,6 +80,7 @@ import type { portals } from "./portals.table.js";
 import type { portalMessages } from "./portal-messages.table.js";
 import type { portalResults } from "./portal-results.table.js";
 import type { stationToolpacks } from "./station-toolpacks.table.js";
+import type { organizationToolpacks } from "./organization-toolpacks.table.js";
 import type { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
 import type { InterpretationTrace, LayoutPlan } from "@portalai/core/contracts";
 import type { ConnectorInstanceLayoutPlanSelect } from "./zod.js";
@@ -439,6 +442,34 @@ type _StaToolpackInferredToModel = IsAssignable<
   StationToolpack
 >;
 const _staToolpackInferredToModel: _StaToolpackInferredToModel = true;
+
+// ── OrganizationToolpack ──────────────────────────────────────────────
+//
+// drizzle-zod widens jsonb columns to a generic JSON union that the
+// model's specific Zod refinements don't satisfy directly. Skip the
+// jsonb columns (`endpoints`, `authHeaders`, `tools`, `metadata`) on
+// the drizzle→model assignability check; the inferred-row check
+// (which uses the table's `$type<>()` annotations) catches drift on
+// those columns.
+
+type _OrgToolpackJsonbCols =
+  | "endpoints"
+  | "authHeaders"
+  | "tools"
+  | "metadata";
+
+type _OrgToolpackDrizzleToModel = IsAssignable<
+  Omit<OrganizationToolpackSelect, _OrgToolpackJsonbCols>,
+  Omit<OrganizationToolpack, _OrgToolpackJsonbCols>
+>;
+const _orgToolpackDrizzleToModel: _OrgToolpackDrizzleToModel = true;
+
+type _OrgToolpackInferredRow = InferSelectModel<typeof organizationToolpacks>;
+type _OrgToolpackInferredToModel = IsAssignable<
+  _OrgToolpackInferredRow,
+  OrganizationToolpack
+>;
+const _orgToolpackInferredToModel: _OrgToolpackInferredToModel = true;
 
 // ── Portal ────────────────────────────────────────────────────────────
 

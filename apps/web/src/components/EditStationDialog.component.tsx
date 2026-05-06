@@ -18,15 +18,18 @@ import {
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { ToolPackIconUtil } from "../utils/tool-pack-icons.util";
+import { sdk } from "../api/sdk";
 
-const TOOL_PACK_OPTIONS: SelectOption[] = BUILTIN_TOOLPACKS.map((pack) => {
-  const Icon = ToolPackIconUtil.getIcon(pack.slug);
-  return {
-    value: pack.slug,
-    label: pack.name,
-    icon: <Icon fontSize="small" />,
-  };
-});
+const BUILTIN_TOOL_PACK_OPTIONS: SelectOption[] = BUILTIN_TOOLPACKS.map(
+  (pack) => {
+    const Icon = ToolPackIconUtil.getIcon(pack.slug);
+    return {
+      value: pack.slug,
+      label: pack.name,
+      icon: <Icon fontSize="small" />,
+    };
+  }
+);
 
 interface FormState {
   name: string;
@@ -80,6 +83,15 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const nameRef = useDialogAutoFocus(open);
+
+  // Load custom toolpacks so the picker can offer them alongside built-ins.
+  const customsResult = sdk.toolpacks.list({ kind: "custom" }, { enabled: open });
+  const customOptions: SelectOption[] = (
+    customsResult.data?.toolpacks ?? []
+  )
+    .filter((t): t is typeof t & { kind: "custom" } => t.kind === "custom")
+    .map((p) => ({ value: `org:${p.id}`, label: p.name }));
+  const allOptions = [...BUILTIN_TOOL_PACK_OPTIONS, ...customOptions];
 
   const handleChange = (field: keyof FormState, value: string | string[]) => {
     const next = { ...form, [field]: value };
@@ -177,7 +189,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
           fullWidth
         />
         <MultiSearchableSelect
-          options={TOOL_PACK_OPTIONS}
+          options={allOptions}
           value={form.toolPacks}
           onChange={(values) => handleChange("toolPacks", values)}
           label="Tool Packs"

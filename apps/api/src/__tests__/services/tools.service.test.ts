@@ -15,6 +15,7 @@ const mockFindByConnectorEntityId_records = jest.fn<() => Promise<unknown[]>>();
 const mockFindByConnectorEntityId_members = jest.fn<() => Promise<unknown[]>>();
 const mockFindByEntityGroupId = jest.fn<() => Promise<unknown[]>>();
 const mockFindById_group = jest.fn<() => Promise<unknown>>();
+const mockFindManyByIds_orgPacks = jest.fn<() => Promise<unknown[]>>();
 
 // Mock direct db import for _connector_instances metadata query in loadStation
 const _mockSelectChain = {
@@ -48,6 +49,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
           .mockResolvedValue([]),
       },
       stationToolpacks: { findByStationId: mockFindByStationId_tools },
+      organizationToolpacks: { findManyByIds: mockFindManyByIds_orgPacks },
     },
   },
 }));
@@ -171,6 +173,7 @@ function setupStationMocks(toolPacks: string[]) {
   mockFindByConnectorEntityId_records.mockResolvedValue(CUSTOMER_RECORDS);
   mockFindByConnectorEntityId_members.mockResolvedValue([]);
   mockFindByStationId_tools.mockResolvedValue(makeToolpackRows(toolPacks));
+  mockFindManyByIds_orgPacks.mockResolvedValue([]);
 }
 
 // ---------------------------------------------------------------------------
@@ -392,10 +395,11 @@ describe("buildAnalyticsTools()", () => {
   });
 
   // -----------------------------------------------------------------------
-  // station_toolpacks reader path
+  // Custom toolpacks (phase 2)
   // -----------------------------------------------------------------------
 
-  it("logs a warning and skips rows that reference a custom toolpack id", async () => {
+  // Case 107
+  it("exposes a custom pack's tools when its station_toolpack row is enabled", async () => {
     setupStationMocks(["data_query"]);
     mockFindByStationId_tools.mockResolvedValue([
       ...makeToolpackRows(["data_query"]),
@@ -403,7 +407,7 @@ describe("buildAnalyticsTools()", () => {
         id: "stp-custom",
         stationId: STATION_ID,
         builtinSlug: null,
-        organizationToolpackId: "otp-future",
+        organizationToolpackId: "otp-1",
         created: Date.now(),
         createdBy: "user-001",
         updated: null,
@@ -412,9 +416,156 @@ describe("buildAnalyticsTools()", () => {
         deletedBy: null,
       },
     ]);
+    mockFindManyByIds_orgPacks.mockResolvedValue([
+      {
+        id: "otp-1",
+        organizationId: ORG_ID,
+        name: "customer_intel",
+        endpoints: {
+          schema: "https://example.com/schema",
+          runtime: "https://example.com/runtime",
+        },
+        authHeaders: null,
+        tools: [
+          {
+            name: "lookup_company",
+            description: "Look up a company.",
+            parameterSchema: { type: "object", properties: {} },
+          },
+        ],
+      },
+    ]);
 
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
     expect(tools.sql_query).toBeDefined();
+    expect(tools.lookup_company).toBeDefined();
+  });
+
+  // Case 108
+  it("the custom tool's execute POSTs {tool, input} with auth headers to the runtime URL", async () => {
+    setupStationMocks(["data_query"]);
+    mockFindByStationId_tools.mockResolvedValue([
+      ...makeToolpackRows(["data_query"]),
+      {
+        id: "stp-custom",
+        stationId: STATION_ID,
+        builtinSlug: null,
+        organizationToolpackId: "otp-1",
+        created: Date.now(),
+        createdBy: "user-001",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      },
+    ]);
+    mockFindManyByIds_orgPacks.mockResolvedValue([
+      {
+        id: "otp-1",
+        organizationId: ORG_ID,
+        name: "customer_intel",
+        endpoints: {
+          schema: "https://example.com/schema",
+          runtime: "https://example.com/runtime",
+        },
+        authHeaders: { "X-Api-Key": "secret123" },
+        tools: [
+          {
+            name: "lookup_company",
+            description: "Look up a company.",
+            parameterSchema: {
+              type: "object",
+              properties: { domain: { type: "string" } },
+            },
+          },
+        ],
+      },
+    ]);
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ name: "Acme" }),
+    });
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+    const execute = (tools.lookup_company as any).execute;
+    const result = await execute({ domain: "acme.com" });
+
+    expect(result).toEqual({ name: "Acme" });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe("https://example.com/runtime");
+    expect(options!.method).toBe("POST");
+    expect(options!.headers["X-Api-Key"]).toBe("secret123");
+    expect(JSON.parse(options!.body)).toEqual({
+      tool: "lookup_company",
+      input: { domain: "acme.com" },
+    });
+  });
+
+  // Case 109
+  it("throws when two enabled custom packs both define the same tool name", async () => {
+    setupStationMocks(["data_query"]);
+    mockFindByStationId_tools.mockResolvedValue([
+      ...makeToolpackRows(["data_query"]),
+      {
+        id: "stp-a",
+        stationId: STATION_ID,
+        builtinSlug: null,
+        organizationToolpackId: "otp-a",
+        created: Date.now(),
+        createdBy: "user-001",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      },
+      {
+        id: "stp-b",
+        stationId: STATION_ID,
+        builtinSlug: null,
+        organizationToolpackId: "otp-b",
+        created: Date.now(),
+        createdBy: "user-001",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      },
+    ]);
+    const tool = {
+      name: "lookup_company",
+      description: "x",
+      parameterSchema: { type: "object", properties: {} },
+    };
+    mockFindManyByIds_orgPacks.mockResolvedValue([
+      {
+        id: "otp-a",
+        organizationId: ORG_ID,
+        name: "pack_a",
+        endpoints: {
+          schema: "https://a/schema",
+          runtime: "https://a/runtime",
+        },
+        authHeaders: null,
+        tools: [tool],
+      },
+      {
+        id: "otp-b",
+        organizationId: ORG_ID,
+        name: "pack_b",
+        endpoints: {
+          schema: "https://b/schema",
+          runtime: "https://b/runtime",
+        },
+        authHeaders: null,
+        tools: [tool],
+      },
+    ]);
+
+    await expect(
+      buildAnalyticsTools(ORG_ID, STATION_ID, "user-001")
+    ).rejects.toThrow(/provided by more than one enabled toolpack/);
   });
 
   // -----------------------------------------------------------------------

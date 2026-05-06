@@ -3,6 +3,8 @@ import {
   ToolpackListRequestQuerySchema,
   ToolpackListResponsePayloadSchema,
   ToolpackGetResponsePayloadSchema,
+  RegisterToolpackBodySchema,
+  UpdateToolpackBodySchema,
 } from "../../contracts/toolpack.contract.js";
 
 const VALID_BUILTIN = {
@@ -23,6 +25,32 @@ const VALID_BUILTIN = {
       },
     },
   ],
+};
+
+const VALID_CUSTOM = {
+  id: "otp-1",
+  kind: "custom" as const,
+  slug: "customer_intel",
+  name: "customer_intel",
+  description: "External customer intelligence calls.",
+  iconSlug: "Extension",
+  tools: [
+    {
+      name: "lookup_company",
+      description: "Look up a company by domain.",
+      parameterSchema: {
+        type: "object",
+        properties: { domain: { type: "string" } },
+      },
+    },
+  ],
+  endpoints: {
+    schema: "https://example.com/schema",
+    runtime: "https://example.com/runtime",
+  },
+  authHeadersStatus: { has: false },
+  schemaFetchedAt: Date.now(),
+  metadataFetchedAt: null,
 };
 
 describe("ToolpackSchema", () => {
@@ -82,6 +110,94 @@ describe("ToolpackGetResponsePayloadSchema", () => {
       toolpack: VALID_BUILTIN,
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("ToolpackSchema (custom arm)", () => {
+  // Case 68
+  it("accepts a kind: 'custom' record", () => {
+    const result = ToolpackSchema.safeParse(VALID_CUSTOM);
+    expect(result.success).toBe(true);
+  });
+
+  // Case 69
+  it("rejects a custom record without endpoints", () => {
+    const { endpoints: _e, ...withoutEndpoints } = VALID_CUSTOM;
+    const result = ToolpackSchema.safeParse(withoutEndpoints);
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("RegisterToolpackBodySchema", () => {
+  // Case 70
+  it("accepts a minimal payload", () => {
+    const result = RegisterToolpackBodySchema.safeParse({
+      name: "customer_intel",
+      endpoints: {
+        schema: "https://example.com/schema",
+        runtime: "https://example.com/runtime",
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects malformed name", () => {
+    const result = RegisterToolpackBodySchema.safeParse({
+      name: "Bad Name",
+      endpoints: {
+        schema: "https://example.com/schema",
+        runtime: "https://example.com/runtime",
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects malformed endpoint URL", () => {
+    const result = RegisterToolpackBodySchema.safeParse({
+      name: "customer_intel",
+      endpoints: {
+        schema: "not-a-url",
+        runtime: "https://example.com/runtime",
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts an optional metadata endpoint and authHeaders", () => {
+    const result = RegisterToolpackBodySchema.safeParse({
+      name: "customer_intel",
+      description: "x",
+      endpoints: {
+        schema: "https://example.com/schema",
+        runtime: "https://example.com/runtime",
+        metadata: "https://example.com/metadata",
+      },
+      authHeaders: { "X-Api-Key": "secret" },
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("UpdateToolpackBodySchema", () => {
+  // Case 71
+  it("rejects an empty object", () => {
+    const result = UpdateToolpackBodySchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+
+  // Case 72
+  it("accepts a partial subset", () => {
+    expect(
+      UpdateToolpackBodySchema.safeParse({ description: "new" }).success
+    ).toBe(true);
+    expect(
+      UpdateToolpackBodySchema.safeParse({
+        endpoints: {
+          schema: "https://example.com/s",
+          runtime: "https://example.com/r",
+        },
+      }).success
+    ).toBe(true);
   });
 });
 

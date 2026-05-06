@@ -25,6 +25,7 @@ export {
 } from "./portal-messages.table.js";
 export { portalResults, portalResultTypeEnum } from "./portal-results.table.js";
 export { stationToolpacks } from "./station-toolpacks.table.js";
+export { organizationToolpacks } from "./organization-toolpacks.table.js";
 export { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
 export { fileUploads } from "./file-uploads.table.js";
 

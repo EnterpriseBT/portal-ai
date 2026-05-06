@@ -60,10 +60,13 @@ export class WebhookTool extends Tool {
           },
           "Calling webhook tool"
         );
-        const result = await ToolService.callWebhook(
-          this.implementation,
-          input
-        );
+        // Phase 2 wire shape: pack runtime endpoints receive
+        // `{tool, input}` so a single endpoint can dispatch across
+        // every tool the pack advertises.
+        const result = await ToolService.callWebhook(this.implementation, {
+          tool: this.slug,
+          input,
+        });
 
         // Propagate vega-lite and vega chart results
         if (

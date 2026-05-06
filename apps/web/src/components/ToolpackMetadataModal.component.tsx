@@ -60,9 +60,51 @@ export const ToolpackMetadataModalUI: React.FC<ToolpackMetadataModalUIProps> = (
           </DialogTitle>
           <DialogContent dividers>
             <Stack spacing={3}>
-              <Typography variant="body2" color="text.secondary">
-                {toolpack.description}
-              </Typography>
+              {toolpack.description && (
+                <Typography variant="body2" color="text.secondary">
+                  {toolpack.description}
+                </Typography>
+              )}
+
+              {toolpack.kind === "custom" && (
+                <Box
+                  sx={{
+                    border: (theme) =>
+                      `1px solid ${theme.palette.divider}`,
+                    borderRadius: 1,
+                    p: 2,
+                  }}
+                >
+                  <Stack spacing={1}>
+                    <Typography variant="overline" color="text.secondary">
+                      Endpoints
+                    </Typography>
+                    <EndpointRow
+                      label="Schema"
+                      url={toolpack.endpoints.schema}
+                    />
+                    <EndpointRow
+                      label="Runtime"
+                      url={toolpack.endpoints.runtime}
+                    />
+                    {toolpack.endpoints.metadata && (
+                      <EndpointRow
+                        label="Metadata"
+                        url={toolpack.endpoints.metadata}
+                      />
+                    )}
+                    <Typography variant="caption" color="text.secondary">
+                      Auth headers:{" "}
+                      {toolpack.authHeadersStatus.has ? "set" : "not set"}
+                      {" • "}
+                      Last refreshed:{" "}
+                      {new Date(
+                        toolpack.schemaFetchedAt
+                      ).toLocaleString()}
+                    </Typography>
+                  </Stack>
+                </Box>
+              )}
 
               <Stack spacing={2}>
                 <Typography variant="overline" color="text.secondary">
@@ -79,6 +121,23 @@ export const ToolpackMetadataModalUI: React.FC<ToolpackMetadataModalUIProps> = (
     </Dialog>
   );
 };
+
+const EndpointRow: React.FC<{ label: string; url: string }> = ({
+  label,
+  url,
+}) => (
+  <Stack direction="row" spacing={1} alignItems="baseline">
+    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 70 }}>
+      {label}
+    </Typography>
+    <Typography
+      variant="body2"
+      sx={{ fontFamily: "monospace", wordBreak: "break-all" }}
+    >
+      {url}
+    </Typography>
+  </Stack>
+);
 
 const ToolSection: React.FC<{ tool: ToolpackTool }> = ({ tool }) => {
   return (

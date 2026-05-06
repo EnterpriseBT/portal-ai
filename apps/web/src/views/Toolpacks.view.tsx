@@ -3,6 +3,7 @@ import React, { useMemo, useState } from "react";
 import type { Toolpack } from "@portalai/core/contracts";
 import {
   Box,
+  Button,
   DataTable,
   Icon,
   IconName,
@@ -11,12 +12,30 @@ import {
   type DataTableColumn,
 } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
+import IconButton from "@mui/material/IconButton";
 import TextField from "@mui/material/TextField";
+import AddIcon from "@mui/icons-material/Add";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { useNavigate } from "@tanstack/react-router";
+
+import { useQueryClient } from "@tanstack/react-query";
 
 import DataResult from "../components/DataResult.component";
 import { ToolpackMetadataModalUI } from "../components/ToolpackMetadataModal.component";
-import { sdk } from "../api/sdk";
+import { RegisterToolpackDialogUI } from "../components/RegisterToolpackDialog.component";
+import { EditToolpackDialogUI } from "../components/EditToolpackDialog.component";
+import { DeleteToolpackDialogUI } from "../components/DeleteToolpackDialog.component";
+import { sdk, queryKeys } from "../api/sdk";
+import { toServerError } from "../utils/api.util";
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+function formatLastRefreshed(toolpack: Toolpack): string {
+  if (toolpack.kind !== "custom") return "—";
+  return new Date(toolpack.schemaFetchedAt).toLocaleString();
+}
 
 // ── Pure UI ─────────────────────────────────────────────────────────
 
@@ -27,6 +46,14 @@ export interface ToolpacksUIProps {
   selected: Toolpack | null;
   onSelect: (toolpack: Toolpack) => void;
   onCloseModal: () => void;
+  /** Optional — when set, the page renders a "Register toolpack" button. */
+  onRegister?: () => void;
+  /** Optional — fires when the Edit action on a custom row is clicked. */
+  onEdit?: (toolpack: Toolpack) => void;
+  /** Optional — fires when the Delete action on a custom row is clicked. */
+  onDelete?: (toolpack: Toolpack) => void;
+  /** Optional — fires when the Refresh action on a custom row is clicked. */
+  onRefresh?: (toolpack: Toolpack) => void;
 }
 
 export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
@@ -36,6 +63,10 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
   selected,
   onSelect,
   onCloseModal,
+  onRegister,
+  onEdit,
+  onDelete,
+  onRefresh,
 }) => {
   const navigate = useNavigate();
 
@@ -45,13 +76,15 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
     return toolpacks.filter(
       (t) =>
         t.name.toLowerCase().includes(q) ||
-        t.description.toLowerCase().includes(q) ||
+        (t.description ?? "").toLowerCase().includes(q) ||
         t.slug.toLowerCase().includes(q)
     );
   }, [toolpacks, search]);
 
-  const columns: DataTableColumn[] = useMemo(
-    () => [
+  const showActions = Boolean(onEdit || onDelete || onRefresh);
+
+  const columns: DataTableColumn[] = useMemo(() => {
+    const base: DataTableColumn[] = [
       {
         key: "name",
         label: "Name",
@@ -89,11 +122,62 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
       {
         key: "lastRefreshed",
         label: "Last refreshed",
-        render: () => "—",
       },
-    ],
-    [toolpacks, onSelect]
-  );
+    ];
+
+    if (!showActions) return base;
+
+    base.push({
+      key: "actions",
+      label: "Actions",
+      render: (_value, row) => {
+        const tp = toolpacks.find((t) => t.id === row.id);
+        if (!tp || tp.kind !== "custom") return null;
+        return (
+          <Stack direction="row" spacing={0.5}>
+            {onRefresh && (
+              <IconButton
+                size="small"
+                aria-label="Refresh toolpack schema"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRefresh(tp);
+                }}
+              >
+                <RefreshIcon fontSize="small" />
+              </IconButton>
+            )}
+            {onEdit && (
+              <IconButton
+                size="small"
+                aria-label="Edit toolpack"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(tp);
+                }}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            )}
+            {onDelete && (
+              <IconButton
+                size="small"
+                color="error"
+                aria-label="Delete toolpack"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(tp);
+                }}
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            )}
+          </Stack>
+        );
+      },
+    });
+    return base;
+  }, [toolpacks, onSelect, onEdit, onDelete, onRefresh, showActions]);
 
   const rows = useMemo(
     () =>
@@ -101,9 +185,9 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
         id: t.id,
         name: t.name,
         kind: t.kind,
-        description: t.description,
+        description: t.description ?? "",
         toolCount: t.tools.length,
-        lastRefreshed: null,
+        lastRefreshed: formatLastRefreshed(t),
       })),
     [filtered]
   );
@@ -144,6 +228,17 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
           onNavigate={(href) => navigate({ to: href })}
           title="Toolpacks"
           icon={<Icon name={IconName.Extension} />}
+          primaryAction={
+            onRegister ? (
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={onRegister}
+              >
+                Register toolpack
+              </Button>
+            ) : undefined
+          }
         />
 
         <TextField
@@ -180,23 +275,113 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
 // ── Container ───────────────────────────────────────────────────────
 
 export const Toolpacks: React.FC = () => {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Toolpack | null>(null);
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [editing, setEditing] = useState<Toolpack | null>(null);
+  const [deleting, setDeleting] = useState<Toolpack | null>(null);
 
   const listResult = sdk.toolpacks.list();
+  const registerMutation = sdk.toolpacks.register();
+  const updateMutation = sdk.toolpacks.update(editing?.id ?? "");
+  const refreshMutation = sdk.toolpacks.refresh(editing?.id ?? "");
+  const deleteMutation = sdk.toolpacks.remove(deleting?.id ?? "");
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.toolpacks.root });
+  };
 
   return (
-    <DataResult results={{ list: listResult }}>
-      {({ list }) => (
-        <ToolpacksUI
-          toolpacks={list.toolpacks as Toolpack[]}
-          search={search}
-          onSearchChange={setSearch}
-          selected={selected}
-          onSelect={setSelected}
-          onCloseModal={() => setSelected(null)}
-        />
-      )}
-    </DataResult>
+    <>
+      <DataResult results={{ list: listResult }}>
+        {({ list }) => (
+          <ToolpacksUI
+            toolpacks={list.toolpacks as Toolpack[]}
+            search={search}
+            onSearchChange={setSearch}
+            selected={selected}
+            onSelect={setSelected}
+            onCloseModal={() => setSelected(null)}
+            onRegister={() => setRegisterOpen(true)}
+            onEdit={(t) => setEditing(t)}
+            onDelete={(t) => setDeleting(t)}
+            onRefresh={(t) => {
+              const refresh = sdk.toolpacks.refresh(t.id);
+              refresh.mutate(undefined, {
+                onSuccess: () => invalidate(),
+              });
+            }}
+          />
+        )}
+      </DataResult>
+
+      <RegisterToolpackDialogUI
+        open={registerOpen}
+        onClose={() => {
+          setRegisterOpen(false);
+          registerMutation.reset();
+        }}
+        onSubmit={(body) => {
+          registerMutation.mutate(body, {
+            onSuccess: () => {
+              setRegisterOpen(false);
+              invalidate();
+            },
+          });
+        }}
+        isPending={registerMutation.isPending}
+        serverError={toServerError(registerMutation.error)}
+      />
+
+      <EditToolpackDialogUI
+        open={editing !== null}
+        toolpack={editing}
+        onClose={() => {
+          setEditing(null);
+          updateMutation.reset();
+          refreshMutation.reset();
+        }}
+        onSubmit={(body) => {
+          updateMutation.mutate(body, {
+            onSuccess: () => {
+              setEditing(null);
+              invalidate();
+            },
+          });
+        }}
+        onRefresh={() => {
+          refreshMutation.mutate(undefined, {
+            onSuccess: () => invalidate(),
+          });
+        }}
+        isPending={updateMutation.isPending}
+        isRefreshing={refreshMutation.isPending}
+        serverError={toServerError(updateMutation.error)}
+        refreshError={toServerError(refreshMutation.error)}
+      />
+
+      <DeleteToolpackDialogUI
+        open={deleting !== null}
+        toolpackName={deleting?.name ?? ""}
+        onClose={() => {
+          setDeleting(null);
+          deleteMutation.reset();
+        }}
+        onConfirm={() => {
+          deleteMutation.mutate(undefined, {
+            onSuccess: () => {
+              setDeleting(null);
+              invalidate();
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.stations.root,
+              });
+            },
+          });
+        }}
+        isPending={deleteMutation.isPending}
+        serverError={toServerError(deleteMutation.error)}
+      />
+    </>
   );
 };

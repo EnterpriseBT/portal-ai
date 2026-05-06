@@ -27,6 +27,7 @@ import { portals } from "./portals.table.js";
 import { portalMessages } from "./portal-messages.table.js";
 import { portalResults } from "./portal-results.table.js";
 import { stationToolpacks } from "./station-toolpacks.table.js";
+import { organizationToolpacks } from "./organization-toolpacks.table.js";
 import { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
 import { fileUploads } from "./file-uploads.table.js";
 
@@ -309,6 +310,24 @@ export const StationToolpackInsertSchema =
 /** Inferred types */
 export type StationToolpackSelect = z.infer<typeof StationToolpackSelectSchema>;
 export type StationToolpackInsert = z.infer<typeof StationToolpackInsertSchema>;
+
+// ── Organization Toolpacks ───────────────────────────────────────────
+
+/** Zod schema for an `organization_toolpacks` row returned by SELECT. */
+export const OrganizationToolpackSelectSchema =
+  createSelectSchema(organizationToolpacks);
+
+/** Zod schema for inserting into `organization_toolpacks`. */
+export const OrganizationToolpackInsertSchema =
+  createInsertSchema(organizationToolpacks);
+
+/** Inferred types */
+export type OrganizationToolpackSelect = z.infer<
+  typeof OrganizationToolpackSelectSchema
+>;
+export type OrganizationToolpackInsert = z.infer<
+  typeof OrganizationToolpackInsertSchema
+>;
 
 // ── Connector Instance Layout Plans ──────────────────────────────────
 

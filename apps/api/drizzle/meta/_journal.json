@@ -344,6 +344,13 @@
       "when": 1778983200000,
       "tag": "0048_drop_stations_tool_packs",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1779062400000,
+      "tag": "0049_add_organization_toolpacks",
+      "breakpoints": true
     }
   ]
 }

@@ -28,6 +28,7 @@ const {
   entityGroupMembers,
   entityGroups,
   stationToolpacks,
+  organizationToolpacks,
   stationInstances,
   portalResults,
   portalMessages,
@@ -150,6 +151,7 @@ export async function seedUserAndOrg(
  */
 export async function teardownOrg(db: Db): Promise<void> {
   await db.delete(stationToolpacks);
+  await db.delete(organizationToolpacks);
   await db.delete(stationInstances);
   await db.delete(portalResults);
   await db.delete(portalMessages);

@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, isNotNull, isNull, and } from "drizzle-orm";
+import { eq, isNotNull, and } from "drizzle-orm";
 
 import { StationToolpacksRepository } from "../../../../db/repositories/station-toolpacks.repository.js";
 import type { DbClient } from "../../../../db/repositories/base.repository.js";

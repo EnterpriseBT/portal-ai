@@ -18,10 +18,11 @@ import {
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { ToolPackUtil } from "../utils/tool-packs.util";
+import { sdk } from "../api/sdk";
 
 // ── Types ────────────────────────────────────────────────────────────
 
-const TOOL_PACK_OPTIONS = BUILTIN_TOOLPACKS.map((p) => p.slug);
+const BUILTIN_OPTIONS = BUILTIN_TOOLPACKS.map((p) => p.slug);
 
 interface StationFormState {
   name: string;
@@ -68,6 +69,15 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const nameRef = useDialogAutoFocus(open);
+
+  // Load custom toolpacks so the picker can offer them alongside built-ins.
+  const customsResult = sdk.toolpacks.list({ kind: "custom" }, { enabled: open });
+  const customPacks = (customsResult.data?.toolpacks ?? []).filter(
+    (t): t is typeof t & { kind: "custom" } => t.kind === "custom"
+  );
+  const customOptions = customPacks.map((p) => `org:${p.id}`);
+  const customLabels = new Map(customPacks.map((p) => [p.id, p.name]));
+  const allOptions = [...BUILTIN_OPTIONS, ...customOptions];
 
   React.useEffect(() => {
     if (open) {
@@ -177,14 +187,26 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
         />
         <Autocomplete
           multiple
-          options={[...TOOL_PACK_OPTIONS]}
-          getOptionLabel={(o) => ToolPackUtil.getLabel(o)}
+          options={allOptions}
+          getOptionLabel={(o) => ToolPackUtil.getLabel(o, customLabels)}
+          groupBy={(o) => (o.startsWith("org:") ? "Custom" : "Built-in")}
           value={form.toolPacks}
           onChange={(_, newValue) => handleChange("toolPacks", newValue)}
           onBlur={() => handleBlur("toolPacks")}
           renderTags={(value, getTagProps) =>
             value.map((option, index) => {
               const { key, ...tagProps } = getTagProps({ index });
+              const label = ToolPackUtil.getLabel(option, customLabels);
+              if (option.startsWith("org:")) {
+                return (
+                  <span
+                    key={key}
+                    {...(tagProps as React.HTMLAttributes<HTMLSpanElement>)}
+                  >
+                    {label}
+                  </span>
+                );
+              }
               return <ToolPackChip key={key} pack={option} {...tagProps} />;
             })
           }
