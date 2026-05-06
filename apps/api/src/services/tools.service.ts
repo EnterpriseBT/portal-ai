@@ -23,11 +23,24 @@ import { DescribeColumnTool } from "../tools/describe-column.tool.js";
 import { CorrelateTool } from "../tools/correlate.tool.js";
 import { DetectOutliersTool } from "../tools/detect-outliers.tool.js";
 import { ClusterTool } from "../tools/cluster.tool.js";
+import { AggregateTool } from "../tools/aggregate.tool.js";
+import { HypothesisTestTool } from "../tools/hypothesis-test.tool.js";
 import { RegressionTool } from "../tools/regression.tool.js";
+import { LogisticRegressionTool } from "../tools/logistic-regression.tool.js";
+import { ChangepointTool } from "../tools/changepoint.tool.js";
+import { DecomposeTool } from "../tools/decompose.tool.js";
+import { ForecastTool } from "../tools/forecast.tool.js";
 import { TrendTool } from "../tools/trend.tool.js";
 import { TechnicalIndicatorTool } from "../tools/technical-indicator.tool.js";
 import { NpvTool } from "../tools/npv.tool.js";
 import { IrrTool } from "../tools/irr.tool.js";
+import { TvmTool } from "../tools/tvm.tool.js";
+import { XnpvTool } from "../tools/xnpv.tool.js";
+import { XirrTool } from "../tools/xirr.tool.js";
+import { DepreciationTool } from "../tools/depreciation.tool.js";
+import { VarCvarTool } from "../tools/var-cvar.tool.js";
+import { PortfolioMetricsTool } from "../tools/portfolio-metrics.tool.js";
+import { BondMathTool } from "../tools/bond-math.tool.js";
 import { AmortizeTool } from "../tools/amortize.tool.js";
 import { SharpeRatioTool } from "../tools/sharpe-ratio.tool.js";
 import { MaxDrawdownTool } from "../tools/max-drawdown.tool.js";
@@ -94,11 +107,24 @@ export class ToolService {
     "correlate",
     "detect_outliers",
     "cluster",
+    "aggregate",
+    "hypothesis_test",
     "regression",
+    "logistic_regression",
+    "changepoint",
+    "decompose",
+    "forecast",
     "trend",
     "technical_indicator",
     "npv",
     "irr",
+    "tvm",
+    "xnpv",
+    "xirr",
+    "depreciation",
+    "var_cvar",
+    "portfolio_metrics",
+    "bond_math",
     "amortize",
     "sharpe_ratio",
     "max_drawdown",
@@ -206,6 +232,8 @@ export class ToolService {
       tools.correlate = new CorrelateTool().build(stationData);
       tools.detect_outliers = new DetectOutliersTool().build(stationData);
       tools.cluster = new ClusterTool().build(stationData);
+      tools.aggregate = new AggregateTool().build(stationData);
+      tools.hypothesis_test = new HypothesisTestTool().build(stationData);
     }
 
     // -------------------------------------------------------------------
@@ -213,7 +241,11 @@ export class ToolService {
     // -------------------------------------------------------------------
     if (enabledPacks.has("regression")) {
       tools.regression = new RegressionTool().build(stationData);
+      tools.logistic_regression = new LogisticRegressionTool().build(stationData);
       tools.trend = new TrendTool().build(stationData);
+      tools.changepoint = new ChangepointTool().build(stationData);
+      tools.decompose = new DecomposeTool().build(stationData);
+      tools.forecast = new ForecastTool().build(stationData);
     }
 
     // -------------------------------------------------------------------
@@ -225,10 +257,17 @@ export class ToolService {
       );
       tools.npv = new NpvTool().build();
       tools.irr = new IrrTool().build();
+      tools.tvm = new TvmTool().build();
+      tools.xnpv = new XnpvTool().build();
+      tools.xirr = new XirrTool().build();
+      tools.depreciation = new DepreciationTool().build();
       tools.amortize = new AmortizeTool().build();
       tools.sharpe_ratio = new SharpeRatioTool().build(stationData);
       tools.max_drawdown = new MaxDrawdownTool().build(stationData);
       tools.rolling_returns = new RollingReturnsTool().build(stationData);
+      tools.var_cvar = new VarCvarTool().build(stationData);
+      tools.portfolio_metrics = new PortfolioMetricsTool().build(stationData);
+      tools.bond_math = new BondMathTool().build();
     }
 
     // -------------------------------------------------------------------

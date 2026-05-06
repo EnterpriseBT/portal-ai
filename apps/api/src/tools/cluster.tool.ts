@@ -12,6 +12,23 @@ const InputSchema = z.object({
   entity: z.string().describe("Entity key (table name)"),
   columns: z.array(z.string()).describe("Numeric columns to cluster on"),
   k: z.number().int().min(2).describe("Number of clusters"),
+  standardize: z
+    .boolean()
+    .optional()
+    .describe(
+      "Z-score each column before clustering. Centroids are returned in original units. Default false."
+    ),
+  seed: z
+    .number()
+    .int()
+    .optional()
+    .describe("Seed for reproducible cluster initialization"),
+  maxIterations: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe("Maximum k-means iterations (default 100)"),
 });
 
 export class ClusterTool extends Tool<typeof InputSchema> {
@@ -28,9 +45,17 @@ export class ClusterTool extends Tool<typeof InputSchema> {
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, columns, k } = this.validate(input);
+        const { entity, columns, k, standardize, seed, maxIterations } =
+          this.validate(input);
         const records = getRecords(stationData, entity);
-        return AnalyticsService.cluster({ records, columns, k });
+        return AnalyticsService.cluster({
+          records,
+          columns,
+          k,
+          standardize,
+          seed,
+          maxIterations,
+        });
       },
     });
   }

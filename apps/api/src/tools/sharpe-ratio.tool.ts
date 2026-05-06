@@ -11,15 +11,24 @@ import { getRecords } from "../utils/tools.util.js";
 const InputSchema = z.object({
   entity: z.string().describe("Entity key (table name)"),
   valueColumn: z.string().describe("Value/price column key"),
-  riskFreeRate: z.number().optional().describe("Risk-free rate (default 0)"),
-  annualize: z.boolean().optional().describe("Multiply by √252 for daily data"),
+  riskFreeRate: z
+    .number()
+    .optional()
+    .describe("Per-period risk-free rate (default 0)"),
+  periodicity: z
+    .enum(["daily", "weekly", "monthly", "quarterly", "annual"])
+    .optional()
+    .describe(
+      "Annualization frequency. When omitted, the raw per-period ratio is returned (no annualization)."
+    ),
 });
 
 export class SharpeRatioTool extends Tool<typeof InputSchema> {
   slug = "sharpe_ratio";
   name = "Sharpe Ratio";
   description =
-    "Compute the Sharpe ratio from a series of values. Optionally annualize for daily data.";
+    "Compute the Sharpe ratio from a series of values. Optionally annualize via " +
+    "the `periodicity` field (daily, weekly, monthly, quarterly, annual).";
 
   get schema() {
     return InputSchema;
@@ -30,14 +39,14 @@ export class SharpeRatioTool extends Tool<typeof InputSchema> {
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, valueColumn, riskFreeRate, annualize } =
+        const { entity, valueColumn, riskFreeRate, periodicity } =
           this.validate(input);
         const records = getRecords(stationData, entity);
         return AnalyticsService.sharpeRatio({
           records,
           valueColumn,
           riskFreeRate,
-          annualize,
+          periodicity,
         });
       },
     });
