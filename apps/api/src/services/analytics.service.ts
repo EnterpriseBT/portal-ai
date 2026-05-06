@@ -125,10 +125,40 @@ export interface LogisticRegressionResult {
   iterations: number;
 }
 
+export interface ChangepointResult {
+  changepoints: number[];
+  changepointDates?: string[];
+  segmentMeans: number[];
+  segments: { start: number; end: number }[];
+}
+
+export interface DecomposeResult {
+  dates: string[];
+  observed: number[];
+  trend: (number | null)[];
+  seasonal: number[];
+  residual: (number | null)[];
+}
+
+export interface ForecastResult {
+  dates: string[];
+  observed: number[];
+  fitted: number[];
+  forecast: {
+    dates: string[];
+    values: number[];
+    lower: number[];
+    upper: number[];
+  };
+  parameters: { alpha: number; beta: number; gamma: number };
+  mape: number;
+}
+
 export interface TrendResult {
   dates: string[];
   values: number[];
   trendLine: { slope: number; intercept: number };
+  forecast?: { dates: string[]; values: number[] };
 }
 
 export interface TechnicalIndicatorResult {
@@ -1607,11 +1637,20 @@ export class AnalyticsService {
     dateColumn: string;
     valueColumn: string;
     interval: "day" | "week" | "month" | "quarter" | "year";
+    forecastPeriods?: number;
   }): TrendResult {
     const { records, dateColumn, valueColumn, interval } = params;
 
     if (records.length === 0) {
-      return { dates: [], values: [], trendLine: { slope: 0, intercept: 0 } };
+      const result: TrendResult = {
+        dates: [],
+        values: [],
+        trendLine: { slope: 0, intercept: 0 },
+      };
+      if (params.forecastPeriods !== undefined) {
+        result.forecast = { dates: [], values: [] };
+      }
+      return result;
     }
 
     // Sort by date
@@ -1660,11 +1699,463 @@ export class AnalyticsService {
     const pairs: [number, number][] = indices.map((i) => [i, values[i]]);
     const lr = ss.linearRegression(pairs);
 
-    return {
+    const result: TrendResult = {
       dates,
       values,
       trendLine: { slope: lr.m, intercept: lr.b },
     };
+
+    if (params.forecastPeriods !== undefined && params.forecastPeriods > 0) {
+      const fcDates: string[] = [];
+      const fcValues: number[] = [];
+      const lastBucket = dates[dates.length - 1];
+      const n = values.length;
+      for (let i = 1; i <= params.forecastPeriods; i++) {
+        fcDates.push(this.stepBucket(lastBucket, interval, i));
+        fcValues.push(lr.b + lr.m * (n + i - 1));
+      }
+      result.forecast = { dates: fcDates, values: fcValues };
+    }
+
+    return result;
+  }
+
+  /**
+   * Holt-Winters exponential smoothing with optional trend and seasonality.
+   * Returns in-sample fits, multi-step point forecasts, Gaussian-residual
+   * prediction intervals, and MAPE.
+   */
+  static forecast(params: {
+    records: Record<string, unknown>[];
+    dateColumn: string;
+    valueColumn: string;
+    horizon: number;
+    seasonalPeriod?: number;
+    seasonality?: "none" | "additive" | "multiplicative";
+    trend?: "none" | "additive";
+    alpha?: number;
+    beta?: number;
+    gamma?: number;
+    confidence?: number;
+  }): ForecastResult {
+    const sorted = [...params.records].sort(
+      (a, b) =>
+        new Date(a[params.dateColumn] as string).getTime() -
+        new Date(b[params.dateColumn] as string).getTime()
+    );
+    const dates = sorted.map((r) => String(r[params.dateColumn]));
+    const observed = this.extractNumericColumn(sorted, params.valueColumn);
+    const n = observed.length;
+    const seasonality = params.seasonality ?? "none";
+    const trendType = params.trend ?? "additive";
+    const m = seasonality !== "none" ? params.seasonalPeriod : undefined;
+    const alpha = params.alpha ?? 0.5;
+    const beta = params.beta ?? 0.1;
+    const gamma = params.gamma ?? 0.1;
+
+    if (seasonality !== "none") {
+      if (!m || m < 2) {
+        throw new Error(
+          "seasonalPeriod is required (≥ 2) when seasonality is not 'none'"
+        );
+      }
+      if (n < 2 * m) {
+        throw new Error(
+          `Forecasting with seasonality requires at least 2 full seasons (need ${2 * m} rows, got ${n})`
+        );
+      }
+      if (seasonality === "multiplicative" && observed.some((v) => v <= 0)) {
+        throw new Error(
+          "multiplicative seasonality requires positive observations"
+        );
+      }
+    } else if (n < 4) {
+      throw new Error(
+        `Forecasting requires at least 4 observations; got ${n}`
+      );
+    }
+
+    // Initialize level / trend / seasonal
+    let level = m
+      ? observed.slice(0, m).reduce((s, v) => s + v, 0) / m
+      : observed[0];
+    let trendComp = 0;
+    if (trendType === "additive") {
+      if (m) {
+        const meanA =
+          observed.slice(0, m).reduce((s, v) => s + v, 0) / m;
+        const meanB =
+          observed.slice(m, 2 * m).reduce((s, v) => s + v, 0) / m;
+        trendComp = (meanB - meanA) / m;
+      } else {
+        trendComp = observed[1] - observed[0];
+      }
+    }
+    const seasonal: number[] =
+      m && seasonality !== "none"
+        ? observed.slice(0, m).map((v) =>
+            seasonality === "additive" ? v - level : v / level
+          )
+        : [];
+
+    // In-sample fit
+    const fitted: number[] = new Array(n).fill(0);
+    for (let t = 0; t < n; t++) {
+      const seasonalIdx = m ? t % m : 0;
+      const sPrev = m
+        ? seasonal[seasonalIdx]
+        : seasonality === "multiplicative"
+          ? 1
+          : 0;
+
+      // 1-step-ahead fit using state at t-1
+      fitted[t] =
+        seasonality === "multiplicative"
+          ? (level + (trendType === "additive" ? trendComp : 0)) * sPrev
+          : level + (trendType === "additive" ? trendComp : 0) + sPrev;
+
+      // Update state
+      const yt = observed[t];
+      const lvlBefore = level;
+      const trendBefore = trendComp;
+      if (seasonality === "additive") {
+        level =
+          alpha * (yt - sPrev) + (1 - alpha) * (lvlBefore + trendBefore);
+      } else if (seasonality === "multiplicative") {
+        level =
+          alpha * (yt / sPrev) + (1 - alpha) * (lvlBefore + trendBefore);
+      } else {
+        level = alpha * yt + (1 - alpha) * (lvlBefore + trendBefore);
+      }
+      if (trendType === "additive") {
+        trendComp = beta * (level - lvlBefore) + (1 - beta) * trendBefore;
+      }
+      if (m && seasonality !== "none") {
+        const newSeason =
+          seasonality === "additive"
+            ? gamma * (yt - lvlBefore - trendBefore) + (1 - gamma) * sPrev
+            : gamma * (yt / (lvlBefore + trendBefore)) + (1 - gamma) * sPrev;
+        seasonal[seasonalIdx] = newSeason;
+      }
+    }
+
+    // Forecast horizon steps using final state
+    const fcValues: number[] = [];
+    for (let h = 1; h <= params.horizon; h++) {
+      const seasonalIdx = m ? (n - 1 + h) % m : 0;
+      const sFwd = m
+        ? seasonal[seasonalIdx]
+        : seasonality === "multiplicative"
+          ? 1
+          : 0;
+      const point =
+        seasonality === "multiplicative"
+          ? (level + (trendType === "additive" ? h * trendComp : 0)) * sFwd
+          : level + (trendType === "additive" ? h * trendComp : 0) + sFwd;
+      fcValues.push(point);
+    }
+
+    // Forecast dates: infer median spacing from the input series.
+    let fcDates: string[] = [];
+    if (n >= 2) {
+      const t0 = new Date(dates[dates.length - 2]).getTime();
+      const t1 = new Date(dates[dates.length - 1]).getTime();
+      const spacing = t1 - t0;
+      for (let h = 1; h <= params.horizon; h++) {
+        fcDates.push(
+          new Date(t1 + spacing * h).toISOString()
+        );
+      }
+    } else {
+      fcDates = Array.from({ length: params.horizon }, (_, i) => `+${i + 1}`);
+    }
+
+    // Prediction intervals via Gaussian-residual approximation
+    const warmup = m ?? 1;
+    const residuals: number[] = [];
+    for (let t = warmup; t < n; t++) {
+      residuals.push(observed[t] - fitted[t]);
+    }
+    const sigmaHat =
+      residuals.length > 1 ? ss.standardDeviation(residuals) : 0;
+    const conf = params.confidence ?? 0.95;
+    // Use tInverseCDF with large df to approximate the standard-normal quantile
+    const z = this.tInverseCDF(1 - (1 - conf) / 2, 1000);
+    const lower = fcValues.map((v, i) => v - z * sigmaHat * Math.sqrt(i + 1));
+    const upper = fcValues.map((v, i) => v + z * sigmaHat * Math.sqrt(i + 1));
+
+    // MAPE on post-warmup window
+    let mapeSum = 0;
+    let mapeCount = 0;
+    for (let t = warmup; t < n; t++) {
+      if (observed[t] !== 0) {
+        mapeSum += Math.abs((observed[t] - fitted[t]) / observed[t]);
+        mapeCount += 1;
+      }
+    }
+    const mape = mapeCount > 0 ? (100 * mapeSum) / mapeCount : 0;
+
+    return {
+      dates,
+      observed,
+      fitted,
+      forecast: { dates: fcDates, values: fcValues, lower, upper },
+      parameters: { alpha, beta, gamma },
+      mape,
+    };
+  }
+
+  /**
+   * Classical seasonal decomposition (additive or multiplicative).
+   * Trend via centered moving average; seasonal via per-position averaging
+   * of the detrended series; residual = observed − trend − seasonal
+   * (additive) or observed / (trend × seasonal) (multiplicative).
+   * Edge values of `trend` and `residual` are `null` where the centered
+   * MA cannot be computed.
+   */
+  static decompose(params: {
+    records: Record<string, unknown>[];
+    dateColumn: string;
+    valueColumn: string;
+    seasonalPeriod: number;
+    seasonality?: "additive" | "multiplicative";
+  }): DecomposeResult {
+    const sorted = [...params.records].sort(
+      (a, b) =>
+        new Date(a[params.dateColumn] as string).getTime() -
+        new Date(b[params.dateColumn] as string).getTime()
+    );
+    const dates = sorted.map((r) => String(r[params.dateColumn]));
+    const observed = this.extractNumericColumn(sorted, params.valueColumn);
+    const n = observed.length;
+    const m = params.seasonalPeriod;
+    const seasonality = params.seasonality ?? "additive";
+
+    if (n < 2 * m) {
+      throw new Error(
+        `Decomposition requires at least 2 full seasons (need ${2 * m} rows, got ${n})`
+      );
+    }
+    if (seasonality === "multiplicative" && observed.some((v) => v <= 0)) {
+      throw new Error(
+        "multiplicative decomposition requires positive observations"
+      );
+    }
+
+    // Centered moving average for the trend
+    const trend: (number | null)[] = new Array(n).fill(null);
+    const halfWindow = Math.floor(m / 2);
+    const isEven = m % 2 === 0;
+    if (isEven) {
+      // 2-by-m MA: average of two adjacent m-MAs centered at i-0.5 and i+0.5
+      for (let i = halfWindow; i <= n - halfWindow - 1; i++) {
+        let sum1 = 0;
+        for (let j = i - halfWindow; j < i - halfWindow + m; j++) {
+          sum1 += observed[j];
+        }
+        let sum2 = 0;
+        for (let j = i - halfWindow + 1; j < i - halfWindow + 1 + m; j++) {
+          sum2 += observed[j];
+        }
+        trend[i] = (sum1 / m + sum2 / m) / 2;
+      }
+    } else {
+      for (let i = halfWindow; i < n - halfWindow; i++) {
+        let sum = 0;
+        for (let j = i - halfWindow; j <= i + halfWindow; j++) {
+          sum += observed[j];
+        }
+        trend[i] = sum / m;
+      }
+    }
+
+    // Detrended series → per-position seasonal averages
+    const detrended: (number | null)[] = observed.map((v, i) =>
+      trend[i] === null
+        ? null
+        : seasonality === "additive"
+          ? v - (trend[i] as number)
+          : v / (trend[i] as number)
+    );
+
+    const seasonalAverages = new Array(m).fill(0);
+    const seasonalCounts = new Array(m).fill(0);
+    for (let i = 0; i < n; i++) {
+      if (detrended[i] !== null) {
+        seasonalAverages[i % m] += detrended[i] as number;
+        seasonalCounts[i % m] += 1;
+      }
+    }
+    for (let p = 0; p < m; p++) {
+      if (seasonalCounts[p] > 0) {
+        seasonalAverages[p] /= seasonalCounts[p];
+      }
+    }
+
+    // Center the seasonal component: additive sums to 0; multiplicative
+    // averages to 1.
+    const meanSeasonal =
+      seasonalAverages.reduce((s, v) => s + v, 0) / m;
+    const seasonal: number[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      seasonal[i] =
+        seasonality === "additive"
+          ? seasonalAverages[i % m] - meanSeasonal
+          : seasonalAverages[i % m] / meanSeasonal;
+    }
+
+    // Residual
+    const residual: (number | null)[] = observed.map((v, i) => {
+      if (trend[i] === null) return null;
+      return seasonality === "additive"
+        ? v - (trend[i] as number) - seasonal[i]
+        : v / ((trend[i] as number) * seasonal[i]);
+    });
+
+    return { dates, observed, trend, seasonal, residual };
+  }
+
+  /**
+   * Mean-shift changepoint detection via CUSUM on the standardized series.
+   * Single-pass, deterministic, returns indices of detected breaks plus
+   * per-segment means.
+   */
+  static changepoint(params: {
+    records: Record<string, unknown>[];
+    dateColumn?: string;
+    valueColumn: string;
+    threshold?: number;
+    minSegmentLength?: number;
+  }): ChangepointResult {
+    const sorted = params.dateColumn
+      ? [...params.records].sort(
+          (a, b) =>
+            new Date(a[params.dateColumn!] as string).getTime() -
+            new Date(b[params.dateColumn!] as string).getTime()
+        )
+      : [...params.records];
+
+    const values = this.extractNumericColumn(sorted, params.valueColumn);
+    const n = values.length;
+    const threshold = params.threshold ?? 5;
+    const minSeg =
+      params.minSegmentLength ?? Math.max(5, Math.ceil(n / 20));
+
+    if (n === 0) {
+      return { changepoints: [], segmentMeans: [], segments: [] };
+    }
+
+    if (n < 2 * minSeg) {
+      return {
+        changepoints: [],
+        segmentMeans: [ss.mean(values)],
+        segments: [{ start: 0, end: n - 1 }],
+      };
+    }
+
+    const sigma = ss.standardDeviation(values);
+    if (sigma === 0) {
+      const result: ChangepointResult = {
+        changepoints: [],
+        segmentMeans: [ss.mean(values)],
+        segments: [{ start: 0, end: n - 1 }],
+      };
+      if (params.dateColumn) result.changepointDates = [];
+      return result;
+    }
+
+    // CUSUM with segment-local baseline. Initialize the baseline to the
+    // first window's mean so the first segment's CUSUM doesn't accumulate
+    // against the global mean (which would falsely flag the start).
+    const k = 0.5;
+    const changepoints: number[] = [];
+    let segmentMean = ss.mean(values.slice(0, Math.min(minSeg, n)));
+    let sPos = 0;
+    let sNeg = 0;
+    let i = 0;
+    while (i < n) {
+      const z = (values[i] - segmentMean) / sigma;
+      sPos = Math.max(0, sPos + z - k);
+      sNeg = Math.min(0, sNeg + z + k);
+      if (sPos > threshold || -sNeg > threshold) {
+        changepoints.push(i);
+        sPos = 0;
+        sNeg = 0;
+        // Re-baseline to the new segment's leading window mean
+        const winEnd = Math.min(i + minSeg, n);
+        segmentMean = ss.mean(values.slice(i, winEnd));
+        i += minSeg;
+      } else {
+        i += 1;
+      }
+    }
+
+    const boundaries = [0, ...changepoints, n];
+    const segments: { start: number; end: number }[] = [];
+    const segmentMeans: number[] = [];
+    for (let s = 0; s < boundaries.length - 1; s++) {
+      const start = boundaries[s];
+      const end = boundaries[s + 1] - 1;
+      segments.push({ start, end });
+      segmentMeans.push(ss.mean(values.slice(start, end + 1)));
+    }
+
+    const result: ChangepointResult = {
+      changepoints,
+      segmentMeans,
+      segments,
+    };
+    if (params.dateColumn) {
+      result.changepointDates = changepoints.map((idx) =>
+        String(sorted[idx][params.dateColumn!])
+      );
+    }
+    return result;
+  }
+
+  /**
+   * Increment a trend bucket label by `n` periods at the given interval.
+   * Mirrors the date-stringification logic in `trend(...)` so forecast
+   * dates render in the same shape as observed bucket labels.
+   */
+  private static stepBucket(
+    last: string,
+    interval: "day" | "week" | "month" | "quarter" | "year",
+    n: number
+  ): string {
+    switch (interval) {
+      case "day": {
+        const d = new Date(`${last}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + n);
+        return d.toISOString().slice(0, 10);
+      }
+      case "week": {
+        const d = new Date(`${last}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + n * 7);
+        return d.toISOString().slice(0, 10);
+      }
+      case "month": {
+        const [yStr, mStr] = last.split("-");
+        const yearStart = parseInt(yStr, 10);
+        const monthStart = parseInt(mStr, 10); // 1-12
+        const total = (yearStart * 12 + (monthStart - 1)) + n;
+        const newYear = Math.floor(total / 12);
+        const newMonth = (total % 12) + 1;
+        return `${newYear}-${String(newMonth).padStart(2, "0")}`;
+      }
+      case "quarter": {
+        const [yStr, qStr] = last.split("-Q");
+        const yearStart = parseInt(yStr, 10);
+        const quarterStart = parseInt(qStr, 10); // 1-4
+        const total = (yearStart * 4 + (quarterStart - 1)) + n;
+        const newYear = Math.floor(total / 4);
+        const newQuarter = (total % 4) + 1;
+        return `${newYear}-Q${newQuarter}`;
+      }
+      case "year": {
+        return String(parseInt(last, 10) + n);
+      }
+    }
   }
 
   /**

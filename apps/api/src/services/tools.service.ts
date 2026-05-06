@@ -27,6 +27,9 @@ import { AggregateTool } from "../tools/aggregate.tool.js";
 import { HypothesisTestTool } from "../tools/hypothesis-test.tool.js";
 import { RegressionTool } from "../tools/regression.tool.js";
 import { LogisticRegressionTool } from "../tools/logistic-regression.tool.js";
+import { ChangepointTool } from "../tools/changepoint.tool.js";
+import { DecomposeTool } from "../tools/decompose.tool.js";
+import { ForecastTool } from "../tools/forecast.tool.js";
 import { TrendTool } from "../tools/trend.tool.js";
 import { TechnicalIndicatorTool } from "../tools/technical-indicator.tool.js";
 import { NpvTool } from "../tools/npv.tool.js";
@@ -105,6 +108,9 @@ export class ToolService {
     "hypothesis_test",
     "regression",
     "logistic_regression",
+    "changepoint",
+    "decompose",
+    "forecast",
     "trend",
     "technical_indicator",
     "npv",
@@ -231,6 +237,9 @@ export class ToolService {
       tools.regression = new RegressionTool().build(stationData);
       tools.logistic_regression = new LogisticRegressionTool().build(stationData);
       tools.trend = new TrendTool().build(stationData);
+      tools.changepoint = new ChangepointTool().build(stationData);
+      tools.decompose = new DecomposeTool().build(stationData);
+      tools.forecast = new ForecastTool().build(stationData);
     }
 
     // -------------------------------------------------------------------

@@ -1886,6 +1886,398 @@ describe("AnalyticsService", () => {
       expect(result.dates).toHaveLength(0);
       expect(result.values).toHaveLength(0);
     });
+
+    it("forecast field is absent when forecastPeriods is omitted", () => {
+      const result = AnalyticsService.trend({
+        records: TIMESERIES_RECORDS,
+        dateColumn: "date",
+        valueColumn: "revenue",
+        interval: "month",
+      });
+      expect("forecast" in result).toBe(false);
+    });
+
+    it("forecastPeriods: 3 projects three values along the linear fit", () => {
+      const result = AnalyticsService.trend({
+        records: TIMESERIES_RECORDS,
+        dateColumn: "date",
+        valueColumn: "revenue",
+        interval: "month",
+        forecastPeriods: 3,
+      });
+      expect(result.forecast).toBeDefined();
+      expect(result.forecast!.values).toHaveLength(3);
+      expect(result.forecast!.dates).toHaveLength(3);
+      // Each successive forecast value differs by `slope`
+      for (let i = 1; i < 3; i++) {
+        const delta =
+          result.forecast!.values[i] - result.forecast!.values[i - 1];
+        expect(delta).toBeCloseTo(result.trendLine.slope, 9);
+      }
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // forecast (Holt-Winters)
+  // -----------------------------------------------------------------------
+
+  describe("forecast()", () => {
+    it("Holt's linear (no seasonality) extends a clean trend", () => {
+      // y_i = 10 + 2i, i ∈ [0, 19]
+      const records = Array.from({ length: 20 }, (_, i) => ({
+        date: `2020-01-01T00:00:${String(i).padStart(2, "0")}.000Z`,
+        value: 10 + 2 * i,
+      }));
+      const result = AnalyticsService.forecast({
+        records,
+        dateColumn: "date",
+        valueColumn: "value",
+        horizon: 5,
+        trend: "additive",
+      });
+      // First forecast should be near y_20 = 50
+      expect(Math.abs(result.forecast.values[0] - 50)).toBeLessThan(2);
+    });
+
+    it("additive seasonality recovers the seasonal pattern", () => {
+      // y_i = 100 + 10·sin(2π·i/12), 48 monthly observations, no trend
+      const records = Array.from({ length: 48 }, (_, i) => ({
+        date: `2020-01-01T00:00:${String(i).padStart(2, "0")}.000Z`,
+        value: 100 + 10 * Math.sin((2 * Math.PI * i) / 12),
+      }));
+      const result = AnalyticsService.forecast({
+        records,
+        dateColumn: "date",
+        valueColumn: "value",
+        horizon: 12,
+        seasonalPeriod: 12,
+        seasonality: "additive",
+        trend: "none",
+      });
+      // i = 48 → sin(2π·48/12) = sin(8π) = 0 → y ≈ 100
+      expect(Math.abs(result.forecast.values[0] - 100)).toBeLessThan(2);
+    });
+
+    it("MAPE is small for a clean signal", () => {
+      const records = Array.from({ length: 48 }, (_, i) => ({
+        date: `2020-01-01T00:00:${String(i).padStart(2, "0")}.000Z`,
+        value: 100 + 10 * Math.sin((2 * Math.PI * i) / 12),
+      }));
+      const result = AnalyticsService.forecast({
+        records,
+        dateColumn: "date",
+        valueColumn: "value",
+        horizon: 12,
+        seasonalPeriod: 12,
+        seasonality: "additive",
+        trend: "none",
+      });
+      expect(result.mape).toBeLessThan(5);
+    });
+
+    it("prediction intervals widen monotonically with horizon", () => {
+      const records = Array.from({ length: 48 }, (_, i) => ({
+        date: `2020-01-01T00:00:${String(i).padStart(2, "0")}.000Z`,
+        value: 100 + 10 * Math.sin((2 * Math.PI * i) / 12),
+      }));
+      const result = AnalyticsService.forecast({
+        records,
+        dateColumn: "date",
+        valueColumn: "value",
+        horizon: 12,
+        seasonalPeriod: 12,
+        seasonality: "additive",
+        trend: "none",
+      });
+      const widths = result.forecast.upper.map(
+        (u, i) => u - result.forecast.lower[i]
+      );
+      for (let i = 1; i < widths.length; i++) {
+        expect(widths[i]).toBeGreaterThanOrEqual(widths[i - 1]);
+      }
+    });
+
+    it("multiplicative seasonality requires positive observations", () => {
+      const records = Array.from({ length: 48 }, (_, i) => ({
+        date: `2020-01-01T00:00:${String(i).padStart(2, "0")}.000Z`,
+        value: i < 24 ? -1 : 1,
+      }));
+      expect(() =>
+        AnalyticsService.forecast({
+          records,
+          dateColumn: "date",
+          valueColumn: "value",
+          horizon: 12,
+          seasonalPeriod: 12,
+          seasonality: "multiplicative",
+        })
+      ).toThrow(/multiplicative seasonality requires positive/);
+    });
+
+    it("rejects series shorter than 2 full seasons for seasonal models", () => {
+      const records = Array.from({ length: 10 }, (_, i) => ({
+        date: `2024-01-${String(i + 1).padStart(2, "0")}`,
+        value: i,
+      }));
+      expect(() =>
+        AnalyticsService.forecast({
+          records,
+          dateColumn: "date",
+          valueColumn: "value",
+          horizon: 5,
+          seasonalPeriod: 8,
+          seasonality: "additive",
+        })
+      ).toThrow(/at least 2 full seasons/);
+    });
+
+    it("returns the smoothing parameters used", () => {
+      const records = Array.from({ length: 20 }, (_, i) => ({
+        date: `2020-01-01T00:00:${String(i).padStart(2, "0")}.000Z`,
+        value: 10 + 2 * i,
+      }));
+      const result = AnalyticsService.forecast({
+        records,
+        dateColumn: "date",
+        valueColumn: "value",
+        horizon: 3,
+        alpha: 0.7,
+        beta: 0.2,
+        gamma: 0.3,
+      });
+      expect(result.parameters).toEqual({ alpha: 0.7, beta: 0.2, gamma: 0.3 });
+    });
+
+    it("default smoothing parameters are 0.5 / 0.1 / 0.1", () => {
+      const records = Array.from({ length: 20 }, (_, i) => ({
+        date: `2020-01-01T00:00:${String(i).padStart(2, "0")}.000Z`,
+        value: 10 + 2 * i,
+      }));
+      const result = AnalyticsService.forecast({
+        records,
+        dateColumn: "date",
+        valueColumn: "value",
+        horizon: 3,
+      });
+      expect(result.parameters).toEqual({ alpha: 0.5, beta: 0.1, gamma: 0.1 });
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // decompose
+  // -----------------------------------------------------------------------
+
+  describe("decompose()", () => {
+    /** y = 50 + i + 5·sin(2π·i/12), 48 monthly observations. */
+    const cleanSeasonalSeries = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        date: `2020-01-01T00:00:${String(i).padStart(2, "0")}.000Z`,
+        // Distinct timestamps (one per row) so the date sort is stable.
+        value: 50 + i + 5 * Math.sin((2 * Math.PI * i) / 12),
+      }));
+
+    it("additive decomposition recovers the seasonal pattern on a clean signal", () => {
+      const records = cleanSeasonalSeries(48);
+      const result = AnalyticsService.decompose({
+        records,
+        dateColumn: "date",
+        valueColumn: "value",
+        seasonalPeriod: 12,
+      });
+      // seasonal component should be non-trivial at peaks/troughs
+      // and sum to ≈ 0 over one cycle
+      const cycleSum = result.seasonal
+        .slice(0, 12)
+        .reduce((s, v) => s + v, 0);
+      expect(Math.abs(cycleSum)).toBeLessThan(1e-9);
+      // sin(2π·0/12) = 0; check seasonal[0] is small
+      expect(Math.abs(result.seasonal[0])).toBeLessThan(0.5);
+    });
+
+    it("trend recovers the linear component away from edges", () => {
+      const records = cleanSeasonalSeries(48);
+      const result = AnalyticsService.decompose({
+        records,
+        dateColumn: "date",
+        valueColumn: "value",
+        seasonalPeriod: 12,
+      });
+      // mid-series: trend[24] ≈ 50 + 24 = 74
+      expect(result.trend[24]).not.toBeNull();
+      expect(result.trend[24]!).toBeCloseTo(74, 0);
+    });
+
+    it("edge values of trend and residual are null", () => {
+      const records = cleanSeasonalSeries(48);
+      const result = AnalyticsService.decompose({
+        records,
+        dateColumn: "date",
+        valueColumn: "value",
+        seasonalPeriod: 12,
+      });
+      // First and last 6 (= m/2) entries of trend are null for even m
+      for (let i = 0; i < 6; i++) {
+        expect(result.trend[i]).toBeNull();
+        expect(result.trend[result.trend.length - 1 - i]).toBeNull();
+        expect(result.residual[i]).toBeNull();
+        expect(result.residual[result.residual.length - 1 - i]).toBeNull();
+      }
+    });
+
+    it("multiplicative decomposition seasonal centers around 1", () => {
+      const records = Array.from({ length: 48 }, (_, i) => ({
+        date: `2020-01-01T00:00:${String(i).padStart(2, "0")}.000Z`,
+        value: 100 * (1 + 0.1 * Math.sin((2 * Math.PI * i) / 12)),
+      }));
+      const result = AnalyticsService.decompose({
+        records,
+        dateColumn: "date",
+        valueColumn: "value",
+        seasonalPeriod: 12,
+        seasonality: "multiplicative",
+      });
+      const cycleMean =
+        result.seasonal.slice(0, 12).reduce((s, v) => s + v, 0) / 12;
+      expect(cycleMean).toBeCloseTo(1, 2);
+    });
+
+    it("multiplicative decomposition rejects non-positive observations", () => {
+      const records = [
+        { date: "2024-01-01", value: 1 },
+        { date: "2024-01-02", value: 2 },
+        { date: "2024-01-03", value: 0 }, // not positive
+        { date: "2024-01-04", value: 3 },
+      ];
+      expect(() =>
+        AnalyticsService.decompose({
+          records,
+          dateColumn: "date",
+          valueColumn: "value",
+          seasonalPeriod: 2,
+          seasonality: "multiplicative",
+        })
+      ).toThrow(/multiplicative .* positive/);
+    });
+
+    it("rejects series shorter than 2 full seasons", () => {
+      const records = Array.from({ length: 10 }, (_, i) => ({
+        date: `2024-01-${String(i + 1).padStart(2, "0")}`,
+        value: i,
+      }));
+      expect(() =>
+        AnalyticsService.decompose({
+          records,
+          dateColumn: "date",
+          valueColumn: "value",
+          seasonalPeriod: 12,
+        })
+      ).toThrow(/at least 2 full seasons/);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // changepoint
+  // -----------------------------------------------------------------------
+
+  describe("changepoint()", () => {
+    it("detects a single mean shift at the obvious break", () => {
+      // 100 rows: first 50 around mean 0, last 50 around mean 5;
+      // alternating ±0.3 perturbation for reproducibility.
+      const records = Array.from({ length: 100 }, (_, i) => ({
+        date: `2024-01-${String((i % 28) + 1).padStart(2, "0")}`,
+        value:
+          (i < 50 ? 0 : 5) + (i % 2 === 0 ? 0.3 : -0.3),
+      }));
+      const result = AnalyticsService.changepoint({
+        records,
+        valueColumn: "value",
+      });
+      expect(result.changepoints.length).toBe(1);
+      expect(Math.abs(result.changepoints[0] - 50)).toBeLessThan(5);
+    });
+
+    it("detects multiple mean shifts in a three-regime fixture", () => {
+      // 150 rows: 0..49 mean 0, 50..99 mean 5, 100..149 mean 10
+      const records = Array.from({ length: 150 }, (_, i) => ({
+        date: `2024-${String(Math.floor(i / 28) + 1).padStart(2, "0")}-01`,
+        value:
+          (i < 50 ? 0 : i < 100 ? 5 : 10) + (i % 2 === 0 ? 0.3 : -0.3),
+      }));
+      const result = AnalyticsService.changepoint({
+        records,
+        valueColumn: "value",
+      });
+      expect(result.changepoints.length).toBe(2);
+      expect(Math.abs(result.changepoints[0] - 50)).toBeLessThan(10);
+      expect(Math.abs(result.changepoints[1] - 100)).toBeLessThan(10);
+    });
+
+    it("constant series returns zero changepoints", () => {
+      const records = Array.from({ length: 30 }, (_, i) => ({
+        date: `2024-01-${String((i % 28) + 1).padStart(2, "0")}`,
+        value: 7,
+      }));
+      const result = AnalyticsService.changepoint({
+        records,
+        valueColumn: "value",
+      });
+      expect(result.changepoints).toHaveLength(0);
+      expect(result.segmentMeans).toEqual([7]);
+    });
+
+    it("segmentMeans and segments lengths align with changepoints + 1", () => {
+      const records = Array.from({ length: 100 }, (_, i) => ({
+        value: (i < 50 ? 0 : 5) + (i % 2 === 0 ? 0.3 : -0.3),
+      }));
+      const result = AnalyticsService.changepoint({
+        records,
+        valueColumn: "value",
+      });
+      expect(result.segmentMeans.length).toBe(result.changepoints.length + 1);
+      expect(result.segments.length).toBe(result.changepoints.length + 1);
+    });
+
+    it("changepointDates is present iff dateColumn is supplied", () => {
+      const records = Array.from({ length: 100 }, (_, i) => ({
+        date: `2024-${String(Math.floor(i / 28) + 1).padStart(2, "0")}-${String((i % 28) + 1).padStart(2, "0")}`,
+        value: (i < 50 ? 0 : 5) + (i % 2 === 0 ? 0.3 : -0.3),
+      }));
+      const withDate = AnalyticsService.changepoint({
+        records,
+        dateColumn: "date",
+        valueColumn: "value",
+      });
+      const withoutDate = AnalyticsService.changepoint({
+        records,
+        valueColumn: "value",
+      });
+      expect(withDate.changepointDates).toBeDefined();
+      expect(withDate.changepointDates!.length).toBe(
+        withDate.changepoints.length
+      );
+      expect("changepointDates" in withoutDate).toBe(false);
+    });
+
+    it("lower threshold flags more shifts on noisy data", () => {
+      // Two regimes with mild gap (mean 0 → 1.5)
+      const records = Array.from({ length: 100 }, (_, i) => ({
+        value:
+          (i < 50 ? 0 : 1.5) + (i % 2 === 0 ? 0.4 : -0.4),
+      }));
+      const strict = AnalyticsService.changepoint({
+        records,
+        valueColumn: "value",
+        threshold: 5,
+      });
+      const loose = AnalyticsService.changepoint({
+        records,
+        valueColumn: "value",
+        threshold: 2,
+      });
+      expect(loose.changepoints.length).toBeGreaterThanOrEqual(
+        strict.changepoints.length
+      );
+    });
   });
 
   // -----------------------------------------------------------------------

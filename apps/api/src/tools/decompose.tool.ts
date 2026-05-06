@@ -12,24 +12,28 @@ const InputSchema = z.object({
   entity: z.string().describe("Entity key (table name)"),
   dateColumn: z.string().describe("Date column key"),
   valueColumn: z.string().describe("Numeric value column key"),
-  interval: z
-    .enum(["day", "week", "month", "quarter", "year"])
-    .describe("Aggregation interval"),
-  forecastPeriods: z
+  seasonalPeriod: z
     .number()
     .int()
-    .positive()
+    .min(2)
+    .describe(
+      "Seasonal cycle length (12 for monthly with yearly seasonality, etc.)."
+    ),
+  seasonality: z
+    .enum(["additive", "multiplicative"])
     .optional()
     .describe(
-      "Optional number of future buckets to project the linear fit. When supplied, the result includes a `forecast` field with the projected `dates` and `values`."
+      "Decomposition type. Default 'additive'. 'multiplicative' requires all observations > 0."
     ),
 });
 
-export class TrendTool extends Tool<typeof InputSchema> {
-  slug = "trend";
-  name = "Trend";
+export class DecomposeTool extends Tool<typeof InputSchema> {
+  slug = "decompose";
+  name = "Decompose";
   description =
-    "Aggregate a time series by interval and compute a linear trend line.";
+    "Classical seasonal decomposition of a time series into trend, " +
+    "seasonal, and residual components. Additive or multiplicative. " +
+    "Trend uses a centered moving average; edge values are null where the MA cannot be computed.";
 
   get schema() {
     return InputSchema;
@@ -40,15 +44,15 @@ export class TrendTool extends Tool<typeof InputSchema> {
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, dateColumn, valueColumn, interval, forecastPeriods } =
+        const { entity, dateColumn, valueColumn, seasonalPeriod, seasonality } =
           this.validate(input);
         const records = getRecords(stationData, entity);
-        return AnalyticsService.trend({
+        return AnalyticsService.decompose({
           records,
           dateColumn,
           valueColumn,
-          interval,
-          forecastPeriods,
+          seasonalPeriod,
+          seasonality,
         });
       },
     });
