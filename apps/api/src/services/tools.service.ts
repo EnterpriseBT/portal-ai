@@ -26,6 +26,7 @@ import { ClusterTool } from "../tools/cluster.tool.js";
 import { AggregateTool } from "../tools/aggregate.tool.js";
 import { HypothesisTestTool } from "../tools/hypothesis-test.tool.js";
 import { RegressionTool } from "../tools/regression.tool.js";
+import { LogisticRegressionTool } from "../tools/logistic-regression.tool.js";
 import { TrendTool } from "../tools/trend.tool.js";
 import { TechnicalIndicatorTool } from "../tools/technical-indicator.tool.js";
 import { NpvTool } from "../tools/npv.tool.js";
@@ -103,6 +104,7 @@ export class ToolService {
     "aggregate",
     "hypothesis_test",
     "regression",
+    "logistic_regression",
     "trend",
     "technical_indicator",
     "npv",
@@ -227,6 +229,7 @@ export class ToolService {
     // -------------------------------------------------------------------
     if (enabledPacks.has("regression")) {
       tools.regression = new RegressionTool().build(stationData);
+      tools.logistic_regression = new LogisticRegressionTool().build(stationData);
       tools.trend = new TrendTool().build(stationData);
     }
 

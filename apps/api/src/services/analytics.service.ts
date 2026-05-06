@@ -110,6 +110,19 @@ export interface DescribeColumnResult {
 export interface RegressionResult {
   coefficients: number[];
   rSquared: number;
+  residuals: number[];
+  standardErrors: number[];
+  tStatistics: number[];
+  pValues: number[];
+  confidenceIntervals: { lower: number[]; upper: number[] };
+}
+
+export interface LogisticRegressionResult {
+  coefficients: number[];
+  probabilities: number[];
+  logLoss: number;
+  accuracy: number;
+  iterations: number;
 }
 
 export interface TrendResult {
@@ -1344,48 +1357,246 @@ export class AnalyticsService {
   // -----------------------------------------------------------------------
 
   /**
-   * Linear or polynomial regression via simple-statistics.
-   * Returns coefficients and R-squared.
+   * Linear, multivariate-linear, or polynomial regression via OLS.
+   * Returns coefficients, R-squared, residuals, standard errors,
+   * t-statistics, p-values, and confidence intervals on each coefficient.
    */
   static regression(params: {
     records: Record<string, unknown>[];
-    x: string;
+    x?: string;
+    xColumns?: string[];
     y: string;
     type: "linear" | "polynomial";
     degree?: number;
+    confidence?: number;
   }): RegressionResult {
-    const xVals = this.extractNumericColumn(params.records, params.x);
-    const yVals = this.extractNumericColumn(params.records, params.y);
+    const { type } = params;
 
-    if (xVals.length !== yVals.length || xVals.length < 2) {
+    const hasX = params.x !== undefined;
+    const hasXCols = params.xColumns !== undefined;
+    if (hasX && hasXCols) {
+      throw new Error("specify either x or xColumns, not both");
+    }
+    if (type === "polynomial" && hasXCols) {
+      throw new Error("multivariate polynomial regression is not supported");
+    }
+    if (!hasX && !hasXCols) {
+      throw new Error("specify either x or xColumns");
+    }
+
+    const yVals = this.extractNumericColumn(params.records, params.y);
+    const n = yVals.length;
+
+    let X: number[][];
+    if (type === "polynomial") {
+      const degree = params.degree ?? 2;
+      const xVals = this.extractNumericColumn(params.records, params.x!);
+      if (xVals.length !== n || n < 2) {
+        throw new Error(
+          "Columns must have the same length and at least 2 values"
+        );
+      }
+      X = xVals.map((xi) =>
+        Array.from({ length: degree + 1 }, (_, j) => Math.pow(xi, j))
+      );
+    } else if (hasXCols) {
+      const cols = params.xColumns!.map((c) =>
+        this.extractNumericColumn(params.records, c)
+      );
+      for (const col of cols) {
+        if (col.length !== n) {
+          throw new Error(
+            "Columns must have the same length and at least 2 values"
+          );
+        }
+      }
+      X = Array.from({ length: n }, (_, i) => [
+        1,
+        ...cols.map((col) => col[i]),
+      ]);
+    } else {
+      const xVals = this.extractNumericColumn(params.records, params.x!);
+      if (xVals.length !== n || n < 2) {
+        throw new Error(
+          "Columns must have the same length and at least 2 values"
+        );
+      }
+      X = xVals.map((xi) => [1, xi]);
+    }
+
+    const { coefficients, xtxInverse, residuals } = this.solveOLS(X, yVals);
+
+    const k = coefficients.length;
+    const dfResid = n - k;
+    if (dfResid <= 0) {
       throw new Error(
-        "Columns must have the same length and at least 2 values"
+        `Need at least ${k + 1} rows for the regression; got ${n}`
       );
     }
 
-    const pairs: [number, number][] = xVals.map((x, i) => [x, yVals[i]]);
+    const ssr = residuals.reduce((sum, r) => sum + r * r, 0);
+    const yMean = ss.mean(yVals);
+    const sst = yVals.reduce((s, v) => s + (v - yMean) * (v - yMean), 0);
+    const rSquared = sst === 0 ? 1 : 1 - ssr / sst;
+    const sigmaSquared = ssr / dfResid;
 
-    if (params.type === "linear") {
-      const lr = ss.linearRegression(pairs);
-      const lrLine = ss.linearRegressionLine(lr);
-      const predicted = xVals.map((x) => lrLine(x));
-      const rSq = this.computeRSquared(yVals, predicted);
+    const standardErrors = coefficients.map((_, i) =>
+      Math.sqrt(Math.max(0, sigmaSquared * xtxInverse[i][i]))
+    );
+    const tStatistics = coefficients.map((c, i) =>
+      standardErrors[i] === 0
+        ? c === 0
+          ? 0
+          : Number.POSITIVE_INFINITY
+        : c / standardErrors[i]
+    );
+    const pValues = tStatistics.map((t) =>
+      Number.isFinite(t) ? this.tTwoTailedPValue(t, dfResid) : 0
+    );
+    const alpha = 1 - (params.confidence ?? 0.95);
+    const tCrit = this.tInverseCDF(1 - alpha / 2, dfResid);
+    const confidenceIntervals = {
+      lower: coefficients.map((c, i) => c - tCrit * standardErrors[i]),
+      upper: coefficients.map((c, i) => c + tCrit * standardErrors[i]),
+    };
 
-      return {
-        coefficients: [lr.b, lr.m], // [intercept, slope]
-        rSquared: rSq,
-      };
+    return {
+      coefficients,
+      rSquared,
+      residuals,
+      standardErrors,
+      tStatistics,
+      pValues,
+      confidenceIntervals,
+    };
+  }
+
+  /**
+   * Binary logistic regression via IRLS (iteratively reweighted least
+   * squares). Returns coefficients (intercept first), per-row predicted
+   * probabilities, log-loss, accuracy at threshold 0.5, and iteration count.
+   */
+  static logisticRegression(params: {
+    records: Record<string, unknown>[];
+    x?: string;
+    xColumns?: string[];
+    y: string;
+    maxIterations?: number;
+  }): LogisticRegressionResult {
+    const hasX = params.x !== undefined;
+    const hasXCols = params.xColumns !== undefined;
+    if (hasX && hasXCols) {
+      throw new Error("specify either x or xColumns, not both");
+    }
+    if (!hasX && !hasXCols) {
+      throw new Error("specify either x or xColumns");
     }
 
-    // Polynomial regression using normal equations
-    const degree = params.degree ?? 2;
-    const coefficients = this.polynomialFit(xVals, yVals, degree);
-    const predicted = xVals.map((x) =>
-      coefficients.reduce((sum, c, i) => sum + c * Math.pow(x, i), 0)
-    );
-    const rSq = this.computeRSquared(yVals, predicted);
+    // Coerce y to 0/1 (booleans accepted)
+    const yRaw = params.records.map((r) => r[params.y]);
+    const y: number[] = yRaw.map((v) => {
+      if (v === true || v === 1) return 1;
+      if (v === false || v === 0) return 0;
+      const n = Number(v);
+      if (n === 0 || n === 1) return n;
+      throw new Error(`y values must be 0 or 1; got ${String(v)}`);
+    });
+    if (!y.includes(0) || !y.includes(1)) {
+      throw new Error("y must contain at least one of each class");
+    }
 
-    return { coefficients, rSquared: rSq };
+    // Build X with intercept column
+    const n = y.length;
+    let X: number[][];
+    if (hasXCols) {
+      const cols = params.xColumns!.map((c) =>
+        this.extractNumericColumn(params.records, c)
+      );
+      for (const col of cols) {
+        if (col.length !== n) {
+          throw new Error(
+            "Columns must have the same length and at least 2 values"
+          );
+        }
+      }
+      X = Array.from({ length: n }, (_, i) => [
+        1,
+        ...cols.map((col) => col[i]),
+      ]);
+    } else {
+      const xVals = this.extractNumericColumn(params.records, params.x!);
+      if (xVals.length !== n) {
+        throw new Error(
+          "Columns must have the same length and at least 2 values"
+        );
+      }
+      X = xVals.map((xi) => [1, xi]);
+    }
+
+    const k = X[0].length;
+    if (n < k + 1) {
+      throw new Error(
+        `Need at least ${k + 1} rows for the regression; got ${n}`
+      );
+    }
+
+    const sigmoid = (z: number): number => 1 / (1 + Math.exp(-z));
+    const maxIter = params.maxIterations ?? 100;
+    let beta = new Array(k).fill(0);
+    let iterations = 0;
+
+    for (let iter = 0; iter < maxIter; iter++) {
+      iterations = iter + 1;
+      const eta = X.map((row) =>
+        row.reduce((s, xi, i) => s + xi * beta[i], 0)
+      );
+      const p = eta.map(sigmoid);
+      const w = p.map((pi) => pi * (1 - pi));
+      // Adjusted-response z_i = η_i + (y_i - p_i) / w_i (clamped)
+      const z = eta.map((etaI, i) => {
+        const wi = Math.max(w[i], 1e-12);
+        return etaI + (y[i] - p[i]) / wi;
+      });
+      // Weighted normal equations via √W-scaling: solveOLS on (Xw, zw)
+      const sqrtW = w.map((wi) => Math.sqrt(Math.max(wi, 1e-12)));
+      const Xw = X.map((row, i) => row.map((v) => v * sqrtW[i]));
+      const yw = z.map((zi, i) => zi * sqrtW[i]);
+      const { coefficients: betaNew } = this.solveOLS(Xw, yw);
+
+      const delta = Math.max(
+        ...betaNew.map((b, i) => Math.abs(b - beta[i]))
+      );
+      beta = betaNew;
+      if (delta < 1e-10) break;
+    }
+
+    const probabilities = X.map((row) =>
+      sigmoid(row.reduce((s, xi, i) => s + xi * beta[i], 0))
+    );
+    const clipped = probabilities.map((pi) =>
+      Math.max(1e-15, Math.min(1 - 1e-15, pi))
+    );
+    let lossSum = 0;
+    for (let i = 0; i < n; i++) {
+      lossSum +=
+        y[i] * Math.log(clipped[i]) +
+        (1 - y[i]) * Math.log(1 - clipped[i]);
+    }
+    const logLoss = -lossSum / n;
+    let correct = 0;
+    for (let i = 0; i < n; i++) {
+      const pred = probabilities[i] >= 0.5 ? 1 : 0;
+      if (pred === y[i]) correct += 1;
+    }
+    const accuracy = correct / n;
+
+    return {
+      coefficients: beta,
+      probabilities,
+      logLoss,
+      accuracy,
+      iterations,
+    };
   }
 
   /**
@@ -2521,6 +2732,110 @@ export class AnalyticsService {
    */
   private static tTwoTailedPValue(t: number, df: number): number {
     return 2 * (1 - this.tCDF(Math.abs(t), df));
+  }
+
+  /**
+   * Inverse Student's t CDF. Bisection on `tCDF` over a wide bracket;
+   * clamps at ±50 for tail probabilities below 1e-15.
+   */
+  private static tInverseCDF(p: number, df: number): number {
+    if (p <= 1e-15) return -50;
+    if (p >= 1 - 1e-15) return 50;
+    let lo = -50;
+    let hi = 50;
+    for (let i = 0; i < 100; i++) {
+      const mid = (lo + hi) / 2;
+      const cdf = this.tCDF(mid, df);
+      if (Math.abs(cdf - p) < 1e-10) return mid;
+      if (cdf < p) lo = mid;
+      else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+
+  /**
+   * Solve y = X β by ordinary least squares. Returns the coefficient
+   * vector AND the inverted normal-equations matrix (X'X)⁻¹, which the
+   * caller multiplies by σ² to get the coefficient covariance matrix.
+   */
+  private static solveOLS(
+    X: number[][],
+    y: number[]
+  ): {
+    coefficients: number[];
+    xtxInverse: number[][];
+    residuals: number[];
+  } {
+    const n = X.length;
+    const k = X[0].length;
+    if (n < k) {
+      throw new Error(
+        `Need at least ${k} rows for the regression; got ${n}`
+      );
+    }
+
+    // Build X'X and X'y
+    const xtx: number[][] = Array.from({ length: k }, () =>
+      new Array(k).fill(0)
+    );
+    const xty: number[] = new Array(k).fill(0);
+    for (let i = 0; i < n; i++) {
+      const row = X[i];
+      for (let a = 0; a < k; a++) {
+        xty[a] += row[a] * y[i];
+        for (let b = 0; b < k; b++) {
+          xtx[a][b] += row[a] * row[b];
+        }
+      }
+    }
+
+    // Gauss-Jordan inversion of X'X via [X'X | I] → [I | (X'X)⁻¹]
+    const aug: number[][] = xtx.map((row, i) => [
+      ...row,
+      ...new Array(k).fill(0).map((_, j) => (i === j ? 1 : 0)),
+    ]);
+
+    for (let col = 0; col < k; col++) {
+      let pivot = col;
+      for (let r = col + 1; r < k; r++) {
+        if (Math.abs(aug[r][col]) > Math.abs(aug[pivot][col])) pivot = r;
+      }
+      if (Math.abs(aug[pivot][col]) < 1e-12) {
+        throw new Error("design matrix is singular (collinear columns?)");
+      }
+      [aug[col], aug[pivot]] = [aug[pivot], aug[col]];
+
+      const piv = aug[col][col];
+      for (let j = 0; j < 2 * k; j++) aug[col][j] /= piv;
+      for (let r = 0; r < k; r++) {
+        if (r === col) continue;
+        const factor = aug[r][col];
+        if (factor === 0) continue;
+        for (let j = 0; j < 2 * k; j++) {
+          aug[r][j] -= factor * aug[col][j];
+        }
+      }
+    }
+
+    const xtxInverse = aug.map((row) => row.slice(k));
+
+    // β̂ = (X'X)⁻¹ X'y
+    const coefficients: number[] = new Array(k).fill(0);
+    for (let i = 0; i < k; i++) {
+      for (let j = 0; j < k; j++) {
+        coefficients[i] += xtxInverse[i][j] * xty[j];
+      }
+    }
+
+    // Residuals = y - X β̂
+    const residuals: number[] = new Array(n).fill(0);
+    for (let i = 0; i < n; i++) {
+      let predicted = 0;
+      for (let j = 0; j < k; j++) predicted += X[i][j] * coefficients[j];
+      residuals[i] = y[i] - predicted;
+    }
+
+    return { coefficients, xtxInverse, residuals };
   }
 
   /**

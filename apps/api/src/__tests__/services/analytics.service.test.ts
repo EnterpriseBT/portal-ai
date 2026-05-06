@@ -1480,6 +1480,199 @@ describe("AnalyticsService", () => {
       ).toThrow("at least 2 values");
     });
 
+    it("linear-single returns the five new diagnostic fields", () => {
+      const result = AnalyticsService.regression({
+        records: NUMERIC_RECORDS,
+        x: "x",
+        y: "y",
+        type: "linear",
+      });
+
+      expect(result.residuals).toHaveLength(NUMERIC_RECORDS.length);
+      expect(result.standardErrors).toHaveLength(2);
+      expect(result.tStatistics).toHaveLength(2);
+      expect(result.pValues).toHaveLength(2);
+      expect(result.confidenceIntervals.lower).toHaveLength(2);
+      expect(result.confidenceIntervals.upper).toHaveLength(2);
+      for (let i = 0; i < 2; i++) {
+        expect(result.confidenceIntervals.lower[i]).toBeLessThanOrEqual(
+          result.coefficients[i]
+        );
+        expect(result.coefficients[i]).toBeLessThanOrEqual(
+          result.confidenceIntervals.upper[i]
+        );
+      }
+    });
+
+    it("linear-single produces non-trivial SEs and clear-signal t-stats", () => {
+      // x=[1..10], slightly noisy y. Computed expected values from the
+      // closed-form OLS formula on this fixture (verified by hand):
+      //   slope ≈ 0.9776, intercept ≈ 1.2533, stderr_slope ≈ 0.0156,
+      //   t_slope ≈ 62.7 (huge — strong linear signal).
+      const records = [
+        { x: 1, y: 2.5 },
+        { x: 2, y: 3.1 },
+        { x: 3, y: 4.0 },
+        { x: 4, y: 5.2 },
+        { x: 5, y: 6.1 },
+        { x: 6, y: 7.0 },
+        { x: 7, y: 8.1 },
+        { x: 8, y: 9.2 },
+        { x: 9, y: 10.0 },
+        { x: 10, y: 11.1 },
+      ];
+      const result = AnalyticsService.regression({
+        records,
+        x: "x",
+        y: "y",
+        type: "linear",
+      });
+      expect(result.coefficients[0]).toBeCloseTo(1.2533, 3);
+      expect(result.coefficients[1]).toBeCloseTo(0.9776, 3);
+      expect(result.standardErrors[1]).toBeGreaterThan(0);
+      expect(result.standardErrors[1]).toBeLessThan(0.05);
+      // Clear linear signal — slope t-stat should dominate
+      expect(Math.abs(result.tStatistics[1])).toBeGreaterThan(50);
+      expect(result.pValues[1]).toBeLessThan(1e-9);
+    });
+
+    it("multivariate fit on xColumns: [a, b] returns 3 coefficients with high R²", () => {
+      // y = 2 + 3a + 4b + small noise
+      const records = Array.from({ length: 20 }, (_, i) => {
+        const a = i % 5;
+        const b = Math.floor(i / 5);
+        const noise = ((i % 3) - 1) * 0.05;
+        return { a, b, y: 2 + 3 * a + 4 * b + noise };
+      });
+      const result = AnalyticsService.regression({
+        records,
+        xColumns: ["a", "b"],
+        y: "y",
+        type: "linear",
+      });
+      expect(result.coefficients).toHaveLength(3);
+      expect(result.coefficients[0]).toBeCloseTo(2, 1);
+      expect(result.coefficients[1]).toBeCloseTo(3, 1);
+      expect(result.coefficients[2]).toBeCloseTo(4, 1);
+      expect(result.rSquared).toBeGreaterThan(0.99);
+    });
+
+    it("multivariate residuals sum to ≈ 0 (mean-zero by construction)", () => {
+      const records = Array.from({ length: 20 }, (_, i) => {
+        const a = i % 5;
+        const b = Math.floor(i / 5);
+        const noise = ((i % 3) - 1) * 0.05;
+        return { a, b, y: 2 + 3 * a + 4 * b + noise };
+      });
+      const result = AnalyticsService.regression({
+        records,
+        xColumns: ["a", "b"],
+        y: "y",
+        type: "linear",
+      });
+      const sumResiduals = result.residuals.reduce((s, r) => s + r, 0);
+      expect(Math.abs(sumResiduals)).toBeLessThan(1e-9);
+    });
+
+    it("multivariate p-values for real-signal slopes are tiny", () => {
+      const records = Array.from({ length: 20 }, (_, i) => {
+        const a = i % 5;
+        const b = Math.floor(i / 5);
+        const noise = ((i % 3) - 1) * 0.05;
+        return { a, b, y: 2 + 3 * a + 4 * b + noise };
+      });
+      const result = AnalyticsService.regression({
+        records,
+        xColumns: ["a", "b"],
+        y: "y",
+        type: "linear",
+      });
+      expect(result.pValues[1]).toBeLessThan(0.001);
+      expect(result.pValues[2]).toBeLessThan(0.001);
+    });
+
+    it("multivariate CIs span coefficients and respect the confidence level", () => {
+      const records = Array.from({ length: 20 }, (_, i) => {
+        const a = i % 5;
+        const b = Math.floor(i / 5);
+        const noise = ((i % 3) - 1) * 0.05;
+        return { a, b, y: 2 + 3 * a + 4 * b + noise };
+      });
+      const ci95 = AnalyticsService.regression({
+        records,
+        xColumns: ["a", "b"],
+        y: "y",
+        type: "linear",
+      });
+      const ci99 = AnalyticsService.regression({
+        records,
+        xColumns: ["a", "b"],
+        y: "y",
+        type: "linear",
+        confidence: 0.99,
+      });
+
+      // 0.99 CI must be wider than 0.95 CI for at least one slope coefficient.
+      const width95 =
+        ci95.confidenceIntervals.upper[1] - ci95.confidenceIntervals.lower[1];
+      const width99 =
+        ci99.confidenceIntervals.upper[1] - ci99.confidenceIntervals.lower[1];
+      expect(width99).toBeGreaterThan(width95);
+
+      // CIs span the point estimate
+      for (let i = 0; i < 3; i++) {
+        expect(ci95.confidenceIntervals.lower[i]).toBeLessThanOrEqual(
+          ci95.coefficients[i]
+        );
+        expect(ci95.coefficients[i]).toBeLessThanOrEqual(
+          ci95.confidenceIntervals.upper[i]
+        );
+      }
+    });
+
+    it("xColumns and x together is rejected", () => {
+      expect(() =>
+        AnalyticsService.regression({
+          records: NUMERIC_RECORDS,
+          x: "x",
+          xColumns: ["x"],
+          y: "y",
+          type: "linear",
+        })
+      ).toThrow(/specify either x or xColumns, not both/);
+    });
+
+    it("xColumns with type 'polynomial' is rejected", () => {
+      expect(() =>
+        AnalyticsService.regression({
+          records: NUMERIC_RECORDS,
+          xColumns: ["x"],
+          y: "y",
+          type: "polynomial",
+        })
+      ).toThrow(/multivariate polynomial regression is not supported/);
+    });
+
+    it("polynomial degree 2 result includes the five diagnostic fields", () => {
+      const records = Array.from({ length: 20 }, (_, i) => ({
+        x: i,
+        y: i * i + ((i % 3) - 1) * 0.1,
+      }));
+      const result = AnalyticsService.regression({
+        records,
+        x: "x",
+        y: "y",
+        type: "polynomial",
+        degree: 2,
+      });
+      expect(result.coefficients).toHaveLength(3);
+      expect(result.residuals).toHaveLength(20);
+      expect(result.standardErrors).toHaveLength(3);
+      expect(result.tStatistics).toHaveLength(3);
+      expect(result.pValues).toHaveLength(3);
+      expect(result.confidenceIntervals.lower).toHaveLength(3);
+    });
+
     it("computes high-R² fit for cubic data with degree 3", () => {
       // y = x³ + small noise on x ∈ [-10, 10]
       const records = Array.from({ length: 21 }, (_, i) => {
@@ -1499,6 +1692,168 @@ describe("AnalyticsService", () => {
       expect(result.rSquared).toBeGreaterThan(0.99);
       // a3 should be close to 1 (coefficient of x³)
       expect(result.coefficients[3]).toBeCloseTo(1, 1);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // logisticRegression
+  // -----------------------------------------------------------------------
+
+  describe("logisticRegression()", () => {
+    const SEPARABLE_RECORDS = [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 2, y: 0 },
+      { x: 3, y: 0 },
+      { x: 4, y: 0 },
+      { x: 5, y: 1 },
+      { x: 6, y: 1 },
+      { x: 7, y: 1 },
+      { x: 8, y: 1 },
+      { x: 9, y: 1 },
+    ];
+
+    it("reaches 100% accuracy on a well-separated single feature", () => {
+      // On perfectly-separable data IRLS coefficients grow without bound,
+      // so the relative-delta convergence check may not trigger and the
+      // call hits maxIterations. Probabilities saturate correctly to 0/1
+      // and accuracy is 100%. The model can read iterations === maxIterations
+      // as a saturation signal.
+      const result = AnalyticsService.logisticRegression({
+        records: SEPARABLE_RECORDS,
+        x: "x",
+        y: "y",
+      });
+      expect(result.accuracy).toBe(1);
+      for (let i = 0; i < SEPARABLE_RECORDS.length; i++) {
+        const yi = SEPARABLE_RECORDS[i].y;
+        if (yi === 0) {
+          expect(result.probabilities[i]).toBeLessThan(0.5);
+        } else {
+          expect(result.probabilities[i]).toBeGreaterThanOrEqual(0.5);
+        }
+      }
+    });
+
+    it("multivariate logistic on a 2-feature linear separator", () => {
+      const records = Array.from({ length: 20 }, (_, i) => {
+        const a = i % 5;
+        const b = Math.floor(i / 5);
+        return { a, b, y: a + b > 5 ? 1 : 0 };
+      });
+      const result = AnalyticsService.logisticRegression({
+        records,
+        xColumns: ["a", "b"],
+        y: "y",
+      });
+      expect(result.coefficients).toHaveLength(3);
+      expect(result.accuracy).toBeGreaterThanOrEqual(0.95);
+      expect(result.logLoss).toBeLessThan(0.5);
+    });
+
+    it("coefficient sign matches the feature direction", () => {
+      const result = AnalyticsService.logisticRegression({
+        records: SEPARABLE_RECORDS,
+        x: "x",
+        y: "y",
+      });
+      // Slope on x: y increases with x → positive slope
+      expect(result.coefficients[1]).toBeGreaterThan(0);
+    });
+
+    it("log-loss matches a manual recomputation from probabilities", () => {
+      const result = AnalyticsService.logisticRegression({
+        records: SEPARABLE_RECORDS,
+        x: "x",
+        y: "y",
+      });
+      const n = SEPARABLE_RECORDS.length;
+      let manual = 0;
+      for (let i = 0; i < n; i++) {
+        const yi = SEPARABLE_RECORDS[i].y;
+        const p = Math.max(
+          1e-15,
+          Math.min(1 - 1e-15, result.probabilities[i])
+        );
+        manual += yi * Math.log(p) + (1 - yi) * Math.log(1 - p);
+      }
+      manual = -manual / n;
+      expect(result.logLoss).toBeCloseTo(manual, 9);
+    });
+
+    it("all-positive y is rejected", () => {
+      expect(() =>
+        AnalyticsService.logisticRegression({
+          records: [
+            { x: 1, y: 1 },
+            { x: 2, y: 1 },
+            { x: 3, y: 1 },
+            { x: 4, y: 1 },
+            { x: 5, y: 1 },
+          ],
+          x: "x",
+          y: "y",
+        })
+      ).toThrow(/at least one of each class/);
+    });
+
+    it("all-negative y is rejected", () => {
+      expect(() =>
+        AnalyticsService.logisticRegression({
+          records: [
+            { x: 1, y: 0 },
+            { x: 2, y: 0 },
+            { x: 3, y: 0 },
+            { x: 4, y: 0 },
+            { x: 5, y: 0 },
+          ],
+          x: "x",
+          y: "y",
+        })
+      ).toThrow(/at least one of each class/);
+    });
+
+    it("out-of-range y values are rejected", () => {
+      expect(() =>
+        AnalyticsService.logisticRegression({
+          records: [
+            { x: 1, y: 0 },
+            { x: 2, y: 1 },
+            { x: 3, y: 2 },
+          ],
+          x: "x",
+          y: "y",
+        })
+      ).toThrow(/y values must be 0 or 1/);
+    });
+
+    it("boolean y values are coerced", () => {
+      const records = [
+        { x: 0, y: false },
+        { x: 1, y: false },
+        { x: 2, y: false },
+        { x: 3, y: false },
+        { x: 4, y: true },
+        { x: 5, y: true },
+        { x: 6, y: true },
+        { x: 7, y: true },
+      ];
+      const result = AnalyticsService.logisticRegression({
+        records,
+        x: "x",
+        y: "y",
+      });
+      expect(result.accuracy).toBeGreaterThanOrEqual(0.5);
+    });
+
+    it("maxIterations cap is honored", () => {
+      const result = AnalyticsService.logisticRegression({
+        records: SEPARABLE_RECORDS,
+        x: "x",
+        y: "y",
+        maxIterations: 1,
+      });
+      expect(result.iterations).toBe(1);
     });
   });
 
@@ -3225,6 +3580,22 @@ describe("AnalyticsService", () => {
         expect(v).toBeGreaterThanOrEqual(prev);
         prev = v;
       }
+    });
+
+    it("tInverseCDF(0.5, df) === 0 for any df", () => {
+      for (const df of [1, 5, 10, 50, 100]) {
+        expect(svc.tInverseCDF(0.5, df)).toBeCloseTo(0, 9);
+      }
+    });
+
+    it("tInverseCDF(0.975, 10) ≈ 2.228 (scipy reference)", () => {
+      // scipy.stats.t.ppf(0.975, 10) === 2.2281388519649385
+      expect(svc.tInverseCDF(0.975, 10)).toBeCloseTo(2.228, 3);
+    });
+
+    it("tInverseCDF(0.95, large df) approaches the standard-normal 95th pctl", () => {
+      // Standard normal: Φ⁻¹(0.95) ≈ 1.6449
+      expect(svc.tInverseCDF(0.95, 1000)).toBeCloseTo(1.6449, 2);
     });
   });
 });
