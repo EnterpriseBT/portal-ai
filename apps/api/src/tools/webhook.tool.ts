@@ -1,3 +1,8 @@
+// Unused after phase 1 (custom toolpack registration is dropped in
+// phase 2). The class is kept in place so phase 2 can re-wire it
+// against the new `organization_toolpacks` records without recreating
+// the JSON-Schema → Zod conversion path.
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { z } from "zod";

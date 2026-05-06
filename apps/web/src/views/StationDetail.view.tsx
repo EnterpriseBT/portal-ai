@@ -208,13 +208,16 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                 direction="row"
                                 sx={{ flexWrap: "wrap", gap: 0.75 }}
                               >
-                                {station.toolPacks.map((pack) => (
-                                  <ToolPackChip key={pack} pack={pack} />
-                                ))}
+                                {(station.enabledToolpacks ?? []).map(
+                                  (pack: string) => (
+                                    <ToolPackChip key={pack} pack={pack} />
+                                  )
+                                )}
                               </Stack>
                             ),
                             variant: "chip",
-                            hidden: station.toolPacks.length === 0,
+                            hidden:
+                              (station.enabledToolpacks ?? []).length === 0,
                           },
                           {
                             label: "Connectors",

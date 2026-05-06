@@ -129,11 +129,18 @@ export class ApplicationService {
         organizationId: createdOrg.id,
         name: "My Station",
         description: "Default organization sandbox station",
-        toolPacks: ["data_query"],
       });
 
       const createdStation = await DbService.repository.stations.create(
         stationModel.parse(),
+        tx
+      );
+
+      // Seed the default toolpack for the new station.
+      await DbService.repository.stationToolpacks.replaceForStation(
+        createdStation.id,
+        { builtinSlugs: ["data_query"] },
+        { userId: systemId },
         tx
       );
 

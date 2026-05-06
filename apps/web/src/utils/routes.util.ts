@@ -16,6 +16,7 @@ export enum ApplicationRoute {
   Portal = "/portals/$portalId",
   Stations = "/stations",
   StationDetail = "/stations/$stationId",
+  Toolpacks = "/toolpacks",
   PortalResults = "/portal-results",
   Help = "/help",
 }

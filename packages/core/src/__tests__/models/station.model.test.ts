@@ -15,7 +15,6 @@ const validStationFields = {
   organizationId: "org-1",
   name: "Analytics Station",
   description: "Main analytics workspace",
-  toolPacks: ["data_query"],
   updated: null,
   updatedBy: null,
   deleted: null,
@@ -37,7 +36,6 @@ describe("StationSchema", () => {
       organizationId: "org-1",
       name: "Analytics Station",
       description: "Main analytics workspace",
-      toolPacks: ["data_query", "statistics"],
     };
     const result = StationSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -55,7 +53,6 @@ describe("StationSchema", () => {
       organizationId: "org-1",
       name: "",
       description: null,
-      toolPacks: ["data_query"],
     };
     const result = StationSchema.safeParse(data);
     expect(result.success).toBe(false);
@@ -73,7 +70,6 @@ describe("StationSchema", () => {
       organizationId: "org-1",
       name: "Station A",
       description: null,
-      toolPacks: ["financial"],
     };
     const result = StationSchema.safeParse(data);
     expect(result.success).toBe(true);

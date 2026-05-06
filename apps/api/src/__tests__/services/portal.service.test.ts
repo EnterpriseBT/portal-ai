@@ -12,11 +12,13 @@ const mockCreate_portal = jest.fn<() => Promise<unknown>>();
 const mockCreate_message = jest.fn<() => Promise<unknown>>();
 const mockFindByPortal = jest.fn<() => Promise<unknown[]>>();
 const mockDeleteByPortal = jest.fn<() => Promise<number>>();
+const mockFindByStationId_toolpacks = jest.fn<() => Promise<unknown[]>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       stations: { findById: mockFindById_station },
+      stationToolpacks: { findByStationId: mockFindByStationId_toolpacks },
       portals: {
         findById: mockFindById_portal,
         create: mockCreate_portal,
@@ -99,8 +101,22 @@ const STATION = {
   id: STATION_ID,
   organizationId: ORG_ID,
   name: "Sales Station",
-  toolPacks: ["data_query", "statistics"],
 };
+
+function makeToolpackRows(slugs: string[]) {
+  return slugs.map((slug, i) => ({
+    id: `stp-${i + 1}`,
+    stationId: STATION_ID,
+    builtinSlug: slug,
+    organizationToolpackId: null,
+    created: Date.now(),
+    createdBy: USER_ID,
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  }));
+}
 
 const PORTAL = {
   id: PORTAL_ID,
@@ -216,6 +232,9 @@ describe("PortalService", () => {
   describe("createPortal", () => {
     it("returns portalId and stationContext on success", async () => {
       mockFindById_station.mockResolvedValue(STATION);
+      mockFindByStationId_toolpacks.mockResolvedValue(
+        makeToolpackRows(["data_query", "statistics"])
+      );
       mockCreate_portal.mockResolvedValue(PORTAL);
       mockLoadStation.mockResolvedValue(STATION_DATA);
 
@@ -234,6 +253,9 @@ describe("PortalService", () => {
 
     it("calls loadStation and caches result", async () => {
       mockFindById_station.mockResolvedValue(STATION);
+      mockFindByStationId_toolpacks.mockResolvedValue(
+        makeToolpackRows(["data_query", "statistics"])
+      );
       mockCreate_portal.mockResolvedValue(PORTAL);
       mockLoadStation.mockResolvedValue(STATION_DATA);
 
@@ -273,11 +295,9 @@ describe("PortalService", () => {
       ).rejects.toMatchObject({ code: ApiCode.STATION_NOT_FOUND });
     });
 
-    it("throws PORTAL_STATION_NO_TOOLS when station has no tool packs", async () => {
-      mockFindById_station.mockResolvedValue({
-        ...STATION,
-        toolPacks: [],
-      });
+    it("throws PORTAL_STATION_NO_TOOLS when station has no toolpacks attached", async () => {
+      mockFindById_station.mockResolvedValue(STATION);
+      mockFindByStationId_toolpacks.mockResolvedValue([]);
 
       await expect(
         PortalService.createPortal({
@@ -288,11 +308,22 @@ describe("PortalService", () => {
       ).rejects.toMatchObject({ code: ApiCode.PORTAL_STATION_NO_TOOLS });
     });
 
-    it("throws PORTAL_STATION_NO_TOOLS when toolPacks is null", async () => {
-      mockFindById_station.mockResolvedValue({
-        ...STATION,
-        toolPacks: null,
-      });
+    it("throws PORTAL_STATION_NO_TOOLS when only custom toolpack rows exist (phase 1)", async () => {
+      mockFindById_station.mockResolvedValue(STATION);
+      mockFindByStationId_toolpacks.mockResolvedValue([
+        {
+          id: "stp-custom",
+          stationId: STATION_ID,
+          builtinSlug: null,
+          organizationToolpackId: "otp-future",
+          created: Date.now(),
+          createdBy: USER_ID,
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        },
+      ]);
 
       await expect(
         PortalService.createPortal({

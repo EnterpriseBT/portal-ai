@@ -5,7 +5,6 @@
  * builds the full tool set for a station based on its enabled tool packs.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /* global AbortController, fetch */
 
 import { type Tool } from "ai";
@@ -46,7 +45,8 @@ import { SharpeRatioTool } from "../tools/sharpe-ratio.tool.js";
 import { MaxDrawdownTool } from "../tools/max-drawdown.tool.js";
 import { RollingReturnsTool } from "../tools/rolling-returns.tool.js";
 import { WebSearchTool } from "../tools/web-search.tool.js";
-import { WebhookTool } from "../tools/webhook.tool.js";
+// `WebhookTool` is reintroduced in phase 2 to back custom toolpacks.
+// `callWebhook` below remains exported for that future caller.
 import { EntityRecordCreateTool } from "../tools/entity-record-create.tool.js";
 import { EntityRecordUpdateTool } from "../tools/entity-record-update.tool.js";
 import { EntityRecordDeleteTool } from "../tools/entity-record-delete.tool.js";
@@ -193,12 +193,27 @@ export class ToolService {
     const station = await repo.stations.findById(stationId);
     if (!station) throw new Error(`Station not found: ${stationId}`);
 
-    const toolPacks = (station as any).toolPacks as string[];
-    if (!toolPacks || toolPacks.length === 0) {
+    const enabledRows = await repo.stationToolpacks.findByStationId(stationId);
+    const builtinSlugs = enabledRows
+      .map((r) => r.builtinSlug)
+      .filter((s): s is string => s !== null);
+    const customRows = enabledRows.filter(
+      (r) => r.organizationToolpackId !== null
+    );
+
+    if (customRows.length > 0) {
+      logger.warn(
+        { stationId, count: customRows.length },
+        "Custom toolpack rows present but not yet supported (phase 2)"
+      );
+    }
+
+    if (builtinSlugs.length === 0) {
       throw new Error("Station must have at least one tool pack enabled");
     }
 
-    const enabledPacks = new Set<string>(toolPacks);
+    const toolPacks = builtinSlugs;
+    const enabledPacks = new Set<string>(builtinSlugs);
 
     // Load station data into memory
     const stationData = await AnalyticsService.loadStation(
@@ -329,11 +344,6 @@ export class ToolService {
       }
     }
 
-    // -------------------------------------------------------------------
-    // Custom webhook tools
-    // -------------------------------------------------------------------
-    await this.buildCustomWebhookTools(tools, stationId);
-
     logger.info(
       {
         stationId,
@@ -344,36 +354,5 @@ export class ToolService {
     );
 
     return tools;
-  }
-
-  // -----------------------------------------------------------------------
-  // Private helpers
-  // -----------------------------------------------------------------------
-
-  private static async buildCustomWebhookTools(
-    tools: Record<string, Tool>,
-    stationId: string
-  ): Promise<void> {
-    const repo = DbService.repository;
-    const stationToolRows = await repo.stationTools.findByStationId(stationId);
-
-    for (const row of stationToolRows) {
-      const def = row.organizationTool;
-      const toolName = def.name;
-
-      if (ToolService.PACK_TOOL_NAMES.has(toolName)) {
-        throw new Error(
-          `Custom tool "${toolName}" conflicts with a built-in pack tool name`
-        );
-      }
-
-      tools[toolName] = new WebhookTool(
-        toolName,
-        def.description ?? `Custom tool: ${toolName}`,
-        def.parameterSchema as Record<string, unknown>,
-        def.implementation as unknown as WebhookImplementation,
-        stationId
-      ).build();
-    }
   }
 }

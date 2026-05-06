@@ -11,8 +11,7 @@ import type { EntityTagListRequestQuery } from "@portalai/core/contracts";
 import type { JobListRequestQuery } from "@portalai/core/contracts";
 import type { StationListRequestQuery } from "@portalai/core/contracts";
 import type { PortalListRequestQuery } from "@portalai/core/contracts";
-import type { OrganizationToolListRequestQuery } from "@portalai/core/contracts";
-import type { StationToolListRequestQuery } from "@portalai/core/contracts";
+import type { ToolpackListRequestQuery } from "@portalai/core/contracts";
 
 export const queryKeys = {
   health: {
@@ -149,17 +148,11 @@ export const queryKeys = {
       [...queryKeys.portalResults.root, "list", params] as const,
     get: (id: string) => [...queryKeys.portalResults.root, "get", id] as const,
   },
-  organizationTools: {
-    root: ["organizationTools"] as const,
-    list: (params?: OrganizationToolListRequestQuery) =>
-      [...queryKeys.organizationTools.root, "list", params] as const,
-    get: (id: string) =>
-      [...queryKeys.organizationTools.root, "get", id] as const,
-  },
-  stationTools: {
-    root: ["stationTools"] as const,
-    list: (stationId: string, params?: StationToolListRequestQuery) =>
-      [...queryKeys.stationTools.root, "list", stationId, params] as const,
+  toolpacks: {
+    root: ["toolpacks"] as const,
+    list: (params?: ToolpackListRequestQuery) =>
+      [...queryKeys.toolpacks.root, "list", params] as const,
+    get: (id: string) => [...queryKeys.toolpacks.root, "get", id] as const,
   },
   connectorInstanceLayoutPlans: {
     root: ["connectorInstanceLayoutPlans"] as const,

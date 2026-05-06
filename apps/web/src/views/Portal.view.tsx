@@ -145,7 +145,7 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
   if (!station) return null;
 
   const instances = station.instances ?? [];
-  const toolPacks = station.toolPacks ?? [];
+  const toolPacks = station.enabledToolpacks ?? [];
 
   const metadata = (
     <MetadataList

@@ -17,7 +17,7 @@ import {
   portalResults,
   portalMessages,
   portals,
-  stationTools,
+  stationToolpacks,
   stationInstances,
   stations,
 } from "../db/schema/index.js";
@@ -99,18 +99,20 @@ export class ResetService {
         .returning({ id: portals.id });
       logger.info(`Deleted ${deletedPortals.length} portals`);
 
-      // station_tools and station_instances are join tables without organizationId —
+      // station_toolpacks and station_instances are join tables without organizationId —
       // delete by matching stationId against org-scoped stations
       const orgStationIds = tx
         .select({ id: stations.id })
         .from(stations)
         .where(eq(stations.organizationId, organizationId));
 
-      const deletedStationTools = await tx
-        .delete(stationTools)
-        .where(inArray(stationTools.stationId, orgStationIds))
-        .returning({ id: stationTools.id });
-      logger.info(`Deleted ${deletedStationTools.length} station tools`);
+      const deletedStationToolpacks = await tx
+        .delete(stationToolpacks)
+        .where(inArray(stationToolpacks.stationId, orgStationIds))
+        .returning({ id: stationToolpacks.id });
+      logger.info(
+        `Deleted ${deletedStationToolpacks.length} station toolpacks`
+      );
 
       const deletedStationInstances = await tx
         .delete(stationInstances)

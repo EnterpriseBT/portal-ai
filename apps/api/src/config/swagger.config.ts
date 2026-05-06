@@ -1249,112 +1249,6 @@ const options: swaggerJsdoc.Options = {
             },
           ],
         },
-        OrganizationTool: {
-          type: "object",
-          required: [
-            "id",
-            "organizationId",
-            "name",
-            "parameterSchema",
-            "implementation",
-            "created",
-            "createdBy",
-          ],
-          properties: {
-            id: { type: "string" },
-            organizationId: { type: "string" },
-            name: { type: "string", example: "get_customer_ltv" },
-            description: { type: "string", nullable: true },
-            parameterSchema: {
-              type: "object",
-              additionalProperties: true,
-              description: "JSON Schema describing the tool parameters",
-            },
-            implementation: {
-              type: "object",
-              properties: {
-                type: { type: "string", enum: ["webhook"], example: "webhook" },
-                url: { type: "string", example: "https://example.com/tool" },
-                headers: {
-                  type: "object",
-                  additionalProperties: { type: "string" },
-                },
-              },
-            },
-            created: { type: "number", description: "Epoch ms" },
-            createdBy: { type: "string" },
-            updated: { type: "number", nullable: true },
-            updatedBy: { type: "string", nullable: true },
-            deleted: { type: "number", nullable: true },
-            deletedBy: { type: "string", nullable: true },
-          },
-        },
-        OrganizationToolListResponse: {
-          allOf: [
-            { $ref: "#/components/schemas/PaginatedResponse" },
-            {
-              type: "object",
-              required: ["organizationTools"],
-              properties: {
-                organizationTools: {
-                  type: "array",
-                  items: { $ref: "#/components/schemas/OrganizationTool" },
-                },
-              },
-            },
-          ],
-        },
-        StationTool: {
-          type: "object",
-          required: [
-            "id",
-            "stationId",
-            "organizationToolId",
-            "created",
-            "createdBy",
-          ],
-          properties: {
-            id: { type: "string" },
-            stationId: { type: "string" },
-            organizationToolId: { type: "string" },
-            created: { type: "number", description: "Epoch ms" },
-            createdBy: { type: "string" },
-            updated: { type: "number", nullable: true },
-            updatedBy: { type: "string", nullable: true },
-            deleted: { type: "number", nullable: true },
-            deletedBy: { type: "string", nullable: true },
-          },
-        },
-        StationToolWithOrgTool: {
-          allOf: [
-            { $ref: "#/components/schemas/StationTool" },
-            {
-              type: "object",
-              properties: {
-                organizationTool: {
-                  $ref: "#/components/schemas/OrganizationTool",
-                },
-              },
-            },
-          ],
-        },
-        StationToolListResponse: {
-          allOf: [
-            { $ref: "#/components/schemas/PaginatedResponse" },
-            {
-              type: "object",
-              required: ["stationTools"],
-              properties: {
-                stationTools: {
-                  type: "array",
-                  items: {
-                    $ref: "#/components/schemas/StationToolWithOrgTool",
-                  },
-                },
-              },
-            },
-          ],
-        },
         ...spreadsheetParsingSchemas,
       },
     },
@@ -1432,12 +1326,8 @@ const options: swaggerJsdoc.Options = {
         description: "Pinned portal result management endpoints",
       },
       {
-        name: "Organization Tools",
-        description: "Custom webhook tool management endpoints",
-      },
-      {
-        name: "Station Tools",
-        description: "Station custom tool assignment endpoints",
+        name: "Toolpacks",
+        description: "Built-in and custom toolpack discovery endpoints",
       },
     ],
   },

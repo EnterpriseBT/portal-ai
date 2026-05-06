@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { z } from "zod";
 import type { UpdateStationBody } from "@portalai/core/contracts";
 import type { Station } from "@portalai/core/models";
-import { StationToolPackSchema } from "@portalai/core/models";
+import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
 import { Button, Modal, MultiSearchableSelect, Stack } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
@@ -18,18 +18,15 @@ import {
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { ToolPackIconUtil } from "../utils/tool-pack-icons.util";
-import { ToolPackUtil } from "../utils/tool-packs.util";
 
-const TOOL_PACK_OPTIONS: SelectOption[] = StationToolPackSchema.options.map(
-  (value) => {
-    const Icon = ToolPackIconUtil.getIcon(value);
-    return {
-      value,
-      label: ToolPackUtil.getLabel(value),
-      icon: <Icon fontSize="small" />,
-    };
-  }
-);
+const TOOL_PACK_OPTIONS: SelectOption[] = BUILTIN_TOOLPACKS.map((pack) => {
+  const Icon = ToolPackIconUtil.getIcon(pack.slug);
+  return {
+    value: pack.slug,
+    label: pack.name,
+    icon: <Icon fontSize="small" />,
+  };
+});
 
 interface FormState {
   name: string;
@@ -54,7 +51,10 @@ interface StationInstance {
 export interface EditStationDialogProps {
   open: boolean;
   onClose: () => void;
-  station: Station & { instances?: StationInstance[] };
+  station: Station & {
+    instances?: StationInstance[];
+    enabledToolpacks?: string[];
+  };
   onSubmit: (body: UpdateStationBody) => void;
   isPending: boolean;
   serverError: ServerError | null;
@@ -71,9 +71,10 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
   const initialInstanceIds = (station.instances ?? []).map(
     (i) => i.connectorInstanceId
   );
+  const initialToolpacks = station.enabledToolpacks ?? [];
   const [form, setForm] = useState<FormState>({
     name: station.name,
-    toolPacks: [...station.toolPacks],
+    toolPacks: [...initialToolpacks],
     connectorInstanceIds: [...initialInstanceIds],
   });
   const [errors, setErrors] = useState<FormErrors>({});
@@ -106,7 +107,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     if (form.name.trim() !== station.name) {
       body.name = form.name.trim();
     }
-    if (JSON.stringify(form.toolPacks) !== JSON.stringify(station.toolPacks)) {
+    if (JSON.stringify(form.toolPacks) !== JSON.stringify(initialToolpacks)) {
       body.toolPacks = form.toolPacks;
     }
     const sortedCurrent = [...initialInstanceIds].sort();

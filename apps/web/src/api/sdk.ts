@@ -15,13 +15,12 @@ import { microsoftExcel } from "./microsoft-excel.api";
 import { health } from "./health.api";
 import { layoutPlans } from "./layout-plans.api";
 import { jobs } from "./jobs.api";
-import { organizationTools } from "./organization-tools.api";
 import { organizations } from "./organizations.api";
 import { portalResults } from "./portal-results.api";
 import { portals } from "./portals.api";
 import { sse } from "./sse.api";
-import { stationTools } from "./station-tools.api";
 import { stations } from "./stations.api";
+import { toolpacks } from "./toolpacks.api";
 
 export { queryKeys } from "./keys";
 
@@ -43,11 +42,10 @@ export const sdk = {
   health,
   layoutPlans,
   jobs,
-  organizationTools,
   organizations,
   portalResults,
   portals,
   sse,
-  stationTools,
   stations,
+  toolpacks,
 } as const;

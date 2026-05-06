@@ -50,28 +50,66 @@ jest.unstable_mockModule("../../../services/analytics.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
-const { stations, portals, portalMessages, portalResults } = schema;
+const { stations, stationToolpacks, portals, portalMessages, portalResults } =
+  schema;
 
 const now = Date.now();
 
 function createStation(
   organizationId: string,
-  overrides?: Partial<Record<string, unknown>>
+  overrides?: Partial<Record<string, unknown>> & { toolPacks?: string[] }
 ) {
+  // Tests pass `toolPacks` as a sugar over the join-table seed.
+  const { toolPacks: _toolPacks, ...rest } = overrides ?? {};
   return {
     id: generateId(),
     organizationId,
     name: "Test Station",
     description: null,
-    toolPacks: ["data_query"],
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
     updatedBy: null,
     deleted: null,
     deletedBy: null,
-    ...overrides,
+    ...rest,
   };
+}
+
+async function seedStationToolpacks(
+  db: ReturnType<typeof drizzle>,
+  stationId: string,
+  slugs: string[]
+): Promise<void> {
+  if (slugs.length === 0) return;
+  await db.insert(stationToolpacks).values(
+    slugs.map((slug) => ({
+      id: generateId(),
+      stationId,
+      builtinSlug: slug,
+      organizationToolpackId: null,
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    })) as never
+  );
+}
+
+/**
+ * Insert a station row and seed its toolpack join rows in one step,
+ * matching the legacy `toolPacks` jsonb default of `["data_query"]`.
+ */
+async function insertStation(
+  db: ReturnType<typeof drizzle>,
+  station: ReturnType<typeof createStation>,
+  options: { toolPacks?: string[] } = {}
+): Promise<void> {
+  await db.insert(stations).values(station as never);
+  const slugs = options.toolPacks ?? ["data_query"];
+  await seedStationToolpacks(db, station.id, slugs);
 }
 
 function createPortal(
@@ -122,9 +160,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const res = await request(app)
         .post("/api/portals")
@@ -153,10 +189,10 @@ describe("Portal Router", () => {
         AUTH0_ID
       );
 
-      const station = createStation(organizationId, { toolPacks: [] });
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      const station = createStation(organizationId);
+      await insertStation(db as ReturnType<typeof drizzle>, station, {
+        toolPacks: [],
+      });
 
       const res = await request(app)
         .post("/api/portals")
@@ -183,9 +219,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const portal = createPortal(organizationId, station.id);
       await (db as ReturnType<typeof drizzle>)
@@ -206,9 +240,8 @@ describe("Portal Router", () => {
 
       const stationA = createStation(organizationId);
       const stationB = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values([stationA as never, stationB as never]);
+      await insertStation(db as ReturnType<typeof drizzle>, stationA);
+      await insertStation(db as ReturnType<typeof drizzle>, stationB);
 
       const portalA = createPortal(organizationId, stationA.id);
       const portalB = createPortal(organizationId, stationB.id);
@@ -231,9 +264,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const older = createPortal(organizationId, station.id, {
         name: "Older",
@@ -266,9 +297,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId, { name: "Research Lab" });
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const portal = createPortal(organizationId, station.id);
       await (db as ReturnType<typeof drizzle>)
@@ -290,9 +319,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const portal = createPortal(organizationId, station.id);
       await (db as ReturnType<typeof drizzle>)
@@ -315,9 +342,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const portal = createPortal(organizationId, station.id);
       await (db as ReturnType<typeof drizzle>)
@@ -353,9 +378,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const portal = createPortal(organizationId, station.id);
       await (db as ReturnType<typeof drizzle>)
@@ -382,9 +405,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const portal = createPortal(organizationId, station.id);
       await (db as ReturnType<typeof drizzle>)
@@ -436,9 +457,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const portal = createPortal(organizationId, station.id);
       await (db as ReturnType<typeof drizzle>)
@@ -490,9 +509,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const portal = createPortal(organizationId, station.id);
       await (db as ReturnType<typeof drizzle>)
@@ -521,9 +538,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const portal = createPortal(organizationId, station.id);
       await (db as ReturnType<typeof drizzle>)
@@ -553,9 +568,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const portal = createPortal(organizationId, station.id);
       await (db as ReturnType<typeof drizzle>)
@@ -610,9 +623,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const portal = createPortal(organizationId, station.id);
       await (db as ReturnType<typeof drizzle>)
@@ -675,9 +686,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const portal = createPortal(organizationId, station.id);
       await (db as ReturnType<typeof drizzle>)
@@ -710,9 +719,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const portal = createPortal(organizationId, station.id);
       await (db as ReturnType<typeof drizzle>)
@@ -752,9 +759,7 @@ describe("Portal Router", () => {
       );
 
       const station = createStation(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(stations)
-        .values(station as never);
+      await insertStation(db as ReturnType<typeof drizzle>, station);
 
       const portal = createPortal(organizationId, station.id);
       await (db as ReturnType<typeof drizzle>)

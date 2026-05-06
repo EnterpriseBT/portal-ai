@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ToolpacksRouteImport } from './routes/toolpacks'
 import { Route as TagsRouteImport } from './routes/tags'
 import { Route as StationsRouteImport } from './routes/stations'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -21,6 +22,7 @@ import { Route as EntitiesRouteImport } from './routes/entities'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as ColumnDefinitionsRouteImport } from './routes/column-definitions'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ToolpacksIndexRouteImport } from './routes/toolpacks.index'
 import { Route as TagsIndexRouteImport } from './routes/tags.index'
 import { Route as StationsIndexRouteImport } from './routes/stations.index'
 import { Route as PortalResultsIndexRouteImport } from './routes/portal-results.index'
@@ -41,6 +43,11 @@ import { Route as ColumnDefinitionsColumnDefinitionIdRouteImport } from './route
 import { Route as EntitiesEntityIdIndexRouteImport } from './routes/entities.$entityId.index'
 import { Route as EntitiesEntityIdRecordsRecordIdRouteImport } from './routes/entities.$entityId.records.$recordId'
 
+const ToolpacksRoute = ToolpacksRouteImport.update({
+  id: '/toolpacks',
+  path: '/toolpacks',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TagsRoute = TagsRouteImport.update({
   id: '/tags',
   path: '/tags',
@@ -100,6 +107,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ToolpacksIndexRoute = ToolpacksIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ToolpacksRoute,
 } as any)
 const TagsIndexRoute = TagsIndexRouteImport.update({
   id: '/',
@@ -402,6 +414,20 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/toolpacks': {
+      id: '/toolpacks'
+      path: '/toolpacks'
+      fullPath: '/toolpacks'
+      preLoaderRoute: typeof ToolpacksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/toolpacks/': {
+      id: '/toolpacks/'
+      path: '/'
+      fullPath: '/toolpacks/'
+      preLoaderRoute: typeof ToolpacksIndexRouteImport
+      parentRoute: typeof ToolpacksRoute
+    }
     '/tags': {
       id: '/tags'
       path: '/tags'

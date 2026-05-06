@@ -1,20 +1,18 @@
-/**
- * Human-readable labels for station tool packs.
- */
-const TOOL_PACK_LABELS: Record<string, string> = {
-  data_query: "Data Query",
-  statistics: "Statistics",
-  regression: "Regression",
-  financial: "Financial",
-  web_search: "Web Search",
-  entity_management: "Entity Management",
-};
+import {
+  BUILTIN_TOOLPACK_BY_SLUG,
+  isBuiltinToolpackSlug,
+} from "@portalai/core/registries";
 
 export class ToolPackUtil {
   /**
-   * Resolve a tool pack key to its display label, falling back to the raw key.
+   * Resolve a toolpack slug to its display label, falling back to the
+   * raw slug for unknown values (e.g. a custom-pack slug not yet
+   * registered or a stale row).
    */
   static getLabel(pack: string): string {
-    return TOOL_PACK_LABELS[pack] ?? pack;
+    if (isBuiltinToolpackSlug(pack)) {
+      return BUILTIN_TOOLPACK_BY_SLUG[pack].name;
+    }
+    return pack;
   }
 }

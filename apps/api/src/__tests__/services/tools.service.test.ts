@@ -47,7 +47,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
           .fn<() => Promise<unknown[]>>()
           .mockResolvedValue([]),
       },
-      stationTools: { findByStationId: mockFindByStationId_tools },
+      stationToolpacks: { findByStationId: mockFindByStationId_tools },
     },
   },
 }));
@@ -102,13 +102,12 @@ const callWebhook = ToolService.callWebhook.bind(ToolService);
 const STATION_ID = "station-001";
 const ORG_ID = "org-001";
 
-function makeStation(toolPacks: string[]) {
+function makeStation() {
   return {
     id: STATION_ID,
     organizationId: ORG_ID,
     name: "Test Station",
     description: null,
-    toolPacks,
     created: Date.now(),
     createdBy: "user-001",
     updated: null,
@@ -116,6 +115,21 @@ function makeStation(toolPacks: string[]) {
     deleted: null,
     deletedBy: null,
   };
+}
+
+function makeToolpackRows(slugs: string[]) {
+  return slugs.map((slug, idx) => ({
+    id: `stp-${idx + 1}`,
+    stationId: STATION_ID,
+    builtinSlug: slug,
+    organizationToolpackId: null,
+    created: Date.now(),
+    createdBy: "user-001",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  }));
 }
 
 const ENTITIES = [
@@ -148,7 +162,7 @@ const CUSTOMER_RECORDS = [
 ];
 
 function setupStationMocks(toolPacks: string[]) {
-  mockFindById_station.mockResolvedValue(makeStation(toolPacks));
+  mockFindById_station.mockResolvedValue(makeStation());
   mockFindByStationId_instances.mockResolvedValue([
     { id: "si-1", stationId: STATION_ID, connectorInstanceId: "ci-1" },
   ]);
@@ -156,7 +170,7 @@ function setupStationMocks(toolPacks: string[]) {
   mockFindFieldMappingsByEntityIds.mockResolvedValue(FIELD_MAPPINGS_MAP);
   mockFindByConnectorEntityId_records.mockResolvedValue(CUSTOMER_RECORDS);
   mockFindByConnectorEntityId_members.mockResolvedValue([]);
-  mockFindByStationId_tools.mockResolvedValue([]);
+  mockFindByStationId_tools.mockResolvedValue(makeToolpackRows(toolPacks));
 }
 
 // ---------------------------------------------------------------------------
@@ -370,125 +384,37 @@ describe("buildAnalyticsTools()", () => {
   // Error: empty toolPacks
   // -----------------------------------------------------------------------
 
-  it("should throw when station.toolPacks is empty", async () => {
-    mockFindById_station.mockResolvedValue(makeStation([]));
+  it("should throw when no toolpacks are enabled on the station", async () => {
+    setupStationMocks([]);
     await expect(
       buildAnalyticsTools(ORG_ID, STATION_ID, "user-001")
     ).rejects.toThrow("Station must have at least one tool pack enabled");
   });
 
   // -----------------------------------------------------------------------
-  // Custom webhook tools
+  // station_toolpacks reader path
   // -----------------------------------------------------------------------
 
-  it("should register custom webhook tools and call webhook with correct URL + headers", async () => {
+  it("logs a warning and skips rows that reference a custom toolpack id", async () => {
     setupStationMocks(["data_query"]);
-
-    const webhookTool = {
-      id: "st-1",
-      stationId: STATION_ID,
-      organizationToolId: "ot-1",
-      organizationTool: {
-        id: "ot-1",
-        name: "my_custom_tool",
-        description: "A custom webhook tool",
-        parameterSchema: {
-          type: "object",
-          properties: { query: { type: "string" } },
-          required: ["query"],
-        },
-        implementation: {
-          type: "webhook",
-          url: "https://example.com/webhook",
-          headers: { "X-Api-Key": "secret123" },
-        },
-      },
-    };
-    mockFindByStationId_tools.mockResolvedValue([webhookTool]);
-
-    const webhookResponse = { result: "success" };
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => webhookResponse,
-    });
-
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
-
-    expect(tools.my_custom_tool).toBeDefined();
-
-    // Execute the tool
-    const execute = (tools.my_custom_tool as any).execute;
-    const result = await execute({ query: "test" });
-
-    expect(result).toEqual({ result: "success" });
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-
-    const [url, options] = mockFetch.mock.calls[0];
-    expect(url).toBe("https://example.com/webhook");
-    expect(options!.method).toBe("POST");
-    expect(options!.headers["X-Api-Key"]).toBe("secret123");
-    expect(options!.headers["Content-Type"]).toBe("application/json");
-    expect(JSON.parse(options!.body)).toEqual({ query: "test" });
-  });
-
-  it("should propagate vega-lite chart results from webhook", async () => {
-    setupStationMocks(["data_query"]);
-
     mockFindByStationId_tools.mockResolvedValue([
+      ...makeToolpackRows(["data_query"]),
       {
-        id: "st-1",
+        id: "stp-custom",
         stationId: STATION_ID,
-        organizationToolId: "ot-1",
-        organizationTool: {
-          id: "ot-1",
-          name: "chart_tool",
-          description: "Returns a chart",
-          parameterSchema: { type: "object", properties: {} },
-          implementation: { type: "webhook", url: "https://example.com/chart" },
-        },
+        builtinSlug: null,
+        organizationToolpackId: "otp-future",
+        created: Date.now(),
+        createdBy: "user-001",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
       },
     ]);
 
-    const vegaSpec = { mark: "bar", encoding: {} };
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ type: "vega-lite", spec: vegaSpec }),
-    });
-
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
-    const result = await (tools.chart_tool as any).execute({});
-
-    expect(result).toEqual({ type: "vega-lite", spec: vegaSpec });
-  });
-
-  it("should propagate vega results from webhook", async () => {
-    setupStationMocks(["data_query"]);
-
-    mockFindByStationId_tools.mockResolvedValue([
-      {
-        id: "st-1",
-        stationId: STATION_ID,
-        organizationToolId: "ot-1",
-        organizationTool: {
-          id: "ot-1",
-          name: "tree_tool",
-          description: "Returns a full Vega spec",
-          parameterSchema: { type: "object", properties: {} },
-          implementation: { type: "webhook", url: "https://example.com/tree" },
-        },
-      },
-    ]);
-
-    const vegaSpec = { type: "vega", data: [{ values: [] }], marks: [] };
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => vegaSpec,
-    });
-
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
-    const result = await (tools.tree_tool as any).execute({});
-
-    expect(result).toEqual(vegaSpec);
+    expect(tools.sql_query).toBeDefined();
   });
 
   // -----------------------------------------------------------------------
@@ -549,31 +475,6 @@ describe("buildAnalyticsTools()", () => {
 
     expect(tools.entity_record_create).toBeUndefined();
     expect(tools.field_mapping_delete).toBeUndefined();
-  });
-
-  it("should throw when custom tool name shadows a pack tool name", async () => {
-    setupStationMocks(["data_query"]);
-
-    mockFindByStationId_tools.mockResolvedValue([
-      {
-        id: "st-1",
-        stationId: STATION_ID,
-        organizationToolId: "ot-1",
-        organizationTool: {
-          id: "ot-1",
-          name: "sql_query", // conflicts with data_query pack tool
-          description: "Conflicting tool",
-          parameterSchema: { type: "object", properties: {} },
-          implementation: { type: "webhook", url: "https://example.com" },
-        },
-      },
-    ]);
-
-    await expect(
-      buildAnalyticsTools(ORG_ID, STATION_ID, "user-001")
-    ).rejects.toThrow(
-      'Custom tool "sql_query" conflicts with a built-in pack tool name'
-    );
   });
 });
 

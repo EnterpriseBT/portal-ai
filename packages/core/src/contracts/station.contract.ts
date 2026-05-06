@@ -20,9 +20,16 @@ export type StationListRequestQuery = z.infer<
   typeof StationListRequestQuerySchema
 >;
 
+/** Station with its enabled toolpack slugs (from the include=toolpacks join). */
+export const StationWithToolpacksSchema = StationSchema.extend({
+  enabledToolpacks: z.array(z.string()).optional(),
+});
+
+export type StationWithToolpacks = z.infer<typeof StationWithToolpacksSchema>;
+
 export const StationListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    stations: z.array(StationSchema),
+    stations: z.array(StationWithToolpacksSchema),
   });
 
 export type StationListResponsePayload = z.infer<
@@ -50,7 +57,7 @@ export type StationInstanceWithConnectorInstance = z.infer<
 >;
 
 export const StationGetResponsePayloadSchema = z.object({
-  station: StationSchema.extend({
+  station: StationWithToolpacksSchema.extend({
     instances: z.array(StationInstanceWithConnectorInstanceSchema).optional(),
   }),
 });
@@ -71,7 +78,7 @@ export const CreateStationBodySchema = z.object({
 export type CreateStationBody = z.infer<typeof CreateStationBodySchema>;
 
 export const StationCreateResponsePayloadSchema = z.object({
-  station: StationSchema,
+  station: StationWithToolpacksSchema,
 });
 
 export type StationCreateResponsePayload = z.infer<
@@ -94,7 +101,7 @@ export const UpdateStationBodySchema = z
 export type UpdateStationBody = z.infer<typeof UpdateStationBodySchema>;
 
 export const StationUpdateResponsePayloadSchema = z.object({
-  station: StationSchema,
+  station: StationWithToolpacksSchema,
 });
 
 export type StationUpdateResponsePayload = z.infer<

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 
 import { z } from "zod";
 import type { CreateStationBody } from "@portalai/core/contracts";
-import { StationToolPackSchema } from "@portalai/core/models";
+import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
 import { Button, Modal, Stack } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 import Autocomplete from "@mui/material/Autocomplete";
@@ -21,7 +21,7 @@ import { ToolPackUtil } from "../utils/tool-packs.util";
 
 // ── Types ────────────────────────────────────────────────────────────
 
-const TOOL_PACK_OPTIONS = StationToolPackSchema.options;
+const TOOL_PACK_OPTIONS = BUILTIN_TOOLPACKS.map((p) => p.slug);
 
 interface StationFormState {
   name: string;
