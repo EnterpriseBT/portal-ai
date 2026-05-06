@@ -3352,6 +3352,416 @@ describe("AnalyticsService", () => {
   });
 
   // -----------------------------------------------------------------------
+  // bondMath
+  // -----------------------------------------------------------------------
+
+  describe("bondMath()", () => {
+    it("price of a 5% semi-annual coupon, 10-year, par-1000 bond at 5% yield is exactly par", () => {
+      const result = AnalyticsService.bondMath({
+        op: "price",
+        face: 1000,
+        couponRate: 0.05,
+        maturity: 10,
+        frequency: 2,
+        yield: 0.05,
+      });
+      expect("price" in result).toBe(true);
+      if ("price" in result) {
+        expect(result.price).toBeCloseTo(1000, 6);
+      }
+    });
+
+    it("discount bond — price below par when yield exceeds coupon", () => {
+      const result = AnalyticsService.bondMath({
+        op: "price",
+        face: 1000,
+        couponRate: 0.05,
+        maturity: 10,
+        frequency: 2,
+        yield: 0.06,
+      });
+      if ("price" in result) {
+        expect(result.price).toBeLessThan(1000);
+      } else {
+        throw new Error("expected price result");
+      }
+    });
+
+    it("premium bond — price above par when yield is below coupon", () => {
+      const result = AnalyticsService.bondMath({
+        op: "price",
+        face: 1000,
+        couponRate: 0.05,
+        maturity: 10,
+        frequency: 2,
+        yield: 0.04,
+      });
+      if ("price" in result) {
+        expect(result.price).toBeGreaterThan(1000);
+      } else {
+        throw new Error("expected price result");
+      }
+    });
+
+    it("YTM round-trips against price", () => {
+      const priceResult = AnalyticsService.bondMath({
+        op: "price",
+        face: 1000,
+        couponRate: 0.05,
+        maturity: 10,
+        frequency: 2,
+        yield: 0.045,
+      });
+      if (!("price" in priceResult)) {
+        throw new Error("expected price result");
+      }
+      const ytmResult = AnalyticsService.bondMath({
+        op: "ytm",
+        face: 1000,
+        couponRate: 0.05,
+        maturity: 10,
+        frequency: 2,
+        price: priceResult.price,
+      });
+      if (!("yield" in ytmResult)) {
+        throw new Error("expected yield result");
+      }
+      expect(ytmResult.yield).toBeCloseTo(0.045, 6);
+      expect(ytmResult.iterations).toBeLessThan(20);
+    });
+
+    it("Macaulay duration of a zero-coupon bond equals time to maturity", () => {
+      const result = AnalyticsService.bondMath({
+        op: "duration",
+        face: 100,
+        couponRate: 0,
+        maturity: 5,
+        frequency: 1,
+        yield: 0.05,
+      });
+      if (!("macaulayDuration" in result)) {
+        throw new Error("expected duration result");
+      }
+      expect(result.macaulayDuration).toBeCloseTo(5, 6);
+      // Modified D = Macaulay / (1 + r) = 5 / 1.05 ≈ 4.7619
+      expect(result.modifiedDuration).toBeCloseTo(4.7619, 3);
+    });
+
+    it("convexity of a zero-coupon bond matches the closed-form value", () => {
+      const result = AnalyticsService.bondMath({
+        op: "convexity",
+        face: 100,
+        couponRate: 0,
+        maturity: 5,
+        frequency: 1,
+        yield: 0.05,
+      });
+      if (!("convexity" in result)) {
+        throw new Error("expected convexity result");
+      }
+      // For a zero-coupon at frequency 1: convexity = N(N+1)/(1+r)² = 30/1.1025 ≈ 27.21
+      expect(result.convexity).toBeCloseTo(30 / 1.1025, 3);
+    });
+
+    it("missing yield throws on op = price", () => {
+      expect(() =>
+        AnalyticsService.bondMath({
+          op: "price",
+          face: 1000,
+          couponRate: 0.05,
+          maturity: 10,
+          frequency: 2,
+        })
+      ).toThrow(/yield is required for op = price/);
+    });
+
+    it("missing price throws on op = ytm", () => {
+      expect(() =>
+        AnalyticsService.bondMath({
+          op: "ytm",
+          face: 1000,
+          couponRate: 0.05,
+          maturity: 10,
+          frequency: 2,
+        })
+      ).toThrow(/price is required for op = ytm/);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // portfolioMetrics
+  // -----------------------------------------------------------------------
+
+  describe("portfolioMetrics()", () => {
+    /**
+     * 24 monthly returns averaging ~1.2% with mild deterministic noise
+     * spanning both signs (range ≈ [-0.4%, +2.8%]). The variation is
+     * large enough that the Sortino downside-deviation calculation has
+     * non-zero observations to work with.
+     */
+    const PORTFOLIO_RECORDS = Array.from({ length: 24 }, (_, i) => ({
+      value: 0.012 + ((i % 5) - 2) * 0.008,
+    }));
+
+    it("returns standalone metrics; benchmark fields absent without benchmark", () => {
+      const result = AnalyticsService.portfolioMetrics({
+        records: PORTFOLIO_RECORDS,
+        returnColumn: "value",
+        periodicity: "monthly",
+      });
+      // Mean return ~1.2%/month → (1.012)^24 ≈ 1.331, totalReturn ≈ 0.33
+      expect(result.totalReturn).toBeGreaterThan(0.2);
+      expect(result.totalReturn).toBeLessThan(0.45);
+      // CAGR annualized
+      expect(result.cagr).toBeGreaterThan(0.10);
+      expect(result.cagr).toBeLessThan(0.20);
+      expect(result.sortino).toBeGreaterThan(0);
+      expect(Number.isFinite(result.calmar)).toBe(true);
+      expect(typeof result.maxDrawdown).toBe("number");
+      expect("beta" in result).toBe(false);
+      expect("alpha" in result).toBe(false);
+      expect("informationRatio" in result).toBe(false);
+      expect("trackingError" in result).toBe(false);
+      expect("upCapture" in result).toBe(false);
+      expect("downCapture" in result).toBe(false);
+    });
+
+    it("benchmark-relative metrics are emitted when benchmark is supplied", () => {
+      const benchmarkRecords = PORTFOLIO_RECORDS.map((r) => ({
+        bench: r.value,
+      }));
+      const result = AnalyticsService.portfolioMetrics({
+        records: PORTFOLIO_RECORDS,
+        returnColumn: "value",
+        benchmarkRecords,
+        benchmarkReturnColumn: "bench",
+        periodicity: "monthly",
+      });
+      expect(result.beta).toBeDefined();
+      expect(result.alpha).toBeDefined();
+      expect(result.informationRatio).toBeDefined();
+      expect(result.trackingError).toBeDefined();
+      // Identical portfolio + benchmark → beta=1, alpha≈0, te≈0
+      expect(result.beta!).toBeCloseTo(1, 9);
+      expect(Math.abs(result.alpha!)).toBeLessThan(1e-9);
+      expect(result.trackingError!).toBeCloseTo(0, 9);
+    });
+
+    it("beta is 0 for a constant portfolio against a non-trivial benchmark", () => {
+      const portfolio = Array.from({ length: 12 }, () => ({ value: 0 }));
+      const benchmarkRecords = Array.from({ length: 12 }, (_, i) => ({
+        bench: ((i % 5) - 2) * 0.01,
+      }));
+      const result = AnalyticsService.portfolioMetrics({
+        records: portfolio,
+        returnColumn: "value",
+        benchmarkRecords,
+        benchmarkReturnColumn: "bench",
+      });
+      expect(result.beta!).toBeCloseTo(0, 9);
+    });
+
+    it("up-capture ≈ 1.5 and down-capture ≈ 0.5 on an engineered benchmark", () => {
+      // Benchmark alternates +0.02 and -0.02. Portfolio captures 1.5x ups
+      // and 0.5x downs.
+      const benchmarkValues = Array.from({ length: 20 }, (_, i) =>
+        i % 2 === 0 ? 0.02 : -0.02
+      );
+      const portfolioValues = benchmarkValues.map((b) =>
+        b > 0 ? 1.5 * b : 0.5 * b
+      );
+      const result = AnalyticsService.portfolioMetrics({
+        records: portfolioValues.map((value) => ({ value })),
+        returnColumn: "value",
+        benchmarkRecords: benchmarkValues.map((bench) => ({ bench })),
+        benchmarkReturnColumn: "bench",
+      });
+      expect(result.upCapture!).toBeCloseTo(1.5, 6);
+      expect(result.downCapture!).toBeCloseTo(0.5, 6);
+    });
+
+    it("Sortino exceeds Sharpe for a positively-skewed series", () => {
+      // Returns mostly small positive, occasional large positive, with
+      // a single small negative so downside-deviation is well-defined.
+      // Total stddev is dominated by the large positives (huge for
+      // Sharpe), but downside dev is tiny (just the one negative) — so
+      // Sortino dominates Sharpe.
+      const returnsArr = Array.from({ length: 30 }, (_, i) =>
+        i === 13 ? -0.002 : i % 10 === 0 ? 0.05 : 0.005
+      );
+      // For sharpeRatio we need a price series that yields these returns.
+      const priceRecords: { date: string; price: number }[] = [];
+      let price = 100;
+      priceRecords.push({ date: "2024-01-01", price });
+      for (let i = 0; i < returnsArr.length; i++) {
+        price *= 1 + returnsArr[i];
+        priceRecords.push({
+          date: `2024-${String(i + 2).padStart(2, "0")}-01`,
+          price,
+        });
+      }
+
+      const portfolio = AnalyticsService.portfolioMetrics({
+        records: returnsArr.map((value) => ({ value })),
+        returnColumn: "value",
+      });
+      const sharpe = AnalyticsService.sharpeRatio({
+        records: priceRecords,
+        valueColumn: "price",
+      });
+
+      expect(portfolio.sortino).toBeGreaterThan(sharpe.sharpeRatio);
+    });
+
+    it("maxDrawdown matches a hand-computed value", () => {
+      // returns = [+0.1, +0.1, -0.3, +0.05, +0.05]
+      // wealth  = 1 → 1.1 → 1.21 → 0.847 → 0.88935 → 0.9338175
+      // peak = 1.21, trough = 0.847; MDD = (1.21 - 0.847) / 1.21 = 0.3
+      const records = [0.1, 0.1, -0.3, 0.05, 0.05].map((value) => ({
+        value,
+      }));
+      const result = AnalyticsService.portfolioMetrics({
+        records,
+        returnColumn: "value",
+      });
+      expect(result.maxDrawdown).toBeCloseTo(0.3, 9);
+    });
+
+    it("throws when benchmark length mismatches portfolio length", () => {
+      const portfolio = Array.from({ length: 24 }, () => ({ value: 0.01 }));
+      const benchmarkRecords = Array.from({ length: 12 }, () => ({
+        bench: 0.01,
+      }));
+      expect(() =>
+        AnalyticsService.portfolioMetrics({
+          records: portfolio,
+          returnColumn: "value",
+          benchmarkRecords,
+          benchmarkReturnColumn: "bench",
+        })
+      ).toThrow(/benchmark length must match portfolio length/);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // varCvar
+  // -----------------------------------------------------------------------
+
+  describe("varCvar()", () => {
+    it("historical VaR at 95% on a 16-element fixture flags the worst observation", () => {
+      // n = 16; 0.05 quantile = 0.75 ⇒ between worst and second-worst.
+      const records = [
+        -0.05, -0.04, -0.03, -0.02, -0.015, -0.01, -0.005, 0.0, 0.005, 0.01,
+        0.02, 0.03, 0.04, 0.05, 0.07, 0.10,
+      ].map((value) => ({ value }));
+      const result = AnalyticsService.varCvar({
+        records,
+        returnColumn: "value",
+      });
+      expect(result.method).toBe("historical");
+      expect(result.confidence).toBe(0.95);
+      // Loss at the lower tail — should be close to the worst observation
+      expect(result.var).toBeGreaterThanOrEqual(0.04);
+      expect(result.var).toBeLessThanOrEqual(0.05);
+    });
+
+    it("historical CVaR is at least as large as VaR", () => {
+      const records = [
+        -0.05, -0.04, -0.03, -0.02, -0.015, -0.01, -0.005, 0.0, 0.005, 0.01,
+        0.02, 0.03, 0.04, 0.05, 0.07, 0.10,
+      ].map((value) => ({ value }));
+      const result = AnalyticsService.varCvar({
+        records,
+        returnColumn: "value",
+      });
+      expect(result.cvar).toBeGreaterThanOrEqual(result.var);
+    });
+
+    it("parametric VaR matches the closed-form Gaussian formula", () => {
+      // Deterministic synthetic returns; compute mu/sigma inline and
+      // assert against the Gaussian formula instead of textbook values.
+      const records = Array.from({ length: 1000 }, (_, i) => ({
+        value:
+          (Math.sin((i * 13) / 7) + Math.cos((i * 17) / 11)) * 0.01,
+      }));
+      const result = AnalyticsService.varCvar({
+        records,
+        returnColumn: "value",
+        method: "parametric",
+      });
+      // Compute expected via the same formula — sample stddev (n-1)
+      const values = records.map((r) => r.value);
+      const mean = values.reduce((s, v) => s + v, 0) / values.length;
+      const variance =
+        values.reduce((s, v) => s + (v - mean) * (v - mean), 0) /
+        (values.length - 1);
+      const sigma = Math.sqrt(variance);
+      // Standard-normal Φ⁻¹(0.05) ≈ -1.6449
+      const z = -1.6449;
+      const expectedVar = -(mean + z * sigma);
+      expect(result.var).toBeCloseTo(expectedVar, 2);
+    });
+
+    it("parametric CVaR follows the closed-form formula", () => {
+      const records = Array.from({ length: 1000 }, (_, i) => ({
+        value:
+          (Math.sin((i * 13) / 7) + Math.cos((i * 17) / 11)) * 0.01,
+      }));
+      const result = AnalyticsService.varCvar({
+        records,
+        returnColumn: "value",
+        method: "parametric",
+      });
+      const values = records.map((r) => r.value);
+      const mean = values.reduce((s, v) => s + v, 0) / values.length;
+      const variance =
+        values.reduce((s, v) => s + (v - mean) * (v - mean), 0) /
+        (values.length - 1);
+      const sigma = Math.sqrt(variance);
+      const z = -1.6449;
+      const phi = Math.exp(-(z * z) / 2) / Math.sqrt(2 * Math.PI);
+      const expectedCvar = -(mean - sigma * (phi / (1 - 0.95)));
+      expect(result.cvar).toBeCloseTo(expectedCvar, 2);
+    });
+
+    it("tailCount is present for historical and absent for parametric", () => {
+      const records = [
+        -0.05, -0.04, -0.03, -0.02, -0.015, -0.01, -0.005, 0.0, 0.005, 0.01,
+        0.02, 0.03, 0.04, 0.05, 0.07, 0.10,
+      ].map((value) => ({ value }));
+      const historical = AnalyticsService.varCvar({
+        records,
+        returnColumn: "value",
+        method: "historical",
+      });
+      const parametric = AnalyticsService.varCvar({
+        records,
+        returnColumn: "value",
+        method: "parametric",
+      });
+      expect("tailCount" in historical).toBe(true);
+      expect("tailCount" in parametric).toBe(false);
+    });
+
+    it("confidence: 0.99 produces a larger VaR than 0.95", () => {
+      const records = Array.from({ length: 200 }, (_, i) => ({
+        value: ((i % 13) - 6) * 0.01,
+      }));
+      const var95 = AnalyticsService.varCvar({
+        records,
+        returnColumn: "value",
+        confidence: 0.95,
+      });
+      const var99 = AnalyticsService.varCvar({
+        records,
+        returnColumn: "value",
+        confidence: 0.99,
+      });
+      expect(var99.var).toBeGreaterThanOrEqual(var95.var);
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // amortize
   // -----------------------------------------------------------------------
 

@@ -38,6 +38,9 @@ import { TvmTool } from "../tools/tvm.tool.js";
 import { XnpvTool } from "../tools/xnpv.tool.js";
 import { XirrTool } from "../tools/xirr.tool.js";
 import { DepreciationTool } from "../tools/depreciation.tool.js";
+import { VarCvarTool } from "../tools/var-cvar.tool.js";
+import { PortfolioMetricsTool } from "../tools/portfolio-metrics.tool.js";
+import { BondMathTool } from "../tools/bond-math.tool.js";
 import { AmortizeTool } from "../tools/amortize.tool.js";
 import { SharpeRatioTool } from "../tools/sharpe-ratio.tool.js";
 import { MaxDrawdownTool } from "../tools/max-drawdown.tool.js";
@@ -119,6 +122,9 @@ export class ToolService {
     "xnpv",
     "xirr",
     "depreciation",
+    "var_cvar",
+    "portfolio_metrics",
+    "bond_math",
     "amortize",
     "sharpe_ratio",
     "max_drawdown",
@@ -259,6 +265,9 @@ export class ToolService {
       tools.sharpe_ratio = new SharpeRatioTool().build(stationData);
       tools.max_drawdown = new MaxDrawdownTool().build(stationData);
       tools.rolling_returns = new RollingReturnsTool().build(stationData);
+      tools.var_cvar = new VarCvarTool().build(stationData);
+      tools.portfolio_metrics = new PortfolioMetricsTool().build(stationData);
+      tools.bond_math = new BondMathTool().build();
     }
 
     // -------------------------------------------------------------------
