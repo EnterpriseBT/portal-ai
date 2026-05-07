@@ -187,6 +187,7 @@ describe("filterGlossary", () => {
         "Portal",
         "Portal Message",
         "Portal Result",
+        "Signing Secret",
         "Station",
         "Tool",
         "Tool Pack",

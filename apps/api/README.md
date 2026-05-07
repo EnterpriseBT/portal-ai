@@ -29,6 +29,34 @@ AUTH0_AUDIENCE=your-auth0-audience
 AUTH0_ISSUER=https://your-domain.auth0.com/
 ```
 
+#### Custom toolpack outbound webhook hardening (phase 6)
+
+The toolpack outbound caller signs every request, applies SSRF
+filtering, and caps response sizes. Three env vars tune the default
+behavior; two emergency-rollback flags disable major features
+without a redeploy if a regression surfaces in production.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ENCRYPTION_KEY` | — | **Required.** Base64-encoded 32-byte AES-256-GCM key. Used for `connector_instances.credentials`, `organization_toolpacks.auth_headers`, and `organization_toolpacks.signing_secret`. Generate with `openssl rand -base64 32`. |
+| `TOOLPACK_RUNTIME_MAX_RESPONSE_BYTES` | `1048576` (1 MB) | Streaming size cap on responses from a custom toolpack's `/runtime` endpoint. Schema/metadata responses stay capped at 256 KB. |
+| `TOOLPACK_DISABLE_SSRF_FILTER` | `false` | Set to `true` to bypass the call-time DNS-resolve-then-validate SSRF guard. Emergency rollback only — the static URL refinement at registration still runs. |
+| `TOOLPACK_DISABLE_SIGNING` | `false` | Set to `true` to stop appending `X-Portalai-Signature` / `-Timestamp` / `-Webhook-Id` headers on outbound calls. Emergency rollback only — toolpack servers that already verify signatures will reject every request after this is flipped. |
+| `MOCK_TOOLPACK_SIGNING_SECRET` | unset | Dev-only. When set, the mock toolpack server (`npm run mock-toolpack`) verifies the same three signing headers on every endpoint and returns 401 `SIGNATURE_MISSING` / `TIMESTAMP_STALE` / `SIGNATURE_INVALID` on failures. When unset, the mock warns and accepts unsigned requests — useful for early dev before a registration exists. |
+
+After applying migration 0051 on a non-empty `organization_toolpacks`
+table, run the one-shot backfill to replace the migration sentinels
+with real encrypted signing secrets:
+
+```bash
+npm run scripts:migrate-signing-secrets
+```
+
+The script is idempotent — re-running on already-real rows is a no-op.
+
+For the toolpack-author-facing contract (header shapes, verification
+recipes, failure modes), see `docs/CUSTOM_TOOLPACK_INTEGRATION.md`.
+
 ### Development
 
 ```bash
