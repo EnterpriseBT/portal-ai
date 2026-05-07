@@ -7,14 +7,15 @@ import { ApplicationRoute } from "../utils/routes.util";
 // ── 3.1 — Step data ─────────────────────────────────────────────────
 
 describe("GETTING_STARTED_STEPS", () => {
-  it("contains the four documented steps in order", () => {
+  it("contains the documented steps in order", () => {
     const expectedTitles = [
       "Connect a data source",
       "Map your fields",
       "Create a station",
+      "Register custom toolpacks (optional)",
       "Open a portal",
     ];
-    expect(GETTING_STARTED_STEPS).toHaveLength(4);
+    expect(GETTING_STARTED_STEPS).toHaveLength(5);
     expect(GETTING_STARTED_STEPS.map((s) => s.title)).toEqual(expectedTitles);
   });
 
