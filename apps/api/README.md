@@ -40,7 +40,7 @@ without a redeploy if a regression surfaces in production.
 |---|---|---|
 | `ENCRYPTION_KEY` | — | **Required.** Base64-encoded 32-byte AES-256-GCM key. Used for `connector_instances.credentials`, `organization_toolpacks.auth_headers`, and `organization_toolpacks.signing_secret`. Generate with `openssl rand -base64 32`. |
 | `TOOLPACK_RUNTIME_MAX_RESPONSE_BYTES` | `1048576` (1 MB) | Streaming size cap on responses from a custom toolpack's `/runtime` endpoint. Schema/metadata responses stay capped at 256 KB. |
-| `TOOLPACK_DISABLE_SSRF_FILTER` | `false` | Set to `true` to bypass the call-time DNS-resolve-then-validate SSRF guard. Emergency rollback only — the static URL refinement at registration still runs. |
+| `TOOLPACK_DISABLE_SSRF_FILTER` | `false` | Set to `true` to bypass the call-time DNS-resolve-then-validate SSRF guard. Emergency rollback only — the static URL refinement at registration still runs. Note: when `NODE_ENV !== "production"` the guard already allows loopback (`127.0.0.1`, `::1`, `localhost`) so the dev workflow against the mock toolpack server works without flipping this flag. |
 | `TOOLPACK_DISABLE_SIGNING` | `false` | Set to `true` to stop appending `X-Portalai-Signature` / `-Timestamp` / `-Webhook-Id` headers on outbound calls. Emergency rollback only — toolpack servers that already verify signatures will reject every request after this is flipped. |
 | `MOCK_TOOLPACK_SIGNING_SECRET` | unset | Dev-only. When set, the mock toolpack server (`npm run mock-toolpack`) verifies the same three signing headers on every endpoint and returns 401 `SIGNATURE_MISSING` / `TIMESTAMP_STALE` / `SIGNATURE_INVALID` on failures. When unset, the mock warns and accepts unsigned requests — useful for early dev before a registration exists. |
 

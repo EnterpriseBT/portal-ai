@@ -268,8 +268,8 @@ Return JSON. The shape is opaque to Portal.ai — it's handed straight to the mo
 
 URLs are validated at two layers — at registration and again immediately before each outbound call:
 
-- **Scheme**: `https://` is required in production. `http://localhost*` and `http://127.0.0.1*` are accepted in non-production environments.
-- **Hostname**: must resolve to a public unicast IP. Private (`10/8`, `172.16/12`, `192.168/16`), loopback (`127/8`), link-local (`169.254/16` — including the cloud-metadata service), ULA, and reserved ranges are rejected.
+- **Scheme**: `https://` is required in production. `http://localhost*` and `http://127.0.0.1*` are accepted in non-production environments (so the dev workflow against a local mock server works).
+- **Hostname**: must resolve to a public unicast IP. Private (`10/8`, `172.16/12`, `192.168/16`), link-local (`169.254/16` — including the cloud-metadata service), ULA, and reserved ranges are rejected. Loopback (`127/8`, `::1`) is also rejected in production but allowed in non-production for the localhost dev workflow.
 - **DNS rebinding** is defeated by re-resolving immediately before each fetch (the call connects only to the resolved IP, not the hostname).
 
 If your toolpack is on a corporate VPN with a private IP, you'll need a public ingress (e.g. an authenticated reverse proxy or a tunnel like ngrok or Cloudflare Tunnel) before registering.

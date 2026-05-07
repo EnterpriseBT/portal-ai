@@ -1,7 +1,11 @@
 import { describe, it, expect, afterEach, jest } from "@jest/globals";
 
 import { environment } from "../../environment.js";
-import { validateToolpackUrl } from "../../utils/url-safety.util.js";
+import {
+  validateToolpackUrl,
+  assertUrlSafeToFetch,
+  SsrfBlockedError,
+} from "../../utils/url-safety.util.js";
 
 describe("url-safety.util validateToolpackUrl", () => {
   let restore: (() => void) | null = null;
@@ -75,5 +79,59 @@ describe("url-safety.util validateToolpackUrl", () => {
     expect(
       validateToolpackUrl("https://169.254.169.254/latest/meta-data/")?.code
     ).toBe("TOOLPACK_URL_PRIVATE_HOST");
+  });
+});
+
+describe("url-safety.util assertUrlSafeToFetch", () => {
+  let restore: (() => void) | null = null;
+
+  function setNodeEnv(value: "production" | "development"): void {
+    const replaced = jest.replaceProperty(environment, "NODE_ENV", value);
+    restore = () => replaced.restore();
+  }
+
+  afterEach(() => {
+    restore?.();
+    restore = null;
+  });
+
+  // Case 161 — non-production loopback escape hatch.
+  // Without this, the dev workflow (run mock-toolpack on localhost,
+  // register against it from the dev API) fails at runtime SSRF
+  // because 127.0.0.1 is loopback, not unicast.
+  it("allows loopback in non-production", async () => {
+    setNodeEnv("development");
+    await expect(
+      assertUrlSafeToFetch("http://127.0.0.1:4100/schema")
+    ).resolves.toBeUndefined();
+    await expect(
+      assertUrlSafeToFetch("http://localhost:4100/schema")
+    ).resolves.toBeUndefined();
+  });
+
+  // Case 162 — production still blocks loopback.
+  it("blocks loopback in production", async () => {
+    setNodeEnv("production");
+    await expect(
+      assertUrlSafeToFetch("http://127.0.0.1:4100/schema")
+    ).rejects.toBeInstanceOf(SsrfBlockedError);
+    await expect(
+      assertUrlSafeToFetch("http://localhost:4100/schema")
+    ).rejects.toBeInstanceOf(SsrfBlockedError);
+  });
+
+  // Case 163 — RFC1918 still blocked even in non-production.
+  // Loopback is the *only* range the dev escape hatch unblocks.
+  it("blocks RFC1918 even in non-production", async () => {
+    setNodeEnv("development");
+    await expect(
+      assertUrlSafeToFetch("http://10.0.0.5/schema")
+    ).rejects.toBeInstanceOf(SsrfBlockedError);
+    await expect(
+      assertUrlSafeToFetch("http://192.168.1.1/schema")
+    ).rejects.toBeInstanceOf(SsrfBlockedError);
+    await expect(
+      assertUrlSafeToFetch("http://169.254.169.254/")
+    ).rejects.toBeInstanceOf(SsrfBlockedError);
   });
 });

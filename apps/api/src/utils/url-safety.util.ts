@@ -113,11 +113,17 @@ export async function assertUrlSafeToFetch(raw: string): Promise<void> {
   }
 
   const hostname = stripIPv6Brackets(parsed.hostname);
+  // Non-production allows loopback so the dev workflow (run the
+  // mock toolpack server on localhost, register against it from
+  // the dev API) actually works. Production blocks loopback the
+  // same as any other non-public range. Mirrors the static
+  // validator's `http://localhost` escape hatch.
+  const allowLoopback = environment.NODE_ENV !== "production";
 
   // If the hostname is already an IP literal, validate it directly —
   // no DNS lookup needed.
   if (ipaddr.isValid(hostname)) {
-    if (!isUnicastIp(hostname)) {
+    if (!isAllowedIp(hostname, allowLoopback)) {
       throw new SsrfBlockedError(
         "TOOLPACK_URL_PRIVATE_HOST",
         `IP ${hostname} is not in a public unicast range`
@@ -150,7 +156,7 @@ export async function assertUrlSafeToFetch(raw: string): Promise<void> {
   }
 
   for (const addr of addresses) {
-    if (!isUnicastIp(addr.address)) {
+    if (!isAllowedIp(addr.address, allowLoopback)) {
       throw new SsrfBlockedError(
         "TOOLPACK_URL_PRIVATE_HOST",
         `Hostname ${hostname} resolves to ${addr.address} which is not public unicast`
@@ -178,18 +184,28 @@ export class SsrfBlockedError extends Error {
 
 /**
  * Validate an IP literal (v4 or v6) against the same denylist as
- * `ipaddr.js`'s `range()` — anything other than `unicast` is rejected.
- * Private (RFC1918), loopback, link-local, ULA, broadcast, multicast,
- * documentation, reserved, and the IPv4 metadata-service address all
- * fall outside `unicast`.
+ * `ipaddr.js`'s `range()`. Anything other than `unicast` is rejected
+ * — except loopback when the caller explicitly opts in (non-production
+ * dev workflow targeting the mock toolpack server on localhost).
+ * Private (RFC1918), link-local, ULA, broadcast, multicast,
+ * documentation, reserved, and the IPv4 metadata-service address
+ * all fall outside `unicast`.
  */
-function isUnicastIp(ip: string): boolean {
+function isAllowedIp(ip: string, allowLoopback: boolean): boolean {
   if (!ipaddr.isValid(ip)) return false;
   try {
-    return ipaddr.parse(ip).range() === "unicast";
+    const range = ipaddr.parse(ip).range();
+    if (range === "unicast") return true;
+    if (allowLoopback && range === "loopback") return true;
+    return false;
   } catch {
     return false;
   }
+}
+
+/** Back-compat shim used by the static-literal hostname check below. */
+function isUnicastIp(ip: string): boolean {
+  return isAllowedIp(ip, false);
 }
 
 /**
