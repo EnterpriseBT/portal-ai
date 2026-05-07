@@ -111,8 +111,17 @@ export interface EditToolpackDialogUIProps {
   onClose: () => void;
   onSubmit: (body: UpdateToolpackBody) => void;
   onRefresh: () => void;
+  /**
+   * Phase 6: invalidate the existing signing secret and reveal a
+   * fresh one. The reveal is handled by the parent — this callback
+   * only fires the rotate request; the parent opens
+   * `SigningSecretRevealDialogUI` with the new secret on success.
+   */
+  onRotateSecret: () => void;
   isPending: boolean;
   isRefreshing: boolean;
+  /** True while the rotate-signing-secret mutation is in flight. */
+  isRotatingSecret: boolean;
   serverError: ServerError | null;
   refreshError: ServerError | null;
 }
@@ -123,8 +132,10 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
   onClose,
   onSubmit,
   onRefresh,
+  onRotateSecret,
   isPending,
   isRefreshing,
+  isRotatingSecret,
   serverError,
   refreshError,
 }) => {
@@ -205,9 +216,18 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
             type="button"
             variant="text"
             onClick={onRefresh}
-            disabled={isRefreshing || isPending}
+            disabled={isRefreshing || isPending || isRotatingSecret}
           >
             {isRefreshing ? "Refreshing..." : "Refresh schema"}
+          </Button>
+          <Button
+            type="button"
+            variant="text"
+            onClick={onRotateSecret}
+            disabled={isRotatingSecret || isPending || isRefreshing}
+            data-testid="rotate-signing-secret-button"
+          >
+            {isRotatingSecret ? "Rotating..." : "Rotate signing secret"}
           </Button>
           <Button
             type="button"

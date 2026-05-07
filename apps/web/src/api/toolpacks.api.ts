@@ -8,6 +8,7 @@ import type {
   ToolpackUpdateResponsePayload,
   ToolpackRefreshResponsePayload,
   ToolpackDeleteResponsePayload,
+  ToolpackRotateSigningSecretResponsePayload,
 } from "@portalai/core/contracts";
 
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
@@ -55,5 +56,10 @@ export const toolpacks = {
   refresh: (id: string) =>
     useAuthMutation<ToolpackRefreshResponsePayload, void>({
       url: `/api/toolpacks/${encodeURIComponent(id)}/refresh`,
+    }),
+
+  rotateSigningSecret: (id: string) =>
+    useAuthMutation<ToolpackRotateSigningSecretResponsePayload, void>({
+      url: `/api/toolpacks/${encodeURIComponent(id)}/rotate-signing-secret`,
     }),
 };

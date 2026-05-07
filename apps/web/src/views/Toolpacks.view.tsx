@@ -29,6 +29,7 @@ import { ToolpackMetadataModalUI } from "../components/ToolpackMetadataModal.com
 import { RegisterToolpackDialogUI } from "../components/RegisterToolpackDialog.component";
 import { EditToolpackDialogUI } from "../components/EditToolpackDialog.component";
 import { DeleteToolpackDialogUI } from "../components/DeleteToolpackDialog.component";
+import { SigningSecretRevealDialogUI } from "../components/SigningSecretRevealDialog.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
 
@@ -304,6 +305,14 @@ export const Toolpacks: React.FC = () => {
   const updateMutation = sdk.toolpacks.update(editing?.id ?? "");
   const refreshMutation = sdk.toolpacks.refresh(editing?.id ?? "");
   const deleteMutation = sdk.toolpacks.remove(deleting?.id ?? "");
+  const rotateSecretMutation = sdk.toolpacks.rotateSigningSecret(
+    editing?.id ?? ""
+  );
+
+  // Phase 6: signing secret revealed once after registration or
+  // rotation. The reveal dialog lifts state up so both flows share
+  // the same UI; null hides the dialog.
+  const [revealedSecret, setRevealedSecret] = useState<string | null>(null);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.toolpacks.root });
@@ -339,9 +348,12 @@ export const Toolpacks: React.FC = () => {
         }}
         onSubmit={(body) => {
           registerMutation.mutate(body, {
-            onSuccess: () => {
+            onSuccess: (data) => {
               setRegisterOpen(false);
               invalidate();
+              if (data.signingSecret) {
+                setRevealedSecret(data.signingSecret);
+              }
             },
           });
         }}
@@ -356,6 +368,7 @@ export const Toolpacks: React.FC = () => {
           setEditing(null);
           updateMutation.reset();
           refreshMutation.reset();
+          rotateSecretMutation.reset();
         }}
         onSubmit={(body) => {
           updateMutation.mutate(body, {
@@ -370,10 +383,26 @@ export const Toolpacks: React.FC = () => {
             onSuccess: () => invalidate(),
           });
         }}
+        onRotateSecret={() => {
+          rotateSecretMutation.mutate(undefined, {
+            onSuccess: (data) => {
+              invalidate();
+              setEditing(null);
+              setRevealedSecret(data.signingSecret);
+            },
+          });
+        }}
         isPending={updateMutation.isPending}
         isRefreshing={refreshMutation.isPending}
+        isRotatingSecret={rotateSecretMutation.isPending}
         serverError={toServerError(updateMutation.error)}
         refreshError={toServerError(refreshMutation.error)}
+      />
+
+      <SigningSecretRevealDialogUI
+        open={revealedSecret !== null}
+        signingSecret={revealedSecret}
+        onClose={() => setRevealedSecret(null)}
       />
 
       <DeleteToolpackDialogUI

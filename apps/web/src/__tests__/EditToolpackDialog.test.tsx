@@ -36,8 +36,10 @@ const defaultProps = {
   onClose: jest.fn(),
   onSubmit: jest.fn(),
   onRefresh: jest.fn(),
+  onRotateSecret: jest.fn(),
   isPending: false,
   isRefreshing: false,
+  isRotatingSecret: false,
   serverError: null,
   refreshError: null,
 };
@@ -141,5 +143,20 @@ describe("EditToolpackDialogUI", () => {
     render(<EditToolpackDialogUI {...defaultProps} isPending />);
     expect(screen.getByRole("button", { name: /Saving/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  });
+
+  // Phase 6: rotate signing secret button
+  it("invokes onRotateSecret when the Rotate signing secret button is clicked", () => {
+    const onRotateSecret = jest.fn();
+    render(
+      <EditToolpackDialogUI
+        {...defaultProps}
+        onRotateSecret={onRotateSecret}
+      />
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /Rotate signing secret/ })
+    );
+    expect(onRotateSecret).toHaveBeenCalledTimes(1);
   });
 });
