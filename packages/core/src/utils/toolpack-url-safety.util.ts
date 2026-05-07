@@ -10,10 +10,13 @@
  * function only catches obvious mistakes at registration time so
  * the UI can give immediate feedback.
  *
- * `process.env.NODE_ENV` is read at call time. In Node it's the
- * runtime env; in a browser bundle Vite inlines it via `define` —
- * the validator should never run client-side, but if it ever does
- * the `production` default keeps it strict.
+ * `process.env.NODE_ENV` is read at call time. Defaults to
+ * `"development"` when unset to match the convention in
+ * `apps/api/src/environment.ts` — production deployments
+ * explicitly set `NODE_ENV=production` via their deploy config
+ * (Docker, k8s), so an unset value is always a dev signal. If
+ * this ever runs in a browser bundle, Vite inlines NODE_ENV via
+ * `define` so the guard still resolves correctly.
  */
 
 import ipaddr from "ipaddr.js";
@@ -43,7 +46,7 @@ export function validateToolpackUrl(raw: string): UrlValidationError | null {
       message: "URL must use http or https",
     };
   }
-  const isProd = (process.env.NODE_ENV ?? "production") === "production";
+  const isProd = (process.env.NODE_ENV ?? "development") === "production";
   if (isProd && parsed.protocol !== "https:") {
     return {
       code: "TOOLPACK_URL_NOT_HTTPS",

@@ -62,4 +62,16 @@ describe("toolpack-url-safety.util validateToolpackUrl", () => {
       validateToolpackUrl("https://169.254.169.254/latest/meta-data/")?.code
     ).toBe("TOOLPACK_URL_PRIVATE_HOST");
   });
+
+  // Regression: unset NODE_ENV is treated as development to match
+  // apps/api/src/environment.ts's convention. Production deploys
+  // explicitly set NODE_ENV=production via Docker / k8s; unset is
+  // always a dev signal. Without this default, the dev workflow
+  // (run mock-toolpack on localhost, register against it) would
+  // fail at the contract refinement with TOOLPACK_INVALID_PAYLOAD.
+  it("treats unset NODE_ENV as development (allows http://localhost)", () => {
+    delete process.env.NODE_ENV;
+    expect(validateToolpackUrl("http://localhost:4100/schema")).toBeNull();
+    expect(validateToolpackUrl("https://example.com/x")).toBeNull();
+  });
 });
