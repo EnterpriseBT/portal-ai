@@ -38,6 +38,37 @@ describe("RegisterToolpackDialogUI", () => {
     expect(screen.getByLabelText(/Runtime endpoint/)).toBeInTheDocument();
   });
 
+  it("offers an expandable reference block of expected request / response shapes", () => {
+    render(<RegisterToolpackDialogUI {...defaultProps} />);
+    const summary = screen.getByTestId("register-toolpack-shapes-summary");
+    expect(summary).toBeInTheDocument();
+    fireEvent.click(summary);
+    expect(
+      screen.getByText(/GET schema endpoint → response/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/POST runtime endpoint → request body/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/POST runtime endpoint → response/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/GET metadata endpoint → response/)
+    ).toBeInTheDocument();
+  });
+
+  it("seeds the URL fields with example placeholders", () => {
+    render(<RegisterToolpackDialogUI {...defaultProps} />);
+    expect(
+      (screen.getByLabelText(/Schema endpoint/) as HTMLInputElement)
+        .placeholder
+    ).toContain("toolpacks/customer_intel/schema");
+    expect(
+      (screen.getByLabelText(/Runtime endpoint/) as HTMLInputElement)
+        .placeholder
+    ).toContain("toolpacks/customer_intel/run");
+  });
+
   it("does not render when open is false", () => {
     render(<RegisterToolpackDialogUI {...defaultProps} open={false} />);
     expect(screen.queryByText("Register toolpack")).not.toBeInTheDocument();

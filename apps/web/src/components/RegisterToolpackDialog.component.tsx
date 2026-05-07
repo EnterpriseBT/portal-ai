@@ -4,8 +4,12 @@ import {
   RegisterToolpackBodySchema,
   type RegisterToolpackBody,
 } from "@portalai/core/contracts";
-import { Button, Modal, Stack } from "@portalai/core/ui";
+import { Box, Button, Modal, Stack, Typography } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
+import Accordion from "@mui/material/Accordion";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import AccordionSummary from "@mui/material/AccordionSummary";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
@@ -209,12 +213,15 @@ export const RegisterToolpackDialogUI: React.FC<
       }
     >
       <Stack spacing={2.5} sx={{ pt: 1 }}>
+        <ExpectedShapesAccordion />
+
         <TextField
           inputRef={nameRef}
           label="Name"
           value={form.name}
           onChange={(e) => handleChange("name", e.target.value)}
           onBlur={() => handleBlur("name")}
+          placeholder="customer_intel"
           error={touched.name && !!errors.name}
           helperText={
             (touched.name && fieldError("name")) ||
@@ -230,6 +237,7 @@ export const RegisterToolpackDialogUI: React.FC<
           label="Description"
           value={form.description}
           onChange={(e) => handleChange("description", e.target.value)}
+          placeholder="External customer intelligence calls."
           fullWidth
           multiline
           rows={2}
@@ -239,6 +247,7 @@ export const RegisterToolpackDialogUI: React.FC<
           value={form.schemaUrl}
           onChange={(e) => handleChange("schemaUrl", e.target.value)}
           onBlur={() => handleBlur("schemaUrl")}
+          placeholder="https://api.example.com/toolpacks/customer_intel/schema"
           error={touched.schemaUrl && !!fieldError("endpoints.schema")}
           helperText={
             touched.schemaUrl && fieldError("endpoints.schema")
@@ -259,6 +268,7 @@ export const RegisterToolpackDialogUI: React.FC<
           value={form.runtimeUrl}
           onChange={(e) => handleChange("runtimeUrl", e.target.value)}
           onBlur={() => handleBlur("runtimeUrl")}
+          placeholder="https://api.example.com/toolpacks/customer_intel/run"
           error={touched.runtimeUrl && !!fieldError("endpoints.runtime")}
           helperText={
             touched.runtimeUrl && fieldError("endpoints.runtime")
@@ -278,6 +288,7 @@ export const RegisterToolpackDialogUI: React.FC<
           label="Metadata endpoint (optional)"
           value={form.metadataUrl}
           onChange={(e) => handleChange("metadataUrl", e.target.value)}
+          placeholder="https://api.example.com/toolpacks/customer_intel/metadata"
           fullWidth
         />
         <TextField
@@ -300,3 +311,107 @@ export const RegisterToolpackDialogUI: React.FC<
     </Modal>
   );
 };
+
+// ── Expected response shapes (collapsible reference block) ─────────
+
+const SCHEMA_RESPONSE_EXAMPLE = `{
+  "tools": [
+    {
+      "name": "lookup_company",
+      "description": "Look up a company by domain.",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "domain": { "type": "string" }
+        },
+        "required": ["domain"]
+      }
+    }
+  ]
+}`;
+
+const RUNTIME_REQUEST_EXAMPLE = `{
+  "tool": "lookup_company",
+  "input": { "domain": "acme.com" }
+}`;
+
+const RUNTIME_RESPONSE_EXAMPLE = `{
+  "name": "Acme Inc.",
+  "industry": "Manufacturing",
+  "founded": 1923
+}`;
+
+const METADATA_RESPONSE_EXAMPLE = `{
+  "summary": "External customer intelligence calls.",
+  "tools": [
+    {
+      "name": "lookup_company",
+      "description": "Looks up a company by its primary domain.",
+      "examples": [
+        {
+          "title": "Lookup by domain",
+          "input": { "domain": "acme.com" },
+          "output": { "name": "Acme Inc." }
+        }
+      ]
+    }
+  ]
+}`;
+
+const ExpectedShapesAccordion: React.FC = () => (
+  <Accordion variant="outlined" disableGutters>
+    <AccordionSummary
+      expandIcon={<ExpandMoreIcon />}
+      data-testid="register-toolpack-shapes-summary"
+    >
+      <Typography variant="body2">
+        See expected request / response shapes
+      </Typography>
+    </AccordionSummary>
+    <AccordionDetails>
+      <Stack spacing={2}>
+        <ShapeBlock
+          label="GET schema endpoint → response"
+          example={SCHEMA_RESPONSE_EXAMPLE}
+        />
+        <ShapeBlock
+          label="POST runtime endpoint → request body"
+          example={RUNTIME_REQUEST_EXAMPLE}
+        />
+        <ShapeBlock
+          label="POST runtime endpoint → response (any JSON)"
+          example={RUNTIME_RESPONSE_EXAMPLE}
+        />
+        <ShapeBlock
+          label="GET metadata endpoint → response (optional)"
+          example={METADATA_RESPONSE_EXAMPLE}
+        />
+      </Stack>
+    </AccordionDetails>
+  </Accordion>
+);
+
+const ShapeBlock: React.FC<{ label: string; example: string }> = ({
+  label,
+  example,
+}) => (
+  <Box>
+    <Typography variant="caption" color="text.secondary">
+      {label}
+    </Typography>
+    <Box
+      component="pre"
+      sx={{
+        fontSize: 12,
+        backgroundColor: (theme) => theme.palette.action.hover,
+        borderRadius: 0.5,
+        p: 1.5,
+        m: 0,
+        mt: 0.5,
+        overflow: "auto",
+      }}
+    >
+      {example}
+    </Box>
+  </Box>
+);
