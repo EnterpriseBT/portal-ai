@@ -5,7 +5,6 @@
  * builds the full tool set for a station based on its enabled tool packs.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /* global AbortController, fetch */
 
 import { type Tool } from "ai";
@@ -92,54 +91,57 @@ export type ToolPackName = (typeof ALL_TOOL_PACKS)[number];
 // Service
 // ---------------------------------------------------------------------------
 
+/** All built-in tool names — used to detect webhook name conflicts. */
+export const BUILTIN_TOOL_NAMES = new Set<string>([
+  "sql_query",
+  "visualize",
+  "visualize_tree",
+  "resolve_identity",
+  "describe_column",
+  "correlate",
+  "detect_outliers",
+  "cluster",
+  "aggregate",
+  "hypothesis_test",
+  "regression",
+  "logistic_regression",
+  "changepoint",
+  "decompose",
+  "forecast",
+  "trend",
+  "technical_indicator",
+  "npv",
+  "irr",
+  "tvm",
+  "xnpv",
+  "xirr",
+  "depreciation",
+  "var_cvar",
+  "portfolio_metrics",
+  "bond_math",
+  "amortize",
+  "sharpe_ratio",
+  "max_drawdown",
+  "rolling_returns",
+  "web_search",
+  "entity_record_create",
+  "entity_record_update",
+  "entity_record_delete",
+  "connector_entity_create",
+  "connector_entity_update",
+  "connector_entity_delete",
+  "field_mapping_create",
+  "field_mapping_update",
+  "field_mapping_delete",
+]);
+
 export class ToolService {
   // -----------------------------------------------------------------------
   // Static look-ups
   // -----------------------------------------------------------------------
 
-  /** All built-in tool names — used to detect webhook name conflicts. */
-  private static readonly PACK_TOOL_NAMES = new Set([
-    "sql_query",
-    "visualize",
-    "visualize_tree",
-    "resolve_identity",
-    "describe_column",
-    "correlate",
-    "detect_outliers",
-    "cluster",
-    "aggregate",
-    "hypothesis_test",
-    "regression",
-    "logistic_regression",
-    "changepoint",
-    "decompose",
-    "forecast",
-    "trend",
-    "technical_indicator",
-    "npv",
-    "irr",
-    "tvm",
-    "xnpv",
-    "xirr",
-    "depreciation",
-    "var_cvar",
-    "portfolio_metrics",
-    "bond_math",
-    "amortize",
-    "sharpe_ratio",
-    "max_drawdown",
-    "rolling_returns",
-    "web_search",
-    "entity_record_create",
-    "entity_record_update",
-    "entity_record_delete",
-    "connector_entity_create",
-    "connector_entity_update",
-    "connector_entity_delete",
-    "field_mapping_create",
-    "field_mapping_update",
-    "field_mapping_delete",
-  ]);
+  /** Re-exported for any caller still going via the class. */
+  static readonly PACK_TOOL_NAMES = BUILTIN_TOOL_NAMES;
 
   // -----------------------------------------------------------------------
   // Public API
@@ -193,12 +195,20 @@ export class ToolService {
     const station = await repo.stations.findById(stationId);
     if (!station) throw new Error(`Station not found: ${stationId}`);
 
-    const toolPacks = (station as any).toolPacks as string[];
-    if (!toolPacks || toolPacks.length === 0) {
+    const enabledRows = await repo.stationToolpacks.findByStationId(stationId);
+    const builtinSlugs = enabledRows
+      .map((r) => r.builtinSlug)
+      .filter((s): s is string => s !== null);
+    const customPackIds = enabledRows
+      .map((r) => r.organizationToolpackId)
+      .filter((id): id is string => id !== null);
+
+    if (builtinSlugs.length === 0 && customPackIds.length === 0) {
       throw new Error("Station must have at least one tool pack enabled");
     }
 
-    const enabledPacks = new Set<string>(toolPacks);
+    const toolPacks = builtinSlugs;
+    const enabledPacks = new Set<string>(builtinSlugs);
 
     // Load station data into memory
     const stationData = await AnalyticsService.loadStation(
@@ -330,50 +340,47 @@ export class ToolService {
     }
 
     // -------------------------------------------------------------------
-    // Custom webhook tools
+    // Custom toolpacks
     // -------------------------------------------------------------------
-    await this.buildCustomWebhookTools(tools, stationId);
+    if (customPackIds.length > 0) {
+      const customPacks =
+        await repo.organizationToolpacks.findManyByIds(customPackIds, {
+          organizationId,
+        });
+      for (const pack of customPacks) {
+        for (const tool of pack.tools) {
+          if (tool.name in tools) {
+            throw new Error(
+              `Tool "${tool.name}" is provided by more than one enabled toolpack on this station`
+            );
+          }
+          tools[tool.name] = new WebhookTool(
+            tool.name,
+            tool.description,
+            tool.parameterSchema as Record<string, unknown>,
+            {
+              type: "webhook",
+              url: pack.endpoints.runtime,
+              headers:
+                (pack.authHeaders as Record<string, string> | null) ??
+                undefined,
+            },
+            stationId
+          ).build();
+        }
+      }
+    }
 
     logger.info(
       {
         stationId,
         toolCount: Object.keys(tools).length,
         packs: toolPacks,
+        customPackIds,
       },
       "Analytics tools built"
     );
 
     return tools;
-  }
-
-  // -----------------------------------------------------------------------
-  // Private helpers
-  // -----------------------------------------------------------------------
-
-  private static async buildCustomWebhookTools(
-    tools: Record<string, Tool>,
-    stationId: string
-  ): Promise<void> {
-    const repo = DbService.repository;
-    const stationToolRows = await repo.stationTools.findByStationId(stationId);
-
-    for (const row of stationToolRows) {
-      const def = row.organizationTool;
-      const toolName = def.name;
-
-      if (ToolService.PACK_TOOL_NAMES.has(toolName)) {
-        throw new Error(
-          `Custom tool "${toolName}" conflicts with a built-in pack tool name`
-        );
-      }
-
-      tools[toolName] = new WebhookTool(
-        toolName,
-        def.description ?? `Custom tool: ${toolName}`,
-        def.parameterSchema as Record<string, unknown>,
-        def.implementation as unknown as WebhookImplementation,
-        stationId
-      ).build();
-    }
   }
 }

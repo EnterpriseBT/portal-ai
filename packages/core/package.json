@@ -35,6 +35,12 @@
       "require": "./dist/utils/index.js",
       "default": "./dist/utils/index.js"
     },
+    "./registries": {
+      "types": "./dist/registries/index.d.ts",
+      "import": "./dist/registries/index.js",
+      "require": "./dist/registries/index.js",
+      "default": "./dist/registries/index.js"
+    },
     "./styles": "./dist/styles/index.css",
     "./styles/fonts": "./dist/styles/fonts.css",
     "./styles/global": "./dist/styles/global.css"

@@ -27,13 +27,13 @@ const {
   entityTags,
   entityGroupMembers,
   entityGroups,
-  stationTools,
+  stationToolpacks,
+  organizationToolpacks,
   stationInstances,
   portalResults,
   portalMessages,
   portals,
   stations,
-  organizationTools,
 } = schema;
 
 type Db = ReturnType<typeof drizzle>;
@@ -150,12 +150,12 @@ export async function seedUserAndOrg(
  * Includes all tables that reference users or organizations.
  */
 export async function teardownOrg(db: Db): Promise<void> {
-  await db.delete(stationTools);
+  await db.delete(stationToolpacks);
+  await db.delete(organizationToolpacks);
   await db.delete(stationInstances);
   await db.delete(portalResults);
   await db.delete(portalMessages);
   await db.delete(portals);
-  await db.delete(organizationTools);
   await db.delete(stations);
   await db.delete(entityGroupMembers);
   await db.delete(entityGroups);

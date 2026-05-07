@@ -5,12 +5,12 @@ const { render, screen, fireEvent, waitFor } = await import("./test-utils");
 const { EditStationDialog } =
   await import("../components/EditStationDialog.component");
 
-const sampleStation: Station = {
+const sampleStation: Station & { enabledToolpacks: string[] } = {
   id: "station-1",
   organizationId: "org-1",
   name: "Sales Analytics",
   description: "Sales data analysis station",
-  toolPacks: ["data_query", "statistics"],
+  enabledToolpacks: ["data_query", "statistics"],
   created: 1710000000000,
   createdBy: "user-1",
   updated: null,

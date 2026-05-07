@@ -2,24 +2,15 @@ import { z } from "zod";
 import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 
 /**
- * Tool packs that can be enabled for a station.
- * Each pack gates a group of analytics tools exposed to Claude.
- */
-export const StationToolPackSchema = z.enum([
-  "data_query",
-  "statistics",
-  "regression",
-  "financial",
-  "web_search",
-  "entity_management",
-]);
-
-export type StationToolPack = z.infer<typeof StationToolPackSchema>;
-
-/**
  * Station model.
  * Represents a curated collection of connector instances that are
  * grouped together for analytics purposes within an organization.
+ *
+ * Enabled toolpacks are stored in the `station_toolpacks` join table
+ * (one row per pack, built-in or custom). They are not persisted on
+ * the station row itself; consumers reading "what packs does this
+ * station have?" load the join via `include=toolpacks` on the
+ * station GETs and read the `enabledToolpacks` field on the response.
  *
  * Sync with the Drizzle `stations` table is enforced at compile
  * time via `apps/api/src/db/schema/type-checks.ts` and at runtime
@@ -29,7 +20,6 @@ export const StationSchema = CoreSchema.extend({
   organizationId: z.string(),
   name: z.string().min(1),
   description: z.string().nullable(),
-  toolPacks: z.array(z.string()).min(1),
 });
 
 export type Station = z.infer<typeof StationSchema>;

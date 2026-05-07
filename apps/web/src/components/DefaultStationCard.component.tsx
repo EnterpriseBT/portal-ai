@@ -37,7 +37,7 @@ const StationData: React.FC<StationDataProps> = ({ id, children }) => {
 // ── Pure UI ─────────────────────────────────────────────────────────
 
 export interface DefaultStationCardUIProps {
-  station: Station | null;
+  station: (Station & { enabledToolpacks?: string[] }) | null;
   onLaunchPortal: (stationId: string) => void;
   onChangeDefault: () => void;
   onViewStation?: (stationId: string) => void;
@@ -115,13 +115,13 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
               label: "Tool Packs",
               value: (
                 <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                  {station.toolPacks.map((pack) => (
+                  {(station.enabledToolpacks ?? []).map((pack) => (
                     <ToolPackChip key={pack} pack={pack} />
                   ))}
                 </Stack>
               ),
               variant: "chip",
-              hidden: station.toolPacks.length === 0,
+              hidden: (station.enabledToolpacks ?? []).length === 0,
             },
           ]}
         />

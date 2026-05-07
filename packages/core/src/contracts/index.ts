@@ -61,11 +61,8 @@ export * from "./station.contract.js";
 /** Portal contracts — schemas & types */
 export * from "./portal.contract.js";
 
-/** Organization Tool contracts — schemas & types */
-export * from "./organization-tool.contract.js";
-
-/** Station Tool contracts — schemas & types */
-export * from "./station-tool.contract.js";
+/** Toolpack contracts — schemas & types */
+export * from "./toolpack.contract.js";
 
 /** Spreadsheet parsing contracts — re-exported from @portalai/spreadsheet-parsing */
 export * from "./spreadsheet-parsing.contract.js";

@@ -1,12 +1,20 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 
 import { z } from "zod";
-import type { UpdateStationBody } from "@portalai/core/contracts";
+import type { UpdateStationBody, Toolpack } from "@portalai/core/contracts";
 import type { Station } from "@portalai/core/models";
-import { StationToolPackSchema } from "@portalai/core/models";
-import { Button, Modal, MultiSearchableSelect, Stack } from "@portalai/core/ui";
+import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
+import {
+  Button,
+  Modal,
+  MultiSearchableSelect,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
+import Alert from "@mui/material/Alert";
+import AlertTitle from "@mui/material/AlertTitle";
 
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
 import { FormAlert } from "./FormAlert.component";
@@ -18,14 +26,15 @@ import {
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { ToolPackIconUtil } from "../utils/tool-pack-icons.util";
-import { ToolPackUtil } from "../utils/tool-packs.util";
+import { detectToolpackCollisions } from "../utils/toolpack-collisions.util";
+import { sdk } from "../api/sdk";
 
-const TOOL_PACK_OPTIONS: SelectOption[] = StationToolPackSchema.options.map(
-  (value) => {
-    const Icon = ToolPackIconUtil.getIcon(value);
+const BUILTIN_TOOL_PACK_OPTIONS: SelectOption[] = BUILTIN_TOOLPACKS.map(
+  (pack) => {
+    const Icon = ToolPackIconUtil.getIcon(pack.slug);
     return {
-      value,
-      label: ToolPackUtil.getLabel(value),
+      value: pack.slug,
+      label: pack.name,
       icon: <Icon fontSize="small" />,
     };
   }
@@ -54,7 +63,10 @@ interface StationInstance {
 export interface EditStationDialogProps {
   open: boolean;
   onClose: () => void;
-  station: Station & { instances?: StationInstance[] };
+  station: Station & {
+    instances?: StationInstance[];
+    enabledToolpacks?: string[];
+  };
   onSubmit: (body: UpdateStationBody) => void;
   isPending: boolean;
   serverError: ServerError | null;
@@ -71,14 +83,33 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
   const initialInstanceIds = (station.instances ?? []).map(
     (i) => i.connectorInstanceId
   );
+  const initialToolpacks = station.enabledToolpacks ?? [];
   const [form, setForm] = useState<FormState>({
     name: station.name,
-    toolPacks: [...station.toolPacks],
+    toolPacks: [...initialToolpacks],
     connectorInstanceIds: [...initialInstanceIds],
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const nameRef = useDialogAutoFocus(open);
+
+  // Load custom toolpacks so the picker can offer them alongside built-ins.
+  const customsResult = sdk.toolpacks.list({ kind: "custom" }, { enabled: open });
+  const customOptions: SelectOption[] = (
+    customsResult.data?.toolpacks ?? []
+  )
+    .filter((t): t is typeof t & { kind: "custom" } => t.kind === "custom")
+    .map((p) => ({ value: `org:${p.id}`, label: p.name }));
+  const allOptions = [...BUILTIN_TOOL_PACK_OPTIONS, ...customOptions];
+
+  const collisions = useMemo(
+    () =>
+      detectToolpackCollisions(
+        form.toolPacks,
+        (customsResult.data?.toolpacks ?? []) as Toolpack[]
+      ),
+    [form.toolPacks, customsResult.data]
+  );
 
   const handleChange = (field: keyof FormState, value: string | string[]) => {
     const next = { ...form, [field]: value };
@@ -106,7 +137,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     if (form.name.trim() !== station.name) {
       body.name = form.name.trim();
     }
-    if (JSON.stringify(form.toolPacks) !== JSON.stringify(station.toolPacks)) {
+    if (JSON.stringify(form.toolPacks) !== JSON.stringify(initialToolpacks)) {
       body.toolPacks = form.toolPacks;
     }
     const sortedCurrent = [...initialInstanceIds].sort();
@@ -176,7 +207,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
           fullWidth
         />
         <MultiSearchableSelect
-          options={TOOL_PACK_OPTIONS}
+          options={allOptions}
           value={form.toolPacks}
           onChange={(values) => handleChange("toolPacks", values)}
           label="Tool Packs"
@@ -185,6 +216,31 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
           error={touched.toolPacks && !!errors.toolPacks}
           helperText={touched.toolPacks ? errors.toolPacks : undefined}
         />
+        {collisions.length > 0 && (
+          <Alert
+            severity="warning"
+            data-testid="toolpack-collision-warning"
+          >
+            <AlertTitle>Tool-name collisions on this station</AlertTitle>
+            <Stack spacing={0.5}>
+              {collisions.map((c) => (
+                <Typography key={c.toolName} variant="body2">
+                  <code>{c.toolName}</code> is provided by{" "}
+                  <strong>{c.ownerLabels.join(", ")}</strong>.
+                </Typography>
+              ))}
+            </Stack>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ mt: 0.5, display: "block" }}
+            >
+              Portal sessions will fail until this is resolved. Save will be
+              allowed so you can keep iterating; remove one of the conflicting
+              packs to clear the warning.
+            </Typography>
+          </Alert>
+        )}
         <ConnectorInstancePicker
           selected={form.connectorInstanceIds}
           onChange={(ids) => handleChange("connectorInstanceIds", ids)}

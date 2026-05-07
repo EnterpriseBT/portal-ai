@@ -216,6 +216,12 @@ export const SidebarNav = () => {
         onClick={() => handleClick(ApplicationRoute.Stations)}
       />
       <SidebarNavItem
+        icon={IconName.Extension}
+        label="Toolpacks"
+        selected={pathname.startsWith(ApplicationRoute.Toolpacks)}
+        onClick={() => handleClick(ApplicationRoute.Toolpacks)}
+      />
+      <SidebarNavItem
         icon={IconName.MemoryChip}
         label="Connectors"
         selected={pathname === ApplicationRoute.Connectors}

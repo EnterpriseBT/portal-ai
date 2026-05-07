@@ -78,6 +78,7 @@ describe("GLOSSARY_ENTRIES", () => {
     // Analytics
     "Station",
     "Tool Pack",
+    "Custom Toolpack",
     "Portal",
     "Portal Message",
     "Portal Result",
@@ -181,11 +182,13 @@ describe("filterGlossary", () => {
     const terms = result.map((e) => e.term).sort();
     expect(terms).toEqual(
       [
+        "Custom Toolpack",
         "Pinned Result",
         "Portal",
         "Portal Message",
         "Portal Result",
         "Station",
+        "Tool",
         "Tool Pack",
       ].sort()
     );

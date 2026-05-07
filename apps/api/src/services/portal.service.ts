@@ -250,10 +250,15 @@ export class PortalService {
       throw new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found");
     }
 
-    // Validate station has at least one tool pack
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const toolPacks = (station as any).toolPacks as string[] | null;
-    if (!toolPacks || toolPacks.length === 0) {
+    // Validate station has at least one built-in tool pack enabled.
+    // Custom toolpack rows are accepted at the DB layer (phase 2) but
+    // do not yet contribute to the executor — phase 1 only counts
+    // built-in slugs.
+    const enabled = await repo.stationToolpacks.findByStationId(stationId);
+    const toolPacks = enabled
+      .map((r) => r.builtinSlug)
+      .filter((s): s is string => s !== null);
+    if (toolPacks.length === 0) {
       throw new ApiError(
         400,
         ApiCode.PORTAL_STATION_NO_TOOLS,

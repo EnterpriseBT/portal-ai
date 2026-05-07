@@ -3,10 +3,18 @@ import { jest } from "@jest/globals";
 // ── Mocks ────────────────────────────────────────────────────────────
 
 const mockStationsGet = jest.fn();
+const mockToolpacksList = jest.fn(() => ({
+  data: undefined,
+  isLoading: true,
+  isError: false,
+  isSuccess: false,
+  error: null,
+}));
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     stations: { get: mockStationsGet },
+    toolpacks: { list: mockToolpacksList },
   },
   queryKeys: {},
 }));
@@ -64,7 +72,7 @@ const stationFixture = {
     organizationId: "org-1",
     name: "Sales Station",
     description: null,
-    toolPacks: ["data_query", "statistics"],
+    enabledToolpacks: ["data_query", "statistics"],
     created: Date.now(),
     createdBy: "user-1",
     updated: null,
@@ -160,7 +168,7 @@ describe("PortalHeaderMeta", () => {
     it("hides the Tool Packs section when the station has none", () => {
       const bare = {
         ...stationFixture,
-        station: { ...stationFixture.station, toolPacks: [] },
+        station: { ...stationFixture.station, enabledToolpacks: [] },
       };
       mockStationsGet.mockReturnValue(mockStationResult(bare));
       render(<PortalHeaderMeta stationId="station-1" />);

@@ -1,20 +1,35 @@
+import {
+  BUILTIN_TOOLPACK_BY_SLUG,
+  isBuiltinToolpackSlug,
+} from "@portalai/core/registries";
+
 /**
- * Human-readable labels for station tool packs.
+ * Optional lookup map for custom toolpack labels. The toolpacks list
+ * query populates this so `getLabel` can resolve `org:<id>` strings
+ * to the user-facing pack name.
  */
-const TOOL_PACK_LABELS: Record<string, string> = {
-  data_query: "Data Query",
-  statistics: "Statistics",
-  regression: "Regression",
-  financial: "Financial",
-  web_search: "Web Search",
-  entity_management: "Entity Management",
-};
+export type CustomToolpackLabelMap = ReadonlyMap<string, string>;
 
 export class ToolPackUtil {
   /**
-   * Resolve a tool pack key to its display label, falling back to the raw key.
+   * Resolve a toolpack reference to its display label.
+   *
+   * - Built-in slugs (e.g. `"data_query"`) → registry name.
+   * - Custom refs (`"org:<uuid>"`) → looked up via the optional map;
+   *   falls back to the raw ref string for unknown values.
    */
-  static getLabel(pack: string): string {
-    return TOOL_PACK_LABELS[pack] ?? pack;
+  static getLabel(
+    pack: string,
+    customLabels?: CustomToolpackLabelMap
+  ): string {
+    if (isBuiltinToolpackSlug(pack)) {
+      return BUILTIN_TOOLPACK_BY_SLUG[pack].name;
+    }
+    if (pack.startsWith("org:") && customLabels) {
+      const id = pack.slice("org:".length);
+      const label = customLabels.get(id);
+      if (label) return label;
+    }
+    return pack;
   }
 }

@@ -5,12 +5,15 @@ const { render, screen, fireEvent } = await import("./test-utils");
 const { DefaultStationCardUI } =
   await import("../components/DefaultStationCard.component");
 
-const makeStation = (overrides: Partial<Station> = {}): Station => ({
+type StationFixture = Station & { enabledToolpacks?: string[] };
+const makeStation = (
+  overrides: Partial<StationFixture> = {}
+): StationFixture => ({
   id: "station-1",
   organizationId: "org-1",
   name: "Sales Analytics",
   description: "Sales data analysis station",
-  toolPacks: ["data_query", "statistics"],
+  enabledToolpacks: ["data_query", "statistics"],
   created: 1710000000000,
   createdBy: "user-1",
   updated: null,

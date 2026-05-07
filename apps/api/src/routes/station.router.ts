@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { eq, ilike, and, inArray, type SQL } from "drizzle-orm";
 
 import { StationModelFactory } from "@portalai/core/models";
+import { isBuiltinToolpackSlug } from "@portalai/core/registries";
 import {
   StationListRequestQuerySchema,
   CreateStationBodySchema,
@@ -22,6 +23,46 @@ import { SystemUtilities } from "../utils/system.util.js";
 const logger = createLogger({ module: "station" });
 
 export const stationRouter = Router();
+
+/**
+ * Split a `toolPacks: string[]` wire value into built-in slugs and
+ * custom-pack ids. Custom values are prefixed `org:<uuid>`.
+ *
+ * Returns `{ ok: false, value }` for any value that isn't a known
+ * built-in slug or a properly-prefixed `org:<uuid>` reference.
+ */
+async function parseToolpackRefs(
+  toolPacks: string[],
+  organizationId: string
+): Promise<
+  | { ok: true; builtinSlugs: string[]; customIds: string[] }
+  | { ok: false; value: string }
+> {
+  const builtinSlugs: string[] = [];
+  const customIds: string[] = [];
+  for (const ref of toolPacks) {
+    if (ref.startsWith("org:")) {
+      customIds.push(ref.slice("org:".length));
+    } else if (isBuiltinToolpackSlug(ref)) {
+      builtinSlugs.push(ref);
+    } else {
+      return { ok: false, value: ref };
+    }
+  }
+  if (customIds.length > 0) {
+    const found =
+      await DbService.repository.organizationToolpacks.findManyByIds(
+        customIds,
+        { organizationId }
+      );
+    if (found.length !== customIds.length) {
+      const foundIds = new Set(found.map((p) => p.id));
+      const missing = customIds.find((id) => !foundIds.has(id));
+      if (missing) return { ok: false, value: `org:${missing}` };
+    }
+  }
+  return { ok: true, builtinSlugs, customIds };
+}
 
 // ── GET /api/stations ─────────────────────────────────────────────────────
 
@@ -97,8 +138,31 @@ stationRouter.get(
         DbService.repository.stations.count(where),
       ]);
 
+      // Hydrate enabledToolpacks for each station via a single grouped lookup.
+      const stationIds = data.map((s) => s.id);
+      const toolpackRows =
+        await DbService.repository.stationToolpacks.findByStationIds(stationIds);
+      const toolpacksByStationId = new Map<string, string[]>();
+      for (const row of toolpackRows) {
+        const ref =
+          row.builtinSlug !== null
+            ? row.builtinSlug
+            : row.organizationToolpackId !== null
+              ? `org:${row.organizationToolpackId}`
+              : null;
+        if (ref === null) continue;
+        const arr = toolpacksByStationId.get(row.stationId) ?? [];
+        arr.push(ref);
+        toolpacksByStationId.set(row.stationId, arr);
+      }
+      const stationsWithToolpacks = data.map((s) => ({
+        ...s,
+        enabledToolpacks: toolpacksByStationId.get(s.id) ?? [],
+      }));
+
       return HttpService.success<StationListResponsePayload>(res, {
-        stations: data as unknown as StationListResponsePayload["stations"],
+        stations:
+          stationsWithToolpacks as unknown as StationListResponsePayload["stations"],
         total,
         limit,
         offset,
@@ -200,10 +264,17 @@ stationRouter.get(
           include: include_,
         });
 
+      const enabled =
+        await DbService.repository.stationToolpacks.findByStationId(id);
+      const enabledToolpacks = enabled.map((r) =>
+        r.builtinSlug !== null ? r.builtinSlug : `org:${r.organizationToolpackId}`
+      );
+
       return HttpService.success<StationGetResponsePayload>(res, {
         station: {
           ...station,
           instances,
+          enabledToolpacks,
         } as unknown as StationGetResponsePayload["station"],
       });
     } catch (error) {
@@ -308,16 +379,36 @@ stationRouter.post(
       const { name, description, connectorInstanceIds, toolPacks } =
         parsed.data;
 
+      const requestedRefs = toolPacks ?? ["data_query"];
+      const refs = await parseToolpackRefs(requestedRefs, organizationId);
+      if (!refs.ok) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.STATION_INVALID_TOOLPACK,
+            `Unknown toolpack: "${refs.value}"`
+          )
+        );
+      }
+
       const factory = new StationModelFactory();
       const model = factory.create(userId);
       model.update({
         organizationId,
         name,
         description: description ?? null,
-        toolPacks: toolPacks ?? ["data_query"],
       });
 
       const station = await DbService.repository.stations.create(model.parse());
+
+      await DbService.repository.stationToolpacks.replaceForStation(
+        station.id,
+        {
+          builtinSlugs: refs.builtinSlugs,
+          organizationToolpackIds: refs.customIds,
+        },
+        { userId }
+      );
 
       if (connectorInstanceIds && connectorInstanceIds.length > 0) {
         const now = Date.now();
@@ -340,11 +431,18 @@ stationRouter.post(
 
       logger.info({ id: station.id, organizationId }, "Station created");
 
+      const enabledToolpacks = [
+        ...refs.builtinSlugs,
+        ...refs.customIds.map((id) => `org:${id}`),
+      ];
+
       return HttpService.success<StationCreateResponsePayload>(
         res,
         {
-          station:
-            station as unknown as StationCreateResponsePayload["station"],
+          station: {
+            ...station,
+            enabledToolpacks,
+          } as unknown as StationCreateResponsePayload["station"],
         },
         201
       );
@@ -468,18 +566,49 @@ stationRouter.patch(
 
       const { name, description, connectorInstanceIds, toolPacks } =
         parsed.data;
+
+      let parsedRefs:
+        | { builtinSlugs: string[]; customIds: string[] }
+        | null = null;
+      if (toolPacks !== undefined) {
+        const refs = await parseToolpackRefs(toolPacks, organizationId);
+        if (!refs.ok) {
+          return next(
+            new ApiError(
+              400,
+              ApiCode.STATION_INVALID_TOOLPACK,
+              `Unknown toolpack: "${refs.value}"`
+            )
+          );
+        }
+        parsedRefs = {
+          builtinSlugs: refs.builtinSlugs,
+          customIds: refs.customIds,
+        };
+      }
+
       const updates: Record<string, unknown> = {
         updated: Date.now(),
         updatedBy: userId,
       };
       if (name !== undefined) updates.name = name;
       if (description !== undefined) updates.description = description;
-      if (toolPacks !== undefined) updates.toolPacks = toolPacks;
 
       const station = await DbService.repository.stations.update(
         id,
         updates as never
       );
+
+      if (parsedRefs !== null) {
+        await DbService.repository.stationToolpacks.replaceForStation(
+          id,
+          {
+            builtinSlugs: parsedRefs.builtinSlugs,
+            organizationToolpackIds: parsedRefs.customIds,
+          },
+          { userId }
+        );
+      }
 
       if (connectorInstanceIds !== undefined) {
         const existingInstances =
@@ -511,8 +640,17 @@ stationRouter.patch(
 
       logger.info({ id }, "Station updated");
 
+      const enabled =
+        await DbService.repository.stationToolpacks.findByStationId(id);
+      const enabledToolpacks = enabled.map((r) =>
+        r.builtinSlug !== null ? r.builtinSlug : `org:${r.organizationToolpackId}`
+      );
+
       return HttpService.success<StationUpdateResponsePayload>(res, {
-        station: station as unknown as StationUpdateResponsePayload["station"],
+        station: {
+          ...station,
+          enabledToolpacks,
+        } as unknown as StationUpdateResponsePayload["station"],
       });
     } catch (error) {
       logger.error(

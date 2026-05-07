@@ -24,8 +24,8 @@ export {
   portalMessageRoleEnum,
 } from "./portal-messages.table.js";
 export { portalResults, portalResultTypeEnum } from "./portal-results.table.js";
-export { organizationTools } from "./organization-tools.table.js";
-export { stationTools } from "./station-tools.table.js";
+export { stationToolpacks } from "./station-toolpacks.table.js";
+export { organizationToolpacks } from "./organization-toolpacks.table.js";
 export { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
 export { fileUploads } from "./file-uploads.table.js";
 

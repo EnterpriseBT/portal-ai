@@ -13,6 +13,7 @@ import type { User } from "@portalai/core/models";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { Repository } from "../../../db/repositories/base.repository.js";
+import { StationToolpacksRepository } from "../../../db/repositories/station-toolpacks.repository.js";
 import { ApplicationService } from "../../../services/application.service.js";
 import { SeedService } from "../../../services/seed.service.js";
 import { generateId, teardownOrg } from "../utils/application.util.js";
@@ -207,7 +208,13 @@ describe("ApplicationService Integration Tests", () => {
 
       expect(station).toBeDefined();
       expect(station?.name).toBe("My Station");
-      expect(station?.toolPacks).toEqual(["data_query"]);
+
+      const stationToolpacksRepo = new StationToolpacksRepository();
+      const enabled = await stationToolpacksRepo.findByStationId(
+        station!.id,
+        db
+      );
+      expect(enabled.map((r) => r.builtinSlug)).toEqual(["data_query"]);
     });
 
     it("should link the sandbox connector instance to the default station", async () => {

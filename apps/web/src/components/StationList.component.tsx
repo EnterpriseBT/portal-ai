@@ -57,7 +57,7 @@ export const OrgData: React.FC<OrgDataProps> = ({ children }) => {
 // ── Station card (pure UI) ──────────────────────────────────────────
 
 export interface StationCardUIProps {
-  station: Station;
+  station: Station & { enabledToolpacks?: string[] };
   isDefault: boolean;
   onSetDefault: (station: Station) => void;
   onOpen: (station: Station) => void;
@@ -121,13 +121,13 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
             label: "Tool packs",
             value: (
               <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                {station.toolPacks.map((pack) => (
+                {(station.enabledToolpacks ?? []).map((pack) => (
                   <ToolPackChip key={pack} pack={pack} />
                 ))}
               </Stack>
             ),
             variant: "chip",
-            hidden: station.toolPacks.length === 0,
+            hidden: (station.enabledToolpacks ?? []).length === 0,
           },
         ]}
       />

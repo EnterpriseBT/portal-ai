@@ -33,8 +33,8 @@ import type {
   Portal,
   PortalMessage,
   PortalResult,
-  OrganizationTool,
-  StationTool,
+  StationToolpack,
+  OrganizationToolpack,
 } from "@portalai/core/models";
 import type {
   UserSelect,
@@ -56,8 +56,8 @@ import type {
   PortalSelect,
   PortalMessageSelect,
   PortalResultSelect,
-  OrganizationToolSelect,
-  StationToolSelect,
+  StationToolpackSelect,
+  OrganizationToolpackSelect,
 } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { users } from "./users.table.js";
@@ -79,8 +79,8 @@ import type { stationInstances } from "./station-instances.table.js";
 import type { portals } from "./portals.table.js";
 import type { portalMessages } from "./portal-messages.table.js";
 import type { portalResults } from "./portal-results.table.js";
-import type { organizationTools } from "./organization-tools.table.js";
-import type { stationTools } from "./station-tools.table.js";
+import type { stationToolpacks } from "./station-toolpacks.table.js";
+import type { organizationToolpacks } from "./organization-toolpacks.table.js";
 import type { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
 import type { InterpretationTrace, LayoutPlan } from "@portalai/core/contracts";
 import type { ConnectorInstanceLayoutPlanSelect } from "./zod.js";
@@ -400,13 +400,7 @@ const _entGrpMemInferredToModel: _EntGrpMemInferredToModel = true;
 type _StaDrizzleToModel = IsAssignable<StationSelect, Station>;
 const _staDrizzleToModel: _StaDrizzleToModel = true;
 
-// Omit toolPacks because drizzle-zod widens jsonb to a JSON union type
-// that string[] is not directly assignable to. The other two checks
-// (DrizzleToModel, InferredToModel) still validate schema alignment.
-type _StaModelToDrizzle = IsAssignable<
-  Omit<Station, "toolPacks">,
-  Omit<StationSelect, "toolPacks">
->;
+type _StaModelToDrizzle = IsAssignable<Station, StationSelect>;
 const _staModelToDrizzle: _StaModelToDrizzle = true;
 
 type _StaInferredRow = InferSelectModel<typeof stations>;
@@ -433,6 +427,49 @@ type _StaInstInferredToModel = IsAssignable<
   StationInstance
 >;
 const _staInstInferredToModel: _StaInstInferredToModel = true;
+
+// ── StationToolpack ───────────────────────────────────────────────────
+
+type _StaToolpackDrizzleToModel = IsAssignable<
+  StationToolpackSelect,
+  StationToolpack
+>;
+const _staToolpackDrizzleToModel: _StaToolpackDrizzleToModel = true;
+
+type _StaToolpackInferredRow = InferSelectModel<typeof stationToolpacks>;
+type _StaToolpackInferredToModel = IsAssignable<
+  _StaToolpackInferredRow,
+  StationToolpack
+>;
+const _staToolpackInferredToModel: _StaToolpackInferredToModel = true;
+
+// ── OrganizationToolpack ──────────────────────────────────────────────
+//
+// drizzle-zod widens jsonb columns to a generic JSON union that the
+// model's specific Zod refinements don't satisfy directly. Skip the
+// jsonb columns (`endpoints`, `authHeaders`, `tools`, `metadata`) on
+// the drizzle→model assignability check; the inferred-row check
+// (which uses the table's `$type<>()` annotations) catches drift on
+// those columns.
+
+type _OrgToolpackJsonbCols =
+  | "endpoints"
+  | "authHeaders"
+  | "tools"
+  | "metadata";
+
+type _OrgToolpackDrizzleToModel = IsAssignable<
+  Omit<OrganizationToolpackSelect, _OrgToolpackJsonbCols>,
+  Omit<OrganizationToolpack, _OrgToolpackJsonbCols>
+>;
+const _orgToolpackDrizzleToModel: _OrgToolpackDrizzleToModel = true;
+
+type _OrgToolpackInferredRow = InferSelectModel<typeof organizationToolpacks>;
+type _OrgToolpackInferredToModel = IsAssignable<
+  _OrgToolpackInferredRow,
+  OrganizationToolpack
+>;
+const _orgToolpackInferredToModel: _OrgToolpackInferredToModel = true;
 
 // ── Portal ────────────────────────────────────────────────────────────
 
@@ -481,39 +518,6 @@ type _PortalResInferredToModel = IsAssignable<
   PortalResult
 >;
 const _portalResInferredToModel: _PortalResInferredToModel = true;
-
-// ── OrganizationTool ──────────────────────────────────────────────────
-
-type _OrgToolDrizzleToModel = IsAssignable<
-  OrganizationToolSelect,
-  OrganizationTool
->;
-const _orgToolDrizzleToModel: _OrgToolDrizzleToModel = true;
-
-type _OrgToolModelToDrizzle = IsAssignable<
-  OrganizationTool,
-  OrganizationToolSelect
->;
-const _orgToolModelToDrizzle: _OrgToolModelToDrizzle = true;
-
-type _OrgToolInferredRow = InferSelectModel<typeof organizationTools>;
-type _OrgToolInferredToModel = IsAssignable<
-  _OrgToolInferredRow,
-  OrganizationTool
->;
-const _orgToolInferredToModel: _OrgToolInferredToModel = true;
-
-// ── StationTool ───────────────────────────────────────────────────────
-
-type _StaToolDrizzleToModel = IsAssignable<StationToolSelect, StationTool>;
-const _staToolDrizzleToModel: _StaToolDrizzleToModel = true;
-
-type _StaToolModelToDrizzle = IsAssignable<StationTool, StationToolSelect>;
-const _staToolModelToDrizzle: _StaToolModelToDrizzle = true;
-
-type _StaToolInferredRow = InferSelectModel<typeof stationTools>;
-type _StaToolInferredToModel = IsAssignable<_StaToolInferredRow, StationTool>;
-const _staToolInferredToModel: _StaToolInferredToModel = true;
 
 // ── ConnectorInstanceLayoutPlan ──────────────────────────────────────
 //

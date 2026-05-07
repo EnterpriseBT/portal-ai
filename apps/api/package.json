@@ -17,6 +17,7 @@
     "format": "prettier --write \"src/**/*.{ts,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,json}\"",
     "swagger:generate": "dotenv -e .env -- tsx src/scripts/generate-swagger.ts",
+    "webhook:toolpack": "tsx src/scripts/mock-toolpack-server.ts",
     "swagger:watch": "dotenv -e .env -- nodemon --watch src --ext ts --exec 'npm run swagger:generate'",
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "NODE_OPTIONS='--experimental-vm-modules' jest",

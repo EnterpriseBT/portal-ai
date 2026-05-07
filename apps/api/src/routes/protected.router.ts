@@ -14,8 +14,7 @@ import { entityGroupRouter } from "./entity-group.router.js";
 import { stationRouter } from "./station.router.js";
 import { portalRouter } from "./portal.router.js";
 import { portalResultsRouter } from "./portal-results.router.js";
-import { organizationToolsRouter } from "./organization-tools.router.js";
-import { stationToolsRouter } from "./station-tools.router.js";
+import { toolpacksRouter } from "./toolpacks.router.js";
 import { connectorInstanceLayoutPlansRouter } from "./connector-instance-layout-plans.router.js";
 import { layoutPlansRouter } from "./layout-plans.router.js";
 import { googleSheetsConnectorRouter } from "./google-sheets-connector.router.js";
@@ -41,10 +40,9 @@ protectedRouter.use("/file-uploads", fileUploadsRouter);
 protectedRouter.use("/entity-tags", entityTagRouter);
 protectedRouter.use("/entity-groups", entityGroupRouter);
 protectedRouter.use("/stations", stationRouter);
-protectedRouter.use("/stations", stationToolsRouter);
 protectedRouter.use("/portals", portalRouter);
 protectedRouter.use("/portal-results", portalResultsRouter);
-protectedRouter.use("/organization-tools", organizationToolsRouter);
+protectedRouter.use("/toolpacks", toolpacksRouter);
 protectedRouter.use(
   "/connectors/google-sheets",
   googleSheetsConnectorRouter

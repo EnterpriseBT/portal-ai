@@ -47,6 +47,7 @@ import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import SatelliteAltIcon from "@mui/icons-material/SatelliteAlt";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
+import ExtensionIcon from "@mui/icons-material/Extension";
 import PortalIcon from "../assets/icons/portal.svg";
 
 export enum IconName {
@@ -97,6 +98,7 @@ export enum IconName {
   PushPin = "push_pin",
   SatelliteAlt = "satellite_alt",
   HelpOutline = "help_outline",
+  Extension = "extension",
   Portal = "portal",
 }
 
@@ -206,6 +208,8 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <SatelliteAltIcon ref={ref} {...props} />;
       case IconName.HelpOutline:
         return <HelpOutlineIcon ref={ref} {...props} />;
+      case IconName.Extension:
+        return <ExtensionIcon ref={ref} {...props} />;
       case IconName.Portal:
         return (
           <MuiSvgIcon ref={ref} {...props}>

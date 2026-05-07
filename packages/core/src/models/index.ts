@@ -58,8 +58,8 @@ export * from "./portal-message.model.js";
 /** Portal result model schema & type */
 export * from "./portal-result.model.js";
 
-/** Organization tool model schema & type */
-export * from "./organization-tool.model.js";
+/** Station toolpack join model schema & type */
+export * from "./station-toolpack.model.js";
 
-/** Station tool join model schema & type */
-export * from "./station-tool.model.js";
+/** Organization toolpack model schema & type */
+export * from "./organization-toolpack.model.js";

@@ -223,14 +223,33 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     pageRoute: ApplicationRoute.Stations,
   },
   {
+    term: "Tool",
+    category: GlossaryCategory.Analytics,
+    definition:
+      "A single function the assistant can call during a portal session — for example, `correlate`, `regression`, or a custom `lookup_company`. Tools come grouped into toolpacks; a station decides which toolpacks are enabled, which determines the set of tools the model can choose from on each turn. Tools shine for analytical work over the station's data: statistical tests, regressions, time-series decomposition, financial math. Use connectors for data storage and lookup; reach for tools when the answer requires computation, not retrieval.",
+    example:
+      "Inside a portal session, the assistant calls the `correlate` tool to compute the Pearson correlation between two columns of an entity, then `visualize` to render the result as a chart.",
+    relatedTerms: ["Tool Pack", "Custom Toolpack", "Connector Instance"],
+  },
+  {
     term: "Tool Pack",
     category: GlossaryCategory.Analytics,
     definition:
-      "A bundle of capabilities — like data querying, statistics, regression, financial analysis, web search, or entity management — that you enable on a station.",
+      "A bundle of related tools the assistant can use in a portal session. Toolpacks are the *unit you enable on a station*; tools are the *individual functions* inside them. Built-in packs cover data querying, statistics, regression, financial analysis, web search, and entity management. Organizations can also register custom packs that call out to their own webhook services. Every tool inside an enabled pack costs context-window budget on every portal turn — keep packs small and focused on a single domain, and only attach the packs a station absolutely needs.",
     example:
-      "Enable the regression tool pack on a station so the assistant can run regression analysis during a portal session.",
-    relatedTerms: ["Station", "Portal"],
-    pageRoute: ApplicationRoute.Stations,
+      "Enable the regression tool pack on a station so the assistant has the `regression`, `forecast`, and `decompose` tools available for time-series questions.",
+    relatedTerms: ["Tool", "Station", "Portal", "Custom Toolpack"],
+    pageRoute: ApplicationRoute.Toolpacks,
+  },
+  {
+    term: "Custom Toolpack",
+    category: GlossaryCategory.Analytics,
+    definition:
+      "A user-registered toolpack backed by your organization's webhook endpoints. Define a schema endpoint (lists the tools and their input schemas), a runtime endpoint (the assistant POSTs `{tool, input}` here per call), and an optional metadata endpoint (docs and examples). Once registered, attach the pack to any station the same way you enable a built-in pack. Custom toolpacks are most useful for *analytical* operations specific to your domain — a risk-scoring algorithm, an LTV model, a domain-specific anomaly detector. For raw data storage and lookup, prefer connectors: connectors materialize data into entity records that the data-query toolpack can already SELECT against, without burning context window on per-record lookups.",
+    example:
+      'Register a "customer_intel" pack with a `score_churn_risk` tool that calls your in-house ML service. Attach it to your retention station and the assistant can compute risk scores mid-session — something a SQL query alone can\'t do.',
+    relatedTerms: ["Tool", "Tool Pack", "Station", "Portal"],
+    pageRoute: ApplicationRoute.Toolpacks,
   },
   {
     term: "Portal",

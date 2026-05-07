@@ -1,3 +1,8 @@
+// Unused after phase 1 (custom toolpack registration is dropped in
+// phase 2). The class is kept in place so phase 2 can re-wire it
+// against the new `organization_toolpacks` records without recreating
+// the JSON-Schema → Zod conversion path.
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { z } from "zod";
@@ -55,10 +60,13 @@ export class WebhookTool extends Tool {
           },
           "Calling webhook tool"
         );
-        const result = await ToolService.callWebhook(
-          this.implementation,
-          input
-        );
+        // Phase 2 wire shape: pack runtime endpoints receive
+        // `{tool, input}` so a single endpoint can dispatch across
+        // every tool the pack advertises.
+        const result = await ToolService.callWebhook(this.implementation, {
+          tool: this.slug,
+          input,
+        });
 
         // Propagate vega-lite and vega chart results
         if (
