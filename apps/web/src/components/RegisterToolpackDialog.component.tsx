@@ -213,8 +213,6 @@ export const RegisterToolpackDialogUI: React.FC<
       }
     >
       <Stack spacing={2.5} sx={{ pt: 1 }}>
-        <ExpectedShapesAccordion />
-
         <TextField
           inputRef={nameRef}
           label="Name"
@@ -242,55 +240,84 @@ export const RegisterToolpackDialogUI: React.FC<
           multiline
           rows={2}
         />
-        <TextField
-          label="Schema endpoint"
-          value={form.schemaUrl}
-          onChange={(e) => handleChange("schemaUrl", e.target.value)}
-          onBlur={() => handleBlur("schemaUrl")}
-          placeholder="https://api.example.com/toolpacks/customer_intel/schema"
-          error={touched.schemaUrl && !!fieldError("endpoints.schema")}
-          helperText={
-            touched.schemaUrl && fieldError("endpoints.schema")
-              ? fieldError("endpoints.schema")
-              : "GET endpoint that returns the pack's tools schema."
-          }
-          slotProps={{
-            htmlInput: {
-              "aria-invalid":
-                touched.schemaUrl && !!fieldError("endpoints.schema"),
-            },
-          }}
-          required
-          fullWidth
-        />
-        <TextField
-          label="Runtime endpoint"
-          value={form.runtimeUrl}
-          onChange={(e) => handleChange("runtimeUrl", e.target.value)}
-          onBlur={() => handleBlur("runtimeUrl")}
-          placeholder="https://api.example.com/toolpacks/customer_intel/run"
-          error={touched.runtimeUrl && !!fieldError("endpoints.runtime")}
-          helperText={
-            touched.runtimeUrl && fieldError("endpoints.runtime")
-              ? fieldError("endpoints.runtime")
-              : "POST endpoint invoked per tool call with `{tool, input}`."
-          }
-          slotProps={{
-            htmlInput: {
-              "aria-invalid":
-                touched.runtimeUrl && !!fieldError("endpoints.runtime"),
-            },
-          }}
-          required
-          fullWidth
-        />
-        <TextField
-          label="Metadata endpoint (optional)"
-          value={form.metadataUrl}
-          onChange={(e) => handleChange("metadataUrl", e.target.value)}
-          placeholder="https://api.example.com/toolpacks/customer_intel/metadata"
-          fullWidth
-        />
+        <Stack spacing={0.5}>
+          <TextField
+            label="Schema endpoint"
+            value={form.schemaUrl}
+            onChange={(e) => handleChange("schemaUrl", e.target.value)}
+            onBlur={() => handleBlur("schemaUrl")}
+            placeholder="https://api.example.com/toolpacks/customer_intel/schema"
+            error={touched.schemaUrl && !!fieldError("endpoints.schema")}
+            helperText={
+              touched.schemaUrl && fieldError("endpoints.schema")
+                ? fieldError("endpoints.schema")
+                : "GET endpoint that returns the pack's tools schema."
+            }
+            slotProps={{
+              htmlInput: {
+                "aria-invalid":
+                  touched.schemaUrl && !!fieldError("endpoints.schema"),
+              },
+            }}
+            required
+            fullWidth
+          />
+          <FieldShapeAccordion
+            testId="register-toolpack-schema-shape"
+            summary="See expected schema response"
+            blocks={[{ label: "GET → response", example: SCHEMA_RESPONSE_EXAMPLE }]}
+          />
+        </Stack>
+        <Stack spacing={0.5}>
+          <TextField
+            label="Runtime endpoint"
+            value={form.runtimeUrl}
+            onChange={(e) => handleChange("runtimeUrl", e.target.value)}
+            onBlur={() => handleBlur("runtimeUrl")}
+            placeholder="https://api.example.com/toolpacks/customer_intel/run"
+            error={touched.runtimeUrl && !!fieldError("endpoints.runtime")}
+            helperText={
+              touched.runtimeUrl && fieldError("endpoints.runtime")
+                ? fieldError("endpoints.runtime")
+                : "POST endpoint invoked per tool call with `{tool, input}`."
+            }
+            slotProps={{
+              htmlInput: {
+                "aria-invalid":
+                  touched.runtimeUrl && !!fieldError("endpoints.runtime"),
+              },
+            }}
+            required
+            fullWidth
+          />
+          <FieldShapeAccordion
+            testId="register-toolpack-runtime-shape"
+            summary="See expected runtime request / response"
+            blocks={[
+              { label: "POST → request body", example: RUNTIME_REQUEST_EXAMPLE },
+              {
+                label: "POST → response (any JSON)",
+                example: RUNTIME_RESPONSE_EXAMPLE,
+              },
+            ]}
+          />
+        </Stack>
+        <Stack spacing={0.5}>
+          <TextField
+            label="Metadata endpoint (optional)"
+            value={form.metadataUrl}
+            onChange={(e) => handleChange("metadataUrl", e.target.value)}
+            placeholder="https://api.example.com/toolpacks/customer_intel/metadata"
+            fullWidth
+          />
+          <FieldShapeAccordion
+            testId="register-toolpack-metadata-shape"
+            summary="See expected metadata response"
+            blocks={[
+              { label: "GET → response", example: METADATA_RESPONSE_EXAMPLE },
+            ]}
+          />
+        </Stack>
         <TextField
           label="Auth headers (optional)"
           value={form.authHeaders}
@@ -312,7 +339,7 @@ export const RegisterToolpackDialogUI: React.FC<
   );
 };
 
-// ── Expected response shapes (collapsible reference block) ─────────
+// ── Per-field shape examples ───────────────────────────────────────
 
 const SCHEMA_RESPONSE_EXAMPLE = `{
   "tools": [
@@ -358,43 +385,48 @@ const METADATA_RESPONSE_EXAMPLE = `{
   ]
 }`;
 
-const ExpectedShapesAccordion: React.FC = () => (
-  <Accordion variant="outlined" disableGutters>
+interface ShapeBlock {
+  label: string;
+  example: string;
+}
+
+const FieldShapeAccordion: React.FC<{
+  testId: string;
+  summary: string;
+  blocks: ShapeBlock[];
+}> = ({ testId, summary, blocks }) => (
+  <Accordion
+    variant="outlined"
+    disableGutters
+    sx={{
+      "&::before": { display: "none" },
+      backgroundColor: "transparent",
+    }}
+  >
     <AccordionSummary
-      expandIcon={<ExpandMoreIcon />}
-      data-testid="register-toolpack-shapes-summary"
+      expandIcon={<ExpandMoreIcon fontSize="small" />}
+      data-testid={`${testId}-summary`}
+      sx={{ minHeight: 32, "& .MuiAccordionSummary-content": { my: 0.5 } }}
     >
-      <Typography variant="body2">
-        See expected request / response shapes
+      <Typography variant="caption" color="text.secondary">
+        {summary}
       </Typography>
     </AccordionSummary>
-    <AccordionDetails>
-      <Stack spacing={2}>
-        <ShapeBlock
-          label="GET schema endpoint → response"
-          example={SCHEMA_RESPONSE_EXAMPLE}
-        />
-        <ShapeBlock
-          label="POST runtime endpoint → request body"
-          example={RUNTIME_REQUEST_EXAMPLE}
-        />
-        <ShapeBlock
-          label="POST runtime endpoint → response (any JSON)"
-          example={RUNTIME_RESPONSE_EXAMPLE}
-        />
-        <ShapeBlock
-          label="GET metadata endpoint → response (optional)"
-          example={METADATA_RESPONSE_EXAMPLE}
-        />
+    <AccordionDetails sx={{ pt: 0 }}>
+      <Stack spacing={1.5}>
+        {blocks.map((b) => (
+          <ShapeCodeBlock
+            key={b.label}
+            label={b.label}
+            example={b.example}
+          />
+        ))}
       </Stack>
     </AccordionDetails>
   </Accordion>
 );
 
-const ShapeBlock: React.FC<{ label: string; example: string }> = ({
-  label,
-  example,
-}) => (
+const ShapeCodeBlock: React.FC<ShapeBlock> = ({ label, example }) => (
   <Box>
     <Typography variant="caption" color="text.secondary">
       {label}

@@ -38,23 +38,31 @@ describe("RegisterToolpackDialogUI", () => {
     expect(screen.getByLabelText(/Runtime endpoint/)).toBeInTheDocument();
   });
 
-  it("offers an expandable reference block of expected request / response shapes", () => {
+  it("renders per-field accordions for each endpoint's expected shape", () => {
     render(<RegisterToolpackDialogUI {...defaultProps} />);
-    const summary = screen.getByTestId("register-toolpack-shapes-summary");
-    expect(summary).toBeInTheDocument();
-    fireEvent.click(summary);
+    const schemaSummary = screen.getByTestId(
+      "register-toolpack-schema-shape-summary"
+    );
+    const runtimeSummary = screen.getByTestId(
+      "register-toolpack-runtime-shape-summary"
+    );
+    const metadataSummary = screen.getByTestId(
+      "register-toolpack-metadata-shape-summary"
+    );
+    expect(schemaSummary).toBeInTheDocument();
+    expect(runtimeSummary).toBeInTheDocument();
+    expect(metadataSummary).toBeInTheDocument();
+
+    // Expanding the runtime accordion reveals both request + response blocks.
+    fireEvent.click(runtimeSummary);
+    expect(screen.getByText(/POST → request body/)).toBeInTheDocument();
+    expect(screen.getByText(/POST → response/)).toBeInTheDocument();
+
+    // Expanding the schema accordion reveals the response block.
+    fireEvent.click(schemaSummary);
     expect(
-      screen.getByText(/GET schema endpoint → response/)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/POST runtime endpoint → request body/)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/POST runtime endpoint → response/)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/GET metadata endpoint → response/)
-    ).toBeInTheDocument();
+      screen.getAllByText(/GET → response/).length
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("seeds the URL fields with example placeholders", () => {
