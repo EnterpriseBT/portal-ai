@@ -95,11 +95,16 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
 
   // Load custom toolpacks so the picker can offer them alongside built-ins.
   const customsResult = sdk.toolpacks.list({ kind: "custom" }, { enabled: open });
+  const CustomIcon = ToolPackIconUtil.getCustomIcon();
   const customOptions: SelectOption[] = (
     customsResult.data?.toolpacks ?? []
   )
     .filter((t): t is typeof t & { kind: "custom" } => t.kind === "custom")
-    .map((p) => ({ value: `org:${p.id}`, label: p.name }));
+    .map((p) => ({
+      value: `org:${p.id}`,
+      label: p.name,
+      icon: <CustomIcon fontSize="small" />,
+    }));
   const allOptions = [...BUILTIN_TOOL_PACK_OPTIONS, ...customOptions];
 
   const collisions = useMemo(

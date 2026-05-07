@@ -209,17 +209,20 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
             value.map((option, index) => {
               const { key, ...tagProps } = getTagProps({ index });
               const label = ToolPackUtil.getLabel(option, customLabels);
-              if (option.startsWith("org:")) {
-                return (
-                  <span
-                    key={key}
-                    {...(tagProps as React.HTMLAttributes<HTMLSpanElement>)}
-                  >
-                    {label}
-                  </span>
-                );
-              }
-              return <ToolPackChip key={key} pack={option} {...tagProps} />;
+              // Custom and built-in packs use the same chip shape — the
+              // ToolPackIconUtil falls back to the Extension icon for
+              // any `org:<id>` ref, matching the puzzle-piece convention
+              // used everywhere else for custom integrations. Pass the
+              // resolved `label` so customLabels takes precedence over
+              // the slug-derived one.
+              return (
+                <ToolPackChip
+                  key={key}
+                  pack={option}
+                  label={label}
+                  {...tagProps}
+                />
+              );
             })
           }
           renderInput={(params) => (

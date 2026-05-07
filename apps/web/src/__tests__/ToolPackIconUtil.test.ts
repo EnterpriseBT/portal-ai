@@ -1,5 +1,5 @@
 import BarChartOutlined from "@mui/icons-material/BarChartOutlined";
-import HandymanOutlined from "@mui/icons-material/HandymanOutlined";
+import ExtensionOutlined from "@mui/icons-material/ExtensionOutlined";
 import HubOutlined from "@mui/icons-material/HubOutlined";
 import PaidOutlined from "@mui/icons-material/PaidOutlined";
 import StorageOutlined from "@mui/icons-material/StorageOutlined";
@@ -18,9 +18,19 @@ describe("ToolPackIconUtil.getIcon", () => {
     expect(ToolPackIconUtil.getIcon("entity_management")).toBe(HubOutlined);
   });
 
-  it("falls back to a generic tool icon for unknown packs", () => {
-    expect(ToolPackIconUtil.getIcon("unknown_pack")).toBe(HandymanOutlined);
-    expect(ToolPackIconUtil.getIcon("")).toBe(HandymanOutlined);
+  it("falls back to the Extension icon for unknown / custom packs", () => {
+    expect(ToolPackIconUtil.getIcon("unknown_pack")).toBe(ExtensionOutlined);
+    expect(ToolPackIconUtil.getIcon("")).toBe(ExtensionOutlined);
+    // Custom packs use `org:<id>` refs and share the Extension icon
+    // for visual parity with built-in chips in the station picker.
+    expect(ToolPackIconUtil.getIcon("org:abc-123")).toBe(ExtensionOutlined);
+  });
+
+  it("getCustomIcon returns the same Extension icon as the unknown-slug fallback", () => {
+    expect(ToolPackIconUtil.getCustomIcon()).toBe(ExtensionOutlined);
+    expect(ToolPackIconUtil.getCustomIcon()).toBe(
+      ToolPackIconUtil.getIcon("org:any")
+    );
   });
 
   it("returns distinct icons for each known pack", () => {

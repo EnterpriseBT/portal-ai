@@ -25,10 +25,19 @@ describe("ToolPackChip", () => {
     }
   });
 
-  it("falls back to the generic Handyman icon and raw key for unknown packs", () => {
+  it("falls back to the Extension icon and raw key for unknown packs", () => {
     render(<ToolPackChip pack="not_a_real_pack" />);
     expect(screen.getByText("not_a_real_pack")).toBeInTheDocument();
-    expect(screen.getByTestId("HandymanOutlinedIcon")).toBeInTheDocument();
+    expect(screen.getByTestId("ExtensionOutlinedIcon")).toBeInTheDocument();
+  });
+
+  it("renders custom org:<id> refs with the same Extension icon as built-in fallbacks", () => {
+    // Custom toolpacks live behind `org:<id>` refs and don't appear in
+    // TOOL_PACK_ICONS — they share the Extension icon to stay visually
+    // consistent with built-in chips in the station-dialog picker.
+    render(<ToolPackChip pack="org:abc-123" label="customer_intel" />);
+    expect(screen.getByText("customer_intel")).toBeInTheDocument();
+    expect(screen.getByTestId("ExtensionOutlinedIcon")).toBeInTheDocument();
   });
 
   it("forwards Chip props such as onDelete for use as an Autocomplete tag", () => {
