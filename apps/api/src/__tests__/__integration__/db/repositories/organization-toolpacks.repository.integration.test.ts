@@ -7,6 +7,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { eq } from "drizzle-orm";
 import postgres from "postgres";
 
 import { OrganizationToolpacksRepository } from "../../../../db/repositories/organization-toolpacks.repository.js";
@@ -160,5 +161,119 @@ describe("OrganizationToolpacksRepository Integration Tests", () => {
       db
     );
     expect(result.map((r) => r.id)).toEqual([ours.id]);
+  });
+
+  // ── authHeaders encryption (phase 5) ─────────────────────────────
+
+  /**
+   * Read the raw `auth_headers` column without going through the
+   * repository, so assertions can confirm the on-disk shape is
+   * opaque rather than the decrypted plaintext map the repository
+   * hands back.
+   */
+  async function readRawAuthHeaders(id: string): Promise<string | null> {
+    const rows = await (db as ReturnType<typeof drizzle>)
+      .select({ authHeaders: schema.organizationToolpacks.authHeaders })
+      .from(schema.organizationToolpacks)
+      .where(eq(schema.organizationToolpacks.id, id))
+      .limit(1);
+    return (rows[0]?.authHeaders ?? null) as string | null;
+  }
+
+  // Case 130
+  it("create encrypts authHeaders before insert", async () => {
+    const row = makeRow({
+      authHeaders: { Authorization: "Bearer abc123" },
+    });
+    const created = await repo.create(row as never, db);
+
+    // Repository hands back the decrypted map.
+    expect(created.authHeaders).toEqual({ Authorization: "Bearer abc123" });
+
+    // The on-disk column is an opaque ciphertext envelope.
+    const raw = await readRawAuthHeaders(created.id);
+    expect(typeof raw).toBe("string");
+    expect(raw).not.toContain("abc123");
+    expect(raw).not.toContain("Bearer");
+    const payload = JSON.parse(raw as string);
+    expect(payload).toEqual(
+      expect.objectContaining({
+        iv: expect.any(String),
+        authTag: expect.any(String),
+        data: expect.any(String),
+        v: 1,
+      })
+    );
+  });
+
+  // Case 131
+  it("findByIdScoped decrypts authHeaders on read", async () => {
+    const row = makeRow({
+      authHeaders: { Authorization: "Bearer abc123" },
+    });
+    await repo.create(row as never, db);
+
+    const found = await repo.findByIdScoped(row.id as string, orgId, db);
+    expect(found?.authHeaders).toEqual({ Authorization: "Bearer abc123" });
+  });
+
+  // Case 132
+  it("findByOrganizationId decrypts every row, preserving null", async () => {
+    const withHeaders = makeRow({
+      authHeaders: { "X-Api-Key": "k1" },
+    });
+    const withoutHeaders = makeRow({
+      id: generateId(),
+      name: "other_pack",
+      authHeaders: null,
+    });
+    await repo.create(withHeaders as never, db);
+    await repo.create(withoutHeaders as never, db);
+
+    const live = await repo.findByOrganizationId(orgId, db);
+    const byName = Object.fromEntries(live.map((r) => [r.name, r]));
+    expect(byName["customer_intel"]?.authHeaders).toEqual({
+      "X-Api-Key": "k1",
+    });
+    expect(byName["other_pack"]?.authHeaders).toBeNull();
+  });
+
+  // Case 133
+  it("update preserves the encrypted blob on no-touch and re-encrypts on touch", async () => {
+    const row = makeRow({
+      authHeaders: { "X-Api-Key": "k1" },
+    });
+    const created = await repo.create(row as never, db);
+    const blobBefore = await readRawAuthHeaders(created.id);
+    expect(blobBefore).toBeTruthy();
+
+    // (a) No-touch update on a different field — blob unchanged byte-for-byte.
+    await repo.update(created.id, { name: "renamed_pack" } as never, db);
+    const blobAfterRename = await readRawAuthHeaders(created.id);
+    expect(blobAfterRename).toBe(blobBefore);
+
+    // (b) Touch update — fresh IV + ciphertext, decrypts to the new map.
+    await repo.update(
+      created.id,
+      { authHeaders: { "X-Api-Key": "k2" } } as never,
+      db
+    );
+    const blobAfterTouch = await readRawAuthHeaders(created.id);
+    expect(blobAfterTouch).not.toBe(blobBefore);
+    const found = await repo.findByIdScoped(created.id, orgId, db);
+    expect(found?.authHeaders).toEqual({ "X-Api-Key": "k2" });
+  });
+
+  // Case 134
+  it("null authHeaders round-trip stores SQL NULL", async () => {
+    const row = makeRow({ authHeaders: null });
+    const created = await repo.create(row as never, db);
+    expect(created.authHeaders).toBeNull();
+
+    const raw = await readRawAuthHeaders(created.id);
+    expect(raw).toBeNull();
+
+    const found = await repo.findByIdScoped(created.id, orgId, db);
+    expect(found?.authHeaders).toBeNull();
   });
 });

@@ -18,13 +18,14 @@ import { organizations } from "./organizations.table.js";
  * `tools` caches the schema-endpoint response, validated against the
  * Zod model in `@portalai/core`. `metadata` caches the optional
  * metadata-endpoint response (or `null` if unconfigured / every
- * fetch failed). `auth_headers` is plain jsonb redacted on every
- * read endpoint — actual values are returned only as a presence
- * marker (`{has: true}`) on the wire.
+ * fetch failed).
  *
- * Phase 1's `station_toolpacks.organization_toolpack_id` column is
- * already in place but unconstrained; the FK is added in this
- * phase's migration once the target table exists.
+ * `auth_headers` is an opaque ciphertext blob produced by
+ * `encryptCredentials()` (AES-256-GCM, see `utils/crypto.util.ts`).
+ * The repository decrypts on every read so route handlers and
+ * `tools.service` see a `Record<string, string> | null` plaintext
+ * map. API responses still redact to `{has: true/false}` —
+ * plaintext never crosses the API boundary.
  */
 export const organizationToolpacks = pgTable(
   "organization_toolpacks",
@@ -38,7 +39,7 @@ export const organizationToolpacks = pgTable(
     endpoints: jsonb("endpoints")
       .$type<{ schema: string; runtime: string; metadata?: string }>()
       .notNull(),
-    authHeaders: jsonb("auth_headers").$type<Record<string, string> | null>(),
+    authHeaders: text("auth_headers"),
     tools: jsonb("tools")
       .$type<
         Array<{

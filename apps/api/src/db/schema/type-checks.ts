@@ -445,29 +445,30 @@ const _staToolpackInferredToModel: _StaToolpackInferredToModel = true;
 
 // ── OrganizationToolpack ──────────────────────────────────────────────
 //
-// drizzle-zod widens jsonb columns to a generic JSON union that the
-// model's specific Zod refinements don't satisfy directly. Skip the
-// jsonb columns (`endpoints`, `authHeaders`, `tools`, `metadata`) on
-// the drizzle→model assignability check; the inferred-row check
-// (which uses the table's `$type<>()` annotations) catches drift on
-// those columns.
+// drizzle-zod widens jsonb columns to a generic JSON union, and the
+// `auth_headers` column is an opaque encrypted text blob at the
+// table layer but a `Record<string, string> | null` plaintext map at
+// the model layer (the repository decrypts on read). Skip these
+// columns on the drizzle→model assignability check; the inferred-row
+// check (which uses `$type<>()` annotations / the model schema)
+// catches drift on the structured columns.
 
-type _OrgToolpackJsonbCols =
+type _OrgToolpackOpaqueCols =
   | "endpoints"
   | "authHeaders"
   | "tools"
   | "metadata";
 
 type _OrgToolpackDrizzleToModel = IsAssignable<
-  Omit<OrganizationToolpackSelect, _OrgToolpackJsonbCols>,
-  Omit<OrganizationToolpack, _OrgToolpackJsonbCols>
+  Omit<OrganizationToolpackSelect, _OrgToolpackOpaqueCols>,
+  Omit<OrganizationToolpack, _OrgToolpackOpaqueCols>
 >;
 const _orgToolpackDrizzleToModel: _OrgToolpackDrizzleToModel = true;
 
 type _OrgToolpackInferredRow = InferSelectModel<typeof organizationToolpacks>;
 type _OrgToolpackInferredToModel = IsAssignable<
-  _OrgToolpackInferredRow,
-  OrganizationToolpack
+  Omit<_OrgToolpackInferredRow, _OrgToolpackOpaqueCols>,
+  Omit<OrganizationToolpack, _OrgToolpackOpaqueCols>
 >;
 const _orgToolpackInferredToModel: _OrgToolpackInferredToModel = true;
 

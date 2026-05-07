@@ -530,4 +530,65 @@ describe("Toolpacks Router", () => {
       expect(res.body.payload.toolpack.kind).toBe("custom");
     });
   });
+
+  describe("authHeaders never leak through the API (phase 5)", () => {
+    // Case 135 — end-to-end encryption-at-rest contract.
+    //
+    // A registered toolpack's auth header value must not appear in
+    // any API response body, and the on-disk `auth_headers` column
+    // must hold an opaque ciphertext envelope rather than the
+    // plaintext map. Distinctive token strings make the substring
+    // checks unambiguous.
+    it("redacts on POST + GET responses and stores ciphertext on disk", async () => {
+      const SECRET = "secret-token-xyz-135";
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+
+      const post = await request(app)
+        .post("/api/toolpacks")
+        .send({
+          ...VALID_REGISTER_BODY,
+          authHeaders: { Authorization: `Bearer ${SECRET}` },
+        });
+      expect(post.status).toBe(201);
+      expect(post.body.payload.toolpack.authHeadersStatus.has).toBe(true);
+      expect(JSON.stringify(post.body)).not.toContain(SECRET);
+
+      const id = post.body.payload.toolpack.id as string;
+
+      const detail = await request(app).get(`/api/toolpacks/${id}`);
+      expect(detail.status).toBe(200);
+      expect(detail.body.payload.toolpack.authHeadersStatus.has).toBe(true);
+      expect(JSON.stringify(detail.body)).not.toContain(SECRET);
+
+      const list = await request(app).get("/api/toolpacks?kind=custom");
+      expect(list.status).toBe(200);
+      expect(JSON.stringify(list.body)).not.toContain(SECRET);
+
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select({
+          authHeaders: schema.organizationToolpacks.authHeaders,
+        })
+        .from(schema.organizationToolpacks)
+        .where(
+          and(
+            eq(schema.organizationToolpacks.id, id),
+            isNull(schema.organizationToolpacks.deleted)
+          )
+        )
+        .limit(1);
+      const raw = rows[0]?.authHeaders ?? null;
+      expect(typeof raw).toBe("string");
+      expect(raw).not.toContain(SECRET);
+      expect(raw).not.toContain("Bearer");
+      const payload = JSON.parse(raw as string);
+      expect(payload).toEqual(
+        expect.objectContaining({
+          iv: expect.any(String),
+          authTag: expect.any(String),
+          data: expect.any(String),
+          v: 1,
+        })
+      );
+    });
+  });
 });

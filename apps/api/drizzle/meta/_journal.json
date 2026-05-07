@@ -351,6 +351,13 @@
       "when": 1779062400000,
       "tag": "0049_add_organization_toolpacks",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1779148800000,
+      "tag": "0050_encrypt_toolpack_auth_headers",
+      "breakpoints": true
     }
   ]
 }
