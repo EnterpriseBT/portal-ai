@@ -140,6 +140,7 @@ describe("ToolpacksUI", () => {
         runtime: "https://example.com/runtime",
       },
       authHeadersStatus: { has: false },
+      signingSecretStatus: { has: true },
       schemaFetchedAt: Date.now(),
       metadataFetchedAt: null,
     };

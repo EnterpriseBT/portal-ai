@@ -82,6 +82,9 @@ describe("OrganizationToolpacksRepository Integration Tests", () => {
         runtime: "https://example.com/runtime",
       },
       authHeaders: null,
+      // Phase-6 column: provide a `whsec_*` plaintext so the repository's
+      // encryptInsert helper recognises it and writes the encrypted blob.
+      signingSecret: "whsec_test_fixture_default",
       tools: [
         {
           name: "lookup_company",
@@ -275,5 +278,84 @@ describe("OrganizationToolpacksRepository Integration Tests", () => {
 
     const found = await repo.findByIdScoped(created.id, orgId, db);
     expect(found?.authHeaders).toBeNull();
+  });
+
+  // ── signingSecret encryption (phase 6) ───────────────────────────
+
+  /**
+   * Read the raw `signing_secret` column without going through the
+   * repository, mirroring `readRawAuthHeaders`.
+   */
+  async function readRawSigningSecret(id: string): Promise<string> {
+    const rows = await (db as ReturnType<typeof drizzle>)
+      .select({ signingSecret: schema.organizationToolpacks.signingSecret })
+      .from(schema.organizationToolpacks)
+      .where(eq(schema.organizationToolpacks.id, id))
+      .limit(1);
+    return rows[0]!.signingSecret;
+  }
+
+  // Case 149
+  it("create encrypts signingSecret before insert", async () => {
+    const row = makeRow({ signingSecret: "whsec_test149" });
+    const created = await repo.create(row as never, db);
+
+    // Repository hands back the decrypted plaintext.
+    expect(created.signingSecret).toBe("whsec_test149");
+
+    // The on-disk column is an opaque ciphertext envelope.
+    const raw = await readRawSigningSecret(created.id);
+    expect(typeof raw).toBe("string");
+    expect(raw).not.toContain("whsec_test149");
+    expect(raw).not.toContain("test149");
+    const payload = JSON.parse(raw);
+    expect(payload).toEqual(
+      expect.objectContaining({
+        iv: expect.any(String),
+        authTag: expect.any(String),
+        data: expect.any(String),
+        v: 1,
+      })
+    );
+  });
+
+  // Case 150
+  it("findByOrganizationId decrypts signingSecret on every row", async () => {
+    const a = makeRow({ signingSecret: "whsec_pack_A" });
+    const b = makeRow({
+      id: generateId(),
+      name: "other_pack",
+      signingSecret: "whsec_pack_B",
+    });
+    await repo.create(a as never, db);
+    await repo.create(b as never, db);
+
+    const live = await repo.findByOrganizationId(orgId, db);
+    const byName = Object.fromEntries(live.map((r) => [r.name, r]));
+    expect(byName["customer_intel"]?.signingSecret).toBe("whsec_pack_A");
+    expect(byName["other_pack"]?.signingSecret).toBe("whsec_pack_B");
+  });
+
+  // Case 151
+  it("rotation: update with a new plaintext re-encrypts; old value unrecoverable", async () => {
+    const row = makeRow({ signingSecret: "whsec_old" });
+    const created = await repo.create(row as never, db);
+    const blobBefore = await readRawSigningSecret(created.id);
+    expect(blobBefore).toBeTruthy();
+
+    await repo.update(
+      created.id,
+      { signingSecret: "whsec_new" } as never,
+      db
+    );
+
+    const blobAfter = await readRawSigningSecret(created.id);
+    expect(blobAfter).not.toBe(blobBefore);
+
+    const found = await repo.findByIdScoped(created.id, orgId, db);
+    expect(found?.signingSecret).toBe("whsec_new");
+
+    // The old plaintext is no longer recoverable from the new blob.
+    expect(blobAfter).not.toContain("whsec_old");
   });
 });

@@ -51,6 +51,17 @@ export const AuthHeadersStatusSchema = z.object({
 });
 export type AuthHeadersStatus = z.infer<typeof AuthHeadersStatusSchema>;
 
+/**
+ * Signing-secret presence marker. The plaintext is returned only on
+ * the registration response and on rotation — every other read
+ * returns `{ has: true }` (always true post-phase-6 because the
+ * column is NOT NULL on the DB side).
+ */
+export const SigningSecretStatusSchema = z.object({
+  has: z.boolean(),
+});
+export type SigningSecretStatus = z.infer<typeof SigningSecretStatusSchema>;
+
 export const CustomToolpackRecordSchema = z.object({
   id: z.string(),
   kind: z.literal("custom"),
@@ -61,6 +72,7 @@ export const CustomToolpackRecordSchema = z.object({
   tools: z.array(ToolpackToolSchema),
   endpoints: ToolpackEndpointsSchema,
   authHeadersStatus: AuthHeadersStatusSchema,
+  signingSecretStatus: SigningSecretStatusSchema,
   schemaFetchedAt: z.number(),
   metadataFetchedAt: z.number().nullable(),
 });
@@ -126,9 +138,27 @@ export type UpdateToolpackBody = z.infer<typeof UpdateToolpackBodySchema>;
 
 export const ToolpackRegisterResponsePayloadSchema = z.object({
   toolpack: CustomToolpackRecordSchema,
+  /**
+   * The freshly-generated signing secret, surfaced exactly once on
+   * registration. Subsequent GET / PATCH / refresh responses omit
+   * this field entirely; admins who lose the secret rotate via
+   * `POST /api/toolpacks/:id/rotate-signing-secret` to view it
+   * again. Slice 5 in PR 2 of phase 6 wires this through the route.
+   */
+  signingSecret: z.string().optional(),
 });
 export type ToolpackRegisterResponsePayload = z.infer<
   typeof ToolpackRegisterResponsePayloadSchema
+>;
+
+/** Response for `POST /api/toolpacks/:id/rotate-signing-secret`. */
+export const ToolpackRotateSigningSecretResponsePayloadSchema = z.object({
+  id: z.string(),
+  signingSecret: z.string(),
+  rotatedAt: z.number(),
+});
+export type ToolpackRotateSigningSecretResponsePayload = z.infer<
+  typeof ToolpackRotateSigningSecretResponsePayloadSchema
 >;
 
 export const ToolpackUpdateResponsePayloadSchema = z.object({

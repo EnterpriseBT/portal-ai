@@ -39,6 +39,21 @@ export const environment = {
   TAVILY_API_KEY: process.env.TAVILY_API_KEY,
   // Encryption key for securing sensitive data at rest (base64-encoded, 32 bytes)
   ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+  // ── Toolpack outbound webhook hardening (phase 6)
+  // Maximum size of a runtime response body before the call aborts.
+  // Schema/metadata cap stays at 256 KB (declared inline in
+  // toolpack-registration.service.ts); runtime bodies can carry
+  // larger results so default is 1 MB.
+  TOOLPACK_RUNTIME_MAX_RESPONSE_BYTES: parseInt(
+    process.env.TOOLPACK_RUNTIME_MAX_RESPONSE_BYTES || String(1024 * 1024),
+    10
+  ),
+  // Emergency rollback flags. Both default false. Flip via env to
+  // disable without redeploying: SSRF agent stops resolving+filtering
+  // outbound IPs; signing stops appending HMAC headers. The static
+  // URL refinement at registration is unaffected by either flag.
+  TOOLPACK_DISABLE_SSRF_FILTER: process.env.TOOLPACK_DISABLE_SSRF_FILTER === "true",
+  TOOLPACK_DISABLE_SIGNING: process.env.TOOLPACK_DISABLE_SIGNING === "true",
   // ── Google OAuth (Phase A: docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md)
   //    Per-env Google OAuth2 client used by the google-sheets connector.
   //    OAUTH_STATE_SECRET is a separate HMAC key used only to sign the

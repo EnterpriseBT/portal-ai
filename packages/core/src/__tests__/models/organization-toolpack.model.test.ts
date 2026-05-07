@@ -23,6 +23,7 @@ function validBase() {
       runtime: "https://example.com/runtime",
     },
     authHeaders: null,
+    signingSecret: "whsec_test_fixture",
     tools: [
       {
         name: "lookup_company",

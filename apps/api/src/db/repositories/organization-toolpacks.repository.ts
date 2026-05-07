@@ -10,12 +10,26 @@
  * to expand custom rows in `station_toolpacks` into actual
  * `WebhookTool` instances.
  *
- * The `auth_headers` column is stored as an opaque AES-256-GCM
- * ciphertext blob (see `utils/crypto.util.ts`). Every read path on
- * this repository decrypts the column transparently so callers
- * continue to see a plaintext `Record<string, string> | null` map;
- * every write path encrypts before insert/update. Repository users
- * never call `encryptCredentials` / `decryptCredentials` directly.
+ * Two columns are stored as opaque AES-256-GCM ciphertext blobs
+ * (see `utils/crypto.util.ts`):
+ *   - `auth_headers` — user-supplied auth header map (phase 5).
+ *   - `signing_secret` — per-toolpack HMAC signing secret used to
+ *     sign every outbound webhook call (phase 6). Stored wrapped
+ *     in `{ value: <plaintext> }` so it conforms to
+ *     `encryptCredentials`'s `Record<string, unknown>` signature.
+ *
+ * Every read path decrypts both columns transparently so callers
+ * see plaintext (a `Record<string, string> | null` map for auth
+ * headers, a `string` for the signing secret); every write path
+ * encrypts before insert/update. Repository users never call
+ * `encryptCredentials` / `decryptCredentials` directly.
+ *
+ * The signing-secret migration (0051) inserts a sentinel value for
+ * pre-existing rows; the companion `migrate-signing-secrets.ts`
+ * script replaces those sentinels with real encrypted secrets. If
+ * a sentinel ever reaches `decryptRow` (script not run), the
+ * helper throws `TOOLPACK_SIGNING_SECRET_NOT_INITIALIZED` rather
+ * than handing the sentinel string out as a "secret."
  */
 
 import { and, eq, inArray, isNull, type SQL } from "drizzle-orm";
@@ -38,44 +52,88 @@ import {
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-/** Decrypt the `authHeaders` column of a single row (if present). */
-function decryptRow<T extends { authHeaders: string | null }>(
+/** Sentinel value the SQL migration inserts for pre-existing rows. */
+const SIGNING_SECRET_SENTINEL = "__pending_phase6_rotation__";
+
+/** Decrypt the `authHeaders` and `signingSecret` columns of a single row. */
+function decryptRow<
+  T extends { authHeaders: string | null; signingSecret: string }
+>(
   row: T
-): T & { authHeaders: Record<string, string> | null } {
+): T & {
+  authHeaders: Record<string, string> | null;
+  signingSecret: string;
+} {
+  if (row.signingSecret === SIGNING_SECRET_SENTINEL) {
+    throw new Error(
+      "TOOLPACK_SIGNING_SECRET_NOT_INITIALIZED: row " +
+        `${(row as unknown as { id?: string }).id ?? "<unknown>"} ` +
+        "has the migration sentinel — run scripts:migrate-signing-secrets."
+    );
+  }
+  const signingPayload = decryptCredentials(row.signingSecret) as {
+    value: string;
+  };
   return {
     ...row,
     authHeaders: row.authHeaders
       ? (decryptCredentials(row.authHeaders) as Record<string, string>)
       : null,
+    signingSecret: signingPayload.value,
   };
 }
 
-/** Decrypt authHeaders on an array of rows. */
-function decryptRows<T extends { authHeaders: string | null }>(
+/** Decrypt the encrypted columns on an array of rows. */
+function decryptRows<
+  T extends { authHeaders: string | null; signingSecret: string }
+>(
   rows: T[]
-): (T & { authHeaders: Record<string, string> | null })[] {
+): (T & {
+  authHeaders: Record<string, string> | null;
+  signingSecret: string;
+})[] {
   return rows.map(decryptRow);
 }
 
 /**
- * Encrypt a plaintext authHeaders map into the format stored in the DB.
+ * Encrypt plaintext `authHeaders` and `signingSecret` into the format
+ * stored in the DB.
  *
- * Accepts `Record<string, string> | string | null` so partial updates
- * that omit `authHeaders` typecheck cleanly: when the caller leaves
- * the field undefined or already-encrypted, we don't re-encrypt.
+ * Both fields accept either the plaintext shape or a string (the
+ * pre-encrypted ciphertext) — partial updates that omit a field
+ * leave the prior ciphertext untouched. The plaintext shape is
+ * `Record<string, string>` for authHeaders and `string` (with the
+ * `whsec_` prefix) for signingSecret; both are detected by their
+ * runtime type rather than the schema-declared TS type.
  */
 function encryptInsert<
-  T extends { authHeaders?: Record<string, string> | string | null }
+  T extends {
+    authHeaders?: Record<string, string> | string | null;
+    signingSecret?: string;
+  }
 >(data: T): T {
-  if (data.authHeaders != null && typeof data.authHeaders === "object") {
-    return {
-      ...data,
+  let next: T = data;
+  if (next.authHeaders != null && typeof next.authHeaders === "object") {
+    next = {
+      ...next,
       authHeaders: encryptCredentials(
-        data.authHeaders as Record<string, unknown>
+        next.authHeaders as Record<string, unknown>
       ),
     } as T;
   }
-  return data;
+  // A signing secret in plaintext starts with "whsec_". A re-supplied
+  // ciphertext blob is opaque base64 JSON; we recognise it by the
+  // absence of the prefix and pass it through unchanged.
+  if (
+    typeof next.signingSecret === "string" &&
+    next.signingSecret.startsWith("whsec_")
+  ) {
+    next = {
+      ...next,
+      signingSecret: encryptCredentials({ value: next.signingSecret }),
+    } as T;
+  }
+  return next;
 }
 
 // ── Repository ────────────────────────────────────────────────────

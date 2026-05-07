@@ -34,6 +34,7 @@ import { BUILTIN_TOOL_NAMES } from "../services/tools.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { eq, and, isNull } from "drizzle-orm";
 import { stationToolpacks } from "../db/schema/index.js";
+import { generateSigningSecret } from "../utils/webhook-signing.util.js";
 
 const logger = createLogger({ module: "toolpacks" });
 
@@ -68,6 +69,9 @@ function toCustomApiRecord(row: OrganizationToolpack): CustomToolpackRecord {
         row.authHeaders !== null &&
         Object.keys(row.authHeaders).length > 0,
     },
+    // signingSecret is NOT NULL post-phase-6, so presence is always
+    // true; the field exists for forward-compat with future shapes.
+    signingSecretStatus: { has: true },
     schemaFetchedAt: row.schemaFetchedAt,
     metadataFetchedAt: row.metadataFetchedAt,
   };
@@ -344,6 +348,7 @@ toolpacksRouter.post(
         : null;
 
       const now = Date.now();
+      const signingSecret = generateSigningSecret();
       const factory = new OrganizationToolpackModelFactory();
       const model = factory.create(userId);
       model.update({
@@ -352,6 +357,7 @@ toolpacksRouter.post(
         description: description ?? null,
         endpoints,
         authHeaders: authHeaders ?? null,
+        signingSecret,
         tools,
         metadata,
         schemaFetchedAt: now,

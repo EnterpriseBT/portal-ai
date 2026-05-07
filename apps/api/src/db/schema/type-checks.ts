@@ -456,6 +456,7 @@ const _staToolpackInferredToModel: _StaToolpackInferredToModel = true;
 type _OrgToolpackOpaqueCols =
   | "endpoints"
   | "authHeaders"
+  | "signingSecret"
   | "tools"
   | "metadata";
 

@@ -49,6 +49,7 @@ const VALID_CUSTOM = {
     runtime: "https://example.com/runtime",
   },
   authHeadersStatus: { has: false },
+  signingSecretStatus: { has: true },
   schemaFetchedAt: Date.now(),
   metadataFetchedAt: null,
 };
@@ -228,5 +229,58 @@ describe("ToolpackListRequestQuerySchema", () => {
 
   it("accepts an empty query object", () => {
     expect(ToolpackListRequestQuerySchema.safeParse({}).success).toBe(true);
+  });
+});
+
+describe("ToolpackEndpointsSchema URL refinement (phase 6)", () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
+  });
+
+  // Case 148
+  it("rejects http URLs in production but accepts http://localhost in non-production", () => {
+    process.env.NODE_ENV = "production";
+    const prodResult = RegisterToolpackBodySchema.safeParse({
+      name: "customer_intel",
+      endpoints: {
+        schema: "http://example.com/schema",
+        runtime: "http://example.com/runtime",
+      },
+    });
+    expect(prodResult.success).toBe(false);
+    if (!prodResult.success) {
+      const codes = prodResult.error.issues
+        .map((i) => (i as { params?: { code?: string } }).params?.code)
+        .filter(Boolean);
+      expect(codes).toContain("TOOLPACK_URL_NOT_HTTPS");
+    }
+
+    process.env.NODE_ENV = "development";
+    const devResult = RegisterToolpackBodySchema.safeParse({
+      name: "customer_intel",
+      endpoints: {
+        schema: "http://localhost:4100/schema",
+        runtime: "http://localhost:4100/runtime",
+      },
+    });
+    expect(devResult.success).toBe(true);
+
+    // Raw IP literal in private range — rejected regardless of env.
+    process.env.NODE_ENV = "production";
+    const privateIp = RegisterToolpackBodySchema.safeParse({
+      name: "customer_intel",
+      endpoints: {
+        schema: "https://10.0.0.5/schema",
+        runtime: "https://10.0.0.5/runtime",
+      },
+    });
+    expect(privateIp.success).toBe(false);
+    if (!privateIp.success) {
+      const codes = privateIp.error.issues
+        .map((i) => (i as { params?: { code?: string } }).params?.code)
+        .filter(Boolean);
+      expect(codes).toContain("TOOLPACK_URL_PRIVATE_HOST");
+    }
   });
 });

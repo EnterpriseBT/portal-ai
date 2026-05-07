@@ -40,6 +40,7 @@ const customPack: Toolpack = {
     runtime: "https://example.com/runtime",
   },
   authHeadersStatus: { has: false },
+  signingSecretStatus: { has: true },
   schemaFetchedAt: 1700000000000,
   metadataFetchedAt: null,
 };

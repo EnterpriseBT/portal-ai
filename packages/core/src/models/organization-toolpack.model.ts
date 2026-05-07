@@ -26,10 +26,23 @@ export const TOOLPACK_SLUG_REGEX = /^[a-z][a-z0-9_]{0,62}$/;
 
 // ── Endpoint shape ──────────────────────────────────────────────────
 
+import { validateToolpackUrl } from "../utils/toolpack-url-safety.util.js";
+
+const ToolpackUrlSchema = z.string().url().superRefine((url, ctx) => {
+  const err = validateToolpackUrl(url);
+  if (err) {
+    ctx.addIssue({
+      code: "custom",
+      message: err.message,
+      params: { code: err.code },
+    });
+  }
+});
+
 export const ToolpackEndpointsSchema = z.object({
-  schema: z.string().url(),
-  runtime: z.string().url(),
-  metadata: z.string().url().optional(),
+  schema: ToolpackUrlSchema,
+  runtime: ToolpackUrlSchema,
+  metadata: ToolpackUrlSchema.optional(),
 });
 export type ToolpackEndpoints = z.infer<typeof ToolpackEndpointsSchema>;
 
@@ -73,6 +86,12 @@ export const OrganizationToolpackSchema = CoreSchema.extend({
   description: z.string().nullable(),
   endpoints: ToolpackEndpointsSchema,
   authHeaders: z.record(z.string(), z.string()).nullable(),
+  // Phase 6: per-toolpack HMAC signing secret. Plaintext at the
+  // model layer (`whsec_*` from `generateSigningSecret()`); the
+  // repository encrypts before insert and decrypts on every read.
+  // Surfaced to admins only on the registration response and on
+  // rotation; encrypted-at-rest otherwise.
+  signingSecret: z.string(),
   tools: z.array(ToolpackToolDefinitionSchema).min(1).max(32),
   metadata: ToolpackMetadataSchema.nullable(),
   schemaFetchedAt: z.number(),

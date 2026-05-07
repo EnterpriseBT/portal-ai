@@ -59,6 +59,7 @@ function buildCustom(overrides: {
       runtime: "https://example.com/runtime",
     },
     authHeadersStatus: { has: false },
+    signingSecretStatus: { has: true },
     schemaFetchedAt: 0,
     metadataFetchedAt: null,
   };

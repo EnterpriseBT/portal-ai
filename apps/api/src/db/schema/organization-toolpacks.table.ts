@@ -26,6 +26,14 @@ import { organizations } from "./organizations.table.js";
  * `tools.service` see a `Record<string, string> | null` plaintext
  * map. API responses still redact to `{has: true/false}` —
  * plaintext never crosses the API boundary.
+ *
+ * `signing_secret` follows the same encrypted-at-rest pattern.
+ * Generated server-side at registration (Stripe-style `whsec_*`),
+ * surfaced once in the registration response, then never returned
+ * by GET endpoints. Used to HMAC every outbound webhook call so
+ * toolpack servers can verify the request came from us. Rotation
+ * via POST /api/toolpacks/:id/rotate-signing-secret invalidates the
+ * old secret immediately and returns a fresh one once.
  */
 export const organizationToolpacks = pgTable(
   "organization_toolpacks",
@@ -40,6 +48,7 @@ export const organizationToolpacks = pgTable(
       .$type<{ schema: string; runtime: string; metadata?: string }>()
       .notNull(),
     authHeaders: text("auth_headers"),
+    signingSecret: text("signing_secret").notNull(),
     tools: jsonb("tools")
       .$type<
         Array<{

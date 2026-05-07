@@ -33,6 +33,7 @@
     "db:seed:ci": "node dist/db/seed.js",
     "db:reset:hard": "dotenv -e .env -- tsx src/db/reset-hard.ts",
     "db:reset": "dotenv -e .env -- tsx src/db/reset.ts",
+    "scripts:migrate-signing-secrets": "dotenv -e .env -- tsx src/scripts/migrate-signing-secrets.ts",
     "cli": "bash ./scripts/api-cli.sh",
     "db:tunnel": "bash ./scripts/api-cli.sh db tunnel",
     "tunnel": "dotenv -e .env -- ngrok http 3001"
@@ -58,6 +59,7 @@
     "express-oauth2-jwt-bearer": "^1.6.0",
     "financial": "^0.2.4",
     "ioredis": "^5.10.0",
+    "ipaddr.js": "^1.9.1",
     "ml-kmeans": "^7.0.0",
     "ollama-ai-provider-v2": "^3.3.1",
     "pino": "^10.3.1",
