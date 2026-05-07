@@ -32,7 +32,7 @@ import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { DeleteStationDialog } from "../components/DeleteStationDialog.component";
 import { EditStationDialog } from "../components/EditStationDialog.component";
 import { SyncTotal } from "../components/SyncTotal.component";
-import { ToolPackChip } from "../components/ToolPackChip.component";
+import { ToolPackChipWithMetadata } from "../components/ToolPackChipWithMetadata.component";
 import {
   usePagination,
   PaginationToolbar,
@@ -210,7 +210,10 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                               >
                                 {(station.enabledToolpacks ?? []).map(
                                   (pack: string) => (
-                                    <ToolPackChip key={pack} pack={pack} />
+                                    <ToolPackChipWithMetadata
+                                      key={pack}
+                                      pack={pack}
+                                    />
                                   )
                                 )}
                               </Stack>

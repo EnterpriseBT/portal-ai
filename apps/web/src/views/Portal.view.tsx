@@ -26,7 +26,7 @@ import DataResult from "../components/DataResult.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { FormAlert } from "../components/FormAlert.component";
 import { PortalSession } from "../components/PortalSession.component";
-import { ToolPackChip } from "../components/ToolPackChip.component";
+import { ToolPackChipWithMetadata } from "../components/ToolPackChipWithMetadata.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError, type ServerError } from "../utils/api.util";
 import { focusFirstInvalidField } from "../utils/form-validation.util";
@@ -191,7 +191,7 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
           value: (
             <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
               {toolPacks.map((pack) => (
-                <ToolPackChip key={pack} pack={pack} />
+                <ToolPackChipWithMetadata key={pack} pack={pack} />
               ))}
             </Stack>
           ),

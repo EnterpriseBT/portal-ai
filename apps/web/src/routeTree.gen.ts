@@ -227,6 +227,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/stations': typeof StationsRouteWithChildren
   '/tags': typeof TagsRouteWithChildren
+  '/toolpacks': typeof ToolpacksRouteWithChildren
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
@@ -244,6 +245,7 @@ export interface FileRoutesByFullPath {
   '/portal-results/': typeof PortalResultsIndexRoute
   '/stations/': typeof StationsIndexRoute
   '/tags/': typeof TagsIndexRoute
+  '/toolpacks/': typeof ToolpacksIndexRoute
   '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
   '/entities/$entityId/records/$recordId': typeof EntitiesEntityIdRecordsRecordIdRoute
 }
@@ -267,6 +269,7 @@ export interface FileRoutesByTo {
   '/portal-results': typeof PortalResultsIndexRoute
   '/stations': typeof StationsIndexRoute
   '/tags': typeof TagsIndexRoute
+  '/toolpacks': typeof ToolpacksIndexRoute
   '/entities/$entityId': typeof EntitiesEntityIdIndexRoute
   '/entities/$entityId/records/$recordId': typeof EntitiesEntityIdRecordsRecordIdRoute
 }
@@ -284,6 +287,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/stations': typeof StationsRouteWithChildren
   '/tags': typeof TagsRouteWithChildren
+  '/toolpacks': typeof ToolpacksRouteWithChildren
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
@@ -301,6 +305,7 @@ export interface FileRoutesById {
   '/portal-results/': typeof PortalResultsIndexRoute
   '/stations/': typeof StationsIndexRoute
   '/tags/': typeof TagsIndexRoute
+  '/toolpacks/': typeof ToolpacksIndexRoute
   '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
   '/entities/$entityId/records/$recordId': typeof EntitiesEntityIdRecordsRecordIdRoute
 }
@@ -319,6 +324,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/stations'
     | '/tags'
+    | '/toolpacks'
     | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
     | '/entities/$entityId'
@@ -336,6 +342,7 @@ export interface FileRouteTypes {
     | '/portal-results/'
     | '/stations/'
     | '/tags/'
+    | '/toolpacks/'
     | '/entities/$entityId/'
     | '/entities/$entityId/records/$recordId'
   fileRoutesByTo: FileRoutesByTo
@@ -359,6 +366,7 @@ export interface FileRouteTypes {
     | '/portal-results'
     | '/stations'
     | '/tags'
+    | '/toolpacks'
     | '/entities/$entityId'
     | '/entities/$entityId/records/$recordId'
   id:
@@ -375,6 +383,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/stations'
     | '/tags'
+    | '/toolpacks'
     | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
     | '/entities/$entityId'
@@ -392,6 +401,7 @@ export interface FileRouteTypes {
     | '/portal-results/'
     | '/stations/'
     | '/tags/'
+    | '/toolpacks/'
     | '/entities/$entityId/'
     | '/entities/$entityId/records/$recordId'
   fileRoutesById: FileRoutesById
@@ -409,6 +419,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   StationsRoute: typeof StationsRouteWithChildren
   TagsRoute: typeof TagsRouteWithChildren
+  ToolpacksRoute: typeof ToolpacksRouteWithChildren
   PortalsPortalIdRoute: typeof PortalsPortalIdRoute
 }
 
@@ -420,13 +431,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/toolpacks'
       preLoaderRoute: typeof ToolpacksRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/toolpacks/': {
-      id: '/toolpacks/'
-      path: '/'
-      fullPath: '/toolpacks/'
-      preLoaderRoute: typeof ToolpacksIndexRouteImport
-      parentRoute: typeof ToolpacksRoute
     }
     '/tags': {
       id: '/tags'
@@ -511,6 +515,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/toolpacks/': {
+      id: '/toolpacks/'
+      path: '/'
+      fullPath: '/toolpacks/'
+      preLoaderRoute: typeof ToolpacksIndexRouteImport
+      parentRoute: typeof ToolpacksRoute
     }
     '/tags/': {
       id: '/tags/'
@@ -777,6 +788,18 @@ const TagsRouteChildren: TagsRouteChildren = {
 
 const TagsRouteWithChildren = TagsRoute._addFileChildren(TagsRouteChildren)
 
+interface ToolpacksRouteChildren {
+  ToolpacksIndexRoute: typeof ToolpacksIndexRoute
+}
+
+const ToolpacksRouteChildren: ToolpacksRouteChildren = {
+  ToolpacksIndexRoute: ToolpacksIndexRoute,
+}
+
+const ToolpacksRouteWithChildren = ToolpacksRoute._addFileChildren(
+  ToolpacksRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ColumnDefinitionsRoute: ColumnDefinitionsRouteWithChildren,
@@ -790,6 +813,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   StationsRoute: StationsRouteWithChildren,
   TagsRoute: TagsRouteWithChildren,
+  ToolpacksRoute: ToolpacksRouteWithChildren,
   PortalsPortalIdRoute: PortalsPortalIdRoute,
 }
 export const routeTree = rootRouteImport

@@ -3,10 +3,18 @@ import { jest } from "@jest/globals";
 // ── Mocks ────────────────────────────────────────────────────────────
 
 const mockStationsGet = jest.fn();
+const mockToolpacksList = jest.fn(() => ({
+  data: undefined,
+  isLoading: true,
+  isError: false,
+  isSuccess: false,
+  error: null,
+}));
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     stations: { get: mockStationsGet },
+    toolpacks: { list: mockToolpacksList },
   },
   queryKeys: {},
 }));
