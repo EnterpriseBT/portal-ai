@@ -19,6 +19,14 @@ jest.unstable_mockModule("../../utils/logger.util.js", () => ({
   }),
 }));
 
+// Skip SSRF DNS resolution in unit tests — assertUrlSafeToFetch
+// would otherwise hit real DNS for the test fixture URLs.
+jest.unstable_mockModule("../../utils/url-safety.util.js", () => ({
+  assertUrlSafeToFetch: async () => undefined,
+  SsrfBlockedError: class SsrfBlockedError extends Error {},
+  validateToolpackUrl: () => null,
+}));
+
 const { ToolpackRegistrationService } = await import(
   "../../services/toolpack-registration.service.js"
 );
@@ -281,6 +289,57 @@ describe("ToolpackRegistrationService", () => {
           BUILTIN_NAMES
         )
       ).not.toThrow();
+    });
+  });
+
+  // ── Phase 6: HMAC outbound signing ─────────────────────────────────
+
+  describe("HMAC outbound signing", () => {
+    // Case 152
+    it("fetchSchema sends X-Portalai-* signing headers when given a secret", async () => {
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+      const secret = "whsec_test152";
+      await ToolpackRegistrationService.fetchSchema(
+        "https://example.com/schema",
+        undefined,
+        secret
+      );
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [, options] = mockFetch.mock.calls[0]!;
+      const headers = (options as { headers: Record<string, string> }).headers;
+
+      expect(headers["X-Portalai-Webhook-Id"]).toMatch(/^[0-9a-f-]{36}$/);
+      expect(headers["X-Portalai-Timestamp"]).toMatch(/^\d+$/);
+      expect(headers["X-Portalai-Signature"]).toMatch(/^v1=[0-9a-f]{64}$/);
+
+      // Independently recompute the signature over `<ts>.<id>.<""body>` —
+      // GETs sign over the empty body — and assert byte-equality.
+      const ts = headers["X-Portalai-Timestamp"];
+      const id = headers["X-Portalai-Webhook-Id"];
+      const sig = headers["X-Portalai-Signature"]!.replace(/^v1=/, "");
+      const crypto = await import("crypto");
+      const expected = crypto
+        .createHmac("sha256", secret)
+        .update(`${ts}.${id}.`)
+        .digest("hex");
+      expect(sig).toBe(expected);
+    });
+
+    // Case 153
+    it("fetchSchema omits signing headers when no secret is provided", async () => {
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+      await ToolpackRegistrationService.fetchSchema(
+        "https://example.com/schema",
+        undefined,
+        undefined
+      );
+
+      const [, options] = mockFetch.mock.calls[0]!;
+      const headers = (options as { headers: Record<string, string> }).headers;
+      expect(headers["X-Portalai-Webhook-Id"]).toBeUndefined();
+      expect(headers["X-Portalai-Timestamp"]).toBeUndefined();
+      expect(headers["X-Portalai-Signature"]).toBeUndefined();
     });
   });
 });

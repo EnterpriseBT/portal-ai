@@ -22,6 +22,7 @@ import {
   type ToolpackRegisterResponsePayload,
   type ToolpackUpdateResponsePayload,
   type ToolpackRefreshResponsePayload,
+  type ToolpackRotateSigningSecretResponsePayload,
   type ToolpackDeleteResponsePayload,
 } from "@portalai/core/contracts";
 
@@ -329,10 +330,16 @@ toolpacksRouter.post(
         );
       }
 
+      // Generate the signing secret first so the registration-time
+      // schema/metadata fetches are signed with the same secret the
+      // toolpack server will see on every subsequent runtime call.
+      const signingSecret = generateSigningSecret();
+
       // Fetch + validate schema.
       const tools = await ToolpackRegistrationService.fetchSchema(
         endpoints.schema,
-        authHeaders
+        authHeaders,
+        signingSecret
       );
       ToolpackRegistrationService.validateNoBuiltinCollision(
         tools as ToolpackToolDefinition[],
@@ -343,12 +350,12 @@ toolpacksRouter.post(
       const metadata = endpoints.metadata
         ? await ToolpackRegistrationService.fetchMetadata(
             endpoints.metadata,
-            authHeaders
+            authHeaders,
+            signingSecret
           )
         : null;
 
       const now = Date.now();
-      const signingSecret = generateSigningSecret();
       const factory = new OrganizationToolpackModelFactory();
       const model = factory.create(userId);
       model.update({
@@ -369,9 +376,15 @@ toolpacksRouter.post(
 
       logger.info({ id: row.id, organizationId }, "Toolpack registered");
 
+      // Surface the freshly-generated signing secret exactly once.
+      // GET / PATCH / refresh responses omit this field; admins who
+      // lose the secret rotate via POST /:id/rotate-signing-secret.
       return HttpService.success<ToolpackRegisterResponsePayload>(
         res,
-        { toolpack: toCustomApiRecord(row as unknown as OrganizationToolpack) },
+        {
+          toolpack: toCustomApiRecord(row as unknown as OrganizationToolpack),
+          signingSecret,
+        },
         201
       );
     } catch (error) {
@@ -476,7 +489,8 @@ toolpacksRouter.patch(
           authHeaders ?? (existing.authHeaders ?? undefined);
         const tools = await ToolpackRegistrationService.fetchSchema(
           endpoints.schema,
-          effectiveAuth as Record<string, string> | undefined
+          effectiveAuth as Record<string, string> | undefined,
+          existing.signingSecret
         );
         ToolpackRegistrationService.validateNoBuiltinCollision(
           tools as ToolpackToolDefinition[],
@@ -485,7 +499,8 @@ toolpacksRouter.patch(
         const metadata = endpoints.metadata
           ? await ToolpackRegistrationService.fetchMetadata(
               endpoints.metadata,
-              effectiveAuth as Record<string, string> | undefined
+              effectiveAuth as Record<string, string> | undefined,
+              existing.signingSecret
             )
           : null;
         const now = Date.now();
@@ -657,7 +672,8 @@ toolpacksRouter.post(
         | undefined;
       const tools = await ToolpackRegistrationService.fetchSchema(
         existing.endpoints.schema,
-        auth
+        auth,
+        existing.signingSecret
       );
       ToolpackRegistrationService.validateNoBuiltinCollision(
         tools as ToolpackToolDefinition[],
@@ -666,7 +682,8 @@ toolpacksRouter.post(
       const metadata = existing.endpoints.metadata
         ? await ToolpackRegistrationService.fetchMetadata(
             existing.endpoints.metadata,
-            auth
+            auth,
+            existing.signingSecret
           )
         : null;
 
@@ -700,6 +717,79 @@ toolpacksRouter.post(
               500,
               ApiCode.TOOLPACK_NOT_FOUND,
               "Failed to refresh toolpack"
+            )
+      );
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// POST /api/toolpacks/:id/rotate-signing-secret — invalidate + reveal a fresh
+// HMAC signing secret. Stripe-style: the new value is returned exactly once;
+// the old value is invalidated immediately on success.
+// ---------------------------------------------------------------------------
+
+/**
+ * @openapi
+ * /api/toolpacks/{id}/rotate-signing-secret:
+ *   post:
+ *     tags: [Toolpacks]
+ *     summary: Rotate the per-toolpack HMAC signing secret
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Rotated. Returns the new signingSecret once. }
+ *       404: { description: Not found. }
+ */
+toolpacksRouter.post(
+  "/:id/rotate-signing-secret",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { organizationId, userId } = req.application!.metadata;
+
+      const existing =
+        await DbService.repository.organizationToolpacks.findByIdScoped(
+          id,
+          organizationId
+        );
+      if (!existing) {
+        return next(
+          new ApiError(404, ApiCode.TOOLPACK_NOT_FOUND, "Toolpack not found")
+        );
+      }
+
+      const newSecret = generateSigningSecret();
+      const now = Date.now();
+      await DbService.repository.organizationToolpacks.update(id, {
+        signingSecret: newSecret,
+        updated: now,
+        updatedBy: userId,
+      } as never);
+
+      logger.info({ id, organizationId }, "Toolpack signing secret rotated");
+
+      return HttpService.success<ToolpackRotateSigningSecretResponsePayload>(
+        res,
+        { id, signingSecret: newSecret, rotatedAt: now }
+      );
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown" },
+        "Failed to rotate toolpack signing secret"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.TOOLPACK_NOT_FOUND,
+              "Failed to rotate signing secret"
             )
       );
     }

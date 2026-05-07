@@ -30,6 +30,12 @@ import {
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
+import { signRequest } from "../utils/webhook-signing.util.js";
+import {
+  assertUrlSafeToFetch,
+  SsrfBlockedError,
+} from "../utils/url-safety.util.js";
+import { environment } from "../environment.js";
 
 const logger = createLogger({ module: "toolpack-registration" });
 
@@ -53,15 +59,30 @@ interface FetchResult {
 
 async function fetchWithCap(
   url: string,
-  headers?: Record<string, string>
+  headers: Record<string, string> | undefined,
+  signingSecret: string | undefined
 ): Promise<FetchResult> {
+  // SSRF: resolve+validate before connecting. Throws SsrfBlockedError
+  // on private/reserved IPs unless TOOLPACK_DISABLE_SSRF_FILTER=true.
+  // The static refinement at the contract layer is the first line of
+  // defence; this is the canonical, DNS-rebinding-resistant guard.
+  await assertUrlSafeToFetch(url);
+
+  // GET requests sign over the empty body — timestamp + webhookId
+  // still bind into the signature so a captured request can't be
+  // replayed past the receiver's window.
+  const signedHeaders =
+    signingSecret && !environment.TOOLPACK_DISABLE_SIGNING
+      ? signRequest(signingSecret, "")
+      : ({} as Record<string, string>);
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
     const response = (await fetch(url, {
       method: "GET",
-      headers: { ...(headers ?? {}) },
+      headers: { ...(headers ?? {}), ...signedHeaders },
       signal: controller.signal,
     })) as unknown as {
       ok: boolean;
@@ -132,13 +153,17 @@ export class ToolpackRegistrationService {
    */
   static async fetchSchema(
     url: string,
-    headers: Record<string, string> | undefined
+    headers: Record<string, string> | undefined,
+    signingSecret?: string
   ): Promise<ToolpackToolDefinition[]> {
     let result: FetchResult;
     try {
-      result = await fetchWithCap(url, headers);
+      result = await fetchWithCap(url, headers, signingSecret);
     } catch (err) {
       if (err instanceof ApiError) throw err;
+      if (err instanceof SsrfBlockedError) {
+        throw new ApiError(502, ApiCode.TOOLPACK_URL_PRIVATE_HOST, err.message);
+      }
       throw new ApiError(
         502,
         ApiCode.TOOLPACK_SCHEMA_FETCH_FAILED,
@@ -174,10 +199,11 @@ export class ToolpackRegistrationService {
    */
   static async fetchMetadata(
     url: string,
-    headers: Record<string, string> | undefined
+    headers: Record<string, string> | undefined,
+    signingSecret?: string
   ): Promise<ToolpackMetadata | null> {
     try {
-      const result = await fetchWithCap(url, headers);
+      const result = await fetchWithCap(url, headers, signingSecret);
       if (!result.ok) {
         logger.warn(
           { url, status: result.status },

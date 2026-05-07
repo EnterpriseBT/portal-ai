@@ -591,4 +591,77 @@ describe("Toolpacks Router", () => {
       );
     });
   });
+
+  // ── Phase 6: signing secret surfaced once + rotation ──────────────
+
+  describe("signing secret one-time reveal + rotation (phase 6)", () => {
+    // Case 156
+    it("POST surfaces signingSecret once; GET redacts it", async () => {
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+
+      const post = await request(app)
+        .post("/api/toolpacks")
+        .send(VALID_REGISTER_BODY);
+      expect(post.status).toBe(201);
+
+      const surfacedSecret = post.body.payload.signingSecret as string;
+      expect(surfacedSecret).toMatch(/^whsec_/);
+      expect(post.body.payload.toolpack.signingSecretStatus.has).toBe(true);
+
+      const id = post.body.payload.toolpack.id as string;
+
+      // GET does not include the plaintext secret anywhere in the body.
+      const get = await request(app).get(`/api/toolpacks/${id}`);
+      expect(get.status).toBe(200);
+      expect(get.body.payload.toolpack.signingSecretStatus.has).toBe(true);
+      expect(JSON.stringify(get.body)).not.toContain(surfacedSecret);
+
+      // List endpoint also redacts.
+      const list = await request(app).get("/api/toolpacks?kind=custom");
+      expect(JSON.stringify(list.body)).not.toContain(surfacedSecret);
+    });
+
+    // Case 157
+    it("rotate-signing-secret returns a fresh secret + writes a new ciphertext", async () => {
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+      const reg = await request(app)
+        .post("/api/toolpacks")
+        .send(VALID_REGISTER_BODY);
+      const id = reg.body.payload.toolpack.id as string;
+      const original = reg.body.payload.signingSecret as string;
+
+      // Snapshot the pre-rotation ciphertext blob.
+      const before = await (db as ReturnType<typeof drizzle>)
+        .select({
+          signingSecret: schema.organizationToolpacks.signingSecret,
+        })
+        .from(schema.organizationToolpacks)
+        .where(eq(schema.organizationToolpacks.id, id))
+        .limit(1);
+      const blobBefore = before[0]!.signingSecret;
+
+      const rotate = await request(app).post(
+        `/api/toolpacks/${id}/rotate-signing-secret`
+      );
+      expect(rotate.status).toBe(200);
+      const fresh = rotate.body.payload.signingSecret as string;
+      expect(fresh).toMatch(/^whsec_/);
+      expect(fresh).not.toBe(original);
+      expect(rotate.body.payload.id).toBe(id);
+      expect(typeof rotate.body.payload.rotatedAt).toBe("number");
+
+      // The on-disk ciphertext changed.
+      const after = await (db as ReturnType<typeof drizzle>)
+        .select({
+          signingSecret: schema.organizationToolpacks.signingSecret,
+        })
+        .from(schema.organizationToolpacks)
+        .where(eq(schema.organizationToolpacks.id, id))
+        .limit(1);
+      const blobAfter = after[0]!.signingSecret;
+      expect(blobAfter).not.toBe(blobBefore);
+      expect(blobAfter).not.toContain(original);
+      expect(blobAfter).not.toContain(fresh);
+    });
+  });
 });

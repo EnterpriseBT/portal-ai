@@ -56,8 +56,70 @@ import { FieldMappingCreateTool } from "../tools/field-mapping-create.tool.js";
 import { FieldMappingUpdateTool } from "../tools/field-mapping-update.tool.js";
 import { FieldMappingDeleteTool } from "../tools/field-mapping-delete.tool.js";
 import { resolveStationCapabilities } from "../utils/resolve-capabilities.util.js";
+import { signRequest } from "../utils/webhook-signing.util.js";
+import { assertUrlSafeToFetch } from "../utils/url-safety.util.js";
+import { environment } from "../environment.js";
+import { ApiError } from "./http.service.js";
+import { ApiCode } from "../constants/api-codes.constants.js";
 
 const logger = createLogger({ module: "tools-service" });
+
+/**
+ * Read a fetch response body as text, aborting if the cumulative
+ * size exceeds `maxBytes`. Used to prevent a misbehaving toolpack
+ * from streaming gigabytes into memory.
+ */
+async function readResponseTextWithCap(
+  response: Response,
+  maxBytes: number
+): Promise<string> {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength !== null && Number(contentLength) > maxBytes) {
+    throw new ApiError(
+      502,
+      ApiCode.TOOLPACK_RUNTIME_TOO_LARGE,
+      `Runtime response exceeds ${maxBytes} bytes`
+    );
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    // No streaming reader (e.g. test mock returning a synthetic response).
+    // Fall back to text() with a post-read size check.
+    const text = await response.text();
+    if (text.length > maxBytes) {
+      throw new ApiError(
+        502,
+        ApiCode.TOOLPACK_RUNTIME_TOO_LARGE,
+        `Runtime response exceeds ${maxBytes} bytes`
+      );
+    }
+    return text;
+  }
+
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      try {
+        await reader.cancel();
+      } catch {
+        // ignore — we're about to throw
+      }
+      throw new ApiError(
+        502,
+        ApiCode.TOOLPACK_RUNTIME_TOO_LARGE,
+        `Runtime response exceeds ${maxBytes} bytes`
+      );
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -73,6 +135,14 @@ export interface WebhookImplementation {
   type: "webhook";
   url: string;
   headers?: Record<string, string>;
+  /**
+   * Phase-6 per-toolpack HMAC signing secret. When present, every
+   * outbound runtime POST is signed (X-Portalai-Timestamp,
+   * -Webhook-Id, -Signature: v1=<hex>) so the toolpack server can
+   * verify the request came from us. Built-in tools omit this —
+   * they're not webhook calls in the same sense.
+   */
+  signingSecret?: string;
 }
 
 /** All recognized tool pack names. */
@@ -148,13 +218,27 @@ export class ToolService {
   // -----------------------------------------------------------------------
 
   /**
-   * POST to a webhook URL with auth headers and a 30 s timeout.
-   * Returns parsed JSON response.
+   * POST to a webhook URL with auth headers, a 30 s timeout, an
+   * SSRF-safe pre-flight check, optional HMAC signing, and a
+   * streaming response size cap. Returns parsed JSON response.
    */
   static async callWebhook(
     implementation: WebhookImplementation,
     input: Record<string, unknown>
   ): Promise<unknown> {
+    // SSRF: resolve the URL's hostname and validate every IP before
+    // the actual connect. Defeats DNS rebinding (window between our
+    // lookup and fetch's lookup is microseconds). Throws
+    // SsrfBlockedError on private/reserved IPs unless the emergency
+    // TOOLPACK_DISABLE_SSRF_FILTER flag is set.
+    await assertUrlSafeToFetch(implementation.url);
+
+    const bodyString = JSON.stringify(input);
+    const signedHeaders =
+      implementation.signingSecret && !environment.TOOLPACK_DISABLE_SIGNING
+        ? signRequest(implementation.signingSecret, bodyString)
+        : ({} as Record<string, string>);
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
 
@@ -164,8 +248,9 @@ export class ToolService {
         headers: {
           "Content-Type": "application/json",
           ...(implementation.headers ?? {}),
+          ...signedHeaders,
         },
-        body: JSON.stringify(input),
+        body: bodyString,
         signal: controller.signal,
       });
 
@@ -175,7 +260,19 @@ export class ToolService {
         );
       }
 
-      return await response.json();
+      const text = await readResponseTextWithCap(
+        response,
+        environment.TOOLPACK_RUNTIME_MAX_RESPONSE_BYTES
+      );
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new ApiError(
+          502,
+          ApiCode.TOOLPACK_RUNTIME_INVALID,
+          "Toolpack runtime response was not valid JSON"
+        );
+      }
     } finally {
       clearTimeout(timeout);
     }
@@ -364,6 +461,7 @@ export class ToolService {
               headers:
                 (pack.authHeaders as Record<string, string> | null) ??
                 undefined,
+              signingSecret: pack.signingSecret,
             },
             stationId
           ).build();

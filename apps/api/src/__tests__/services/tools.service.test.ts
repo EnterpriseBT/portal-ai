@@ -76,6 +76,9 @@ jest.unstable_mockModule("../../environment.js", () => ({
     TAVILY_API_KEY: "test-key",
     LOG_LEVEL: "silent",
     LOG_FORMAT: "json",
+    TOOLPACK_RUNTIME_MAX_RESPONSE_BYTES: 1024 * 1024,
+    TOOLPACK_DISABLE_SSRF_FILTER: false,
+    TOOLPACK_DISABLE_SIGNING: false,
   },
 }));
 
@@ -92,6 +95,16 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
 const mockFetch =
   jest.fn<(url: string, options?: Record<string, any>) => Promise<unknown>>();
 (globalThis as any).fetch = mockFetch;
+
+// Skip SSRF DNS resolution in unit tests — assertUrlSafeToFetch
+// would otherwise call dns.lookup against the test fixture URLs
+// (e.g. api.example.com) which may or may not resolve depending on
+// the network. The integration tests exercise the real SSRF path.
+jest.unstable_mockModule("../../utils/url-safety.util.js", () => ({
+  assertUrlSafeToFetch: async () => undefined,
+  SsrfBlockedError: class SsrfBlockedError extends Error {},
+  validateToolpackUrl: () => null,
+}));
 
 const { ToolService } = await import("../../services/tools.service.js");
 const buildAnalyticsTools = ToolService.buildAnalyticsTools.bind(ToolService);
@@ -482,9 +495,12 @@ describe("buildAnalyticsTools()", () => {
       },
     ]);
 
+    const respText = JSON.stringify({ name: "Acme" });
     mockFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ name: "Acme" }),
+      headers: new Map([["content-length", String(respText.length)]]),
+      text: async () => respText,
+      body: undefined,
     });
 
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
@@ -638,12 +654,25 @@ describe("callWebhook()", () => {
     mockFetch.mockReset();
   });
 
+  /** Helper: build a fetch-like response with text/headers shape. */
+  function fetchResp(
+    body: unknown,
+    opts?: { ok?: boolean; status?: number; statusText?: string }
+  ) {
+    const text = typeof body === "string" ? body : JSON.stringify(body);
+    return {
+      ok: opts?.ok ?? true,
+      status: opts?.status ?? 200,
+      statusText: opts?.statusText ?? "OK",
+      headers: new Map([["content-length", String(text.length)]]),
+      text: async () => text,
+      body: undefined,
+    };
+  }
+
   it("should POST to URL with headers and return parsed JSON", async () => {
     const responseData = { status: "ok", count: 42 };
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => responseData,
-    });
+    mockFetch.mockResolvedValue(fetchResp(responseData));
 
     const result = await callWebhook(
       {
@@ -667,11 +696,9 @@ describe("callWebhook()", () => {
   });
 
   it("should throw on non-OK response", async () => {
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 500,
-      statusText: "Internal Server Error",
-    });
+    mockFetch.mockResolvedValue(
+      fetchResp("", { ok: false, status: 500, statusText: "Internal Server Error" })
+    );
 
     await expect(
       callWebhook({ type: "webhook", url: "https://api.example.com/hook" }, {})
@@ -683,7 +710,7 @@ describe("callWebhook()", () => {
     mockFetch.mockImplementation(async (_url, opts) => {
       // Check that an abort signal is provided
       expect(opts!.signal).toBeDefined();
-      return { ok: true, json: async () => ({}) };
+      return fetchResp({});
     });
 
     await callWebhook(
@@ -692,5 +719,58 @@ describe("callWebhook()", () => {
     );
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Phase 6: HMAC signing + runtime size cap ────────────────────
+
+  // Case 154
+  it("signs the runtime POST body when given a signing secret", async () => {
+    mockFetch.mockResolvedValue(fetchResp({ result: "ok" }));
+    const secret = "whsec_test154";
+    const input = { tool: "echo", message: "hi" };
+
+    await callWebhook(
+      {
+        type: "webhook",
+        url: "https://api.example.com/runtime",
+        signingSecret: secret,
+      },
+      input
+    );
+
+    const [, options] = mockFetch.mock.calls[0];
+    const headers = options!.headers as Record<string, string>;
+    expect(headers["X-Portalai-Webhook-Id"]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(headers["X-Portalai-Timestamp"]).toMatch(/^\d+$/);
+    expect(headers["X-Portalai-Signature"]).toMatch(/^v1=[0-9a-f]{64}$/);
+
+    // Recompute the signature against the captured body bytes —
+    // signature must bind the exact JSON string that was sent.
+    const body = options!.body as string;
+    expect(JSON.parse(body)).toEqual(input);
+
+    const ts = headers["X-Portalai-Timestamp"];
+    const id = headers["X-Portalai-Webhook-Id"];
+    const sig = headers["X-Portalai-Signature"]!.replace(/^v1=/, "");
+    const crypto = await import("crypto");
+    const expected = crypto
+      .createHmac("sha256", secret)
+      .update(`${ts}.${id}.${body}`)
+      .digest("hex");
+    expect(sig).toBe(expected);
+  });
+
+  // Case 155
+  it("aborts when runtime response exceeds TOOLPACK_RUNTIME_MAX_RESPONSE_BYTES", async () => {
+    // Build a 1.5 MB response — default cap is 1 MB.
+    const huge = "x".repeat(1_500_000);
+    mockFetch.mockResolvedValue(fetchResp(huge));
+
+    await expect(
+      callWebhook(
+        { type: "webhook", url: "https://api.example.com/hook" },
+        {}
+      )
+    ).rejects.toThrow(/exceeds.*bytes/i);
   });
 });
