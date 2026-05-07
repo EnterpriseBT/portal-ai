@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import type { Toolpack } from "@portalai/core/contracts";
 import {
@@ -13,16 +13,18 @@ import {
 } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import IconButton from "@mui/material/IconButton";
-import TextField from "@mui/material/TextField";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { useNavigate } from "@tanstack/react-router";
-
 import { useQueryClient } from "@tanstack/react-query";
 
 import DataResult from "../components/DataResult.component";
+import {
+  PaginationToolbar,
+  usePagination,
+} from "../components/PaginationToolbar.component";
 import { ToolpackMetadataModalUI } from "../components/ToolpackMetadataModal.component";
 import { RegisterToolpackDialogUI } from "../components/RegisterToolpackDialog.component";
 import { EditToolpackDialogUI } from "../components/EditToolpackDialog.component";
@@ -37,12 +39,19 @@ function formatLastRefreshed(toolpack: Toolpack): string {
   return new Date(toolpack.schemaFetchedAt).toLocaleString();
 }
 
+interface ToolpackRow {
+  id: string;
+  name: string;
+  kind: "builtin" | "custom";
+  description: string;
+  toolCount: number;
+  lastRefreshed: string;
+}
+
 // ── Pure UI ─────────────────────────────────────────────────────────
 
 export interface ToolpacksUIProps {
   toolpacks: Toolpack[];
-  search: string;
-  onSearchChange: (next: string) => void;
   selected: Toolpack | null;
   onSelect: (toolpack: Toolpack) => void;
   onCloseModal: () => void;
@@ -58,8 +67,6 @@ export interface ToolpacksUIProps {
 
 export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
   toolpacks,
-  search,
-  onSearchChange,
   selected,
   onSelect,
   onCloseModal,
@@ -70,8 +77,19 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
 }) => {
   const navigate = useNavigate();
 
+  const pagination = usePagination({
+    sortFields: [
+      { field: "name", label: "Name" },
+      { field: "kind", label: "Kind" },
+      { field: "toolCount", label: "# Tools" },
+    ],
+    defaultSortBy: "name",
+    defaultSortOrder: "asc",
+    limit: 20,
+  });
+
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = pagination.search.trim().toLowerCase();
     if (!q) return toolpacks;
     return toolpacks.filter(
       (t) =>
@@ -79,7 +97,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
         (t.description ?? "").toLowerCase().includes(q) ||
         t.slug.toLowerCase().includes(q)
     );
-  }, [toolpacks, search]);
+  }, [toolpacks, pagination.search]);
 
   const showActions = Boolean(onEdit || onDelete || onRefresh);
 
@@ -179,43 +197,49 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
     return base;
   }, [toolpacks, onSelect, onEdit, onDelete, onRefresh, showActions]);
 
-  const rows = useMemo(
+  const rows: ToolpackRow[] = useMemo(
     () =>
-      filtered.map((t) => ({
-        id: t.id,
-        name: t.name,
-        kind: t.kind,
-        description: t.description ?? "",
-        toolCount: t.tools.length,
-        lastRefreshed: formatLastRefreshed(t),
-      })),
+      filtered.map(
+        (t): ToolpackRow => ({
+          id: t.id,
+          name: t.name,
+          kind: t.kind,
+          description: t.description ?? "",
+          toolCount: t.tools.length,
+          lastRefreshed: formatLastRefreshed(t),
+        })
+      ),
     [filtered]
   );
 
-  const [sortColumn, setSortColumn] = useState<string | undefined>("name");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-
   const sortedRows = useMemo(() => {
-    if (!sortColumn) return rows;
-    const dir = sortDirection === "asc" ? 1 : -1;
+    if (!pagination.sortBy) return rows;
+    const dir = pagination.sortOrder === "asc" ? 1 : -1;
     return [...rows].sort((a, b) => {
-      const va = a[sortColumn as keyof typeof a];
-      const vb = b[sortColumn as keyof typeof b];
+      const va = a[pagination.sortBy as keyof ToolpackRow];
+      const vb = b[pagination.sortBy as keyof ToolpackRow];
       if (va === vb) return 0;
       if (va == null) return -dir;
       if (vb == null) return dir;
       return va < vb ? -dir : dir;
     });
-  }, [rows, sortColumn, sortDirection]);
+  }, [rows, pagination.sortBy, pagination.sortOrder]);
 
-  const handleSort = (col: string) => {
-    if (sortColumn === col) {
-      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortColumn(col);
-      setSortDirection("asc");
-    }
-  };
+  // Client-side pagination — the toolpacks list is small but the
+  // toolbar still drives offset/limit for consistency with other views.
+  const pagedRows = useMemo(
+    () =>
+      sortedRows.slice(
+        pagination.offset,
+        pagination.offset + pagination.limit
+      ),
+    [sortedRows, pagination.offset, pagination.limit]
+  );
+
+  // Keep the toolbar's "X of Y" count in sync with the filtered set.
+  useEffect(() => {
+    pagination.setTotal(sortedRows.length);
+  }, [sortedRows.length, pagination]);
 
   return (
     <Box>
@@ -241,20 +265,14 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
           }
         />
 
-        <TextField
-          size="small"
-          placeholder="Filter by name, description, or slug"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          inputProps={{ "aria-label": "Filter toolpacks" }}
-        />
+        <PaginationToolbar {...pagination.toolbarProps} />
 
         <DataTable
           columns={columns}
-          rows={sortedRows}
-          sortColumn={sortColumn}
-          sortDirection={sortDirection}
-          onSort={handleSort}
+          rows={pagedRows as unknown as Record<string, unknown>[]}
+          sortColumn={pagination.sortBy}
+          sortDirection={pagination.sortOrder}
+          onSort={pagination.setSortBy}
           onRowClick={(row) => {
             const tp = toolpacks.find((t) => t.id === row.id);
             if (tp) onSelect(tp);
@@ -276,7 +294,6 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
 
 export const Toolpacks: React.FC = () => {
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Toolpack | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [editing, setEditing] = useState<Toolpack | null>(null);
@@ -298,8 +315,6 @@ export const Toolpacks: React.FC = () => {
         {({ list }) => (
           <ToolpacksUI
             toolpacks={list.toolpacks as Toolpack[]}
-            search={search}
-            onSearchChange={setSearch}
             selected={selected}
             onSelect={setSelected}
             onCloseModal={() => setSelected(null)}

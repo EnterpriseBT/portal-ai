@@ -61,8 +61,6 @@ const PACKS: Toolpack[] = [
 function renderUI(overrides: Partial<React.ComponentProps<typeof ToolpacksUI>> = {}) {
   const defaults: React.ComponentProps<typeof ToolpacksUI> = {
     toolpacks: PACKS,
-    search: "",
-    onSearchChange: jest.fn(),
     selected: null,
     onSelect: jest.fn(),
     onCloseModal: jest.fn(),
@@ -84,20 +82,21 @@ describe("ToolpacksUI", () => {
   });
 
   // Case 50
-  it("filters rows when the search field narrows the set", () => {
-    renderUI({ search: "stat" });
+  it("filters rows via the pagination toolbar's search input", () => {
+    renderUI();
+    const input = screen.getByPlaceholderText("Search...");
+    fireEvent.change(input, { target: { value: "stat" } });
     expect(screen.getByText("Statistics")).toBeInTheDocument();
     expect(screen.queryByText("Data Query")).not.toBeInTheDocument();
     expect(screen.queryByText("Financial")).not.toBeInTheDocument();
   });
 
   // Case 51
-  it("invokes onSearchChange when the user types into the filter field", () => {
-    const onSearchChange = jest.fn();
-    renderUI({ onSearchChange });
-    const input = screen.getByLabelText(/Filter toolpacks/i);
-    fireEvent.change(input, { target: { value: "fin" } });
-    expect(onSearchChange).toHaveBeenCalledWith("fin");
+  it("renders the pagination toolbar with search and sort affordances", () => {
+    renderUI();
+    expect(screen.getByPlaceholderText("Search...")).toBeInTheDocument();
+    // The toolbar exposes sort + page controls — pick a stable sentinel.
+    expect(screen.getByLabelText("First page")).toBeInTheDocument();
   });
 
   // Case 52
