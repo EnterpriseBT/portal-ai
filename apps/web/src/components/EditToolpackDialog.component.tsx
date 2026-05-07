@@ -8,6 +8,7 @@ import {
 import { Button, Modal, Stack } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import Chip from "@mui/material/Chip";
 
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
@@ -17,7 +18,11 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
-import { parseAuthHeaders } from "./RegisterToolpackDialog.component";
+import {
+  parseAuthHeaders,
+  appendAuthHeaderBoilerplate,
+  AUTH_HEADER_BOILERPLATES,
+} from "./RegisterToolpackDialog.component";
 
 interface FormState {
   name: string;
@@ -311,22 +316,57 @@ export const EditToolpackDialogUI: React.FC<EditToolpackDialogUIProps> = ({
           onChange={(e) => handleChange("metadataUrl", e.target.value)}
           fullWidth
         />
-        <TextField
-          label="Auth headers"
-          value={form.authHeaders}
-          onChange={(e) => handleChange("authHeaders", e.target.value)}
-          onBlur={() => handleBlur("authHeaders")}
-          placeholder={
-            authHeadersStatus
-              ? "Set (values not shown). Type to replace; leave blank to keep the existing values."
-              : "Optional. One header per line in `KEY: value` format."
-          }
-          error={touched.authHeaders && !!errors.authHeaders}
-          helperText={touched.authHeaders && errors.authHeaders}
-          fullWidth
-          multiline
-          rows={3}
-        />
+        <Stack spacing={0.75}>
+          <TextField
+            label="Auth headers"
+            value={form.authHeaders}
+            onChange={(e) => handleChange("authHeaders", e.target.value)}
+            onBlur={() => handleBlur("authHeaders")}
+            placeholder={
+              authHeadersStatus
+                ? "Set (values not shown). Type to replace; leave blank to keep the existing values."
+                : "Optional. One header per line in `KEY: value` format."
+            }
+            error={touched.authHeaders && !!errors.authHeaders}
+            helperText={touched.authHeaders && errors.authHeaders}
+            fullWidth
+            multiline
+            rows={3}
+          />
+          <Stack
+            direction="row"
+            spacing={0.75}
+            flexWrap="wrap"
+            useFlexGap
+            data-testid="auth-headers-boilerplates"
+          >
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ mr: 0.5 }}
+            >
+              Insert:
+            </Typography>
+            {AUTH_HEADER_BOILERPLATES.map((bp) => (
+              <Chip
+                key={bp.label}
+                label={bp.label}
+                size="small"
+                variant="outlined"
+                clickable
+                onClick={() =>
+                  handleChange(
+                    "authHeaders",
+                    appendAuthHeaderBoilerplate(form.authHeaders, bp.template)
+                  )
+                }
+                data-testid={`auth-headers-boilerplate-${bp.label
+                  .toLowerCase()
+                  .replace(/\s+/g, "-")}`}
+              />
+            ))}
+          </Stack>
+        </Stack>
         {errors._form && (
           <Typography variant="caption" color="error">
             {errors._form}

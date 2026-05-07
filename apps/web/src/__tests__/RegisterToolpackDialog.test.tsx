@@ -1,9 +1,10 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
-const { RegisterToolpackDialogUI } = await import(
-  "../components/RegisterToolpackDialog.component"
-);
+const {
+  RegisterToolpackDialogUI,
+  appendAuthHeaderBoilerplate,
+} = await import("../components/RegisterToolpackDialog.component");
 
 const defaultProps = {
   open: true,
@@ -205,5 +206,49 @@ describe("RegisterToolpackDialogUI", () => {
   it("does not render FormAlert when serverError is null", () => {
     render(<RegisterToolpackDialogUI {...defaultProps} />);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  // ── auth-header boilerplate quick-inserts ──────────────────────
+
+  it("clicking a boilerplate chip inserts the templated header into the textarea", () => {
+    render(<RegisterToolpackDialogUI {...defaultProps} />);
+    const textarea = screen.getByLabelText(
+      /Auth headers/
+    ) as HTMLTextAreaElement;
+    expect(textarea.value).toBe("");
+
+    fireEvent.click(screen.getByTestId("auth-headers-boilerplate-bearer-token"));
+    expect(textarea.value).toBe("Authorization: Bearer <token>");
+
+    fireEvent.click(screen.getByTestId("auth-headers-boilerplate-api-key"));
+    expect(textarea.value).toBe(
+      "Authorization: Bearer <token>\nX-Api-Key: <key>"
+    );
+  });
+});
+
+describe("appendAuthHeaderBoilerplate", () => {
+  it("returns the template alone when current is empty", () => {
+    expect(appendAuthHeaderBoilerplate("", "X-Api-Key: <key>")).toBe(
+      "X-Api-Key: <key>"
+    );
+  });
+
+  it("appends after a single newline, trimming trailing whitespace", () => {
+    expect(
+      appendAuthHeaderBoilerplate(
+        "Authorization: Bearer abc\n",
+        "X-Api-Key: <key>"
+      )
+    ).toBe("Authorization: Bearer abc\nX-Api-Key: <key>");
+  });
+
+  it("appends after content that has no trailing newline", () => {
+    expect(
+      appendAuthHeaderBoilerplate(
+        "Authorization: Bearer abc",
+        "X-Api-Key: <key>"
+      )
+    ).toBe("Authorization: Bearer abc\nX-Api-Key: <key>");
   });
 });

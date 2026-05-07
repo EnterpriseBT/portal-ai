@@ -9,6 +9,7 @@ import TextField from "@mui/material/TextField";
 import Accordion from "@mui/material/Accordion";
 import AccordionDetails from "@mui/material/AccordionDetails";
 import AccordionSummary from "@mui/material/AccordionSummary";
+import Chip from "@mui/material/Chip";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 
 import { FormAlert } from "./FormAlert.component";
@@ -109,6 +110,36 @@ function buildBody(form: FormState): {
     body: draft as RegisterToolpackBody,
     errors: {},
   };
+}
+
+/**
+ * Common auth-header boilerplates surfaced as one-click inserts above
+ * the auth-headers textarea so users don't have to remember exact
+ * header names like `X-Api-Key` while typing. Shared by the register
+ * and edit dialogs.
+ */
+export const AUTH_HEADER_BOILERPLATES: ReadonlyArray<{
+  label: string;
+  template: string;
+}> = [
+  { label: "Bearer token", template: "Authorization: Bearer <token>" },
+  { label: "API key", template: "X-Api-Key: <key>" },
+  { label: "Basic auth", template: "Authorization: Basic <base64>" },
+  { label: "Custom header", template: "X-Custom-Header: <value>" },
+];
+
+/**
+ * Append a boilerplate line to an existing auth-headers textarea
+ * value, ensuring exactly one newline between entries and trimming
+ * trailing whitespace from the previous content.
+ */
+export function appendAuthHeaderBoilerplate(
+  current: string,
+  template: string
+): string {
+  const trimmed = current.replace(/\s+$/, "");
+  if (trimmed.length === 0) return template;
+  return `${trimmed}\n${template}`;
 }
 
 // ── Pure UI ──────────────────────────────────────────────────────────
@@ -318,21 +349,52 @@ export const RegisterToolpackDialogUI: React.FC<
             ]}
           />
         </Stack>
-        <TextField
-          label="Auth headers (optional)"
-          value={form.authHeaders}
-          onChange={(e) => handleChange("authHeaders", e.target.value)}
-          onBlur={() => handleBlur("authHeaders")}
-          placeholder={"X-Api-Key: secret123\nAuthorization: Bearer …"}
-          error={touched.authHeaders && !!errors.authHeaders}
-          helperText={
-            (touched.authHeaders && errors.authHeaders) ||
-            "One header per line in `KEY: value` format. Stored redacted."
-          }
-          fullWidth
-          multiline
-          rows={3}
-        />
+        <Stack spacing={0.75}>
+          <TextField
+            label="Auth headers (optional)"
+            value={form.authHeaders}
+            onChange={(e) => handleChange("authHeaders", e.target.value)}
+            onBlur={() => handleBlur("authHeaders")}
+            placeholder={"X-Api-Key: secret123\nAuthorization: Bearer …"}
+            error={touched.authHeaders && !!errors.authHeaders}
+            helperText={
+              (touched.authHeaders && errors.authHeaders) ||
+              "One header per line in `KEY: value` format. Stored redacted."
+            }
+            fullWidth
+            multiline
+            rows={3}
+          />
+          <Stack
+            direction="row"
+            spacing={0.75}
+            flexWrap="wrap"
+            useFlexGap
+            data-testid="auth-headers-boilerplates"
+          >
+            <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+              Insert:
+            </Typography>
+            {AUTH_HEADER_BOILERPLATES.map((bp) => (
+              <Chip
+                key={bp.label}
+                label={bp.label}
+                size="small"
+                variant="outlined"
+                clickable
+                onClick={() =>
+                  handleChange(
+                    "authHeaders",
+                    appendAuthHeaderBoilerplate(form.authHeaders, bp.template)
+                  )
+                }
+                data-testid={`auth-headers-boilerplate-${bp.label
+                  .toLowerCase()
+                  .replace(/\s+/g, "-")}`}
+              />
+            ))}
+          </Stack>
+        </Stack>
         <FormAlert serverError={serverError} />
       </Stack>
     </Modal>
