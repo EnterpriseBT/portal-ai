@@ -1,11 +1,13 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 
 import { z } from "zod";
-import type { CreateStationBody } from "@portalai/core/contracts";
+import type { CreateStationBody, Toolpack } from "@portalai/core/contracts";
 import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
-import { Button, Modal, Stack } from "@portalai/core/ui";
+import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 import Autocomplete from "@mui/material/Autocomplete";
+import Alert from "@mui/material/Alert";
+import AlertTitle from "@mui/material/AlertTitle";
 
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
 import { FormAlert } from "./FormAlert.component";
@@ -18,6 +20,7 @@ import {
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { ToolPackUtil } from "../utils/tool-packs.util";
+import { detectToolpackCollisions } from "../utils/toolpack-collisions.util";
 import { sdk } from "../api/sdk";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -78,6 +81,15 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
   const customOptions = customPacks.map((p) => `org:${p.id}`);
   const customLabels = new Map(customPacks.map((p) => [p.id, p.name]));
   const allOptions = [...BUILTIN_OPTIONS, ...customOptions];
+
+  const collisions = useMemo(
+    () =>
+      detectToolpackCollisions(
+        form.toolPacks,
+        (customsResult.data?.toolpacks ?? []) as Toolpack[]
+      ),
+    [form.toolPacks, customsResult.data]
+  );
 
   React.useEffect(() => {
     if (open) {
@@ -226,6 +238,31 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
             />
           )}
         />
+        {collisions.length > 0 && (
+          <Alert
+            severity="warning"
+            data-testid="toolpack-collision-warning"
+          >
+            <AlertTitle>Tool-name collisions on this station</AlertTitle>
+            <Stack spacing={0.5}>
+              {collisions.map((c) => (
+                <Typography key={c.toolName} variant="body2">
+                  <code>{c.toolName}</code> is provided by{" "}
+                  <strong>{c.ownerLabels.join(", ")}</strong>.
+                </Typography>
+              ))}
+            </Stack>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ mt: 0.5, display: "block" }}
+            >
+              Portal sessions will fail until this is resolved. Save will be
+              allowed so you can keep iterating; remove one of the conflicting
+              packs to clear the warning.
+            </Typography>
+          </Alert>
+        )}
         <ConnectorInstancePicker
           selected={form.connectorInstanceIds}
           onChange={(ids) => handleChange("connectorInstanceIds", ids)}

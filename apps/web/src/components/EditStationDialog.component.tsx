@@ -1,12 +1,20 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 
 import { z } from "zod";
-import type { UpdateStationBody } from "@portalai/core/contracts";
+import type { UpdateStationBody, Toolpack } from "@portalai/core/contracts";
 import type { Station } from "@portalai/core/models";
 import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
-import { Button, Modal, MultiSearchableSelect, Stack } from "@portalai/core/ui";
+import {
+  Button,
+  Modal,
+  MultiSearchableSelect,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
+import Alert from "@mui/material/Alert";
+import AlertTitle from "@mui/material/AlertTitle";
 
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
 import { FormAlert } from "./FormAlert.component";
@@ -18,6 +26,7 @@ import {
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { ToolPackIconUtil } from "../utils/tool-pack-icons.util";
+import { detectToolpackCollisions } from "../utils/toolpack-collisions.util";
 import { sdk } from "../api/sdk";
 
 const BUILTIN_TOOL_PACK_OPTIONS: SelectOption[] = BUILTIN_TOOLPACKS.map(
@@ -92,6 +101,15 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     .filter((t): t is typeof t & { kind: "custom" } => t.kind === "custom")
     .map((p) => ({ value: `org:${p.id}`, label: p.name }));
   const allOptions = [...BUILTIN_TOOL_PACK_OPTIONS, ...customOptions];
+
+  const collisions = useMemo(
+    () =>
+      detectToolpackCollisions(
+        form.toolPacks,
+        (customsResult.data?.toolpacks ?? []) as Toolpack[]
+      ),
+    [form.toolPacks, customsResult.data]
+  );
 
   const handleChange = (field: keyof FormState, value: string | string[]) => {
     const next = { ...form, [field]: value };
@@ -198,6 +216,31 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
           error={touched.toolPacks && !!errors.toolPacks}
           helperText={touched.toolPacks ? errors.toolPacks : undefined}
         />
+        {collisions.length > 0 && (
+          <Alert
+            severity="warning"
+            data-testid="toolpack-collision-warning"
+          >
+            <AlertTitle>Tool-name collisions on this station</AlertTitle>
+            <Stack spacing={0.5}>
+              {collisions.map((c) => (
+                <Typography key={c.toolName} variant="body2">
+                  <code>{c.toolName}</code> is provided by{" "}
+                  <strong>{c.ownerLabels.join(", ")}</strong>.
+                </Typography>
+              ))}
+            </Stack>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ mt: 0.5, display: "block" }}
+            >
+              Portal sessions will fail until this is resolved. Save will be
+              allowed so you can keep iterating; remove one of the conflicting
+              packs to clear the warning.
+            </Typography>
+          </Alert>
+        )}
         <ConnectorInstancePicker
           selected={form.connectorInstanceIds}
           onChange={(ids) => handleChange("connectorInstanceIds", ids)}
