@@ -124,11 +124,11 @@ export const AUTH_HEADER_BOILERPLATES: ReadonlyArray<{
   label: string;
   template: string;
 }> = [
-  { label: "Bearer token", template: "Authorization: Bearer <token>" },
-  { label: "API key", template: "X-Api-Key: <key>" },
-  { label: "Basic auth", template: "Authorization: Basic <base64>" },
-  { label: "Custom header", template: "X-Custom-Header: <value>" },
-];
+    { label: "Bearer token", template: "Authorization: Bearer <token>" },
+    { label: "API key", template: "X-Api-Key: <key>" },
+    { label: "Basic auth", template: "Authorization: Basic <base64>" },
+    { label: "Custom header", template: "X-Custom-Header: <value>" },
+  ];
 
 /**
  * Append a boilerplate line to an existing auth-headers textarea
@@ -212,7 +212,21 @@ export const RegisterToolpackDialogUI: React.FC<
     <Modal
       open={open}
       onClose={onClose}
-      title="Register toolpack"
+      title={
+        <Stack spacing={0.25} data-testid="register-toolpack-title">
+          <span>Register toolpack</span>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ lineHeight: 1.4, fontWeight: 400 }}
+          >
+            Connect your own webhook server so the assistant can call its
+            tools during portal sessions. Portals.ai fetches your tool catalog
+            once at registration, then HMAC-signs every outbound call so your
+            server can verify the request came from us.
+          </Typography>
+        </Stack>
+      }
       maxWidth="sm"
       fullWidth
       slotProps={{
@@ -273,92 +287,54 @@ export const RegisterToolpackDialogUI: React.FC<
           multiline
           rows={2}
         />
-        <Stack spacing={0.5}>
-          <TextField
-            label="Schema endpoint"
-            value={form.schemaUrl}
-            onChange={(e) => handleChange("schemaUrl", e.target.value)}
-            onBlur={() => handleBlur("schemaUrl")}
-            placeholder="https://api.example.com/toolpacks/customer_intel/schema"
-            error={touched.schemaUrl && !!fieldError("endpoints.schema")}
-            helperText={
-              touched.schemaUrl && fieldError("endpoints.schema")
-                ? fieldError("endpoints.schema")
-                : "GET endpoint that returns the pack's tools schema."
-            }
-            slotProps={{
-              htmlInput: {
-                "aria-invalid":
-                  touched.schemaUrl && !!fieldError("endpoints.schema"),
-              },
-            }}
-            required
-            fullWidth
-          />
-          <FieldShapeAccordion
-            testId="register-toolpack-schema-shape"
-            summary="See expected schema response"
-            blocks={[{ label: "GET → response", example: SCHEMA_RESPONSE_EXAMPLE }]}
-          />
-        </Stack>
-        <Stack spacing={0.5}>
-          <TextField
-            label="Runtime endpoint"
-            value={form.runtimeUrl}
-            onChange={(e) => handleChange("runtimeUrl", e.target.value)}
-            onBlur={() => handleBlur("runtimeUrl")}
-            placeholder="https://api.example.com/toolpacks/customer_intel/run"
-            error={touched.runtimeUrl && !!fieldError("endpoints.runtime")}
-            helperText={
-              touched.runtimeUrl && fieldError("endpoints.runtime")
-                ? fieldError("endpoints.runtime")
-                : "POST endpoint invoked per tool call with `{tool, input}`."
-            }
-            slotProps={{
-              htmlInput: {
-                "aria-invalid":
-                  touched.runtimeUrl && !!fieldError("endpoints.runtime"),
-              },
-            }}
-            required
-            fullWidth
-          />
-          <FieldShapeAccordion
-            testId="register-toolpack-runtime-shape"
-            summary="See expected runtime request / response"
-            blocks={[
-              { label: "POST → request body", example: RUNTIME_REQUEST_EXAMPLE },
-              {
-                label: "POST → response (any JSON)",
-                example: RUNTIME_RESPONSE_EXAMPLE,
-              },
-            ]}
-          />
-        </Stack>
-        <Stack spacing={0.5}>
-          <TextField
-            label="Metadata endpoint (optional)"
-            value={form.metadataUrl}
-            onChange={(e) => handleChange("metadataUrl", e.target.value)}
-            placeholder="https://api.example.com/toolpacks/customer_intel/metadata"
-            fullWidth
-          />
-          <FieldShapeAccordion
-            testId="register-toolpack-metadata-shape"
-            summary="See expected metadata response"
-            blocks={[
-              { label: "GET → response", example: METADATA_RESPONSE_EXAMPLE },
-            ]}
-          />
-        </Stack>
-        <TabbedSnippetAccordion
-          testId="register-toolpack-verify-snippets"
-          summary="See how to verify our signed requests on your server"
-          tabs={[
-            { label: "TypeScript", example: VERIFY_TS_EXAMPLE },
-            { label: "Python", example: VERIFY_PYTHON_EXAMPLE },
-            { label: "C#", example: VERIFY_CSHARP_EXAMPLE },
-          ]}
+        <TextField
+          label="Schema endpoint"
+          value={form.schemaUrl}
+          onChange={(e) => handleChange("schemaUrl", e.target.value)}
+          onBlur={() => handleBlur("schemaUrl")}
+          placeholder="https://api.example.com/toolpacks/customer_intel/schema"
+          error={touched.schemaUrl && !!fieldError("endpoints.schema")}
+          helperText={
+            touched.schemaUrl && fieldError("endpoints.schema")
+              ? fieldError("endpoints.schema")
+              : "GET endpoint that returns the pack's tools schema."
+          }
+          slotProps={{
+            htmlInput: {
+              "aria-invalid":
+                touched.schemaUrl && !!fieldError("endpoints.schema"),
+            },
+          }}
+          required
+          fullWidth
+        />
+        <TextField
+          label="Runtime endpoint"
+          value={form.runtimeUrl}
+          onChange={(e) => handleChange("runtimeUrl", e.target.value)}
+          onBlur={() => handleBlur("runtimeUrl")}
+          placeholder="https://api.example.com/toolpacks/customer_intel/run"
+          error={touched.runtimeUrl && !!fieldError("endpoints.runtime")}
+          helperText={
+            touched.runtimeUrl && fieldError("endpoints.runtime")
+              ? fieldError("endpoints.runtime")
+              : "POST endpoint invoked per tool call with `{tool, input}`."
+          }
+          slotProps={{
+            htmlInput: {
+              "aria-invalid":
+                touched.runtimeUrl && !!fieldError("endpoints.runtime"),
+            },
+          }}
+          required
+          fullWidth
+        />
+        <TextField
+          label="Metadata endpoint (optional)"
+          value={form.metadataUrl}
+          onChange={(e) => handleChange("metadataUrl", e.target.value)}
+          placeholder="https://api.example.com/toolpacks/customer_intel/metadata"
+          fullWidth
         />
         <Stack spacing={0.75}>
           <TextField
@@ -407,6 +383,60 @@ export const RegisterToolpackDialogUI: React.FC<
           </Stack>
         </Stack>
         <FormAlert serverError={serverError} />
+
+        <Stack
+          spacing={0.5}
+          sx={{ pt: 1, borderTop: 1, borderColor: "divider" }}
+          data-testid="register-toolpack-reference-section"
+        >
+          <Typography
+            variant="overline"
+            color="text.secondary"
+            sx={{ lineHeight: 1.4 }}
+          >
+            Reference
+          </Typography>
+          <TabbedSnippetAccordion
+            testId="register-toolpack-endpoint-shapes"
+            summary="See expected request / response shapes per endpoint"
+            tabs={[
+              {
+                label: "Schema",
+                blocks: [
+                  { label: "GET → response", example: SCHEMA_RESPONSE_EXAMPLE },
+                ],
+              },
+              {
+                label: "Runtime",
+                blocks: [
+                  {
+                    label: "POST → request body",
+                    example: RUNTIME_REQUEST_EXAMPLE,
+                  },
+                  {
+                    label: "POST → response (any JSON)",
+                    example: RUNTIME_RESPONSE_EXAMPLE,
+                  },
+                ],
+              },
+              {
+                label: "Metadata",
+                blocks: [
+                  { label: "GET → response", example: METADATA_RESPONSE_EXAMPLE },
+                ],
+              },
+            ]}
+          />
+          <TabbedSnippetAccordion
+            testId="register-toolpack-verify-snippets"
+            summary="See how to verify our signed requests on your server"
+            tabs={[
+              { label: "TypeScript", blocks: [{ example: VERIFY_TS_EXAMPLE }] },
+              { label: "Python", blocks: [{ example: VERIFY_PYTHON_EXAMPLE }] },
+              { label: "C#", blocks: [{ example: VERIFY_CSHARP_EXAMPLE }] },
+            ]}
+          />
+        </Stack>
       </Stack>
     </Modal>
   );
@@ -614,64 +644,32 @@ app.MapPost("/runtime", async (HttpContext ctx) =>
 
 app.Run();`;
 
-interface ShapeBlock {
-  label: string;
+/**
+ * Collapsible accordion that surfaces labeled code-block examples
+ * one tab at a time instead of stacking them vertically. Each tab
+ * holds one or more labeled code blocks — pass a single block when
+ * the tab represents a single snippet (e.g. a verification recipe in
+ * one language), pass multiple when the tab represents an endpoint
+ * with both request and response shapes. The accordion itself
+ * remains collapsible so the dialog stays compact when the snippets
+ * aren't being read.
+ */
+interface SnippetBlock {
+  /** Optional sub-heading shown above the code block. */
+  label?: string;
   example: string;
 }
 
-const FieldShapeAccordion: React.FC<{
-  testId: string;
-  summary: string;
-  blocks: ShapeBlock[];
-}> = ({ testId, summary, blocks }) => (
-  <Accordion
-    variant="outlined"
-    disableGutters
-    sx={{
-      "&::before": { display: "none" },
-      backgroundColor: "transparent",
-    }}
-  >
-    <AccordionSummary
-      expandIcon={<ExpandMoreIcon fontSize="small" />}
-      data-testid={`${testId}-summary`}
-      sx={{ minHeight: 32, "& .MuiAccordionSummary-content": { my: 0.5 } }}
-    >
-      <Typography variant="caption" color="text.secondary">
-        {summary}
-      </Typography>
-    </AccordionSummary>
-    <AccordionDetails sx={{ pt: 0 }}>
-      <Stack spacing={1.5}>
-        {blocks.map((b) => (
-          <ShapeCodeBlock
-            key={b.label}
-            label={b.label}
-            example={b.example}
-          />
-        ))}
-      </Stack>
-    </AccordionDetails>
-  </Accordion>
-);
-
-/**
- * Variant of {@link FieldShapeAccordion} that displays its examples
- * one-at-a-time behind tabs instead of stacking them vertically.
- * Reach for this when the snippets are long enough that stacking
- * dominates the dialog height (e.g. multi-language verification
- * code). The accordion itself remains collapsible so the dialog
- * stays compact when the snippets aren't being read.
- */
-interface TabbedSnippet {
+interface SnippetTab {
+  /** Tab label (also used to derive the test-id). */
   label: string;
-  example: string;
+  blocks: SnippetBlock[];
 }
 
 const TabbedSnippetAccordion: React.FC<{
   testId: string;
   summary: string;
-  tabs: TabbedSnippet[];
+  tabs: SnippetTab[];
 }> = ({ testId, summary, tabs }) => {
   const [active, setActive] = useState(0);
   const current = tabs[active] ?? tabs[0];
@@ -714,21 +712,35 @@ const TabbedSnippetAccordion: React.FC<{
             ))}
           </Tabs>
           {current && (
-            <Box
-              component="pre"
+            <Stack
+              spacing={1}
               data-testid={`${testId}-active-snippet`}
-              sx={{
-                fontSize: 12,
-                backgroundColor: (theme) => theme.palette.action.hover,
-                borderRadius: 0.5,
-                p: 1.5,
-                m: 0,
-                maxHeight: 320,
-                overflow: "auto",
-              }}
+              sx={{ maxHeight: 360, overflow: "auto" }}
             >
-              {current.example}
-            </Box>
+              {current.blocks.map((b, i) => (
+                <Box key={`${current.label}-${i}`}>
+                  {b.label && (
+                    <Typography variant="caption" color="text.secondary">
+                      {b.label}
+                    </Typography>
+                  )}
+                  <Box
+                    component="pre"
+                    sx={{
+                      fontSize: 12,
+                      backgroundColor: (theme) => theme.palette.action.hover,
+                      borderRadius: 0.5,
+                      p: 1.5,
+                      m: 0,
+                      mt: b.label ? 0.5 : 0,
+                      overflow: "auto",
+                    }}
+                  >
+                    {b.example}
+                  </Box>
+                </Box>
+              ))}
+            </Stack>
           )}
         </Stack>
       </AccordionDetails>
@@ -736,24 +748,3 @@ const TabbedSnippetAccordion: React.FC<{
   );
 };
 
-const ShapeCodeBlock: React.FC<ShapeBlock> = ({ label, example }) => (
-  <Box>
-    <Typography variant="caption" color="text.secondary">
-      {label}
-    </Typography>
-    <Box
-      component="pre"
-      sx={{
-        fontSize: 12,
-        backgroundColor: (theme) => theme.palette.action.hover,
-        borderRadius: 0.5,
-        p: 1.5,
-        m: 0,
-        mt: 0.5,
-        overflow: "auto",
-      }}
-    >
-      {example}
-    </Box>
-  </Box>
-);

@@ -34,36 +34,61 @@ describe("RegisterToolpackDialogUI", () => {
   it("renders the dialog title and required fields", () => {
     render(<RegisterToolpackDialogUI {...defaultProps} />);
     expect(screen.getByText("Register toolpack")).toBeInTheDocument();
+    // Caption explains what registration does + the HMAC contract.
+    const titleBlock = screen.getByTestId("register-toolpack-title");
+    expect(titleBlock.textContent).toContain("portal sessions");
+    expect(titleBlock.textContent).toContain("HMAC-signs");
     expect(screen.getByLabelText(/Name/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Schema endpoint/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Runtime endpoint/)).toBeInTheDocument();
   });
 
-  it("renders per-field accordions for each endpoint's expected shape", () => {
+  it("renders a single tabbed accordion at the bottom for each endpoint's expected shape", () => {
     render(<RegisterToolpackDialogUI {...defaultProps} />);
-    const schemaSummary = screen.getByTestId(
-      "register-toolpack-schema-shape-summary"
+    const summary = screen.getByTestId(
+      "register-toolpack-endpoint-shapes-summary"
     );
-    const runtimeSummary = screen.getByTestId(
-      "register-toolpack-runtime-shape-summary"
-    );
-    const metadataSummary = screen.getByTestId(
-      "register-toolpack-metadata-shape-summary"
-    );
-    expect(schemaSummary).toBeInTheDocument();
-    expect(runtimeSummary).toBeInTheDocument();
-    expect(metadataSummary).toBeInTheDocument();
+    expect(summary).toBeInTheDocument();
 
-    // Expanding the runtime accordion reveals both request + response blocks.
-    fireEvent.click(runtimeSummary);
-    expect(screen.getByText(/POST → request body/)).toBeInTheDocument();
-    expect(screen.getByText(/POST → response/)).toBeInTheDocument();
-
-    // Expanding the schema accordion reveals the response block.
-    fireEvent.click(schemaSummary);
+    // Reference section anchors the helper accordions at the bottom.
     expect(
-      screen.getAllByText(/GET → response/).length
-    ).toBeGreaterThanOrEqual(1);
+      screen.getByTestId("register-toolpack-reference-section")
+    ).toBeInTheDocument();
+
+    fireEvent.click(summary);
+
+    // All three endpoint tabs are present.
+    expect(
+      screen.getByTestId("register-toolpack-endpoint-shapes-tab-schema")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("register-toolpack-endpoint-shapes-tab-runtime")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("register-toolpack-endpoint-shapes-tab-metadata")
+    ).toBeInTheDocument();
+
+    // Default tab is Schema → its block is labeled "GET → response".
+    const snippet = screen.getByTestId(
+      "register-toolpack-endpoint-shapes-active-snippet"
+    );
+    expect(snippet.textContent).toContain("GET → response");
+    expect(snippet.textContent).toContain('"tools"');
+
+    // Switch to Runtime — the tab carries TWO labeled blocks
+    // (request body + response). Both must be visible at once.
+    fireEvent.click(
+      screen.getByTestId("register-toolpack-endpoint-shapes-tab-runtime")
+    );
+    expect(snippet.textContent).toContain("POST → request body");
+    expect(snippet.textContent).toContain("POST → response");
+
+    // Switch to Metadata — single block, swaps in cleanly.
+    fireEvent.click(
+      screen.getByTestId("register-toolpack-endpoint-shapes-tab-metadata")
+    );
+    expect(snippet.textContent).toContain('"summary"');
+    expect(snippet.textContent).not.toContain("POST → request body");
   });
 
   it("seeds the URL fields with example placeholders", () => {
