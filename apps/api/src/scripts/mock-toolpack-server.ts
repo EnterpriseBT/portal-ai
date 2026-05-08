@@ -23,10 +23,14 @@
  *   - TIMESTAMP_STALE     ts older than 300 s / more than 60 s ahead
  *   - SIGNATURE_INVALID   recomputed HMAC doesn't match
  *
- * If `MOCK_TOOLPACK_SIGNING_SECRET` is unset, the server prints a
- * warning and accepts unsigned requests so existing dev workflows
- * aren't broken. This file IS the reference implementation toolpack
- * authors should mirror.
+ * If `MOCK_TOOLPACK_SIGNING_SECRET` is unset, the server logs each
+ * request as Signature: SKIPPED and accepts unsigned requests so
+ * existing dev workflows are not broken. This file IS the reference
+ * implementation toolpack authors should mirror.
+ *
+ * Verbose logging: every request prints its method, URL, all headers
+ * (with auth + signing headers color-highlighted), the raw body, the
+ * signature-verification outcome, and the response status + body.
  *
  * Run from the apps/api directory:
  *
@@ -50,10 +54,98 @@ import crypto from "crypto";
 const REPLAY_WINDOW_SEC = 300;
 const FORWARD_SKEW_SEC = 60;
 
+// Cap the in-log body size so a runaway response doesn't flood the
+// terminal. The full raw body still passes through to the actual
+// HMAC + tool handler — only the log printout gets truncated.
+const LOG_BODY_MAX_BYTES = 4096;
+
+// ── ANSI color helpers ────────────────────────────────────────────
+//
+// Plain ANSI escapes — terminal-only formatting. No `chalk` dep.
+// Node honors these on TTY stdout; if the output is piped to a file
+// the codes show up as printable bytes (acceptable for a dev tool).
+
+const ESC = String.fromCharCode(27) + "[";
+const c = {
+  reset: `${ESC}0m`,
+  bold: `${ESC}1m`,
+  dim: `${ESC}2m`,
+  red: `${ESC}31m`,
+  green: `${ESC}32m`,
+  yellow: `${ESC}33m`,
+  blue: `${ESC}34m`,
+  magenta: `${ESC}35m`,
+  cyan: `${ESC}36m`,
+  gray: `${ESC}90m`,
+};
+
+function tone(text: string, code: string): string {
+  return `${code}${text}${c.reset}`;
+}
+
+function statusTone(code: number): string {
+  if (code >= 500) return c.red;
+  if (code >= 400) return c.yellow;
+  if (code >= 300) return c.cyan;
+  return c.green;
+}
+
+/**
+ * Color-code header names so signing headers + auth headers stand
+ * out from the boring HTTP infrastructure ones.
+ */
+function headerNameTone(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.startsWith("x-portalai-")) return c.cyan;
+  if (lower === "authorization" || lower.startsWith("x-api")) return c.magenta;
+  if (lower.startsWith("x-")) return c.magenta;
+  return c.gray;
+}
+
+function indent(text: string, n = 4): string {
+  const pad = " ".repeat(n);
+  return text
+    .split("\n")
+    .map((line) => `${pad}${line}`)
+    .join("\n");
+}
+
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}\n${tone(
+    `… [truncated ${text.length - max} more bytes]`,
+    c.dim
+  )}`;
+}
+
+function prettyPrintBody(raw: string, contentType?: string): string {
+  if (!raw) return tone("(empty body)", c.dim);
+  const isJson = (contentType ?? "").toLowerCase().includes("application/json");
+  if (isJson) {
+    try {
+      return JSON.stringify(JSON.parse(raw), null, 2);
+    } catch {
+      // fall through to raw
+    }
+  }
+  return raw;
+}
+
+function logHeaders(prefix: string, headers: Record<string, unknown>): void {
+  const entries = Object.entries(headers).filter(([, v]) => v !== undefined);
+  if (entries.length === 0) return;
+  console.log(`${prefix} ${tone("Headers", c.bold)}`);
+  for (const [name, value] of entries) {
+    const v = Array.isArray(value) ? value.join(", ") : String(value);
+    console.log(`${prefix}     ${tone(name, headerNameTone(name))}: ${v}`);
+  }
+}
+
 const tools = [
   {
     name: "echo",
-    description: "Echo back the provided message. Useful for verifying the round-trip works end-to-end.",
+    description:
+      "Echo back the provided message. Useful for verifying the round-trip works end-to-end.",
     parameterSchema: {
       type: "object",
       properties: {
@@ -145,27 +237,144 @@ function captureRawBodyVerify(
 }
 
 /**
+ * Verbose request/response logger. Emits a per-request log block
+ * showing every incoming header, the raw request body, the
+ * eventual response status + body, and the round-trip latency.
+ *
+ * Monkey-patches `res.status` + `res.json` (per-request only) so
+ * we can capture the values the route handler hands back without
+ * Express having already serialized them. The captured outcome is
+ * printed in a `res.on("finish")` listener so all log lines for
+ * one request stay grouped together.
+ *
+ * Must run *before* `verifySignature` so that 401 responses from
+ * the verifier are also captured + printed.
+ */
+function verboseLog(req: Request, res: Response, next: NextFunction): void {
+  const start = Date.now();
+  const reqId = crypto.randomBytes(3).toString("hex");
+  const tag = tone(`[req ${reqId}]`, c.dim);
+
+  // Capture status + body the route eventually emits.
+  let capturedStatus = 200;
+  let capturedBody: unknown = undefined;
+  let capturedBodyKind: "json" | "send" | null = null;
+
+  const origStatus = res.status.bind(res);
+  res.status = (code: number) => {
+    capturedStatus = code;
+    return origStatus(code);
+  };
+
+  const origJson = res.json.bind(res);
+  res.json = (body: unknown) => {
+    capturedStatus = res.statusCode || capturedStatus;
+    capturedBody = body;
+    capturedBodyKind = "json";
+    return origJson(body);
+  };
+
+  const origSend = res.send.bind(res);
+  res.send = ((body: unknown) => {
+    if (capturedBody === undefined) {
+      capturedStatus = res.statusCode || capturedStatus;
+      capturedBody = body;
+      capturedBodyKind = "send";
+    }
+    return origSend(body as never);
+  }) as typeof res.send;
+
+  // Print the request half immediately so the operator can see what
+  // landed even if the response is delayed.
+  console.log(
+    `\n${tag} ${tone("→", c.blue)} ${tone(req.method, c.bold)} ${req.url}`
+  );
+  logHeaders(tag, req.headers as Record<string, unknown>);
+
+  const rawBody = req.rawBody?.toString("utf8") ?? "";
+  if (rawBody.length > 0) {
+    console.log(
+      `${tag} ${tone("Body", c.bold)} ${tone(
+        `(${rawBody.length} bytes)`,
+        c.dim
+      )}`
+    );
+    console.log(
+      indent(
+        truncate(
+          prettyPrintBody(rawBody, req.header("content-type") ?? undefined),
+          LOG_BODY_MAX_BYTES
+        ),
+        4
+      )
+    );
+  }
+
+  // Print the response half once the response has been flushed.
+  res.on("finish", () => {
+    const ms = Date.now() - start;
+    const status = capturedStatus || res.statusCode;
+    console.log(
+      `${tag} ${tone("←", statusTone(status))} ${tone(
+        String(status),
+        statusTone(status) + c.bold
+      )} ${tone(`(${ms}ms)`, c.dim)}`
+    );
+
+    if (capturedBody !== undefined) {
+      let bodyText = "";
+      if (capturedBodyKind === "json") {
+        bodyText = JSON.stringify(capturedBody, null, 2);
+      } else if (typeof capturedBody === "string") {
+        bodyText = capturedBody;
+      } else if (Buffer.isBuffer(capturedBody)) {
+        bodyText = `<Buffer ${capturedBody.length} bytes>`;
+      } else {
+        bodyText = JSON.stringify(capturedBody);
+      }
+      if (bodyText.length > 0) {
+        console.log(`${tag} ${tone("Body", c.bold)}`);
+        console.log(indent(truncate(bodyText, LOG_BODY_MAX_BYTES), 4));
+      }
+    }
+  });
+
+  next();
+}
+
+/**
  * Verify the three X-Portalai-* signing headers against the raw body
  * using the shared signing secret. Demonstrates the canonical
  * receiver-side verification — toolpack authors should mirror this
  * pattern in their own server.
  *
- * If `MOCK_TOOLPACK_SIGNING_SECRET` is unset, the middleware prints
- * a warning and skips verification so existing dev workflows that
- * predate phase 6 keep working.
+ * If `MOCK_TOOLPACK_SIGNING_SECRET` is unset, logs `Signature: SKIPPED`
+ * and proceeds so existing dev workflows that predate phase 6 keep
+ * working.
  */
 function verifySignature(
   req: Request,
   res: Response,
   next: NextFunction
 ): void {
+  const logOutcome = (
+    color: string,
+    label: string,
+    detail?: string
+  ): void => {
+    console.log(
+      `    ${tone("Signature:", c.bold)} ${tone(label, color)}${
+        detail ? ` ${tone(detail, c.dim)}` : ""
+      }`
+    );
+  };
+
   const secret = process.env.MOCK_TOOLPACK_SIGNING_SECRET;
   if (!secret) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      "[33m⚠️  MOCK_TOOLPACK_SIGNING_SECRET not set — accepting " +
-        "unsigned requests. Configure the env var to demonstrate phase-6 " +
-        "verification.[0m"
+    logOutcome(
+      c.yellow,
+      "SKIPPED",
+      "MOCK_TOOLPACK_SIGNING_SECRET not set — set it to verify"
     );
     next();
     return;
@@ -176,17 +385,24 @@ function verifySignature(
   const sig = req.header("X-Portalai-Signature");
 
   if (!ts || !id || !sig) {
+    logOutcome(
+      c.red,
+      "SIGNATURE_MISSING",
+      "one or more X-Portalai-* headers absent"
+    );
     res.status(401).json({ error: "SIGNATURE_MISSING" });
     return;
   }
 
   const tsNum = Number(ts);
   if (Number.isNaN(tsNum)) {
+    logOutcome(c.red, "SIGNATURE_MISSING", `timestamp "${ts}" is not numeric`);
     res.status(401).json({ error: "SIGNATURE_MISSING" });
     return;
   }
   const ageSec = Math.floor(Date.now() / 1000) - tsNum;
   if (ageSec > REPLAY_WINDOW_SEC || ageSec < -FORWARD_SKEW_SEC) {
+    logOutcome(c.red, "TIMESTAMP_STALE", `ageSec=${ageSec}`);
     res.status(401).json({ error: "TIMESTAMP_STALE", ageSec });
     return;
   }
@@ -206,23 +422,30 @@ function verifySignature(
     expectedBuf.length !== providedBuf.length ||
     !crypto.timingSafeEqual(expectedBuf, providedBuf)
   ) {
+    logOutcome(
+      c.red,
+      "SIGNATURE_INVALID",
+      `expected v1=${expectedHex.slice(0, 12)}… got ${sig.slice(0, 15)}…`
+    );
     res.status(401).json({ error: "SIGNATURE_INVALID" });
     return;
   }
 
+  logOutcome(
+    c.green,
+    "VERIFIED",
+    `ageSec=${ageSec} bodyBytes=${rawBody.length}`
+  );
   next();
 }
 
 export function createMockApp(): Application {
   const app = express();
   app.use(express.json({ limit: "1mb", verify: captureRawBodyVerify }));
+  // verboseLog must run BEFORE verifySignature so a 401 from the
+  // verifier still has its response body captured + printed.
+  app.use(verboseLog);
   app.use(verifySignature);
-
-  app.use((req, _res, next) => {
-    // eslint-disable-next-line no-console
-    console.log(`→ ${req.method} ${req.url}`);
-    next();
-  });
 
   app.get("/schema", (_req: Request, res: Response) => {
     res.json({ tools });
@@ -234,8 +457,6 @@ export function createMockApp(): Application {
 
   app.post("/runtime", (req: Request, res: Response) => {
     const { tool, input } = req.body ?? {};
-    // eslint-disable-next-line no-console
-    console.log(`  tool=${tool} input=${JSON.stringify(input)}`);
 
     if (typeof tool !== "string") {
       res
@@ -302,13 +523,17 @@ if (isMain) {
   const app = createMockApp();
   app.listen(PORT, () => {
     const base = `http://localhost:${PORT}`;
-    // eslint-disable-next-line no-console
     console.log(`Mock toolpack server listening on ${base}`);
-    // eslint-disable-next-line no-console
     console.log(`  schema:   ${base}/schema`);
-    // eslint-disable-next-line no-console
     console.log(`  runtime:  ${base}/runtime`);
-    // eslint-disable-next-line no-console
     console.log(`  metadata: ${base}/metadata`);
+    if (!process.env.MOCK_TOOLPACK_SIGNING_SECRET) {
+      console.log(
+        tone(
+          "  WARN: MOCK_TOOLPACK_SIGNING_SECRET unset — accepting unsigned requests.",
+          c.yellow
+        )
+      );
+    }
   });
 }

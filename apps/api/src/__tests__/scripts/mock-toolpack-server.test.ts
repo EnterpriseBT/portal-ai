@@ -102,10 +102,13 @@ describe("mock-toolpack-server verification middleware (phase 6)", () => {
       expect(res.body).toEqual({ echoed: "hi" });
     }
 
-    // (c) Without the env var, unsigned requests are accepted (warn-and-skip).
+    // (c) Without the env var, unsigned requests are accepted with
+    // a "Signature: SKIPPED" log line (the verbose logger uses
+    // console.log, not console.warn, so all log lines for one
+    // request stay in the same stream).
     delete process.env.MOCK_TOOLPACK_SIGNING_SECRET;
-    const warnSpy = jest
-      .spyOn(console, "warn")
+    const logSpy = jest
+      .spyOn(console, "log")
       .mockImplementation(() => undefined);
     try {
       const app = createMockApp();
@@ -115,9 +118,10 @@ describe("mock-toolpack-server verification middleware (phase 6)", () => {
         .send({ tool: "echo", input: { message: "hi" } });
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ echoed: "hi" });
-      expect(warnSpy).toHaveBeenCalled();
+      const logged = logSpy.mock.calls.map((args) => String(args[0])).join("\n");
+      expect(logged).toMatch(/SKIPPED/);
     } finally {
-      warnSpy.mockRestore();
+      logSpy.mockRestore();
     }
 
     // Verify the timing-safe-equal path works against an independent
