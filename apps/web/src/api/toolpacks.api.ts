@@ -53,9 +53,19 @@ export const toolpacks = {
       method: "DELETE",
     }),
 
-  refresh: (id: string) =>
-    useAuthMutation<ToolpackRefreshResponsePayload, void>({
-      url: `/api/toolpacks/${encodeURIComponent(id)}/refresh`,
+  /**
+   * Manual schema/metadata refresh. The ID is passed as a mutation
+   * variable rather than baked into the URL at hook-creation time so
+   * a single shared mutation can serve both the edit-dialog refresh
+   * button and the row-level refresh icon (which has a different ID
+   * per row). Calling the SDK getter from an event handler would
+   * violate the Rules of Hooks.
+   */
+  refresh: () =>
+    useAuthMutation<ToolpackRefreshResponsePayload, { id: string }>({
+      method: "POST",
+      url: ({ id }) => `/api/toolpacks/${encodeURIComponent(id)}/refresh`,
+      body: () => undefined,
     }),
 
   rotateSigningSecret: (id: string) =>

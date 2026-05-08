@@ -303,7 +303,7 @@ export const Toolpacks: React.FC = () => {
   const listResult = sdk.toolpacks.list();
   const registerMutation = sdk.toolpacks.register();
   const updateMutation = sdk.toolpacks.update(editing?.id ?? "");
-  const refreshMutation = sdk.toolpacks.refresh(editing?.id ?? "");
+  const refreshMutation = sdk.toolpacks.refresh();
   const deleteMutation = sdk.toolpacks.remove(deleting?.id ?? "");
   const rotateSecretMutation = sdk.toolpacks.rotateSigningSecret(
     editing?.id ?? ""
@@ -331,10 +331,10 @@ export const Toolpacks: React.FC = () => {
             onEdit={(t) => setEditing(t)}
             onDelete={(t) => setDeleting(t)}
             onRefresh={(t) => {
-              const refresh = sdk.toolpacks.refresh(t.id);
-              refresh.mutate(undefined, {
-                onSuccess: () => invalidate(),
-              });
+              refreshMutation.mutate(
+                { id: t.id },
+                { onSuccess: () => invalidate() }
+              );
             }}
           />
         )}
@@ -379,9 +379,11 @@ export const Toolpacks: React.FC = () => {
           });
         }}
         onRefresh={() => {
-          refreshMutation.mutate(undefined, {
-            onSuccess: () => invalidate(),
-          });
+          if (!editing) return;
+          refreshMutation.mutate(
+            { id: editing.id },
+            { onSuccess: () => invalidate() }
+          );
         }}
         onRotateSecret={() => {
           rotateSecretMutation.mutate(undefined, {
