@@ -22,6 +22,10 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import {
+  HighlightedCode,
+  type HighlightLanguage,
+} from "./HighlightedCode.component";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -403,7 +407,11 @@ export const RegisterToolpackDialogUI: React.FC<
               {
                 label: "Schema",
                 blocks: [
-                  { label: "GET → response", example: SCHEMA_RESPONSE_EXAMPLE },
+                  {
+                    label: "GET → response",
+                    example: SCHEMA_RESPONSE_EXAMPLE,
+                    language: "json",
+                  },
                 ],
               },
               {
@@ -412,17 +420,23 @@ export const RegisterToolpackDialogUI: React.FC<
                   {
                     label: "POST → request body",
                     example: RUNTIME_REQUEST_EXAMPLE,
+                    language: "json",
                   },
                   {
                     label: "POST → response (any JSON)",
                     example: RUNTIME_RESPONSE_EXAMPLE,
+                    language: "json",
                   },
                 ],
               },
               {
                 label: "Metadata",
                 blocks: [
-                  { label: "GET → response", example: METADATA_RESPONSE_EXAMPLE },
+                  {
+                    label: "GET → response",
+                    example: METADATA_RESPONSE_EXAMPLE,
+                    language: "json",
+                  },
                 ],
               },
             ]}
@@ -431,9 +445,24 @@ export const RegisterToolpackDialogUI: React.FC<
             testId="register-toolpack-verify-snippets"
             summary="See how to verify our signed requests on your server"
             tabs={[
-              { label: "TypeScript", blocks: [{ example: VERIFY_TS_EXAMPLE }] },
-              { label: "Python", blocks: [{ example: VERIFY_PYTHON_EXAMPLE }] },
-              { label: "C#", blocks: [{ example: VERIFY_CSHARP_EXAMPLE }] },
+              {
+                label: "TypeScript",
+                blocks: [
+                  { example: VERIFY_TS_EXAMPLE, language: "typescript" },
+                ],
+              },
+              {
+                label: "Python",
+                blocks: [
+                  { example: VERIFY_PYTHON_EXAMPLE, language: "python" },
+                ],
+              },
+              {
+                label: "C#",
+                blocks: [
+                  { example: VERIFY_CSHARP_EXAMPLE, language: "csharp" },
+                ],
+              },
             ]}
           />
         </Stack>
@@ -658,6 +687,8 @@ interface SnippetBlock {
   /** Optional sub-heading shown above the code block. */
   label?: string;
   example: string;
+  /** Highlight.js language id. Omit for plain monospace rendering. */
+  language?: HighlightLanguage;
 }
 
 interface SnippetTab {
@@ -720,24 +751,18 @@ const TabbedSnippetAccordion: React.FC<{
               {current.blocks.map((b, i) => (
                 <Box key={`${current.label}-${i}`}>
                   {b.label && (
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: "block", mb: 0.5 }}
+                    >
                       {b.label}
                     </Typography>
                   )}
-                  <Box
-                    component="pre"
-                    sx={{
-                      fontSize: 12,
-                      backgroundColor: (theme) => theme.palette.action.hover,
-                      borderRadius: 0.5,
-                      p: 1.5,
-                      m: 0,
-                      mt: b.label ? 0.5 : 0,
-                      overflow: "auto",
-                    }}
-                  >
-                    {b.example}
-                  </Box>
+                  <HighlightedCode
+                    code={b.example}
+                    language={b.language}
+                  />
                 </Box>
               ))}
             </Stack>
