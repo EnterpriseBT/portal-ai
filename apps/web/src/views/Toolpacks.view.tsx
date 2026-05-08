@@ -13,6 +13,7 @@ import {
 } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
+import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import Snackbar from "@mui/material/Snackbar";
 import AddIcon from "@mui/icons-material/Add";
@@ -66,6 +67,12 @@ export interface ToolpacksUIProps {
   onDelete?: (toolpack: Toolpack) => void;
   /** Optional — fires when the Refresh action on a custom row is clicked. */
   onRefresh?: (toolpack: Toolpack) => void;
+  /**
+   * Id of the toolpack whose refresh is currently in flight, if any.
+   * The row-level refresh button disables itself and renders a
+   * spinner in place of the refresh icon while this matches its id.
+   */
+  refreshingId?: string | null;
 }
 
 export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
@@ -77,6 +84,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
   onEdit,
   onDelete,
   onRefresh,
+  refreshingId,
 }) => {
   const navigate = useNavigate();
 
@@ -160,12 +168,20 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
               <IconButton
                 size="small"
                 aria-label="Refresh toolpack schema"
+                disabled={refreshingId === tp.id}
                 onClick={(e) => {
                   e.stopPropagation();
                   onRefresh(tp);
                 }}
               >
-                <RefreshIcon fontSize="small" />
+                {refreshingId === tp.id ? (
+                  <CircularProgress
+                    size={16}
+                    data-testid={`toolpack-refresh-spinner-${tp.id}`}
+                  />
+                ) : (
+                  <RefreshIcon fontSize="small" />
+                )}
               </IconButton>
             )}
             {onEdit && (
@@ -198,7 +214,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
       },
     });
     return base;
-  }, [toolpacks, onSelect, onEdit, onDelete, onRefresh, showActions]);
+  }, [toolpacks, onSelect, onEdit, onDelete, onRefresh, refreshingId, showActions]);
 
   const rows: ToolpackRow[] = useMemo(
     () =>
@@ -338,6 +354,11 @@ export const Toolpacks: React.FC = () => {
             onRegister={() => setRegisterOpen(true)}
             onEdit={(t) => setEditing(t)}
             onDelete={(t) => setDeleting(t)}
+            refreshingId={
+              refreshMutation.isPending
+                ? refreshMutation.variables?.id ?? null
+                : null
+            }
             onRefresh={(t) => {
               refreshMutation.mutate(
                 { id: t.id },

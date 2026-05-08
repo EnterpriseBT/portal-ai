@@ -172,4 +172,62 @@ describe("ToolpacksUI", () => {
     fireEvent.click(button);
     expect(onRegister).toHaveBeenCalledTimes(1);
   });
+
+  it("disables the row refresh button + shows a spinner while refreshingId matches", () => {
+    const customPack: Toolpack = {
+      id: "otp-1",
+      kind: "custom",
+      slug: "customer_intel",
+      name: "customer_intel",
+      description: "External customer intelligence.",
+      iconSlug: "Extension",
+      tools: [
+        {
+          name: "lookup_company",
+          description: "Look up a company.",
+          parameterSchema: { type: "object", properties: {} },
+        },
+      ],
+      endpoints: {
+        schema: "https://example.com/schema",
+        runtime: "https://example.com/runtime",
+      },
+      authHeadersStatus: { has: false },
+      signingSecretStatus: { has: true },
+      schemaFetchedAt: Date.now(),
+      metadataFetchedAt: null,
+    };
+
+    const { rerender } = renderUI({
+      toolpacks: [customPack],
+      onRefresh: jest.fn(),
+      refreshingId: null,
+    });
+    const before = screen.getByLabelText(
+      "Refresh toolpack schema"
+    ) as HTMLButtonElement;
+    expect(before.disabled).toBe(false);
+    expect(
+      screen.queryByTestId(`toolpack-refresh-spinner-${customPack.id}`)
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <ToolpacksUI
+        toolpacks={[customPack]}
+        selected={null}
+        onSelect={jest.fn()}
+        onCloseModal={jest.fn()}
+        onRefresh={jest.fn()}
+        refreshingId={customPack.id}
+      />
+    );
+
+    const after = screen.getByLabelText(
+      "Refresh toolpack schema"
+    ) as HTMLButtonElement;
+    expect(after.disabled).toBe(true);
+    expect(
+      screen.getByTestId(`toolpack-refresh-spinner-${customPack.id}`)
+    ).toBeInTheDocument();
+  });
 });
