@@ -105,7 +105,7 @@ async function fetchWithCap(
       throw new ApiError(
         502,
         ApiCode.TOOLPACK_SCHEMA_TOO_LARGE,
-        `Schema response exceeds ${MAX_RESPONSE_BYTES} bytes`
+        `The toolpack response from ${url} exceeds the ${MAX_RESPONSE_BYTES}-byte cap.`
       );
     }
 
@@ -114,7 +114,7 @@ async function fetchWithCap(
       throw new ApiError(
         502,
         ApiCode.TOOLPACK_SCHEMA_TOO_LARGE,
-        `Schema response exceeds ${MAX_RESPONSE_BYTES} bytes`
+        `The toolpack response from ${url} exceeds the ${MAX_RESPONSE_BYTES}-byte cap.`
       );
     }
 
@@ -129,16 +129,33 @@ async function fetchWithCap(
   }
 }
 
-function parseJson(text: string): unknown {
+function parseJson(text: string, url: string): unknown {
   try {
     return JSON.parse(text);
-  } catch {
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "parse error";
     throw new ApiError(
       502,
       ApiCode.TOOLPACK_SCHEMA_INVALID,
-      "Schema response is not valid JSON"
+      `The toolpack response from ${url} is not valid JSON (${reason}).`
     );
   }
+}
+
+/**
+ * Render a one-line summary of the first Zod issue so error messages
+ * surface what specifically is wrong with a malformed response —
+ * e.g. `tools.0.name: Required` rather than the generic "failed
+ * validation".
+ */
+function describeFirstZodIssue(
+  issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey>; message: string }>
+): string {
+  const first = issues[0];
+  if (!first) return "validation failed";
+  const path =
+    first.path.length > 0 ? first.path.map((p) => String(p)).join(".") : "(root)";
+  return `${path}: ${first.message}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,10 +181,11 @@ export class ToolpackRegistrationService {
       if (err instanceof SsrfBlockedError) {
         throw new ApiError(502, ApiCode.TOOLPACK_URL_PRIVATE_HOST, err.message);
       }
+      const reason = err instanceof Error ? err.message : "unknown error";
       throw new ApiError(
         502,
         ApiCode.TOOLPACK_SCHEMA_FETCH_FAILED,
-        err instanceof Error ? err.message : "Schema fetch failed"
+        `Could not reach the toolpack schema endpoint at ${url} (${reason}). Check that the toolpack server is running and the URL is correct.`
       );
     }
 
@@ -175,17 +193,17 @@ export class ToolpackRegistrationService {
       throw new ApiError(
         502,
         ApiCode.TOOLPACK_SCHEMA_FETCH_FAILED,
-        `Schema endpoint returned ${result.status}${result.statusText ? `: ${result.statusText}` : ""}`
+        `The toolpack schema endpoint at ${url} returned ${result.status}${result.statusText ? ` ${result.statusText}` : ""}.`
       );
     }
 
-    const parsed = parseJson(result.text);
+    const parsed = parseJson(result.text, url);
     const validated = SchemaResponseShape.safeParse(parsed);
     if (!validated.success) {
       throw new ApiError(
         502,
         ApiCode.TOOLPACK_SCHEMA_INVALID,
-        "Schema response failed validation"
+        `The toolpack schema response from ${url} did not match the expected shape (${describeFirstZodIssue(validated.error.issues)}).`
       );
     }
 
