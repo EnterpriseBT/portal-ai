@@ -10,6 +10,8 @@ import Accordion from "@mui/material/Accordion";
 import AccordionDetails from "@mui/material/AccordionDetails";
 import AccordionSummary from "@mui/material/AccordionSummary";
 import Chip from "@mui/material/Chip";
+import Tab from "@mui/material/Tab";
+import Tabs from "@mui/material/Tabs";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 
 import { FormAlert } from "./FormAlert.component";
@@ -349,6 +351,15 @@ export const RegisterToolpackDialogUI: React.FC<
             ]}
           />
         </Stack>
+        <TabbedSnippetAccordion
+          testId="register-toolpack-verify-snippets"
+          summary="See how to verify our signed requests on your server"
+          tabs={[
+            { label: "TypeScript", example: VERIFY_TS_EXAMPLE },
+            { label: "Python", example: VERIFY_PYTHON_EXAMPLE },
+            { label: "C#", example: VERIFY_CSHARP_EXAMPLE },
+          ]}
+        />
         <Stack spacing={0.75}>
           <TextField
             label="Auth headers (optional)"
@@ -447,6 +458,162 @@ const METADATA_RESPONSE_EXAMPLE = `{
   ]
 }`;
 
+// ── Verification snippets ──────────────────────────────────────────
+//
+// We sign every outbound call (schema / metadata / runtime) with the
+// per-toolpack signing secret. Receivers should verify three headers:
+//   X-Portalai-Timestamp   unix seconds (reject if > 300 s old or
+//                          > 60 s in the future)
+//   X-Portalai-Webhook-Id  uuid (idempotency key)
+//   X-Portalai-Signature   "v1=<hex of HMAC-SHA256 over
+//                          `<ts>.<id>.<rawBody>` with the secret>"
+//
+// Each snippet below is a complete, copy-paste-able middleware that
+// rejects unsigned / stale / tampered requests with 401 + a stable
+// error code. The dialog renders all three side-by-side so the
+// reader can pick the language matching their stack.
+
+const VERIFY_TS_EXAMPLE = `import crypto from "crypto";
+import express from "express";
+
+const SIGNING_SECRET = process.env.TOOLPACK_SIGNING_SECRET!;
+const app = express();
+
+// Capture the raw body BEFORE express.json() consumes it.
+app.use(express.json({
+  verify: (req: any, _res, buf) => { req.rawBody = buf; },
+}));
+
+app.use((req, res, next) => {
+  const ts = req.header("X-Portalai-Timestamp");
+  const id = req.header("X-Portalai-Webhook-Id");
+  const sig = req.header("X-Portalai-Signature");
+  if (!ts || !id || !sig) {
+    return res.status(401).json({ error: "SIGNATURE_MISSING" });
+  }
+  const ageSec = Math.floor(Date.now() / 1000) - Number(ts);
+  if (Number.isNaN(ageSec) || ageSec > 300 || ageSec < -60) {
+    return res.status(401).json({ error: "TIMESTAMP_STALE" });
+  }
+  const rawBody = (req as any).rawBody?.toString("utf8") ?? "";
+  const expected = crypto
+    .createHmac("sha256", SIGNING_SECRET)
+    .update(\`\${ts}.\${id}.\${rawBody}\`)
+    .digest("hex");
+  const provided = sig.startsWith("v1=") ? sig.slice(3) : "";
+  const a = Buffer.from(expected, "hex");
+  const b = Buffer.from(provided, "hex");
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return res.status(401).json({ error: "SIGNATURE_INVALID" });
+  }
+  next();
+});
+
+app.post("/runtime", (req, res) => {
+  // Your tool dispatcher here.
+  res.json({ /* tool output */ });
+});`;
+
+const VERIFY_PYTHON_EXAMPLE = `import hmac, hashlib, os, time
+from flask import Flask, request, abort, jsonify
+
+SIGNING_SECRET = os.environ["TOOLPACK_SIGNING_SECRET"].encode()
+app = Flask(__name__)
+
+@app.before_request
+def verify_signature():
+    ts  = request.headers.get("X-Portalai-Timestamp")
+    wid = request.headers.get("X-Portalai-Webhook-Id")
+    sig = request.headers.get("X-Portalai-Signature", "")
+    if not (ts and wid and sig):
+        abort(401, "SIGNATURE_MISSING")
+
+    age = int(time.time()) - int(ts)
+    if age > 300 or age < -60:
+        abort(401, "TIMESTAMP_STALE")
+
+    raw = request.get_data()  # raw bytes, BEFORE JSON parsing
+    payload = f"{ts}.{wid}.".encode() + raw
+    expected = hmac.new(SIGNING_SECRET, payload, hashlib.sha256).hexdigest()
+    provided = sig[3:] if sig.startswith("v1=") else ""
+    if not hmac.compare_digest(expected, provided):
+        abort(401, "SIGNATURE_INVALID")
+
+@app.post("/runtime")
+def runtime():
+    body = request.get_json()
+    # Your tool dispatcher here.
+    return jsonify({ "result": "..." })`;
+
+const VERIFY_CSHARP_EXAMPLE = `using System.Security.Cryptography;
+using System.Text;
+using Microsoft.AspNetCore.Http;
+
+var SIGNING_SECRET = Environment.GetEnvironmentVariable(
+    "TOOLPACK_SIGNING_SECRET")!;
+
+var app = WebApplication.Create();
+
+app.Use(async (ctx, next) =>
+{
+    var ts  = ctx.Request.Headers["X-Portalai-Timestamp"].ToString();
+    var id  = ctx.Request.Headers["X-Portalai-Webhook-Id"].ToString();
+    var sig = ctx.Request.Headers["X-Portalai-Signature"].ToString();
+
+    if (string.IsNullOrEmpty(ts) ||
+        string.IsNullOrEmpty(id) ||
+        string.IsNullOrEmpty(sig) ||
+        !long.TryParse(ts, out var tsNum))
+    {
+        ctx.Response.StatusCode = 401;
+        await ctx.Response.WriteAsJsonAsync(new { error = "SIGNATURE_MISSING" });
+        return;
+    }
+
+    var ageSec = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - tsNum;
+    if (ageSec > 300 || ageSec < -60)
+    {
+        ctx.Response.StatusCode = 401;
+        await ctx.Response.WriteAsJsonAsync(new { error = "TIMESTAMP_STALE" });
+        return;
+    }
+
+    // Buffer so we can read the body twice.
+    ctx.Request.EnableBuffering();
+    using var reader = new StreamReader(
+        ctx.Request.Body, Encoding.UTF8, leaveOpen: true);
+    var rawBody = await reader.ReadToEndAsync();
+    ctx.Request.Body.Position = 0;
+
+    using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(SIGNING_SECRET));
+    var expected = Convert
+        .ToHexString(hmac.ComputeHash(
+            Encoding.UTF8.GetBytes($"{ts}.{id}.{rawBody}")))
+        .ToLowerInvariant();
+    var provided = sig.StartsWith("v1=") ? sig[3..] : "";
+
+    var a = Convert.FromHexString(expected);
+    var b = provided.Length == expected.Length
+        ? Convert.FromHexString(provided)
+        : Array.Empty<byte>();
+    if (!CryptographicOperations.FixedTimeEquals(a, b))
+    {
+        ctx.Response.StatusCode = 401;
+        await ctx.Response.WriteAsJsonAsync(new { error = "SIGNATURE_INVALID" });
+        return;
+    }
+
+    await next(ctx);
+});
+
+app.MapPost("/runtime", async (HttpContext ctx) =>
+{
+    // Your tool dispatcher here.
+    await ctx.Response.WriteAsJsonAsync(new { /* tool output */ });
+});
+
+app.Run();`;
+
 interface ShapeBlock {
   label: string;
   example: string;
@@ -487,6 +654,87 @@ const FieldShapeAccordion: React.FC<{
     </AccordionDetails>
   </Accordion>
 );
+
+/**
+ * Variant of {@link FieldShapeAccordion} that displays its examples
+ * one-at-a-time behind tabs instead of stacking them vertically.
+ * Reach for this when the snippets are long enough that stacking
+ * dominates the dialog height (e.g. multi-language verification
+ * code). The accordion itself remains collapsible so the dialog
+ * stays compact when the snippets aren't being read.
+ */
+interface TabbedSnippet {
+  label: string;
+  example: string;
+}
+
+const TabbedSnippetAccordion: React.FC<{
+  testId: string;
+  summary: string;
+  tabs: TabbedSnippet[];
+}> = ({ testId, summary, tabs }) => {
+  const [active, setActive] = useState(0);
+  const current = tabs[active] ?? tabs[0];
+  return (
+    <Accordion
+      variant="outlined"
+      disableGutters
+      sx={{
+        "&::before": { display: "none" },
+        backgroundColor: "transparent",
+      }}
+    >
+      <AccordionSummary
+        expandIcon={<ExpandMoreIcon fontSize="small" />}
+        data-testid={`${testId}-summary`}
+        sx={{ minHeight: 32, "& .MuiAccordionSummary-content": { my: 0.5 } }}
+      >
+        <Typography variant="caption" color="text.secondary">
+          {summary}
+        </Typography>
+      </AccordionSummary>
+      <AccordionDetails sx={{ pt: 0 }}>
+        <Stack spacing={1}>
+          <Tabs
+            value={active}
+            onChange={(_e, v: number) => setActive(v)}
+            variant="standard"
+            sx={{ minHeight: 32, "& .MuiTab-root": { minHeight: 32, py: 0.5 } }}
+            data-testid={`${testId}-tabs`}
+          >
+            {tabs.map((t, i) => (
+              <Tab
+                key={t.label}
+                label={t.label}
+                data-testid={`${testId}-tab-${t.label
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]+/g, "-")}`}
+                value={i}
+              />
+            ))}
+          </Tabs>
+          {current && (
+            <Box
+              component="pre"
+              data-testid={`${testId}-active-snippet`}
+              sx={{
+                fontSize: 12,
+                backgroundColor: (theme) => theme.palette.action.hover,
+                borderRadius: 0.5,
+                p: 1.5,
+                m: 0,
+                maxHeight: 320,
+                overflow: "auto",
+              }}
+            >
+              {current.example}
+            </Box>
+          )}
+        </Stack>
+      </AccordionDetails>
+    </Accordion>
+  );
+};
 
 const ShapeCodeBlock: React.FC<ShapeBlock> = ({ label, example }) => (
   <Box>

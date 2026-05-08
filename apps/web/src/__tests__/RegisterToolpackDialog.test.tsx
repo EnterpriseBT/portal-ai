@@ -208,6 +208,49 @@ describe("RegisterToolpackDialogUI", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  // ── verification snippets accordion ────────────────────────────
+
+  it("renders the verification-snippets accordion with TS / Python / C# tabs", () => {
+    render(<RegisterToolpackDialogUI {...defaultProps} />);
+
+    const summary = screen.getByTestId(
+      "register-toolpack-verify-snippets-summary"
+    );
+    expect(summary).toBeInTheDocument();
+    fireEvent.click(summary);
+
+    // All three tabs are present.
+    expect(
+      screen.getByTestId("register-toolpack-verify-snippets-tab-typescript")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("register-toolpack-verify-snippets-tab-python")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("register-toolpack-verify-snippets-tab-c-")
+    ).toBeInTheDocument();
+
+    // Default tab (TypeScript) shows the timingSafeEqual call.
+    const snippet = screen.getByTestId(
+      "register-toolpack-verify-snippets-active-snippet"
+    );
+    expect(snippet.textContent).toContain("crypto.timingSafeEqual");
+
+    // Switch to Python — the snippet body swaps; only one is rendered at a time.
+    fireEvent.click(
+      screen.getByTestId("register-toolpack-verify-snippets-tab-python")
+    );
+    expect(snippet.textContent).toContain("hmac.compare_digest");
+    expect(snippet.textContent).not.toContain("crypto.timingSafeEqual");
+
+    // Switch to C# — same story.
+    fireEvent.click(
+      screen.getByTestId("register-toolpack-verify-snippets-tab-c-")
+    );
+    expect(snippet.textContent).toContain("FixedTimeEquals");
+    expect(snippet.textContent).not.toContain("hmac.compare_digest");
+  });
+
   // ── auth-header boilerplate quick-inserts ──────────────────────
 
   it("clicking a boilerplate chip inserts the templated header into the textarea", () => {
