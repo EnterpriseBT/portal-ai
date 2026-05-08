@@ -1,4 +1,6 @@
-const { render, screen } = await import("./test-utils");
+import { jest } from "@jest/globals";
+
+const { render, screen, fireEvent, waitFor } = await import("./test-utils");
 const { HighlightedCode } = await import(
   "../components/HighlightedCode.component"
 );
@@ -50,6 +52,41 @@ describe("HighlightedCode", () => {
         (n) => n.textContent
       )
     ).toContain('"Acme"');
+  });
+
+  it("renders a copy button by default + writes the code to the clipboard on click", async () => {
+    const writeText = jest
+      .fn<(t: string) => Promise<void>>()
+      .mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(
+      <HighlightedCode
+        code='{"x":1}'
+        language="json"
+        data-testid="hc-copy"
+      />
+    );
+    const copyButton = screen.getByTestId("hc-copy-copy");
+    expect(copyButton).toBeInTheDocument();
+    fireEvent.click(copyButton);
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('{"x":1}');
+    });
+  });
+
+  it("hides the copy button when showCopyButton=false", () => {
+    render(
+      <HighlightedCode
+        code='{"x":1}'
+        showCopyButton={false}
+        data-testid="hc-no-copy"
+      />
+    );
+    expect(screen.queryByTestId("hc-no-copy-copy")).not.toBeInTheDocument();
   });
 
   it("falls back to plain text for an unsupported language", () => {

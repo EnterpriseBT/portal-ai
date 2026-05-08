@@ -34,6 +34,7 @@ import { ConnectorInstanceDataItem } from "../components/ConnectorInstance.compo
 import { ConnectorInstanceReconnectButtonUI } from "../components/ConnectorInstanceReconnectButton.component";
 import { ConnectorInstanceSyncButtonUI } from "../components/ConnectorInstanceSyncButton.component";
 import { ConnectorInstanceSyncFeedbackUI } from "../components/ConnectorInstanceSyncFeedback.component";
+import { HighlightedCode } from "../components/HighlightedCode.component";
 import { useConnectorInstanceSync } from "../utils/use-connector-instance-sync.util";
 import { useReconnectConnectorInstance } from "../utils/use-reconnect-connector-instance.util";
 import {
@@ -308,23 +309,11 @@ export const ConnectorInstanceView = ({
                         {
                           label: "Config",
                           value: (
-                            <Box
-                              component="pre"
-                              sx={{
-                                fontFamily: "monospace",
-                                fontSize: "0.8125rem",
-                                backgroundColor: "action.hover",
-                                borderRadius: 1,
-                                px: 1.5,
-                                py: 1,
-                                m: 0,
-                                overflow: "auto",
-                                maxHeight: 320,
-                                whiteSpace: "pre",
-                              }}
-                            >
-                              {JSON.stringify(ci.config, null, 2)}
-                            </Box>
+                            <HighlightedCode
+                              code={JSON.stringify(ci.config, null, 2)}
+                              language="json"
+                              maxHeight={320}
+                            />
                           ),
                           hidden:
                             !ci.config || Object.keys(ci.config).length === 0,

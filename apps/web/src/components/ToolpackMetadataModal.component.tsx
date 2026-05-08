@@ -2,6 +2,8 @@ import React from "react";
 
 import type { Toolpack, ToolpackTool } from "@portalai/core/contracts";
 import { Box, Stack, Typography } from "@portalai/core/ui";
+
+import { HighlightedCode } from "./HighlightedCode.component";
 import Chip from "@mui/material/Chip";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
@@ -166,20 +168,12 @@ const ToolSection: React.FC<{ tool: ToolpackTool }> = ({ tool }) => {
           <Typography variant="caption" color="text.secondary">
             Parameters
           </Typography>
-          <Box
-            component="pre"
-            sx={{
-              fontSize: 12,
-              backgroundColor: (theme) => theme.palette.action.hover,
-              borderRadius: 0.5,
-              p: 1.5,
-              overflow: "auto",
-              m: 0,
-              mt: 0.5,
-            }}
-            data-testid="toolpack-tool-schema"
-          >
-            {JSON.stringify(tool.parameterSchema, null, 2)}
+          <Box sx={{ mt: 0.5 }}>
+            <HighlightedCode
+              code={JSON.stringify(tool.parameterSchema, null, 2)}
+              language="json"
+              data-testid="toolpack-tool-schema"
+            />
           </Box>
         </Box>
 
@@ -214,46 +208,32 @@ const ToolSection: React.FC<{ tool: ToolpackTool }> = ({ tool }) => {
                   )}
                   {ex.input !== undefined && (
                     <Box sx={{ mb: ex.output !== undefined ? 1 : 0 }}>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: "block", mb: 0.5 }}
+                      >
                         Input
                       </Typography>
-                      <Box
-                        component="pre"
-                        sx={{
-                          fontSize: 12,
-                          backgroundColor: (theme) =>
-                            theme.palette.action.hover,
-                          borderRadius: 0.5,
-                          p: 1,
-                          m: 0,
-                          mt: 0.5,
-                          overflow: "auto",
-                        }}
-                      >
-                        {JSON.stringify(ex.input, null, 2)}
-                      </Box>
+                      <HighlightedCode
+                        code={JSON.stringify(ex.input, null, 2)}
+                        language="json"
+                      />
                     </Box>
                   )}
                   {ex.output !== undefined && (
                     <Box>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: "block", mb: 0.5 }}
+                      >
                         Output
                       </Typography>
-                      <Box
-                        component="pre"
-                        sx={{
-                          fontSize: 12,
-                          backgroundColor: (theme) =>
-                            theme.palette.action.hover,
-                          borderRadius: 0.5,
-                          p: 1,
-                          m: 0,
-                          mt: 0.5,
-                          overflow: "auto",
-                        }}
-                      >
-                        {JSON.stringify(ex.output, null, 2)}
-                      </Box>
+                      <HighlightedCode
+                        code={JSON.stringify(ex.output, null, 2)}
+                        language="json"
+                      />
                     </Box>
                   )}
                 </Box>

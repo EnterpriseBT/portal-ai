@@ -1,7 +1,11 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 
 import Box from "@mui/material/Box";
+import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
 import { useTheme } from "@mui/material/styles";
+import CheckIcon from "@mui/icons-material/Check";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 
 import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";
@@ -38,6 +42,12 @@ export interface HighlightedCodeProps {
   fontSize?: number | string;
   /** Override the default `maxHeight` (none — let the parent constrain). */
   maxHeight?: number | string;
+  /**
+   * When false, hides the copy-to-clipboard button. Defaults to true.
+   * Disable for inline / cell-sized renderings where the button would
+   * dominate the cell.
+   */
+  showCopyButton?: boolean;
   "data-testid"?: string;
 }
 
@@ -57,10 +67,23 @@ export const HighlightedCode: React.FC<HighlightedCodeProps> = ({
   language,
   fontSize = 12,
   maxHeight,
+  showCopyButton = true,
   "data-testid": testId,
 }) => {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard unavailable (insecure context, permissions). The
+      // user can still select-and-copy the text manually.
+    }
+  };
 
   const highlighted = useMemo(() => {
     if (!language) return null;
@@ -102,48 +125,80 @@ export const HighlightedCode: React.FC<HighlightedCodeProps> = ({
       };
 
   return (
-    <Box
-      component="pre"
-      data-testid={testId}
-      sx={{
-        fontSize,
-        fontFamily:
-          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        backgroundColor: theme.palette.action.hover,
-        borderRadius: 0.5,
-        p: 1.5,
-        m: 0,
-        overflow: "auto",
-        ...(maxHeight !== undefined ? { maxHeight } : {}),
-        // Theme highlight.js token classes against the palette.
-        "& .hljs-keyword, & .hljs-built_in, & .hljs-class .hljs-keyword": {
-          color: tokenColors.keyword,
-        },
-        "& .hljs-built_in": { color: tokenColors.builtin },
-        "& .hljs-type, & .hljs-class .hljs-title, & .hljs-title.class_": {
-          color: tokenColors.type,
-        },
-        "& .hljs-string, & .hljs-attribute, & .hljs-symbol": {
-          color: tokenColors.string,
-        },
-        "& .hljs-number": { color: tokenColors.number },
-        "& .hljs-literal, & .hljs-meta": { color: tokenColors.literal },
-        "& .hljs-comment, & .hljs-doctag, & .hljs-quote": {
-          color: tokenColors.comment,
-          fontStyle: "italic",
-        },
-        "& .hljs-function .hljs-title, & .hljs-title.function_": {
-          color: tokenColors.function,
-        },
-        "& .hljs-attr, & .hljs-property, & .hljs-variable": {
-          color: tokenColors.attr,
-        },
-      }}
-    >
-      {highlighted ? (
-        <code dangerouslySetInnerHTML={{ __html: highlighted }} />
-      ) : (
-        <code>{code}</code>
+    <Box sx={{ position: "relative" }}>
+      <Box
+        component="pre"
+        data-testid={testId}
+        sx={{
+          fontSize,
+          fontFamily:
+            'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+          backgroundColor: theme.palette.action.hover,
+          borderRadius: 0.5,
+          p: 1.5,
+          // Reserve room on the right so a long unbroken line doesn't
+          // slide under the copy button.
+          pr: showCopyButton ? 5 : 1.5,
+          m: 0,
+          overflow: "auto",
+          ...(maxHeight !== undefined ? { maxHeight } : {}),
+          // Theme highlight.js token classes against the palette.
+          "& .hljs-keyword, & .hljs-built_in, & .hljs-class .hljs-keyword": {
+            color: tokenColors.keyword,
+          },
+          "& .hljs-built_in": { color: tokenColors.builtin },
+          "& .hljs-type, & .hljs-class .hljs-title, & .hljs-title.class_": {
+            color: tokenColors.type,
+          },
+          "& .hljs-string, & .hljs-attribute, & .hljs-symbol": {
+            color: tokenColors.string,
+          },
+          "& .hljs-number": { color: tokenColors.number },
+          "& .hljs-literal, & .hljs-meta": { color: tokenColors.literal },
+          "& .hljs-comment, & .hljs-doctag, & .hljs-quote": {
+            color: tokenColors.comment,
+            fontStyle: "italic",
+          },
+          "& .hljs-function .hljs-title, & .hljs-title.function_": {
+            color: tokenColors.function,
+          },
+          "& .hljs-attr, & .hljs-property, & .hljs-variable": {
+            color: tokenColors.attr,
+          },
+        }}
+      >
+        {highlighted ? (
+          <code dangerouslySetInnerHTML={{ __html: highlighted }} />
+        ) : (
+          <code>{code}</code>
+        )}
+      </Box>
+      {showCopyButton && (
+        <Tooltip title={copied ? "Copied" : "Copy"} placement="left">
+          <IconButton
+            size="small"
+            onClick={handleCopy}
+            data-testid={testId ? `${testId}-copy` : undefined}
+            aria-label={copied ? "Copied" : "Copy code"}
+            sx={{
+              position: "absolute",
+              top: 4,
+              right: 4,
+              backgroundColor: theme.palette.background.paper,
+              border: 1,
+              borderColor: "divider",
+              "&:hover": { backgroundColor: theme.palette.background.paper },
+              opacity: 0.85,
+              "&:hover, &:focus-visible": { opacity: 1 },
+            }}
+          >
+            {copied ? (
+              <CheckIcon sx={{ fontSize: 14 }} />
+            ) : (
+              <ContentCopyIcon sx={{ fontSize: 14 }} />
+            )}
+          </IconButton>
+        </Tooltip>
       )}
     </Box>
   );

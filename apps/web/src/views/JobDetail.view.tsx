@@ -19,6 +19,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { JobDataStream } from "../components/Job.component";
 import DataResult from "../components/DataResult.component";
 import { JobDataItem } from "../components/Job.component";
+import { HighlightedCode } from "../components/HighlightedCode.component";
 import { sdk } from "../api/sdk";
 
 const dates = new DateFactory("UTC");
@@ -140,33 +141,19 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
 
                     {result && Object.keys(result).length > 0 && (
                       <PageSection title="Result" variant="outlined">
-                        <Typography
-                          variant="body2"
-                          component="pre"
-                          sx={{
-                            fontFamily: "monospace",
-                            whiteSpace: "pre-wrap",
-                            m: 0,
-                          }}
-                        >
-                          {JSON.stringify(result, null, 2)}
-                        </Typography>
+                        <HighlightedCode
+                          code={JSON.stringify(result, null, 2)}
+                          language="json"
+                        />
                       </PageSection>
                     )}
 
                     {job.metadata && Object.keys(job.metadata).length > 0 && (
                       <PageSection title="Metadata" variant="outlined">
-                        <Typography
-                          variant="body2"
-                          component="pre"
-                          sx={{
-                            fontFamily: "monospace",
-                            whiteSpace: "pre-wrap",
-                            m: 0,
-                          }}
-                        >
-                          {JSON.stringify(job.metadata, null, 2)}
-                        </Typography>
+                        <HighlightedCode
+                          code={JSON.stringify(job.metadata, null, 2)}
+                          language="json"
+                        />
                       </PageSection>
                     )}
                   </Stack>
