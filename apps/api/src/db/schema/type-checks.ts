@@ -82,8 +82,12 @@ import type { portalResults } from "./portal-results.table.js";
 import type { stationToolpacks } from "./station-toolpacks.table.js";
 import type { organizationToolpacks } from "./organization-toolpacks.table.js";
 import type { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
+import type { wideTableColumns } from "./wide-table-columns.table.js";
 import type { InterpretationTrace, LayoutPlan } from "@portalai/core/contracts";
-import type { ConnectorInstanceLayoutPlanSelect } from "./zod.js";
+import type {
+  ConnectorInstanceLayoutPlanSelect,
+  WideTableColumnSelect,
+} from "./zod.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -556,3 +560,17 @@ type _CilpSelectPlanTypeGuard = IsAssignable<
   LayoutPlan
 >;
 const _cilpSelectPlanTypeGuard: _CilpSelectPlanTypeGuard = true;
+
+// ── WideTableColumn ──────────────────────────────────────────────────
+//
+// API-internal metadata table — no domain model in `@portalai/core`.
+// We only assert that the Drizzle inferred row matches the drizzle-zod
+// derived select schema, in both directions.
+
+type _WtcInferredRow = InferSelectModel<typeof wideTableColumns>;
+
+type _WtcInferredToSelect = IsAssignable<_WtcInferredRow, WideTableColumnSelect>;
+const _wtcInferredToSelect: _WtcInferredToSelect = true;
+
+type _WtcSelectToInferred = IsAssignable<WideTableColumnSelect, _WtcInferredRow>;
+const _wtcSelectToInferred: _WtcSelectToInferred = true;

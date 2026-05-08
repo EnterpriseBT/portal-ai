@@ -30,6 +30,7 @@ import { stationToolpacks } from "./station-toolpacks.table.js";
 import { organizationToolpacks } from "./organization-toolpacks.table.js";
 import { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
 import { fileUploads } from "./file-uploads.table.js";
+import { wideTableColumns } from "./wide-table-columns.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -360,3 +361,15 @@ export const FileUploadInsertSchema = createInsertSchema(fileUploads);
 /** Inferred types */
 export type FileUploadSelect = z.infer<typeof FileUploadSelectSchema>;
 export type FileUploadInsert = z.infer<typeof FileUploadInsertSchema>;
+
+// ── Wide Table Columns ────────────────────────────────────────────────
+
+/** Zod schema for a `wide_table_columns` row returned by SELECT. */
+export const WideTableColumnSelectSchema = createSelectSchema(wideTableColumns);
+
+/** Zod schema for inserting into `wide_table_columns`. */
+export const WideTableColumnInsertSchema = createInsertSchema(wideTableColumns);
+
+/** Inferred types */
+export type WideTableColumnSelect = z.infer<typeof WideTableColumnSelectSchema>;
+export type WideTableColumnInsert = z.infer<typeof WideTableColumnInsertSchema>;

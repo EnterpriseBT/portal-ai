@@ -30,6 +30,8 @@ import {
   organizationToolpacksRepo,
   connectorInstanceLayoutPlansRepo,
   fileUploadsRepo,
+  wideTableColumnsRepo,
+  wideTableRepo,
 } from "../db/index.js";
 import {
   Repository,
@@ -104,6 +106,8 @@ export class DbService {
       organizationToolpacks: organizationToolpacksRepo,
       connectorInstanceLayoutPlans: connectorInstanceLayoutPlansRepo,
       fileUploads: fileUploadsRepo,
+      wideTableColumns: wideTableColumnsRepo,
+      wideTable: wideTableRepo,
     };
   }
 }

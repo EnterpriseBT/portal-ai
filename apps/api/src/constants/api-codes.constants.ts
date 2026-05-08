@@ -269,4 +269,17 @@ export enum ApiCode {
   SYNC_ALREADY_RUNNING = "SYNC_ALREADY_RUNNING",
   /** Connector type does not implement `syncInstance` (file-upload, sandbox, etc.). */
   SYNC_NOT_SUPPORTED = "SYNC_NOT_SUPPORTED",
+
+  // Wide-table reconciler
+  /**
+   * The reconciler detected that a `field_mapping`'s column-definition type
+   * differs from the type already applied to its wide-table column. Phase 1
+   * refuses these; phase 5 introduces the staged add-new → backfill → swap
+   * → retire flow.
+   */
+  WIDE_TABLE_TYPE_CHANGE_UNSUPPORTED = "WIDE_TABLE_TYPE_CHANGE_UNSUPPORTED",
+  /** The reconciler raised any non-type-change error while applying DDL. */
+  WIDE_TABLE_RECONCILE_FAILED = "WIDE_TABLE_RECONCILE_FAILED",
+  /** Logged-only — boot drift check failed and the app refuses to start. */
+  WIDE_TABLE_DRIFT_AT_BOOT = "WIDE_TABLE_DRIFT_AT_BOOT",
 }

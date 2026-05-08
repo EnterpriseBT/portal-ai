@@ -715,6 +715,181 @@ describe("Field Mapping Router", () => {
     });
   });
 
+  // ── Wide-table reconciler trigger wiring ─────────────────────────
+
+  describe("wide-table reconciler trigger wiring", () => {
+    async function infoSchemaCols(
+      db: ReturnType<typeof drizzle>,
+      tableName: string
+    ): Promise<Set<string>> {
+      const result = await db.execute<{ column_name: string }>(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        `SELECT column_name FROM information_schema.columns WHERE table_name = '${tableName}'` as any
+      );
+      return new Set(
+        ((result as unknown) as { column_name: string }[]).map(
+          (r) => r.column_name
+        )
+      );
+    }
+
+    // Case 26 — POST adds a wide-table column.
+    it("POST /api/field-mappings adds a `c_<key>` column on the wide table", async () => {
+      const { connectorEntityId, columnDefinitionId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      const res = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId,
+          columnDefinitionId,
+          sourceField: "Account Name",
+          normalizedKey: "account_name",
+          isPrimaryKey: false,
+        });
+
+      expect(res.status).toBe(201);
+
+      const cols = await infoSchemaCols(
+        db as ReturnType<typeof drizzle>,
+        `er__${connectorEntityId}`
+      );
+      expect(cols.has("c_account_name")).toBe(true);
+
+      const meta = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.wideTableColumns)
+        .where(eq(schema.wideTableColumns.connectorEntityId, connectorEntityId));
+      expect(meta).toHaveLength(1);
+      expect(meta[0]!.columnName).toBe("c_account_name");
+    });
+
+    // Case 27 — non-schema-changing PATCH does not emit DDL.
+    it("non-schema-changing PATCH does not add or change wide-table columns", async () => {
+      const { connectorEntityId, columnDefinitionId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      const createRes = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId,
+          columnDefinitionId,
+          sourceField: "src",
+          normalizedKey: "value",
+          isPrimaryKey: false,
+        });
+      const fmId = createRes.body.payload.fieldMapping.id as string;
+
+      const colsBefore = await infoSchemaCols(
+        db as ReturnType<typeof drizzle>,
+        `er__${connectorEntityId}`
+      );
+
+      // Patch with same shape; only `defaultValue` changes — does not
+      // affect the wide-table shape.
+      const patchRes = await request(app)
+        .patch(`/api/field-mappings/${fmId}`)
+        .set("Authorization", "Bearer test-token")
+        .send({
+          sourceField: "src",
+          columnDefinitionId,
+          defaultValue: "fallback",
+        });
+      expect(patchRes.status).toBe(200);
+
+      const colsAfter = await infoSchemaCols(
+        db as ReturnType<typeof drizzle>,
+        `er__${connectorEntityId}`
+      );
+      expect(colsAfter).toEqual(colsBefore);
+    });
+
+    // Case 28 — DELETE retires the wide-table column.
+    it("DELETE retires the wide-table column (Postgres column stays on disk)", async () => {
+      const { connectorEntityId, columnDefinitionId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      const createRes = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId,
+          columnDefinitionId,
+          sourceField: "src",
+          normalizedKey: "to_retire",
+          isPrimaryKey: false,
+        });
+      const fmId = createRes.body.payload.fieldMapping.id as string;
+
+      const delRes = await request(app)
+        .delete(`/api/field-mappings/${fmId}`)
+        .set("Authorization", "Bearer test-token");
+      expect(delRes.status).toBe(200);
+
+      // Postgres column still on disk.
+      const cols = await infoSchemaCols(
+        db as ReturnType<typeof drizzle>,
+        `er__${connectorEntityId}`
+      );
+      expect(cols.has("c_to_retire")).toBe(true);
+
+      // Metadata row marked retired.
+      const meta = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.wideTableColumns)
+        .where(
+          and(
+            eq(schema.wideTableColumns.connectorEntityId, connectorEntityId),
+            eq(schema.wideTableColumns.fieldMappingId, fmId)
+          )
+        );
+      expect(meta).toHaveLength(1);
+      expect(meta[0]!.retiredAt).not.toBeNull();
+    });
+
+    // Case 29 — type-changing PATCH returns 422.
+    it("PATCH that swaps to a different-typed column-definition returns 422", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      // First column definition is a string by default; create a number one.
+      const numericColDef = createColDef(organizationId, {
+        type: "number",
+        key: "amount",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(numericColDef as never);
+
+      // Create the field-mapping pointing at the original (string) col def.
+      const createRes = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId,
+          columnDefinitionId,
+          sourceField: "src",
+          normalizedKey: "value",
+          isPrimaryKey: false,
+        });
+      const fmId = createRes.body.payload.fieldMapping.id as string;
+
+      // Swap to the numeric col def — type changes from text → numeric.
+      const patchRes = await request(app)
+        .patch(`/api/field-mappings/${fmId}`)
+        .set("Authorization", "Bearer test-token")
+        .send({
+          sourceField: "src",
+          columnDefinitionId: numericColDef.id,
+        });
+
+      expect(patchRes.status).toBe(422);
+      expect(patchRes.body.code).toBe(ApiCode.WIDE_TABLE_TYPE_CHANGE_UNSUPPORTED);
+    });
+  });
+
   // ── POST — refNormalizedKey ────────────────────────────────────────
 
   describe("POST /api/field-mappings — refNormalizedKey", () => {

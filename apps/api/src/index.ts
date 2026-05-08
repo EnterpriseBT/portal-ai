@@ -8,11 +8,32 @@ import { jobsQueue } from "./queues/jobs.queue.js";
 import { createJobsWorker } from "./queues/jobs.worker.js";
 import { processors } from "./queues/processors/index.js";
 import { FileUploadSessionService } from "./services/file-upload-session.service.js";
+import { wideTableReconcilerService } from "./services/wide-table-reconciler.service.js";
+import { ApiCode } from "./constants/api-codes.constants.js";
 
 const jobsWorker = createJobsWorker(processors);
 
 async function start() {
   await connectDatabase();
+
+  // Wide-table boot drift check — guarantees every live connector_entity
+  // has a correctly-shaped `er__<id>` table before the HTTP listener
+  // accepts traffic. Throws on the first unfixable drift; we exit non-
+  // zero so the operator sees the failure immediately.
+  logger.info("Starting wide-table boot drift check…");
+  try {
+    const result = await wideTableReconcilerService.reconcileAll();
+    logger.info(
+      { ...result },
+      "Wide-table boot drift check complete"
+    );
+  } catch (err) {
+    logger.fatal(
+      { err, code: ApiCode.WIDE_TABLE_DRIFT_AT_BOOT },
+      "Wide-table boot drift check failed — refusing to start"
+    );
+    process.exit(1);
+  }
 
   const server = app.listen(environment.PORT, () => {
     logger.info(
