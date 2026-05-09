@@ -174,10 +174,39 @@ neither needs JSONB.
 
 ### Reference fields
 
-`reference` columns store the target `entity_record_id` as `text`. We
-do not add real foreign keys — references are cross-entity and
-soft-deleted rows are valid targets in some flows. The shape is
-identical to today's JSONB-stored references, just typed.
+`reference` columns store **the target row's `source_id`** (the
+identifier the source connector emitted), as `text`. `reference-array`
+columns store `text[]` of the same. We do not translate to
+`entity_records.id` at write time and we do not add real foreign keys
+— references can dangle (target hasn't synced yet) or cross instances
+(target lives in a different connector in the same org).
+
+This matches the existing JSONB behaviour exactly: today's
+`normalizedData[ref_field]` is the source-id string, not the target
+row's `id` (verified at `coercion.util.ts:184` where `coerceReference`
+is `String(value)` with no lookup, and at `field-mapping.router.ts:1095+`
+where the bidirectional-consistency check compares source-ids on both
+sides). The earlier draft of this audit said "store the target
+`entity_record_id`" — that was aspirational. The wide-table cutover
+keeps the source-id contract.
+
+To support cross-entity JOINs without a three-hop path through
+`entity_records.source_id`, every wide table denormalises
+`source_id text NOT NULL UNIQUE` as a fifth metadata column alongside
+`entity_record_id` / `organization_id` / `synced_at` / `is_valid`. A
+"deals with their account names" query collapses from three hops to
+one:
+
+```sql
+SELECT d.c_amount, a.c_name AS account_name
+FROM "er__<deals_id>"   d
+JOIN "er__<accounts_id>" a ON a.source_id = d.c_account_ref
+WHERE …;
+```
+
+The denormalisation is owned by the reconciler (DDL) and the sync
+write path (value comes from `entity_records.source_id`). It indexes
+naturally and keeps cross-entity JOINs cheap.
 
 ## The reconciler
 

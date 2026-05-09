@@ -48,10 +48,22 @@ the AI analytics path**.
 
 ## Phase breakdown
 
-Five phases. Phases 1 → 2 are sequential. Phase 3 (REST read path)
-and Phase 4 (LLM tool path) are independent and can ship in either
-order or in parallel after Phase 2 lands. Phase 5 is steady-state
-polish.
+**Revision (2026-05-09): old Phase 2 + Phase 3 are merged into a single
+phase 2.** Dropping `normalized_data` forces every JSONB read site to
+change anyway, and a transitional rehydrator shim would just be code to
+delete in the next phase. New numbering: Phase 1 (reconciler
+foundation) → Phase 2 (storage cutover + REST read path rewrite) →
+Phase 3 (LLM tool path / Postgres-direct, formerly Phase 4) → Phase 4
+(steady-state polish, formerly Phase 5).
+
+The original five-phase breakdown is preserved below for reference; the
+phase docs in `ENTITY_RECORDS_WIDE_TABLE_PHASE_2.spec.md` and
+`.plan.md` describe the merged Phase 2 in detail.
+
+Phases 1 → 2 are sequential. Phase 3 (LLM tool path) is independent of
+Phase 2 in spirit, but in practice will land after Phase 2 because the
+read primitives Phase 3 needs are built in Phase 2. Phase 4 is
+steady-state polish.
 
 ### Phase 1 — Reconciler foundation
 
@@ -78,10 +90,19 @@ written to by any feature path.
 Deliverable: reconciler in production creating empty wide tables for
 every existing connector entity. No reads or writes against them yet.
 
-### Phase 2 — Storage cutover
+### Phase 2 — Storage cutover + REST read path rewrite *(merged 2026-05-09)*
 
 Sync writes start writing to wide tables. JSONB column drops in the
-same migration. Single deploy.
+same migration. Every server-side read site that today references
+`entity_records.normalized_data` is rewritten against typed wide-table
+columns. Single deploy.
+
+See `ENTITY_RECORDS_WIDE_TABLE_PHASE_2.spec.md` and `.plan.md` for the
+authoritative scope. The bullets below describe the original "Phase 2
+storage cutover" only — the merged read-path work is detailed in the
+spec.
+
+
 
 - Sync write path (`connector-sync.*`) upserts `entity_records` and
   `er__<entity_id>` in one transaction. The transaction-table upsert
@@ -99,7 +120,15 @@ same migration. Single deploy.
 Deliverable: live records flow through the new path end-to-end.
 Reads (REST + LLM) still go through old paths until Phase 3 / 4.
 
-### Phase 3 — REST read path rewrite
+### Phase 3 (was Phase 4) — `data_query` tool to Postgres-direct
+
+*(Renumbered 2026-05-09: old Phase 3 was merged into Phase 2.)*
+
+The original "Phase 3 — REST read path rewrite" content below is
+preserved for context — it describes work that now lands as part of
+the merged Phase 2.
+
+#### Original Phase 3 — REST read path rewrite *(now part of Phase 2)*
 
 Rewrite the `entity-record.router.ts` list / get / patch / create /
 import endpoints against the wide table. Response shape unchanged.
@@ -124,7 +153,7 @@ create all preserved. No frontend changes. Existing
 `assertWriteCapability` gate calls survive untouched at every
 write-route site (see *Capability preservation*).
 
-### Phase 4 — `data_query` tool to Postgres-direct
+#### Original Phase 4 — `data_query` tool to Postgres-direct *(now Phase 3)*
 
 Migrate the LLM analytics path off AlaSQL.
 
@@ -159,7 +188,9 @@ Deliverable: portal sessions cold-start near-instantly; SQL runs
 against Postgres with proper plans and statistics; no per-process
 RAM ceiling on dataset size.
 
-### Phase 5 — Steady-state polish
+### Phase 4 (was Phase 5) — Steady-state polish
+
+*(Renumbered 2026-05-09.)*
 
 Pure follow-up; no user-visible feature change.
 
