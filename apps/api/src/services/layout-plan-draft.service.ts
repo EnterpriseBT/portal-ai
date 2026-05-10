@@ -100,14 +100,26 @@ export class LayoutPlanDraftService {
   }
 
   /**
-   * Synchronous validation + UUID minting for the draft commit endpoint.
-   * Verifies the plan envelope is well-formed and the connector
-   * definition / existing pending instance referenced by the body
-   * exists and belongs to the caller's org. Returns the metadata the
-   * route should pass to `JobsService.create("layout_plan_commit",
-   * metadata)`. Does NOT create any DB rows — the worker owns every
-   * write so a failure between `prepare` and the worker leaves no
-   * orphan state.
+   * Synchronous prep for the draft commit endpoint. Validates the plan
+   * envelope, resolves the target connector definition / existing
+   * pending instance, and creates the `connector_instances` row
+   * (status="pending" for the fresh-create path) + the
+   * `connector_instance_layout_plans` row before enqueueing.
+   *
+   * Creating the rows in-route — not in the worker — is what lets the
+   * client navigate to `/connectors/:id` immediately after the 202.
+   * The lock alert in the connector-instance view (driven by
+   * `JobLockService`) then surfaces the pending `layout_plan_commit`
+   * job as the "import in progress" confirmation. If we deferred the
+   * inserts to the worker, the destination view would 404 for the
+   * full duration of the job (often tens of seconds on ~400k-row
+   * uploads).
+   *
+   * Orphan-safety still belongs to the worker: it flips status from
+   * `pending` → `active` on success, or hard-deletes the instance +
+   * plan on failure (only when the route created them — pre-existing
+   * instances on the OAuth path are never deleted on commit
+   * rollback).
    */
   static async prepareDraftCommit(
     organizationId: string,
@@ -169,6 +181,22 @@ export class LayoutPlanDraftService {
         );
       }
       connectorInstanceId = SystemUtilities.id.v4.generate();
+      await DbService.repository.connectorInstances.create({
+        id: connectorInstanceId,
+        organizationId,
+        connectorDefinitionId: body.connectorDefinitionId,
+        name: body.name,
+        status: "pending",
+        enabledCapabilityFlags: { ...definition.capabilityFlags },
+        config: null,
+        credentials: null,
+        created: Date.now(),
+        createdBy: userId,
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      });
       // Body refinement guarantees uploadSessionId is present when
       // connectorInstanceId is not.
       workbookSource = {
@@ -178,6 +206,34 @@ export class LayoutPlanDraftService {
     }
 
     const planId = SystemUtilities.id.v4.generate();
+    try {
+      await DbService.repository.connectorInstanceLayoutPlans.create({
+        id: planId,
+        connectorInstanceId,
+        planVersion: plan.planVersion,
+        revisionTag: null,
+        plan,
+        interpretationTrace: null,
+        supersededBy: null,
+        created: Date.now(),
+        createdBy: userId,
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      });
+    } catch (err) {
+      // Plan insert failed (e.g. constraint violation) — undo the
+      // freshly-created instance so we don't leave an orphan. The
+      // existing-instance path is the OAuth callback's row and stays
+      // untouched.
+      if (!isExistingInstance) {
+        await DbService.repository.connectorInstances
+          .hardDelete(connectorInstanceId)
+          .catch(() => undefined);
+      }
+      throw err;
+    }
 
     return {
       connectorInstanceId,
@@ -198,17 +254,14 @@ export class LayoutPlanDraftService {
   }
 
   /**
-   * Worker entry point for the draft commit flow. Creates the
-   * connector_instance row (when not `isExistingInstance`), creates
-   * the plan row, runs the records-write pipeline, and on any failure
-   * past the instance create rolls back so no orphan rows remain. On
-   * success runs the same post-commit bookkeeping the synchronous
-   * path used to do (mark upload session committed / flip pending
-   * instance → active).
-   *
-   * Idempotent enough for retry: connector_instance creation reuses
-   * the pre-minted id and surfaces the row's existence as a unique
-   * violation, so a retry after a partial failure won't double-create.
+   * Worker entry point for the draft commit flow. The route already
+   * created the `connector_instances` + `connector_instance_layout_plans`
+   * rows (status="pending" for the fresh-create path) so the user could
+   * navigate to the instance view immediately. This method resolves the
+   * workbook, runs the records-write pipeline, then either flips the
+   * instance to `active` on success or hard-deletes the just-created
+   * rows on failure. Existing-instance commits (the OAuth callback's
+   * pending row) are never deleted — the user can re-try.
    */
   static async runCommitDraft(
     metadata: Extract<LayoutPlanCommitMetadata, { kind: "draft" }>
@@ -218,84 +271,14 @@ export class LayoutPlanDraftService {
       userId,
       connectorInstanceId,
       planId,
-      connectorDefinitionId,
-      name,
       isExistingInstance,
-      plan: planRaw,
       workbookSource,
     } = metadata;
-
-    const parsedPlan = LayoutPlanSchema.safeParse(planRaw);
-    if (!parsedPlan.success) {
-      throw new ApiError(
-        500,
-        ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
-        `Plan envelope did not round-trip through the job metadata: ${parsedPlan.error.issues
-          .map((i) => i.message)
-          .join("; ")}`
-      );
-    }
-    const plan: LayoutPlan = parsedPlan.data;
 
     const workbook = await LayoutPlanDraftService.resolveWorkbookBySource(
       workbookSource,
       organizationId
     );
-
-    if (!isExistingInstance) {
-      const definition =
-        await DbService.repository.connectorDefinitions.findById(
-          connectorDefinitionId
-        );
-      if (!definition) {
-        throw new ApiError(
-          404,
-          ApiCode.CONNECTOR_DEFINITION_NOT_FOUND,
-          `Connector definition not found: ${connectorDefinitionId}`
-        );
-      }
-      await DbService.repository.connectorInstances.create({
-        id: connectorInstanceId,
-        organizationId,
-        connectorDefinitionId,
-        name,
-        status: "active",
-        enabledCapabilityFlags: { ...definition.capabilityFlags },
-        config: null,
-        credentials: null,
-        created: Date.now(),
-        createdBy: userId,
-        updated: null,
-        updatedBy: null,
-        deleted: null,
-        deletedBy: null,
-      });
-    }
-
-    try {
-      await DbService.repository.connectorInstanceLayoutPlans.create({
-        id: planId,
-        connectorInstanceId,
-        planVersion: plan.planVersion,
-        revisionTag: null,
-        plan,
-        interpretationTrace: null,
-        supersededBy: null,
-        created: Date.now(),
-        createdBy: userId,
-        updated: null,
-        updatedBy: null,
-        deleted: null,
-        deletedBy: null,
-      });
-    } catch (err) {
-      if (!isExistingInstance) {
-        await DbService.repository.connectorInstances
-          .hardDelete(connectorInstanceId)
-          .catch(() => undefined);
-      }
-      throw err;
-    }
 
     let result;
     try {
@@ -328,6 +311,23 @@ export class LayoutPlanDraftService {
       throw err;
     }
 
+    // Commit succeeded — flip the instance to `active` so the
+    // pending chip on the detail view clears. The instance was
+    // created by either this commit's route call
+    // (`status: "pending"`) or the OAuth callback (also `pending`);
+    // either way the flip is correct.
+    await DbService.repository.connectorInstances
+      .update(connectorInstanceId, { status: "active", updatedBy: userId })
+      .catch((err) => {
+        logger.warn(
+          {
+            connectorInstanceId,
+            err: err instanceof Error ? err.message : err,
+          },
+          "Failed to flip pending → active after commit (non-fatal)"
+        );
+      });
+
     if (workbookSource.kind === "uploadSession") {
       FileUploadSessionService.markSessionCommitted(
         workbookSource.uploadSessionId
@@ -340,18 +340,6 @@ export class LayoutPlanDraftService {
           "Failed to mark upload session committed (non-fatal)"
         );
       });
-    } else if (isExistingInstance) {
-      await DbService.repository.connectorInstances
-        .update(connectorInstanceId, { status: "active", updatedBy: userId })
-        .catch((err) => {
-          logger.warn(
-            {
-              connectorInstanceId,
-              err: err instanceof Error ? err.message : err,
-            },
-            "Failed to flip pending → active after commit (non-fatal)"
-          );
-        });
     }
 
     return {

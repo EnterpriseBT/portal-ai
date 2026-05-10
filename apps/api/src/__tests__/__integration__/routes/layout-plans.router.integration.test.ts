@@ -497,19 +497,26 @@ describe("Layout Plans Draft Router", () => {
         isExistingInstance: false,
       });
 
-      // Worker hasn't run yet — neither the connector_instance nor the
-      // plan row has been written. This is the "worker-owned writes"
-      // contract: route validation + 202 only, every DB row appears
-      // only once the worker completes successfully.
+      // Route creates the connector_instance + plan rows
+      // synchronously (status="pending" for the fresh-create path)
+      // so the client can navigate to /connectors/:id immediately and
+      // see the lock alert. The worker flips to "active" on success
+      // or hard-deletes on failure.
       const instances = await (db as Db)
         .select()
         .from(connectorInstances)
         .where(eq(connectorInstances.name, "Async commit"));
-      expect(instances).toHaveLength(0);
+      expect(instances).toHaveLength(1);
+      expect(instances[0].id).toBe(res.body.payload.connectorInstanceId);
+      expect(instances[0].status).toBe("pending");
       const plans = await (db as Db)
         .select()
         .from(connectorInstanceLayoutPlans);
-      expect(plans).toHaveLength(0);
+      expect(plans).toHaveLength(1);
+      expect(plans[0].id).toBe(res.body.payload.planId);
+      expect(plans[0].connectorInstanceId).toBe(
+        res.body.payload.connectorInstanceId
+      );
     });
 
     it("creates the ConnectorInstance + plan row and commits records atomically", async () => {

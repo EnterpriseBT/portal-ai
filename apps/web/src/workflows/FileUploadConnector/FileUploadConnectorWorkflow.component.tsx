@@ -531,23 +531,30 @@ export const FileUploadConnectorWorkflow: React.FC<
         plan,
         uploadSessionId,
       });
-      // Commit runs off the request thread on the shared async-jobs
-      // queue — wait on the worker's terminal SSE event before
-      // invalidating caches / handing the new instance back to the
-      // workflow, so a downstream navigate to /connectors/:id sees
-      // the records and entities the worker just wrote.
-      await awaitJobCompletion(connectSse, enqueue.jobId);
-      await Promise.all(
-        [
-          queryKeys.connectorInstances.root,
-          queryKeys.connectorEntities.root,
-          queryKeys.stations.root,
-          queryKeys.fieldMappings.root,
-          queryKeys.portals.root,
-          queryKeys.portalResults.root,
-          queryKeys.connectorInstanceLayoutPlans.root,
-        ].map((queryKey) => queryClient.invalidateQueries({ queryKey }))
-      );
+      // Fire-and-forget cache invalidation: when the worker terminates,
+      // sweep the entity-list / records / plan caches so the lock alert
+      // disappears and the freshly-imported entities appear without a
+      // manual refresh. We don't await — the modal closes and the user
+      // lands on /connectors/:id immediately; the lock alert there
+      // serves as the "import in progress" confirmation while the
+      // worker finishes. The connectSse closure + queryClient survive
+      // the modal unmounting (queryClient is provider-scoped; the
+      // EventSource keeps itself open until the terminal event lands).
+      awaitJobCompletion(connectSse, enqueue.jobId)
+        .then(() =>
+          Promise.all(
+            [
+              queryKeys.connectorInstances.root,
+              queryKeys.connectorEntities.root,
+              queryKeys.stations.root,
+              queryKeys.fieldMappings.root,
+              queryKeys.portals.root,
+              queryKeys.portalResults.root,
+              queryKeys.connectorInstanceLayoutPlans.root,
+            ].map((queryKey) => queryClient.invalidateQueries({ queryKey }))
+          )
+        )
+        .catch(() => undefined);
       return { connectorInstanceId: enqueue.connectorInstanceId };
     },
     [commitMutate, connectorDefinitionId, connectSse, queryClient]
