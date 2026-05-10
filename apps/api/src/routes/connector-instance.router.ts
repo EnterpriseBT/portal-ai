@@ -30,6 +30,7 @@ import {
 } from "@portalai/core/contracts";
 import { encryptCredentials } from "../utils/crypto.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { JobLockService } from "../services/job-lock.service.js";
 import {
   computeIdentityWarnings,
   computeSyncEligible,
@@ -493,6 +494,76 @@ connectorInstanceRouter.get(
 
 /**
  * @openapi
+ * /api/connector-instances/{id}/running-jobs:
+ *   get:
+ *     tags: [Connector Instances]
+ *     summary: List non-terminal jobs locking this connector instance
+ *     description: |
+ *       Returns every `connector_sync` / `layout_plan_commit` job whose
+ *       metadata references this instance and is in a non-terminal status
+ *       (`pending` / `active` / `awaiting_confirmation` / `stalled`). Drives
+ *       the connector-instance lock chip + disabled mutation buttons.
+ *       Empty array means the instance is free to mutate.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: List of running jobs (possibly empty)
+ *       404:
+ *         description: Connector instance not found
+ */
+connectorInstanceRouter.get(
+  "/:id/running-jobs",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { organizationId } = req.application!.metadata;
+
+      const existing =
+        await DbService.repository.connectorInstances.findById(id);
+      if (!existing || existing.organizationId !== organizationId) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+            "Connector instance not found"
+          )
+        );
+      }
+
+      const runningJobs = await JobLockService.findRunningForConnectorInstance(
+        id,
+        organizationId
+      );
+      return HttpService.success(res, { runningJobs });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to fetch running jobs for connector instance"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.JOB_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch running jobs"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
  * /api/connector-instances:
  *   post:
  *     tags:
@@ -749,7 +820,7 @@ connectorInstanceRouter.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { userId } = req.application!.metadata;
+      const { userId, organizationId } = req.application!.metadata;
 
       const existing =
         await DbService.repository.connectorInstances.findById(id);
@@ -762,6 +833,8 @@ connectorInstanceRouter.delete(
           )
         );
       }
+
+      await JobLockService.assertConnectorInstanceUnlocked(id, organizationId);
 
       await DbService.transaction(async (tx) => {
         // Hard-delete station_instances join rows (unlink from stations)
@@ -893,7 +966,7 @@ connectorInstanceRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { userId } = req.application!.metadata;
+      const { userId, organizationId } = req.application!.metadata;
 
       const parsed = ConnectorInstancePatchRequestBodySchema.safeParse(
         req.body
@@ -919,6 +992,8 @@ connectorInstanceRouter.patch(
           )
         );
       }
+
+      await JobLockService.assertConnectorInstanceUnlocked(id, organizationId);
 
       // Validate enabledCapabilityFlags against the definition's ceiling
       if (parsed.data.enabledCapabilityFlags) {
@@ -1066,8 +1141,16 @@ connectorInstanceRouter.post(
 
       // Single-flight: refuse if a sync is already running for this
       // instance. The 409 carries the in-flight jobId so the UI can
-      // latch onto its SSE stream instead of erroring.
+      // latch onto its SSE stream instead of erroring. Kept ahead of
+      // the generic `assertConnectorInstanceUnlocked` below so the
+      // sync-specific code stays available for the UI's latch-on path
+      // (the generic lock would otherwise short-circuit it with the
+      // less-actionable ENTITY_LOCKED_BY_JOB).
       await SyncService.assertNoActiveSyncJob(id);
+
+      // Generic entity lock — refuse if any other non-terminal job
+      // (commit, future job types) is in flight against this instance.
+      await JobLockService.assertConnectorInstanceUnlocked(id, organizationId);
 
       const job = await SyncService.enqueueSync(id, organizationId, userId);
 
