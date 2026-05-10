@@ -50,67 +50,12 @@ const { WorkbookCacheService } = await import(
   "../../services/workbook-cache.service.js"
 );
 
-import type { WorkbookData } from "@portalai/spreadsheet-parsing";
 import type { ChunkRow } from "../../services/workbook-cache.service.js";
 
-const sampleWorkbook: WorkbookData = {
-  sheets: [
-    {
-      name: "Sheet1",
-      dimensions: { rows: 1, cols: 1 },
-      cells: [{ row: 1, col: 1, value: "hello" }],
-    },
-  ],
-};
-
-const otherWorkbook: WorkbookData = {
-  sheets: [
-    {
-      name: "Other",
-      dimensions: { rows: 1, cols: 1 },
-      cells: [{ row: 1, col: 1, value: "world" }],
-    },
-  ],
-};
-
-describe("WorkbookCacheService", () => {
-  beforeEach(() => {
-    store.clear();
-  });
-
-  it("set + get round-trips a workbook under an opaque cache key", async () => {
-    await WorkbookCacheService.set("upload-session:abc", sampleWorkbook);
-    const out = await WorkbookCacheService.get("upload-session:abc");
-    expect(out).toEqual(sampleWorkbook);
-  });
-
-  it("isolates entries across different cache keys (file-upload vs google-sheets)", async () => {
-    await WorkbookCacheService.set("upload-session:abc", sampleWorkbook);
-    await WorkbookCacheService.set("connector:wb:google-sheets:abc", otherWorkbook);
-
-    const upload = await WorkbookCacheService.get("upload-session:abc");
-    const gsheets = await WorkbookCacheService.get("connector:wb:google-sheets:abc");
-
-    expect(upload?.sheets[0]?.cells[0]?.value).toBe("hello");
-    expect(gsheets?.sheets[0]?.cells[0]?.value).toBe("world");
-  });
-
-  it("delete on one key does not affect the other", async () => {
-    await WorkbookCacheService.set("upload-session:abc", sampleWorkbook);
-    await WorkbookCacheService.set("connector:wb:google-sheets:abc", sampleWorkbook);
-
-    await WorkbookCacheService.delete("upload-session:abc");
-
-    expect(await WorkbookCacheService.get("upload-session:abc")).toBeNull();
-    expect(await WorkbookCacheService.get("connector:wb:google-sheets:abc")).toEqual(
-      sampleWorkbook
-    );
-  });
-
-  it("returns null on cache miss", async () => {
-    expect(await WorkbookCacheService.get("not-cached")).toBeNull();
-  });
-});
+// The legacy single-blob `set` / `get` / `delete(cacheKey, WorkbookData)` API
+// was removed in Phase 4 of the streaming refactor (see
+// docs/LARGE_FILE_PARSE_STREAMING.plan.md); tests below cover the chunked
+// streaming layout that all three pipelines now use.
 
 // ── Chunked streaming API ──────────────────────────────────────────────────
 

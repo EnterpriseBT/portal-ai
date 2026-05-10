@@ -2,13 +2,7 @@ import type { Readable } from "node:stream";
 
 import ExcelJS from "exceljs";
 
-import type {
-  CellValue,
-  MergedRange,
-  SheetData,
-  WorkbookCell,
-  WorkbookData,
-} from "@portalai/spreadsheet-parsing";
+import type { CellValue } from "@portalai/spreadsheet-parsing";
 
 import { ProcessorError } from "../../utils/processor-error.util.js";
 import type {
@@ -42,8 +36,8 @@ export interface XlsxToCacheContext {
  * the chunked cache. Lossy compared to `WorkbookCell.value` (Date → ISO
  * string, formula objects → their `result`, hyperlinks → display text);
  * the legacy WorkbookData path was already lossy here through
- * JSON.stringify in WorkbookCacheService.set, so the round-trip behavior
- * matches.
+ * `JSON.stringify(workbook)`, so the round-trip behavior matches the
+ * pre-Phase-4 single-blob cache.
  */
 function coerceCell(raw: unknown): ChunkCell {
   if (raw === null || raw === undefined) return null;
@@ -211,134 +205,6 @@ export async function xlsxToCache(
   }
 
   return out;
-}
-
-// ── Legacy `WorkbookData` adapter (microsoft-excel connector) ──────────────
-// The file-upload pipeline uses `xlsxToCache` above; the OAuth-driven
-// microsoft-excel connector still consumes `WorkbookData` via the legacy
-// `WorkbookCacheService.set/get` blob cache, so the buffer-the-world adapter
-// stays until Phase 4 migrates that pipeline (see
-// docs/LARGE_FILE_PARSE_STREAMING.plan.md). Memory cost on this path is
-// O(workbook size); large Microsoft Excel sheets are still vulnerable to
-// OOM on the connector's sync path.
-
-function coerceCellRich(raw: unknown): CellValue {
-  if (raw === null || raw === undefined) return null;
-  if (raw instanceof Date) return raw;
-  if (typeof raw === "boolean") return raw;
-  if (typeof raw === "number") return raw;
-  if (typeof raw === "string") return raw === "" ? null : raw;
-  if (typeof raw === "object") {
-    const obj = raw as {
-      richText?: Array<{ text?: string }>;
-      text?: string;
-      result?: unknown;
-    };
-    if (Array.isArray(obj.richText)) {
-      const joined = obj.richText.map((p) => p.text ?? "").join("");
-      return joined === "" ? null : joined;
-    }
-    if (typeof obj.text === "string") {
-      return obj.text === "" ? null : obj.text;
-    }
-    if (obj.result !== undefined) return coerceCellRich(obj.result);
-  }
-  return String(raw);
-}
-
-interface MergeModel {
-  top: number;
-  left: number;
-  bottom: number;
-  right: number;
-}
-
-function collectMerges(ws: ExcelJS.Worksheet): Map<string, MergedRange> {
-  const byTopLeft = new Map<string, MergedRange>();
-  const merges = (
-    ws as unknown as { _merges?: Record<string, { model?: MergeModel }> }
-  )._merges;
-  if (!merges) return byTopLeft;
-  for (const key of Object.keys(merges)) {
-    const model = merges[key]?.model;
-    if (!model) continue;
-    byTopLeft.set(`${model.top}:${model.left}`, {
-      startRow: model.top,
-      startCol: model.left,
-      endRow: model.bottom,
-      endCol: model.right,
-    });
-  }
-  return byTopLeft;
-}
-
-async function readAll(source: Readable): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of source) {
-    chunks.push(chunk instanceof Buffer ? chunk : Buffer.from(chunk));
-  }
-  return Buffer.concat(chunks);
-}
-
-function buildSheetWorkbookData(ws: ExcelJS.Worksheet): SheetData {
-  const merges = collectMerges(ws);
-  const cells: WorkbookCell[] = [];
-  let maxRow = 0;
-  let maxCol = 0;
-
-  ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-    row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
-      const value = coerceCellRich(cell.value);
-      if (value === null) return;
-      if (rowNumber > maxRow) maxRow = rowNumber;
-      if (colNumber > maxCol) maxCol = colNumber;
-      const mergedKey = `${rowNumber}:${colNumber}`;
-      const merged = merges.get(mergedKey);
-      cells.push(
-        merged
-          ? { row: rowNumber, col: colNumber, value, merged }
-          : { row: rowNumber, col: colNumber, value }
-      );
-    });
-  });
-
-  const name =
-    (ws as unknown as { name?: string }).name ??
-    `Sheet${(ws as unknown as { id?: number }).id ?? "?"}`;
-
-  return {
-    name,
-    dimensions: { rows: maxRow, cols: maxCol },
-    cells,
-  };
-}
-
-/**
- * Convert an XLSX byte stream into a canonical `WorkbookData`. Buffers the
- * full source in memory before parsing; only the microsoft-excel connector
- * still uses this. New file-upload code should use `xlsxToCache` above.
- */
-export async function xlsxToWorkbook(source: Readable): Promise<WorkbookData> {
-  let buffer: Buffer;
-  try {
-    buffer = await readAll(source);
-  } catch (err) {
-    throw wrapXlsxError(err);
-  }
-
-  const workbook = new ExcelJS.Workbook();
-  try {
-    await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
-  } catch (err) {
-    throw wrapXlsxError(err);
-  }
-
-  const sheets: SheetData[] = [];
-  workbook.eachSheet((ws) => {
-    sheets.push(buildSheetWorkbookData(ws));
-  });
-
-  return { sheets };
 }
 
 // Re-export for consumers that only need the `CellValue` type from this module.

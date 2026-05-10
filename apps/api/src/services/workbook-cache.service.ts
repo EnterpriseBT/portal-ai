@@ -1,4 +1,4 @@
-import type { WorkbookData, MergedRange } from "@portalai/spreadsheet-parsing";
+import type { MergedRange } from "@portalai/spreadsheet-parsing";
 
 import { environment } from "../environment.js";
 import { getRedisClient } from "../utils/redis.util.js";
@@ -7,26 +7,20 @@ import { createLogger } from "../utils/logger.util.js";
 const logger = createLogger({ module: "workbook-cache" });
 
 /**
- * Redis-backed cache for parsed workbooks, TTL'd per
- * `FILE_UPLOAD_CACHE_TTL_SEC`. Two coexisting APIs (see
- * docs/LARGE_FILE_PARSE_STREAMING.plan.md):
+ * Redis-backed chunked cache for parsed workbooks, TTL'd per
+ * `FILE_UPLOAD_CACHE_TTL_SEC`. Streaming writer + chunk readers — bounded
+ * memory regardless of total workbook size.
  *
- *   1. **Legacy `set/get/delete`** — stores a full `WorkbookData` as one
- *      JSON blob under an opaque cache key. Used by the OAuth-driven
- *      connector pipelines (`google-sheets-connector.service.ts`,
- *      `microsoft-excel-connector.service.ts`). Subject to OOM on large
- *      workbooks; will be migrated to the streaming API in Phase 4.
+ * Layout (see `docs/LARGE_FILE_PARSE_STREAMING.plan.md`):
  *
- *   2. **Streaming `beginSession` / `read*`** — chunked layout where
- *      cells are written row-by-row into per-sheet row-chunk keys, with
- *      a separate session-meta key. Used by the file-upload pipeline
- *      (`file-upload-session.service.ts`). Bounded memory regardless of
- *      total workbook size.
+ *   {prefix}:meta                                 — JSON SessionMeta
+ *   {prefix}:sheet:{sheetId}:rows:{chunkIdx}      — JSON dense row chunk
+ *   {prefix}:sheet:{sheetId}:merges               — JSON MergedRange[]
  *
- * Callers own their key prefix:
- *   - `upload-session:{id}` — file-upload (streaming)
- *   - `connector:wb:<slug>:{id}` — google-sheets / microsoft-excel
- *     (legacy, see `utils/connector-cache-keys.util.ts`)
+ * Callers own the prefix:
+ *   - `upload-session:{id}`           — file-upload pipeline
+ *   - `connector:wb:<slug>:{id}`      — google-sheets, microsoft-excel
+ *     (see `utils/connector-cache-keys.util.ts`)
  */
 
 // ── Streaming chunked cache ────────────────────────────────────────────────
@@ -304,49 +298,9 @@ export const WorkbookCacheService = {
       await redis.del(...toDelete.slice(i, i + 256));
     }
   },
-
-  // ── Legacy single-blob API (still used by OAuth connector pipelines) ─────
-
-  async set(cacheKey: string, workbook: WorkbookData): Promise<void> {
-    const redis = getRedisClient();
-    const payload = JSON.stringify(workbook);
-    await redis.set(
-      cacheKey,
-      payload,
-      "EX",
-      environment.FILE_UPLOAD_CACHE_TTL_SEC
-    );
-    logger.debug(
-      {
-        cacheKey,
-        sheetCount: workbook.sheets.length,
-        bytes: payload.length,
-      },
-      "Cached parsed workbook"
-    );
-  },
-
-  async get(cacheKey: string): Promise<WorkbookData | null> {
-    const redis = getRedisClient();
-    const payload = await redis.get(cacheKey);
-    if (!payload) {
-      logger.debug({ cacheKey, event: "cache.miss" }, "cache miss");
-      return null;
-    }
-    try {
-      return JSON.parse(payload) as WorkbookData;
-    } catch (err) {
-      logger.warn(
-        { cacheKey, err: err instanceof Error ? err.message : err },
-        "Cached workbook failed JSON.parse — evicting"
-      );
-      await redis.del(cacheKey);
-      return null;
-    }
-  },
-
-  async delete(cacheKey: string): Promise<void> {
-    const redis = getRedisClient();
-    await redis.del(cacheKey);
-  },
 };
+
+// The legacy single-blob `set/get/delete(cacheKey, WorkbookData)` API was
+// removed in Phase 4; all three pipelines (file-upload, google-sheets,
+// microsoft-excel) now use the chunked `beginSession` / `readRows` API
+// above. See `docs/LARGE_FILE_PARSE_STREAMING.plan.md` §Phase 4.

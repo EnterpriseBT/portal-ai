@@ -733,9 +733,10 @@ describe("Layout Plans Draft Router", () => {
   // ── connectorInstanceId path (google-sheets et al.) ────────────────
 
   /**
-   * Seed a pending ConnectorInstance + cache its workbook under
-   * `connector:wb:<slug>:{id}`. Slug controls which resolver the
-   * dispatcher picks (google-sheets vs. microsoft-excel).
+   * Seed a pending ConnectorInstance + populate the chunked workbook cache
+   * under `connector:wb:<slug>:{id}` (Phase 4 layout — meta + per-sheet
+   * row chunks). Slug controls which resolver the dispatcher picks
+   * (google-sheets vs. microsoft-excel).
    */
   async function seedPendingConnectorInstance(
     db: Db,
@@ -769,10 +770,30 @@ describe("Layout Plans Draft Router", () => {
       deleted: null,
       deletedBy: null,
     } as never);
+
+    const prefix = `connector:wb:${slug}:${instanceId}`;
+    const sheetMetas = workbook.sheets.map((sheet, i) => ({
+      sheetId: sheetIdOf(i, sheet.name),
+      name: sheet.name,
+      rowCount: sheet.dimensions.rows,
+      colCount: sheet.dimensions.cols,
+      hasMerges: sheet.cells.some((c) => c.merged !== undefined),
+    }));
     redisStore.set(
-      `connector:wb:${slug}:${instanceId}`,
-      JSON.stringify(workbook)
+      `${prefix}:meta`,
+      JSON.stringify({
+        sheets: sheetMetas,
+        status: "ready" as const,
+        createdAt: now,
+      })
     );
+    workbook.sheets.forEach((sheet, i) => {
+      const sheetId = sheetMetas[i]!.sheetId;
+      redisStore.set(
+        `${prefix}:sheet:${sheetId}:rows:0`,
+        JSON.stringify(sparseToDenseRows(sheet))
+      );
+    });
     return instanceId;
   }
 
