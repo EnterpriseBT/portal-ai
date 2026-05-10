@@ -3,6 +3,7 @@ import { systemCheckProcessor } from "./system-check.processor.js";
 import { revalidationProcessor } from "./revalidation.processor.js";
 import { connectorSyncProcessor } from "./connector-sync.processor.js";
 import { fileUploadParseProcessor } from "./file-upload-parse.processor.js";
+import { layoutPlanCommitProcessor } from "./layout-plan-commit.processor.js";
 
 /**
  * Declarative processor map.
@@ -17,4 +18,5 @@ export const processors: Record<string, JobProcessor> = {
   revalidation: revalidationProcessor,
   connector_sync: connectorSyncProcessor,
   file_upload_parse: fileUploadParseProcessor,
+  layout_plan_commit: layoutPlanCommitProcessor,
 };

@@ -525,12 +525,18 @@ export const FileUploadConnectorWorkflow: React.FC<
     async (plan) => {
       const uploadSessionId = uploadSessionIdRef.current;
       if (!uploadSessionId) throw new Error("Upload session missing");
-      const res = await commitMutate({
+      const enqueue = await commitMutate({
         connectorDefinitionId,
         name: deriveConnectorInstanceName(filesRef.current),
         plan,
         uploadSessionId,
       });
+      // Commit runs off the request thread on the shared async-jobs
+      // queue — wait on the worker's terminal SSE event before
+      // invalidating caches / handing the new instance back to the
+      // workflow, so a downstream navigate to /connectors/:id sees
+      // the records and entities the worker just wrote.
+      await awaitJobCompletion(connectSse, enqueue.jobId);
       await Promise.all(
         [
           queryKeys.connectorInstances.root,
@@ -542,9 +548,9 @@ export const FileUploadConnectorWorkflow: React.FC<
           queryKeys.connectorInstanceLayoutPlans.root,
         ].map((queryKey) => queryClient.invalidateQueries({ queryKey }))
       );
-      return { connectorInstanceId: res.connectorInstanceId };
+      return { connectorInstanceId: enqueue.connectorInstanceId };
     },
-    [commitMutate, connectorDefinitionId, queryClient]
+    [commitMutate, connectorDefinitionId, connectSse, queryClient]
   );
 
   const workflow = useFileUploadWorkflow({

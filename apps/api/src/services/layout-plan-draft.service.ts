@@ -1,28 +1,49 @@
 /**
  * Instance-less layout-plan orchestration.
  *
- * Used by the "new connector" flows (FileUploadConnector today) where the
- * ConnectorInstance is created only when the user confirms the review step —
- * eliminating the orphan-instance problem that falls out of the prior
- * interpret-time creation.
+ * Used by the "new connector" flows (FileUploadConnector,
+ * GoogleSheetsConnector, MicrosoftExcelConnector) where the
+ * ConnectorInstance is created only when the user confirms the review
+ * step — eliminating the orphan-instance problem that falls out of
+ * prior interpret-time creation.
  *
- * Two entry points:
- *   - `interpretDraft`  — pure compute, no DB writes. Returns the plan.
- *   - `commitDraft`      — creates the ConnectorInstance + layout-plan row,
- *                          runs the existing commit pipeline, and on any
- *                          failure hard-deletes the instance and plan row
- *                          so no partial state leaks.
+ * Three entry points, split across the request thread / worker
+ * thread boundary that the async commit pipeline introduces:
+ *
+ *   - `interpretDraft`        — pure compute, no DB writes. Runs
+ *                                in-route. Returns the plan.
+ *   - `prepareDraftCommit`    — sync; validates inputs, resolves the
+ *                                target connector definition or
+ *                                existing pending instance, mints
+ *                                fresh `connectorInstanceId` /
+ *                                `planId` UUIDs, and returns the
+ *                                metadata the route hands to
+ *                                `JobsService.create`. Does NOT touch
+ *                                the database.
+ *   - `runCommitDraft`        — runs in the layout-plan-commit
+ *                                processor. Owns every DB write that
+ *                                used to be inline — creates the
+ *                                connector_instance row (when not
+ *                                `isExistingInstance`), creates the
+ *                                plan row, runs the records-write
+ *                                pipeline, rolls back on failure.
+ *
+ * `prepareRecommit` / `runRecommit` are the recommit-endpoint
+ * analogs (existing instance + plan; worker only writes records).
  */
 
 import type {
   LayoutPlan,
   LayoutPlanCommitDraftRequestBody,
-  LayoutPlanCommitDraftResponsePayload,
-  LayoutPlanCommitResult,
   LayoutPlanInterpretDraftRequestBody,
   LayoutPlanInterpretDraftResponsePayload,
 } from "@portalai/core/contracts";
 import { LayoutPlanSchema } from "@portalai/core/contracts";
+import type {
+  LayoutPlanCommitJobResult,
+  LayoutPlanCommitMetadata,
+  LayoutPlanCommitWorkbookSource,
+} from "@portalai/core/models";
 import type { WorkbookData } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -38,6 +59,18 @@ import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "layout-plan-draft" });
 
+export interface PreparedDraftCommit {
+  connectorInstanceId: string;
+  planId: string;
+  metadata: Extract<LayoutPlanCommitMetadata, { kind: "draft" }>;
+}
+
+export interface PreparedRecommit {
+  connectorInstanceId: string;
+  planId: string;
+  metadata: Extract<LayoutPlanCommitMetadata, { kind: "recommit" }>;
+}
+
 export class LayoutPlanDraftService {
   /**
    * Run the parser module's `interpret()` without persisting anything.
@@ -48,7 +81,7 @@ export class LayoutPlanDraftService {
     userId: string,
     body: LayoutPlanInterpretDraftRequestBody
   ): Promise<LayoutPlanInterpretDraftResponsePayload> {
-    const workbook = await resolveWorkbook(body, organizationId);
+    const workbook = await resolveWorkbookFromBody(body, organizationId);
     try {
       const plan = await LayoutPlanInterpretService.analyze(
         workbook,
@@ -67,17 +100,20 @@ export class LayoutPlanDraftService {
   }
 
   /**
-   * Create the ConnectorInstance + layout-plan row + records atomically.
-   * On any failure past the instance insert, hard-delete both so the caller
-   * never sees an orphan.
+   * Synchronous validation + UUID minting for the draft commit endpoint.
+   * Verifies the plan envelope is well-formed and the connector
+   * definition / existing pending instance referenced by the body
+   * exists and belongs to the caller's org. Returns the metadata the
+   * route should pass to `JobsService.create("layout_plan_commit",
+   * metadata)`. Does NOT create any DB rows — the worker owns every
+   * write so a failure between `prepare` and the worker leaves no
+   * orphan state.
    */
-  static async commitDraft(
+  static async prepareDraftCommit(
     organizationId: string,
     userId: string,
     body: LayoutPlanCommitDraftRequestBody
-  ): Promise<LayoutPlanCommitDraftResponsePayload> {
-    // ── Validate the plan envelope up-front so we reject bad input before
-    //    writing anything to the DB. ────────────────────────────────────
+  ): Promise<PreparedDraftCommit> {
     const parsedPlan = LayoutPlanSchema.safeParse(body.plan);
     if (!parsedPlan.success) {
       throw new ApiError(
@@ -91,16 +127,10 @@ export class LayoutPlanDraftService {
     }
     const plan: LayoutPlan = parsedPlan.data;
 
-    // ── Resolve the workbook (file-upload OR google-sheets cache) ────
-    const workbook = await resolveWorkbook(body, organizationId);
-
-    // ── Resolve the target ConnectorInstance ──────────────────────────
-    // Two paths: create-fresh (uploadSessionId) or use-existing-pending
-    // (connectorInstanceId). The latter flips a pending instance to
-    // active without touching credentials, config, or name — those came
-    // from the OAuth callback.
     let connectorInstanceId: string;
     let isExistingInstance = false;
+    let workbookSource: LayoutPlanCommitWorkbookSource;
+
     if (body.connectorInstanceId) {
       const existing =
         await DbService.repository.connectorInstances.findById(
@@ -122,6 +152,10 @@ export class LayoutPlanDraftService {
       }
       connectorInstanceId = existing.id;
       isExistingInstance = true;
+      workbookSource = {
+        kind: "connectorInstance",
+        connectorInstanceId: existing.id,
+      };
     } else {
       const definition =
         await DbService.repository.connectorDefinitions.findById(
@@ -135,11 +169,96 @@ export class LayoutPlanDraftService {
         );
       }
       connectorInstanceId = SystemUtilities.id.v4.generate();
+      // Body refinement guarantees uploadSessionId is present when
+      // connectorInstanceId is not.
+      workbookSource = {
+        kind: "uploadSession",
+        uploadSessionId: body.uploadSessionId!,
+      };
+    }
+
+    const planId = SystemUtilities.id.v4.generate();
+
+    return {
+      connectorInstanceId,
+      planId,
+      metadata: {
+        kind: "draft",
+        organizationId,
+        userId,
+        connectorInstanceId,
+        planId,
+        connectorDefinitionId: body.connectorDefinitionId,
+        name: body.name,
+        isExistingInstance,
+        plan,
+        workbookSource,
+      },
+    };
+  }
+
+  /**
+   * Worker entry point for the draft commit flow. Creates the
+   * connector_instance row (when not `isExistingInstance`), creates
+   * the plan row, runs the records-write pipeline, and on any failure
+   * past the instance create rolls back so no orphan rows remain. On
+   * success runs the same post-commit bookkeeping the synchronous
+   * path used to do (mark upload session committed / flip pending
+   * instance → active).
+   *
+   * Idempotent enough for retry: connector_instance creation reuses
+   * the pre-minted id and surfaces the row's existence as a unique
+   * violation, so a retry after a partial failure won't double-create.
+   */
+  static async runCommitDraft(
+    metadata: Extract<LayoutPlanCommitMetadata, { kind: "draft" }>
+  ): Promise<LayoutPlanCommitJobResult> {
+    const {
+      organizationId,
+      userId,
+      connectorInstanceId,
+      planId,
+      connectorDefinitionId,
+      name,
+      isExistingInstance,
+      plan: planRaw,
+      workbookSource,
+    } = metadata;
+
+    const parsedPlan = LayoutPlanSchema.safeParse(planRaw);
+    if (!parsedPlan.success) {
+      throw new ApiError(
+        500,
+        ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
+        `Plan envelope did not round-trip through the job metadata: ${parsedPlan.error.issues
+          .map((i) => i.message)
+          .join("; ")}`
+      );
+    }
+    const plan: LayoutPlan = parsedPlan.data;
+
+    const workbook = await LayoutPlanDraftService.resolveWorkbookBySource(
+      workbookSource,
+      organizationId
+    );
+
+    if (!isExistingInstance) {
+      const definition =
+        await DbService.repository.connectorDefinitions.findById(
+          connectorDefinitionId
+        );
+      if (!definition) {
+        throw new ApiError(
+          404,
+          ApiCode.CONNECTOR_DEFINITION_NOT_FOUND,
+          `Connector definition not found: ${connectorDefinitionId}`
+        );
+      }
       await DbService.repository.connectorInstances.create({
         id: connectorInstanceId,
         organizationId,
-        connectorDefinitionId: body.connectorDefinitionId,
-        name: body.name,
+        connectorDefinitionId,
+        name,
         status: "active",
         enabledCapabilityFlags: { ...definition.capabilityFlags },
         config: null,
@@ -153,8 +272,6 @@ export class LayoutPlanDraftService {
       });
     }
 
-    // ── Create the layout-plan row FK-bound to the instance ──────────
-    const planId = SystemUtilities.id.v4.generate();
     try {
       await DbService.repository.connectorInstanceLayoutPlans.create({
         id: planId,
@@ -172,9 +289,6 @@ export class LayoutPlanDraftService {
         deletedBy: null,
       });
     } catch (err) {
-      // Roll back the instance ONLY if we just created it. Existing-instance
-      // path (google-sheets) leaves the pending instance untouched so the
-      // user can retry without re-authorizing.
       if (!isExistingInstance) {
         await DbService.repository.connectorInstances
           .hardDelete(connectorInstanceId)
@@ -183,8 +297,7 @@ export class LayoutPlanDraftService {
       throw err;
     }
 
-    // ── Run the existing commit pipeline ─────────────────────────────
-    let result: LayoutPlanCommitResult;
+    let result;
     try {
       result = await LayoutPlanCommitService.commit(
         connectorInstanceId,
@@ -207,8 +320,6 @@ export class LayoutPlanDraftService {
       await DbService.repository.connectorInstanceLayoutPlans
         .hardDelete(planId)
         .catch(() => undefined);
-      // Only delete the instance if we created it. The existing-instance
-      // (google-sheets) path leaves the pending instance in place.
       if (!isExistingInstance) {
         await DbService.repository.connectorInstances
           .hardDelete(connectorInstanceId)
@@ -217,24 +328,19 @@ export class LayoutPlanDraftService {
       throw err;
     }
 
-    // Commit succeeded.
-    if (body.uploadSessionId) {
-      // file-upload pipeline — mark session committed + S3 cleanup.
-      FileUploadSessionService.markSessionCommitted(body.uploadSessionId).catch(
-        (err) => {
-          logger.warn(
-            {
-              uploadSessionId: body.uploadSessionId,
-              err: err instanceof Error ? err.message : err,
-            },
-            "Failed to mark upload session committed (non-fatal)"
-          );
-        }
-      );
+    if (workbookSource.kind === "uploadSession") {
+      FileUploadSessionService.markSessionCommitted(
+        workbookSource.uploadSessionId
+      ).catch((err) => {
+        logger.warn(
+          {
+            uploadSessionId: workbookSource.uploadSessionId,
+            err: err instanceof Error ? err.message : err,
+          },
+          "Failed to mark upload session committed (non-fatal)"
+        );
+      });
     } else if (isExistingInstance) {
-      // google-sheets pipeline — flip the pending instance to active.
-      // (The instance was never deleted on rollback paths above so this
-      // is the first state mutation on the success path.)
       await DbService.repository.connectorInstances
         .update(connectorInstanceId, { status: "active", updatedBy: userId })
         .catch((err) => {
@@ -251,53 +357,122 @@ export class LayoutPlanDraftService {
     return {
       connectorInstanceId,
       planId,
+      connectorEntityIds: result.connectorEntityIds,
       recordCounts: result.recordCounts,
     };
   }
-}
 
-/**
- * Resolve the workbook for a draft-flow request. Dispatches by which
- * session id the body carries:
- *   - `uploadSessionId`     → file-upload Redis cache (`upload-session:{id}`)
- *                             with S3 re-stream fallback on cache miss.
- *   - `connectorInstanceId` → connector workbook cache
- *                             (`connector:wb:<slug>:{id}`). The slug
- *                             selects between google-sheets and
- *                             microsoft-excel resolvers. No fallback;
- *                             cache miss is a 404.
- *
- * Slug-based dispatch is hand-rolled here for v1 since the only two
- * spreadsheet-OAuth connectors are google-sheets and microsoft-excel.
- * Promote to `ConnectorAdapter.resolveWorkbook` if a third spreadsheet
- * connector lands.
- *
- * The contract refinement guarantees exactly one of the two ids is
- * present.
- */
-async function resolveWorkbook(
-  body:
-    | LayoutPlanInterpretDraftRequestBody
-    | LayoutPlanCommitDraftRequestBody,
-  organizationId: string
-): Promise<WorkbookData> {
-  if (body.uploadSessionId) {
-    return FileUploadSessionService.resolveWorkbook(
-      body.uploadSessionId,
+  /**
+   * Synchronous validation for the recommit endpoint. Verifies the
+   * connector instance + plan row exist and belong to the caller's
+   * org, then returns the metadata the route hands to
+   * `JobsService.create`. No DB writes.
+   */
+  static async prepareRecommit(
+    organizationId: string,
+    userId: string,
+    connectorInstanceId: string,
+    planId: string,
+    workbookSource: LayoutPlanCommitWorkbookSource
+  ): Promise<PreparedRecommit> {
+    const instance =
+      await DbService.repository.connectorInstances.findById(
+        connectorInstanceId
+      );
+    if (!instance || instance.organizationId !== organizationId) {
+      throw new ApiError(
+        404,
+        ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+        "Connector instance not found"
+      );
+    }
+    const planRow =
+      await DbService.repository.connectorInstanceLayoutPlans.findById(planId);
+    if (!planRow || planRow.connectorInstanceId !== connectorInstanceId) {
+      throw new ApiError(
+        404,
+        ApiCode.LAYOUT_PLAN_NOT_FOUND,
+        "Layout plan not found for this connector instance"
+      );
+    }
+    return {
+      connectorInstanceId,
+      planId,
+      metadata: {
+        kind: "recommit",
+        organizationId,
+        userId,
+        connectorInstanceId,
+        planId,
+        workbookSource,
+      },
+    };
+  }
+
+  /**
+   * Worker entry point for the recommit flow. Resolves the workbook
+   * from cache, hands off to the existing commit service. The plan
+   * row already exists; failures don't roll back any state — the
+   * caller is expected to retry against the same plan.
+   */
+  static async runRecommit(
+    metadata: Extract<LayoutPlanCommitMetadata, { kind: "recommit" }>
+  ): Promise<LayoutPlanCommitJobResult> {
+    const {
+      organizationId,
+      userId,
+      connectorInstanceId,
+      planId,
+      workbookSource,
+    } = metadata;
+
+    const workbook = await LayoutPlanDraftService.resolveWorkbookBySource(
+      workbookSource,
       organizationId
     );
+
+    const result = await LayoutPlanCommitService.commit(
+      connectorInstanceId,
+      planId,
+      organizationId,
+      userId,
+      { workbook }
+    );
+
+    return {
+      connectorInstanceId,
+      planId,
+      connectorEntityIds: result.connectorEntityIds,
+      recordCounts: result.recordCounts,
+    };
   }
-  if (body.connectorInstanceId) {
-    const slug = await loadConnectorSlug(body.connectorInstanceId);
+
+  /**
+   * Resolve the workbook for either commit kind from its
+   * `LayoutPlanCommitWorkbookSource` reference. Public so the
+   * processor (and any future caller working from job metadata) can
+   * avoid threading the original request body around.
+   */
+  static async resolveWorkbookBySource(
+    source: LayoutPlanCommitWorkbookSource,
+    organizationId: string
+  ): Promise<WorkbookData> {
+    if (source.kind === "uploadSession") {
+      return FileUploadSessionService.resolveWorkbook(
+        source.uploadSessionId,
+        organizationId
+      );
+    }
+    const slug = await loadConnectorSlug(source.connectorInstanceId);
     switch (slug) {
       case "google-sheets":
         return GoogleSheetsConnectorService.resolveWorkbook(
-          body.connectorInstanceId,
+          source.connectorInstanceId,
           organizationId
         );
       case "microsoft-excel":
         return MicrosoftExcelConnectorService.resolveWorkbook(
-          body.connectorInstanceId,
+          source.connectorInstanceId,
           organizationId
         );
       default:
@@ -307,6 +482,33 @@ async function resolveWorkbook(
           `Connector slug "${slug}" does not support layout-plan workflows`
         );
     }
+  }
+}
+
+/**
+ * Legacy body-shaped resolver used by `interpretDraft` (still
+ * synchronous, still in-route). Forwards to
+ * `resolveWorkbookBySource` after converting the body's flat fields
+ * to a discriminated source ref.
+ */
+async function resolveWorkbookFromBody(
+  body: LayoutPlanInterpretDraftRequestBody,
+  organizationId: string
+): Promise<WorkbookData> {
+  if (body.uploadSessionId) {
+    return LayoutPlanDraftService.resolveWorkbookBySource(
+      { kind: "uploadSession", uploadSessionId: body.uploadSessionId },
+      organizationId
+    );
+  }
+  if (body.connectorInstanceId) {
+    return LayoutPlanDraftService.resolveWorkbookBySource(
+      {
+        kind: "connectorInstance",
+        connectorInstanceId: body.connectorInstanceId,
+      },
+      organizationId
+    );
   }
   throw new ApiError(
     400,

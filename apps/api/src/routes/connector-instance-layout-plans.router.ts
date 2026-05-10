@@ -7,14 +7,15 @@ import {
 } from "@portalai/core/contracts";
 import type {
   InterpretResponsePayload,
-  LayoutPlanCommitResult,
+  LayoutPlanCommitEnqueuedResponse,
   LayoutPlanResponsePayload,
 } from "@portalai/core/contracts";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ConnectorInstanceLayoutPlansService } from "../services/connector-instance-layout-plans.service.js";
-import { LayoutPlanCommitService } from "../services/layout-plan-commit.service.js";
+import { JobsService } from "../services/jobs.service.js";
+import { LayoutPlanDraftService } from "../services/layout-plan-draft.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -465,26 +466,50 @@ connectorInstanceLayoutPlansRouter.post(
         );
       }
 
-      const payload = await LayoutPlanCommitService.commit(
-        connectorInstanceId,
-        planId,
+      const workbookSource = parsed.data.uploadSessionId
+        ? ({
+            kind: "uploadSession" as const,
+            uploadSessionId: parsed.data.uploadSessionId,
+          })
+        : ({
+            kind: "connectorInstance" as const,
+            connectorInstanceId: parsed.data.connectorInstanceId!,
+          });
+
+      const prepared = await LayoutPlanDraftService.prepareRecommit(
         organizationId,
         userId,
-        { workbook: parsed.data.workbook }
+        connectorInstanceId,
+        planId,
+        workbookSource
       );
+      const job = await JobsService.create(userId, {
+        organizationId,
+        type: "layout_plan_commit",
+        metadata: prepared.metadata,
+      });
 
       logger.info(
         {
           connectorInstanceId,
           planId,
           organizationId,
-          connectorEntityCount: payload.connectorEntityIds.length,
-          recordCounts: payload.recordCounts,
+          jobId: job.id,
+          event: "layout-plan.commit.enqueued",
         },
-        "Layout plan committed"
+        "Layout plan recommit enqueued"
       );
 
-      return HttpService.success<LayoutPlanCommitResult>(res, payload);
+      return HttpService.success<LayoutPlanCommitEnqueuedResponse>(
+        res,
+        {
+          connectorInstanceId,
+          planId,
+          jobId: job.id,
+          status: "pending",
+        },
+        202
+      );
     } catch (error) {
       logger.error(
         {
@@ -492,7 +517,7 @@ connectorInstanceLayoutPlansRouter.post(
           connectorInstanceId: req.params.connectorInstanceId,
           planId: req.params.planId,
         },
-        "Layout plan commit failed"
+        "Layout plan recommit enqueue failed"
       );
       return next(
         error instanceof ApiError

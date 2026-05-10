@@ -185,6 +185,31 @@ All API calls route through the SDK. No component — view, workflow, module, or
 - Never manually remove or update cache entries — always use `invalidateQueries`
 - Query keys are defined in `api/keys.ts` and re-exported from `api/sdk.ts`
 
+## Async Job State & Data Locking
+
+Long-running work runs on the shared `jobs` queue (`apps/api/src/queues/`) — file-upload parse, layout-plan commit, connector sync, revalidation, etc. While a job is in flight, **the entities it owns must be treated as read-only across the entire stack**. This keeps the user from racing the worker (e.g., editing a record mid-import, deleting a connector instance whose plan is mid-commit, kicking off a sync against an instance that's still syncing).
+
+### Backend rules
+
+- Routes that mutate an entity must short-circuit with `409 ENTITY_LOCKED_BY_JOB` (add the code to `api-codes.constants.ts` if missing) when a non-terminal job (`pending` / `active` / `awaiting_confirmation`) targets that entity. The check belongs in the route or service layer, before any DB write.
+- The check is keyed by the entity in the job metadata — for `layout_plan_commit` and `connector_sync` that's `connectorInstanceId`; for `file_upload_parse` that's the `uploadIds` (and by extension the upload session). New job types must declare which entity ids they lock in their `<Type>MetadataSchema` JSDoc.
+- Worker code itself must not write to the entity through a path that bypasses the lock — the worker IS the holder, so its own writes are fine, but unrelated mutations triggered while the worker runs must be rejected.
+- Locks release when the job reaches a terminal status (`completed` / `failed` / `cancelled` — see `TERMINAL_JOB_STATUSES` in `job.model.ts`). No manual unlock paths.
+
+### Frontend rules (apps/web)
+
+- Every entity-detail view that has running-job exposure must surface the lock state inline. The connector-instance view is the canonical example: render an MUI `<Alert severity="info">` (or a `<Chip>` in tight headers) listing each running job's type + a "started X ago" timestamp, with copy that names the blocked actions ("Sync, edit fields, and delete are paused until the import finishes.").
+- Mutations that target a locked entity must be disabled at the UI layer — the button stays visible (so the affordance doesn't disappear) but is `disabled` with a tooltip pointing at the running job. The disabled state is driven from the same `useAuthQuery` that powers the alert, not from the mutation's own state.
+- The alert auto-dismisses on the SSE terminal event for the job (or via an automatic refetch when the entity's `.root` query invalidates after job completion). Don't poll; the existing `/api/sse/jobs/:id/events` channel is the source of truth.
+- Workflows that enqueue a long-running job (commit, sync, parse) own the user's expectations *before* the job starts: the action button should already say "Importing…" / "Syncing…" while the SSE stream is open, and the post-202 navigation should land on a view that shows the lock alert so the user immediately understands what they can't do yet.
+
+### When you add a new long-running job
+
+1. Add the JobType + per-type metadata/result schemas to `packages/core/src/models/job.model.ts`. The metadata's JSDoc must declare the entity ids the job locks.
+2. The route that enqueues the job validates that no other non-terminal job already locks the same entity ids (re-using the same 409 path).
+3. Every entity-detail view that could surface this job adds it to its lock-state query (or extends an existing aggregate query that returns "running jobs for this entity").
+4. The processor's terminal payload (the `result` field) carries enough information for the SSE consumer to refresh its caches without a full refetch loop — same as `file_upload_parse` does today.
+
 ## Workflow Module Pattern (apps/web)
 
 Multi-step user workflows (e.g., file upload, data import wizards) live in `apps/web/src/workflows/<WorkflowName>/`. Each workflow is a self-contained module with a strict internal structure:

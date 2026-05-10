@@ -11,6 +11,7 @@ import type {
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { JobsService } from "../services/jobs.service.js";
 import { LayoutPlanDraftService } from "../services/layout-plan-draft.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -123,12 +124,18 @@ layoutPlansRouter.post(
  *   post:
  *     tags:
  *       - Layout Plans
- *     summary: Create the ConnectorInstance + layout plan and commit records atomically
+ *     summary: Enqueue draft commit; returns jobId for SSE tracking
  *     description: |
- *       Creates a fresh ConnectorInstance, persists the supplied plan against
- *       it, and runs the replay + record-write pipeline. On any failure past
- *       the instance insert, both rows are rolled back so the client never
- *       sees an orphan connector.
+ *       Validates the plan envelope and the workbook source synchronously,
+ *       mints fresh `connectorInstanceId` + `planId` UUIDs, and enqueues a
+ *       `layout_plan_commit` job. Returns 202 with `{ connectorInstanceId,
+ *       planId, jobId, status: "pending" }`; the worker creates the
+ *       connector_instance + plan rows and runs the replay + records-write
+ *       pipeline off the request thread (~400k-row uploads can otherwise
+ *       race the ALB 180 s idle timeout). On any failure past the instance
+ *       create, the worker rolls back so the client never sees an orphan
+ *       connector. The terminal SSE event carries
+ *       `LayoutPlanCommitJobResult` (`@portalai/core/models`).
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -136,30 +143,14 @@ layoutPlansRouter.post(
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required:
- *               - connectorDefinitionId
- *               - name
- *               - plan
- *               - workbook
- *             properties:
- *               connectorDefinitionId:
- *                 type: string
- *               name:
- *                 type: string
- *               plan:
- *                 $ref: '#/components/schemas/LayoutPlan'
- *               workbook:
- *                 type: object
+ *             $ref: '#/components/schemas/LayoutPlanCommitDraftRequestBody'
  *     responses:
- *       200:
- *         description: Commit succeeded
+ *       202:
+ *         description: Job enqueued; client tracks completion via SSE.
  *       400:
  *         description: Invalid body
- *       409:
- *         description: Drift or blocker-warnings gate blocked the commit (instance rolled back)
- *       500:
- *         description: Replay or record write failed (instance rolled back)
+ *       404:
+ *         description: connectorDefinitionId or connectorInstanceId not found
  */
 layoutPlansRouter.post(
   "/commit",
@@ -181,23 +172,38 @@ layoutPlansRouter.post(
         );
       }
 
-      const payload = await LayoutPlanDraftService.commitDraft(
+      const prepared = await LayoutPlanDraftService.prepareDraftCommit(
         organizationId,
         userId,
         parsed.data
       );
+      const job = await JobsService.create(userId, {
+        organizationId,
+        type: "layout_plan_commit",
+        metadata: prepared.metadata,
+      });
+
       logger.info(
         {
           organizationId,
-          connectorInstanceId: payload.connectorInstanceId,
-          planId: payload.planId,
-          recordCounts: payload.recordCounts,
+          connectorInstanceId: prepared.connectorInstanceId,
+          planId: prepared.planId,
+          jobId: job.id,
+          isExistingInstance: prepared.metadata.isExistingInstance,
+          event: "layout-plan.commit.enqueued",
         },
-        "Layout plan committed (draft)"
+        "Layout plan commit (draft) enqueued"
       );
+
       return HttpService.success<LayoutPlanCommitDraftResponsePayload>(
         res,
-        payload
+        {
+          connectorInstanceId: prepared.connectorInstanceId,
+          planId: prepared.planId,
+          jobId: job.id,
+          status: "pending",
+        },
+        202
       );
     } catch (error) {
       logger.error(
@@ -205,7 +211,7 @@ layoutPlansRouter.post(
           error: error instanceof Error ? error.message : "Unknown error",
           stack: error instanceof Error ? error.stack : undefined,
         },
-        "Draft commit failed"
+        "Draft commit enqueue failed"
       );
       return next(
         error instanceof ApiError

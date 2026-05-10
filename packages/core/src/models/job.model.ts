@@ -37,6 +37,7 @@ export const JobTypeEnum = z.enum([
   "revalidation",
   "connector_sync",
   "file_upload_parse",
+  "layout_plan_commit",
 ]);
 export type JobType = z.infer<typeof JobTypeEnum>;
 
@@ -133,6 +134,99 @@ export type FileUploadParseResult = z.infer<
   typeof FileUploadParseResultSchema
 >;
 
+/**
+ * layout_plan_commit — runs the layout-plan commit pipeline (replay +
+ * drift gate + entity_records writes) off the request thread. Both
+ * HTTP commit endpoints (`POST /api/layout-plans/commit` for draft
+ * commit, `POST /api/connector-instances/:id/layout-plan/:planId/commit`
+ * for recommit) enqueue this job and return 202 with `{ jobId, … }`;
+ * the frontend awaits the terminal payload via
+ * `/api/sse/jobs/:id/events`.
+ *
+ * Metadata is a discriminated union keyed by `kind`:
+ *   - `draft`    — route mints fresh `connectorInstanceId` + `planId`;
+ *                  the worker creates the instance row (when not
+ *                  `isExistingInstance`) and the plan row inside the
+ *                  same write path that produces the records, so a
+ *                  failure leaves no orphan rows.
+ *   - `recommit` — instance + plan already exist; worker only writes
+ *                  records.
+ *
+ * `plan` is left as `z.unknown()` here to avoid importing
+ * `LayoutPlanSchema` from `contracts/` (which would close a model →
+ * contract → model cycle); the route validates it against
+ * `LayoutPlanSchema` before enqueueing.
+ *
+ * `workbookSource` references the chunked workbook cache by either
+ * upload-session id (file-upload pipeline) or connector-instance id
+ * (gsheets / microsoft-excel oauth pipelines). The full workbook is
+ * never serialized into job metadata — it lives in Redis via
+ * `WorkbookCacheService`.
+ */
+export const LayoutPlanCommitWorkbookSourceSchema = z.discriminatedUnion(
+  "kind",
+  [
+    z.object({
+      kind: z.literal("uploadSession"),
+      uploadSessionId: z.string().min(1),
+    }),
+    z.object({
+      kind: z.literal("connectorInstance"),
+      connectorInstanceId: z.string().min(1),
+    }),
+  ]
+);
+export type LayoutPlanCommitWorkbookSource = z.infer<
+  typeof LayoutPlanCommitWorkbookSourceSchema
+>;
+
+export const LayoutPlanCommitMetadataSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("draft"),
+    organizationId: z.string().min(1),
+    userId: z.string().min(1),
+    connectorInstanceId: z.string().min(1),
+    planId: z.string().min(1),
+    connectorDefinitionId: z.string().min(1),
+    name: z.string().min(1),
+    isExistingInstance: z.boolean(),
+    plan: z.unknown(),
+    workbookSource: LayoutPlanCommitWorkbookSourceSchema,
+  }),
+  z.object({
+    kind: z.literal("recommit"),
+    organizationId: z.string().min(1),
+    userId: z.string().min(1),
+    connectorInstanceId: z.string().min(1),
+    planId: z.string().min(1),
+    workbookSource: LayoutPlanCommitWorkbookSourceSchema,
+  }),
+]);
+export type LayoutPlanCommitMetadata = z.infer<
+  typeof LayoutPlanCommitMetadataSchema
+>;
+
+/**
+ * Terminal payload published by the layout-plan-commit processor.
+ * Carries everything either commit endpoint used to return inline so
+ * the frontend can finish the workflow once the SSE `update` event
+ * lands.
+ */
+export const LayoutPlanCommitJobResultSchema = z.object({
+  connectorInstanceId: z.string().min(1),
+  planId: z.string().min(1),
+  connectorEntityIds: z.array(z.string().min(1)),
+  recordCounts: z.object({
+    created: z.number().int().nonnegative(),
+    updated: z.number().int().nonnegative(),
+    unchanged: z.number().int().nonnegative(),
+    invalid: z.number().int().nonnegative(),
+  }),
+});
+export type LayoutPlanCommitJobResult = z.infer<
+  typeof LayoutPlanCommitJobResultSchema
+>;
+
 // --- Type Map ---
 
 /**
@@ -153,6 +247,10 @@ export interface JobTypeMap {
   file_upload_parse: {
     metadata: FileUploadParseMetadata;
     result: FileUploadParseResult;
+  };
+  layout_plan_commit: {
+    metadata: LayoutPlanCommitMetadata;
+    result: LayoutPlanCommitJobResult;
   };
 }
 
@@ -181,6 +279,10 @@ export const JOB_TYPE_SCHEMAS: {
   file_upload_parse: {
     metadata: FileUploadParseMetadataSchema,
     result: FileUploadParseResultSchema,
+  },
+  layout_plan_commit: {
+    metadata: LayoutPlanCommitMetadataSchema,
+    result: LayoutPlanCommitJobResultSchema,
   },
 };
 
