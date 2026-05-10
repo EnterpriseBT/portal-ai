@@ -25,7 +25,13 @@ function cellText(cell: WorkbookCell | undefined): string {
   if (!cell || cell.value === null) return "";
   if (cell.value instanceof Date) return cell.value.toISOString();
   if (typeof cell.value === "boolean") return cell.value ? "true" : "false";
-  return String(cell.value);
+  // Mirror interpret/stages/header-line.util.ts so the binding `name` (set
+  // from a trimmed header at plan time) lines up with the live header
+  // here. trim() also strips U+FEFF, which xlsx files exported with a BOM
+  // carry into the first cell — without the trim, drift would flag the
+  // BOM'd header as both "removed" (the trimmed name) and "added" (the
+  // live BOM-prefixed cell).
+  return String(cell.value).trim();
 }
 
 /**
