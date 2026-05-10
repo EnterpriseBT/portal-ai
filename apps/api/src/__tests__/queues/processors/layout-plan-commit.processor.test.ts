@@ -2,8 +2,12 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import type { Job as BullJob } from "bullmq";
 
 const mockRunCommitDraft =
-  jest.fn<(metadata: unknown) => Promise<unknown>>();
-const mockRunRecommit = jest.fn<(metadata: unknown) => Promise<unknown>>();
+  jest.fn<
+    (metadata: unknown, onProgress?: (p: number) => void) => Promise<unknown>
+  >();
+const mockRunRecommit = jest.fn<
+  (metadata: unknown, onProgress?: (p: number) => void) => Promise<unknown>
+>();
 
 jest.unstable_mockModule(
   "../../../services/layout-plan-draft.service.js",
@@ -75,7 +79,8 @@ describe("layoutPlanCommitProcessor", () => {
 
     expect(mockRunCommitDraft).toHaveBeenCalledTimes(1);
     expect(mockRunCommitDraft).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "draft", planId: "plan-1" })
+      expect.objectContaining({ kind: "draft", planId: "plan-1" }),
+      expect.any(Function)
     );
     expect(mockRunRecommit).not.toHaveBeenCalled();
     expect(out).toBe(sampleResult);
@@ -90,10 +95,32 @@ describe("layoutPlanCommitProcessor", () => {
 
     expect(mockRunRecommit).toHaveBeenCalledTimes(1);
     expect(mockRunRecommit).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "recommit", planId: "plan-1" })
+      expect.objectContaining({ kind: "recommit", planId: "plan-1" }),
+      expect.any(Function)
     );
     expect(mockRunCommitDraft).not.toHaveBeenCalled();
     expect(out).toBe(sampleResult);
+  });
+
+  it("forwards the onProgress callback to bullJob.updateProgress", async () => {
+    mockRunCommitDraft.mockImplementation(
+      async (_metadata: unknown, onProgress: unknown) => {
+        (onProgress as (n: number) => void)(42);
+        (onProgress as (n: number) => void)(85);
+        return sampleResult;
+      }
+    );
+
+    const updateProgress = jest.fn<(p: number) => Promise<void>>();
+    const bullJob = {
+      data: { jobId: "job-1", type: "layout_plan_commit", ...draftMetadata },
+      updateProgress,
+    };
+    await layoutPlanCommitProcessor(bullJob as never);
+
+    expect(updateProgress).toHaveBeenCalledTimes(2);
+    expect(updateProgress).toHaveBeenNthCalledWith(1, 42);
+    expect(updateProgress).toHaveBeenNthCalledWith(2, 85);
   });
 
   it("propagates errors so the worker can mark the job failed", async () => {

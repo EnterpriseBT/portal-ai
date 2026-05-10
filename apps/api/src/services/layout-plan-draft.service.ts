@@ -264,7 +264,8 @@ export class LayoutPlanDraftService {
    * pending row) are never deleted — the user can re-try.
    */
   static async runCommitDraft(
-    metadata: Extract<LayoutPlanCommitMetadata, { kind: "draft" }>
+    metadata: Extract<LayoutPlanCommitMetadata, { kind: "draft" }>,
+    onProgress?: (percent: number) => void
   ): Promise<LayoutPlanCommitJobResult> {
     const {
       organizationId,
@@ -287,7 +288,8 @@ export class LayoutPlanDraftService {
         planId,
         organizationId,
         userId,
-        { workbook }
+        { workbook },
+        { onProgress }
       );
     } catch (err) {
       logger.warn(
@@ -404,7 +406,8 @@ export class LayoutPlanDraftService {
    * caller is expected to retry against the same plan.
    */
   static async runRecommit(
-    metadata: Extract<LayoutPlanCommitMetadata, { kind: "recommit" }>
+    metadata: Extract<LayoutPlanCommitMetadata, { kind: "recommit" }>,
+    onProgress?: (percent: number) => void
   ): Promise<LayoutPlanCommitJobResult> {
     const {
       organizationId,
@@ -424,7 +427,8 @@ export class LayoutPlanDraftService {
       planId,
       organizationId,
       userId,
-      { workbook }
+      { workbook },
+      { onProgress }
     );
 
     return {
