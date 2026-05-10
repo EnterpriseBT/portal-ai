@@ -53,7 +53,12 @@ jest.unstable_mockModule(
   })
 );
 
-// In-memory Redis shim — caches the parsed WorkbookData keyed by session id.
+// In-memory Redis shim — caches both the legacy single-blob workbook
+// (used by google-sheets / microsoft-excel pipelines) and the chunked
+// upload-session layout that file-upload uses post-Phase-2 (see
+// docs/LARGE_FILE_PARSE_STREAMING.plan.md). Supports the methods the
+// chunked cache exercises: set / get / mget / del (variadic) /
+// scanStream.
 const redisStore = new Map<string, string>();
 jest.unstable_mockModule("../../../utils/redis.util.js", () => ({
   getRedisClient: () => ({
@@ -63,9 +68,26 @@ jest.unstable_mockModule("../../../utils/redis.util.js", () => ({
     },
     get: async (key: string): Promise<string | null> =>
       redisStore.get(key) ?? null,
-    del: async (key: string): Promise<number> => {
-      const existed = redisStore.delete(key);
-      return existed ? 1 : 0;
+    mget: async (...keys: string[]): Promise<(string | null)[]> =>
+      keys.map((k) => redisStore.get(k) ?? null),
+    del: async (...keys: string[]): Promise<number> => {
+      let n = 0;
+      for (const k of keys) if (redisStore.delete(k)) n++;
+      return n;
+    },
+    scanStream({ match }: { match: string }) {
+      const re = new RegExp(
+        "^" +
+          match
+            .split("*")
+            .map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+            .join(".*") +
+          "$"
+      );
+      const matched = [...redisStore.keys()].filter((k) => re.test(k));
+      return (async function* () {
+        if (matched.length > 0) yield matched;
+      })();
     },
   }),
   closeRedis: async () => undefined,
@@ -231,9 +253,16 @@ function makeWorkbook(): WorkbookData {
 }
 
 /**
- * Seed an upload session — writes one `file_uploads` row + caches the
- * workbook in the mocked Redis so `FileUploadSessionService.resolveWorkbook`
- * finds it instantly (cache hit, no S3 stream required).
+ * Seed an upload session — writes one `file_uploads` row + populates
+ * the chunked Redis layout the file-upload pipeline reads from
+ * post-Phase-2 (`docs/LARGE_FILE_PARSE_STREAMING.plan.md`):
+ *
+ *   - `upload-session:{id}:meta`                            session meta
+ *   - `upload-session:{id}:sheet:{sheetId}:rows:{0}`        dense row chunk
+ *
+ * Sheet ids are minted via the same `sheetId()` helper the production
+ * pipeline uses. `resolveWorkbook` reads these directly without needing
+ * the mocked S3 path.
  */
 async function seedUploadSession(
   db: Db,
@@ -258,11 +287,67 @@ async function seedUploadSession(
     deleted: null,
     deletedBy: null,
   } as never);
+
+  const prefix = `upload-session:${uploadSessionId}`;
+  const sheetMetas = workbook.sheets.map((sheet, i) => ({
+    sheetId: sheetIdOf(i, sheet.name),
+    name: sheet.name,
+    rowCount: sheet.dimensions.rows,
+    colCount: sheet.dimensions.cols,
+    hasMerges: sheet.cells.some((c) => c.merged !== undefined),
+  }));
   redisStore.set(
-    `upload-session:${uploadSessionId}`,
-    JSON.stringify(workbook)
+    `${prefix}:meta`,
+    JSON.stringify({
+      sheets: sheetMetas,
+      status: "ready" as const,
+      createdAt: now,
+    })
   );
+  workbook.sheets.forEach((sheet, i) => {
+    const sheetId = sheetMetas[i]!.sheetId;
+    const denseRows = sparseToDenseRows(sheet);
+    // Seeded workbooks fit in a single chunk (default ROWS_PER_CHUNK=1000);
+    // tests don't drive sessions that span the chunk boundary.
+    redisStore.set(
+      `${prefix}:sheet:${sheetId}:rows:0`,
+      JSON.stringify(denseRows)
+    );
+  });
   return uploadSessionId;
+}
+
+/** Mirrors `sheetId` in workbook-preview.util.ts. */
+function sheetIdOf(index: number, name: string): string {
+  const slug = name.replace(/\s+/g, "_").toLowerCase();
+  return `sheet_${index}_${slug}`;
+}
+
+/** Build dense row layout from a sparse `WorkbookData` sheet for cache seeding. */
+function sparseToDenseRows(
+  sheet: WorkbookData["sheets"][number]
+): (string | number | boolean | null)[][] {
+  const { rows, cols } = sheet.dimensions;
+  const dense: (string | number | boolean | null)[][] = Array.from(
+    { length: rows },
+    () => new Array(cols).fill(null) as (string | number | boolean | null)[]
+  );
+  for (const cell of sheet.cells) {
+    const r = cell.row - 1;
+    const c = cell.col - 1;
+    if (r < 0 || r >= rows || c < 0 || c >= cols) continue;
+    const v = cell.value;
+    if (v === null || v === undefined) {
+      dense[r]![c] = null;
+    } else if (v instanceof Date) {
+      dense[r]![c] = v.toISOString();
+    } else if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      dense[r]![c] = v;
+    } else {
+      dense[r]![c] = String(v);
+    }
+  }
+  return dense;
 }
 
 describe("Layout Plans Draft Router", () => {
