@@ -123,6 +123,15 @@ export const environment = {
     process.env.FILE_UPLOAD_CACHE_TTL_SEC || String(60 * 60),
     10
   ),
+  // Row-chunk granularity for the streaming workbook cache used by the
+  // file-upload pipeline (see docs/LARGE_FILE_PARSE_STREAMING.plan.md). Each
+  // chunk is a single Redis key — too small and we MGET dozens of keys per
+  // slice; too large and parse buffers get fat. 1000 rows balances these for
+  // typical CSV row widths.
+  FILE_UPLOAD_CACHE_ROWS_PER_CHUNK: parseInt(
+    process.env.FILE_UPLOAD_CACHE_ROWS_PER_CHUNK || "1000",
+    10
+  ),
   UPLOAD_ALLOWED_EXTENSIONS: (
     process.env.UPLOAD_ALLOWED_EXTENSIONS || ".csv,.tsv,.xlsx,.xls"
   )

@@ -7,17 +7,17 @@
  *     rows in status `"pending"`.
  *   - `confirm` — HEADs the S3 object to verify the client's PUT succeeded,
  *     transitions the row to `"uploaded"`.
- *   - `parseSession` — streams every upload in a session from S3, merges the
- *     sheets, caches the result in Redis, and transitions rows to
- *     `"parsed"`. Returns a client-facing preview (inline cells or a slice
- *     flag per the inline-cells threshold).
- *   - `sheetSlice` — serves cell rectangles from the cached workbook for
- *     sheets over the inline cap.
+ *   - `parseSession` — streams every upload in a session from S3 directly
+ *     into the chunked Redis cache (see workbook-cache.service.ts and
+ *     docs/LARGE_FILE_PARSE_STREAMING.plan.md). Transitions rows to
+ *     `"parsed"`. Returns a client-facing preview (inline cells or a
+ *     slice flag per the inline-cells threshold).
+ *   - `sheetSlice` — serves cell rectangles by pulling row-chunks from the
+ *     chunked cache, no full-sheet load.
  *   - `resolveWorkbook` — used by the layout-plan endpoints to look up a
- *     parsed workbook by session id, falling back to re-stream on cache miss.
+ *     parsed workbook by session id, falling back to re-parse on cache
+ *     miss. Reassembles `WorkbookData` from chunks for legacy consumers.
  */
-
-import { Readable } from "node:stream";
 
 import { and, inArray, lt } from "drizzle-orm";
 
@@ -30,33 +30,27 @@ import type {
   FileUploadSheetSliceResponsePayload,
 } from "@portalai/core/contracts";
 import type { WorkbookData } from "@portalai/spreadsheet-parsing";
-import { WorkbookSchema } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { environment } from "../environment.js";
 import { ApiError } from "./http.service.js";
 import { DbService } from "./db.service.js";
 import { S3Service } from "./s3.service.js";
-import { WorkbookCacheService } from "./workbook-cache.service.js";
 import {
-  findSheetById,
-  inflateSheetPreview,
-  sliceWorkbookRectangle,
+  WorkbookCacheService,
+  type SessionWriter,
+} from "./workbook-cache.service.js";
+import {
+  findSheetMetaById,
+  inflateSheetPreviewFromChunks,
+  reassembleWorkbookFromChunks,
+  sheetId as makeSheetId,
+  sliceSheetRectangleFromChunks,
   type PreviewSheet,
 } from "../utils/workbook-preview.util.js";
 
-/**
- * Cache key for an upload-session-scoped workbook. The cache service is
- * shared with OAuth-driven connectors (`connector:wb:<slug>:{id}` — see
- * `utils/connector-cache-keys.util.ts`); this prefix lives here so the
- * file-upload pipeline owns its namespace.
- */
-function uploadSessionCacheKey(uploadSessionId: string): string {
-  return `upload-session:${uploadSessionId}`;
-}
-
-import { csvToWorkbook } from "./workbook-adapters/csv.adapter.js";
-import { xlsxToWorkbook } from "./workbook-adapters/xlsx.adapter.js";
+import { csvToCache } from "./workbook-adapters/csv.adapter.js";
+import { xlsxToCache } from "./workbook-adapters/xlsx.adapter.js";
 import { ProcessorError } from "../utils/processor-error.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -100,30 +94,74 @@ function uniqueSheetName(name: string, taken: Set<string>): string {
   throw new Error(`Could not generate unique sheet name for "${name}"`);
 }
 
-// Preview shape helpers (sheetId / coerceToPreviewCell / inflateSheetPreview /
-// findSheetById / sliceWorkbookRectangle) live in `utils/workbook-preview.util.ts`
-// — shared with the google-sheets pipeline.
+/**
+ * Cache prefix for an upload-session-scoped chunked workbook. Sibling key
+ * shapes (rows, merges, meta) live underneath this prefix — see
+ * `workbook-cache.service.ts`.
+ */
+function uploadSessionCachePrefix(uploadSessionId: string): string {
+  return `upload-session:${uploadSessionId}`;
+}
 
-async function parseSingle(
-  stream: Readable,
-  filename: string
-): Promise<WorkbookData> {
-  const ext = extensionOf(filename);
+interface ParsedSheetMeta {
+  sheetId: string;
+  name: string;
+  rowCount: number;
+  colCount: number;
+}
+
+/**
+ * Stream a single upload into the chunked cache, returning the metadata
+ * for each sheet it produced. Multi-sheet sources (xlsx) yield more than
+ * one entry; CSV/TSV always yields exactly one.
+ */
+async function parseUploadIntoCache(
+  upload: FileUploadSelect,
+  writer: SessionWriter,
+  taken: Set<string>,
+  sheetIndexOffset: number
+): Promise<ParsedSheetMeta[]> {
+  const ext = extensionOf(upload.filename);
   if (!SUPPORTED_EXTENSIONS.includes(ext as SupportedExtension)) {
     throw new ApiError(
       400,
       ApiCode.FILE_UPLOAD_PARSE_UNSUPPORTED,
-      `Unsupported file extension "${ext || "(none)"}" on "${filename}"`
+      `Unsupported file extension "${ext || "(none)"}" on "${upload.filename}"`
     );
   }
+
+  const { stream } = await S3Service.getObjectStream(upload.s3Key);
+
   try {
     if (ext === ".csv" || ext === ".tsv") {
-      return await csvToWorkbook(stream, {
-        sheetName: baseNameOf(filename),
+      const baseName = baseNameOf(upload.filename);
+      const name = uniqueSheetName(baseName, taken);
+      taken.add(name);
+      const sId = makeSheetId(sheetIndexOffset, name);
+      const stats = await csvToCache(stream, sId, writer, {
         delimiter: ext === ".tsv" ? "\t" : undefined,
       });
+      await writer.finishSheet(sId, {
+        name,
+        rowCount: stats.rowCount,
+        colCount: stats.colCount,
+      });
+      return [{ sheetId: sId, name, ...stats }];
     }
-    return await xlsxToWorkbook(stream);
+
+    // XLSX/XLS — streamed via ExcelJS' WorkbookReader. The adapter calls
+    // back into `resolveSheet` so name uniqueness + sheet-id minting stay
+    // here, where the file-upload pipeline owns the policy.
+    let nextOffset = sheetIndexOffset;
+    return await xlsxToCache(stream, writer, {
+      resolveSheet: (rawName) => {
+        const name = uniqueSheetName(rawName, taken);
+        taken.add(name);
+        const sId = makeSheetId(nextOffset, name);
+        nextOffset++;
+        return { name, sheetId: sId };
+      },
+    });
   } catch (err) {
     if (err instanceof ApiError) throw err;
     if (err instanceof ProcessorError) {
@@ -139,37 +177,6 @@ async function parseSingle(
       err instanceof Error ? err.message : "Failed to parse file"
     );
   }
-}
-
-/**
- * Stream all uploads referenced by a session, parse them, and merge into a
- * single `WorkbookData` with unique sheet names. Shared between
- * `parseSession` (fresh parse) and `resolveWorkbook` (cache-miss refill).
- */
-async function parseUploadsToWorkbook(
-  uploads: FileUploadSelect[]
-): Promise<WorkbookData> {
-  const merged: WorkbookData["sheets"] = [];
-  const taken = new Set<string>();
-  for (const upload of uploads) {
-    const { stream } = await S3Service.getObjectStream(upload.s3Key);
-    const workbook = await parseSingle(stream, upload.filename);
-    for (const sheet of workbook.sheets) {
-      const name = uniqueSheetName(sheet.name, taken);
-      taken.add(name);
-      merged.push({ ...sheet, name });
-    }
-  }
-  const workbook: WorkbookData = { sheets: merged };
-  const validated = WorkbookSchema.safeParse(workbook);
-  if (!validated.success) {
-    throw new ApiError(
-      500,
-      ApiCode.FILE_UPLOAD_PARSE_FAILED,
-      "Adapter produced an invalid workbook"
-    );
-  }
-  return validated.data;
 }
 
 export const FileUploadSessionService = {
@@ -374,30 +381,67 @@ export const FileUploadSessionService = {
     }
 
     const started = Date.now();
-    const workbook = await parseUploadsToWorkbook(uploads);
-
     const uploadSessionId = SystemUtilities.id.v4.generate();
-    await WorkbookCacheService.set(uploadSessionCacheKey(uploadSessionId), workbook);
+    const prefix = uploadSessionCachePrefix(uploadSessionId);
+
+    const writer = await WorkbookCacheService.beginSession(prefix);
+    let parsedSheets: ParsedSheetMeta[] = [];
+    try {
+      const taken = new Set<string>();
+      for (const upload of uploads) {
+        const sheets = await parseUploadIntoCache(
+          upload,
+          writer,
+          taken,
+          parsedSheets.length
+        );
+        parsedSheets = parsedSheets.concat(sheets);
+      }
+      await writer.finalize("ready");
+    } catch (err) {
+      await writer.fail(err instanceof Error ? err.message : "parse failed");
+      // Best-effort cleanup; surface the original error.
+      void WorkbookCacheService.deleteSession(prefix).catch(() => {});
+      throw err;
+    }
+
     await DbService.repository.fileUploads.updateStatusMany(
       uploads.map((u) => u.id),
       "parsed",
       { uploadSessionId }
     );
 
+    // Build the inline preview by reading row chunks back for sheets under the
+    // inline cap. Sheets over cap return `cells: []` and the client falls back
+    // to the slice endpoint per rectangle.
     const inlineCellsMax = environment.FILE_UPLOAD_INLINE_CELLS_MAX;
+    const meta = await WorkbookCacheService.getSessionMeta(prefix);
+    if (!meta) {
+      // Shouldn't happen — we just finalized.
+      throw new ApiError(
+        500,
+        ApiCode.FILE_UPLOAD_PARSE_FAILED,
+        "Session meta missing after finalize"
+      );
+    }
     let sliced = false;
-    const sheets: PreviewSheet[] = workbook.sheets.map((sheet, i) => {
-      const inflated = inflateSheetPreview(sheet, i, inlineCellsMax);
+    const sheets: PreviewSheet[] = [];
+    for (const sheetMeta of meta.sheets) {
+      const inflated = await inflateSheetPreviewFromChunks(
+        prefix,
+        sheetMeta,
+        inlineCellsMax
+      );
       if (inflated.sliced) sliced = true;
-      return inflated.sheet;
-    });
+      sheets.push(inflated.sheet);
+    }
 
     logger.info(
       {
         organizationId,
         uploadSessionId,
         fileCount: uploads.length,
-        sheetCount: workbook.sheets.length,
+        sheetCount: meta.sheets.length,
         sliced,
         durationMs: Date.now() - started,
         event: "upload.parse.completed",
@@ -421,46 +465,137 @@ export const FileUploadSessionService = {
       colEnd: number;
     }
   ): Promise<FileUploadSheetSliceResponsePayload> {
-    const workbook = await this.resolveWorkbook(
-      query.uploadSessionId,
-      organizationId
-    );
-    const match = findSheetById(workbook, query.sheetId);
-    if (!match) {
+    const prefix = uploadSessionCachePrefix(query.uploadSessionId);
+    const meta = await this.requireSessionMeta(prefix, organizationId);
+
+    const sheetMeta = findSheetMetaById(meta, query.sheetId);
+    if (!sheetMeta) {
       throw new ApiError(
         404,
         ApiCode.FILE_UPLOAD_SLICE_OUT_OF_BOUNDS,
         `Sheet ${query.sheetId} not present in session ${query.uploadSessionId}`
       );
     }
-    return sliceWorkbookRectangle(match.sheet, query);
+    return sliceSheetRectangleFromChunks(prefix, sheetMeta, query);
   },
 
   // ── Shared: resolve workbook for interpret/commit ──────────────────
 
+  /**
+   * Reassemble a `WorkbookData` from the chunked cache for legacy
+   * `WorkbookData`-shaped consumers (interpret, commit). On cache miss
+   * the caller's session is gone — we re-parse from S3 by re-driving
+   * the chunked path, then reassemble.
+   *
+   * Memory cost on the read path is O(populated cells); Phase 4 of the
+   * streaming plan migrates interpret/commit to per-row consumers so
+   * this materialization can be deleted.
+   */
   async resolveWorkbook(
     uploadSessionId: string,
     organizationId: string
   ): Promise<WorkbookData> {
-    const cached = await WorkbookCacheService.get(
-      uploadSessionCacheKey(uploadSessionId)
-    );
-    if (cached) return cached;
+    const prefix = uploadSessionCachePrefix(uploadSessionId);
+    let meta = await WorkbookCacheService.getSessionMeta(prefix);
 
-    // Cache miss — re-stream from S3 using the file_uploads rows keyed to
-    // this session.
-    const uploads =
-      await DbService.repository.fileUploads.findByUploadSessionId(
-        uploadSessionId
+    if (!meta || meta.status !== "ready") {
+      // Cache miss / expired — re-stream from S3 using the file_uploads rows
+      // keyed to this session.
+      const uploadsForSession =
+        await DbService.repository.fileUploads.findByUploadSessionId(
+          uploadSessionId
+        );
+      if (uploadsForSession.length === 0) {
+        throw new ApiError(
+          404,
+          ApiCode.FILE_UPLOAD_SESSION_NOT_FOUND,
+          `Upload session ${uploadSessionId} not found`
+        );
+      }
+      for (const upload of uploadsForSession) {
+        if (upload.organizationId !== organizationId) {
+          throw new ApiError(
+            403,
+            ApiCode.FILE_UPLOAD_FORBIDDEN,
+            "Upload session belongs to a different organization"
+          );
+        }
+      }
+      logger.info(
+        { uploadSessionId, event: "upload.cache.miss" },
+        "Re-streaming workbook from S3 (cache miss)"
       );
-    if (uploads.length === 0) {
+
+      const writer = await WorkbookCacheService.beginSession(prefix);
+      try {
+        const taken = new Set<string>();
+        let offset = 0;
+        for (const upload of uploadsForSession) {
+          const out = await parseUploadIntoCache(
+            upload,
+            writer,
+            taken,
+            offset
+          );
+          offset += out.length;
+        }
+        await writer.finalize("ready");
+      } catch (err) {
+        await writer.fail(err instanceof Error ? err.message : "re-parse failed");
+        throw err;
+      }
+      meta = await WorkbookCacheService.getSessionMeta(prefix);
+      if (!meta) {
+        throw new ApiError(
+          500,
+          ApiCode.FILE_UPLOAD_PARSE_FAILED,
+          "Session meta missing after re-parse"
+        );
+      }
+    } else {
+      // Hot path — verify session ownership against the DB rows. Without
+      // this an unauthenticated org could probe sessions by id.
+      const uploadsForSession =
+        await DbService.repository.fileUploads.findByUploadSessionId(
+          uploadSessionId
+        );
+      for (const upload of uploadsForSession) {
+        if (upload.organizationId !== organizationId) {
+          throw new ApiError(
+            403,
+            ApiCode.FILE_UPLOAD_FORBIDDEN,
+            "Upload session belongs to a different organization"
+          );
+        }
+      }
+    }
+
+    return reassembleWorkbookFromChunks(prefix, meta);
+  },
+
+  /**
+   * Internal helper: load session meta and verify ownership against the
+   * DB rows tied to the session. Throws 404 / 403 instead of returning.
+   */
+  async requireSessionMeta(
+    prefix: string,
+    organizationId: string
+  ) {
+    const meta = await WorkbookCacheService.getSessionMeta(prefix);
+    if (!meta || meta.status !== "ready") {
       throw new ApiError(
         404,
         ApiCode.FILE_UPLOAD_SESSION_NOT_FOUND,
-        `Upload session ${uploadSessionId} not found`
+        `Upload session not ready or expired`
       );
     }
-    for (const upload of uploads) {
+    // Map prefix back to sessionId; prefix format is `upload-session:<id>`.
+    const uploadSessionId = prefix.replace(/^upload-session:/, "");
+    const uploadsForSession =
+      await DbService.repository.fileUploads.findByUploadSessionId(
+        uploadSessionId
+      );
+    for (const upload of uploadsForSession) {
       if (upload.organizationId !== organizationId) {
         throw new ApiError(
           403,
@@ -469,13 +604,7 @@ export const FileUploadSessionService = {
         );
       }
     }
-    logger.info(
-      { uploadSessionId, event: "upload.cache.miss" },
-      "Re-streaming workbook from S3 (cache miss)"
-    );
-    const workbook = await parseUploadsToWorkbook(uploads);
-    await WorkbookCacheService.set(uploadSessionCacheKey(uploadSessionId), workbook);
-    return workbook;
+    return meta;
   },
 
   /**
@@ -530,8 +659,8 @@ export const FileUploadSessionService = {
   },
 
   /**
-   * Mark a session's rows committed and best-effort delete the S3 objects.
-   * Called by the commit pipeline on success.
+   * Mark a session's rows committed and best-effort delete the S3 objects
+   * plus the chunked cache. Called by the commit pipeline on success.
    */
   async markSessionCommitted(uploadSessionId: string): Promise<void> {
     const uploads =
@@ -544,7 +673,9 @@ export const FileUploadSessionService = {
       "committed",
       {}
     );
-    await WorkbookCacheService.delete(uploadSessionCacheKey(uploadSessionId));
+    await WorkbookCacheService.deleteSession(
+      uploadSessionCachePrefix(uploadSessionId)
+    );
     // Fire-and-forget S3 deletes; residual objects are also swept by the
     // bucket lifecycle rule.
     for (const upload of uploads) {
