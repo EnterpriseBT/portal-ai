@@ -10,7 +10,7 @@
  * auditable.
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import type {
   ColumnBinding,
@@ -37,13 +37,11 @@ import { createLogger } from "../utils/logger.util.js";
 import { db } from "../db/client.js";
 import {
   connectorInstances,
-  entityRecords,
   fieldMappings,
 } from "../db/schema/index.js";
 import type {
   ColumnDefinitionSelect,
   EntityRecordInsert,
-  EntityRecordSelect,
 } from "../db/schema/zod.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
 
@@ -555,15 +553,13 @@ export class LayoutPlanCommitService {
     const dedupedRecords = Array.from(mergedBySourceId.values());
 
     const sourceIds = dedupedRecords.map((r) => r.sourceId);
-    const existingRows = (await (tx as typeof db)
-      .select()
-      .from(entityRecords)
-      .where(
-        and(
-          eq(entityRecords.connectorEntityId, connectorEntityId),
-          inArray(entityRecords.sourceId, sourceIds)
-        )
-      )) as EntityRecordSelect[];
+    const existingRows =
+      await DbService.repository.entityRecords.findBySourceIds(
+        connectorEntityId,
+        sourceIds,
+        { includeDeleted: true },
+        tx
+      );
     const existingBySourceId = new Map(
       existingRows.map((r) => [r.sourceId, r])
     );
