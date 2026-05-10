@@ -36,6 +36,7 @@ export const JobTypeEnum = z.enum([
   "system_check",
   "revalidation",
   "connector_sync",
+  "file_upload_parse",
 ]);
 export type JobType = z.infer<typeof JobTypeEnum>;
 
@@ -97,6 +98,41 @@ export const ConnectorSyncResultSchema = z.object({
 });
 export type ConnectorSyncResult = z.infer<typeof ConnectorSyncResultSchema>;
 
+/**
+ * file_upload_parse — drives the streaming parse of one or more uploads
+ * into the chunked workbook cache. The HTTP route mints `uploadSessionId`
+ * + the job, returns 202 immediately, and the worker streams every
+ * upload from S3 via the chunked-cache adapters. On completion the
+ * worker publishes the same preview payload the synchronous endpoint
+ * used to return inline (`FileUploadParseJobResult` in
+ * `contracts/file-uploads.contract.ts`); the frontend awaits it via
+ * the existing `/api/sse/jobs/:id/events` stream. See
+ * `docs/LARGE_FILE_PARSE_STREAMING.plan.md` §Phase 3.
+ */
+export const FileUploadParseMetadataSchema = z.object({
+  organizationId: z.string(),
+  uploadSessionId: z.string(),
+  uploadIds: z.array(z.string()).min(1),
+});
+export type FileUploadParseMetadata = z.infer<
+  typeof FileUploadParseMetadataSchema
+>;
+
+/**
+ * The processor's typed return value. Mirrors the shape that the legacy
+ * synchronous parse route used to return inline; the contracts package
+ * carries the preview-sheet schema, so the result schema here is left
+ * permissive and validated at the contract boundary.
+ */
+export const FileUploadParseResultSchema = z.object({
+  uploadSessionId: z.string(),
+  sheets: z.array(z.unknown()),
+  sliced: z.boolean().optional(),
+});
+export type FileUploadParseResult = z.infer<
+  typeof FileUploadParseResultSchema
+>;
+
 // --- Type Map ---
 
 /**
@@ -113,6 +149,10 @@ export interface JobTypeMap {
   connector_sync: {
     metadata: ConnectorSyncMetadata;
     result: ConnectorSyncResult;
+  };
+  file_upload_parse: {
+    metadata: FileUploadParseMetadata;
+    result: FileUploadParseResult;
   };
 }
 
@@ -137,6 +177,10 @@ export const JOB_TYPE_SCHEMAS: {
   connector_sync: {
     metadata: ConnectorSyncMetadataSchema,
     result: ConnectorSyncResultSchema,
+  },
+  file_upload_parse: {
+    metadata: FileUploadParseMetadataSchema,
+    result: FileUploadParseResultSchema,
   },
 };
 

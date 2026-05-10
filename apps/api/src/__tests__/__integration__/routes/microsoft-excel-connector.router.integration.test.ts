@@ -190,12 +190,17 @@ MicrosoftGraphService.toNodeReadable =
     stream) as unknown as typeof MicrosoftGraphService.toNodeReadable;
 
 // Mock the xlsx adapter to avoid needing a real .xlsx fixture in tests.
+// `xlsxToWorkbook` (legacy `WorkbookData` adapter) is what microsoft-excel
+// consumes; `xlsxToCache` (streaming, file-upload pipeline) is unused here
+// but must exist on the module since `file-upload-session.service.ts`
+// imports it through the same barrel.
 const xlsxToWorkbookMock =
   jest.fn<(stream: unknown) => Promise<unknown>>();
 jest.unstable_mockModule(
   "../../../services/workbook-adapters/xlsx.adapter.js",
   () => ({
     xlsxToWorkbook: xlsxToWorkbookMock,
+    xlsxToCache: jest.fn(),
   })
 );
 

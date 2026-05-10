@@ -77,7 +77,9 @@ jest.unstable_mockModule("../api/sse.api", () => ({
 // ---------------------------------------------------------------------------
 
 const { renderHook, act, waitFor } = await import("./test-utils");
-const { useJobStream } = await import("../utils/job-stream.util");
+const { useJobStream, awaitJobCompletion } = await import(
+  "../utils/job-stream.util"
+);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -425,5 +427,127 @@ describe("useJobStream", () => {
 
     expect(result.current.progress).toBe(80);
     expect(result.current.connectionStatus).toBe("connected");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// awaitJobCompletion (imperative variant)
+// ---------------------------------------------------------------------------
+
+describe("awaitJobCompletion", () => {
+  beforeEach(() => {
+    MockEventSource.reset();
+    mockConnect.mockImplementation(async (path: string) => {
+      const es = new MockEventSource(`https://api.test.com${path}`);
+      return es;
+    });
+  });
+
+  it("resolves with the job result when an update event reports `completed`", async () => {
+    const promise = awaitJobCompletion(mockConnect as unknown as (path: string) => Promise<EventSource>, "job-1");
+    const es = await waitForConnection();
+
+    es.__emit("update", {
+      jobId: "job-1",
+      status: "completed",
+      progress: 100,
+      result: { uploadSessionId: "sess-1", sheets: [], sliced: false },
+    });
+
+    await expect(promise).resolves.toEqual({
+      result: { uploadSessionId: "sess-1", sheets: [], sliced: false },
+    });
+    expect(es.close).toHaveBeenCalled();
+  });
+
+  it("resolves immediately when the snapshot already shows `completed`", async () => {
+    const promise = awaitJobCompletion(mockConnect as unknown as (path: string) => Promise<EventSource>, "job-1");
+    const es = await waitForConnection();
+
+    es.__emit("snapshot", {
+      jobId: "job-1",
+      status: "completed",
+      progress: 100,
+      error: null,
+      result: { uploadSessionId: "sess-1", sheets: [{ id: "s_0_x" }] },
+      startedAt: 0,
+      completedAt: 0,
+    });
+
+    await expect(promise).resolves.toEqual({
+      result: { uploadSessionId: "sess-1", sheets: [{ id: "s_0_x" }] },
+    });
+  });
+
+  it("rejects with the job's error string when `failed`", async () => {
+    const promise = awaitJobCompletion(mockConnect as unknown as (path: string) => Promise<EventSource>, "job-2");
+    const es = await waitForConnection();
+
+    es.__emit("update", {
+      jobId: "job-2",
+      status: "failed",
+      progress: 50,
+      error: "Upload xyz belongs to a different organization",
+    });
+
+    await expect(promise).rejects.toThrow(
+      "Upload xyz belongs to a different organization"
+    );
+    expect(es.close).toHaveBeenCalled();
+  });
+
+  it("rejects on `cancelled` status", async () => {
+    const promise = awaitJobCompletion(mockConnect as unknown as (path: string) => Promise<EventSource>, "job-3");
+    const es = await waitForConnection();
+
+    es.__emit("update", {
+      jobId: "job-3",
+      status: "cancelled",
+      progress: 30,
+    });
+
+    await expect(promise).rejects.toThrow("Job cancelled");
+  });
+
+  it("ignores progress events while still active", async () => {
+    const promise = awaitJobCompletion(mockConnect as unknown as (path: string) => Promise<EventSource>, "job-4");
+    const es = await waitForConnection();
+
+    es.__emit("update", { jobId: "job-4", status: "active", progress: 25 });
+    es.__emit("update", { jobId: "job-4", status: "active", progress: 60 });
+    expect(es.close).not.toHaveBeenCalled();
+
+    es.__emit("update", {
+      jobId: "job-4",
+      status: "completed",
+      progress: 100,
+      result: { uploadSessionId: "sess-4", sheets: [] },
+    });
+
+    await expect(promise).resolves.toEqual({
+      result: { uploadSessionId: "sess-4", sheets: [] },
+    });
+  });
+
+  it("rejects with AbortError + closes the EventSource when the signal aborts", async () => {
+    const ac = new AbortController();
+    const promise = awaitJobCompletion(mockConnect as unknown as (path: string) => Promise<EventSource>, "job-5", {
+      signal: ac.signal,
+    });
+    const es = await waitForConnection();
+
+    ac.abort();
+
+    await expect(promise).rejects.toThrow(/aborted/i);
+    expect(es.close).toHaveBeenCalled();
+  });
+
+  it("rejects when the SSE connection errors before completion", async () => {
+    const promise = awaitJobCompletion(mockConnect as unknown as (path: string) => Promise<EventSource>, "job-6");
+    const es = await waitForConnection();
+
+    es.__emitError();
+
+    await expect(promise).rejects.toThrow(/SSE connection error/i);
   });
 });
