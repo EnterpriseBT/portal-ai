@@ -18,7 +18,11 @@ import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import { environment } from "../../../environment.js";
-import { seedUserAndOrg, teardownOrg } from "../utils/application.util.js";
+import {
+  generateId,
+  seedUserAndOrg,
+  teardownOrg,
+} from "../utils/application.util.js";
 import { buildMultiSheetXlsx } from "../../utils/xlsx-fixtures.util.js";
 
 const AUTH0_ID = "auth0|file-uploads-streaming";
@@ -77,7 +81,9 @@ jest.unstable_mockModule("../../../services/s3.service.js", () => ({
   },
 }));
 
-// In-memory Redis shim so we can run the cache without a live redis in tests.
+// In-memory Redis shim — supports the methods the chunked workbook cache
+// exercises (set/get/mget/del/scanStream) so file-upload's Phase-2 cache
+// layout works without a live Redis.
 const redisStore = new Map<string, string>();
 jest.unstable_mockModule("../../../utils/redis.util.js", () => ({
   getRedisClient: () => ({
@@ -92,15 +98,47 @@ jest.unstable_mockModule("../../../utils/redis.util.js", () => ({
     },
     get: async (key: string): Promise<string | null> =>
       redisStore.get(key) ?? null,
-    del: async (key: string): Promise<number> => {
-      const existed = redisStore.delete(key);
-      return existed ? 1 : 0;
+    mget: async (...keys: string[]): Promise<(string | null)[]> =>
+      keys.map((k) => redisStore.get(k) ?? null),
+    del: async (...keys: string[]): Promise<number> => {
+      let n = 0;
+      for (const k of keys) if (redisStore.delete(k)) n++;
+      return n;
+    },
+    scanStream({ match }: { match: string }) {
+      const re = new RegExp(
+        "^" +
+          match
+            .split("*")
+            .map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+            .join(".*") +
+          "$"
+      );
+      const matched = [...redisStore.keys()].filter((k) => re.test(k));
+      return (async function* () {
+        if (matched.length > 0) yield matched;
+      })();
     },
   }),
   closeRedis: async () => undefined,
 }));
 
+// Mock the BullMQ queue to a no-op `add` so `JobsService.create` returns a
+// pending job row without touching real Redis. Tests that need the actual
+// parse work to happen drive `FileUploadSessionService.runParseSession`
+// directly — same code path the worker would take.
+jest.unstable_mockModule("../../../queues/jobs.queue.js", () => ({
+  JOBS_QUEUE_NAME: "async-jobs",
+  jobsQueue: {
+    add: jest.fn(async () => ({ id: "bull-mock" })),
+    getJob: jest.fn(),
+  },
+}));
+
 const { app } = await import("../../../app.js");
+const { FileUploadSessionService } = await import(
+  "../../../services/file-upload-session.service.js"
+);
 
 describe("File uploads streaming router", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -264,24 +302,66 @@ describe("File uploads streaming router", () => {
       return ids;
     }
 
-    it("merges multi-CSV uploads into one workbook with preview cells inline", async () => {
+    /**
+     * Drive the parse work the worker would normally pick up off the queue.
+     * The route's 202 response carries `{ uploadSessionId, jobId }`; the
+     * actual work is the same `runParseSession` call the processor makes.
+     * Returning the result lets each test assert against the exact payload
+     * the SSE terminal event would carry.
+     */
+    async function runParseInline(
+      uploadIds: string[],
+      sessionIdOverride?: string
+    ) {
+      const uploadSessionId = sessionIdOverride ?? generateId();
+      const result = await FileUploadSessionService.runParseSession(
+        organizationId,
+        uploadSessionId,
+        uploadIds
+      );
+      return result;
+    }
+
+    it("returns 202 with { uploadSessionId, jobId, status: pending } and persists a pending job", async () => {
       const uploadIds = await uploadAndConfirm([
-        { fileName: "contacts.csv", bytes: Buffer.from("Name,Email\nAlice,a@x.com\n") },
-        { fileName: "orders.csv", bytes: Buffer.from("OrderId,Total\no-1,42\n") },
+        { fileName: "a.csv", bytes: Buffer.from("h\nv\n") },
       ]);
       const res = await request(app)
         .post("/api/file-uploads/parse")
         .set("Authorization", "Bearer test-token")
         .send({ uploadIds });
-      expect(res.status).toBe(200);
-      expect(res.body.payload.uploadSessionId).toBeDefined();
-      expect(res.body.payload.sheets).toHaveLength(2);
-      expect(res.body.payload.sheets.map((s: { name: string }) => s.name)).toEqual([
-        "contacts",
-        "orders",
+      expect(res.status).toBe(202);
+      expect(res.body.payload).toEqual({
+        uploadSessionId: expect.any(String),
+        jobId: expect.any(String),
+        status: "pending",
+      });
+
+      const jobs = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.jobs)
+        .where(eq(schema.jobs.id, res.body.payload.jobId));
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0]?.type).toBe("file_upload_parse");
+      expect(jobs[0]?.status).toBe("pending");
+      expect(jobs[0]?.metadata).toMatchObject({
+        organizationId,
+        uploadSessionId: res.body.payload.uploadSessionId,
+        uploadIds,
+      });
+    });
+
+    it("merges multi-CSV uploads into one workbook with preview cells inline", async () => {
+      const uploadIds = await uploadAndConfirm([
+        { fileName: "contacts.csv", bytes: Buffer.from("Name,Email\nAlice,a@x.com\n") },
+        { fileName: "orders.csv", bytes: Buffer.from("OrderId,Total\no-1,42\n") },
       ]);
-      expect(res.body.payload.sliced).toBeUndefined();
-      const contacts = res.body.payload.sheets[0];
+      const result = await runParseInline(uploadIds);
+      expect(result.uploadSessionId).toBeDefined();
+      expect(result.sheets).toHaveLength(2);
+      expect(result.sheets.map((s) => s.name)).toEqual(["contacts", "orders"]);
+      expect(result.sliced).toBeUndefined();
+      const contacts = result.sheets[0]!;
       expect(contacts.cells[0]).toEqual(["Name", "Email"]);
       expect(contacts.cells[1]).toEqual(["Alice", "a@x.com"]);
     });
@@ -305,15 +385,8 @@ describe("File uploads streaming router", () => {
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         },
       ]);
-      const res = await request(app)
-        .post("/api/file-uploads/parse")
-        .set("Authorization", "Bearer test-token")
-        .send({ uploadIds });
-      expect(res.status).toBe(200);
-      expect(res.body.payload.sheets.map((s: { name: string }) => s.name)).toEqual([
-        "Contacts",
-        "Orders",
-      ]);
+      const result = await runParseInline(uploadIds);
+      expect(result.sheets.map((s) => s.name)).toEqual(["Contacts", "Orders"]);
     });
 
     it("sets sliced=true for sheets over the inline cap", async () => {
@@ -326,23 +399,16 @@ describe("File uploads streaming router", () => {
         const uploadIds = await uploadAndConfirm([
           { fileName: "big.csv", bytes },
         ]);
-        const res = await request(app)
-          .post("/api/file-uploads/parse")
-          .set("Authorization", "Bearer test-token")
-          .send({ uploadIds });
-        expect(res.status).toBe(200);
-        expect(res.body.payload.sliced).toBe(true);
-        expect(res.body.payload.sheets[0].cells).toEqual([]);
-        expect(res.body.payload.sheets[0].dimensions).toEqual({
-          rows: 5,
-          cols: 5,
-        });
+        const result = await runParseInline(uploadIds);
+        expect(result.sliced).toBe(true);
+        expect(result.sheets[0]!.cells).toEqual([]);
+        expect(result.sheets[0]!.dimensions).toEqual({ rows: 5, cols: 5 });
       } finally {
         environment.FILE_UPLOAD_INLINE_CELLS_MAX = originalMax;
       }
     });
 
-    it("rejects unconfirmed (pending) uploads with 409", async () => {
+    it("rejects unconfirmed (pending) uploads with 409 (synchronous validation)", async () => {
       const { body: presignBody } = await presign([
         { fileName: "a.csv", sizeBytes: 50 },
       ]);
@@ -357,28 +423,41 @@ describe("File uploads streaming router", () => {
   });
 
   describe("GET /api/file-uploads/sheet-slice", () => {
+    /** Drive parse out-of-band the way the worker would, then return the result. */
+    async function setupSession(
+      bytes: Buffer,
+      fileName: string
+    ): Promise<{ uploadSessionId: string; sheetId: string }> {
+      const { body: presignBody } = await presign([
+        { fileName, sizeBytes: bytes.length },
+      ]);
+      const { uploadId, s3Key } = presignBody.payload.uploads[0];
+      simulatePut(s3Key, bytes);
+      await request(app)
+        .post("/api/file-uploads/confirm")
+        .set("Authorization", "Bearer test-token")
+        .send({ uploadId });
+      const result = await FileUploadSessionService.runParseSession(
+        organizationId,
+        generateId(),
+        [uploadId]
+      );
+      return {
+        uploadSessionId: result.uploadSessionId,
+        sheetId: result.sheets[0]!.id,
+      };
+    }
+
     it("returns a sliced rectangle from the cached workbook", async () => {
       const originalMax = environment.FILE_UPLOAD_INLINE_CELLS_MAX;
       environment.FILE_UPLOAD_INLINE_CELLS_MAX = 10;
       try {
-        const bytes = Buffer.from(
-          "A,B,C,D,E\n1,2,3,4,5\n6,7,8,9,10\n11,12,13,14,15\n16,17,18,19,20\n"
+        const { uploadSessionId, sheetId } = await setupSession(
+          Buffer.from(
+            "A,B,C,D,E\n1,2,3,4,5\n6,7,8,9,10\n11,12,13,14,15\n16,17,18,19,20\n"
+          ),
+          "big.csv"
         );
-        const { body: presignBody } = await presign([
-          { fileName: "big.csv", sizeBytes: bytes.length },
-        ]);
-        const { uploadId, s3Key } = presignBody.payload.uploads[0];
-        simulatePut(s3Key, bytes);
-        await request(app)
-          .post("/api/file-uploads/confirm")
-          .set("Authorization", "Bearer test-token")
-          .send({ uploadId });
-        const parseRes = await request(app)
-          .post("/api/file-uploads/parse")
-          .set("Authorization", "Bearer test-token")
-          .send({ uploadIds: [uploadId] });
-        const { uploadSessionId, sheets } = parseRes.body.payload;
-        const sheetId = sheets[0].id;
 
         const res = await request(app)
           .get("/api/file-uploads/sheet-slice")
@@ -405,26 +484,15 @@ describe("File uploads streaming router", () => {
       const originalMax = environment.FILE_UPLOAD_SLICE_CELLS_MAX;
       environment.FILE_UPLOAD_SLICE_CELLS_MAX = 2;
       try {
-        const bytes = Buffer.from("A,B\n1,2\n3,4\n");
-        const { body: presignBody } = await presign([
-          { fileName: "tiny.csv", sizeBytes: bytes.length },
-        ]);
-        const { uploadId, s3Key } = presignBody.payload.uploads[0];
-        simulatePut(s3Key, bytes);
-        await request(app)
-          .post("/api/file-uploads/confirm")
-          .set("Authorization", "Bearer test-token")
-          .send({ uploadId });
-        const parseRes = await request(app)
-          .post("/api/file-uploads/parse")
-          .set("Authorization", "Bearer test-token")
-          .send({ uploadIds: [uploadId] });
-        const { uploadSessionId, sheets } = parseRes.body.payload;
+        const { uploadSessionId, sheetId } = await setupSession(
+          Buffer.from("A,B\n1,2\n3,4\n"),
+          "tiny.csv"
+        );
         const res = await request(app)
           .get("/api/file-uploads/sheet-slice")
           .query({
             uploadSessionId,
-            sheetId: sheets[0].id,
+            sheetId,
             rowStart: 0,
             rowEnd: 3,
             colStart: 0,
@@ -451,11 +519,12 @@ describe("File uploads streaming router", () => {
         .post("/api/file-uploads/confirm")
         .set("Authorization", "Bearer test-token")
         .send({ uploadId });
-      const parseRes = await request(app)
-        .post("/api/file-uploads/parse")
-        .set("Authorization", "Bearer test-token")
-        .send({ uploadIds: [uploadId] });
-      const { uploadSessionId } = parseRes.body.payload;
+      const parseResult = await FileUploadSessionService.runParseSession(
+        organizationId,
+        generateId(),
+        [uploadId]
+      );
+      const { uploadSessionId } = parseResult;
 
       const interpretRes = await request(app)
         .post("/api/layout-plans/interpret")

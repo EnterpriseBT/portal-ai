@@ -254,18 +254,46 @@ Implementation notes (as shipped):
 Exit criterion: 250 MB xlsx upload completes without OOM (matches the
 existing per-file size cap).
 
-### Phase 3 — Bull worker + SSE
+### Phase 3 — Bull worker + SSE ✅ done
 
-- New `file-upload-parse` queue + processor.
-- `/parse` route returns 202 immediately; new
-  `GET /parse/:uploadSessionId` for status polling.
-- Worker publishes `parse.ready` / `parse.error` over SSE.
-- Frontend `parseFile` subscribes to SSE and resolves on
-  `parse.ready`.
+Implementation notes (as shipped):
+
+- `file_upload_parse` job type added to `JobTypeEnum` /
+  `JobTypeMap` / `JOB_TYPE_SCHEMAS` in
+  `packages/core/src/models/job.model.ts`, plus the postgres
+  enum (drizzle migration `0052_add_file_upload_parse_job_type.sql`).
+- New processor `apps/api/src/queues/processors/file-upload-parse.processor.ts`
+  delegates the parse loop to `FileUploadSessionService.runParseSession`
+  and returns the same preview payload the synchronous endpoint used
+  to ship inline. Registered in `processors/index.ts` under the
+  `file_upload_parse` key.
+- `FileUploadSessionService.parseSession` split into
+  enqueue-only (`parseSession`, returns
+  `{ uploadSessionId, jobId, status: "pending" }`) and the work
+  loop (`runParseSession`, called by the processor). Validation
+  stays on the route so 4xx feedback is immediate.
+- `POST /api/file-uploads/parse` returns 202 with the enqueue
+  payload; the contract type
+  `FileUploadParseSessionResponsePayload` now carries
+  `{ uploadSessionId, jobId, status }`. A separate
+  `FileUploadParseJobResult` schema covers the SSE terminal
+  payload.
+- Frontend: new imperative `awaitJobCompletion(connect, jobId)`
+  in `apps/web/src/utils/job-stream.util.ts` (sibling to the
+  existing `useJobStream` hook). The container's `parseFile`
+  callback awaits this between `parseMutate` and the workbook
+  conversion — same external shape as before, async parse is
+  invisible to the hook layer.
+- The existing `/api/sse/jobs/:id/events` stream and
+  `JobEventsService.transition` machinery — already used by the
+  `connector_sync` flow — handle the SSE delivery and DB job-row
+  lifecycle. No new SSE endpoint needed; the frontend's
+  `awaitJobCompletion` consumes `snapshot` + `update` events on
+  the existing channel.
 
 Exit criterion: 40 MB CSV upload no longer races the ALB 180 s idle
 timeout regardless of parse duration; the HTTP request completes in
-< 1 s.
+< 1 s. ✅
 
 ### Phase 4 — Migrate google-sheets, microsoft-excel, interpret/commit
 

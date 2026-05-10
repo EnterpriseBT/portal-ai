@@ -24,6 +24,7 @@ import { and, inArray, lt } from "drizzle-orm";
 import { fileUploads } from "../db/schema/index.js";
 
 import type {
+  FileUploadParseJobResult,
   FileUploadParseSessionResponsePayload,
   FileUploadPresignFile,
   FileUploadPresignResponsePayload,
@@ -35,6 +36,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { environment } from "../environment.js";
 import { ApiError } from "./http.service.js";
 import { DbService } from "./db.service.js";
+import { JobsService } from "./jobs.service.js";
 import { S3Service } from "./s3.service.js";
 import {
   WorkbookCacheService,
@@ -335,12 +337,103 @@ export const FileUploadSessionService = {
     };
   },
 
-  // ── Phase 3: parse session ──────────────────────────────────────────
+  // ── Phase 3: parse session (enqueue) ────────────────────────────────
 
+  /**
+   * Validate the upload set against the DB, mint an `uploadSessionId`,
+   * and enqueue a `file_upload_parse` job. Returns 202-style metadata
+   * the route hands straight to the client; the actual parse work runs
+   * out-of-band in `runParseSession` (called by the processor) and is
+   * delivered to the client over `/api/sse/jobs/:id/events`.
+   *
+   * Pre-flight validation lives here — not in the worker — so the
+   * client gets immediate 4xx feedback for bad upload ids /
+   * cross-organization access / invalid status, instead of a
+   * fast-failing job they have to chase via SSE.
+   */
   async parseSession(
     organizationId: string,
+    userId: string,
     uploadIds: string[]
   ): Promise<FileUploadParseSessionResponsePayload> {
+    if (uploadIds.length === 0) {
+      throw new ApiError(
+        400,
+        ApiCode.FILE_UPLOAD_PARSE_INVALID_PAYLOAD,
+        "At least one uploadId is required"
+      );
+    }
+
+    const rows = await Promise.all(
+      uploadIds.map((id) => DbService.repository.fileUploads.findById(id))
+    );
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const id = uploadIds[i];
+      if (!row) {
+        throw new ApiError(
+          404,
+          ApiCode.FILE_UPLOAD_NOT_FOUND,
+          `Upload ${id} not found`
+        );
+      }
+      if (row.organizationId !== organizationId) {
+        throw new ApiError(
+          403,
+          ApiCode.FILE_UPLOAD_FORBIDDEN,
+          `Upload ${id} belongs to a different organization`
+        );
+      }
+      if (row.status !== "uploaded" && row.status !== "parsed") {
+        throw new ApiError(
+          409,
+          ApiCode.FILE_UPLOAD_INVALID_STATE,
+          `Upload ${id} is in status "${row.status}"; must be "uploaded" to parse`
+        );
+      }
+    }
+
+    const uploadSessionId = SystemUtilities.id.v4.generate();
+    const job = await JobsService.create(userId, {
+      organizationId,
+      type: "file_upload_parse",
+      metadata: { organizationId, uploadSessionId, uploadIds },
+    });
+
+    logger.info(
+      {
+        organizationId,
+        uploadSessionId,
+        jobId: job.id,
+        fileCount: uploadIds.length,
+        event: "upload.parse.enqueued",
+      },
+      "Parse session enqueued"
+    );
+
+    return { uploadSessionId, jobId: job.id, status: "pending" };
+  },
+
+  // ── Phase 3: parse session (worker body) ────────────────────────────
+
+  /**
+   * The actual parse loop, called from the `file_upload_parse`
+   * processor. Drives every upload through the streaming adapters
+   * straight into the chunked cache, finalizes the cache session, then
+   * builds the inline-preview payload the client used to receive
+   * synchronously from `/parse`. Returns the payload as the job's
+   * `result` so it lands on the SSE terminal-event for the awaiting
+   * frontend.
+   *
+   * Re-entrant: re-running the same `(uploadSessionId, uploadIds)`
+   * tuple is safe — it overwrites the chunked cache and re-runs the
+   * status update on the file_uploads rows.
+   */
+  async runParseSession(
+    organizationId: string,
+    uploadSessionId: string,
+    uploadIds: string[]
+  ): Promise<FileUploadParseJobResult> {
     if (uploadIds.length === 0) {
       throw new ApiError(
         400,
@@ -381,7 +474,6 @@ export const FileUploadSessionService = {
     }
 
     const started = Date.now();
-    const uploadSessionId = SystemUtilities.id.v4.generate();
     const prefix = uploadSessionCachePrefix(uploadSessionId);
 
     const writer = await WorkbookCacheService.beginSession(prefix);
@@ -400,7 +492,6 @@ export const FileUploadSessionService = {
       await writer.finalize("ready");
     } catch (err) {
       await writer.fail(err instanceof Error ? err.message : "parse failed");
-      // Best-effort cleanup; surface the original error.
       void WorkbookCacheService.deleteSession(prefix).catch(() => {});
       throw err;
     }
@@ -411,13 +502,9 @@ export const FileUploadSessionService = {
       { uploadSessionId }
     );
 
-    // Build the inline preview by reading row chunks back for sheets under the
-    // inline cap. Sheets over cap return `cells: []` and the client falls back
-    // to the slice endpoint per rectangle.
     const inlineCellsMax = environment.FILE_UPLOAD_INLINE_CELLS_MAX;
     const meta = await WorkbookCacheService.getSessionMeta(prefix);
     if (!meta) {
-      // Shouldn't happen — we just finalized.
       throw new ApiError(
         500,
         ApiCode.FILE_UPLOAD_PARSE_FAILED,

@@ -212,3 +212,91 @@ export const useJobStream = (
 
   return state;
 };
+
+// ---------------------------------------------------------------------------
+// Imperative variant
+// ---------------------------------------------------------------------------
+
+export interface JobCompletionResult {
+  result: Record<string, unknown> | null;
+}
+
+/**
+ * Imperative wait-for-job — opens an SSE stream and resolves on the
+ * job's terminal status. Used inside async callbacks (e.g. the
+ * file-upload workflow's `parseFile`) where a hook is not available.
+ * Caller passes the auth-aware `connect` factory from `sse.create()`.
+ *
+ * Resolves with the job's `result` payload on `completed`, rejects
+ * with the `error` string on `failed` / `cancelled`. Honors `signal`
+ * for cancellation; on abort the EventSource is closed and the
+ * promise rejects with an AbortError.
+ */
+export async function awaitJobCompletion(
+  connect: (path: string) => Promise<EventSource>,
+  jobId: string,
+  options: { signal?: AbortSignal } = {}
+): Promise<JobCompletionResult> {
+  const { signal } = options;
+  if (signal?.aborted) {
+    throw new DOMException("Job wait aborted", "AbortError");
+  }
+
+  const es = await connect(`/api/sse/jobs/${encodeURIComponent(jobId)}/events`);
+
+  return new Promise<JobCompletionResult>((resolve, reject) => {
+    let settled = false;
+
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      es.close();
+      if (signal) {
+        signal.removeEventListener("abort", onAbort);
+      }
+    };
+
+    const onAbort = () => {
+      cleanup();
+      reject(new DOMException("Job wait aborted", "AbortError"));
+    };
+
+    if (signal) {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+
+    const handleEvent = (e: MessageEvent) => {
+      let data: { status?: string; result?: Record<string, unknown> | null; error?: string | null };
+      try {
+        data = JSON.parse(e.data);
+      } catch {
+        return;
+      }
+      if (!data.status) return;
+
+      if (data.status === "completed") {
+        cleanup();
+        resolve({ result: data.result ?? null });
+      } else if (data.status === "failed" || data.status === "cancelled") {
+        cleanup();
+        reject(
+          new Error(
+            data.error ??
+              (data.status === "cancelled" ? "Job cancelled" : "Job failed")
+          )
+        );
+      }
+    };
+
+    es.addEventListener("snapshot", handleEvent);
+    es.addEventListener("update", handleEvent);
+    es.onerror = () => {
+      // EventSource auto-reconnects on transient errors; only reject if the
+      // promise hasn't already settled. The caller's onProgress hook can
+      // surface the connection state if needed.
+      if (settled) return;
+      cleanup();
+      reject(new Error("SSE connection error while waiting for job"));
+    };
+  });
+}

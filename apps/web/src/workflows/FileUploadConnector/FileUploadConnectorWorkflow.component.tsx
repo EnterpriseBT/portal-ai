@@ -13,7 +13,10 @@ import {
   Typography,
 } from "@portalai/core/ui";
 import type { StepConfig } from "@portalai/core/ui";
-import type { FileUploadParseSheet } from "@portalai/core/contracts";
+import type {
+  FileUploadParseJobResult,
+  FileUploadParseSheet,
+} from "@portalai/core/contracts";
 
 import { UploadStep } from "./UploadStep.component";
 import { FileUploadRegionDrawingStepUI } from "./FileUploadRegionDrawingStep.component";
@@ -36,6 +39,8 @@ import { lockPlanIdentityToRowPosition } from "./utils/lock-identity.util";
 
 import { sdk, queryKeys } from "../../api/sdk";
 import { putToS3 } from "../../api/file-uploads.api";
+import { sse } from "../../api/sse.api";
+import { awaitJobCompletion } from "../../utils/job-stream.util";
 import type {
   CellBounds,
   CellValue,
@@ -380,6 +385,9 @@ export const FileUploadConnectorWorkflow: React.FC<
   const { mutateAsync: sheetSliceMutate } = sdk.fileUploads.sheetSlice();
   const { mutateAsync: interpretMutate } = sdk.layoutPlans.interpret();
   const { mutateAsync: commitMutate } = sdk.layoutPlans.commit();
+  // Auth-aware EventSource factory used to await the file_upload_parse job's
+  // SSE completion event after `parseMutate` returns 202.
+  const connectSse = sse.create();
   const workbookRef = useRef<Workbook | null>(null);
   const uploadSessionIdRef = useRef<string | null>(null);
   const filesRef = useRef<File[]>([]);
@@ -453,25 +461,42 @@ export const FileUploadConnectorWorkflow: React.FC<
         )
       );
 
-      // 4) Stream parse — returns the preview workbook + uploadSessionId.
-      const parsePayload = await parseMutate({
+      // 4) Enqueue parse — returns 202 with `{ uploadSessionId, jobId }`.
+      //    The actual parse runs out-of-band on the async-jobs queue
+      //    (see docs/LARGE_FILE_PARSE_STREAMING.plan.md §Phase 3).
+      const parseEnqueue = await parseMutate({
         uploadIds: presignPayload.uploads.map((u) => u.uploadId),
       });
+
+      // 5) Wait for the worker's terminal SSE event, which carries the
+      //    same preview payload the legacy synchronous endpoint
+      //    returned inline (`FileUploadParseJobResult`).
+      const completion = await awaitJobCompletion(
+        connectSse,
+        parseEnqueue.jobId,
+        { signal: options?.signal }
+      );
+      const parseResult = completion.result as
+        | FileUploadParseJobResult
+        | null;
+      if (!parseResult) {
+        throw new Error("Parse job completed without a result payload");
+      }
 
       const sourceLabel =
         files.length === 1 ? files[0].name : `${files.length} files`;
       const converted = backendParseSheetsToPreview(
-        parsePayload.sheets,
+        parseResult.sheets,
         sourceLabel
       );
       workbookRef.current = converted;
-      uploadSessionIdRef.current = parsePayload.uploadSessionId;
+      uploadSessionIdRef.current = parseResult.uploadSessionId;
       return {
         workbook: converted,
-        uploadSessionId: parsePayload.uploadSessionId,
+        uploadSessionId: parseResult.uploadSessionId,
       };
     },
-    [presignMutate, confirmMutate, parseMutate]
+    [presignMutate, confirmMutate, parseMutate, connectSse]
   );
 
   const runInterpret: FileUploadWorkflowCallbacks["runInterpret"] = useCallback(
