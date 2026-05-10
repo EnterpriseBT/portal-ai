@@ -35,9 +35,12 @@ import {
 } from "../utils/oauth-state.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import {
-  findSheetById,
-  inflateSheetPreview,
-  sliceWorkbookRectangle,
+  findSheetMetaById,
+  inflateSheetPreviewFromChunks,
+  reassembleWorkbookFromChunks,
+  sheetId as makeSheetId,
+  sliceSheetRectangleFromChunks,
+  writeSheetDataToChunks,
   type PreviewSheet,
   type SliceQuery,
   type SliceResult,
@@ -273,10 +276,34 @@ export class GoogleSheetsConnectorService {
     );
     const title = rawTitle ?? input.spreadsheetId;
 
-    await WorkbookCacheService.set(
-      workbookCacheKey(GOOGLE_SHEETS_SLUG, input.connectorInstanceId),
-      workbook
-    );
+    // Stream the mapped workbook into the chunked cache so slice/preview/
+    // resolveWorkbook share one layout across every pipeline (file-upload,
+    // google-sheets, microsoft-excel). Sheet ids match what the file-upload
+    // pipeline mints so the editor's slice loader is pipeline-agnostic.
+    const prefix = workbookCacheKey(GOOGLE_SHEETS_SLUG, input.connectorInstanceId);
+    // Best-effort cleanup of any prior session under this key before
+    // overwriting; the cache TTL would handle this eventually but a fresh
+    // selection should not see ghost rows from a previous workbook.
+    await WorkbookCacheService.deleteSession(prefix);
+    const writer = await WorkbookCacheService.beginSession(prefix);
+    try {
+      for (let i = 0; i < workbook.sheets.length; i++) {
+        const sheet = workbook.sheets[i]!;
+        const sheetId = makeSheetId(i, sheet.name);
+        const stats = await writeSheetDataToChunks(sheet, sheetId, writer);
+        await writer.finishSheet(sheetId, {
+          name: sheet.name,
+          rowCount: stats.rowCount,
+          colCount: stats.colCount,
+          merges: stats.merges,
+        });
+      }
+      await writer.finalize("ready");
+    } catch (err) {
+      await writer.fail(err instanceof Error ? err.message : "transcribe failed");
+      void WorkbookCacheService.deleteSession(prefix).catch(() => {});
+      throw err;
+    }
 
     await DbService.repository.connectorInstances.update(
       input.connectorInstanceId,
@@ -291,12 +318,25 @@ export class GoogleSheetsConnectorService {
     );
 
     const inlineCellsMax = environment.FILE_UPLOAD_INLINE_CELLS_MAX;
+    const meta = await WorkbookCacheService.getSessionMeta(prefix);
+    if (!meta) {
+      throw new ApiError(
+        500,
+        ApiCode.GOOGLE_SHEETS_INVALID_PAYLOAD,
+        "Session meta missing after finalize"
+      );
+    }
     let sliced = false;
-    const sheets: PreviewSheet[] = workbook.sheets.map((sheet, i) => {
-      const inflated = inflateSheetPreview(sheet, i, inlineCellsMax);
+    const sheets: PreviewSheet[] = [];
+    for (const sheetMeta of meta.sheets) {
+      const inflated = await inflateSheetPreviewFromChunks(
+        prefix,
+        sheetMeta,
+        inlineCellsMax
+      );
       if (inflated.sliced) sliced = true;
-      return inflated.sheet;
-    });
+      sheets.push(inflated.sheet);
+    }
 
     return sliced ? { title, sheets, sliced: true } : { title, sheets };
   }
@@ -394,21 +434,20 @@ export class GoogleSheetsConnectorService {
         "Connector instance belongs to a different organization"
       );
     }
-    const cached = await WorkbookCacheService.get(
-      workbookCacheKey(GOOGLE_SHEETS_SLUG, connectorInstanceId)
-    );
-    if (!cached) {
+    const prefix = workbookCacheKey(GOOGLE_SHEETS_SLUG, connectorInstanceId);
+    const meta = await WorkbookCacheService.getSessionMeta(prefix);
+    if (!meta || meta.status !== "ready") {
       throw new ApiError(
         404,
         ApiCode.FILE_UPLOAD_SESSION_NOT_FOUND,
         `No cached workbook for instance ${connectorInstanceId} — call select-sheet first`
       );
     }
-    return cached;
+    return reassembleWorkbookFromChunks(prefix, meta);
   }
 
   /**
-   * Cell-rectangle endpoint backed by the cached `WorkbookData`. Same
+   * Cell-rectangle endpoint backed by the chunked workbook cache. Same
    * contract as `FileUploadSessionService.sheetSlice` so the editor's
    * slice loader is pipeline-agnostic.
    *
@@ -422,18 +461,20 @@ export class GoogleSheetsConnectorService {
     colStart: number;
     colEnd: number;
   }): Promise<SliceResult> {
-    const workbook = await WorkbookCacheService.get(
-      workbookCacheKey(GOOGLE_SHEETS_SLUG, input.connectorInstanceId)
+    const prefix = workbookCacheKey(
+      GOOGLE_SHEETS_SLUG,
+      input.connectorInstanceId
     );
-    if (!workbook) {
+    const meta = await WorkbookCacheService.getSessionMeta(prefix);
+    if (!meta || meta.status !== "ready") {
       throw new ApiError(
         404,
         ApiCode.FILE_UPLOAD_SESSION_NOT_FOUND,
         `No cached workbook for instance ${input.connectorInstanceId} — call select-sheet first`
       );
     }
-    const match = findSheetById(workbook, input.sheetId);
-    if (!match) {
+    const sheetMeta = findSheetMetaById(meta, input.sheetId);
+    if (!sheetMeta) {
       throw new ApiError(
         404,
         ApiCode.FILE_UPLOAD_SLICE_OUT_OF_BOUNDS,
@@ -446,7 +487,7 @@ export class GoogleSheetsConnectorService {
       colStart: input.colStart,
       colEnd: input.colEnd,
     };
-    return sliceWorkbookRectangle(match.sheet, query);
+    return sliceSheetRectangleFromChunks(prefix, sheetMeta, query);
   }
 
   /**

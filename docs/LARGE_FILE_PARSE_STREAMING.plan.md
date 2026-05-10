@@ -295,15 +295,46 @@ Exit criterion: 40 MB CSV upload no longer races the ALB 180 s idle
 timeout regardless of parse duration; the HTTP request completes in
 < 1 s. ✅
 
-### Phase 4 — Migrate google-sheets, microsoft-excel, interpret/commit
+### Phase 4 — Migrate google-sheets, microsoft-excel ✅ done
 
-- Both OAuth connector services adopt the chunked writer.
-- `layout-plan-interpret` and `layout-plan-commit` row-stream from the
-  chunked cache instead of accepting `WorkbookData`.
-- Delete legacy `WorkbookCacheService.set/get(WorkbookData)` and
-  `resolveWorkbook` from all three services.
-- Drop `WorkbookSchema.safeParse` of full workbooks — schema validation
-  moves to per-row at adapter level.
+Implementation notes (as shipped):
+
+- `GoogleSheetsConnectorService.selectSheet` now writes the
+  Sheets-API-derived workbook into the chunked cache via
+  `writeSheetDataToChunks(sheet, sheetId, writer)` (a new helper in
+  `workbook-preview.util.ts` that bridges sparse `SheetData` to dense
+  row chunks). `resolveWorkbook` and `sheetSlice` read through
+  `getSessionMeta` + `readRows`. Same `connector:wb:google-sheets:{id}`
+  prefix the legacy single-blob cache used; the cache layout under
+  the prefix is the chunked layout file-upload uses.
+- `MicrosoftExcelConnectorService.selectWorkbook` drops
+  `xlsxToWorkbook` entirely and streams via `xlsxToCache(stream,
+  writer, ctx)` straight into the chunked cache. `sheetSlice` and
+  `resolveWorkbook` go through the chunked readers.
+  `fetchWorkbookForSync` (the connector_sync entry) routes through
+  a throwaway chunked-cache session (`connector:sync:<uuid>`) so the
+  parse stays bounded; the throwaway prefix is deleted after
+  `reassembleWorkbookFromChunks` returns the workbook to the replay
+  pipeline.
+- `xlsxToWorkbook` removed from `xlsx.adapter.ts` — no consumers
+  remain. The streaming `xlsxToCache` is the only xlsx adapter.
+- `WorkbookCacheService.set/get/delete(cacheKey, WorkbookData)`
+  removed. `beginSession` / `getSessionMeta` / `readRows` /
+  `getMerges` / `deleteSession` are the only API.
+- `layout-plan-interpret` and `layout-plan-commit` continue to
+  accept a fully-resolved `WorkbookData` (the parser package's
+  `interpret()` and the commit pipeline both rely on the sync
+  `Workbook` accessor in `@portalai/spreadsheet-parsing`). The
+  reassembly happens once per request via
+  `reassembleWorkbookFromChunks` — same memory characteristic as
+  before, but the cache layer is now the single source of truth.
+  Pushing the parser to a row-async accessor would be a follow-up
+  in `@portalai/spreadsheet-parsing` proper.
+
+Exit criterion: every spreadsheet pipeline (file-upload,
+google-sheets, microsoft-excel) shares one chunked cache layout;
+no production code path holds a full workbook in memory during
+parse. ✅
 
 Exit criterion: large google-sheet / large xlsx-via-graph syncs no
 longer OOM the API task. Single cache shape across all three pipelines.

@@ -20,6 +20,7 @@
 
 import type {
   CellValue,
+  MergedRange,
   WorkbookData,
 } from "@portalai/spreadsheet-parsing";
 
@@ -28,7 +29,9 @@ import { environment } from "../environment.js";
 import { ApiError } from "../services/http.service.js";
 import type {
   ChunkCell,
+  ChunkRow,
   SessionMeta,
+  SessionWriter,
   SheetChunkMeta,
 } from "../services/workbook-cache.service.js";
 import { WorkbookCacheService } from "../services/workbook-cache.service.js";
@@ -304,10 +307,81 @@ export async function sliceSheetRectangleFromChunks(
 }
 
 /**
+ * Bridge from a sparse `SheetData` (legacy shape) to dense row chunks on a
+ * `SessionWriter`. Used by connectors whose source produces a fully-resolved
+ * `WorkbookData` (e.g. google-sheets — the API response is already JSON, so
+ * the per-cell mapping has to land in memory before we can transcribe). The
+ * caller is responsible for `writer.finishSheet(sheetId, ...)` — this
+ * function only emits row chunks and reports stats.
+ *
+ * Memory cost during transcription is O(maxCol × STAGE_SIZE) — bounded
+ * regardless of sheet size — plus the O(populated cells) the source
+ * `SheetData` already holds.
+ */
+export async function writeSheetDataToChunks(
+  sheet: WorkbookData["sheets"][number],
+  sheetId: string,
+  writer: SessionWriter
+): Promise<{
+  rowCount: number;
+  colCount: number;
+  merges: MergedRange[];
+}> {
+  const { rows, cols } = sheet.dimensions;
+  const sortedCells = [...sheet.cells].sort(
+    (a, b) => a.row - b.row || a.col - b.col
+  );
+
+  const STAGE = 256;
+  let stage: ChunkRow[] = [];
+  let cellIdx = 0;
+
+  for (let r = 1; r <= rows; r++) {
+    const denseRow: ChunkCell[] = new Array(cols).fill(null);
+    while (cellIdx < sortedCells.length && sortedCells[cellIdx]!.row === r) {
+      const c = sortedCells[cellIdx]!;
+      if (c.col >= 1 && c.col <= cols) {
+        const v = c.value;
+        if (v === null || v === undefined) {
+          denseRow[c.col - 1] = null;
+        } else if (v instanceof Date) {
+          denseRow[c.col - 1] = v.toISOString();
+        } else if (
+          typeof v === "string" ||
+          typeof v === "number" ||
+          typeof v === "boolean"
+        ) {
+          denseRow[c.col - 1] = v;
+        } else {
+          denseRow[c.col - 1] = String(v);
+        }
+      }
+      cellIdx++;
+    }
+    stage.push(denseRow);
+    if (stage.length >= STAGE) {
+      await writer.appendRows(sheetId, stage);
+      stage = [];
+    }
+  }
+  if (stage.length > 0) {
+    await writer.appendRows(sheetId, stage);
+  }
+
+  const merges: MergedRange[] = [];
+  for (const cell of sheet.cells) {
+    if (cell.merged) merges.push(cell.merged);
+  }
+  return { rowCount: rows, colCount: cols, merges };
+}
+
+/**
  * Reassemble a `WorkbookData` from a chunked session — used by the layout-plan
- * services that still consume the legacy shape. Memory cost is O(populated
- * cells), same as the legacy path; Phase 4 of the streaming refactor moves
- * interpret/commit to per-row consumers so this materialization goes away.
+ * services that still consume the legacy shape (the parser package's `interpret`
+ * + `commit` pipelines hand the workbook through a sync `Workbook` accessor).
+ * Memory cost is O(populated cells), same as before the chunked refactor; the
+ * win is that the cache layer is now a single source of truth across every
+ * pipeline.
  */
 export async function reassembleWorkbookFromChunks(
   prefix: string,

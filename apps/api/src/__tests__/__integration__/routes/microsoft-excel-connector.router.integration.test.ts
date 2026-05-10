@@ -190,17 +190,16 @@ MicrosoftGraphService.toNodeReadable =
     stream) as unknown as typeof MicrosoftGraphService.toNodeReadable;
 
 // Mock the xlsx adapter to avoid needing a real .xlsx fixture in tests.
-// `xlsxToWorkbook` (legacy `WorkbookData` adapter) is what microsoft-excel
-// consumes; `xlsxToCache` (streaming, file-upload pipeline) is unused here
-// but must exist on the module since `file-upload-session.service.ts`
-// imports it through the same barrel.
-const xlsxToWorkbookMock =
-  jest.fn<(stream: unknown) => Promise<unknown>>();
+// Phase 4 dropped `xlsxToWorkbook` — both the file-upload pipeline and the
+// microsoft-excel connector now stream into the chunked cache via
+// `xlsxToCache(stream, writer, ctx)`. Each test pre-stages the rows the
+// adapter would emit by calling the writer it's handed.
+const xlsxToCacheMock =
+  jest.fn<(...args: unknown[]) => Promise<unknown>>();
 jest.unstable_mockModule(
   "../../../services/workbook-adapters/xlsx.adapter.js",
   () => ({
-    xlsxToWorkbook: xlsxToWorkbookMock,
-    xlsxToCache: jest.fn(),
+    xlsxToCache: xlsxToCacheMock,
   })
 );
 
@@ -722,7 +721,7 @@ describe("Microsoft Excel Connector Router — POST /instances/:id/select-workbo
     getOrRefreshMock.mockReset();
     headWorkbookMock.mockReset();
     downloadWorkbookMock.mockReset();
-    xlsxToWorkbookMock.mockReset();
+    xlsxToCacheMock.mockReset();
     getOrRefreshMock.mockResolvedValue("access-token-x");
   });
 
@@ -838,15 +837,23 @@ describe("Microsoft Excel Connector Router — POST /instances/:id/select-workbo
       stream: fakeStream(),
       contentLength: 1024,
     });
-    xlsxToWorkbookMock.mockResolvedValueOnce({
-      sheets: [
-        {
-          name: "Sheet1",
-          dimensions: { rows: 1, cols: 1 },
-          cells: [{ row: 0, col: 0, value: "hello" }],
-          merges: [],
-        },
-      ],
+    // Drive the chunked writer the connector hands the adapter, mirroring
+    // what the real streaming xlsxToCache would do for a 1-cell workbook.
+    xlsxToCacheMock.mockImplementationOnce(async (...args: unknown[]) => {
+      const writer = args[1] as {
+        appendRows: (sheetId: string, rows: unknown[][]) => Promise<void>;
+        finishSheet: (
+          sheetId: string,
+          info: { name: string; rowCount: number; colCount: number }
+        ) => Promise<void>;
+      };
+      const ctx = args[2] as {
+        resolveSheet: (rawName: string) => { name: string; sheetId: string };
+      };
+      const { name, sheetId } = ctx.resolveSheet("Sheet1");
+      await writer.appendRows(sheetId, [["hello"]]);
+      await writer.finishSheet(sheetId, { name, rowCount: 1, colCount: 1 });
+      return [{ sheetId, name, rowCount: 1, colCount: 1 }];
     });
 
     const res = await request(app)

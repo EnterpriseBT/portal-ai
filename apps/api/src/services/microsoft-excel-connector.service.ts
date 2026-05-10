@@ -36,7 +36,7 @@ import {
   type MicrosoftGraphWorkbookListItem,
 } from "./microsoft-graph.service.js";
 import { WorkbookCacheService } from "./workbook-cache.service.js";
-import { xlsxToWorkbook } from "./workbook-adapters/xlsx.adapter.js";
+import { xlsxToCache } from "./workbook-adapters/xlsx.adapter.js";
 import { environment } from "../environment.js";
 import { workbookCacheKey } from "../utils/connector-cache-keys.util.js";
 import { decryptCredentials } from "../utils/crypto.util.js";
@@ -47,9 +47,11 @@ import {
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import {
-  findSheetById,
-  inflateSheetPreview,
-  sliceWorkbookRectangle,
+  findSheetMetaById,
+  inflateSheetPreviewFromChunks,
+  reassembleWorkbookFromChunks,
+  sheetId as makeSheetId,
+  sliceSheetRectangleFromChunks,
   type PreviewSheet,
   type SliceQuery,
   type SliceResult,
@@ -267,12 +269,32 @@ export class MicrosoftExcelConnectorService {
     }
 
     const nodeStream = MicrosoftGraphService.toNodeReadable(download.stream);
-    const workbook = await xlsxToWorkbook(nodeStream);
 
-    await WorkbookCacheService.set(
-      workbookCacheKey(MICROSOFT_EXCEL_SLUG, input.connectorInstanceId),
-      workbook
+    // Stream the xlsx straight into the chunked cache. No more
+    // buffer-the-world `xlsxToWorkbook` — large workbooks parse in bounded
+    // memory, and the slice/preview/resolve paths all read from the same
+    // chunk layout the file-upload pipeline uses.
+    const prefix = workbookCacheKey(
+      MICROSOFT_EXCEL_SLUG,
+      input.connectorInstanceId
     );
+    await WorkbookCacheService.deleteSession(prefix);
+    const writer = await WorkbookCacheService.beginSession(prefix);
+    let nextSheetIdx = 0;
+    try {
+      await xlsxToCache(nodeStream, writer, {
+        resolveSheet: (rawName) => {
+          const sheetId = makeSheetId(nextSheetIdx, rawName);
+          nextSheetIdx++;
+          return { name: rawName, sheetId };
+        },
+      });
+      await writer.finalize("ready");
+    } catch (err) {
+      await writer.fail(err instanceof Error ? err.message : "xlsx parse failed");
+      void WorkbookCacheService.deleteSession(prefix).catch(() => {});
+      throw err;
+    }
 
     await DbService.repository.connectorInstances.update(
       input.connectorInstanceId,
@@ -288,12 +310,25 @@ export class MicrosoftExcelConnectorService {
 
     const title = stripXlsxExtension(head.name);
     const inlineCellsMax = environment.FILE_UPLOAD_INLINE_CELLS_MAX;
+    const meta = await WorkbookCacheService.getSessionMeta(prefix);
+    if (!meta) {
+      throw new ApiError(
+        500,
+        ApiCode.MICROSOFT_EXCEL_INVALID_PAYLOAD,
+        "Session meta missing after finalize"
+      );
+    }
     let sliced = false;
-    const sheets: PreviewSheet[] = workbook.sheets.map((sheet, i) => {
-      const inflated = inflateSheetPreview(sheet, i, inlineCellsMax);
+    const sheets: PreviewSheet[] = [];
+    for (const sheetMeta of meta.sheets) {
+      const inflated = await inflateSheetPreviewFromChunks(
+        prefix,
+        sheetMeta,
+        inlineCellsMax
+      );
       if (inflated.sliced) sliced = true;
-      return inflated.sheet;
-    });
+      sheets.push(inflated.sheet);
+    }
 
     return sliced ? { title, sheets, sliced: true } : { title, sheets };
   }
@@ -311,18 +346,20 @@ export class MicrosoftExcelConnectorService {
     colStart: number;
     colEnd: number;
   }): Promise<SliceResult> {
-    const workbook = await WorkbookCacheService.get(
-      workbookCacheKey(MICROSOFT_EXCEL_SLUG, input.connectorInstanceId)
+    const prefix = workbookCacheKey(
+      MICROSOFT_EXCEL_SLUG,
+      input.connectorInstanceId
     );
-    if (!workbook) {
+    const meta = await WorkbookCacheService.getSessionMeta(prefix);
+    if (!meta || meta.status !== "ready") {
       throw new ApiError(
         404,
         ApiCode.FILE_UPLOAD_SESSION_NOT_FOUND,
         `No cached workbook for instance ${input.connectorInstanceId} — call select-workbook first`
       );
     }
-    const match = findSheetById(workbook, input.sheetId);
-    if (!match) {
+    const sheetMeta = findSheetMetaById(meta, input.sheetId);
+    if (!sheetMeta) {
       throw new ApiError(
         404,
         ApiCode.FILE_UPLOAD_SLICE_OUT_OF_BOUNDS,
@@ -335,7 +372,7 @@ export class MicrosoftExcelConnectorService {
       colStart: input.colStart,
       colEnd: input.colEnd,
     };
-    return sliceWorkbookRectangle(match.sheet, query);
+    return sliceSheetRectangleFromChunks(prefix, sheetMeta, query);
   }
 
   /**
@@ -366,17 +403,16 @@ export class MicrosoftExcelConnectorService {
         "Connector instance belongs to a different organization"
       );
     }
-    const cached = await WorkbookCacheService.get(
-      workbookCacheKey(MICROSOFT_EXCEL_SLUG, connectorInstanceId)
-    );
-    if (!cached) {
+    const prefix = workbookCacheKey(MICROSOFT_EXCEL_SLUG, connectorInstanceId);
+    const meta = await WorkbookCacheService.getSessionMeta(prefix);
+    if (!meta || meta.status !== "ready") {
       throw new ApiError(
         404,
         ApiCode.FILE_UPLOAD_SESSION_NOT_FOUND,
         `No cached workbook for instance ${connectorInstanceId} — call select-workbook first`
       );
     }
-    return cached;
+    return reassembleWorkbookFromChunks(prefix, meta);
   }
 
   /**
@@ -461,7 +497,37 @@ export class MicrosoftExcelConnectorService {
     }
 
     const nodeStream = MicrosoftGraphService.toNodeReadable(download.stream);
-    return xlsxToWorkbook(nodeStream);
+
+    // Sync runs on a Bull worker and explicitly does NOT persist the
+    // workbook cache (each run wants fresh bytes), but it still needs a
+    // resolved `WorkbookData` for the replay/record-write pipeline. Pipe
+    // the stream through a throwaway chunked-cache session so the parse
+    // stays bounded (no buffer-the-world `xlsxToWorkbook`), then
+    // reassemble + delete the throwaway prefix on the way out.
+    const throwawayPrefix = `connector:sync:${SystemUtilities.id.v4.generate()}`;
+    const writer = await WorkbookCacheService.beginSession(throwawayPrefix);
+    let nextSheetIdx = 0;
+    try {
+      await xlsxToCache(nodeStream, writer, {
+        resolveSheet: (rawName) => {
+          const sheetId = makeSheetId(nextSheetIdx, rawName);
+          nextSheetIdx++;
+          return { name: rawName, sheetId };
+        },
+      });
+      await writer.finalize("ready");
+      const meta = await WorkbookCacheService.getSessionMeta(throwawayPrefix);
+      if (!meta) {
+        throw new ApiError(
+          500,
+          ApiCode.MICROSOFT_EXCEL_INVALID_PAYLOAD,
+          "Throwaway sync session meta missing after finalize"
+        );
+      }
+      return await reassembleWorkbookFromChunks(throwawayPrefix, meta);
+    } finally {
+      void WorkbookCacheService.deleteSession(throwawayPrefix).catch(() => {});
+    }
   }
 
   /**
