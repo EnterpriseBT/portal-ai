@@ -64,15 +64,60 @@ export type LayoutPlanResponsePayload = z.infer<
 /**
  * Body for `POST /api/connector-instances/:id/layout-plan/:planId/commit`.
  *
- * Accepts the workbook inline — the commit service runs `replay(plan,
- * workbook)` and writes the resulting records into `entity_records`. A future
- * revision may accept an S3 key instead for large workbooks.
+ * References the workbook by its chunked-cache source rather than
+ * accepting it inline — large uploads (~100 MB+ / hundreds of
+ * thousands of rows) won't fit in the job metadata that backs the
+ * async commit pipeline, and the cache lookup is what every other
+ * commit/sync path already does.
+ *
+ * Exactly one of:
+ *   - `uploadSessionId` — file-upload pipeline. Server reads from
+ *     `WorkbookCacheService` under `upload-session:{id}`.
+ *   - `connectorInstanceId` — OAuth-driven spreadsheet pipelines
+ *     (google-sheets, microsoft-excel) that already own a populated
+ *     instance cache under `connector:wb:<slug>:{id}`.
  */
-export const CommitLayoutPlanRequestBodySchema = z.object({
-  workbook: z.unknown(),
-});
+export const CommitLayoutPlanRequestBodySchema = z
+  .object({
+    uploadSessionId: z.string().min(1).optional(),
+    connectorInstanceId: z.string().min(1).optional(),
+  })
+  .refine(
+    (v) =>
+      (v.uploadSessionId && !v.connectorInstanceId) ||
+      (!v.uploadSessionId && v.connectorInstanceId),
+    {
+      message:
+        "Exactly one of `uploadSessionId` or `connectorInstanceId` must be provided",
+      path: ["uploadSessionId"],
+    }
+  );
 export type CommitLayoutPlanRequestBody = z.infer<
   typeof CommitLayoutPlanRequestBodySchema
+>;
+
+/**
+ * Response from both commit endpoints. The route validates inputs,
+ * (for draft commit only) mints fresh `connectorInstanceId` /
+ * `planId` UUIDs, enqueues a `layout_plan_commit` job, and returns
+ * 202. The terminal payload (`LayoutPlanCommitJobResult` in
+ * `@portalai/core/models/job.model.ts`) is delivered through
+ * `/api/sse/jobs/:id/events`.
+ *
+ * For the recommit endpoint the returned `connectorInstanceId` /
+ * `planId` echo the path parameters; for the draft commit they are
+ * the freshly-minted ids the worker will write under, so the client
+ * can navigate to the new connector while the records-write is still
+ * in flight.
+ */
+export const LayoutPlanCommitEnqueuedResponseSchema = z.object({
+  connectorInstanceId: z.string().min(1),
+  planId: z.string().min(1),
+  jobId: z.string().min(1),
+  status: z.literal("pending"),
+});
+export type LayoutPlanCommitEnqueuedResponse = z.infer<
+  typeof LayoutPlanCommitEnqueuedResponseSchema
 >;
 
 /**
@@ -188,11 +233,15 @@ export type LayoutPlanCommitDraftRequestBody = z.infer<
   typeof LayoutPlanCommitDraftRequestBodySchema
 >;
 
-export const LayoutPlanCommitDraftResponsePayloadSchema = z.object({
-  connectorInstanceId: z.string().min(1),
-  planId: z.string().min(1),
-  recordCounts: LayoutPlanCommitResultSchema.shape.recordCounts,
-});
+/**
+ * Synchronous response shape for `POST /api/layout-plans/commit` is
+ * now the shared `LayoutPlanCommitEnqueuedResponseSchema` — the route
+ * returns 202 + jobId and the records-write happens off the request
+ * thread. `recordCounts` arrives later as the job's terminal SSE
+ * payload (`LayoutPlanCommitJobResult` in `@portalai/core/models`).
+ */
+export const LayoutPlanCommitDraftResponsePayloadSchema =
+  LayoutPlanCommitEnqueuedResponseSchema;
 export type LayoutPlanCommitDraftResponsePayload = z.infer<
   typeof LayoutPlanCommitDraftResponsePayloadSchema
 >;

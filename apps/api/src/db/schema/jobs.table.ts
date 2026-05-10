@@ -23,6 +23,7 @@ export const jobTypeEnum = pgEnum("job_type", [
   "revalidation",
   "connector_sync",
   "file_upload_parse",
+  "layout_plan_commit",
 ]);
 
 /**

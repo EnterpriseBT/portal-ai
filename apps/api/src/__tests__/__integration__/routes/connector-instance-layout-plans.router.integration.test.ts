@@ -9,6 +9,7 @@ import {
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { eq } from "drizzle-orm";
 import postgres from "postgres";
 
 import type {
@@ -20,6 +21,7 @@ import type {
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
+import { LayoutPlanCommitService } from "../../../services/layout-plan-commit.service.js";
 import {
   generateId,
   seedUserAndOrg,
@@ -626,7 +628,25 @@ describe("Connector Instance Layout Plans Router", () => {
   }
 
   describe("POST /api/connector-instances/:id/layout-plan/:planId/commit", () => {
-    it("happy path: one region → one ConnectorEntity, N FieldMappings, M entity_records", async () => {
+    /**
+     * Drives the commit pipeline directly — same code path the
+     * `layout_plan_commit` worker takes via
+     * `LayoutPlanDraftService.runRecommit` — so behavior assertions
+     * (drift gates, record counts, FieldMapping shape, etc.) don't
+     * have to round-trip through Bull. The HTTP route's role is
+     * exercised separately by the 202-and-job-persistence test below.
+     */
+    async function commitInline(planId: string, workbook: WorkbookData) {
+      return LayoutPlanCommitService.commit(
+        connectorInstanceId,
+        planId,
+        organizationId,
+        userId,
+        { workbook }
+      );
+    }
+
+    it("returns 202 with { connectorInstanceId, planId, jobId, status: pending } and persists a layout_plan_commit job", async () => {
       const colEmailId = await seedColumnDefinition(
         db as Db,
         organizationId,
@@ -654,13 +674,60 @@ describe("Connector Instance Layout Plans Router", () => {
           `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
         )
         .set("Authorization", "Bearer test-token")
-        .send({ workbook: contactsWorkbook() });
+        .send({ uploadSessionId: generateId() });
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(202);
       expect(res.body.success).toBe(true);
-      expect(res.body.payload.connectorEntityIds).toHaveLength(1);
-      expect(res.body.payload.recordCounts.created).toBe(2);
-      expect(res.body.payload.recordCounts.updated).toBe(0);
+      expect(res.body.payload).toEqual({
+        connectorInstanceId,
+        planId,
+        jobId: expect.any(String),
+        status: "pending",
+      });
+
+      const jobs = await (db as Db)
+        .select()
+        .from(schema.jobs)
+        .where(eq(schema.jobs.id, res.body.payload.jobId));
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].type).toBe("layout_plan_commit");
+      expect(jobs[0].status).toBe("pending");
+      expect(jobs[0].metadata).toMatchObject({
+        kind: "recommit",
+        connectorInstanceId,
+        planId,
+        organizationId,
+      });
+    });
+
+    it("happy path: one region → one ConnectorEntity, N FieldMappings, M entity_records", async () => {
+      const colEmailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const colNameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
+      const plan: LayoutPlan = {
+        planVersion: "1.0.0",
+        workbookFingerprint: {
+          sheetNames: ["Sheet1"],
+          dimensions: { Sheet1: { rows: 3, cols: 2 } },
+          anchorCells: [{ sheet: "Sheet1", row: 1, col: 1, value: "email" }],
+        },
+        regions: [simpleRegion("r1", "contacts", colEmailId, colNameId)],
+        confidence: { overall: 0.9, perRegion: { r1: 0.9 } },
+      };
+      const planId = await insertPlanRow(db as Db, plan);
+
+      const result = await commitInline(planId, contactsWorkbook());
+
+      expect(result.connectorEntityIds).toHaveLength(1);
+      expect(result.recordCounts.created).toBe(2);
+      expect(result.recordCounts.updated).toBe(0);
 
       const entities = await (db as Db).select().from(schema.connectorEntities);
       expect(entities).toHaveLength(1);
@@ -747,15 +814,7 @@ describe("Connector Instance Layout Plans Router", () => {
         ],
       };
 
-      const res = await request(app)
-        .post(
-          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
-        )
-        .set("Authorization", "Bearer test-token")
-        .send({ workbook });
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
+      await commitInline(planId, workbook);
 
       const mappings = await (db as Db).select().from(schema.fieldMappings);
       expect(mappings).toHaveLength(2);
@@ -898,18 +957,11 @@ describe("Connector Instance Layout Plans Router", () => {
         ],
       };
 
-      const res = await request(app)
-        .post(
-          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
-        )
-        .set("Authorization", "Bearer test-token")
-        .send({ workbook });
+      const result = await commitInline(planId, workbook);
 
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.payload.connectorEntityIds).toHaveLength(1);
+      expect(result.connectorEntityIds).toHaveLength(1);
       // Two entities × three pivot positions = six records.
-      expect(res.body.payload.recordCounts.created).toBe(6);
+      expect(result.recordCounts.created).toBe(6);
 
       const mappings = await (db as Db).select().from(schema.fieldMappings);
       // Three mappings: one for the identity columnBinding ("id"), one for
@@ -1049,15 +1101,7 @@ describe("Connector Instance Layout Plans Router", () => {
         ],
       };
 
-      const res = await request(app)
-        .post(
-          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
-        )
-        .set("Authorization", "Bearer test-token")
-        .send({ workbook });
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
+      await commitInline(planId, workbook);
 
       const mappings = await (db as Db).select().from(schema.fieldMappings);
       // Only the static `id` columnBinding produces a FieldMapping. The
@@ -1098,15 +1142,12 @@ describe("Connector Instance Layout Plans Router", () => {
       };
       const planId = await insertPlanRow(db as Db, plan);
 
-      const res = await request(app)
-        .post(
-          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
-        )
-        .set("Authorization", "Bearer test-token")
-        .send({ workbook: makeWorkbook() });
-
-      expect(res.status).toBe(400);
-      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_DUPLICATE_ENTITY);
+      await expect(
+        commitInline(planId, makeWorkbook())
+      ).rejects.toMatchObject({
+        status: 400,
+        code: ApiCode.LAYOUT_PLAN_DUPLICATE_ENTITY,
+      });
 
       // No entity or mapping rows should have been written.
       const entities = await (db as Db)
@@ -1143,15 +1184,9 @@ describe("Connector Instance Layout Plans Router", () => {
       };
       const planId = await insertPlanRow(db as Db, plan);
 
-      const res = await request(app)
-        .post(
-          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
-        )
-        .set("Authorization", "Bearer test-token")
-        .send({ workbook: contactsWorkbook() });
+      const result = await commitInline(planId, contactsWorkbook());
 
-      expect(res.status).toBe(200);
-      expect(res.body.payload.connectorEntityIds).toHaveLength(2);
+      expect(result.connectorEntityIds).toHaveLength(2);
       const entities = await (db as Db).select().from(schema.connectorEntities);
       const keys = entities.map((e) => e.key).sort();
       expect(keys).toEqual(["contacts", "leads"]);
@@ -1180,24 +1215,12 @@ describe("Connector Instance Layout Plans Router", () => {
       };
       const planId = await insertPlanRow(db as Db, plan);
 
-      await request(app)
-        .post(
-          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
-        )
-        .set("Authorization", "Bearer test-token")
-        .send({ workbook: contactsWorkbook() });
+      await commitInline(planId, contactsWorkbook());
+      const second = await commitInline(planId, contactsWorkbook());
 
-      const second = await request(app)
-        .post(
-          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
-        )
-        .set("Authorization", "Bearer test-token")
-        .send({ workbook: contactsWorkbook() });
-
-      expect(second.status).toBe(200);
-      expect(second.body.payload.recordCounts.unchanged).toBe(2);
-      expect(second.body.payload.recordCounts.created).toBe(0);
-      expect(second.body.payload.recordCounts.updated).toBe(0);
+      expect(second.recordCounts.unchanged).toBe(2);
+      expect(second.recordCounts.created).toBe(0);
+      expect(second.recordCounts.updated).toBe(0);
 
       const records = await (db as Db).select().from(schema.entityRecords);
       expect(records).toHaveLength(2);
@@ -1243,19 +1266,16 @@ describe("Connector Instance Layout Plans Router", () => {
         ],
       };
 
-      const res = await request(app)
-        .post(
-          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
-        )
-        .set("Authorization", "Bearer test-token")
-        .send({ workbook: duplicate });
-
-      expect(res.status).toBe(409);
       // Duplicate identity values both flip `identityChanging: true` and escalate
       // severity to `blocker`; the identity-changing code wins because it is
       // the more specific classification.
-      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED);
-      expect(res.body.details?.drift?.identityChanging).toBe(true);
+      await expect(commitInline(planId, duplicate)).rejects.toMatchObject({
+        status: 409,
+        code: ApiCode.LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED,
+        details: expect.objectContaining({
+          drift: expect.objectContaining({ identityChanging: true }),
+        }),
+      });
 
       // No entity_records written.
       const records = await (db as Db).select().from(schema.entityRecords);
@@ -1308,16 +1328,13 @@ describe("Connector Instance Layout Plans Router", () => {
         ],
       };
 
-      const res = await request(app)
-        .post(
-          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
-        )
-        .set("Authorization", "Bearer test-token")
-        .send({ workbook: missingName });
-
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_DRIFT_BLOCKER);
-      expect(res.body.details?.drift?.identityChanging).toBe(false);
+      await expect(commitInline(planId, missingName)).rejects.toMatchObject({
+        status: 409,
+        code: ApiCode.LAYOUT_PLAN_DRIFT_BLOCKER,
+        details: expect.objectContaining({
+          drift: expect.objectContaining({ identityChanging: false }),
+        }),
+      });
 
       const records = await (db as Db).select().from(schema.entityRecords);
       expect(records).toHaveLength(0);
@@ -1372,15 +1389,10 @@ describe("Connector Instance Layout Plans Router", () => {
         ],
       };
 
-      const res = await request(app)
-        .post(
-          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
-        )
-        .set("Authorization", "Bearer test-token")
-        .send({ workbook: extraHeader });
-
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_DRIFT_HALT);
+      await expect(commitInline(planId, extraHeader)).rejects.toMatchObject({
+        status: 409,
+        code: ApiCode.LAYOUT_PLAN_DRIFT_HALT,
+      });
     });
 
     it("commits cleanly (info severity) when addedColumns knob is 'auto-apply'", async () => {
@@ -1432,18 +1444,11 @@ describe("Connector Instance Layout Plans Router", () => {
         ],
       };
 
-      const res = await request(app)
-        .post(
-          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
-        )
-        .set("Authorization", "Bearer test-token")
-        .send({ workbook: extraHeader });
-
-      expect(res.status).toBe(200);
-      expect(res.body.payload.recordCounts.created).toBe(1);
+      const result = await commitInline(planId, extraHeader);
+      expect(result.recordCounts.created).toBe(1);
     });
 
-    it("returns 400 when the workbook is missing", async () => {
+    it("returns 400 when no workbook source is supplied", async () => {
       const colEmailId = await seedColumnDefinition(
         db as Db,
         organizationId,
@@ -1482,7 +1487,7 @@ describe("Connector Instance Layout Plans Router", () => {
           `/api/connector-instances/${connectorInstanceId}/layout-plan/${generateId()}/commit`
         )
         .set("Authorization", "Bearer test-token")
-        .send({ workbook: contactsWorkbook() });
+        .send({ uploadSessionId: generateId() });
       expect(res.status).toBe(404);
       expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_NOT_FOUND);
     });
@@ -1519,19 +1524,16 @@ describe("Connector Instance Layout Plans Router", () => {
       };
       const planId = await insertPlanRow(db as Db, plan);
 
-      const res = await request(app)
-        .post(
-          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
-        )
-        .set("Authorization", "Bearer test-token")
-        .send({ workbook: contactsWorkbook() });
-
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_BLOCKER_WARNINGS);
-      expect(res.body.details?.codes).toContain(
-        "SEGMENT_MISSING_AXIS_NAME"
-      );
-      expect(res.body.details?.warnings).toHaveLength(1);
+      await expect(
+        commitInline(planId, contactsWorkbook())
+      ).rejects.toMatchObject({
+        status: 409,
+        code: ApiCode.LAYOUT_PLAN_BLOCKER_WARNINGS,
+        details: expect.objectContaining({
+          codes: expect.arrayContaining(["SEGMENT_MISSING_AXIS_NAME"]),
+          warnings: expect.arrayContaining([expect.any(Object)]),
+        }),
+      });
 
       // No records written — commit halted before replay/materialization.
       const records = await (db as Db).select().from(schema.entityRecords);

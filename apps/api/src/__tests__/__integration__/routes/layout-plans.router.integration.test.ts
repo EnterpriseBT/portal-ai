@@ -22,6 +22,7 @@ import {
   seedUserAndOrg,
   teardownOrg,
 } from "../utils/application.util.js";
+import type { LayoutPlanCommitDraftRequestBody } from "@portalai/core/contracts";
 
 const AUTH0_ID = "auth0|layout-plan-draft-user";
 
@@ -109,6 +110,14 @@ jest.unstable_mockModule("../../../services/s3.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+// Dynamic import so this lands AFTER `jest.unstable_mockModule` has
+// registered the redis / S3 / auth0 / interpret mocks above. A static
+// import would resolve before any mocks register, which leaves the
+// service holding a real Redis client (cache misses everything →
+// commit/interpret fall through to the real S3 path).
+const { LayoutPlanDraftService } = await import(
+  "../../../services/layout-plan-draft.service.js"
+);
 
 const {
   connectorInstances,
@@ -354,6 +363,7 @@ describe("Layout Plans Draft Router", () => {
   let connection!: ReturnType<typeof postgres>;
   let db!: DbClient;
   let organizationId: string;
+  let userId: string;
   let connectorDefinitionId: string;
 
   beforeEach(async () => {
@@ -369,6 +379,7 @@ describe("Layout Plans Draft Router", () => {
 
     const seed = await seedUserAndOrg(db as Db, AUTH0_ID);
     organizationId = seed.organizationId;
+    userId = seed.userId;
 
     const def = makeConnectorDefinition();
     await (db as Db).insert(connectorDefinitions).values(def as never);
@@ -420,8 +431,28 @@ describe("Layout Plans Draft Router", () => {
     });
   });
 
+  /**
+   * Drives the draft commit pipeline through the same code path the
+   * `layout_plan_commit` worker takes — `prepareDraftCommit`
+   * (synchronous validation + UUID minting; the route's call) followed
+   * by `runCommitDraft` (instance + plan rows + records-write +
+   * rollback; the worker's call). Behavior assertions can use this
+   * directly without round-tripping through Bull. The HTTP route's
+   * 202 + jobId envelope is exercised by the dedicated test below.
+   * Defined at the outer describe scope so both the uploadSessionId
+   * and connectorInstanceId paths reuse the same helper.
+   */
+  async function runDraftCommitInline(body: LayoutPlanCommitDraftRequestBody) {
+    const prepared = await LayoutPlanDraftService.prepareDraftCommit(
+      organizationId,
+      userId,
+      body
+    );
+    return LayoutPlanDraftService.runCommitDraft(prepared.metadata);
+  }
+
   describe("POST /api/layout-plans/commit", () => {
-    it("creates the ConnectorInstance + plan row and commits records atomically", async () => {
+    it("returns 202 with { connectorInstanceId, planId, jobId, status: pending } and persists a layout_plan_commit job", async () => {
       const emailId = await seedColumnDefinition(db as Db, organizationId, "email");
       const nameId = await seedColumnDefinition(db as Db, organizationId, "name");
       const uploadSessionId = await seedUploadSession(
@@ -435,24 +466,75 @@ describe("Layout Plans Draft Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           connectorDefinitionId,
-          name: "My CSV upload",
+          name: "Async commit",
           plan: makePlan(emailId, nameId),
           uploadSessionId,
         });
 
-      expect(res.status).toBe(200);
-      const payload = res.body.payload as {
-        connectorInstanceId: string;
-        planId: string;
-        recordCounts: { created: number };
-      };
-      expect(payload.connectorInstanceId).toBeDefined();
-      expect(payload.planId).toBeDefined();
+      expect(res.status).toBe(202);
+      expect(res.body.success).toBe(true);
+      expect(res.body.payload).toEqual({
+        connectorInstanceId: expect.any(String),
+        planId: expect.any(String),
+        jobId: expect.any(String),
+        status: "pending",
+      });
+
+      const jobs = await (db as Db)
+        .select()
+        .from(schema.jobs)
+        .where(eq(schema.jobs.id, res.body.payload.jobId));
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].type).toBe("layout_plan_commit");
+      expect(jobs[0].status).toBe("pending");
+      expect(jobs[0].metadata).toMatchObject({
+        kind: "draft",
+        organizationId,
+        connectorInstanceId: res.body.payload.connectorInstanceId,
+        planId: res.body.payload.planId,
+        connectorDefinitionId,
+        name: "Async commit",
+        isExistingInstance: false,
+      });
+
+      // Worker hasn't run yet — neither the connector_instance nor the
+      // plan row has been written. This is the "worker-owned writes"
+      // contract: route validation + 202 only, every DB row appears
+      // only once the worker completes successfully.
+      const instances = await (db as Db)
+        .select()
+        .from(connectorInstances)
+        .where(eq(connectorInstances.name, "Async commit"));
+      expect(instances).toHaveLength(0);
+      const plans = await (db as Db)
+        .select()
+        .from(connectorInstanceLayoutPlans);
+      expect(plans).toHaveLength(0);
+    });
+
+    it("creates the ConnectorInstance + plan row and commits records atomically", async () => {
+      const emailId = await seedColumnDefinition(db as Db, organizationId, "email");
+      const nameId = await seedColumnDefinition(db as Db, organizationId, "name");
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeWorkbook()
+      );
+
+      const result = await runDraftCommitInline({
+        connectorDefinitionId,
+        name: "My CSV upload",
+        plan: makePlan(emailId, nameId),
+        uploadSessionId,
+      });
+
+      expect(result.connectorInstanceId).toBeDefined();
+      expect(result.planId).toBeDefined();
 
       const instances = await (db as Db)
         .select()
         .from(connectorInstances)
-        .where(eq(connectorInstances.id, payload.connectorInstanceId));
+        .where(eq(connectorInstances.id, result.connectorInstanceId));
       expect(instances).toHaveLength(1);
       expect(instances[0].name).toBe("My CSV upload");
       expect(instances[0].organizationId).toBe(organizationId);
@@ -460,14 +542,14 @@ describe("Layout Plans Draft Router", () => {
       const plans = await (db as Db)
         .select()
         .from(connectorInstanceLayoutPlans)
-        .where(eq(connectorInstanceLayoutPlans.id, payload.planId));
+        .where(eq(connectorInstanceLayoutPlans.id, result.planId));
       expect(plans).toHaveLength(1);
-      expect(plans[0].connectorInstanceId).toBe(payload.connectorInstanceId);
+      expect(plans[0].connectorInstanceId).toBe(result.connectorInstanceId);
 
       const entities = await (db as Db)
         .select()
         .from(connectorEntities)
-        .where(eq(connectorEntities.connectorInstanceId, payload.connectorInstanceId));
+        .where(eq(connectorEntities.connectorInstanceId, result.connectorInstanceId));
       expect(entities.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -544,18 +626,13 @@ describe("Layout Plans Draft Router", () => {
         workbook
       );
 
-      const res = await request(app)
-        .post("/api/layout-plans/commit")
-        .set("Authorization", "Bearer test-token")
-        .send({
-          connectorDefinitionId,
-          name: "Source-derived keys",
-          plan,
-          uploadSessionId,
-        });
-      expect(res.status).toBe(200);
-      const connectorInstanceId = res.body.payload
-        .connectorInstanceId as string;
+      const result = await runDraftCommitInline({
+        connectorDefinitionId,
+        name: "Source-derived keys",
+        plan,
+        uploadSessionId,
+      });
+      const connectorInstanceId = result.connectorInstanceId;
 
       const [entity] = await (db as Db)
         .select()
@@ -605,18 +682,17 @@ describe("Layout Plans Draft Router", () => {
         organizationId,
         makeWorkbook()
       );
-      const res = await request(app)
-        .post("/api/layout-plans/commit")
-        .set("Authorization", "Bearer test-token")
-        .send({
+      await expect(
+        runDraftCommitInline({
           connectorDefinitionId,
           name: "Should not persist",
           plan: planWithBlocker,
           uploadSessionId,
-        });
-
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_BLOCKER_WARNINGS);
+        })
+      ).rejects.toMatchObject({
+        status: 409,
+        code: ApiCode.LAYOUT_PLAN_BLOCKER_WARNINGS,
+      });
 
       // No instance should have survived the rollback.
       const stray = await (db as Db)
@@ -667,18 +743,17 @@ describe("Layout Plans Draft Router", () => {
           { ...plan.regions[0], id: "r2" },
         ];
 
-        const res = await request(app)
-          .post("/api/layout-plans/commit")
-          .set("Authorization", "Bearer test-token")
-          .send({
+        await expect(
+          runDraftCommitInline({
             connectorDefinitionId,
             name: "Duplicate target",
             plan,
             uploadSessionId,
-          });
-
-        expect(res.status).toBe(400);
-        expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_DUPLICATE_ENTITY);
+          })
+        ).rejects.toMatchObject({
+          status: 400,
+          code: ApiCode.LAYOUT_PLAN_DUPLICATE_ENTITY,
+        });
 
         // No rows should survive the outer rollback.
         const stray = await (db as Db)
@@ -714,18 +789,14 @@ describe("Layout Plans Draft Router", () => {
           makeWorkbook()
         );
 
-        const res = await request(app)
-          .post("/api/layout-plans/commit")
-          .set("Authorization", "Bearer test-token")
-          .send({
-            connectorDefinitionId,
-            name: "Distinct targets baseline",
-            plan: makePlan(emailId, nameId),
-            uploadSessionId,
-          });
+        const result = await runDraftCommitInline({
+          connectorDefinitionId,
+          name: "Distinct targets baseline",
+          plan: makePlan(emailId, nameId),
+          uploadSessionId,
+        });
 
-        expect(res.status).toBe(200);
-        expect(res.body.payload.connectorInstanceId).toBeDefined();
+        expect(result.connectorInstanceId).toBeDefined();
       });
     });
   });
@@ -923,19 +994,15 @@ describe("Layout Plans Draft Router", () => {
         { definitionId: connectorDefinitionId, slug: "google-sheets" }
       );
 
-      const res = await request(app)
-        .post("/api/layout-plans/commit")
-        .set("Authorization", "Bearer test-token")
-        .send({
-          connectorDefinitionId,
-          name: "GS commit",
-          plan: makePlan(emailId, nameId),
-          connectorInstanceId: ciId,
-        });
+      const result = await runDraftCommitInline({
+        connectorDefinitionId,
+        name: "GS commit",
+        plan: makePlan(emailId, nameId),
+        connectorInstanceId: ciId,
+      });
 
-      expect(res.status).toBe(200);
       // Returns the SAME instance id — not a fresh one.
-      expect(res.body.payload.connectorInstanceId).toBe(ciId);
+      expect(result.connectorInstanceId).toBe(ciId);
 
       const all = await (db as Db)
         .select()
@@ -959,17 +1026,14 @@ describe("Layout Plans Draft Router", () => {
         { definitionId: connectorDefinitionId, slug: "google-sheets" }
       );
 
-      const res = await request(app)
-        .post("/api/layout-plans/commit")
-        .set("Authorization", "Bearer test-token")
-        .send({
+      await expect(
+        runDraftCommitInline({
           connectorDefinitionId,
           name: "GS bad",
           plan: makePlan(emailId, "nonexistent-cd"),
           connectorInstanceId: ciId,
-        });
-
-      expect(res.status).toBeGreaterThanOrEqual(400);
+        })
+      ).rejects.toBeDefined();
 
       // Pending instance must STILL be present (rollback didn't remove it).
       const after = await (db as Db)
@@ -993,18 +1057,17 @@ describe("Layout Plans Draft Router", () => {
         "name"
       );
 
-      const res = await request(app)
-        .post("/api/layout-plans/commit")
-        .set("Authorization", "Bearer test-token")
-        .send({
+      await expect(
+        runDraftCommitInline({
           connectorDefinitionId,
           name: "GS missing",
           plan: makePlan(emailId, nameId),
           connectorInstanceId: "nonexistent",
-        });
-
-      expect(res.status).toBe(404);
-      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
+        })
+      ).rejects.toMatchObject({
+        status: 404,
+        code: ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+      });
     });
   });
 });
