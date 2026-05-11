@@ -29,10 +29,16 @@ export const fileUploadParseProcessor: TypedJobProcessor<
     "file_upload_parse started"
   );
 
+  // Forward row-flush ticks to Bull so the SSE-fed file-upload UI bar
+  // advances mid-parse instead of stalling at the upload's 100% until
+  // the worker completes. The service throttles to 5-point buckets.
   const result = await FileUploadSessionService.runParseSession(
     organizationId,
     uploadSessionId,
-    uploadIds
+    uploadIds,
+    (percent) => {
+      void bullJob.updateProgress(percent);
+    }
   );
 
   logger.info(

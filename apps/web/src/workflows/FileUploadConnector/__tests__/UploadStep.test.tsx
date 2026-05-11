@@ -17,6 +17,7 @@ function makeProps(
     uploadPhase: "idle",
     fileProgress: new Map<string, FileUploadProgress>(),
     overallUploadPercent: 0,
+    parsePercent: 0,
     serverError: null,
     ...overrides,
   };

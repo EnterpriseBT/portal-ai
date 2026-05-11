@@ -117,6 +117,12 @@ export async function configureCsvStream(
 
 export interface CsvToCacheOptions {
   delimiter?: string;
+  /**
+   * Optional per-flush row-count callback — fires after each chunk
+   * write so the file_upload_parse processor can emit incremental
+   * Bull progress. Mirrors `XlsxToCacheContext.onRowsFlushed`.
+   */
+  onRowsFlushed?: (rowsThisFlush: number) => void;
 }
 
 export interface CsvSheetStats {
@@ -161,12 +167,16 @@ export async function csvToCache(
     if (values.length > colCount) colCount = values.length;
     stage.push(values as ChunkRow);
     if (stage.length >= STAGE_SIZE) {
+      const count = stage.length;
       await writer.appendRows(sheetId, stage);
       stage = [];
+      options.onRowsFlushed?.(count);
     }
   }
   if (stage.length > 0) {
+    const count = stage.length;
     await writer.appendRows(sheetId, stage);
+    options.onRowsFlushed?.(count);
   }
 
   return { rowCount, colCount };

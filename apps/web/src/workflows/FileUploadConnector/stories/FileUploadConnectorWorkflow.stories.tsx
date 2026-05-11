@@ -53,6 +53,7 @@ const BASE_ARGS: FileUploadConnectorWorkflowUIProps = {
   uploadPhase: "idle",
   fileProgress: new Map(),
   overallUploadPercent: 0,
+  parsePercent: 0,
   onStartParse: fn(),
 
   workbook: null,
@@ -293,6 +294,7 @@ const InteractiveContent: React.FC = () => {
         uploadPhase={workflow.uploadPhase}
         fileProgress={workflow.fileProgressMap}
         overallUploadPercent={workflow.overallUploadPercent}
+        parsePercent={workflow.parsePercent}
         onStartParse={() => {
           void workflow.startParse();
         }}

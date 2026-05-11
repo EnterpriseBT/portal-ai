@@ -53,6 +53,7 @@ export const Idle: Story = {
     uploadPhase: "idle",
     fileProgress: new Map(),
     overallUploadPercent: 0,
+    parsePercent: 0,
     serverError: null,
   },
 };
@@ -64,6 +65,7 @@ export const OneFileSelected: Story = {
     uploadPhase: "idle",
     fileProgress: new Map(),
     overallUploadPercent: 0,
+    parsePercent: 0,
     serverError: null,
   },
 };
@@ -74,6 +76,7 @@ export const Uploading: Story = {
     files: [SAMPLE_FILE, SECOND_FILE],
     uploadPhase: "uploading",
     overallUploadPercent: 46,
+    parsePercent: 0,
     serverError: null,
     fileProgress: progressMap([
       [
@@ -103,7 +106,8 @@ export const Parsing: Story = {
   args: {
     files: [SAMPLE_FILE],
     uploadPhase: "parsing",
-    overallUploadPercent: 72,
+    overallUploadPercent: 100,
+    parsePercent: 35,
     serverError: null,
     fileProgress: progressMap([
       [
@@ -125,6 +129,7 @@ export const ErrorState: Story = {
     files: [SAMPLE_FILE],
     uploadPhase: "error",
     overallUploadPercent: 0,
+    parsePercent: 0,
     fileProgress: new Map(),
     serverError: {
       message:
@@ -140,6 +145,7 @@ export const ValidationError: Story = {
     files: [],
     uploadPhase: "idle",
     overallUploadPercent: 0,
+    parsePercent: 0,
     fileProgress: new Map(),
     serverError: null,
     errors: { files: "Please select at least one spreadsheet to continue." },

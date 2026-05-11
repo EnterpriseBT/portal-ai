@@ -29,6 +29,14 @@ export interface XlsxToCacheContext {
    * them.
    */
   resolveSheet: (rawName: string) => { name: string; sheetId: string };
+  /**
+   * Optional per-flush row-count callback. Fires after each chunk
+   * is written to the cache (every `STAGE_SIZE` rows). Used by the
+   * file_upload_parse processor to emit incremental Bull progress
+   * so the SSE-fed UI bar ticks during parsing instead of stalling
+   * at the upload's 100% until the worker completes.
+   */
+  onRowsFlushed?: (rowsThisFlush: number) => void;
 }
 
 /**
@@ -151,8 +159,10 @@ export async function xlsxToCache(
 
       const flushIfFull = async (): Promise<void> => {
         if (stage.length >= STAGE_SIZE) {
+          const count = stage.length;
           await writer.appendRows(sheetId, stage);
           stage = [];
+          ctx.onRowsFlushed?.(count);
         }
       };
 
@@ -189,7 +199,9 @@ export async function xlsxToCache(
       }
 
       if (stage.length > 0) {
+        const count = stage.length;
         await writer.appendRows(sheetId, stage);
+        ctx.onRowsFlushed?.(count);
       }
 
       await writer.finishSheet(sheetId, {

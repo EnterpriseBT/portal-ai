@@ -121,6 +121,8 @@ export interface FileUploadConnectorWorkflowUIProps {
   uploadPhase: UploadPhase;
   fileProgress: Map<string, FileUploadProgress>;
   overallUploadPercent: number;
+  /** Parse-job progress (0–100). Only used while `uploadPhase === "parsing"`. */
+  parsePercent: number;
   onStartParse: () => void;
 
   // Region drawing step
@@ -210,6 +212,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
   uploadPhase,
   fileProgress,
   overallUploadPercent,
+  parsePercent,
   onStartParse,
   workbook,
   regions,
@@ -270,6 +273,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
                 uploadPhase={uploadPhase}
                 fileProgress={fileProgress}
                 overallUploadPercent={overallUploadPercent}
+                parsePercent={parsePercent}
                 serverError={serverError}
                 errors={uploadErrors}
               />
@@ -468,13 +472,23 @@ export const FileUploadConnectorWorkflow: React.FC<
         uploadIds: presignPayload.uploads.map((u) => u.uploadId),
       });
 
+      // Signal the UI to swap from the (now-stuck-at-100) upload bar
+      // to the parse-phase bar; without this, the user stares at a
+      // full bar with no movement while the worker spins up.
+      options?.onParsePhaseStart?.();
+
       // 5) Wait for the worker's terminal SSE event, which carries the
       //    same preview payload the legacy synchronous endpoint
-      //    returned inline (`FileUploadParseJobResult`).
+      //    returned inline (`FileUploadParseJobResult`). Intermediate
+      //    active/pending events feed `onParseProgress` so the bar
+      //    ticks through the parse-job's `progress` field.
       const completion = await awaitJobCompletion(
         connectSse,
         parseEnqueue.jobId,
-        { signal: options?.signal }
+        {
+          signal: options?.signal,
+          onProgress: options?.onParseProgress,
+        }
       );
       const parseResult = completion.result as
         | FileUploadParseJobResult
@@ -794,6 +808,7 @@ export const FileUploadConnectorWorkflow: React.FC<
       uploadPhase={workflow.uploadPhase}
       fileProgress={workflow.fileProgressMap}
       overallUploadPercent={workflow.overallUploadPercent}
+      parsePercent={workflow.parsePercent}
       onStartParse={() => {
         void workflow.startParse();
       }}

@@ -41,7 +41,24 @@ export interface ParseFileProgressEvent {
 }
 
 export interface ParseFileOptions {
+  /** Bytes-up-to-S3 progress, one event per XHR upload tick, per file. */
   onProgress?: (event: ParseFileProgressEvent) => void;
+  /**
+   * Called once the S3 PUT + confirm leg finishes and the parse job
+   * is enqueued. Signals the UI to swap from the "uploading" bar
+   * (which is now stuck at 100%) to the parse-phase bar — which
+   * starts at 0% and ticks via `onParseProgress` below. Without
+   * this, the user sees a 100% bar hanging while the parse worker
+   * spins up on the largest uploads, which reads as "stuck."
+   */
+  onParsePhaseStart?: () => void;
+  /**
+   * Parse-job progress percent (0–100) — fed from the SSE stream's
+   * active/pending events. Fires multiple times per parse run; the
+   * UI is expected to render the latest value as a determinate
+   * progress bar.
+   */
+  onParseProgress?: (percent: number) => void;
   signal?: AbortSignal;
 }
 
@@ -119,6 +136,13 @@ interface FileUploadStageState {
   files: File[];
   uploadPhase: UploadPhase;
   overallUploadPercent: number;
+  /**
+   * 0–100 progress of the post-upload parse job. Only meaningful while
+   * `uploadPhase === "parsing"`. Reset to 0 when the parse phase begins
+   * (the upload phase's bar is reused, but starting from a fresh 0
+   * rather than the upload's stuck-at-100).
+   */
+  parsePercent: number;
   fileProgress: Record<string, FileUploadProgress>;
   uploadSessionId: string | null;
   uploadErrors: { files?: string };
@@ -128,6 +152,7 @@ const EMPTY_FILE_UPLOAD_STAGE: FileUploadStageState = {
   files: [],
   uploadPhase: "idle",
   overallUploadPercent: 0,
+  parsePercent: 0,
   fileProgress: {},
   uploadSessionId: null,
   uploadErrors: {},
@@ -202,9 +227,22 @@ export function useFileUploadWorkflow(
       ...prev,
       uploadPhase: "uploading",
       overallUploadPercent: 0,
+      parsePercent: 0,
       fileProgress: seededProgress,
     }));
     core.setServerError(null);
+
+    const handleParsePhaseStart = (): void => {
+      if (token !== core.currentRunToken()) return;
+      setStage((prev) => ({ ...prev, uploadPhase: "parsing", parsePercent: 0 }));
+    };
+    const handleParseProgress = (percent: number): void => {
+      if (token !== core.currentRunToken()) return;
+      setStage((prev) => ({
+        ...prev,
+        parsePercent: Math.max(prev.parsePercent, percent),
+      }));
+    };
 
     const handleProgress = (event: ParseFileProgressEvent): void => {
       if (token !== core.currentRunToken()) return;
@@ -245,7 +283,11 @@ export function useFileUploadWorkflow(
     try {
       const { workbook, uploadSessionId } = await callbacks.parseFile(
         currentFiles,
-        { onProgress: handleProgress }
+        {
+          onProgress: handleProgress,
+          onParsePhaseStart: handleParsePhaseStart,
+          onParseProgress: handleParseProgress,
+        }
       );
       if (token !== core.currentRunToken()) return;
 
@@ -253,6 +295,7 @@ export function useFileUploadWorkflow(
         ...prev,
         uploadPhase: "parsed",
         overallUploadPercent: 100,
+        parsePercent: 100,
         uploadSessionId,
       }));
       core.setWorkbook(workbook, uploadSessionId);
@@ -289,6 +332,7 @@ export function useFileUploadWorkflow(
     files: stage.files,
     uploadPhase: stage.uploadPhase,
     overallUploadPercent: stage.overallUploadPercent,
+    parsePercent: stage.parsePercent,
     fileProgress: stage.fileProgress,
     uploadSessionId: stage.uploadSessionId,
     fileProgressMap,
