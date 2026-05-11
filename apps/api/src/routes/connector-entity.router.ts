@@ -34,6 +34,7 @@ import { connectorEntities, entityTagAssignments } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { ConnectorEntityValidationService } from "../services/connector-entity-validation.service.js";
+import { JobLockService } from "../services/job-lock.service.js";
 import { entityRecordRouter } from "./entity-record.router.js";
 import { entityTagAssignmentRouter } from "./entity-tag-assignment.router.js";
 
@@ -422,6 +423,11 @@ connectorEntityRouter.post(
 
       const { userId, organizationId } = req.application!.metadata;
 
+      await JobLockService.assertConnectorInstanceUnlocked(
+        parsed.data.connectorInstanceId,
+        organizationId
+      );
+
       const factory = new ConnectorEntityModelFactory();
       const model = factory.create(userId);
       model.update({
@@ -580,7 +586,12 @@ connectorEntityRouter.patch(
 
       await assertWriteCapability(id);
 
-      const { userId } = req.application!.metadata;
+      const { userId, organizationId } = req.application!.metadata;
+
+      await JobLockService.assertConnectorInstanceUnlocked(
+        existing.connectorInstanceId,
+        organizationId
+      );
 
       const updated = await DbService.repository.connectorEntities
         .update(id, {
@@ -804,8 +815,9 @@ connectorEntityRouter.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { userId } = req.application!.metadata;
+      const { userId, organizationId } = req.application!.metadata;
 
+      await JobLockService.assertConnectorEntityUnlocked(id, organizationId);
       await ConnectorEntityValidationService.validateDelete(id);
 
       const cascaded = await ConnectorEntityValidationService.executeDelete(

@@ -24,6 +24,7 @@ import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
+import { JobLockService } from "../services/job-lock.service.js";
 
 const logger = createLogger({ module: "field-mapping" });
 
@@ -382,6 +383,11 @@ fieldMappingRouter.post(
       // Assert write capability on the parent connector instance
       await assertWriteCapability(parsed.data.connectorEntityId);
 
+      await JobLockService.assertConnectorInstanceUnlocked(
+        connectorEntity.connectorInstanceId,
+        req.application!.metadata.organizationId
+      );
+
       // Verify column definition exists
       const columnDefinition =
         await DbService.repository.columnDefinitions.findById(
@@ -591,6 +597,11 @@ fieldMappingRouter.patch(
 
       // Assert write capability on the parent connector instance
       await assertWriteCapability(existing.connectorEntityId);
+
+      await JobLockService.assertConnectorEntityUnlocked(
+        existing.connectorEntityId,
+        req.application!.metadata.organizationId
+      );
 
       // Block if a revalidation job is active for this mapping's entity
       await RevalidationService.assertNoActiveJob(existing.connectorEntityId);
@@ -919,7 +930,7 @@ fieldMappingRouter.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { userId } = req.application!.metadata;
+      const { userId, organizationId } = req.application!.metadata;
 
       // Block if a revalidation job is active for this mapping's entity
       const mappingToDelete =
@@ -927,6 +938,11 @@ fieldMappingRouter.delete(
       if (mappingToDelete) {
         // Assert write capability on the parent connector instance
         await assertWriteCapability(mappingToDelete.connectorEntityId);
+
+        await JobLockService.assertConnectorEntityUnlocked(
+          mappingToDelete.connectorEntityId,
+          organizationId
+        );
 
         await RevalidationService.assertNoActiveJob(
           mappingToDelete.connectorEntityId

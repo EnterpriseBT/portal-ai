@@ -93,4 +93,66 @@ export class JobLockService {
       { runningJobs }
     );
   }
+
+  /**
+   * Lock check for mutations on a connector entity — resolves the
+   * parent connector instance via the entity row, then delegates.
+   * No-op when the entity doesn't exist; the caller's own 404
+   * handling fires for missing rows so the API surfaces an
+   * entity-specific code rather than a generic lock 409.
+   *
+   * The connector-instance lookup inside the delegate is
+   * org-scoped, so a leak across orgs is structurally impossible
+   * even if the caller forgets to authz the entity itself.
+   */
+  static async assertConnectorEntityUnlocked(
+    connectorEntityId: string,
+    organizationId: string
+  ): Promise<void> {
+    const entity =
+      await DbService.repository.connectorEntities.findById(connectorEntityId);
+    if (!entity) return;
+    await JobLockService.assertConnectorInstanceUnlocked(
+      entity.connectorInstanceId,
+      organizationId
+    );
+  }
+
+  /**
+   * Lock check for mutations on a single entity record — walks
+   * record → connector entity → connector instance and asserts.
+   * No-op when the record doesn't exist; the caller's own 404
+   * handling fires.
+   */
+  static async assertEntityRecordUnlocked(
+    entityRecordId: string,
+    organizationId: string
+  ): Promise<void> {
+    const record =
+      await DbService.repository.entityRecords.findById(entityRecordId);
+    if (!record) return;
+    await JobLockService.assertConnectorEntityUnlocked(
+      record.connectorEntityId,
+      organizationId
+    );
+  }
+
+  /**
+   * Lock check for mutations on a single field mapping — walks
+   * mapping → connector entity → connector instance and asserts.
+   * No-op when the mapping doesn't exist; the caller's own 404
+   * handling fires.
+   */
+  static async assertFieldMappingUnlocked(
+    fieldMappingId: string,
+    organizationId: string
+  ): Promise<void> {
+    const mapping =
+      await DbService.repository.fieldMappings.findById(fieldMappingId);
+    if (!mapping) return;
+    await JobLockService.assertConnectorEntityUnlocked(
+      mapping.connectorEntityId,
+      organizationId
+    );
+  }
 }
