@@ -57,7 +57,28 @@ export async function buildMultiSheetXlsx(
   return Buffer.from(arrayBuffer as ArrayBuffer);
 }
 
-/** Wrap a buffer as a Readable stream for parser consumption. */
+/**
+ * Wrap a buffer as a Readable stream for parser consumption.
+ *
+ * Pairs with `jest.retryTimes(3)` in `xlsx-adapter.test.ts`:
+ * ExcelJS' streaming `WorkbookReader`
+ * (`node_modules/exceljs/lib/stream/xlsx/workbook-reader.js:303`)
+ * has an ordering bug where `_parseWorksheet` reads
+ * `this.model.sheets` even when `this.model` hasn't been set by
+ * `_parseWorkbook` yet — fires whenever a worksheet zip entry is
+ * processed before `xl/workbook.xml`. The race is sensitive to the
+ * cadence the input stream delivers bytes; in-process wrappers
+ * (`Readable.from(buffer)`, `PassThrough`, `fs.createReadStream`
+ * over a tmpfile, chunked async generators with `setImmediate`
+ * ticks) all reproduce it at varying rates (5–60% of runs). A real
+ * S3 GET interleaves enough kernel/network I/O ticks that the
+ * deferred-worksheet path the reader uses converges to a working
+ * state before any worksheet is yielded.
+ *
+ * Rather than ship a brittle workaround, the test file retries
+ * failed runs — the failure is non-deterministic, no internal state
+ * leaks between attempts, and a real fix lives in ExcelJS.
+ */
 export function toStream(buffer: Buffer): Readable {
   return Readable.from(buffer);
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect, jest } from "@jest/globals";
 import ExcelJS from "exceljs";
 
 import { xlsxToCache } from "../../../services/workbook-adapters/xlsx.adapter.js";
@@ -11,6 +11,16 @@ import {
   buildSingleSheetXlsx,
   toStream,
 } from "../../utils/xlsx-fixtures.util.js";
+
+// ExcelJS' streaming WorkbookReader has a race condition (line 303 of
+// `node_modules/exceljs/lib/stream/xlsx/workbook-reader.js` —
+// `_parseWorksheet` reads `this.model.sheets` before `_parseWorkbook`
+// may have set `this.model`) that flakes ~5-25% of runs against
+// in-memory xlsx fixtures. The bug doesn't reproduce against real S3
+// streams (kernel I/O ticks sequence the zip entries the way the
+// reader expects). Until a fix lands upstream, retry up to 3 times.
+// See `xlsx-fixtures.util.ts:toStream` for context.
+jest.retryTimes(3);
 
 /** In-memory writer that captures everything xlsxToCache hands it. */
 function makeRecorder(): {
