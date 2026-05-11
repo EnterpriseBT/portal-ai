@@ -12,6 +12,7 @@ import type {
   ConnectorInstanceListResponsePayload,
   ConnectorInstanceListWithDefinitionResponsePayload,
   ConnectorInstancePatchRequestBody,
+  ConnectorInstanceRunningJobsResponse,
 } from "@portalai/core/contracts";
 
 /** Response shape from `POST /api/connector-instances/:id/sync`. */
@@ -94,6 +95,26 @@ export const connectorInstances = {
     useAuthQuery<ConnectorInstanceImpact>(
       queryKeys.connectorInstances.impact(id),
       buildUrl(`${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}/impact`),
+      undefined,
+      options
+    ),
+
+  /**
+   * Non-terminal jobs locking this instance — drives the
+   * <ConnectorInstanceLockChip> + disabled mutation buttons on the
+   * connector-instance detail view. Frontend invalidates this key on
+   * the SSE terminal event for any of the listed jobs (see
+   * `ConnectorInstance.view.tsx`).
+   */
+  runningJobs: (
+    id: string,
+    options?: QueryOptions<ConnectorInstanceRunningJobsResponse>
+  ) =>
+    useAuthQuery<ConnectorInstanceRunningJobsResponse>(
+      queryKeys.connectorInstances.runningJobs(id),
+      buildUrl(
+        `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}/running-jobs`
+      ),
       undefined,
       options
     ),

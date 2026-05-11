@@ -183,3 +183,36 @@ export const ConnectorInstanceImpactResponseSchema = z.object({
 export type ConnectorInstanceImpact = z.infer<
   typeof ConnectorInstanceImpactResponseSchema
 >;
+
+/**
+ * Trimmed summary of a running job locking a connector instance.
+ * Returned by `GET /api/connector-instances/:id/running-jobs` (and
+ * also surfaced under `details.runningJobs` on the
+ * 409 ENTITY_LOCKED_BY_JOB envelope). Drives the lock chip + disabled
+ * mutation buttons on the connector-instance view.
+ *
+ * `type` / `status` strings mirror `JobType` / `JobStatus` in
+ * `@portalai/core/models/job.model.ts` but are kept loose here so
+ * the contract stays usable without pulling the full job-model
+ * machinery into every consumer.
+ */
+export const RunningJobSummarySchema = z.object({
+  id: z.string().min(1),
+  type: z.string().min(1),
+  status: z.string().min(1),
+  startedAt: z.number().nullable(),
+  created: z.number(),
+});
+export type RunningJobSummary = z.infer<typeof RunningJobSummarySchema>;
+
+/**
+ * Response from `GET /api/connector-instances/:id/running-jobs`.
+ * `runningJobs` is empty when the instance is free to mutate; the
+ * frontend treats any non-empty array as "locked".
+ */
+export const ConnectorInstanceRunningJobsResponseSchema = z.object({
+  runningJobs: z.array(RunningJobSummarySchema),
+});
+export type ConnectorInstanceRunningJobsResponse = z.infer<
+  typeof ConnectorInstanceRunningJobsResponseSchema
+>;

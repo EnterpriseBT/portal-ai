@@ -31,9 +31,11 @@ import { upperFirst } from "lodash-es";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
 import { ConnectorInstanceDataItem } from "../components/ConnectorInstance.component";
+import { ConnectorInstanceLockAlertUI } from "../components/ConnectorInstanceLockAlert.component";
 import { ConnectorInstanceReconnectButtonUI } from "../components/ConnectorInstanceReconnectButton.component";
 import { ConnectorInstanceSyncButtonUI } from "../components/ConnectorInstanceSyncButton.component";
 import { ConnectorInstanceSyncFeedbackUI } from "../components/ConnectorInstanceSyncFeedback.component";
+import { joinRunningJobLabels } from "../utils/running-job-label.util";
 import { HighlightedCode } from "../components/HighlightedCode.component";
 import { useConnectorInstanceSync } from "../utils/use-connector-instance-sync.util";
 import { useReconnectConnectorInstance } from "../utils/use-reconnect-connector-instance.util";
@@ -101,6 +103,26 @@ export const ConnectorInstanceView = ({
   const impactQuery = sdk.connectorInstances.impact(connectorInstanceId, {
     enabled: deleteDialogOpen,
   });
+  // Polls every 2 s while a job is locking this instance; idle
+  // otherwise. The terminal job state release the lock — when the
+  // next poll returns an empty array the alert hides and the
+  // mutation buttons re-enable. SSE-driven invalidation would be
+  // strictly nicer but the runningJobs payload is tiny and the
+  // window is bounded to the duration of the running job.
+  const runningJobsQuery = sdk.connectorInstances.runningJobs(
+    connectorInstanceId,
+    {
+      refetchInterval: (query) => {
+        const data = query.state.data;
+        return (data?.runningJobs.length ?? 0) > 0 ? 2000 : false;
+      },
+    }
+  );
+  const runningJobs = runningJobsQuery.data?.runningJobs ?? [];
+  const isLocked = runningJobs.length > 0;
+  const lockedReason = isLocked
+    ? `${joinRunningJobLabels(runningJobs)} is running on this connector — try again when it finishes.`
+    : null;
   const syncState = useConnectorInstanceSync(connectorInstanceId);
   // Read slug off the cached connector-instance query so the reconnect
   // hook can dispatch to the right SDK group + popup hook. Same query
@@ -221,13 +243,18 @@ export const ConnectorInstanceView = ({
               const isSyncConfigured =
                 ci.enabledCapabilityFlags?.sync === true;
               const editAction = (
-                <Button
-                  variant="contained"
-                  startIcon={<EditIcon />}
-                  onClick={() => setEditDialogOpen(true)}
-                >
-                  Edit
-                </Button>
+                <Tooltip title={lockedReason ?? ""} disableHoverListener={!isLocked}>
+                  <span>
+                    <Button
+                      variant="contained"
+                      startIcon={<EditIcon />}
+                      onClick={() => setEditDialogOpen(true)}
+                      disabled={isLocked}
+                    >
+                      Edit
+                    </Button>
+                  </span>
+                </Tooltip>
               );
               const syncAction = (
                 <ConnectorInstanceSyncButtonUI
@@ -237,6 +264,7 @@ export const ConnectorInstanceView = ({
                   jobStatus={syncState.jobStatus}
                   onSync={syncState.onSync}
                   variant="contained"
+                  lockedReason={lockedReason}
                 />
               );
               const reconnectAction = (
@@ -261,6 +289,7 @@ export const ConnectorInstanceView = ({
                       label: "Edit",
                       icon: <EditIcon />,
                       onClick: () => setEditDialogOpen(true),
+                      disabled: isLocked,
                     },
                   ]
                   : []),
@@ -269,10 +298,12 @@ export const ConnectorInstanceView = ({
                   icon: <DeleteIcon />,
                   onClick: () => setDeleteDialogOpen(true),
                   color: "error" as const,
+                  disabled: isLocked,
                 },
               ];
               return (
                 <Stack spacing={4}>
+                  <ConnectorInstanceLockAlertUI runningJobs={runningJobs} />
                   <PageHeader
                     breadcrumbs={[
                       { label: "Dashboard", href: "/" },
@@ -457,13 +488,21 @@ export const ConnectorInstanceView = ({
                     icon={<Icon name={IconName.DataObject} />}
                     primaryAction={
                       isWriteEnabled ? (
-                        <Button
-                          variant="contained"
-                          size="small"
-                          onClick={() => setCreateEntityOpen(true)}
+                        <Tooltip
+                          title={lockedReason ?? ""}
+                          disableHoverListener={!isLocked}
                         >
-                          Create Entity
-                        </Button>
+                          <span>
+                            <Button
+                              variant="contained"
+                              size="small"
+                              onClick={() => setCreateEntityOpen(true)}
+                              disabled={isLocked}
+                            >
+                              Create Entity
+                            </Button>
+                          </span>
+                        </Tooltip>
                       ) : null
                     }
                   >

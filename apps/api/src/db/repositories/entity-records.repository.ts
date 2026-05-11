@@ -108,10 +108,16 @@ export class EntityRecordsRepository extends Repository<
    * the Drizzle SQL builder will stack-overflow on huge `values()`
    * arrays — both kick in around ~400k-row uploads. Returns the union
    * of `RETURNING` rows across chunks.
+   *
+   * `onChunkComplete` (when provided) fires with the chunk's row count
+   * after each successful upsert. Lets the commit pipeline emit
+   * incremental Bull progress so the job list / detail views advance
+   * mid-flight instead of jumping from 0% straight to 100%.
    */
   async upsertManyBySourceId(
     data: EntityRecordInsert[],
-    client: DbClient = db
+    client: DbClient = db,
+    onChunkComplete?: (rowsThisChunk: number) => void
   ): Promise<EntityRecordSelect[]> {
     if (data.length === 0) return [];
 
@@ -140,6 +146,7 @@ export class EntityRecordsRepository extends Repository<
         })
         .returning();
       for (const r of rows) out.push(r as EntityRecordSelect);
+      onChunkComplete?.(batch.length);
     }
     return out;
   }
@@ -157,7 +164,8 @@ export class EntityRecordsRepository extends Repository<
   async bulkUpdateSyncedAt(
     ids: string[],
     syncedAt: number,
-    client: DbClient = db
+    client: DbClient = db,
+    onChunkComplete?: (rowsThisChunk: number) => void
   ): Promise<number> {
     if (ids.length === 0) return 0;
     let total = 0;
@@ -171,6 +179,7 @@ export class EntityRecordsRepository extends Repository<
         )
         .returning({ id: entityRecords.id });
       total += result.length;
+      onChunkComplete?.(chunk.length);
     }
     return total;
   }

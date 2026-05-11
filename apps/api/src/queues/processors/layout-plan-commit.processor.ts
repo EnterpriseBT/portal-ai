@@ -38,10 +38,16 @@ export const layoutPlanCommitProcessor: TypedJobProcessor<
     "layout_plan_commit started"
   );
 
+  // Forward write-phase progress to Bull so the SSE stream (and the
+  // job list + detail views) advance mid-flight. The service throttles
+  // to 5-point buckets so a ~400-chunk write fires ~15 events.
+  const onProgress = (percent: number) => {
+    void bullJob.updateProgress(percent);
+  };
   const result =
     metadata.kind === "draft"
-      ? await LayoutPlanDraftService.runCommitDraft(metadata)
-      : await LayoutPlanDraftService.runRecommit(metadata);
+      ? await LayoutPlanDraftService.runCommitDraft(metadata, onProgress)
+      : await LayoutPlanDraftService.runRecommit(metadata, onProgress);
 
   logger.info(
     {

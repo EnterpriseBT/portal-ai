@@ -14,6 +14,7 @@ import type {
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ConnectorInstanceLayoutPlansService } from "../services/connector-instance-layout-plans.service.js";
+import { JobLockService } from "../services/job-lock.service.js";
 import { JobsService } from "../services/jobs.service.js";
 import { LayoutPlanDraftService } from "../services/layout-plan-draft.service.js";
 import { ApiError, HttpService } from "../services/http.service.js";
@@ -107,6 +108,11 @@ connectorInstanceLayoutPlansRouter.post(
           )
         );
       }
+
+      await JobLockService.assertConnectorInstanceUnlocked(
+        connectorInstanceId,
+        organizationId
+      );
 
       const payload = await ConnectorInstanceLayoutPlansService.interpret(
         connectorInstanceId,
@@ -323,6 +329,11 @@ connectorInstanceLayoutPlansRouter.patch(
           )
         );
       }
+
+      await JobLockService.assertConnectorInstanceUnlocked(
+        connectorInstanceId,
+        organizationId
+      );
 
       const payload = await ConnectorInstanceLayoutPlansService.patch(
         connectorInstanceId,

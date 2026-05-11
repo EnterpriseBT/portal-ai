@@ -166,22 +166,27 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
         plan,
         connectorInstanceId: ciId,
       });
-      // Commit runs off the request thread on the shared async-jobs
-      // queue — wait on the worker's terminal SSE event before
-      // invalidating caches / handing the new instance back to the
-      // workflow.
-      await awaitJobCompletion(connectSse, enqueue.jobId);
-      await Promise.all(
-        [
-          queryKeys.connectorInstances.root,
-          queryKeys.connectorEntities.root,
-          queryKeys.stations.root,
-          queryKeys.fieldMappings.root,
-          queryKeys.portals.root,
-          queryKeys.portalResults.root,
-          queryKeys.connectorInstanceLayoutPlans.root,
-        ].map((queryKey) => queryClient.invalidateQueries({ queryKey }))
-      );
+      // Fire-and-forget cache invalidation: when the worker terminates,
+      // sweep the entity-list / records / plan caches so the lock alert
+      // on /connectors/:id clears and the freshly-imported entities
+      // appear without a manual refresh. We don't await — the modal
+      // closes and the user lands on the connector view immediately;
+      // the lock alert there is the "import in progress" confirmation.
+      awaitJobCompletion(connectSse, enqueue.jobId)
+        .then(() =>
+          Promise.all(
+            [
+              queryKeys.connectorInstances.root,
+              queryKeys.connectorEntities.root,
+              queryKeys.stations.root,
+              queryKeys.fieldMappings.root,
+              queryKeys.portals.root,
+              queryKeys.portalResults.root,
+              queryKeys.connectorInstanceLayoutPlans.root,
+            ].map((queryKey) => queryClient.invalidateQueries({ queryKey }))
+          )
+        )
+        .catch(() => undefined);
       return { connectorInstanceId: enqueue.connectorInstanceId };
     },
     [commitMutate, connectorDefinitionId, connectSse, queryClient]
