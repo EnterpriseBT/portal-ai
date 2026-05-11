@@ -19,6 +19,16 @@ import {
 } from "./base.repository.js";
 import type { EntityRecordSelect, EntityRecordInsert } from "../schema/zod.js";
 
+/**
+ * Per-statement row cap for the bulk methods. Sized to stay well under
+ * Postgres' 65,535 parameter limit (entity_records insert binds ~16
+ * params/row → 1000 × 16 = 16,000) and to keep the Drizzle SQL builder
+ * out of recursion-depth territory it hits on huge `inArray` /
+ * `values()` arrays — both surface as "Maximum call stack size
+ * exceeded" on ~400k-row uploads.
+ */
+const BULK_CHUNK_SIZE = 1000;
+
 export class EntityRecordsRepository extends Repository<
   typeof entityRecords,
   EntityRecordSelect,
@@ -93,37 +103,52 @@ export class EntityRecordsRepository extends Repository<
   }
 
   /**
-   * Bulk upsert records on `(connector_entity_id, source_id)`.
-   * Executes as a single statement. Returns all resulting rows.
+   * Bulk upsert records on `(connector_entity_id, source_id)`. Chunked
+   * because Postgres caps a single statement at 65,535 parameters and
+   * the Drizzle SQL builder will stack-overflow on huge `values()`
+   * arrays — both kick in around ~400k-row uploads. Returns the union
+   * of `RETURNING` rows across chunks.
+   *
+   * `onChunkComplete` (when provided) fires with the chunk's row count
+   * after each successful upsert. Lets the commit pipeline emit
+   * incremental Bull progress so the job list / detail views advance
+   * mid-flight instead of jumping from 0% straight to 100%.
    */
   async upsertManyBySourceId(
     data: EntityRecordInsert[],
-    client: DbClient = db
+    client: DbClient = db,
+    onChunkComplete?: (rowsThisChunk: number) => void
   ): Promise<EntityRecordSelect[]> {
     if (data.length === 0) return [];
 
-    const rows = await (client as typeof db)
-      .insert(this.table)
-      .values(data as never[])
-      .onConflictDoUpdate({
-        target: [
-          entityRecords.connectorEntityId,
-          entityRecords.sourceId,
-        ] as IndexColumn[],
-        targetWhere: isNull(entityRecords.deleted),
-        set: {
-          data: sql.raw(`excluded."data"`),
-          normalizedData: sql.raw(`excluded."normalized_data"`),
-          checksum: sql.raw(`excluded."checksum"`),
-          syncedAt: sql.raw(`excluded."synced_at"`),
-          validationErrors: sql.raw(`excluded."validation_errors"`),
-          isValid: sql.raw(`excluded."is_valid"`),
-          updated: sql.raw(`excluded."updated"`),
-          updatedBy: sql.raw(`excluded."updated_by"`),
-        } as any,
-      })
-      .returning();
-    return rows as EntityRecordSelect[];
+    const out: EntityRecordSelect[] = [];
+    for (let i = 0; i < data.length; i += BULK_CHUNK_SIZE) {
+      const batch = data.slice(i, i + BULK_CHUNK_SIZE);
+      const rows = await (client as typeof db)
+        .insert(this.table)
+        .values(batch as never[])
+        .onConflictDoUpdate({
+          target: [
+            entityRecords.connectorEntityId,
+            entityRecords.sourceId,
+          ] as IndexColumn[],
+          targetWhere: isNull(entityRecords.deleted),
+          set: {
+            data: sql.raw(`excluded."data"`),
+            normalizedData: sql.raw(`excluded."normalized_data"`),
+            checksum: sql.raw(`excluded."checksum"`),
+            syncedAt: sql.raw(`excluded."synced_at"`),
+            validationErrors: sql.raw(`excluded."validation_errors"`),
+            isValid: sql.raw(`excluded."is_valid"`),
+            updated: sql.raw(`excluded."updated"`),
+            updatedBy: sql.raw(`excluded."updated_by"`),
+          } as any,
+        })
+        .returning();
+      for (const r of rows) out.push(r as EntityRecordSelect);
+      onChunkComplete?.(batch.length);
+    }
+    return out;
   }
 
   /**
@@ -139,17 +164,24 @@ export class EntityRecordsRepository extends Repository<
   async bulkUpdateSyncedAt(
     ids: string[],
     syncedAt: number,
-    client: DbClient = db
+    client: DbClient = db,
+    onChunkComplete?: (rowsThisChunk: number) => void
   ): Promise<number> {
     if (ids.length === 0) return 0;
-    const result = await (client as typeof db)
-      .update(this.table)
-      .set({ syncedAt } as any)
-      .where(
-        and(inArray(entityRecords.id, ids), isNull(entityRecords.deleted))
-      )
-      .returning({ id: entityRecords.id });
-    return result.length;
+    let total = 0;
+    for (let i = 0; i < ids.length; i += BULK_CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + BULK_CHUNK_SIZE);
+      const result = await (client as typeof db)
+        .update(this.table)
+        .set({ syncedAt } as any)
+        .where(
+          and(inArray(entityRecords.id, chunk), isNull(entityRecords.deleted))
+        )
+        .returning({ id: entityRecords.id });
+      total += result.length;
+      onChunkComplete?.(chunk.length);
+    }
+    return total;
   }
 
   /**
@@ -275,27 +307,42 @@ export class EntityRecordsRepository extends Repository<
   }
 
   /**
-   * Find records by connector entity ID and source IDs.
-   * Useful for checking existing records before an import.
+   * Find records by connector entity ID and source IDs. Chunked so that
+   * very large source-id sets (e.g. ~400k-row spreadsheet uploads) stay
+   * under Postgres' 65,535 parameter cap and don't recurse the Drizzle
+   * SQL builder deep enough to throw "Maximum call stack size exceeded".
+   *
+   * Pass `includeDeleted: true` from the commit/sync writer so the
+   * resurrection branch can see prior soft-deleted rows by
+   * `(connector_entity_id, source_id)` and reuse their primary key.
    */
   async findBySourceIds(
     connectorEntityId: string,
     sourceIds: string[],
+    opts: { includeDeleted?: boolean } = {},
     client: DbClient = db
   ): Promise<EntityRecordSelect[]> {
     if (sourceIds.length === 0) return [];
-
-    const { inArray } = await import("drizzle-orm");
-    return (await (client as typeof db)
-      .select()
-      .from(this.table)
-      .where(
-        and(
-          eq(entityRecords.connectorEntityId, connectorEntityId),
-          inArray(entityRecords.sourceId, sourceIds),
-          this.notDeleted()
-        )
-      )) as EntityRecordSelect[];
+    const out: EntityRecordSelect[] = [];
+    for (let i = 0; i < sourceIds.length; i += BULK_CHUNK_SIZE) {
+      const chunk = sourceIds.slice(i, i + BULK_CHUNK_SIZE);
+      const where = opts.includeDeleted
+        ? and(
+            eq(entityRecords.connectorEntityId, connectorEntityId),
+            inArray(entityRecords.sourceId, chunk)
+          )
+        : and(
+            eq(entityRecords.connectorEntityId, connectorEntityId),
+            inArray(entityRecords.sourceId, chunk),
+            this.notDeleted()
+          );
+      const rows = await (client as typeof db)
+        .select()
+        .from(this.table)
+        .where(where);
+      for (const r of rows) out.push(r as EntityRecordSelect);
+    }
+    return out;
   }
 }
 

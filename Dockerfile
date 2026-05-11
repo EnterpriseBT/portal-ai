@@ -37,6 +37,17 @@ RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /
     && apt-get update && apt-get install -y docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
+# Install GitHub CLI so the in-container Claude session can open PRs / manage
+# issues / read CI runs without leaving the devcontainer. Uses the official
+# cli.github.com apt repo so updates flow through the normal apt cycle.
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    | dd of=/etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && apt-get update && apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install Claude CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"

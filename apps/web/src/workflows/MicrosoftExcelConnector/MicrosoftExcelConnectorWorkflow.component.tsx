@@ -42,6 +42,8 @@ import {
 } from "../../modules/RegionEditor/utils/identity-panel-wiring.util";
 
 import { sdk, queryKeys } from "../../api/sdk";
+import { sse } from "../../api/sse.api";
+import { awaitJobCompletion } from "../../utils/job-stream.util";
 import type {
   ColumnBindingDraft,
   EntityOption,
@@ -75,6 +77,10 @@ export const MicrosoftExcelConnectorWorkflow: React.FC<
   const { mutateAsync: sheetSliceMutate } = sdk.microsoftExcel.sheetSlice();
   const { mutateAsync: interpretMutate } = sdk.layoutPlans.interpret();
   const { mutateAsync: commitMutate } = sdk.layoutPlans.commit();
+  // Auth-aware EventSource factory used to await the
+  // layout_plan_commit job's terminal SSE event after the route's
+  // 202 + jobId response.
+  const connectSse = sse.create();
 
   const popup = useOAuthPopupAuthorize({
     slug: "microsoft-excel",
@@ -159,26 +165,36 @@ export const MicrosoftExcelConnectorWorkflow: React.FC<
     async (plan) => {
       const ciId = connectorInstanceIdRef.current;
       if (!ciId) throw new Error("Connector instance missing");
-      const res = await commitMutate({
+      const enqueue = await commitMutate({
         connectorDefinitionId,
         name: workbookTitleRef.current,
         plan,
         connectorInstanceId: ciId,
       });
-      await Promise.all(
-        [
-          queryKeys.connectorInstances.root,
-          queryKeys.connectorEntities.root,
-          queryKeys.stations.root,
-          queryKeys.fieldMappings.root,
-          queryKeys.portals.root,
-          queryKeys.portalResults.root,
-          queryKeys.connectorInstanceLayoutPlans.root,
-        ].map((queryKey) => queryClient.invalidateQueries({ queryKey }))
-      );
-      return { connectorInstanceId: res.connectorInstanceId };
+      // Fire-and-forget cache invalidation: when the worker terminates,
+      // sweep the entity-list / records / plan caches so the lock alert
+      // on /connectors/:id clears and the freshly-imported entities
+      // appear without a manual refresh. We don't await — the modal
+      // closes and the user lands on the connector view immediately;
+      // the lock alert there is the "import in progress" confirmation.
+      awaitJobCompletion(connectSse, enqueue.jobId)
+        .then(() =>
+          Promise.all(
+            [
+              queryKeys.connectorInstances.root,
+              queryKeys.connectorEntities.root,
+              queryKeys.stations.root,
+              queryKeys.fieldMappings.root,
+              queryKeys.portals.root,
+              queryKeys.portalResults.root,
+              queryKeys.connectorInstanceLayoutPlans.root,
+            ].map((queryKey) => queryClient.invalidateQueries({ queryKey }))
+          )
+        )
+        .catch(() => undefined);
+      return { connectorInstanceId: enqueue.connectorInstanceId };
     },
-    [commitMutate, connectorDefinitionId, queryClient]
+    [commitMutate, connectorDefinitionId, connectSse, queryClient]
   );
 
   const workflow = useMicrosoftExcelWorkflow({

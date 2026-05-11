@@ -1657,6 +1657,147 @@ describe("Connector Instance Router", () => {
     });
   });
 
+  // ── Entity-lock convention (CLAUDE.md §"Async Job State") ────────
+
+  describe("ENTITY_LOCKED_BY_JOB", () => {
+    /**
+     * Seed a fresh connector instance with its organization, then
+     * insert a non-terminal job whose metadata locks that instance.
+     * Mirrors the synchronous shape of a running `layout_plan_commit`
+     * or `connector_sync` without going through the worker.
+     */
+    async function seedLockedInstance(
+      jobType: "layout_plan_commit" | "connector_sync" = "layout_plan_commit",
+      jobStatus: "pending" | "active" = "active"
+    ) {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      const instance = createConnectorInstance(def.id, organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(instance as never);
+      const jobId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.jobs)
+        .values({
+          id: jobId,
+          organizationId,
+          type: jobType,
+          status: jobStatus,
+          progress: 0,
+          metadata: { connectorInstanceId: instance.id, organizationId },
+          result: null,
+          error: null,
+          startedAt: now,
+          completedAt: null,
+          bullJobId: null,
+          attempts: 0,
+          maxAttempts: 3,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+      return { instanceId: instance.id, organizationId, jobId };
+    }
+
+    it("DELETE returns 409 ENTITY_LOCKED_BY_JOB while a layout_plan_commit job is in flight", async () => {
+      const { instanceId, jobId } = await seedLockedInstance();
+      const res = await request(app)
+        .delete(`/api/connector-instances/${instanceId}`)
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
+      expect(res.body.details?.runningJobs).toEqual([
+        expect.objectContaining({
+          id: jobId,
+          type: "layout_plan_commit",
+          status: "active",
+        }),
+      ]);
+    });
+
+    it("PATCH returns 409 ENTITY_LOCKED_BY_JOB while a connector_sync job is in flight", async () => {
+      const { instanceId } = await seedLockedInstance("connector_sync");
+      const res = await request(app)
+        .patch(`/api/connector-instances/${instanceId}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ name: "Renamed mid-sync" });
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
+    });
+
+    // POST /sync's lock behavior is covered by the existing
+    // "returns 409 SYNC_ALREADY_RUNNING" test in the sync describe
+    // block (the sync route runs `assertNoActiveSyncJob` ahead of the
+    // generic lock so the response carries the in-flight jobId for
+    // the UI's latch-on path). The
+    // layout_plan_commit-blocks-sync case isn't covered at the route
+    // level here because it requires a sync-eligible plan fixture;
+    // `JobLockService` unit tests + `assertConnectorInstanceUnlocked`
+    // being called from the route together prove the path.
+
+    it("releases the lock when the job completes — DELETE succeeds again", async () => {
+      const { instanceId, jobId } = await seedLockedInstance();
+      // Worker finishes — terminal status releases the lock.
+      await (db as ReturnType<typeof drizzle>)
+        .update(schema.jobs)
+        .set({ status: "completed", completedAt: now })
+        .where(eqRaw(schema.jobs.id, jobId));
+
+      const res = await request(app)
+        .delete(`/api/connector-instances/${instanceId}`)
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(200);
+    });
+
+    it("GET /running-jobs returns the locking jobs as a trimmed summary", async () => {
+      const { instanceId, jobId } = await seedLockedInstance();
+      const res = await request(app)
+        .get(`/api/connector-instances/${instanceId}/running-jobs`)
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(200);
+      expect(res.body.payload.runningJobs).toEqual([
+        expect.objectContaining({
+          id: jobId,
+          type: "layout_plan_commit",
+          status: "active",
+        }),
+      ]);
+      // No heavy job columns leak through.
+      expect(res.body.payload.runningJobs[0]).not.toHaveProperty("metadata");
+      expect(res.body.payload.runningJobs[0]).not.toHaveProperty("result");
+    });
+
+    it("GET /running-jobs returns empty when no job locks the instance", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      const instance = createConnectorInstance(def.id, orgId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(instance as never);
+      const res = await request(app)
+        .get(`/api/connector-instances/${instance.id}/running-jobs`)
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(200);
+      expect(res.body.payload.runningJobs).toEqual([]);
+    });
+  });
+
   // ── GET /api/connector-instances/:id (syncEligible field) ────────
 
   describe("GET /api/connector-instances/:id syncEligible", () => {

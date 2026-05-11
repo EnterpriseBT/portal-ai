@@ -610,6 +610,47 @@ describe("detectRegionDrift — records-axis anchor rename", () => {
   });
 });
 
+describe("detectRegionDrift — header normalization", () => {
+  // Regression: xlsx files exported with a UTF-8 BOM carry U+FEFF into
+  // the first cell. interpret-side header detection trims it (so
+  // `binding.sourceLocator.name` lands as "email"); without a matching
+  // trim in resolve-headers, drift saw the live header as "﻿email"
+  // and flagged the same column as both removed and added — surfacing
+  // as LAYOUT_PLAN_DRIFT_BLOCKER on real ~100MB uploads.
+  it("does not flag drift when the header cell carries a UTF-8 BOM (U+FEFF)", () => {
+    const wb = makeWorkbook({
+      sheets: [
+        {
+          name: "Sheet1",
+          dimensions: { rows: 4, cols: 3 },
+          cells: [
+            { row: 1, col: 1, value: "﻿email" },
+            { row: 1, col: 2, value: "name" },
+            { row: 1, col: 3, value: "age" },
+            { row: 2, col: 1, value: "a@x.com" },
+            { row: 2, col: 2, value: "alice" },
+            { row: 2, col: 3, value: 30 },
+            { row: 3, col: 1, value: "b@x.com" },
+            { row: 3, col: 2, value: "bob" },
+            { row: 3, col: 3, value: 25 },
+            { row: 4, col: 1, value: "c@x.com" },
+            { row: 4, col: 2, value: "carol" },
+            { row: 4, col: 3, value: 40 },
+          ],
+        },
+      ],
+    });
+    const drift = detectRegionDrift(contactsRegion(), wb.sheets[0]);
+    expect(drift.kinds).toEqual([]);
+    const detail = drift.details as {
+      addedColumns: string[];
+      removedColumns: string[];
+    };
+    expect(detail.addedColumns).toEqual([]);
+    expect(detail.removedColumns).toEqual([]);
+  });
+});
+
 describe("rollUpDrift", () => {
   it("returns severity 'none' when no drift kinds are reported", () => {
     const wb = baselineWorkbook();

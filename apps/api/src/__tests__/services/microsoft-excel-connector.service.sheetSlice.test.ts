@@ -1,19 +1,33 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
-import type { WorkbookData } from "@portalai/spreadsheet-parsing";
+import type {
+  ChunkRow,
+  SessionMeta,
+  SheetChunkMeta,
+} from "../../services/workbook-cache.service.js";
 
-const cacheGetMock =
-  jest.fn<(key: string) => Promise<WorkbookData | null>>();
 const findByIdMock =
   jest.fn<
     (id: string) => Promise<{ id: string; organizationId: string } | undefined>
   >();
+const getSessionMetaMock =
+  jest.fn<(prefix: string) => Promise<SessionMeta | null>>();
+const readRowsMock = jest.fn<
+  (
+    prefix: string,
+    sheetId: string,
+    rowStart: number,
+    rowEnd: number
+  ) => AsyncIterable<ChunkRow>
+>();
 
 jest.unstable_mockModule("../../services/workbook-cache.service.js", () => ({
   WorkbookCacheService: {
-    set: jest.fn(async () => undefined),
-    get: cacheGetMock,
-    delete: jest.fn(async () => undefined),
+    getSessionMeta: getSessionMetaMock,
+    readRows: readRowsMock,
+    getMerges: jest.fn(async () => []),
+    beginSession: jest.fn(),
+    deleteSession: jest.fn(async () => undefined),
   },
 }));
 
@@ -34,38 +48,31 @@ const { MicrosoftExcelConnectorService } = await import(
   "../../services/microsoft-excel-connector.service.js"
 );
 
-function workbookWithSheet(): WorkbookData {
-  return {
-    sheets: [
-      {
-        name: "Sheet1",
-        dimensions: { rows: 2, cols: 2 },
-        cells: [
-          { row: 0, col: 0, value: "a" },
-          { row: 0, col: 1, value: "b" },
-          { row: 1, col: 0, value: "c" },
-          { row: 1, col: 1, value: "d" },
-        ],
-        merges: [],
-      } as never,
-    ],
-  } as WorkbookData;
+function meta(sheets: SheetChunkMeta[]): SessionMeta {
+  return { sheets, status: "ready", createdAt: 0 };
 }
 
-// Server-minted sheet id matches `sheet_<index>_<lower-name>`.
+function rowsAsync(rows: ChunkRow[]): AsyncIterable<ChunkRow> {
+  return (async function* () {
+    for (const r of rows) yield r;
+  })();
+}
+
 const SHEET_ID_0 = "sheet_0_sheet1";
 
 beforeEach(() => {
-  cacheGetMock.mockReset();
+  getSessionMetaMock.mockReset();
+  readRowsMock.mockReset();
+  findByIdMock.mockReset();
 });
 
 describe("MicrosoftExcelConnectorService.sheetSlice", () => {
   it("throws 404 FILE_UPLOAD_SESSION_NOT_FOUND on cache miss", async () => {
-    cacheGetMock.mockResolvedValue(null);
+    getSessionMetaMock.mockResolvedValue(null);
     try {
       await MicrosoftExcelConnectorService.sheetSlice({
         connectorInstanceId: "ci-1",
-        sheetId: "0",
+        sheetId: SHEET_ID_0,
         rowStart: 0,
         rowEnd: 5,
         colStart: 0,
@@ -80,8 +87,26 @@ describe("MicrosoftExcelConnectorService.sheetSlice", () => {
     }
   });
 
-  it("returns the requested rectangle from the cached workbook", async () => {
-    cacheGetMock.mockResolvedValue(workbookWithSheet());
+  it("returns the requested rectangle from the chunked cache", async () => {
+    getSessionMetaMock.mockResolvedValue(
+      meta([
+        {
+          sheetId: SHEET_ID_0,
+          name: "Sheet1",
+          rowCount: 2,
+          colCount: 2,
+        },
+      ])
+    );
+    // Mirror the contract: readRows yields rows in [rowStart, rowEnd) only.
+    const all: ChunkRow[] = [
+      ["a", "b"],
+      ["c", "d"],
+    ];
+    readRowsMock.mockImplementation((_prefix, _sheetId, rowStart, rowEnd) =>
+      rowsAsync(all.slice(rowStart, rowEnd))
+    );
+
     const out = await MicrosoftExcelConnectorService.sheetSlice({
       connectorInstanceId: "ci-1",
       sheetId: SHEET_ID_0,
@@ -90,16 +115,24 @@ describe("MicrosoftExcelConnectorService.sheetSlice", () => {
       colStart: 0,
       colEnd: 1,
     });
-    expect(out.cells).toBeDefined();
-    expect(Array.isArray(out.cells)).toBe(true);
+    expect(out.cells).toEqual([["a"]]);
   });
 
   it("throws when the sheet id isn't in the workbook", async () => {
-    cacheGetMock.mockResolvedValue(workbookWithSheet());
+    getSessionMetaMock.mockResolvedValue(
+      meta([
+        {
+          sheetId: SHEET_ID_0,
+          name: "Sheet1",
+          rowCount: 2,
+          colCount: 2,
+        },
+      ])
+    );
     try {
       await MicrosoftExcelConnectorService.sheetSlice({
         connectorInstanceId: "ci-1",
-        sheetId: "99",
+        sheetId: "sheet_99_unknown",
         rowStart: 0,
         rowEnd: 1,
         colStart: 0,
@@ -113,10 +146,6 @@ describe("MicrosoftExcelConnectorService.sheetSlice", () => {
 });
 
 describe("MicrosoftExcelConnectorService.resolveWorkbook", () => {
-  beforeEach(() => {
-    findByIdMock.mockReset();
-  });
-
   it("throws when instance not found", async () => {
     findByIdMock.mockResolvedValue(undefined);
     try {
@@ -140,21 +169,42 @@ describe("MicrosoftExcelConnectorService.resolveWorkbook", () => {
     }
   });
 
-  it("returns the cached workbook on hit", async () => {
+  it("reassembles the workbook from chunks on cache hit", async () => {
     findByIdMock.mockResolvedValue({ id: "ci-1", organizationId: "org-1" });
-    const wb = workbookWithSheet();
-    cacheGetMock.mockResolvedValue(wb);
+    getSessionMetaMock.mockResolvedValue(
+      meta([
+        {
+          sheetId: SHEET_ID_0,
+          name: "Sheet1",
+          rowCount: 2,
+          colCount: 2,
+        },
+      ])
+    );
+    readRowsMock.mockReturnValue(
+      rowsAsync([
+        ["a", "b"],
+        ["c", "d"],
+      ])
+    );
 
     const out = await MicrosoftExcelConnectorService.resolveWorkbook(
       "ci-1",
       "org-1"
     );
-    expect(out).toBe(wb);
+    expect(out.sheets).toHaveLength(1);
+    expect(out.sheets[0]?.dimensions).toEqual({ rows: 2, cols: 2 });
+    expect(out.sheets[0]?.cells.map((c) => `${c.row}:${c.col}=${c.value}`).sort()).toEqual([
+      "1:1=a",
+      "1:2=b",
+      "2:1=c",
+      "2:2=d",
+    ]);
   });
 
-  it("throws 404 on cache miss (no fallback)", async () => {
+  it("throws 404 when meta is missing or not ready (no fallback)", async () => {
     findByIdMock.mockResolvedValue({ id: "ci-1", organizationId: "org-1" });
-    cacheGetMock.mockResolvedValue(null);
+    getSessionMetaMock.mockResolvedValue(null);
     try {
       await MicrosoftExcelConnectorService.resolveWorkbook("ci-1", "org-1");
       throw new Error("expected throw");

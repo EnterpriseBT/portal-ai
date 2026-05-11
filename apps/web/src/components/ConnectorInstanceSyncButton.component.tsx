@@ -35,6 +35,14 @@ export interface ConnectorInstanceSyncButtonUIProps {
    * action is something else like Edit).
    */
   variant?: "contained" | "outlined";
+  /**
+   * When set, the button is disabled and renders this string as the
+   * tooltip. Set by the connector-instance view when an unrelated job
+   * (`layout_plan_commit`, future job types) has locked the instance —
+   * see CLAUDE.md §"Async Job State & Data Locking". `null`/undefined
+   * leaves the button's enablement to the eligibility / pending logic.
+   */
+  lockedReason?: string | null;
 }
 
 /**
@@ -60,9 +68,11 @@ export const ConnectorInstanceSyncButtonUI = ({
   jobStatus,
   onSync,
   variant = "outlined",
+  lockedReason,
 }: ConnectorInstanceSyncButtonUIProps) => {
   const isLive = jobStatus !== null && !JobModel.isTerminalStatus(jobStatus);
   const isPending = isStarting || isLive;
+  const isLocked = !!lockedReason;
   const hasIdentityWarnings = (identityWarnings?.length ?? 0) > 0;
 
   const button = (
@@ -71,13 +81,16 @@ export const ConnectorInstanceSyncButtonUI = ({
         variant={variant}
         startIcon={<SyncIcon />}
         onClick={onSync}
-        disabled={!syncEligible || isPending}
+        disabled={!syncEligible || isPending || isLocked}
       >
         {isPending ? "Syncing…" : "Sync now"}
       </Button>
     </span>
   );
 
+  if (isLocked) {
+    return <Tooltip title={lockedReason}>{button}</Tooltip>;
+  }
   if (!syncEligible) {
     return <Tooltip title={SYNC_INELIGIBLE_TOOLTIP}>{button}</Tooltip>;
   }

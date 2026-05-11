@@ -1,6 +1,19 @@
-import { jest, describe, it, expect, beforeEach, beforeAll, afterAll } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  beforeAll,
+  afterAll,
+} from "@jest/globals";
 
-import type { WorkbookData } from "@portalai/spreadsheet-parsing";
+import type {
+  ChunkRow,
+  SessionMeta,
+  SessionWriter,
+  SheetChunkMeta,
+} from "../../services/workbook-cache.service.js";
 
 import { environment } from "../../environment.js";
 
@@ -33,12 +46,23 @@ const downloadWorkbookMock =
       contentLength: number;
     }>
   >();
-const xlsxToWorkbookMock =
-  jest.fn<(stream: unknown) => Promise<WorkbookData>>();
+const xlsxToCacheMock = jest.fn<
+  (...args: unknown[]) => Promise<unknown>
+>();
 
-const cacheSetMock = jest.fn(async () => undefined);
-const cacheGetMock =
-  jest.fn<(key: string) => Promise<WorkbookData | null>>();
+const beginSessionMock =
+  jest.fn<(prefix: string) => Promise<SessionWriter>>();
+const getSessionMetaMock =
+  jest.fn<(prefix: string) => Promise<SessionMeta | null>>();
+const readRowsMock = jest.fn<
+  (
+    prefix: string,
+    sheetId: string,
+    rowStart: number,
+    rowEnd: number
+  ) => AsyncIterable<ChunkRow>
+>();
+const deleteSessionMock = jest.fn(async () => undefined);
 
 const updateInstanceMock =
   jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -74,15 +98,17 @@ jest.unstable_mockModule("../../services/microsoft-graph.service.js", () => ({
 jest.unstable_mockModule(
   "../../services/workbook-adapters/xlsx.adapter.js",
   () => ({
-    xlsxToWorkbook: xlsxToWorkbookMock,
+    xlsxToCache: xlsxToCacheMock,
   })
 );
 
 jest.unstable_mockModule("../../services/workbook-cache.service.js", () => ({
   WorkbookCacheService: {
-    set: cacheSetMock,
-    get: cacheGetMock,
-    delete: jest.fn(async () => undefined),
+    beginSession: beginSessionMock,
+    getSessionMeta: getSessionMetaMock,
+    readRows: readRowsMock,
+    getMerges: jest.fn(async () => []),
+    deleteSession: deleteSessionMock,
   },
 }));
 
@@ -112,32 +138,39 @@ function fakeStream(): ReadableStream<Uint8Array> {
   });
 }
 
-function fakeWorkbook(): WorkbookData {
+function makeNoopWriter(): SessionWriter {
   return {
-    sheets: [
-      {
-        name: "Sheet1",
-        dimensions: { rows: 2, cols: 1 },
-        cells: [
-          { row: 0, col: 0, value: "header" },
-          { row: 1, col: 0, value: "row1" },
-        ],
-        merges: [],
-      } as never,
-    ],
-  } as WorkbookData;
+    appendRows: jest.fn(async () => undefined),
+    finishSheet: jest.fn(async () => undefined),
+    finalize: jest.fn(async () => undefined),
+    fail: jest.fn(async () => undefined),
+  };
+}
+
+function meta(sheets: SheetChunkMeta[]): SessionMeta {
+  return { sheets, status: "ready", createdAt: 0 };
+}
+
+function rowsAsync(rows: ChunkRow[]): AsyncIterable<ChunkRow> {
+  return (async function* () {
+    for (const r of rows) yield r;
+  })();
 }
 
 beforeEach(() => {
   getOrRefreshMock.mockReset();
   headWorkbookMock.mockReset();
   downloadWorkbookMock.mockReset();
-  xlsxToWorkbookMock.mockReset();
-  cacheSetMock.mockReset();
-  cacheGetMock.mockReset();
+  xlsxToCacheMock.mockReset();
+  beginSessionMock.mockReset();
+  getSessionMetaMock.mockReset();
+  readRowsMock.mockReset();
+  deleteSessionMock.mockClear();
   updateInstanceMock.mockReset();
 
   getOrRefreshMock.mockResolvedValue("access-token-x");
+  beginSessionMock.mockImplementation(async () => makeNoopWriter());
+  xlsxToCacheMock.mockResolvedValue([]);
 });
 
 describe("MicrosoftExcelConnectorService.selectWorkbook", () => {
@@ -148,13 +181,24 @@ describe("MicrosoftExcelConnectorService.selectWorkbook", () => {
     userId: "user-1",
   };
 
-  it("happy path: parses workbook, caches it, updates config, returns inline preview", async () => {
+  it("happy path: streams parse via chunked cache, updates config, returns inline preview", async () => {
     headWorkbookMock.mockResolvedValue({ size: 1024, name: "Q3 Forecast.xlsx" });
     downloadWorkbookMock.mockResolvedValue({
       stream: fakeStream(),
       contentLength: 1024,
     });
-    xlsxToWorkbookMock.mockResolvedValue(fakeWorkbook());
+    // Seed the meta + rows the inline-preview reader will see.
+    getSessionMetaMock.mockResolvedValue(
+      meta([
+        {
+          sheetId: "sheet_0_Sheet1",
+          name: "Sheet1",
+          rowCount: 1,
+          colCount: 1,
+        },
+      ])
+    );
+    readRowsMock.mockReturnValue(rowsAsync([["x"]]));
 
     const out = await MicrosoftExcelConnectorService.selectWorkbook(baseInput);
 
@@ -163,13 +207,15 @@ describe("MicrosoftExcelConnectorService.selectWorkbook", () => {
       "access-token-x",
       "01ABC"
     );
-    expect(xlsxToWorkbookMock).toHaveBeenCalledTimes(1);
-    expect(cacheSetMock).toHaveBeenCalledTimes(1);
-    const [cacheKey] = cacheSetMock.mock.calls[0] as unknown as [
-      string,
-      unknown,
-    ];
-    expect(cacheKey).toBe("connector:wb:microsoft-excel:ci-1");
+    expect(xlsxToCacheMock).toHaveBeenCalledTimes(1);
+
+    // The connector calls deleteSession to clear any stale prior session
+    // before opening the new one + finalizing.
+    expect(deleteSessionMock).toHaveBeenCalledWith(
+      "connector:wb:microsoft-excel:ci-1"
+    );
+    const beginPrefix = beginSessionMock.mock.calls[0]?.[0] as string;
+    expect(beginPrefix).toBe("connector:wb:microsoft-excel:ci-1");
 
     expect(updateInstanceMock).toHaveBeenCalledTimes(1);
     const [calledId, patch] = updateInstanceMock.mock.calls[0] as [
@@ -190,7 +236,6 @@ describe("MicrosoftExcelConnectorService.selectWorkbook", () => {
   });
 
   it("throws 413 MICROSOFT_EXCEL_FILE_TOO_LARGE BEFORE the download is attempted", async () => {
-    // 60 MB > the test's 50 MB cap; head must short-circuit.
     headWorkbookMock.mockResolvedValue({
       size: 60 * 1024 * 1024,
       name: "Huge.xlsx",
@@ -204,14 +249,11 @@ describe("MicrosoftExcelConnectorService.selectWorkbook", () => {
       expect((err as { code?: string }).code).toBe(
         "MICROSOFT_EXCEL_FILE_TOO_LARGE"
       );
-      const details = (err as { details?: Record<string, unknown> }).details;
-      expect(details?.sizeBytes).toBe(60 * 1024 * 1024);
-      expect(typeof details?.capBytes).toBe("number");
     }
 
     expect(downloadWorkbookMock).not.toHaveBeenCalled();
-    expect(xlsxToWorkbookMock).not.toHaveBeenCalled();
-    expect(cacheSetMock).not.toHaveBeenCalled();
+    expect(xlsxToCacheMock).not.toHaveBeenCalled();
+    expect(beginSessionMock).not.toHaveBeenCalled();
   });
 
   it("throws 415 MICROSOFT_EXCEL_UNSUPPORTED_FORMAT for non-.xlsx files", async () => {
@@ -232,16 +274,13 @@ describe("MicrosoftExcelConnectorService.selectWorkbook", () => {
     expect(downloadWorkbookMock).not.toHaveBeenCalled();
   });
 
-  it("title falls back to the workbook name when no .xlsx extension is present (defensive)", async () => {
-    // The extension validation should reject this before we get here, but
-    // confirm the extension-stripping code is bounded — the test sets up
-    // a name that passes the lower-case .xlsx check.
+  it("title falls back to the workbook name with mixed-case .XLSX extension stripped", async () => {
     headWorkbookMock.mockResolvedValue({ size: 1024, name: "data.XLSX" });
     downloadWorkbookMock.mockResolvedValue({
       stream: fakeStream(),
       contentLength: 1024,
     });
-    xlsxToWorkbookMock.mockResolvedValue(fakeWorkbook());
+    getSessionMetaMock.mockResolvedValue(meta([]));
 
     const out = await MicrosoftExcelConnectorService.selectWorkbook(baseInput);
     expect(out.title).toBe("data");

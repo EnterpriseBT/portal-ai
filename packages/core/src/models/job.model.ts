@@ -36,6 +36,8 @@ export const JobTypeEnum = z.enum([
   "system_check",
   "revalidation",
   "connector_sync",
+  "file_upload_parse",
+  "layout_plan_commit",
 ]);
 export type JobType = z.infer<typeof JobTypeEnum>;
 
@@ -97,6 +99,134 @@ export const ConnectorSyncResultSchema = z.object({
 });
 export type ConnectorSyncResult = z.infer<typeof ConnectorSyncResultSchema>;
 
+/**
+ * file_upload_parse — drives the streaming parse of one or more uploads
+ * into the chunked workbook cache. The HTTP route mints `uploadSessionId`
+ * + the job, returns 202 immediately, and the worker streams every
+ * upload from S3 via the chunked-cache adapters. On completion the
+ * worker publishes the same preview payload the synchronous endpoint
+ * used to return inline (`FileUploadParseJobResult` in
+ * `contracts/file-uploads.contract.ts`); the frontend awaits it via
+ * the existing `/api/sse/jobs/:id/events` stream. See
+ * `docs/LARGE_FILE_PARSE_STREAMING.plan.md` §Phase 3.
+ */
+export const FileUploadParseMetadataSchema = z.object({
+  organizationId: z.string(),
+  uploadSessionId: z.string(),
+  uploadIds: z.array(z.string()).min(1),
+});
+export type FileUploadParseMetadata = z.infer<
+  typeof FileUploadParseMetadataSchema
+>;
+
+/**
+ * The processor's typed return value. Mirrors the shape that the legacy
+ * synchronous parse route used to return inline; the contracts package
+ * carries the preview-sheet schema, so the result schema here is left
+ * permissive and validated at the contract boundary.
+ */
+export const FileUploadParseResultSchema = z.object({
+  uploadSessionId: z.string(),
+  sheets: z.array(z.unknown()),
+  sliced: z.boolean().optional(),
+});
+export type FileUploadParseResult = z.infer<
+  typeof FileUploadParseResultSchema
+>;
+
+/**
+ * layout_plan_commit — runs the layout-plan commit pipeline (replay +
+ * drift gate + entity_records writes) off the request thread. Both
+ * HTTP commit endpoints (`POST /api/layout-plans/commit` for draft
+ * commit, `POST /api/connector-instances/:id/layout-plan/:planId/commit`
+ * for recommit) enqueue this job and return 202 with `{ jobId, … }`;
+ * the frontend awaits the terminal payload via
+ * `/api/sse/jobs/:id/events`.
+ *
+ * Metadata is a discriminated union keyed by `kind`:
+ *   - `draft`    — route mints fresh `connectorInstanceId` + `planId`;
+ *                  the worker creates the instance row (when not
+ *                  `isExistingInstance`) and the plan row inside the
+ *                  same write path that produces the records, so a
+ *                  failure leaves no orphan rows.
+ *   - `recommit` — instance + plan already exist; worker only writes
+ *                  records.
+ *
+ * `plan` is left as `z.unknown()` here to avoid importing
+ * `LayoutPlanSchema` from `contracts/` (which would close a model →
+ * contract → model cycle); the route validates it against
+ * `LayoutPlanSchema` before enqueueing.
+ *
+ * `workbookSource` references the chunked workbook cache by either
+ * upload-session id (file-upload pipeline) or connector-instance id
+ * (gsheets / microsoft-excel oauth pipelines). The full workbook is
+ * never serialized into job metadata — it lives in Redis via
+ * `WorkbookCacheService`.
+ */
+export const LayoutPlanCommitWorkbookSourceSchema = z.discriminatedUnion(
+  "kind",
+  [
+    z.object({
+      kind: z.literal("uploadSession"),
+      uploadSessionId: z.string().min(1),
+    }),
+    z.object({
+      kind: z.literal("connectorInstance"),
+      connectorInstanceId: z.string().min(1),
+    }),
+  ]
+);
+export type LayoutPlanCommitWorkbookSource = z.infer<
+  typeof LayoutPlanCommitWorkbookSourceSchema
+>;
+
+export const LayoutPlanCommitMetadataSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("draft"),
+    organizationId: z.string().min(1),
+    userId: z.string().min(1),
+    connectorInstanceId: z.string().min(1),
+    planId: z.string().min(1),
+    connectorDefinitionId: z.string().min(1),
+    name: z.string().min(1),
+    isExistingInstance: z.boolean(),
+    plan: z.unknown(),
+    workbookSource: LayoutPlanCommitWorkbookSourceSchema,
+  }),
+  z.object({
+    kind: z.literal("recommit"),
+    organizationId: z.string().min(1),
+    userId: z.string().min(1),
+    connectorInstanceId: z.string().min(1),
+    planId: z.string().min(1),
+    workbookSource: LayoutPlanCommitWorkbookSourceSchema,
+  }),
+]);
+export type LayoutPlanCommitMetadata = z.infer<
+  typeof LayoutPlanCommitMetadataSchema
+>;
+
+/**
+ * Terminal payload published by the layout-plan-commit processor.
+ * Carries everything either commit endpoint used to return inline so
+ * the frontend can finish the workflow once the SSE `update` event
+ * lands.
+ */
+export const LayoutPlanCommitJobResultSchema = z.object({
+  connectorInstanceId: z.string().min(1),
+  planId: z.string().min(1),
+  connectorEntityIds: z.array(z.string().min(1)),
+  recordCounts: z.object({
+    created: z.number().int().nonnegative(),
+    updated: z.number().int().nonnegative(),
+    unchanged: z.number().int().nonnegative(),
+    invalid: z.number().int().nonnegative(),
+  }),
+});
+export type LayoutPlanCommitJobResult = z.infer<
+  typeof LayoutPlanCommitJobResultSchema
+>;
+
 // --- Type Map ---
 
 /**
@@ -113,6 +243,14 @@ export interface JobTypeMap {
   connector_sync: {
     metadata: ConnectorSyncMetadata;
     result: ConnectorSyncResult;
+  };
+  file_upload_parse: {
+    metadata: FileUploadParseMetadata;
+    result: FileUploadParseResult;
+  };
+  layout_plan_commit: {
+    metadata: LayoutPlanCommitMetadata;
+    result: LayoutPlanCommitJobResult;
   };
 }
 
@@ -137,6 +275,14 @@ export const JOB_TYPE_SCHEMAS: {
   connector_sync: {
     metadata: ConnectorSyncMetadataSchema,
     result: ConnectorSyncResultSchema,
+  },
+  file_upload_parse: {
+    metadata: FileUploadParseMetadataSchema,
+    result: FileUploadParseResultSchema,
+  },
+  layout_plan_commit: {
+    metadata: LayoutPlanCommitMetadataSchema,
+    result: LayoutPlanCommitJobResultSchema,
   },
 };
 

@@ -22,6 +22,7 @@ import {
   seedUserAndOrg,
   teardownOrg,
 } from "../utils/application.util.js";
+import type { LayoutPlanCommitDraftRequestBody } from "@portalai/core/contracts";
 
 const AUTH0_ID = "auth0|layout-plan-draft-user";
 
@@ -53,7 +54,12 @@ jest.unstable_mockModule(
   })
 );
 
-// In-memory Redis shim — caches the parsed WorkbookData keyed by session id.
+// In-memory Redis shim — caches both the legacy single-blob workbook
+// (used by google-sheets / microsoft-excel pipelines) and the chunked
+// upload-session layout that file-upload uses post-Phase-2 (see
+// docs/LARGE_FILE_PARSE_STREAMING.plan.md). Supports the methods the
+// chunked cache exercises: set / get / mget / del (variadic) /
+// scanStream.
 const redisStore = new Map<string, string>();
 jest.unstable_mockModule("../../../utils/redis.util.js", () => ({
   getRedisClient: () => ({
@@ -63,9 +69,26 @@ jest.unstable_mockModule("../../../utils/redis.util.js", () => ({
     },
     get: async (key: string): Promise<string | null> =>
       redisStore.get(key) ?? null,
-    del: async (key: string): Promise<number> => {
-      const existed = redisStore.delete(key);
-      return existed ? 1 : 0;
+    mget: async (...keys: string[]): Promise<(string | null)[]> =>
+      keys.map((k) => redisStore.get(k) ?? null),
+    del: async (...keys: string[]): Promise<number> => {
+      let n = 0;
+      for (const k of keys) if (redisStore.delete(k)) n++;
+      return n;
+    },
+    scanStream({ match }: { match: string }) {
+      const re = new RegExp(
+        "^" +
+          match
+            .split("*")
+            .map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+            .join(".*") +
+          "$"
+      );
+      const matched = [...redisStore.keys()].filter((k) => re.test(k));
+      return (async function* () {
+        if (matched.length > 0) yield matched;
+      })();
     },
   }),
   closeRedis: async () => undefined,
@@ -87,6 +110,14 @@ jest.unstable_mockModule("../../../services/s3.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+// Dynamic import so this lands AFTER `jest.unstable_mockModule` has
+// registered the redis / S3 / auth0 / interpret mocks above. A static
+// import would resolve before any mocks register, which leaves the
+// service holding a real Redis client (cache misses everything →
+// commit/interpret fall through to the real S3 path).
+const { LayoutPlanDraftService } = await import(
+  "../../../services/layout-plan-draft.service.js"
+);
 
 const {
   connectorInstances,
@@ -231,9 +262,16 @@ function makeWorkbook(): WorkbookData {
 }
 
 /**
- * Seed an upload session — writes one `file_uploads` row + caches the
- * workbook in the mocked Redis so `FileUploadSessionService.resolveWorkbook`
- * finds it instantly (cache hit, no S3 stream required).
+ * Seed an upload session — writes one `file_uploads` row + populates
+ * the chunked Redis layout the file-upload pipeline reads from
+ * post-Phase-2 (`docs/LARGE_FILE_PARSE_STREAMING.plan.md`):
+ *
+ *   - `upload-session:{id}:meta`                            session meta
+ *   - `upload-session:{id}:sheet:{sheetId}:rows:{0}`        dense row chunk
+ *
+ * Sheet ids are minted via the same `sheetId()` helper the production
+ * pipeline uses. `resolveWorkbook` reads these directly without needing
+ * the mocked S3 path.
  */
 async function seedUploadSession(
   db: Db,
@@ -258,17 +296,74 @@ async function seedUploadSession(
     deleted: null,
     deletedBy: null,
   } as never);
+
+  const prefix = `upload-session:${uploadSessionId}`;
+  const sheetMetas = workbook.sheets.map((sheet, i) => ({
+    sheetId: sheetIdOf(i, sheet.name),
+    name: sheet.name,
+    rowCount: sheet.dimensions.rows,
+    colCount: sheet.dimensions.cols,
+    hasMerges: sheet.cells.some((c) => c.merged !== undefined),
+  }));
   redisStore.set(
-    `upload-session:${uploadSessionId}`,
-    JSON.stringify(workbook)
+    `${prefix}:meta`,
+    JSON.stringify({
+      sheets: sheetMetas,
+      status: "ready" as const,
+      createdAt: now,
+    })
   );
+  workbook.sheets.forEach((sheet, i) => {
+    const sheetId = sheetMetas[i]!.sheetId;
+    const denseRows = sparseToDenseRows(sheet);
+    // Seeded workbooks fit in a single chunk (default ROWS_PER_CHUNK=1000);
+    // tests don't drive sessions that span the chunk boundary.
+    redisStore.set(
+      `${prefix}:sheet:${sheetId}:rows:0`,
+      JSON.stringify(denseRows)
+    );
+  });
   return uploadSessionId;
+}
+
+/** Mirrors `sheetId` in workbook-preview.util.ts. */
+function sheetIdOf(index: number, name: string): string {
+  const slug = name.replace(/\s+/g, "_").toLowerCase();
+  return `sheet_${index}_${slug}`;
+}
+
+/** Build dense row layout from a sparse `WorkbookData` sheet for cache seeding. */
+function sparseToDenseRows(
+  sheet: WorkbookData["sheets"][number]
+): (string | number | boolean | null)[][] {
+  const { rows, cols } = sheet.dimensions;
+  const dense: (string | number | boolean | null)[][] = Array.from(
+    { length: rows },
+    () => new Array(cols).fill(null) as (string | number | boolean | null)[]
+  );
+  for (const cell of sheet.cells) {
+    const r = cell.row - 1;
+    const c = cell.col - 1;
+    if (r < 0 || r >= rows || c < 0 || c >= cols) continue;
+    const v = cell.value;
+    if (v === null || v === undefined) {
+      dense[r]![c] = null;
+    } else if (v instanceof Date) {
+      dense[r]![c] = v.toISOString();
+    } else if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      dense[r]![c] = v;
+    } else {
+      dense[r]![c] = String(v);
+    }
+  }
+  return dense;
 }
 
 describe("Layout Plans Draft Router", () => {
   let connection!: ReturnType<typeof postgres>;
   let db!: DbClient;
   let organizationId: string;
+  let userId: string;
   let connectorDefinitionId: string;
 
   beforeEach(async () => {
@@ -284,6 +379,7 @@ describe("Layout Plans Draft Router", () => {
 
     const seed = await seedUserAndOrg(db as Db, AUTH0_ID);
     organizationId = seed.organizationId;
+    userId = seed.userId;
 
     const def = makeConnectorDefinition();
     await (db as Db).insert(connectorDefinitions).values(def as never);
@@ -335,8 +431,28 @@ describe("Layout Plans Draft Router", () => {
     });
   });
 
+  /**
+   * Drives the draft commit pipeline through the same code path the
+   * `layout_plan_commit` worker takes — `prepareDraftCommit`
+   * (synchronous validation + UUID minting; the route's call) followed
+   * by `runCommitDraft` (instance + plan rows + records-write +
+   * rollback; the worker's call). Behavior assertions can use this
+   * directly without round-tripping through Bull. The HTTP route's
+   * 202 + jobId envelope is exercised by the dedicated test below.
+   * Defined at the outer describe scope so both the uploadSessionId
+   * and connectorInstanceId paths reuse the same helper.
+   */
+  async function runDraftCommitInline(body: LayoutPlanCommitDraftRequestBody) {
+    const prepared = await LayoutPlanDraftService.prepareDraftCommit(
+      organizationId,
+      userId,
+      body
+    );
+    return LayoutPlanDraftService.runCommitDraft(prepared.metadata);
+  }
+
   describe("POST /api/layout-plans/commit", () => {
-    it("creates the ConnectorInstance + plan row and commits records atomically", async () => {
+    it("returns 202 with { connectorInstanceId, planId, jobId, status: pending } and persists a layout_plan_commit job", async () => {
       const emailId = await seedColumnDefinition(db as Db, organizationId, "email");
       const nameId = await seedColumnDefinition(db as Db, organizationId, "name");
       const uploadSessionId = await seedUploadSession(
@@ -350,24 +466,82 @@ describe("Layout Plans Draft Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           connectorDefinitionId,
-          name: "My CSV upload",
+          name: "Async commit",
           plan: makePlan(emailId, nameId),
           uploadSessionId,
         });
 
-      expect(res.status).toBe(200);
-      const payload = res.body.payload as {
-        connectorInstanceId: string;
-        planId: string;
-        recordCounts: { created: number };
-      };
-      expect(payload.connectorInstanceId).toBeDefined();
-      expect(payload.planId).toBeDefined();
+      expect(res.status).toBe(202);
+      expect(res.body.success).toBe(true);
+      expect(res.body.payload).toEqual({
+        connectorInstanceId: expect.any(String),
+        planId: expect.any(String),
+        jobId: expect.any(String),
+        status: "pending",
+      });
+
+      const jobs = await (db as Db)
+        .select()
+        .from(schema.jobs)
+        .where(eq(schema.jobs.id, res.body.payload.jobId));
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].type).toBe("layout_plan_commit");
+      expect(jobs[0].status).toBe("pending");
+      expect(jobs[0].metadata).toMatchObject({
+        kind: "draft",
+        organizationId,
+        connectorInstanceId: res.body.payload.connectorInstanceId,
+        planId: res.body.payload.planId,
+        connectorDefinitionId,
+        name: "Async commit",
+        isExistingInstance: false,
+      });
+
+      // Route creates the connector_instance + plan rows
+      // synchronously (status="pending" for the fresh-create path)
+      // so the client can navigate to /connectors/:id immediately and
+      // see the lock alert. The worker flips to "active" on success
+      // or hard-deletes on failure.
+      const instances = await (db as Db)
+        .select()
+        .from(connectorInstances)
+        .where(eq(connectorInstances.name, "Async commit"));
+      expect(instances).toHaveLength(1);
+      expect(instances[0].id).toBe(res.body.payload.connectorInstanceId);
+      expect(instances[0].status).toBe("pending");
+      const plans = await (db as Db)
+        .select()
+        .from(connectorInstanceLayoutPlans);
+      expect(plans).toHaveLength(1);
+      expect(plans[0].id).toBe(res.body.payload.planId);
+      expect(plans[0].connectorInstanceId).toBe(
+        res.body.payload.connectorInstanceId
+      );
+    });
+
+    it("creates the ConnectorInstance + plan row and commits records atomically", async () => {
+      const emailId = await seedColumnDefinition(db as Db, organizationId, "email");
+      const nameId = await seedColumnDefinition(db as Db, organizationId, "name");
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeWorkbook()
+      );
+
+      const result = await runDraftCommitInline({
+        connectorDefinitionId,
+        name: "My CSV upload",
+        plan: makePlan(emailId, nameId),
+        uploadSessionId,
+      });
+
+      expect(result.connectorInstanceId).toBeDefined();
+      expect(result.planId).toBeDefined();
 
       const instances = await (db as Db)
         .select()
         .from(connectorInstances)
-        .where(eq(connectorInstances.id, payload.connectorInstanceId));
+        .where(eq(connectorInstances.id, result.connectorInstanceId));
       expect(instances).toHaveLength(1);
       expect(instances[0].name).toBe("My CSV upload");
       expect(instances[0].organizationId).toBe(organizationId);
@@ -375,14 +549,14 @@ describe("Layout Plans Draft Router", () => {
       const plans = await (db as Db)
         .select()
         .from(connectorInstanceLayoutPlans)
-        .where(eq(connectorInstanceLayoutPlans.id, payload.planId));
+        .where(eq(connectorInstanceLayoutPlans.id, result.planId));
       expect(plans).toHaveLength(1);
-      expect(plans[0].connectorInstanceId).toBe(payload.connectorInstanceId);
+      expect(plans[0].connectorInstanceId).toBe(result.connectorInstanceId);
 
       const entities = await (db as Db)
         .select()
         .from(connectorEntities)
-        .where(eq(connectorEntities.connectorInstanceId, payload.connectorInstanceId));
+        .where(eq(connectorEntities.connectorInstanceId, result.connectorInstanceId));
       expect(entities.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -459,18 +633,13 @@ describe("Layout Plans Draft Router", () => {
         workbook
       );
 
-      const res = await request(app)
-        .post("/api/layout-plans/commit")
-        .set("Authorization", "Bearer test-token")
-        .send({
-          connectorDefinitionId,
-          name: "Source-derived keys",
-          plan,
-          uploadSessionId,
-        });
-      expect(res.status).toBe(200);
-      const connectorInstanceId = res.body.payload
-        .connectorInstanceId as string;
+      const result = await runDraftCommitInline({
+        connectorDefinitionId,
+        name: "Source-derived keys",
+        plan,
+        uploadSessionId,
+      });
+      const connectorInstanceId = result.connectorInstanceId;
 
       const [entity] = await (db as Db)
         .select()
@@ -520,18 +689,17 @@ describe("Layout Plans Draft Router", () => {
         organizationId,
         makeWorkbook()
       );
-      const res = await request(app)
-        .post("/api/layout-plans/commit")
-        .set("Authorization", "Bearer test-token")
-        .send({
+      await expect(
+        runDraftCommitInline({
           connectorDefinitionId,
           name: "Should not persist",
           plan: planWithBlocker,
           uploadSessionId,
-        });
-
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_BLOCKER_WARNINGS);
+        })
+      ).rejects.toMatchObject({
+        status: 409,
+        code: ApiCode.LAYOUT_PLAN_BLOCKER_WARNINGS,
+      });
 
       // No instance should have survived the rollback.
       const stray = await (db as Db)
@@ -582,18 +750,17 @@ describe("Layout Plans Draft Router", () => {
           { ...plan.regions[0], id: "r2" },
         ];
 
-        const res = await request(app)
-          .post("/api/layout-plans/commit")
-          .set("Authorization", "Bearer test-token")
-          .send({
+        await expect(
+          runDraftCommitInline({
             connectorDefinitionId,
             name: "Duplicate target",
             plan,
             uploadSessionId,
-          });
-
-        expect(res.status).toBe(400);
-        expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_DUPLICATE_ENTITY);
+          })
+        ).rejects.toMatchObject({
+          status: 400,
+          code: ApiCode.LAYOUT_PLAN_DUPLICATE_ENTITY,
+        });
 
         // No rows should survive the outer rollback.
         const stray = await (db as Db)
@@ -629,18 +796,14 @@ describe("Layout Plans Draft Router", () => {
           makeWorkbook()
         );
 
-        const res = await request(app)
-          .post("/api/layout-plans/commit")
-          .set("Authorization", "Bearer test-token")
-          .send({
-            connectorDefinitionId,
-            name: "Distinct targets baseline",
-            plan: makePlan(emailId, nameId),
-            uploadSessionId,
-          });
+        const result = await runDraftCommitInline({
+          connectorDefinitionId,
+          name: "Distinct targets baseline",
+          plan: makePlan(emailId, nameId),
+          uploadSessionId,
+        });
 
-        expect(res.status).toBe(200);
-        expect(res.body.payload.connectorInstanceId).toBeDefined();
+        expect(result.connectorInstanceId).toBeDefined();
       });
     });
   });
@@ -648,9 +811,10 @@ describe("Layout Plans Draft Router", () => {
   // ── connectorInstanceId path (google-sheets et al.) ────────────────
 
   /**
-   * Seed a pending ConnectorInstance + cache its workbook under
-   * `connector:wb:<slug>:{id}`. Slug controls which resolver the
-   * dispatcher picks (google-sheets vs. microsoft-excel).
+   * Seed a pending ConnectorInstance + populate the chunked workbook cache
+   * under `connector:wb:<slug>:{id}` (Phase 4 layout — meta + per-sheet
+   * row chunks). Slug controls which resolver the dispatcher picks
+   * (google-sheets vs. microsoft-excel).
    */
   async function seedPendingConnectorInstance(
     db: Db,
@@ -684,10 +848,30 @@ describe("Layout Plans Draft Router", () => {
       deleted: null,
       deletedBy: null,
     } as never);
+
+    const prefix = `connector:wb:${slug}:${instanceId}`;
+    const sheetMetas = workbook.sheets.map((sheet, i) => ({
+      sheetId: sheetIdOf(i, sheet.name),
+      name: sheet.name,
+      rowCount: sheet.dimensions.rows,
+      colCount: sheet.dimensions.cols,
+      hasMerges: sheet.cells.some((c) => c.merged !== undefined),
+    }));
     redisStore.set(
-      `connector:wb:${slug}:${instanceId}`,
-      JSON.stringify(workbook)
+      `${prefix}:meta`,
+      JSON.stringify({
+        sheets: sheetMetas,
+        status: "ready" as const,
+        createdAt: now,
+      })
     );
+    workbook.sheets.forEach((sheet, i) => {
+      const sheetId = sheetMetas[i]!.sheetId;
+      redisStore.set(
+        `${prefix}:sheet:${sheetId}:rows:0`,
+        JSON.stringify(sparseToDenseRows(sheet))
+      );
+    });
     return instanceId;
   }
 
@@ -817,19 +1001,15 @@ describe("Layout Plans Draft Router", () => {
         { definitionId: connectorDefinitionId, slug: "google-sheets" }
       );
 
-      const res = await request(app)
-        .post("/api/layout-plans/commit")
-        .set("Authorization", "Bearer test-token")
-        .send({
-          connectorDefinitionId,
-          name: "GS commit",
-          plan: makePlan(emailId, nameId),
-          connectorInstanceId: ciId,
-        });
+      const result = await runDraftCommitInline({
+        connectorDefinitionId,
+        name: "GS commit",
+        plan: makePlan(emailId, nameId),
+        connectorInstanceId: ciId,
+      });
 
-      expect(res.status).toBe(200);
       // Returns the SAME instance id — not a fresh one.
-      expect(res.body.payload.connectorInstanceId).toBe(ciId);
+      expect(result.connectorInstanceId).toBe(ciId);
 
       const all = await (db as Db)
         .select()
@@ -853,17 +1033,14 @@ describe("Layout Plans Draft Router", () => {
         { definitionId: connectorDefinitionId, slug: "google-sheets" }
       );
 
-      const res = await request(app)
-        .post("/api/layout-plans/commit")
-        .set("Authorization", "Bearer test-token")
-        .send({
+      await expect(
+        runDraftCommitInline({
           connectorDefinitionId,
           name: "GS bad",
           plan: makePlan(emailId, "nonexistent-cd"),
           connectorInstanceId: ciId,
-        });
-
-      expect(res.status).toBeGreaterThanOrEqual(400);
+        })
+      ).rejects.toBeDefined();
 
       // Pending instance must STILL be present (rollback didn't remove it).
       const after = await (db as Db)
@@ -887,18 +1064,17 @@ describe("Layout Plans Draft Router", () => {
         "name"
       );
 
-      const res = await request(app)
-        .post("/api/layout-plans/commit")
-        .set("Authorization", "Bearer test-token")
-        .send({
+      await expect(
+        runDraftCommitInline({
           connectorDefinitionId,
           name: "GS missing",
           plan: makePlan(emailId, nameId),
           connectorInstanceId: "nonexistent",
-        });
-
-      expect(res.status).toBe(404);
-      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
+        })
+      ).rejects.toMatchObject({
+        status: 404,
+        code: ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+      });
     });
   });
 });

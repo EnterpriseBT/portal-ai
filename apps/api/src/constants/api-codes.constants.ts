@@ -57,6 +57,13 @@ export enum ApiCode {
   JOB_CANCEL_FAILED = "JOB_CANCEL_FAILED",
   JOB_SUBSCRIBE_FAILED = "JOB_SUBSCRIBE_FAILED",
   JOB_USER_NOT_FOUND = "JOB_USER_NOT_FOUND",
+  /**
+   * Returned (409) when a mutation targets an entity that has a
+   * non-terminal job in flight against it. The route surfaces the
+   * blocking job ids + types in `details.runningJobs` so the client
+   * can show which background work the user is racing.
+   */
+  ENTITY_LOCKED_BY_JOB = "ENTITY_LOCKED_BY_JOB",
 
   // Column Definitions
   COLUMN_DEFINITION_NOT_FOUND = "COLUMN_DEFINITION_NOT_FOUND",

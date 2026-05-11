@@ -88,13 +88,36 @@ export const FileUploadParseSheetSchema = z.object({
 });
 export type FileUploadParseSheet = z.infer<typeof FileUploadParseSheetSchema>;
 
+/**
+ * Response from `POST /api/file-uploads/parse`. Phase 3 of the streaming
+ * refactor (see `docs/LARGE_FILE_PARSE_STREAMING.plan.md`) pushed the
+ * actual parse onto the shared async-jobs queue, so the route returns
+ * 202 with `{ uploadSessionId, jobId, status: "pending" }` and the
+ * client awaits the job's completion via `/api/sse/jobs/:id/events`.
+ * The preview payload (`FileUploadParseJobResult`) is delivered as the
+ * job's `result` field on the terminal `update` SSE event.
+ */
 export const FileUploadParseSessionResponsePayloadSchema = z.object({
+  uploadSessionId: z.string().min(1),
+  jobId: z.string().min(1),
+  status: z.literal("pending"),
+});
+export type FileUploadParseSessionResponsePayload = z.infer<
+  typeof FileUploadParseSessionResponsePayloadSchema
+>;
+
+/**
+ * The terminal payload published by the file-upload-parse processor and
+ * delivered as the job's `result` on the SSE stream. Same shape the
+ * synchronous endpoint used to return inline pre-Phase-3.
+ */
+export const FileUploadParseJobResultSchema = z.object({
   uploadSessionId: z.string().min(1),
   sheets: z.array(FileUploadParseSheetSchema),
   sliced: z.boolean().optional(),
 });
-export type FileUploadParseSessionResponsePayload = z.infer<
-  typeof FileUploadParseSessionResponsePayloadSchema
+export type FileUploadParseJobResult = z.infer<
+  typeof FileUploadParseJobResultSchema
 >;
 
 // ── Phase 3b: GET /api/file-uploads/sheet-slice ──────────────────────────

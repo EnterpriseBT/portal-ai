@@ -166,16 +166,22 @@ fileUploadsRouter.post(
  * /api/file-uploads/parse:
  *   post:
  *     tags: [File Uploads]
- *     summary: Stream uploads from S3, parse, cache workbook, return preview
+ *     summary: Enqueue async parse of one or more uploads, return jobId for SSE tracking
  *     description: |
- *       Accepts one or more `uploadIds` from prior presign+confirm calls,
- *       streams each from S3, merges the sheets, caches the parsed workbook
- *       in Redis (TTL `FILE_UPLOAD_CACHE_TTL_SEC`), and returns the workbook
- *       inline. Sheets whose cell count exceeds `FILE_UPLOAD_INLINE_CELLS_MAX`
- *       come back with `cells: []` and the top-level `sliced: true` flag set
- *       — clients fetch those sheets via `/api/file-uploads/sheet-slice`.
+ *       Validates upload ownership and status synchronously, then enqueues a
+ *       `file_upload_parse` job on the shared async-jobs queue. Returns 202
+ *       with `{ uploadSessionId, jobId, status: "pending" }`; the client awaits
+ *       parse completion via `GET /api/sse/jobs/{jobId}/events`. The terminal
+ *       SSE event carries the inline-preview payload
+ *       (`FileUploadParseJobResult`): `{ uploadSessionId, sheets, sliced? }`.
+ *       Sheets whose cell count exceeds `FILE_UPLOAD_INLINE_CELLS_MAX` come
+ *       back with `cells: []` and the top-level `sliced: true` flag set —
+ *       clients fetch those sheets via `/api/file-uploads/sheet-slice`.
  *     security:
  *       - bearerAuth: []
+ *     responses:
+ *       202:
+ *         description: Job enqueued; client tracks completion via SSE.
  */
 fileUploadsRouter.post(
   "/parse",
@@ -183,6 +189,7 @@ fileUploadsRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const organizationId = req.application?.metadata.organizationId as string;
+      const userId = req.application?.metadata.userId as string;
       const parsed = FileUploadParseSessionRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
@@ -196,11 +203,13 @@ fileUploadsRouter.post(
       }
       const payload = await FileUploadSessionService.parseSession(
         organizationId,
+        userId,
         parsed.data.uploadIds
       );
       return HttpService.success<FileUploadParseSessionResponsePayload>(
         res,
-        payload
+        payload,
+        202
       );
     } catch (err) {
       return next(

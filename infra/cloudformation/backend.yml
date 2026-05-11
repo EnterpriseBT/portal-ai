@@ -24,8 +24,8 @@ Parameters:
     Description: Fargate task vCPU units. 1024 = 1 vCPU. Sized to give the synchronous XLSX parse path enough headroom under the 250 MB upload cap.
   Memory:
     Type: Number
-    Default: 2048
-    Description: Fargate task memory (MB). 2048 = 2 GB. ExcelJS holds the full workbook in memory plus a decompressed object tree (~6–9× input size); 2 GB keeps a 250 MB XLSX parse safely under the OOM cap with concurrent-request headroom.
+    Default: 8192
+    Description: Fargate task memory (MB). 8192 = 8 GB. The CSV/XLSX adapters currently buffer the entire decoded workbook in memory before caching; a 40 MB CSV (5–20M cells) blew the previous 2 GB cap with exit code 137. Stop-gap until parse becomes streaming (see docs/LARGE_FILE_PARSE_STREAMING.plan.md). Valid Fargate combos for 1 vCPU run 2–8 GB.
   DesiredCount:
     Type: Number
     Default: 1
@@ -438,6 +438,12 @@ Resources:
               Value: "3001"
             - Name: NODE_ENV
               Value: production
+            # Node defaults its old-space heap to roughly 1.5 GB regardless of
+            # container memory, so the CSV/XLSX parsers can OOM the V8 heap
+            # well before the cgroup limit fires. Pin the heap below the task
+            # ceiling (8 GB → 7 GB) so we use the headroom we paid for.
+            - Name: NODE_OPTIONS
+              Value: --max-old-space-size=7000
             - Name: LOG_LEVEL
               Value: info
             - Name: LOG_FORMAT

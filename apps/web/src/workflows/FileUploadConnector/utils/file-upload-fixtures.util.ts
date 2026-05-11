@@ -46,6 +46,14 @@ export interface FileUploadWorkflowState {
   uploadPhase: UploadPhase;
   overallUploadPercent: number;
   /**
+   * Parse-job progress percent (0–100). Only meaningful while
+   * `uploadPhase === "parsing"`; the upload bar's percent is reused
+   * for layout but the value comes from the parse worker's SSE
+   * `progress` field so the user sees movement after the S3 PUT
+   * settles at 100.
+   */
+  parsePercent: number;
+  /**
    * Per-file upload progress keyed by filename. Populated by the container
    * via the `parseFile` callback's `onProgress` reporter; re-rendered live so
    * the UploadStep progress bars update smoothly.
@@ -171,6 +179,7 @@ export const IDLE_STATE: FileUploadWorkflowState = {
   files: [],
   uploadPhase: "idle",
   overallUploadPercent: 0,
+  parsePercent: 0,
   fileProgress: {},
   workbook: null,
   regions: [],

@@ -3,7 +3,10 @@ import type { Readable } from "node:stream";
 import chardet from "chardet";
 import { parse } from "csv-parse";
 
-import type { WorkbookCell, WorkbookData } from "@portalai/spreadsheet-parsing";
+import type {
+  ChunkRow,
+  SessionWriter,
+} from "../workbook-cache.service.js";
 
 const DETECTION_CHUNK_SIZE = 4096;
 const CANDIDATE_DELIMITERS = [",", "\t", ";", "|"];
@@ -112,56 +115,69 @@ export async function configureCsvStream(
   };
 }
 
-export interface CsvToWorkbookOptions {
-  sheetName: string;
+export interface CsvToCacheOptions {
   delimiter?: string;
+  /**
+   * Optional per-flush row-count callback — fires after each chunk
+   * write so the file_upload_parse processor can emit incremental
+   * Bull progress. Mirrors `XlsxToCacheContext.onRowsFlushed`.
+   */
+  onRowsFlushed?: (rowsThisFlush: number) => void;
+}
+
+export interface CsvSheetStats {
+  rowCount: number;
+  colCount: number;
 }
 
 /**
- * Convert a CSV byte stream into a canonical `WorkbookData`. The adapter does
- * no header detection or synthesis — every populated field becomes a cell at
- * 1-based (row, col). Empty fields are omitted so the sparse grid stays small.
+ * Stream a CSV byte source into the chunked workbook cache via `writer`.
+ * Returns the sheet's final dimensions; never holds more than one chunk's
+ * worth of rows in process memory at once. The caller is responsible for
+ * calling `writer.finishSheet(sheetId, { name, ...stats })` once this
+ * resolves.
+ *
+ * Empty cells inside a row stay as `""` (csv-parse already yields empty
+ * strings for omitted fields). The dense row layout matches what the slice
+ * and preview readers expect.
  */
-export async function csvToWorkbook(
+export async function csvToCache(
   source: Readable,
-  options: CsvToWorkbookOptions
-): Promise<WorkbookData> {
+  sheetId: string,
+  writer: SessionWriter,
+  options: CsvToCacheOptions = {}
+): Promise<CsvSheetStats> {
   const { parser, empty } = await configureCsvStream(source, options.delimiter);
 
   if (empty) {
-    return {
-      sheets: [
-        {
-          name: options.sheetName,
-          dimensions: { rows: 0, cols: 0 },
-          cells: [],
-        },
-      ],
-    };
+    return { rowCount: 0, colCount: 0 };
   }
 
-  const cells: WorkbookCell[] = [];
-  let maxCol = 0;
-  let row = 0;
+  let rowCount = 0;
+  let colCount = 0;
+  // Tiny in-process buffer just so we don't hammer the writer with 1-row
+  // appends; the writer itself is what flushes to Redis at chunk size. 64
+  // is a token amount — keeps GC pressure down without growing memory.
+  const STAGE_SIZE = 64;
+  let stage: ChunkRow[] = [];
 
   for await (const record of parser) {
-    row++;
+    rowCount++;
     const values = record as string[];
-    if (values.length > maxCol) maxCol = values.length;
-    for (let i = 0; i < values.length; i++) {
-      const value = values[i] ?? "";
-      if (value === "") continue;
-      cells.push({ row, col: i + 1, value });
+    if (values.length > colCount) colCount = values.length;
+    stage.push(values as ChunkRow);
+    if (stage.length >= STAGE_SIZE) {
+      const count = stage.length;
+      await writer.appendRows(sheetId, stage);
+      stage = [];
+      options.onRowsFlushed?.(count);
     }
   }
+  if (stage.length > 0) {
+    const count = stage.length;
+    await writer.appendRows(sheetId, stage);
+    options.onRowsFlushed?.(count);
+  }
 
-  return {
-    sheets: [
-      {
-        name: options.sheetName,
-        dimensions: { rows: row, cols: maxCol },
-        cells,
-      },
-    ],
-  };
+  return { rowCount, colCount };
 }

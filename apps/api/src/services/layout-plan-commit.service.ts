@@ -10,7 +10,7 @@
  * auditable.
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import type {
   ColumnBinding,
@@ -37,13 +37,11 @@ import { createLogger } from "../utils/logger.util.js";
 import { db } from "../db/client.js";
 import {
   connectorInstances,
-  entityRecords,
   fieldMappings,
 } from "../db/schema/index.js";
 import type {
   ColumnDefinitionSelect,
   EntityRecordInsert,
-  EntityRecordSelect,
 } from "../db/schema/zod.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
 
@@ -65,6 +63,18 @@ export interface CommitSyncOptions {
   syncedAt?: number;
   /** When true, skip the drift-allows-commit gate. */
   skipDriftGate?: boolean;
+  /**
+   * Receives commit-pipeline progress as a 0-100 integer. Wired from
+   * the layout-plan-commit processor to `bullJob.updateProgress` so
+   * the SSE stream — and therefore the job list + detail views —
+   * advance mid-flight instead of jumping from 0 to 100.
+   *
+   * Milestones: 10 after replay, 10→85 during writeRecords (per
+   * upsert chunk, throttled to 5-point steps so a 396-chunk write
+   * fires ~16 events rather than ~400), 90 after all targets,
+   * then the processor's auto-emitted 100 on completion.
+   */
+  onProgress?: (percent: number) => void;
 }
 
 export class LayoutPlanCommitService {
@@ -135,6 +145,35 @@ export class LayoutPlanCommitService {
     if (!syncOptions.skipDriftGate) {
       LayoutPlanCommitService.assertDriftAllowsCommit(drift);
     }
+
+    // Replay + drift gate done — about to start the write phase. The
+    // remaining 75 points are split proportional to records-written
+    // across all targets (10..85), then a final 90 jump after the
+    // write loop closes out.
+    const PROGRESS_AFTER_REPLAY = 10;
+    const PROGRESS_AFTER_WRITES = 90;
+    const totalRecords = records.length;
+    syncOptions.onProgress?.(PROGRESS_AFTER_REPLAY);
+    let rowsWritten = 0;
+    let lastBucket = -1;
+    const reportRowsWritten = (rowsThisChunk: number) => {
+      if (totalRecords === 0 || !syncOptions.onProgress) return;
+      rowsWritten += rowsThisChunk;
+      const percent =
+        PROGRESS_AFTER_REPLAY +
+        Math.floor(
+          (rowsWritten / totalRecords) *
+            (PROGRESS_AFTER_WRITES - 5 - PROGRESS_AFTER_REPLAY)
+        );
+      // Throttle to 5-point buckets so a ~400-chunk run fires
+      // ~15 events rather than one per chunk — the receiving SSE
+      // stream + DB write per event isn't free.
+      const bucket = Math.floor(percent / 5);
+      if (bucket > lastBucket) {
+        lastBucket = bucket;
+        syncOptions.onProgress(percent);
+      }
+    };
 
     // ── 4. Load ColumnDefinition catalog for normalizedKey resolution ──
     const catalogRows =
@@ -370,7 +409,8 @@ export class LayoutPlanCommitService {
           organizationId,
           userId,
           tx,
-          syncOptions.syncedAt
+          syncOptions.syncedAt,
+          reportRowsWritten
         );
         totals.created += counts.created;
         totals.updated += counts.updated;
@@ -378,6 +418,8 @@ export class LayoutPlanCommitService {
         totals.invalid += counts.invalid;
       });
     }
+
+    syncOptions.onProgress?.(PROGRESS_AFTER_WRITES);
 
     logger.info(
       {
@@ -528,7 +570,14 @@ export class LayoutPlanCommitService {
      * `runStartedAt` so a downstream `softDeleteBeforeWatermark` can
      * reap rows that pre-date the run.
      */
-    syncedAtOverride?: number
+    syncedAtOverride?: number,
+    /**
+     * Per-chunk row-count callback for progress reporting. The caller
+     * (`commit`) accumulates rows across targets and converts to a
+     * 10..85 percentage that feeds Bull's progress event. Optional —
+     * sync's call path doesn't currently pass one.
+     */
+    reportRowsWritten?: (rowsThisChunk: number) => void
   ): Promise<LayoutPlanCommitResult["recordCounts"]> {
     if (records.length === 0) {
       return { created: 0, updated: 0, unchanged: 0, invalid: 0 };
@@ -555,15 +604,13 @@ export class LayoutPlanCommitService {
     const dedupedRecords = Array.from(mergedBySourceId.values());
 
     const sourceIds = dedupedRecords.map((r) => r.sourceId);
-    const existingRows = (await (tx as typeof db)
-      .select()
-      .from(entityRecords)
-      .where(
-        and(
-          eq(entityRecords.connectorEntityId, connectorEntityId),
-          inArray(entityRecords.sourceId, sourceIds)
-        )
-      )) as EntityRecordSelect[];
+    const existingRows =
+      await DbService.repository.entityRecords.findBySourceIds(
+        connectorEntityId,
+        sourceIds,
+        { includeDeleted: true },
+        tx
+      );
     const existingBySourceId = new Map(
       existingRows.map((r) => [r.sourceId, r])
     );
@@ -664,17 +711,24 @@ export class LayoutPlanCommitService {
     if (toUpsert.length > 0) {
       await DbService.repository.entityRecords.upsertManyBySourceId(
         toUpsert,
-        tx
+        tx,
+        reportRowsWritten
       );
     }
     if (toResurrect.length > 0) {
+      // Resurrection runs per-row inside the repo and is typically tiny
+      // (only fires when a prior sync soft-deleted rows that have
+      // reappeared). Bill the whole batch to the progress reporter so
+      // the percent doesn't stall mid-write.
       await DbService.repository.entityRecords.bulkResurrect(toResurrect, tx);
+      reportRowsWritten?.(toResurrect.length);
     }
     if (unchangedIds.length > 0) {
       await DbService.repository.entityRecords.bulkUpdateSyncedAt(
         unchangedIds,
         syncedAt,
-        tx
+        tx,
+        reportRowsWritten
       );
     }
 

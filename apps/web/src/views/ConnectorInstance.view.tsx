@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 
 import type {
   ConnectorEntityCreateRequestBody,
@@ -29,11 +29,15 @@ import { useNavigate } from "@tanstack/react-router";
 import { upperFirst } from "lodash-es";
 
 import { sdk, queryKeys } from "../api/sdk";
+import { sse } from "../api/sse.api";
+import { awaitJobCompletion } from "../utils/job-stream.util";
 import { toServerError } from "../utils/api.util";
 import { ConnectorInstanceDataItem } from "../components/ConnectorInstance.component";
+import { ConnectorInstanceLockAlertUI } from "../components/ConnectorInstanceLockAlert.component";
 import { ConnectorInstanceReconnectButtonUI } from "../components/ConnectorInstanceReconnectButton.component";
 import { ConnectorInstanceSyncButtonUI } from "../components/ConnectorInstanceSyncButton.component";
 import { ConnectorInstanceSyncFeedbackUI } from "../components/ConnectorInstanceSyncFeedback.component";
+import { joinRunningJobLabels } from "../utils/running-job-label.util";
 import { HighlightedCode } from "../components/HighlightedCode.component";
 import { useConnectorInstanceSync } from "../utils/use-connector-instance-sync.util";
 import { useReconnectConnectorInstance } from "../utils/use-reconnect-connector-instance.util";
@@ -101,7 +105,91 @@ export const ConnectorInstanceView = ({
   const impactQuery = sdk.connectorInstances.impact(connectorInstanceId, {
     enabled: deleteDialogOpen,
   });
+  // SSE-driven invalidation: the query fetches once on mount; an
+  // effect below subscribes to `/api/sse/jobs/:id/events` for each
+  // running job and invalidates this query when the terminal event
+  // lands. No polling needed — the alert clears the moment the
+  // worker finishes.
+  const runningJobsQuery = sdk.connectorInstances.runningJobs(
+    connectorInstanceId
+  );
+  const runningJobs = runningJobsQuery.data?.runningJobs ?? [];
+  const connectSseForLock = sse.create();
+  /**
+   * Tracks which running-job SSE streams we already have open, so
+   * re-renders don't double-subscribe. Cleared per-job on terminal
+   * event + on connector-instance change + on unmount. Holding
+   * AbortControllers lets us cancel a subscription if the job
+   * disappears from the running-jobs list without our terminal
+   * handler having fired (defensive — e.g., if the backend ever
+   * adds a "lock revoked" path that doesn't go through the SSE
+   * channel).
+   */
+  const lockSubscriptionsRef = useRef(new Map<string, AbortController>());
+  useEffect(() => {
+    const subs = lockSubscriptionsRef.current;
+    const runningIds = new Set(runningJobs.map((j) => j.id));
+    // Cancel subscriptions whose jobs have left the running list
+    // (terminal events normally remove them via the finally hook
+    // below, but defend against the backend pruning them another way).
+    for (const [jobId, ac] of subs.entries()) {
+      if (!runningIds.has(jobId)) {
+        ac.abort();
+        subs.delete(jobId);
+      }
+    }
+    // Subscribe to any newly-seen running jobs.
+    for (const job of runningJobs) {
+      if (subs.has(job.id)) continue;
+      const ac = new AbortController();
+      subs.set(job.id, ac);
+      // catch+finally handles both `completed` and `failed`/`cancelled`
+      // identically — in every case the lock is released and we need
+      // to refetch so the alert + button state reflect reality.
+      awaitJobCompletion(connectSseForLock, job.id, { signal: ac.signal })
+        .catch(() => undefined)
+        .finally(() => {
+          if (subs.get(job.id) === ac) subs.delete(job.id);
+          queryClient.invalidateQueries({
+            queryKey:
+              queryKeys.connectorInstances.runningJobs(connectorInstanceId),
+          });
+        });
+    }
+    return () => {
+      // On unmount, abort everything. Re-renders only trigger this
+      // when `connectorInstanceId` changes — same-id re-renders
+      // pass through because the ref persists across them.
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runningJobs, connectorInstanceId, connectSseForLock, queryClient]);
+  // Final cleanup: abort every open SSE on view unmount or
+  // connector-instance switch.
+  useEffect(() => {
+    const subs = lockSubscriptionsRef.current;
+    return () => {
+      for (const ac of subs.values()) ac.abort();
+      subs.clear();
+    };
+  }, [connectorInstanceId]);
+  const isLocked = runningJobs.length > 0;
+  const lockedReason = isLocked
+    ? `${joinRunningJobLabels(runningJobs)} is running on this connector — try again when it finishes.`
+    : null;
   const syncState = useConnectorInstanceSync(connectorInstanceId);
+  // When the user kicks off a sync from inside this view, refetch
+  // the runningJobs list so the lock alert appears immediately
+  // instead of waiting for the next mount or for the worker's
+  // first SSE event to propagate. The backend lock check is the
+  // actual safety — this is purely a UX hint.
+  useEffect(() => {
+    if (syncState.jobStatus !== null) {
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.connectorInstances.runningJobs(connectorInstanceId),
+      });
+    }
+  }, [syncState.jobStatus, connectorInstanceId, queryClient]);
   // Read slug off the cached connector-instance query so the reconnect
   // hook can dispatch to the right SDK group + popup hook. Same query
   // key as `ConnectorInstanceDataItem` below — React Query dedups, so
@@ -221,13 +309,18 @@ export const ConnectorInstanceView = ({
               const isSyncConfigured =
                 ci.enabledCapabilityFlags?.sync === true;
               const editAction = (
-                <Button
-                  variant="contained"
-                  startIcon={<EditIcon />}
-                  onClick={() => setEditDialogOpen(true)}
-                >
-                  Edit
-                </Button>
+                <Tooltip title={lockedReason ?? ""} disableHoverListener={!isLocked}>
+                  <span>
+                    <Button
+                      variant="contained"
+                      startIcon={<EditIcon />}
+                      onClick={() => setEditDialogOpen(true)}
+                      disabled={isLocked}
+                    >
+                      Edit
+                    </Button>
+                  </span>
+                </Tooltip>
               );
               const syncAction = (
                 <ConnectorInstanceSyncButtonUI
@@ -237,6 +330,7 @@ export const ConnectorInstanceView = ({
                   jobStatus={syncState.jobStatus}
                   onSync={syncState.onSync}
                   variant="contained"
+                  lockedReason={lockedReason}
                 />
               );
               const reconnectAction = (
@@ -261,6 +355,7 @@ export const ConnectorInstanceView = ({
                       label: "Edit",
                       icon: <EditIcon />,
                       onClick: () => setEditDialogOpen(true),
+                      disabled: isLocked,
                     },
                   ]
                   : []),
@@ -269,10 +364,12 @@ export const ConnectorInstanceView = ({
                   icon: <DeleteIcon />,
                   onClick: () => setDeleteDialogOpen(true),
                   color: "error" as const,
+                  disabled: isLocked,
                 },
               ];
               return (
                 <Stack spacing={4}>
+                  <ConnectorInstanceLockAlertUI runningJobs={runningJobs} />
                   <PageHeader
                     breadcrumbs={[
                       { label: "Dashboard", href: "/" },
@@ -457,13 +554,21 @@ export const ConnectorInstanceView = ({
                     icon={<Icon name={IconName.DataObject} />}
                     primaryAction={
                       isWriteEnabled ? (
-                        <Button
-                          variant="contained"
-                          size="small"
-                          onClick={() => setCreateEntityOpen(true)}
+                        <Tooltip
+                          title={lockedReason ?? ""}
+                          disableHoverListener={!isLocked}
                         >
-                          Create Entity
-                        </Button>
+                          <span>
+                            <Button
+                              variant="contained"
+                              size="small"
+                              onClick={() => setCreateEntityOpen(true)}
+                              disabled={isLocked}
+                            >
+                              Create Entity
+                            </Button>
+                          </span>
+                        </Tooltip>
                       ) : null
                     }
                   >

@@ -2,7 +2,12 @@
  * Slug-keyed Redis cache key helpers shared across connectors.
  *
  * Two short-lived caches:
- *   - workbook cache (parsed `WorkbookData`, scoped to the editor session)
+ *   - workbook cache — chunked Redis layout for the parsed workbook,
+ *     scoped to the editor session. The string returned by
+ *     `workbookCacheKey()` is the **prefix** under which the chunked
+ *     cache stores its sub-keys (`{prefix}:meta`,
+ *     `{prefix}:sheet:{id}:rows:{n}`, `{prefix}:sheet:{id}:merges`).
+ *     See `services/workbook-cache.service.ts`.
  *   - access-token cache (the most recently refreshed OAuth access token)
  *
  * Keying by `<slug>` instead of a per-connector prefix means a new

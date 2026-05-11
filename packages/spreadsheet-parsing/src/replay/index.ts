@@ -44,7 +44,12 @@ export function replay(
   for (const region of validatedPlan.regions as Region[]) {
     const sheet = sheetByName.get(region.sheet);
     if (!sheet) continue;
-    records.push(...extractRecords(region, sheet));
+    // Append per-record rather than spreading: a 400k-row sheet would
+    // otherwise blow V8's argument-count limit and throw "Maximum call
+    // stack size exceeded" (LAYOUT_PLAN_COMMIT_FAILED).
+    for (const record of extractRecords(region, sheet)) {
+      records.push(record);
+    }
     regionDrifts.push(detectRegionDrift(region, sheet));
   }
 

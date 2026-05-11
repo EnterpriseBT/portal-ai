@@ -1,6 +1,19 @@
-import { jest, describe, it, expect, beforeEach, beforeAll, afterAll } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  beforeAll,
+  afterAll,
+} from "@jest/globals";
 
-import type { WorkbookData } from "@portalai/spreadsheet-parsing";
+import type {
+  ChunkRow,
+  SessionMeta,
+  SessionWriter,
+  SheetChunkMeta,
+} from "../../services/workbook-cache.service.js";
 
 import { environment } from "../../environment.js";
 
@@ -33,12 +46,23 @@ const downloadWorkbookMock =
       contentLength: number;
     }>
   >();
-const xlsxToWorkbookMock =
-  jest.fn<(stream: unknown) => Promise<WorkbookData>>();
+const xlsxToCacheMock = jest.fn<
+  (...args: unknown[]) => Promise<unknown>
+>();
 
-const cacheSetMock = jest.fn(async () => undefined);
-const cacheGetMock =
-  jest.fn<(key: string) => Promise<WorkbookData | null>>();
+const beginSessionMock =
+  jest.fn<(prefix: string) => Promise<SessionWriter>>();
+const getSessionMetaMock =
+  jest.fn<(prefix: string) => Promise<SessionMeta | null>>();
+const readRowsMock = jest.fn<
+  (
+    prefix: string,
+    sheetId: string,
+    rowStart: number,
+    rowEnd: number
+  ) => AsyncIterable<ChunkRow>
+>();
+const deleteSessionMock = jest.fn(async () => undefined);
 
 const findByIdMock =
   jest.fn<
@@ -87,15 +111,17 @@ jest.unstable_mockModule("../../services/microsoft-graph.service.js", () => ({
 jest.unstable_mockModule(
   "../../services/workbook-adapters/xlsx.adapter.js",
   () => ({
-    xlsxToWorkbook: xlsxToWorkbookMock,
+    xlsxToCache: xlsxToCacheMock,
   })
 );
 
 jest.unstable_mockModule("../../services/workbook-cache.service.js", () => ({
   WorkbookCacheService: {
-    set: cacheSetMock,
-    get: cacheGetMock,
-    delete: jest.fn(async () => undefined),
+    beginSession: beginSessionMock,
+    getSessionMeta: getSessionMetaMock,
+    readRows: readRowsMock,
+    getMerges: jest.fn(async () => []),
+    deleteSession: deleteSessionMock,
   },
 }));
 
@@ -125,29 +151,42 @@ function fakeStream(): ReadableStream<Uint8Array> {
   });
 }
 
-function fakeWorkbook(): WorkbookData {
+function makeNoopWriter(): SessionWriter {
   return {
-    sheets: [
-      {
-        name: "Sheet1",
-        dimensions: { rows: 1, cols: 1 },
-        cells: [{ row: 0, col: 0, value: "x" }],
-        merges: [],
-      } as never,
-    ],
-  } as WorkbookData;
+    appendRows: jest.fn(async () => undefined),
+    finishSheet: jest.fn(async () => undefined),
+    finalize: jest.fn(async () => undefined),
+    fail: jest.fn(async () => undefined),
+  };
+}
+
+function meta(sheets: SheetChunkMeta[]): SessionMeta {
+  return { sheets, status: "ready", createdAt: 0 };
+}
+
+function rowsAsync(rows: ChunkRow[]): AsyncIterable<ChunkRow> {
+  return (async function* () {
+    for (const r of rows) yield r;
+  })();
 }
 
 beforeEach(() => {
   getOrRefreshMock.mockReset();
   headWorkbookMock.mockReset();
   downloadWorkbookMock.mockReset();
-  xlsxToWorkbookMock.mockReset();
-  cacheSetMock.mockReset();
-  cacheGetMock.mockReset();
+  xlsxToCacheMock.mockReset();
+  beginSessionMock.mockReset();
+  getSessionMetaMock.mockReset();
+  readRowsMock.mockReset();
+  deleteSessionMock.mockClear();
   findByIdMock.mockReset();
 
   getOrRefreshMock.mockResolvedValue("access-token-x");
+  // Default writer for any begin: a no-op writer the connector can drive.
+  beginSessionMock.mockImplementation(async () => makeNoopWriter());
+  // Default xlsxToCache: a no-op (the test seeds meta + rows below for the
+  // "happy path" case so the reassemble step has data to work with).
+  xlsxToCacheMock.mockResolvedValue([]);
 });
 
 describe("MicrosoftExcelConnectorService.fetchWorkbookForSync", () => {
@@ -248,7 +287,7 @@ describe("MicrosoftExcelConnectorService.fetchWorkbookForSync", () => {
     expect(downloadWorkbookMock).not.toHaveBeenCalled();
   });
 
-  it("happy path: downloads, parses, returns WorkbookData WITHOUT writing the cache", async () => {
+  it("happy path: downloads, streams via throwaway chunked session, returns reassembled WorkbookData + cleans up the throwaway prefix", async () => {
     findByIdMock.mockResolvedValue({
       id: "ci-1",
       organizationId: "org-1",
@@ -259,24 +298,36 @@ describe("MicrosoftExcelConnectorService.fetchWorkbookForSync", () => {
       stream: fakeStream(),
       contentLength: 1024,
     });
-    const workbook = fakeWorkbook();
-    xlsxToWorkbookMock.mockResolvedValue(workbook);
+    // After xlsxToCache "completes" the connector reads back from the
+    // throwaway prefix; seed meta + rows so reassembleWorkbookFromChunks
+    // sees a single sheet.
+    getSessionMetaMock.mockResolvedValue(
+      meta([
+        { sheetId: "sheet_0_Sheet1", name: "Sheet1", rowCount: 1, colCount: 1 },
+      ])
+    );
+    readRowsMock.mockReturnValue(rowsAsync([["x"]]));
 
     const out = await MicrosoftExcelConnectorService.fetchWorkbookForSync(
       "ci-1",
       "org-1"
     );
 
-    expect(out).toBe(workbook);
+    expect(out.sheets).toHaveLength(1);
+    expect(out.sheets[0]?.name).toBe("Sheet1");
+    expect(out.sheets[0]?.cells.map((c) => c.value)).toEqual(["x"]);
+
     expect(getOrRefreshMock).toHaveBeenCalledWith("ci-1");
     expect(headWorkbookMock).toHaveBeenCalledWith("access-token-x", "01ABC");
     expect(downloadWorkbookMock).toHaveBeenCalledWith(
       "access-token-x",
       "01ABC"
     );
-    expect(xlsxToWorkbookMock).toHaveBeenCalledTimes(1);
-    // Sync wants fresh data on every call — must NOT write the editor
-    // session's workbook cache.
-    expect(cacheSetMock).not.toHaveBeenCalled();
+    expect(xlsxToCacheMock).toHaveBeenCalledTimes(1);
+    // The throwaway session must be cleaned up — sync explicitly does
+    // not persist the workbook cache.
+    expect(deleteSessionMock).toHaveBeenCalled();
+    const passedPrefix = beginSessionMock.mock.calls[0]?.[0] as string;
+    expect(passedPrefix).toMatch(/^connector:sync:/);
   });
 });

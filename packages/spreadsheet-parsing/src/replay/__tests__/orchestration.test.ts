@@ -136,4 +136,36 @@ describe("replay() — orchestration", () => {
       replay(plan as unknown as LayoutPlan, contactsWorkbookData)
     ).toThrow();
   });
+
+  // Regression: at >~100k rows, `records.push(...extractRecords(...))`
+  // exceeded V8's argument-count limit and threw "Maximum call stack
+  // size exceeded", surfacing as LAYOUT_PLAN_COMMIT_FAILED on real
+  // 100MB+ uploads.
+  it("handles workbooks with hundreds of thousands of records without overflowing the call stack", () => {
+    const ROWS = 150_000;
+    const cells: WorkbookData["sheets"][number]["cells"] = [
+      { row: 1, col: 1, value: "email" },
+      { row: 1, col: 2, value: "name" },
+      { row: 1, col: 3, value: "age" },
+    ];
+    for (let i = 0; i < ROWS; i++) {
+      const r = i + 2;
+      cells.push({ row: r, col: 1, value: `user${i}@x.com` });
+      cells.push({ row: r, col: 2, value: `user${i}` });
+      cells.push({ row: r, col: 3, value: i });
+    }
+    const plan = contactsPlan();
+    plan.regions[0].bounds.endRow = ROWS + 1;
+    plan.workbookFingerprint.dimensions.Contacts = {
+      rows: ROWS + 1,
+      cols: 3,
+    };
+    const wb: WorkbookData = {
+      sheets: [
+        { name: "Contacts", dimensions: { rows: ROWS + 1, cols: 3 }, cells },
+      ],
+    };
+    const result = replay(plan, wb);
+    expect(result.records).toHaveLength(ROWS);
+  });
 });

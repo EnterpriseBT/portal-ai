@@ -107,12 +107,63 @@ jest.unstable_mockModule("../../../services/microsoft-graph.service.js", () => (
 }));
 
 // Mock the xlsx adapter so we don't need a real .xlsx byte fixture —
-// instead each test passes the WorkbookData it wants the parse to yield.
+// instead each test seeds the WorkbookData it wants the parse to yield by
+// driving the chunked-cache writer the connector hands the adapter.
+// `xlsxToWorkbookMock` retained as a thin compat shim so the existing
+// per-test `mockResolvedValueOnce(workbook)` calls keep working — the
+// shim transcribes the workbook into the writer at call time.
 const xlsxToWorkbookMock =
   jest.fn<(stream: unknown) => Promise<WorkbookData>>();
+const xlsxToCacheMock = jest.fn<
+  (...args: unknown[]) => Promise<unknown>
+>();
+xlsxToCacheMock.mockImplementation(async (...args: unknown[]) => {
+  // Pull the WorkbookData the test queued up via `xlsxToWorkbookMock`.
+  const wb = await xlsxToWorkbookMock(args[0]);
+  const writer = args[1] as {
+    appendRows: (sheetId: string, rows: unknown[][]) => Promise<void>;
+    finishSheet: (
+      sheetId: string,
+      info: { name: string; rowCount: number; colCount: number }
+    ) => Promise<void>;
+  };
+  const ctx = args[2] as {
+    resolveSheet: (rawName: string) => { name: string; sheetId: string };
+  };
+  const out: { sheetId: string; name: string; rowCount: number; colCount: number }[] = [];
+  for (const sheet of wb.sheets) {
+    const { name, sheetId } = ctx.resolveSheet(sheet.name);
+    const { rows, cols } = sheet.dimensions;
+    const dense: (string | number | boolean | null)[][] = Array.from(
+      { length: rows },
+      () => new Array(cols).fill(null)
+    );
+    for (const cell of sheet.cells) {
+      const r = cell.row - 1;
+      const c = cell.col - 1;
+      if (r < 0 || r >= rows || c < 0 || c >= cols) continue;
+      const v = cell.value;
+      if (v === null || v === undefined) {
+        dense[r]![c] = null;
+      } else if (v instanceof Date) {
+        dense[r]![c] = v.toISOString();
+      } else if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+        dense[r]![c] = v;
+      } else {
+        dense[r]![c] = String(v);
+      }
+    }
+    if (rows > 0) {
+      await writer.appendRows(sheetId, dense);
+    }
+    await writer.finishSheet(sheetId, { name, rowCount: rows, colCount: cols });
+    out.push({ sheetId, name, rowCount: rows, colCount: cols });
+  }
+  return out;
+});
 jest.unstable_mockModule(
   "../../../services/workbook-adapters/xlsx.adapter.js",
-  () => ({ xlsxToWorkbook: xlsxToWorkbookMock })
+  () => ({ xlsxToCache: xlsxToCacheMock })
 );
 
 const { environment } = await import("../../../environment.js");
