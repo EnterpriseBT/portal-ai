@@ -38,6 +38,7 @@ import { DbService } from "../services/db.service.js";
 import { entityRecords } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
+import { JobLockService } from "../services/job-lock.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { fieldMappingsRepo } from "../db/repositories/field-mappings.repository.js";
 import { columnDefinitionsRepo } from "../db/repositories/column-definitions.repository.js";
@@ -460,6 +461,10 @@ entityRecordRouter.post(
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
+      await JobLockService.assertConnectorInstanceUnlocked(
+        entity.connectorInstanceId,
+        req.application!.metadata.organizationId
+      );
       await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const parsed = EntityRecordCreateRequestBodySchema.safeParse(req.body);
@@ -545,6 +550,10 @@ entityRecordRouter.post(
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
 
+      await JobLockService.assertConnectorInstanceUnlocked(
+        entity.connectorInstanceId,
+        req.application!.metadata.organizationId
+      );
       await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const parsed = EntityRecordImportRequestBodySchema.safeParse(req.body);
@@ -664,6 +673,11 @@ entityRecordRouter.post(
       if (!entity) return;
 
       const { userId, organizationId } = req.application!.metadata;
+
+      await JobLockService.assertConnectorInstanceUnlocked(
+        entity.connectorInstanceId,
+        organizationId
+      );
 
       // Prevent duplicate revalidation — returns existing job if one is active
       const job = await RevalidationService.enqueue(
@@ -785,6 +799,10 @@ entityRecordRouter.patch(
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
+      await JobLockService.assertConnectorInstanceUnlocked(
+        entity.connectorInstanceId,
+        req.application!.metadata.organizationId
+      );
       await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const parsed = EntityRecordPatchRequestBodySchema.safeParse(req.body);
@@ -935,6 +953,10 @@ entityRecordRouter.delete(
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
+      await JobLockService.assertConnectorInstanceUnlocked(
+        entity.connectorInstanceId,
+        req.application!.metadata.organizationId
+      );
       await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const record =
@@ -1049,6 +1071,10 @@ entityRecordRouter.delete(
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
+      await JobLockService.assertConnectorInstanceUnlocked(
+        entity.connectorInstanceId,
+        req.application!.metadata.organizationId
+      );
       await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const { userId } = req.application!.metadata;

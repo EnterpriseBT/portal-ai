@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 
 import type {
   ConnectorEntityCreateRequestBody,
@@ -29,6 +29,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { upperFirst } from "lodash-es";
 
 import { sdk, queryKeys } from "../api/sdk";
+import { sse } from "../api/sse.api";
+import { awaitJobCompletion } from "../utils/job-stream.util";
 import { toServerError } from "../utils/api.util";
 import { ConnectorInstanceDataItem } from "../components/ConnectorInstance.component";
 import { ConnectorInstanceLockAlertUI } from "../components/ConnectorInstanceLockAlert.component";
@@ -103,27 +105,91 @@ export const ConnectorInstanceView = ({
   const impactQuery = sdk.connectorInstances.impact(connectorInstanceId, {
     enabled: deleteDialogOpen,
   });
-  // Polls every 2 s while a job is locking this instance; idle
-  // otherwise. The terminal job state release the lock — when the
-  // next poll returns an empty array the alert hides and the
-  // mutation buttons re-enable. SSE-driven invalidation would be
-  // strictly nicer but the runningJobs payload is tiny and the
-  // window is bounded to the duration of the running job.
+  // SSE-driven invalidation: the query fetches once on mount; an
+  // effect below subscribes to `/api/sse/jobs/:id/events` for each
+  // running job and invalidates this query when the terminal event
+  // lands. No polling needed — the alert clears the moment the
+  // worker finishes.
   const runningJobsQuery = sdk.connectorInstances.runningJobs(
-    connectorInstanceId,
-    {
-      refetchInterval: (query) => {
-        const data = query.state.data;
-        return (data?.runningJobs.length ?? 0) > 0 ? 2000 : false;
-      },
-    }
+    connectorInstanceId
   );
   const runningJobs = runningJobsQuery.data?.runningJobs ?? [];
+  const connectSseForLock = sse.create();
+  /**
+   * Tracks which running-job SSE streams we already have open, so
+   * re-renders don't double-subscribe. Cleared per-job on terminal
+   * event + on connector-instance change + on unmount. Holding
+   * AbortControllers lets us cancel a subscription if the job
+   * disappears from the running-jobs list without our terminal
+   * handler having fired (defensive — e.g., if the backend ever
+   * adds a "lock revoked" path that doesn't go through the SSE
+   * channel).
+   */
+  const lockSubscriptionsRef = useRef(new Map<string, AbortController>());
+  useEffect(() => {
+    const subs = lockSubscriptionsRef.current;
+    const runningIds = new Set(runningJobs.map((j) => j.id));
+    // Cancel subscriptions whose jobs have left the running list
+    // (terminal events normally remove them via the finally hook
+    // below, but defend against the backend pruning them another way).
+    for (const [jobId, ac] of subs.entries()) {
+      if (!runningIds.has(jobId)) {
+        ac.abort();
+        subs.delete(jobId);
+      }
+    }
+    // Subscribe to any newly-seen running jobs.
+    for (const job of runningJobs) {
+      if (subs.has(job.id)) continue;
+      const ac = new AbortController();
+      subs.set(job.id, ac);
+      // catch+finally handles both `completed` and `failed`/`cancelled`
+      // identically — in every case the lock is released and we need
+      // to refetch so the alert + button state reflect reality.
+      awaitJobCompletion(connectSseForLock, job.id, { signal: ac.signal })
+        .catch(() => undefined)
+        .finally(() => {
+          if (subs.get(job.id) === ac) subs.delete(job.id);
+          queryClient.invalidateQueries({
+            queryKey:
+              queryKeys.connectorInstances.runningJobs(connectorInstanceId),
+          });
+        });
+    }
+    return () => {
+      // On unmount, abort everything. Re-renders only trigger this
+      // when `connectorInstanceId` changes — same-id re-renders
+      // pass through because the ref persists across them.
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runningJobs, connectorInstanceId, connectSseForLock, queryClient]);
+  // Final cleanup: abort every open SSE on view unmount or
+  // connector-instance switch.
+  useEffect(() => {
+    const subs = lockSubscriptionsRef.current;
+    return () => {
+      for (const ac of subs.values()) ac.abort();
+      subs.clear();
+    };
+  }, [connectorInstanceId]);
   const isLocked = runningJobs.length > 0;
   const lockedReason = isLocked
     ? `${joinRunningJobLabels(runningJobs)} is running on this connector — try again when it finishes.`
     : null;
   const syncState = useConnectorInstanceSync(connectorInstanceId);
+  // When the user kicks off a sync from inside this view, refetch
+  // the runningJobs list so the lock alert appears immediately
+  // instead of waiting for the next mount or for the worker's
+  // first SSE event to propagate. The backend lock check is the
+  // actual safety — this is purely a UX hint.
+  useEffect(() => {
+    if (syncState.jobStatus !== null) {
+      queryClient.invalidateQueries({
+        queryKey:
+          queryKeys.connectorInstances.runningJobs(connectorInstanceId),
+      });
+    }
+  }, [syncState.jobStatus, connectorInstanceId, queryClient]);
   // Read slug off the cached connector-instance query so the reconnect
   // hook can dispatch to the right SDK group + popup hook. Same query
   // key as `ConnectorInstanceDataItem` below — React Query dedups, so
