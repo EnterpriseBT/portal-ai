@@ -18,6 +18,13 @@ export interface UploadStepUIProps {
   uploadPhase: UploadPhase;
   fileProgress: Map<string, FileUploadProgress>;
   overallUploadPercent: number;
+  /**
+   * Parse-job progress (0–100), surfaced while
+   * `uploadPhase === "parsing"`. Without this, large uploads showed
+   * a 100% bar hanging while the parse worker spun up — the user
+   * read it as "stuck."
+   */
+  parsePercent: number;
   serverError: ServerError | null;
   errors?: { files?: string };
   onRetry?: () => void;
@@ -50,6 +57,7 @@ export const UploadStep: React.FC<UploadStepUIProps> = ({
   uploadPhase,
   fileProgress,
   overallUploadPercent,
+  parsePercent,
   serverError,
   errors,
   onRetry,
@@ -201,7 +209,13 @@ export const UploadStep: React.FC<UploadStepUIProps> = ({
               ? "Uploading..."
               : "Parsing spreadsheet..."}
           </Typography>
-          <Progress value={overallUploadPercent} height={8} animated />
+          <Progress
+            value={
+              uploadPhase === "parsing" ? parsePercent : overallUploadPercent
+            }
+            height={8}
+            animated
+          />
         </Box>
       )}
 

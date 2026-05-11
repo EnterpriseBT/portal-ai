@@ -121,7 +121,8 @@ async function parseUploadIntoCache(
   upload: FileUploadSelect,
   writer: SessionWriter,
   taken: Set<string>,
-  sheetIndexOffset: number
+  sheetIndexOffset: number,
+  onRowsFlushed?: (rowsThisFlush: number) => void
 ): Promise<ParsedSheetMeta[]> {
   const ext = extensionOf(upload.filename);
   if (!SUPPORTED_EXTENSIONS.includes(ext as SupportedExtension)) {
@@ -142,6 +143,7 @@ async function parseUploadIntoCache(
       const sId = makeSheetId(sheetIndexOffset, name);
       const stats = await csvToCache(stream, sId, writer, {
         delimiter: ext === ".tsv" ? "\t" : undefined,
+        onRowsFlushed,
       });
       await writer.finishSheet(sId, {
         name,
@@ -163,6 +165,7 @@ async function parseUploadIntoCache(
         nextOffset++;
         return { name, sheetId: sId };
       },
+      onRowsFlushed,
     });
   } catch (err) {
     if (err instanceof ApiError) throw err;
@@ -432,7 +435,8 @@ export const FileUploadSessionService = {
   async runParseSession(
     organizationId: string,
     uploadSessionId: string,
-    uploadIds: string[]
+    uploadIds: string[],
+    onProgress?: (percent: number) => void
   ): Promise<FileUploadParseJobResult> {
     if (uploadIds.length === 0) {
       throw new ApiError(
@@ -476,6 +480,36 @@ export const FileUploadSessionService = {
     const started = Date.now();
     const prefix = uploadSessionCachePrefix(uploadSessionId);
 
+    // Pre-validation done — kick the progress bar off zero so the UI
+    // shows movement the moment the worker picks the job up.
+    onProgress?.(5);
+
+    // We don't know total rows in advance (streaming parse, no
+    // pre-flight count), so map row-flush events to a 5..85 bar
+    // using a 4000-rows-per-percent ramp. Caps at 85 so the bar
+    // never reads "done" before `writer.finalize` lands at 90 and
+    // the worker auto-emits 100 on completion. Throttled to
+    // 5-point buckets so a ~100-flush parse fires ~16 SSE events
+    // rather than ~100.
+    const PROGRESS_AFTER_PREFLIGHT = 5;
+    const PROGRESS_PRE_FINALIZE_CAP = 85;
+    const ROWS_PER_PERCENT = 4000;
+    let totalRowsFlushed = 0;
+    let lastBucket = -1;
+    const reportRowsFlushed = (rowsThisFlush: number): void => {
+      if (!onProgress) return;
+      totalRowsFlushed += rowsThisFlush;
+      const raw =
+        PROGRESS_AFTER_PREFLIGHT +
+        Math.floor(totalRowsFlushed / ROWS_PER_PERCENT);
+      const percent = Math.min(PROGRESS_PRE_FINALIZE_CAP, raw);
+      const bucket = Math.floor(percent / 5);
+      if (bucket > lastBucket) {
+        lastBucket = bucket;
+        onProgress(percent);
+      }
+    };
+
     const writer = await WorkbookCacheService.beginSession(prefix);
     let parsedSheets: ParsedSheetMeta[] = [];
     try {
@@ -485,11 +519,13 @@ export const FileUploadSessionService = {
           upload,
           writer,
           taken,
-          parsedSheets.length
+          parsedSheets.length,
+          reportRowsFlushed
         );
         parsedSheets = parsedSheets.concat(sheets);
       }
       await writer.finalize("ready");
+      onProgress?.(90);
     } catch (err) {
       await writer.fail(err instanceof Error ? err.message : "parse failed");
       void WorkbookCacheService.deleteSession(prefix).catch(() => {});

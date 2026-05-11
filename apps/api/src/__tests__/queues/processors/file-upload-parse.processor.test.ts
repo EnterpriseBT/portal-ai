@@ -6,7 +6,8 @@ const mockRunParseSession =
     (
       orgId: string,
       uploadSessionId: string,
-      uploadIds: string[]
+      uploadIds: string[],
+      onProgress?: (percent: number) => void
     ) => Promise<{
       uploadSessionId: string;
       sheets: unknown[];
@@ -52,8 +53,39 @@ describe("fileUploadParseProcessor", () => {
     expect(mockRunParseSession).toHaveBeenCalledWith(
       "org-1",
       "sess-1",
-      ["u1", "u2"]
+      ["u1", "u2"],
+      expect.any(Function)
     );
+  });
+
+  it("forwards the onProgress callback to bullJob.updateProgress", async () => {
+    mockRunParseSession.mockImplementation(
+      async (
+        _org: string,
+        _sess: string,
+        _ids: string[],
+        onProgress?: (n: number) => void
+      ) => {
+        onProgress?.(15);
+        onProgress?.(50);
+        return { uploadSessionId: "sess-1", sheets: [] };
+      }
+    );
+    const updateProgress = jest.fn<(p: number) => Promise<void>>();
+    const bullJob = {
+      data: {
+        jobId: "job-1",
+        type: "file_upload_parse",
+        organizationId: "org-1",
+        uploadSessionId: "sess-1",
+        uploadIds: ["u1"],
+      },
+      updateProgress,
+    };
+    await fileUploadParseProcessor(bullJob as never);
+    expect(updateProgress).toHaveBeenCalledTimes(2);
+    expect(updateProgress).toHaveBeenNthCalledWith(1, 15);
+    expect(updateProgress).toHaveBeenNthCalledWith(2, 50);
   });
 
   it("returns the runParseSession result verbatim — that's what lands as the SSE payload", async () => {

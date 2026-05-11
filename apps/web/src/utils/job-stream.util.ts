@@ -231,13 +231,18 @@ export interface JobCompletionResult {
  * with the `error` string on `failed` / `cancelled`. Honors `signal`
  * for cancellation; on abort the EventSource is closed and the
  * promise rejects with an AbortError.
+ *
+ * `onProgress` (optional) fires for every active/pending intermediate
+ * event with the job's current `progress` percent — used by the
+ * file-upload workflow to surface the parse job's mid-flight progress
+ * after the S3 PUT has already reached 100%.
  */
 export async function awaitJobCompletion(
   connect: (path: string) => Promise<EventSource>,
   jobId: string,
-  options: { signal?: AbortSignal } = {}
+  options: { signal?: AbortSignal; onProgress?: (percent: number) => void } = {}
 ): Promise<JobCompletionResult> {
-  const { signal } = options;
+  const { signal, onProgress } = options;
   if (signal?.aborted) {
     throw new DOMException("Job wait aborted", "AbortError");
   }
@@ -266,7 +271,12 @@ export async function awaitJobCompletion(
     }
 
     const handleEvent = (e: MessageEvent) => {
-      let data: { status?: string; result?: Record<string, unknown> | null; error?: string | null };
+      let data: {
+        status?: string;
+        progress?: number;
+        result?: Record<string, unknown> | null;
+        error?: string | null;
+      };
       try {
         data = JSON.parse(e.data);
       } catch {
@@ -285,6 +295,13 @@ export async function awaitJobCompletion(
               (data.status === "cancelled" ? "Job cancelled" : "Job failed")
           )
         );
+      } else if (onProgress && typeof data.progress === "number") {
+        // Intermediate active/pending/awaiting_confirmation events
+        // carry the job's current `progress`. Forward to the caller
+        // so they can drive a mid-flight UI bar (parse step, commit
+        // step, etc.). Promise stays unresolved until the terminal
+        // event arrives.
+        onProgress(data.progress);
       }
     };
 
