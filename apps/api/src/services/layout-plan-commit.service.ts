@@ -630,10 +630,17 @@ export class LayoutPlanCommitService {
     );
 
     const toUpsert: EntityRecordInsert[] = [];
+    /**
+     * `normalizedData` lives on the wide table after slice 6; carry it
+     * here keyed by `entity_records.id` so the wide-table projection
+     * below can find it. (EntityRecordInsert no longer has the field.)
+     */
+    const normalizedByRecordId = new Map<string, Record<string, unknown>>();
     const toResurrect: Array<{
       id: string;
       sourceId: string;
       organizationId: string;
+      normalizedData: Record<string, unknown>;
       data: Partial<EntityRecordInsert>;
     }> = [];
     /**
@@ -682,17 +689,17 @@ export class LayoutPlanCommitService {
       if (prev && prev.deleted !== null) {
         toResurrect.push({
           id: prev.id,
-          // `sourceId` and `organizationId` are NOT updated on the
-          // entity_records row (they're invariant for a resurrection),
-          // but the wide-table projection needs them to populate the
-          // metadata columns. We carry them on this payload as a
-          // convenience for the projection step — the bulkResurrect
-          // repo method only writes the fields it knows about.
+          // `sourceId`, `organizationId`, and `normalizedData` are NOT
+          // updated on the `entity_records` row — the first two are
+          // invariant, and after Phase 2 slice 6 there's no JSONB
+          // column to hold the third. We carry them on the top-level
+          // payload as a convenience for the wide-table projection;
+          // `bulkResurrect` only writes the entries under `data`.
           sourceId: prev.sourceId,
           organizationId: prev.organizationId,
+          normalizedData,
           data: {
             data: record.fields,
-            normalizedData,
             checksum: record.checksum,
             syncedAt,
             validationErrors: null,
@@ -709,12 +716,15 @@ export class LayoutPlanCommitService {
         continue;
       }
 
+      // Carry `normalizedData` on a sidecar map so the wide-table
+      // projection below sees it; `EntityRecordInsert` no longer has
+      // a `normalizedData` field after slice 6.
+      const rowId = prev?.id ?? SystemUtilities.id.v4.generate();
       toUpsert.push({
-        id: prev?.id ?? SystemUtilities.id.v4.generate(),
+        id: rowId,
         organizationId,
         connectorEntityId,
         data: record.fields,
-        normalizedData,
         sourceId: record.sourceId,
         checksum: record.checksum,
         syncedAt,
@@ -728,6 +738,7 @@ export class LayoutPlanCommitService {
         deleted: null,
         deletedBy: null,
       });
+      normalizedByRecordId.set(rowId, normalizedData);
       if (prev) updated++;
       else created++;
     }
@@ -755,7 +766,19 @@ export class LayoutPlanCommitService {
         );
         await DbService.repository.wideTable.upsertMany(
           connectorEntityId,
-          toUpsert.map((r) => projectToWideRow(r, mappings)),
+          toUpsert.map((r) =>
+            projectToWideRow(
+              {
+                id: r.id,
+                organizationId: r.organizationId,
+                sourceId: r.sourceId,
+                syncedAt: r.syncedAt,
+                isValid: r.isValid,
+                normalizedData: normalizedByRecordId.get(r.id) ?? null,
+              },
+              mappings
+            )
+          ),
           locked
         );
       }
@@ -781,11 +804,7 @@ export class LayoutPlanCommitService {
                 sourceId: r.sourceId,
                 syncedAt: (r.data.syncedAt ?? syncedAt) as number,
                 isValid: (r.data.isValid ?? true) as boolean,
-                normalizedData:
-                  (r.data.normalizedData ?? null) as Record<
-                    string,
-                    unknown
-                  > | null,
+                normalizedData: r.normalizedData,
               },
               mappings
             )

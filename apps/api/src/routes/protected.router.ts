@@ -19,6 +19,7 @@ import { connectorInstanceLayoutPlansRouter } from "./connector-instance-layout-
 import { layoutPlansRouter } from "./layout-plans.router.js";
 import { googleSheetsConnectorRouter } from "./google-sheets-connector.router.js";
 import { microsoftExcelConnectorRouter } from "./microsoft-excel-connector.router.js";
+import { adminRouter } from "./admin.router.js";
 
 export const protectedRouter = Router();
 
@@ -51,3 +52,4 @@ protectedRouter.use(
   "/connectors/microsoft-excel",
   microsoftExcelConnectorRouter
 );
+protectedRouter.use("/admin", adminRouter);

@@ -239,6 +239,15 @@ async function seedFullChain(db: ReturnType<typeof drizzle>) {
   const colDef = createColDef(organizationId);
   await db.insert(columnDefinitions).values(colDef as never);
 
+  // Reconcile the wide table so downstream reads find `er__<id>`.
+  const { wideTableReconcilerService } = await import(
+    "../../../services/wide-table-reconciler.service.js"
+  );
+  await wideTableReconcilerService.ensureTable(
+    entity.id,
+    db as unknown as DbClient
+  );
+
   return {
     organizationId,
     userId,
@@ -273,6 +282,14 @@ async function seedWithCapabilities(
 
   const colDef = createColDef(organizationId);
   await db.insert(columnDefinitions).values(colDef as never);
+
+  const { wideTableReconcilerService } = await import(
+    "../../../services/wide-table-reconciler.service.js"
+  );
+  await wideTableReconcilerService.ensureTable(
+    entity.id,
+    db as unknown as DbClient
+  );
 
   return {
     organizationId,
@@ -1302,17 +1319,32 @@ describe("Field Mapping Router", () => {
         .insert(fieldMappings)
         .values(mappingB as never);
 
+      // Reconcile both entities so the wide tables grow their c_<key>
+      // columns before we seed rows.
+      const { wideTableReconcilerService } = await import(
+        "../../../services/wide-table-reconciler.service.js"
+      );
+      await wideTableReconcilerService.reconcileEntity(
+        connectorEntityId,
+        db as unknown as DbClient
+      );
+      await wideTableReconcilerService.reconcileEntity(
+        entityB.id,
+        db as unknown as DbClient
+      );
+
       // Consistent: A["a1"] → ["b1"] and B["b1"] → ["a1"]
+      const idA = generateId();
+      const idB = generateId();
       await (db as ReturnType<typeof drizzle>)
         .insert(schema.entityRecords)
         .values([
           {
-            id: generateId(),
+            id: idA,
             organizationId,
             connectorEntityId,
             sourceId: "a1",
             data: {},
-            normalizedData: { [nkA]: ["b1"] },
             checksum: "ca",
             syncedAt: now,
             created: now,
@@ -1323,12 +1355,11 @@ describe("Field Mapping Router", () => {
             deletedBy: null,
           },
           {
-            id: generateId(),
+            id: idB,
             organizationId,
             connectorEntityId: entityB.id,
             sourceId: "b1",
             data: {},
-            normalizedData: { [nkB]: ["a1"] },
             checksum: "cb",
             syncedAt: now,
             created: now,
@@ -1339,6 +1370,64 @@ describe("Field Mapping Router", () => {
             deletedBy: null,
           },
         ] as never);
+
+      // Seed the wide-table sides with the reference-array values.
+      const { wideTableRepo } = await import(
+        "../../../db/repositories/wide-table.repository.js"
+      );
+      const { wideTableStatementCache } = await import(
+        "../../../services/wide-table-statement.cache.js"
+      );
+      const {
+        projectToWideRow,
+        buildMappingsForProjection,
+      } = await import(
+        "../../../services/wide-table-projection.util.js"
+      );
+      const stmtA = await wideTableStatementCache.get(
+        connectorEntityId,
+        db as unknown as DbClient
+      );
+      const mappingsA = buildMappingsForProjection(stmtA.columns);
+      await wideTableRepo.upsertMany(
+        connectorEntityId,
+        [
+          projectToWideRow(
+            {
+              id: idA,
+              organizationId,
+              sourceId: "a1",
+              syncedAt: now,
+              isValid: true,
+              normalizedData: { [nkA]: ["b1"] },
+            },
+            mappingsA
+          ),
+        ],
+        db as unknown as DbClient
+      );
+      const stmtB = await wideTableStatementCache.get(
+        entityB.id,
+        db as unknown as DbClient
+      );
+      const mappingsB = buildMappingsForProjection(stmtB.columns);
+      await wideTableRepo.upsertMany(
+        entityB.id,
+        [
+          projectToWideRow(
+            {
+              id: idB,
+              organizationId,
+              sourceId: "b1",
+              syncedAt: now,
+              isValid: true,
+              normalizedData: { [nkB]: ["a1"] },
+            },
+            mappingsB
+          ),
+        ],
+        db as unknown as DbClient
+      );
 
       const res = await request(app)
         .get(`/api/field-mappings/${mappingA.id}/validate-bidirectional`)
@@ -1407,8 +1496,22 @@ describe("Field Mapping Router", () => {
         .insert(fieldMappings)
         .values(mappingB as never);
 
+      // Reconcile both entities' wide tables before seeding rows.
+      const { wideTableReconcilerService: recSvc2 } = await import(
+        "../../../services/wide-table-reconciler.service.js"
+      );
+      await recSvc2.reconcileEntity(
+        connectorEntityId,
+        db as unknown as DbClient
+      );
+      await recSvc2.reconcileEntity(
+        entityB.id,
+        db as unknown as DbClient
+      );
+
       // Inconsistent: A["a1"] → ["b1"] but B["b1"] → [] (missing back-ref)
       const recAId = generateId();
+      const recBId = generateId();
       await (db as ReturnType<typeof drizzle>)
         .insert(schema.entityRecords)
         .values([
@@ -1418,7 +1521,6 @@ describe("Field Mapping Router", () => {
             connectorEntityId,
             sourceId: "a1",
             data: {},
-            normalizedData: { [nkA]: ["b1"] },
             checksum: "ca",
             syncedAt: now,
             created: now,
@@ -1429,12 +1531,11 @@ describe("Field Mapping Router", () => {
             deletedBy: null,
           },
           {
-            id: generateId(),
+            id: recBId,
             organizationId,
             connectorEntityId: entityB.id,
             sourceId: "b1",
             data: {},
-            normalizedData: { [nkB]: [] },
             checksum: "cb",
             syncedAt: now,
             created: now,
@@ -1445,6 +1546,63 @@ describe("Field Mapping Router", () => {
             deletedBy: null,
           },
         ] as never);
+
+      const { wideTableRepo: wtRepo2 } = await import(
+        "../../../db/repositories/wide-table.repository.js"
+      );
+      const { wideTableStatementCache: cache2 } = await import(
+        "../../../services/wide-table-statement.cache.js"
+      );
+      const {
+        projectToWideRow: project2,
+        buildMappingsForProjection: buildMap2,
+      } = await import(
+        "../../../services/wide-table-projection.util.js"
+      );
+      const stmtA2 = await cache2.get(
+        connectorEntityId,
+        db as unknown as DbClient
+      );
+      const mappingsA2 = buildMap2(stmtA2.columns);
+      await wtRepo2.upsertMany(
+        connectorEntityId,
+        [
+          project2(
+            {
+              id: recAId,
+              organizationId,
+              sourceId: "a1",
+              syncedAt: now,
+              isValid: true,
+              normalizedData: { [nkA]: ["b1"] },
+            },
+            mappingsA2
+          ),
+        ],
+        db as unknown as DbClient
+      );
+      const stmtB2 = await cache2.get(
+        entityB.id,
+        db as unknown as DbClient
+      );
+      const mappingsB2 = buildMap2(stmtB2.columns);
+      await wtRepo2.upsertMany(
+        entityB.id,
+        [
+          project2(
+            {
+              id: recBId,
+              organizationId,
+              sourceId: "b1",
+              syncedAt: now,
+              isValid: true,
+              normalizedData: { [nkB]: [] },
+            },
+            mappingsB2
+          ),
+        ],
+        db as unknown as DbClient
+      );
 
       const res = await request(app)
         .get(`/api/field-mappings/${mappingA.id}/validate-bidirectional`)

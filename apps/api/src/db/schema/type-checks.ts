@@ -46,7 +46,6 @@ import type {
   ColumnDefinitionSelect,
   ConnectorEntitySelect,
   FieldMappingSelect,
-  EntityRecordSelect,
   EntityTagSelect,
   EntityTagAssignmentSelect,
   EntityGroupSelect,
@@ -60,6 +59,7 @@ import type {
   OrganizationToolpackSelect,
 } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
+import type { EntityRecordHydrated } from "../repositories/entity-records.repository.js";
 import type { users } from "./users.table.js";
 import type { organizations } from "./organizations.table.js";
 import type { organizationUsers } from "./organization-users.table.js";
@@ -69,7 +69,6 @@ import type { jobs } from "./jobs.table.js";
 import type { columnDefinitions } from "./column-definitions.table.js";
 import type { connectorEntities } from "./connector-entities.table.js";
 import type { fieldMappings } from "./field-mappings.table.js";
-import type { entityRecords } from "./entity-records.table.js";
 import type { entityTags } from "./entity-tags.table.js";
 import type { entityTagAssignments } from "./entity-tag-assignments.table.js";
 import type { entityGroups } from "./entity-groups.table.js";
@@ -302,24 +301,30 @@ type _FieldMapInferredToModel = IsAssignable<
 const _fieldMapInferredToModel: _FieldMapInferredToModel = true;
 
 // ── EntityRecord ────────────────────────────────────────────────────
+//
+// Phase 2 slice 6 dropped `entity_records.normalized_data`, so the
+// Drizzle inferred select type no longer carries `normalizedData`. The
+// repository's read path returns `EntityRecordHydrated`, which is the
+// inferred type plus `normalizedData` rebuilt from the wide table via
+// the cache's projection. Assignability is anchored on the hydrated
+// type so the API contract (`EntityRecord` from `@portalai/core`) stays
+// satisfied end-to-end.
 
-// Drizzle select row → core Zod model (every DB row must satisfy the model)
-type _EntRecDrizzleToModel = IsAssignable<EntityRecordSelect, EntityRecord>;
-const _entRecDrizzleToModel: _EntRecDrizzleToModel = true;
-
-// Core Zod model → Drizzle select row (every model value must be a valid row)
-// Omit validationErrors because drizzle-zod widens jsonb to a JSON union type
-// that the specific object array shape is not directly assignable to.
-type _EntRecModelToDrizzle = IsAssignable<
-  Omit<EntityRecord, "validationErrors">,
-  Omit<EntityRecordSelect, "validationErrors">
+// Drizzle select row + hydrated normalizedData → core Zod model.
+type _EntRecHydratedToModel = IsAssignable<
+  EntityRecordHydrated,
+  EntityRecord
 >;
-const _entRecModelToDrizzle: _EntRecModelToDrizzle = true;
+const _entRecHydratedToModel: _EntRecHydratedToModel = true;
 
-// Also verify the raw InferSelectModel matches
-type _EntRecInferredRow = InferSelectModel<typeof entityRecords>;
-type _EntRecInferredToModel = IsAssignable<_EntRecInferredRow, EntityRecord>;
-const _entRecInferredToModel: _EntRecInferredToModel = true;
+// Core Zod model → hydrated repo shape.
+// Omit validationErrors because drizzle-zod widens jsonb to a JSON union
+// type that the specific object array shape is not directly assignable to.
+type _EntRecModelToHydrated = IsAssignable<
+  Omit<EntityRecord, "validationErrors">,
+  Omit<EntityRecordHydrated, "validationErrors">
+>;
+const _entRecModelToHydrated: _EntRecModelToHydrated = true;
 
 // ── EntityTag ────────────────────────────────────────────────────────
 

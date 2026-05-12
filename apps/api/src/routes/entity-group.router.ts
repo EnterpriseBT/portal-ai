@@ -936,7 +936,6 @@ entityGroupRouter.get(
 
       for (const member of enrichedMembers) {
         const normalizedKey = member.fieldMapping?.normalizedKey;
-        const columnKey = member.columnDefinition!.key;
         if (!normalizedKey) {
           results.push({
             connectorEntityId: member.connectorEntityId,
@@ -947,23 +946,26 @@ entityGroupRouter.get(
           continue;
         }
 
-        // Phase 2 transitional path: when the wide table for this
-        // entity is unreconciled (no `c_<key>` column yet), fall back
-        // to the JSONB lookup. Slice 6 removes this branch alongside
-        // the legacy column.
         const stmt = await wideTableStatementCache.get(
           member.connectorEntityId
         );
         const colRefBuilder = stmt.columnRefByNormalizedKey.get(normalizedKey);
-        const where = colRefBuilder
-          ? and(
-              eq(entityRecords.connectorEntityId, member.connectorEntityId),
-              sql`${sql.raw(colRefBuilder("w"))} = ${linkValue}`
-            )
-          : and(
-              eq(entityRecords.connectorEntityId, member.connectorEntityId),
-              sql`${entityRecords.normalizedData}->>${columnKey} = ${linkValue}`
-            );
+        if (!colRefBuilder) {
+          // Member's wide table doesn't have the linkage column —
+          // either the field mapping is in flight or unreconciled.
+          // Surface as an empty result rather than a 500.
+          results.push({
+            connectorEntityId: member.connectorEntityId,
+            connectorEntityLabel: member.connectorEntity!.label,
+            isPrimary: member.isPrimary,
+            records: [],
+          });
+          continue;
+        }
+        const where = and(
+          eq(entityRecords.connectorEntityId, member.connectorEntityId),
+          sql`${sql.raw(colRefBuilder("w"))} = ${linkValue}`
+        );
 
         const records =
           await DbService.repository.entityRecords.findHydratedMany(

@@ -114,7 +114,6 @@ export class EntityRecordsRepository extends Repository<
         targetWhere: isNull(entityRecords.deleted),
         set: {
           data: data.data,
-          normalizedData: data.normalizedData,
           checksum: data.checksum,
           syncedAt: data.syncedAt,
           validationErrors: data.validationErrors,
@@ -160,7 +159,6 @@ export class EntityRecordsRepository extends Repository<
           targetWhere: isNull(entityRecords.deleted),
           set: {
             data: sql.raw(`excluded."data"`),
-            normalizedData: sql.raw(`excluded."normalized_data"`),
             checksum: sql.raw(`excluded."checksum"`),
             syncedAt: sql.raw(`excluded."synced_at"`),
             validationErrors: sql.raw(`excluded."validation_errors"`),
@@ -396,16 +394,6 @@ export class EntityRecordsRepository extends Repository<
   ): Promise<EntityRecordHydrated[]> {
     const stmt = await wideTableStatementCache.get(connectorEntityId, client);
     const tableName = `er__${connectorEntityId}`;
-
-    // Transition fallback (Phase 2): if the wide table for this entity
-    // doesn't exist yet OR the cache shows zero data columns, read the
-    // legacy JSONB column directly. After slice 6 drops the column,
-    // every entity has a populated wide table and this branch is
-    // unreachable; deletes in that slice.
-    const wideAvailable = await wideTableExists(client, tableName);
-    if (!wideAvailable || stmt.columns.length === 0) {
-      return findHydratedManyFallback(client, connectorEntityId, opts);
-    }
     const rehydrationExpr =
       opts.normalizedDataProjection ??
       sql.raw(stmt.normalizedDataJsonbExpr("w"));
@@ -431,11 +419,6 @@ export class EntityRecordsRepository extends Repository<
     const offsetClause =
       opts.offset !== undefined ? sql` OFFSET ${opts.offset}` : sql``;
 
-    // LEFT JOIN keeps records whose wide row hasn't been written yet
-    // (e.g. during the staged Phase 2 cutover, or when a test fixture
-    // seeds only `entity_records` directly). After Phase 2 slice 6
-    // tightens the contract, an inner JOIN would be safe; for now,
-    // missing wide rows fall back to an empty rehydrated blob.
     const rows = await (client as typeof db).execute(sql`
       SELECT
         "entity_records".id, "entity_records".organization_id,
@@ -446,9 +429,9 @@ export class EntityRecordsRepository extends Repository<
         "entity_records".created, "entity_records".created_by,
         "entity_records".updated, "entity_records".updated_by,
         "entity_records".deleted, "entity_records".deleted_by,
-        COALESCE(${rehydrationExpr}, '{}'::jsonb) AS "normalized_data"
+        ${rehydrationExpr} AS "normalized_data"
       FROM ${entityRecords}
-      LEFT JOIN ${sql.raw(`"${tableName}"`)} w
+      JOIN ${sql.raw(`"${tableName}"`)} w
         ON w."entity_record_id" = "entity_records".id
       WHERE ${baseWhere}
       ${orderByClause}
@@ -479,7 +462,7 @@ export class EntityRecordsRepository extends Repository<
     const result = (await (client as typeof db).execute(sql`
       SELECT count(*) AS count
       FROM ${entityRecords}
-      LEFT JOIN ${sql.raw(`"${tableName}"`)} w
+      JOIN ${sql.raw(`"${tableName}"`)} w
         ON w."entity_record_id" = "entity_records".id
       WHERE ${baseWhere}
     `)) as unknown as Array<{ count: number | string }>;
@@ -498,11 +481,6 @@ export class EntityRecordsRepository extends Repository<
   ): Promise<EntityRecordHydrated | undefined> {
     const stmt = await wideTableStatementCache.get(connectorEntityId, client);
     const tableName = `er__${connectorEntityId}`;
-    // Same transition fallback as `findHydratedMany`.
-    const wideAvailable = await wideTableExists(client, tableName);
-    if (!wideAvailable || stmt.columns.length === 0) {
-      return findHydratedByIdFallback(client, recordId, connectorEntityId);
-    }
     const rows = (await (client as typeof db).execute(sql`
       SELECT
         "entity_records".id, "entity_records".organization_id,
@@ -513,9 +491,9 @@ export class EntityRecordsRepository extends Repository<
         "entity_records".created, "entity_records".created_by,
         "entity_records".updated, "entity_records".updated_by,
         "entity_records".deleted, "entity_records".deleted_by,
-        COALESCE(${sql.raw(stmt.normalizedDataJsonbExpr("w"))}, '{}'::jsonb) AS "normalized_data"
+        ${sql.raw(stmt.normalizedDataJsonbExpr("w"))} AS "normalized_data"
       FROM ${entityRecords}
-      LEFT JOIN ${sql.raw(`"${tableName}"`)} w
+      JOIN ${sql.raw(`"${tableName}"`)} w
         ON w."entity_record_id" = "entity_records".id
       WHERE "entity_records".id = ${recordId}
         AND "entity_records"."connector_entity_id" = ${connectorEntityId}
@@ -525,93 +503,6 @@ export class EntityRecordsRepository extends Repository<
     if (rows.length === 0) return undefined;
     return rowsToHydrated(rows)[0];
   }
-}
-
-/**
- * Phase-2 transitional helper: check whether the wide table for an
- * entity exists. Returns false in the rare case it's been pre-created
- * by a route but the per-entity reconcile hasn't run yet, OR the
- * entity was inserted directly (test fixtures). Slice 6 deletes this
- * helper alongside the JSONB fallback.
- */
-async function wideTableExists(
-  client: DbClient,
-  tableName: string
-): Promise<boolean> {
-  const rows = (await (client as typeof db).execute(
-    sql`SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ${tableName} LIMIT 1`
-  )) as unknown as Array<{ "?column?": number }>;
-  return rows.length > 0;
-}
-
-/**
- * Fallback path that reads `normalizedData` directly from
- * `entity_records.normalized_data` (the legacy JSONB column). Used
- * when the wide table is missing or empty during Phase 2's staged
- * cutover. Deleted in slice 6.
- */
-async function findHydratedManyFallback(
-  client: DbClient,
-  connectorEntityId: string,
-  opts: ListOptions & { where?: SQL }
-): Promise<EntityRecordHydrated[]> {
-  const baseWhere = opts.where
-    ? and(opts.where, isNull(entityRecords.deleted))
-    : and(
-        eq(entityRecords.connectorEntityId, connectorEntityId),
-        isNull(entityRecords.deleted)
-      );
-  const orderByClause = opts.orderBy
-    ? buildOrderByClause(opts.orderBy)
-    : sql``;
-  const limitClause =
-    opts.limit !== undefined ? sql` LIMIT ${opts.limit}` : sql``;
-  const offsetClause =
-    opts.offset !== undefined ? sql` OFFSET ${opts.offset}` : sql``;
-  const rows = (await (client as typeof db).execute(sql`
-    SELECT
-      "entity_records".id, "entity_records".organization_id,
-      "entity_records".connector_entity_id, "entity_records".source_id,
-      "entity_records".checksum, "entity_records".synced_at,
-      "entity_records".origin, "entity_records".validation_errors,
-      "entity_records".is_valid, "entity_records".data,
-      "entity_records".created, "entity_records".created_by,
-      "entity_records".updated, "entity_records".updated_by,
-      "entity_records".deleted, "entity_records".deleted_by,
-      COALESCE("entity_records"."normalized_data", '{}'::jsonb) AS "normalized_data"
-    FROM ${entityRecords}
-    WHERE ${baseWhere}
-    ${orderByClause}
-    ${limitClause}
-    ${offsetClause}
-  `)) as unknown as Record<string, unknown>[];
-  return rowsToHydrated(rows);
-}
-
-async function findHydratedByIdFallback(
-  client: DbClient,
-  recordId: string,
-  connectorEntityId: string
-): Promise<EntityRecordHydrated | undefined> {
-  const rows = (await (client as typeof db).execute(sql`
-    SELECT
-      "entity_records".id, "entity_records".organization_id,
-      "entity_records".connector_entity_id, "entity_records".source_id,
-      "entity_records".checksum, "entity_records".synced_at,
-      "entity_records".origin, "entity_records".validation_errors,
-      "entity_records".is_valid, "entity_records".data,
-      "entity_records".created, "entity_records".created_by,
-      "entity_records".updated, "entity_records".updated_by,
-      "entity_records".deleted, "entity_records".deleted_by,
-      COALESCE("entity_records"."normalized_data", '{}'::jsonb) AS "normalized_data"
-    FROM ${entityRecords}
-    WHERE "entity_records".id = ${recordId}
-      AND "entity_records"."connector_entity_id" = ${connectorEntityId}
-      AND "entity_records".deleted IS NULL
-    LIMIT 1
-  `)) as unknown as Record<string, unknown>[];
-  if (rows.length === 0) return undefined;
-  return rowsToHydrated(rows)[0];
 }
 
 /**

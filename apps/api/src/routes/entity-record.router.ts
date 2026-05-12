@@ -509,18 +509,36 @@ entityRecordRouter.post(
       });
 
       const record = await DbService.transaction(async (tx) => {
+        const parsed_ = model.parse();
         const inserted = await DbService.repository.entityRecords.create(
-          model.parse(),
+          parsed_,
           tx
         );
         const stmt = await wideTableStatementCache.get(connectorEntityId, tx);
         const mappings = buildMappingsForProjection(stmt.columns);
         await DbService.repository.wideTable.upsertMany(
           connectorEntityId,
-          [projectToWideRow(inserted, mappings)],
+          [
+            projectToWideRow(
+              {
+                id: inserted.id,
+                organizationId: inserted.organizationId,
+                sourceId: inserted.sourceId,
+                syncedAt: inserted.syncedAt,
+                isValid: inserted.isValid,
+                normalizedData: parsed_.normalizedData,
+              },
+              mappings
+            ),
+          ],
           tx
         );
-        return inserted;
+        // Return the hydrated shape so the response carries
+        // `normalizedData` rebuilt from the wide table.
+        return {
+          ...inserted,
+          normalizedData: parsed_.normalizedData,
+        };
       }).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(
@@ -878,13 +896,10 @@ entityRecordRouter.patch(
       const { userId } = req.application!.metadata;
 
       const updated = await DbService.transaction(async (tx) => {
-        const updatedRow = await DbService.repository.entityRecords.update(
+        await DbService.repository.entityRecords.update(
           recordId,
           {
             ...(parsed.data.data && { data: parsed.data.data }),
-            ...(parsed.data.normalizedData && {
-              normalizedData: parsed.data.normalizedData,
-            }),
             updatedBy: userId,
           },
           tx
@@ -901,7 +916,15 @@ entityRecordRouter.patch(
             tx
           );
         }
-        return updatedRow;
+        // Read back the hydrated record so the response carries
+        // `normalizedData` rebuilt from the wide table.
+        const hydrated =
+          await DbService.repository.entityRecords.findHydratedById(
+            recordId,
+            connectorEntityId,
+            tx
+          );
+        return hydrated;
       }).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(

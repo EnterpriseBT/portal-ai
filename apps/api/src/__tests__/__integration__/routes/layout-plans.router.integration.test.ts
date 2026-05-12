@@ -660,13 +660,15 @@ describe("Layout Plans Draft Router", () => {
         .from(entityRecords)
         .where(eq(entityRecords.connectorEntityId, entity.id));
       expect(records).toHaveLength(1);
-      const normalizedData = records[0].normalizedData as Record<
-        string,
-        unknown
-      >;
-      // The normalizedData must be keyed by the same derivation as the
-      // FieldMapping rows — otherwise the UI renders empty fields.
-      expect(normalizedData).toEqual({
+
+      // `normalizedData` now lives on the wide table. Read via the
+      // hydrated repo to verify the source-derived keys line up with
+      // the FieldMapping rows.
+      const { entityRecordsRepo } = await import(
+        "../../../db/repositories/entity-records.repository.js"
+      );
+      const [hydrated] = await entityRecordsRepo.findHydratedMany(entity.id);
+      expect(hydrated.normalizedData).toEqual({
         email_address: "alice@example.com",
         full_name: "Alice Example",
       });

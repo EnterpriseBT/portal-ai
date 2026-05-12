@@ -30,8 +30,14 @@ export type EntityRecordOrigin =
 
 /**
  * Entity records table.
- * JSONB row store for import and hybrid-mode connectors.
- * Each row represents a single data record belonging to a connector entity.
+ *
+ * Each row represents the transactional shape of a single record:
+ * identity (`source_id`, `connector_entity_id`), sync metadata
+ * (`synced_at`, `checksum`, `validation_errors`, `is_valid`), and the
+ * raw `data` JSONB (the connector's pre-mapping payload — preserved
+ * as the audit trail). The mapped, typed projection lives in the
+ * per-entity wide table `er__<connector_entity_id>`; Phase 2 slice 6
+ * dropped the redundant `normalized_data` JSONB.
  */
 export const entityRecords = pgTable(
   "entity_records",
@@ -44,9 +50,6 @@ export const entityRecords = pgTable(
       .notNull()
       .references(() => connectorEntities.id),
     data: jsonb("data").$type<Record<string, unknown>>().notNull(),
-    normalizedData: jsonb("normalized_data")
-      .$type<Record<string, unknown>>()
-      .notNull(),
     sourceId: text("source_id").notNull(),
     checksum: text("checksum").notNull(),
     syncedAt: bigint("synced_at", { mode: "number" }).notNull(),
@@ -59,10 +62,6 @@ export const entityRecords = pgTable(
     uniqueIndex("entity_records_entity_source_unique")
       .on(table.connectorEntityId, table.sourceId)
       .where(sql`deleted IS NULL`),
-    index("entity_records_normalized_data_gin").using(
-      "gin",
-      table.normalizedData
-    ),
     index("entity_records_entity_synced_at_idx").on(
       table.connectorEntityId,
       table.syncedAt

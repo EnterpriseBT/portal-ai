@@ -112,15 +112,45 @@ export class WideTableRepository {
     const tableName = `"${this.tableName(connectorEntityId)}"`;
     const insertColList = colsInOrder.map((c) => `"${c}"`).join(", ");
 
+    // Per-column type info so we can format Postgres arrays correctly.
+    // Metadata columns have known types; data columns come from the cache.
+    const pgTypeByColumn = new Map<string, string>([
+      ["entity_record_id", "text"],
+      ["organization_id", "text"],
+      ["synced_at", "bigint"],
+      ["is_valid", "boolean"],
+      ["source_id", "text"],
+      ...stmt.columns.map((c) => [c.columnName, c.pgType] as const),
+    ]);
+
     const tuples = rows.map((row) => {
       const valueExprs = colsInOrder.map((col) => {
         const v = row[col];
-        return v === undefined ? null : v;
+        const value = v === undefined ? null : v;
+        const pgType = pgTypeByColumn.get(col) ?? "text";
+        // postgres-js doesn't auto-serialize JS arrays as Postgres
+        // array literals when bound as a single parameter. Build an
+        // ARRAY[...]-style expression so each element binds as its
+        // own param (`text[]` → `ARRAY[$n, $n+1]::text[]`).
+        if (pgType === "text[]") {
+          if (value === null || value === undefined) {
+            return sql`NULL::text[]`;
+          }
+          if (!Array.isArray(value) || value.length === 0) {
+            return sql`ARRAY[]::text[]`;
+          }
+          const items = sql.join(
+            value.map((item) => sql`${String(item)}`),
+            sql`, `
+          );
+          return sql`ARRAY[${items}]::text[]`;
+        }
+        if (pgType === "jsonb") {
+          return sql`${value}::jsonb`;
+        }
+        return sql`${value}`;
       });
-      return sql`(${sql.join(
-        valueExprs.map((v) => sql`${v}`),
-        sql`, `
-      )})`;
+      return sql`(${sql.join(valueExprs, sql`, `)})`;
     });
 
     const setClauses = colsInOrder

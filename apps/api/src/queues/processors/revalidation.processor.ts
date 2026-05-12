@@ -56,10 +56,11 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
     const batch = records.slice(i, i + BATCH_SIZE);
 
     const updates = batch.map((record) => {
-      const rawData = (record.data ?? record.normalizedData ?? {}) as Record<
-        string,
-        unknown
-      >;
+      // `record.data` is the raw connector payload (always populated
+      // by every write path). After Phase 2 slice 6 dropped the
+      // `normalized_data` JSONB column, there's no legacy fallback —
+      // an absent `data` field is a structured error per the spec.
+      const rawData = (record.data ?? {}) as Record<string, unknown>;
       const result = NormalizationService.normalizeWithMappings(
         mappings as Parameters<
           typeof NormalizationService.normalizeWithMappings

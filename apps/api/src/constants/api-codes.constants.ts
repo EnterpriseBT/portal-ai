@@ -289,4 +289,8 @@ export enum ApiCode {
   WIDE_TABLE_RECONCILE_FAILED = "WIDE_TABLE_RECONCILE_FAILED",
   /** Logged-only — boot drift check failed and the app refuses to start. */
   WIDE_TABLE_DRIFT_AT_BOOT = "WIDE_TABLE_DRIFT_AT_BOOT",
+
+  // Admin / re-sync trigger
+  /** A wide-table resync trigger failed to fan out to one or more instances. */
+  WIDE_TABLE_RESYNC_FAILED = "WIDE_TABLE_RESYNC_FAILED",
 }

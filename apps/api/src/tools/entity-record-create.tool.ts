@@ -135,6 +135,14 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
           });
 
           // ── Phase 2: Execute ───────────────────────────────────────
+          // Carry `normalizedData` from the model.parse() output keyed
+          // by the resulting row id — the table inference no longer
+          // includes it after slice 6, so the wide-table projection
+          // can't read it back off the inserted row.
+          const normalizedById = new Map<string, Record<string, unknown>>();
+          for (const parsed of parsedModels) {
+            normalizedById.set(parsed.id, parsed.normalizedData);
+          }
           const created = await Repository.transaction(async (tx) => {
             const inserted =
               await DbService.repository.entityRecords.createMany(
@@ -159,7 +167,19 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
               const mappings = buildMappingsForProjection(stmt.columns);
               await DbService.repository.wideTable.upsertMany(
                 entityId,
-                rows.map((r) => projectToWideRow(r, mappings)),
+                rows.map((r) =>
+                  projectToWideRow(
+                    {
+                      id: r.id,
+                      organizationId: r.organizationId,
+                      sourceId: r.sourceId,
+                      syncedAt: r.syncedAt,
+                      isValid: r.isValid,
+                      normalizedData: normalizedById.get(r.id) ?? null,
+                    },
+                    mappings
+                  )
+                ),
                 tx
               );
             }
