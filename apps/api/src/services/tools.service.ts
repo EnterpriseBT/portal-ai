@@ -319,9 +319,12 @@ export class ToolService {
     // Pack: data_query
     // -------------------------------------------------------------------
     if (enabledPacks.has("data_query")) {
-      tools.sql_query = new SqlQueryTool().build(stationId);
-      tools.visualize = new VisualizeTool().build(stationId);
-      tools.visualize_tree = new VisualizeTreeTool().build(stationId);
+      tools.sql_query = new SqlQueryTool().build(stationId, organizationId);
+      tools.visualize = new VisualizeTool().build(stationId, organizationId);
+      tools.visualize_tree = new VisualizeTreeTool().build(
+        stationId,
+        organizationId
+      );
 
       if (stationData.entityGroups.length > 0) {
         tools.resolve_identity = new ResolveIdentityTool().build(

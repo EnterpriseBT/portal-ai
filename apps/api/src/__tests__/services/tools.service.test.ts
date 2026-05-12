@@ -90,6 +90,10 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   assertStationScope: jest.fn(),
   assertWriteCapability: jest.fn(),
   resolveCapabilities: jest.fn(),
+  // Phase 3 slice 2: PortalSqlService.buildSessionViews calls this; the
+  // tools.service test never reaches that code path, so an empty
+  // resolution is fine.
+  resolveEntityCapabilities: jest.fn(async () => ({})),
 }));
 
 // Mock fetch for webhook tests

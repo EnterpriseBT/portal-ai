@@ -42,6 +42,8 @@ import { db } from "../db/client.js";
 import { connectorInstances as connectorInstancesTable } from "../db/schema/index.js";
 import { createLogger } from "../utils/logger.util.js";
 import { VegaLiteSpecInput } from "../tools/visualize.tool.js";
+import { PortalSqlService } from "./portal-sql.service.js";
+import type { PortalSqlResponse } from "./portal-sql-response.util.js";
 
 const logger = createLogger({ module: "analytics-service" });
 
@@ -221,20 +223,6 @@ export interface ResolveIdentityResult {
     isPrimary: boolean;
     records: Record<string, unknown>[];
   }[];
-}
-
-// ---------------------------------------------------------------------------
-// SQL Blocklist
-// ---------------------------------------------------------------------------
-
-const SQL_BLOCKLIST = [/\bSELECT\s+INTO\b/i, /\bATTACH\b/i];
-
-function validateSql(sql: string): void {
-  for (const pattern of SQL_BLOCKLIST) {
-    if (pattern.test(sql)) {
-      throw new Error(`Blocked SQL operation: ${pattern.source}`);
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1019,35 +1007,47 @@ export class AnalyticsService {
   // -----------------------------------------------------------------------
 
   /**
-   * Execute a SQL query against in-memory AlaSQL tables.
-   * Validates SQL against an allowlist (blocks SELECT INTO, ATTACH).
+   * Execute a SQL query through the Phase 3 Postgres-direct pipeline.
+   *
+   * Delegates to `PortalSqlService.runSqlQuery` which: validates the
+   * SQL against the deny-list, optionally wraps with an implicit
+   * `LIMIT`, opens a `READ ONLY` transaction, materialises the
+   * station's per-call temp view set, executes, and emits the
+   * truncation envelope.
+   *
+   * The legacy AlaSQL execution path is still preloaded by
+   * `loadStation` (slice 5 deletes it) but is no longer read here.
    */
-  static sqlQuery(params: {
+  static async sqlQuery(params: {
     sql: string;
     stationId: string;
-  }): Record<string, unknown>[] {
-    const { sql, stationId } = params;
-    validateSql(sql);
-
-    const entry = stationDatabases.get(stationId);
-    if (!entry) {
-      throw new Error(`Station not loaded: ${stationId}`);
-    }
-
-    logger.info({ stationId, sql }, "Executing SQL query");
-    return entry.db.exec(sql) as Record<string, unknown>[];
+    organizationId: string;
+    rowCap?: number;
+    cellCap?: number;
+    payloadCap?: number;
+  }): Promise<PortalSqlResponse> {
+    logger.info(
+      { stationId: params.stationId, sql: params.sql },
+      "Executing portal sql_query against Postgres"
+    );
+    return PortalSqlService.runSqlQuery(params);
   }
 
   /**
-   * Run SQL then inject rows into a Vega-Lite spec.
+   * Run SQL then inject rows into a Vega-Lite spec. Pulls rows from
+   * the Postgres-direct `sqlQuery` envelope; payload-cap collapses
+   * (no `rows` field) result in an empty `values` array, which the
+   * visualize layer then renders as an empty chart.
    */
   static async visualize(params: {
     sql: string;
     vegaLiteSpec: VegaLiteSpecInput;
     stationId: string;
+    organizationId: string;
   }): Promise<VegaLiteSpec> {
-    const { sql, vegaLiteSpec, stationId } = params;
-    const rows = this.sqlQuery({ sql, stationId });
+    const { sql, vegaLiteSpec, stationId, organizationId } = params;
+    const response = await this.sqlQuery({ sql, stationId, organizationId });
+    const rows = "rows" in response ? response.rows : [];
     const spec = {
       ...vegaLiteSpec,
       data: { values: rows },
@@ -1068,9 +1068,11 @@ export class AnalyticsService {
     sql: string;
     vegaSpec: Record<string, unknown>;
     stationId: string;
+    organizationId: string;
   }): Promise<VegaSpec> {
-    const { sql, vegaSpec, stationId } = params;
-    const rows = this.sqlQuery({ sql, stationId });
+    const { sql, vegaSpec, stationId, organizationId } = params;
+    const response = await this.sqlQuery({ sql, stationId, organizationId });
+    const rows = "rows" in response ? response.rows : [];
     const specData = vegaSpec.data;
     const data: Data[] = Array.isArray(specData)
       ? ([...specData] as Data[])
