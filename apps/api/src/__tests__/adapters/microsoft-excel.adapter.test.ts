@@ -16,7 +16,11 @@ const softDeleteBeforeWatermarkMock =
       connectorEntityId: string,
       runStartedAt: number,
       userId: string
-    ) => Promise<number>
+    ) => Promise<string[]>
+  >();
+const wideTableSoftDeleteMock =
+  jest.fn<
+    (connectorEntityId: string, ids: ReadonlyArray<string>) => Promise<void>
   >();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
@@ -29,6 +33,9 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       },
       entityRecords: {
         softDeleteBeforeWatermark: softDeleteBeforeWatermarkMock,
+      },
+      wideTable: {
+        softDeleteByEntityRecordIds: wideTableSoftDeleteMock,
       },
     },
   },
@@ -107,6 +114,8 @@ beforeEach(() => {
   findCurrentByConnectorInstanceIdMock.mockReset();
   updateInstanceMock.mockReset();
   softDeleteBeforeWatermarkMock.mockReset();
+  wideTableSoftDeleteMock.mockReset();
+  wideTableSoftDeleteMock.mockResolvedValue(undefined);
   fetchWorkbookForSyncMock.mockReset();
   commitMock.mockReset();
   assertSyncEligibleIdentityMock.mockReset();
@@ -207,8 +216,8 @@ describe("microsoftExcelAdapter.syncInstance", () => {
       recordCounts: { created: 3, updated: 1, unchanged: 7 },
       connectorEntityIds: ["ce-1", "ce-2"],
     });
-    softDeleteBeforeWatermarkMock.mockResolvedValueOnce(2);
-    softDeleteBeforeWatermarkMock.mockResolvedValueOnce(1);
+    softDeleteBeforeWatermarkMock.mockResolvedValueOnce(["r1", "r2"]);
+    softDeleteBeforeWatermarkMock.mockResolvedValueOnce(["r3"]);
 
     const progress = jest.fn();
     const result = await microsoftExcelAdapter.syncInstance!(
@@ -223,6 +232,14 @@ describe("microsoftExcelAdapter.syncInstance", () => {
       unchanged: 7,
       deleted: 3,
     });
+
+    // Wide-table cascade fires per entity with the reaped ids.
+    expect(wideTableSoftDeleteMock).toHaveBeenCalledTimes(2);
+    expect(wideTableSoftDeleteMock).toHaveBeenNthCalledWith(1, "ce-1", [
+      "r1",
+      "r2",
+    ]);
+    expect(wideTableSoftDeleteMock).toHaveBeenNthCalledWith(2, "ce-2", ["r3"]);
     expect(fetchWorkbookForSyncMock).toHaveBeenCalledWith(
       INSTANCE.id,
       INSTANCE.organizationId
@@ -305,9 +322,9 @@ describe("microsoftExcelAdapter.syncInstance", () => {
       recordCounts: { created: 0, updated: 0, unchanged: 0 },
       connectorEntityIds: ["ce-a", "ce-b", "ce-c"],
     });
-    softDeleteBeforeWatermarkMock.mockResolvedValueOnce(5);
-    softDeleteBeforeWatermarkMock.mockResolvedValueOnce(3);
-    softDeleteBeforeWatermarkMock.mockResolvedValueOnce(2);
+    softDeleteBeforeWatermarkMock.mockResolvedValueOnce(["a1", "a2", "a3", "a4", "a5"]);
+    softDeleteBeforeWatermarkMock.mockResolvedValueOnce(["b1", "b2", "b3"]);
+    softDeleteBeforeWatermarkMock.mockResolvedValueOnce(["c1", "c2"]);
 
     const result = await microsoftExcelAdapter.syncInstance!(
       INSTANCE as never,

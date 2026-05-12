@@ -96,9 +96,10 @@ export async function importModeQueryRows(
   // Build a set of requested column keys for filtering
   const requestedKeys = query.columns ? new Set(query.columns) : null;
 
-  // Fetch records from entity_records
+  // Fetch records from entity_records via the hydrated repo so
+  // `normalizedData` is rebuilt from the wide table's typed columns.
   const [records, total] = await Promise.all([
-    entityRecordsRepo.findByConnectorEntityId(entity.id, {
+    entityRecordsRepo.findHydratedMany(entity.id, {
       limit: query.limit,
       offset: query.offset,
     }),

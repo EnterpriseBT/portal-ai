@@ -67,6 +67,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       },
       entityRecords: {
         findByConnectorEntityId: mockFindByConnectorEntityId_records,
+        findHydratedMany: mockFindByConnectorEntityId_records,
       },
       entityGroupMembers: {
         findByConnectorEntityId: mockFindByConnectorEntityId_members,

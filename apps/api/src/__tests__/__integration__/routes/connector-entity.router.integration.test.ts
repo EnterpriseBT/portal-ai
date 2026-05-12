@@ -840,6 +840,7 @@ describe("Connector Entity Router", () => {
           "organization_id",
           "synced_at",
           "is_valid",
+          "source_id",
         ])
       );
     });

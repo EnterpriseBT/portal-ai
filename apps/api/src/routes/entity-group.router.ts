@@ -929,17 +929,47 @@ entityGroupRouter.get(
 
       const results: EntityGroupResolveResponsePayload["results"] = [];
 
-      for (const member of enrichedMembers) {
-        const columnKey = member.columnDefinition!.key;
+      const { wideTableStatementCache } = await import(
+        "../services/wide-table-statement.cache.js"
+      );
+      const { entityRecords } = await import("../db/schema/index.js");
 
-        // Query entity_records where normalizedData->>columnKey = linkValue
-        const { entityRecords } = await import("../db/schema/index.js");
-        const records = await DbService.repository.entityRecords.findMany(
-          and(
-            eq(entityRecords.connectorEntityId, member.connectorEntityId),
-            sql`${entityRecords.normalizedData}->>${columnKey} = ${linkValue}`
-          )
+      for (const member of enrichedMembers) {
+        const normalizedKey = member.fieldMapping?.normalizedKey;
+        const columnKey = member.columnDefinition!.key;
+        if (!normalizedKey) {
+          results.push({
+            connectorEntityId: member.connectorEntityId,
+            connectorEntityLabel: member.connectorEntity!.label,
+            isPrimary: member.isPrimary,
+            records: [],
+          });
+          continue;
+        }
+
+        // Phase 2 transitional path: when the wide table for this
+        // entity is unreconciled (no `c_<key>` column yet), fall back
+        // to the JSONB lookup. Slice 6 removes this branch alongside
+        // the legacy column.
+        const stmt = await wideTableStatementCache.get(
+          member.connectorEntityId
         );
+        const colRefBuilder = stmt.columnRefByNormalizedKey.get(normalizedKey);
+        const where = colRefBuilder
+          ? and(
+              eq(entityRecords.connectorEntityId, member.connectorEntityId),
+              sql`${sql.raw(colRefBuilder("w"))} = ${linkValue}`
+            )
+          : and(
+              eq(entityRecords.connectorEntityId, member.connectorEntityId),
+              sql`${entityRecords.normalizedData}->>${columnKey} = ${linkValue}`
+            );
+
+        const records =
+          await DbService.repository.entityRecords.findHydratedMany(
+            member.connectorEntityId,
+            { where }
+          );
 
         results.push({
           connectorEntityId: member.connectorEntityId,

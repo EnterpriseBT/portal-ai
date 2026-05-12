@@ -1169,12 +1169,13 @@ fieldMappingRouter.get(
       const keyA = mapping.normalizedKey; // e.g. "enrolled_student_ids"
       const keyB = counterpart.normalizedKey; // e.g. "classes_enrolled_ids"
 
-      // 6. Load all records from both entities
+      // 6. Load all records from both entities with rehydrated
+      //    normalizedData (via the wide-table JOIN).
       const [recordsA, recordsB] = await Promise.all([
-        DbService.repository.entityRecords.findByConnectorEntityId(
+        DbService.repository.entityRecords.findHydratedMany(
           mapping.connectorEntityId
         ),
-        DbService.repository.entityRecords.findByConnectorEntityId(
+        DbService.repository.entityRecords.findHydratedMany(
           counterpart.connectorEntityId
         ),
       ]);

@@ -374,12 +374,13 @@ export class AnalyticsService {
         columns,
       });
 
-      // Fetch records and extract normalizedData with record metadata
-      const entityRecords = await repo.entityRecords.findByConnectorEntityId(
-        entity.id
-      );
+      // Fetch records via the hydrated repo so `normalizedData` is
+      // rebuilt from the wide table's typed columns rather than the
+      // (soon-to-be-dropped) JSONB column on entity_records.
+      const entityRecords =
+        await repo.entityRecords.findHydratedMany(entity.id);
       const rows = entityRecords
-        .map((r: any) => {
+        .map((r: { id: string; normalizedData?: Record<string, unknown> }) => {
           if (!r.normalizedData) return null;
           return {
             _record_id: r.id,
@@ -1007,11 +1008,10 @@ export class AnalyticsService {
       throw new Error(`Entity not found: ${entityKey}`);
     }
 
-    const records = await repo.entityRecords.findByConnectorEntityId(entity.id);
-    return records.map((r: any) => r.normalizedData).filter(Boolean) as Record<
-      string,
-      unknown
-    >[];
+    const records = await repo.entityRecords.findHydratedMany(entity.id);
+    return records
+      .map((r: { normalizedData?: Record<string, unknown> }) => r.normalizedData)
+      .filter(Boolean) as Record<string, unknown>[];
   }
 
   // -----------------------------------------------------------------------

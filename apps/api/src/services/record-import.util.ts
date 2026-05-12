@@ -22,6 +22,11 @@ import { DbService } from "./db.service.js";
 import { NormalizationService } from "./normalization.service.js";
 import { fieldMappings } from "../db/schema/index.js";
 import { createLogger } from "../utils/logger.util.js";
+import { wideTableStatementCache } from "./wide-table-statement.cache.js";
+import {
+  projectToWideRow,
+  buildMappingsForProjection,
+} from "./wide-table-projection.util.js";
 
 const logger = createLogger({ module: "record-import" });
 
@@ -136,9 +141,22 @@ export async function importRows(
     }
 
     if (toUpsert.length > 0) {
-      await DbService.repository.entityRecords.upsertManyBySourceId(
-        toUpsert as any
-      );
+      await DbService.transaction(async (tx) => {
+        await DbService.repository.entityRecords.upsertManyBySourceId(
+          toUpsert as any,
+          tx
+        );
+        const stmt = await wideTableStatementCache.get(
+          connectorEntityId,
+          tx
+        );
+        const mappingsForProjection = buildMappingsForProjection(stmt.columns);
+        await DbService.repository.wideTable.upsertMany(
+          connectorEntityId,
+          (toUpsert as any[]).map((r) => projectToWideRow(r, mappingsForProjection)),
+          tx
+        );
+      });
     }
 
     totalProcessed += pending.length;

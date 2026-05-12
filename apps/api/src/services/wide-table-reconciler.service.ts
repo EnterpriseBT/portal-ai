@@ -168,7 +168,8 @@ export class WideTableReconcilerService {
             `REFERENCES "entity_records"("id") ON DELETE CASCADE, ` +
             `"organization_id" text NOT NULL, ` +
             `"synced_at" bigint NOT NULL, ` +
-            `"is_valid" boolean NOT NULL` +
+            `"is_valid" boolean NOT NULL, ` +
+            `"source_id" text NOT NULL` +
             `)`
         )
       );
@@ -177,6 +178,13 @@ export class WideTableReconcilerService {
           `CREATE INDEX IF NOT EXISTS ${quoteIdent(
             `er__${connectorEntityId}__org_idx`
           )} ON ${tableName} ("organization_id")`
+        )
+      );
+      await (tx as typeof db).execute(
+        sql.raw(
+          `CREATE UNIQUE INDEX IF NOT EXISTS ${quoteIdent(
+            `er__${connectorEntityId}__source_id_unique`
+          )} ON ${tableName} ("source_id")`
         )
       );
     });

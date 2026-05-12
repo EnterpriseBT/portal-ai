@@ -14,8 +14,16 @@ const mockFieldMappingsFindMany = jest
   .fn<(...args: unknown[]) => Promise<unknown[]>>()
   .mockResolvedValue([]);
 
+const mockWideTableUpsertMany = jest
+  .fn<(...a: unknown[]) => Promise<void>>()
+  .mockResolvedValue(undefined);
+const mockDbTransaction = jest
+  .fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
+  .mockImplementation((fn) => fn("mock-tx"));
+
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
+    transaction: mockDbTransaction,
     repository: {
       entityRecords: {
         findBySourceIds: mockFindBySourceIds,
@@ -24,9 +32,36 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       fieldMappings: {
         findMany: mockFieldMappingsFindMany,
       },
+      wideTable: { upsertMany: mockWideTableUpsertMany },
     },
   },
 }));
+
+jest.unstable_mockModule(
+  "../../services/wide-table-statement.cache.js",
+  () => ({
+    wideTableStatementCache: {
+      get: jest
+        .fn<(...a: unknown[]) => Promise<{ columns: unknown[] }>>()
+        .mockResolvedValue({ columns: [] }),
+    },
+    WIDE_TABLE_METADATA_COLUMNS: [
+      "entity_record_id",
+      "organization_id",
+      "synced_at",
+      "is_valid",
+      "source_id",
+    ],
+  })
+);
+
+jest.unstable_mockModule(
+  "../../services/wide-table-projection.util.js",
+  () => ({
+    projectToWideRow: jest.fn(() => ({})),
+    buildMappingsForProjection: jest.fn(() => new Map()),
+  })
+);
 
 jest.unstable_mockModule("../../db/schema/index.js", () => ({
   fieldMappings: { connectorEntityId: "connectorEntityId" },

@@ -182,7 +182,7 @@ describe("EntityRecordsRepository Integration Tests", () => {
         "user-1",
         db
       );
-      expect(affected).toBe(4);
+      expect(affected).toHaveLength(4);
 
       for (const id of ids) {
         const row = await readRow(id);
@@ -204,7 +204,7 @@ describe("EntityRecordsRepository Integration Tests", () => {
         "user-1",
         db
       );
-      expect(affected).toBe(2);
+      expect(affected).toHaveLength(2);
 
       expect((await readRow(oldA.id!))?.deleted).not.toBeNull();
       expect((await readRow(oldB.id!))?.deleted).not.toBeNull();
@@ -224,7 +224,7 @@ describe("EntityRecordsRepository Integration Tests", () => {
         "user-1",
         db
       );
-      expect(affected).toBe(1);
+      expect(affected).toHaveLength(1);
 
       expect((await readRow(atWatermark.id!))?.deleted).toBeNull();
       expect((await readRow(belowWatermark.id!))?.deleted).not.toBeNull();
@@ -242,7 +242,7 @@ describe("EntityRecordsRepository Integration Tests", () => {
         "user-1",
         db
       );
-      expect(affected).toBe(1);
+      expect(affected).toHaveLength(1);
 
       expect((await readRow(aOld.id!))?.deleted).not.toBeNull();
       // Entity B's row stays live.
@@ -259,7 +259,7 @@ describe("EntityRecordsRepository Integration Tests", () => {
         "user-1",
         db
       );
-      expect(first).toBe(1);
+      expect(first).toHaveLength(1);
       const firstDeletedAt = (await readRow(old.id!))?.deleted;
       expect(firstDeletedAt).not.toBeNull();
 
@@ -273,7 +273,7 @@ describe("EntityRecordsRepository Integration Tests", () => {
         "user-2",
         db
       );
-      expect(second).toBe(0);
+      expect(second).toHaveLength(0);
 
       const row = await readRow(old.id!);
       // deleted timestamp + deletedBy are unchanged by the no-op second run.
@@ -290,7 +290,7 @@ describe("EntityRecordsRepository Integration Tests", () => {
         "user-1",
         db
       );
-      expect(affected).toBe(0);
+      expect(affected).toHaveLength(0);
     });
   });
 });

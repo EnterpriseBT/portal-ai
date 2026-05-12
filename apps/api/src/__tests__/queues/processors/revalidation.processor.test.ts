@@ -13,14 +13,23 @@ const mockEntityRecordsUpdate =
   jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockNormalizeWithMappings = jest.fn<(...args: unknown[]) => unknown>();
 
+const mockWideTableUpdatePartial = jest
+  .fn<(...a: unknown[]) => Promise<void>>()
+  .mockResolvedValue(undefined);
+const mockDbTransaction = jest
+  .fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
+  .mockImplementation((fn) => fn("mock-tx"));
+
 jest.unstable_mockModule("../../../services/db.service.js", () => ({
   DbService: {
+    transaction: mockDbTransaction,
     repository: {
       fieldMappings: { findMany: mockFieldMappingsFindMany },
       entityRecords: {
         findByConnectorEntityId: mockEntityRecordsFindByConnectorEntityId,
         update: mockEntityRecordsUpdate,
       },
+      wideTable: { updatePartial: mockWideTableUpdatePartial },
     },
   },
 }));
@@ -138,11 +147,15 @@ describe("revalidationProcessor", () => {
     const bullJob = createMockBullJob();
     await revalidationProcessor(bullJob);
 
-    expect(mockEntityRecordsUpdate).toHaveBeenCalledWith("r-1", {
-      normalizedData: { name: "Alice" },
-      validationErrors: null,
-      isValid: true,
-    });
+    expect(mockEntityRecordsUpdate).toHaveBeenCalledWith(
+      "r-1",
+      {
+        normalizedData: { name: "Alice" },
+        validationErrors: null,
+        isValid: true,
+      },
+      "mock-tx"
+    );
   });
 
   it("reports progress at expected intervals", async () => {

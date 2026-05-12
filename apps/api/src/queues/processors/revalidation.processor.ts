@@ -87,16 +87,33 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
       };
     });
 
-    // Batch update records
-    await Promise.all(
-      updates.map((u) =>
-        DbService.repository.entityRecords.update(u.id, {
-          normalizedData: u.normalizedData,
-          validationErrors: u.validationErrors,
-          isValid: u.isValid,
-        } as never)
-      )
-    );
+    // Batch update records — write to both stores in one transaction
+    // so the wide-table state remains coherent with the transactional
+    // row's `is_valid` flag.
+    await DbService.transaction(async (tx) => {
+      await Promise.all(
+        updates.map((u) =>
+          DbService.repository.entityRecords.update(
+            u.id,
+            {
+              normalizedData: u.normalizedData,
+              validationErrors: u.validationErrors,
+              isValid: u.isValid,
+            } as never,
+            tx
+          )
+        )
+      );
+      for (const u of updates) {
+        await DbService.repository.wideTable.updatePartial(
+          connectorEntityId,
+          u.id,
+          u.normalizedData,
+          { isValid: u.isValid },
+          tx
+        );
+      }
+    });
 
     // Progress: 20-90 range spread across batches
     const progress = Math.round(20 + ((i + batch.length) / total) * 70);

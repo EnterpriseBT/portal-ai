@@ -36,11 +36,16 @@ const mockFindEntityById = jest
   .fn<(...a: unknown[]) => Promise<unknown>>()
   .mockResolvedValue({ id: "ce-1", key: "customers", label: "My Entity" });
 
+const mockWideTableUpsertMany = jest
+  .fn<(...a: unknown[]) => Promise<void>>()
+  .mockResolvedValue(undefined);
+
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       entityRecords: { createMany: mockCreateMany },
       connectorEntities: { findById: mockFindEntityById },
+      wideTable: { upsertMany: mockWideTableUpsertMany },
     },
   },
 }));
@@ -52,6 +57,32 @@ jest.unstable_mockModule("../../services/analytics.service.js", () => ({
 jest.unstable_mockModule("../../db/repositories/base.repository.js", () => ({
   Repository: { transaction: mockTransaction },
 }));
+
+jest.unstable_mockModule(
+  "../../services/wide-table-statement.cache.js",
+  () => ({
+    wideTableStatementCache: {
+      get: jest
+        .fn<(...a: unknown[]) => Promise<{ columns: unknown[] }>>()
+        .mockResolvedValue({ columns: [] }),
+    },
+    WIDE_TABLE_METADATA_COLUMNS: [
+      "entity_record_id",
+      "organization_id",
+      "synced_at",
+      "is_valid",
+      "source_id",
+    ],
+  })
+);
+
+jest.unstable_mockModule(
+  "../../services/wide-table-projection.util.js",
+  () => ({
+    projectToWideRow: jest.fn(() => ({})),
+    buildMappingsForProjection: jest.fn(() => new Map()),
+  })
+);
 
 const { EntityRecordCreateTool } =
   await import("../../tools/entity-record-create.tool.js");

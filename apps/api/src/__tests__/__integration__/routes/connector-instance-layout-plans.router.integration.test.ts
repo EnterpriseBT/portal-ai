@@ -745,6 +745,22 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(records).toHaveLength(2);
       expect(records[0].normalizedData).toHaveProperty("email");
       expect(records[0].normalizedData).toHaveProperty("name");
+
+      // Phase 2 Slice 2 — case 18: every entity_records row has a
+      // matching `er__<id>` row with the data columns populated.
+      const entityId = result.connectorEntityIds[0]!;
+      const wideRows = await (db as Db).execute(
+        // dynamic table — must build identifier manually.
+        (await import("drizzle-orm")).sql.raw(`SELECT * FROM "er__${entityId}"`)
+      );
+      const rows = wideRows as unknown as Record<string, unknown>[];
+      expect(rows).toHaveLength(2);
+      const byEmail = new Map(rows.map((r) => [r.c_email, r]));
+      expect(byEmail.get("a@x.com")).toBeDefined();
+      expect(byEmail.get("a@x.com")!.c_name).toBe("alice");
+      expect(byEmail.get("a@x.com")!.source_id).toBeTruthy();
+      expect(byEmail.get("a@x.com")!.is_valid).toBe(true);
+      expect(byEmail.get("b@x.com")!.c_name).toBe("bob");
     });
 
     // Regression: two source columns mapped to the same ColumnDefinition
@@ -1215,7 +1231,7 @@ describe("Connector Instance Layout Plans Router", () => {
       };
       const planId = await insertPlanRow(db as Db, plan);
 
-      await commitInline(planId, contactsWorkbook());
+      const first = await commitInline(planId, contactsWorkbook());
       const second = await commitInline(planId, contactsWorkbook());
 
       expect(second.recordCounts.unchanged).toBe(2);
@@ -1224,6 +1240,16 @@ describe("Connector Instance Layout Plans Router", () => {
 
       const records = await (db as Db).select().from(schema.entityRecords);
       expect(records).toHaveLength(2);
+
+      // Phase 2 Slice 2 — re-commit doesn't double the wide-table rows
+      // and the unchanged-path bumps `synced_at` on both sides.
+      const entityId = first.connectorEntityIds[0]!;
+      const wideRows = (await (db as Db).execute(
+        (await import("drizzle-orm")).sql.raw(
+          `SELECT * FROM "er__${entityId}"`
+        )
+      )) as unknown as Record<string, unknown>[];
+      expect(wideRows).toHaveLength(2);
     });
 
     it("returns 409 LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED when the workbook has duplicate identity values", async () => {
