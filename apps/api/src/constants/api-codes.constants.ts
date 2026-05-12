@@ -293,4 +293,10 @@ export enum ApiCode {
   // Admin / re-sync trigger
   /** A wide-table resync trigger failed to fan out to one or more instances. */
   WIDE_TABLE_RESYNC_FAILED = "WIDE_TABLE_RESYNC_FAILED",
+
+  // Portal SQL surface (Phase 3)
+  /** The LLM-supplied SQL hit the deny-list or other safety guard. */
+  PORTAL_SQL_FORBIDDEN = "PORTAL_SQL_FORBIDDEN",
+  /** Postgres' `statement_timeout` fired on a portal sql_query. */
+  PORTAL_SQL_TIMEOUT = "PORTAL_SQL_TIMEOUT",
 }

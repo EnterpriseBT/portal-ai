@@ -47,6 +47,78 @@ export class WideTableRepository {
   }
 
   /**
+   * Project a subset of typed columns from `er__<connector_entity_id>`
+   * keyed by `normalizedKey`, scoped to the organization and live
+   * (non-soft-deleted) rows. Used by Phase 3's math methods to pull
+   * exactly the columns they need without loading the whole table.
+   *
+   * `columns` are field-mapping `normalized_key` strings; the helper
+   * resolves them to the underlying `c_*` columns via the statement
+   * cache. Unknown keys throw a focused error so the math layer can
+   * surface a clear message to the LLM.
+   *
+   * Returned rows are keyed by `normalizedKey` (not `columnName`) so
+   * math callers can use their existing `row.amount` / `row.age` etc.
+   * accessors unchanged.
+   */
+  async fetchProjectedRows(
+    connectorEntityId: string,
+    columns: ReadonlyArray<string>,
+    opts: {
+      organizationId: string;
+      where?: SQL;
+      limit?: number;
+    },
+    client: DbClient = db
+  ): Promise<Record<string, unknown>[]> {
+    const stmt = await this.statementCache.get(connectorEntityId, client);
+
+    // Resolve each requested normalizedKey to its typed column.
+    const projection: { normalizedKey: string; columnName: string }[] = [];
+    const unknown: string[] = [];
+    for (const key of columns) {
+      const cached = stmt.columns.find((c) => c.normalizedKey === key);
+      if (!cached) {
+        unknown.push(key);
+        continue;
+      }
+      projection.push({
+        normalizedKey: key,
+        columnName: cached.columnName,
+      });
+    }
+    if (unknown.length > 0) {
+      throw new Error(
+        `fetchProjectedRows: unknown columns for entity ${connectorEntityId}: ${unknown.join(", ")}`
+      );
+    }
+
+    const tableName = `"${this.tableName(connectorEntityId)}"`;
+    const colRefs = projection.map(
+      (p) => `w."${p.columnName}" AS "${p.normalizedKey}"`
+    );
+    const colList =
+      colRefs.length > 0
+        ? `w."entity_record_id" AS "_record_id", ${colRefs.join(", ")}`
+        : `w."entity_record_id" AS "_record_id"`;
+
+    const limitClause =
+      opts.limit !== undefined ? sql` LIMIT ${opts.limit}` : sql``;
+    const whereExtra = opts.where ? sql` AND (${opts.where})` : sql``;
+
+    const rows = await (client as typeof db).execute(sql`
+      SELECT ${sql.raw(colList)}
+      FROM ${sql.raw(tableName)} w
+      JOIN entity_records er ON er.id = w."entity_record_id"
+      WHERE w."organization_id" = ${opts.organizationId}
+        AND er.deleted IS NULL
+        ${whereExtra}
+      ${limitClause}
+    `);
+    return rows as unknown as Record<string, unknown>[];
+  }
+
+  /**
    * Read specific rows by `entity_record_id`. Order of the input ids
    * is not preserved — Postgres decides.
    */

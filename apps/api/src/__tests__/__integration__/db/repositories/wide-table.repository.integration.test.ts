@@ -539,4 +539,125 @@ describe("WideTableRepository integration tests", () => {
     >;
     expect(rows).toHaveLength(0);
   });
+
+  // ── Phase 3 Slice 1 — fetchProjectedRows ─────────────────────────
+
+  it("fetchProjectedRows returns the requested columns keyed by normalizedKey", async () => {
+    const r1 = generateId();
+    const r2 = generateId();
+    await insertEntityRecord(r1, "src-1");
+    await insertEntityRecord(r2, "src-2");
+    const now = Date.now();
+    await repo.upsertMany(entityId, [
+      {
+        entity_record_id: r1,
+        organization_id: orgId,
+        synced_at: now,
+        is_valid: true,
+        source_id: "src-1",
+        c_amount: 100,
+        c_stage: "open",
+      },
+      {
+        entity_record_id: r2,
+        organization_id: orgId,
+        synced_at: now,
+        is_valid: true,
+        source_id: "src-2",
+        c_amount: 250,
+        c_stage: "won",
+      },
+    ]);
+
+    const rows = await repo.fetchProjectedRows(
+      entityId,
+      ["amount"],
+      { organizationId: orgId, limit: 10 }
+    );
+    expect(rows).toHaveLength(2);
+    // Each row keyed by _record_id + the requested normalizedKeys.
+    expect(rows[0]).toHaveProperty("_record_id");
+    expect(rows[0]).toHaveProperty("amount");
+    // Numeric column comes back as a stringified number from Postgres.
+    const amounts = new Set(rows.map((r) => String(r.amount)));
+    expect(amounts).toEqual(new Set(["100", "250"]));
+  });
+
+  it("fetchProjectedRows accepts a `where` filter on a typed column", async () => {
+    const r1 = generateId();
+    const r2 = generateId();
+    await insertEntityRecord(r1, "src-1");
+    await insertEntityRecord(r2, "src-2");
+    const now = Date.now();
+    await repo.upsertMany(entityId, [
+      {
+        entity_record_id: r1,
+        organization_id: orgId,
+        synced_at: now,
+        is_valid: true,
+        source_id: "src-1",
+        c_amount: 100,
+      },
+      {
+        entity_record_id: r2,
+        organization_id: orgId,
+        synced_at: now,
+        is_valid: true,
+        source_id: "src-2",
+        c_amount: 250,
+      },
+    ]);
+
+    const rows = await repo.fetchProjectedRows(
+      entityId,
+      ["amount"],
+      {
+        organizationId: orgId,
+        where: sql`w."c_amount" > 200`,
+      }
+    );
+    expect(rows).toHaveLength(1);
+    expect(String(rows[0]!.amount)).toBe("250");
+  });
+
+  it("fetchProjectedRows excludes soft-deleted rows", async () => {
+    const r1 = generateId();
+    await insertEntityRecord(r1, "src-1");
+    const now = Date.now();
+    await repo.upsertMany(entityId, [
+      {
+        entity_record_id: r1,
+        organization_id: orgId,
+        synced_at: now,
+        is_valid: true,
+        source_id: "src-1",
+        c_amount: 100,
+      },
+    ]);
+    // Soft-delete the entity_records row.
+    const { entityRecords: entityRecordsTable } = await import(
+      "../../../../db/schema/index.js"
+    );
+    const drizzleSql = (await import("drizzle-orm")).sql;
+    await db.execute(
+      drizzleSql`UPDATE ${entityRecordsTable} SET deleted = ${now}, deleted_by = 'test' WHERE id = ${r1}`
+    );
+
+    const rows = await repo.fetchProjectedRows(
+      entityId,
+      ["amount"],
+      { organizationId: orgId }
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it("fetchProjectedRows throws on unknown normalizedKey", async () => {
+    await expect(
+      repo.fetchProjectedRows(
+        entityId,
+        ["does_not_exist"],
+        { organizationId: orgId }
+      )
+    ).rejects.toThrow(/unknown columns/);
+  });
 });

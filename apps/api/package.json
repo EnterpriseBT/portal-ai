@@ -61,6 +61,7 @@
     "ioredis": "^5.10.0",
     "ipaddr.js": "^1.9.1",
     "ml-kmeans": "^7.0.0",
+    "node-sql-parser": "^5.4.0",
     "ollama-ai-provider-v2": "^3.3.1",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
