@@ -19,7 +19,19 @@
 
 import type { CellValue, RegionDraft, SheetPreview } from "./region-editor.types";
 
-export type LocatorUniqueness = "unique" | "non-unique" | "all-blank";
+/**
+ * `"unique"` / `"non-unique"` / `"all-blank"` are conclusive verdicts
+ * over every row in the region's range. `"unknown"` is the sliced-sheet
+ * verdict: at least one row in the range isn't loaded into
+ * `sheet.cells` yet, so we can't tell. The commit-time drift gate is
+ * the authoritative check in that case — see
+ * `assertDriftAllowsCommit` / `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`.
+ */
+export type LocatorUniqueness =
+  | "unique"
+  | "non-unique"
+  | "all-blank"
+  | "unknown";
 
 export interface LocatorOption {
   /** Stable opaque key used by the dropdown's selection state. */
@@ -52,7 +64,16 @@ function recordsAxisOfDraft(region: RegionDraft): "row" | "column" | undefined {
   return undefined;
 }
 
-function classifyUniqueness(values: string[]): LocatorUniqueness {
+function classifyUniqueness(
+  values: string[],
+  anyUnloaded: boolean
+): LocatorUniqueness {
+  // If even one row in the range isn't loaded into `sheet.cells`, the
+  // verdict isn't authoritative — sliced sheets (>~30 visible rows on
+  // a large workbook) read the rest as `undefined` and would otherwise
+  // be lumped in with genuine blanks, producing a false `"unique"`
+  // verdict that the commit-time drift gate then rejects.
+  if (anyUnloaded) return "unknown";
   const nonEmpty = values.filter((v) => v !== "");
   if (nonEmpty.length === 0) return "all-blank";
   if (new Set(nonEmpty).size !== nonEmpty.length) return "non-unique";
@@ -79,16 +100,29 @@ export function computeLocatorOptions(
     // (the editor's preview pipeline uses the same default).
     const headerRow = bounds.startRow;
     const dataStart = headerRow + 1;
+    // Pre-compute which rows in the data range are loaded — sliced
+    // sheets leave `sheet.cells[r]` as `undefined` for rows the canvas
+    // hasn't fetched yet. The per-column scan below downgrades the
+    // verdict to `"unknown"` whenever this is true.
+    let anyUnloaded = false;
+    for (let r = dataStart; r <= bounds.endRow; r++) {
+      if (sheet.cells[r] === undefined) {
+        anyUnloaded = true;
+        break;
+      }
+    }
     for (let c = bounds.startCol; c <= bounds.endCol; c++) {
       const headerCell = cellText(sheet.cells[headerRow]?.[c]);
       const values: string[] = [];
       for (let r = dataStart; r <= bounds.endRow; r++) {
-        values.push(cellText(sheet.cells[r]?.[c]));
+        const row = sheet.cells[r];
+        if (row === undefined) continue;
+        values.push(cellText(row[c]));
       }
       out.push({
         key: `col:${c}`,
         label: headerCell.trim() !== "" ? headerCell : `col ${c + 1}`,
-        uniqueness: classifyUniqueness(values),
+        uniqueness: classifyUniqueness(values, anyUnloaded),
         axis: "column",
         index: c,
       });
@@ -101,6 +135,21 @@ export function computeLocatorOptions(
   const dataStart = headerCol + 1;
   for (let r = bounds.startRow; r <= bounds.endRow; r++) {
     const headerCell = cellText(sheet.cells[r]?.[headerCol]);
+    // For pivoted records (records-are-columns), an unloaded header row
+    // means we can't tell the row's values at all — flag the whole row's
+    // option as `"unknown"`. Inner-cell unloads are folded into the same
+    // verdict since the data range is along columns of a single loaded
+    // row; an unloaded source row implies no data at all.
+    if (sheet.cells[r] === undefined) {
+      out.push({
+        key: `row:${r}`,
+        label: `row ${r + 1}`,
+        uniqueness: "unknown",
+        axis: "row",
+        index: r,
+      });
+      continue;
+    }
     const values: string[] = [];
     for (let c = dataStart; c <= bounds.endCol; c++) {
       values.push(cellText(sheet.cells[r]?.[c]));
@@ -108,7 +157,7 @@ export function computeLocatorOptions(
     out.push({
       key: `row:${r}`,
       label: headerCell.trim() !== "" ? headerCell : `row ${r + 1}`,
-      uniqueness: classifyUniqueness(values),
+      uniqueness: classifyUniqueness(values, false),
       axis: "row",
       index: r,
     });

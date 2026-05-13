@@ -46,6 +46,10 @@ function uniquenessTag(uniqueness: LocatorOption["uniqueness"]): string {
       return "may have duplicates";
     case "all-blank":
       return "all blank";
+    case "unknown":
+      // Sliced-sheet verdict: preview window can't confirm uniqueness;
+      // the commit-time drift gate is the authoritative check.
+      return "uniqueness unknown — verified at commit";
   }
 }
 
@@ -121,6 +125,15 @@ export const IdentityPanelUI: React.FC<IdentityPanelUIProps> = ({
   const showDuplicateWarning =
     currentSelection.kind === "column" &&
     selectedOption?.uniqueness === "non-unique";
+  // For sliced sheets (large workbooks), the preview window can't
+  // confirm uniqueness across the entire data range. Surface a softer
+  // warning so the user knows the commit-time drift gate is the
+  // authoritative check — and that picking a locator the full data
+  // set duplicates will fail the commit with
+  // `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`.
+  const showUnknownNotice =
+    currentSelection.kind === "column" &&
+    selectedOption?.uniqueness === "unknown";
 
   return (
     <Box
@@ -173,6 +186,18 @@ export const IdentityPanelUI: React.FC<IdentityPanelUIProps> = ({
               This locator has duplicate values; sync will fail with a
               unique-key conflict during upsert. Pick another field or use
               position-based ids.
+            </Typography>
+          </Alert>
+        )}
+
+        {showUnknownNotice && (
+          <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+            <Typography variant="caption">
+              The preview only loaded part of the sheet, so duplicates in
+              unloaded rows can&apos;t be detected here. Commit will fail
+              with a duplicate-identity error if the full data set has
+              repeats — switch to position-based ids if you&apos;re not
+              sure.
             </Typography>
           </Alert>
         )}
