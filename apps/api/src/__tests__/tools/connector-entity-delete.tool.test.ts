@@ -34,10 +34,6 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
     repository: { connectorEntities: { findById: mockFindEntityById } },
   },
 }));
-jest.unstable_mockModule("../../services/analytics.service.js", () => ({
-  AnalyticsService: { applyEntityDeleteMany: jest.fn() },
-}));
-
 const { ConnectorEntityDeleteTool } =
   await import("../../tools/connector-entity-delete.tool.js");
 

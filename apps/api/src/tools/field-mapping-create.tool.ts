@@ -4,7 +4,6 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
-import { AnalyticsService } from "../services/analytics.service.js";
 import { FieldMappingModelFactory } from "@portalai/core/models";
 import {
   assertStationScope,
@@ -162,16 +161,6 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
               results.push(result);
             }
           });
-
-          // ── Phase 3: Cache ─────────────────────────────────────────
-          const cacheRows = items.map((item, idx) => ({
-            id: results[idx].id,
-            connector_entity_id: item.connectorEntityId,
-            column_definition_id: item.columnDefinitionId,
-            source_field: item.sourceField,
-            is_primary_key: item.isPrimaryKey ?? false,
-          }));
-          AnalyticsService.applyFieldMappingInsertMany(stationId, cacheRows);
 
           return {
             success: true,

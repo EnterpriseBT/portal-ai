@@ -36,10 +36,6 @@ jest.unstable_mockModule(
     },
   })
 );
-jest.unstable_mockModule("../../services/analytics.service.js", () => ({
-  AnalyticsService: { applyFieldMappingDeleteMany: jest.fn() },
-}));
-
 const { FieldMappingDeleteTool } =
   await import("../../tools/field-mapping-delete.tool.js");
 

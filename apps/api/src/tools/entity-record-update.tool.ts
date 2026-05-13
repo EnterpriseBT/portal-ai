@@ -4,7 +4,6 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
-import { AnalyticsService } from "../services/analytics.service.js";
 import {
   assertStationScope,
   assertWriteCapability,
@@ -199,29 +198,6 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
             }
             return rowsUpdated;
           });
-
-          // ── Phase 3: Cache ─────────────────────────────────────────
-          for (const [connectorEntityId, groupItems] of groups) {
-            const entity =
-              await DbService.repository.connectorEntities.findById(
-                connectorEntityId
-              );
-            if (!entity) continue;
-            const rows = groupItems.map((item) => {
-              const idx = items.indexOf(item);
-              const norm = normResults[idx];
-              return {
-                _record_id: item.entityRecordId,
-                _connector_entity_id: connectorEntityId,
-                ...norm.normalizedData,
-              };
-            });
-            AnalyticsService.applyRecordUpdateMany(
-              stationId,
-              (entity as any).key,
-              rows
-            );
-          }
 
           return {
             success: true,

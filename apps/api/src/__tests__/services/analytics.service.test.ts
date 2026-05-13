@@ -303,7 +303,9 @@ describe("AnalyticsService", () => {
   });
 
   afterEach(() => {
-    AnalyticsService.cleanup(STATION_ID);
+    // Phase 3 slice 5: `AnalyticsService.cleanup` no longer exists — the
+    // station's in-memory AlaSQL state went with the slice. Nothing to
+    // clean up here.
   });
 
   // -----------------------------------------------------------------------
@@ -311,7 +313,7 @@ describe("AnalyticsService", () => {
   // -----------------------------------------------------------------------
 
   describe("loadStation()", () => {
-    it("should load entities, records, and register AlaSQL tables", async () => {
+    it("returns entity metadata and entity groups (no records map after slice 5)", async () => {
       setupLoadStationMocks();
 
       const result = await AnalyticsService.loadStation(STATION_ID, ORG_ID);
@@ -323,7 +325,7 @@ describe("AnalyticsService", () => {
         "products",
       ]);
 
-      // Verify columns were built from field mappings
+      // Columns built from field mappings
       const customersEntity = result.entities.find(
         (e) => e.key === "customers"
       )!;
@@ -331,27 +333,18 @@ describe("AnalyticsService", () => {
       expect(customersEntity.columns.map((c) => c.key)).toContain("name");
       expect(customersEntity.columns.map((c) => c.key)).toContain("email");
 
-      // Verify records
-      expect(result.records.get("customers")).toHaveLength(3);
-      expect(result.records.get("orders")).toHaveLength(4);
-      expect(result.records.get("products")).toHaveLength(2);
-
-      // Verify AlaSQL tables work — disabled in Phase 3 slice 2: the
-      // sqlQuery surface moved to Postgres-direct, and the AlaSQL
-      // station preload no longer feeds it. Slice 5 deletes both the
-      // helper and this verification.
-      // const sqlResult = await AnalyticsService.sqlQuery({ ... });
-      // expect(sqlResult).toHaveLength(3);
+      // The records map is gone — loadStation is metadata-only after
+      // Phase 3 slice 5.
+      expect("records" in result).toBe(false);
     });
 
-    it("should return empty when station has no connector instances", async () => {
+    it("returns empty entities/entityGroups when station has no connector instances", async () => {
       mockFindByStationId.mockResolvedValue([]);
 
       const result = await AnalyticsService.loadStation(STATION_ID, ORG_ID);
 
       expect(result.entities).toHaveLength(0);
       expect(result.entityGroups).toHaveLength(0);
-      expect(result.records.size).toBe(0);
     });
 
     it("should return empty when station has no entities", async () => {
@@ -3909,6 +3902,119 @@ describe("AnalyticsService", () => {
     it("tInverseCDF(0.95, large df) approaches the standard-normal 95th pctl", () => {
       // Standard normal: Φ⁻¹(0.95) ≈ 1.6449
       expect(svc.tInverseCDF(0.95, 1000)).toBeCloseTo(1.6449, 2);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Phase 3 slice 5 — AlaSQL surface deletion (cases 66-70)
+  // ─────────────────────────────────────────────────────────────────────
+
+  describe("AlaSQL surface deletion (slice 5)", () => {
+    // Case 67
+    it("does not export the cache surface (stationDatabases, getOrCreateDatabase, dropDatabase, cleanup)", () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const svc: Record<string, unknown> = AnalyticsService as any;
+      for (const name of [
+        "stationDatabases",
+        "getOrCreateDatabase",
+        "dropDatabase",
+        "cleanup",
+      ]) {
+        expect(svc[name]).toBeUndefined();
+      }
+    });
+
+    // Case 67
+    it("does not expose any apply*/cache* surface", () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const svc: Record<string, unknown> = AnalyticsService as any;
+      const applyMethods = [
+        "applyRecordInsert",
+        "applyRecordUpdate",
+        "applyRecordDelete",
+        "applyRecordInsertMany",
+        "applyRecordUpdateMany",
+        "applyRecordDeleteMany",
+        "applyEntityInsert",
+        "applyEntityUpdate",
+        "applyEntityDelete",
+        "applyEntityInsertMany",
+        "applyEntityUpdateMany",
+        "applyEntityDeleteMany",
+        "applyColumnDefinitionInsert",
+        "applyColumnDefinitionUpdate",
+        "applyColumnDefinitionDelete",
+        "applyFieldMappingInsert",
+        "applyFieldMappingUpdate",
+        "applyFieldMappingDelete",
+        "applyFieldMappingInsertMany",
+        "applyFieldMappingUpdateMany",
+        "applyFieldMappingDeleteMany",
+        "cacheInsert",
+        "cacheUpsert",
+        "cacheDelete",
+        "cacheBatchInsert",
+        "cacheBatchUpsert",
+        "cacheBatchDelete",
+      ];
+      for (const m of applyMethods) {
+        expect(svc[m]).toBeUndefined();
+      }
+    });
+
+    // Case 68
+    it("loadStation returns metadata-only — no `records` map field", async () => {
+      mockFindByStationId.mockResolvedValue(STATION_INSTANCES);
+      mockFindByConnectorInstanceId.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      mockFindFieldMappingsByEntityIds.mockResolvedValue(new Map());
+
+      const result = await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      expect("records" in result).toBe(false);
+      expect(result).toEqual({
+        entities: [],
+        entityGroups: [],
+      });
+    });
+
+    // Case 69
+    it("alasql is not declared as a runtime dependency in apps/api/package.json", async () => {
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+      const url = await import("node:url");
+      const here = path.dirname(url.fileURLToPath(import.meta.url));
+      const pkg = JSON.parse(
+        await fs.readFile(
+          path.resolve(here, "../../../package.json"),
+          "utf8"
+        )
+      ) as { dependencies?: Record<string, string> };
+      expect(pkg.dependencies?.alasql).toBeUndefined();
+    });
+
+    // Case 70 — each mutation tool no longer references AnalyticsService.apply*
+    it("no mutation tool issues an AnalyticsService.apply* call", async () => {
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+      const url = await import("node:url");
+      const here = path.dirname(url.fileURLToPath(import.meta.url));
+      const toolsDir = path.resolve(here, "../../tools");
+      const files = [
+        "entity-record-create.tool.ts",
+        "entity-record-update.tool.ts",
+        "entity-record-delete.tool.ts",
+        "field-mapping-create.tool.ts",
+        "field-mapping-update.tool.ts",
+        "field-mapping-delete.tool.ts",
+        "connector-entity-create.tool.ts",
+        "connector-entity-update.tool.ts",
+        "connector-entity-delete.tool.ts",
+      ];
+      for (const f of files) {
+        const src = await fs.readFile(path.join(toolsDir, f), "utf8");
+        expect(src).not.toMatch(/AnalyticsService\.apply/);
+        expect(src).not.toMatch(/AnalyticsService\.cache/);
+      }
     });
   });
 });

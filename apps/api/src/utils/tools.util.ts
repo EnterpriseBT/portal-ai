@@ -4,25 +4,6 @@ import type { StationData } from "../services/analytics.service.js";
 import { wideTableRepo } from "../db/repositories/wide-table.repository.js";
 
 /**
- * Pre-Phase-3 accessor that read records from the AlaSQL-preloaded
- * `stationData.records` map. Kept for callers that still pass in
- * already-loaded rows (e.g. internal fixtures, math methods invoked
- * directly via their records-form signature). Math TOOL wrappers go
- * through `fetchEntityRows` instead — that path reads from Postgres
- * via the phase-2 wide tables.
- */
-export function getRecords(
-  stationData: StationData,
-  entityKey: string
-): Record<string, unknown>[] {
-  const records = stationData.records.get(entityKey);
-  if (!records) {
-    throw new Error(`Entity "${entityKey}" not found in loaded station data`);
-  }
-  return records;
-}
-
-/**
  * Resolve `entityKey` to its `connectorEntityId` via the station's
  * loaded entity metadata. Throws if the entity isn't reachable from
  * this station (the LLM passed a key the station doesn't know).

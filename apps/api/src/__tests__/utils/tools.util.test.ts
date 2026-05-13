@@ -72,7 +72,6 @@ const STATION_DATA: StationData = {
     },
   ],
   entityGroups: [],
-  records: new Map(),
 };
 
 describe("resolveEntityId", () => {

@@ -5,7 +5,6 @@ import { v4 as uuidv4 } from "uuid";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
-import { AnalyticsService } from "../services/analytics.service.js";
 import { EntityRecordModelFactory } from "@portalai/core/models";
 import {
   assertStationScope,
@@ -185,31 +184,6 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
             }
             return inserted;
           });
-
-          // ── Phase 3: Cache ─────────────────────────────────────────
-          for (const connectorEntityId of groups.keys()) {
-            const entity =
-              await DbService.repository.connectorEntities.findById(
-                connectorEntityId
-              );
-            if (!entity) continue;
-            const groupItems = groups.get(connectorEntityId)!;
-            const rows = groupItems.map((item) => {
-              const idx = items.indexOf(item);
-              const record = created[idx];
-              const norm = normResults[idx];
-              return {
-                _record_id: record.id,
-                _connector_entity_id: connectorEntityId,
-                ...norm.normalizedData,
-              };
-            });
-            AnalyticsService.applyRecordInsertMany(
-              stationId,
-              (entity as any).key,
-              rows
-            );
-          }
 
           return {
             success: true,

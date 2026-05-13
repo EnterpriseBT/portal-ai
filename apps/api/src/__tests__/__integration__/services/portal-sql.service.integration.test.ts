@@ -741,6 +741,44 @@ describe("PortalSqlService integration tests", () => {
         })
       ).rejects.toThrow(/unknown entity: private_audit/);
     });
+
+    // Phase 3 slice 5 case 71 — read-after-write semantics.
+    // After a Postgres write commits, the next `sql_query` SELECT sees
+    // the new value. No in-memory cache to invalidate; Postgres is the
+    // single source of truth.
+    it("sql_query SELECT sees a committed Postgres write immediately", async () => {
+      const r = generateId();
+      await insertEntityRecord(contactsEntityId, r, "src-1");
+      const now = Date.now();
+      const dbTyped = db as ReturnType<typeof drizzle>;
+      await dbTyped.execute(
+        sql`INSERT INTO ${sql.raw(`"er__${contactsEntityId}"`)} ("entity_record_id", "organization_id", "synced_at", "is_valid", "source_id", "c_email", "c_age") VALUES (${r}, ${orgId}, ${now}, true, ${"src-1"}, ${"before@x.co"}, ${20})`
+      );
+
+      const before = await portalSql.runSqlQuery({
+        sql: `SELECT "c_email" FROM contacts WHERE "_record_id" = '${r}'`,
+        stationId,
+        organizationId: orgId,
+      });
+      expect("rows" in before ? before.rows : []).toEqual([
+        { c_email: "before@x.co" },
+      ]);
+
+      // Update the wide-table row directly (mimicking what
+      // entity_record_update does in production).
+      await dbTyped.execute(
+        sql`UPDATE ${sql.raw(`"er__${contactsEntityId}"`)} SET "c_email" = ${"after@x.co"} WHERE "entity_record_id" = ${r}`
+      );
+
+      const after = await portalSql.runSqlQuery({
+        sql: `SELECT "c_email" FROM contacts WHERE "_record_id" = '${r}'`,
+        stationId,
+        organizationId: orgId,
+      });
+      expect("rows" in after ? after.rows : []).toEqual([
+        { c_email: "after@x.co" },
+      ]);
+    });
   });
 });
 
