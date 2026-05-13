@@ -186,6 +186,12 @@ export async function classifyFieldSegments(
       next.set(region.id, []);
       continue;
     }
+    // `readHeaderLineLabels` + `collectSamples` both read inside
+    // `[bounds.startRow, bounds.endRow]`; the chosen `headerIndex`
+    // comes from `detect-headers`' candidate list which also lives
+    // inside that range. One `loadRange` covers it. See
+    // `docs/SPREADSHEET_PARSER_ROW_ASYNC.spec.md`.
+    await sheet.loadRange(region.bounds.startRow, region.bounds.endRow);
     const segmentsByAxis = resolveEffectiveSegments(
       region,
       state.segmentsByRegion.get(region.id)

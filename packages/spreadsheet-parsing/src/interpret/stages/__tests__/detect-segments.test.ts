@@ -13,18 +13,18 @@ import { detectIdentity } from "../detect-identity.js";
 import { detectRegions } from "../detect-regions.js";
 import { detectSegments } from "../detect-segments.js";
 
-function runUpToDetectIdentity(input: InterpretInput): InterpretState {
+async function runUpToDetectIdentity(input: InterpretInput): Promise<InterpretState> {
   let state = createInitialState(input);
   state = detectRegions(state);
-  state = detectHeaders(state);
-  state = detectIdentity(state);
+  state = await detectHeaders(state);
+  state = await detectIdentity(state);
   return state;
 }
 
 describe("detect-segments — matrix coverage", () => {
-  it.each([...MATRIX_IDS])("produces expected segments for %s", (id) => {
-    const state = runUpToDetectIdentity(matrixInput(id));
-    const after = detectSegments(state);
+  it.each([...MATRIX_IDS])("produces expected segments for %s", async (id) => {
+    const state = await runUpToDetectIdentity(matrixInput(id));
+    const after = await detectSegments(state);
     const regionId = state.detectedRegions[0].id;
     const expected = EXPECTATIONS[id];
     expect(after.segmentsByRegion.get(regionId)).toEqual(
@@ -41,9 +41,9 @@ describe("detect-segments — matrix coverage", () => {
 });
 
 describe("detect-segments — headerless skip", () => {
-  it("does not populate segmentsByRegion / cellValueFieldByRegion for headerless regions", () => {
-    const state = runUpToDetectIdentity(matrixInput("headerless-rows"));
-    const after = detectSegments(state);
+  it("does not populate segmentsByRegion / cellValueFieldByRegion for headerless regions", async () => {
+    const state = await runUpToDetectIdentity(matrixInput("headerless-rows"));
+    const after = await detectSegments(state);
     const regionId = state.detectedRegions[0].id;
     expect(after.segmentsByRegion.has(regionId)).toBe(false);
     expect(after.cellValueFieldByRegion.has(regionId)).toBe(false);
@@ -51,19 +51,19 @@ describe("detect-segments — headerless skip", () => {
 });
 
 describe("detect-segments — purity", () => {
-  it("returns structurally equal output on repeated invocations", () => {
-    const state = runUpToDetectIdentity(matrixInput("1e"));
-    const first = detectSegments(state);
-    const second = detectSegments(first);
+  it("returns structurally equal output on repeated invocations", async () => {
+    const state = await runUpToDetectIdentity(matrixInput("1e"));
+    const first = await detectSegments(state);
+    const second = await detectSegments(first);
     expect(second.segmentsByRegion).toEqual(first.segmentsByRegion);
     expect(second.cellValueFieldByRegion).toEqual(first.cellValueFieldByRegion);
   });
 
-  it("does not mutate the input state's maps", () => {
-    const state = runUpToDetectIdentity(matrixInput("1e"));
+  it("does not mutate the input state's maps", async () => {
+    const state = await runUpToDetectIdentity(matrixInput("1e"));
     const snapshotBefore = new Map(state.segmentsByRegion);
     const snapshotFieldBefore = new Map(state.cellValueFieldByRegion);
-    detectSegments(state);
+    await detectSegments(state);
     expect(state.segmentsByRegion).toEqual(snapshotBefore);
     expect(state.cellValueFieldByRegion).toEqual(snapshotFieldBefore);
   });

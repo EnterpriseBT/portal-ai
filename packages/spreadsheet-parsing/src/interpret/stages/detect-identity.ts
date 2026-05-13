@@ -230,8 +230,15 @@ function candidatesForRegion(
  * Stage 3 — populate `identityCandidates` per region. Prefers single unique
  * column > composite 2-column key > rowPosition fallback. `rowPosition`
  * warning emission happens in `score-and-warn`.
+ *
+ * Async because the data-value walks (`collectDataValuesInColumn` /
+ * `collectDataValuesInRow`) read cells inside the region's bounds — a
+ * `LazySheet` needs that range loaded first. See
+ * `docs/SPREADSHEET_PARSER_ROW_ASYNC.spec.md`.
  */
-export function detectIdentity(state: InterpretState): InterpretState {
+export async function detectIdentity(
+  state: InterpretState
+): Promise<InterpretState> {
   const next = new Map(state.identityCandidates);
   for (const region of state.detectedRegions) {
     const sheet = state.workbook.sheets.find((s) => s.name === region.sheet);
@@ -245,6 +252,12 @@ export function detectIdentity(state: InterpretState): InterpretState {
       ]);
       continue;
     }
+    // Identity scans walk `[headerRow + 1, bounds.endRow]` (records-are-rows)
+    // or `[bounds.startRow, bounds.endRow]` (records-are-columns). The
+    // `headerRow` is either a `detect-headers` candidate inside bounds or
+    // the fallback `bounds.startRow - 1`; either way the data walk stays
+    // inside `[bounds.startRow, bounds.endRow]`.
+    await sheet.loadRange(region.bounds.startRow, region.bounds.endRow);
     next.set(
       region.id,
       candidatesForRegion(region, sheet, state.headerCandidates.get(region.id))

@@ -10,12 +10,12 @@ import { detectSegments } from "../detect-segments.js";
 import { recommendSegmentAxisNames } from "../recommend-segment-axis-names.js";
 import type { AxisNameRecommenderFn } from "../../types.js";
 
-function prepare(input: InterpretInput): InterpretState {
+async function prepare(input: InterpretInput): Promise<InterpretState> {
   let state = createInitialState(input);
   state = detectRegions(state);
-  state = detectHeaders(state);
-  state = detectIdentity(state);
-  state = detectSegments(state);
+  state = await detectHeaders(state);
+  state = await detectIdentity(state);
+  state = await detectSegments(state);
   return state;
 }
 
@@ -75,7 +75,7 @@ describe("recommendSegmentAxisNames", () => {
         };
       }
     );
-    const prepared = prepare(canonicalInput());
+    const prepared = await prepare(canonicalInput());
     await recommendSegmentAxisNames(prepared, {
       axisNameRecommender: recommender,
     });
@@ -92,7 +92,7 @@ describe("recommendSegmentAxisNames", () => {
         confidence: 0.9,
       })
     );
-    const prepared = prepare(canonicalInput());
+    const prepared = await prepare(canonicalInput());
     const state = await recommendSegmentAxisNames(prepared, {
       axisNameRecommender: recommender,
     });
@@ -111,7 +111,7 @@ describe("recommendSegmentAxisNames", () => {
     // proposeBindings but recommend-segment-axis-names reads state.segmentsByRegion
     // (heuristic). To exercise the user-source skip, we mutate the heuristic
     // entry before calling the stage.
-    const prepared = prepare(canonicalInput());
+    const prepared = await prepare(canonicalInput());
     const regionId = prepared.detectedRegions[0].id;
     const segs = prepared.segmentsByRegion.get(regionId)!;
     // Flip the quarter pivot's source to "user" so recommender skips it.
@@ -164,7 +164,7 @@ describe("recommendSegmentAxisNames", () => {
       ],
     };
     const recommender: jest.MockedFunction<AxisNameRecommenderFn> = jest.fn();
-    const prepared = prepare(input);
+    const prepared = await prepare(input);
     const state = await recommendSegmentAxisNames(prepared, {
       axisNameRecommender: recommender,
     });
@@ -207,7 +207,7 @@ describe("recommendSegmentAxisNames", () => {
     const recommender: jest.MockedFunction<AxisNameRecommenderFn> = jest.fn(
       async () => ({ name: "x", confidence: 1 })
     );
-    const prepared = prepare(input);
+    const prepared = await prepare(input);
     await recommendSegmentAxisNames(prepared, {
       axisNameRecommender: recommender,
     });
@@ -252,7 +252,7 @@ describe("recommendSegmentAxisNames", () => {
       }
     );
 
-    const prepared = prepare(input);
+    const prepared = await prepare(input);
     const state = await recommendSegmentAxisNames(prepared, {
       axisNameRecommender: recommender,
       concurrency: 3,
@@ -266,7 +266,7 @@ describe("recommendSegmentAxisNames", () => {
   });
 
   it("the default recommender (absent) produces no suggestions", async () => {
-    const prepared = prepare(canonicalInput());
+    const prepared = await prepare(canonicalInput());
     const state = await recommendSegmentAxisNames(prepared, {});
     expect(state.segmentAxisNameSuggestions.size).toBe(0);
   });

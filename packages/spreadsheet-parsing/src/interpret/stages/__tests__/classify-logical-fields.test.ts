@@ -23,9 +23,9 @@ async function runThroughProposeBindings(
 ): Promise<InterpretState> {
   let state = createInitialState(input);
   state = detectRegions(state);
-  state = detectHeaders(state);
-  state = detectIdentity(state);
-  state = detectSegments(state);
+  state = await detectHeaders(state);
+  state = await detectIdentity(state);
+  state = await detectSegments(state);
   state = await classifyFieldSegments(state, { classifier });
   state = await recommendSegmentAxisNames(state, {});
   state = proposeBindings(state);

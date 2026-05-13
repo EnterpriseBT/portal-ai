@@ -46,9 +46,9 @@ function simpleInput(): InterpretInput {
 
 async function runThrough(input: InterpretInput) {
   let state = detectRegions(createInitialState(input));
-  state = detectHeaders(state);
-  state = detectIdentity(state);
-  state = detectSegments(state);
+  state = await detectHeaders(state);
+  state = await detectIdentity(state);
+  state = await detectSegments(state);
   state = await classifyFieldSegments(state, {
     columnDefinitionCatalog: [
       { id: "col-email", label: "Email", normalizedKey: "email" },
@@ -185,9 +185,9 @@ describe("proposeBindings", () => {
       ],
     };
     let state = detectRegions(createInitialState(input));
-    state = detectHeaders(state);
-    state = detectIdentity(state);
-    state = detectSegments(state);
+    state = await detectHeaders(state);
+    state = await detectIdentity(state);
+    state = await detectSegments(state);
     state = await classifyFieldSegments(state, {});
     state = await recommendSegmentAxisNames(state, {
       axisNameRecommender: () => ({ name: "Month", confidence: 0.8 }),
@@ -284,9 +284,9 @@ describe("proposeBindings", () => {
       ],
     };
     let state = detectRegions(createInitialState(input));
-    state = detectHeaders(state);
-    state = detectIdentity(state);
-    state = detectSegments(state);
+    state = await detectHeaders(state);
+    state = await detectIdentity(state);
+    state = await detectSegments(state);
     state = await classifyFieldSegments(state, {
       columnDefinitionCatalog: [
         { id: "col-year", label: "Year", normalizedKey: "year" },
@@ -362,9 +362,9 @@ describe("proposeBindings", () => {
       ],
     };
     let state = detectRegions(createInitialState(input));
-    state = detectHeaders(state);
-    state = detectIdentity(state);
-    state = detectSegments(state);
+    state = await detectHeaders(state);
+    state = await detectIdentity(state);
+    state = await detectSegments(state);
     state = await classifyFieldSegments(state, {
       // Fall through to a fallback definition so a binding is produced
       // even though the catalog won't match either header.
@@ -466,9 +466,9 @@ describe("proposeBindings", () => {
       { id: "col-currency", label: "Currency", normalizedKey: "currency" },
     ];
     let state = detectRegions(createInitialState(input));
-    state = detectHeaders(state);
-    state = detectIdentity(state);
-    state = detectSegments(state);
+    state = await detectHeaders(state);
+    state = await detectIdentity(state);
+    state = await detectSegments(state);
     state = await classifyFieldSegments(state, {
       columnDefinitionCatalog: catalog,
     });
@@ -582,9 +582,9 @@ describe("proposeBindings", () => {
       { id: "col-headcount", label: "Headcount", normalizedKey: "headcount" },
     ];
     let state = detectRegions(createInitialState(input));
-    state = detectHeaders(state);
-    state = detectIdentity(state);
-    state = detectSegments(state);
+    state = await detectHeaders(state);
+    state = await detectIdentity(state);
+    state = await detectSegments(state);
     state = await classifyFieldSegments(state, {
       columnDefinitionCatalog: catalog,
     });

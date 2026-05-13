@@ -163,9 +163,15 @@ export async function interpret(
   const interpretStarted = Date.now();
   let state = createInitialState(input);
   state = detectRegions(state);
-  state = detectHeaders(state);
-  state = detectIdentity(state);
-  state = detectSegments(state);
+  // After the row-async refactor (see
+  // `docs/SPREADSHEET_PARSER_ROW_ASYNC.spec.md`), every cell-reading
+  // stage awaits `Sheet.loadRange(...)` for its region bounds before
+  // walking. On an `EagerSheet` that's a `Promise.resolve()` no-op; on
+  // a `LazySheet` it fetches the matching chunked-cache rows once per
+  // region.
+  state = await detectHeaders(state);
+  state = await detectIdentity(state);
+  state = await detectSegments(state);
   state = await classifyFieldSegments(state, wrappedDeps);
   emitStageCompleted(logger, "classify-field-segments", classifierUsage);
   state = await recommendSegmentAxisNames(state, wrappedDeps);
@@ -177,6 +183,11 @@ export async function interpret(
   state = await classifyLogicalFields(state, wrappedDeps);
   state = reconcileWithPrior(state);
   state = scoreAndWarn(state);
+  // `assemblePlan` reads the top-left cell of every sheet for the
+  // workbook fingerprint. Preload row 1 across sheets in parallel so
+  // the synchronous `range(1, 1, 1, 1)` call inside the assembler
+  // doesn't trip `RangeNotLoadedError` on a lazy workbook.
+  await Promise.all(state.workbook.sheets.map((s) => s.loadRange(1, 1)));
   const plan = assemblePlan(state);
   const totalLatencyMs = Date.now() - interpretStarted;
 
