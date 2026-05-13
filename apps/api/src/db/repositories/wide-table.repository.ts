@@ -241,7 +241,18 @@ export class WideTableRepository {
             return sql`ARRAY[${items}]::text[]`;
           }
           if (pgType === "jsonb") {
-            return sql`${value}::jsonb`;
+            // The bound parameter goes over the wire as text and is
+            // then cast to `jsonb`, so the text must be valid JSON.
+            // A bare JS string like `"Language"` would bind as
+            // `Language` (no quotes) and the cast fails with
+            // `invalid input syntax for type json | Token "Language" is invalid`.
+            // `JSON.stringify` produces the right encoding for every
+            // JS value — strings → quoted strings, arrays/objects →
+            // structural JSON, numbers/booleans → as-is.
+            if (value === null || value === undefined) {
+              return sql`NULL::jsonb`;
+            }
+            return sql`${JSON.stringify(value)}::jsonb`;
           }
           return sql`${value}`;
         });

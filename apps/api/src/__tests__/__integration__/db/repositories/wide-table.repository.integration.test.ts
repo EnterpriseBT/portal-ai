@@ -540,6 +540,164 @@ describe("WideTableRepository integration tests", () => {
     expect(rows).toHaveLength(0);
   });
 
+  // ── JSON encoding for jsonb columns ──────────────────────────────
+  //
+  // Wide-table columns derived from `array` / `json` column-definitions
+  // resolve to a Postgres `jsonb` column. The bound text is cast to
+  // jsonb on the server, so a bare JS string like `"Language"` used to
+  // bind as `Language` (no surrounding quotes) and Postgres rejected it
+  // with `invalid input syntax for type json | Token "Language" is invalid`.
+  // `upsertMany` now JSON.stringifies the value before binding so every
+  // JS value type encodes to valid JSON.
+  //
+  // This test seeds its own entity with a `tag` column-def (`type: "array"`,
+  // i.e. jsonb on the wide table) and writes both a scalar-string value
+  // and an actual array value through the same upsert call.
+
+  it("upsertMany JSON-encodes jsonb-column values (string + array)", async () => {
+    const dbTyped = db as ReturnType<typeof drizzle>;
+    const now = Date.now();
+
+    // Build a sibling entity with a single `tag` (array → jsonb) column.
+    const jsonEntityId = generateId();
+    await dbTyped.insert(schema.connectorEntities).values({
+      id: jsonEntityId,
+      organizationId: orgId,
+      connectorInstanceId: (
+        await dbTyped
+          .select()
+          .from(schema.connectorEntities)
+          .limit(1)
+      )[0]!.connectorInstanceId,
+      key: "json_rows",
+      label: "JSON Rows",
+      created: now,
+      createdBy: "test-system",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    const cdTagId = generateId();
+    await dbTyped.insert(schema.columnDefinitions).values({
+      id: cdTagId,
+      organizationId: orgId,
+      key: "tag",
+      label: "Tag",
+      type: "array",
+      description: null,
+      validationPattern: null,
+      validationMessage: null,
+      canonicalFormat: null,
+      system: false,
+      created: now,
+      createdBy: "test-system",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    await dbTyped.insert(schema.fieldMappings).values({
+      id: generateId(),
+      organizationId: orgId,
+      connectorEntityId: jsonEntityId,
+      columnDefinitionId: cdTagId,
+      sourceField: "Tag",
+      isPrimaryKey: false,
+      normalizedKey: "tag",
+      required: false,
+      defaultValue: null,
+      format: null,
+      enumValues: null,
+      refNormalizedKey: null,
+      refEntityKey: null,
+      created: now,
+      createdBy: "test-system",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+
+    await reconciler.reconcileEntity(jsonEntityId, db);
+
+    const r1 = generateId();
+    const r2 = generateId();
+    const r3 = generateId();
+    for (const [id, sid] of [
+      [r1, "json-1"],
+      [r2, "json-2"],
+      [r3, "json-3"],
+    ]) {
+      await dbTyped.insert(schema.entityRecords).values({
+        id,
+        organizationId: orgId,
+        connectorEntityId: jsonEntityId,
+        sourceId: sid,
+        isValid: true,
+        validationErrors: null,
+        normalizedData: {},
+        syncedAt: now,
+        data: {},
+        checksum: `c-${id}`,
+        origin: "sync",
+        created: now,
+        createdBy: "test-system",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    }
+
+    await repo.upsertMany(jsonEntityId, [
+      // Scalar string — the originally-failing case. LLM bound a
+      // single-value tag (`"Language"`) for a column-definition typed
+      // as `array`.
+      {
+        entity_record_id: r1,
+        organization_id: orgId,
+        synced_at: now,
+        is_valid: true,
+        source_id: "json-1",
+        c_tag: "Language",
+      },
+      // Actual array — exercises the array branch.
+      {
+        entity_record_id: r2,
+        organization_id: orgId,
+        synced_at: now,
+        is_valid: true,
+        source_id: "json-2",
+        c_tag: ["Language", "Vision"],
+      },
+      // Null → SQL NULL (not JSON null).
+      {
+        entity_record_id: r3,
+        organization_id: orgId,
+        synced_at: now,
+        is_valid: true,
+        source_id: "json-3",
+        c_tag: null,
+      },
+    ]);
+
+    try {
+      const rows = (await repo.selectAll(jsonEntityId, db)) as Array<
+        Record<string, unknown>
+      >;
+      const byId = new Map(
+        rows.map((r) => [r.entity_record_id as string, r])
+      );
+      // postgres-js returns jsonb cells parsed back to JS values.
+      expect(byId.get(r1)!.c_tag).toBe("Language");
+      expect(byId.get(r2)!.c_tag).toEqual(["Language", "Vision"]);
+      expect(byId.get(r3)!.c_tag).toBeNull();
+    } finally {
+      await reconciler.dropTable(jsonEntityId, db).catch(() => undefined);
+    }
+  });
+
   // ── Large-batch chunking ─────────────────────────────────────────
   //
   // A single 13k-row INSERT used to build a Drizzle `sql` AST whose
