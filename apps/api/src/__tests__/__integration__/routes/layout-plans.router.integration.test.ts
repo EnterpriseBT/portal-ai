@@ -118,6 +118,9 @@ const { app } = await import("../../../app.js");
 const { LayoutPlanDraftService } = await import(
   "../../../services/layout-plan-draft.service.js"
 );
+const { layoutPlanCommitProcessor } = await import(
+  "../../../queues/processors/layout-plan-commit.processor.js"
+);
 
 const {
   connectorInstances,
@@ -435,12 +438,14 @@ describe("Layout Plans Draft Router", () => {
    * Drives the draft commit pipeline through the same code path the
    * `layout_plan_commit` worker takes — `prepareDraftCommit`
    * (synchronous validation + UUID minting; the route's call) followed
-   * by `runCommitDraft` (instance + plan rows + records-write +
-   * rollback; the worker's call). Behavior assertions can use this
-   * directly without round-tripping through Bull. The HTTP route's
+   * by `layoutPlanCommitProcessor` (which invokes `runCommitDraft`,
+   * and on a final-attempt failure also runs `rollbackFailedDraftCommit`;
+   * the worker's full code path). Synthesises a single-attempt BullJob
+   * (`attemptsMade: 0, opts.attempts: 1`) so the rollback fires
+   * synchronously — every failure here is the final attempt by
+   * construction. Behavior assertions can use this directly without
+   * round-tripping through Bull's retry machinery. The HTTP route's
    * 202 + jobId envelope is exercised by the dedicated test below.
-   * Defined at the outer describe scope so both the uploadSessionId
-   * and connectorInstanceId paths reuse the same helper.
    */
   async function runDraftCommitInline(body: LayoutPlanCommitDraftRequestBody) {
     const prepared = await LayoutPlanDraftService.prepareDraftCommit(
@@ -448,7 +453,18 @@ describe("Layout Plans Draft Router", () => {
       userId,
       body
     );
-    return LayoutPlanDraftService.runCommitDraft(prepared.metadata);
+    const bullJob = {
+      data: {
+        jobId: "test-job",
+        type: "layout_plan_commit" as const,
+        ...prepared.metadata,
+      },
+      attemptsMade: 0,
+      opts: { attempts: 1 },
+      updateProgress: async () => undefined,
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return layoutPlanCommitProcessor(bullJob as any);
   }
 
   describe("POST /api/layout-plans/commit", () => {
