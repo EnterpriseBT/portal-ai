@@ -8,6 +8,9 @@ const mockRunCommitDraft =
 const mockRunRecommit = jest.fn<
   (metadata: unknown, onProgress?: (p: number) => void) => Promise<unknown>
 >();
+const mockRollbackFailedDraftCommit = jest.fn<
+  (metadata: unknown, reason: string) => Promise<void>
+>();
 
 jest.unstable_mockModule(
   "../../../services/layout-plan-draft.service.js",
@@ -15,6 +18,7 @@ jest.unstable_mockModule(
     LayoutPlanDraftService: {
       runCommitDraft: mockRunCommitDraft,
       runRecommit: mockRunRecommit,
+      rollbackFailedDraftCommit: mockRollbackFailedDraftCommit,
     },
   })
 );
@@ -23,9 +27,14 @@ const { layoutPlanCommitProcessor } = await import(
   "../../../queues/processors/layout-plan-commit.processor.js"
 );
 
-function makeBullJob(data: Record<string, unknown>): BullJob {
+function makeBullJob(
+  data: Record<string, unknown>,
+  opts: { attemptsMade?: number; attempts?: number } = {}
+): BullJob {
   return {
     data: { jobId: "job-1", type: "layout_plan_commit", ...data },
+    attemptsMade: opts.attemptsMade ?? 0,
+    opts: { attempts: opts.attempts ?? 3 },
   } as unknown as BullJob;
 }
 
@@ -68,6 +77,8 @@ describe("layoutPlanCommitProcessor", () => {
   beforeEach(() => {
     mockRunCommitDraft.mockReset();
     mockRunRecommit.mockReset();
+    mockRollbackFailedDraftCommit.mockReset();
+    mockRollbackFailedDraftCommit.mockResolvedValue(undefined);
   });
 
   it("dispatches draft kind to runCommitDraft and returns its result", async () => {
@@ -131,5 +142,68 @@ describe("layoutPlanCommitProcessor", () => {
     await expect(
       layoutPlanCommitProcessor(makeBullJob(draftMetadata) as never)
     ).rejects.toThrow("Connector definition not found");
+  });
+
+  // Phase 3 follow-up: the runCommitDraft rollback used to fire on every
+  // per-attempt failure and hard-deleted the plan row, turning a transient
+  // first-attempt failure into a deterministic LAYOUT_PLAN_NOT_FOUND for
+  // every retry. The processor now defers the cleanup to the final attempt.
+
+  it("does NOT run the draft rollback on non-final retry attempts", async () => {
+    mockRunCommitDraft.mockRejectedValue(new Error("transient failure"));
+
+    // attemptsMade=0, attempts=3 → 0 < 2 → not final.
+    await expect(
+      layoutPlanCommitProcessor(
+        makeBullJob(draftMetadata, { attemptsMade: 0, attempts: 3 }) as never
+      )
+    ).rejects.toThrow("transient failure");
+    expect(mockRollbackFailedDraftCommit).not.toHaveBeenCalled();
+
+    // attemptsMade=1, attempts=3 → 1 < 2 → still not final.
+    await expect(
+      layoutPlanCommitProcessor(
+        makeBullJob(draftMetadata, { attemptsMade: 1, attempts: 3 }) as never
+      )
+    ).rejects.toThrow("transient failure");
+    expect(mockRollbackFailedDraftCommit).not.toHaveBeenCalled();
+  });
+
+  it("runs the draft rollback once on the final attempt failure", async () => {
+    mockRunCommitDraft.mockRejectedValue(new Error("permanent failure"));
+
+    await expect(
+      layoutPlanCommitProcessor(
+        makeBullJob(draftMetadata, { attemptsMade: 2, attempts: 3 }) as never
+      )
+    ).rejects.toThrow("permanent failure");
+    expect(mockRollbackFailedDraftCommit).toHaveBeenCalledTimes(1);
+    expect(mockRollbackFailedDraftCommit).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "draft", planId: "plan-1" }),
+      "permanent failure"
+    );
+  });
+
+  it("does NOT run the rollback for recommit failures (no orphan rows to clean)", async () => {
+    mockRunRecommit.mockRejectedValue(new Error("recommit failed"));
+
+    await expect(
+      layoutPlanCommitProcessor(
+        makeBullJob(recommitMetadata, { attemptsMade: 2, attempts: 3 }) as never
+      )
+    ).rejects.toThrow("recommit failed");
+    expect(mockRollbackFailedDraftCommit).not.toHaveBeenCalled();
+  });
+
+  it("re-throws the original error even when the rollback itself fails", async () => {
+    mockRunCommitDraft.mockRejectedValue(new Error("commit failed"));
+    mockRollbackFailedDraftCommit.mockRejectedValue(new Error("delete failed"));
+
+    await expect(
+      layoutPlanCommitProcessor(
+        makeBullJob(draftMetadata, { attemptsMade: 2, attempts: 3 }) as never
+      )
+    ).rejects.toThrow("commit failed");
+    expect(mockRollbackFailedDraftCommit).toHaveBeenCalledTimes(1);
   });
 });
