@@ -7,6 +7,8 @@ export {
   SheetDataSchema,
   makeWorkbook,
   makeSheetAccessor,
+  makeLazySheetAccessor,
+  RangeNotLoadedError,
   computeWorkbookFingerprint,
 } from "./workbook/index.js";
 export type {
@@ -18,6 +20,8 @@ export type {
   SheetDimensions,
   CellValue,
   MergedRange,
+  LazySheetMeta,
+  LazySheetRowFetcher,
 } from "./workbook/index.js";
 
 // ── Plan (Phase 2) ─────────────────────────────────────────────────────────
