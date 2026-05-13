@@ -540,6 +540,40 @@ describe("WideTableRepository integration tests", () => {
     expect(rows).toHaveLength(0);
   });
 
+  // ── Large-batch chunking ─────────────────────────────────────────
+  //
+  // A single 13k-row INSERT used to build a Drizzle `sql` AST whose
+  // join tree overflowed V8's call stack at execute time
+  // ("Maximum call stack size exceeded"). `upsertMany` now chunks at
+  // 500 rows per statement; this test seeds 1,200 rows to exercise
+  // the chunk boundary (2 full chunks + 1 partial).
+
+  it("upsertMany chunks large batches and writes every row", async () => {
+    const ROW_COUNT = 1_200;
+    const now = Date.now();
+    const rows: Record<string, unknown>[] = [];
+    for (let i = 0; i < ROW_COUNT; i++) {
+      const id = generateId();
+      await insertEntityRecord(id, `src-batch-${i}`);
+      rows.push({
+        entity_record_id: id,
+        organization_id: orgId,
+        synced_at: now,
+        is_valid: true,
+        source_id: `src-batch-${i}`,
+        c_amount: i,
+        c_stage: `s-${i % 4}`,
+      });
+    }
+
+    await repo.upsertMany(entityId, rows);
+
+    const all = (await repo.selectAll(entityId, db)) as Array<
+      Record<string, unknown>
+    >;
+    expect(all).toHaveLength(ROW_COUNT);
+  }, 60_000);
+
   // ── Phase 3 Slice 1 — fetchProjectedRows ─────────────────────────
 
   it("fetchProjectedRows returns the requested columns keyed by normalizedKey", async () => {

@@ -20,6 +20,16 @@ import {
   type WideTableStatementCache,
 } from "../../services/wide-table-statement.cache.js";
 
+/**
+ * Chunk size for `upsertMany`. A single 13k-row INSERT builds a Drizzle
+ * `sql` AST whose join tree is deep enough to overflow V8's call stack
+ * when the template is recursively flattened at execute time. 500 rows
+ * keeps each statement's AST shallow + the parameter count comfortably
+ * under PostgreSQL's 65k bind limit (500 rows × ~50 cols = 25k params
+ * worst-case, well under the cap).
+ */
+const WIDE_TABLE_UPSERT_CHUNK_SIZE = 500;
+
 export class WideTableRepository {
   constructor(
     private readonly statementCache: WideTableStatementCache = wideTableStatementCache
@@ -146,6 +156,12 @@ export class WideTableRepository {
    * by the cache's column-name set; missing columns bind `NULL`,
    * unknown keys are silently dropped.
    *
+   * Large batches are chunked into `WIDE_TABLE_UPSERT_CHUNK_SIZE`-row
+   * statements. A single 13k-row INSERT builds a `sql` AST whose join
+   * chain is deep enough to overflow the V8 call stack when Drizzle
+   * recursively flattens the template chunks; chunking keeps each
+   * statement's AST shallow and round-trip-cheap.
+   *
    * Caller is expected to hold the per-entity advisory lock — the
    * reconciler relies on this to keep DDL/DML serialised.
    */
@@ -195,47 +211,50 @@ export class WideTableRepository {
       ...stmt.columns.map((c) => [c.columnName, c.pgType] as const),
     ]);
 
-    const tuples = rows.map((row) => {
-      const valueExprs = colsInOrder.map((col) => {
-        const v = row[col];
-        const value = v === undefined ? null : v;
-        const pgType = pgTypeByColumn.get(col) ?? "text";
-        // postgres-js doesn't auto-serialize JS arrays as Postgres
-        // array literals when bound as a single parameter. Build an
-        // ARRAY[...]-style expression so each element binds as its
-        // own param (`text[]` → `ARRAY[$n, $n+1]::text[]`).
-        if (pgType === "text[]") {
-          if (value === null || value === undefined) {
-            return sql`NULL::text[]`;
-          }
-          if (!Array.isArray(value) || value.length === 0) {
-            return sql`ARRAY[]::text[]`;
-          }
-          const items = sql.join(
-            value.map((item) => sql`${String(item)}`),
-            sql`, `
-          );
-          return sql`ARRAY[${items}]::text[]`;
-        }
-        if (pgType === "jsonb") {
-          return sql`${value}::jsonb`;
-        }
-        return sql`${value}`;
-      });
-      return sql`(${sql.join(valueExprs, sql`, `)})`;
-    });
-
     const setClauses = colsInOrder
       .filter((c) => c !== "entity_record_id")
       .map((c) => `"${c}" = EXCLUDED."${c}"`)
       .join(", ");
 
-    const statement = sql`INSERT INTO ${sql.raw(tableName)} (${sql.raw(insertColList)}) VALUES ${sql.join(
-      tuples,
-      sql`, `
-    )} ON CONFLICT ("entity_record_id") DO UPDATE SET ${sql.raw(setClauses)}`;
+    for (let i = 0; i < rows.length; i += WIDE_TABLE_UPSERT_CHUNK_SIZE) {
+      const chunk = rows.slice(i, i + WIDE_TABLE_UPSERT_CHUNK_SIZE);
+      const tuples = chunk.map((row) => {
+        const valueExprs = colsInOrder.map((col) => {
+          const v = row[col];
+          const value = v === undefined ? null : v;
+          const pgType = pgTypeByColumn.get(col) ?? "text";
+          // postgres-js doesn't auto-serialize JS arrays as Postgres
+          // array literals when bound as a single parameter. Build an
+          // ARRAY[...]-style expression so each element binds as its
+          // own param (`text[]` → `ARRAY[$n, $n+1]::text[]`).
+          if (pgType === "text[]") {
+            if (value === null || value === undefined) {
+              return sql`NULL::text[]`;
+            }
+            if (!Array.isArray(value) || value.length === 0) {
+              return sql`ARRAY[]::text[]`;
+            }
+            const items = sql.join(
+              value.map((item) => sql`${String(item)}`),
+              sql`, `
+            );
+            return sql`ARRAY[${items}]::text[]`;
+          }
+          if (pgType === "jsonb") {
+            return sql`${value}::jsonb`;
+          }
+          return sql`${value}`;
+        });
+        return sql`(${sql.join(valueExprs, sql`, `)})`;
+      });
 
-    await (client as typeof db).execute(statement);
+      const statement = sql`INSERT INTO ${sql.raw(tableName)} (${sql.raw(insertColList)}) VALUES ${sql.join(
+        tuples,
+        sql`, `
+      )} ON CONFLICT ("entity_record_id") DO UPDATE SET ${sql.raw(setClauses)}`;
+
+      await (client as typeof db).execute(statement);
+    }
   }
 
   /**
