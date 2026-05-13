@@ -230,12 +230,16 @@ describe("buildSystemPrompt — response style", () => {
             members: [
               {
                 entityKey: "contacts",
+                connectorEntityId: "ent-contacts",
+                linkNormalizedKey: "email",
                 linkColumnKey: "email",
                 linkColumnLabel: "Email",
                 isPrimary: true,
               },
               {
                 entityKey: "orders",
+                connectorEntityId: "ent-orders",
+                linkNormalizedKey: "customer_email",
                 linkColumnKey: "customer_email",
                 linkColumnLabel: "Customer Email",
                 isPrimary: false,

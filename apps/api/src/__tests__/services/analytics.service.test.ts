@@ -515,83 +515,15 @@ describe("AnalyticsService", () => {
   // resolveIdentity
   // -----------------------------------------------------------------------
 
-  describe("resolveIdentity()", () => {
-    const ENTITY_GROUPS = [
-      {
-        id: "eg-1",
-        name: "Customer Identity",
-        members: [
-          {
-            entityKey: "customers",
-            linkColumnKey: "customer_id",
-            linkColumnLabel: "Customer ID",
-            isPrimary: true,
-          },
-          {
-            entityKey: "orders",
-            linkColumnKey: "customer_id",
-            linkColumnLabel: "Customer ID",
-            isPrimary: false,
-          },
-        ],
-      },
-    ];
-
-    it("should return matched records grouped by entity with primary first", async () => {
-      setupLoadStationMocks();
-      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
-
-      const result = AnalyticsService.resolveIdentity({
-        entityGroupName: "Customer Identity",
-        linkValue: "C001",
-        stationId: STATION_ID,
-        entityGroups: ENTITY_GROUPS,
-      });
-
-      expect(result.matches).toHaveLength(2);
-      // Primary entity (customers) should be first
-      expect(result.matches[0].entityKey).toBe("customers");
-      expect(result.matches[0].isPrimary).toBe(true);
-      expect(result.matches[0].records).toHaveLength(1);
-      expect(result.matches[0].records[0]).toMatchObject({
-        name: "Alice",
-        customer_id: "C001",
-      });
-
-      // Secondary entity (orders) should be second
-      expect(result.matches[1].entityKey).toBe("orders");
-      expect(result.matches[1].isPrimary).toBe(false);
-      expect(result.matches[1].records).toHaveLength(2); // C001 has 2 orders
-    });
-
-    it("should return empty matches for a linkValue with no hits", async () => {
-      setupLoadStationMocks();
-      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
-
-      const result = AnalyticsService.resolveIdentity({
-        entityGroupName: "Customer Identity",
-        linkValue: "C999",
-        stationId: STATION_ID,
-        entityGroups: ENTITY_GROUPS,
-      });
-
-      expect(result.matches).toHaveLength(2);
-      expect(result.matches[0].records).toHaveLength(0);
-      expect(result.matches[1].records).toHaveLength(0);
-    });
-
-    it("should throw for a non-existent entityGroupName", async () => {
-      setupLoadStationMocks();
-      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
-
-      expect(() =>
-        AnalyticsService.resolveIdentity({
-          entityGroupName: "Nonexistent Group",
-          linkValue: "C001",
-          stationId: STATION_ID,
-          entityGroups: ENTITY_GROUPS,
-        })
-      ).toThrow("Entity group not found: Nonexistent Group");
+  // Phase 3 slice 3: resolveIdentity now reads from the phase-2 wide
+  // tables (via `wideTableRepo.fetchProjectedRows`) instead of the AlaSQL
+  // preload. The old unit tests below seeded AlaSQL via `loadStation` —
+  // they no longer drive the new code path. Integration-level coverage
+  // for the Postgres-direct surface lives in
+  // `apps/api/src/__tests__/__integration__/services/analytics-resolve-identity.integration.test.ts`.
+  describe.skip("resolveIdentity() — AlaSQL-coupled, retired in slice 3", () => {
+    it("placeholder", () => {
+      expect(true).toBe(true);
     });
   });
 

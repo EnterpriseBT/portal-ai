@@ -6,7 +6,7 @@ import {
   type StationData,
 } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { getRecords } from "../utils/tools.util.js";
+import { fetchEntityRows } from "../utils/tools.util.js";
 
 const InputSchema = z.object({
   entity: z.string().describe("Entity (table) of per-period returns."),
@@ -39,14 +39,19 @@ export class VarCvarTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationData: StationData) {
+  build(stationData: StationData, organizationId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
         const { entity, returnColumn, confidence, method } =
           this.validate(input);
-        const records = getRecords(stationData, entity);
+        const records = await fetchEntityRows(
+          stationData,
+          entity,
+          [returnColumn],
+          organizationId
+        );
         return AnalyticsService.varCvar({
           records,
           returnColumn,

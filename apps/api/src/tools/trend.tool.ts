@@ -6,7 +6,7 @@ import {
   type StationData,
 } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { getRecords } from "../utils/tools.util.js";
+import { fetchEntityRows } from "../utils/tools.util.js";
 
 const InputSchema = z.object({
   entity: z.string().describe("Entity key (table name)"),
@@ -35,14 +35,19 @@ export class TrendTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationData: StationData) {
+  build(stationData: StationData, organizationId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
         const { entity, dateColumn, valueColumn, interval, forecastPeriods } =
           this.validate(input);
-        const records = getRecords(stationData, entity);
+        const records = await fetchEntityRows(
+          stationData,
+          entity,
+          [dateColumn, valueColumn],
+          organizationId
+        );
         return AnalyticsService.trend({
           records,
           dateColumn,

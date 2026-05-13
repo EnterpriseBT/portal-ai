@@ -6,7 +6,7 @@ import {
   type StationData,
 } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { getRecords } from "../utils/tools.util.js";
+import { fetchEntityRows } from "../utils/tools.util.js";
 
 const InputSchema = z.object({
   test: z
@@ -77,14 +77,24 @@ export class HypothesisTestTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationData: StationData) {
+  build(stationData: StationData, organizationId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
         const { entity, ...rest } = this.validate(input);
-        const records =
-          entity !== undefined ? getRecords(stationData, entity) : undefined;
+        let records: Record<string, unknown>[] | undefined;
+        if (entity !== undefined) {
+          const cols = [rest.columnA, rest.columnB].filter(
+            (c): c is string => typeof c === "string"
+          );
+          records = await fetchEntityRows(
+            stationData,
+            entity,
+            cols,
+            organizationId
+          );
+        }
         return AnalyticsService.hypothesisTest({ ...rest, records });
       },
     });

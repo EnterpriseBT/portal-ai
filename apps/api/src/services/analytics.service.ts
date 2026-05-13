@@ -35,7 +35,7 @@ import type { Spec as VegaSpec, Data, ValuesData } from "vega";
 import { compile as vegaLiteCompile } from "vega-lite";
 import type { TopLevelSpec as VegaLiteSpec } from "vega-lite";
 
-import { inArray } from "drizzle-orm";
+import { inArray, sql as drizzleSql } from "drizzle-orm";
 
 import { DbService } from "./db.service.js";
 import { db } from "../db/client.js";
@@ -44,6 +44,8 @@ import { createLogger } from "../utils/logger.util.js";
 import { VegaLiteSpecInput } from "../tools/visualize.tool.js";
 import { PortalSqlService } from "./portal-sql.service.js";
 import type { PortalSqlResponse } from "./portal-sql-response.util.js";
+import { wideTableRepo } from "../db/repositories/wide-table.repository.js";
+import { wideTableStatementCache } from "./wide-table-statement.cache.js";
 
 const logger = createLogger({ module: "analytics-service" });
 
@@ -70,6 +72,15 @@ export interface EntitySchema {
 
 export interface EntityGroupMemberContext {
   entityKey: string;
+  /** Wide-table connector_entity_id — needed by resolve_identity's
+   * Postgres-direct path (phase 3 slice 3) to call `fetchProjectedRows`
+   * without re-resolving the entity from its key. */
+  connectorEntityId: string;
+  /** Field-mapping normalized_key — the public identifier the LLM and
+   * the wide table use for this column (`c_<linkNormalizedKey>`). */
+  linkNormalizedKey: string;
+  /** Column-definition key — historically the LLM-facing column name;
+   * preserved here for the resolve_identity response shape. */
   linkColumnKey: string;
   linkColumnLabel: string;
   isPrimary: boolean;
@@ -962,6 +973,13 @@ export class AnalyticsService {
       const memberContexts: EntityGroupMemberContext[] = loadedMembers.map(
         (m: any) => ({
           entityKey: loadedEntityKeyById.get(m.connectorEntityId) ?? "",
+          connectorEntityId: m.connectorEntityId,
+          // Field-mapping `normalizedKey` is the wide-table column id; fall
+          // back to the column-definition key when the field-mapping side
+          // hasn't been populated (typical when `include: fieldMapping`
+          // misses).
+          linkNormalizedKey:
+            m.fieldMapping?.normalizedKey ?? m.columnDefinition?.key ?? "",
           linkColumnKey: m.columnDefinition?.key ?? "",
           linkColumnLabel: m.columnDefinition?.label ?? "",
           isPrimary: m.isPrimary ?? false,
@@ -1107,31 +1125,48 @@ export class AnalyticsService {
    * Look up an Entity Group by name, query each member's in-memory AlaSQL table,
    * and return matched records grouped by source entity with primary entity first.
    */
-  static resolveIdentity(params: {
+  static async resolveIdentity(params: {
     entityGroupName: string;
     linkValue: string;
-    stationId: string;
+    organizationId: string;
     entityGroups: EntityGroupContext[];
-  }): ResolveIdentityResult {
-    const { entityGroupName, linkValue, stationId, entityGroups } = params;
+  }): Promise<ResolveIdentityResult> {
+    const { entityGroupName, linkValue, organizationId, entityGroups } = params;
 
     const group = entityGroups.find((g) => g.name === entityGroupName);
     if (!group) {
       throw new Error(`Entity group not found: ${entityGroupName}`);
     }
 
-    const entry = stationDatabases.get(stationId);
-    if (!entry) {
-      throw new Error(`Station not loaded: ${stationId}`);
-    }
-
     const matches: ResolveIdentityResult["matches"] = [];
 
     for (const member of group.members) {
       try {
-        const rows = entry.db.exec(
-          `SELECT * FROM [${member.entityKey}] WHERE [${member.linkColumnKey}] = '${String(linkValue).replace(/'/g, "''")}'`
-        ) as Record<string, unknown>[];
+        // Resolve the link column to its `c_<column_name>` so we can
+        // filter the wide-table row by value, then ask for every live
+        // normalizedKey on that entity so the matched record contains
+        // the same field set the LLM was already seeing under AlaSQL.
+        const stmt = await wideTableStatementCache.get(member.connectorEntityId);
+        const cachedCol = stmt.columns.find(
+          (c) => c.normalizedKey === member.linkNormalizedKey
+        );
+        if (!cachedCol) {
+          matches.push({
+            entityKey: member.entityKey,
+            isPrimary: member.isPrimary,
+            records: [],
+          });
+          continue;
+        }
+        const projectedKeys = stmt.columns.map((c) => c.normalizedKey);
+        const rows = await wideTableRepo.fetchProjectedRows(
+          member.connectorEntityId,
+          projectedKeys,
+          {
+            organizationId,
+            where: drizzleSql`w.${drizzleSql.raw(`"${cachedCol.columnName}"`)} = ${String(linkValue)}`,
+          }
+        );
         matches.push({
           entityKey: member.entityKey,
           isPrimary: member.isPrimary,

@@ -328,7 +328,7 @@ export class ToolService {
 
       if (stationData.entityGroups.length > 0) {
         tools.resolve_identity = new ResolveIdentityTool().build(
-          stationId,
+          organizationId,
           stationData.entityGroups
         );
       }
@@ -338,24 +338,39 @@ export class ToolService {
     // Pack: statistics
     // -------------------------------------------------------------------
     if (enabledPacks.has("statistics")) {
-      tools.describe_column = new DescribeColumnTool().build(stationData);
-      tools.correlate = new CorrelateTool().build(stationData);
-      tools.detect_outliers = new DetectOutliersTool().build(stationData);
-      tools.cluster = new ClusterTool().build(stationData);
-      tools.aggregate = new AggregateTool().build(stationData);
-      tools.hypothesis_test = new HypothesisTestTool().build(stationData);
+      tools.describe_column = new DescribeColumnTool().build(
+        stationData,
+        organizationId
+      );
+      tools.correlate = new CorrelateTool().build(stationData, organizationId);
+      tools.detect_outliers = new DetectOutliersTool().build(
+        stationData,
+        organizationId
+      );
+      tools.cluster = new ClusterTool().build(stationData, organizationId);
+      tools.aggregate = new AggregateTool().build(stationData, organizationId);
+      tools.hypothesis_test = new HypothesisTestTool().build(
+        stationData,
+        organizationId
+      );
     }
 
     // -------------------------------------------------------------------
     // Pack: regression
     // -------------------------------------------------------------------
     if (enabledPacks.has("regression")) {
-      tools.regression = new RegressionTool().build(stationData);
-      tools.logistic_regression = new LogisticRegressionTool().build(stationData);
-      tools.trend = new TrendTool().build(stationData);
-      tools.changepoint = new ChangepointTool().build(stationData);
-      tools.decompose = new DecomposeTool().build(stationData);
-      tools.forecast = new ForecastTool().build(stationData);
+      tools.regression = new RegressionTool().build(stationData, organizationId);
+      tools.logistic_regression = new LogisticRegressionTool().build(
+        stationData,
+        organizationId
+      );
+      tools.trend = new TrendTool().build(stationData, organizationId);
+      tools.changepoint = new ChangepointTool().build(
+        stationData,
+        organizationId
+      );
+      tools.decompose = new DecomposeTool().build(stationData, organizationId);
+      tools.forecast = new ForecastTool().build(stationData, organizationId);
     }
 
     // -------------------------------------------------------------------
@@ -363,7 +378,8 @@ export class ToolService {
     // -------------------------------------------------------------------
     if (enabledPacks.has("financial")) {
       tools.technical_indicator = new TechnicalIndicatorTool().build(
-        stationData
+        stationData,
+        organizationId
       );
       tools.npv = new NpvTool().build();
       tools.irr = new IrrTool().build();
@@ -372,11 +388,23 @@ export class ToolService {
       tools.xirr = new XirrTool().build();
       tools.depreciation = new DepreciationTool().build();
       tools.amortize = new AmortizeTool().build();
-      tools.sharpe_ratio = new SharpeRatioTool().build(stationData);
-      tools.max_drawdown = new MaxDrawdownTool().build(stationData);
-      tools.rolling_returns = new RollingReturnsTool().build(stationData);
-      tools.var_cvar = new VarCvarTool().build(stationData);
-      tools.portfolio_metrics = new PortfolioMetricsTool().build(stationData);
+      tools.sharpe_ratio = new SharpeRatioTool().build(
+        stationData,
+        organizationId
+      );
+      tools.max_drawdown = new MaxDrawdownTool().build(
+        stationData,
+        organizationId
+      );
+      tools.rolling_returns = new RollingReturnsTool().build(
+        stationData,
+        organizationId
+      );
+      tools.var_cvar = new VarCvarTool().build(stationData, organizationId);
+      tools.portfolio_metrics = new PortfolioMetricsTool().build(
+        stationData,
+        organizationId
+      );
       tools.bond_math = new BondMathTool().build();
     }
 
