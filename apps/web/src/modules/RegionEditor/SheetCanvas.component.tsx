@@ -46,16 +46,24 @@ import type {
 
 /**
  * Fetches the cells inside the requested rectangle on the given sheet.
- * Returned `CellValue[][]` is indexed as `cells[row - rowStart][col - colStart]`.
- * The caller (canvas) is allowed to ask for rows beyond `sheet.rowCount`; the
- * backend clamps. A single loader instance serves every sheet in a workbook —
- * it receives the sheet id per call and closes over the upload session id.
+ *
+ * Rectangle ends are **exclusive** — the rectangle covers
+ * `[rowStart, rowEnd) × [colStart, colEnd)`. Returned `CellValue[][]` is
+ * indexed as `cells[row - rowStart][col - colStart]` and has exactly
+ * `rowEnd - rowStart` rows / `colEnd - colStart` columns (post-clamp).
+ *
+ * The caller (canvas) is allowed to ask for rows beyond `sheet.rowCount`;
+ * the backend clamps. A single loader instance serves every sheet in a
+ * workbook — it receives the sheet id per call and closes over the
+ * upload session id.
  */
 export type LoadSliceFn = (args: {
   sheetId: string;
   rowStart: number;
+  /** Exclusive — the rectangle covers rows `[rowStart, rowEnd)`. */
   rowEnd: number;
   colStart: number;
+  /** Exclusive — the rectangle covers columns `[colStart, colEnd)`. */
   colEnd: number;
 }) => Promise<CellValue[][]>;
 
@@ -920,9 +928,16 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     loadSlice({
       sheetId: sheet.id,
       rowStart: firstVisibleRow,
-      rowEnd: lastVisibleRow,
+      // `rowEnd` / `colEnd` are exclusive — see LoadSliceFn JSDoc.
+      // `lastVisibleRow` is the last visible *index* (inclusive in the
+      // canvas's internal iteration), so +1 to convert to the
+      // half-open range the server expects. Without this, the server
+      // returns one fewer row than the canvas iterates over, leaving
+      // the last visible row permanently `undefined` in `sliceCache`,
+      // which keeps `anyMissing` true after every fetch — refetch loop.
+      rowEnd: lastVisibleRow + 1,
       colStart: 0,
-      colEnd: Math.max(0, sheet.colCount - 1),
+      colEnd: sheet.colCount,
     })
       .then((cells) => {
         pendingFetchesRef.current.delete(rectKey);
