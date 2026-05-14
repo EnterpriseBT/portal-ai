@@ -35,6 +35,7 @@ import { toServerError } from "../utils/api.util";
 import { ConnectorInstanceDataItem } from "../components/ConnectorInstance.component";
 import { ConnectorInstanceLockAlertUI } from "../components/ConnectorInstanceLockAlert.component";
 import { ConnectorInstanceReconnectButtonUI } from "../components/ConnectorInstanceReconnectButton.component";
+import { ConnectorInstanceEditLayoutPlanButtonUI } from "../components/ConnectorInstanceEditLayoutPlanButton.component";
 import { ConnectorInstanceSyncButtonUI } from "../components/ConnectorInstanceSyncButton.component";
 import { ConnectorInstanceSyncFeedbackUI } from "../components/ConnectorInstanceSyncFeedback.component";
 import { joinRunningJobLabels } from "../utils/running-job-label.util";
@@ -343,11 +344,31 @@ export const ConnectorInstanceView = ({
                   variant="contained"
                 />
               );
-              const primaryAction = isInError
+              const editLayoutPlanAction = (
+                <ConnectorInstanceEditLayoutPlanButtonUI
+                  connectorDefinitionSlug={
+                    ci.connectorDefinition?.slug ?? ""
+                  }
+                  lockedReason={lockedReason}
+                  onClick={() =>
+                    navigate({
+                      to: "/connectors/$connectorInstanceId/layout-plan/edit",
+                      params: { connectorInstanceId },
+                    })
+                  }
+                />
+              );
+              const mainAction = isInError
                 ? reconnectAction
                 : isSyncConfigured
                   ? syncAction
                   : editAction;
+              const primaryAction = (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  {editLayoutPlanAction}
+                  {mainAction}
+                </Stack>
+              );
               const secondaryActions = [
                 ...(isInError || isSyncConfigured
                   ? [
