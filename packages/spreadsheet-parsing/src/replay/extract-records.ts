@@ -55,11 +55,26 @@ function setEndCoordAlong(
 // ── Terminator scan (for dynamic tail segments) ────────────────────────────
 
 /**
+ * Window size for terminator scans that walk new rows past the region's
+ * declared bounds. Matches the gap in `resolve-bounds.ts` — rows must
+ * be `loadRange`-resolved before the sync `sheet.cell()` reads can
+ * fire on the lazy adapter.
+ */
+const ROW_SCAN_WINDOW = 200;
+
+/**
  * Walk a header axis starting at `startCoord` until `terminator` fires.
  * Returns the last coord claimed by the dynamic segment (inclusive).
  * `axis` is the header axis whose positions we are extending.
+ *
+ * - axis="row" pivot tail: scan walks columns; rows in `[crossStart,
+ *   crossEnd]` are already loaded by the caller, so no per-window load
+ *   is needed.
+ * - axis="column" pivot tail: scan walks rows past `crossEnd`; each
+ *   window is `loadRange`-resolved before the row reads inside
+ *   `isBlankLine` / `firstCell` fire.
  */
-function scanTerminator(
+async function scanTerminator(
   terminator: Terminator,
   sheet: Sheet,
   axis: AxisMember,
@@ -67,7 +82,7 @@ function scanTerminator(
   crossStart: number,
   crossEnd: number,
   sheetEdge: number
-): number {
+): Promise<number> {
   const isBlankLine = (coord: number): boolean => {
     if (axis === "row") {
       for (let r = crossStart; r <= crossEnd; r++) {
@@ -90,20 +105,28 @@ function scanTerminator(
     const needed = terminator.consecutiveBlanks ?? DEFAULT_UNTIL_BLANK_COUNT;
     let lastData = startCoord - 1;
     let blanks = 0;
-    for (let c = startCoord; c <= sheetEdge; c++) {
-      if (isBlankLine(c)) {
-        blanks++;
-        if (blanks >= needed) break;
-      } else {
-        blanks = 0;
-        lastData = c;
+    for (let c = startCoord; c <= sheetEdge; ) {
+      const windowEnd = Math.min(c + ROW_SCAN_WINDOW - 1, sheetEdge);
+      if (axis === "column") await sheet.loadRange(c, windowEnd);
+      for (; c <= windowEnd; c++) {
+        if (isBlankLine(c)) {
+          blanks++;
+          if (blanks >= needed) return lastData;
+        } else {
+          blanks = 0;
+          lastData = c;
+        }
       }
     }
     return lastData;
   }
   const re = new RegExp(terminator.pattern);
-  for (let c = startCoord; c <= sheetEdge; c++) {
-    if (re.test(firstCell(c))) return c - 1;
+  for (let c = startCoord; c <= sheetEdge; ) {
+    const windowEnd = Math.min(c + ROW_SCAN_WINDOW - 1, sheetEdge);
+    if (axis === "column") await sheet.loadRange(c, windowEnd);
+    for (; c <= windowEnd; c++) {
+      if (re.test(firstCell(c))) return c - 1;
+    }
   }
   return sheetEdge;
 }
@@ -122,11 +145,11 @@ interface EffectiveAxisState {
  * terminator fires; update both the segment's `positionCount` and the
  * corresponding bound.
  */
-function computeEffective(
+async function computeEffective(
   region: Region,
   sheet: Sheet,
   baseBounds: ResolvedBounds
-): EffectiveAxisState {
+): Promise<EffectiveAxisState> {
   const bounds: ResolvedBounds = { ...baseBounds };
   const result: EffectiveAxisState = {
     bounds,
@@ -160,7 +183,7 @@ function computeEffective(
       axis === "row" ? sheet.dimensions.cols : sheet.dimensions.rows;
 
     const tailSeg = tail as Extract<Segment, { kind: "pivot" }>;
-    const scannedEnd = scanTerminator(
+    const scannedEnd = await scanTerminator(
       tailSeg.dynamic!.terminator,
       sheet,
       axis,
@@ -649,16 +672,23 @@ function finalizeRecord(
  * identical inputs — bounds, segments, bindings — so segmented and tidy plans
  * round-trip to the same records.
  */
-export function extractRecords(
+export async function extractRecords(
   region: Region,
   sheet: Sheet
-): ExtractedRecord[] {
-  const baseBounds = resolveRegionBounds(region, sheet);
+): Promise<ExtractedRecord[]> {
+  // Pre-load the declared bounds so every sync `sheet.cell()` call
+  // inside the resolve / extract helpers resolves on the lazy adapter.
+  // Terminator-extension scans (resolveRegionBounds / scanTerminator)
+  // load their own windows past the bounds; downstream readers stay
+  // synchronous.
+  await sheet.loadRange(region.bounds.startRow, region.bounds.endRow);
+
+  const baseBounds = await resolveRegionBounds(region, sheet);
   const numAxes = region.headerAxes.length;
 
   if (numAxes === 0) return extractHeaderless(region, sheet, baseBounds);
 
-  const effective = computeEffective(region, sheet, baseBounds);
+  const effective = await computeEffective(region, sheet, baseBounds);
 
   if (numAxes === 1) return extract1D(region, sheet, effective);
   return extract2D(region, sheet, effective);

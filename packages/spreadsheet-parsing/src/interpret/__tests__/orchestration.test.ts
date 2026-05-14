@@ -99,7 +99,7 @@ describe("interpret() — orchestration", () => {
       ],
     });
     const sheet = makeSheetAccessor(input.workbook.sheets[0]);
-    const records = extractRecords(plan.regions[0], sheet);
+    const records = await extractRecords(plan.regions[0], sheet);
     expect(records).toHaveLength(3);
     expect(records.every((r) => r.targetEntityDefinitionId === "contacts")).toBe(
       true
@@ -132,7 +132,7 @@ describe("interpret() — orchestration", () => {
       columnDefinitionCatalog: [{ id: "x", label: "x" }],
     });
     const sheet = makeSheetAccessor(input.workbook.sheets[0]);
-    const records = extractRecords(plan.regions[0], sheet);
+    const records = await extractRecords(plan.regions[0], sheet);
     expect(records).toHaveLength(3);
     expect(records[0].fields["email"]).toBe("a@x.com");
     expect(records[0].fields["name"]).toBe("alice");
@@ -187,7 +187,7 @@ describe("interpret() — orchestration", () => {
 
     // Replay-bridge: the heuristic pivot emits one record per label.
     const sheet = makeSheetAccessor(input.workbook.sheets[0]);
-    const records = extractRecords(region, sheet);
+    const records = await extractRecords(region, sheet);
     expect(records).toHaveLength(2);
     expect(records.every((r) => r.targetEntityDefinitionId === "monthly")).toBe(
       true
@@ -214,7 +214,7 @@ describe("interpret() — detect-segments wired", () => {
       }
 
       const sheet = makeSheetAccessor(input.workbook.sheets[0]);
-      const records = extractRecords(region, sheet);
+      const records = await extractRecords(region, sheet);
       expect(records).toHaveLength(expected.recordCount);
 
       // PR-3 invariants: every pivot segment carries a non-empty axisName

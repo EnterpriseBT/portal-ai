@@ -80,8 +80,8 @@ function contactsWorkbook() {
 }
 
 describe("extractRecords — 1D headerAxes:['row'] (records-are-rows)", () => {
-  it("emits one record per data row with fields keyed by source-field name", () => {
-    const records = extractRecords(
+  it("emits one record per data row with fields keyed by source-field name", async () => {
+    const records = await extractRecords(
       contactsRegion(),
       contactsWorkbook().sheets[0]
     );
@@ -94,8 +94,8 @@ describe("extractRecords — 1D headerAxes:['row'] (records-are-rows)", () => {
     });
   });
 
-  it("assigns source_id from the identity column value", () => {
-    const records = extractRecords(
+  it("assigns source_id from the identity column value", async () => {
+    const records = await extractRecords(
       contactsRegion(),
       contactsWorkbook().sheets[0]
     );
@@ -104,8 +104,8 @@ describe("extractRecords — 1D headerAxes:['row'] (records-are-rows)", () => {
     expect(records[2].sourceId).toBe("c@x.com");
   });
 
-  it("attaches the region id and targetEntityDefinitionId to every record", () => {
-    const records = extractRecords(
+  it("attaches the region id and targetEntityDefinitionId to every record", async () => {
+    const records = await extractRecords(
       contactsRegion(),
       contactsWorkbook().sheets[0]
     );
@@ -115,18 +115,18 @@ describe("extractRecords — 1D headerAxes:['row'] (records-are-rows)", () => {
     }
   });
 
-  it("produces a stable checksum that is independent of binding declaration order", () => {
-    const baseline = extractRecords(
+  it("produces a stable checksum that is independent of binding declaration order", async () => {
+    const baseline = await extractRecords(
       contactsRegion(),
       contactsWorkbook().sheets[0]
     );
     const reordered = { ...contactsRegion() };
     reordered.columnBindings = [...reordered.columnBindings].reverse();
-    const swapped = extractRecords(reordered, contactsWorkbook().sheets[0]);
+    const swapped = await extractRecords(reordered, contactsWorkbook().sheets[0]);
     expect(swapped[0].checksum).toBe(baseline[0].checksum);
   });
 
-  it("resolves byPositionIndex bindings for a headerless region", () => {
+  it("resolves byPositionIndex bindings for a headerless region", async () => {
     const headerless: Region = {
       ...contactsRegion(),
       headerAxes: [],
@@ -147,7 +147,7 @@ describe("extractRecords — 1D headerAxes:['row'] (records-are-rows)", () => {
         },
       ],
     };
-    const records = extractRecords(headerless, contactsWorkbook().sheets[0]);
+    const records = await extractRecords(headerless, contactsWorkbook().sheets[0]);
     expect(records).toHaveLength(3);
     expect(records[0].fields).toEqual({
       row_1: "a@x.com",
@@ -155,8 +155,8 @@ describe("extractRecords — 1D headerAxes:['row'] (records-are-rows)", () => {
     });
   });
 
-  it("skips the header row even when iterating the full region bounds", () => {
-    const records = extractRecords(
+  it("skips the header row even when iterating the full region bounds", async () => {
+    const records = await extractRecords(
       contactsRegion(),
       contactsWorkbook().sheets[0]
     );
@@ -170,7 +170,7 @@ describe("extractRecords — 1D headerAxes:['row'] (records-are-rows)", () => {
   // generic "Name") used to collide in `record.fields` because keying was
   // by `columnDefinitionId` — the right-most binding's value overwrote the
   // earlier one's. Keying by source-field name keeps both intact.
-  it("emits separate fields for two bindings that share a columnDefinitionId", () => {
+  it("emits separate fields for two bindings that share a columnDefinitionId", async () => {
     const region: Region = {
       ...contactsRegion(),
       columnBindings: [
@@ -186,7 +186,7 @@ describe("extractRecords — 1D headerAxes:['row'] (records-are-rows)", () => {
         },
       ],
     };
-    const records = extractRecords(region, contactsWorkbook().sheets[0]);
+    const records = await extractRecords(region, contactsWorkbook().sheets[0]);
     expect(records).toHaveLength(3);
     expect(records[0].fields["email"]).toBe("a@x.com");
     expect(records[0].fields["name"]).toBe("alice");

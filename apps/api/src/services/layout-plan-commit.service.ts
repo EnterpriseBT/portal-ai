@@ -127,7 +127,7 @@ export class LayoutPlanCommitService {
     let records: ExtractedRecord[];
     let drift: DriftReport;
     try {
-      const result = replay(plan, wb);
+      const result = await replay(plan, wb);
       records = result.records;
       drift = result.drift;
     } catch (err) {
