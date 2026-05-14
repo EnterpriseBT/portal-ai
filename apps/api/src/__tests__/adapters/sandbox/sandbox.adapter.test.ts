@@ -33,6 +33,7 @@ jest.unstable_mockModule(
   () => ({
     entityRecordsRepo: {
       findByConnectorEntityId: mockFindByConnectorEntityId,
+      findHydratedMany: mockFindByConnectorEntityId,
       countByConnectorEntityId: mockCountByConnectorEntityId,
     },
   })

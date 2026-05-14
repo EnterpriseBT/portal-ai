@@ -44,7 +44,7 @@ import type {
   LayoutPlanCommitMetadata,
   LayoutPlanCommitWorkbookSource,
 } from "@portalai/core/models";
-import type { WorkbookData } from "@portalai/spreadsheet-parsing";
+import type { Workbook } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
@@ -272,7 +272,6 @@ export class LayoutPlanDraftService {
       userId,
       connectorInstanceId,
       planId,
-      isExistingInstance,
       workbookSource,
     } = metadata;
 
@@ -281,37 +280,21 @@ export class LayoutPlanDraftService {
       organizationId
     );
 
-    let result;
-    try {
-      result = await LayoutPlanCommitService.commit(
-        connectorInstanceId,
-        planId,
-        organizationId,
-        userId,
-        { workbook },
-        { onProgress }
-      );
-    } catch (err) {
-      logger.warn(
-        {
-          event: "commit-draft.rollback",
-          connectorInstanceId,
-          planId,
-          isExistingInstance,
-          reason: err instanceof Error ? err.message : String(err),
-        },
-        "rolling back draft commit"
-      );
-      await DbService.repository.connectorInstanceLayoutPlans
-        .hardDelete(planId)
-        .catch(() => undefined);
-      if (!isExistingInstance) {
-        await DbService.repository.connectorInstances
-          .hardDelete(connectorInstanceId)
-          .catch(() => undefined);
-      }
-      throw err;
-    }
+    // Errors propagate as-is so BullMQ can retry. The orphan-row
+    // cleanup that used to live here moved to
+    // `rollbackFailedDraftCommit` and is invoked by the processor
+    // only on the FINAL retry attempt; running it per-attempt
+    // hard-deleted the plan row on the first transient failure and
+    // poisoned the subsequent retries (every one of them then failed
+    // with `LAYOUT_PLAN_NOT_FOUND`).
+    const result = await LayoutPlanCommitService.commit(
+      connectorInstanceId,
+      planId,
+      organizationId,
+      userId,
+      { workbook },
+      { onProgress }
+    );
 
     // Commit succeeded — flip the instance to `active` so the
     // pending chip on the detail view clears. The instance was
@@ -350,6 +333,82 @@ export class LayoutPlanDraftService {
       connectorEntityIds: result.connectorEntityIds,
       recordCounts: result.recordCounts,
     };
+  }
+
+  /**
+   * Clean up after a draft commit that has exhausted BullMQ's retry
+   * budget. Only invoked by the processor's terminal catch — NEVER
+   * per-attempt, because mid-retry cleanup hard-deletes the plan row
+   * that subsequent retries will look up, deterministically converting
+   * a transient first-attempt failure into a permanent
+   * `LAYOUT_PLAN_NOT_FOUND` for every retry.
+   *
+   * Two branches by ownership:
+   *
+   *   - `isExistingInstance: false` — the route created the
+   *     `connector_instances` row inline as part of this commit (the
+   *     fresh-create file-upload path). The user never saw it as a
+   *     usable connector. Hard-delete both rows so no orphan survives.
+   *
+   *   - `isExistingInstance: true` — the row pre-existed (the OAuth
+   *     callback's pending google-sheets / microsoft-excel instance,
+   *     or the file-upload "commit against existing pending instance"
+   *     path). Keep the plan row so the user can open it in the
+   *     edit-layout-plan view, fix the identity strategy / drift
+   *     knobs / blocker warnings the commit halted on, and recommit.
+   *     Flip the connector to `status: "error"` + `lastErrorMessage`
+   *     so the detail view surfaces "something went wrong, edit your
+   *     plan and try again" instead of stranding the instance in
+   *     `pending` forever.
+   *
+   * Defensive: every write is `.catch(() => undefined)` so a partial
+   * cleanup doesn't mask the underlying failure when the processor
+   * re-throws.
+   */
+  static async rollbackFailedDraftCommit(
+    metadata: Extract<LayoutPlanCommitMetadata, { kind: "draft" }>,
+    reason: string
+  ): Promise<void> {
+    const { connectorInstanceId, planId, isExistingInstance, userId } =
+      metadata;
+    logger.warn(
+      {
+        event: "commit-draft.rollback",
+        connectorInstanceId,
+        planId,
+        isExistingInstance,
+        reason,
+      },
+      "rolling back draft commit (final failure)"
+    );
+    if (isExistingInstance) {
+      // Keep the plan; flip the instance to `error` so the user can
+      // recover via the edit-layout-plan flow.
+      await DbService.repository.connectorInstances
+        .update(connectorInstanceId, {
+          status: "error",
+          lastErrorMessage: reason,
+          updatedBy: userId,
+        })
+        .catch((err) => {
+          logger.warn(
+            {
+              connectorInstanceId,
+              err: err instanceof Error ? err.message : err,
+            },
+            "Failed to flip pending → error after commit rollback (non-fatal)"
+          );
+        });
+      return;
+    }
+    // Fresh-create path — hard-delete both rows; the user never saw
+    // this connector as usable.
+    await DbService.repository.connectorInstanceLayoutPlans
+      .hardDelete(planId)
+      .catch(() => undefined);
+    await DbService.repository.connectorInstances
+      .hardDelete(connectorInstanceId)
+      .catch(() => undefined);
   }
 
   /**
@@ -448,7 +507,7 @@ export class LayoutPlanDraftService {
   static async resolveWorkbookBySource(
     source: LayoutPlanCommitWorkbookSource,
     organizationId: string
-  ): Promise<WorkbookData> {
+  ): Promise<Workbook> {
     if (source.kind === "uploadSession") {
       return FileUploadSessionService.resolveWorkbook(
         source.uploadSessionId,
@@ -486,7 +545,7 @@ export class LayoutPlanDraftService {
 async function resolveWorkbookFromBody(
   body: LayoutPlanInterpretDraftRequestBody,
   organizationId: string
-): Promise<WorkbookData> {
+): Promise<Workbook> {
   if (body.uploadSessionId) {
     return LayoutPlanDraftService.resolveWorkbookBySource(
       { kind: "uploadSession", uploadSessionId: body.uploadSessionId },

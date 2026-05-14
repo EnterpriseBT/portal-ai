@@ -13,9 +13,9 @@ import { reconcileWithPrior } from "../reconcile-with-prior.js";
 
 async function buildAssembledState(input: InterpretInput) {
   let state = detectRegions(createInitialState(input));
-  state = detectHeaders(state);
-  state = detectIdentity(state);
-  state = detectSegments(state);
+  state = await detectHeaders(state);
+  state = await detectIdentity(state);
+  state = await detectSegments(state);
   state = await classifyFieldSegments(state, {});
   state = await recommendSegmentAxisNames(state, {});
   state = proposeBindings(state);

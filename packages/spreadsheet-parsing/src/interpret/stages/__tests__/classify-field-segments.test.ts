@@ -14,12 +14,12 @@ import type {
   ColumnDefinitionCatalogEntry,
 } from "../../types.js";
 
-function runUpToDetectSegments(input: InterpretInput): InterpretState {
+async function runUpToDetectSegments(input: InterpretInput): Promise<InterpretState> {
   let state = createInitialState(input);
   state = detectRegions(state);
-  state = detectHeaders(state);
-  state = detectIdentity(state);
-  state = detectSegments(state);
+  state = await detectHeaders(state);
+  state = await detectIdentity(state);
+  state = await detectSegments(state);
   return state;
 }
 
@@ -67,7 +67,7 @@ const DEFAULT_CATALOG: ColumnDefinitionCatalogEntry[] = [
 
 describe("classifyFieldSegments — heuristic default", () => {
   it("matches on exact header equality (case-insensitive)", async () => {
-    const prepared = runUpToDetectSegments(simpleInput());
+    const prepared = await runUpToDetectSegments(simpleInput());
     const state = await classifyFieldSegments(prepared, {
       columnDefinitionCatalog: DEFAULT_CATALOG,
     });
@@ -83,7 +83,7 @@ describe("classifyFieldSegments — heuristic default", () => {
   it("matches on normalised key when the catalog specifies one", async () => {
     const input = simpleInput();
     input.workbook.sheets[0].cells[0].value = "E-Mail";
-    const prepared = runUpToDetectSegments(input);
+    const prepared = await runUpToDetectSegments(input);
     const state = await classifyFieldSegments(prepared, {
       columnDefinitionCatalog: [
         { id: "col-email", label: "Email", normalizedKey: "e_mail" },
@@ -98,7 +98,7 @@ describe("classifyFieldSegments — heuristic default", () => {
   });
 
   it("returns null columnDefinitionId when no catalog entry matches", async () => {
-    const prepared = runUpToDetectSegments(simpleInput());
+    const prepared = await runUpToDetectSegments(simpleInput());
     const state = await classifyFieldSegments(prepared, {
       columnDefinitionCatalog: DEFAULT_CATALOG,
     });
@@ -109,7 +109,7 @@ describe("classifyFieldSegments — heuristic default", () => {
   });
 
   it("returns null columnDefinitionId for every header when no catalog is supplied", async () => {
-    const prepared = runUpToDetectSegments(simpleInput());
+    const prepared = await runUpToDetectSegments(simpleInput());
     const state = await classifyFieldSegments(prepared, {});
     const regionId = state.detectedRegions[0].id;
     const classifications = state.columnClassifications.get(regionId)!;
@@ -119,7 +119,7 @@ describe("classifyFieldSegments — heuristic default", () => {
   });
 
   it("rewrites null columnDefinitionId to defaultColumnDefinitionId when supplied, with rationale annotated", async () => {
-    const prepared = runUpToDetectSegments(simpleInput());
+    const prepared = await runUpToDetectSegments(simpleInput());
     const state = await classifyFieldSegments(prepared, {
       columnDefinitionCatalog: DEFAULT_CATALOG,
       defaultColumnDefinitionId: "col-text",
@@ -173,7 +173,7 @@ describe("classifyFieldSegments — filters non-field positions", () => {
       ],
     };
     const spy: jest.MockedFunction<ClassifierFn> = jest.fn(async () => []);
-    const prepared = runUpToDetectSegments(input);
+    const prepared = await runUpToDetectSegments(input);
     await classifyFieldSegments(prepared, {
       classifier: spy,
       columnDefinitionCatalog: [],
@@ -217,7 +217,7 @@ describe("classifyFieldSegments — filters non-field positions", () => {
       ],
     };
     const spy: jest.MockedFunction<ClassifierFn> = jest.fn(async () => []);
-    const prepared = runUpToDetectSegments(input);
+    const prepared = await runUpToDetectSegments(input);
     const state = await classifyFieldSegments(prepared, { classifier: spy });
     expect(spy).not.toHaveBeenCalled();
     const regionId = state.detectedRegions[0].id;
@@ -270,7 +270,7 @@ describe("classifyFieldSegments — filters non-field positions", () => {
       ],
     };
     const spy: jest.MockedFunction<ClassifierFn> = jest.fn(async () => []);
-    const prepared = runUpToDetectSegments(input);
+    const prepared = await runUpToDetectSegments(input);
     const state = await classifyFieldSegments(prepared, { classifier: spy });
     expect(spy).not.toHaveBeenCalled();
     const regionId = state.detectedRegions[0].id;
@@ -313,7 +313,7 @@ describe("classifyFieldSegments — filters non-field positions", () => {
       ],
     };
     const spy: jest.MockedFunction<ClassifierFn> = jest.fn(async () => []);
-    const prepared = runUpToDetectSegments(input);
+    const prepared = await runUpToDetectSegments(input);
     await classifyFieldSegments(prepared, { classifier: spy });
     expect(spy).toHaveBeenCalledTimes(1);
     const [candidates] = spy.mock.calls[0]!;
@@ -339,7 +339,7 @@ describe("classifyFieldSegments — injected classifier override", () => {
         }));
       }
     );
-    const prepared = runUpToDetectSegments(simpleInput());
+    const prepared = await runUpToDetectSegments(simpleInput());
     const state = await classifyFieldSegments(prepared, {
       classifier: injected,
       columnDefinitionCatalog: DEFAULT_CATALOG,
@@ -396,7 +396,7 @@ describe("classifyFieldSegments — injected classifier override", () => {
         }));
       }
     );
-    const prepared = runUpToDetectSegments(input);
+    const prepared = await runUpToDetectSegments(input);
     const state = await classifyFieldSegments(prepared, {
       classifier: injected,
       columnDefinitionCatalog: DEFAULT_CATALOG,
@@ -449,7 +449,7 @@ describe("classifyFieldSegments — injected classifier override", () => {
         }));
       }
     );
-    const prepared = runUpToDetectSegments(input);
+    const prepared = await runUpToDetectSegments(input);
     await classifyFieldSegments(prepared, {
       classifier: injected,
       concurrency: 2,
@@ -495,7 +495,7 @@ describe("classifyFieldSegments — injected classifier override", () => {
       ],
     };
     const spy: jest.MockedFunction<ClassifierFn> = jest.fn(async () => []);
-    const prepared = runUpToDetectSegments(input);
+    const prepared = await runUpToDetectSegments(input);
     await classifyFieldSegments(prepared, {
       classifier: spy,
       columnDefinitionCatalog: [],
@@ -564,7 +564,7 @@ describe("classifyFieldSegments — injected classifier override", () => {
           confidence: 0,
         }))
     );
-    const prepared = runUpToDetectSegments(input);
+    const prepared = await runUpToDetectSegments(input);
     const state = await classifyFieldSegments(prepared, {
       classifier: spy,
       columnDefinitionCatalog: [],
@@ -641,7 +641,7 @@ describe("classifyFieldSegments — injected classifier override", () => {
           confidence: 0,
         }))
     );
-    const prepared = runUpToDetectSegments(input);
+    const prepared = await runUpToDetectSegments(input);
     await classifyFieldSegments(prepared, {
       classifier: spy,
       columnDefinitionCatalog: [],
@@ -681,7 +681,7 @@ describe("classifyFieldSegments — injected classifier override", () => {
       ],
     };
     const injected = jest.fn(async () => []);
-    const prepared = runUpToDetectSegments(input);
+    const prepared = await runUpToDetectSegments(input);
     const state = await classifyFieldSegments(prepared, {
       classifier: injected,
     });

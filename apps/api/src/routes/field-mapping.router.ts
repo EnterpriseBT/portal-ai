@@ -23,6 +23,7 @@ import { fieldMappings } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
+import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
 
@@ -476,6 +477,31 @@ fieldMappingRouter.post(
         "Field mapping created"
       );
 
+      // Reconcile the wide table — adds the corresponding `c_<key>` column.
+      try {
+        await wideTableReconcilerService.reconcileEntity(
+          parsed.data.connectorEntityId
+        );
+      } catch (error) {
+        if (error instanceof ApiError) return next(error);
+        logger.error(
+          {
+            connectorEntityId: parsed.data.connectorEntityId,
+            error: error instanceof Error ? error.message : "Unknown error",
+          },
+          "Wide-table reconciliation failed after field-mapping create"
+        );
+        return next(
+          new ApiError(
+            500,
+            ApiCode.WIDE_TABLE_RECONCILE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to reconcile wide table"
+          )
+        );
+      }
+
       return HttpService.success<FieldMappingCreateResponsePayload>(
         res,
         {
@@ -723,6 +749,34 @@ fieldMappingRouter.patch(
         });
       }
 
+      // Reconcile the wide table. Most PATCHes don't change the wide-table
+      // shape (the reconciler short-circuits when desired = actual), but
+      // a `columnDefinitionId` swap that changes the underlying type
+      // surfaces as a `WIDE_TABLE_TYPE_CHANGE_UNSUPPORTED` here.
+      try {
+        await wideTableReconcilerService.reconcileEntity(
+          existing.connectorEntityId
+        );
+      } catch (error) {
+        if (error instanceof ApiError) return next(error);
+        logger.error(
+          {
+            connectorEntityId: existing.connectorEntityId,
+            error: error instanceof Error ? error.message : "Unknown error",
+          },
+          "Wide-table reconciliation failed after field-mapping update"
+        );
+        return next(
+          new ApiError(
+            500,
+            ApiCode.WIDE_TABLE_RECONCILE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to reconcile wide table"
+          )
+        );
+      }
+
       return HttpService.success<FieldMappingUpdateResponsePayload>(res, {
         fieldMapping:
           fieldMapping as unknown as FieldMappingUpdateResponsePayload["fieldMapping"],
@@ -967,6 +1021,34 @@ fieldMappingRouter.delete(
 
       logger.info({ id, ...result }, "Field mapping soft-deleted with cascade");
 
+      // Reconcile the wide table — retires the corresponding column
+      // (sets retired_at; column stays on disk).
+      if (mappingToDelete) {
+        try {
+          await wideTableReconcilerService.reconcileEntity(
+            mappingToDelete.connectorEntityId
+          );
+        } catch (error) {
+          if (error instanceof ApiError) return next(error);
+          logger.error(
+            {
+              connectorEntityId: mappingToDelete.connectorEntityId,
+              error: error instanceof Error ? error.message : "Unknown error",
+            },
+            "Wide-table reconciliation failed after field-mapping delete"
+          );
+          return next(
+            new ApiError(
+              500,
+              ApiCode.WIDE_TABLE_RECONCILE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to reconcile wide table"
+            )
+          );
+        }
+      }
+
       return HttpService.success<FieldMappingDeleteResponsePayload>(res, {
         id,
         cascaded: {
@@ -1087,12 +1169,13 @@ fieldMappingRouter.get(
       const keyA = mapping.normalizedKey; // e.g. "enrolled_student_ids"
       const keyB = counterpart.normalizedKey; // e.g. "classes_enrolled_ids"
 
-      // 6. Load all records from both entities
+      // 6. Load all records from both entities with rehydrated
+      //    normalizedData (via the wide-table JOIN).
       const [recordsA, recordsB] = await Promise.all([
-        DbService.repository.entityRecords.findByConnectorEntityId(
+        DbService.repository.entityRecords.findHydratedMany(
           mapping.connectorEntityId
         ),
-        DbService.repository.entityRecords.findByConnectorEntityId(
+        DbService.repository.entityRecords.findHydratedMany(
           counterpart.connectorEntityId
         ),
       ]);

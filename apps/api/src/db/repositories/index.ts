@@ -25,3 +25,5 @@ export * from "./station-toolpacks.repository.js";
 export * from "./organization-toolpacks.repository.js";
 export * from "./connector-instance-layout-plans.repository.js";
 export * from "./file-uploads.repository.js";
+export * from "./wide-table-columns.repository.js";
+export * from "./wide-table.repository.js";

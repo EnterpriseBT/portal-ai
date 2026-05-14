@@ -743,8 +743,21 @@ describe("Connector Instance Layout Plans Router", () => {
 
       const records = await (db as Db).select().from(schema.entityRecords);
       expect(records).toHaveLength(2);
-      expect(records[0].normalizedData).toHaveProperty("email");
-      expect(records[0].normalizedData).toHaveProperty("name");
+
+      // Phase 2 Slice 6 — `normalized_data` is gone from
+      // `entity_records`; the typed values live on the wide table.
+      const entityId = result.connectorEntityIds[0]!;
+      const wideRows = await (db as Db).execute(
+        (await import("drizzle-orm")).sql.raw(`SELECT * FROM "er__${entityId}"`)
+      );
+      const rows = wideRows as unknown as Record<string, unknown>[];
+      expect(rows).toHaveLength(2);
+      const byEmail = new Map(rows.map((r) => [r.c_email, r]));
+      expect(byEmail.get("a@x.com")).toBeDefined();
+      expect(byEmail.get("a@x.com")!.c_name).toBe("alice");
+      expect(byEmail.get("a@x.com")!.source_id).toBeTruthy();
+      expect(byEmail.get("a@x.com")!.is_valid).toBe(true);
+      expect(byEmail.get("b@x.com")!.c_name).toBe("bob");
     });
 
     // Regression: two source columns mapped to the same ColumnDefinition
@@ -826,9 +839,19 @@ describe("Connector Instance Layout Plans Router", () => {
         expect(m.columnDefinitionId).toBe(colNameTypeId);
       }
 
+      // After slice 6 `normalized_data` lives on the wide table only.
+      // Read via the hydrated repo to verify each record's projection.
       const records = await (db as Db).select().from(schema.entityRecords);
       expect(records).toHaveLength(2);
-      const claude = records.find(
+      const { entityRecordsRepo } = await import(
+        "../../../db/repositories/entity-records.repository.js"
+      );
+      const entityIdAfter = records[0].connectorEntityId;
+      const hydrated = await entityRecordsRepo.findHydratedMany(
+        entityIdAfter
+      );
+      expect(hydrated).toHaveLength(2);
+      const claude = hydrated.find(
         (r) =>
           (r.normalizedData as Record<string, unknown>).model === "Claude"
       );
@@ -836,7 +859,7 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(
         (claude!.normalizedData as Record<string, unknown>).organization
       ).toBe("Anthropic");
-      const gpt = records.find(
+      const gpt = hydrated.find(
         (r) => (r.normalizedData as Record<string, unknown>).model === "GPT"
       );
       expect(gpt).toBeDefined();
@@ -977,14 +1000,16 @@ describe("Connector Instance Layout Plans Router", () => {
 
       const records = await (db as Db).select().from(schema.entityRecords);
       expect(records).toHaveLength(6);
-      // normalizedData keys line up with FieldMapping.normalizedKey, not
-      // the raw axisName / cellValueField.name (here they happen to match
-      // because the source names already pass `sourceFieldToNormalizedKey`).
-      const sample = records[0];
-      expect(sample.normalizedData).toHaveProperty("month");
-      expect(sample.normalizedData).toHaveProperty("revenue");
+      const { entityRecordsRepo } = await import(
+        "../../../db/repositories/entity-records.repository.js"
+      );
+      const hydrated = await entityRecordsRepo.findHydratedMany(
+        records[0].connectorEntityId
+      );
+      expect(hydrated[0].normalizedData).toHaveProperty("month");
+      expect(hydrated[0].normalizedData).toHaveProperty("revenue");
       const months = new Set(
-        records.map((r) =>
+        hydrated.map((r) =>
           (r.normalizedData as Record<string, unknown>).month
         )
       );
@@ -1215,7 +1240,7 @@ describe("Connector Instance Layout Plans Router", () => {
       };
       const planId = await insertPlanRow(db as Db, plan);
 
-      await commitInline(planId, contactsWorkbook());
+      const first = await commitInline(planId, contactsWorkbook());
       const second = await commitInline(planId, contactsWorkbook());
 
       expect(second.recordCounts.unchanged).toBe(2);
@@ -1224,6 +1249,16 @@ describe("Connector Instance Layout Plans Router", () => {
 
       const records = await (db as Db).select().from(schema.entityRecords);
       expect(records).toHaveLength(2);
+
+      // Phase 2 Slice 2 — re-commit doesn't double the wide-table rows
+      // and the unchanged-path bumps `synced_at` on both sides.
+      const entityId = first.connectorEntityIds[0]!;
+      const wideRows = (await (db as Db).execute(
+        (await import("drizzle-orm")).sql.raw(
+          `SELECT * FROM "er__${entityId}"`
+        )
+      )) as unknown as Record<string, unknown>[];
+      expect(wideRows).toHaveLength(2);
     });
 
     it("returns 409 LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED when the workbook has duplicate identity values", async () => {

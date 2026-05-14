@@ -38,7 +38,7 @@ function makeRegion(overrides: Partial<Region> = {}): Region {
 
 describe("resolveRegionBounds", () => {
   describe("no terminator", () => {
-    it("returns the literal bounds unchanged", () => {
+    it("returns the literal bounds unchanged", async () => {
       const sheet = makeSheetAccessor({
         name: "Sheet1",
         dimensions: { rows: 100, cols: 100 },
@@ -50,7 +50,7 @@ describe("resolveRegionBounds", () => {
           row: [{ kind: "field", positionCount: 4 }],
         },
       });
-      const resolved = resolveRegionBounds(region, sheet);
+      const resolved = await resolveRegionBounds(region, sheet);
       expect(resolved).toEqual({
         startRow: 2,
         startCol: 2,
@@ -79,29 +79,29 @@ describe("resolveRegionBounds", () => {
     };
     const sheet = makeSheetAccessor(sheetData);
 
-    it("expands endRow until `consecutiveBlanks` blank lines (default 2)", () => {
+    it("expands endRow until `consecutiveBlanks` blank lines (default 2)", async () => {
       const region = makeRegion({
         bounds: { startRow: 1, startCol: 1, endRow: 1, endCol: 2 },
         segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
         recordAxisTerminator: { kind: "untilBlank", consecutiveBlanks: 2 },
       });
-      const resolved = resolveRegionBounds(region, sheet);
+      const resolved = await resolveRegionBounds(region, sheet);
       expect(resolved.endRow).toBe(4);
     });
 
-    it("respects a custom consecutiveBlanks count", () => {
+    it("respects a custom consecutiveBlanks count", async () => {
       const region = makeRegion({
         bounds: { startRow: 1, startCol: 1, endRow: 1, endCol: 2 },
         segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
         recordAxisTerminator: { kind: "untilBlank", consecutiveBlanks: 3 },
       });
-      const resolved = resolveRegionBounds(region, sheet);
+      const resolved = await resolveRegionBounds(region, sheet);
       // Terminator requires 3 consecutive blanks; rows 5-6 are only 2, so
       // expansion continues to include row 7 and any further blanks.
       expect(resolved.endRow).toBeGreaterThanOrEqual(7);
     });
 
-    it("clamps expansion at the sheet's declared row dimension", () => {
+    it("clamps expansion at the sheet's declared row dimension", async () => {
       const smallSheetData: SheetData = {
         name: "Sheet1",
         dimensions: { rows: 3, cols: 2 },
@@ -117,7 +117,7 @@ describe("resolveRegionBounds", () => {
         segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
         recordAxisTerminator: { kind: "untilBlank", consecutiveBlanks: 2 },
       });
-      const resolved = resolveRegionBounds(region, smallSheet);
+      const resolved = await resolveRegionBounds(region, smallSheet);
       expect(resolved.endRow).toBeLessThanOrEqual(3);
     });
   });
@@ -136,17 +136,17 @@ describe("resolveRegionBounds", () => {
     };
     const sheet = makeSheetAccessor(sheetData);
 
-    it("expands endRow until the leading cell matches the pattern", () => {
+    it("expands endRow until the leading cell matches the pattern", async () => {
       const region = makeRegion({
         bounds: { startRow: 1, startCol: 1, endRow: 1, endCol: 2 },
         segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
         recordAxisTerminator: { kind: "matchesPattern", pattern: "^Total$" },
       });
-      const resolved = resolveRegionBounds(region, sheet);
+      const resolved = await resolveRegionBounds(region, sheet);
       expect(resolved.endRow).toBe(3);
     });
 
-    it("falls back to the sheet bound when no row matches", () => {
+    it("falls back to the sheet bound when no row matches", async () => {
       const region = makeRegion({
         bounds: { startRow: 1, startCol: 1, endRow: 1, endCol: 2 },
         segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
@@ -155,7 +155,7 @@ describe("resolveRegionBounds", () => {
           pattern: "^NeverMatches$",
         },
       });
-      const resolved = resolveRegionBounds(region, sheet);
+      const resolved = await resolveRegionBounds(region, sheet);
       expect(resolved.endRow).toBe(sheet.dimensions.rows);
     });
   });

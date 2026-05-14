@@ -341,9 +341,10 @@ describe("SheetCanvasUI", () => {
   test("loadSlice is invoked for unloaded visible rows and cells fill in", async () => {
     const loadSlice = jest.fn<LoadSliceFn>(
       async ({ rowStart, rowEnd, colEnd }) => {
-        const width = colEnd + 1;
+        // `rowEnd` / `colEnd` are exclusive — matches LoadSliceFn contract.
+        const width = colEnd;
         const out: CellValue[][] = [];
-        for (let r = rowStart; r <= rowEnd; r++) {
+        for (let r = rowStart; r < rowEnd; r++) {
           const row: CellValue[] = [];
           for (let c = 0; c < width; c++) row.push(`slice-${r}-${c}`);
           out.push(row);
@@ -376,7 +377,8 @@ describe("SheetCanvasUI", () => {
     expect(firstCall.rowStart).toBe(0);
     expect(firstCall.rowEnd).toBeGreaterThan(0);
     expect(firstCall.colStart).toBe(0);
-    expect(firstCall.colEnd).toBe(3);
+    // colEnd is exclusive — sheet.colCount === 4 → colEnd 4.
+    expect(firstCall.colEnd).toBe(4);
 
     await waitFor(() =>
       expect(screen.getByTestId("cell-0-0")).toHaveTextContent("slice-0-0")

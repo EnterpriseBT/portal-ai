@@ -51,7 +51,7 @@ export class VisualizeTreeTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationId: string) {
+  build(stationId: string, organizationId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -61,6 +61,7 @@ export class VisualizeTreeTool extends Tool<typeof InputSchema> {
           sql,
           vegaSpec,
           stationId,
+          organizationId,
         });
       },
     });

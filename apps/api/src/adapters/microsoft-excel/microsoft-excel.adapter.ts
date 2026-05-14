@@ -145,15 +145,24 @@ export const microsoftExcelAdapter: ConnectorAdapter = {
     progress?.(80);
 
     // 4. Per-entity reap: anything whose syncedAt is older than the
-    //    run's watermark didn't appear in the fresh fetch — soft-delete.
+    //    run's watermark didn't appear in the fresh fetch — soft-delete
+    //    on `entity_records` and hard-delete the matching `er__<id>`
+    //    rows so analytic SELECTs no longer see them.
     let deleted = 0;
     for (const connectorEntityId of commitResult.connectorEntityIds) {
-      deleted +=
+      const reaped =
         await DbService.repository.entityRecords.softDeleteBeforeWatermark(
           connectorEntityId,
           runStartedAt,
           userId
         );
+      if (reaped.length > 0) {
+        await DbService.repository.wideTable.softDeleteByEntityRecordIds(
+          connectorEntityId,
+          reaped
+        );
+      }
+      deleted += reaped.length;
     }
     progress?.(95);
 

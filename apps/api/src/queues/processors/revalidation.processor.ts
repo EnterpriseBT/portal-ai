@@ -56,10 +56,11 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
     const batch = records.slice(i, i + BATCH_SIZE);
 
     const updates = batch.map((record) => {
-      const rawData = (record.data ?? record.normalizedData ?? {}) as Record<
-        string,
-        unknown
-      >;
+      // `record.data` is the raw connector payload (always populated
+      // by every write path). After Phase 2 slice 6 dropped the
+      // `normalized_data` JSONB column, there's no legacy fallback —
+      // an absent `data` field is a structured error per the spec.
+      const rawData = (record.data ?? {}) as Record<string, unknown>;
       const result = NormalizationService.normalizeWithMappings(
         mappings as Parameters<
           typeof NormalizationService.normalizeWithMappings
@@ -87,16 +88,33 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
       };
     });
 
-    // Batch update records
-    await Promise.all(
-      updates.map((u) =>
-        DbService.repository.entityRecords.update(u.id, {
-          normalizedData: u.normalizedData,
-          validationErrors: u.validationErrors,
-          isValid: u.isValid,
-        } as never)
-      )
-    );
+    // Batch update records — write to both stores in one transaction
+    // so the wide-table state remains coherent with the transactional
+    // row's `is_valid` flag.
+    await DbService.transaction(async (tx) => {
+      await Promise.all(
+        updates.map((u) =>
+          DbService.repository.entityRecords.update(
+            u.id,
+            {
+              normalizedData: u.normalizedData,
+              validationErrors: u.validationErrors,
+              isValid: u.isValid,
+            } as never,
+            tx
+          )
+        )
+      );
+      for (const u of updates) {
+        await DbService.repository.wideTable.updatePartial(
+          connectorEntityId,
+          u.id,
+          u.normalizedData,
+          { isValid: u.isValid },
+          tx
+        );
+      }
+    });
 
     // Progress: 20-90 range spread across batches
     const progress = Math.round(20 + ((i + batch.length) / total) * 70);

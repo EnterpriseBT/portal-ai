@@ -4,7 +4,6 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
-import { AnalyticsService } from "../services/analytics.service.js";
 import { assertStationScope } from "../utils/resolve-capabilities.util.js";
 import { ConnectorEntityValidationService } from "../services/connector-entity-validation.service.js";
 
@@ -90,17 +89,6 @@ export class ConnectorEntityDeleteTool extends Tool<typeof InputSchema> {
               );
             cascadedResults.push(cascaded);
           }
-
-          // ── Phase 3: Cache ─────────────────────────────────────────
-          const entityIds = items.map((item) => item.connectorEntityId);
-          const entityKeys = items
-            .map((item) => entities[item.connectorEntityId]?.key)
-            .filter(Boolean);
-          AnalyticsService.applyEntityDeleteMany(
-            stationId,
-            entityIds,
-            entityKeys
-          );
 
           return {
             success: true,

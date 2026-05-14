@@ -34,6 +34,10 @@ const mockFindEntityById = jest
   .fn<any>()
   .mockResolvedValue({ id: "ce-1", key: "customers", label: "My Entity" });
 
+const mockWideTableUpdatePartial = jest
+  .fn<(...a: unknown[]) => Promise<void>>()
+  .mockResolvedValue(undefined);
+
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
@@ -42,17 +46,32 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
         updateMany: mockUpdateMany,
       },
       connectorEntities: { findById: mockFindEntityById },
+      wideTable: { updatePartial: mockWideTableUpdatePartial },
     },
   },
-}));
-
-jest.unstable_mockModule("../../services/analytics.service.js", () => ({
-  AnalyticsService: { applyRecordUpdateMany: jest.fn() },
 }));
 
 jest.unstable_mockModule("../../db/repositories/base.repository.js", () => ({
   Repository: { transaction: mockTransaction },
 }));
+
+jest.unstable_mockModule(
+  "../../services/wide-table-statement.cache.js",
+  () => ({
+    wideTableStatementCache: {
+      get: jest
+        .fn<(...a: unknown[]) => Promise<{ columns: unknown[] }>>()
+        .mockResolvedValue({ columns: [] }),
+    },
+    WIDE_TABLE_METADATA_COLUMNS: [
+      "entity_record_id",
+      "organization_id",
+      "synced_at",
+      "is_valid",
+      "source_id",
+    ],
+  })
+);
 
 const { EntityRecordUpdateTool } =
   await import("../../tools/entity-record-update.tool.js");

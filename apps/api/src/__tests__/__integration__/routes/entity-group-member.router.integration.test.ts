@@ -272,6 +272,7 @@ describe("Entity Group Member Router", () => {
       .values(colDef as never);
     const mapping = createFieldMapping(organizationId, entity.id, colDef.id, {
       sourceField,
+      normalizedKey: sourceField,
     });
     await (db as ReturnType<typeof drizzle>)
       .insert(fieldMappings)
@@ -663,34 +664,101 @@ describe("Entity Group Member Router", () => {
           deletedBy: null,
         } as never);
 
-      // Create records for existing member
+      // Reconcile entity1 and seed records via the wide-table helper.
+      const { wideTableReconcilerService } = await import(
+        "../../../services/wide-table-reconciler.service.js"
+      );
+      await wideTableReconcilerService.reconcileEntity(
+        seed1.entityId,
+        db as unknown as DbClient
+      );
+      const r1a = createEntityRecord(organizationId, seed1.entityId, {
+        email: "a@test.com",
+      });
+      const r1b = createEntityRecord(organizationId, seed1.entityId, {
+        email: "b@test.com",
+      });
       await (db as ReturnType<typeof drizzle>)
         .insert(entityRecords)
-        .values([
-          createEntityRecord(organizationId, seed1.entityId, {
-            email: "a@test.com",
-          }),
-          createEntityRecord(organizationId, seed1.entityId, {
-            email: "b@test.com",
-          }),
-        ] as never);
+        .values([r1a, r1b] as never);
 
-      // Create target entity with records
+      // Create target entity with records.
       const seed2 = await seedEntityWithMapping(
         organizationId,
         connectorInstanceId,
         "contact_email"
       );
+      await wideTableReconcilerService.reconcileEntity(
+        seed2.entityId,
+        db as unknown as DbClient
+      );
+      const r2a = createEntityRecord(organizationId, seed2.entityId, {
+        contact_email: "a@test.com",
+      });
+      const r2c = createEntityRecord(organizationId, seed2.entityId, {
+        contact_email: "c@test.com",
+      });
       await (db as ReturnType<typeof drizzle>)
         .insert(entityRecords)
-        .values([
-          createEntityRecord(organizationId, seed2.entityId, {
-            contact_email: "a@test.com",
-          }),
-          createEntityRecord(organizationId, seed2.entityId, {
-            contact_email: "c@test.com",
-          }),
-        ] as never);
+        .values([r2a, r2c] as never);
+
+      // Mirror into both wide tables.
+      const { wideTableRepo } = await import(
+        "../../../db/repositories/wide-table.repository.js"
+      );
+      const { wideTableStatementCache } = await import(
+        "../../../services/wide-table-statement.cache.js"
+      );
+      const {
+        projectToWideRow,
+        buildMappingsForProjection,
+      } = await import(
+        "../../../services/wide-table-projection.util.js"
+      );
+      const stmt1 = await wideTableStatementCache.get(
+        seed1.entityId,
+        db as unknown as DbClient
+      );
+      const m1 = buildMappingsForProjection(stmt1.columns);
+      await wideTableRepo.upsertMany(
+        seed1.entityId,
+        [r1a, r1b].map((r) =>
+          projectToWideRow(
+            {
+              id: r.id,
+              organizationId: r.organizationId,
+              sourceId: r.sourceId,
+              syncedAt: r.syncedAt,
+              isValid: r.isValid,
+              normalizedData: r.normalizedData,
+            },
+            m1
+          )
+        ),
+        db as unknown as DbClient
+      );
+      const stmt2 = await wideTableStatementCache.get(
+        seed2.entityId,
+        db as unknown as DbClient
+      );
+      const m2 = buildMappingsForProjection(stmt2.columns);
+      await wideTableRepo.upsertMany(
+        seed2.entityId,
+        [r2a, r2c].map((r) =>
+          projectToWideRow(
+            {
+              id: r.id,
+              organizationId: r.organizationId,
+              sourceId: r.sourceId,
+              syncedAt: r.syncedAt,
+              isValid: r.isValid,
+              normalizedData: r.normalizedData,
+            },
+            m2
+          )
+        ),
+        db as unknown as DbClient
+      );
 
       const res = await request(app)
         .get(

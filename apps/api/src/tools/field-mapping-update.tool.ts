@@ -4,7 +4,6 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
-import { AnalyticsService } from "../services/analytics.service.js";
 import {
   assertStationScope,
   assertWriteCapability,
@@ -155,19 +154,6 @@ export class FieldMappingUpdateTool extends Tool<typeof InputSchema> {
               );
             }
           });
-
-          // ── Phase 3: Cache ─────────────────────────────────────────
-          const cacheRows = items.map((item) => {
-            const m = mappings[item.fieldMappingId];
-            return {
-              id: item.fieldMappingId,
-              connector_entity_id: m.connectorEntityId,
-              column_definition_id: m.columnDefinitionId,
-              source_field: (item.sourceField ?? m.sourceField) as string,
-              is_primary_key: (item.isPrimaryKey ?? m.isPrimaryKey) as boolean,
-            };
-          });
-          AnalyticsService.applyFieldMappingUpdateMany(stationId, cacheRows);
 
           return {
             success: true,

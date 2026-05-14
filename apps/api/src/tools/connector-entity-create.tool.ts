@@ -3,7 +3,6 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
-import { AnalyticsService } from "../services/analytics.service.js";
 import { ConnectorEntityModelFactory } from "@portalai/core/models";
 import { stationInstancesRepo } from "../db/repositories/station-instances.repository.js";
 import { connectorDefinitionsRepo } from "../db/repositories/connector-definitions.repository.js";
@@ -150,15 +149,6 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
               results.push(result);
             }
           });
-
-          // ── Phase 3: Cache ─────────────────────────────────────────
-          const cacheRows = items.map((item, idx) => ({
-            id: results[idx].id,
-            key: item.key,
-            label: item.label,
-            connectorInstanceId: item.connectorInstanceId,
-          }));
-          AnalyticsService.applyEntityInsertMany(stationId, cacheRows);
 
           return {
             success: true,

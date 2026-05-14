@@ -316,7 +316,7 @@ describe("GoogleSheetsConnectorService.fetchWorkbookForSync", () => {
     );
 
     expect(out.sheets).toHaveLength(1);
-    expect(out.sheets[0]?.cells[0]?.value).toBe("alpha");
+    expect(out.sheets[0]?.cell(1, 1)?.value).toBe("alpha");
     expect(getOrRefreshMock).toHaveBeenCalledWith("ci-1");
     const [calledUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(calledUrl).toContain(

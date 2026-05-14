@@ -299,8 +299,8 @@ describe("MicrosoftExcelConnectorService.fetchWorkbookForSync", () => {
       contentLength: 1024,
     });
     // After xlsxToCache "completes" the connector reads back from the
-    // throwaway prefix; seed meta + rows so reassembleWorkbookFromChunks
-    // sees a single sheet.
+    // throwaway prefix; seed meta + rows so the lazy workbook's
+    // `loadRange` resolves a single-cell sheet.
     getSessionMetaMock.mockResolvedValue(
       meta([
         { sheetId: "sheet_0_Sheet1", name: "Sheet1", rowCount: 1, colCount: 1 },
@@ -315,7 +315,8 @@ describe("MicrosoftExcelConnectorService.fetchWorkbookForSync", () => {
 
     expect(out.sheets).toHaveLength(1);
     expect(out.sheets[0]?.name).toBe("Sheet1");
-    expect(out.sheets[0]?.cells.map((c) => c.value)).toEqual(["x"]);
+    await out.sheets[0]?.loadRange(1, 1);
+    expect(out.sheets[0]?.cell(1, 1)?.value).toBe("x");
 
     expect(getOrRefreshMock).toHaveBeenCalledWith("ci-1");
     expect(headWorkbookMock).toHaveBeenCalledWith("access-token-x", "01ABC");
@@ -324,9 +325,10 @@ describe("MicrosoftExcelConnectorService.fetchWorkbookForSync", () => {
       "01ABC"
     );
     expect(xlsxToCacheMock).toHaveBeenCalledTimes(1);
-    // The throwaway session must be cleaned up — sync explicitly does
-    // not persist the workbook cache.
-    expect(deleteSessionMock).toHaveBeenCalled();
+    // The throwaway session is NOT eagerly deleted on the happy path —
+    // the lazy workbook still reads from it during downstream commit;
+    // cleanup is left to the cache key TTL.
+    expect(deleteSessionMock).not.toHaveBeenCalled();
     const passedPrefix = beginSessionMock.mock.calls[0]?.[0] as string;
     expect(passedPrefix).toMatch(/^connector:sync:/);
   });

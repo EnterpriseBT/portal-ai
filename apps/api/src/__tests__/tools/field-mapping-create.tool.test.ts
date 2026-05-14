@@ -27,11 +27,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       fieldMappings: { upsertByEntityAndNormalizedKey: mockUpsert },
     },
   },
-}));
-jest.unstable_mockModule("../../services/analytics.service.js", () => ({
-  AnalyticsService: { applyFieldMappingInsertMany: jest.fn() },
-}));
-jest.unstable_mockModule("../../db/repositories/base.repository.js", () => ({
+}));jest.unstable_mockModule("../../db/repositories/base.repository.js", () => ({
   Repository: { transaction: mockTransaction },
 }));
 

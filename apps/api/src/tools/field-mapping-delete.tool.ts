@@ -4,7 +4,6 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
-import { AnalyticsService } from "../services/analytics.service.js";
 import {
   assertStationScope,
   assertWriteCapability,
@@ -129,10 +128,6 @@ export class FieldMappingDeleteTool extends Tool<typeof InputSchema> {
             );
             deleteResults.push(result);
           }
-
-          // ── Phase 3: Cache ─────────────────────────────────────────
-          const ids = items.map((item) => item.fieldMappingId);
-          AnalyticsService.applyFieldMappingDeleteMany(stationId, ids);
 
           return {
             success: true,

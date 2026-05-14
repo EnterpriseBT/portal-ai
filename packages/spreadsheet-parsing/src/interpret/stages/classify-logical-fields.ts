@@ -313,6 +313,20 @@ export async function classifyLogicalFields(
   for (const region of state.detectedRegions) {
     const sheet = state.workbook.sheets.find((s) => s.name === region.sheet);
     if (!sheet) continue;
+    // `collectPivotSegmentLabels` reads the pivot header line at each
+    // axis's locator row/col; `collectCellValueSamples` reads the
+    // region interior `(bounds.startRow + 1..endRow, bounds.startCol +
+    // 1..endCol)`. The locator can sit just outside `bounds.startRow`
+    // on plans whose header lives above the region, so we widen the
+    // load to cover both. See
+    // `docs/SPREADSHEET_PARSER_ROW_ASYNC.spec.md`.
+    await sheet.loadRange(region.bounds.startRow, region.bounds.endRow);
+    for (const axis of ["row", "column"] as const) {
+      const locator = region.headerStrategyByAxis?.[axis]?.locator;
+      if (locator?.kind === "row") {
+        await sheet.loadRange(locator.row, locator.row);
+      }
+    }
     const work = buildPendingWork(region, sheet);
     if (work && work.candidates.length > 0) pending.push(work);
   }

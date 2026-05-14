@@ -6,7 +6,7 @@ import {
   type StationData,
 } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { getRecords } from "../utils/tools.util.js";
+import { fetchEntityRows } from "../utils/tools.util.js";
 
 const InputSchema = z.object({
   entity: z.string().describe("Entity (table) of per-period returns."),
@@ -53,7 +53,7 @@ export class PortfolioMetricsTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationData: StationData) {
+  build(stationData: StationData, organizationId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -66,16 +66,26 @@ export class PortfolioMetricsTool extends Tool<typeof InputSchema> {
           riskFreeRate,
           periodicity,
         } = this.validate(input);
-        const records = getRecords(stationData, entity);
-        const benchmarkRecords =
-          benchmarkEntity !== undefined
-            ? getRecords(stationData, benchmarkEntity)
-            : undefined;
         if (benchmarkEntity !== undefined && !benchmarkReturnColumn) {
           throw new Error(
             "benchmarkReturnColumn is required when benchmarkEntity is supplied"
           );
         }
+        const records = await fetchEntityRows(
+          stationData,
+          entity,
+          [returnColumn],
+          organizationId
+        );
+        const benchmarkRecords =
+          benchmarkEntity !== undefined && benchmarkReturnColumn !== undefined
+            ? await fetchEntityRows(
+                stationData,
+                benchmarkEntity,
+                [benchmarkReturnColumn],
+                organizationId
+              )
+            : undefined;
         return AnalyticsService.portfolioMetrics({
           records,
           returnColumn,

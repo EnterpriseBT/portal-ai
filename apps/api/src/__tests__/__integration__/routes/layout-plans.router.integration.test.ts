@@ -118,6 +118,9 @@ const { app } = await import("../../../app.js");
 const { LayoutPlanDraftService } = await import(
   "../../../services/layout-plan-draft.service.js"
 );
+const { layoutPlanCommitProcessor } = await import(
+  "../../../queues/processors/layout-plan-commit.processor.js"
+);
 
 const {
   connectorInstances,
@@ -435,12 +438,14 @@ describe("Layout Plans Draft Router", () => {
    * Drives the draft commit pipeline through the same code path the
    * `layout_plan_commit` worker takes — `prepareDraftCommit`
    * (synchronous validation + UUID minting; the route's call) followed
-   * by `runCommitDraft` (instance + plan rows + records-write +
-   * rollback; the worker's call). Behavior assertions can use this
-   * directly without round-tripping through Bull. The HTTP route's
+   * by `layoutPlanCommitProcessor` (which invokes `runCommitDraft`,
+   * and on a final-attempt failure also runs `rollbackFailedDraftCommit`;
+   * the worker's full code path). Synthesises a single-attempt BullJob
+   * (`attemptsMade: 0, opts.attempts: 1`) so the rollback fires
+   * synchronously — every failure here is the final attempt by
+   * construction. Behavior assertions can use this directly without
+   * round-tripping through Bull's retry machinery. The HTTP route's
    * 202 + jobId envelope is exercised by the dedicated test below.
-   * Defined at the outer describe scope so both the uploadSessionId
-   * and connectorInstanceId paths reuse the same helper.
    */
   async function runDraftCommitInline(body: LayoutPlanCommitDraftRequestBody) {
     const prepared = await LayoutPlanDraftService.prepareDraftCommit(
@@ -448,7 +453,18 @@ describe("Layout Plans Draft Router", () => {
       userId,
       body
     );
-    return LayoutPlanDraftService.runCommitDraft(prepared.metadata);
+    const bullJob = {
+      data: {
+        jobId: "test-job",
+        type: "layout_plan_commit" as const,
+        ...prepared.metadata,
+      },
+      attemptsMade: 0,
+      opts: { attempts: 1 },
+      updateProgress: async () => undefined,
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return layoutPlanCommitProcessor(bullJob as any);
   }
 
   describe("POST /api/layout-plans/commit", () => {
@@ -660,13 +676,15 @@ describe("Layout Plans Draft Router", () => {
         .from(entityRecords)
         .where(eq(entityRecords.connectorEntityId, entity.id));
       expect(records).toHaveLength(1);
-      const normalizedData = records[0].normalizedData as Record<
-        string,
-        unknown
-      >;
-      // The normalizedData must be keyed by the same derivation as the
-      // FieldMapping rows — otherwise the UI renders empty fields.
-      expect(normalizedData).toEqual({
+
+      // `normalizedData` now lives on the wide table. Read via the
+      // hydrated repo to verify the source-derived keys line up with
+      // the FieldMapping rows.
+      const { entityRecordsRepo } = await import(
+        "../../../db/repositories/entity-records.repository.js"
+      );
+      const [hydrated] = await entityRecordsRepo.findHydratedMany(entity.id);
+      expect(hydrated.normalizedData).toEqual({
         email_address: "alice@example.com",
         full_name: "Alice Example",
       });
@@ -1019,7 +1037,7 @@ describe("Layout Plans Draft Router", () => {
       expect(all[0]?.status).toBe("active");
     });
 
-    it("does not delete the pending instance when commit fails (rollback path)", async () => {
+    it("flips the pending instance to 'error' and keeps the plan when commit fails (existing-instance rollback)", async () => {
       const emailId = await seedColumnDefinition(
         db as Db,
         organizationId,
@@ -1042,14 +1060,27 @@ describe("Layout Plans Draft Router", () => {
         })
       ).rejects.toBeDefined();
 
-      // Pending instance must STILL be present (rollback didn't remove it).
+      // Instance still present, flipped from 'pending' to 'error' so the
+      // detail view can surface the failure (and the entry-point button
+      // for the edit-layout-plan flow stops showing it as "in progress").
       const after = await (db as Db)
         .select()
         .from(connectorInstances)
         .where(eq(connectorInstances.id, ciId));
       expect(after).toHaveLength(1);
-      // And status remains pending — the success-path "flip to active" did not run.
-      expect(after[0]?.status).toBe("pending");
+      expect(after[0]?.status).toBe("error");
+      expect(after[0]?.lastErrorMessage).toBeTruthy();
+
+      // Plan survives — the user can open it in the edit-layout-plan
+      // view, fix whatever the commit halted on (drift, blocker
+      // warnings, identity strategy), and recommit. Without this, an
+      // OAuth-flow connector would be stranded with no plan and no
+      // recovery affordance.
+      const plans = await (db as Db)
+        .select()
+        .from(connectorInstanceLayoutPlans)
+        .where(eq(connectorInstanceLayoutPlans.connectorInstanceId, ciId));
+      expect(plans).toHaveLength(1);
     });
 
     it("returns 404 when the connectorInstanceId does not exist", async () => {

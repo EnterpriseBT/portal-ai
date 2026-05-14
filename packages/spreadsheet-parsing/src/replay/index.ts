@@ -25,10 +25,10 @@ export { computeChecksum } from "./checksum.js";
  * `Workbook` (with `sheet.cell()` accessors). The schema guard only runs
  * against the plan; workbook shape is accepted as-is.
  */
-export function replay(
+export async function replay(
   plan: LayoutPlan,
   workbook: Workbook | WorkbookData
-): ReplayResult {
+): Promise<ReplayResult> {
   const validatedPlan = LayoutPlanSchema.parse(plan);
   const wb: Workbook =
     "sheets" in workbook &&
@@ -47,10 +47,10 @@ export function replay(
     // Append per-record rather than spreading: a 400k-row sheet would
     // otherwise blow V8's argument-count limit and throw "Maximum call
     // stack size exceeded" (LAYOUT_PLAN_COMMIT_FAILED).
-    for (const record of extractRecords(region, sheet)) {
+    for (const record of await extractRecords(region, sheet)) {
       records.push(record);
     }
-    regionDrifts.push(detectRegionDrift(region, sheet));
+    regionDrifts.push(await detectRegionDrift(region, sheet));
   }
 
   const drift = rollUpDrift(regionDrifts);

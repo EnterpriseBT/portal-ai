@@ -8,10 +8,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { eq, and, sql, type SQL } from "drizzle-orm";
 
-import {
-  EntityRecordModelFactory,
-  SORTABLE_COLUMN_TYPES,
-} from "@portalai/core/models";
+import { EntityRecordModelFactory } from "@portalai/core/models";
 import { UUIDv4Factory } from "@portalai/core/utils";
 import {
   EntityRecordListRequestQuerySchema,
@@ -29,7 +26,9 @@ import {
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import {
-  parseAndBuildFilterSQL,
+  parseFilterPayload,
+  buildFilterSqlForEntity,
+  buildSortExpression,
   isFilterError,
 } from "../utils/filter-sql.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -42,6 +41,14 @@ import { JobLockService } from "../services/job-lock.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { fieldMappingsRepo } from "../db/repositories/field-mappings.repository.js";
 import { columnDefinitionsRepo } from "../db/repositories/column-definitions.repository.js";
+import {
+  buildJsonbObjectExpr,
+  wideTableStatementCache,
+} from "../services/wide-table-statement.cache.js";
+import {
+  projectToWideRow,
+  buildMappingsForProjection,
+} from "../services/wide-table-projection.util.js";
 import type { ResolvedColumn } from "../adapters/adapter.interface.js";
 import type { ColumnDataType } from "@portalai/core/models";
 import type { Column } from "drizzle-orm";
@@ -57,30 +64,6 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
   syncedAt: entityRecords.syncedAt,
   sourceId: entityRecords.sourceId,
 };
-
-/**
- * Build a SQL expression that extracts a JSONB field with safe, type-aware
- * casting.  Values that cannot be cast to the target type resolve to NULL
- * rather than raising a query error.
- */
-function buildJsonbSortExpression(key: string, dataType: ColumnDataType): SQL {
-  const raw = sql`${entityRecords.normalizedData}->>${sql.raw(`'${key}'`)}`;
-  const val = sql`NULLIF(${raw}, '')`;
-
-  switch (dataType) {
-    case "number":
-      // Guard with a regex so non-numeric text becomes NULL
-      return sql`CASE WHEN ${raw} ~ '^-?[0-9]*\\.?[0-9]+([eE][+-]?[0-9]+)?$' THEN (${val})::numeric ELSE NULL END`;
-    case "date":
-      // ISO dates (YYYY-MM-DD) are lexicographically sortable as text
-      return val;
-    case "datetime":
-      // ISO timestamps are lexicographically sortable as text
-      return val;
-    default:
-      return val;
-  }
-}
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -162,8 +145,11 @@ entityRecordRouter.get(
         isValid,
       } = EntityRecordListRequestQuerySchema.parse(req.query);
 
-      // Resolve column definitions early — needed for JSONB sorting and filter validation
+      // Resolve column definitions and the wide-table statement cache up
+      // front — needed for filter / sort / search SQL all of which now
+      // reference typed `er__<id>` columns.
       const columnDefs = await resolveColumns(connectorEntityId);
+      const stmt = await wideTableStatementCache.get(connectorEntityId);
 
       const conditions: SQL[] = [
         eq(entityRecords.connectorEntityId, connectorEntityId),
@@ -174,54 +160,95 @@ entityRecordRouter.get(
       }
 
       if (search) {
-        // Cast normalizedData JSONB values to text and search across all values
+        const concatExpr = stmt.searchableConcatSql("w");
+        // Empty searchable set collapses to `''`, which never matches a
+        // non-empty pattern. The wrapping `WHERE` is still well-formed.
         conditions.push(
-          sql`EXISTS (
-            SELECT 1 FROM jsonb_each_text(${entityRecords.normalizedData}) AS kv
-            WHERE kv.value ILIKE ${"%" + search + "%"}
-          )`
+          sql`${sql.raw(concatExpr)} ILIKE ${"%" + search + "%"}`
         );
       }
 
-      // Parse and apply advanced filters from base64-encoded query param
+      // Parse + validate advanced filters; build typed-column WHERE.
       if (filters) {
-        const filterResult = parseAndBuildFilterSQL(filters, columnDefs);
-        if (isFilterError(filterResult)) {
+        const parsed = parseFilterPayload(filters, columnDefs);
+        if ("message" in parsed) {
           return next(
             new ApiError(
               400,
               ApiCode.ENTITY_RECORD_INVALID_FILTER,
-              filterResult.message
+              parsed.message
             )
           );
         }
-        conditions.push(filterResult.where);
+        const built = buildFilterSqlForEntity(
+          parsed.expression,
+          stmt,
+          parsed.columnTypes
+        );
+        if (isFilterError(built)) {
+          return next(
+            new ApiError(
+              400,
+              ApiCode.ENTITY_RECORD_INVALID_FILTER,
+              built.message
+            )
+          );
+        }
+        conditions.push(built.where);
       }
 
       const where = and(...conditions)!;
 
-      // Determine sort expression: table column or JSONB field with type casting
+      // Sort: transactional fields → entity_records column; normalized
+      // keys → typed wide-table column. Unknown sort keys fall back to
+      // `created` (existing behaviour).
       let orderByExpr: Column | SQL;
       if (SORTABLE_COLUMNS[sortBy]) {
         orderByExpr = SORTABLE_COLUMNS[sortBy];
       } else {
-        const colDef = columnDefs.find(
-          (c) => c.normalizedKey === sortBy && SORTABLE_COLUMN_TYPES.has(c.type)
-        );
-        orderByExpr = colDef
-          ? buildJsonbSortExpression(colDef.normalizedKey, colDef.type)
-          : SORTABLE_COLUMNS.created;
+        const typed = buildSortExpression(stmt, sortBy);
+        orderByExpr = typed ?? SORTABLE_COLUMNS.created;
       }
 
-      const listOpts = {
-        limit,
-        offset,
-        orderBy: { column: orderByExpr, direction: sortOrder },
-      };
+      // Narrow the rehydration projection if the caller asked for a
+      // subset of columns. Building the per-request `jsonb_build_object`
+      // keeps the network payload tight without a post-fetch filter.
+      const requestedKeys = columns
+        ? new Set(columns.split(",").map((c) => c.trim()))
+        : null;
+      const filteredColumns = requestedKeys
+        ? columnDefs.filter((c) => requestedKeys.has(c.key))
+        : columnDefs;
+
+      let normalizedDataProjection: SQL | undefined;
+      if (requestedKeys && requestedKeys.size > 0) {
+        const requestedNormalizedKeys = new Set(
+          filteredColumns.map((c) => c.normalizedKey)
+        );
+        const pairs = stmt.columns
+          .filter((c) => requestedNormalizedKeys.has(c.normalizedKey))
+          .map(
+            (c) =>
+              `'${c.normalizedKey.replace(/'/g, "''")}', "w"."${c.columnName}"`
+          );
+        normalizedDataProjection = sql.raw(buildJsonbObjectExpr(pairs));
+      }
 
       const [records, total] = await Promise.all([
-        DbService.repository.entityRecords.findMany(where, listOpts),
-        DbService.repository.entityRecords.count(where),
+        DbService.repository.entityRecords.findHydratedMany(
+          connectorEntityId,
+          {
+            where,
+            limit,
+            offset,
+            orderBy: { column: orderByExpr, direction: sortOrder },
+            normalizedDataProjection,
+          }
+        ),
+        DbService.repository.entityRecords.countHydrated(
+          connectorEntityId,
+          where
+        ),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(
@@ -231,27 +258,9 @@ entityRecordRouter.get(
         );
       });
 
-      // If columns param is set, filter to requested columns only
-      const requestedKeys = columns
-        ? new Set(columns.split(",").map((c) => c.trim()))
-        : null;
-      const filteredColumns = requestedKeys
-        ? columnDefs.filter((c) => requestedKeys.has(c.key))
-        : columnDefs;
-
-      // Filter normalizedData to requested columns if specified
-      const rows = records.map((r) => {
-        if (!requestedKeys) return r;
-        const nd = (r.normalizedData ?? {}) as Record<string, unknown>;
-        const filtered: Record<string, unknown> = {};
-        for (const key of requestedKeys) {
-          if (key in nd) filtered[key] = nd[key];
-        }
-        return { ...r, normalizedData: filtered };
-      });
-
       return HttpService.success<EntityRecordListResponsePayload>(res, {
-        records: rows as unknown as EntityRecordListResponsePayload["records"],
+        records:
+          records as unknown as EntityRecordListResponsePayload["records"],
         columns: filteredColumns,
         source: "cache",
         total,
@@ -336,8 +345,11 @@ entityRecordRouter.get(
       if (!entity) return;
 
       const record =
-        await DbService.repository.entityRecords.findById(recordId);
-      if (!record || record.connectorEntityId !== connectorEntityId) {
+        await DbService.repository.entityRecords.findHydratedById(
+          recordId,
+          connectorEntityId
+        );
+      if (!record) {
         return next(
           new ApiError(
             404,
@@ -495,16 +507,45 @@ entityRecordRouter.post(
         isValid: true,
       });
 
-      const record = await DbService.repository.entityRecords
-        .create(model.parse())
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.ENTITY_RECORD_CREATE_FAILED,
-            error instanceof Error ? error.message : "Failed to create record"
-          );
-        });
+      const record = await DbService.transaction(async (tx) => {
+        const parsed_ = model.parse();
+        const inserted = await DbService.repository.entityRecords.create(
+          parsed_,
+          tx
+        );
+        const stmt = await wideTableStatementCache.get(connectorEntityId, tx);
+        const mappings = buildMappingsForProjection(stmt.columns);
+        await DbService.repository.wideTable.upsertMany(
+          connectorEntityId,
+          [
+            projectToWideRow(
+              {
+                id: inserted.id,
+                organizationId: inserted.organizationId,
+                sourceId: inserted.sourceId,
+                syncedAt: inserted.syncedAt,
+                isValid: inserted.isValid,
+                normalizedData: parsed_.normalizedData,
+              },
+              mappings
+            ),
+          ],
+          tx
+        );
+        // Return the hydrated shape so the response carries
+        // `normalizedData` rebuilt from the wide table.
+        return {
+          ...inserted,
+          normalizedData: parsed_.normalizedData,
+        };
+      }).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.ENTITY_RECORD_CREATE_FAILED,
+          error instanceof Error ? error.message : "Failed to create record"
+        );
+      });
 
       logger.info(
         { connectorEntityId, recordId: record.id },
@@ -583,7 +624,9 @@ entityRecordRouter.post(
       let updated = 0;
       let unchanged = 0;
 
-      const toUpsert = [];
+      const toUpsert: ReturnType<
+        ReturnType<EntityRecordModelFactory["create"]>["parse"]
+      >[] = [];
 
       for (const row of parsed.data.records) {
         const prev = existingMap.get(row.sourceId);
@@ -617,18 +660,29 @@ entityRecordRouter.post(
       }
 
       if (toUpsert.length > 0) {
-        await DbService.repository.entityRecords
-          .upsertManyBySourceId(toUpsert)
-          .catch((error) => {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(
-              500,
-              ApiCode.ENTITY_RECORD_IMPORT_FAILED,
-              error instanceof Error
-                ? error.message
-                : "Failed to import records"
-            );
-          });
+        await DbService.transaction(async (tx) => {
+          await DbService.repository.entityRecords.upsertManyBySourceId(
+            toUpsert,
+            tx
+          );
+          const stmt = await wideTableStatementCache.get(
+            connectorEntityId,
+            tx
+          );
+          const mappings = buildMappingsForProjection(stmt.columns);
+          await DbService.repository.wideTable.upsertMany(
+            connectorEntityId,
+            toUpsert.map((r) => projectToWideRow(r, mappings)),
+            tx
+          );
+        }).catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_RECORD_IMPORT_FAILED,
+            error instanceof Error ? error.message : "Failed to import records"
+          );
+        });
       }
 
       logger.info(
@@ -840,22 +894,44 @@ entityRecordRouter.patch(
 
       const { userId } = req.application!.metadata;
 
-      const updated = await DbService.repository.entityRecords
-        .update(recordId, {
-          ...(parsed.data.data && { data: parsed.data.data }),
-          ...(parsed.data.normalizedData && {
-            normalizedData: parsed.data.normalizedData,
-          }),
-          updatedBy: userId,
-        })
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.ENTITY_RECORD_UPDATE_FAILED,
-            error instanceof Error ? error.message : "Failed to update record"
+      const updated = await DbService.transaction(async (tx) => {
+        await DbService.repository.entityRecords.update(
+          recordId,
+          {
+            ...(parsed.data.data && { data: parsed.data.data }),
+            updatedBy: userId,
+          },
+          tx
+        );
+        // Partial-merge into the wide table: only the keys present in
+        // the patch are written. Unknown keys (no field mapping) are
+        // silently dropped by `updatePartial`.
+        if (parsed.data.normalizedData) {
+          await DbService.repository.wideTable.updatePartial(
+            connectorEntityId,
+            recordId,
+            parsed.data.normalizedData,
+            {},
+            tx
           );
-        });
+        }
+        // Read back the hydrated record so the response carries
+        // `normalizedData` rebuilt from the wide table.
+        const hydrated =
+          await DbService.repository.entityRecords.findHydratedById(
+            recordId,
+            connectorEntityId,
+            tx
+          );
+        return hydrated;
+      }).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.ENTITY_RECORD_UPDATE_FAILED,
+          error instanceof Error ? error.message : "Failed to update record"
+        );
+      });
 
       logger.info({ connectorEntityId, recordId }, "Entity record updated");
 
@@ -973,16 +1049,25 @@ entityRecordRouter.delete(
 
       const { userId } = req.application!.metadata;
 
-      await DbService.repository.entityRecords
-        .softDelete(recordId, userId)
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.ENTITY_RECORD_DELETE_FAILED,
-            error instanceof Error ? error.message : "Failed to delete record"
-          );
-        });
+      await DbService.transaction(async (tx) => {
+        await DbService.repository.entityRecords.softDelete(
+          recordId,
+          userId,
+          tx
+        );
+        await DbService.repository.wideTable.softDeleteByEntityRecordIds(
+          connectorEntityId,
+          [recordId],
+          tx
+        );
+      }).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.ENTITY_RECORD_DELETE_FAILED,
+          error instanceof Error ? error.message : "Failed to delete record"
+        );
+      });
 
       logger.info(
         { connectorEntityId, recordId },
@@ -1078,16 +1163,34 @@ entityRecordRouter.delete(
       await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const { userId } = req.application!.metadata;
-      const deleted = await DbService.repository.entityRecords
-        .softDeleteByConnectorEntityId(connectorEntityId, userId)
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(
-            500,
-            ApiCode.ENTITY_RECORD_DELETE_FAILED,
-            error instanceof Error ? error.message : "Failed to delete records"
-          );
-        });
+      const deleted = await DbService.transaction(async (tx) => {
+        // Capture the affected ids so we can cascade to the wide table.
+        // softDeleteByConnectorEntityId returns a count today; switch to
+        // an inline UPDATE that returns the ids.
+        const liveIds = (await tx.execute(
+          sql`SELECT id FROM ${entityRecords} WHERE "connector_entity_id" = ${connectorEntityId} AND "deleted" IS NULL`
+        )) as unknown as Array<{ id: string }>;
+        if (liveIds.length === 0) return 0;
+        const ids = liveIds.map((r) => r.id);
+        await DbService.repository.entityRecords.softDeleteByConnectorEntityId(
+          connectorEntityId,
+          userId,
+          tx
+        );
+        await DbService.repository.wideTable.softDeleteByEntityRecordIds(
+          connectorEntityId,
+          ids,
+          tx
+        );
+        return ids.length;
+      }).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.ENTITY_RECORD_DELETE_FAILED,
+          error instanceof Error ? error.message : "Failed to delete records"
+        );
+      });
 
       logger.info(
         { connectorEntityId, deleted },

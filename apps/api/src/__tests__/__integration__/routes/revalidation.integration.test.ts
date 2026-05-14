@@ -253,6 +253,20 @@ async function seedFullStack(db: ReturnType<typeof drizzle>) {
   );
   await db.insert(fieldMappings).values(mapping as never);
 
+  // Reconcile the wide table so reads + writes through the new path
+  // find `er__<id>` with the right columns.
+  const { wideTableReconcilerService } = await import(
+    "../../../services/wide-table-reconciler.service.js"
+  );
+  const { wideTableStatementCache } = await import(
+    "../../../services/wide-table-statement.cache.js"
+  );
+  wideTableStatementCache.clear();
+  await wideTableReconcilerService.reconcileEntity(
+    entity.id,
+    db as unknown as DbClient
+  );
+
   return {
     userId,
     organizationId,
@@ -672,6 +686,42 @@ describe("Entity Record Router — isValid Filter", () => {
     await db
       .insert(entityRecords)
       .values([validRecord, invalidRecord, validRecord2] as never);
+
+    // Mirror the rows into the wide table so the list endpoint's JOIN
+    // returns them. Project the typed columns from each record's
+    // normalizedData.
+    const { wideTableRepo } = await import(
+      "../../../db/repositories/wide-table.repository.js"
+    );
+    const { wideTableStatementCache } = await import(
+      "../../../services/wide-table-statement.cache.js"
+    );
+    const { projectToWideRow, buildMappingsForProjection } = await import(
+      "../../../services/wide-table-projection.util.js"
+    );
+    const dbClient = db as unknown as DbClient;
+    const stmt = await wideTableStatementCache.get(
+      seed.connectorEntityId,
+      dbClient
+    );
+    const mappings = buildMappingsForProjection(stmt.columns);
+    await wideTableRepo.upsertMany(
+      seed.connectorEntityId,
+      [validRecord, invalidRecord, validRecord2].map((r) =>
+        projectToWideRow(
+          {
+            id: r.id,
+            organizationId: r.organizationId,
+            sourceId: r.sourceId,
+            syncedAt: r.syncedAt,
+            isValid: r.isValid,
+            normalizedData: r.normalizedData,
+          },
+          mappings
+        )
+      ),
+      dbClient
+    );
 
     return {
       ...seed,

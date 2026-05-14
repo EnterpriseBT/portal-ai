@@ -1,5 +1,5 @@
 import { LayoutPlanSchema } from "../plan/index.js";
-import type { InterpretInput, LayoutPlan } from "../plan/index.js";
+import type { LayoutPlan } from "../plan/index.js";
 import { PLAN_VERSION } from "../plan-version.js";
 import { computeWorkbookFingerprint } from "../workbook/index.js";
 import type { InterpretDeps } from "./deps.js";
@@ -14,6 +14,7 @@ import { recommendSegmentAxisNames } from "./stages/recommend-segment-axis-names
 import { reconcileWithPrior } from "./stages/reconcile-with-prior.js";
 import { scoreAndWarn } from "./stages/score-and-warn.js";
 import { createInitialState } from "./state.js";
+import type { InterpretRuntimeInput } from "./state.js";
 import type {
   AxisNameRecommenderFn,
   AxisNameRecommenderResult,
@@ -140,7 +141,7 @@ function emitStageCompleted(
  * `interpret.cost.summary` at the end — provided `deps.logger` is supplied.
  */
 export async function interpret(
-  input: InterpretInput,
+  input: InterpretRuntimeInput,
   deps: InterpretDeps = {}
 ): Promise<LayoutPlan> {
   const logger = deps.logger;
@@ -163,9 +164,15 @@ export async function interpret(
   const interpretStarted = Date.now();
   let state = createInitialState(input);
   state = detectRegions(state);
-  state = detectHeaders(state);
-  state = detectIdentity(state);
-  state = detectSegments(state);
+  // After the row-async refactor (see
+  // `docs/SPREADSHEET_PARSER_ROW_ASYNC.spec.md`), every cell-reading
+  // stage awaits `Sheet.loadRange(...)` for its region bounds before
+  // walking. On an `EagerSheet` that's a `Promise.resolve()` no-op; on
+  // a `LazySheet` it fetches the matching chunked-cache rows once per
+  // region.
+  state = await detectHeaders(state);
+  state = await detectIdentity(state);
+  state = await detectSegments(state);
   state = await classifyFieldSegments(state, wrappedDeps);
   emitStageCompleted(logger, "classify-field-segments", classifierUsage);
   state = await recommendSegmentAxisNames(state, wrappedDeps);
@@ -177,6 +184,11 @@ export async function interpret(
   state = await classifyLogicalFields(state, wrappedDeps);
   state = reconcileWithPrior(state);
   state = scoreAndWarn(state);
+  // `assemblePlan` reads the top-left cell of every sheet for the
+  // workbook fingerprint. Preload row 1 across sheets in parallel so
+  // the synchronous `range(1, 1, 1, 1)` call inside the assembler
+  // doesn't trip `RangeNotLoadedError` on a lazy workbook.
+  await Promise.all(state.workbook.sheets.map((s) => s.loadRange(1, 1)));
   const plan = assemblePlan(state);
   const totalLatencyMs = Date.now() - interpretStarted;
 
@@ -216,6 +228,7 @@ function mergeUsage(
   };
 }
 
+export type { InterpretRuntimeInput } from "./state.js";
 export type { InterpretDeps } from "./deps.js";
 export type {
   AxisNameRecommenderFn,

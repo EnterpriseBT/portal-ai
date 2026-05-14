@@ -88,16 +88,16 @@ function monthlyWorkbook() {
 }
 
 describe("extractRecords — 1D headerAxes:['column'] (records-are-columns)", () => {
-  it("emits one record per data column (Jan, Feb, Mar, Apr)", () => {
-    const records = extractRecords(
+  it("emits one record per data column (Jan, Feb, Mar, Apr)", async () => {
+    const records = await extractRecords(
       monthlyRegion(),
       monthlyWorkbook().sheets[0]
     );
     expect(records).toHaveLength(4);
   });
 
-  it("keys each record's fields by the binding's source-field name for row-labeled fields", () => {
-    const records = extractRecords(
+  it("keys each record's fields by the binding's source-field name for row-labeled fields", async () => {
+    const records = await extractRecords(
       monthlyRegion(),
       monthlyWorkbook().sheets[0]
     );
@@ -106,8 +106,8 @@ describe("extractRecords — 1D headerAxes:['column'] (records-are-columns)", ()
     expect(records[2].fields["Revenue"]).toBe(130);
   });
 
-  it("falls back to col-{N} source_id for rowPosition identity with records-are-columns", () => {
-    const records = extractRecords(
+  it("falls back to col-{N} source_id for rowPosition identity with records-are-columns", async () => {
+    const records = await extractRecords(
       monthlyRegion(),
       monthlyWorkbook().sheets[0]
     );

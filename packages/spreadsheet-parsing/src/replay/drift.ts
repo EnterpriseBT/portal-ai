@@ -121,8 +121,16 @@ function positionalBoundIndices(
 /**
  * Evaluate drift for a single region against the current workbook.
  */
-export function detectRegionDrift(region: Region, sheet: Sheet): RegionDrift {
-  const bounds = resolveRegionBounds(region, sheet);
+export async function detectRegionDrift(
+  region: Region,
+  sheet: Sheet
+): Promise<RegionDrift> {
+  // Pre-load the declared bounds so every sync `sheet.cell()` call
+  // inside the drift checks resolves on the lazy adapter. The
+  // terminator-extension scan inside `resolveRegionBounds` loads
+  // its own windows past the bounds.
+  await sheet.loadRange(region.bounds.startRow, region.bounds.endRow);
+  const bounds = await resolveRegionBounds(region, sheet);
   const header = firstHeaderLayout(region, sheet, bounds);
   const kinds: DriftKind[] = [];
   const detail: DriftDetail = {

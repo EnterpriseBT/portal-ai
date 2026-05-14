@@ -1,7 +1,20 @@
 /**
- * Advanced filter SQL generation for JSONB `normalized_data` columns.
+ * Advanced filter SQL generation against typed wide-table columns.
  *
- * Converts a FilterExpression tree into parameterized SQL WHERE conditions.
+ * Phase 2's read-path migration completed in slice 6: the legacy
+ * JSONB-against-`entity_records.normalized_data` builder is gone.
+ * Operator builders reference typed `er__<id>` columns via a
+ * `columnRef(normalizedKey)` resolver supplied by the caller — no
+ * JSONB casts, no regex guards.
+ *
+ * Two entry points:
+ *
+ *   - `parseFilterPayload(encoded, columnDefs)` — decode + validate the
+ *     base64 expression. Returns `{ expression, columnTypes }` or a
+ *     `FilterValidationError`.
+ *   - `buildFilterSqlForEntity(expression, stmt, columnTypes)` — emit
+ *     the typed-column WHERE fragment.
+ *
  * All user-provided values are bound as parameters — never interpolated.
  */
 
@@ -20,7 +33,7 @@ import type {
 } from "@portalai/core/contracts";
 import type { ColumnDataType } from "@portalai/core/models";
 
-import { entityRecords } from "../db/schema/index.js";
+import type { CachedStatements } from "../services/wide-table-statement.cache.js";
 
 // ── Public API ──────────────────────────────────────────────────────
 
@@ -33,57 +46,6 @@ export interface FilterValidationError {
 }
 
 /**
- * Parses a base64-encoded filter expression string, validates it against
- * the provided column definitions, and returns a parameterized SQL WHERE clause.
- *
- * Returns either a FilterSQLResult or a FilterValidationError.
- */
-export function parseAndBuildFilterSQL(
-  encodedFilters: string,
-  columnDefs: ResolvedColumn[]
-): FilterSQLResult | FilterValidationError {
-  // 1. Decode base64
-  let parsed: unknown;
-  try {
-    const jsonStr = Buffer.from(encodedFilters, "base64").toString("utf-8");
-    parsed = JSON.parse(jsonStr);
-  } catch {
-    return { message: "Invalid filter encoding: expected base64-encoded JSON" };
-  }
-
-  // 2. Validate schema
-  const schemaResult = FilterExpressionSchema.safeParse(parsed);
-  if (!schemaResult.success) {
-    return {
-      message: `Invalid filter structure: ${schemaResult.error.issues[0]?.message ?? "unknown error"}`,
-    };
-  }
-
-  const expression = schemaResult.data;
-
-  // 3. Validate limits (depth + condition count)
-  const limitsError = validateFilterLimits(expression);
-  if (limitsError) {
-    return { message: limitsError };
-  }
-
-  // 4. Validate operator-type compatibility and field existence.
-  // `condition.field` holds the normalizedKey (the JSONB key in normalized_data).
-  const columnTypes: Record<string, ColumnDataType> = {};
-  for (const col of columnDefs) {
-    columnTypes[col.normalizedKey] = col.type;
-  }
-  const compatErrors = validateOperatorTypeCompat(expression, columnTypes);
-  if (compatErrors.length > 0) {
-    return { message: compatErrors[0] };
-  }
-
-  // 5. Build SQL
-  const where = buildGroupSQL(expression, columnTypes);
-  return { where };
-}
-
-/**
  * Type guard to distinguish result types.
  */
 export function isFilterError(
@@ -92,18 +54,97 @@ export function isFilterError(
   return "message" in result;
 }
 
-// ── SQL builders ────────────────────────────────────────────────────
+/**
+ * Decode + validate a base64-encoded filter expression against the
+ * supplied column definitions. Returns the parsed expression + a
+ * normalizedKey → type map, or a structured `FilterValidationError`.
+ */
+export function parseFilterPayload(
+  encodedFilters: string,
+  columnDefs: ResolvedColumn[]
+):
+  | {
+      expression: FilterGroup;
+      columnTypes: Record<string, ColumnDataType>;
+    }
+  | FilterValidationError {
+  let parsed: unknown;
+  try {
+    const jsonStr = Buffer.from(encodedFilters, "base64").toString("utf-8");
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    return { message: "Invalid filter encoding: expected base64-encoded JSON" };
+  }
 
-function buildGroupSQL(
+  const schemaResult = FilterExpressionSchema.safeParse(parsed);
+  if (!schemaResult.success) {
+    return {
+      message: `Invalid filter structure: ${schemaResult.error.issues[0]?.message ?? "unknown error"}`,
+    };
+  }
+  const expression = schemaResult.data;
+
+  const limitsError = validateFilterLimits(expression);
+  if (limitsError) return { message: limitsError };
+
+  const columnTypes: Record<string, ColumnDataType> = {};
+  for (const col of columnDefs) {
+    columnTypes[col.normalizedKey] = col.type;
+  }
+  const compatErrors = validateOperatorTypeCompat(expression, columnTypes);
+  if (compatErrors.length > 0) return { message: compatErrors[0] };
+
+  return { expression, columnTypes };
+}
+
+/**
+ * Build a parameterised WHERE fragment against typed wide-table
+ * columns. Resolves each `condition.field` to a `"w"."c_*"` reference
+ * via the statement cache. Returns `FilterValidationError`
+ * (`message: "unknown column: <key>"`) for fields the cache doesn't know.
+ */
+export function buildFilterSqlForEntity(
+  expression: FilterGroup,
+  stmt: CachedStatements,
+  columnTypes: Record<string, ColumnDataType>
+): FilterSQLResult | FilterValidationError {
+  try {
+    const where = buildTypedGroupSQL(expression, stmt, columnTypes);
+    return { where };
+  } catch (err) {
+    if (err instanceof FilterError) return { message: err.message };
+    throw err;
+  }
+}
+
+/**
+ * Build a sort expression against a typed wide-table column. Returns
+ * `null` if the normalizedKey is unknown to the cache (caller falls
+ * back to the default `created` order).
+ */
+export function buildSortExpression(
+  stmt: CachedStatements,
+  normalizedKey: string
+): SQL | null {
+  const refBuilder = stmt.columnRefByNormalizedKey.get(normalizedKey);
+  if (!refBuilder) return null;
+  return sql.raw(refBuilder("w"));
+}
+
+// ── Internals ───────────────────────────────────────────────────────
+
+class FilterError extends Error {}
+
+function buildTypedGroupSQL(
   group: FilterGroup,
-  columnTypes: Record<string, ColumnDataType>,
-  depth: number = 1
+  stmt: CachedStatements,
+  columnTypes: Record<string, ColumnDataType>
 ): SQL {
   const parts = group.conditions.map((item) => {
     if ("combinator" in item) {
-      return buildGroupSQL(item, columnTypes, depth + 1);
+      return buildTypedGroupSQL(item, stmt, columnTypes);
     }
-    return buildConditionSQL(item, columnTypes[item.field]);
+    return buildTypedConditionSQL(item, stmt, columnTypes[item.field]);
   });
 
   if (parts.length === 1) return parts[0];
@@ -120,196 +161,186 @@ function buildGroupSQL(
   )})`;
 }
 
-function buildConditionSQL(
+function buildTypedConditionSQL(
   condition: FilterCondition,
+  stmt: CachedStatements,
   dataType: ColumnDataType
 ): SQL {
   const { field, operator, value } = condition;
+  const refBuilder = stmt.columnRefByNormalizedKey.get(field);
+  if (!refBuilder) {
+    throw new FilterError(`unknown column: ${field}`);
+  }
+  const colRef = sql.raw(refBuilder("w"));
 
-  // Extract JSONB text value: normalized_data->>'field_key'
-  const jsonbText = sql`${entityRecords.normalizedData}->>${sql.raw(`'${escapeSqlIdentifier(field)}'`)}`;
-
-  // Handle empty/not-empty first — they don't need a value
   if (operator === "is_empty") {
-    return sql`(${jsonbText} IS NULL OR ${jsonbText} = '')`;
+    return sql`(${colRef} IS NULL)`;
   }
   if (operator === "is_not_empty") {
-    return sql`(${jsonbText} IS NOT NULL AND ${jsonbText} <> '')`;
+    return sql`(${colRef} IS NOT NULL)`;
   }
 
-  // Delegate to type-specific builders
   switch (dataType) {
     case "number":
-      return buildNumericCondition(jsonbText, operator, value);
+      return buildTypedNumericCondition(colRef, operator, value);
     case "boolean":
-      return buildBooleanCondition(jsonbText, operator, value);
+      return buildTypedBooleanCondition(colRef, operator, value);
     case "date":
     case "datetime":
-      return buildDateCondition(jsonbText, operator, value);
+      return buildTypedDateCondition(colRef, operator, value);
     case "enum":
-      return buildEnumCondition(jsonbText, operator, value);
-    case "array":
-      return buildArrayCondition(jsonbText, field, operator, value);
-    case "string":
     case "reference":
+      return buildTypedEnumCondition(colRef, operator, value);
+    case "array":
+    case "reference-array":
+      return buildTypedArrayCondition(colRef, operator, value);
+    case "string":
     case "json":
     default:
-      return buildStringCondition(jsonbText, operator, value);
+      return buildTypedStringCondition(colRef, operator, value);
   }
 }
 
-// ── Type-specific SQL builders ──────────────────────────────────────
-
-function buildStringCondition(
-  jsonbText: SQL,
+function buildTypedStringCondition(
+  colRef: SQL,
   operator: FilterOperator,
   value: unknown
 ): SQL {
   const val = String(value ?? "");
-
   switch (operator) {
     case "eq":
-      return sql`${jsonbText} = ${val}`;
+      return sql`${colRef} = ${val}`;
     case "neq":
-      return sql`(${jsonbText} IS NULL OR ${jsonbText} <> ${val})`;
+      return sql`(${colRef} IS NULL OR ${colRef} <> ${val})`;
     case "contains":
-      return sql`${jsonbText} ILIKE ${"%" + val + "%"}`;
+      return sql`${colRef}::text ILIKE ${"%" + val + "%"}`;
     case "not_contains":
-      return sql`(${jsonbText} IS NULL OR ${jsonbText} NOT ILIKE ${"%" + val + "%"})`;
+      return sql`(${colRef} IS NULL OR ${colRef}::text NOT ILIKE ${"%" + val + "%"})`;
     case "starts_with":
-      return sql`${jsonbText} ILIKE ${val + "%"}`;
+      return sql`${colRef}::text ILIKE ${val + "%"}`;
     case "ends_with":
-      return sql`${jsonbText} ILIKE ${"%" + val}`;
+      return sql`${colRef}::text ILIKE ${"%" + val}`;
     default:
       return sql`TRUE`;
   }
 }
 
-function buildNumericCondition(
-  jsonbText: SQL,
+function buildTypedNumericCondition(
+  colRef: SQL,
   operator: FilterOperator,
   value: unknown
 ): SQL {
-  // Cast with regex guard (same pattern as buildJsonbSortExpression)
-  const numericExpr = sql`CASE WHEN ${jsonbText} ~ '^-?[0-9]*\\.?[0-9]+([eE][+-]?[0-9]+)?$' THEN (NULLIF(${jsonbText}, ''))::numeric ELSE NULL END`;
-
   const numVal = Number(value);
-
   switch (operator) {
     case "eq":
-      return sql`${numericExpr} = ${numVal}`;
+      return sql`${colRef} = ${numVal}`;
     case "neq":
-      return sql`(${numericExpr} IS NULL OR ${numericExpr} <> ${numVal})`;
+      return sql`(${colRef} IS NULL OR ${colRef} <> ${numVal})`;
     case "gt":
-      return sql`${numericExpr} > ${numVal}`;
+      return sql`${colRef} > ${numVal}`;
     case "gte":
-      return sql`${numericExpr} >= ${numVal}`;
+      return sql`${colRef} >= ${numVal}`;
     case "lt":
-      return sql`${numericExpr} < ${numVal}`;
+      return sql`${colRef} < ${numVal}`;
     case "lte":
-      return sql`${numericExpr} <= ${numVal}`;
+      return sql`${colRef} <= ${numVal}`;
     case "between": {
       const [lo, hi] = parseBetweenValue(value);
-      return sql`${numericExpr} >= ${Number(lo)} AND ${numericExpr} <= ${Number(hi)}`;
+      return sql`${colRef} >= ${Number(lo)} AND ${colRef} <= ${Number(hi)}`;
     }
     default:
       return sql`TRUE`;
   }
 }
 
-function buildBooleanCondition(
-  jsonbText: SQL,
+function buildTypedBooleanCondition(
+  colRef: SQL,
   operator: FilterOperator,
   value: unknown
 ): SQL {
-  const boolStr = String(value) === "true" ? "true" : "false";
-
+  const boolVal = String(value) === "true";
   switch (operator) {
     case "eq":
-      return sql`${jsonbText} = ${boolStr}`;
+      return sql`${colRef} = ${boolVal}`;
     case "neq":
-      return sql`(${jsonbText} IS NULL OR ${jsonbText} <> ${boolStr})`;
+      return sql`(${colRef} IS NULL OR ${colRef} <> ${boolVal})`;
     default:
       return sql`TRUE`;
   }
 }
 
-function buildDateCondition(
-  jsonbText: SQL,
+function buildTypedDateCondition(
+  colRef: SQL,
   operator: FilterOperator,
   value: unknown
 ): SQL {
-  // ISO dates/datetimes are lexicographically sortable as text
-  const val = sql`NULLIF(${jsonbText}, '')`;
   const dateStr = String(value ?? "");
-
   switch (operator) {
     case "eq":
-      return sql`${val} = ${dateStr}`;
+      return sql`${colRef} = ${dateStr}`;
     case "neq":
-      return sql`(${val} IS NULL OR ${val} <> ${dateStr})`;
+      return sql`(${colRef} IS NULL OR ${colRef} <> ${dateStr})`;
     case "gt":
-      return sql`${val} > ${dateStr}`;
+      return sql`${colRef} > ${dateStr}`;
     case "gte":
-      return sql`${val} >= ${dateStr}`;
+      return sql`${colRef} >= ${dateStr}`;
     case "lt":
-      return sql`${val} < ${dateStr}`;
+      return sql`${colRef} < ${dateStr}`;
     case "lte":
-      return sql`${val} <= ${dateStr}`;
+      return sql`${colRef} <= ${dateStr}`;
     case "between": {
       const [lo, hi] = parseBetweenValue(value);
-      return sql`${val} >= ${String(lo)} AND ${val} <= ${String(hi)}`;
+      return sql`${colRef} >= ${String(lo)} AND ${colRef} <= ${String(hi)}`;
     }
     default:
       return sql`TRUE`;
   }
 }
 
-function buildEnumCondition(
-  jsonbText: SQL,
+function buildTypedEnumCondition(
+  colRef: SQL,
   operator: FilterOperator,
   value: unknown
 ): SQL {
   switch (operator) {
     case "eq":
-      return sql`${jsonbText} = ${String(value)}`;
+      return sql`${colRef} = ${String(value)}`;
     case "neq":
-      return sql`(${jsonbText} IS NULL OR ${jsonbText} <> ${String(value)})`;
+      return sql`(${colRef} IS NULL OR ${colRef} <> ${String(value)})`;
     case "in": {
       const arr = Array.isArray(value) ? value.map(String) : [String(value)];
-      return sql`${jsonbText} = ANY(${arr})`;
+      return sql`${colRef} IN (${sql.join(
+        arr.map((v) => sql`${v}`),
+        sql`, `
+      )})`;
     }
     case "not_in": {
       const arr = Array.isArray(value) ? value.map(String) : [String(value)];
-      return sql`(${jsonbText} IS NULL OR ${jsonbText} <> ALL(${arr}))`;
+      return sql`(${colRef} IS NULL OR ${colRef} NOT IN (${sql.join(
+        arr.map((v) => sql`${v}`),
+        sql`, `
+      )}))`;
     }
     default:
       return sql`TRUE`;
   }
 }
 
-function buildArrayCondition(
-  jsonbText: SQL,
-  field: string,
+function buildTypedArrayCondition(
+  colRef: SQL,
   operator: FilterOperator,
   value: unknown
 ): SQL {
-  // For array columns, use JSONB containment operators on the raw JSONB value (not text extraction)
-  const jsonbVal = sql`${entityRecords.normalizedData}->${sql.raw(`'${escapeSqlIdentifier(field)}'`)}`;
   const val = String(value ?? "");
-
   switch (operator) {
     case "contains":
-      // Check if JSONB array contains the value: jsonb @> '"value"'
-      return sql`${jsonbVal} @> ${`"${val}"`}::jsonb`;
+      return sql`${colRef} @> ARRAY[${val}]::text[]`;
     case "not_contains":
-      return sql`NOT (${jsonbVal} @> ${`"${val}"`}::jsonb)`;
+      return sql`(${colRef} IS NULL OR NOT (${colRef} @> ARRAY[${val}]::text[]))`;
     default:
       return sql`TRUE`;
   }
 }
-
-// ── Helpers ─────────────────────────────────────────────────────────
 
 /**
  * Parses a `between` value. Expects either a two-element array or
@@ -321,12 +352,4 @@ function parseBetweenValue(value: unknown): [string, string] {
   }
   const parts = String(value).split(",");
   return [parts[0]?.trim() ?? "", parts[1]?.trim() ?? ""];
-}
-
-/**
- * Escapes a JSONB field key for use in a raw SQL identifier context.
- * Prevents SQL injection by allowing only alphanumeric and underscore chars.
- */
-function escapeSqlIdentifier(key: string): string {
-  return key.replace(/[^a-z0-9_]/gi, "");
 }
