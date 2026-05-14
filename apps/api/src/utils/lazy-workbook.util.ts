@@ -85,7 +85,7 @@ function buildLazySheet(prefix: string, sheetMeta: SheetChunkMeta): Sheet {
         // Sparse representation: drop nulls and empty strings so the
         // parser's `cell()` accessor returns `undefined` for them
         // (matches the eager-sheet semantics produced by
-        // `reassembleWorkbookFromChunks`).
+        // `makeWorkbook`).
         if (value === null || value === undefined || value === "") continue;
         const colNum = c + 1;
         const merged = mergesByTopLeft.get(`${rowNum}:${colNum}`);
