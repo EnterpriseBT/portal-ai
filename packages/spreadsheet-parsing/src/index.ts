@@ -31,6 +31,7 @@ export * from "./plan/index.js";
 export { interpret } from "./interpret/index.js";
 export type {
   InterpretDeps,
+  InterpretRuntimeInput,
   ClassifierFn,
   ClassifierCandidate,
   ColumnClassification,

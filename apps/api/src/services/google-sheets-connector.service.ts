@@ -13,7 +13,8 @@ import {
   EMPTY_ACCOUNT_INFO,
   type PublicAccountInfo,
 } from "@portalai/core/contracts";
-import type { WorkbookData } from "@portalai/spreadsheet-parsing";
+import { makeWorkbook } from "@portalai/spreadsheet-parsing";
+import type { Workbook, WorkbookData } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
@@ -37,7 +38,6 @@ import { SystemUtilities } from "../utils/system.util.js";
 import {
   findSheetMetaById,
   inflateSheetPreviewFromChunks,
-  reassembleWorkbookFromChunks,
   sheetId as makeSheetId,
   sliceSheetRectangleFromChunks,
   writeSheetDataToChunks,
@@ -45,6 +45,7 @@ import {
   type SliceQuery,
   type SliceResult,
 } from "../utils/workbook-preview.util.js";
+import { makeLazyWorkbookFromCache } from "../utils/lazy-workbook.util.js";
 
 const DRIVE_FILES_LIST_URL = "https://www.googleapis.com/drive/v3/files";
 const DRIVE_PAGE_SIZE = 25;
@@ -358,7 +359,7 @@ export class GoogleSheetsConnectorService {
     connectorInstanceId: string,
     organizationId: string,
     fetchFn: FetchFn = fetch
-  ): Promise<WorkbookData> {
+  ): Promise<Workbook> {
     const instance =
       await DbService.repository.connectorInstances.findById(
         connectorInstanceId
@@ -398,7 +399,11 @@ export class GoogleSheetsConnectorService {
       spreadsheetId,
       fetchFn
     );
-    return workbook;
+    // The Sheets API mapper already produces a fully-resolved
+    // `WorkbookData`; wrap it in an eager `Workbook` for downstream
+    // consumers. Sync's memory ceiling is bounded by Google Sheets'
+    // own API limits, not the chunked cache.
+    return makeWorkbook(workbook);
   }
 
   /**
@@ -415,7 +420,7 @@ export class GoogleSheetsConnectorService {
   static async resolveWorkbook(
     connectorInstanceId: string,
     organizationId: string
-  ): Promise<WorkbookData> {
+  ): Promise<Workbook> {
     const instance =
       await DbService.repository.connectorInstances.findById(
         connectorInstanceId
@@ -443,7 +448,7 @@ export class GoogleSheetsConnectorService {
         `No cached workbook for instance ${connectorInstanceId} — call select-sheet first`
       );
     }
-    return reassembleWorkbookFromChunks(prefix, meta);
+    return makeLazyWorkbookFromCache(prefix, meta.sheets);
   }
 
   /**

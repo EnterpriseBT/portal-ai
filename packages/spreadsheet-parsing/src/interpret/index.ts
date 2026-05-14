@@ -1,5 +1,5 @@
 import { LayoutPlanSchema } from "../plan/index.js";
-import type { InterpretInput, LayoutPlan } from "../plan/index.js";
+import type { LayoutPlan } from "../plan/index.js";
 import { PLAN_VERSION } from "../plan-version.js";
 import { computeWorkbookFingerprint } from "../workbook/index.js";
 import type { InterpretDeps } from "./deps.js";
@@ -14,6 +14,7 @@ import { recommendSegmentAxisNames } from "./stages/recommend-segment-axis-names
 import { reconcileWithPrior } from "./stages/reconcile-with-prior.js";
 import { scoreAndWarn } from "./stages/score-and-warn.js";
 import { createInitialState } from "./state.js";
+import type { InterpretRuntimeInput } from "./state.js";
 import type {
   AxisNameRecommenderFn,
   AxisNameRecommenderResult,
@@ -140,7 +141,7 @@ function emitStageCompleted(
  * `interpret.cost.summary` at the end — provided `deps.logger` is supplied.
  */
 export async function interpret(
-  input: InterpretInput,
+  input: InterpretRuntimeInput,
   deps: InterpretDeps = {}
 ): Promise<LayoutPlan> {
   const logger = deps.logger;
@@ -227,6 +228,7 @@ function mergeUsage(
   };
 }
 
+export type { InterpretRuntimeInput } from "./state.js";
 export type { InterpretDeps } from "./deps.js";
 export type {
   AxisNameRecommenderFn,

@@ -19,10 +19,9 @@ import type {
   LayoutPlan,
   LayoutPlanCommitResult,
   Region,
-  WorkbookData,
 } from "@portalai/core/contracts";
-import { WorkbookSchema } from "@portalai/core/contracts";
 import { sourceFieldFromBinding } from "@portalai/spreadsheet-parsing";
+import type { Workbook, WorkbookData } from "@portalai/spreadsheet-parsing";
 import { computeChecksum, replay } from "@portalai/spreadsheet-parsing/replay";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -83,7 +82,7 @@ export class LayoutPlanCommitService {
     planId: string,
     organizationId: string,
     userId: string,
-    body: { workbook: unknown },
+    body: { workbook: Workbook | WorkbookData },
     syncOptions: CommitSyncOptions = {}
   ): Promise<LayoutPlanCommitResult> {
     // ── 1. Verify ownership + load plan row ────────────────────────────
@@ -121,13 +120,16 @@ export class LayoutPlanCommitService {
     // ── 2b. C1 — each target may appear on at most one region ────────
     LayoutPlanCommitService.assertUniqueEntityTargets(plan);
 
-    // ── 2. Validate + run replay ──────────────────────────────────────
-    const wb = LayoutPlanCommitService.validateWorkbook(body.workbook);
-
+    // ── 2. Run replay ─────────────────────────────────────────────────
+    // The body's workbook is typed at the seam (`Workbook | WorkbookData`):
+    // the lazy-cache factory produces `Workbook` directly; legacy test
+    // fixtures pass `WorkbookData` literals and replay adapts via
+    // `makeWorkbook` internally. No runtime validation here — the
+    // upstream cache/route layer is the validation seam.
     let records: ExtractedRecord[];
     let drift: DriftReport;
     try {
-      const result = await replay(plan, wb);
+      const result = await replay(plan, body.workbook);
       records = result.records;
       drift = result.drift;
     } catch (err) {
@@ -503,19 +505,6 @@ export class LayoutPlanCommitService {
         { drift }
       );
     }
-  }
-
-  private static validateWorkbook(raw: unknown): WorkbookData {
-    const parsed = WorkbookSchema.safeParse(raw);
-    if (!parsed.success) {
-      throw new ApiError(
-        400,
-        ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
-        "Invalid workbook payload",
-        { issues: parsed.error.issues }
-      );
-    }
-    return parsed.data as WorkbookData;
   }
 
   private static async ensureInstanceInOrg(
