@@ -42,6 +42,7 @@ import { Route as ConnectorsConnectorInstanceIdRouteImport } from './routes/conn
 import { Route as ColumnDefinitionsColumnDefinitionIdRouteImport } from './routes/column-definitions.$columnDefinitionId'
 import { Route as EntitiesEntityIdIndexRouteImport } from './routes/entities.$entityId.index'
 import { Route as EntitiesEntityIdRecordsRecordIdRouteImport } from './routes/entities.$entityId.records.$recordId'
+import { Route as ConnectorsConnectorInstanceIdLayoutPlanEditRouteImport } from './routes/connectors.$connectorInstanceId.layout-plan.edit'
 
 const ToolpacksRoute = ToolpacksRouteImport.update({
   id: '/toolpacks',
@@ -213,6 +214,12 @@ const EntitiesEntityIdRecordsRecordIdRoute =
     path: '/records/$recordId',
     getParentRoute: () => EntitiesEntityIdRoute,
   } as any)
+const ConnectorsConnectorInstanceIdLayoutPlanEditRoute =
+  ConnectorsConnectorInstanceIdLayoutPlanEditRouteImport.update({
+    id: '/layout-plan/edit',
+    path: '/layout-plan/edit',
+    getParentRoute: () => ConnectorsConnectorInstanceIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -229,7 +236,7 @@ export interface FileRoutesByFullPath {
   '/tags': typeof TagsRouteWithChildren
   '/toolpacks': typeof ToolpacksRouteWithChildren
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
-  '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
+  '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRouteWithChildren
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
   '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
@@ -247,6 +254,7 @@ export interface FileRoutesByFullPath {
   '/tags/': typeof TagsIndexRoute
   '/toolpacks/': typeof ToolpacksIndexRoute
   '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
+  '/connectors/$connectorInstanceId/layout-plan/edit': typeof ConnectorsConnectorInstanceIdLayoutPlanEditRoute
   '/entities/$entityId/records/$recordId': typeof EntitiesEntityIdRecordsRecordIdRoute
 }
 export interface FileRoutesByTo {
@@ -254,7 +262,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
-  '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
+  '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRouteWithChildren
   '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/portal-results/$portalResultId': typeof PortalResultsPortalResultIdRoute
@@ -271,6 +279,7 @@ export interface FileRoutesByTo {
   '/tags': typeof TagsIndexRoute
   '/toolpacks': typeof ToolpacksIndexRoute
   '/entities/$entityId': typeof EntitiesEntityIdIndexRoute
+  '/connectors/$connectorInstanceId/layout-plan/edit': typeof ConnectorsConnectorInstanceIdLayoutPlanEditRoute
   '/entities/$entityId/records/$recordId': typeof EntitiesEntityIdRecordsRecordIdRoute
 }
 export interface FileRoutesById {
@@ -289,7 +298,7 @@ export interface FileRoutesById {
   '/tags': typeof TagsRouteWithChildren
   '/toolpacks': typeof ToolpacksRouteWithChildren
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
-  '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
+  '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRouteWithChildren
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
   '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
@@ -307,6 +316,7 @@ export interface FileRoutesById {
   '/tags/': typeof TagsIndexRoute
   '/toolpacks/': typeof ToolpacksIndexRoute
   '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
+  '/connectors/$connectorInstanceId/layout-plan/edit': typeof ConnectorsConnectorInstanceIdLayoutPlanEditRoute
   '/entities/$entityId/records/$recordId': typeof EntitiesEntityIdRecordsRecordIdRoute
 }
 export interface FileRouteTypes {
@@ -344,6 +354,7 @@ export interface FileRouteTypes {
     | '/tags/'
     | '/toolpacks/'
     | '/entities/$entityId/'
+    | '/connectors/$connectorInstanceId/layout-plan/edit'
     | '/entities/$entityId/records/$recordId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -368,6 +379,7 @@ export interface FileRouteTypes {
     | '/tags'
     | '/toolpacks'
     | '/entities/$entityId'
+    | '/connectors/$connectorInstanceId/layout-plan/edit'
     | '/entities/$entityId/records/$recordId'
   id:
     | '__root__'
@@ -403,6 +415,7 @@ export interface FileRouteTypes {
     | '/tags/'
     | '/toolpacks/'
     | '/entities/$entityId/'
+    | '/connectors/$connectorInstanceId/layout-plan/edit'
     | '/entities/$entityId/records/$recordId'
   fileRoutesById: FileRoutesById
 }
@@ -656,6 +669,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EntitiesEntityIdRecordsRecordIdRouteImport
       parentRoute: typeof EntitiesEntityIdRoute
     }
+    '/connectors/$connectorInstanceId/layout-plan/edit': {
+      id: '/connectors/$connectorInstanceId/layout-plan/edit'
+      path: '/layout-plan/edit'
+      fullPath: '/connectors/$connectorInstanceId/layout-plan/edit'
+      preLoaderRoute: typeof ConnectorsConnectorInstanceIdLayoutPlanEditRouteImport
+      parentRoute: typeof ConnectorsConnectorInstanceIdRoute
+    }
   }
 }
 
@@ -673,13 +693,29 @@ const ColumnDefinitionsRouteChildren: ColumnDefinitionsRouteChildren = {
 const ColumnDefinitionsRouteWithChildren =
   ColumnDefinitionsRoute._addFileChildren(ColumnDefinitionsRouteChildren)
 
+interface ConnectorsConnectorInstanceIdRouteChildren {
+  ConnectorsConnectorInstanceIdLayoutPlanEditRoute: typeof ConnectorsConnectorInstanceIdLayoutPlanEditRoute
+}
+
+const ConnectorsConnectorInstanceIdRouteChildren: ConnectorsConnectorInstanceIdRouteChildren =
+  {
+    ConnectorsConnectorInstanceIdLayoutPlanEditRoute:
+      ConnectorsConnectorInstanceIdLayoutPlanEditRoute,
+  }
+
+const ConnectorsConnectorInstanceIdRouteWithChildren =
+  ConnectorsConnectorInstanceIdRoute._addFileChildren(
+    ConnectorsConnectorInstanceIdRouteChildren,
+  )
+
 interface ConnectorsRouteChildren {
-  ConnectorsConnectorInstanceIdRoute: typeof ConnectorsConnectorInstanceIdRoute
+  ConnectorsConnectorInstanceIdRoute: typeof ConnectorsConnectorInstanceIdRouteWithChildren
   ConnectorsIndexRoute: typeof ConnectorsIndexRoute
 }
 
 const ConnectorsRouteChildren: ConnectorsRouteChildren = {
-  ConnectorsConnectorInstanceIdRoute: ConnectorsConnectorInstanceIdRoute,
+  ConnectorsConnectorInstanceIdRoute:
+    ConnectorsConnectorInstanceIdRouteWithChildren,
   ConnectorsIndexRoute: ConnectorsIndexRoute,
 }
 
