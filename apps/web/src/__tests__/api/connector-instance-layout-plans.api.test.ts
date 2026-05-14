@@ -59,6 +59,28 @@ describe("connectorInstanceLayoutPlans.api", () => {
     });
   });
 
+  describe("getEditContext", () => {
+    it("queries the edit-context endpoint under the connector instance", () => {
+      connectorInstanceLayoutPlans.getEditContext("ci_123");
+      expect(mockUseAuthQuery).toHaveBeenCalledWith(
+        queryKeys.connectorInstanceLayoutPlans.editContext("ci_123"),
+        "/api/connector-instances/ci_123/layout-plan/edit-context",
+        undefined,
+        undefined
+      );
+    });
+
+    it("URL-encodes the connector instance id", () => {
+      connectorInstanceLayoutPlans.getEditContext("ci with/slash");
+      expect(mockUseAuthQuery).toHaveBeenCalledWith(
+        queryKeys.connectorInstanceLayoutPlans.editContext("ci with/slash"),
+        "/api/connector-instances/ci%20with%2Fslash/layout-plan/edit-context",
+        undefined,
+        undefined
+      );
+    });
+  });
+
   describe("patch", () => {
     it("mutates PATCH against the /:planId subpath", () => {
       connectorInstanceLayoutPlans.patch("ci_123", "plan_abc");
@@ -90,6 +112,14 @@ describe("queryKeys.connectorInstanceLayoutPlans", () => {
     expect(queryKeys.connectorInstanceLayoutPlans.detail("ci_123")).toEqual([
       "connectorInstanceLayoutPlans",
       "detail",
+      "ci_123",
+    ]);
+  });
+
+  it("derives editContext() from root + id", () => {
+    expect(queryKeys.connectorInstanceLayoutPlans.editContext("ci_123")).toEqual([
+      "connectorInstanceLayoutPlans",
+      "editContext",
       "ci_123",
     ]);
   });

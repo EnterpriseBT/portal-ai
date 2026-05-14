@@ -164,6 +164,12 @@ export const queryKeys = {
         "detail",
         connectorInstanceId,
       ] as const,
+    editContext: (connectorInstanceId: string) =>
+      [
+        ...queryKeys.connectorInstanceLayoutPlans.root,
+        "editContext",
+        connectorInstanceId,
+      ] as const,
   },
   layoutPlans: {
     root: ["layoutPlans"] as const,
