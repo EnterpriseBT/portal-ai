@@ -10,7 +10,7 @@
  * auditable.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import type {
   ColumnBinding,
@@ -44,6 +44,13 @@ import type {
   EntityRecordInsert,
 } from "../db/schema/zod.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
+import { withEntityLock } from "../db/advisory-lock.util.js";
+import { wideTableStatementCache } from "./wide-table-statement.cache.js";
+import { wideTableReconcilerService } from "./wide-table-reconciler.service.js";
+import {
+  projectToWideRow,
+  buildMappingsForProjection,
+} from "./wide-table-projection.util.js";
 
 /**
  * Optional behavioral overrides for the commit pipeline. Used by Phase D's
@@ -383,6 +390,13 @@ export class LayoutPlanCommitService {
           tx
         );
 
+        // Reconcile the wide table for this entity. The field-mappings
+        // reconciler just landed the canonical mappings; the wide-table
+        // reconciler now creates `er__<id>` (if absent) and adds the
+        // matching `c_*` columns. `writeRecords` immediately below
+        // requires the table to exist.
+        await wideTableReconcilerService.reconcileEntity(entity.id, tx);
+
         // Build the `recordFieldKey → normalizedKey` map the record writer
         // needs so `entity_records.normalizedData` lines up with the
         // `FieldMapping.normalizedKey` values reconcile wrote. Static field
@@ -616,8 +630,17 @@ export class LayoutPlanCommitService {
     );
 
     const toUpsert: EntityRecordInsert[] = [];
+    /**
+     * `normalizedData` lives on the wide table after slice 6; carry it
+     * here keyed by `entity_records.id` so the wide-table projection
+     * below can find it. (EntityRecordInsert no longer has the field.)
+     */
+    const normalizedByRecordId = new Map<string, Record<string, unknown>>();
     const toResurrect: Array<{
       id: string;
+      sourceId: string;
+      organizationId: string;
+      normalizedData: Record<string, unknown>;
       data: Partial<EntityRecordInsert>;
     }> = [];
     /**
@@ -666,9 +689,17 @@ export class LayoutPlanCommitService {
       if (prev && prev.deleted !== null) {
         toResurrect.push({
           id: prev.id,
+          // `sourceId`, `organizationId`, and `normalizedData` are NOT
+          // updated on the `entity_records` row — the first two are
+          // invariant, and after Phase 2 slice 6 there's no JSONB
+          // column to hold the third. We carry them on the top-level
+          // payload as a convenience for the wide-table projection;
+          // `bulkResurrect` only writes the entries under `data`.
+          sourceId: prev.sourceId,
+          organizationId: prev.organizationId,
+          normalizedData,
           data: {
             data: record.fields,
-            normalizedData,
             checksum: record.checksum,
             syncedAt,
             validationErrors: null,
@@ -685,12 +716,15 @@ export class LayoutPlanCommitService {
         continue;
       }
 
+      // Carry `normalizedData` on a sidecar map so the wide-table
+      // projection below sees it; `EntityRecordInsert` no longer has
+      // a `normalizedData` field after slice 6.
+      const rowId = prev?.id ?? SystemUtilities.id.v4.generate();
       toUpsert.push({
-        id: prev?.id ?? SystemUtilities.id.v4.generate(),
+        id: rowId,
         organizationId,
         connectorEntityId,
         data: record.fields,
-        normalizedData,
         sourceId: record.sourceId,
         checksum: record.checksum,
         syncedAt,
@@ -704,33 +738,100 @@ export class LayoutPlanCommitService {
         deleted: null,
         deletedBy: null,
       });
+      normalizedByRecordId.set(rowId, normalizedData);
       if (prev) updated++;
       else created++;
     }
 
-    if (toUpsert.length > 0) {
-      await DbService.repository.entityRecords.upsertManyBySourceId(
-        toUpsert,
-        tx,
-        reportRowsWritten
+    // The entity-records writes and the matching wide-table upserts run
+    // inside a per-entity advisory lock so they serialise with the
+    // reconciler's DDL on the same entity. `withEntityLock` opens a
+    // savepoint inside the caller's transaction; the lock auto-releases
+    // on commit/rollback.
+    await withEntityLock(tx, connectorEntityId, async (locked) => {
+      // Resolve the (normalizedKey → columnName) map once per write
+      // call. The statement cache joins field_mappings + wide_table_columns
+      // so this is cheap (no extra DB hit beyond the cache build).
+      const stmt = await wideTableStatementCache.get(
+        connectorEntityId,
+        locked
       );
-    }
-    if (toResurrect.length > 0) {
-      // Resurrection runs per-row inside the repo and is typically tiny
-      // (only fires when a prior sync soft-deleted rows that have
-      // reappeared). Bill the whole batch to the progress reporter so
-      // the percent doesn't stall mid-write.
-      await DbService.repository.entityRecords.bulkResurrect(toResurrect, tx);
-      reportRowsWritten?.(toResurrect.length);
-    }
-    if (unchangedIds.length > 0) {
-      await DbService.repository.entityRecords.bulkUpdateSyncedAt(
-        unchangedIds,
-        syncedAt,
-        tx,
-        reportRowsWritten
-      );
-    }
+      const mappings = buildMappingsForProjection(stmt.columns);
+
+      if (toUpsert.length > 0) {
+        await DbService.repository.entityRecords.upsertManyBySourceId(
+          toUpsert,
+          locked,
+          reportRowsWritten
+        );
+        await DbService.repository.wideTable.upsertMany(
+          connectorEntityId,
+          toUpsert.map((r) =>
+            projectToWideRow(
+              {
+                id: r.id,
+                organizationId: r.organizationId,
+                sourceId: r.sourceId,
+                syncedAt: r.syncedAt,
+                isValid: r.isValid,
+                normalizedData: normalizedByRecordId.get(r.id) ?? null,
+              },
+              mappings
+            )
+          ),
+          locked
+        );
+      }
+
+      if (toResurrect.length > 0) {
+        // Resurrection runs per-row inside the repo and is typically tiny
+        // (only fires when a prior sync soft-deleted rows that have
+        // reappeared). Bill the whole batch to the progress reporter so
+        // the percent doesn't stall mid-write.
+        await DbService.repository.entityRecords.bulkResurrect(
+          toResurrect,
+          locked
+        );
+        reportRowsWritten?.(toResurrect.length);
+
+        await DbService.repository.wideTable.upsertMany(
+          connectorEntityId,
+          toResurrect.map((r) =>
+            projectToWideRow(
+              {
+                id: r.id,
+                organizationId: r.organizationId,
+                sourceId: r.sourceId,
+                syncedAt: (r.data.syncedAt ?? syncedAt) as number,
+                isValid: (r.data.isValid ?? true) as boolean,
+                normalizedData: r.normalizedData,
+              },
+              mappings
+            )
+          ),
+          locked
+        );
+      }
+
+      if (unchangedIds.length > 0) {
+        await DbService.repository.entityRecords.bulkUpdateSyncedAt(
+          unchangedIds,
+          syncedAt,
+          locked,
+          reportRowsWritten
+        );
+        // Wide rows need their `synced_at` bumped to the run's watermark
+        // too, otherwise a downstream watermark sweep that consults the
+        // wide table (phase 3+) would treat them as stale.
+        const idList = sql.join(
+          unchangedIds.map((id) => sql`${id}`),
+          sql`, `
+        );
+        await (locked as typeof db).execute(
+          sql`UPDATE ${sql.raw(`"er__${connectorEntityId}"`)} SET "synced_at" = ${syncedAt} WHERE "entity_record_id" IN (${idList})`
+        );
+      }
+    });
 
     // `fieldMappings` is imported above only to satisfy the type-check that
     // the soft-delete cascade tests reference this subtree consistently —

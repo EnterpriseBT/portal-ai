@@ -176,12 +176,16 @@ const ENTITY_GROUPS = [
     members: [
       {
         entityKey: "customers",
+        connectorEntityId: "ent-customers",
+        linkNormalizedKey: "id",
         linkColumnKey: "id",
         linkColumnLabel: "ID",
         isPrimary: true,
       },
       {
         entityKey: "orders",
+        connectorEntityId: "ent-orders",
+        linkNormalizedKey: "customer_id",
         linkColumnKey: "customer_id",
         linkColumnLabel: "Customer ID",
         isPrimary: false,

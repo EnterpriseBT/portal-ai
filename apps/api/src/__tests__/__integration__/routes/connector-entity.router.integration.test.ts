@@ -799,6 +799,51 @@ describe("Connector Entity Router", () => {
       expect(getRes.body.payload.connectorEntity.id).toBe(id);
       expect(getRes.body.payload.connectorEntity.key).toBe("deals");
     });
+
+    // Case 25 — wide-table reconciler triggers on connector-entity create
+    it("creating an entity provisions the empty `er__<id>` wide table", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const { connectorInstanceId } = await seedConnectorInstance(
+        db as ReturnType<typeof drizzle>,
+        organizationId
+      );
+
+      const createRes = await request(app)
+        .post("/api/connector-entities")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorInstanceId,
+          key: "leads",
+          label: "Leads",
+        });
+
+      expect(createRes.status).toBe(201);
+      const newId = createRes.body.payload.connectorEntity.id;
+
+      const cols = await (db as ReturnType<typeof drizzle>).execute<{
+        column_name: string;
+      }>(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'er__${newId}'` as any
+      );
+      const colNames = new Set(
+        ((cols as unknown) as { column_name: string }[]).map(
+          (r) => r.column_name
+        )
+      );
+      expect(colNames).toEqual(
+        new Set([
+          "entity_record_id",
+          "organization_id",
+          "synced_at",
+          "is_valid",
+          "source_id",
+        ])
+      );
+    });
   });
 
   // ── DELETE /api/connector-entities/:id ───────────────────────────

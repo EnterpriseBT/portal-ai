@@ -44,22 +44,52 @@ export const layoutPlanCommitProcessor: TypedJobProcessor<
   const onProgress = (percent: number) => {
     void bullJob.updateProgress(percent);
   };
-  const result =
-    metadata.kind === "draft"
-      ? await LayoutPlanDraftService.runCommitDraft(metadata, onProgress)
-      : await LayoutPlanDraftService.runRecommit(metadata, onProgress);
 
-  logger.info(
-    {
-      jobId,
-      kind,
-      connectorInstanceId,
-      planId,
-      connectorEntityCount: result.connectorEntityIds.length,
-      recordCounts: result.recordCounts,
-    },
-    "layout_plan_commit completed"
-  );
+  try {
+    const result =
+      metadata.kind === "draft"
+        ? await LayoutPlanDraftService.runCommitDraft(metadata, onProgress)
+        : await LayoutPlanDraftService.runRecommit(metadata, onProgress);
 
-  return result;
+    logger.info(
+      {
+        jobId,
+        kind,
+        connectorInstanceId,
+        planId,
+        connectorEntityCount: result.connectorEntityIds.length,
+        recordCounts: result.recordCounts,
+      },
+      "layout_plan_commit completed"
+    );
+
+    return result;
+  } catch (err) {
+    // BullMQ retries this processor up to `attempts` times. The draft
+    // rollback (hard-delete plan + freshly-created instance) must only
+    // run on the FINAL attempt — running it per-attempt deletes the
+    // plan row that subsequent retries depend on and turns every retry
+    // into a deterministic `LAYOUT_PLAN_NOT_FOUND`.
+    const attemptsMade = bullJob.attemptsMade ?? 0;
+    const maxAttempts = bullJob.opts?.attempts ?? 1;
+    const isFinalAttempt = attemptsMade >= maxAttempts - 1;
+    if (isFinalAttempt && metadata.kind === "draft") {
+      try {
+        await LayoutPlanDraftService.rollbackFailedDraftCommit(
+          metadata,
+          err instanceof Error ? err.message : String(err)
+        );
+      } catch (cleanupErr) {
+        logger.error(
+          {
+            jobId,
+            cleanupErr:
+              cleanupErr instanceof Error ? cleanupErr.message : cleanupErr,
+          },
+          "Failed to rollback after final draft-commit failure (non-fatal)"
+        );
+      }
+    }
+    throw err;
+  }
 };

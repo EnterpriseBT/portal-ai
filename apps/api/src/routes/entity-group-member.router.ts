@@ -1,5 +1,4 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq } from "drizzle-orm";
 
 import { EntityGroupMemberModelFactory } from "@portalai/core/models";
 import {
@@ -14,7 +13,6 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
-import { entityRecords } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 
 const logger = createLogger({ module: "entity-group-member" });
@@ -732,10 +730,16 @@ entityGroupMemberRouter.get(
         );
       }
 
-      // Get target entity's distinct link field values (keyed by column definition key, not source field)
-      const targetValues = await DbService.repository.entityRecords.findMany(
-        eq(entityRecords.connectorEntityId, targetConnectorEntityId)
-      );
+      // Get target entity's distinct link field values via the
+      // hydrated repo — `normalizedData` is rebuilt from the wide
+      // table (or the legacy JSONB column when the wide table is
+      // unreconciled). The key here is the column definition's `key`,
+      // matching the existing JSONB convention; the Phase-2 wide table
+      // exposes the same keys via the field-mapping's normalized_key.
+      const targetValues =
+        await DbService.repository.entityRecords.findHydratedMany(
+          targetConnectorEntityId
+        );
       const targetFieldKey = targetColDef.key;
       const targetSet = new Set(
         targetValues
@@ -760,9 +764,10 @@ entityGroupMemberRouter.get(
 
       for (const member of enrichedMembers) {
         const sourceFieldKey = member.columnDefinition!.key;
-        const records = await DbService.repository.entityRecords.findMany(
-          eq(entityRecords.connectorEntityId, member.connectorEntityId)
-        );
+        const records =
+          await DbService.repository.entityRecords.findHydratedMany(
+            member.connectorEntityId
+          );
         for (const r of records) {
           const val = (r.normalizedData as Record<string, unknown>)[
             sourceFieldKey

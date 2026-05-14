@@ -85,19 +85,21 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     );
     lines.push("");
     lines.push(
-      "Every entity table includes two hidden columns: " +
-        "`_record_id` (the entity record's unique ID) and `_connector_entity_id`. " +
-        "Use `_record_id` as the `entityRecordId` parameter when calling " +
-        "entity_record_update or entity_record_delete. " +
-        "Use `_connector_entity_id` as the `connectorEntityId` parameter. " +
-        "Always query these columns first (e.g. `SELECT _record_id, _connector_entity_id, ... FROM [table] WHERE ...`) " +
-        "to identify the target record before performing updates or deletes."
+      "Every entity table includes two synthetic columns projected by the " +
+        "session view: `_record_id` (the entity record's unique ID) and " +
+        "`_connector_entity_id`. Use `_record_id` as the `entityRecordId` " +
+        "parameter when calling entity_record_update or entity_record_delete, " +
+        "and `_connector_entity_id` as the `connectorEntityId` parameter. " +
+        'Always query these columns first (e.g. `SELECT "_record_id", ' +
+        '"_connector_entity_id", "c_name" FROM "contacts" WHERE ...`) to ' +
+        "identify the target record before performing updates or deletes."
     );
     lines.push("");
     lines.push(
-      "Each field mapping has a `normalizedKey` — this is the key used in the record's " +
-        "`normalizedData` JSONB object and may differ from the column definition's `key`. " +
-        "When reading or writing record data, use the `normalizedKey` from the field mapping."
+      "Each field mapping has a `normalizedKey` — this is the key used by " +
+        "the entity_record_* tools' `normalizedData` payload. The matching " +
+        "wide-table column is named `c_<normalizedKey>`; SELECT it directly " +
+        "from the entity table."
     );
     lines.push("");
     lines.push(
@@ -108,18 +110,32 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         'There is no `currency` type — use `number` with `canonicalFormat` (e.g. "USD") instead.'
     );
     lines.push("");
+  }
+
+  // SQL guidance — applies whenever the LLM can reach `sql_query` /
+  // `visualize` / `visualize_tree`. The new session-view surface is
+  // PostgreSQL-compatible, has a 500-row response cap, and uses
+  // double-quoted identifiers (not AlaSQL's `[…]`).
+  if (stationContext.toolPacks.includes("data_query")) {
+    lines.push("## SQL Guidance");
+    lines.push("");
+    lines.push("This is PostgreSQL-compatible SQL. Specifically:");
     lines.push(
-      "Metadata tables are available via sql_query: " +
-        "`_connector_instances` (id, name, status, connector_definition_id), " +
-        "`_connector_entities` (id, key, label, connector_instance_id), " +
-        "`_column_definitions` (id, key, label, type, description, validation_pattern, validation_message, canonical_format), " +
-        "`_field_mappings` (id, connector_entity_id, column_definition_id, source_field, is_primary_key, normalized_key, required, default_value, format, enum_values). " +
-        "Use these to look up IDs before calling write tools. " +
-        "To add a new field mapping, find an existing column definition in " +
-        "`_column_definitions` and call field_mapping_create with its id. " +
-        "Column definitions are managed outside the portal session — if no " +
-        "suitable column definition exists, surface the unmapped source field " +
-        "to the user and stop; do not attempt to create one."
+      "- Always include a LIMIT clause when scanning rows for exploratory work."
+    );
+    lines.push(
+      '- Avoid `SELECT *` on entity tables — project only the columns you need.'
+    );
+    lines.push(
+      "- Prefer aggregations (COUNT, AVG, MAX, SUM) over scanning rows when the " +
+        "user is asking summary questions."
+    );
+    lines.push(
+      "- Responses cap at 500 rows. If you see `truncated: true` in the response, " +
+        "narrow your filter or aggregate instead of paging."
+    );
+    lines.push(
+      '- Quote identifiers with double quotes (`"name"`), not brackets.'
     );
     lines.push("");
   }

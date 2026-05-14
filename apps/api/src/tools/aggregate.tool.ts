@@ -6,7 +6,7 @@ import {
   type StationData,
 } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { getRecords } from "../utils/tools.util.js";
+import { fetchEntityRows } from "../utils/tools.util.js";
 
 const InputSchema = z.object({
   entity: z.string().describe("Entity (table) to aggregate."),
@@ -62,13 +62,22 @@ export class AggregateTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationData: StationData) {
+  build(stationData: StationData, organizationId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
         const { entity, groupBy, metrics } = this.validate(input);
-        const records = getRecords(stationData, entity);
+        const metricCols = metrics
+          .map((m) => m.column)
+          .filter((c): c is string => typeof c === "string");
+        const cols = [...new Set([...groupBy, ...metricCols])];
+        const records = await fetchEntityRows(
+          stationData,
+          entity,
+          cols,
+          organizationId
+        );
         return AnalyticsService.aggregate({ records, groupBy, metrics });
       },
     });

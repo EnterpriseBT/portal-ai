@@ -4,13 +4,13 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
-import { AnalyticsService } from "../services/analytics.service.js";
 import {
   assertStationScope,
   assertWriteCapability,
 } from "../utils/resolve-capabilities.util.js";
 import { NormalizationService } from "../services/normalization.service.js";
 import { Repository } from "../db/repositories/base.repository.js";
+import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
 
 const ItemSchema = z.object({
   connectorEntityId: z
@@ -167,31 +167,37 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
           });
 
           const updated = await Repository.transaction(async (tx) => {
-            return DbService.repository.entityRecords.updateMany(payloads, tx);
-          });
-
-          // ── Phase 3: Cache ─────────────────────────────────────────
-          for (const [connectorEntityId, groupItems] of groups) {
-            const entity =
-              await DbService.repository.connectorEntities.findById(
-                connectorEntityId
-              );
-            if (!entity) continue;
-            const rows = groupItems.map((item) => {
-              const idx = items.indexOf(item);
-              const norm = normResults[idx];
-              return {
-                _record_id: item.entityRecordId,
-                _connector_entity_id: connectorEntityId,
-                ...norm.normalizedData,
-              };
-            });
-            AnalyticsService.applyRecordUpdateMany(
-              stationId,
-              (entity as any).key,
-              rows
+            const rowsUpdated =
+              await DbService.repository.entityRecords.updateMany(payloads, tx);
+            // Partial-merge into the wide table per entity, scoped to
+            // the keys each payload supplied (PATCH semantics). Skip
+            // when the reconciler hasn't run yet for this entity (no
+            // live data columns) — the post-Phase-2 re-sync trigger
+            // refills the wide table from source.
+            const idToItemIndex = new Map(
+              items.map((it, idx) => [it.entityRecordId, idx])
             );
-          }
+            for (const [connectorEntityId, groupItems] of groups) {
+              const stmt = await wideTableStatementCache.get(
+                connectorEntityId,
+                tx
+              );
+              if (stmt.columns.length === 0) continue;
+              for (const item of groupItems) {
+                const idx = idToItemIndex.get(item.entityRecordId);
+                if (idx === undefined) continue;
+                const norm = normResults[idx];
+                await DbService.repository.wideTable.updatePartial(
+                  connectorEntityId,
+                  item.entityRecordId,
+                  norm.normalizedData,
+                  { isValid: norm.isValid },
+                  tx
+                );
+              }
+            }
+            return rowsUpdated;
+          });
 
           return {
             success: true,

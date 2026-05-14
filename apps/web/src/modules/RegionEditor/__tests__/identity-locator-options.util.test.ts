@@ -157,6 +157,90 @@ describe("computeLocatorOptions — 2D crosstab", () => {
   });
 });
 
+describe("computeLocatorOptions — sliced-sheet uniqueness", () => {
+  // The IdentityPanel's `(unique)` tag used to be computed by treating
+  // unloaded rows (sliced sheets — `sheet.cells[r] === undefined`) as
+  // empty strings. That produced a false `unique` verdict on huge
+  // sheets where only the visible window is loaded; the commit-time
+  // drift gate then rejected the commit with
+  // `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`. The classifier now downgrades
+  // to `unknown` whenever any row in the data range isn't loaded.
+
+  function makeSlicedSheet(
+    rowCount: number,
+    loaded: (string | number | null)[][]
+  ): SheetPreview {
+    // `cells` is sparse: the first `loaded.length` entries are filled,
+    // everything past that is `undefined` to mimic the canvas's
+    // lazy-loaded preview window.
+    return {
+      id: "s1",
+      name: "Sheet1",
+      rowCount,
+      colCount: loaded[0]?.length ?? 0,
+      cells: loaded as unknown as SheetPreview["cells"],
+    };
+  }
+
+  it("flags every column as 'unknown' when rows in the bounds range aren't loaded", () => {
+    const sheet = makeSlicedSheet(2701, [
+      ["Model", "Domain"],
+      ["Claude", "Language"],
+      ["GPT-5", "Language"],
+    ]);
+    const options = computeLocatorOptions(
+      baseRegion({
+        bounds: { startRow: 0, endRow: 2700, startCol: 0, endCol: 1 },
+      }),
+      sheet
+    );
+    const modelCol = options.find((o) => o.label === "Model");
+    expect(modelCol).toBeDefined();
+    // Without the fix this would mis-classify as `unique` from the 2
+    // loaded rows; with it the verdict is `unknown` and the IdentityPanel
+    // renders the softer "verified at commit" notice.
+    expect(modelCol!.uniqueness).toBe("unknown");
+  });
+
+  it("still classifies normally when every row in the range is loaded", () => {
+    const sheet = makeSlicedSheet(3, [
+      ["id"],
+      ["a-1"],
+      ["a-2"],
+    ]);
+    const options = computeLocatorOptions(
+      baseRegion({
+        bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 0 },
+      }),
+      sheet
+    );
+    const idCol = options.find((o) => o.label === "id");
+    expect(idCol!.uniqueness).toBe("unique");
+  });
+
+  it("flags a column-axis identity row as 'unknown' when its source row isn't loaded", () => {
+    const sheet = makeSlicedSheet(50, [
+      ["id", "a-1", "a-2"],
+      ["name", "alice", "bob"],
+      // rows 2..49 unloaded — the column-axis classifier walks rows
+      // and an absent header row signals "I can't tell".
+    ]);
+    const options = computeLocatorOptions(
+      baseRegion({
+        headerAxes: ["column"],
+        bounds: { startRow: 0, endRow: 49, startCol: 0, endCol: 2 },
+      }),
+      sheet
+    );
+    // The first two rows are loaded — those classifications are honest.
+    const idRow = options.find((o) => o.label === "id");
+    expect(idRow!.uniqueness).toBe("unique");
+    // The unloaded rows surface as `unknown`.
+    const unloaded = options.filter((o) => o.uniqueness === "unknown");
+    expect(unloaded.length).toBeGreaterThan(0);
+  });
+});
+
 describe("computeLocatorOptions — labels", () => {
   it("falls back to a 'col {index}'-style label when the header cell is empty", () => {
     const sheet = makeSheet([

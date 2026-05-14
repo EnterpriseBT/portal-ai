@@ -25,7 +25,7 @@ export class ResolveIdentityTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationId: string, entityGroups: EntityGroupContext[]) {
+  build(organizationId: string, entityGroups: EntityGroupContext[]) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -34,7 +34,7 @@ export class ResolveIdentityTool extends Tool<typeof InputSchema> {
         return AnalyticsService.resolveIdentity({
           entityGroupName,
           linkValue,
-          stationId,
+          organizationId,
           entityGroups,
         });
       },

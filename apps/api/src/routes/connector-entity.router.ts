@@ -35,6 +35,7 @@ import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { ConnectorEntityValidationService } from "../services/connector-entity-validation.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
+import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 import { entityRecordRouter } from "./entity-record.router.js";
 import { entityTagAssignmentRouter } from "./entity-tag-assignment.router.js";
 
@@ -449,6 +450,31 @@ connectorEntityRouter.post(
               : "Failed to create connector entity"
           );
         });
+
+      // Provision the wide-table for this entity. The reconciler is the
+      // only path that emits DDL against `er__<id>` tables; calling
+      // `ensureTable` here keeps the new entity ready for sync writes
+      // even before any field-mapping is added.
+      try {
+        await wideTableReconcilerService.ensureTable(connectorEntity.id);
+      } catch (error) {
+        logger.error(
+          {
+            connectorEntityId: connectorEntity.id,
+            error: error instanceof Error ? error.message : "Unknown error",
+          },
+          "Wide-table reconciliation failed after connector_entity create"
+        );
+        return next(
+          new ApiError(
+            500,
+            ApiCode.WIDE_TABLE_RECONCILE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to provision wide table"
+          )
+        );
+      }
 
       logger.info(
         {

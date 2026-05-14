@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
+import type { DbClient } from "../../../db/repositories/base.repository.js";
 import {
   generateId,
   seedUserAndOrg,
@@ -244,6 +245,16 @@ async function seed(
   );
   await db.insert(fieldMappings).values(mapping as never);
 
+  // Reconcile the wide table so the tool's downstream
+  // `entity_records.findHydratedById` JOIN resolves rows.
+  const { wideTableReconcilerService } = await import(
+    "../../../services/wide-table-reconciler.service.js"
+  );
+  await wideTableReconcilerService.reconcileEntity(
+    entity.id,
+    db as unknown as DbClient
+  );
+
   return {
     userId,
     organizationId,
@@ -302,7 +313,14 @@ describe("Entity management tool integration", () => {
         .where(eq(entityRecords.id, recordId));
       expect(rows).toHaveLength(1);
       expect(rows[0].origin).toBe("portal");
-      expect(rows[0].normalizedData).toEqual({ name: "Jane" });
+      const { entityRecordsRepo } = await import(
+        "../../../db/repositories/entity-records.repository.js"
+      );
+      const hydrated = await entityRecordsRepo.findHydratedById(
+        recordId,
+        rows[0].connectorEntityId
+      );
+      expect(hydrated?.normalizedData).toEqual({ name: "Jane" });
     });
 
     it("rejects when write disabled on instance", async () => {
@@ -412,7 +430,14 @@ describe("Entity management tool integration", () => {
         .from(entityRecords)
         .where(eq(entityRecords.id, recordId));
       expect(rows[0].data).toEqual({ Name: "Bob" });
-      expect(rows[0].normalizedData).toEqual({ name: "Bob" });
+      const { entityRecordsRepo: erRepoForUpdate } = await import(
+        "../../../db/repositories/entity-records.repository.js"
+      );
+      const hydratedAfter = await erRepoForUpdate.findHydratedById(
+        recordId,
+        rows[0].connectorEntityId
+      );
+      expect(hydratedAfter?.normalizedData).toEqual({ name: "Bob" });
     });
 
     it("merges partial updates with existing data — untouched fields survive", async () => {
@@ -428,6 +453,17 @@ describe("Entity management tool integration", () => {
         "Email"
       );
       await db.insert(fieldMappings).values(emailMapping as never);
+
+      // Re-reconcile so the wide table grows `c_email` alongside
+      // `c_name`. Production paths call this from the field-mapping
+      // routes; the test goes through Drizzle directly.
+      const { wideTableReconcilerService } = await import(
+        "../../../services/wide-table-reconciler.service.js"
+      );
+      await wideTableReconcilerService.reconcileEntity(
+        s.connectorEntityId,
+        db as unknown as DbClient
+      );
 
       // Create a record with both fields populated
       const createTool = new EntityRecordCreateTool().build(
@@ -475,7 +511,14 @@ describe("Entity management tool integration", () => {
       // Raw `data` blob must contain both original Email and updated Name
       expect(rows[0].data).toEqual({ Name: "Bob", Email: "alice@example.com" });
       // Normalized data must retain both fields — email must not be null
-      expect(rows[0].normalizedData).toEqual({
+      const { entityRecordsRepo: erRepoForMerge } = await import(
+        "../../../db/repositories/entity-records.repository.js"
+      );
+      const hydratedMerged = await erRepoForMerge.findHydratedById(
+        recordId,
+        rows[0].connectorEntityId
+      );
+      expect(hydratedMerged?.normalizedData).toEqual({
         name: "Bob",
         email: "alice@example.com",
       });

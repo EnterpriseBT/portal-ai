@@ -4,7 +4,6 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
-import { AnalyticsService } from "../services/analytics.service.js";
 import {
   assertStationScope,
   assertWriteCapability,
@@ -92,18 +91,6 @@ export class ConnectorEntityUpdateTool extends Tool<typeof InputSchema> {
               );
             }
           });
-
-          // ── Phase 3: Cache ─────────────────────────────────────────
-          const cacheRows = items.map((item) => {
-            const existing = entities[item.connectorEntityId];
-            return {
-              id: item.connectorEntityId,
-              key: existing.key,
-              label: item.label,
-              connectorInstanceId: existing.connectorInstanceId,
-            };
-          });
-          AnalyticsService.applyEntityUpdateMany(stationId, cacheRows);
 
           return {
             success: true,

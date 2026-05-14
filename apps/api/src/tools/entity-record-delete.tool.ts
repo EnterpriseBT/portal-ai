@@ -4,7 +4,6 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
-import { AnalyticsService } from "../services/analytics.service.js";
 import {
   assertStationScope,
   assertWriteCapability,
@@ -111,21 +110,6 @@ export class EntityRecordDeleteTool extends Tool<typeof InputSchema> {
               tx
             );
           });
-
-          // ── Phase 3: Cache ─────────────────────────────────────────
-          for (const [connectorEntityId, groupItems] of groups) {
-            const entity =
-              await DbService.repository.connectorEntities.findById(
-                connectorEntityId
-              );
-            if (!entity) continue;
-            const recordIds = groupItems.map((item) => item.entityRecordId);
-            AnalyticsService.applyRecordDeleteMany(
-              stationId,
-              (entity as any).key,
-              recordIds
-            );
-          }
 
           return {
             success: true,

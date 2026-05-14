@@ -713,7 +713,7 @@ describe("Entity Group Router", () => {
         organizationId,
         entity1.id,
         colDef1.id,
-        { sourceField: "email" }
+        { sourceField: "email", normalizedKey: "email" }
       );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
@@ -733,7 +733,7 @@ describe("Entity Group Router", () => {
         organizationId,
         entity2.id,
         colDef2.id,
-        { sourceField: "contact_email" }
+        { sourceField: "contact_email", normalizedKey: "contact_email" }
       );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
@@ -773,23 +773,95 @@ describe("Entity Group Router", () => {
           },
         ] as never);
 
-      // Create records
+      // Reconcile both entities so the wide tables grow c_email / c_contact_email.
+      const { wideTableReconcilerService } = await import(
+        "../../../services/wide-table-reconciler.service.js"
+      );
+      await wideTableReconcilerService.reconcileEntity(
+        entity1.id,
+        db as unknown as DbClient
+      );
+      await wideTableReconcilerService.reconcileEntity(
+        entity2.id,
+        db as unknown as DbClient
+      );
+
+      // Create records on both sides.
+      const r1 = createEntityRecord(organizationId, entity1.id, {
+        email: "test@example.com",
+        name: "Alice",
+      });
+      const r2 = createEntityRecord(organizationId, entity1.id, {
+        email: "other@example.com",
+        name: "Bob",
+      });
+      const r3 = createEntityRecord(organizationId, entity2.id, {
+        contact_email: "test@example.com",
+        phone: "555",
+      });
       await (db as ReturnType<typeof drizzle>)
         .insert(entityRecords)
-        .values([
-          createEntityRecord(organizationId, entity1.id, {
-            email: "test@example.com",
-            name: "Alice",
-          }),
-          createEntityRecord(organizationId, entity1.id, {
-            email: "other@example.com",
-            name: "Bob",
-          }),
-          createEntityRecord(organizationId, entity2.id, {
-            contact_email: "test@example.com",
-            phone: "555",
-          }),
-        ] as never);
+        .values([r1, r2, r3] as never);
+
+      // Mirror into the wide tables. The field-mapping normalizedKey
+      // matches the column-def `key` in this fixture, so the c_<key>
+      // columns line up with the normalizedData keys.
+      const { wideTableRepo } = await import(
+        "../../../db/repositories/wide-table.repository.js"
+      );
+      const { wideTableStatementCache } = await import(
+        "../../../services/wide-table-statement.cache.js"
+      );
+      const {
+        projectToWideRow,
+        buildMappingsForProjection,
+      } = await import(
+        "../../../services/wide-table-projection.util.js"
+      );
+      const stmt1 = await wideTableStatementCache.get(
+        entity1.id,
+        db as unknown as DbClient
+      );
+      const m1 = buildMappingsForProjection(stmt1.columns);
+      await wideTableRepo.upsertMany(
+        entity1.id,
+        [r1, r2].map((r) =>
+          projectToWideRow(
+            {
+              id: r.id,
+              organizationId: r.organizationId,
+              sourceId: r.sourceId,
+              syncedAt: r.syncedAt,
+              isValid: r.isValid,
+              normalizedData: r.normalizedData,
+            },
+            m1
+          )
+        ),
+        db as unknown as DbClient
+      );
+      const stmt2 = await wideTableStatementCache.get(
+        entity2.id,
+        db as unknown as DbClient
+      );
+      const m2 = buildMappingsForProjection(stmt2.columns);
+      await wideTableRepo.upsertMany(
+        entity2.id,
+        [
+          projectToWideRow(
+            {
+              id: r3.id,
+              organizationId: r3.organizationId,
+              sourceId: r3.sourceId,
+              syncedAt: r3.syncedAt,
+              isValid: r3.isValid,
+              normalizedData: r3.normalizedData,
+            },
+            m2
+          ),
+        ],
+        db as unknown as DbClient
+      );
 
       const res = await request(app)
         .get(

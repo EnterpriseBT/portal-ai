@@ -272,7 +272,6 @@ export class LayoutPlanDraftService {
       userId,
       connectorInstanceId,
       planId,
-      isExistingInstance,
       workbookSource,
     } = metadata;
 
@@ -281,37 +280,21 @@ export class LayoutPlanDraftService {
       organizationId
     );
 
-    let result;
-    try {
-      result = await LayoutPlanCommitService.commit(
-        connectorInstanceId,
-        planId,
-        organizationId,
-        userId,
-        { workbook },
-        { onProgress }
-      );
-    } catch (err) {
-      logger.warn(
-        {
-          event: "commit-draft.rollback",
-          connectorInstanceId,
-          planId,
-          isExistingInstance,
-          reason: err instanceof Error ? err.message : String(err),
-        },
-        "rolling back draft commit"
-      );
-      await DbService.repository.connectorInstanceLayoutPlans
-        .hardDelete(planId)
-        .catch(() => undefined);
-      if (!isExistingInstance) {
-        await DbService.repository.connectorInstances
-          .hardDelete(connectorInstanceId)
-          .catch(() => undefined);
-      }
-      throw err;
-    }
+    // Errors propagate as-is so BullMQ can retry. The orphan-row
+    // cleanup that used to live here moved to
+    // `rollbackFailedDraftCommit` and is invoked by the processor
+    // only on the FINAL retry attempt; running it per-attempt
+    // hard-deleted the plan row on the first transient failure and
+    // poisoned the subsequent retries (every one of them then failed
+    // with `LAYOUT_PLAN_NOT_FOUND`).
+    const result = await LayoutPlanCommitService.commit(
+      connectorInstanceId,
+      planId,
+      organizationId,
+      userId,
+      { workbook },
+      { onProgress }
+    );
 
     // Commit succeeded — flip the instance to `active` so the
     // pending chip on the detail view clears. The instance was
@@ -350,6 +333,44 @@ export class LayoutPlanDraftService {
       connectorEntityIds: result.connectorEntityIds,
       recordCounts: result.recordCounts,
     };
+  }
+
+  /**
+   * Clean up the orphan rows a draft commit leaves behind when the
+   * commit pipeline fails for keeps. Only invoked by the processor's
+   * terminal catch (i.e. after BullMQ has exhausted all retries) —
+   * NEVER per-attempt, because mid-retry cleanup hard-deletes the plan
+   * row that subsequent retries will look up, deterministically
+   * converting a transient first-attempt failure into a permanent
+   * `LAYOUT_PLAN_NOT_FOUND` for every retry.
+   *
+   * Defensive: every delete is `.catch(() => undefined)` so a partial
+   * cleanup doesn't mask the underlying failure when the processor
+   * re-throws.
+   */
+  static async rollbackFailedDraftCommit(
+    metadata: Extract<LayoutPlanCommitMetadata, { kind: "draft" }>,
+    reason: string
+  ): Promise<void> {
+    const { connectorInstanceId, planId, isExistingInstance } = metadata;
+    logger.warn(
+      {
+        event: "commit-draft.rollback",
+        connectorInstanceId,
+        planId,
+        isExistingInstance,
+        reason,
+      },
+      "rolling back draft commit (final failure)"
+    );
+    await DbService.repository.connectorInstanceLayoutPlans
+      .hardDelete(planId)
+      .catch(() => undefined);
+    if (!isExistingInstance) {
+      await DbService.repository.connectorInstances
+        .hardDelete(connectorInstanceId)
+        .catch(() => undefined);
+    }
   }
 
   /**

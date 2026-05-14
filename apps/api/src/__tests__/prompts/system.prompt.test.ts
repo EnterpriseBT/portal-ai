@@ -148,11 +148,8 @@ describe("buildSystemPrompt — entity management notes", () => {
 
     expect(prompt).toContain("## Entity Management Notes");
     expect(prompt).toContain("origin");
-    expect(prompt).toContain("_connector_instances");
-    expect(prompt).toContain("_connector_entities");
-    expect(prompt).toContain("_column_definitions");
-    expect(prompt).toContain("_field_mappings");
-    expect(prompt).toContain("field_mapping_create");
+    expect(prompt).toContain("_record_id");
+    expect(prompt).toContain("_connector_entity_id");
   });
 
   it("documents normalizedKey concept", () => {
@@ -171,8 +168,6 @@ describe("buildSystemPrompt — entity management notes", () => {
 
     expect(prompt).toContain("validationPattern");
     expect(prompt).toContain("canonicalFormat");
-    expect(prompt).toContain("validation_pattern");
-    expect(prompt).toContain("canonical_format");
   });
 
   it("documents field mapping attributes: required, defaultValue, format, enumValues", () => {
@@ -180,9 +175,9 @@ describe("buildSystemPrompt — entity management notes", () => {
       makeContext({ toolPacks: ["entity_management"] })
     );
 
-    expect(prompt).toContain("normalized_key");
-    expect(prompt).toContain("default_value");
-    expect(prompt).toContain("enum_values");
+    expect(prompt).toContain("normalizedKey");
+    expect(prompt).toContain("defaultValue");
+    expect(prompt).toContain("enumValues");
     expect(prompt).toMatch(/field mappings define per-source attributes/i);
   });
 
@@ -230,12 +225,16 @@ describe("buildSystemPrompt — response style", () => {
             members: [
               {
                 entityKey: "contacts",
+                connectorEntityId: "ent-contacts",
+                linkNormalizedKey: "email",
                 linkColumnKey: "email",
                 linkColumnLabel: "Email",
                 isPrimary: true,
               },
               {
                 entityKey: "orders",
+                connectorEntityId: "ent-orders",
+                linkNormalizedKey: "customer_email",
                 linkColumnKey: "customer_email",
                 linkColumnLabel: "Customer Email",
                 isPrimary: false,
@@ -288,5 +287,76 @@ describe("buildSystemPrompt — response style", () => {
     expect(goodIdx).toBeGreaterThan(-1);
     expect(badIdx).toBeGreaterThan(goodIdx);
     expect(badIdx - goodIdx).toBeLessThan(250);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 slice 4 — SQL guidance + metadata-tables-paragraph drop (cases 74–77)
+// ---------------------------------------------------------------------------
+
+describe("buildSystemPrompt — Phase 3 surface", () => {
+  // Case 74
+  it("no longer references the AlaSQL metadata tables", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["data_query", "entity_management"] })
+    );
+    expect(prompt).not.toContain("_connector_instances");
+    expect(prompt).not.toContain("_connector_entities");
+    expect(prompt).not.toContain("_column_definitions");
+    expect(prompt).not.toContain("_field_mappings");
+  });
+
+  // Case 75
+  it("still surfaces the synthetic _record_id and _connector_entity_id columns", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["data_query", "entity_management"] })
+    );
+    expect(prompt).toContain("_record_id");
+    expect(prompt).toContain("_connector_entity_id");
+  });
+
+  // Case 76
+  it("includes the PostgreSQL-compatible SQL guidance block when data_query is enabled", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["data_query"] })
+    );
+    expect(prompt).toContain("## SQL Guidance");
+    expect(prompt).toContain("PostgreSQL-compatible SQL");
+    expect(prompt).toContain("LIMIT");
+    expect(prompt).toContain("SELECT *");
+    expect(prompt).toMatch(/COUNT|AVG|MAX|SUM/);
+    expect(prompt).toContain("truncated: true");
+    expect(prompt).toMatch(/double quotes/i);
+  });
+
+  it("omits the SQL guidance block when data_query is not enabled", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["entity_management"] })
+    );
+    expect(prompt).not.toContain("## SQL Guidance");
+  });
+
+  it("drops the AlaSQL `[bracket]` example query in favour of a double-quoted one", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["data_query", "entity_management"] })
+    );
+    expect(prompt).not.toContain("FROM [table]");
+    expect(prompt).toMatch(/FROM "contacts"/);
+  });
+
+  // Case 77 — capability tag continues to render per entity. Covered above
+  // under "entityCapabilities"; restated here as the explicit phase-3 assertion.
+  it("still renders the [read, write] capability tag per entity", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        toolPacks: ["data_query", "entity_management"],
+        entityCapabilities: {
+          "entity-1": { read: true, write: true, push: false },
+          "entity-2": { read: true, write: false, push: false },
+        },
+      })
+    );
+    expect(prompt).toContain("[read, write]");
+    expect(prompt).toContain("[read]");
   });
 });

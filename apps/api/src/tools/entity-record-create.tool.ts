@@ -5,7 +5,6 @@ import { v4 as uuidv4 } from "uuid";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
-import { AnalyticsService } from "../services/analytics.service.js";
 import { EntityRecordModelFactory } from "@portalai/core/models";
 import {
   assertStationScope,
@@ -13,6 +12,11 @@ import {
 } from "../utils/resolve-capabilities.util.js";
 import { NormalizationService } from "../services/normalization.service.js";
 import { Repository } from "../db/repositories/base.repository.js";
+import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
+import {
+  projectToWideRow,
+  buildMappingsForProjection,
+} from "../services/wide-table-projection.util.js";
 
 const ItemSchema = z.object({
   connectorEntityId: z
@@ -130,37 +134,56 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
           });
 
           // ── Phase 2: Execute ───────────────────────────────────────
-          const created = await Repository.transaction(async (tx) => {
-            return DbService.repository.entityRecords.createMany(
-              parsedModels,
-              tx
-            );
-          });
-
-          // ── Phase 3: Cache ─────────────────────────────────────────
-          for (const connectorEntityId of groups.keys()) {
-            const entity =
-              await DbService.repository.connectorEntities.findById(
-                connectorEntityId
-              );
-            if (!entity) continue;
-            const groupItems = groups.get(connectorEntityId)!;
-            const rows = groupItems.map((item) => {
-              const idx = items.indexOf(item);
-              const record = created[idx];
-              const norm = normResults[idx];
-              return {
-                _record_id: record.id,
-                _connector_entity_id: connectorEntityId,
-                ...norm.normalizedData,
-              };
-            });
-            AnalyticsService.applyRecordInsertMany(
-              stationId,
-              (entity as any).key,
-              rows
-            );
+          // Carry `normalizedData` from the model.parse() output keyed
+          // by the resulting row id — the table inference no longer
+          // includes it after slice 6, so the wide-table projection
+          // can't read it back off the inserted row.
+          const normalizedById = new Map<string, Record<string, unknown>>();
+          for (const parsed of parsedModels) {
+            normalizedById.set(parsed.id, parsed.normalizedData);
           }
+          const created = await Repository.transaction(async (tx) => {
+            const inserted =
+              await DbService.repository.entityRecords.createMany(
+                parsedModels,
+                tx
+              );
+            // Mirror into the wide table per entity. Each connector
+            // entity has its own `er__<id>` table + statement cache.
+            // Skip the mirror write if the wide table has no live data
+            // columns (the reconciler hasn't run for this entity yet);
+            // Phase 2 slice 7's re-sync trigger or the field-mapping
+            // routes' reconciliation will populate it.
+            const byEntity = new Map<string, typeof inserted>();
+            for (const row of inserted) {
+              const list = byEntity.get(row.connectorEntityId) ?? [];
+              list.push(row);
+              byEntity.set(row.connectorEntityId, list);
+            }
+            for (const [entityId, rows] of byEntity) {
+              const stmt = await wideTableStatementCache.get(entityId, tx);
+              if (stmt.columns.length === 0) continue;
+              const mappings = buildMappingsForProjection(stmt.columns);
+              await DbService.repository.wideTable.upsertMany(
+                entityId,
+                rows.map((r) =>
+                  projectToWideRow(
+                    {
+                      id: r.id,
+                      organizationId: r.organizationId,
+                      sourceId: r.sourceId,
+                      syncedAt: r.syncedAt,
+                      isValid: r.isValid,
+                      normalizedData: normalizedById.get(r.id) ?? null,
+                    },
+                    mappings
+                  )
+                ),
+                tx
+              );
+            }
+            return inserted;
+          });
 
           return {
             success: true,

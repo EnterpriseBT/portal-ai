@@ -9,7 +9,6 @@ import {
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { sql } from "drizzle-orm";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
@@ -20,6 +19,13 @@ import {
   seedUserAndOrg,
   teardownOrg,
 } from "../utils/application.util.js";
+import { wideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
+import { wideTableRepo } from "../../../db/repositories/wide-table.repository.js";
+import { wideTableStatementCache } from "../../../services/wide-table-statement.cache.js";
+import {
+  projectToWideRow,
+  buildMappingsForProjection,
+} from "../../../services/wide-table-projection.util.js";
 
 const AUTH0_ID = "auth0|ci-test-user";
 
@@ -246,7 +252,91 @@ async function seedFullStack(db: ReturnType<typeof drizzle>) {
   );
   await db.insert(fieldMappings).values(mappings as never);
 
+  // Reconcile the wide table so `er__<id>` exists with c_<key> columns
+  // for every field-mapping. After Phase 2, reads project from here.
+  wideTableStatementCache.clear();
+  await wideTableReconcilerService.reconcileEntity(
+    entity.id,
+    db as unknown as DbClient
+  );
+
   return { userId, organizationId, connectorEntityId: entity.id, cols };
+}
+
+/**
+ * Insert rows into both `entity_records` and the corresponding
+ * `er__<id>` wide table so post-Phase-2 read paths (which JOIN the
+ * wide table) find matching rows.
+ */
+async function insertEntityRecordsWithWide(
+  db: ReturnType<typeof drizzle>,
+  connectorEntityId: string,
+  rows: Array<ReturnType<typeof createEntityRecord>>
+) {
+  if (rows.length === 0) return;
+  await db.insert(entityRecords).values(rows as never);
+  const dbClient = db as unknown as DbClient;
+  const stmt = await wideTableStatementCache.get(connectorEntityId, dbClient);
+  const mappings = buildMappingsForProjection(stmt.columns);
+  // Build a (normalizedKey → pgType) map so we can coerce empty
+  // strings to NULL for non-text typed columns (numeric/date/etc).
+  // The old JSONB path stored "" verbatim; the typed-column path
+  // rejects it. NULL is the right typed equivalent.
+  const pgTypeByKey = new Map<string, string>(
+    stmt.columns.map((c) => [c.normalizedKey, c.pgType])
+  );
+  await wideTableRepo.upsertMany(
+    connectorEntityId,
+    rows.map((r) => {
+      const sanitized: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(r.normalizedData ?? {})) {
+        sanitized[k] = coerceForPgType(v, pgTypeByKey.get(k));
+      }
+      return projectToWideRow(
+        {
+          id: r.id,
+          organizationId: r.organizationId,
+          sourceId: r.sourceId,
+          syncedAt: r.syncedAt,
+          isValid: r.isValid,
+          normalizedData: sanitized,
+        },
+        mappings
+      );
+    }),
+    dbClient
+  );
+}
+
+/**
+ * Coerce a JS value into something Postgres will accept for the given
+ * pgType. Empty strings, non-numeric strings in numeric columns, and
+ * non-date strings in date columns all become NULL — matching the
+ * JSONB regex-guard behaviour the filter/sort SQL used pre-Phase-2.
+ */
+function coerceForPgType(value: unknown, pgType: string | undefined): unknown {
+  if (!pgType) return value;
+  if (value === null || value === undefined) return null;
+  if (pgType === "text" || pgType === "jsonb") {
+    return value;
+  }
+  if (pgType === "text[]") {
+    return Array.isArray(value) ? value : [String(value)];
+  }
+  if (value === "") return null;
+  const s = String(value);
+  if (pgType === "numeric") {
+    return /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : null;
+  }
+  if (pgType === "boolean") {
+    if (s === "true") return true;
+    if (s === "false") return false;
+    return null;
+  }
+  if (pgType === "date" || pgType === "timestamptz") {
+    return Number.isNaN(Date.parse(s)) ? null : s;
+  }
+  return value;
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
@@ -296,9 +386,11 @@ describe("Entity Record Router — Sorting", () => {
         userId
       )
     );
-    await (db as ReturnType<typeof drizzle>)
-      .insert(entityRecords)
-      .values(rows as never);
+    await insertEntityRecordsWithWide(
+      db as ReturnType<typeof drizzle>,
+      connectorEntityId,
+      rows
+    );
 
     const res = await request(app)
       .get(recordsUrl(connectorEntityId))
@@ -362,7 +454,7 @@ describe("Entity Record Router — Sorting", () => {
         sortBy: "user_id",
         sortOrder: "asc",
         records,
-        expectedOrder: ["1", "3", "5", "20"],
+        expectedOrder: [1, 3, 5, 20],
         fieldKey: "user_id",
       });
     });
@@ -372,7 +464,7 @@ describe("Entity Record Router — Sorting", () => {
         sortBy: "user_id",
         sortOrder: "desc",
         records,
-        expectedOrder: ["20", "5", "3", "1"],
+        expectedOrder: [20, 5, 3, 1],
         fieldKey: "user_id",
       });
     });
@@ -382,7 +474,7 @@ describe("Entity Record Router — Sorting", () => {
         sortBy: "score",
         sortOrder: "asc",
         records,
-        expectedOrder: ["2.3", "7.8", "10.5", "100"],
+        expectedOrder: [2.3, 7.8, 10.5, 100],
         fieldKey: "score",
       });
     });
@@ -392,7 +484,7 @@ describe("Entity Record Router — Sorting", () => {
         sortBy: "score",
         sortOrder: "desc",
         records,
-        expectedOrder: ["100", "10.5", "7.8", "2.3"],
+        expectedOrder: [100, 10.5, 7.8, 2.3],
         fieldKey: "score",
       });
     });
@@ -547,15 +639,17 @@ describe("Entity Record Router — Sorting", () => {
     ];
 
     it("should sort by datetime column ascending (last_login)", async () => {
+      // Postgres `timestamptz` outputs via JSONB as "+00:00" rather than
+      // "Z" — different serialisation, same instant.
       await seedRecordsAndSort({
         sortBy: "last_login",
         sortOrder: "asc",
         records,
         expectedOrder: [
-          "2022-06-15T12:00:00Z",
-          "2023-01-01T00:00:00Z",
-          "2023-09-20T16:45:00Z",
-          "2024-03-10T08:30:00Z",
+          "2022-06-15T12:00:00+00:00",
+          "2023-01-01T00:00:00+00:00",
+          "2023-09-20T16:45:00+00:00",
+          "2024-03-10T08:30:00+00:00",
         ],
         fieldKey: "last_login",
       });
@@ -567,10 +661,10 @@ describe("Entity Record Router — Sorting", () => {
         sortOrder: "desc",
         records,
         expectedOrder: [
-          "2024-03-10T08:30:00Z",
-          "2023-09-20T16:45:00Z",
-          "2023-01-01T00:00:00Z",
-          "2022-06-15T12:00:00Z",
+          "2024-03-10T08:30:00+00:00",
+          "2023-09-20T16:45:00+00:00",
+          "2023-01-01T00:00:00+00:00",
+          "2022-06-15T12:00:00+00:00",
         ],
         fieldKey: "last_login",
       });
@@ -611,7 +705,7 @@ describe("Entity Record Router — Sorting", () => {
           },
         ],
         // Empty string treated as null, pushed to end
-        expectedOrder: ["10", "50", ""],
+        expectedOrder: [10, 50, null],
         fieldKey: "score",
       });
     });
@@ -646,7 +740,7 @@ describe("Entity Record Router — Sorting", () => {
             last_login: "2023-01-03T00:00:00Z",
           },
         ],
-        expectedOrder: ["50", "10", ""],
+        expectedOrder: [50, 10, null],
         fieldKey: "score",
       });
     });
@@ -681,7 +775,7 @@ describe("Entity Record Router — Sorting", () => {
             last_login: "2023-06-01T00:00:00Z",
           },
         ],
-        expectedOrder: ["2023-06-01", "2024-01-15", ""],
+        expectedOrder: ["2023-06-01", "2024-01-15", null],
         fieldKey: "signup_date",
       });
     });
@@ -721,9 +815,11 @@ describe("Entity Record Router — Sorting", () => {
           userId
         ),
       ];
-      await (db as ReturnType<typeof drizzle>)
-        .insert(entityRecords)
-        .values(rows as never);
+      await insertEntityRecordsWithWide(
+        db as ReturnType<typeof drizzle>,
+        connectorEntityId,
+        rows
+      );
 
       const res = await request(app)
         .get(recordsUrl(connectorEntityId))
@@ -736,7 +832,7 @@ describe("Entity Record Router — Sorting", () => {
         (r: { normalizedData: Record<string, unknown> }) =>
           r.normalizedData.score ?? null
       );
-      expect(scores).toEqual(["42", null]);
+      expect(scores).toEqual([42, null]);
     });
   });
 
@@ -773,8 +869,10 @@ describe("Entity Record Router — Sorting", () => {
             last_login: "2023-01-03T00:00:00Z",
           },
         ],
-        // Non-numeric "N/A" treated as NULL, pushed to end
-        expectedOrder: ["10", "25", "N/A"],
+        // Non-numeric "N/A" coerced to NULL on the wide-table side,
+        // pushed to end. The raw `data` JSONB still keeps "N/A" — only
+        // the typed wide column is null-coerced.
+        expectedOrder: [10, 25, null],
         fieldKey: "score",
       });
     });
@@ -817,9 +915,11 @@ describe("Entity Record Router — Sorting", () => {
       rows[0].created = now - 1000;
       rows[1].created = now;
 
-      await (db as ReturnType<typeof drizzle>)
-        .insert(entityRecords)
-        .values(rows as never);
+      await insertEntityRecordsWithWide(
+        db as ReturnType<typeof drizzle>,
+        connectorEntityId,
+        rows
+      );
 
       // Boolean is not sortable, so it falls back to created asc
       const res = await request(app)
@@ -877,9 +977,11 @@ describe("Entity Record Router — Sorting", () => {
       rows[0].created = now - 1000;
       rows[1].created = now;
 
-      await (db as ReturnType<typeof drizzle>)
-        .insert(entityRecords)
-        .values(rows as never);
+      await insertEntityRecordsWithWide(
+        db as ReturnType<typeof drizzle>,
+        connectorEntityId,
+        rows
+      );
 
       const res = await request(app)
         .get(recordsUrl(connectorEntityId))
@@ -931,9 +1033,11 @@ describe("Entity Record Router — Sorting", () => {
       rows[0].created = now - 1000;
       rows[1].created = now;
 
-      await (db as ReturnType<typeof drizzle>)
-        .insert(entityRecords)
-        .values(rows as never);
+      await insertEntityRecordsWithWide(
+        db as ReturnType<typeof drizzle>,
+        connectorEntityId,
+        rows
+      );
 
       const res = await request(app)
         .get(recordsUrl(connectorEntityId))
@@ -1038,9 +1142,11 @@ describe("Entity Record Router — Advanced Filters", () => {
         userId
       )
     );
-    await (db as ReturnType<typeof drizzle>)
-      .insert(entityRecords)
-      .values(rows as never);
+    await insertEntityRecordsWithWide(
+      db as ReturnType<typeof drizzle>,
+      connectorEntityId,
+      rows
+    );
 
     return { connectorEntityId };
   }
@@ -1668,88 +1774,9 @@ describe("Entity Record Router — Advanced Filters", () => {
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════
-// GIN index performance tests
-// ═══════════════════════════════════════════════════════════════════
-
-describe("Entity Record Router — GIN Index Performance", () => {
-  let connection!: ReturnType<typeof postgres>;
-  let db!: DbClient;
-
-  beforeEach(async () => {
-    if (!process.env.DATABASE_URL) {
-      throw new Error("DATABASE_URL not set");
-    }
-    connection = postgres(process.env.DATABASE_URL, { max: 1 });
-    db = drizzle(connection, { schema });
-
-    await teardownOrg(db as ReturnType<typeof drizzle>);
-  });
-
-  afterEach(async () => {
-    await connection.end();
-  });
-
-  it("should have a GIN index on normalized_data column", async () => {
-    const result = await (db as ReturnType<typeof drizzle>).execute(sql`
-      SELECT indexname, indexdef
-      FROM pg_indexes
-      WHERE tablename = 'entity_records'
-        AND indexname = 'entity_records_normalized_data_gin'
-    `);
-
-    expect(result.length).toBe(1);
-    const indexDef = (result[0] as { indexdef: string }).indexdef.toLowerCase();
-    expect(indexDef).toContain("gin");
-    expect(indexDef).toContain("normalized_data");
-  });
-
-  it("should use index for JSONB containment queries via EXPLAIN", async () => {
-    await seedFullStack(db as ReturnType<typeof drizzle>);
-
-    // Seed a few records so the planner has something to work with
-    const records = Array.from({ length: 10 }, (_, i) => ({
-      user_id: String(i),
-      name: `User ${i}`,
-      score: String(i * 10),
-      is_active: i % 2 === 0 ? "true" : "false",
-      signup_date: "2024-01-01",
-      last_login: "2024-01-01T00:00:00Z",
-    }));
-
-    // We need real org/user IDs — use the ones from seedFullStack
-    // Re-seed to get the IDs
-    await teardownOrg(db as ReturnType<typeof drizzle>);
-    const {
-      userId,
-      organizationId,
-      connectorEntityId: entityId,
-    } = await seedFullStack(db as ReturnType<typeof drizzle>);
-
-    const seededRows = records.map((data, i) =>
-      createEntityRecord(organizationId, entityId, data, String(i + 1), userId)
-    );
-    await (db as ReturnType<typeof drizzle>)
-      .insert(entityRecords)
-      .values(seededRows as never);
-
-    // Run EXPLAIN on a JSONB text extraction query (the pattern used by filter SQL)
-    const explainResult = await (db as ReturnType<typeof drizzle>).execute(sql`
-      EXPLAIN (FORMAT JSON)
-      SELECT * FROM entity_records
-      WHERE connector_entity_id = ${entityId}
-        AND normalized_data->>'name' = 'User 5'
-    `);
-
-    // The query plan should exist and be valid JSON
-    expect(explainResult.length).toBeGreaterThan(0);
-    const plan = JSON.stringify(explainResult[0]);
-    // With only 10 rows the planner may choose a sequential scan,
-    // which is correct behavior — the GIN index is for larger datasets.
-    // We verify the index exists (previous test) and the query executes without error.
-    expect(plan).toBeTruthy();
-  });
-});
+// Phase 2 slice 6 dropped the JSONB GIN index — the typed wide-table
+// columns are the indexed surface now. The legacy GIN-index tests are
+// obsolete and were removed.
 
 // ═══════════════════════════════════════════════════════════════════
 // GET /:recordId — Single record fetch
@@ -1794,7 +1821,11 @@ describe("Entity Record Router — GET /:recordId", () => {
       "src-1",
       userId
     );
-    await db.insert(entityRecords).values(row as never);
+    await insertEntityRecordsWithWide(
+      db as ReturnType<typeof drizzle>,
+      row.connectorEntityId,
+      [row]
+    );
 
     const res = await request(app)
       .get(recordUrl(connectorEntityId, row.id))
@@ -1838,7 +1869,11 @@ describe("Entity Record Router — GET /:recordId", () => {
       "src-2",
       userId
     );
-    await db.insert(entityRecords).values(row as never);
+    await insertEntityRecordsWithWide(
+      db as ReturnType<typeof drizzle>,
+      row.connectorEntityId,
+      [row]
+    );
 
     // Request the record under the *other* entity
     const res = await request(app)
@@ -1903,6 +1938,12 @@ describe("Entity Record Router — POST /", () => {
       "name"
     );
     await db.insert(fieldMappings).values(mapping as never);
+
+    wideTableStatementCache.clear();
+    await wideTableReconcilerService.reconcileEntity(
+      entity.id,
+      db as unknown as DbClient
+    );
 
     return { userId, organizationId, connectorEntityId: entity.id };
   }
@@ -2163,6 +2204,12 @@ describe("Entity Record Router — Write Capability Deletes", () => {
     );
     await db.insert(fieldMappings).values(mapping as never);
 
+    wideTableStatementCache.clear();
+    await wideTableReconcilerService.reconcileEntity(
+      entity.id,
+      db as unknown as DbClient
+    );
+
     return { userId, organizationId, connectorEntityId: entity.id };
   }
 
@@ -2189,7 +2236,11 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         "src-1",
         userId
       );
-      await db.insert(entityRecords).values(row as never);
+      await insertEntityRecordsWithWide(
+      db as ReturnType<typeof drizzle>,
+      row.connectorEntityId,
+      [row]
+    );
 
       const res = await request(app)
         .delete(singleRecordUrl(connectorEntityId, row.id))
@@ -2213,7 +2264,11 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         "src-1",
         userId
       );
-      await db.insert(entityRecords).values(row as never);
+      await insertEntityRecordsWithWide(
+      db as ReturnType<typeof drizzle>,
+      row.connectorEntityId,
+      [row]
+    );
 
       const res = await request(app)
         .delete(singleRecordUrl(connectorEntityId, row.id))
@@ -2251,7 +2306,11 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         "src-1",
         userId
       );
-      await db.insert(entityRecords).values(row as never);
+      await insertEntityRecordsWithWide(
+      db as ReturnType<typeof drizzle>,
+      row.connectorEntityId,
+      [row]
+    );
 
       const res = await request(app)
         .delete(singleRecordUrl(connectorEntityId, row.id))
@@ -2275,7 +2334,11 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         "src-1",
         userId
       );
-      await db.insert(entityRecords).values(row as never);
+      await insertEntityRecordsWithWide(
+      db as ReturnType<typeof drizzle>,
+      row.connectorEntityId,
+      [row]
+    );
 
       // Delete
       await request(app)
@@ -2310,7 +2373,11 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         "src-1",
         userId
       );
-      await db.insert(entityRecords).values(row as never);
+      await insertEntityRecordsWithWide(
+      db as ReturnType<typeof drizzle>,
+      row.connectorEntityId,
+      [row]
+    );
 
       const res = await request(app)
         .patch(singleRecordUrl(connectorEntityId, row.id))
@@ -2335,7 +2402,11 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         "src-1",
         userId
       );
-      await db.insert(entityRecords).values(row as never);
+      await insertEntityRecordsWithWide(
+      db as ReturnType<typeof drizzle>,
+      row.connectorEntityId,
+      [row]
+    );
 
       const res = await request(app)
         .patch(singleRecordUrl(connectorEntityId, row.id))
@@ -2386,7 +2457,11 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         "src-1",
         userId
       );
-      await db.insert(entityRecords).values(row as never);
+      await insertEntityRecordsWithWide(
+      db as ReturnType<typeof drizzle>,
+      row.connectorEntityId,
+      [row]
+    );
 
       const res = await request(app)
         .delete(recordsUrl(connectorEntityId))
@@ -2417,7 +2492,11 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         "src-2",
         userId
       );
-      await db.insert(entityRecords).values([row1, row2] as never);
+      await insertEntityRecordsWithWide(
+        db as ReturnType<typeof drizzle>,
+        row1.connectorEntityId,
+        [row1, row2]
+      );
 
       const res = await request(app)
         .delete(recordsUrl(connectorEntityId))

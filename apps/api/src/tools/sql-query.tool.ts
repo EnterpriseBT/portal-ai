@@ -18,13 +18,13 @@ export class SqlQueryTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationId: string) {
+  build(stationId: string, organizationId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
         const { sql } = this.validate(input);
-        return AnalyticsService.sqlQuery({ sql, stationId });
+        return AnalyticsService.sqlQuery({ sql, stationId, organizationId });
       },
     });
   }

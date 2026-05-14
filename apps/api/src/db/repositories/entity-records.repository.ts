@@ -7,7 +7,18 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { eq, and, lt, sql, inArray, isNull } from "drizzle-orm";
+import {
+  eq,
+  and,
+  lt,
+  sql,
+  inArray,
+  isNull,
+  type SQL,
+  Column,
+  asc,
+  desc,
+} from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
 import { entityRecords } from "../schema/index.js";
@@ -18,6 +29,20 @@ import {
   type ListOptions,
 } from "./base.repository.js";
 import type { EntityRecordSelect, EntityRecordInsert } from "../schema/zod.js";
+import { wideTableStatementCache } from "../../services/wide-table-statement.cache.js";
+
+/**
+ * Repository read shape after Phase 2: same transactional fields plus
+ * a `normalizedData` blob rebuilt from the typed wide-table columns at
+ * SELECT projection time.
+ *
+ * After slice 6 drops `entity_records.normalized_data`, the Drizzle
+ * inference no longer carries the field — the rehydration via the
+ * wide-table JOIN is the only path.
+ */
+export type EntityRecordHydrated = EntityRecordSelect & {
+  normalizedData: Record<string, unknown>;
+};
 
 /**
  * Per-statement row cap for the bulk methods. Sized to stay well under
@@ -89,7 +114,6 @@ export class EntityRecordsRepository extends Repository<
         targetWhere: isNull(entityRecords.deleted),
         set: {
           data: data.data,
-          normalizedData: data.normalizedData,
           checksum: data.checksum,
           syncedAt: data.syncedAt,
           validationErrors: data.validationErrors,
@@ -135,7 +159,6 @@ export class EntityRecordsRepository extends Repository<
           targetWhere: isNull(entityRecords.deleted),
           set: {
             data: sql.raw(`excluded."data"`),
-            normalizedData: sql.raw(`excluded."normalized_data"`),
             checksum: sql.raw(`excluded."checksum"`),
             syncedAt: sql.raw(`excluded."synced_at"`),
             validationErrors: sql.raw(`excluded."validation_errors"`),
@@ -266,7 +289,7 @@ export class EntityRecordsRepository extends Repository<
     watermarkMs: number,
     deletedBy: string,
     client: DbClient = db
-  ): Promise<number> {
+  ): Promise<string[]> {
     const now = Date.now();
     const result = await (client as typeof db)
       .update(this.table)
@@ -278,8 +301,8 @@ export class EntityRecordsRepository extends Repository<
           this.notDeleted()
         )
       )
-      .returning();
-    return result.length;
+      .returning({ id: entityRecords.id });
+    return (result as Array<{ id: string }>).map((r) => r.id);
   }
 
   /**
@@ -344,6 +367,185 @@ export class EntityRecordsRepository extends Repository<
     }
     return out;
   }
+
+  // ── Hydrated reads (Phase 2 slice 3) ───────────────────────────
+
+  /**
+   * Find records for a connector entity with `normalizedData` rebuilt
+   * from the wide table's typed columns via a server-side
+   * `jsonb_build_object` projection.
+   *
+   * `where` may reference `entity_records` columns directly; the SELECT
+   * adds the wide-table JOIN and the per-entity rehydration expression.
+   * `orderBy.column` may be a raw `SQL` fragment (typed wide-table
+   * column) or a transactional column reference.
+   *
+   * `normalizedDataProjection` lets the caller narrow the rebuilt blob
+   * to a subset of keys — used by the `?columns=` REST parameter so the
+   * server doesn't ship every column when the client wants two.
+   */
+  async findHydratedMany(
+    connectorEntityId: string,
+    opts: ListOptions & {
+      where?: SQL;
+      normalizedDataProjection?: SQL;
+    } = {},
+    client: DbClient = db
+  ): Promise<EntityRecordHydrated[]> {
+    const stmt = await wideTableStatementCache.get(connectorEntityId, client);
+    const tableName = `er__${connectorEntityId}`;
+    const rehydrationExpr =
+      opts.normalizedDataProjection ??
+      sql.raw(stmt.normalizedDataJsonbExpr("w"));
+
+    // Soft-delete guard on entity_records (the wide table has no `deleted` column).
+    const baseWhere = opts.where
+      ? and(opts.where, this.notDeleted())
+      : and(
+          eq(entityRecords.connectorEntityId, connectorEntityId),
+          this.notDeleted()
+        );
+
+    // We build the SELECT manually because Drizzle's typed builder
+    // doesn't model dynamically-named tables (the wide table is per
+    // entity). Explicit column list avoids `normalized_data` colliding
+    // with the rehydration alias while the legacy column still exists
+    // on `entity_records` (slice 6 drops it).
+    const orderByClause = opts.orderBy
+      ? buildOrderByClause(opts.orderBy)
+      : sql``;
+    const limitClause =
+      opts.limit !== undefined ? sql` LIMIT ${opts.limit}` : sql``;
+    const offsetClause =
+      opts.offset !== undefined ? sql` OFFSET ${opts.offset}` : sql``;
+
+    const rows = await (client as typeof db).execute(sql`
+      SELECT
+        "entity_records".id, "entity_records".organization_id,
+        "entity_records".connector_entity_id, "entity_records".source_id,
+        "entity_records".checksum, "entity_records".synced_at,
+        "entity_records".origin, "entity_records".validation_errors,
+        "entity_records".is_valid, "entity_records".data,
+        "entity_records".created, "entity_records".created_by,
+        "entity_records".updated, "entity_records".updated_by,
+        "entity_records".deleted, "entity_records".deleted_by,
+        ${rehydrationExpr} AS "normalized_data"
+      FROM ${entityRecords}
+      JOIN ${sql.raw(`"${tableName}"`)} w
+        ON w."entity_record_id" = "entity_records".id
+      WHERE ${baseWhere}
+      ${orderByClause}
+      ${limitClause}
+      ${offsetClause}
+    `);
+    return rowsToHydrated(rows as unknown as Record<string, unknown>[]);
+  }
+
+  /**
+   * Count records matching `where`, with the same wide-table JOIN
+   * `findHydratedMany` uses. Required because `where` may reference
+   * the `w` alias (typed wide-table columns) for filter / search,
+   * which the base `count` doesn't know about.
+   */
+  async countHydrated(
+    connectorEntityId: string,
+    where?: SQL,
+    client: DbClient = db
+  ): Promise<number> {
+    const tableName = `er__${connectorEntityId}`;
+    const baseWhere = where
+      ? and(where, this.notDeleted())
+      : and(
+          eq(entityRecords.connectorEntityId, connectorEntityId),
+          this.notDeleted()
+        );
+    const result = (await (client as typeof db).execute(sql`
+      SELECT count(*) AS count
+      FROM ${entityRecords}
+      JOIN ${sql.raw(`"${tableName}"`)} w
+        ON w."entity_record_id" = "entity_records".id
+      WHERE ${baseWhere}
+    `)) as unknown as Array<{ count: number | string }>;
+    return Number(result[0]?.count ?? 0);
+  }
+
+  /**
+   * Single-row hydrated find — same projection as `findHydratedMany`.
+   * Returns `undefined` when the row is missing, soft-deleted, or
+   * belongs to a different connector entity.
+   */
+  async findHydratedById(
+    recordId: string,
+    connectorEntityId: string,
+    client: DbClient = db
+  ): Promise<EntityRecordHydrated | undefined> {
+    const stmt = await wideTableStatementCache.get(connectorEntityId, client);
+    const tableName = `er__${connectorEntityId}`;
+    const rows = (await (client as typeof db).execute(sql`
+      SELECT
+        "entity_records".id, "entity_records".organization_id,
+        "entity_records".connector_entity_id, "entity_records".source_id,
+        "entity_records".checksum, "entity_records".synced_at,
+        "entity_records".origin, "entity_records".validation_errors,
+        "entity_records".is_valid, "entity_records".data,
+        "entity_records".created, "entity_records".created_by,
+        "entity_records".updated, "entity_records".updated_by,
+        "entity_records".deleted, "entity_records".deleted_by,
+        ${sql.raw(stmt.normalizedDataJsonbExpr("w"))} AS "normalized_data"
+      FROM ${entityRecords}
+      JOIN ${sql.raw(`"${tableName}"`)} w
+        ON w."entity_record_id" = "entity_records".id
+      WHERE "entity_records".id = ${recordId}
+        AND "entity_records"."connector_entity_id" = ${connectorEntityId}
+        AND "entity_records".deleted IS NULL
+      LIMIT 1
+    `)) as unknown as Record<string, unknown>[];
+    if (rows.length === 0) return undefined;
+    return rowsToHydrated(rows)[0];
+  }
+}
+
+/**
+ * Convert raw rows from `client.execute` (snake_case columns) into the
+ * camelCased `EntityRecordHydrated` shape Drizzle returns elsewhere.
+ */
+function rowsToHydrated(
+  rows: Record<string, unknown>[]
+): EntityRecordHydrated[] {
+  return rows.map((r) => ({
+    id: r.id as string,
+    organizationId: r.organization_id as string,
+    connectorEntityId: r.connector_entity_id as string,
+    sourceId: r.source_id as string,
+    checksum: r.checksum as string,
+    syncedAt: r.synced_at as number,
+    origin: r.origin as EntityRecordSelect["origin"],
+    validationErrors:
+      r.validation_errors as EntityRecordSelect["validationErrors"],
+    isValid: r.is_valid as boolean,
+    data: (r.data ?? {}) as Record<string, unknown>,
+    normalizedData: (r.normalized_data ?? {}) as Record<string, unknown>,
+    created: r.created as number,
+    createdBy: r.created_by as string,
+    updated: r.updated as number | null,
+    updatedBy: r.updated_by as string | null,
+    deleted: r.deleted as number | null,
+    deletedBy: r.deleted_by as string | null,
+  }));
+}
+
+function buildOrderByClause(opts: {
+  column: Column | SQL;
+  direction?: "asc" | "desc";
+}): SQL {
+  const { column: col, direction = "asc" } = opts;
+  if (col instanceof Column) {
+    const fn = direction === "desc" ? desc : asc;
+    return sql` ORDER BY ${fn(col)} NULLS LAST`;
+  }
+  return direction === "desc"
+    ? sql` ORDER BY ${col} DESC NULLS LAST`
+    : sql` ORDER BY ${col} ASC NULLS LAST`;
 }
 
 /** Singleton instance. */

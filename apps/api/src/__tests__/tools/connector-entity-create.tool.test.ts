@@ -45,11 +45,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       connectorEntities: { upsertByKey: mockUpsertByKey },
     },
   },
-}));
-jest.unstable_mockModule("../../services/analytics.service.js", () => ({
-  AnalyticsService: { applyEntityInsertMany: jest.fn() },
-}));
-jest.unstable_mockModule("../../db/repositories/base.repository.js", () => {
+}));jest.unstable_mockModule("../../db/repositories/base.repository.js", () => {
   class MockRepository {
     static transaction = mockTransaction;
   }
