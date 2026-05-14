@@ -110,6 +110,30 @@ function quoteLiteral(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
+/**
+ * Postgres caps every function call at 100 arguments. `jsonb_build_object`
+ * takes 2 args per key/value pair, so we chunk at 49 pairs (98 args, with
+ * headroom) and concatenate the chunks with `||` — `jsonb || jsonb` is
+ * key-wise merge, identical in result to a single `jsonb_build_object` call
+ * with all the pairs. Without this, any wide-table entity with more than 50
+ * columns trips `42883: cannot pass more than 100 arguments to a function`
+ * on every hydrated read.
+ */
+const JSONB_BUILD_OBJECT_PAIR_CHUNK = 49;
+
+export function buildJsonbObjectExpr(pairs: string[]): string {
+  if (pairs.length === 0) return `'{}'::jsonb`;
+  if (pairs.length <= JSONB_BUILD_OBJECT_PAIR_CHUNK) {
+    return `jsonb_build_object(${pairs.join(", ")})`;
+  }
+  const chunks: string[] = [];
+  for (let i = 0; i < pairs.length; i += JSONB_BUILD_OBJECT_PAIR_CHUNK) {
+    const slice = pairs.slice(i, i + JSONB_BUILD_OBJECT_PAIR_CHUNK);
+    chunks.push(`jsonb_build_object(${slice.join(", ")})`);
+  }
+  return chunks.join(" || ");
+}
+
 /** Wide-table table name for an entity. Mirrored from `WideTableRepository.tableName`. */
 function tableNameFor(connectorEntityId: string): string {
   return `er__${connectorEntityId}`;
@@ -298,12 +322,11 @@ export class WideTableStatementCache {
     // ── New helpers ────────────────────────────────────────────────
 
     const normalizedDataJsonbExpr: AliasedExprBuilder = (alias = "w") => {
-      if (cols.length === 0) return `'{}'::jsonb`;
       const pairs = cols.map(
         (c) =>
           `${quoteLiteral(c.normalizedKey)}, ${quoteIdent(alias)}.${quoteIdent(c.columnName)}`
       );
-      return `jsonb_build_object(${pairs.join(", ")})`;
+      return buildJsonbObjectExpr(pairs);
     };
 
     const columnRefByNormalizedKey = new Map<string, AliasedExprBuilder>();

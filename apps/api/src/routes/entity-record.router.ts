@@ -41,7 +41,10 @@ import { JobLockService } from "../services/job-lock.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { fieldMappingsRepo } from "../db/repositories/field-mappings.repository.js";
 import { columnDefinitionsRepo } from "../db/repositories/column-definitions.repository.js";
-import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
+import {
+  buildJsonbObjectExpr,
+  wideTableStatementCache,
+} from "../services/wide-table-statement.cache.js";
 import {
   projectToWideRow,
   buildMappingsForProjection,
@@ -228,11 +231,7 @@ entityRecordRouter.get(
             (c) =>
               `'${c.normalizedKey.replace(/'/g, "''")}', "w"."${c.columnName}"`
           );
-        normalizedDataProjection = sql.raw(
-          pairs.length === 0
-            ? `'{}'::jsonb`
-            : `jsonb_build_object(${pairs.join(", ")})`
-        );
+        normalizedDataProjection = sql.raw(buildJsonbObjectExpr(pairs));
       }
 
       const [records, total] = await Promise.all([
