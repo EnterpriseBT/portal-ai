@@ -30,7 +30,7 @@ import type {
   FileUploadPresignResponsePayload,
   FileUploadSheetSliceResponsePayload,
 } from "@portalai/core/contracts";
-import type { WorkbookData } from "@portalai/spreadsheet-parsing";
+import type { Workbook } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { environment } from "../environment.js";
@@ -45,11 +45,11 @@ import {
 import {
   findSheetMetaById,
   inflateSheetPreviewFromChunks,
-  reassembleWorkbookFromChunks,
   sheetId as makeSheetId,
   sliceSheetRectangleFromChunks,
   type PreviewSheet,
 } from "../utils/workbook-preview.util.js";
+import { makeLazyWorkbookFromCache } from "../utils/lazy-workbook.util.js";
 
 import { csvToCache } from "./workbook-adapters/csv.adapter.js";
 import { xlsxToCache } from "./workbook-adapters/xlsx.adapter.js";
@@ -605,19 +605,20 @@ export const FileUploadSessionService = {
   // ── Shared: resolve workbook for interpret/commit ──────────────────
 
   /**
-   * Reassemble a `WorkbookData` from the chunked cache for legacy
-   * `WorkbookData`-shaped consumers (interpret, commit). On cache miss
-   * the caller's session is gone — we re-parse from S3 by re-driving
-   * the chunked path, then reassemble.
+   * Build a lazy `Workbook` over the chunked cache for the layout-plan
+   * pipeline (interpret + commit). On cache miss the caller's session
+   * is gone — we re-parse from S3 by re-driving the chunked path, then
+   * return a fresh lazy adapter against the new prefix.
    *
-   * Memory cost on the read path is O(populated cells); Phase 4 of the
-   * streaming plan migrates interpret/commit to per-row consumers so
-   * this materialization can be deleted.
+   * Memory cost on the read path is bounded by the chunk size the
+   * caller's `loadRange` requests — typically a region's bounds — so
+   * even 100MB+ workbooks no longer materialise in V8 heap during
+   * commit. See `docs/SPREADSHEET_PARSER_ROW_ASYNC.spec.md`.
    */
   async resolveWorkbook(
     uploadSessionId: string,
     organizationId: string
-  ): Promise<WorkbookData> {
+  ): Promise<Workbook> {
     const prefix = uploadSessionCachePrefix(uploadSessionId);
     let meta = await WorkbookCacheService.getSessionMeta(prefix);
 
@@ -693,7 +694,7 @@ export const FileUploadSessionService = {
       }
     }
 
-    return reassembleWorkbookFromChunks(prefix, meta);
+    return makeLazyWorkbookFromCache(prefix, meta.sheets);
   },
 
   /**

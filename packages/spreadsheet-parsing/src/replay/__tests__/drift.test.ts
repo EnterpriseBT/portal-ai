@@ -80,7 +80,7 @@ const baselineWorkbook = () =>
   });
 
 describe("detectRegionDrift — added-columns", () => {
-  it("flags added-columns as warn with addedColumns: 'halt'", () => {
+  it("flags added-columns as warn with addedColumns: 'halt'", async () => {
     const wb = makeWorkbook({
       sheets: [
         {
@@ -105,14 +105,14 @@ describe("detectRegionDrift — added-columns", () => {
         row: [{ kind: "field", positionCount: 4 }],
       },
     });
-    const drift = detectRegionDrift(region, wb.sheets[0]);
+    const drift = await detectRegionDrift(region, wb.sheets[0]);
     expect(drift.kinds).toContain("added-columns");
     expect(drift.withinTolerance).toBe(false);
-    expect(rollUpDrift([drift]).severity).toBe("warn");
-    expect(rollUpDrift([drift]).identityChanging).toBe(false);
+    expect(await rollUpDrift([drift]).severity).toBe("warn");
+    expect(await rollUpDrift([drift]).identityChanging).toBe(false);
   });
 
-  it("does not flag pivot-segment header positions as added columns", () => {
+  it("does not flag pivot-segment header positions as added columns", async () => {
     // Pure-pivot region — header row contains only pivot label values
     // (Jan/Feb/Mar). Those positions belong to a `kind: "pivot"` segment
     // and have no place in `columnBindings`. Treating them as added
@@ -172,12 +172,12 @@ describe("detectRegionDrift — added-columns", () => {
       confidence: { region: 0.9, aggregate: 0.9 },
       warnings: [],
     };
-    const drift = detectRegionDrift(region, wb.sheets[0]);
+    const drift = await detectRegionDrift(region, wb.sheets[0]);
     expect(drift.kinds).not.toContain("added-columns");
     expect(drift.withinTolerance).toBe(true);
   });
 
-  it("silently drops added columns when addedColumns: 'auto-apply'", () => {
+  it("silently drops added columns when addedColumns: 'auto-apply'", async () => {
     const wb = makeWorkbook({
       sheets: [
         {
@@ -207,14 +207,14 @@ describe("detectRegionDrift — added-columns", () => {
         removedColumns: { max: 0, action: "halt" },
       },
     });
-    const drift = detectRegionDrift(region, wb.sheets[0]);
+    const drift = await detectRegionDrift(region, wb.sheets[0]);
     expect(drift.withinTolerance).toBe(true);
-    expect(rollUpDrift([drift]).severity).toBe("info");
+    expect(await rollUpDrift([drift]).severity).toBe("info");
   });
 });
 
 describe("detectRegionDrift — field-segment overrides", () => {
-  it("does not flag added-columns for a position bound by byPositionIndex (header-override case)", () => {
+  it("does not flag added-columns for a position bound by byPositionIndex (header-override case)", async () => {
     // The user supplied `headers[0] = "year"` against a blank header cell
     // that subsequently gained a value. The binding is byPositionIndex
     // (the override doesn't appear in the sheet) — drift should treat
@@ -259,11 +259,11 @@ describe("detectRegionDrift — field-segment overrides", () => {
         },
       ],
     });
-    const drift = detectRegionDrift(region, wb.sheets[0]);
+    const drift = await detectRegionDrift(region, wb.sheets[0]);
     expect(drift.kinds).not.toContain("added-columns");
   });
 
-  it("does not flag added-columns for a position the segment marks skipped[i] === true", () => {
+  it("does not flag added-columns for a position the segment marks skipped[i] === true", async () => {
     const wb = makeWorkbook({
       sheets: [
         {
@@ -304,13 +304,13 @@ describe("detectRegionDrift — field-segment overrides", () => {
         },
       ],
     });
-    const drift = detectRegionDrift(region, wb.sheets[0]);
+    const drift = await detectRegionDrift(region, wb.sheets[0]);
     expect(drift.kinds).not.toContain("added-columns");
   });
 });
 
 describe("detectRegionDrift — removed-columns", () => {
-  it("is a blocker when removed-columns exceed removedColumns.max", () => {
+  it("is a blocker when removed-columns exceed removedColumns.max", async () => {
     const wb = makeWorkbook({
       sheets: [
         {
@@ -334,12 +334,12 @@ describe("detectRegionDrift — removed-columns", () => {
         removedColumns: { max: 0, action: "halt" },
       },
     });
-    const drift = detectRegionDrift(region, wb.sheets[0]);
+    const drift = await detectRegionDrift(region, wb.sheets[0]);
     expect(drift.kinds).toContain("removed-columns");
-    expect(rollUpDrift([drift]).severity).toBe("blocker");
+    expect(await rollUpDrift([drift]).severity).toBe("blocker");
   });
 
-  it("is within tolerance when removed-columns count ≤ removedColumns.max", () => {
+  it("is within tolerance when removed-columns count ≤ removedColumns.max", async () => {
     const wb = makeWorkbook({
       sheets: [
         {
@@ -375,13 +375,13 @@ describe("detectRegionDrift — removed-columns", () => {
         removedColumns: { max: 1, action: "halt" },
       },
     });
-    const drift = detectRegionDrift(region, wb.sheets[0]);
+    const drift = await detectRegionDrift(region, wb.sheets[0]);
     expect(drift.withinTolerance).toBe(true);
   });
 });
 
 describe("detectRegionDrift — identity column", () => {
-  it("emits identity-column-has-blanks when the identity column has null values in data rows", () => {
+  it("emits identity-column-has-blanks when the identity column has null values in data rows", async () => {
     const wb = makeWorkbook({
       sheets: [
         {
@@ -403,11 +403,11 @@ describe("detectRegionDrift — identity column", () => {
     const region = contactsRegion({
       bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 3 },
     });
-    const drift = detectRegionDrift(region, wb.sheets[0]);
+    const drift = await detectRegionDrift(region, wb.sheets[0]);
     expect(drift.kinds).toContain("identity-column-has-blanks");
   });
 
-  it("emits duplicate-identity-values and marks identityChanging true / severity blocker", () => {
+  it("emits duplicate-identity-values and marks identityChanging true / severity blocker", async () => {
     const wb = makeWorkbook({
       sheets: [
         {
@@ -430,9 +430,9 @@ describe("detectRegionDrift — identity column", () => {
     const region = contactsRegion({
       bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 3 },
     });
-    const drift = detectRegionDrift(region, wb.sheets[0]);
+    const drift = await detectRegionDrift(region, wb.sheets[0]);
     expect(drift.kinds).toContain("duplicate-identity-values");
-    const roll = rollUpDrift([drift]);
+    const roll = await rollUpDrift([drift]);
     expect(roll.severity).toBe("blocker");
     expect(roll.identityChanging).toBe(true);
   });
@@ -493,7 +493,7 @@ describe("detectRegionDrift — identity row (records-are-columns)", () => {
     };
   }
 
-  it("emits identity-column-has-blanks when the identity row has null values in data columns", () => {
+  it("emits identity-column-has-blanks when the identity row has null values in data columns", async () => {
     const wb = makeWorkbook({
       sheets: [
         {
@@ -516,11 +516,11 @@ describe("detectRegionDrift — identity row (records-are-columns)", () => {
         },
       ],
     });
-    const drift = detectRegionDrift(monthlyRegion(), wb.sheets[0]);
+    const drift = await detectRegionDrift(monthlyRegion(), wb.sheets[0]);
     expect(drift.kinds).toContain("identity-column-has-blanks");
   });
 
-  it("emits duplicate-identity-values and marks identityChanging true / severity blocker", () => {
+  it("emits duplicate-identity-values and marks identityChanging true / severity blocker", async () => {
     const wb = makeWorkbook({
       sheets: [
         {
@@ -543,16 +543,16 @@ describe("detectRegionDrift — identity row (records-are-columns)", () => {
         },
       ],
     });
-    const drift = detectRegionDrift(monthlyRegion(), wb.sheets[0]);
+    const drift = await detectRegionDrift(monthlyRegion(), wb.sheets[0]);
     expect(drift.kinds).toContain("duplicate-identity-values");
-    const roll = rollUpDrift([drift]);
+    const roll = await rollUpDrift([drift]);
     expect(roll.severity).toBe("blocker");
     expect(roll.identityChanging).toBe(true);
   });
 });
 
 describe("detectRegionDrift — records-axis anchor rename", () => {
-  it("emits records-axis-value-renamed when a pivot segment's anchor-cell axisName has changed in the workbook", () => {
+  it("emits records-axis-value-renamed when a pivot segment's anchor-cell axisName has changed in the workbook", async () => {
     const priorRegion: Region = {
       ...contactsRegion(),
       headerAxes: ["column"],
@@ -603,9 +603,9 @@ describe("detectRegionDrift — records-axis anchor rename", () => {
         },
       ],
     });
-    const drift = detectRegionDrift(priorRegion, wb.sheets[0]);
+    const drift = await detectRegionDrift(priorRegion, wb.sheets[0]);
     expect(drift.kinds).toContain("records-axis-value-renamed");
-    const roll = rollUpDrift([drift]);
+    const roll = await rollUpDrift([drift]);
     expect(roll.identityChanging).toBe(true);
   });
 });
@@ -617,7 +617,7 @@ describe("detectRegionDrift — header normalization", () => {
   // trim in resolve-headers, drift saw the live header as "﻿email"
   // and flagged the same column as both removed and added — surfacing
   // as LAYOUT_PLAN_DRIFT_BLOCKER on real ~100MB uploads.
-  it("does not flag drift when the header cell carries a UTF-8 BOM (U+FEFF)", () => {
+  it("does not flag drift when the header cell carries a UTF-8 BOM (U+FEFF)", async () => {
     const wb = makeWorkbook({
       sheets: [
         {
@@ -640,7 +640,7 @@ describe("detectRegionDrift — header normalization", () => {
         },
       ],
     });
-    const drift = detectRegionDrift(contactsRegion(), wb.sheets[0]);
+    const drift = await detectRegionDrift(contactsRegion(), wb.sheets[0]);
     expect(drift.kinds).toEqual([]);
     const detail = drift.details as {
       addedColumns: string[];
@@ -652,15 +652,15 @@ describe("detectRegionDrift — header normalization", () => {
 });
 
 describe("rollUpDrift", () => {
-  it("returns severity 'none' when no drift kinds are reported", () => {
+  it("returns severity 'none' when no drift kinds are reported", async () => {
     const wb = baselineWorkbook();
-    const drift = detectRegionDrift(contactsRegion(), wb.sheets[0]);
+    const drift = await detectRegionDrift(contactsRegion(), wb.sheets[0]);
     expect(drift.kinds).toEqual([]);
-    expect(rollUpDrift([drift]).severity).toBe("none");
+    expect(await rollUpDrift([drift]).severity).toBe("none");
   });
 
-  it("escalates to the highest severity across regions", () => {
-    const roll = rollUpDrift([
+  it("escalates to the highest severity across regions", async () => {
+    const roll = await rollUpDrift([
       { regionId: "a", kinds: ["added-columns"], withinTolerance: false },
       {
         regionId: "b",

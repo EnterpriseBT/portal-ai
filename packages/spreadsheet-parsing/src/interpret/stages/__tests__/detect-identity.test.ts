@@ -5,10 +5,11 @@ import { createInitialState } from "../../state.js";
 import { detectRegions } from "../detect-regions.js";
 import { detectHeaders } from "../detect-headers.js";
 import { detectIdentity } from "../detect-identity.js";
+import type { InterpretState } from "../../types.js";
 
-function runPipeline(input: InterpretInput) {
-  return detectIdentity(
-    detectHeaders(detectRegions(createInitialState(input)))
+async function runPipeline(input: InterpretInput): Promise<InterpretState> {
+  return await detectIdentity(
+    await detectHeaders(detectRegions(createInitialState(input)))
   );
 }
 
@@ -48,8 +49,8 @@ function uniqueColumnInput(): InterpretInput {
 }
 
 describe("detectIdentity", () => {
-  it("prefers a single unique column when one exists (highest score wins)", () => {
-    const state = runPipeline(uniqueColumnInput());
+  it("prefers a single unique column when one exists (highest score wins)", async () => {
+    const state = await runPipeline(uniqueColumnInput());
     const regionId = state.detectedRegions[0].id;
     const candidates = state.identityCandidates.get(regionId);
     expect(candidates).toBeDefined();
@@ -62,7 +63,7 @@ describe("detectIdentity", () => {
     }
   });
 
-  it("falls back to rowPosition when no single column AND no pair of columns produce unique keys", () => {
+  it("falls back to rowPosition when no single column AND no pair of columns produce unique keys", async () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -93,13 +94,13 @@ describe("detectIdentity", () => {
         },
       ],
     };
-    const state = runPipeline(input);
+    const state = await runPipeline(input);
     const regionId = state.detectedRegions[0].id;
     const candidates = state.identityCandidates.get(regionId)!;
     expect(candidates[0].strategy.kind).toBe("rowPosition");
   });
 
-  it("proposes a composite strategy when two columns together are unique but neither is alone", () => {
+  it("proposes a composite strategy when two columns together are unique but neither is alone", async () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -129,7 +130,7 @@ describe("detectIdentity", () => {
         },
       ],
     };
-    const state = runPipeline(input);
+    const state = await runPipeline(input);
     const regionId = state.detectedRegions[0].id;
     const candidates = state.identityCandidates.get(regionId)!;
     const topKind = candidates[0].strategy.kind;
@@ -137,7 +138,7 @@ describe("detectIdentity", () => {
     expect(["composite", "rowPosition"]).toContain(topKind);
   });
 
-  it("emits only rowPosition for a 2D crosstab — each body cell is a record, so a column-unique candidate would dedupe pivot×pivot records to K rows", () => {
+  it("emits only rowPosition for a 2D crosstab — each body cell is a record, so a column-unique candidate would dedupe pivot×pivot records to K rows", async () => {
     // Without this, detect-identity would propose `column at col 1`
     // (companies are unique per row), and at commit every (company,
     // quarter) record would share sourceId = company → upsert collapses
@@ -179,14 +180,14 @@ describe("detectIdentity", () => {
         },
       ],
     };
-    const state = runPipeline(input);
+    const state = await runPipeline(input);
     const regionId = state.detectedRegions[0].id;
     const candidates = state.identityCandidates.get(regionId)!;
     expect(candidates).toHaveLength(1);
     expect(candidates[0].strategy.kind).toBe("rowPosition");
   });
 
-  it("falls back to rowPosition for a headerless records-are-columns region with no unique row", () => {
+  it("falls back to rowPosition for a headerless records-are-columns region with no unique row", async () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -212,14 +213,14 @@ describe("detectIdentity", () => {
         },
       ],
     };
-    const state = runPipeline(input);
+    const state = await runPipeline(input);
     const regionId = state.detectedRegions[0].id;
     const candidates = state.identityCandidates.get(regionId)!;
     expect(candidates).toHaveLength(1);
     expect(candidates[0].strategy.kind).toBe("rowPosition");
   });
 
-  it("prefers a unique row when records-are-columns and one exists (locator points at a row)", () => {
+  it("prefers a unique row when records-are-columns and one exists (locator points at a row)", async () => {
     // headerAxes=["column"] — header column is column 1 (id, name, age).
     // Each remaining column is a record. Row 1 (col 2..4 = "a-1","a-2","a-3")
     // is unique across records, so identity should be a row-locator at row 1.
@@ -255,7 +256,7 @@ describe("detectIdentity", () => {
         },
       ],
     };
-    const state = runPipeline(input);
+    const state = await runPipeline(input);
     const regionId = state.detectedRegions[0].id;
     const candidates = state.identityCandidates.get(regionId);
     expect(candidates).toBeDefined();
@@ -271,7 +272,7 @@ describe("detectIdentity", () => {
     }
   });
 
-  it("short-circuits when the input region carries identityStrategy.source: 'user' (column locator)", () => {
+  it("short-circuits when the input region carries identityStrategy.source: 'user' (column locator)", async () => {
     // Workbook has a unique column at col 1 (a-1 / a-2 / a-3) — the heuristic
     // would normally pick it. The user has pre-selected col 2 instead and
     // locked it via the hint. detectIdentity must respect the lock.
@@ -292,7 +293,7 @@ describe("detectIdentity", () => {
         },
       ],
     };
-    const state = runPipeline(input);
+    const state = await runPipeline(input);
     const regionId = state.detectedRegions[0].id;
     const candidates = state.identityCandidates.get(regionId)!;
     expect(candidates).toHaveLength(1);
@@ -309,7 +310,7 @@ describe("detectIdentity", () => {
     expect(only.rationale).toMatch(/user-locked/i);
   });
 
-  it("short-circuits when the input region carries identityStrategy.source: 'user' (rowPosition lock)", () => {
+  it("short-circuits when the input region carries identityStrategy.source: 'user' (rowPosition lock)", async () => {
     // Workbook has a unique column the heuristic would prefer. The user
     // explicitly chose rowPosition (no stable identity) and locked it.
     const input: InterpretInput = {
@@ -328,7 +329,7 @@ describe("detectIdentity", () => {
         },
       ],
     };
-    const state = runPipeline(input);
+    const state = await runPipeline(input);
     const regionId = state.detectedRegions[0].id;
     const candidates = state.identityCandidates.get(regionId)!;
     expect(candidates).toHaveLength(1);
@@ -337,7 +338,7 @@ describe("detectIdentity", () => {
     expect(candidates[0].rationale).toMatch(/user-locked/i);
   });
 
-  it("re-detects when the input region's identityStrategy.source is 'heuristic'", () => {
+  it("re-detects when the input region's identityStrategy.source is 'heuristic'", async () => {
     // Heuristic source should NOT short-circuit even if a stale strategy is
     // attached to the input. The detection runs and picks the unique col 1.
     const input: InterpretInput = {
@@ -356,7 +357,7 @@ describe("detectIdentity", () => {
         },
       ],
     };
-    const state = runPipeline(input);
+    const state = await runPipeline(input);
     const regionId = state.detectedRegions[0].id;
     const candidates = state.identityCandidates.get(regionId)!;
     const top = candidates[0];
@@ -370,7 +371,7 @@ describe("detectIdentity", () => {
     }
   });
 
-  it("proposes a composite row strategy when records-are-columns and two rows together are unique", () => {
+  it("proposes a composite row strategy when records-are-columns and two rows together are unique", async () => {
     // headerAxes=["column"] — header column is column 1. Rows 1 and 2
     // each have a duplicate ("alpha"/"beta" repeats; "alice"/"bob" repeats),
     // but their pairwise combination is unique across records.
@@ -406,7 +407,7 @@ describe("detectIdentity", () => {
         },
       ],
     };
-    const state = runPipeline(input);
+    const state = await runPipeline(input);
     const regionId = state.detectedRegions[0].id;
     const candidates = state.identityCandidates.get(regionId)!;
     // Row 3 (note: x, y, z) is alone unique, so it should win — but the

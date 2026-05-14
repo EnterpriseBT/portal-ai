@@ -118,8 +118,17 @@ function seedCellValueField(region: Region, sheet: Sheet): CellValueField {
  * Writes `segmentsByRegion` + `cellValueFieldByRegion` (for pivot-bearing
  * regions). Headerless regions skip — their segmentsByRegion entry stays
  * unset so `proposeBindings` falls back to the PR-1 adapter.
+ *
+ * Async because each region's reads run inside the region bounds plus the
+ * chosen header line plus the optional `axisAnchorCell` — a `LazySheet`
+ * needs each of those windows loaded first. The bounds load is one call;
+ * header-line + anchor loads are idempotent no-ops when in range,
+ * otherwise they fetch the extra row. See
+ * `docs/SPREADSHEET_PARSER_ROW_ASYNC.spec.md`.
  */
-export function detectSegments(state: InterpretState): InterpretState {
+export async function detectSegments(
+  state: InterpretState
+): Promise<InterpretState> {
   const segmentsByRegion = new Map(state.segmentsByRegion);
   const cellValueFieldByRegion = new Map(state.cellValueFieldByRegion);
 
@@ -128,9 +137,21 @@ export function detectSegments(state: InterpretState): InterpretState {
     const sheet = state.workbook.sheets.find((s) => s.name === region.sheet);
     if (!sheet) continue;
 
+    await sheet.loadRange(region.bounds.startRow, region.bounds.endRow);
+    if (region.axisAnchorCell) {
+      await sheet.loadRange(
+        region.axisAnchorCell.row,
+        region.axisAnchorCell.row
+      );
+    }
+
     const segmentsByAxis: { row?: Segment[]; column?: Segment[] } = {};
     for (const axis of region.headerAxes) {
       const headerIndex = pickHeaderIndex(region, axis, state);
+      // Header index for axis="row" is a sheet row; could sit just
+      // above the bounds in some plans. Idempotent when already in
+      // the bounds window.
+      if (axis === "row") await sheet.loadRange(headerIndex, headerIndex);
       const labels = readHeaderLineLabels(region, axis, sheet, headerIndex);
       segmentsByAxis[axis] = clusterLabels(labels, axis);
     }

@@ -115,8 +115,15 @@ function candidatesForAxis(
  * Stage 2 — populate `headerCandidates` per region. Scans every axis in
  * `region.headerAxes` and merges the per-axis candidate lists (already sorted
  * by score within an axis). Skipped for headerless regions.
+ *
+ * Async only because of the `await sheet.loadRange(...)` — the underlying
+ * `Sheet` may be a `LazySheet` whose row windows are backed by the chunked
+ * Redis cache (see `docs/SPREADSHEET_PARSER_ROW_ASYNC.spec.md`). On an
+ * `EagerSheet`, `loadRange` is a `Promise.resolve()` no-op.
  */
-export function detectHeaders(state: InterpretState): InterpretState {
+export async function detectHeaders(
+  state: InterpretState
+): Promise<InterpretState> {
   const next = new Map(state.headerCandidates);
   for (const region of state.detectedRegions) {
     const sheet = state.workbook.sheets.find((s) => s.name === region.sheet);
@@ -124,6 +131,11 @@ export function detectHeaders(state: InterpretState): InterpretState {
       next.set(region.id, []);
       continue;
     }
+    // Cover every row the per-axis candidate walks scan. The row-axis
+    // case reads cells `(r, c)` for `r ∈ [bounds.startRow, bounds.endRow]`;
+    // the column-axis case reads cells `(r, c)` for the same row range.
+    // One `loadRange` is enough for both.
+    await sheet.loadRange(region.bounds.startRow, region.bounds.endRow);
     const merged: HeaderCandidate[] = [];
     for (const axis of region.headerAxes) {
       merged.push(...candidatesForAxis(region, sheet, axis));

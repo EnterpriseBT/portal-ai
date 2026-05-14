@@ -89,25 +89,25 @@ const contactsWorkbookData: WorkbookData = {
 };
 
 describe("replay() — orchestration", () => {
-  it("returns records + drift from a full plan against a WorkbookData", () => {
-    const result = replay(contactsPlan(), contactsWorkbookData);
+  it("returns records + drift from a full plan against a WorkbookData", async () => {
+    const result = await replay(contactsPlan(), contactsWorkbookData);
     expect(result.records).toHaveLength(3);
     expect(result.drift.regionDrifts).toHaveLength(1);
     expect(result.drift.severity).toBe("none");
     expect(result.drift.identityChanging).toBe(false);
   });
 
-  it("is deterministic — second call returns an identical result", () => {
-    const a = replay(contactsPlan(), contactsWorkbookData);
-    const b = replay(contactsPlan(), contactsWorkbookData);
+  it("is deterministic — second call returns an identical result", async () => {
+    const a = await replay(contactsPlan(), contactsWorkbookData);
+    const b = await replay(contactsPlan(), contactsWorkbookData);
     expect(a).toEqual(b);
   });
 
-  it("emits records in plan-region order across multiple regions", () => {
+  it("emits records in plan-region order across multiple regions", async () => {
     const plan = contactsPlan();
     plan.regions.push({ ...plan.regions[0], id: "r2" });
     plan.confidence.perRegion["r2"] = 0.9;
-    const result = replay(plan, contactsWorkbookData);
+    const result = await replay(plan, contactsWorkbookData);
     expect(result.records).toHaveLength(6);
     expect(result.records.slice(0, 3).every((r) => r.regionId === "r1")).toBe(
       true
@@ -117,7 +117,7 @@ describe("replay() — orchestration", () => {
     );
   });
 
-  it("skips regions whose sheet is missing from the workbook without throwing", () => {
+  it("skips regions whose sheet is missing from the workbook without throwing", async () => {
     const plan = contactsPlan();
     plan.regions.push({
       ...plan.regions[0],
@@ -125,23 +125,23 @@ describe("replay() — orchestration", () => {
       sheet: "DoesNotExist",
     });
     plan.confidence.perRegion["ghost"] = 0;
-    const result = replay(plan, contactsWorkbookData);
+    const result = await replay(plan, contactsWorkbookData);
     expect(result.records).toHaveLength(3);
   });
 
-  it("rejects malformed plans via LayoutPlanSchema.parse()", () => {
+  it("rejects malformed plans via LayoutPlanSchema.parse()", async () => {
     const plan = contactsPlan() as unknown as Record<string, unknown>;
     delete plan.planVersion;
-    expect(() =>
+    await expect(
       replay(plan as unknown as LayoutPlan, contactsWorkbookData)
-    ).toThrow();
+    ).rejects.toThrow();
   });
 
-  // Regression: at >~100k rows, `records.push(...extractRecords(...))`
+  // Regression: at >~100k rows, `records.push(...await extractRecords(...))`
   // exceeded V8's argument-count limit and threw "Maximum call stack
   // size exceeded", surfacing as LAYOUT_PLAN_COMMIT_FAILED on real
   // 100MB+ uploads.
-  it("handles workbooks with hundreds of thousands of records without overflowing the call stack", () => {
+  it("handles workbooks with hundreds of thousands of records without overflowing the call stack", async () => {
     const ROWS = 150_000;
     const cells: WorkbookData["sheets"][number]["cells"] = [
       { row: 1, col: 1, value: "email" },
@@ -165,7 +165,7 @@ describe("replay() — orchestration", () => {
         { name: "Contacts", dimensions: { rows: ROWS + 1, cols: 3 }, cells },
       ],
     };
-    const result = replay(plan, wb);
+    const result = await replay(plan, wb);
     expect(result.records).toHaveLength(ROWS);
   });
 });

@@ -99,21 +99,21 @@ function appleRegion(): Region {
 }
 
 describe("extractRecords — matrix id 1e (rows × 2 segments + statics)", () => {
-  it("emits one record per pivot-label position per entity-unit", () => {
-    const records = extractRecords(appleRegion(), appleWorkbook().sheets[0]);
+  it("emits one record per pivot-label position per entity-unit", async () => {
+    const records = await extractRecords(appleRegion(), appleWorkbook().sheets[0]);
     expect(records).toHaveLength(6);
   });
 
-  it("attaches statics from field-role positions to every emitted record", () => {
-    const records = extractRecords(appleRegion(), appleWorkbook().sheets[0]);
+  it("attaches statics from field-role positions to every emitted record", async () => {
+    const records = await extractRecords(appleRegion(), appleWorkbook().sheets[0]);
     for (const r of records) {
       expect(r.fields["name"]).toBe("Apple");
       expect(r.fields["industry"]).toBe("Tech");
     }
   });
 
-  it("emits 3 quarter records with the right labels and values", () => {
-    const records = extractRecords(appleRegion(), appleWorkbook().sheets[0]);
+  it("emits 3 quarter records with the right labels and values", async () => {
+    const records = await extractRecords(appleRegion(), appleWorkbook().sheets[0]);
     const quarter = records.filter((r) => "quarter" in r.fields);
     expect(quarter).toHaveLength(3);
     expect(quarter.map((r) => r.fields.quarter)).toEqual(["Q1", "Q2", "Q3"]);
@@ -123,8 +123,8 @@ describe("extractRecords — matrix id 1e (rows × 2 segments + statics)", () =>
     }
   });
 
-  it("emits 3 month records with the right labels and values", () => {
-    const records = extractRecords(appleRegion(), appleWorkbook().sheets[0]);
+  it("emits 3 month records with the right labels and values", async () => {
+    const records = await extractRecords(appleRegion(), appleWorkbook().sheets[0]);
     const month = records.filter((r) => "month" in r.fields);
     expect(month).toHaveLength(3);
     expect(month.map((r) => r.fields.month)).toEqual(["Jan", "Feb", "Mar"]);
@@ -134,16 +134,16 @@ describe("extractRecords — matrix id 1e (rows × 2 segments + statics)", () =>
     }
   });
 
-  it("carries regionId and targetEntityDefinitionId on every record", () => {
-    const records = extractRecords(appleRegion(), appleWorkbook().sheets[0]);
+  it("carries regionId and targetEntityDefinitionId on every record", async () => {
+    const records = await extractRecords(appleRegion(), appleWorkbook().sheets[0]);
     for (const r of records) {
       expect(r.regionId).toBe("r-1e");
       expect(r.targetEntityDefinitionId).toBe("companies");
     }
   });
 
-  it("produces distinct source-ids per (entity-unit, segment, label)", () => {
-    const records = extractRecords(appleRegion(), appleWorkbook().sheets[0]);
+  it("produces distinct source-ids per (entity-unit, segment, label)", async () => {
+    const records = await extractRecords(appleRegion(), appleWorkbook().sheets[0]);
     const ids = new Set(records.map((r) => r.sourceId));
     expect(ids.size).toBe(6);
     for (const r of records) {
@@ -151,8 +151,8 @@ describe("extractRecords — matrix id 1e (rows × 2 segments + statics)", () =>
     }
   });
 
-  it("produces a non-empty checksum per record", () => {
-    const records = extractRecords(appleRegion(), appleWorkbook().sheets[0]);
+  it("produces a non-empty checksum per record", async () => {
+    const records = await extractRecords(appleRegion(), appleWorkbook().sheets[0]);
     for (const r of records) {
       expect(typeof r.checksum).toBe("string");
       expect(r.checksum.length).toBeGreaterThan(0);
@@ -223,8 +223,8 @@ function quartersOnlyRegion(): Region {
 }
 
 describe("extractRecords — matrix id 1b (rows × all-pivot 1 segment)", () => {
-  it("emits one record per pivot-label position per entity-unit, no statics", () => {
-    const records = extractRecords(
+  it("emits one record per pivot-label position per entity-unit, no statics", async () => {
+    const records = await extractRecords(
       quartersOnlyRegion(),
       quartersOnlyWorkbook().sheets[0]
     );
@@ -234,8 +234,8 @@ describe("extractRecords — matrix id 1b (rows × all-pivot 1 segment)", () => 
     }
   });
 
-  it("carries the right quarter/revenue pairs per data row", () => {
-    const records = extractRecords(
+  it("carries the right quarter/revenue pairs per data row", async () => {
+    const records = await extractRecords(
       quartersOnlyRegion(),
       quartersOnlyWorkbook().sheets[0]
     );
@@ -301,8 +301,8 @@ describe("extractRecords — matrix id 1c (rows × 2 segments, no statics)", () 
     });
   }
 
-  it("emits 6 records per entity-unit split across the two segments with no statics", () => {
-    const records = extractRecords(region1c(), workbook1c().sheets[0]);
+  it("emits 6 records per entity-unit split across the two segments with no statics", async () => {
+    const records = await extractRecords(region1c(), workbook1c().sheets[0]);
     expect(records).toHaveLength(6);
     for (const r of records) {
       const keys = Object.keys(r.fields).sort();
@@ -358,8 +358,8 @@ describe("extractRecords — matrix id 1d (rows × statics + 1 segment)", () => 
     });
   }
 
-  it("emits 3 records per entity-unit, each carrying the statics", () => {
-    const records = extractRecords(region1d(), workbook1d().sheets[0]);
+  it("emits 3 records per entity-unit, each carrying the statics", async () => {
+    const records = await extractRecords(region1d(), workbook1d().sheets[0]);
     expect(records).toHaveLength(3);
     for (const r of records) {
       expect(r.fields["name"]).toBe("Apple");
@@ -419,8 +419,8 @@ describe("extractRecords — matrix id 1f (rows × statics + pivot + skip)", () 
     });
   }
 
-  it("omits skipped positions from record count and field set", () => {
-    const records = extractRecords(region1f(), workbook1f().sheets[0]);
+  it("omits skipped positions from record count and field set", async () => {
+    const records = await extractRecords(region1f(), workbook1f().sheets[0]);
     expect(records).toHaveLength(3);
     for (const r of records) {
       expect(r.fields.quarter).not.toBe("Total");
@@ -547,8 +547,8 @@ function cols2eRegion(): Region {
 }
 
 describe("extractRecords — matrix id 2e (cols × statics + 2 segments)", () => {
-  it("emits 6 records per data column with the right statics", () => {
-    const records = extractRecords(cols2eRegion(), cols2eWorkbook().sheets[0]);
+  it("emits 6 records per data column with the right statics", async () => {
+    const records = await extractRecords(cols2eRegion(), cols2eWorkbook().sheets[0]);
     expect(records).toHaveLength(18);
     const byEntity = new Map<string, typeof records>();
     for (const r of records) {
@@ -563,8 +563,8 @@ describe("extractRecords — matrix id 2e (cols × statics + 2 segments)", () =>
     }
   });
 
-  it("emits the right quarter and month labels per entity", () => {
-    const records = extractRecords(cols2eRegion(), cols2eWorkbook().sheets[0]);
+  it("emits the right quarter and month labels per entity", async () => {
+    const records = await extractRecords(cols2eRegion(), cols2eWorkbook().sheets[0]);
     const apple = records.filter((r) => r.fields["name"] === "Apple");
     expect(
       apple.filter((r) => "quarter" in r.fields).map((r) => r.fields.quarter)
@@ -580,8 +580,8 @@ describe("extractRecords — matrix id 2e (cols × statics + 2 segments)", () =>
     ).toEqual([4, 5, 6]);
   });
 
-  it("produces distinct source-ids per (entity-column, segment, label)", () => {
-    const records = extractRecords(cols2eRegion(), cols2eWorkbook().sheets[0]);
+  it("produces distinct source-ids per (entity-column, segment, label)", async () => {
+    const records = await extractRecords(cols2eRegion(), cols2eWorkbook().sheets[0]);
     const ids = new Set(records.map((r) => r.sourceId));
     expect(ids.size).toBe(records.length);
   });
@@ -632,8 +632,8 @@ describe("extractRecords — matrix id 2b (cols × all-pivot 1 segment)", () => 
     };
   }
 
-  it("emits 1 record per position per data column, no statics", () => {
-    const records = extractRecords(region2b(), workbook2b().sheets[0]);
+  it("emits 1 record per position per data column, no statics", async () => {
+    const records = await extractRecords(region2b(), workbook2b().sheets[0]);
     expect(records).toHaveLength(6);
     for (const r of records) {
       expect(Object.keys(r.fields).sort()).toEqual(["quarter", "revenue"]);
@@ -706,8 +706,8 @@ describe("extractRecords — matrix id 2c (cols × 2 segments, no statics)", () 
     };
   }
 
-  it("emits 6 records per data column across two segments, no statics", () => {
-    const records = extractRecords(region2c(), workbook2c().sheets[0]);
+  it("emits 6 records per data column across two segments, no statics", async () => {
+    const records = await extractRecords(region2c(), workbook2c().sheets[0]);
     expect(records).toHaveLength(12);
     for (const r of records) {
       expect(Object.keys(r.fields).length).toBe(2);
@@ -765,8 +765,8 @@ describe("extractRecords — matrix id 2d (cols × statics + 1 segment)", () => 
     };
   }
 
-  it("emits 3 records per data column, each with statics", () => {
-    const records = extractRecords(region2d(), workbook2d().sheets[0]);
+  it("emits 3 records per data column, each with statics", async () => {
+    const records = await extractRecords(region2d(), workbook2d().sheets[0]);
     expect(records).toHaveLength(6);
     const apple = records.filter((r) => r.fields["name"] === "Apple");
     expect(apple).toHaveLength(3);
@@ -824,8 +824,8 @@ describe("extractRecords — matrix id 2f (cols × statics + pivot + skip)", () 
     };
   }
 
-  it("omits the Total row from record count and values", () => {
-    const records = extractRecords(region2f(), workbook2f().sheets[0]);
+  it("omits the Total row from record count and values", async () => {
+    const records = await extractRecords(region2f(), workbook2f().sheets[0]);
     expect(records).toHaveLength(3);
     for (const r of records) {
       expect(r.fields.quarter).not.toBe("Total");
@@ -911,8 +911,8 @@ describe("extractRecords — matrix id 1a (rows × all-field, round-trip)", () =
     };
   }
 
-  it("emits one statics-only record per data row", () => {
-    const records = extractRecords(tidyRegion(), tidyWorkbook().sheets[0]);
+  it("emits one statics-only record per data row", async () => {
+    const records = await extractRecords(tidyRegion(), tidyWorkbook().sheets[0]);
     expect(records).toHaveLength(2);
     expect(records[0].fields).toEqual({
       email: "a@x.com",
@@ -1016,16 +1016,16 @@ describe("extractRecords — 2D crosstab (migrated from cells-as-records)", () =
     };
   }
 
-  it("emits one record per interior cell (rows × cols) skipping headers + anchor", () => {
-    const records = extractRecords(
+  it("emits one record per interior cell (rows × cols) skipping headers + anchor", async () => {
+    const records = await extractRecords(
       crosstabRegion(),
       crosstabWorkbook().sheets[0]
     );
     expect(records).toHaveLength(9);
   });
 
-  it("each record has fields {Quarter, Region, Revenue} keyed by the three user-facing names", () => {
-    const records = extractRecords(
+  it("each record has fields {Quarter, Region, Revenue} keyed by the three user-facing names", async () => {
+    const records = await extractRecords(
       crosstabRegion(),
       crosstabWorkbook().sheets[0]
     );
@@ -1042,8 +1042,8 @@ describe("extractRecords — 2D crosstab (migrated from cells-as-records)", () =
     expect(q3East?.fields.Revenue).toBe(320);
   });
 
-  it("assigns `cell-{row}-{col}` source_id for rowPosition identity", () => {
-    const records = extractRecords(
+  it("assigns `cell-{row}-{col}` source_id for rowPosition identity", async () => {
+    const records = await extractRecords(
       crosstabRegion(),
       crosstabWorkbook().sheets[0]
     );
@@ -1053,8 +1053,8 @@ describe("extractRecords — 2D crosstab (migrated from cells-as-records)", () =
     expect(q1North?.sourceId).toBe("cell-2-2");
   });
 
-  it("does not emit records along the header row or header column", () => {
-    const records = extractRecords(
+  it("does not emit records along the header row or header column", async () => {
+    const records = await extractRecords(
       crosstabRegion(),
       crosstabWorkbook().sheets[0]
     );
@@ -1064,12 +1064,12 @@ describe("extractRecords — 2D crosstab (migrated from cells-as-records)", () =
     }
   });
 
-  it("emits each pivot×pivot intersection's body cell under its own override name when intersectionCellValueFields is set", () => {
+  it("emits each pivot×pivot intersection's body cell under its own override name when intersectionCellValueFields is set", async () => {
     const region = crosstabRegion();
     region.intersectionCellValueFields = {
       region__quarter: { name: "Headcount", nameSource: "user" },
     };
-    const records = extractRecords(region, crosstabWorkbook().sheets[0]);
+    const records = await extractRecords(region, crosstabWorkbook().sheets[0]);
     // Every record should carry `Headcount` (the override) and not the
     // region-level `Revenue` since both axes are pivots and the override
     // applies to the (region, quarter) intersection.
@@ -1083,7 +1083,7 @@ describe("extractRecords — 2D crosstab (migrated from cells-as-records)", () =
     expect(q1North?.fields.Headcount).toBe(100);
   });
 
-  it("emits exactly (rowPivotCount × colPivotCount) records on a hybrid crosstab with sidebar fields on both axes — no field × pivot duplicates", () => {
+  it("emits exactly (rowPivotCount × colPivotCount) records on a hybrid crosstab with sidebar fields on both axes — no field × pivot duplicates", async () => {
     // Layout (rows × cols), bounds = 1..5 × 1..5:
     //   row 1 [anchor] [HQ]  [Industry] [Q1] [Q2]
     //   row 2 [scope]  [...] [...]      [s1] [s2]
@@ -1180,7 +1180,7 @@ describe("extractRecords — 2D crosstab (migrated from cells-as-records)", () =
       confidence: { region: 1, aggregate: 1 },
       warnings: [],
     };
-    const records = extractRecords(region, wb.sheets[0]);
+    const records = await extractRecords(region, wb.sheets[0]);
     // 2 row-pivot × 2 col-pivot positions = 4 records, not 25 across the
     // full body grid.
     expect(records).toHaveLength(4);
@@ -1200,7 +1200,7 @@ describe("extractRecords — 2D crosstab (migrated from cells-as-records)", () =
     expect(acmeQ1?.fields.revenue).toBe(10);
   });
 
-  it("falls back to the region-level cellValueField name when the intersection has no override", () => {
+  it("falls back to the region-level cellValueField name when the intersection has no override", async () => {
     const region = crosstabRegion();
     region.intersectionCellValueFields = {
       // An override targets a NONEXISTENT pair (won't apply); the existing
@@ -1210,7 +1210,7 @@ describe("extractRecords — 2D crosstab (migrated from cells-as-records)", () =
     // The schema rejects unknown ids, but the replay path must be defensive
     // — strip the bad entry before passing through to extract.
     region.intersectionCellValueFields = {};
-    const records = extractRecords(region, crosstabWorkbook().sheets[0]);
+    const records = await extractRecords(region, crosstabWorkbook().sheets[0]);
     for (const r of records) {
       expect(r.fields.Revenue).toBeDefined();
     }
@@ -1323,8 +1323,8 @@ describe("extractRecords — 2D crosstab with multiple pivot segments per axis",
     };
   }
 
-  it("emits one record per body cell across every (rowPivot × colPivot) intersection — 9 + 3 = 12", () => {
-    const records = extractRecords(
+  it("emits one record per body cell across every (rowPivot × colPivot) intersection — 9 + 3 = 12", async () => {
+    const records = await extractRecords(
       multiPivotRegion(),
       multiPivotWorkbook().sheets[0]
     );
@@ -1343,8 +1343,8 @@ describe("extractRecords — 2D crosstab with multiple pivot segments per axis",
     }
   });
 
-  it("assigns a unique rowPosition sourceId per body cell so the upsert doesn't collapse intersections", () => {
-    const records = extractRecords(
+  it("assigns a unique rowPosition sourceId per body cell so the upsert doesn't collapse intersections", async () => {
+    const records = await extractRecords(
       multiPivotRegion(),
       multiPivotWorkbook().sheets[0]
     );
@@ -1352,7 +1352,7 @@ describe("extractRecords — 2D crosstab with multiple pivot segments per axis",
     expect(sourceIds.size).toBe(records.length);
   });
 
-  it("honours per-intersection cell-value overrides independently per block", () => {
+  it("honours per-intersection cell-value overrides independently per block", async () => {
     const region = multiPivotRegion();
     region.intersectionCellValueFields = {
       "cp-company__rp-quarter": { name: "revenue", nameSource: "user" },
@@ -1365,7 +1365,7 @@ describe("extractRecords — 2D crosstab with multiple pivot segments per axis",
       "rp-quarter__cp-company": { name: "revenue", nameSource: "user" },
       "rp-quarter__cp-special": { name: "headcount", nameSource: "user" },
     };
-    const records = extractRecords(region, multiPivotWorkbook().sheets[0]);
+    const records = await extractRecords(region, multiPivotWorkbook().sheets[0]);
     expect(records).toHaveLength(12);
     const revenueRecords = records.filter(
       (r) => r.fields.revenue !== undefined

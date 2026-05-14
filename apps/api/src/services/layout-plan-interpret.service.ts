@@ -2,9 +2,12 @@ import type {
   ColumnDefinitionCatalogEntry,
   LayoutPlan,
   RegionHint,
-  WorkbookData,
 } from "@portalai/core/contracts";
 import { interpret } from "@portalai/spreadsheet-parsing";
+import type {
+  Workbook,
+  WorkbookData,
+} from "@portalai/spreadsheet-parsing";
 
 import { DbService } from "./db.service.js";
 import {
@@ -24,7 +27,7 @@ import { createLogger } from "../utils/logger.util.js";
  */
 export class LayoutPlanInterpretService {
   static async analyze(
-    workbook: WorkbookData,
+    workbook: Workbook | WorkbookData,
     hints: RegionHint[],
     orgId: string,
     userId: string,

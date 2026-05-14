@@ -4,9 +4,10 @@ import type { InterpretInput } from "../../../plan/index.js";
 import { createInitialState } from "../../state.js";
 import { detectRegions } from "../detect-regions.js";
 import { detectHeaders } from "../detect-headers.js";
+import type { InterpretState } from "../../types.js";
 
-function runWith(input: InterpretInput) {
-  return detectHeaders(detectRegions(createInitialState(input)));
+async function runWith(input: InterpretInput): Promise<InterpretState> {
+  return await detectHeaders(detectRegions(createInitialState(input)));
 }
 
 function simpleInput(): InterpretInput {
@@ -42,8 +43,8 @@ function simpleInput(): InterpretInput {
 }
 
 describe("detectHeaders", () => {
-  it("picks the first row as the header candidate for a simple well-formed sheet", () => {
-    const state = runWith(simpleInput());
+  it("picks the first row as the header candidate for a simple well-formed sheet", async () => {
+    const state = await runWith(simpleInput());
     const regionId = state.detectedRegions[0].id;
     const candidates = state.headerCandidates.get(regionId);
     expect(candidates).toBeDefined();
@@ -55,7 +56,7 @@ describe("detectHeaders", () => {
     expect(best.score).toBeGreaterThan(0);
   });
 
-  it("skips leading title rows and picks the row with the highest header-ness score", () => {
+  it("skips leading title rows and picks the row with the highest header-ness score", async () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -86,14 +87,14 @@ describe("detectHeaders", () => {
         },
       ],
     };
-    const state = runWith(input);
+    const state = await runWith(input);
     const regionId = state.detectedRegions[0].id;
     const best = state.headerCandidates.get(regionId)![0];
     expect(best.index).toBe(2);
     expect(best.labels).toEqual(["name", "age", "email"]);
   });
 
-  it("produces a column-axis candidate when headerAxes = ['column']", () => {
+  it("produces a column-axis candidate when headerAxes = ['column']", async () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -123,7 +124,7 @@ describe("detectHeaders", () => {
         },
       ],
     };
-    const state = runWith(input);
+    const state = await runWith(input);
     const regionId = state.detectedRegions[0].id;
     const best = state.headerCandidates.get(regionId)![0];
     expect(best.axis).toBe("column");
@@ -131,7 +132,7 @@ describe("detectHeaders", () => {
     expect(best.labels).toEqual(["Name", "Age", "Email"]);
   });
 
-  it("skips header detection for headerless regions", () => {
+  it("skips header detection for headerless regions", async () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -157,12 +158,12 @@ describe("detectHeaders", () => {
         },
       ],
     };
-    const state = runWith(input);
+    const state = await runWith(input);
     const regionId = state.detectedRegions[0].id;
     expect(state.headerCandidates.get(regionId)).toEqual([]);
   });
 
-  it("returns both row-axis and column-axis candidates for a 2D crosstab hint", () => {
+  it("returns both row-axis and column-axis candidates for a 2D crosstab hint", async () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -200,7 +201,7 @@ describe("detectHeaders", () => {
         },
       ],
     };
-    const state = runWith(input);
+    const state = await runWith(input);
     const regionId = state.detectedRegions[0].id;
     const candidates = state.headerCandidates.get(regionId);
     expect(candidates).toBeDefined();
@@ -209,9 +210,9 @@ describe("detectHeaders", () => {
     expect(axes.has("column")).toBe(true);
   });
 
-  it("is deterministic across repeated runs", () => {
-    const first = runWith(simpleInput());
-    const second = runWith(simpleInput());
+  it("is deterministic across repeated runs", async () => {
+    const first = await runWith(simpleInput());
+    const second = await runWith(simpleInput());
     const id = first.detectedRegions[0].id;
     expect(first.headerCandidates.get(id)).toEqual(
       second.headerCandidates.get(id)

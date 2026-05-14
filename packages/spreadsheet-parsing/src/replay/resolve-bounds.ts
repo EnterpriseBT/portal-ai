@@ -52,6 +52,20 @@ function firstCellText(
 }
 
 /**
+ * Window size for terminator scans that walk rows past the declared
+ * region bounds. Rows must be `loadRange`-resolved before the sync
+ * `sheet.cell()` reads inside `isLineBlank` / `firstCellText` can
+ * fire — chunked loading keeps the lazy adapter from pre-fetching
+ * every row of an unbounded sheet up-front.
+ *
+ * Only relevant for axis="row" extensions (the scan walks new rows);
+ * axis="column" extensions walk columns within rows that the caller
+ * has already loaded for the region bounds, so no per-window load
+ * is required there.
+ */
+const ROW_SCAN_WINDOW = 200;
+
+/**
  * Extend a bound outward along `axis` until the terminator fires. Returns the
  * last coord to include (a data line, not the terminator itself).
  *
@@ -62,7 +76,7 @@ function firstCellText(
  *   pattern; return the coord before the match. If no match, return the sheet
  *   edge.
  */
-function extendAlongAxis(
+async function extendAlongAxis(
   terminator: Terminator,
   sheet: Sheet,
   axis: AxisMember,
@@ -70,26 +84,34 @@ function extendAlongAxis(
   crossStart: number,
   crossEnd: number,
   sheetEdge: number
-): number {
+): Promise<number> {
   if (terminator.kind === "untilBlank") {
     const needed = terminator.consecutiveBlanks ?? DEFAULT_UNTIL_BLANK_COUNT;
     let lastData = startCoord - 1;
     let blanks = 0;
-    for (let c = startCoord; c <= sheetEdge; c++) {
-      if (isLineBlank(sheet, axis, c, crossStart, crossEnd)) {
-        blanks++;
-        if (blanks >= needed) break;
-      } else {
-        blanks = 0;
-        lastData = c;
+    for (let c = startCoord; c <= sheetEdge; ) {
+      const windowEnd = Math.min(c + ROW_SCAN_WINDOW - 1, sheetEdge);
+      if (axis === "row") await sheet.loadRange(c, windowEnd);
+      for (; c <= windowEnd; c++) {
+        if (isLineBlank(sheet, axis, c, crossStart, crossEnd)) {
+          blanks++;
+          if (blanks >= needed) return lastData;
+        } else {
+          blanks = 0;
+          lastData = c;
+        }
       }
     }
     return lastData;
   }
   const re = new RegExp(terminator.pattern);
-  for (let c = startCoord; c <= sheetEdge; c++) {
-    if (re.test(firstCellText(sheet, axis, c, crossStart))) {
-      return c - 1;
+  for (let c = startCoord; c <= sheetEdge; ) {
+    const windowEnd = Math.min(c + ROW_SCAN_WINDOW - 1, sheetEdge);
+    if (axis === "row") await sheet.loadRange(c, windowEnd);
+    for (; c <= windowEnd; c++) {
+      if (re.test(firstCellText(sheet, axis, c, crossStart))) {
+        return c - 1;
+      }
     }
   }
   return sheetEdge;
@@ -101,10 +123,10 @@ function extendAlongAxis(
  * bounds. Only single-axis extension is applied here; per-axis dynamic tail
  * segments are handled by the extract pipeline.
  */
-export function resolveRegionBounds(
+export async function resolveRegionBounds(
   region: Region,
   sheet: Sheet
-): ResolvedBounds {
+): Promise<ResolvedBounds> {
   const bounds: ResolvedBounds = { ...region.bounds };
   if (!region.recordAxisTerminator) return bounds;
 
@@ -112,7 +134,7 @@ export function resolveRegionBounds(
   if (!recordsAxis) return bounds;
 
   if (recordsAxis === "row") {
-    bounds.endRow = extendAlongAxis(
+    bounds.endRow = await extendAlongAxis(
       region.recordAxisTerminator,
       sheet,
       "row",
@@ -123,7 +145,7 @@ export function resolveRegionBounds(
     );
     if (bounds.endRow < region.bounds.endRow) bounds.endRow = region.bounds.endRow;
   } else {
-    bounds.endCol = extendAlongAxis(
+    bounds.endCol = await extendAlongAxis(
       region.recordAxisTerminator,
       sheet,
       "column",

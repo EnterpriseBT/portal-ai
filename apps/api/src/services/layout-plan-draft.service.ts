@@ -44,7 +44,7 @@ import type {
   LayoutPlanCommitMetadata,
   LayoutPlanCommitWorkbookSource,
 } from "@portalai/core/models";
-import type { WorkbookData } from "@portalai/spreadsheet-parsing";
+import type { Workbook } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
@@ -469,7 +469,7 @@ export class LayoutPlanDraftService {
   static async resolveWorkbookBySource(
     source: LayoutPlanCommitWorkbookSource,
     organizationId: string
-  ): Promise<WorkbookData> {
+  ): Promise<Workbook> {
     if (source.kind === "uploadSession") {
       return FileUploadSessionService.resolveWorkbook(
         source.uploadSessionId,
@@ -507,7 +507,7 @@ export class LayoutPlanDraftService {
 async function resolveWorkbookFromBody(
   body: LayoutPlanInterpretDraftRequestBody,
   organizationId: string
-): Promise<WorkbookData> {
+): Promise<Workbook> {
   if (body.uploadSessionId) {
     return LayoutPlanDraftService.resolveWorkbookBySource(
       { kind: "uploadSession", uploadSessionId: body.uploadSessionId },

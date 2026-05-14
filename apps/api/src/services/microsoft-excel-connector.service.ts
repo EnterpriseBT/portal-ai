@@ -18,7 +18,7 @@
  */
 
 import type { PublicAccountInfo } from "@portalai/core/contracts";
-import type { WorkbookData } from "@portalai/spreadsheet-parsing";
+import type { Workbook } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
@@ -49,13 +49,13 @@ import { createLogger } from "../utils/logger.util.js";
 import {
   findSheetMetaById,
   inflateSheetPreviewFromChunks,
-  reassembleWorkbookFromChunks,
   sheetId as makeSheetId,
   sliceSheetRectangleFromChunks,
   type PreviewSheet,
   type SliceQuery,
   type SliceResult,
 } from "../utils/workbook-preview.util.js";
+import { makeLazyWorkbookFromCache } from "../utils/lazy-workbook.util.js";
 
 const logger = createLogger({ module: "microsoft-excel-connector" });
 
@@ -384,7 +384,7 @@ export class MicrosoftExcelConnectorService {
   static async resolveWorkbook(
     connectorInstanceId: string,
     organizationId: string
-  ): Promise<WorkbookData> {
+  ): Promise<Workbook> {
     const instance =
       await DbService.repository.connectorInstances.findById(
         connectorInstanceId
@@ -412,7 +412,7 @@ export class MicrosoftExcelConnectorService {
         `No cached workbook for instance ${connectorInstanceId} — call select-workbook first`
       );
     }
-    return reassembleWorkbookFromChunks(prefix, meta);
+    return makeLazyWorkbookFromCache(prefix, meta.sheets);
   }
 
   /**
@@ -428,7 +428,7 @@ export class MicrosoftExcelConnectorService {
   static async fetchWorkbookForSync(
     connectorInstanceId: string,
     organizationId: string
-  ): Promise<WorkbookData> {
+  ): Promise<Workbook> {
     const instance =
       await DbService.repository.connectorInstances.findById(
         connectorInstanceId
@@ -499,11 +499,19 @@ export class MicrosoftExcelConnectorService {
     const nodeStream = MicrosoftGraphService.toNodeReadable(download.stream);
 
     // Sync runs on a Bull worker and explicitly does NOT persist the
-    // workbook cache (each run wants fresh bytes), but it still needs a
-    // resolved `WorkbookData` for the replay/record-write pipeline. Pipe
-    // the stream through a throwaway chunked-cache session so the parse
-    // stays bounded (no buffer-the-world `xlsxToWorkbook`), then
-    // reassemble + delete the throwaway prefix on the way out.
+    // workbook cache (each run wants fresh bytes). Pipe the stream
+    // through a throwaway chunked-cache session so the parse stays
+    // bounded (no buffer-the-world `xlsxToWorkbook`), then return a
+    // lazy `Workbook` backed by that prefix. Commit's region reads
+    // resolve row windows through `WorkbookCacheService.readRows`
+    // for the lifetime of the call.
+    //
+    // The throwaway prefix uses a fresh uuid so collisions are
+    // impossible; cleanup is left to the cache key TTL
+    // (`FILE_UPLOAD_CACHE_TTL_SEC`). An explicit delete would race
+    // with the lazy row reads inside commit, and threading a
+    // cleanup callback through every caller buys little when sync
+    // runs are infrequent and the cache rows are small.
     const throwawayPrefix = `connector:sync:${SystemUtilities.id.v4.generate()}`;
     const writer = await WorkbookCacheService.beginSession(throwawayPrefix);
     let nextSheetIdx = 0;
@@ -516,18 +524,22 @@ export class MicrosoftExcelConnectorService {
         },
       });
       await writer.finalize("ready");
-      const meta = await WorkbookCacheService.getSessionMeta(throwawayPrefix);
-      if (!meta) {
-        throw new ApiError(
-          500,
-          ApiCode.MICROSOFT_EXCEL_INVALID_PAYLOAD,
-          "Throwaway sync session meta missing after finalize"
-        );
-      }
-      return await reassembleWorkbookFromChunks(throwawayPrefix, meta);
-    } finally {
+    } catch (err) {
+      // On parse failure, eagerly tear down the throwaway prefix —
+      // there's no consumer that needs those keys, so don't wait
+      // out the TTL.
       void WorkbookCacheService.deleteSession(throwawayPrefix).catch(() => {});
+      throw err;
     }
+    const meta = await WorkbookCacheService.getSessionMeta(throwawayPrefix);
+    if (!meta) {
+      throw new ApiError(
+        500,
+        ApiCode.MICROSOFT_EXCEL_INVALID_PAYLOAD,
+        "Throwaway sync session meta missing after finalize"
+      );
+    }
+    return makeLazyWorkbookFromCache(throwawayPrefix, meta.sheets);
   }
 
   /**

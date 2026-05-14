@@ -194,12 +194,15 @@ describe("MicrosoftExcelConnectorService.resolveWorkbook", () => {
     );
     expect(out.sheets).toHaveLength(1);
     expect(out.sheets[0]?.dimensions).toEqual({ rows: 2, cols: 2 });
-    expect(out.sheets[0]?.cells.map((c) => `${c.row}:${c.col}=${c.value}`).sort()).toEqual([
-      "1:1=a",
-      "1:2=b",
-      "2:1=c",
-      "2:2=d",
-    ]);
+    await out.sheets[0]?.loadRange(1, 2);
+    const observed: string[] = [];
+    for (let r = 1; r <= 2; r++) {
+      for (let c = 1; c <= 2; c++) {
+        const cell = out.sheets[0]?.cell(r, c);
+        if (cell) observed.push(`${cell.row}:${cell.col}=${cell.value}`);
+      }
+    }
+    expect(observed.sort()).toEqual(["1:1=a", "1:2=b", "2:1=c", "2:2=d"]);
   });
 
   it("throws 404 when meta is missing or not ready (no fallback)", async () => {

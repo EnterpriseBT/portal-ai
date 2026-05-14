@@ -42,7 +42,7 @@ function baseRegion(overrides: Partial<Region> = {}): Region {
 }
 
 describe("extractRecords — skip rules", () => {
-  it("blank rule drops rows whose cells are all empty (records-are-rows)", () => {
+  it("blank rule drops rows whose cells are all empty (records-are-rows)", async () => {
     const wb = makeWorkbook({
       sheets: [
         {
@@ -64,12 +64,12 @@ describe("extractRecords — skip rules", () => {
     const region = baseRegion({
       skipRules: [{ kind: "blank" }],
     });
-    const records = extractRecords(region, wb.sheets[0]);
+    const records = await extractRecords(region, wb.sheets[0]);
     const names = records.map((r) => r.fields["name"]);
     expect(names).toEqual(["alice", "bob"]);
   });
 
-  it("cellMatches rule drops rows whose crossAxisIndex column matches the pattern", () => {
+  it("cellMatches rule drops rows whose crossAxisIndex column matches the pattern", async () => {
     const wb = makeWorkbook({
       sheets: [
         {
@@ -94,12 +94,12 @@ describe("extractRecords — skip rules", () => {
         { kind: "cellMatches", crossAxisIndex: 0, pattern: "^Total$" },
       ],
     });
-    const records = extractRecords(region, wb.sheets[0]);
+    const records = await extractRecords(region, wb.sheets[0]);
     const names = records.map((r) => r.fields["name"]);
     expect(names).toEqual(["alice", "bob"]);
   });
 
-  it("cellMatches with null cells coerces to empty string before regex test (^$ matches empty)", () => {
+  it("cellMatches with null cells coerces to empty string before regex test (^$ matches empty)", async () => {
     const wb = makeWorkbook({
       sheets: [
         {
@@ -124,12 +124,12 @@ describe("extractRecords — skip rules", () => {
       },
       skipRules: [{ kind: "cellMatches", crossAxisIndex: 1, pattern: "^$" }],
     });
-    const records = extractRecords(region, wb.sheets[0]);
+    const records = await extractRecords(region, wb.sheets[0]);
     const names = records.map((r) => r.fields["name"]);
     expect(names).toEqual(["alice", "carol"]);
   });
 
-  it("crosstab cellMatches with axis: 'column' only skips columns (not rows)", () => {
+  it("crosstab cellMatches with axis: 'column' only skips columns (not rows)", async () => {
     const wb = makeWorkbook({
       sheets: [
         {
@@ -202,7 +202,7 @@ describe("extractRecords — skip rules", () => {
         },
       ],
     };
-    const records = extractRecords(region, wb.sheets[0]);
+    const records = await extractRecords(region, wb.sheets[0]);
     expect(records).toHaveLength(4);
     for (const r of records) {
       expect(r.fields.Letter).not.toBe("Total");

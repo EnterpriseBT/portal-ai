@@ -4,7 +4,12 @@ export {
   SheetDataSchema,
   WorkbookSchema,
 } from "./schema.js";
-export { makeSheetAccessor, makeWorkbook } from "./helpers.js";
+export {
+  makeSheetAccessor,
+  makeWorkbook,
+  makeLazySheetAccessor,
+} from "./helpers.js";
+export type { LazySheetMeta, LazySheetRowFetcher } from "./helpers.js";
 export { computeWorkbookFingerprint } from "./fingerprint.js";
 export { WorkbookFingerprintSchema } from "../plan/workbook-fingerprint.schema.js";
 export type { WorkbookFingerprint } from "../plan/workbook-fingerprint.schema.js";
