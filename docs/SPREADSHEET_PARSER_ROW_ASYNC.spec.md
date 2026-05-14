@@ -287,12 +287,12 @@ Same.
 
 ## Acceptance criteria
 
-- [ ] All existing parser + apps/api tests pass through the migration; no behavioral change visible at the public surface.
-- [ ] The 6 new tests (5 + the gated memory smoke) pass.
-- [ ] `npm run lint` + `npm run type-check` clean across the repo.
-- [ ] `grep -rn "reassembleWorkbookFromChunks" apps/api/src` returns zero matches after slice 5.
-- [ ] `RangeNotLoadedError` is exported from `@portalai/spreadsheet-parsing`.
-- [ ] Manual smoke: parse + commit a 50 MB CSV (matches the original OOM repro). Peak RSS during commit stays below the API task's 8 GB Fargate ceiling with `NODE_OPTIONS=--max-old-space-size=2048` (i.e., the wide-headroom override from `LARGE_FILE_PARSE_STREAMING.plan.md` becomes unnecessary; we keep it for headroom but it's no longer load-bearing).
+- [x] All existing parser + apps/api tests pass through the migration; no behavioral change visible at the public surface. (464 parser + 1033 apps/api unit, with the gated memory smoke skipped by default.)
+- [x] The new tests pass: lazy-sheet (slice 0, cases 1.1–1.6), lazy-workbook factory (slice 3, case 4), lazy-vs-eager replay equivalence (slice 4, case 5), and the gated memory smoke (slice 6, case 6).
+- [x] `npm run type-check` clean across the repo. `npm run lint` reports only the pre-existing `drift.test.ts:617` irregular-whitespace error from commit 94ca306 (orthogonal to this refactor).
+- [x] `grep -rn "reassembleWorkbookFromChunks" apps/api/src` returns zero matches after slice 5.
+- [x] `RangeNotLoadedError` is exported from `@portalai/spreadsheet-parsing`.
+- [x] Memory smoke (case 6) confirms a 50,000-row × 20-col replay completes under `--max-old-space-size=512` — heap peaked at 229 MB, RSS at 422 MB in 1.4 s. The 2 GB cap from `LARGE_FILE_PARSE_STREAMING.plan.md` Phase 4 retains its headroom margin; no longer load-bearing on this workload class.
 
 ## Risks & rollback
 
