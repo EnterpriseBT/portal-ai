@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { FileUploadParseSheetSchema } from "./file-uploads.contract.js";
 import {
   InterpretationTraceSchema,
   InterpretInputSchema,
@@ -244,4 +245,48 @@ export const LayoutPlanCommitDraftResponsePayloadSchema =
   LayoutPlanCommitEnqueuedResponseSchema;
 export type LayoutPlanCommitDraftResponsePayload = z.infer<
   typeof LayoutPlanCommitDraftResponsePayloadSchema
+>;
+
+// ── Edit context (GET .../layout-plan/edit-context) ───────────────────────
+
+/**
+ * Preview-shape workbook bundled with the edit context. Same envelope the
+ * file-upload `parse` and connector `select-sheet` responses use today — the
+ * region editor already knows how to render it. `cells: []` for sheets over
+ * `FILE_UPLOAD_INLINE_CELLS_MAX`; the editor falls back to per-rectangle
+ * slice requests against the matching connector's `sheetSlice` endpoint.
+ */
+export const LayoutPlanEditContextWorkbookPreviewSchema = z.object({
+  sheets: z.array(FileUploadParseSheetSchema),
+  sliced: z.boolean().optional(),
+});
+export type LayoutPlanEditContextWorkbookPreview = z.infer<
+  typeof LayoutPlanEditContextWorkbookPreviewSchema
+>;
+
+/**
+ * Response payload for
+ * `GET /api/connector-instances/:connectorInstanceId/layout-plan/edit-context`.
+ *
+ * Bundles everything the edit view needs at mount time into one round-trip:
+ * the current plan + id, the connector slug (for slice-dispatch), and a
+ * preview of the workbook. `workbookPreview` is `null` only when the
+ * workbook source can no longer be resolved (`editable: false`); in that
+ * case `reason` carries a stable code + human message for the UI to surface.
+ */
+export const LayoutPlanEditContextResponsePayloadSchema = z.object({
+  planId: z.string().min(1),
+  plan: LayoutPlanSchema,
+  connectorDefinitionSlug: z.string().min(1),
+  workbookPreview: LayoutPlanEditContextWorkbookPreviewSchema.nullable(),
+  editable: z.boolean(),
+  reason: z
+    .object({
+      code: z.string().min(1),
+      message: z.string().min(1),
+    })
+    .optional(),
+});
+export type LayoutPlanEditContextResponsePayload = z.infer<
+  typeof LayoutPlanEditContextResponsePayloadSchema
 >;

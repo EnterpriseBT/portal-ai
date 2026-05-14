@@ -92,6 +92,44 @@ export class JobsRepository extends Repository<
         )
       )) as JobSelect[];
   }
+
+  /**
+   * Find the upload-session id that backed the most recent
+   * `layout_plan_commit` job for `connectorInstanceId`. Returns
+   * `undefined` if no prior commit job referenced an upload session
+   * (i.e., the connector was never an `uploadSession`-source path).
+   *
+   * Used by the edit-context endpoint to recover the file-upload
+   * source for an existing connector — the `file_uploads` table has no
+   * back-reference to `connector_instances`, so we walk job history
+   * instead. Order is `created DESC` so the most recent commit wins
+   * (covers the case where a connector was committed multiple times).
+   */
+  async findLatestUploadSessionIdForConnectorInstance(
+    connectorInstanceId: string,
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<string | undefined> {
+    const [row] = await (client as typeof db)
+      .select({
+        uploadSessionId: sql<
+          string | null
+        >`${jobs.metadata}#>>'{workbookSource,uploadSessionId}'`,
+      })
+      .from(this.table)
+      .where(
+        and(
+          eq(jobs.organizationId, organizationId),
+          eq(jobs.type, "layout_plan_commit" as JobSelect["type"]),
+          sql`${jobs.metadata}->>'connectorInstanceId' = ${connectorInstanceId}`,
+          sql`${jobs.metadata}#>>'{workbookSource,kind}' = 'uploadSession'`,
+          this.notDeleted()
+        )
+      )
+      .orderBy(sql`${jobs.created} DESC`)
+      .limit(1);
+    return row?.uploadSessionId ?? undefined;
+  }
 }
 
 /** Singleton instance — import this in route handlers / services. */

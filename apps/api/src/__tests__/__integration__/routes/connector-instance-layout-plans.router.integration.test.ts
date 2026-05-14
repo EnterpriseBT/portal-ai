@@ -15,6 +15,7 @@ import postgres from "postgres";
 import type {
   InterpretResponsePayload,
   LayoutPlan,
+  LayoutPlanEditContextResponsePayload,
   WorkbookData,
 } from "@portalai/core/contracts";
 
@@ -51,6 +52,60 @@ jest.unstable_mockModule("../../../services/layout-plan-interpret.service.js", (
   LayoutPlanInterpretService: {
     analyze: mockAnalyze,
     loadCatalog: jest.fn(async () => []),
+  },
+}));
+
+// In-memory Redis shim — keeps the chunked workbook cache exercised by
+// `getEditContext` off a real Redis. Mirrors the implementation that
+// `layout-plans.router.integration.test.ts` uses.
+const redisStore = new Map<string, string>();
+jest.unstable_mockModule("../../../utils/redis.util.js", () => ({
+  getRedisClient: () => ({
+    set: async (key: string, value: string): Promise<"OK"> => {
+      redisStore.set(key, value);
+      return "OK";
+    },
+    get: async (key: string): Promise<string | null> =>
+      redisStore.get(key) ?? null,
+    mget: async (...keys: string[]): Promise<(string | null)[]> =>
+      keys.map((k) => redisStore.get(k) ?? null),
+    del: async (...keys: string[]): Promise<number> => {
+      let n = 0;
+      for (const k of keys) if (redisStore.delete(k)) n++;
+      return n;
+    },
+    scanStream({ match }: { match: string }) {
+      const re = new RegExp(
+        "^" +
+          match
+            .split("*")
+            .map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+            .join(".*") +
+          "$"
+      );
+      const matched = [...redisStore.keys()].filter((k) => re.test(k));
+      return (async function* () {
+        if (matched.length > 0) yield matched;
+      })();
+    },
+  }),
+  closeRedis: async () => undefined,
+}));
+
+// In-memory S3 — `FileUploadSessionService.resolveWorkbook`'s cache-miss
+// branch re-streams from S3 via this service; the mock keeps the
+// fallback path off the network for the source-available case and lets
+// the source-removed case surface as `FILE_UPLOAD_SESSION_NOT_FOUND`
+// (file_uploads rows missing, not S3).
+jest.unstable_mockModule("../../../services/s3.service.js", () => ({
+  S3Service: {
+    createPresignedPutUrl: jest.fn(async () => "https://s3.test/ignore"),
+    getObjectStream: jest.fn(),
+    headObject: jest.fn(async () => ({
+      contentLength: 0,
+      contentType: "text/csv",
+    })),
+    deleteObject: jest.fn(async () => undefined),
   },
 }));
 
@@ -1650,6 +1705,338 @@ describe("Connector Instance Layout Plans Router", () => {
       );
       expect(getRes.body.payload.plan.regions[0].warnings[0].severity).toBe(
         "blocker"
+      );
+    });
+  });
+
+  // ── GET /:connectorInstanceId/layout-plan/edit-context ───────────────────
+
+  describe("GET /api/connector-instances/:id/layout-plan/edit-context", () => {
+    /** Mirrors `workbook-preview.util.ts` sheetId(). */
+    function sheetIdOf(index: number, name: string): string {
+      const slug = name.replace(/\s+/g, "_").toLowerCase();
+      return `sheet_${index}_${slug}`;
+    }
+
+    /** Dense-rows shape used by `WorkbookCacheService.readRows` / preview. */
+    function sparseToDenseRows(
+      sheet: WorkbookData["sheets"][number]
+    ): (string | number | boolean | null)[][] {
+      const { rows, cols } = sheet.dimensions;
+      const dense: (string | number | boolean | null)[][] = Array.from(
+        { length: rows },
+        () => new Array(cols).fill(null) as (string | number | boolean | null)[]
+      );
+      for (const cell of sheet.cells) {
+        const r = cell.row - 1;
+        const c = cell.col - 1;
+        if (r < 0 || r >= rows || c < 0 || c >= cols) continue;
+        const v = cell.value;
+        if (
+          typeof v === "string" ||
+          typeof v === "number" ||
+          typeof v === "boolean"
+        ) {
+          dense[r]![c] = v;
+        } else if (v == null) {
+          dense[r]![c] = null;
+        } else {
+          dense[r]![c] = String(v);
+        }
+      }
+      return dense;
+    }
+
+    /** Populate the chunked cache under `prefix` for the given workbook. */
+    function seedWorkbookCache(prefix: string, workbook: WorkbookData) {
+      const sheetMetas = workbook.sheets.map((sheet, i) => ({
+        sheetId: sheetIdOf(i, sheet.name),
+        name: sheet.name,
+        rowCount: sheet.dimensions.rows,
+        colCount: sheet.dimensions.cols,
+        hasMerges: sheet.cells.some((c) => c.merged !== undefined),
+      }));
+      redisStore.set(
+        `${prefix}:meta`,
+        JSON.stringify({
+          sheets: sheetMetas,
+          status: "ready" as const,
+          createdAt: now,
+        })
+      );
+      workbook.sheets.forEach((sheet, i) => {
+        const sId = sheetMetas[i]!.sheetId;
+        redisStore.set(
+          `${prefix}:sheet:${sId}:rows:0`,
+          JSON.stringify(sparseToDenseRows(sheet))
+        );
+      });
+    }
+
+    async function seedConnectorInstanceWithSlug(
+      slug: string
+    ): Promise<{ definitionId: string; instanceId: string }> {
+      const def = {
+        ...makeConnectorDefinition(),
+        slug,
+      };
+      await (db as Db).insert(connectorDefinitions).values(def as never);
+      const inst = makeConnectorInstance(def.id, organizationId);
+      await (db as Db).insert(connectorInstances).values(inst as never);
+      return { definitionId: def.id, instanceId: inst.id };
+    }
+
+    async function seedPlanRow(forInstanceId: string): Promise<string> {
+      const planId = generateId();
+      await (db as Db).insert(connectorInstanceLayoutPlans).values({
+        id: planId,
+        connectorInstanceId: forInstanceId,
+        planVersion: "1.0.0",
+        revisionTag: null,
+        plan: makeLayoutPlan(),
+        interpretationTrace: null,
+        supersededBy: null,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      return planId;
+    }
+
+    /**
+     * Seed a layout_plan_commit job that points the file-upload edit-context
+     * lookup at a specific uploadSessionId — mirrors what
+     * `prepareDraftCommit` / `prepareRecommit` would have inserted in
+     * production.
+     */
+    async function seedPriorLayoutPlanCommitJob(
+      forInstanceId: string,
+      forUploadSessionId: string,
+      forPlanId: string
+    ): Promise<void> {
+      await (db as Db).insert(schema.jobs).values({
+        id: generateId(),
+        organizationId,
+        type: "layout_plan_commit",
+        status: "completed",
+        progress: 100,
+        metadata: {
+          kind: "draft",
+          organizationId,
+          userId,
+          connectorInstanceId: forInstanceId,
+          planId: forPlanId,
+          connectorDefinitionId: "_seed",
+          name: "seed",
+          isExistingInstance: false,
+          plan: {},
+          workbookSource: {
+            kind: "uploadSession",
+            uploadSessionId: forUploadSessionId,
+          },
+        },
+        result: null,
+        error: null,
+        startedAt: now,
+        completedAt: now,
+        bullJobId: null,
+        attempts: 1,
+        maxAttempts: 1,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    }
+
+    beforeEach(() => {
+      redisStore.clear();
+    });
+
+    it("case 1 — google-sheets: returns plan + slug + workbookPreview + editable:true", async () => {
+      const seeded = await seedConnectorInstanceWithSlug("google-sheets");
+      const planId = await seedPlanRow(seeded.instanceId);
+      seedWorkbookCache(
+        `connector:wb:google-sheets:${seeded.instanceId}`,
+        makeWorkbook()
+      );
+
+      const res = await request(app)
+        .get(
+          `/api/connector-instances/${seeded.instanceId}/layout-plan/edit-context`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const payload =
+        res.body.payload as LayoutPlanEditContextResponsePayload;
+      expect(payload.planId).toBe(planId);
+      expect(payload.plan.planVersion).toBe("1.0.0");
+      expect(payload.connectorDefinitionSlug).toBe("google-sheets");
+      expect(payload.editable).toBe(true);
+      expect(payload.workbookPreview).not.toBeNull();
+      expect(payload.workbookPreview!.sheets).toHaveLength(1);
+      expect(payload.workbookPreview!.sheets[0].name).toBe("Sheet1");
+      expect(payload.workbookPreview!.sheets[0].cells.length).toBeGreaterThan(0);
+      expect(payload.reason).toBeUndefined();
+    });
+
+    it("case 2 — microsoft-excel: returns the same bundle keyed off the excel cache", async () => {
+      const seeded = await seedConnectorInstanceWithSlug("microsoft-excel");
+      await seedPlanRow(seeded.instanceId);
+      seedWorkbookCache(
+        `connector:wb:microsoft-excel:${seeded.instanceId}`,
+        makeWorkbook()
+      );
+
+      const res = await request(app)
+        .get(
+          `/api/connector-instances/${seeded.instanceId}/layout-plan/edit-context`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      const payload =
+        res.body.payload as LayoutPlanEditContextResponsePayload;
+      expect(payload.connectorDefinitionSlug).toBe("microsoft-excel");
+      expect(payload.editable).toBe(true);
+      expect(payload.workbookPreview!.sheets).toHaveLength(1);
+    });
+
+    it("case 3 — file-upload with source available: editable:true, preview present", async () => {
+      const seeded = await seedConnectorInstanceWithSlug("file-upload");
+      const planId = await seedPlanRow(seeded.instanceId);
+      const uploadSessionId = generateId();
+      const uploadId = generateId();
+      await (db as Db).insert(schema.fileUploads).values({
+        id: uploadId,
+        organizationId,
+        filename: "models.csv",
+        contentType: "text/csv",
+        sizeBytes: 100,
+        s3Key: `uploads/${organizationId}/${uploadId}/models.csv`,
+        status: "parsed",
+        uploadSessionId,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      seedWorkbookCache(`upload-session:${uploadSessionId}`, makeWorkbook());
+      await seedPriorLayoutPlanCommitJob(
+        seeded.instanceId,
+        uploadSessionId,
+        planId
+      );
+
+      const res = await request(app)
+        .get(
+          `/api/connector-instances/${seeded.instanceId}/layout-plan/edit-context`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      const payload =
+        res.body.payload as LayoutPlanEditContextResponsePayload;
+      expect(payload.connectorDefinitionSlug).toBe("file-upload");
+      expect(payload.editable).toBe(true);
+      expect(payload.workbookPreview!.sheets).toHaveLength(1);
+    });
+
+    it("case 4 — file-upload with source removed: editable:false + reason SOURCE_REMOVED", async () => {
+      const seeded = await seedConnectorInstanceWithSlug("file-upload");
+      const planId = await seedPlanRow(seeded.instanceId);
+      const lostUploadSessionId = generateId();
+      // Job exists referencing the upload session, but no file_uploads
+      // rows for that session — mirrors the "post-S3-sweep" state.
+      await seedPriorLayoutPlanCommitJob(
+        seeded.instanceId,
+        lostUploadSessionId,
+        planId
+      );
+
+      const res = await request(app)
+        .get(
+          `/api/connector-instances/${seeded.instanceId}/layout-plan/edit-context`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      const payload =
+        res.body.payload as LayoutPlanEditContextResponsePayload;
+      expect(payload.editable).toBe(false);
+      expect(payload.workbookPreview).toBeNull();
+      expect(payload.reason?.code).toBe("SOURCE_REMOVED");
+    });
+
+    it("case 5 — plan missing: returns 404 LAYOUT_PLAN_NOT_FOUND", async () => {
+      const seeded = await seedConnectorInstanceWithSlug("google-sheets");
+      // No plan row inserted.
+
+      const res = await request(app)
+        .get(
+          `/api/connector-instances/${seeded.instanceId}/layout-plan/edit-context`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_NOT_FOUND);
+    });
+
+    it("case 6 — cross-org: returns 404 LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND", async () => {
+      // Seed a second org with its own instance.
+      const otherDef = makeConnectorDefinition();
+      await (db as Db).insert(connectorDefinitions).values(otherDef as never);
+      const otherUser = {
+        id: generateId(),
+        auth0Id: `auth0|other-${generateId()}`,
+        email: `other-${generateId()}@example.com`,
+        name: "Other User",
+        lastLogin: now,
+        picture: null,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      };
+      await (db as Db).insert(schema.users).values(otherUser as never);
+      const otherOrg = {
+        id: generateId(),
+        name: "Other Org",
+        timezone: "UTC",
+        ownerUserId: otherUser.id,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      };
+      await (db as Db).insert(schema.organizations).values(otherOrg as never);
+      const otherInstance = makeConnectorInstance(otherDef.id, otherOrg.id);
+      await (db as Db)
+        .insert(connectorInstances)
+        .values(otherInstance as never);
+
+      const res = await request(app)
+        .get(
+          `/api/connector-instances/${otherInstance.id}/layout-plan/edit-context`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(
+        ApiCode.LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND
       );
     });
   });

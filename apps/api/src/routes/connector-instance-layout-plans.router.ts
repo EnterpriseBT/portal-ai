@@ -8,6 +8,7 @@ import {
 import type {
   InterpretResponsePayload,
   LayoutPlanCommitEnqueuedResponse,
+  LayoutPlanEditContextResponsePayload,
   LayoutPlanResponsePayload,
 } from "@portalai/core/contracts";
 
@@ -242,6 +243,111 @@ connectorInstanceLayoutPlansRouter.get(
               error instanceof Error
                 ? error.message
                 : "Layout plan fetch failed"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/connector-instances/{connectorInstanceId}/layout-plan/edit-context:
+ *   get:
+ *     tags:
+ *       - Layout Plans
+ *     summary: Bundle the data the edit-plan view needs at mount time
+ *     description: |
+ *       Returns the current layout plan, the connector definition slug, and
+ *       a preview of the workbook in one round-trip. The frontend's edit view
+ *       (`/connectors/:id/layout-plan/edit`) mounts the region editor against
+ *       this payload directly, no extra fetches required.
+ *
+ *       When the workbook source can no longer be resolved (file-upload
+ *       connector whose `file_uploads` rows have been cleaned, or a
+ *       connector whose slug isn't in the edit-supported set), the response
+ *       returns `editable: false` + `reason: { code, message }` instead of a
+ *       preview — the view renders a notice and a link to the new-connector
+ *       wizard.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorInstanceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Edit context bundle
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     planId:
+ *                       type: string
+ *                     plan:
+ *                       $ref: '#/components/schemas/LayoutPlan'
+ *                     connectorDefinitionSlug:
+ *                       type: string
+ *                     workbookPreview:
+ *                       type: object
+ *                       nullable: true
+ *                     editable:
+ *                       type: boolean
+ *                     reason:
+ *                       type: object
+ *                       nullable: true
+ *       404:
+ *         description: |
+ *           Either the connector instance is not visible to this organization
+ *           (`LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND`) or no current plan
+ *           exists for it (`LAYOUT_PLAN_NOT_FOUND`).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+connectorInstanceLayoutPlansRouter.get(
+  "/:connectorInstanceId/layout-plan/edit-context",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { connectorInstanceId } = req.params;
+      const { organizationId } = req.application!.metadata;
+
+      const payload =
+        await ConnectorInstanceLayoutPlansService.getEditContext(
+          connectorInstanceId,
+          organizationId
+        );
+
+      return HttpService.success<LayoutPlanEditContextResponsePayload>(
+        res,
+        payload
+      );
+    } catch (error) {
+      logger.error(
+        {
+          error: error instanceof Error ? error.message : "Unknown error",
+          connectorInstanceId: req.params.connectorInstanceId,
+        },
+        "Layout plan edit-context fetch failed"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.LAYOUT_PLAN_NOT_FOUND,
+              error instanceof Error
+                ? error.message
+                : "Edit context fetch failed"
             )
       );
     }
