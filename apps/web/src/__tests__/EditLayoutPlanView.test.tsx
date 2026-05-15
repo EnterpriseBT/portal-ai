@@ -95,6 +95,11 @@ const baseProps = {
   isCommitting: false,
   connectorInstanceId: "ci_1",
   connectorInstanceName: "Test Connector",
+  isSavingDraft: false,
+  saveDraftToast: null as
+    | { severity: "success" | "error"; message: string }
+    | null,
+  onDismissSaveDraftToast: jest.fn(),
   regions: [] as RegionDraft[],
   activeSheetId: "sheet_0_sheet1",
   selectedRegionId: null,
@@ -108,6 +113,7 @@ const baseProps = {
   onJumpToRegion: jest.fn(),
   onEditBinding: jest.fn(),
   onCommit: jest.fn(),
+  onSaveDraft: jest.fn(),
   onBack: jest.fn(),
   onNavigate: jest.fn(),
 };
@@ -131,6 +137,44 @@ describe("EditLayoutPlanViewUI", () => {
     // (the editable:false branch shows an Alert + re-upload link instead).
     expect(screen.getAllByText(/Draw regions/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Review/i).length).toBeGreaterThan(0);
+  });
+
+  // ── Case 11 ────────────────────────────────────────────────────────────
+  it("case 11 — clicking Save draft on the editor invokes the onSaveDraft prop", () => {
+    const onSaveDraft = jest.fn();
+    const editContext = makeEditableContext();
+    const regions = makeEditableDraftsFromContext(editContext);
+
+    render(
+      <EditLayoutPlanViewUI
+        {...baseProps}
+        editContext={editContext}
+        regions={regions}
+        onSaveDraft={onSaveDraft}
+      />
+    );
+
+    const saveButton = screen.getByRole("button", { name: /save draft/i });
+    fireEvent.click(saveButton);
+
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("case 11 — saveDraftToast renders a Snackbar with the success message", () => {
+    const editContext = makeEditableContext();
+    const regions = makeEditableDraftsFromContext(editContext);
+
+    render(
+      <EditLayoutPlanViewUI
+        {...baseProps}
+        editContext={editContext}
+        regions={regions}
+        saveDraftToast={{ severity: "success", message: "Plan saved." }}
+      />
+    );
+
+    expect(screen.getByTestId("save-draft-toast-success")).toBeInTheDocument();
+    expect(screen.getByText("Plan saved.")).toBeInTheDocument();
   });
 
   // ── Case 12 ────────────────────────────────────────────────────────────

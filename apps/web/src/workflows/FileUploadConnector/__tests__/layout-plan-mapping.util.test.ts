@@ -5,6 +5,7 @@ import type { RegionDraft, Workbook } from "../../../modules/RegionEditor";
 import type { LayoutPlan } from "@portalai/core/contracts";
 
 import {
+  draftsToRegions,
   entityOptionsFromWorkbook,
   mergeStagedEntityOptions,
   overallConfidenceFromPlan,
@@ -935,5 +936,137 @@ describe("mergeStagedEntityOptions", () => {
     ]);
     // Sheet option keeps its original label.
     expect(merged.find((o) => o.value === "sheet_a")?.label).toBe("Alpha");
+  });
+});
+
+describe("draftsToRegions", () => {
+  // Reuses the same plan shape `planRegionsToDrafts` exercises so the
+  // forward → backward → forward round-trip is tested implicitly.
+  const plan = {
+    regions: [
+      {
+        id: "region-1-Alpha-1x1",
+        sheet: "Alpha",
+        bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 2 },
+        targetEntityDefinitionId: "ent_contact",
+        headerAxes: ["row" as const],
+        segmentsByAxis: {
+          row: [{ kind: "field" as const, positionCount: 2 }],
+        },
+        headerStrategyByAxis: {
+          row: {
+            kind: "row" as const,
+            locator: { kind: "row" as const, sheet: "Alpha", row: 1 },
+            confidence: 0.95,
+          },
+        },
+        identityStrategy: {
+          kind: "column" as const,
+          confidence: 0.9,
+          sourceLocator: {
+            kind: "column" as const,
+            sheet: "Alpha",
+            col: 1,
+          },
+        },
+        columnBindings: [
+          {
+            sourceLocator: {
+              kind: "byHeaderName" as const,
+              axis: "row" as const,
+              name: "Name",
+            },
+            columnDefinitionId: "coldef_name",
+            confidence: 0.95,
+            rationale: "header match",
+          },
+          {
+            sourceLocator: {
+              kind: "byPositionIndex" as const,
+              axis: "row" as const,
+              index: 2,
+            },
+            columnDefinitionId: "coldef_email",
+            confidence: 0.7,
+            rationale: "matched by position",
+          },
+        ],
+        skipRules: [],
+        drift: {
+          headerShiftRows: 0,
+          addedColumns: "halt" as const,
+          removedColumns: { max: 0, action: "halt" as const },
+        },
+        confidence: { region: 0.9, aggregate: 0.85 },
+        warnings: [],
+      },
+    ],
+    confidence: {
+      overall: 0.85,
+      perRegion: { "region-1-Alpha-1x1": 0.85 },
+    },
+  } as unknown as LayoutPlan;
+
+  it("round-trips planRegionsToDrafts → draftsToRegions losslessly for an unedited plan", () => {
+    const drafts = planRegionsToDrafts(plan, makeWorkbook());
+    const regions = draftsToRegions(drafts, makeWorkbook(), plan);
+    expect(regions).toEqual(plan.regions);
+  });
+
+  it("re-shifts bounds from 0-based draft to 1-based backend", () => {
+    const drafts = planRegionsToDrafts(plan, makeWorkbook());
+    drafts[0].bounds = { startRow: 4, endRow: 9, startCol: 0, endCol: 3 };
+    const regions = draftsToRegions(drafts, makeWorkbook(), plan);
+    expect(regions[0].bounds).toEqual({
+      startRow: 5,
+      endRow: 10,
+      startCol: 1,
+      endCol: 4,
+    });
+  });
+
+  it("deserialises byHeaderName locators", () => {
+    const drafts = planRegionsToDrafts(plan, makeWorkbook());
+    const regions = draftsToRegions(drafts, makeWorkbook(), plan);
+    expect(regions[0].columnBindings[0].sourceLocator).toEqual({
+      kind: "byHeaderName",
+      axis: "row",
+      name: "Name",
+    });
+  });
+
+  it("deserialises byPositionIndex locators (round-trips through Number.parseInt)", () => {
+    const drafts = planRegionsToDrafts(plan, makeWorkbook());
+    const regions = draftsToRegions(drafts, makeWorkbook(), plan);
+    expect(regions[0].columnBindings[1].sourceLocator).toEqual({
+      kind: "byPositionIndex",
+      axis: "row",
+      index: 2,
+    });
+  });
+
+  it("carries over interpret-emitted metadata (drift, confidence, warnings, headerStrategyByAxis) from the prior region", () => {
+    const drafts = planRegionsToDrafts(plan, makeWorkbook());
+    const regions = draftsToRegions(drafts, makeWorkbook(), plan);
+    expect(regions[0].drift).toEqual(plan.regions[0].drift);
+    expect(regions[0].confidence).toEqual(plan.regions[0].confidence);
+    expect(regions[0].warnings).toEqual(plan.regions[0].warnings);
+    expect(regions[0].headerStrategyByAxis).toEqual(
+      plan.regions[0].headerStrategyByAxis
+    );
+  });
+
+  it("preserves the column-identity locator via the draft's rawLocator hint", () => {
+    const drafts = planRegionsToDrafts(plan, makeWorkbook());
+    const regions = draftsToRegions(drafts, makeWorkbook(), plan);
+    expect(regions[0].identityStrategy).toEqual(plan.regions[0].identityStrategy);
+  });
+
+  it("throws when a draft lacks a targetEntityDefinitionId", () => {
+    const drafts = planRegionsToDrafts(plan, makeWorkbook());
+    drafts[0].targetEntityDefinitionId = null;
+    expect(() => draftsToRegions(drafts, makeWorkbook(), plan)).toThrow(
+      /no target entity/
+    );
   });
 });

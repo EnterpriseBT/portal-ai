@@ -530,6 +530,302 @@ export function planRegionsToDrafts(
   });
 }
 
+function boundsToBackend(
+  bounds: RegionDraft["bounds"]
+): BackendRegion["bounds"] {
+  return {
+    startRow: bounds.startRow + 1,
+    endRow: bounds.endRow + 1,
+    startCol: bounds.startCol + 1,
+    endCol: bounds.endCol + 1,
+  };
+}
+
+/**
+ * Inverse of `serializeLocator`. Parses the opaque string back into the
+ * structured `BindingSourceLocator` the backend stores in
+ * `LayoutPlan.regions[*].columnBindings[*].sourceLocator`.
+ *
+ * Throws on malformed input rather than guessing — `draftsToRegions`
+ * surfaces any failure to the caller (the Save Draft toast) instead of
+ * silently shipping a wrong locator to PATCH.
+ */
+function deserializeLocator(serialized: string): BackendLocator {
+  const [kindToken, axisToken, ...rest] = serialized.split(":");
+  if (axisToken !== "row" && axisToken !== "column") {
+    throw new Error(
+      `deserializeLocator: invalid axis token in "${serialized}"`
+    );
+  }
+  if (kindToken === "header") {
+    const name = rest.join(":");
+    if (name === "") {
+      throw new Error(
+        `deserializeLocator: missing header name in "${serialized}"`
+      );
+    }
+    return { kind: "byHeaderName", axis: axisToken, name };
+  }
+  if (kindToken === "pos") {
+    const indexRaw = rest.join(":");
+    const index = Number.parseInt(indexRaw, 10);
+    if (!Number.isInteger(index)) {
+      throw new Error(
+        `deserializeLocator: non-integer index in "${serialized}"`
+      );
+    }
+    return { kind: "byPositionIndex", axis: axisToken, index };
+  }
+  throw new Error(`deserializeLocator: unknown kind token in "${serialized}"`);
+}
+
+function bindingDraftToBinding(
+  draft: ColumnBindingDraft,
+  priorByLocator: ReadonlyMap<string, BackendBinding>
+): BackendBinding {
+  const prior = priorByLocator.get(draft.sourceLocator);
+  // `confidence` and `rationale` are LLM-emitted metadata on the prior
+  // region — they're informational, not user-edited. Carry them across
+  // a Save Draft so the next interpret pass and the review-step copy
+  // stay coherent. For freshly-drawn bindings with no prior, fall back
+  // to defaults that won't make the LayoutPlanSchema choke.
+  const out: BackendBinding = {
+    sourceLocator: deserializeLocator(draft.sourceLocator),
+    columnDefinitionId: draft.columnDefinitionId,
+    confidence: draft.confidence ?? prior?.confidence ?? 0,
+    rationale: draft.rationale ?? prior?.rationale ?? "",
+  };
+  if (draft.excluded !== undefined) out.excluded = draft.excluded;
+  if (draft.normalizedKey !== undefined) out.normalizedKey = draft.normalizedKey;
+  if (draft.required !== undefined) out.required = draft.required;
+  if (draft.defaultValue !== undefined) out.defaultValue = draft.defaultValue;
+  if (draft.format !== undefined) out.format = draft.format;
+  if (draft.enumValues !== undefined) out.enumValues = draft.enumValues;
+  if (draft.refEntityKey !== undefined) out.refEntityKey = draft.refEntityKey;
+  if (draft.refNormalizedKey !== undefined)
+    out.refNormalizedKey = draft.refNormalizedKey;
+  return out;
+}
+
+/**
+ * Default drift knobs for freshly-drawn regions that don't have a
+ * prior to inherit from. Mirrors what `LayoutPlanInterpretService.analyze`
+ * emits today for any new region — every gate set to "halt" so the user
+ * has to make an explicit choice before drift can auto-apply.
+ */
+const DEFAULT_DRIFT_KNOBS: BackendRegion["drift"] = {
+  headerShiftRows: 0,
+  addedColumns: "halt",
+  removedColumns: { max: 0, action: "halt" },
+};
+
+/**
+ * Pick the identity strategy for a saved region. The editor preserves
+ * the structured locator on `rawLocator` (set by `planRegionsToDrafts`)
+ * so a column-identity round-trips losslessly; for `rowPosition` no
+ * locator is needed; for `composite` the editor doesn't compose new
+ * strategies today, so we carry the prior verbatim. Drafts with no
+ * strategy and no prior throw — `LayoutPlanSchema` requires every
+ * region to have one.
+ */
+function resolveIdentityStrategy(
+  draft: RegionDraft,
+  prior: BackendRegion | undefined
+): BackendRegion["identityStrategy"] {
+  if (!draft.identityStrategy) {
+    if (prior?.identityStrategy) return prior.identityStrategy;
+    throw new Error(
+      `draftsToRegions: region "${draft.id}" has no identity strategy — cannot save.`
+    );
+  }
+  // `planRegionsToDrafts` defaults `draft.identityStrategy.source` to
+  // `"heuristic"` when the persisted region didn't carry one. Don't
+  // ship that default back to the backend — only forward `source`
+  // when it's a user-set choice (i.e. the prior region actually had
+  // a `source` field set, or the draft's source differs from the
+  // forward-path default).
+  const priorSource = prior?.identityStrategy?.source;
+  const carrySource =
+    draft.identityStrategy.source !== undefined &&
+    draft.identityStrategy.source !== "heuristic" ||
+    priorSource !== undefined;
+  const source = carrySource
+    ? draft.identityStrategy.source ?? priorSource
+    : undefined;
+
+  if (draft.identityStrategy.kind === "column") {
+    const priorLocator =
+      prior?.identityStrategy?.kind === "column"
+        ? prior.identityStrategy.sourceLocator
+        : undefined;
+    const sourceLocator = draft.identityStrategy.rawLocator ?? priorLocator;
+    if (!sourceLocator) {
+      throw new Error(
+        `draftsToRegions: region "${draft.id}" has a column-identity strategy without a source locator — cannot save.`
+      );
+    }
+    return {
+      kind: "column",
+      confidence: draft.identityStrategy.confidence ?? 0,
+      sourceLocator,
+      ...(source !== undefined && { source }),
+    };
+  }
+  if (draft.identityStrategy.kind === "rowPosition") {
+    return {
+      kind: "rowPosition",
+      confidence: draft.identityStrategy.confidence ?? 0,
+      ...(source !== undefined && { source }),
+    };
+  }
+  // `composite` — the editor doesn't compose new ones; carry the prior.
+  if (prior?.identityStrategy) return prior.identityStrategy;
+  throw new Error(
+    `draftsToRegions: region "${draft.id}" has a composite identity strategy without a prior to inherit from — cannot save.`
+  );
+}
+
+/**
+ * Inverse of `planRegionsToDrafts`. Converts the editor-side
+ * `RegionDraft[]` back to the persisted `LayoutPlan.regions[]` shape
+ * the PATCH endpoint expects — bounds re-shifted to 1-based, locators
+ * deserialized, axis-anchor cells re-shifted, etc.
+ *
+ * Fields the editor doesn't surface (drift knobs, header strategies,
+ * region-level confidence breakdown, warnings) are carried over from
+ * the matching region in `originalPlan` (by `id`) so a Save Draft only
+ * changes the bits the user actually touched. Newly-drawn regions
+ * with no prior fall back to minimal defaults; if those don't satisfy
+ * the backend's `LayoutPlanSchema`, the route's 400 surfaces to the
+ * caller through the normal error path.
+ *
+ * Throws on a draft without a `targetEntityDefinitionId` (the editor
+ * lets the user defer the entity assignment while drawing; Save Draft
+ * refuses to ship an unbound region — PATCH would reject it anyway).
+ */
+export function draftsToRegions(
+  drafts: RegionDraft[],
+  workbook: Workbook,
+  originalPlan: Pick<LayoutPlan, "regions">
+): BackendRegion[] {
+  const { byId } = indexSheets(workbook);
+  const originalById = new Map(
+    originalPlan.regions.map((r) => [r.id, r] as const)
+  );
+
+  return drafts.map((draft) => {
+    if (draft.targetEntityDefinitionId === null) {
+      throw new Error(
+        `draftsToRegions: region "${draft.id}" has no target entity — assign one before saving the plan.`
+      );
+    }
+    const sheet = byId.get(draft.sheetId);
+    if (!sheet) {
+      throw new Error(
+        `draftsToRegions: unknown sheetId "${draft.sheetId}" for region "${draft.id}"`
+      );
+    }
+    const prior = originalById.get(draft.id);
+    const priorBindingsByLocator = new Map<string, BackendBinding>(
+      (prior?.columnBindings ?? []).map(
+        (b) => [serializeLocator(b.sourceLocator), b] as const
+      )
+    );
+
+    // Identity strategy must end up on the persisted region. If the
+    // draft doesn't carry one and there's no prior to inherit from,
+    // refuse to save — PATCH would reject the schema-invalid payload
+    // anyway, but failing here gives a clearer error message.
+    const identityStrategy = resolveIdentityStrategy(draft, prior);
+
+    const region: BackendRegion = {
+      id: draft.id,
+      sheet: sheet.name,
+      bounds: boundsToBackend(draft.bounds),
+      targetEntityDefinitionId: draft.targetEntityDefinitionId,
+      headerAxes: [...(draft.headerAxes ?? [])],
+      identityStrategy,
+      columnBindings: (draft.columnBindings ?? []).map((b) =>
+        bindingDraftToBinding(b, priorBindingsByLocator)
+      ),
+      skipRules: (draft.skipRules ?? [])
+        .filter(
+          (rule) =>
+            rule.kind === "blank" ||
+            (typeof rule.crossAxisIndex === "number" &&
+              typeof rule.pattern === "string")
+        )
+        .map((rule) =>
+          rule.kind === "blank"
+            ? ({ kind: "blank" as const })
+            : ({
+                kind: "cellMatches" as const,
+                crossAxisIndex: rule.crossAxisIndex as number,
+                pattern: rule.pattern,
+                ...(rule.axis ? { axis: rule.axis } : {}),
+              })
+        ),
+      // Carry over interpret-emitted metadata that the editor doesn't
+      // surface. Fresh-drawn regions (no prior) get minimal defaults.
+      drift: prior?.drift ?? DEFAULT_DRIFT_KNOBS,
+      confidence: prior?.confidence ?? {
+        region: draft.confidence ?? 0,
+        aggregate: draft.confidence ?? 0,
+      },
+      warnings: prior?.warnings ?? [],
+      headerStrategyByAxis: prior?.headerStrategyByAxis ?? {},
+    };
+
+    if (draft.segmentsByAxis) {
+      const segs: BackendRegion["segmentsByAxis"] = {};
+      if (draft.segmentsByAxis.row) segs.row = draft.segmentsByAxis.row;
+      if (draft.segmentsByAxis.column)
+        segs.column = draft.segmentsByAxis.column;
+      if (segs.row || segs.column) region.segmentsByAxis = segs;
+    }
+    if (draft.cellValueField) {
+      region.cellValueField = {
+        name: draft.cellValueField.name,
+        nameSource: draft.cellValueField.nameSource,
+        ...(draft.cellValueField.columnDefinitionId !== undefined && {
+          columnDefinitionId: draft.cellValueField.columnDefinitionId,
+        }),
+      };
+    }
+    if (draft.intersectionCellValueFields) {
+      const next: NonNullable<BackendRegion["intersectionCellValueFields"]> =
+        {};
+      for (const [id, field] of Object.entries(
+        draft.intersectionCellValueFields
+      )) {
+        next[id] = {
+          name: field.name,
+          nameSource: field.nameSource,
+          ...(field.columnDefinitionId !== undefined && {
+            columnDefinitionId: field.columnDefinitionId,
+          }),
+          ...(field.excluded !== undefined && { excluded: field.excluded }),
+        };
+      }
+      region.intersectionCellValueFields = next;
+    }
+    if (draft.recordAxisTerminator) {
+      region.recordAxisTerminator = draft.recordAxisTerminator;
+    }
+    if (draft.recordsAxis) region.recordsAxis = draft.recordsAxis;
+    if (draft.axisAnchorCell) {
+      region.axisAnchorCell = {
+        row: draft.axisAnchorCell.row + 1,
+        col: draft.axisAnchorCell.col + 1,
+      };
+    }
+    if (draft.columnOverrides) {
+      region.columnOverrides = { ...draft.columnOverrides };
+    }
+    return region;
+  });
+}
+
 export function overallConfidenceFromPlan(
   plan: Pick<LayoutPlan, "confidence">
 ): number {

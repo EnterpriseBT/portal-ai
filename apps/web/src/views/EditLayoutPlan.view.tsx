@@ -14,6 +14,7 @@ import {
 } from "@portalai/core/ui";
 import type { StepConfig } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
+import Snackbar from "@mui/material/Snackbar";
 
 import type {
   LayoutPlanEditContextResponsePayload,
@@ -30,7 +31,10 @@ import type {
   RegionDraft,
   Workbook,
 } from "../modules/RegionEditor";
-import { planRegionsToDrafts } from "../workflows/FileUploadConnector/utils/layout-plan-mapping.util";
+import {
+  draftsToRegions,
+  planRegionsToDrafts,
+} from "../workflows/FileUploadConnector/utils/layout-plan-mapping.util";
 
 const STEP_CONFIGS: StepConfig[] = [
   { label: "Draw regions", description: "Outline the data on each sheet" },
@@ -76,6 +80,11 @@ export interface EditLayoutPlanViewUIProps {
   connectorInstanceId: string;
   connectorInstanceName: string | null;
 
+  /** Save Draft state (slice 3b). */
+  isSavingDraft: boolean;
+  saveDraftToast: { severity: "success" | "error"; message: string } | null;
+  onDismissSaveDraftToast: () => void;
+
   // Editor state (only meaningful when editContext.editable is true).
   regions: RegionDraft[];
   activeSheetId: string;
@@ -92,6 +101,7 @@ export interface EditLayoutPlanViewUIProps {
   onJumpToRegion: (regionId: string) => void;
   onEditBinding: (regionId: string, sourceLocator: string) => void;
   onCommit: () => void;
+  onSaveDraft: () => void;
   onBack: () => void;
   onNavigate: (href: string) => void;
 }
@@ -104,6 +114,9 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   isCommitting,
   connectorInstanceId,
   connectorInstanceName,
+  isSavingDraft,
+  saveDraftToast,
+  onDismissSaveDraftToast,
   regions,
   activeSheetId,
   selectedRegionId,
@@ -117,6 +130,7 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   onJumpToRegion,
   onEditBinding,
   onCommit,
+  onSaveDraft,
   onBack,
   onNavigate,
 }) => {
@@ -124,6 +138,16 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   // so the user always has a one-click path back to the detail view. The
   // third crumb falls back to a generic label while the connector-name
   // query is still in flight.
+  const canSaveDraft = !!editContext?.editable;
+  const saveDraftButton = canSaveDraft ? (
+    <Button
+      variant="contained"
+      onClick={onSaveDraft}
+      disabled={isSavingDraft}
+    >
+      {isSavingDraft ? "Saving…" : "Save draft"}
+    </Button>
+  ) : undefined;
   const header = (
     <PageHeader
       breadcrumbs={[
@@ -138,7 +162,39 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
       onNavigate={onNavigate}
       title="Modify Layout Plan"
       icon={<Icon name={IconName.MemoryChip} />}
+      primaryAction={saveDraftButton}
     />
+  );
+
+  // Toast renders identically across every branch — `loadError` and
+  // `editable: false` branches surface their own messages, but a
+  // successful Save Draft on a previously-edited plan can still race
+  // a subsequent navigation and we want the user to see the
+  // confirmation either way.
+  const toast = (
+    <Snackbar
+      open={saveDraftToast !== null}
+      autoHideDuration={saveDraftToast?.severity === "success" ? 4000 : null}
+      onClose={(_evt, reason) => {
+        if (reason === "clickaway" && saveDraftToast?.severity === "error") {
+          return;
+        }
+        onDismissSaveDraftToast();
+      }}
+      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+    >
+      {saveDraftToast ? (
+        <Alert
+          severity={saveDraftToast.severity}
+          variant="filled"
+          onClose={onDismissSaveDraftToast}
+          sx={{ minWidth: 320 }}
+          data-testid={`save-draft-toast-${saveDraftToast.severity}`}
+        >
+          {saveDraftToast.message}
+        </Alert>
+      ) : undefined}
+    </Snackbar>
   );
 
   if (loading) {
@@ -148,6 +204,7 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
           {header}
           <Typography>Loading layout plan…</Typography>
         </Stack>
+        {toast}
       </Box>
     );
   }
@@ -163,6 +220,7 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
             </Button>
           </Box>
         </Stack>
+        {toast}
       </Box>
     );
   }
@@ -197,12 +255,17 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
             </Stack>
           </Box>
         </Stack>
+        {toast}
       </Box>
     );
   }
 
   const workbook = previewToEditorWorkbook(editContext.workbookPreview!);
-  const entityOptions: EntityOption[] = []; // Slice 3 deferral: full entity catalog wiring belongs in 3b.
+  // Entity-catalog wiring stays out of slice 3b; the editor's
+  // entity-picker just doesn't show staged options here. Adding it
+  // belongs in a follow-up that surfaces the org's full entity
+  // catalog as picker options.
+  const entityOptions: EntityOption[] = [];
 
   return (
     <Box>
@@ -210,29 +273,32 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
         {header}
         {commitError ? <FormAlert serverError={commitError} /> : null}
         <RegionEditorUI
-        step={step}
-        stepConfigs={STEP_CONFIGS}
-        workbook={workbook}
-        regions={regions}
-        activeSheetId={activeSheetId}
-        onActiveSheetChange={onActiveSheetChange}
-        selectedRegionId={selectedRegionId}
-        onSelectRegion={onSelectRegion}
-        onRegionDraft={onRegionDraft}
-        onRegionUpdate={onRegionUpdate}
-        onRegionDelete={onRegionDelete}
-        onRegionResize={onRegionResize}
-        entityOptions={entityOptions}
-        // Edit mode does not re-run interpret — Save Draft is deferred to
-        // slice 3b; for now the interpret button is a no-op.
-        onInterpret={() => undefined}
-        onJumpToRegion={onJumpToRegion}
-        onEditBinding={onEditBinding}
-        onCommit={onCommit}
-        onBack={onBack}
-        isCommitting={isCommitting}
+          step={step}
+          stepConfigs={STEP_CONFIGS}
+          workbook={workbook}
+          regions={regions}
+          activeSheetId={activeSheetId}
+          onActiveSheetChange={onActiveSheetChange}
+          selectedRegionId={selectedRegionId}
+          onSelectRegion={onSelectRegion}
+          onRegionDraft={onRegionDraft}
+          onRegionUpdate={onRegionUpdate}
+          onRegionDelete={onRegionDelete}
+          onRegionResize={onRegionResize}
+          entityOptions={entityOptions}
+          // Edit mode doesn't re-run interpret — the editor's
+          // "Interpret" button is a no-op here. Save Draft is the
+          // intended way to persist edits without re-running
+          // classification.
+          onInterpret={() => undefined}
+          onJumpToRegion={onJumpToRegion}
+          onEditBinding={onEditBinding}
+          onCommit={onCommit}
+          onBack={onBack}
+          isCommitting={isCommitting}
         />
       </Stack>
+      {toast}
     </Box>
   );
 };
@@ -265,6 +331,16 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       connectorInstanceId,
       editContext?.planId ?? ""
     );
+
+  const { mutateAsync: patchPlanMutate, isPending: isSavingDraft } =
+    sdk.connectorInstanceLayoutPlans.patch(
+      connectorInstanceId,
+      editContext?.planId ?? ""
+    );
+
+  const [saveDraftToast, setSaveDraftToast] = useState<
+    { severity: "success" | "error"; message: string } | null
+  >(null);
 
   // Local editor state — initialized from the edit-context plan and the
   // preview workbook on first render after the query resolves.
@@ -330,6 +406,40 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     []
   );
 
+  const handleSaveDraft = useCallback(async () => {
+    if (!editContext?.editable || !editContext.workbookPreview) return;
+    const workbook = previewToEditorWorkbook(editContext.workbookPreview);
+    let nextRegions;
+    try {
+      nextRegions = draftsToRegions(regions, workbook, editContext.plan);
+    } catch (err) {
+      setSaveDraftToast({
+        severity: "error",
+        message: err instanceof Error ? err.message : "Failed to save plan",
+      });
+      return;
+    }
+    try {
+      await patchPlanMutate({
+        regions: nextRegions,
+      });
+      // The cache hit on `queryKeys.connectorInstanceLayoutPlans.root`
+      // re-fetches the edit context so the next mount sees the saved
+      // version. The current view's local draft state is the source
+      // of truth until the user leaves and re-enters.
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.connectorInstanceLayoutPlans.root,
+      });
+      setSaveDraftToast({ severity: "success", message: "Plan saved." });
+    } catch (err) {
+      const apiErr = err as { message?: string } | null;
+      setSaveDraftToast({
+        severity: "error",
+        message: apiErr?.message ?? "Failed to save plan.",
+      });
+    }
+  }, [editContext, regions, patchPlanMutate, queryClient]);
+
   const handleCommit = useCallback(async () => {
     if (!editContext?.editable) return;
     try {
@@ -378,6 +488,9 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       isCommitting={isCommitting}
       connectorInstanceId={connectorInstanceId}
       connectorInstanceName={connectorInstanceName}
+      isSavingDraft={isSavingDraft}
+      saveDraftToast={saveDraftToast}
+      onDismissSaveDraftToast={() => setSaveDraftToast(null)}
       regions={regions}
       activeSheetId={activeSheetId}
       selectedRegionId={selectedRegionId}
@@ -394,6 +507,7 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       }}
       onEditBinding={() => undefined}
       onCommit={handleCommit}
+      onSaveDraft={handleSaveDraft}
       onBack={handleBack}
       onNavigate={(href) => navigate({ to: href })}
     />
