@@ -44,17 +44,112 @@ function collectDataValuesInRow(
   return out;
 }
 
+/**
+ * Window size (rows or columns) for the past-bounds identity scan that
+ * `validateColumnIdentityPastBounds` / `validateRowIdentityPastBounds`
+ * walks to detect blanks / duplicates the within-bounds heuristic
+ * wouldn't see. Matches `resolve-bounds.ts`'s `ROW_SCAN_WINDOW` so we
+ * read in the same chunked pattern the terminator-extension scan does
+ * at commit time.
+ */
+const PAST_BOUNDS_SCAN_WINDOW = 200;
+
+/**
+ * Hard cap on how far past the declared bounds we'll look when
+ * validating a column / row identity candidate. The declared bounds
+ * sampled by the proposer is usually a small handful of rows (the
+ * heuristic only looks at sample data); past those, a terminator like
+ * `untilBlank consecutiveBlanks: 2` extends commit-time bounds to
+ * wherever the data ends. The wider the validation scan, the more
+ * confidence we have that the identity candidate survives commit's
+ * drift gate — but the cost is linear in rows read. 2000 covers every
+ * realistic spreadsheet without re-reading the entire workbook.
+ */
+const PAST_BOUNDS_SCAN_LIMIT = 2000;
+
+/**
+ * Return `true` iff the column stays a viable identity locator past
+ * the declared bounds — i.e. every cell from `[bounds.endRow + 1,
+ * min(bounds.endRow + LIMIT, sheet.dimensions.rows)]` is both
+ * non-empty and not a duplicate of a value seen within the bounds or
+ * in the extended scan so far.
+ *
+ * Surfaces the failure case behind the
+ * `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED` gate: the within-bounds
+ * heuristic happily proposes col-identity when the sampled rows are
+ * clean, but the commit pipeline's terminator scan extends bounds
+ * out to where the data ends and there the identity column may have
+ * gaps / duplicates. Validating here lets us downgrade the candidate
+ * so `rowPosition` wins the score race and the auto-detected plan
+ * commits cleanly without user intervention.
+ */
+async function validateColumnIdentityPastBounds(
+  sheet: Sheet,
+  col: number,
+  withinBoundsValues: string[],
+  endRow: number
+): Promise<boolean> {
+  const sheetEdge = sheet.dimensions.rows;
+  if (endRow >= sheetEdge) return true;
+  const seen = new Set<string>();
+  for (const v of withinBoundsValues) {
+    if (v !== "") seen.add(v);
+  }
+  const lastScan = Math.min(endRow + PAST_BOUNDS_SCAN_LIMIT, sheetEdge);
+  for (let r = endRow + 1; r <= lastScan; ) {
+    const windowEnd = Math.min(r + PAST_BOUNDS_SCAN_WINDOW - 1, lastScan);
+    await sheet.loadRange(r, windowEnd);
+    for (; r <= windowEnd; r++) {
+      const txt = cellText(sheet, r, col);
+      if (txt === "") return false;
+      if (seen.has(txt)) return false;
+      seen.add(txt);
+    }
+  }
+  return true;
+}
+
+/**
+ * Row-axis counterpart to `validateColumnIdentityPastBounds`. Used by
+ * records-are-columns regions, where identity is a row locator and the
+ * past-bounds scan walks columns instead of rows.
+ */
+async function validateRowIdentityPastBounds(
+  sheet: Sheet,
+  row: number,
+  withinBoundsValues: string[],
+  endCol: number
+): Promise<boolean> {
+  const sheetEdge = sheet.dimensions.cols;
+  if (endCol >= sheetEdge) return true;
+  const seen = new Set<string>();
+  for (const v of withinBoundsValues) {
+    if (v !== "") seen.add(v);
+  }
+  const lastScan = Math.min(endCol + PAST_BOUNDS_SCAN_LIMIT, sheetEdge);
+  // The row stays loaded across the whole scan (single row read once via
+  // `loadRange`), so no per-window load fires. The walk is over columns.
+  await sheet.loadRange(row, row);
+  for (let c = endCol + 1; c <= lastScan; c++) {
+    const txt = cellText(sheet, row, c);
+    if (txt === "") return false;
+    if (seen.has(txt)) return false;
+    seen.add(txt);
+  }
+  return true;
+}
+
 function isUnique(values: string[]): boolean {
   const nonEmpty = values.filter((v) => v !== "");
   if (nonEmpty.length < 2) return false;
   return new Set(nonEmpty).size === nonEmpty.length;
 }
 
-function candidatesForRegion(
+async function candidatesForRegion(
   region: Region,
   sheet: Sheet,
   headerCandidates: HeaderCandidate[] | undefined
-): IdentityCandidate[] {
+): Promise<IdentityCandidate[]> {
   const { bounds, sheet: sheetName } = region;
 
   // User-locked identity short-circuits the heuristic. `detectRegions` copies
@@ -94,20 +189,34 @@ function candidatesForRegion(
         headerRow,
         bounds.endRow
       );
-      if (isUnique(values)) {
-        const nonEmptyRatio =
-          values.filter((v) => v !== "").length / Math.max(1, values.length);
-        const strategy: IdentityStrategy = {
-          kind: "column",
-          sourceLocator: { kind: "column", sheet: sheetName, col: c },
-          confidence: 0.6 + 0.4 * nonEmptyRatio,
-        };
-        out.push({
-          strategy,
-          score: strategy.confidence,
-          rationale: `Column ${c} has unique, non-empty values for every record.`,
-        });
-      }
+      if (!isUnique(values)) continue;
+      // The within-bounds sample says this column is a viable
+      // identity locator, but the proposer's declared bounds only
+      // span a heuristic window (typically 6-20 rows). The
+      // terminator-extension at commit time walks the column out to
+      // where the data actually ends, and the drift gate halts
+      // commit if it sees blanks / duplicates there. Validate now so
+      // the auto-detected plan doesn't trip
+      // LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED on the initial commit.
+      const passes = await validateColumnIdentityPastBounds(
+        sheet,
+        c,
+        values,
+        bounds.endRow
+      );
+      if (!passes) continue;
+      const nonEmptyRatio =
+        values.filter((v) => v !== "").length / Math.max(1, values.length);
+      const strategy: IdentityStrategy = {
+        kind: "column",
+        sourceLocator: { kind: "column", sheet: sheetName, col: c },
+        confidence: 0.6 + 0.4 * nonEmptyRatio,
+      };
+      out.push({
+        strategy,
+        score: strategy.confidence,
+        rationale: `Column ${c} has unique, non-empty values for every record.`,
+      });
     }
 
     // Composite candidate — first 2 columns that together are unique.
@@ -160,20 +269,26 @@ function candidatesForRegion(
         headerCol,
         bounds.endCol
       );
-      if (isUnique(values)) {
-        const nonEmptyRatio =
-          values.filter((v) => v !== "").length / Math.max(1, values.length);
-        const strategy: IdentityStrategy = {
-          kind: "column",
-          sourceLocator: { kind: "row", sheet: sheetName, row: r },
-          confidence: 0.6 + 0.4 * nonEmptyRatio,
-        };
-        out.push({
-          strategy,
-          score: strategy.confidence,
-          rationale: `Row ${r} has unique, non-empty values for every record.`,
-        });
-      }
+      if (!isUnique(values)) continue;
+      const passes = await validateRowIdentityPastBounds(
+        sheet,
+        r,
+        values,
+        bounds.endCol
+      );
+      if (!passes) continue;
+      const nonEmptyRatio =
+        values.filter((v) => v !== "").length / Math.max(1, values.length);
+      const strategy: IdentityStrategy = {
+        kind: "column",
+        sourceLocator: { kind: "row", sheet: sheetName, row: r },
+        confidence: 0.6 + 0.4 * nonEmptyRatio,
+      };
+      out.push({
+        strategy,
+        score: strategy.confidence,
+        rationale: `Row ${r} has unique, non-empty values for every record.`,
+      });
     }
 
     // Composite candidate — first 2 rows that together are unique.
@@ -260,7 +375,11 @@ export async function detectIdentity(
     await sheet.loadRange(region.bounds.startRow, region.bounds.endRow);
     next.set(
       region.id,
-      candidatesForRegion(region, sheet, state.headerCandidates.get(region.id))
+      await candidatesForRegion(
+        region,
+        sheet,
+        state.headerCandidates.get(region.id)
+      )
     );
   }
   return { ...state, identityCandidates: next };

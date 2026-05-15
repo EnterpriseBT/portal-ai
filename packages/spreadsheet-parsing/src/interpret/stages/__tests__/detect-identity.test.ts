@@ -432,4 +432,171 @@ describe("detectIdentity", () => {
       }
     }
   });
+
+  // ── Past-bounds validation ───────────────────────────────────────────
+  //
+  // Regression for the drift-on-initial-commit UX bug surfaced during
+  // smoke testing: the proposer's declared bounds usually only span
+  // a handful of sample rows, but the commit pipeline's terminator
+  // extends bounds out to where the data actually ends. If the
+  // proposed identity column has gaps / duplicates in that extended
+  // range, the drift gate halts commit with
+  // LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED. The fix has `detectIdentity`
+  // do its own past-bounds scan so the auto-detected plan picks a
+  // strategy that survives the commit gate.
+  describe("past-bounds validation", () => {
+    it("downgrades a column candidate when the column has blanks past the declared bounds", async () => {
+      // Within bounds (rows 1-6) the `model` column is unique +
+      // non-empty. Past the bounds (rows 7-300) the same column has
+      // gaps — exactly the gsheets-large shape that surfaced the
+      // bug. RowPosition (score 0.3) should win over the now-skipped
+      // column candidate.
+      const cells: { row: number; col: number; value: string }[] = [
+        { row: 1, col: 1, value: "model" },
+        { row: 1, col: 2, value: "domain" },
+      ];
+      for (let r = 2; r <= 6; r++) {
+        cells.push({ row: r, col: 1, value: `m-${r}` });
+        cells.push({ row: r, col: 2, value: "Language" });
+      }
+      // Past the declared bounds: column 1 has a blank cell.
+      for (let r = 7; r <= 300; r++) {
+        if (r === 100) {
+          cells.push({ row: r, col: 1, value: "" });
+        } else {
+          cells.push({ row: r, col: 1, value: `m-${r}` });
+        }
+        cells.push({ row: r, col: 2, value: "Language" });
+      }
+
+      const state = await runPipeline({
+        workbook: {
+          sheets: [
+            {
+              name: "Sheet1",
+              dimensions: { rows: 300, cols: 2 },
+              cells,
+            },
+          ],
+        },
+        regionHints: [
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 1, startCol: 1, endRow: 6, endCol: 2 },
+            targetEntityDefinitionId: "models",
+            headerAxes: ["row"],
+          },
+        ],
+      });
+
+      const regionId = state.detectedRegions[0].id;
+      const candidates = state.identityCandidates.get(regionId)!;
+      // Column-1 candidate must NOT appear — the past-bounds scan
+      // catches the blank on row 100. (`composite` or `rowPosition`
+      // may still win, both of which sidestep the drift gate; what
+      // matters is the broken column-locator is gone.)
+      const col1Cand = candidates.find(
+        (c) =>
+          c.strategy.kind === "column" &&
+          c.strategy.sourceLocator.kind === "column" &&
+          c.strategy.sourceLocator.col === 1
+      );
+      expect(col1Cand).toBeUndefined();
+    });
+
+    it("downgrades a column candidate when the column has duplicates past the declared bounds", async () => {
+      const cells: { row: number; col: number; value: string }[] = [
+        { row: 1, col: 1, value: "id" },
+        { row: 1, col: 2, value: "label" },
+      ];
+      for (let r = 2; r <= 6; r++) {
+        cells.push({ row: r, col: 1, value: `id-${r}` });
+        cells.push({ row: r, col: 2, value: `lab-${r}` });
+      }
+      // Past the bounds: duplicate the row-5 id.
+      for (let r = 7; r <= 30; r++) {
+        cells.push({
+          row: r,
+          col: 1,
+          value: r === 20 ? "id-5" : `id-${r}`,
+        });
+        cells.push({ row: r, col: 2, value: `lab-${r}` });
+      }
+
+      const state = await runPipeline({
+        workbook: {
+          sheets: [
+            {
+              name: "Sheet1",
+              dimensions: { rows: 30, cols: 2 },
+              cells,
+            },
+          ],
+        },
+        regionHints: [
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 1, startCol: 1, endRow: 6, endCol: 2 },
+            targetEntityDefinitionId: "items",
+            headerAxes: ["row"],
+          },
+        ],
+      });
+
+      const regionId = state.detectedRegions[0].id;
+      const candidates = state.identityCandidates.get(regionId)!;
+      // Column-1 (the column with the past-bounds duplicate) must not
+      // be emitted. Other locators (col-2, composite, rowPosition)
+      // may still win — what matters is the broken one is gone.
+      const col1Cand = candidates.find(
+        (c) =>
+          c.strategy.kind === "column" &&
+          c.strategy.sourceLocator.kind === "column" &&
+          c.strategy.sourceLocator.col === 1
+      );
+      expect(col1Cand).toBeUndefined();
+    });
+
+    it("keeps the column candidate when the column stays clean past the bounds", async () => {
+      const cells: { row: number; col: number; value: string }[] = [
+        { row: 1, col: 1, value: "id" },
+        { row: 1, col: 2, value: "name" },
+      ];
+      for (let r = 2; r <= 50; r++) {
+        cells.push({ row: r, col: 1, value: `id-${r}` });
+        cells.push({ row: r, col: 2, value: `n-${r}` });
+      }
+
+      const state = await runPipeline({
+        workbook: {
+          sheets: [
+            {
+              name: "Sheet1",
+              dimensions: { rows: 50, cols: 2 },
+              cells,
+            },
+          ],
+        },
+        regionHints: [
+          {
+            sheet: "Sheet1",
+            bounds: { startRow: 1, startCol: 1, endRow: 6, endCol: 2 },
+            targetEntityDefinitionId: "items",
+            headerAxes: ["row"],
+          },
+        ],
+      });
+
+      const regionId = state.detectedRegions[0].id;
+      const candidates = state.identityCandidates.get(regionId)!;
+      // Column 1 candidate should be the winner.
+      expect(candidates[0].strategy.kind).toBe("column");
+      if (candidates[0].strategy.kind === "column") {
+        expect(candidates[0].strategy.sourceLocator.kind).toBe("column");
+        if (candidates[0].strategy.sourceLocator.kind === "column") {
+          expect(candidates[0].strategy.sourceLocator.col).toBe(1);
+        }
+      }
+    });
+  });
 });
