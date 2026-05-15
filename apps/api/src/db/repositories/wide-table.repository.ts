@@ -226,7 +226,11 @@ export class WideTableRepository {
           // postgres-js doesn't auto-serialize JS arrays as Postgres
           // array literals when bound as a single parameter. Build an
           // ARRAY[...]-style expression so each element binds as its
-          // own param (`text[]` → `ARRAY[$n, $n+1]::text[]`).
+          // own param (`text[]` → `ARRAY[$n, $n+1]::text[]`). Date
+          // items go through `toISOString()` rather than `String()`
+          // so the bound array elements are locale-independent
+          // ISO 8601 strings (Date.toString() is locale-aware and
+          // reads garbage in non-UTC environments).
           if (pgType === "text[]") {
             if (value === null || value === undefined) {
               return sql`NULL::text[]`;
@@ -235,7 +239,9 @@ export class WideTableRepository {
               return sql`ARRAY[]::text[]`;
             }
             const items = sql.join(
-              value.map((item) => sql`${String(item)}`),
+              value.map((item) =>
+                sql`${item instanceof Date ? item.toISOString() : String(item)}`
+              ),
               sql`, `
             );
             return sql`ARRAY[${items}]::text[]`;
@@ -248,13 +254,28 @@ export class WideTableRepository {
             // `invalid input syntax for type json | Token "Language" is invalid`.
             // `JSON.stringify` produces the right encoding for every
             // JS value — strings → quoted strings, arrays/objects →
-            // structural JSON, numbers/booleans → as-is.
+            // structural JSON, numbers/booleans → as-is, Dates →
+            // ISO 8601 string (via Date.toJSON).
             if (value === null || value === undefined) {
               return sql`NULL::jsonb`;
             }
             return sql`${JSON.stringify(value)}::jsonb`;
           }
-          return sql`${value}`;
+          // Default path covers `text`, `numeric`, `boolean`, `date`,
+          // and `timestamptz`. Pre-coerce Date instances to their ISO
+          // string form so postgres-js's wire encoder never ends up
+          // calling `Buffer.byteLength` on a Date
+          // (`ERR_INVALID_ARG_TYPE: Received an instance of Date`,
+          // observed during sync of a Google Sheets connector whose
+          // date-formatted cells flow through to typed columns).
+          // Postgres implicitly casts ISO strings to date / timestamptz
+          // / text columns, so the coercion is loss-free for the
+          // columns we currently support; numeric / boolean columns
+          // receiving a Date would have failed downstream anyway, so
+          // the change only affects the failure shape (server-side
+          // type error instead of a Node-side `ERR_INVALID_ARG_TYPE`).
+          const bound = value instanceof Date ? value.toISOString() : value;
+          return sql`${bound}`;
         });
         return sql`(${sql.join(valueExprs, sql`, `)})`;
       });

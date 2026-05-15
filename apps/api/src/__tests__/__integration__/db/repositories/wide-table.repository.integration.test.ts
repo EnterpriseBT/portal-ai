@@ -430,6 +430,45 @@ describe("WideTableRepository integration tests", () => {
     ).rejects.toThrow(/missing metadata column "entity_record_id"/);
   });
 
+  // ── Date coercion regression ─────────────────────────────────────
+  //
+  // Surfaced via a Google Sheets connector sync: the Sheets API maps
+  // date-formatted cells to JS `Date` instances, those flow into
+  // `normalizedData`, and previously the typed-column write path
+  // bound them directly. postgres-js's wire encoder ends up calling
+  // `Buffer.byteLength(value)` on the raw Date and throws
+  // `ERR_INVALID_ARG_TYPE: Received an instance of Date`. The fix
+  // pre-coerces Date → ISO string in the default value-bind path.
+  it("upsertMany accepts Date values for text columns (no Buffer.byteLength crash)", async () => {
+    const r1 = generateId();
+    await insertEntityRecord(r1, "src-date");
+    const now = Date.now();
+    const stageDate = new Date("2025-08-11T14:56:58.000Z");
+
+    await expect(
+      repo.upsertMany(entityId, [
+        {
+          entity_record_id: r1,
+          organization_id: orgId,
+          synced_at: now,
+          is_valid: true,
+          source_id: "src-date",
+          // c_stage is a `text` column; the user's Google Sheet has
+          // ISO datetime strings in this position that Sheets returns
+          // as Date instances.
+          c_stage: stageDate,
+          c_amount: 100,
+        },
+      ])
+    ).resolves.toBeUndefined();
+
+    const rows = (await repo.selectAll(entityId, db)) as Array<
+      Record<string, unknown>
+    >;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.c_stage).toBe(stageDate.toISOString());
+  });
+
   // ── Case 6 — softDeleteByEntityRecordIds removes wide rows ───────
 
   it("softDeleteByEntityRecordIds hard-deletes wide rows", async () => {
