@@ -334,7 +334,17 @@ export class ConnectorInstanceLayoutPlansService {
           organizationId,
           slug
         );
-      return { ...base, workbookPreview, editable: true };
+      // Echo the upload-session id for file-upload connectors so the
+      // frontend's slice loader can route directly to
+      // `sdk.fileUploads.sheetSlice` without a second round-trip.
+      return {
+        ...base,
+        workbookPreview,
+        editable: true,
+        ...(workbookSource.kind === "uploadSession" && {
+          uploadSessionId: workbookSource.uploadSessionId,
+        }),
+      };
     } catch (err) {
       // Cache miss + S3-fallback failure (file_uploads gone or object
       // deleted), or cloud cache never populated — both surface as

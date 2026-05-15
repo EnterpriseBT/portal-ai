@@ -28,11 +28,14 @@ import { RegionEditorUI } from "../modules/RegionEditor";
 import type {
   CellBounds,
   EntityOption,
+  LoadSliceFn,
   RegionDraft,
   Workbook,
 } from "../modules/RegionEditor";
 import {
   draftsToRegions,
+  entityOptionsFromWorkbook,
+  mergeStagedEntityOptions,
   planRegionsToDrafts,
 } from "../workflows/FileUploadConnector/utils/layout-plan-mapping.util";
 
@@ -85,6 +88,23 @@ export interface EditLayoutPlanViewUIProps {
   saveDraftToast: { severity: "success" | "error"; message: string } | null;
   onDismissSaveDraftToast: () => void;
 
+  /**
+   * Slice 3c — entity-picker catalog. Sheet-derived options merged
+   * with user-staged extras (whatever the editor's "Create new entity"
+   * affordance has produced this session). The picker is keyed on
+   * `EntityOption.value`, which is the same id we ship as
+   * `targetEntityDefinitionId` on save.
+   */
+  entityOptions: EntityOption[];
+  onCreateEntity: (key: string, label: string) => string;
+
+  /**
+   * Slice 3c — per-rectangle slice loader for sheets too large to ship
+   * inline in the edit-context preview. Routed by connector slug
+   * inside the container; `undefined` for unsupported slugs.
+   */
+  loadSlice?: LoadSliceFn;
+
   // Editor state (only meaningful when editContext.editable is true).
   regions: RegionDraft[];
   activeSheetId: string;
@@ -117,6 +137,9 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   isSavingDraft,
   saveDraftToast,
   onDismissSaveDraftToast,
+  entityOptions,
+  onCreateEntity,
+  loadSlice,
   regions,
   activeSheetId,
   selectedRegionId,
@@ -261,11 +284,6 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   }
 
   const workbook = previewToEditorWorkbook(editContext.workbookPreview!);
-  // Entity-catalog wiring stays out of slice 3b; the editor's
-  // entity-picker just doesn't show staged options here. Adding it
-  // belongs in a follow-up that surfaces the org's full entity
-  // catalog as picker options.
-  const entityOptions: EntityOption[] = [];
 
   return (
     <Box>
@@ -286,6 +304,8 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
           onRegionDelete={onRegionDelete}
           onRegionResize={onRegionResize}
           entityOptions={entityOptions}
+          onCreateEntity={onCreateEntity}
+          loadSlice={loadSlice}
           // Edit mode doesn't re-run interpret — the editor's
           // "Interpret" button is a no-op here. Save Draft is the
           // intended way to persist edits without re-running
@@ -338,6 +358,16 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       editContext?.planId ?? ""
     );
 
+  // Slice 3c — sheet-slice loaders for big workbooks. All three SDK
+  // hooks are invoked unconditionally so React Query's rules-of-hooks
+  // contract holds across re-renders; the dispatcher below picks the
+  // right one when `loadSlice` actually fires.
+  const { mutateAsync: gsSheetSliceMutate } = sdk.googleSheets.sheetSlice();
+  const { mutateAsync: msExcelSheetSliceMutate } =
+    sdk.microsoftExcel.sheetSlice();
+  const { mutateAsync: fileUploadSheetSliceMutate } =
+    sdk.fileUploads.sheetSlice();
+
   const [saveDraftToast, setSaveDraftToast] = useState<
     { severity: "success" | "error"; message: string } | null
   >(null);
@@ -351,6 +381,21 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
   const [hydratedFromContextId, setHydratedFromContextId] = useState<
     string | null
   >(null);
+
+  // Slice 3c — entity-picker catalog. Sheet-derived options come from
+  // the preview workbook; user-staged entries persist for the lifetime
+  // of the mount (sheet options drop them on every re-derive otherwise).
+  const [stagedEntities, setStagedEntities] = useState<EntityOption[]>([]);
+  const handleCreateEntity = useCallback(
+    (key: string, label: string): string => {
+      setStagedEntities((prev) => {
+        if (prev.some((e) => e.value === key)) return prev;
+        return [...prev, { value: key, label, source: "staged" as const }];
+      });
+      return key;
+    },
+    []
+  );
 
   // Hydrate local state once the editable payload arrives.
   React.useEffect(() => {
@@ -479,6 +524,77 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     [commitMutationError]
   );
 
+  // Slice 3c — merge sheet-derived options with the user's staged
+  // extras. `entityOptionsFromWorkbook(null)` returns `[]`, so the
+  // memo is stable while the edit-context is still loading.
+  const entityOptions = useMemo(() => {
+    if (!editContext?.editable || !editContext.workbookPreview) {
+      return stagedEntities;
+    }
+    const workbook = previewToEditorWorkbook(editContext.workbookPreview);
+    return mergeStagedEntityOptions(
+      entityOptionsFromWorkbook(workbook),
+      stagedEntities
+    );
+  }, [editContext, stagedEntities]);
+
+  // Slice 3c — per-rectangle slice loader. Dispatches by the connector
+  // definition slug; file-upload also needs the `uploadSessionId` the
+  // backend echoes in the edit-context response. `undefined` for
+  // slugs the edit flow doesn't support (the editor falls back to
+  // the inline cells if any, then renders empty rectangles).
+  const loadSlice = useMemo<LoadSliceFn | undefined>(() => {
+    if (!editContext?.editable) return undefined;
+    const slug = editContext.connectorDefinitionSlug;
+    if (slug === "google-sheets") {
+      return async ({ sheetId, rowStart, rowEnd, colStart, colEnd }) => {
+        const res = await gsSheetSliceMutate({
+          connectorInstanceId,
+          sheetId,
+          rowStart,
+          rowEnd,
+          colStart,
+          colEnd,
+        });
+        return res.cells;
+      };
+    }
+    if (slug === "microsoft-excel") {
+      return async ({ sheetId, rowStart, rowEnd, colStart, colEnd }) => {
+        const res = await msExcelSheetSliceMutate({
+          connectorInstanceId,
+          sheetId,
+          rowStart,
+          rowEnd,
+          colStart,
+          colEnd,
+        });
+        return res.cells;
+      };
+    }
+    if (slug === "file-upload" && editContext.uploadSessionId) {
+      const uploadSessionId = editContext.uploadSessionId;
+      return async ({ sheetId, rowStart, rowEnd, colStart, colEnd }) => {
+        const res = await fileUploadSheetSliceMutate({
+          uploadSessionId,
+          sheetId,
+          rowStart,
+          rowEnd,
+          colStart,
+          colEnd,
+        });
+        return res.cells;
+      };
+    }
+    return undefined;
+  }, [
+    editContext,
+    connectorInstanceId,
+    gsSheetSliceMutate,
+    msExcelSheetSliceMutate,
+    fileUploadSheetSliceMutate,
+  ]);
+
   return (
     <EditLayoutPlanViewUI
       editContext={editContext}
@@ -491,6 +607,9 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       isSavingDraft={isSavingDraft}
       saveDraftToast={saveDraftToast}
       onDismissSaveDraftToast={() => setSaveDraftToast(null)}
+      entityOptions={entityOptions}
+      onCreateEntity={handleCreateEntity}
+      loadSlice={loadSlice}
       regions={regions}
       activeSheetId={activeSheetId}
       selectedRegionId={selectedRegionId}

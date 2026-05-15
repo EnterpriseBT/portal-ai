@@ -1885,6 +1885,9 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(payload.workbookPreview!.sheets[0].name).toBe("Sheet1");
       expect(payload.workbookPreview!.sheets[0].cells.length).toBeGreaterThan(0);
       expect(payload.reason).toBeUndefined();
+      // Cloud connectors' slice endpoints key off the connector-instance
+      // id; the upload-session echo is file-upload-only.
+      expect(payload.uploadSessionId).toBeUndefined();
     });
 
     it("case 2 — microsoft-excel: returns the same bundle keyed off the excel cache", async () => {
@@ -1907,6 +1910,7 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(payload.connectorDefinitionSlug).toBe("microsoft-excel");
       expect(payload.editable).toBe(true);
       expect(payload.workbookPreview!.sheets).toHaveLength(1);
+      expect(payload.uploadSessionId).toBeUndefined();
     });
 
     it("case 3 — file-upload with source available: editable:true, preview present", async () => {
@@ -1949,6 +1953,9 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(payload.connectorDefinitionSlug).toBe("file-upload");
       expect(payload.editable).toBe(true);
       expect(payload.workbookPreview!.sheets).toHaveLength(1);
+      // Frontend's loadSlice dispatcher needs the uploadSessionId to
+      // route to `sdk.fileUploads.sheetSlice` for off-screen rows.
+      expect(payload.uploadSessionId).toBe(uploadSessionId);
     });
 
     it("case 4 — file-upload with source removed: editable:false + reason SOURCE_REMOVED", async () => {

@@ -279,6 +279,16 @@ export const LayoutPlanEditContextResponsePayloadSchema = z.object({
   plan: LayoutPlanSchema,
   connectorDefinitionSlug: z.string().min(1),
   workbookPreview: LayoutPlanEditContextWorkbookPreviewSchema.nullable(),
+  /**
+   * The upload-session id that backs the file-upload preview, when
+   * the connector slug is `file-upload` and the source is still
+   * recoverable. Echoed so the frontend's per-rectangle slice loader
+   * can route to `sdk.fileUploads.sheetSlice` without an additional
+   * round-trip. Always absent for google-sheets / microsoft-excel
+   * (their slice endpoints key off the connector-instance id, which
+   * the view already has).
+   */
+  uploadSessionId: z.string().min(1).optional(),
   editable: z.boolean(),
   reason: z
     .object({

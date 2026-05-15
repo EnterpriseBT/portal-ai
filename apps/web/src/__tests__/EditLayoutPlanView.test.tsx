@@ -100,6 +100,8 @@ const baseProps = {
     | { severity: "success" | "error"; message: string }
     | null,
   onDismissSaveDraftToast: jest.fn(),
+  entityOptions: [],
+  onCreateEntity: jest.fn(() => ""),
   regions: [] as RegionDraft[],
   activeSheetId: "sheet_0_sheet1",
   selectedRegionId: null,
