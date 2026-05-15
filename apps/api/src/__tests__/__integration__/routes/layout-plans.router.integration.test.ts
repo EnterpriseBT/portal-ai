@@ -1037,7 +1037,7 @@ describe("Layout Plans Draft Router", () => {
       expect(all[0]?.status).toBe("active");
     });
 
-    it("does not delete the pending instance when commit fails (rollback path)", async () => {
+    it("flips the pending instance to 'error' and keeps the plan when commit fails (existing-instance rollback)", async () => {
       const emailId = await seedColumnDefinition(
         db as Db,
         organizationId,
@@ -1060,14 +1060,27 @@ describe("Layout Plans Draft Router", () => {
         })
       ).rejects.toBeDefined();
 
-      // Pending instance must STILL be present (rollback didn't remove it).
+      // Instance still present, flipped from 'pending' to 'error' so the
+      // detail view can surface the failure (and the entry-point button
+      // for the edit-layout-plan flow stops showing it as "in progress").
       const after = await (db as Db)
         .select()
         .from(connectorInstances)
         .where(eq(connectorInstances.id, ciId));
       expect(after).toHaveLength(1);
-      // And status remains pending — the success-path "flip to active" did not run.
-      expect(after[0]?.status).toBe("pending");
+      expect(after[0]?.status).toBe("error");
+      expect(after[0]?.lastErrorMessage).toBeTruthy();
+
+      // Plan survives — the user can open it in the edit-layout-plan
+      // view, fix whatever the commit halted on (drift, blocker
+      // warnings, identity strategy), and recommit. Without this, an
+      // OAuth-flow connector would be stranded with no plan and no
+      // recovery affordance.
+      const plans = await (db as Db)
+        .select()
+        .from(connectorInstanceLayoutPlans)
+        .where(eq(connectorInstanceLayoutPlans.connectorInstanceId, ciId));
+      expect(plans).toHaveLength(1);
     });
 
     it("returns 404 when the connectorInstanceId does not exist", async () => {
