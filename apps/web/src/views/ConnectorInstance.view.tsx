@@ -24,6 +24,7 @@ import FormControlLabel from "@mui/material/FormControlLabel";
 import Tooltip from "@mui/material/Tooltip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import ViewQuiltIcon from "@mui/icons-material/ViewQuilt";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { upperFirst } from "lodash-es";
@@ -35,7 +36,6 @@ import { toServerError } from "../utils/api.util";
 import { ConnectorInstanceDataItem } from "../components/ConnectorInstance.component";
 import { ConnectorInstanceLockAlertUI } from "../components/ConnectorInstanceLockAlert.component";
 import { ConnectorInstanceReconnectButtonUI } from "../components/ConnectorInstanceReconnectButton.component";
-import { ConnectorInstanceEditLayoutPlanButtonUI } from "../components/ConnectorInstanceEditLayoutPlanButton.component";
 import { ConnectorInstanceSyncButtonUI } from "../components/ConnectorInstanceSyncButton.component";
 import { ConnectorInstanceSyncFeedbackUI } from "../components/ConnectorInstanceSyncFeedback.component";
 import { joinRunningJobLabels } from "../utils/running-job-label.util";
@@ -65,6 +65,20 @@ const STATUS_COLOR: Record<
   pending: "warning",
   inactive: "default",
 };
+
+/**
+ * Connector slugs whose layout plans can be opened in the edit-plan
+ * view. Mirrors the backend's `EDITABLE_SLUGS` in
+ * `connector-instance-layout-plans.service.ts`. The page-header menu
+ * disables the "Edit layout plan" entry for any other slug so the
+ * user never lands on a route that would only render the "unsupported
+ * connector" notice.
+ */
+const EDIT_PLAN_SLUGS = new Set([
+  "file-upload",
+  "google-sheets",
+  "microsoft-excel",
+]);
 
 /**
  * Heuristic: does the sync failure message indicate Google rejected
@@ -344,31 +358,13 @@ export const ConnectorInstanceView = ({
                   variant="contained"
                 />
               );
-              const editLayoutPlanAction = (
-                <ConnectorInstanceEditLayoutPlanButtonUI
-                  connectorDefinitionSlug={
-                    ci.connectorDefinition?.slug ?? ""
-                  }
-                  lockedReason={lockedReason}
-                  onClick={() =>
-                    navigate({
-                      to: "/connectors/$connectorInstanceId/layout-plan/edit",
-                      params: { connectorInstanceId },
-                    })
-                  }
-                />
-              );
-              const mainAction = isInError
+              const primaryAction = isInError
                 ? reconnectAction
                 : isSyncConfigured
                   ? syncAction
                   : editAction;
-              const primaryAction = (
-                <Stack direction="row" spacing={1} alignItems="center">
-                  {editLayoutPlanAction}
-                  {mainAction}
-                </Stack>
-              );
+              const slug = ci.connectorDefinition?.slug ?? "";
+              const canEditLayoutPlan = EDIT_PLAN_SLUGS.has(slug);
               const secondaryActions = [
                 ...(isInError || isSyncConfigured
                   ? [
@@ -380,6 +376,16 @@ export const ConnectorInstanceView = ({
                     },
                   ]
                   : []),
+                {
+                  label: "Modify Layout Plan",
+                  icon: <ViewQuiltIcon />,
+                  onClick: () =>
+                    navigate({
+                      to: "/connectors/$connectorInstanceId/layout-plan/edit",
+                      params: { connectorInstanceId },
+                    }),
+                  disabled: isLocked || !canEditLayoutPlan,
+                },
                 {
                   label: "Delete",
                   icon: <DeleteIcon />,

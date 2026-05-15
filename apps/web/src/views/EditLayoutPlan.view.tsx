@@ -3,7 +3,15 @@ import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Box, Button, Stack, Typography } from "@portalai/core/ui";
+import {
+  Box,
+  Button,
+  Icon,
+  IconName,
+  PageHeader,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
 import type { StepConfig } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
 
@@ -59,6 +67,15 @@ export interface EditLayoutPlanViewUIProps {
   commitError: ReturnType<typeof toServerError>;
   isCommitting: boolean;
 
+  /**
+   * Connector instance id (for the breadcrumb back-link) and the
+   * resolved instance name (or `null` while the sibling query is in
+   * flight — in which case the breadcrumb falls back to a generic
+   * "Connector" label).
+   */
+  connectorInstanceId: string;
+  connectorInstanceName: string | null;
+
   // Editor state (only meaningful when editContext.editable is true).
   regions: RegionDraft[];
   activeSheetId: string;
@@ -76,6 +93,7 @@ export interface EditLayoutPlanViewUIProps {
   onEditBinding: (regionId: string, sourceLocator: string) => void;
   onCommit: () => void;
   onBack: () => void;
+  onNavigate: (href: string) => void;
 }
 
 export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
@@ -84,6 +102,8 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   loadError,
   commitError,
   isCommitting,
+  connectorInstanceId,
+  connectorInstanceName,
   regions,
   activeSheetId,
   selectedRegionId,
@@ -98,23 +118,51 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   onEditBinding,
   onCommit,
   onBack,
+  onNavigate,
 }) => {
+  // Breadcrumb shared by every branch (loading, error, not-editable, editor)
+  // so the user always has a one-click path back to the detail view. The
+  // third crumb falls back to a generic label while the connector-name
+  // query is still in flight.
+  const header = (
+    <PageHeader
+      breadcrumbs={[
+        { label: "Dashboard", href: "/" },
+        { label: "Connectors", href: "/connectors" },
+        {
+          label: connectorInstanceName ?? "Connector",
+          href: `/connectors/${connectorInstanceId}`,
+        },
+        { label: "Modify Layout Plan" },
+      ]}
+      onNavigate={onNavigate}
+      title="Modify Layout Plan"
+      icon={<Icon name={IconName.MemoryChip} />}
+    />
+  );
+
   if (loading) {
     return (
-      <Box sx={{ p: 4 }}>
-        <Typography>Loading layout plan…</Typography>
+      <Box>
+        <Stack spacing={4}>
+          {header}
+          <Typography>Loading layout plan…</Typography>
+        </Stack>
       </Box>
     );
   }
   if (loadError) {
     return (
-      <Box sx={{ p: 4 }}>
-        <FormAlert serverError={loadError} />
-        <Box sx={{ mt: 2 }}>
-          <Button onClick={onBack} variant="outlined">
-            Back
-          </Button>
-        </Box>
+      <Box>
+        <Stack spacing={4}>
+          {header}
+          <FormAlert serverError={loadError} />
+          <Box>
+            <Button onClick={onBack} variant="outlined">
+              Back
+            </Button>
+          </Box>
+        </Stack>
       </Box>
     );
   }
@@ -122,27 +170,32 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
 
   if (!editContext.editable) {
     return (
-      <Box sx={{ p: 4, maxWidth: 720 }}>
-        <Alert severity="info" sx={{ mb: 2 }}>
-          <Typography component="div" sx={{ fontWeight: 500, mb: 0.5 }}>
-            This layout plan can&rsquo;t be edited.
-          </Typography>
-          <Typography component="div">
-            {editContext.reason?.message ??
-              "The workbook source for this connector is no longer available."}
-          </Typography>
-        </Alert>
-        <Stack direction="row" spacing={1}>
-          <Button
-            href="/connectors/new/file-upload"
-            data-testid="reupload-link"
-            variant="contained"
-          >
-            Re-upload to create a new connector
-          </Button>
-          <Button onClick={onBack} variant="outlined">
-            Back
-          </Button>
+      <Box>
+        <Stack spacing={4}>
+          {header}
+          <Box sx={{ maxWidth: 720 }}>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography component="div" sx={{ fontWeight: 500, mb: 0.5 }}>
+                This layout plan can&rsquo;t be edited.
+              </Typography>
+              <Typography component="div">
+                {editContext.reason?.message ??
+                  "The workbook source for this connector is no longer available."}
+              </Typography>
+            </Alert>
+            <Stack direction="row" spacing={1}>
+              <Button
+                href="/connectors/new/file-upload"
+                data-testid="reupload-link"
+                variant="contained"
+              >
+                Re-upload to create a new connector
+              </Button>
+              <Button onClick={onBack} variant="outlined">
+                Back
+              </Button>
+            </Stack>
+          </Box>
         </Stack>
       </Box>
     );
@@ -152,13 +205,11 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   const entityOptions: EntityOption[] = []; // Slice 3 deferral: full entity catalog wiring belongs in 3b.
 
   return (
-    <Box sx={{ width: "100%", height: "100%" }}>
-      {commitError ? (
-        <Box sx={{ px: 2, pt: 2 }}>
-          <FormAlert serverError={commitError} />
-        </Box>
-      ) : null}
-      <RegionEditorUI
+    <Box>
+      <Stack spacing={4}>
+        {header}
+        {commitError ? <FormAlert serverError={commitError} /> : null}
+        <RegionEditorUI
         step={step}
         stepConfigs={STEP_CONFIGS}
         workbook={workbook}
@@ -180,7 +231,8 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
         onCommit={onCommit}
         onBack={onBack}
         isCommitting={isCommitting}
-      />
+        />
+      </Stack>
     </Box>
   );
 };
@@ -200,6 +252,13 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
   const editContextQuery =
     sdk.connectorInstanceLayoutPlans.getEditContext(connectorInstanceId);
   const editContext = editContextQuery.data ?? null;
+
+  // Lookup the connector instance's display name for the breadcrumb.
+  // React Query dedups with the detail view's cache hit, so this is
+  // typically a no-op extra round-trip in practice.
+  const instanceQuery = sdk.connectorInstances.get(connectorInstanceId);
+  const connectorInstanceName =
+    instanceQuery.data?.connectorInstance.name ?? null;
 
   const { mutateAsync: recommitMutate, isPending: isCommitting, error: commitMutationError } =
     sdk.connectorInstanceLayoutPlans.commit(
@@ -317,6 +376,8 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       loadError={loadError}
       commitError={commitError}
       isCommitting={isCommitting}
+      connectorInstanceId={connectorInstanceId}
+      connectorInstanceName={connectorInstanceName}
       regions={regions}
       activeSheetId={activeSheetId}
       selectedRegionId={selectedRegionId}
@@ -334,6 +395,7 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       onEditBinding={() => undefined}
       onCommit={handleCommit}
       onBack={handleBack}
+      onNavigate={(href) => navigate({ to: href })}
     />
   );
 };

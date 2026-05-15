@@ -93,6 +93,8 @@ const baseProps = {
   loadError: null as ServerError | null,
   commitError: null as ServerError | null,
   isCommitting: false,
+  connectorInstanceId: "ci_1",
+  connectorInstanceName: "Test Connector",
   regions: [] as RegionDraft[],
   activeSheetId: "sheet_0_sheet1",
   selectedRegionId: null,
@@ -107,6 +109,7 @@ const baseProps = {
   onEditBinding: jest.fn(),
   onCommit: jest.fn(),
   onBack: jest.fn(),
+  onNavigate: jest.fn(),
 };
 
 describe("EditLayoutPlanViewUI", () => {
