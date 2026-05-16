@@ -108,13 +108,38 @@ function bindingsFromClassifications(
   return out;
 }
 
+/**
+ * Pick the identity strategy that ends up on the persisted plan.
+ *
+ * The auto-detected plan **always** defaults to `rowPosition` —
+ * regardless of what the heuristic stages turned up — because
+ * (a) `rowPosition` always commits without tripping the drift gate
+ * even when source data has sparse / duplicate identifiers, and
+ * (b) the only review-step picker the user has is the per-region
+ * Identity panel, which only knows how to render single-locator
+ * choices (`column` / `rowPosition`); a `composite` default would
+ * render with no selected value (`IdentityPanel.valueKey` falls
+ * through to `""`).
+ *
+ * The user can promote a column-identity choice via the editor's
+ * Identity panel after Interpret — `regionDraftsToHints` marks that
+ * pick as `source === "user"`, which the heuristic respects on
+ * subsequent passes (see `detect-identity.ts`'s user-locked
+ * short-circuit). A user-locked choice is the ONLY thing that
+ * overrides the rowPosition default here; the proposer's other
+ * candidates stay in `state.identityCandidates` for the picker to
+ * display but never win automatically.
+ */
 function pickIdentity(
   candidates: IdentityCandidate[] | undefined
 ): IdentityCandidate["strategy"] {
-  if (!candidates || candidates.length === 0) {
-    return { kind: "rowPosition", confidence: 0 };
+  if (candidates && candidates.length > 0) {
+    const top = candidates[0];
+    if (top.strategy.source === "user") {
+      return top.strategy;
+    }
   }
-  return candidates[0].strategy;
+  return { kind: "rowPosition", confidence: 0.3, source: "heuristic" };
 }
 
 function positionSpan(region: Region, axis: AxisMember): number {

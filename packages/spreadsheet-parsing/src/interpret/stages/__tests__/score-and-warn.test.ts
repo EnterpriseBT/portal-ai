@@ -233,13 +233,22 @@ describe("scoreAndWarn", () => {
     expect(region.confidence.aggregate).toBeLessThanOrEqual(1);
   });
 
-  it("does not emit ROW_POSITION_IDENTITY for regions with a column identity", async () => {
+  it("emits ROW_POSITION_IDENTITY by default — proposeBindings auto-picks rowPosition on initial interpret", async () => {
+    // The heuristic used to auto-promote a unique column-identity
+    // candidate; proposeBindings now always defaults to rowPosition
+    // so the auto-detected plan commits cleanly even when the data
+    // would trip the drift gate. The warning is informational — the
+    // user can promote a column identity via the editor's Identity
+    // panel after Interpret, which carries `source: "user"` and
+    // suppresses this warning on the next pass.
     const state = await run(wellFormed());
     const region = state.detectedRegions[0];
+    expect(region.identityStrategy.kind).toBe("rowPosition");
     const warn = region.warnings.find(
       (w) => w.code === "ROW_POSITION_IDENTITY"
     );
-    expect(warn).toBeUndefined();
+    expect(warn).toBeDefined();
+    expect(warn?.severity).toBe("warn");
   });
 });
 

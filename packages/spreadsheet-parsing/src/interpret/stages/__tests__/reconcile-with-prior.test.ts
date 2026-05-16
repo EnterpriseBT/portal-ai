@@ -137,9 +137,16 @@ describe("reconcileWithPrior", () => {
     let state = await buildAssembledState(input());
     const prior = priorPlanFromState(state);
     // Mutate the prior's identity strategy so it no longer matches.
+    // proposeBindings now always defaults to rowPosition on initial
+    // interpret (data-quality fix), so the prior needs to be a *column*
+    // identity to differ from the new pass's rowPosition.
     prior.regions[0] = {
       ...prior.regions[0],
-      identityStrategy: { kind: "rowPosition", confidence: 0.5 },
+      identityStrategy: {
+        kind: "column",
+        confidence: 0.95,
+        sourceLocator: { kind: "column", sheet: "Sheet1", col: 1 },
+      },
     };
     state = { ...state, input: { ...state.input, priorPlan: prior } };
     const next = reconcileWithPrior(state);
