@@ -397,7 +397,13 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     []
   );
 
-  // Hydrate local state once the editable payload arrives.
+  // Hydrate local state once the editable payload arrives. Also seed
+  // `stagedEntities` from the existing plan's region targets so the
+  // editor's entity-picker has a matching option for every region the
+  // user is editing — otherwise `regionDraftsToHints` reads the
+  // `targetEntityDefinitionId` from the draft and the picker can't
+  // find it in `entityOptionsFromWorkbook(workbook)` (sheet-derived
+  // ids), so the field renders empty and the region looks "new".
   React.useEffect(() => {
     if (!editContext?.editable || !editContext.workbookPreview) return;
     if (hydratedFromContextId === editContext.planId) return;
@@ -405,6 +411,19 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     setRegions(
       planRegionsToDrafts(editContext.plan, workbook)
     );
+    // Pre-populate staged entities from every region's target. Sheet-
+    // derived ids overlap if the plan happened to use them; the
+    // `mergeStagedEntityOptions` dedup downstream drops the staged
+    // entry in that case.
+    const seeded: EntityOption[] = [];
+    const seen = new Set<string>();
+    for (const region of editContext.plan.regions) {
+      const id = region.targetEntityDefinitionId;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      seeded.push({ value: id, label: id, source: "staged" as const });
+    }
+    if (seeded.length > 0) setStagedEntities(seeded);
     if (workbook.sheets[0]) setActiveSheetId(workbook.sheets[0].id);
     setHydratedFromContextId(editContext.planId);
   }, [editContext, hydratedFromContextId]);
