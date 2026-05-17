@@ -86,6 +86,14 @@ export interface RegionConfigurationPanelUIProps {
    * the wide-table pipeline doesn't support today.
    */
   entityAssociationLocked?: boolean;
+  /**
+   * Hide the "Delete region" IconButton. Used by the edit-plan view:
+   * deleting a region post-commit would orphan that region's
+   * connector_entities + entity_records rows; recommit only knows how
+   * to add or update, not how to cascade-soft-delete. Matches the
+   * spec's "shape + extent rules only" constraint for edit mode.
+   */
+  regionDeletionLocked?: boolean;
 }
 
 const SECTION_HEADING_SX = {
@@ -193,6 +201,7 @@ export const RegionConfigurationPanelUI: React.FC<
   driftProposedIdentityLabel,
   onCreateEntity,
   entityAssociationLocked = false,
+  regionDeletionLocked = false,
   claimedEntityKeys,
   validateEntityKey,
   regionSheet,
@@ -602,12 +611,14 @@ export const RegionConfigurationPanelUI: React.FC<
           >
             {region.proposedLabel ?? region.targetEntityLabel ?? "New region"}
           </Typography>
-          <IconButton
-            aria-label="Delete region"
-            size="small"
-            onClick={onDelete}
-            icon={IconName.Delete}
-          />
+          {!regionDeletionLocked && (
+            <IconButton
+              aria-label="Delete region"
+              size="small"
+              onClick={onDelete}
+              icon={IconName.Delete}
+            />
+          )}
         </Stack>
 
         <Typography variant="caption" color="text.secondary">

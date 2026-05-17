@@ -47,6 +47,13 @@ export interface RegionEditorUIProps {
    * but not which entity a region populates.
    */
   entityAssociationLocked?: boolean;
+  /**
+   * Forwarded to `RegionConfigurationPanelUI` and the keyboard handler
+   * in `RegionDrawingStepUI`. The edit-plan view sets this so a
+   * persisted region can't be deleted from the config panel or via
+   * Delete/Backspace.
+   */
+  regionDeletionLocked?: boolean;
 
   onInterpret: () => void;
   isInterpreting?: boolean;
@@ -101,6 +108,7 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
   onKeepPriorIdentity,
   onCreateEntity,
   entityAssociationLocked,
+  regionDeletionLocked,
   onInterpret,
   isInterpreting,
   onRefetchWorkbook,
@@ -148,6 +156,7 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
               onKeepPriorIdentity={onKeepPriorIdentity}
               onCreateEntity={onCreateEntity}
               entityAssociationLocked={entityAssociationLocked}
+              regionDeletionLocked={regionDeletionLocked}
               onInterpret={onInterpret}
               onRefetchWorkbook={onRefetchWorkbook}
               isInterpreting={isInterpreting}

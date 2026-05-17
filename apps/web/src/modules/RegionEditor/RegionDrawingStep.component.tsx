@@ -56,6 +56,10 @@ export interface RegionDrawingStepUIProps {
    * view to lock entity associations post-commit.
    */
   entityAssociationLocked?: boolean;
+  /** Forwarded to `RegionConfigurationPanelUI` and also gates the
+   * Delete / Backspace keyboard shortcut — so the edit-plan view's
+   * read-only-shape policy holds across both UI and keyboard. */
+  regionDeletionLocked?: boolean;
   /**
    * C2 async validator forwarded to the "+ Create new entity" dialog in the
    * configuration panel. Returns `{ ok: false, ownedBy }` when the chosen
@@ -99,6 +103,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   onKeepPriorIdentity,
   onCreateEntity,
   entityAssociationLocked = false,
+  regionDeletionLocked = false,
   validateEntityKey,
   onInterpret,
   onRefetchWorkbook,
@@ -260,12 +265,17 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         onSelectRegion(null);
         return;
       }
+      // Delete + Backspace are no-ops when deletion is locked (edit-
+      // plan view). Without this gate the UI hides the Delete button
+      // but the keyboard shortcut would still cascade-delete the
+      // region, which is precisely what the lock exists to prevent.
+      if (regionDeletionLocked) return;
       e.preventDefault();
       onRegionDelete(selectedRegionId);
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [selectedRegionId, onRegionDelete, onSelectRegion]);
+  }, [selectedRegionId, onRegionDelete, onSelectRegion, regionDeletionLocked]);
 
   const selectedRegion = regions.find((r) => r.id === selectedRegionId) ?? null;
   const siblingsInSameEntity = selectedRegion?.targetEntityDefinitionId
@@ -541,6 +551,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
             }
             onCreateEntity={onCreateEntity}
             entityAssociationLocked={entityAssociationLocked}
+            regionDeletionLocked={regionDeletionLocked}
             validateEntityKey={validateEntityKey}
           />
         </Box>

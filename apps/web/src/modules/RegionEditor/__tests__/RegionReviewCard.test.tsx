@@ -510,7 +510,33 @@ describe("RegionReviewCardUI — IdentityPanel", () => {
       >();
     render(
       <RegionReviewCardUI
-        region={makeRegion()}
+        // Seed a column-kind identity so the "Use position-based ids"
+        // checkbox above the Select renders UNchecked and the Select
+        // is enabled. Without an explicit identityStrategy,
+        // `buildIdentitySelection` falls back to rowPosition, which
+        // would lock the Select and make this test's option-click a
+        // no-op.
+        region={makeRegion({
+          // Seed an identity that points at a DIFFERENT column than
+          // the one the test clicks on — without an explicit strategy
+          // the panel defaults to rowPosition (Select disabled), and
+          // seeding the same locator the test then clicks would make
+          // the click a no-op (MUI doesn't fire onChange for an
+          // unchanged selection).
+          identityStrategy: {
+            kind: "column",
+            rawLocator: {
+              kind: "column",
+              sheet: "sheet_a",
+              col: 10,
+            } as RegionDraft["identityStrategy"] extends infer T
+              ? T extends { rawLocator?: infer L }
+                ? NonNullable<L>
+                : never
+              : never,
+            source: "user",
+          },
+        })}
         onJump={jest.fn()}
         onEditBinding={jest.fn()}
         identityLocatorOptions={[
@@ -521,6 +547,13 @@ describe("RegionReviewCardUI — IdentityPanel", () => {
             axis: "column",
             index: 0,
           },
+          {
+            key: "col:9",
+            label: "current",
+            uniqueness: "unique",
+            axis: "column",
+            index: 9,
+          },
         ]}
         onIdentityUpdate={onIdentityUpdate}
       />
@@ -529,7 +562,7 @@ describe("RegionReviewCardUI — IdentityPanel", () => {
     // Pick the "id" locator option from the menu — `role="option"`
     // disambiguates from the rendered Select input value (which would
     // otherwise duplicate the matching text when the current selection is
-    // already rowPosition).
+    // already a column).
     fireEvent.click(screen.getByRole("option", { name: /^id\b/i }));
     expect(onIdentityUpdate).toHaveBeenCalledTimes(1);
     expect(onIdentityUpdate).toHaveBeenCalledWith("region-a", {

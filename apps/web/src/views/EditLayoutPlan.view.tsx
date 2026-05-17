@@ -343,12 +343,14 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
           onRegionResize={onRegionResize}
           entityOptions={entityOptions}
           onCreateEntity={onCreateEntity}
-          // Edit-mode lock: post-commit edits can change shape +
-          // extent rules but not which entity a region populates.
-          // Rebinding a region to a different entity mid-flight
-          // would require record migration the wide-table pipeline
-          // doesn't support today.
+          // Edit-mode locks: post-commit edits can change shape +
+          // extent rules but not which entity a region populates,
+          // and they can't delete a region either — rebinding or
+          // removing would require record migration / cascade
+          // soft-delete that the wide-table pipeline doesn't support
+          // today.
           entityAssociationLocked={true}
+          regionDeletionLocked={true}
           loadSlice={loadSlice}
           // Edit mode doesn't re-run the AI classifier — the regions
           // are already classified. The module's primary CTA on step
