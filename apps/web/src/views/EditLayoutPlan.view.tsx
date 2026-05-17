@@ -606,8 +606,27 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
 
   const handleCommit = useCallback(async () => {
     if (!editContext?.editable) return;
+    // The commit endpoint's body schema requires exactly one of
+    // `uploadSessionId` (file-upload) or `connectorInstanceId` (cloud
+    // connectors: google-sheets, microsoft-excel) so the server knows
+    // which chunked-cache prefix to read the workbook from. Without
+    // this the 400 LAYOUT_PLAN_INVALID_PAYLOAD fires before the job
+    // is even enqueued.
+    const body =
+      editContext.connectorDefinitionSlug === "file-upload"
+        ? editContext.uploadSessionId
+          ? { uploadSessionId: editContext.uploadSessionId }
+          : null
+        : { connectorInstanceId };
+    if (!body) {
+      // file-upload connector with no recoverable upload session —
+      // the edit-context branch should have rendered the
+      // SOURCE_REMOVED notice and not even mounted the editor, but
+      // defend against the user reaching Commit anyway.
+      return;
+    }
     try {
-      await recommitMutate({});
+      await recommitMutate(body);
       await queryClient.invalidateQueries({
         queryKey: queryKeys.connectorInstances.root,
       });
