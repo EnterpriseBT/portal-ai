@@ -6,6 +6,7 @@ import { DriftBannerUI } from "./DriftBanner.component";
 import { RegionDrawingStepUI } from "./RegionDrawingStep.component";
 import { ReviewStepUI } from "./ReviewStep.component";
 import type { LoadSliceFn } from "./SheetCanvas.component";
+import type { LocatorOption } from "./utils/identity-locator-options.util";
 import type {
   CellBounds,
   DriftReportPreview,
@@ -62,6 +63,24 @@ export interface RegionEditorUIProps {
   driftReport?: DriftReportPreview | null;
   errors?: RegionEditorErrors;
   loadSlice?: LoadSliceFn;
+  /**
+   * Per-region IdentityPanel dropdown options. Forwarded verbatim to
+   * `ReviewStepUI`. When omitted the panel hides (default for callers
+   * that don't yet wire identity editing — sandbox stories, legacy
+   * harnesses). Workflows + the edit-plan view should pass this so
+   * the Label field on the identity panel resolves to the picked
+   * column's header text.
+   */
+  resolveIdentityLocatorOptions?: (
+    region: RegionDraft
+  ) => LocatorOption[] | undefined;
+  /** Fires when the user picks an identity option in the panel. */
+  onIdentityUpdate?: (
+    regionId: string,
+    change:
+      | { kind: "column"; locator: { axis: "row" | "column"; index: number } }
+      | { kind: "rowPosition" }
+  ) => void;
 }
 
 export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
@@ -95,6 +114,8 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
   driftReport,
   errors,
   loadSlice,
+  resolveIdentityLocatorOptions,
+  onIdentityUpdate,
 }) => {
   return (
     <Box
@@ -146,6 +167,8 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
             onBack={onBack}
             isCommitting={isCommitting}
             commitDisabledReason={commitDisabledReason}
+            resolveIdentityLocatorOptions={resolveIdentityLocatorOptions}
+            onIdentityUpdate={onIdentityUpdate}
           />
         </StepPanel>
       </Stepper>

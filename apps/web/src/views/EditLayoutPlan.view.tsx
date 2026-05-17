@@ -33,6 +33,10 @@ import type {
   Workbook,
 } from "../modules/RegionEditor";
 import {
+  buildIdentityUpdater,
+  resolveLocatorOptionsFor,
+} from "../modules/RegionEditor/utils/identity-panel-wiring.util";
+import {
   draftsToRegions,
   entityOptionsFromWorkbook,
   mergeStagedEntityOptions,
@@ -124,6 +128,20 @@ export interface EditLayoutPlanViewUIProps {
   onSaveDraft: () => void;
   onBack: () => void;
   onNavigate: (href: string) => void;
+
+  /**
+   * Per-region IdentityPanel dropdown options + change handler. The
+   * panel's "Identity field" Select reads the picked column's display
+   * label from these options — without them the label silently falls
+   * back to empty and the panel looks like the region "never had" an
+   * identity.
+   */
+  resolveIdentityLocatorOptions?: React.ComponentProps<
+    typeof RegionEditorUI
+  >["resolveIdentityLocatorOptions"];
+  onIdentityUpdate?: React.ComponentProps<
+    typeof RegionEditorUI
+  >["onIdentityUpdate"];
 }
 
 export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
@@ -156,6 +174,8 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   onSaveDraft,
   onBack,
   onNavigate,
+  resolveIdentityLocatorOptions,
+  onIdentityUpdate,
 }) => {
   // Breadcrumb shared by every branch (loading, error, not-editable, editor)
   // so the user always has a one-click path back to the detail view. The
@@ -322,6 +342,8 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
           onCommit={onCommit}
           onBack={onBack}
           isCommitting={isCommitting}
+          resolveIdentityLocatorOptions={resolveIdentityLocatorOptions}
+          onIdentityUpdate={onIdentityUpdate}
         />
       </Stack>
       {toast}
@@ -414,17 +436,40 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     if (!editContext?.editable || !editContext.workbookPreview) return;
     if (hydratedFromContextId === editContext.planId) return;
     const workbook = previewToEditorWorkbook(editContext.workbookPreview);
-    setRegions(
-      planRegionsToDrafts(editContext.plan, workbook)
+    // Build the catalog map first — used both to seed the picker's
+    // option list AND to populate each region draft's display labels.
+    const catalogById = new Map<string, string>(
+      editContext.entityCatalog.map((e) => [e.id, e.label] as const)
     );
+    // Hydrate region drafts. `planRegionsToDrafts` recovers everything
+    // the backend persists — bounds, bindings, identity, terminators —
+    // but the persisted Region schema does NOT carry `proposedLabel`
+    // (the AI-proposed display name from interpret) or
+    // `targetEntityLabel` (a denormalized convenience the editor uses
+    // to render the picker chip without a second lookup). Both are
+    // session-scoped fields on the draft. Without backfilling them
+    // here, every region renders as "New region" with an empty Label
+    // field, which makes the edit view look like it forgot the user's
+    // prior work. Recover them from the entity catalog — the entity's
+    // backend label is the natural fallback for both.
+    const hydratedDrafts = planRegionsToDrafts(editContext.plan, workbook).map(
+      (draft) => {
+        const entityId = draft.targetEntityDefinitionId;
+        const entityLabel = entityId ? catalogById.get(entityId) : undefined;
+        if (!entityLabel) return draft;
+        return {
+          ...draft,
+          targetEntityLabel: entityLabel,
+          proposedLabel: draft.proposedLabel ?? entityLabel,
+        };
+      }
+    );
+    setRegions(hydratedDrafts);
     // Seed `stagedEntities` from the real `connector_entities`
     // catalog the backend returned. Falls back to the region's
     // targetEntityDefinitionId-as-label only if some region
     // references an id that's not in the catalog (defensive — the
     // catalog should be a superset of every region's target).
-    const catalogById = new Map<string, string>(
-      editContext.entityCatalog.map((e) => [e.id, e.label] as const)
-    );
     const seeded: EntityOption[] = [];
     const seen = new Set<string>();
     for (const entry of editContext.entityCatalog) {
@@ -671,6 +716,26 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       onSaveDraft={handleSaveDraft}
       onBack={handleBack}
       onNavigate={(href) => navigate({ to: href })}
+      resolveIdentityLocatorOptions={
+        editContext?.editable && editContext.workbookPreview
+          ? (region: RegionDraft) =>
+              resolveLocatorOptionsFor(
+                previewToEditorWorkbook(editContext.workbookPreview!),
+                region
+              )
+          : undefined
+      }
+      onIdentityUpdate={
+        editContext?.editable && editContext.workbookPreview
+          ? buildIdentityUpdater({
+              workbook: previewToEditorWorkbook(
+                editContext.workbookPreview
+              ),
+              regions,
+              onRegionUpdate: handleRegionUpdate,
+            })
+          : undefined
+      }
     />
   );
 };
