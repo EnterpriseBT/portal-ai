@@ -87,8 +87,14 @@ export interface EditLayoutPlanViewUIProps {
   connectorInstanceId: string;
   connectorInstanceName: string | null;
 
-  /** Save Draft state (slice 3b). */
-  isSavingDraft: boolean;
+  /**
+   * Snackbar feedback for the auto-PATCH that fires inside the Commit
+   * flow (originally a standalone Save Draft button; the user-visible
+   * button was removed because the auto-save covers every case where
+   * a user actually cared about persistence — clicking Commit). The
+   * toast still exists because PATCH failures need to surface
+   * somewhere before the commit-job error path can take over.
+   */
   saveDraftToast: { severity: "success" | "error"; message: string } | null;
   onDismissSaveDraftToast: () => void;
 
@@ -125,7 +131,6 @@ export interface EditLayoutPlanViewUIProps {
   onJumpToRegion: (regionId: string) => void;
   onEditBinding: (regionId: string, sourceLocator: string) => void;
   onCommit: () => void;
-  onSaveDraft: () => void;
   /**
    * Wired to the ReviewStep's "Back to regions" button — steps from
    * review (step 1) back to draw-regions (step 0). Does NOT navigate
@@ -174,7 +179,6 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   isCommitting,
   connectorInstanceId,
   connectorInstanceName,
-  isSavingDraft,
   saveDraftToast,
   onDismissSaveDraftToast,
   entityOptions,
@@ -193,7 +197,6 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   onJumpToRegion,
   onEditBinding,
   onCommit,
-  onSaveDraft,
   onBack,
   onLeaveView,
   onNavigate,
@@ -204,17 +207,9 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   // Breadcrumb shared by every branch (loading, error, not-editable, editor)
   // so the user always has a one-click path back to the detail view. The
   // third crumb falls back to a generic label while the connector-name
-  // query is still in flight.
-  const canSaveDraft = !!editContext?.editable;
-  const saveDraftButton = canSaveDraft ? (
-    <Button
-      variant="contained"
-      onClick={onSaveDraft}
-      disabled={isSavingDraft}
-    >
-      {isSavingDraft ? "Saving…" : "Save draft"}
-    </Button>
-  ) : undefined;
+  // query is still in flight. The header used to host a standalone
+  // "Save draft" button — removed in favor of auto-saving inside the
+  // Commit flow (see `handleCommit`'s leading PATCH).
   const header = (
     <PageHeader
       breadcrumbs={[
@@ -229,7 +224,6 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
       onNavigate={onNavigate}
       title="Modify Layout Plan"
       icon={<Icon name={IconName.MemoryChip} />}
-      primaryAction={saveDraftButton}
     />
   );
 
@@ -400,17 +394,25 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
   const connectorInstanceName =
     instanceQuery.data?.connectorInstance.name ?? null;
 
-  const { mutateAsync: recommitMutate, isPending: isCommitting, error: commitMutationError } =
-    sdk.connectorInstanceLayoutPlans.commit(
-      connectorInstanceId,
-      editContext?.planId ?? ""
-    );
+  const {
+    mutateAsync: recommitMutate,
+    isPending: isRecommitting,
+    error: commitMutationError,
+  } = sdk.connectorInstanceLayoutPlans.commit(
+    connectorInstanceId,
+    editContext?.planId ?? ""
+  );
 
-  const { mutateAsync: patchPlanMutate, isPending: isSavingDraft } =
+  const { mutateAsync: patchPlanMutate, isPending: isAutoSaving } =
     sdk.connectorInstanceLayoutPlans.patch(
       connectorInstanceId,
       editContext?.planId ?? ""
     );
+
+  // The Commit button stays disabled across both phases of the
+  // commit flow — the leading auto-PATCH AND the recommit POST —
+  // so users can't double-click between phases.
+  const isCommitting = isRecommitting || isAutoSaving;
 
   // Slice 3c — sheet-slice loaders for big workbooks. All three SDK
   // hooks are invoked unconditionally so React Query's rules-of-hooks
@@ -582,40 +584,6 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     },
     []
   );
-
-  const handleSaveDraft = useCallback(async () => {
-    if (!editContext?.editable || !editContext.workbookPreview) return;
-    const workbook = previewToEditorWorkbook(editContext.workbookPreview);
-    let nextRegions;
-    try {
-      nextRegions = draftsToRegions(regions, workbook, editContext.plan);
-    } catch (err) {
-      setSaveDraftToast({
-        severity: "error",
-        message: err instanceof Error ? err.message : "Failed to save plan",
-      });
-      return;
-    }
-    try {
-      await patchPlanMutate({
-        regions: nextRegions,
-      });
-      // The cache hit on `queryKeys.connectorInstanceLayoutPlans.root`
-      // re-fetches the edit context so the next mount sees the saved
-      // version. The current view's local draft state is the source
-      // of truth until the user leaves and re-enters.
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.connectorInstanceLayoutPlans.root,
-      });
-      setSaveDraftToast({ severity: "success", message: "Plan saved." });
-    } catch (err) {
-      const apiErr = err as { message?: string } | null;
-      setSaveDraftToast({
-        severity: "error",
-        message: apiErr?.message ?? "Failed to save plan.",
-      });
-    }
-  }, [editContext, regions, patchPlanMutate, queryClient]);
 
   const handleCommit = useCallback(async () => {
     if (!editContext?.editable || !editContext.workbookPreview) return;
@@ -799,7 +767,6 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       isCommitting={isCommitting}
       connectorInstanceId={connectorInstanceId}
       connectorInstanceName={connectorInstanceName}
-      isSavingDraft={isSavingDraft}
       saveDraftToast={saveDraftToast}
       onDismissSaveDraftToast={() => setSaveDraftToast(null)}
       entityOptions={entityOptions}
@@ -821,7 +788,6 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       }}
       onEditBinding={() => undefined}
       onCommit={handleCommit}
-      onSaveDraft={handleSaveDraft}
       onBack={handleBack}
       onLeaveView={handleLeaveView}
       onNavigate={(href) => navigate({ to: href })}

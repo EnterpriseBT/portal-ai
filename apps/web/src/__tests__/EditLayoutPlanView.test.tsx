@@ -96,7 +96,6 @@ const baseProps = {
   isCommitting: false,
   connectorInstanceId: "ci_1",
   connectorInstanceName: "Test Connector",
-  isSavingDraft: false,
   saveDraftToast: null as
     | { severity: "success" | "error"; message: string }
     | null,
@@ -116,7 +115,6 @@ const baseProps = {
   onJumpToRegion: jest.fn(),
   onEditBinding: jest.fn(),
   onCommit: jest.fn(),
-  onSaveDraft: jest.fn(),
   onBack: jest.fn(),
   onLeaveView: jest.fn(),
   onNavigate: jest.fn(),
@@ -145,26 +143,9 @@ describe("EditLayoutPlanViewUI", () => {
   });
 
   // ── Case 11 ────────────────────────────────────────────────────────────
-  it("case 11 — clicking Save draft on the editor invokes the onSaveDraft prop", () => {
-    const onSaveDraft = jest.fn();
-    const editContext = makeEditableContext();
-    const regions = makeEditableDraftsFromContext(editContext);
-
-    render(
-      <EditLayoutPlanViewUI
-        {...baseProps}
-        editContext={editContext}
-        regions={regions}
-        onSaveDraft={onSaveDraft}
-      />
-    );
-
-    const saveButton = screen.getByRole("button", { name: /save draft/i });
-    fireEvent.click(saveButton);
-
-    expect(onSaveDraft).toHaveBeenCalledTimes(1);
-  });
-
+  // The standalone "Save draft" button was removed in favor of auto-saving
+  // inside the Commit flow. The toast that surfaced its feedback stays
+  // because the auto-PATCH still uses it for PATCH-phase errors.
   it("case 11 — saveDraftToast renders a Snackbar with the success message", () => {
     const editContext = makeEditableContext();
     const regions = makeEditableDraftsFromContext(editContext);
