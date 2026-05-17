@@ -169,6 +169,20 @@ export const ConnectorInstanceView = ({
             queryKey:
               queryKeys.connectorInstances.runningJobs(connectorInstanceId),
           });
+          // A terminal job almost always means the connector instance
+          // row itself changed: layout_plan_commit flips `status`
+          // (pending → ready on success, pending → error on failure),
+          // connector_sync bumps `lastSyncAt` / `lastErrorMessage`,
+          // etc. Without this invalidation the status chip on the
+          // detail view sticks to whatever it was when the page first
+          // loaded.
+          queryClient.invalidateQueries({
+            queryKey:
+              queryKeys.connectorInstances.get(connectorInstanceId),
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.connectorInstances.root,
+          });
         });
     }
     return () => {
