@@ -10,12 +10,12 @@ The suite is structured so each section can run in isolation. Run **§Preflight*
 
 ### Environment
 
-- [ ] `npm run dev` boots cleanly (API on `:3001`, web on `:3000`).
-- [ ] Postgres has every migration applied (`drizzle/__journal.json` matches the running schema). `npm run db:migrate` from `apps/api` if not.
-- [ ] Redis is reachable. `REDIS_URL` resolves; `FILE_UPLOAD_CACHE_TTL_SEC` defaults to 1 hour.
-- [ ] S3 (or local equivalent) is reachable. Uploads PUT and HEAD succeed.
-- [ ] Auth0 dev tenant is configured. Login flow lands you on `/dashboard`.
-- [ ] Google OAuth + Microsoft OAuth client IDs/secrets are present in `.env` for the cloud-connector cases.
+- [x] `npm run dev` boots cleanly (API on `:3001`, web on `:3000`).
+- [x] Postgres has every migration applied (`drizzle/__journal.json` matches the running schema). `npm run db:migrate` from `apps/api` if not.
+- [x] Redis is reachable. `REDIS_URL` resolves; `FILE_UPLOAD_CACHE_TTL_SEC` defaults to 1 hour.
+- [x] S3 (or local equivalent) is reachable. Uploads PUT and HEAD succeed.
+- [x] Auth0 dev tenant is configured. Login flow lands you on `/dashboard`.
+- [x] Google OAuth + Microsoft OAuth client IDs/secrets are present in `.env` for the cloud-connector cases.
 
 ### Test fixtures
 
@@ -35,8 +35,8 @@ Login as **two** distinct dev users in separate orgs before starting — the cro
 
 ### Reset between runs
 
-- [ ] Drop pending / stuck connector instances from a prior run before re-uploading the same fixture: detail view → kebab → Delete. (Stuck `pending` instances will fail the lock-state assertions if left.)
-- [ ] If a test run wedges, the database is in a recoverable state; do not blow away the org unless asked.
+- [x] Drop pending / stuck connector instances from a prior run before re-uploading the same fixture: detail view → kebab → Delete. (Stuck `pending` instances will fail the lock-state assertions if left.)
+- [x] If a test run wedges, the database is in a recoverable state; do not blow away the org unless asked.
 
 ---
 
@@ -44,53 +44,53 @@ Login as **two** distinct dev users in separate orgs before starting — the cro
 
 ### 1.1 Upload + parse (small-csv)
 
-- [ ] Connectors → New → File Upload → drop **small-csv** → upload completes (progress bar reaches 100% in <2s).
-- [ ] Parse job enqueues; the progress bar transitions from "Uploading…" through "Parsing…" to "Ready" via SSE (no polling).
-- [ ] Preview cells render inline — every cell visible, no `…` truncation.
-- [ ] Network tab shows **one** `parse` POST returning 202 with a `jobId`, and **one** SSE stream that completes.
-- [ ] `file_uploads` row exists in Postgres with `status='parsed'` and `uploadSessionId` set.
+- [x] Connectors → New → File Upload → drop **small-csv** → upload completes (progress bar reaches 100% in <2s).
+- [x] Parse job enqueues; the progress bar transitions from "Uploading…" through "Parsing…" to "Ready" via SSE (no polling).
+- [x] Preview cells render inline — every cell visible, no `…` truncation.
+- [x] Network tab shows **one** `parse` POST returning 202 with a `jobId`, and **one** SSE stream that completes.
+- [x] `file_uploads` row exists in Postgres with `status='parsed'` and `uploadSessionId` set.
 
 ### 1.2 Upload + parse (large-csv, 30k rows)
 
-- [ ] Drop **large-csv** → upload bar reaches 100% (typically <10s on local Redis/S3).
-- [ ] Parse SSE shows incremental progress jumps; the bar must not stall at 0% or 100% for more than ~5s at a stretch.
-- [ ] Preview returns with `sliced: true` and `cells: []` for the big sheet (server inlined nothing past `FILE_UPLOAD_INLINE_CELLS_MAX`).
-- [ ] Region editor renders the visible viewport via on-demand slice loads (Network tab: `sheet-slice` requests fire as you scroll). **Each slice should return in <300ms locally.**
-- [ ] Redis has `upload-session:<id>:meta` + `upload-session:<id>:sheet:<sid>:rows:<chunkIdx>` keys. `ROWS_PER_CHUNK` defaults to 1000, so a 30k-row sheet has 30 chunks.
+- [x] Drop **large-csv** → upload bar reaches 100% (typically <10s on local Redis/S3).
+- [x] Parse SSE shows incremental progress jumps; the bar must not stall at 0% or 100% for more than ~5s at a stretch.
+- [x] Preview returns with `sliced: true` and `cells: []` for the big sheet (server inlined nothing past `FILE_UPLOAD_INLINE_CELLS_MAX`).
+- [x] Region editor renders the visible viewport via on-demand slice loads (Network tab: `sheet-slice` requests fire as you scroll). **Each slice should return in <300ms locally.**
+- [x] Redis has `upload-session:<id>:meta` + `upload-session:<id>:sheet:<sid>:rows:<chunkIdx>` keys. `ROWS_PER_CHUNK` defaults to 1000, so a 30k-row sheet has 30 chunks.
 
 ### 1.3 Upload + parse (wide-csv, 55 cols)
 
-- [ ] Drop **wide-csv** → parse completes.
-- [ ] Reach the review step → click Commit.
-- [ ] **Regression for #61**: the layout-plan-commit job succeeds. The wide table `er__<id>` is created with 55 `c_*` columns. `entity_records` count == 100.
-- [ ] Visit the connector entity's records page → first page (10 rows) loads with no error. **If you see "Failed query: … jsonb_build_object … cannot pass more than 100 arguments" the chunking regressed.**
+- [x] Drop **wide-csv** → parse completes.
+- [x] Reach the review step → click Commit.
+- [x] **Regression for #61**: the layout-plan-commit job succeeds. The wide table `er__<id>` is created with 55 `c_*` columns. `entity_records` count == 100.
+- [x] Visit the connector entity's records page → first page (10 rows) loads with no error. **If you see "Failed query: … jsonb_build_object … cannot pass more than 100 arguments" the chunking regressed.**
 
 ### 1.4 Upload + parse (xlsx-with-dates)
 
-- [ ] Upload **xlsx-with-dates** → parse → reach review.
-- [ ] Commit succeeds.
-- [ ] **Regression for #61's sibling Date-binding fix**: the connector entity's records page renders. **If you see "ERR_INVALID_ARG_TYPE: Received an instance of Date" or "Failed query: … with `Mon Aug 11 …` in params" the Date coercion in `wide-table.repository.ts` regressed.**
-- [ ] Spot-check a date cell on the records page — it should display the ISO 8601 string (not a locale-formatted string).
+- [x] Upload **xlsx-with-dates** → parse → reach review.
+- [x] Commit succeeds.
+- [x] **Regression for #61's sibling Date-binding fix**: the connector entity's records page renders. **If you see "ERR_INVALID_ARG_TYPE: Received an instance of Date" or "Failed query: … with `Mon Aug 11 …` in params" the Date coercion in `wide-table.repository.ts` regressed.**
+- [x] Spot-check a date cell on the records page — it should display the ISO 8601 string (not a locale-formatted string).
 
 ### 1.5 Multi-sheet XLSX (xlsx-multi-sheet)
 
-- [ ] Upload **xlsx-multi-sheet** → parse.
-- [ ] Region editor's sheet tabs show all 3 sheets.
-- [ ] Switching tabs renders each sheet's preview without re-fetching (active sheet's cells are cached locally).
-- [ ] Region drawing on each sheet is independent — drawing on Sheet B doesn't move the region on Sheet A.
-- [ ] Commit succeeds; 3 wide tables (one per sheet's entity definition) exist.
+- [x] Upload **xlsx-multi-sheet** → parse.
+- [x] Region editor's sheet tabs show all 3 sheets.
+- [x] Switching tabs renders each sheet's preview without re-fetching (active sheet's cells are cached locally).
+- [x] Region drawing on each sheet is independent — drawing on Sheet B doesn't move the region on Sheet A.
+- [x] Commit succeeds; 3 wide tables (one per sheet's entity definition) exist.
 
 ### 1.6 Cache miss + S3 fallback
 
-- [ ] After a successful parse, manually expire the Redis cache (`FLUSHDB` for an isolated dev cluster, or `DEL upload-session:<id>:meta` for one session).
-- [ ] Trigger Interpret again (kicks `resolveWorkbook`).
-- [ ] Server logs show `upload.cache.miss` + the re-stream from S3; interpret completes successfully.
+- [x] After a successful parse, manually expire the Redis cache (`FLUSHDB` for an isolated dev cluster, or `DEL upload-session:<id>:meta` for one session).
+- [x] Trigger Interpret again (kicks `resolveWorkbook`).
+- [x] Server logs show `upload.cache.miss` + the re-stream from S3; interpret completes successfully.
 
 ### 1.7 Source removed (`editable: false` branch)
 
-- [ ] After a successful commit, hard-delete the `file_uploads` rows for the upload session via `DELETE FROM file_uploads WHERE upload_session_id = '<sid>'`.
-- [ ] On the connector detail page, click the kebab → **Modify Layout Plan**.
-- [ ] Edit view shows the SOURCE_REMOVED notice with the re-upload link. **No editor renders; no 500.**
+- [x] After a successful commit, hard-delete the `file_uploads` rows for the upload session via `DELETE FROM file_uploads WHERE upload_session_id = '<sid>'`.
+- [x] On the connector detail page, click the kebab → **Modify Layout Plan**.
+- [x] Edit view shows the SOURCE_REMOVED notice with the re-upload link. **No editor renders; no 500.**
 
 ---
 
@@ -98,13 +98,13 @@ Login as **two** distinct dev users in separate orgs before starting — the cro
 
 ### 2.1 OAuth connect + sheet selection
 
-- [ ] Connectors → New → Google Sheets → OAuth popup completes → returns with a pending connector_instance row.
-- [ ] Sheet picker lists every spreadsheet the connected account has access to.
-- [ ] Select **gsheets-large** → Select-sheet completes → workbook lands in `connector:wb:google-sheets:<id>` Redis prefix.
+- [x] Connectors → New → Google Sheets → OAuth popup completes → returns with a pending connector_instance row.
+- [x] Sheet picker lists every spreadsheet the connected account has access to.
+- [x] Select **gsheets-large** → Select-sheet completes → workbook lands in `connector:wb:google-sheets:<id>` Redis prefix.
 
 ### 2.2 Interpret + Commit (gsheets-large)
 
-- [ ] Interpret runs against the cached workbook; preview shows the sheet shape (2700 × 60).
+- [x] Interpret runs against the cached workbook; preview shows the sheet shape (2700 × 60).
 - [ ] **Regression check**: the plan defaults to `identityStrategy: { kind: "column", col: 1 }` for the first column. **If column 1 has duplicates or blanks past the declared bounds, the drift gate (`LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`) will halt commit on the initial attempt.** This is the expected drift-gate behavior. To proceed, either:
   - Pick a cleaner identity column via the editor's Identity panel, OR
   - Switch to `rowPosition` identity (no source data dependency).
@@ -115,6 +115,8 @@ Login as **two** distinct dev users in separate orgs before starting — the cro
 
 - [ ] On a clean Google Sheets instance, commit with the bad column-1 identity strategy → SSE delivers `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`.
 - [ ] **Regression for #60**: the connector instance status flips to `error` (not stuck `pending`), `lastErrorMessage` carries the drift message, and **the plan row survives** (the user can recover via Modify Layout Plan).
+- [ ] **Chip-refresh regression**: stay on `/connectors/<id>` from the moment Commit was clicked. The chip is `Pending` while the job runs; within ~2s of the SSE terminal `failed` event landing, the chip flips to `Error` **without a manual refresh or navigation away**. The error banner shows the drift message. (If the chip stays `Pending` until you reload, the workflow's terminal-event invalidation regressed — see commits `fec6ce1` and `90c3311`.)
+- [ ] **Single-attempt regression**: in the `jobs` table for the failed commit, `maxAttempts = 1`. The Bull queue only attempted once. (If you see >1 transition to `failed` in the SSE stream or the worker logs, the `MAX_ATTEMPTS_BY_TYPE` override regressed.)
 - [ ] Click Modify Layout Plan → editor mounts with the original plan loaded → switch identity strategy → Commit.
 - [ ] Second commit succeeds. Detail view returns to `active`.
 
@@ -126,6 +128,14 @@ Login as **two** distinct dev users in separate orgs before starting — the cro
 - [ ] **Regression for #61**: sync passes 40% without `ERR_INVALID_ARG_TYPE` (the Date-binding bug surfaced exactly at the commit phase boundary).
 - [ ] Records reflect the upstream changes: the new row appears, the modified row's `data` is updated, the blanked-out row is either soft-deleted (if blanked beyond the terminator) or has the field cleared.
 - [ ] Watermark reaper: rows whose `syncedAt` predates the run watermark and weren't touched are soft-deleted; cross-check `entity_records` count drops accordingly.
+
+### 2.4.1 Sync halts on identity drift (regression for the split drift gate)
+
+- [ ] On an active gsheets-large connector with **column** identity (e.g. `Model` as the identity column), manually edit the upstream sheet so the identity column would derive different `source_id`s (add blanks/duplicates within the bounds, or rename the column so the locator no longer resolves).
+- [ ] Trigger Sync.
+- [ ] **Expected**: sync fails with `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`. The connector_sync job ends in `failed` status with the drift error in `error`. **Sync does not silently absorb identity drift** — that path was closed because changing the `source_id` derivation collapses or splits records under the user.
+- [ ] Severity-level drift (header rename of a non-identity column, an added column, a removed non-identity column) **still** lets sync proceed — the bypass only applies to non-identity drift. Verify with a header-only mutation on a non-identity column; sync should complete and update records normally.
+- [ ] Recovery: Modify Layout Plan → switch to `rowPosition` identity (or pick a stable identity column) → Commit → re-run Sync. Sync now succeeds.
 
 ### 2.5 Token-refresh / reconnect path
 
@@ -243,7 +253,22 @@ These are tight repro paths for the bugs landed during this branch's smoke. If a
 
 ### 7.5 SSE doesn't drop terminal events under retries
 
-- [ ] Force a parse or commit job to retry (kill the worker mid-job; Bull's `attempts: 3` retries). The job's `error` text in the DB should reflect the underlying failure, **not** a misleading `LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND` from a rollback-induced retry (the symptom that originally landed on this branch and was reverted; if it returns, retries are masking real errors again).
+- [ ] Force a parse or sync job to retry (kill the worker mid-job; Bull's `attempts: 3` retries for `file_upload_parse` and `connector_sync`). The job's `error` text in the DB should reflect the underlying failure, **not** a misleading `LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND` from a rollback-induced retry (the symptom that originally landed on this branch and was reverted; if it returns, retries are masking real errors again).
+- [ ] `layout_plan_commit` is exempt — it's pinned to `attempts: 1` via `MAX_ATTEMPTS_BY_TYPE` in `apps/api/src/services/jobs.service.ts`. Retrying a commit failure is meaningless (drift, blocker warnings, and validation errors are deterministic) and used to confuse the client: the worker would emit a `failed` SSE event per attempt, the frontend would treat the first as terminal, and the eventual rollback on the final attempt would reach no listener. **Verify**: in the `jobs` table, every `layout_plan_commit` row has `maxAttempts = 1`. Every other job type still has `maxAttempts = 3`.
+
+### 7.6 Connector status chip refreshes on terminal SSE event
+
+The connector-instance detail view subscribes to SSE for every running job and invalidates its query caches on the terminal event — success, failure, or cancellation. Two regressions to watch for:
+
+- [ ] **Workflow path**: walk through the gsheets-large or file-upload workflow to the Commit step. From the moment you click Commit, stay on the connector detail page (don't navigate away). Wait for the job to terminate (success or failure). The chip transitions from `Pending` → final status within ~2s of the terminal event — **no manual refresh required**. (If the chip sticks at `Pending` until you reload, the workflow's `awaitJobCompletion(...).finally(invalidate)` regressed.)
+- [ ] **Detail-view path**: trigger a sync from the connector detail page. While the sync runs (chip says `Pending`, lock alert visible), do NOT leave the page. When the sync's SSE terminal event lands, the chip flips to `Active` (success) or `Error` (failure) **without a manual refresh**, and the lock alert disappears. (If the chip stays `Pending` after the alert clears, the SSE-driven invalidation in `ConnectorInstance.view.tsx` regressed.)
+
+### 7.7 Identity drift gate fires on sync, not just commit
+
+Identity drift (`drift.identityChanging === true`) is special: it changes the `source_id` derivation and silently corrupts upserts. The gate runs unconditionally on every commit AND every sync — sync's `skipDriftGate: true` flag only bypasses the severity gates (blocker / warn), not the identity gate.
+
+- [ ] Walk §2.4.1. Sync against a workbook with identity-changing drift must fail with `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`. If sync silently proceeds and writes records under a shifted `source_id`, the gate-split in `LayoutPlanCommitService.commit` regressed.
+- [ ] As a sanity check on the inverse: sync against a workbook with **non-identity** drift (e.g. add a column, rename a non-identity header) must STILL succeed — sync existing to absorb non-identity drift is the whole point of `skipDriftGate`. Records reflect the new column or header.
 
 ---
 
