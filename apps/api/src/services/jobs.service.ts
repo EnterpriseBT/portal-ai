@@ -10,11 +10,37 @@ import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "jobs-service" });
 
+/**
+ * Per-type override for BullMQ `attempts`. Defaults to the queue's
+ * `defaultJobOptions.attempts` (3) for any type not listed here.
+ *
+ * `layout_plan_commit` is pinned to 1 because its failures are
+ * deterministic — drift gates, blocker warnings, validation errors —
+ * none of which are transient. Retrying just delays the inevitable
+ * failure, and the rollback (which flips the connector instance to
+ * `error`) only runs on the FINAL attempt. Anything > 1 means the
+ * client sees a `failed` SSE event for the first attempt, treats it
+ * as terminal, and refetches the connector instance while it is
+ * still `pending` — the rollback hasn't fired yet. By the time the
+ * Nth attempt actually rolls back, no client is listening, so the
+ * status chip stays stuck on `pending` until the user reloads.
+ */
+const MAX_ATTEMPTS_BY_TYPE: Partial<Record<string, number>> = {
+  layout_plan_commit: 1,
+};
+
+const DEFAULT_MAX_ATTEMPTS = 3;
+
+function resolveMaxAttempts(type: string): number {
+  return MAX_ATTEMPTS_BY_TYPE[type] ?? DEFAULT_MAX_ATTEMPTS;
+}
+
 export class JobsService {
   /**
    * Create a new job record in PostgreSQL and enqueue it via BullMQ.
    */
   static async create(userId: string, params: JobCreateRequestBody) {
+    const maxAttempts = resolveMaxAttempts(params.type);
     const factory = new JobModelFactory();
     const model = factory.create(userId);
     model.update({
@@ -29,7 +55,7 @@ export class JobsService {
       completedAt: null,
       bullJobId: null,
       attempts: 0,
-      maxAttempts: 3,
+      maxAttempts,
     });
 
     // 1. Create DB record
@@ -37,11 +63,15 @@ export class JobsService {
 
     // 2. Enqueue BullMQ job
     try {
-      const bullJob = await jobsQueue.add(params.type, {
-        jobId: job.id,
-        type: params.type,
-        ...params.metadata,
-      });
+      const bullJob = await jobsQueue.add(
+        params.type,
+        {
+          jobId: job.id,
+          type: params.type,
+          ...params.metadata,
+        },
+        { attempts: maxAttempts }
+      );
 
       // 3. Store BullMQ reference
       await DbService.repository.jobs.update(job.id, {
