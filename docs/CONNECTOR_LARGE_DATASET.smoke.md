@@ -114,19 +114,19 @@ Login as **two** distinct dev users in separate orgs before starting — the cro
 ### 2.3 Recovery from drift failure (PR #60 regression)
 
 - [x] On a clean Google Sheets instance, commit with the bad column-1 identity strategy → SSE delivers `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`.
-- [ ] **Regression for #60**: the connector instance status flips to `error` (not stuck `pending`), `lastErrorMessage` carries the drift message, and **the plan row survives** (the user can recover via Modify Layout Plan).
-- [ ] **Chip-refresh regression**: stay on `/connectors/<id>` from the moment Commit was clicked. The chip is `Pending` while the job runs; within ~2s of the SSE terminal `failed` event landing, the chip flips to `Error` **without a manual refresh or navigation away**. The error banner shows the drift message. (If the chip stays `Pending` until you reload, the workflow's terminal-event invalidation regressed — see commits `fec6ce1` and `90c3311`.)
-- [ ] **Single-attempt regression**: in the `jobs` table for the failed commit, `maxAttempts = 1`. The Bull queue only attempted once. (If you see >1 transition to `failed` in the SSE stream or the worker logs, the `MAX_ATTEMPTS_BY_TYPE` override regressed.)
-- [ ] Click Modify Layout Plan → editor mounts with the original plan loaded → switch identity strategy → Commit.
-- [ ] Second commit succeeds. Detail view returns to `active`.
+- [x] **Regression for #60**: the connector instance status flips to `error` (not stuck `pending`), `lastErrorMessage` carries the drift message, and **the plan row survives** (the user can recover via Modify Layout Plan).
+- [x] **Chip-refresh regression**: stay on `/connectors/<id>` from the moment Commit was clicked. The chip is `Pending` while the job runs; within ~2s of the SSE terminal `failed` event landing, the chip flips to `Error` **without a manual refresh or navigation away**. The error banner shows the drift message. (If the chip stays `Pending` until you reload, the workflow's terminal-event invalidation regressed — see commits `fec6ce1` and `90c3311`.)
+- [x] **Single-attempt regression**: in the `jobs` table for the failed commit, `maxAttempts = 1`. The Bull queue only attempted once. (If you see >1 transition to `failed` in the SSE stream or the worker logs, the `MAX_ATTEMPTS_BY_TYPE` override regressed.)
+- [x] Click Modify Layout Plan → editor mounts with the original plan loaded → switch identity strategy → Commit.
+- [x] Second commit succeeds. Detail view returns to `active`.
 
 ### 2.4 Sync (cloud connectors only)
 
-- [ ] On the now-active gsheets-large connector, modify a few cells in the upstream Google Sheet (add a row, change a Model name, blank out one value).
-- [ ] Click Sync from the detail page.
-- [ ] SSE progress: 0 → 10 → 40 → ~80 (per-chunk write progress) → 100.
-- [ ] **Regression for #61**: sync passes 40% without `ERR_INVALID_ARG_TYPE` (the Date-binding bug surfaced exactly at the commit phase boundary).
-- [ ] Records reflect the upstream changes: the new row appears, the modified row's `data` is updated, the blanked-out row is either soft-deleted (if blanked beyond the terminator) or has the field cleared.
+- [x] On the now-active gsheets-large connector, modify a few cells in the upstream Google Sheet (add a row, change a Model name, blank out one value).
+- [x] Click Sync from the detail page.
+- [x] SSE progress: 0 → 10 → 40 → ~80 (per-chunk write progress) → 100.
+- [x] **Regression for #61**: sync passes 40% without `ERR_INVALID_ARG_TYPE` (the Date-binding bug surfaced exactly at the commit phase boundary).
+- [x] Records reflect the upstream changes: the new row appears, the modified row's `data` is updated, the blanked-out row is either soft-deleted (if blanked beyond the terminator) or has the field cleared.
 - [ ] Watermark reaper: rows whose `syncedAt` predates the run watermark and weren't touched are soft-deleted; cross-check `entity_records` count drops accordingly.
 
 ### 2.4.1 Sync halts on identity drift (regression for the split drift gate)
@@ -186,6 +186,7 @@ Mirror §2 against **excel-365-cloud**. The pipeline is structurally identical; 
 - [ ] For **gsheets-large** specifically, off-screen rows resolve via `loadSlice` — scroll past row 30 (the inline preview cap), confirm new sheet-slice requests fire and the canvas renders the freshly-loaded cells.
 - [ ] **Interpret button** — clicking "Interpret" on the draw-regions step advances to the Review step (it does NOT re-run the AI pipeline; the plan is already classified). If the click looks like a no-op, `onAdvanceToReview` is no longer wired.
 - [ ] **Back to regions** — on the Review step, clicking "Back to regions" returns to the draw-regions step (step 0). It does NOT navigate out of the edit view (the breadcrumb does that). If clicking it lands you back on `/connectors/<id>`, `handleBack` regressed.
+- [ ] **Region deletion locked** — select any persisted region. The configuration panel's "Delete region" IconButton is NOT rendered (compare with the workflow flow, where it is visible). Press Delete / Backspace with the region still selected → nothing happens (focus stays on the canvas, region survives). If either UI or keyboard deletes the region, `regionDeletionLocked` is no longer threaded through to the panel + draw-step keyboard handler.
 
 ### 4.4 Commit auto-saves edits (slices 3 / 3b folded together)
 
