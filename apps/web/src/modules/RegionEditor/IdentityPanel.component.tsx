@@ -1,14 +1,12 @@
 import React from "react";
 
-import { Box, Stack, Typography, Select } from "@portalai/core/ui";
+import { Box, Checkbox, Stack, Typography, Select } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
 import MuiChip from "@mui/material/Chip";
 
 import { ConfidenceChipUI } from "./ConfidenceChip.component";
 import type { LocatorOption } from "./utils/identity-locator-options.util";
-
-const ROW_POSITION_VALUE = "rowPosition";
 
 export type IdentityChange =
   | { kind: "column"; locator: { axis: "row" | "column"; index: number } }
@@ -54,15 +52,13 @@ function uniquenessTag(uniqueness: LocatorOption["uniqueness"]): string {
 }
 
 function buildOptions(locatorOptions: LocatorOption[]): SelectOption[] {
-  const opts: SelectOption[] = locatorOptions.map((o) => ({
+  // The position-based option used to live inside this dropdown but
+  // got lost when the column list is long — surfaced as a sibling
+  // checkbox above the Select instead. Keep this list column-only.
+  return locatorOptions.map((o) => ({
     value: o.key,
     label: `${o.label} (${uniquenessTag(o.uniqueness)})`,
   }));
-  opts.push({
-    value: ROW_POSITION_VALUE,
-    label: "Use position-based ids — every sync recreates records",
-  });
-  return opts;
 }
 
 function describeKind(kind: IdentityPanelCurrentSelection["kind"]): string {
@@ -102,22 +98,35 @@ export const IdentityPanelUI: React.FC<IdentityPanelUIProps> = ({
   onIdentityChange,
 }) => {
   const options = buildOptions(locatorOptions);
-  const valueKey =
-    currentSelection.kind === "rowPosition"
-      ? ROW_POSITION_VALUE
-      : (currentSelection.selectedKey ?? "");
+  const isPositionBased = currentSelection.kind === "rowPosition";
+  const hasColumnOptions = locatorOptions.length > 0;
+  const valueKey = isPositionBased ? "" : (currentSelection.selectedKey ?? "");
 
   const handleChange = (e: { target: { value: string | number } }) => {
     const v = String(e.target.value);
-    if (v === ROW_POSITION_VALUE) {
-      onIdentityChange(regionId, { kind: "rowPosition" });
-      return;
-    }
     const opt = locatorOptions.find((o) => o.key === v);
     if (!opt) return;
     onIdentityChange(regionId, {
       kind: "column",
       locator: { axis: opt.axis, index: opt.index },
+    });
+  };
+
+  const handlePositionToggle = (checked: boolean) => {
+    if (checked) {
+      onIdentityChange(regionId, { kind: "rowPosition" });
+      return;
+    }
+    // Unchecking falls back to the first available column option —
+    // the user can then refine via the Select. If no column options
+    // exist (very rare; means the region has no header / no
+    // detectable identity candidates), the checkbox is disabled and
+    // we don't reach this branch.
+    const first = locatorOptions[0];
+    if (!first) return;
+    onIdentityChange(regionId, {
+      kind: "column",
+      locator: { axis: first.axis, index: first.index },
     });
   };
 
@@ -171,6 +180,18 @@ export const IdentityPanelUI: React.FC<IdentityPanelUIProps> = ({
           ) : null}
         </Stack>
 
+        <Checkbox
+          size="small"
+          checked={isPositionBased}
+          disabled={!hasColumnOptions}
+          onChange={handlePositionToggle}
+          label={
+            <Typography variant="caption">
+              Use position-based ids — every sync recreates records
+            </Typography>
+          }
+        />
+
         <Select
           size="small"
           label="Identity field"
@@ -178,6 +199,7 @@ export const IdentityPanelUI: React.FC<IdentityPanelUIProps> = ({
           onChange={handleChange}
           options={options}
           fullWidth
+          disabled={isPositionBased}
         />
 
         {showDuplicateWarning && (
