@@ -187,28 +187,44 @@ Mirror §2 against **excel-365-cloud**. The pipeline is structurally identical; 
 - [ ] **Interpret button** — clicking "Interpret" on the draw-regions step advances to the Review step (it does NOT re-run the AI pipeline; the plan is already classified). If the click looks like a no-op, `onAdvanceToReview` is no longer wired.
 - [ ] **Back to regions** — on the Review step, clicking "Back to regions" returns to the draw-regions step (step 0). It does NOT navigate out of the edit view (the breadcrumb does that). If clicking it lands you back on `/connectors/<id>`, `handleBack` regressed.
 
-### 4.4 Save Draft (slice 3b)
+### 4.4 Commit auto-saves edits (slices 3 / 3b folded together)
 
-- [ ] Make an editor mutation (e.g. exclude a binding, change identity strategy) → click **Save draft** (top-right of the page header).
-- [ ] Network: a single PATCH to `/api/connector-instances/<id>/layout-plan/<planId>` returning 200.
-- [ ] Snackbar appears (bottom-right): "Plan saved." (auto-dismisses in 4s).
-- [ ] Reload the page. The edit-context query returns the patched plan; the editor re-mounts with the saved changes intact.
-- [ ] **Failure path**: edit a region down to no `targetEntityDefinitionId` (drag to a fresh, unbound region) → Save draft → red toast with "no target entity" message. No network request fires.
+The standalone "Save draft" button was removed — the auto-PATCH that fires inside the Commit flow covers every case where persistence actually mattered. Verify the merged behavior:
 
-### 4.5 Recommit (slice 3 / case 12)
-
-- [ ] On the editor's review step, click Commit.
-- [ ] **Commit body regression**: Network tab shows the POST to `/api/connector-instances/<id>/layout-plan/<planId>/commit` carrying either `{ connectorInstanceId }` (google-sheets / microsoft-excel) or `{ uploadSessionId }` (file-upload). An empty `{}` body would 400 with `LAYOUT_PLAN_INVALID_PAYLOAD` before the job is enqueued.
-- [ ] **Auto-PATCH-before-commit regression**: clicking Commit fires a PATCH to `/api/connector-instances/<id>/layout-plan/<planId>` **before** the POST. The PATCH body's `regions` reflects every local edit (identity change, bounds tweak, binding override) you made since the last Save Draft. If only the POST fires, local edits are silently dropped and the server reruns the previously-persisted plan — the most visible symptom is an identity change made specifically to clear `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED` having no effect on the next commit.
+- [ ] No "Save draft" button is visible above the editor. The PageHeader carries only the breadcrumb + title, no `primaryAction`.
+- [ ] Make an editor mutation (exclude a binding, change identity strategy, drag region bounds).
+- [ ] Click **Commit** on the Review step.
+- [ ] **Auto-PATCH fires first**: Network shows a single PATCH to `/api/connector-instances/<id>/layout-plan/<planId>` returning 200 BEFORE the commit POST. The PATCH body's `regions` reflects every local edit. If only the POST fires, local edits are silently dropped and the server reruns the previously-persisted plan — the most visible symptom is an identity change made specifically to clear `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED` having no effect on the next commit.
+- [ ] **Commit body regression**: the POST to `/api/connector-instances/<id>/layout-plan/<planId>/commit` carries either `{ connectorInstanceId }` (google-sheets / microsoft-excel) or `{ uploadSessionId }` (file-upload). An empty `{}` body would 400 with `LAYOUT_PLAN_INVALID_PAYLOAD` before the job is enqueued.
+- [ ] **PATCH-failure path**: edit a region down to no `targetEntityDefinitionId` (drag to a fresh, unbound region) → click Commit → red Snackbar with the validation message (auto-dismisses on user click, not on timeout). **No commit POST fires.**
+- [ ] **Single-disabled-state**: the Commit button stays disabled from click through both phases (PATCH + recommit POST) — no flicker between phases that would let a user double-click.
 - [ ] 202 lands; navigate auto-jumps to `/connectors/<id>` with a running-job alert visible.
 - [ ] SSE terminal event clears the alert; records reflect the recommitted plan.
 - [ ] **Round-trip after recommit**: open Modify Layout Plan again — the editor hydrates with the regions / identity / bindings you committed (not the pre-edit version).
 
-### 4.6 Inline error on bad commit (slice 3 / case 14)
+### 4.5 Inline error on bad commit (slice 3 / case 14)
 
 - [ ] On a plan with a blocker warning (e.g. a pivot region with no `axisName`), click Commit.
 - [ ] The route's 409 surfaces as an inline FormAlert above the editor.
 - [ ] Editor stays mounted. Commit button is re-enabled after the alert renders.
+
+### 4.6 Cloud-connector workbook cache rehydrates on edit-context
+
+The cloud-connector workbook cache has a 1h TTL and is **not** refreshed by sync (sync fetches fresh from the upstream API and skips the cache). Before this fix, opening Modify Layout Plan on a still-syncing connector after the TTL elapsed would surface the SOURCE_REMOVED placeholder — even though Google / Microsoft still had the workbook.
+
+- [ ] On an active gsheets-large or excel-365-cloud connector, manually flush the workbook cache: `DEL connector:wb:google-sheets:<id>:*` (or the matching microsoft-excel prefix). Verify `WorkbookCacheService.getSessionMeta` returns null.
+- [ ] Click **Modify Layout Plan** from the connector detail view.
+- [ ] **Expected**: the editor mounts normally with the persisted plan + workbook preview. The edit-context endpoint took an extra ~1-3s to re-fetch from the upstream API. Verify in server logs: a fresh call into `GoogleSheetsConnectorService.rehydrateWorkbookCache` (or `MicrosoftExcelConnectorService.rehydrateWorkbookCache`) before the preview is returned.
+- [ ] **Expected**: the cache is rebuilt — `WorkbookCacheService.getSessionMeta` now returns a populated meta with `status: "ready"` and one chunk per sheet. The next edit-context call on the same instance is back to the fast path.
+- [ ] **Regression**: if the SOURCE_REMOVED placeholder shows on a connector that still syncs successfully, the rehydrate path in `buildEditContextWorkbookPreview` regressed.
+
+### 4.7 Back button on placeholder branches navigates out
+
+The editor's "Back to regions" CTA on the Review step is a step-back (review → draw), but the "Back" button on the load-error and SOURCE_REMOVED branches must leave the view entirely — there's no editor mounted, so a step-back would be a no-op.
+
+- [ ] Trigger the SOURCE_REMOVED branch on a file-upload connector (delete the `file_uploads` rows for the session, then click Modify Layout Plan). Click **Back** beneath the notice.
+- [ ] **Expected**: route changes to `/connectors/<id>`. If clicking Back does nothing, `onLeaveView` is no longer wired and the placeholder Back is using the step-back `onBack` handler.
+- [ ] Same test against the load-error branch (e.g. force a 500 by hitting a non-existent connectorInstanceId). Back navigates back to the connector detail view.
 
 ---
 
