@@ -126,7 +126,19 @@ export interface EditLayoutPlanViewUIProps {
   onEditBinding: (regionId: string, sourceLocator: string) => void;
   onCommit: () => void;
   onSaveDraft: () => void;
+  /**
+   * Wired to the ReviewStep's "Back to regions" button — steps from
+   * review (step 1) back to draw-regions (step 0). Does NOT navigate
+   * out of the view; that's `onLeaveView`'s job.
+   */
   onBack: () => void;
+  /**
+   * Wired to the "Back" button on the placeholder branches
+   * (load-error, SOURCE_REMOVED). The editor isn't mounted on those
+   * branches so a step-back would be a no-op — leave the view
+   * entirely and return to the connector detail page instead.
+   */
+  onLeaveView: () => void;
   onNavigate: (href: string) => void;
   /**
    * Advances the editor from "Draw regions" to "Review". The
@@ -183,6 +195,7 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   onCommit,
   onSaveDraft,
   onBack,
+  onLeaveView,
   onNavigate,
   onAdvanceToReview,
   resolveIdentityLocatorOptions,
@@ -269,7 +282,7 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
           {header}
           <FormAlert serverError={loadError} />
           <Box>
-            <Button onClick={onBack} variant="outlined">
+            <Button onClick={onLeaveView} variant="outlined">
               Back
             </Button>
           </Box>
@@ -303,7 +316,7 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
               >
                 Re-upload to create a new connector
               </Button>
-              <Button onClick={onBack} variant="outlined">
+              <Button onClick={onLeaveView} variant="outlined">
                 Back
               </Button>
             </Stack>
@@ -682,12 +695,20 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
 
   // The ReviewStep's "Back to regions" button is the only consumer
   // of `onBack`. It's a STEP-back (review → draw), not a route-back —
-  // leaving the view entirely is the breadcrumb's job. Wiring this
-  // to `navigate(...)` dropped the user out of the edit flow on
-  // every click.
+  // leaving the view entirely is the breadcrumb's (or the placeholder
+  // branches') job.
   const handleBack = useCallback(() => {
     setStep(0);
   }, []);
+  // The placeholder branches (load-error, SOURCE_REMOVED) render a
+  // "Back" button when no editor is mounted. `handleBack`'s
+  // step-back is a no-op there, so we need a real route-back.
+  const handleLeaveView = useCallback(() => {
+    navigate({
+      to: "/connectors/$connectorInstanceId",
+      params: { connectorInstanceId },
+    });
+  }, [navigate, connectorInstanceId]);
 
   const loadError = useMemo(
     () => toServerError(editContextQuery.error),
@@ -802,6 +823,7 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       onCommit={handleCommit}
       onSaveDraft={handleSaveDraft}
       onBack={handleBack}
+      onLeaveView={handleLeaveView}
       onNavigate={(href) => navigate({ to: href })}
       onAdvanceToReview={() => setStep(1)}
       resolveIdentityLocatorOptions={

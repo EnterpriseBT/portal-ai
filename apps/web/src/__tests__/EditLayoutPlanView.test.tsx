@@ -118,6 +118,7 @@ const baseProps = {
   onCommit: jest.fn(),
   onSaveDraft: jest.fn(),
   onBack: jest.fn(),
+  onLeaveView: jest.fn(),
   onNavigate: jest.fn(),
   onAdvanceToReview: jest.fn(),
 };
