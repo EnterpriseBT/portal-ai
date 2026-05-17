@@ -105,15 +105,15 @@ Login as **two** distinct dev users in separate orgs before starting — the cro
 ### 2.2 Interpret + Commit (gsheets-large)
 
 - [x] Interpret runs against the cached workbook; preview shows the sheet shape (2700 × 60).
-- [ ] **Regression check**: the plan defaults to `identityStrategy: { kind: "column", col: 1 }` for the first column. **If column 1 has duplicates or blanks past the declared bounds, the drift gate (`LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`) will halt commit on the initial attempt.** This is the expected drift-gate behavior. To proceed, either:
+- [x] **Regression check**: the plan defaults to `identityStrategy: { kind: "column", col: 1 }` for the first column. **If column 1 has duplicates or blanks past the declared bounds, the drift gate (`LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`) will halt commit on the initial attempt.** This is the expected drift-gate behavior. To proceed, either:
   - Pick a cleaner identity column via the editor's Identity panel, OR
   - Switch to `rowPosition` identity (no source data dependency).
-- [ ] Commit succeeds after the identity fix. Records land in `entity_records` + wide-table.
-- [ ] Detail view flips from `pending` to `active`. Running-job alert clears via SSE.
+- [x] Commit succeeds after the identity fix. Records land in `entity_records` + wide-table.
+- [x] Detail view flips from `pending` to `active`. Running-job alert clears via SSE.
 
 ### 2.3 Recovery from drift failure (PR #60 regression)
 
-- [ ] On a clean Google Sheets instance, commit with the bad column-1 identity strategy → SSE delivers `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`.
+- [x] On a clean Google Sheets instance, commit with the bad column-1 identity strategy → SSE delivers `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`.
 - [ ] **Regression for #60**: the connector instance status flips to `error` (not stuck `pending`), `lastErrorMessage` carries the drift message, and **the plan row survives** (the user can recover via Modify Layout Plan).
 - [ ] **Chip-refresh regression**: stay on `/connectors/<id>` from the moment Commit was clicked. The chip is `Pending` while the job runs; within ~2s of the SSE terminal `failed` event landing, the chip flips to `Error` **without a manual refresh or navigation away**. The error banner shows the drift message. (If the chip stays `Pending` until you reload, the workflow's terminal-event invalidation regressed — see commits `fec6ce1` and `90c3311`.)
 - [ ] **Single-attempt regression**: in the `jobs` table for the failed commit, `maxAttempts = 1`. The Bull queue only attempted once. (If you see >1 transition to `failed` in the SSE stream or the worker logs, the `MAX_ATTEMPTS_BY_TYPE` override regressed.)
@@ -256,12 +256,15 @@ These are tight repro paths for the bugs landed during this branch's smoke. If a
 - [ ] Force a parse or sync job to retry (kill the worker mid-job; Bull's `attempts: 3` retries for `file_upload_parse` and `connector_sync`). The job's `error` text in the DB should reflect the underlying failure, **not** a misleading `LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND` from a rollback-induced retry (the symptom that originally landed on this branch and was reverted; if it returns, retries are masking real errors again).
 - [ ] `layout_plan_commit` is exempt — it's pinned to `attempts: 1` via `MAX_ATTEMPTS_BY_TYPE` in `apps/api/src/services/jobs.service.ts`. Retrying a commit failure is meaningless (drift, blocker warnings, and validation errors are deterministic) and used to confuse the client: the worker would emit a `failed` SSE event per attempt, the frontend would treat the first as terminal, and the eventual rollback on the final attempt would reach no listener. **Verify**: in the `jobs` table, every `layout_plan_commit` row has `maxAttempts = 1`. Every other job type still has `maxAttempts = 3`.
 
-### 7.6 Connector status chip refreshes on terminal SSE event
+### 7.6 Detail-view caches refresh on terminal SSE event
 
-The connector-instance detail view subscribes to SSE for every running job and invalidates its query caches on the terminal event — success, failure, or cancellation. Two regressions to watch for:
+The connector-instance detail view subscribes to SSE for every running job and invalidates its query caches on the terminal event — success, failure, or cancellation. The invalidation block in `ConnectorInstance.view.tsx`'s `.finally` hook covers FIVE query roots: `connectorInstances.runningJobs`, `connectorInstances.get`, `connectorInstances.root`, `connectorEntities.root`, and `entityRecords.root`. Each addresses a distinct piece of stale state. Walk every path:
 
-- [ ] **Workflow path**: walk through the gsheets-large or file-upload workflow to the Commit step. From the moment you click Commit, stay on the connector detail page (don't navigate away). Wait for the job to terminate (success or failure). The chip transitions from `Pending` → final status within ~2s of the terminal event — **no manual refresh required**. (If the chip sticks at `Pending` until you reload, the workflow's `awaitJobCompletion(...).finally(invalidate)` regressed.)
-- [ ] **Detail-view path**: trigger a sync from the connector detail page. While the sync runs (chip says `Pending`, lock alert visible), do NOT leave the page. When the sync's SSE terminal event lands, the chip flips to `Active` (success) or `Error` (failure) **without a manual refresh**, and the lock alert disappears. (If the chip stays `Pending` after the alert clears, the SSE-driven invalidation in `ConnectorInstance.view.tsx` regressed.)
+- [ ] **Status chip — workflow path**: walk through the gsheets-large or file-upload workflow to the Commit step. From the moment you click Commit, stay on the connector detail page (don't navigate away). Wait for the job to terminate (success or failure). The chip transitions from `Pending` → final status within ~2s of the terminal event — **no manual refresh required**. (If the chip sticks at `Pending` until you reload, the workflow's `awaitJobCompletion(...).finally(invalidate)` regressed.)
+- [ ] **Status chip — detail-view path**: trigger a sync from the connector detail page. While the sync runs (chip says `Pending`, lock alert visible), do NOT leave the page. When the sync's SSE terminal event lands, the chip flips to `Active` (success) or `Error` (failure) **without a manual refresh**, and the lock alert disappears. (If the chip stays `Pending` after the alert clears, the SSE-driven invalidation in `ConnectorInstance.view.tsx` regressed.)
+- [ ] **Entities table — first commit**: on a brand-new connector, walk through a workflow to its first successful Commit. Stay on `/connectors/<id>` for the duration. When the commit's terminal event lands, the **entities table populates without a reload** — each region's `connector_entities` row appears with its row count. (If the table stays empty until you reload, `queryKeys.connectorEntities.root` is no longer in the `.finally` block.)
+- [ ] **Entities table — sync that adds an entity**: edit the plan to add a new region targeting a new entity → Commit → kick off a Sync (or wait for the next scheduled one). When the sync terminates, the new entity row appears in the table within ~2s of the SSE terminal event.
+- [ ] **Records page — sync that changes records**: drill into an entity's records page. In another tab (or directly in the source spreadsheet), trigger a Sync that changes / adds / removes rows. When the sync terminates, the records page refreshes without a reload — counts update, new rows appear, soft-deleted rows disappear. (If the page shows stale rows until you reload, `queryKeys.entityRecords.root` is no longer in the `.finally` block.)
 
 ### 7.7 Identity drift gate fires on sync, not just commit
 
