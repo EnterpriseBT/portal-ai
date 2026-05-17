@@ -128,6 +128,16 @@ export interface EditLayoutPlanViewUIProps {
   onSaveDraft: () => void;
   onBack: () => void;
   onNavigate: (href: string) => void;
+  /**
+   * Advances the editor from "Draw regions" to "Review". The
+   * RegionEditor module's primary CTA on step 0 is labeled
+   * "Interpret" — in workflow mode it triggers the AI classifier
+   * and then advances; in edit mode there's nothing to re-classify
+   * (the plan is already committed), so the button simply advances
+   * to review where the user can recommit. Without this wiring the
+   * button is a no-op and looks broken.
+   */
+  onAdvanceToReview: () => void;
 
   /**
    * Per-region IdentityPanel dropdown options + change handler. The
@@ -174,6 +184,7 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   onSaveDraft,
   onBack,
   onNavigate,
+  onAdvanceToReview,
   resolveIdentityLocatorOptions,
   onIdentityUpdate,
 }) => {
@@ -332,11 +343,13 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
           // doesn't support today.
           entityAssociationLocked={true}
           loadSlice={loadSlice}
-          // Edit mode doesn't re-run interpret — the editor's
-          // "Interpret" button is a no-op here. Save Draft is the
-          // intended way to persist edits without re-running
-          // classification.
-          onInterpret={() => undefined}
+          // Edit mode doesn't re-run the AI classifier — the regions
+          // are already classified. The module's primary CTA on step
+          // 0 is labeled "Interpret" though, so a no-op handler looks
+          // broken to the user. Repurpose it as the step-advancer so
+          // clicking "Interpret" jumps to the Review step where the
+          // user can recommit.
+          onInterpret={onAdvanceToReview}
           onJumpToRegion={onJumpToRegion}
           onEditBinding={onEditBinding}
           onCommit={onCommit}
@@ -726,6 +739,7 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       onSaveDraft={handleSaveDraft}
       onBack={handleBack}
       onNavigate={(href) => navigate({ to: href })}
+      onAdvanceToReview={() => setStep(1)}
       resolveIdentityLocatorOptions={
         editContext?.editable && editContext.workbookPreview
           ? (region: RegionDraft) =>

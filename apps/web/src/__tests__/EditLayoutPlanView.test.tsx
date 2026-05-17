@@ -119,6 +119,7 @@ const baseProps = {
   onSaveDraft: jest.fn(),
   onBack: jest.fn(),
   onNavigate: jest.fn(),
+  onAdvanceToReview: jest.fn(),
 };
 
 describe("EditLayoutPlanViewUI", () => {
