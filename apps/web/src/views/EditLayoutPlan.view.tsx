@@ -605,7 +605,7 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
   }, [editContext, regions, patchPlanMutate, queryClient]);
 
   const handleCommit = useCallback(async () => {
-    if (!editContext?.editable) return;
+    if (!editContext?.editable || !editContext.workbookPreview) return;
     // The commit endpoint's body schema requires exactly one of
     // `uploadSessionId` (file-upload) or `connectorInstanceId` (cloud
     // connectors: google-sheets, microsoft-excel) so the server knows
@@ -625,6 +625,38 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       // defend against the user reaching Commit anyway.
       return;
     }
+    // The recommit endpoint reads the plan from the DB by planId; it
+    // does NOT accept regions in the request body. Local edits in the
+    // editor (identity changes, bounds tweaks, binding overrides) are
+    // session-scoped until a PATCH lands. Without auto-saving here,
+    // clicking Commit re-runs the unchanged stored plan — so e.g. an
+    // identity change made specifically to clear `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`
+    // is silently dropped and the same drift error fires again. Auto-PATCH
+    // first, then enqueue the commit job against the freshly-persisted plan.
+    const workbook = previewToEditorWorkbook(editContext.workbookPreview);
+    let nextRegions;
+    try {
+      nextRegions = draftsToRegions(regions, workbook, editContext.plan);
+    } catch (err) {
+      setSaveDraftToast({
+        severity: "error",
+        message:
+          err instanceof Error
+            ? `Couldn't save plan before commit: ${err.message}`
+            : "Couldn't save plan before commit.",
+      });
+      return;
+    }
+    try {
+      await patchPlanMutate({ regions: nextRegions });
+    } catch (err) {
+      const apiErr = err as { message?: string } | null;
+      setSaveDraftToast({
+        severity: "error",
+        message: apiErr?.message ?? "Couldn't save plan before commit.",
+      });
+      return;
+    }
     try {
       await recommitMutate(body);
       await queryClient.invalidateQueries({
@@ -639,7 +671,9 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       // Stay on the page so the user can fix the plan and retry.
     }
   }, [
-    editContext?.editable,
+    editContext,
+    regions,
+    patchPlanMutate,
     recommitMutate,
     queryClient,
     navigate,
