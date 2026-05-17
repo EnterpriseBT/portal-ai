@@ -618,12 +618,14 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     connectorInstanceId,
   ]);
 
+  // The ReviewStep's "Back to regions" button is the only consumer
+  // of `onBack`. It's a STEP-back (review → draw), not a route-back —
+  // leaving the view entirely is the breadcrumb's job. Wiring this
+  // to `navigate(...)` dropped the user out of the edit flow on
+  // every click.
   const handleBack = useCallback(() => {
-    navigate({
-      to: "/connectors/$connectorInstanceId",
-      params: { connectorInstanceId },
-    });
-  }, [navigate, connectorInstanceId]);
+    setStep(0);
+  }, []);
 
   const loadError = useMemo(
     () => toServerError(editContextQuery.error),
