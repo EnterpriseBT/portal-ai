@@ -20,11 +20,44 @@ import Chip from "@mui/material/Chip";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 
+import Box from "@mui/material/Box";
+import Tooltip from "@mui/material/Tooltip";
+
 import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
 import { Formatter } from "../utils/format.util";
 import { useStorage } from "../utils/storage.util";
 import { EntityRecordCellCode } from "./EntityRecordCellCode.component";
+
+/**
+ * Soft cap on inline cell width so a 4kB note doesn't blow the
+ * column out across the page. The wrapper sets a max-width + CSS
+ * truncation; a Tooltip on hover surfaces the full value when the
+ * user wants the rest. Tuned to roughly the width of two normal
+ * text columns at the default font size.
+ */
+const CELL_MAX_WIDTH_PX = 280;
+
+const TruncatedCell: React.FC<{ text: string }> = ({ text }) => {
+  if (!text) return <>{text}</>;
+  return (
+    <Tooltip title={text} placement="top" arrow>
+      <Box
+        component="span"
+        sx={{
+          display: "inline-block",
+          maxWidth: CELL_MAX_WIDTH_PX,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          verticalAlign: "bottom",
+        }}
+      >
+        {text}
+      </Box>
+    </Tooltip>
+  );
+};
 
 // ── Data component ──────────────────────────────────────────────────
 
@@ -86,10 +119,18 @@ function toDataTableColumns(columns: ResolvedColumn[]): DataTableColumn[] {
       label: headerLabel,
       caption,
       sortable: SORTABLE_COLUMN_TYPES.has(col.type),
-      format: (value: unknown) =>
-        Formatter.format(value, col.type, {
+      // `render` (not `format`) so we can wrap the formatted value
+      // in a truncating Box + Tooltip. Long free-text values (notes,
+      // abstracts, links) used to stretch a single column past the
+      // viewport on wide-table entities; now they cap at
+      // CELL_MAX_WIDTH_PX with an ellipsis and reveal the full text
+      // on hover.
+      render: (value: unknown) => {
+        const formatted = Formatter.format(value, col.type, {
           canonicalFormat: col.canonicalFormat,
-        }),
+        });
+        return <TruncatedCell text={formatted} />;
+      },
     };
   });
 
