@@ -343,6 +343,85 @@ export class GoogleSheetsConnectorService {
   }
 
   /**
+   * Rebuild the chunked workbook cache for an existing connector
+   * instance from Google directly. Used by the edit-layout-plan
+   * endpoint when the cache has lapsed (TTL is 1h; `selectSheet`
+   * populates it but doesn't refresh it). Sync is unaffected because
+   * sync calls `fetchWorkbookForSync` and skips the cache entirely;
+   * the editor needs the cache because the slice loader on the
+   * frontend serves cells from there.
+   *
+   * Reads `spreadsheetId` from the instance's persisted `config` — the
+   * same source `fetchWorkbookForSync` uses — and does NOT update the
+   * config (the spreadsheet selection isn't changing, only the cache
+   * is being repopulated).
+   *
+   * Throws `GoogleAuthError` on token-refresh failure (auth UI handles
+   * it the same way it does for sync) and `GOOGLE_SHEETS_INVALID_PAYLOAD`
+   * when the instance has never had a sheet picked.
+   */
+  static async rehydrateWorkbookCache(
+    connectorInstanceId: string,
+    organizationId: string,
+    fetchFn: FetchFn = fetch
+  ): Promise<void> {
+    const instance =
+      await DbService.repository.connectorInstances.findById(
+        connectorInstanceId
+      );
+    if (!instance || instance.organizationId !== organizationId) {
+      throw new ApiError(
+        404,
+        ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+        `Connector instance not found: ${connectorInstanceId}`
+      );
+    }
+    const cfg = instance.config as
+      | { spreadsheetId?: string }
+      | null
+      | undefined;
+    const spreadsheetId = cfg?.spreadsheetId;
+    if (!spreadsheetId) {
+      throw new ApiError(
+        400,
+        ApiCode.GOOGLE_SHEETS_INVALID_PAYLOAD,
+        `Instance ${connectorInstanceId} has no spreadsheetId in config — call select-sheet first`
+      );
+    }
+    const accessToken =
+      await GoogleAccessTokenCacheService.getOrRefresh(connectorInstanceId);
+    const { workbook } = await fetchSpreadsheet(
+      accessToken,
+      spreadsheetId,
+      fetchFn
+    );
+    const prefix = workbookCacheKey(GOOGLE_SHEETS_SLUG, connectorInstanceId);
+    // Wipe any prior session (probably expired anyway) before
+    // overwriting, so a stale chunk from a previous selection can't
+    // leak into the new one.
+    await WorkbookCacheService.deleteSession(prefix);
+    const writer = await WorkbookCacheService.beginSession(prefix);
+    try {
+      for (let i = 0; i < workbook.sheets.length; i++) {
+        const sheet = workbook.sheets[i]!;
+        const sheetId = makeSheetId(i, sheet.name);
+        const stats = await writeSheetDataToChunks(sheet, sheetId, writer);
+        await writer.finishSheet(sheetId, {
+          name: sheet.name,
+          rowCount: stats.rowCount,
+          colCount: stats.colCount,
+          merges: stats.merges,
+        });
+      }
+      await writer.finalize("ready");
+    } catch (err) {
+      await writer.fail(err instanceof Error ? err.message : "rehydrate failed");
+      void WorkbookCacheService.deleteSession(prefix).catch(() => {});
+      throw err;
+    }
+  }
+
+  /**
    * Re-fetch the spreadsheet for an existing connector instance and
    * return the mapped `WorkbookData`. Phase D's sync path calls this
    * (the editor session uses `selectSheet` instead, which also caches).

@@ -25,7 +25,9 @@ import type { LayoutPlanCommitWorkbookSource } from "@portalai/core/models";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
 import { FileUploadSessionService } from "./file-upload-session.service.js";
+import { GoogleSheetsConnectorService } from "./google-sheets-connector.service.js";
 import { LayoutPlanInterpretService } from "./layout-plan-interpret.service.js";
+import { MicrosoftExcelConnectorService } from "./microsoft-excel-connector.service.js";
 import { WorkbookCacheService } from "./workbook-cache.service.js";
 import { ApiError } from "./http.service.js";
 import { environment } from "../environment.js";
@@ -410,6 +412,27 @@ export class ConnectorInstanceLayoutPlansService {
       prefix = `upload-session:${source.uploadSessionId}`;
     } else {
       prefix = workbookCacheKey(slug, source.connectorInstanceId);
+      // Cloud-connector caches have a TTL (1h) and aren't refreshed
+      // by sync (sync fetches fresh and skips the cache). After the
+      // TTL elapses, the editor's slice loader has nothing to read
+      // — but the workbook itself is still recoverable from Google /
+      // Microsoft. Rehydrate from the upstream API before reading
+      // the cache so users don't see a misleading "source removed"
+      // notice on a still-syncable connector.
+      const existing = await WorkbookCacheService.getSessionMeta(prefix);
+      if (!existing || existing.status !== "ready") {
+        if (slug === "google-sheets") {
+          await GoogleSheetsConnectorService.rehydrateWorkbookCache(
+            source.connectorInstanceId,
+            organizationId
+          );
+        } else if (slug === "microsoft-excel") {
+          await MicrosoftExcelConnectorService.rehydrateWorkbookCache(
+            source.connectorInstanceId,
+            organizationId
+          );
+        }
+      }
     }
     const meta = await WorkbookCacheService.getSessionMeta(prefix);
     if (!meta || meta.status !== "ready") {

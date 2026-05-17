@@ -416,6 +416,92 @@ export class MicrosoftExcelConnectorService {
   }
 
   /**
+   * Rebuild the chunked workbook cache for an existing connector
+   * instance from Microsoft Graph directly. Used by the
+   * edit-layout-plan endpoint when the cache has lapsed (TTL is 1h;
+   * `selectWorkbook` populates it but doesn't refresh). Sync is
+   * unaffected because sync calls `fetchWorkbookForSync` and skips
+   * the cache; the editor needs the cache because the slice loader
+   * on the frontend serves cells from there.
+   *
+   * Mirrors `GoogleSheetsConnectorService.rehydrateWorkbookCache`.
+   */
+  static async rehydrateWorkbookCache(
+    connectorInstanceId: string,
+    organizationId: string
+  ): Promise<void> {
+    const instance =
+      await DbService.repository.connectorInstances.findById(
+        connectorInstanceId
+      );
+    if (!instance || instance.organizationId !== organizationId) {
+      throw new ApiError(
+        404,
+        ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+        `Connector instance not found: ${connectorInstanceId}`
+      );
+    }
+    const cfg = instance.config as
+      | { driveItemId?: string }
+      | null
+      | undefined;
+    const driveItemId = cfg?.driveItemId;
+    if (!driveItemId) {
+      throw new ApiError(
+        400,
+        ApiCode.MICROSOFT_EXCEL_INVALID_PAYLOAD,
+        `Instance ${connectorInstanceId} has no driveItemId in config — call select-workbook first`
+      );
+    }
+    const accessToken =
+      await MicrosoftAccessTokenCacheService.getOrRefresh(connectorInstanceId);
+    const head = await MicrosoftGraphService.headWorkbook(
+      accessToken,
+      driveItemId
+    );
+    const cap = environment.UPLOAD_MAX_FILE_SIZE_BYTES;
+    if (head.size > cap) {
+      throw new ApiError(
+        413,
+        ApiCode.MICROSOFT_EXCEL_FILE_TOO_LARGE,
+        `Workbook exceeds the configured byte cap (${head.size} > ${cap})`,
+        { sizeBytes: head.size, capBytes: cap }
+      );
+    }
+    let download;
+    try {
+      download = await MicrosoftGraphService.downloadWorkbook(
+        accessToken,
+        driveItemId
+      );
+    } catch (err) {
+      throw mapGraphError(err);
+    }
+    const nodeStream = MicrosoftGraphService.toNodeReadable(download.stream);
+    const prefix = workbookCacheKey(
+      MICROSOFT_EXCEL_SLUG,
+      connectorInstanceId
+    );
+    await WorkbookCacheService.deleteSession(prefix);
+    const writer = await WorkbookCacheService.beginSession(prefix);
+    let nextSheetIdx = 0;
+    try {
+      await xlsxToCache(nodeStream, writer, {
+        resolveSheet: (rawName) => {
+          const sheetId = makeSheetId(nextSheetIdx, rawName);
+          nextSheetIdx++;
+          return { name: rawName, sheetId };
+        },
+      });
+      await writer.finalize("ready");
+    } catch (err) {
+      await writer.fail(err instanceof Error ? err.message : "xlsx parse failed");
+      void WorkbookCacheService.deleteSession(prefix).catch(() => {});
+      throw err;
+    }
+  }
+
+  /**
    * Re-fetch the workbook from Graph at sync time. Reads `driveItemId`
    * from the instance's persisted `config` (sync runs against whichever
    * workbook the user last picked), pre-flights size + extension, then
