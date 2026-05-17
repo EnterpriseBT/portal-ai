@@ -172,8 +172,12 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
       // appear without a manual refresh. We don't await — the modal
       // closes and the user lands on the connector view immediately;
       // the lock alert there is the "import in progress" confirmation.
+      // Uses `.finally` so the sweep runs on BOTH success and failure —
+      // a failed commit flips the connector instance to status "error"
+      // server-side, and the chip on /connectors/:id needs to refetch
+      // to reflect that.
       awaitJobCompletion(connectSse, enqueue.jobId)
-        .then(() =>
+        .finally(() =>
           Promise.all(
             [
               queryKeys.connectorInstances.root,

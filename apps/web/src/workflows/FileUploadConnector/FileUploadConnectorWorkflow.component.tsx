@@ -554,8 +554,12 @@ export const FileUploadConnectorWorkflow: React.FC<
       // worker finishes. The connectSse closure + queryClient survive
       // the modal unmounting (queryClient is provider-scoped; the
       // EventSource keeps itself open until the terminal event lands).
+      // `.finally` (not `.then`) so the cache sweep runs on BOTH
+      // success and failure — a failed commit flips the connector
+      // instance to status "error" server-side, and the chip on
+      // /connectors/:id needs to refetch to reflect that.
       awaitJobCompletion(connectSse, enqueue.jobId)
-        .then(() =>
+        .finally(() =>
           Promise.all(
             [
               queryKeys.connectorInstances.root,
