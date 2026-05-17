@@ -450,13 +450,23 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     // session-scoped fields on the draft. Without backfilling them
     // here, every region renders as "New region" with an empty Label
     // field, which makes the edit view look like it forgot the user's
-    // prior work. Recover them from the entity catalog — the entity's
-    // backend label is the natural fallback for both.
+    // prior work.
+    //
+    // Two-tier fallback:
+    //   1. Catalog hit — the entity was persisted (commit succeeded),
+    //      so we have the user's chosen label. Use it directly.
+    //   2. Catalog miss — the commit failed before
+    //      `connector_entities` rows were created (e.g. the drift
+    //      gate halted it), so the only thing we have is the
+    //      region's `targetEntityDefinitionId`, which is the key the
+    //      user typed in the workflow. Use it verbatim so the chip
+    //      and heading say "testtt" instead of "New region" — the
+    //      user picked that key and will recognize it.
     const hydratedDrafts = planRegionsToDrafts(editContext.plan, workbook).map(
       (draft) => {
         const entityId = draft.targetEntityDefinitionId;
-        const entityLabel = entityId ? catalogById.get(entityId) : undefined;
-        if (!entityLabel) return draft;
+        if (!entityId) return draft;
+        const entityLabel = catalogById.get(entityId) ?? entityId;
         return {
           ...draft,
           targetEntityLabel: entityLabel,
