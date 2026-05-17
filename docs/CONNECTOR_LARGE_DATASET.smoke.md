@@ -179,8 +179,13 @@ Mirror §2 against **excel-365-cloud**. The pipeline is structurally identical; 
 ### 4.3 Editor mounted with real data
 
 - [ ] Region overlays render against the seeded preview. The persisted plan's regions are visible and selectable.
+- [ ] **First region auto-selected on mount**: the configuration panel opens with the first sheet's first region pre-selected (Label, Target Entity, identity, etc. all populated) — NOT the empty "no region selected" state. If the panel is blank after mount, the auto-select in the hydration effect regressed.
+- [ ] **Label + entity round-trip from the committed plan**: for each persisted region, the Label TextField shows either the entity's catalog label (post-successful-commit) or the `targetEntityDefinitionId` key the user typed in the workflow (when the catalog is empty because commit failed). NEVER "New region" / empty Label on a persisted plan.
+- [ ] **Identity panel shows the locked locator**: if the plan persisted a `column`-kind identity, the "Identity field" Select shows the picked column's header text (not blank). If it's `rowPosition`, the panel renders the position-based option as selected.
 - [ ] Entity picker shows real options (sheet-derived). Stage a new entity via "+ Create new entity" → it appears in subsequent picker dropdowns.
 - [ ] For **gsheets-large** specifically, off-screen rows resolve via `loadSlice` — scroll past row 30 (the inline preview cap), confirm new sheet-slice requests fire and the canvas renders the freshly-loaded cells.
+- [ ] **Interpret button** — clicking "Interpret" on the draw-regions step advances to the Review step (it does NOT re-run the AI pipeline; the plan is already classified). If the click looks like a no-op, `onAdvanceToReview` is no longer wired.
+- [ ] **Back to regions** — on the Review step, clicking "Back to regions" returns to the draw-regions step (step 0). It does NOT navigate out of the edit view (the breadcrumb does that). If clicking it lands you back on `/connectors/<id>`, `handleBack` regressed.
 
 ### 4.4 Save Draft (slice 3b)
 

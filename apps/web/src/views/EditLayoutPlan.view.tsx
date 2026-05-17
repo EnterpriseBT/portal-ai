@@ -488,6 +488,15 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       }
     );
     setRegions(hydratedDrafts);
+    // Auto-select the first region on the first sheet so the
+    // configuration panel opens with real content instead of the
+    // "no region selected" empty state. Without this, every edit-plan
+    // mount looks blank until the user clicks a region in the canvas.
+    const firstSheetId = workbook.sheets[0]?.id;
+    const firstRegion = firstSheetId
+      ? hydratedDrafts.find((r) => r.sheetId === firstSheetId)
+      : hydratedDrafts[0];
+    if (firstRegion) setSelectedRegionId(firstRegion.id);
     // Seed `stagedEntities` from the real `connector_entities`
     // catalog the backend returned. Falls back to the region's
     // targetEntityDefinitionId-as-label only if some region
