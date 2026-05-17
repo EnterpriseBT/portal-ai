@@ -198,8 +198,11 @@ Mirror §2 against **excel-365-cloud**. The pipeline is structurally identical; 
 ### 4.5 Recommit (slice 3 / case 12)
 
 - [ ] On the editor's review step, click Commit.
+- [ ] **Commit body regression**: Network tab shows the POST to `/api/connector-instances/<id>/layout-plan/<planId>/commit` carrying either `{ connectorInstanceId }` (google-sheets / microsoft-excel) or `{ uploadSessionId }` (file-upload). An empty `{}` body would 400 with `LAYOUT_PLAN_INVALID_PAYLOAD` before the job is enqueued.
+- [ ] **Auto-PATCH-before-commit regression**: clicking Commit fires a PATCH to `/api/connector-instances/<id>/layout-plan/<planId>` **before** the POST. The PATCH body's `regions` reflects every local edit (identity change, bounds tweak, binding override) you made since the last Save Draft. If only the POST fires, local edits are silently dropped and the server reruns the previously-persisted plan — the most visible symptom is an identity change made specifically to clear `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED` having no effect on the next commit.
 - [ ] 202 lands; navigate auto-jumps to `/connectors/<id>` with a running-job alert visible.
 - [ ] SSE terminal event clears the alert; records reflect the recommitted plan.
+- [ ] **Round-trip after recommit**: open Modify Layout Plan again — the editor hydrates with the regions / identity / bindings you committed (not the pre-edit version).
 
 ### 4.6 Inline error on bad commit (slice 3 / case 14)
 
