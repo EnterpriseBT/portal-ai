@@ -76,6 +76,16 @@ export interface RegionConfigurationPanelUIProps {
    * sheet data isn't available — the button is hidden.
    */
   regionSheet?: import("./utils/region-editor.types").SheetPreview;
+  /**
+   * Lock the region's entity association. When `true`, the
+   * Target-Entity Select and the Label TextField render disabled and
+   * the "+ Create new entity" affordance is hidden. Set by the
+   * `EditLayoutPlanView` so post-commit edits can change shape +
+   * extent rules but not which entity a region populates — region
+   * → entity rebinding mid-flight would require record migration
+   * the wide-table pipeline doesn't support today.
+   */
+  entityAssociationLocked?: boolean;
 }
 
 const SECTION_HEADING_SX = {
@@ -182,6 +192,7 @@ export const RegionConfigurationPanelUI: React.FC<
   onKeepPriorIdentity,
   driftProposedIdentityLabel,
   onCreateEntity,
+  entityAssociationLocked = false,
   claimedEntityKeys,
   validateEntityKey,
   regionSheet,
@@ -751,6 +762,7 @@ export const RegionConfigurationPanelUI: React.FC<
             value={region.proposedLabel ?? ""}
             onChange={(e) => onUpdate({ proposedLabel: e.target.value })}
             placeholder="Optional region label"
+            disabled={entityAssociationLocked}
             sx={{ flex: 1, minWidth: 0 }}
           />
 
@@ -769,6 +781,7 @@ export const RegionConfigurationPanelUI: React.FC<
               size="small"
               fullWidth
               required
+              disabled={entityAssociationLocked}
               error={Boolean(errors.targetEntityDefinitionId)}
               helperText={errors.targetEntityDefinitionId}
               value={region.targetEntityDefinitionId ?? ""}
@@ -788,7 +801,7 @@ export const RegionConfigurationPanelUI: React.FC<
                 },
               }}
             />
-            {onCreateEntity && (
+            {onCreateEntity && !entityAssociationLocked && (
               <Button
                 size="small"
                 variant="text"

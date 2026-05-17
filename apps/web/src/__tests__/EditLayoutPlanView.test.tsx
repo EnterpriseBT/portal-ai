@@ -69,6 +69,7 @@ const makeEditableContext = (
       },
     ],
   },
+  entityCatalog: [{ id: "contacts", label: "Contacts" }],
   editable: true,
   ...overrides,
 });

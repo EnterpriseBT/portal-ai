@@ -282,10 +282,25 @@ export class ConnectorInstanceLayoutPlansService {
       );
     const slug = definition!.slug;
 
+    // Entity-definition catalog for the editor's Target-Entity picker.
+    // `connector_entities.key` is what `LayoutPlan.regions[*]
+    // .targetEntityDefinitionId` references; `label` is the human
+    // display name the user chose at create time. Projecting to
+    // `{ id, label }` keeps the response payload tight.
+    const entityRows =
+      await DbService.repository.connectorEntities.findByConnectorInstanceId(
+        connectorInstanceId
+      );
+    const entityCatalog = entityRows.map((row) => ({
+      id: row.key,
+      label: row.label,
+    }));
+
     const base = {
       planId: planRow.id,
       plan: planRow.plan as LayoutPlan,
       connectorDefinitionSlug: slug,
+      entityCatalog,
     } as const;
 
     if (!EDITABLE_SLUGS.has(slug)) {

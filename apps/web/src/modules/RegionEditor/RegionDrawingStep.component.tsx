@@ -50,6 +50,13 @@ export interface RegionDrawingStepUIProps {
   onKeepPriorIdentity?: (regionId: string) => void;
   onCreateEntity?: (key: string, label: string) => string;
   /**
+   * Forwarded to `RegionConfigurationPanelUI` — when `true`, the
+   * panel disables the Target-Entity Select + Label TextField and
+   * hides the "+ Create new entity" button. Used by the edit-plan
+   * view to lock entity associations post-commit.
+   */
+  entityAssociationLocked?: boolean;
+  /**
    * C2 async validator forwarded to the "+ Create new entity" dialog in the
    * configuration panel. Returns `{ ok: false, ownedBy }` when the chosen
    * key is already owned by another connector in this org.
@@ -91,6 +98,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   onAcceptProposedIdentity,
   onKeepPriorIdentity,
   onCreateEntity,
+  entityAssociationLocked = false,
   validateEntityKey,
   onInterpret,
   onRefetchWorkbook,
@@ -532,6 +540,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
                 : undefined
             }
             onCreateEntity={onCreateEntity}
+            entityAssociationLocked={entityAssociationLocked}
             validateEntityKey={validateEntityKey}
           />
         </Box>

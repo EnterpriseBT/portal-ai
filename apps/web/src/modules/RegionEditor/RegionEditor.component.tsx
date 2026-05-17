@@ -38,6 +38,14 @@ export interface RegionEditorUIProps {
   onAcceptProposedIdentity?: (regionId: string) => void;
   onKeepPriorIdentity?: (regionId: string) => void;
   onCreateEntity?: (key: string, label: string) => string;
+  /**
+   * Forwarded to `RegionConfigurationPanelUI` (via
+   * `RegionDrawingStepUI`). Locks the Target-Entity Select + Label
+   * TextField and hides "+ Create new entity" — used by the edit-plan
+   * view so post-commit edits can change region shape + extent rules
+   * but not which entity a region populates.
+   */
+  entityAssociationLocked?: boolean;
 
   onInterpret: () => void;
   isInterpreting?: boolean;
@@ -73,6 +81,7 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
   onAcceptProposedIdentity,
   onKeepPriorIdentity,
   onCreateEntity,
+  entityAssociationLocked,
   onInterpret,
   isInterpreting,
   onRefetchWorkbook,
@@ -117,6 +126,7 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
               onAcceptProposedIdentity={onAcceptProposedIdentity}
               onKeepPriorIdentity={onKeepPriorIdentity}
               onCreateEntity={onCreateEntity}
+              entityAssociationLocked={entityAssociationLocked}
               onInterpret={onInterpret}
               onRefetchWorkbook={onRefetchWorkbook}
               isInterpreting={isInterpreting}

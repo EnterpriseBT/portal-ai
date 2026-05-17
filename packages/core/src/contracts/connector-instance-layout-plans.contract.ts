@@ -274,11 +274,34 @@ export type LayoutPlanEditContextWorkbookPreview = z.infer<
  * workbook source can no longer be resolved (`editable: false`); in that
  * case `reason` carries a stable code + human message for the UI to surface.
  */
+/**
+ * Real `connector_entities` row, projected to the bits the editor's
+ * Target-Entity picker needs: the `key` (which `LayoutPlan.regions[*]
+ * .targetEntityDefinitionId` references) plus the human-readable
+ * `label`. Without this, the picker would have to display the raw
+ * `key` for every region the user is editing.
+ */
+export const LayoutPlanEditContextEntityCatalogEntrySchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+});
+export type LayoutPlanEditContextEntityCatalogEntry = z.infer<
+  typeof LayoutPlanEditContextEntityCatalogEntrySchema
+>;
+
 export const LayoutPlanEditContextResponsePayloadSchema = z.object({
   planId: z.string().min(1),
   plan: LayoutPlanSchema,
   connectorDefinitionSlug: z.string().min(1),
   workbookPreview: LayoutPlanEditContextWorkbookPreviewSchema.nullable(),
+  /**
+   * Entity-definition catalog for the connector instance — every
+   * `connector_entities` row tied to the instance, projected to
+   * `{ id: row.key, label: row.label }`. Pre-populates the editor's
+   * Target-Entity picker with real labels so the user doesn't see
+   * raw ids for regions they're modifying.
+   */
+  entityCatalog: z.array(LayoutPlanEditContextEntityCatalogEntrySchema),
   /**
    * The upload-session id that backs the file-upload preview, when
    * the connector slug is `file-upload` and the source is still

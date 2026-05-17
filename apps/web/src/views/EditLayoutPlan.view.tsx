@@ -305,6 +305,12 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
           onRegionResize={onRegionResize}
           entityOptions={entityOptions}
           onCreateEntity={onCreateEntity}
+          // Edit-mode lock: post-commit edits can change shape +
+          // extent rules but not which entity a region populates.
+          // Rebinding a region to a different entity mid-flight
+          // would require record migration the wide-table pipeline
+          // doesn't support today.
+          entityAssociationLocked={true}
           loadSlice={loadSlice}
           // Edit mode doesn't re-run interpret — the editor's
           // "Interpret" button is a no-op here. Save Draft is the
@@ -411,17 +417,34 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     setRegions(
       planRegionsToDrafts(editContext.plan, workbook)
     );
-    // Pre-populate staged entities from every region's target. Sheet-
-    // derived ids overlap if the plan happened to use them; the
-    // `mergeStagedEntityOptions` dedup downstream drops the staged
-    // entry in that case.
+    // Seed `stagedEntities` from the real `connector_entities`
+    // catalog the backend returned. Falls back to the region's
+    // targetEntityDefinitionId-as-label only if some region
+    // references an id that's not in the catalog (defensive — the
+    // catalog should be a superset of every region's target).
+    const catalogById = new Map<string, string>(
+      editContext.entityCatalog.map((e) => [e.id, e.label] as const)
+    );
     const seeded: EntityOption[] = [];
     const seen = new Set<string>();
+    for (const entry of editContext.entityCatalog) {
+      if (seen.has(entry.id)) continue;
+      seen.add(entry.id);
+      seeded.push({
+        value: entry.id,
+        label: entry.label,
+        source: "staged" as const,
+      });
+    }
     for (const region of editContext.plan.regions) {
       const id = region.targetEntityDefinitionId;
       if (!id || seen.has(id)) continue;
       seen.add(id);
-      seeded.push({ value: id, label: id, source: "staged" as const });
+      seeded.push({
+        value: id,
+        label: catalogById.get(id) ?? id,
+        source: "staged" as const,
+      });
     }
     if (seeded.length > 0) setStagedEntities(seeded);
     if (workbook.sheets[0]) setActiveSheetId(workbook.sheets[0].id);
