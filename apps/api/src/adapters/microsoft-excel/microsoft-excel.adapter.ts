@@ -133,7 +133,10 @@ export const microsoftExcelAdapter: ConnectorAdapter = {
     // 3. Run the commit pipeline with sync overrides:
     //    - syncedAt = runStartedAt so the watermark reaper can identify
     //      stale rows (those NOT touched by this run).
-    //    - skipDriftGate because drift is the point of sync.
+    //    - skipDriftGate bypasses the severity gates (blocker / warn)
+    //      because data drift is the point of sync. The identity gate
+    //      still fires unconditionally — identity drift requires user
+    //      reconfirmation in the edit flow.
     const commitResult = await LayoutPlanCommitService.commit(
       instance.id,
       planRow.id,

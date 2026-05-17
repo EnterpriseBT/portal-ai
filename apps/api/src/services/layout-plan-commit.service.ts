@@ -60,14 +60,21 @@ import {
  *     `softDeleteBeforeWatermark` (Phase D Slice 1) can reap rows that
  *     pre-date the run. Commit's default is `Date.now()` per-record.
  *   - `skipDriftGate` lets sync proceed against a workbook whose
- *     structure has shifted since the plan was committed. Commit's drift
- *     gate is the user's safety net at first write; sync runs after
- *     that gate has already been passed once.
+ *     data has shifted since the plan was committed (header renames,
+ *     added/removed columns). The IDENTITY gate is NOT affected by
+ *     this flag — identity drift always halts both commit and sync
+ *     because it changes the `source_id` derivation, which silently
+ *     corrupts upserts. The user must reconfirm the plan in the edit
+ *     flow before either operation can proceed.
  */
 export interface CommitSyncOptions {
   /** Run-scoped watermark stamped on every upserted row's `syncedAt`. */
   syncedAt?: number;
-  /** When true, skip the drift-allows-commit gate. */
+  /**
+   * When true, skip the severity-based drift gates (blocker / warn).
+   * Identity drift ALWAYS halts regardless — see
+   * `assertIdentityStable`.
+   */
   skipDriftGate?: boolean;
   /**
    * Receives commit-pipeline progress as a 0-100 integer. Wired from
@@ -148,11 +155,23 @@ export class LayoutPlanCommitService {
     }
 
     // ── 3. Drift gating ───────────────────────────────────────────────
-    // Sync (Phase D) bypasses the gate — drift between the persisted
-    // plan and the live spreadsheet is exactly what sync exists to
-    // surface.
+    // Sync (Phase D) bypasses the SEVERITY gates — drift in the data
+    // itself (header shifts, added/removed columns) is exactly what
+    // sync exists to surface, and stopping every sync to ask the user
+    // about a renamed column makes sync useless.
+    //
+    // BUT — the identity-changing gate always fires, even on sync. A
+    // change to the way records are keyed (the `source_id` derivation)
+    // silently corrupts the upsert: records that used to match by one
+    // column would now match by another, so previously-distinct rows
+    // collapse into one or vice versa. That is not a "drift you'd want
+    // to absorb" — it requires the user to look at the plan and
+    // either accept the new keying or pick a different identity
+    // strategy. So we run the identity check unconditionally and only
+    // skip the severity checks when the caller asks.
+    LayoutPlanCommitService.assertIdentityStable(drift);
     if (!syncOptions.skipDriftGate) {
-      LayoutPlanCommitService.assertDriftAllowsCommit(drift);
+      LayoutPlanCommitService.assertDriftSeverityAllowsCommit(drift);
     }
 
     // Replay + drift gate done — about to start the write phase. The
@@ -494,7 +513,13 @@ export class LayoutPlanCommitService {
     }
   }
 
-  private static assertDriftAllowsCommit(drift: DriftReport): void {
+  /**
+   * Always-on identity gate — runs on commit AND sync. A change to the
+   * `source_id` derivation silently corrupts upserts (record keying
+   * shifts under the user), so the user must reconfirm the plan
+   * before any write proceeds.
+   */
+  private static assertIdentityStable(drift: DriftReport): void {
     if (drift.identityChanging) {
       throw new ApiError(
         409,
@@ -503,6 +528,14 @@ export class LayoutPlanCommitService {
         { drift }
       );
     }
+  }
+
+  /**
+   * Severity-based drift gate — runs on commit only. Sync passes
+   * `skipDriftGate: true` because data drift (header shifts, added /
+   * removed columns) is the expected, normal output of a sync.
+   */
+  private static assertDriftSeverityAllowsCommit(drift: DriftReport): void {
     if (drift.severity === "blocker") {
       throw new ApiError(
         409,
