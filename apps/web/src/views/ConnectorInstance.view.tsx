@@ -183,6 +183,21 @@ export const ConnectorInstanceView = ({
           queryClient.invalidateQueries({
             queryKey: queryKeys.connectorInstances.root,
           });
+          // The same terminal events also reshape downstream data:
+          // - `layout_plan_commit` creates / replaces `connector_entities`
+          //   rows and writes / clears `entity_records`.
+          // - `connector_sync` upserts records into the existing
+          //   entities and may soft-delete rows past the watermark.
+          // Without these invalidations the entities table on the detail
+          // view stays stuck at whatever was cached when the page first
+          // loaded — typically empty for a fresh commit — and the
+          // records pages a level deeper show stale rows.
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.connectorEntities.root,
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.entityRecords.root,
+          });
         });
     }
     return () => {
