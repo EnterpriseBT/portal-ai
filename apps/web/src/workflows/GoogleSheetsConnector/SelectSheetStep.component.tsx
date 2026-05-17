@@ -1,8 +1,11 @@
 import React, { useCallback } from "react";
 
-import { Stack, Typography } from "@portalai/core/ui";
 import {
   AsyncSearchableSelect,
+  Box,
+  CircularProgress,
+  Stack,
+  Typography,
   type SelectOption,
 } from "@portalai/core/ui";
 
@@ -59,6 +62,33 @@ export const SelectSheetStep: React.FC<SelectSheetStepUIProps> = ({
         fullWidth
         noOptionsText={NO_OPTIONS_LABEL}
       />
+
+      {loading && (
+        <Box
+          data-testid="select-sheet-loading"
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1.5,
+            py: 2,
+            px: 1.5,
+            borderRadius: 1,
+            border: "1px dashed",
+            borderColor: "divider",
+          }}
+        >
+          <CircularProgress size={20} />
+          <Stack spacing={0.25}>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              Fetching spreadsheet contents…
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Streaming rows into the workbook cache. This usually takes
+              a few seconds — larger sheets may take longer.
+            </Typography>
+          </Stack>
+        </Box>
+      )}
     </Stack>
   );
 };
