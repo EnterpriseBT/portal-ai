@@ -287,13 +287,28 @@ export class LayoutPlanDraftService {
     // hard-deleted the plan row on the first transient failure and
     // poisoned the subsequent retries (every one of them then failed
     // with `LAYOUT_PLAN_NOT_FOUND`).
+    const runStartedAt = Date.now();
     const result = await LayoutPlanCommitService.commit(
       connectorInstanceId,
       planId,
       organizationId,
       userId,
       { workbook },
-      { onProgress }
+      { onProgress, syncedAt: runStartedAt }
+    );
+
+    // Watermark reap — records whose `syncedAt` predates this run
+    // weren't touched by the commit pipeline (the plan's bounds /
+    // skip rules / drift exclusions skipped them). On a FIRST commit
+    // this is a no-op (no prior rows). On a recommit with a shrunk
+    // region (the case that surfaced this bug — user dropped from
+    // 70 rows to 8) it soft-deletes the 62 records the new plan no
+    // longer claims. Mirrors what `connector_sync` already does
+    // post-commit in the adapter layer.
+    await LayoutPlanDraftService.reapStaleRecords(
+      result.connectorEntityIds,
+      runStartedAt,
+      userId
     );
 
     // Commit succeeded — flip the instance to `active` so the
@@ -481,13 +496,23 @@ export class LayoutPlanDraftService {
       organizationId
     );
 
+    const runStartedAt = Date.now();
     const result = await LayoutPlanCommitService.commit(
       connectorInstanceId,
       planId,
       organizationId,
       userId,
       { workbook },
-      { onProgress }
+      { onProgress, syncedAt: runStartedAt }
+    );
+
+    // Same watermark reap as `runCommitDraft` — sheds records that
+    // the new plan no longer claims (typically because the user
+    // shrunk a region's bounds or tightened a skip rule).
+    await LayoutPlanDraftService.reapStaleRecords(
+      result.connectorEntityIds,
+      runStartedAt,
+      userId
     );
 
     return {
@@ -496,6 +521,36 @@ export class LayoutPlanDraftService {
       connectorEntityIds: result.connectorEntityIds,
       recordCounts: result.recordCounts,
     };
+  }
+
+  /**
+   * Reap records whose `syncedAt` predates the commit run's
+   * watermark — they weren't touched by this run, so the new plan
+   * no longer claims them. Soft-deletes the `entity_records` rows
+   * and the matching `er__<id>` wide-table rows so analytic SELECTs
+   * stop seeing them. Mirrors the post-commit reap loop in
+   * `GoogleSheetsConnectorService` / `MicrosoftExcelConnectorService`
+   * sync.
+   */
+  private static async reapStaleRecords(
+    connectorEntityIds: string[],
+    watermark: number,
+    userId: string
+  ): Promise<void> {
+    for (const connectorEntityId of connectorEntityIds) {
+      const reaped =
+        await DbService.repository.entityRecords.softDeleteBeforeWatermark(
+          connectorEntityId,
+          watermark,
+          userId
+        );
+      if (reaped.length > 0) {
+        await DbService.repository.wideTable.softDeleteByEntityRecordIds(
+          connectorEntityId,
+          reaped
+        );
+      }
+    }
   }
 
   /**
