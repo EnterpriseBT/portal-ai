@@ -70,13 +70,27 @@ googleSheetsConnectorRouter.post(
       const userId = req.application?.metadata.userId as string;
       const organizationId = req.application?.metadata
         .organizationId as string;
+      // Reconnect flow passes the existing instance id in the body so
+      // the callback can target THAT row instead of either minting a
+      // new instance or picking one by email. Absent in the
+      // "add connector" flow.
+      const body = (req.body ?? {}) as { connectorInstanceId?: unknown };
+      const connectorInstanceId =
+        typeof body.connectorInstanceId === "string" &&
+        body.connectorInstanceId.length > 0
+          ? body.connectorInstanceId
+          : undefined;
 
       const url = GoogleAuthService.buildConsentUrl({
         userId,
         organizationId,
+        ...(connectorInstanceId ? { connectorInstanceId } : {}),
       });
 
-      logger.info({ userId, organizationId }, "Google OAuth authorize URL minted");
+      logger.info(
+        { userId, organizationId, connectorInstanceId: connectorInstanceId ?? null },
+        "Google OAuth authorize URL minted"
+      );
       return HttpService.success(res, { url });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";

@@ -69,6 +69,12 @@ function tokenUrlForTenant(tenant: string): string {
 export interface BuildConsentUrlInput {
   userId: string;
   organizationId: string;
+  /**
+   * Optional reconnect target. The callback updates this instance's
+   * credentials instead of minting a new one. Omit on the "add new
+   * connector" flow.
+   */
+  connectorInstanceId?: string;
 }
 
 export interface ExchangeCodeInput {
@@ -160,6 +166,9 @@ export class MicrosoftAuthService {
       signState({
         userId: input.userId,
         organizationId: input.organizationId,
+        ...(input.connectorInstanceId
+          ? { connectorInstanceId: input.connectorInstanceId }
+          : {}),
       })
     );
     return url.toString();

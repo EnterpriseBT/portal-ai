@@ -24,8 +24,16 @@ import type {
 import { useAuthMutation } from "../utils/api.util";
 
 export const microsoftExcel = {
+  /**
+   * Mirrors `googleSheets.authorize` — pass `connectorInstanceId` to
+   * reconnect a specific instance, omit to mint a new one. See the
+   * sibling SDK for the full rationale.
+   */
   authorize: () =>
-    useAuthMutation<MicrosoftExcelAuthorizeResponsePayload, void>({
+    useAuthMutation<
+      MicrosoftExcelAuthorizeResponsePayload,
+      { connectorInstanceId?: string } | undefined
+    >({
       url: "/api/connectors/microsoft-excel/authorize",
     }),
 

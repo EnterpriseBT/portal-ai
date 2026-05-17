@@ -52,6 +52,12 @@ export class GoogleAuthError extends Error {
 export interface BuildConsentUrlInput {
   userId: string;
   organizationId: string;
+  /**
+   * Optional reconnect target. The callback updates this instance's
+   * credentials instead of minting a new one. Omit on the "add new
+   * connector" flow so every consent produces a fresh instance.
+   */
+  connectorInstanceId?: string;
 }
 
 export interface ExchangeCodeInput {
@@ -103,6 +109,9 @@ export class GoogleAuthService {
       signState({
         userId: input.userId,
         organizationId: input.organizationId,
+        ...(input.connectorInstanceId
+          ? { connectorInstanceId: input.connectorInstanceId }
+          : {}),
       })
     );
     return url.toString();

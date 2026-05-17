@@ -61,10 +61,14 @@ export const useReconnectConnectorInstance = (
       let url: string;
       switch (definitionSlug) {
         case "google-sheets":
-          ({ url } = await googleAuthorize(undefined as never));
+          // Pass the connector-instance id so the callback updates
+          // THIS instance's credentials instead of minting a new
+          // instance. The "Add connector" flow omits this and gets a
+          // fresh instance every time.
+          ({ url } = await googleAuthorize({ connectorInstanceId }));
           break;
         case "microsoft-excel":
-          ({ url } = await microsoftAuthorize(undefined as never));
+          ({ url } = await microsoftAuthorize({ connectorInstanceId }));
           break;
         default:
           throw new Error(

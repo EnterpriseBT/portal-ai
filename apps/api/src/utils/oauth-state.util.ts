@@ -27,9 +27,22 @@ export class OAuthStateError extends Error {
 export interface OAuthStatePayload {
   userId: string;
   organizationId: string;
+  /**
+   * Optional reconnect target. When set, the callback updates THIS
+   * instance's credentials instead of either looking one up by email
+   * or minting a new row. The reconnect button on the connector
+   * detail view passes it; the "Add connector" flow does not.
+   *
+   * Signed into the state token so a callback can't be tricked into
+   * targeting a different instance than the authorize call intended.
+   */
+  connectorInstanceId?: string;
 }
 
-interface SignedPayload extends OAuthStatePayload {
+interface SignedPayload {
+  userId: string;
+  organizationId: string;
+  connectorInstanceId?: string;
   /** ms since epoch when the token was minted. */
   iat: number;
   /** Base64url random nonce — guarantees freshness across rapid mints. */
@@ -78,6 +91,9 @@ export function signState(
   const signed: SignedPayload = {
     userId: payload.userId,
     organizationId: payload.organizationId,
+    ...(payload.connectorInstanceId
+      ? { connectorInstanceId: payload.connectorInstanceId }
+      : {}),
     iat: now(),
     nonce: b64urlEncode(crypto.randomBytes(12)),
   };
@@ -127,11 +143,23 @@ export function verifyState(
   ) {
     throw new OAuthStateError("invalid", "payload shape");
   }
+  if (
+    parsed.connectorInstanceId !== undefined &&
+    typeof parsed.connectorInstanceId !== "string"
+  ) {
+    throw new OAuthStateError("invalid", "connectorInstanceId shape");
+  }
 
   const now = (opts.now ?? Date.now)();
   if (now - parsed.iat > STATE_TTL_MS) {
     throw new OAuthStateError("expired");
   }
 
-  return { userId: parsed.userId, organizationId: parsed.organizationId };
+  return {
+    userId: parsed.userId,
+    organizationId: parsed.organizationId,
+    ...(parsed.connectorInstanceId
+      ? { connectorInstanceId: parsed.connectorInstanceId }
+      : {}),
+  };
 }

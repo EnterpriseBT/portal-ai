@@ -120,7 +120,11 @@ export class GoogleSheetsConnectorService {
   static async handleCallback(
     input: HandleCallbackInput
   ): Promise<HandleCallbackResult> {
-    const { userId, organizationId } = verifyStateOrApiError(input.state);
+    const {
+      userId,
+      organizationId,
+      connectorInstanceId: reconnectTargetId,
+    } = verifyStateOrApiError(input.state);
 
     const tokens = await callExchangeOrApiError(input.code);
     const email = await callFetchEmailOrApiError(tokens.accessToken);
@@ -142,21 +146,33 @@ export class GoogleSheetsConnectorService {
       googleAccountEmail: email,
     };
 
-    const existing = await GoogleSheetsConnectorService.findByEmail(
-      organizationId,
-      definition.id,
-      email
-    );
-
+    // Reconnect vs. new-connect: only the signed-state reconnect-target
+    // path looks up an existing row. The "add connector" flow no longer
+    // collapses onto a same-email row, so users can hold multiple
+    // Google Sheets connectors against the same account (typically each
+    // pointed at a different spreadsheet via select-sheet later).
     let connectorInstanceId: string;
-    if (existing) {
+    if (reconnectTargetId) {
+      const target =
+        await DbService.repository.connectorInstances.findById(reconnectTargetId);
+      if (
+        !target ||
+        target.organizationId !== organizationId ||
+        target.connectorDefinitionId !== definition.id
+      ) {
+        throw new ApiError(
+          404,
+          ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+          "Reconnect target not found for this organization"
+        );
+      }
       // Phase E reconnect: reset status + clear lastErrorMessage so an
       // instance that was flipped to `error` by the access-token cache
       // (on `invalid_grant`) returns to `active` once Google has issued
       // fresh credentials. Without this, the user reconnects but the UI
       // keeps showing the error chip and the Sync button stays disabled.
       const updated = await DbService.repository.connectorInstances.update(
-        existing.id,
+        target.id,
         {
           credentials: credentials as unknown as string,
           status: "active",
@@ -164,7 +180,7 @@ export class GoogleSheetsConnectorService {
           updatedBy: userId,
         }
       );
-      connectorInstanceId = updated?.id ?? existing.id;
+      connectorInstanceId = updated?.id ?? target.id;
     } else {
       const created = await DbService.repository.connectorInstances.create({
         id: SystemUtilities.id.v4.generate(),
@@ -618,6 +634,7 @@ export class GoogleSheetsConnectorService {
 function verifyStateOrApiError(token: string): {
   userId: string;
   organizationId: string;
+  connectorInstanceId?: string;
 } {
   try {
     return verifyState(token);

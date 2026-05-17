@@ -109,7 +109,11 @@ export class MicrosoftExcelConnectorService {
   static async handleCallback(
     input: HandleCallbackInput
   ): Promise<HandleCallbackResult> {
-    const { userId, organizationId } = verifyStateOrApiError(input.state);
+    const {
+      userId,
+      organizationId,
+      connectorInstanceId: reconnectTargetId,
+    } = verifyStateOrApiError(input.state);
 
     const tokens = await callExchangeOrApiError(input.code);
     const tenantId = decodeTenantIdFromIdToken(tokens.idToken);
@@ -136,21 +140,32 @@ export class MicrosoftExcelConnectorService {
       lastRefreshedAt: Date.now(),
     };
 
-    const existing = await MicrosoftExcelConnectorService.findByTenantAndUpn(
-      organizationId,
-      definition.id,
-      profile.tenantId,
-      profile.upn
-    );
-
+    // Reconnect vs. new-connect: only the signed-state reconnect-target
+    // path looks up an existing row. The "add connector" flow no longer
+    // collapses onto a same-tenant/upn row, so users can hold multiple
+    // Microsoft Excel connectors against the same account (typically
+    // each pointed at a different workbook via select-workbook later).
     let connectorInstanceId: string;
-    if (existing) {
+    if (reconnectTargetId) {
+      const target =
+        await DbService.repository.connectorInstances.findById(reconnectTargetId);
+      if (
+        !target ||
+        target.organizationId !== organizationId ||
+        target.connectorDefinitionId !== definition.id
+      ) {
+        throw new ApiError(
+          404,
+          ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+          "Reconnect target not found for this organization"
+        );
+      }
       // Phase E reconnect path — reset status + clear lastErrorMessage
       // so an instance previously flipped to `error` by the access-token
       // cache returns to `active` once Microsoft has issued fresh
       // credentials.
       const updated = await DbService.repository.connectorInstances.update(
-        existing.id,
+        target.id,
         {
           credentials: credentials as unknown as string,
           status: "active",
@@ -158,7 +173,7 @@ export class MicrosoftExcelConnectorService {
           updatedBy: userId,
         }
       );
-      connectorInstanceId = updated?.id ?? existing.id;
+      connectorInstanceId = updated?.id ?? target.id;
     } else {
       const created = await DbService.repository.connectorInstances.create({
         id: SystemUtilities.id.v4.generate(),
@@ -771,6 +786,7 @@ function decodeTenantIdFromIdToken(idToken: string): string {
 function verifyStateOrApiError(token: string): {
   userId: string;
   organizationId: string;
+  connectorInstanceId?: string;
 } {
   try {
     return verifyState(token);

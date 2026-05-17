@@ -27,8 +27,19 @@ import type {
 import { useAuthMutation } from "../utils/api.util";
 
 export const googleSheets = {
+  /**
+   * Mints a Google OAuth consent URL. Pass `connectorInstanceId` to
+   * point the callback at an existing instance (reconnect flow); omit
+   * to create a new instance on callback (the "Add Google Sheets
+   * connector" flow). The signed state token binds the chosen id to
+   * the consent so a callback can't be redirected to a different
+   * instance than the authorize call intended.
+   */
   authorize: () =>
-    useAuthMutation<GoogleSheetsAuthorizeResponsePayload, void>({
+    useAuthMutation<
+      GoogleSheetsAuthorizeResponsePayload,
+      { connectorInstanceId?: string } | undefined
+    >({
       url: "/api/connectors/google-sheets/authorize",
     }),
 

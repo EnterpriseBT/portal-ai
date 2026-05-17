@@ -33,7 +33,11 @@ jest.unstable_mockModule("../../services/google-auth.service.js", () => ({
 }));
 
 const verifyStateMock =
-  jest.fn<(token: string) => { userId: string; organizationId: string }>();
+  jest.fn<(token: string) => {
+    userId: string;
+    organizationId: string;
+    connectorInstanceId?: string;
+  }>();
 
 class MockOAuthStateError extends Error {
   readonly kind: string;
@@ -420,16 +424,21 @@ describe("GoogleSheetsConnectorService.handleCallback", () => {
   });
 
   it("resets status to 'active' and clears lastErrorMessage when reconnecting an instance currently in error", async () => {
-    findByOrgAndDefinitionMock.mockResolvedValue([
-      {
-        id: "ci-existing",
-        organizationId: "org-1",
-        connectorDefinitionId: "def-gs",
-        status: "error",
-        lastErrorMessage: "invalid_grant: Token has been expired or revoked",
-        credentials: { googleAccountEmail: "alice@example.com" },
-      },
-    ]);
+    // Reconnect path: the signed state carries the target instance id;
+    // the callback hits findById on that id (not findByEmail).
+    verifyStateMock.mockReturnValue({
+      userId: "user-1",
+      organizationId: "org-1",
+      connectorInstanceId: "ci-existing",
+    });
+    findInstanceMock.mockResolvedValue({
+      id: "ci-existing",
+      organizationId: "org-1",
+      connectorDefinitionId: "def-gs",
+      status: "error",
+      lastErrorMessage: "invalid_grant: Token has been expired or revoked",
+      credentials: { googleAccountEmail: "alice@example.com" },
+    });
     updateInstanceMock.mockResolvedValue({ id: "ci-existing" });
 
     await GoogleSheetsConnectorService.handleCallback({
@@ -449,16 +458,19 @@ describe("GoogleSheetsConnectorService.handleCallback", () => {
   });
 
   it("does NOT downgrade an already-active instance (reconnect is idempotent)", async () => {
-    findByOrgAndDefinitionMock.mockResolvedValue([
-      {
-        id: "ci-existing",
-        organizationId: "org-1",
-        connectorDefinitionId: "def-gs",
-        status: "active",
-        lastErrorMessage: null,
-        credentials: { googleAccountEmail: "alice@example.com" },
-      },
-    ]);
+    verifyStateMock.mockReturnValue({
+      userId: "user-1",
+      organizationId: "org-1",
+      connectorInstanceId: "ci-existing",
+    });
+    findInstanceMock.mockResolvedValue({
+      id: "ci-existing",
+      organizationId: "org-1",
+      connectorDefinitionId: "def-gs",
+      status: "active",
+      lastErrorMessage: null,
+      credentials: { googleAccountEmail: "alice@example.com" },
+    });
     updateInstanceMock.mockResolvedValue({ id: "ci-existing" });
 
     await GoogleSheetsConnectorService.handleCallback({
@@ -475,7 +487,8 @@ describe("GoogleSheetsConnectorService.handleCallback", () => {
   });
 
   it("first-time authorize creates a new instance with status='pending' (regression)", async () => {
-    findByOrgAndDefinitionMock.mockResolvedValue([]);
+    // No `connectorInstanceId` in the signed state → always create new,
+    // regardless of whether the same email already has instances.
     createInstanceMock.mockResolvedValue({ id: "ci-new" });
 
     await GoogleSheetsConnectorService.handleCallback({
@@ -490,5 +503,20 @@ describe("GoogleSheetsConnectorService.handleCallback", () => {
     ];
     expect(calledData.status).toBe("pending");
     expect(calledData.lastErrorMessage).toBeNull();
+  });
+
+  it("creates a new instance even when the same email already has one (add-connector flow)", async () => {
+    // Bare state (no connectorInstanceId) bypasses the email lookup
+    // entirely — every authorize without a reconnect target gets a
+    // fresh row. Regresses if the old findByEmail path comes back.
+    createInstanceMock.mockResolvedValue({ id: "ci-new-2" });
+
+    await GoogleSheetsConnectorService.handleCallback({
+      code: "auth-code",
+      state: "signed-state",
+    });
+
+    expect(updateInstanceMock).not.toHaveBeenCalled();
+    expect(createInstanceMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -101,6 +101,8 @@ const findByOrgAndDefinitionMock =
       Array<{ id: string; credentials: unknown }>
     >
   >();
+const findInstanceMock =
+  jest.fn<(id: string) => Promise<Record<string, unknown> | undefined>>();
 const createInstanceMock =
   jest.fn<(input: Record<string, unknown>) => Promise<{ id: string }>>();
 const updateInstanceMock =
@@ -111,6 +113,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
     repository: {
       connectorDefinitions: { findBySlug: findBySlugMock },
       connectorInstances: {
+        findById: findInstanceMock,
         findByOrgAndDefinition: findByOrgAndDefinitionMock,
         create: createInstanceMock,
         update: updateInstanceMock,
@@ -140,6 +143,7 @@ beforeEach(() => {
   fetchUserProfileMock.mockReset();
   findBySlugMock.mockReset();
   findByOrgAndDefinitionMock.mockReset();
+  findInstanceMock.mockReset();
   createInstanceMock.mockReset();
   updateInstanceMock.mockReset();
 
@@ -155,6 +159,10 @@ describe("MicrosoftExcelConnectorService.handleCallback", () => {
 
   function validState() {
     return signState({ userId, organizationId });
+  }
+
+  function reconnectState(connectorInstanceId: string) {
+    return signState({ userId, organizationId, connectorInstanceId });
   }
 
   it("throws ApiError(400, MICROSOFT_OAUTH_INVALID_STATE) on bad state", async () => {
@@ -219,7 +227,7 @@ describe("MicrosoftExcelConnectorService.handleCallback", () => {
     });
   });
 
-  it("updates the existing instance for the same (org, tenantId, upn) tuple — Reconnect path", async () => {
+  it("updates the existing instance when the signed state carries a reconnect target", async () => {
     exchangeCodeMock.mockResolvedValue({
       accessToken: "eyJ.access2",
       refreshToken: "0.AX-rt-2",
@@ -233,21 +241,21 @@ describe("MicrosoftExcelConnectorService.handleCallback", () => {
       displayName: "Alice",
       tenantId: "tenant-A",
     });
-    findByOrgAndDefinitionMock.mockResolvedValue([
-      {
-        id: "ci-existing",
-        credentials: {
-          refresh_token: "0.AX-rt-old",
-          microsoftAccountUpn: "alice@contoso.com",
-          tenantId: "tenant-A",
-        },
+    findInstanceMock.mockResolvedValue({
+      id: "ci-existing",
+      organizationId,
+      connectorDefinitionId: "def-msft-1",
+      credentials: {
+        refresh_token: "0.AX-rt-old",
+        microsoftAccountUpn: "alice@contoso.com",
+        tenantId: "tenant-A",
       },
-    ]);
+    });
     updateInstanceMock.mockResolvedValue({ id: "ci-existing" });
 
     const result = await MicrosoftExcelConnectorService.handleCallback({
       code: "good",
-      state: validState(),
+      state: reconnectState("ci-existing"),
     });
 
     expect(result.connectorInstanceId).toBe("ci-existing");
@@ -265,11 +273,16 @@ describe("MicrosoftExcelConnectorService.handleCallback", () => {
     expect(updatedCreds.tenantId).toBe("tenant-A");
   });
 
-  it("creates a new row when the same UPN appears under a different tenantId", async () => {
+  it("creates a fresh row on the add-connector flow even when the same account already has one", async () => {
+    // Without a reconnect target in the signed state, every authorize
+    // produces a new instance — regardless of whether the same UPN /
+    // tenant pair already has one. This is the "Add connector" flow;
+    // regresses if the old findByEmail/findByTenant+upn lookup comes
+    // back.
     exchangeCodeMock.mockResolvedValue({
       accessToken: "eyJ.access",
       refreshToken: "0.AX-rt",
-      idToken: makeIdToken({ tid: "tenant-B" }),
+      idToken: makeIdToken({ tid: "tenant-A" }),
       expiresIn: 3599,
       scope: "openid offline_access",
     });
@@ -277,28 +290,16 @@ describe("MicrosoftExcelConnectorService.handleCallback", () => {
       upn: "alice@contoso.com",
       email: "alice@contoso.com",
       displayName: "Alice",
-      tenantId: "tenant-B",
+      tenantId: "tenant-A",
     });
-    // An instance for tenant-A already exists with the same UPN — must
-    // NOT match for tenant-B.
-    findByOrgAndDefinitionMock.mockResolvedValue([
-      {
-        id: "ci-existing-tenant-A",
-        credentials: {
-          refresh_token: "0.AX-old",
-          microsoftAccountUpn: "alice@contoso.com",
-          tenantId: "tenant-A",
-        },
-      },
-    ]);
-    createInstanceMock.mockResolvedValue({ id: "ci-new-tenant-B" });
+    createInstanceMock.mockResolvedValue({ id: "ci-new-2" });
 
     const result = await MicrosoftExcelConnectorService.handleCallback({
       code: "good",
       state: validState(),
     });
 
-    expect(result.connectorInstanceId).toBe("ci-new-tenant-B");
+    expect(result.connectorInstanceId).toBe("ci-new-2");
     expect(createInstanceMock).toHaveBeenCalledTimes(1);
     expect(updateInstanceMock).not.toHaveBeenCalled();
   });

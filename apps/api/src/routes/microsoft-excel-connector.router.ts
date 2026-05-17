@@ -52,14 +52,21 @@ microsoftExcelConnectorRouter.post(
       const userId = req.application?.metadata.userId as string;
       const organizationId = req.application?.metadata
         .organizationId as string;
+      const body = (req.body ?? {}) as { connectorInstanceId?: unknown };
+      const connectorInstanceId =
+        typeof body.connectorInstanceId === "string" &&
+        body.connectorInstanceId.length > 0
+          ? body.connectorInstanceId
+          : undefined;
 
       const url = MicrosoftAuthService.buildConsentUrl({
         userId,
         organizationId,
+        ...(connectorInstanceId ? { connectorInstanceId } : {}),
       });
 
       logger.info(
-        { userId, organizationId },
+        { userId, organizationId, connectorInstanceId: connectorInstanceId ?? null },
         "Microsoft OAuth authorize URL minted"
       );
       return HttpService.success(res, { url });
