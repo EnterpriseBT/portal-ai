@@ -615,60 +615,68 @@ describe("googleSheetsAdapter.syncInstance", () => {
     // primary key because the partial unique index `WHERE deleted IS
     // NULL` doesn't match the soft-deleted row but the bulk INSERT
     // reuses its id.
+    //
+    // Column-identity (email) is necessary for this test: the seed
+    // helper inserts records with `sourceId = row.email`, and the
+    // resurrect path matches on (connector_entity_id, source_id). To
+    // make column identity NOT trip the always-on identity-drift
+    // gate, provide TWO data rows so the plan's `bounds: endRow: 3`
+    // (= header + 2 data rows) is fully populated — no past-bounds
+    // blanks in the identity column for `detect-identity` to flag.
     const { instance, entityId } = await seedCommittedInstance({
-      rows: [{ email: "alice@example.com", name: "Alice" }],
-      identityKind: "rowPosition",
+      rows: [
+        { email: "alice@example.com", name: "Alice" },
+        { email: "bob@example.com", name: "Bob" },
+      ],
     });
 
-    // Fetch the existing row's id + sourceId so we can assert both
-    // are preserved across the resurrect. The sourceId is whatever
-    // the seed pipeline computed (a synthetic row-position key under
-    // `rowPosition` identity, or the email under column identity) —
-    // the resurrect path keys off it either way.
-    const [originalRow] = await db
-      .select()
-      .from(entityRecords)
-      .where(eq(entityRecords.connectorEntityId, entityId));
-    const originalId = originalRow!.id;
-    const originalSourceId = originalRow!.sourceId;
-
-    // Soft-delete the record (mirrors the "clear all records" route).
-    await db
-      .update(entityRecords)
-      .set({ deleted: Date.now(), deletedBy: userId })
-      .where(eq(entityRecords.id, originalId));
-
-    // Sync against the same workbook — the source still has Alice.
-    fetchMock.mockResolvedValueOnce(
-      mockFetchResponse(
-        mockSheetsApiResponse([{ email: "alice@example.com", name: "Alice" }])
-      )
-    );
-
-    const out = await googleSheetsAdapter.syncInstance!(instance, userId);
-
-    // The original soft-deleted row is now resurrected (same id, deleted
-    // cleared) — no duplicate-key error. The exact `created` tally is
-    // implementation-defined (replay may produce extra synthetic records
-    // for empty cells inside the plan's bounds), so we only assert that
-    // resurrection produced no duplicates and no key collisions.
-    expect(out).toBeDefined();
-
-    const liveRows = await db
+    // Fetch alice's row so we can assert its id is preserved.
+    const [aliceRow] = await db
       .select()
       .from(entityRecords)
       .where(
         and(
           eq(entityRecords.connectorEntityId, entityId),
+          eq(entityRecords.sourceId, "alice@example.com")
+        )
+      );
+    const originalId = aliceRow!.id;
+
+    // Soft-delete alice (mirrors a single-record "clear" via the API).
+    await db
+      .update(entityRecords)
+      .set({ deleted: Date.now(), deletedBy: userId })
+      .where(eq(entityRecords.id, originalId));
+
+    // Sync against the same workbook — the source still has both rows.
+    fetchMock.mockResolvedValueOnce(
+      mockFetchResponse(
+        mockSheetsApiResponse([
+          { email: "alice@example.com", name: "Alice" },
+          { email: "bob@example.com", name: "Bob" },
+        ])
+      )
+    );
+
+    const out = await googleSheetsAdapter.syncInstance!(instance, userId);
+
+    // alice's soft-deleted row is resurrected — same id, deleted cleared
+    // — no duplicate-key error.
+    expect(out).toBeDefined();
+
+    const liveAlice = await db
+      .select()
+      .from(entityRecords)
+      .where(
+        and(
+          eq(entityRecords.connectorEntityId, entityId),
+          eq(entityRecords.sourceId, "alice@example.com"),
           isNull(entityRecords.deleted)
         )
       );
-    const matchedRows = liveRows.filter(
-      (r) => r.sourceId === originalSourceId
-    );
-    expect(matchedRows).toHaveLength(1); // resurrected, not duplicated
-    expect(matchedRows[0]?.id).toBe(originalId); // same id preserved
-    expect(matchedRows[0]?.deleted).toBeNull();
-    expect(matchedRows[0]?.deletedBy).toBeNull();
+    expect(liveAlice).toHaveLength(1); // resurrected, not duplicated
+    expect(liveAlice[0]?.id).toBe(originalId); // same id preserved
+    expect(liveAlice[0]?.deleted).toBeNull();
+    expect(liveAlice[0]?.deletedBy).toBeNull();
   });
 });
