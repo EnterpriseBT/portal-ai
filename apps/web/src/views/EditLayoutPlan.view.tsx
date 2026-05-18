@@ -41,6 +41,8 @@ import {
   entityOptionsFromWorkbook,
   mergeStagedEntityOptions,
   planRegionsToDrafts,
+  preserveUserRegionConfig,
+  regionDraftsToHints,
 } from "../workflows/FileUploadConnector/utils/layout-plan-mapping.util";
 
 const STEP_CONFIGS: StepConfig[] = [
@@ -146,15 +148,15 @@ export interface EditLayoutPlanViewUIProps {
   onLeaveView: () => void;
   onNavigate: (href: string) => void;
   /**
-   * Advances the editor from "Draw regions" to "Review". The
-   * RegionEditor module's primary CTA on step 0 is labeled
-   * "Interpret" — in workflow mode it triggers the AI classifier
-   * and then advances; in edit mode there's nothing to re-classify
-   * (the plan is already committed), so the button simply advances
-   * to review where the user can recommit. Without this wiring the
-   * button is a no-op and looks broken.
+   * Runs the AI interpret pipeline against the current rectangles +
+   * rehydrated workbook, then advances to Review. Critical when the
+   * source spreadsheet has been reshaped (renamed columns, added
+   * rows) between commits — without re-running interpret the
+   * Review step shows column bindings from the persisted plan that
+   * may reference cells which no longer exist.
    */
-  onAdvanceToReview: () => void;
+  onInterpret: () => void;
+  isInterpreting?: boolean;
 
   /**
    * Per-region IdentityPanel dropdown options + change handler. The
@@ -200,7 +202,8 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   onBack,
   onLeaveView,
   onNavigate,
-  onAdvanceToReview,
+  onInterpret,
+  isInterpreting,
   resolveIdentityLocatorOptions,
   onIdentityUpdate,
 }) => {
@@ -352,13 +355,13 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
           entityAssociationLocked={true}
           regionDeletionLocked={true}
           loadSlice={loadSlice}
-          // Edit mode doesn't re-run the AI classifier — the regions
-          // are already classified. The module's primary CTA on step
-          // 0 is labeled "Interpret" though, so a no-op handler looks
-          // broken to the user. Repurpose it as the step-advancer so
-          // clicking "Interpret" jumps to the Review step where the
-          // user can recommit.
-          onInterpret={onAdvanceToReview}
+          // Edit mode runs interpret against the rehydrated workbook
+          // before advancing to Review, so column bindings refresh
+          // against the current spreadsheet shape. The container's
+          // handler closes over `interpretMutate` + the helpers that
+          // preserve user overrides; this prop just plumbs it.
+          onInterpret={onInterpret}
+          isInterpreting={isInterpreting}
           onJumpToRegion={onJumpToRegion}
           onEditBinding={onEditBinding}
           onCommit={onCommit}
@@ -410,6 +413,17 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       connectorInstanceId,
       editContext?.planId ?? ""
     );
+
+  // Real interpret call for the edit-plan view. The button labeled
+  // "Interpret" used to be a step-only advancer, but if the source
+  // spreadsheet has been reshaped between commits (renamed columns,
+  // added rows) the persisted column bindings reference cells that
+  // no longer exist — and the only fix was deleting the connector
+  // and starting over. Re-running interpret now produces fresh
+  // bindings against the rehydrated workbook, with the user's
+  // explicit overrides preserved via `preserveUserRegionConfig`.
+  const { mutateAsync: interpretMutate, isPending: isInterpreting } =
+    sdk.layoutPlans.interpret();
 
   // The Commit button stays disabled across both phases of the
   // commit flow — the leading auto-PATCH AND the recommit POST —
@@ -593,6 +607,55 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     },
     []
   );
+
+  const handleInterpret = useCallback(async () => {
+    if (!editContext?.editable || !editContext.workbookPreview) {
+      // No editor mounted (placeholder branches) — nothing to
+      // re-interpret. Just advance the step state so the UI doesn't
+      // look frozen if a caller hits this branch.
+      setStep(1);
+      return;
+    }
+    const workbook = previewToEditorWorkbook(editContext.workbookPreview);
+    const slug = editContext.connectorDefinitionSlug;
+    const body =
+      slug === "file-upload"
+        ? editContext.uploadSessionId
+          ? {
+              uploadSessionId: editContext.uploadSessionId,
+              regionHints: regionDraftsToHints(workbook, regions),
+              priorPlan: editContext.plan,
+            }
+          : null
+        : {
+            connectorInstanceId,
+            regionHints: regionDraftsToHints(workbook, regions),
+            priorPlan: editContext.plan,
+          };
+    if (!body) {
+      setStep(1);
+      return;
+    }
+    try {
+      const res = await interpretMutate(body);
+      // `preserveUserRegionConfig` rolls the user's explicit
+      // overrides (locked identity strategy, target entity, drift
+      // knobs) back over the fresh classifier output so the
+      // re-interpret doesn't clobber decisions the user already
+      // made.
+      const nextPlan = preserveUserRegionConfig(res.plan, regions);
+      setRegions(planRegionsToDrafts(nextPlan, workbook));
+      setStep(1);
+    } catch (err) {
+      // Surface as the same Save-Draft snackbar channel — it's the
+      // only inline-error path the editor has today.
+      const apiErr = err as { message?: string } | null;
+      setSaveDraftToast({
+        severity: "error",
+        message: apiErr?.message ?? "Interpret failed.",
+      });
+    }
+  }, [editContext, regions, connectorInstanceId, interpretMutate]);
 
   const handleCommit = useCallback(async () => {
     if (!editContext?.editable || !editContext.workbookPreview) return;
@@ -800,7 +863,8 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       onBack={handleBack}
       onLeaveView={handleLeaveView}
       onNavigate={(href) => navigate({ to: href })}
-      onAdvanceToReview={() => setStep(1)}
+      onInterpret={handleInterpret}
+      isInterpreting={isInterpreting}
       resolveIdentityLocatorOptions={
         editContext?.editable && editContext.workbookPreview
           ? (region: RegionDraft) =>

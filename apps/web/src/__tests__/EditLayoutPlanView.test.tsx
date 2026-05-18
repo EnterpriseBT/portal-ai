@@ -118,7 +118,7 @@ const baseProps = {
   onBack: jest.fn(),
   onLeaveView: jest.fn(),
   onNavigate: jest.fn(),
-  onAdvanceToReview: jest.fn(),
+  onInterpret: jest.fn(),
 };
 
 describe("EditLayoutPlanViewUI", () => {
