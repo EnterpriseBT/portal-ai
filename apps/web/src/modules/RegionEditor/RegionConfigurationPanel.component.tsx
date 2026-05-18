@@ -19,6 +19,7 @@ import type {
   Terminator,
 } from "@portalai/core/contracts";
 
+import { BoundsInputsUI } from "./RegionBoundsInputs.component";
 import { CellPositionInputUI } from "./CellPositionInput.component";
 import { NewEntityDialogUI } from "./NewEntityDialog.component";
 import { RecordAxisTerminatorPopoverUI } from "./RecordAxisTerminatorPopover.component";
@@ -634,6 +635,8 @@ export const RegionConfigurationPanelUI: React.FC<
           {region.bounds.endRow - region.bounds.startRow + 1} rows ·{" "}
           {region.bounds.endCol - region.bounds.startCol + 1} cols
         </Typography>
+
+        <BoundsInputsUI bounds={region.bounds} onUpdate={onUpdate} />
 
         {legendKinds.length > 0 && (
           <Stack
