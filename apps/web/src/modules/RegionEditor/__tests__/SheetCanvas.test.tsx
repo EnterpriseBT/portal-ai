@@ -174,7 +174,11 @@ describe("SheetCanvasUI", () => {
     expect(pivotOverlay).toHaveTextContent(/Quarter/);
   });
 
-  test("regions with segments lock the resize handles", () => {
+  test("regions with segments still render resize handles (segments auto-adjust on resize)", () => {
+    // `mergeRegionUpdate` in `adjust-segments-for-bounds` keeps the
+    // trailing segment aligned with the new span when bounds change,
+    // so segmented regions are resizable now — the old positionCount-
+    // desync risk is gone.
     const region: RegionDraft = {
       id: "r1",
       sheetId: "s1",
@@ -194,8 +198,7 @@ describe("SheetCanvasUI", () => {
         onRegionResize={jest.fn()}
       />
     );
-    // No resize handles are rendered when a region carries segments.
-    expect(screen.queryByLabelText(/resize region/i)).not.toBeInTheDocument();
+    expect(screen.getAllByLabelText(/resize region/i).length).toBeGreaterThan(0);
   });
 
   test("a headerless region (no segments) still renders resize handles", () => {

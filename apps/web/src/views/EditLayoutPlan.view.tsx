@@ -36,6 +36,7 @@ import {
   buildIdentityUpdater,
   resolveLocatorOptionsFor,
 } from "../modules/RegionEditor/utils/identity-panel-wiring.util";
+import { mergeRegionUpdate } from "../modules/RegionEditor/utils/adjust-segments-for-bounds.util";
 import {
   draftsToRegions,
   entityOptionsFromWorkbook,
@@ -567,7 +568,7 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
   const handleRegionUpdate = useCallback(
     (regionId: string, updates: Partial<RegionDraft>) => {
       setRegions((prev) =>
-        prev.map((r) => (r.id === regionId ? { ...r, ...updates } : r))
+        prev.map((r) => (r.id === regionId ? mergeRegionUpdate(r, updates) : r))
       );
     },
     []
@@ -578,13 +579,16 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     setSelectedRegionId((sel) => (sel === regionId ? null : sel));
   }, []);
 
+  // Delegate to `handleRegionUpdate` so canvas drag-resize and
+  // manual bounds inputs share one segment-adjustment path. The
+  // util in `mergeRegionUpdate` auto-shrinks/expands the trailing
+  // segment on each axis to match the new span and drops segments
+  // the new bounds can't fit.
   const handleRegionResize = useCallback(
     (regionId: string, nextBounds: CellBounds) => {
-      setRegions((prev) =>
-        prev.map((r) => (r.id === regionId ? { ...r, bounds: nextBounds } : r))
-      );
+      handleRegionUpdate(regionId, { bounds: nextBounds });
     },
-    []
+    [handleRegionUpdate]
   );
 
   const handleCommit = useCallback(async () => {

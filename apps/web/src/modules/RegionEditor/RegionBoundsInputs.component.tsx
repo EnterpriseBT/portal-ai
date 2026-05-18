@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 
 import { Stack, TextInput } from "@portalai/core/ui";
 
@@ -59,29 +59,39 @@ function parseInput(field: BoundsField, raw: string): number | null {
  * Local state mirrors the inputs; commit fires on blur or Enter,
  * never on every keystroke.
  */
-export const BoundsInputsUI: React.FC<BoundsInputsUIProps> = ({
-  bounds,
-  onUpdate,
-}) => {
-  const [draft, setDraft] = useState<Record<BoundsField, string>>({
+function buildInitialDraft(bounds: CellBounds): Record<BoundsField, string> {
+  return {
     startRow: toDisplay("startRow", bounds.startRow),
     endRow: toDisplay("endRow", bounds.endRow),
     startCol: toDisplay("startCol", bounds.startCol),
     endCol: toDisplay("endCol", bounds.endCol),
-  });
+  };
+}
 
-  // Re-sync local input state whenever the canonical bounds change
-  // (canvas drag-resize, programmatic update, region switch). Without
-  // this the inputs would freeze at whatever was last typed even
-  // after the canvas overrides them.
-  useEffect(() => {
-    setDraft({
-      startRow: toDisplay("startRow", bounds.startRow),
-      endRow: toDisplay("endRow", bounds.endRow),
-      startCol: toDisplay("startCol", bounds.startCol),
-      endCol: toDisplay("endCol", bounds.endCol),
-    });
-  }, [bounds.startRow, bounds.endRow, bounds.startCol, bounds.endCol]);
+export const BoundsInputsUI: React.FC<BoundsInputsUIProps> = ({
+  bounds,
+  onUpdate,
+}) => {
+  const [draft, setDraft] = useState<Record<BoundsField, string>>(() =>
+    buildInitialDraft(bounds)
+  );
+  // Derived-state-from-props pattern: re-sync the inputs whenever
+  // the canonical bounds change (canvas drag-resize, programmatic
+  // update, region switch). Tracking the last-seen bounds and
+  // calling setState during render — instead of inside an effect —
+  // avoids the cascading-render warning while still keeping the
+  // local input state aligned with the prop. React deduplicates the
+  // setState calls during the same render cycle, so this is cheap.
+  const [lastBounds, setLastBounds] = useState<CellBounds>(bounds);
+  if (
+    bounds.startRow !== lastBounds.startRow ||
+    bounds.endRow !== lastBounds.endRow ||
+    bounds.startCol !== lastBounds.startCol ||
+    bounds.endCol !== lastBounds.endCol
+  ) {
+    setLastBounds(bounds);
+    setDraft(buildInitialDraft(bounds));
+  }
 
   const commit = (field: BoundsField, raw: string): void => {
     const parsed = parseInput(field, raw);

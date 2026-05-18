@@ -568,14 +568,12 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
         e.preventDefault();
         onRegionSelect(regionId);
         if (readOnly || !onRegionResize) return;
-        // Once a region carries segments, its bounds are locked — moving it
-        // would silently invalidate positionCount totals. The click still
-        // selects, but no move op starts.
-        const target = regions.find((r) => r.id === regionId);
-        const hasSegments =
-          (target?.segmentsByAxis?.row?.length ?? 0) > 0 ||
-          (target?.segmentsByAxis?.column?.length ?? 0) > 0;
-        if (hasSegments) return;
+        // (Pre-segment-adjustment-util era: this used to bail when
+        // the region had segments because moving / resizing would
+        // leave `positionCount` totals out of sync with the new
+        // span. `mergeRegionUpdate` in `adjust-segments-for-bounds`
+        // now keeps the trailing segment aligned with the span on
+        // every bounds change, so the gate is no longer needed.)
         // The region body sets local `touchAction: "none"`, so touch and
         // mouse take the same synchronous path: capture the pointer and
         // start a move op. A pointerup with no movement is still a clean
@@ -599,7 +597,6 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       onRegionSelect,
       capturePointerById,
       clientToCell,
-      regions,
     ]
   );
 
@@ -1767,13 +1764,12 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 sheet.colCount
               );
             }
-            // Once a region has any segment on any axis, its bounds are
-            // locked: a bounds change would silently invalidate the
-            // positionCount math the user tuned. Segment-divider drag is the
-            // intended way to rebalance positions within the locked frame.
-            const hasSegments =
-              (region.segmentsByAxis?.row?.length ?? 0) > 0 ||
-              (region.segmentsByAxis?.column?.length ?? 0) > 0;
+            // Resize / move are allowed on segmented regions now —
+            // `mergeRegionUpdate` (in `adjust-segments-for-bounds`)
+            // auto-aligns the trailing segment with the new span on
+            // every bounds change. Previously this was gated on
+            // `!hasSegments` because positionCount totals could
+            // silently desync; that gate is no longer load-bearing.
             return (
               <RegionOverlayUI
                 key={region.id}
@@ -1781,10 +1777,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 bounds={previewBounds}
                 entityOrder={entityOrder}
                 selected={region.id === selectedRegionId}
-                resizable={
-                  !readOnly && !hasSegments && Boolean(onRegionResize)
-                }
-                movable={!readOnly && !hasSegments && Boolean(onRegionResize)}
+                resizable={!readOnly && Boolean(onRegionResize)}
+                movable={!readOnly && Boolean(onRegionResize)}
                 cellWidth={cellWidth}
                 cellHeight={cellHeight}
                 onBodyPointerDown={handleRegionBodyPointerDown}
