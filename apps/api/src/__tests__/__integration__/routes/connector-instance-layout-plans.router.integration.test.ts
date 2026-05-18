@@ -92,6 +92,30 @@ jest.unstable_mockModule("../../../utils/redis.util.js", () => ({
   closeRedis: async () => undefined,
 }));
 
+// edit-context now calls `rehydrateWorkbookCache` on every cloud-
+// connector visit so Modify Layout Plan reflects current upstream
+// state. In tests we don't have a real Google / Microsoft API — the
+// seed helpers populate the cache directly via `seedWorkbookCache`,
+// so the rehydrate step is a no-op for tests. Mock both
+// `rehydrateWorkbookCache` statics to do nothing; the rest of the
+// service surfaces (auth, sheet listing, etc.) stays unmocked.
+jest.unstable_mockModule(
+  "../../../services/google-sheets-connector.service.js",
+  () => ({
+    GoogleSheetsConnectorService: {
+      rehydrateWorkbookCache: jest.fn(async () => undefined),
+    },
+  })
+);
+jest.unstable_mockModule(
+  "../../../services/microsoft-excel-connector.service.js",
+  () => ({
+    MicrosoftExcelConnectorService: {
+      rehydrateWorkbookCache: jest.fn(async () => undefined),
+    },
+  })
+);
+
 // In-memory S3 — `FileUploadSessionService.resolveWorkbook`'s cache-miss
 // branch re-streams from S3 via this service; the mock keeps the
 // fallback path off the network for the source-available case and lets

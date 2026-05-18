@@ -408,7 +408,12 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
     expect(Array.isArray(decrypted.scopes)).toBe(true);
   });
 
-  it("updates the existing row for the same (org, tenantId, upn) — Reconnect", async () => {
+  it("updates the existing row when a reconnect target is signed into state", async () => {
+    // The callback used to find existing rows by (org, tenantId,
+    // upn). That's now gated on a signed `connectorInstanceId` in
+    // state — the reconnect button on the connector detail view
+    // passes it; the "Add connector" flow does not. Bare state
+    // always mints a fresh row.
     const { userId, organizationId } = await seedUserAndOrg(
       db as ReturnType<typeof drizzle>,
       AUTH0_ID
@@ -441,7 +446,8 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
     expect(firstRows).toHaveLength(1);
     const firstRowId = firstRows[0]!.id;
 
-    // Second callback for the same (org, tenant, upn): update in place.
+    // Second callback WITH the reconnect target signed into state:
+    // updates firstRowId in place.
     exchangeCodeMock.mockResolvedValueOnce({
       accessToken: "eyJ.access2",
       refreshToken: "0.AX-rt-2",
@@ -455,7 +461,11 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
       displayName: "Alice",
       tenantId: "tenant-A",
     });
-    const state2 = signState({ userId, organizationId });
+    const state2 = signState({
+      userId,
+      organizationId,
+      connectorInstanceId: firstRowId,
+    });
     const res = await request(app)
       .get("/api/connectors/microsoft-excel/callback")
       .query({ code: "second", state: state2 });

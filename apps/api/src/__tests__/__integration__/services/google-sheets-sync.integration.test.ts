@@ -435,8 +435,14 @@ describe("googleSheetsAdapter.syncInstance", () => {
   });
 
   it("updates lastSyncAt + clears lastErrorMessage on success", async () => {
+    // rowPosition identity avoids the always-on identity-drift gate
+    // firing on a sparse fixture (1 data row vs. fingerprint's 3
+    // rows) — that's not the behavior under test here, just an
+    // incidental side-effect of how `seedCommittedInstance`
+    // composes the workbook fingerprint.
     const { instance } = await seedCommittedInstance({
       rows: [{ email: "alice@example.com", name: "Alice" }],
+      identityKind: "rowPosition",
       instanceLastErrorMessage: "stale error from a prior run",
     });
 
@@ -463,6 +469,7 @@ describe("googleSheetsAdapter.syncInstance", () => {
   it("calls progress with monotonically-increasing percents through 100", async () => {
     const { instance } = await seedCommittedInstance({
       rows: [{ email: "alice@example.com", name: "Alice" }],
+      identityKind: "rowPosition",
     });
     fetchMock.mockResolvedValueOnce(
       mockFetchResponse(
@@ -610,6 +617,7 @@ describe("googleSheetsAdapter.syncInstance", () => {
     // reuses its id.
     const { instance, entityId } = await seedCommittedInstance({
       rows: [{ email: "alice@example.com", name: "Alice" }],
+      identityKind: "rowPosition",
     });
 
     // Fetch the existing row's id so we can assert it's preserved.
