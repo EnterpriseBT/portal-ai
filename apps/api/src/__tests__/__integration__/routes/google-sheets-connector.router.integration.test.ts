@@ -390,7 +390,11 @@ describe("Google Sheets Connector Router — GET /callback", () => {
     void userId;
   });
 
-  it("re-auth for the same Google account updates the existing instance (no duplicate)", async () => {
+  it("re-auth for the same Google account WITHOUT a reconnect target creates a new instance", async () => {
+    // The callback used to collapse same-email re-auth onto the
+    // existing row — that's now gated on a signed
+    // `connectorInstanceId` in state. Bare state = always-create
+    // (the "Add connector" flow). Reconnect is a separate test.
     const { userId, organizationId } = await seedUserAndOrg(
       db as ReturnType<typeof drizzle>,
       AUTH0_ID
@@ -417,7 +421,8 @@ describe("Google Sheets Connector Router — GET /callback", () => {
     expect(rowsAfterFirst).toHaveLength(1);
     const firstId = rowsAfterFirst[0]!.id;
 
-    // Second auth for the SAME google account email → refresh-token rotates.
+    // Second auth for the SAME google account email but no reconnect
+    // target — should mint a NEW row, not collapse onto firstId.
     exchangeCodeMock.mockResolvedValueOnce({
       accessToken: "ya29.second",
       refreshToken: "1//refresh-B",
@@ -426,6 +431,63 @@ describe("Google Sheets Connector Router — GET /callback", () => {
     });
     fetchUserEmailMock.mockResolvedValueOnce("alice@example.com");
     const state2 = signState({ userId, organizationId });
+    const res2 = await request(app)
+      .get("/api/connectors/google-sheets/callback")
+      .query({ code: "second", state: state2 });
+    expect(res2.status).toBe(200);
+
+    const rowsAfterSecond = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(connectorInstances)
+      .where(eq(connectorInstances.organizationId, organizationId));
+    expect(rowsAfterSecond).toHaveLength(2);
+    const ids = rowsAfterSecond.map((r) => r.id);
+    expect(ids).toContain(firstId);
+    const newId = ids.find((id) => id !== firstId)!;
+    expect(res2.text).toContain(newId);
+  });
+
+  it("re-auth WITH a signed reconnect target updates the existing instance (no duplicate)", async () => {
+    const { userId, organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    await insertGoogleSheetsDefinition(db as ReturnType<typeof drizzle>);
+
+    exchangeCodeMock.mockResolvedValueOnce({
+      accessToken: "ya29.first",
+      refreshToken: "1//refresh-A",
+      expiresIn: 3599,
+      scope: "https://www.googleapis.com/auth/drive.readonly",
+    });
+    fetchUserEmailMock.mockResolvedValueOnce("alice@example.com");
+    const state1 = signState({ userId, organizationId });
+    const res1 = await request(app)
+      .get("/api/connectors/google-sheets/callback")
+      .query({ code: "first", state: state1 });
+    expect(res1.status).toBe(200);
+
+    const rowsAfterFirst = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(connectorInstances)
+      .where(eq(connectorInstances.organizationId, organizationId));
+    expect(rowsAfterFirst).toHaveLength(1);
+    const firstId = rowsAfterFirst[0]!.id;
+
+    // Second auth WITH the reconnect target signed into state →
+    // updates firstId, refresh token rotates, no duplicate row.
+    exchangeCodeMock.mockResolvedValueOnce({
+      accessToken: "ya29.second",
+      refreshToken: "1//refresh-B",
+      expiresIn: 3599,
+      scope: "https://www.googleapis.com/auth/drive.readonly",
+    });
+    fetchUserEmailMock.mockResolvedValueOnce("alice@example.com");
+    const state2 = signState({
+      userId,
+      organizationId,
+      connectorInstanceId: firstId,
+    });
     const res2 = await request(app)
       .get("/api/connectors/google-sheets/callback")
       .query({ code: "second", state: state2 });

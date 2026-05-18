@@ -529,8 +529,11 @@ describe("microsoftExcelAdapter.syncInstance", () => {
   });
 
   it("updates lastSyncAt + clears lastErrorMessage on success", async () => {
+    // rowPosition identity avoids the always-on identity-drift gate
+    // firing on a sparse fixture — see sibling gsheets-sync test.
     const { instance } = await seedCommittedInstance({
       rows: [{ email: "alice@example.com", name: "Alice" }],
+      identityKind: "rowPosition",
       instanceLastErrorMessage: "stale error from a prior run",
     });
     xlsxToWorkbookMock.mockResolvedValueOnce(
@@ -616,6 +619,7 @@ describe("microsoftExcelAdapter.syncInstance", () => {
   it("calls progress with monotonically-increasing percents through 100", async () => {
     const { instance } = await seedCommittedInstance({
       rows: [{ email: "alice@example.com", name: "Alice" }],
+      identityKind: "rowPosition",
     });
     xlsxToWorkbookMock.mockResolvedValueOnce(
       makeWorkbook([{ email: "alice@example.com", name: "Alice" }])

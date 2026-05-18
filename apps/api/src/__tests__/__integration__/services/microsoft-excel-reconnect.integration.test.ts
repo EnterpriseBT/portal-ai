@@ -252,7 +252,14 @@ describe("microsoft-excel reconnect — end-to-end", () => {
     const callbackResult =
       await MicrosoftExcelConnectorService.handleCallback({
         code: "fresh-code",
-        state: signState({ userId, organizationId }),
+        // Reconnect targets the instance via signed state — the
+        // reconnect button on the connector detail view passes
+        // this. Bare state would mint a new row.
+        state: signState({
+          userId,
+          organizationId,
+          connectorInstanceId: instanceId,
+        }),
       });
     expect(callbackResult.connectorInstanceId).toBe(instanceId);
 
@@ -281,7 +288,13 @@ describe("microsoft-excel reconnect — end-to-end", () => {
     expect(refreshAccessTokenMock).toHaveBeenLastCalledWith("0.AX-FRESH");
   });
 
-  it("reconnect under one tenant does NOT heal an instance with the same UPN under a different tenant", async () => {
+  it("reconnect targets only the instance signed into state, leaving siblings untouched", async () => {
+    // Under the new contract the callback no longer disambiguates by
+    // (tenantId, upn) — the reconnect target is whatever
+    // `connectorInstanceId` was signed into state. So a reconnect
+    // for instance B leaves instance A in its prior state, even if
+    // both share UPN and the consent was performed under tenant A
+    // or B.
     const upn = "alice@contoso.com";
     const tenantA = "tenant-A";
     const tenantB = "tenant-B";
@@ -297,9 +310,8 @@ describe("microsoft-excel reconnect — end-to-end", () => {
       MicrosoftAccessTokenCacheService.getOrRefresh(instanceA)
     ).rejects.toMatchObject({ kind: "refresh_failed" });
 
-    // User reconnects under tenant B (e.g. they only have admin access
-    // to that tenant, or they pick a different account at the consent
-    // screen).
+    // User reconnects EXPLICITLY targeting instance B via the
+    // reconnect button on its detail view.
     exchangeCodeMock.mockResolvedValueOnce({
       accessToken: "eyJ.access-B",
       refreshToken: "0.AX-B-NEW",
@@ -316,9 +328,13 @@ describe("microsoft-excel reconnect — end-to-end", () => {
 
     const result = await MicrosoftExcelConnectorService.handleCallback({
       code: "x",
-      state: signState({ userId, organizationId }),
+      state: signState({
+        userId,
+        organizationId,
+        connectorInstanceId: instanceB,
+      }),
     });
-    // The callback updated tenant-B's row, not tenant-A's.
+    // The callback updated instance B (the signed target), not A.
     expect(result.connectorInstanceId).toBe(instanceB);
 
     const [a] = await db
