@@ -91,8 +91,8 @@ Login as **two** distinct dev users in separate orgs before starting — the cro
 File-upload connectors are intentionally excluded from `EDITABLE_SLUGS`: the original CSV / XLSX is a one-shot artifact and there's no "live" upstream to reshape the plan against. Recovery for a file-upload's stale layout is to delete the connector and re-upload.
 
 - [x] After a successful commit on a file-upload connector, open the detail view's kebab menu.
-- [ ] **Modify Layout Plan** menu item is NOT rendered at all — it's omitted from the menu, not disabled. The same applies to any connector slug outside `EDIT_PLAN_SLUGS` (sandbox, etc.).
-- [ ] Direct navigation to `/connectors/<id>/layout-plan/edit` (via URL bar) renders the `editable: false` UNSUPPORTED_CONNECTOR notice. **No editor renders; no 500.**
+- [x] **Modify Layout Plan** menu item is NOT rendered at all — it's omitted from the menu, not disabled. The same applies to any connector slug outside `EDIT_PLAN_SLUGS` (sandbox, etc.).
+- [x] Direct navigation to `/connectors/<id>/layout-plan/edit` (via URL bar) renders the `editable: false` UNSUPPORTED_CONNECTOR notice. **No editor renders; no 500.**
 
 ---
 
@@ -170,10 +170,10 @@ Mirror §2 against **excel-365-cloud**. The pipeline is structurally identical; 
 
 `EDIT_PLAN_SLUGS` is cloud-only (`google-sheets`, `microsoft-excel`). File-upload + every other slug **omits** the menu item entirely — no disabled affordance, no clutter. The backend's `EDITABLE_SLUGS` mirrors this — direct navigation to `/connectors/<id>/layout-plan/edit` on a non-cloud slug renders the UNSUPPORTED_CONNECTOR notice.
 
-- [ ] On a `google-sheets` or `microsoft-excel` connector that's active and not locked → kebab shows **Modify Layout Plan** enabled (`ViewQuiltIcon`).
-- [ ] On a `file-upload` connector → menu item is NOT in the kebab list at all (covered in detail by §1.7).
-- [ ] On a `sandbox` (or any other) slug outside `EDIT_PLAN_SLUGS` → menu item is NOT rendered. The kebab still shows Edit / Delete (when applicable) but no "Modify Layout Plan".
-- [ ] On a `google-sheets` / `microsoft-excel` connector with a running `layout_plan_commit` or `connector_sync` job → menu item IS rendered but disabled; hover reveals "A {job} is running on this connector — try again when it finishes."
+- [x] On a `google-sheets` or `microsoft-excel` connector that's active and not locked → kebab shows **Modify Layout Plan** enabled (`ViewQuiltIcon`).
+- [x] On a `file-upload` connector → menu item is NOT in the kebab list at all (covered in detail by §1.7).
+- [x] On a `sandbox` (or any other) slug outside `EDIT_PLAN_SLUGS` → menu item is NOT rendered. The kebab still shows Edit / Delete (when applicable) but no "Modify Layout Plan".
+- [x] On a `google-sheets` / `microsoft-excel` connector with a running `layout_plan_commit` or `connector_sync` job → menu item IS rendered but disabled; hover reveals "A {job} is running on this connector — try again when it finishes."
 
 ### 4.2 Route + breadcrumb
 
@@ -187,53 +187,53 @@ Mirror §2 against **excel-365-cloud**. The pipeline is structurally identical; 
 - [x] **First region auto-selected on mount**: the configuration panel opens with the first sheet's first region pre-selected (Label, Target Entity, identity, etc. all populated) — NOT the empty "no region selected" state. If the panel is blank after mount, the auto-select in the hydration effect regressed.
 - [x] **Label + entity round-trip from the committed plan**: for each persisted region, the Label TextField shows either the entity's catalog label (post-successful-commit) or the `targetEntityDefinitionId` key the user typed in the workflow (when the catalog is empty because commit failed). NEVER "New region" / empty Label on a persisted plan.
 - [x] **Identity panel shows the locked locator**: if the plan persisted a `column`-kind identity, the "Identity field" Select shows the picked column's header text (not blank). If it's `rowPosition`, the panel renders the position-based option as selected.
-- [ ] Entity picker shows real options (sheet-derived). Stage a new entity via "+ Create new entity" → it appears in subsequent picker dropdowns.
-- [ ] For **gsheets-large** specifically, off-screen rows resolve via `loadSlice` — scroll past row 30 (the inline preview cap), confirm new sheet-slice requests fire and the canvas renders the freshly-loaded cells.
-- [ ] **Interpret button — runs real interpret**: clicking "Interpret" on the draw-regions step fires the AI pipeline against the rehydrated workbook (Network tab: a POST to `/api/layout-plans/interpret` with `{ connectorInstanceId, regionHints, priorPlan }`). An "Interpreting…" overlay covers the canvas during the call. On success the editor advances to Review with FRESH column bindings reflecting the current spreadsheet shape — renamed columns appear under their new headers, added columns get bound, removed columns drop out of the binding chips.
-- [ ] **Interpret preserves user overrides**: before clicking Interpret, lock an identity strategy via the IdentityPanel checkbox ("Use position-based ids") and change a region's Target Entity. Run Interpret. The user-locked identity + the user-picked target entity SURVIVE the re-interpret — `preserveUserRegionConfig` rolls them back over the classifier output.
-- [ ] **Interpret failure path**: temporarily break the upstream connection (revoke the Google token, or kill the LLM endpoint) → click Interpret. A red Snackbar surfaces the error message; the editor stays on the draw-regions step. No advance to Review.
-- [ ] **Back to regions** — on the Review step, clicking "Back to regions" returns to the draw-regions step (step 0). It does NOT navigate out of the edit view (the breadcrumb does that). If clicking it lands you back on `/connectors/<id>`, `handleBack` regressed.
-- [ ] **Region deletion locked** — select any persisted region. The configuration panel's "Delete region" IconButton is NOT rendered (compare with the workflow flow, where it is visible). Press Delete / Backspace with the region still selected → nothing happens (focus stays on the canvas, region survives). If either UI or keyboard deletes the region, `regionDeletionLocked` is no longer threaded through to the panel + draw-step keyboard handler.
+- [x] Entity picker shows real options (sheet-derived). Stage a new entity via "+ Create new entity" → it appears in subsequent picker dropdowns.
+- [x] For **gsheets-large** specifically, off-screen rows resolve via `loadSlice` — scroll past row 30 (the inline preview cap), confirm new sheet-slice requests fire and the canvas renders the freshly-loaded cells.
+- [x] **Interpret button — runs real interpret**: clicking "Interpret" on the draw-regions step fires the AI pipeline against the rehydrated workbook (Network tab: a POST to `/api/layout-plans/interpret` with `{ connectorInstanceId, regionHints, priorPlan }`). An "Interpreting…" overlay covers the canvas during the call. On success the editor advances to Review with FRESH column bindings reflecting the current spreadsheet shape — renamed columns appear under their new headers, added columns get bound, removed columns drop out of the binding chips.
+- [x] **Interpret preserves user overrides**: before clicking Interpret, lock an identity strategy via the IdentityPanel checkbox ("Use position-based ids") and change a region's Target Entity. Run Interpret. The user-locked identity + the user-picked target entity SURVIVE the re-interpret — `preserveUserRegionConfig` rolls them back over the classifier output.
+- [x] **Interpret failure path**: temporarily break the upstream connection (revoke the Google token, or kill the LLM endpoint) → click Interpret. A red Snackbar surfaces the error message; the editor stays on the draw-regions step. No advance to Review.
+- [x] **Back to regions** — on the Review step, clicking "Back to regions" returns to the draw-regions step (step 0). It does NOT navigate out of the edit view (the breadcrumb does that). If clicking it lands you back on `/connectors/<id>`, `handleBack` regressed.
+- [x] **Region deletion locked** — select any persisted region. The configuration panel's "Delete region" IconButton is NOT rendered (compare with the workflow flow, where it is visible). Press Delete / Backspace with the region still selected → nothing happens (focus stays on the canvas, region survives). If either UI or keyboard deletes the region, `regionDeletionLocked` is no longer threaded through to the panel + draw-step keyboard handler.
 
 ### 4.4 Commit auto-saves edits (slices 3 / 3b folded together)
 
 The standalone "Save draft" button was removed — the auto-PATCH that fires inside the Commit flow covers every case where persistence actually mattered. Verify the merged behavior:
 
-- [ ] No "Save draft" button is visible above the editor. The PageHeader carries only the breadcrumb + title, no `primaryAction`.
-- [ ] Make an editor mutation (exclude a binding, change identity strategy, drag region bounds).
-- [ ] Click **Commit** on the Review step.
-- [ ] **Auto-PATCH fires first**: Network shows a single PATCH to `/api/connector-instances/<id>/layout-plan/<planId>` returning 200 BEFORE the commit POST. The PATCH body's `regions` reflects every local edit. If only the POST fires, local edits are silently dropped and the server reruns the previously-persisted plan — the most visible symptom is an identity change made specifically to clear `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED` having no effect on the next commit.
-- [ ] **Commit body regression**: the POST to `/api/connector-instances/<id>/layout-plan/<planId>/commit` carries either `{ connectorInstanceId }` (google-sheets / microsoft-excel) or `{ uploadSessionId }` (file-upload). An empty `{}` body would 400 with `LAYOUT_PLAN_INVALID_PAYLOAD` before the job is enqueued.
-- [ ] **PATCH-failure path**: edit a region down to no `targetEntityDefinitionId` (drag to a fresh, unbound region) → click Commit → red Snackbar with the validation message (auto-dismisses on user click, not on timeout). **No commit POST fires.**
-- [ ] **Single-disabled-state**: the Commit button stays disabled from click through both phases (PATCH + recommit POST) — no flicker between phases that would let a user double-click.
-- [ ] 202 lands; navigate auto-jumps to `/connectors/<id>` with a running-job alert visible.
-- [ ] SSE terminal event clears the alert; records reflect the recommitted plan.
-- [ ] **Round-trip after recommit**: open Modify Layout Plan again — the editor hydrates with the regions / identity / bindings you committed (not the pre-edit version).
+- [x] No "Save draft" button is visible above the editor. The PageHeader carries only the breadcrumb + title, no `primaryAction`.
+- [x] Make an editor mutation (exclude a binding, change identity strategy, drag region bounds).
+- [x] Click **Commit** on the Review step.
+- [x] **Auto-PATCH fires first**: Network shows a single PATCH to `/api/connector-instances/<id>/layout-plan/<planId>` returning 200 BEFORE the commit POST. The PATCH body's `regions` reflects every local edit. If only the POST fires, local edits are silently dropped and the server reruns the previously-persisted plan — the most visible symptom is an identity change made specifically to clear `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED` having no effect on the next commit.
+- [x] **Commit body regression**: the POST to `/api/connector-instances/<id>/layout-plan/<planId>/commit` carries either `{ connectorInstanceId }` (google-sheets / microsoft-excel) or `{ uploadSessionId }` (file-upload). An empty `{}` body would 400 with `LAYOUT_PLAN_INVALID_PAYLOAD` before the job is enqueued.
+- [x] **PATCH-failure path**: edit a region down to no `targetEntityDefinitionId` (drag to a fresh, unbound region) → click Commit → red Snackbar with the validation message (auto-dismisses on user click, not on timeout). **No commit POST fires.**
+- [x] **Single-disabled-state**: the Commit button stays disabled from click through both phases (PATCH + recommit POST) — no flicker between phases that would let a user double-click.
+- [x] 202 lands; navigate auto-jumps to `/connectors/<id>` with a running-job alert visible.
+- [x] SSE terminal event clears the alert; records reflect the recommitted plan.
+- [x] **Round-trip after recommit**: open Modify Layout Plan again — the editor hydrates with the regions / identity / bindings you committed (not the pre-edit version).
 
 ### 4.5 Inline error on bad commit (slice 3 / case 14)
 
-- [ ] On a plan with a blocker warning (e.g. a pivot region with no `axisName`), click Commit.
-- [ ] The route's 409 surfaces as an inline FormAlert above the editor.
-- [ ] Editor stays mounted. Commit button is re-enabled after the alert renders.
+- [x] On a plan with a blocker warning (e.g. a pivot region with no `axisName`), click Commit.
+- [x] The route's 409 surfaces as an inline FormAlert above the editor.
+- [x] Editor stays mounted. Commit button is re-enabled after the alert renders.
 
 ### 4.6 Cloud-connector workbook cache rehydrates on edit-context
 
 The cloud-connector source of truth is Google / Microsoft itself — the local Redis cache is just a slice-loader optimization. The edit-context endpoint rehydrates the cache from the upstream API on **every** Modify Layout Plan visit so the editor always reflects the current spreadsheet shape. (Earlier behavior was "rehydrate only when the cache was missing"; that surfaced stale data when users renamed columns or added rows between visits.)
 
-- [ ] On an active gsheets-large or excel-365-cloud connector, rename a column header (or add a new column, or shuffle rows) in the source spreadsheet.
-- [ ] Click **Modify Layout Plan** from the connector detail view.
-- [ ] **Expected** — the editor mounts showing the CURRENT spreadsheet shape: the renamed column appears under its new header, added columns show up, etc. Edit-context took an extra ~1–3s to fetch from the upstream API. Verify in server logs: a fresh call into `GoogleSheetsConnectorService.rehydrateWorkbookCache` (or `MicrosoftExcelConnectorService.rehydrateWorkbookCache`) before the preview is returned.
-- [ ] **Expected** — `WorkbookCacheService.getSessionMeta` now returns a populated meta with `status: "ready"` matching the upstream's current shape.
-- [ ] **Regression** — if Modify Layout Plan shows stale data after an upstream change, the unconditional rehydrate in `buildEditContextWorkbookPreview` regressed back to the cache-miss-only path.
-- [ ] **Regression — empty cache path**: manually flush the workbook cache (`DEL connector:wb:google-sheets:<id>:*`), then open Modify Layout Plan. Editor still mounts normally (no SOURCE_REMOVED placeholder on a still-syncing connector).
+- [x] On an active gsheets-large or excel-365-cloud connector, rename a column header (or add a new column, or shuffle rows) in the source spreadsheet.
+- [x] Click **Modify Layout Plan** from the connector detail view.
+- [x] **Expected** — the editor mounts showing the CURRENT spreadsheet shape: the renamed column appears under its new header, added columns show up, etc. Edit-context took an extra ~1–3s to fetch from the upstream API. Verify in server logs: a fresh call into `GoogleSheetsConnectorService.rehydrateWorkbookCache` (or `MicrosoftExcelConnectorService.rehydrateWorkbookCache`) before the preview is returned.
+- [x] **Expected** — `WorkbookCacheService.getSessionMeta` now returns a populated meta with `status: "ready"` matching the upstream's current shape.
+- [x] **Regression** — if Modify Layout Plan shows stale data after an upstream change, the unconditional rehydrate in `buildEditContextWorkbookPreview` regressed back to the cache-miss-only path.
+- [x] **Regression — empty cache path**: manually flush the workbook cache (`DEL connector:wb:google-sheets:<id>:*`), then open Modify Layout Plan. Editor still mounts normally (no SOURCE_REMOVED placeholder on a still-syncing connector).
 
 ### 4.7 Back button on placeholder branches navigates out
 
 The editor's "Back to regions" CTA on the Review step is a step-back (review → draw), but the "Back" button on the load-error and SOURCE_REMOVED branches must leave the view entirely — there's no editor mounted, so a step-back would be a no-op.
 
-- [ ] Trigger the SOURCE_REMOVED branch on a file-upload connector (delete the `file_uploads` rows for the session, then click Modify Layout Plan). Click **Back** beneath the notice.
-- [ ] **Expected**: route changes to `/connectors/<id>`. If clicking Back does nothing, `onLeaveView` is no longer wired and the placeholder Back is using the step-back `onBack` handler.
-- [ ] Same test against the load-error branch (e.g. force a 500 by hitting a non-existent connectorInstanceId). Back navigates back to the connector detail view.
+- [x] Trigger the SOURCE_REMOVED branch on a file-upload connector (delete the `file_uploads` rows for the session, then click Modify Layout Plan). Click **Back** beneath the notice.
+- [x] **Expected**: route changes to `/connectors/<id>`. If clicking Back does nothing, `onLeaveView` is no longer wired and the placeholder Back is using the step-back `onBack` handler.
+- [x] Same test against the load-error branch (e.g. force a 500 by hitting a non-existent connectorInstanceId). Back navigates back to the connector detail view.
 
 ---
 
@@ -241,22 +241,22 @@ The editor's "Back to regions" CTA on the Review step is a step-back (review →
 
 The `JobLockService` 409 ENTITY_LOCKED_BY_JOB convention applies to every connector. Verify the gate holds:
 
-- [ ] Trigger a long-running job (commit a large CSV, or sync gsheets-large). While it's `pending` / `active`:
-  - [ ] Sync button is disabled with tooltip pointing at the running job.
-  - [ ] Modify Layout Plan menu item is disabled with the same tooltip.
-  - [ ] Edit (rename) dialog's Save is disabled.
-  - [ ] Delete is disabled.
-- [ ] Wait for the job to terminate. All four affordances re-enable within ~2s of the SSE terminal event (no manual refresh required).
-- [ ] Open a second browser tab on the same connector while a job is running. Both tabs reflect the lock state. The SSE event clears the lock simultaneously on both.
+- [x] Trigger a long-running job (commit a large CSV, or sync gsheets-large). While it's `pending` / `active`:
+  - [x] Sync button is disabled with tooltip pointing at the running job.
+  - [x] Modify Layout Plan menu item is disabled with the same tooltip.
+  - [x] Edit (rename) dialog's Save is disabled.
+  - [x] Delete is disabled.
+- [x] Wait for the job to terminate. All four affordances re-enable within ~2s of the SSE terminal event (no manual refresh required).
+- [x] Open a second browser tab on the same connector while a job is running. Both tabs reflect the lock state. The SSE event clears the lock simultaneously on both.
 
 ---
 
 ## §6 — Org isolation + auth
 
-- [ ] As user-A in org-A, commit a plan → record id `R1`. Sign out.
-- [ ] Sign in as user-B in org-B. Visit `/api/connector-instances/<orgA-instance-id>/layout-plan/edit-context` directly via curl with B's bearer token. **Expect 404** `LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND`.
-- [ ] Same test against the edit route in the browser. **Expect** a 404 page or empty editor (no leakage of A's plan / preview cells).
-- [ ] Same test for the layout-plan PATCH and recommit POST. Both should 404 (not 403 — we hide existence of cross-org instances).
+- [x] As user-A in org-A, commit a plan → record id `R1`. Sign out.
+- [x] Sign in as user-B in org-B. Visit `/api/connector-instances/<orgA-instance-id>/layout-plan/edit-context` directly via curl with B's bearer token. **Expect 404** `LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND`.
+- [x] Same test against the edit route in the browser. **Expect** a 404 page or empty editor (no leakage of A's plan / preview cells).
+- [x] Same test for the layout-plan PATCH and recommit POST. Both should 404 (not 403 — we hide existence of cross-org instances).
 
 ---
 
@@ -266,11 +266,11 @@ These are tight repro paths for the bugs landed during this branch's smoke. If a
 
 ### 7.1 `jsonb_build_object` 100-arg cap (PR #59)
 
-- [ ] Walk §1.3 (wide-csv, 55 cols). Records page must render without "cannot pass more than 100 arguments to a function".
+- [x] Walk §1.3 (wide-csv, 55 cols). Records page must render without "cannot pass more than 100 arguments to a function".
 
 ### 7.2 Existing-instance rollback keeps plan + flips to `error` (PR #60)
 
-- [ ] Walk §2.3. After the drift failure, confirm:
+- [x] Walk §2.3. After the drift failure, confirm:
   - `connector_instances.status = 'error'` (not `pending`).
   - `connector_instances.last_error_message` carries the drift reason.
   - `connector_instance_layout_plans` row for the failed planId still exists (live, not soft-deleted).
@@ -278,33 +278,33 @@ These are tight repro paths for the bugs landed during this branch's smoke. If a
 
 ### 7.3 Wide-table Date binding (PR #61)
 
-- [ ] Walk §1.4 (xlsx-with-dates) and §2.4 (gsheets-large sync). Neither path may throw `ERR_INVALID_ARG_TYPE: Received an instance of Date` nor land a locale-formatted date string in any wide-table column. Spot-check `c_publication_date` / `c_last_modified` rows; values should be ISO 8601.
+- [x] Walk §1.4 (xlsx-with-dates) and §2.4 (gsheets-large sync). Neither path may throw `ERR_INVALID_ARG_TYPE: Received an instance of Date` nor land a locale-formatted date string in any wide-table column. Spot-check `c_publication_date` / `c_last_modified` rows; values should be ISO 8601.
 
 ### 7.4 Row-async parser memory ceiling
 
-- [ ] During §1.2 (large-csv 30k rows) and §2.2 (gsheets-large), observe the API process's RSS (`ps -o rss <pid>` or `docker stats`). Peak should stay under ~400 MB.  The lazy fetcher caps each `loadRange` to the region bounds or a windowed scan — full-workbook materialization in V8 heap is a regression.
+- [x] During §1.2 (large-csv 30k rows) and §2.2 (gsheets-large), observe the API process's RSS (`ps -o rss <pid>` or `docker stats`). Peak should stay under ~400 MB.  The lazy fetcher caps each `loadRange` to the region bounds or a windowed scan — full-workbook materialization in V8 heap is a regression.
 
 ### 7.5 SSE doesn't drop terminal events under retries
 
-- [ ] Force a parse or sync job to retry (kill the worker mid-job; Bull's `attempts: 3` retries for `file_upload_parse` and `connector_sync`). The job's `error` text in the DB should reflect the underlying failure, **not** a misleading `LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND` from a rollback-induced retry (the symptom that originally landed on this branch and was reverted; if it returns, retries are masking real errors again).
-- [ ] `layout_plan_commit` is exempt — it's pinned to `attempts: 1` via `MAX_ATTEMPTS_BY_TYPE` in `apps/api/src/services/jobs.service.ts`. Retrying a commit failure is meaningless (drift, blocker warnings, and validation errors are deterministic) and used to confuse the client: the worker would emit a `failed` SSE event per attempt, the frontend would treat the first as terminal, and the eventual rollback on the final attempt would reach no listener. **Verify**: in the `jobs` table, every `layout_plan_commit` row has `maxAttempts = 1`. Every other job type still has `maxAttempts = 3`.
+- [x] Force a parse or sync job to retry (kill the worker mid-job; Bull's `attempts: 3` retries for `file_upload_parse` and `connector_sync`). The job's `error` text in the DB should reflect the underlying failure, **not** a misleading `LAYOUT_PLAN_CONNECTOR_INSTANCE_NOT_FOUND` from a rollback-induced retry (the symptom that originally landed on this branch and was reverted; if it returns, retries are masking real errors again).
+- [x] `layout_plan_commit` is exempt — it's pinned to `attempts: 1` via `MAX_ATTEMPTS_BY_TYPE` in `apps/api/src/services/jobs.service.ts`. Retrying a commit failure is meaningless (drift, blocker warnings, and validation errors are deterministic) and used to confuse the client: the worker would emit a `failed` SSE event per attempt, the frontend would treat the first as terminal, and the eventual rollback on the final attempt would reach no listener. **Verify**: in the `jobs` table, every `layout_plan_commit` row has `maxAttempts = 1`. Every other job type still has `maxAttempts = 3`.
 
 ### 7.6 Detail-view caches refresh on terminal SSE event
 
 The connector-instance detail view subscribes to SSE for every running job and invalidates its query caches on the terminal event — success, failure, or cancellation. The invalidation block in `ConnectorInstance.view.tsx`'s `.finally` hook covers FIVE query roots: `connectorInstances.runningJobs`, `connectorInstances.get`, `connectorInstances.root`, `connectorEntities.root`, and `entityRecords.root`. Each addresses a distinct piece of stale state. Walk every path:
 
-- [ ] **Status chip — workflow path**: walk through the gsheets-large or file-upload workflow to the Commit step. From the moment you click Commit, stay on the connector detail page (don't navigate away). Wait for the job to terminate (success or failure). The chip transitions from `Pending` → final status within ~2s of the terminal event — **no manual refresh required**. (If the chip sticks at `Pending` until you reload, the workflow's `awaitJobCompletion(...).finally(invalidate)` regressed.)
-- [ ] **Status chip — detail-view path**: trigger a sync from the connector detail page. While the sync runs (chip says `Pending`, lock alert visible), do NOT leave the page. When the sync's SSE terminal event lands, the chip flips to `Active` (success) or `Error` (failure) **without a manual refresh**, and the lock alert disappears. (If the chip stays `Pending` after the alert clears, the SSE-driven invalidation in `ConnectorInstance.view.tsx` regressed.)
-- [ ] **Entities table — first commit**: on a brand-new connector, walk through a workflow to its first successful Commit. Stay on `/connectors/<id>` for the duration. When the commit's terminal event lands, the **entities table populates without a reload** — each region's `connector_entities` row appears with its row count. (If the table stays empty until you reload, `queryKeys.connectorEntities.root` is no longer in the `.finally` block.)
-- [ ] **Entities table — sync that adds an entity**: edit the plan to add a new region targeting a new entity → Commit → kick off a Sync (or wait for the next scheduled one). When the sync terminates, the new entity row appears in the table within ~2s of the SSE terminal event.
-- [ ] **Records page — sync that changes records**: drill into an entity's records page. In another tab (or directly in the source spreadsheet), trigger a Sync that changes / adds / removes rows. When the sync terminates, the records page refreshes without a reload — counts update, new rows appear, soft-deleted rows disappear. (If the page shows stale rows until you reload, `queryKeys.entityRecords.root` is no longer in the `.finally` block.)
+- [x] **Status chip — workflow path**: walk through the gsheets-large or file-upload workflow to the Commit step. From the moment you click Commit, stay on the connector detail page (don't navigate away). Wait for the job to terminate (success or failure). The chip transitions from `Pending` → final status within ~2s of the terminal event — **no manual refresh required**. (If the chip sticks at `Pending` until you reload, the workflow's `awaitJobCompletion(...).finally(invalidate)` regressed.)
+- [x] **Status chip — detail-view path**: trigger a sync from the connector detail page. While the sync runs (chip says `Pending`, lock alert visible), do NOT leave the page. When the sync's SSE terminal event lands, the chip flips to `Active` (success) or `Error` (failure) **without a manual refresh**, and the lock alert disappears. (If the chip stays `Pending` after the alert clears, the SSE-driven invalidation in `ConnectorInstance.view.tsx` regressed.)
+- [x] **Entities table — first commit**: on a brand-new connector, walk through a workflow to its first successful Commit. Stay on `/connectors/<id>` for the duration. When the commit's terminal event lands, the **entities table populates without a reload** — each region's `connector_entities` row appears with its row count. (If the table stays empty until you reload, `queryKeys.connectorEntities.root` is no longer in the `.finally` block.)
+- [x] **Entities table — sync that adds an entity**: edit the plan to add a new region targeting a new entity → Commit → kick off a Sync (or wait for the next scheduled one). When the sync terminates, the new entity row appears in the table within ~2s of the SSE terminal event.
+- [x] **Records page — sync that changes records**: drill into an entity's records page. In another tab (or directly in the source spreadsheet), trigger a Sync that changes / adds / removes rows. When the sync terminates, the records page refreshes without a reload — counts update, new rows appear, soft-deleted rows disappear. (If the page shows stale rows until you reload, `queryKeys.entityRecords.root` is no longer in the `.finally` block.)
 
 ### 7.7 Identity drift gate fires on sync, not just commit
 
 Identity drift (`drift.identityChanging === true`) is special: it changes the `source_id` derivation and silently corrupts upserts. The gate runs unconditionally on every commit AND every sync — sync's `skipDriftGate: true` flag only bypasses the severity gates (blocker / warn), not the identity gate.
 
-- [ ] Walk §2.4.1. Sync against a workbook with identity-changing drift must fail with `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`. If sync silently proceeds and writes records under a shifted `source_id`, the gate-split in `LayoutPlanCommitService.commit` regressed.
-- [ ] As a sanity check on the inverse: sync against a workbook with **non-identity** drift (e.g. add a column, rename a non-identity header) must STILL succeed — sync existing to absorb non-identity drift is the whole point of `skipDriftGate`. Records reflect the new column or header.
+- [x] Walk §2.4.1. Sync against a workbook with identity-changing drift must fail with `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`. If sync silently proceeds and writes records under a shifted `source_id`, the gate-split in `LayoutPlanCommitService.commit` regressed.
+- [x] As a sanity check on the inverse: sync against a workbook with **non-identity** drift (e.g. add a column, rename a non-identity header) must STILL succeed — sync existing to absorb non-identity drift is the whole point of `skipDriftGate`. Records reflect the new column or header.
 
 ---
 
