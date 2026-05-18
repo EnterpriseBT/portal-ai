@@ -391,6 +391,11 @@ export const ConnectorInstanceView = ({
                   : editAction;
               const slug = ci.connectorDefinition?.slug ?? "";
               const canEditLayoutPlan = EDIT_PLAN_SLUGS.has(slug);
+              // Modify Layout Plan is only meaningful for connectors
+              // with a live upstream the user can reshape against
+              // (`EDIT_PLAN_SLUGS`). For everything else we don't
+              // render the entry at all — a disabled item just
+              // clutters the menu with an unactionable affordance.
               const secondaryActions = [
                 ...(isInError || isSyncConfigured
                   ? [
@@ -402,16 +407,20 @@ export const ConnectorInstanceView = ({
                     },
                   ]
                   : []),
-                {
-                  label: "Modify Layout Plan",
-                  icon: <ViewQuiltIcon />,
-                  onClick: () =>
-                    navigate({
-                      to: "/connectors/$connectorInstanceId/layout-plan/edit",
-                      params: { connectorInstanceId },
-                    }),
-                  disabled: isLocked || !canEditLayoutPlan,
-                },
+                ...(canEditLayoutPlan
+                  ? [
+                      {
+                        label: "Modify Layout Plan",
+                        icon: <ViewQuiltIcon />,
+                        onClick: () =>
+                          navigate({
+                            to: "/connectors/$connectorInstanceId/layout-plan/edit",
+                            params: { connectorInstanceId },
+                          }),
+                        disabled: isLocked,
+                      },
+                    ]
+                  : []),
                 {
                   label: "Delete",
                   icon: <DeleteIcon />,

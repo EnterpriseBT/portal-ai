@@ -91,8 +91,8 @@ Login as **two** distinct dev users in separate orgs before starting — the cro
 File-upload connectors are intentionally excluded from `EDITABLE_SLUGS`: the original CSV / XLSX is a one-shot artifact and there's no "live" upstream to reshape the plan against. Recovery for a file-upload's stale layout is to delete the connector and re-upload.
 
 - [x] After a successful commit on a file-upload connector, open the detail view's kebab menu.
-- [ ] **Modify Layout Plan** menu item is DISABLED with the tooltip "Layout plan editing isn't supported for this connector type." (the same gate that disables it for sandbox / any other slug not in the cloud allow-list).
-- [ ] Direct navigation to `/connectors/<id>/layout-plan/edit` renders the `editable: false` UNSUPPORTED_CONNECTOR notice. **No editor renders; no 500.**
+- [ ] **Modify Layout Plan** menu item is NOT rendered at all — it's omitted from the menu, not disabled. The same applies to any connector slug outside `EDIT_PLAN_SLUGS` (sandbox, etc.).
+- [ ] Direct navigation to `/connectors/<id>/layout-plan/edit` (via URL bar) renders the `editable: false` UNSUPPORTED_CONNECTOR notice. **No editor renders; no 500.**
 
 ---
 
@@ -168,12 +168,12 @@ Mirror §2 against **excel-365-cloud**. The pipeline is structurally identical; 
 
 ### 4.1 Entry point gating
 
-`EDIT_PLAN_SLUGS` is cloud-only (`google-sheets`, `microsoft-excel`). File-upload + every other slug renders the menu item disabled. The backend's `EDITABLE_SLUGS` mirrors this — direct navigation to `/connectors/<id>/layout-plan/edit` on a non-cloud slug renders the UNSUPPORTED_CONNECTOR notice.
+`EDIT_PLAN_SLUGS` is cloud-only (`google-sheets`, `microsoft-excel`). File-upload + every other slug **omits** the menu item entirely — no disabled affordance, no clutter. The backend's `EDITABLE_SLUGS` mirrors this — direct navigation to `/connectors/<id>/layout-plan/edit` on a non-cloud slug renders the UNSUPPORTED_CONNECTOR notice.
 
 - [ ] On a `google-sheets` or `microsoft-excel` connector that's active and not locked → kebab shows **Modify Layout Plan** enabled (`ViewQuiltIcon`).
-- [ ] On a `file-upload` connector → menu item is disabled with "Layout plan editing isn't supported for this connector type." (covered in detail by §1.7).
-- [ ] On a connector with a running `layout_plan_commit` or `connector_sync` job → menu item is disabled; hover reveals "A {job} is running on this connector — try again when it finishes."
-- [ ] On a `sandbox` (or any other) slug → menu item is disabled with the same "isn't supported" tooltip.
+- [ ] On a `file-upload` connector → menu item is NOT in the kebab list at all (covered in detail by §1.7).
+- [ ] On a `sandbox` (or any other) slug outside `EDIT_PLAN_SLUGS` → menu item is NOT rendered. The kebab still shows Edit / Delete (when applicable) but no "Modify Layout Plan".
+- [ ] On a `google-sheets` / `microsoft-excel` connector with a running `layout_plan_commit` or `connector_sync` job → menu item IS rendered but disabled; hover reveals "A {job} is running on this connector — try again when it finishes."
 
 ### 4.2 Route + breadcrumb
 
