@@ -18,6 +18,7 @@ import { SheetCanvasUI } from "./SheetCanvas.component";
 import type { LoadSliceFn } from "./SheetCanvas.component";
 import { EntityLegendUI } from "./EntityLegend.component";
 import { RegionConfigurationPanelUI } from "./RegionConfigurationPanel.component";
+import { adjustSegmentsForBoundsChange } from "./utils/adjust-segments-for-bounds.util";
 import { formatBounds } from "./utils/a1-notation.util";
 import { colorForEntity } from "./utils/region-editor-colors.util";
 import { resizeSegment } from "./utils/segment-ops.util";
@@ -226,6 +227,46 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
     }
     onSelectRegion(region.id);
   };
+
+  /**
+   * Single chokepoint for every bounds change — canvas drag-resize,
+   * canvas move op, and the panel's manual bounds inputs all funnel
+   * through here. The trailing segment on each axis is auto-aligned
+   * with the new span (`adjustSegmentsForBoundsChange`) so a region
+   * that carries segments stays internally consistent on every
+   * mutation. Consumers (workflow harness, edit-plan view, Storybook
+   * stub) just receive a fully-formed `Partial<RegionDraft>` patch
+   * via `onRegionUpdate` — no caller-side segment math required.
+   */
+  const handleBoundsChange = useCallback(
+    (
+      regionId: string,
+      nextBounds: CellBounds,
+      extra: Partial<RegionDraft> = {}
+    ) => {
+      const region = regions.find((r) => r.id === regionId);
+      if (!region) {
+        onRegionUpdate(regionId, { ...extra, bounds: nextBounds });
+        return;
+      }
+      const segmentsByAxis = adjustSegmentsForBoundsChange(
+        region.bounds,
+        nextBounds,
+        region.segmentsByAxis
+      );
+      onRegionUpdate(regionId, {
+        ...extra,
+        bounds: nextBounds,
+        segmentsByAxis,
+      });
+      // Fire the legacy `onRegionResize` callback too, for back-compat
+      // with consumers (and stories) wired to it. The full update has
+      // already gone through `onRegionUpdate`; this is just a
+      // notification hook.
+      onRegionResize?.(regionId, nextBounds);
+    },
+    [regions, onRegionUpdate, onRegionResize]
+  );
 
   const handleInterpret = () => {
     setAttemptedInterpret(true);
@@ -484,7 +525,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
             onRegionDraft={(bounds) =>
               onRegionDraft({ sheetId: activeSheet.id, bounds })
             }
-            onRegionResize={onRegionResize}
+            onRegionResize={handleBoundsChange}
             onSegmentResize={(
               regionId,
               axis,
@@ -535,9 +576,20 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
                 ? workbook.sheets.find((s) => s.id === selectedRegion.sheetId)
                 : undefined
             }
-            onUpdate={(updates) =>
-              selectedRegion && onRegionUpdate(selectedRegion.id, updates)
-            }
+            onUpdate={(updates) => {
+              if (!selectedRegion) return;
+              // Bounds-carrying updates (from the panel's manual
+              // bounds inputs) flow through the same segment-
+              // adjustment path as canvas drag-resize, so the
+              // trailing segment on each axis stays aligned with
+              // the new span no matter where the bounds change
+              // originated.
+              if (updates.bounds) {
+                handleBoundsChange(selectedRegion.id, updates.bounds, updates);
+                return;
+              }
+              onRegionUpdate(selectedRegion.id, updates);
+            }}
             onDelete={() => selectedRegion && onRegionDelete(selectedRegion.id)}
             onAcceptProposedIdentity={
               selectedRegion && onAcceptProposedIdentity

@@ -36,7 +36,6 @@ import {
   buildIdentityUpdater,
   resolveLocatorOptionsFor,
 } from "../modules/RegionEditor/utils/identity-panel-wiring.util";
-import { mergeRegionUpdate } from "../modules/RegionEditor/utils/adjust-segments-for-bounds.util";
 import {
   draftsToRegions,
   entityOptionsFromWorkbook,
@@ -567,8 +566,11 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
 
   const handleRegionUpdate = useCallback(
     (regionId: string, updates: Partial<RegionDraft>) => {
+      // Plain spread — `RegionDrawingStepUI` already adjusts
+      // `segmentsByAxis` for bounds changes before dispatching here,
+      // so the view doesn't carry any segment math of its own.
       setRegions((prev) =>
-        prev.map((r) => (r.id === regionId ? mergeRegionUpdate(r, updates) : r))
+        prev.map((r) => (r.id === regionId ? { ...r, ...updates } : r))
       );
     },
     []
@@ -579,16 +581,17 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     setSelectedRegionId((sel) => (sel === regionId ? null : sel));
   }, []);
 
-  // Delegate to `handleRegionUpdate` so canvas drag-resize and
-  // manual bounds inputs share one segment-adjustment path. The
-  // util in `mergeRegionUpdate` auto-shrinks/expands the trailing
-  // segment on each axis to match the new span and drops segments
-  // the new bounds can't fit.
+  // Legacy resize hook — the module fires `onRegionUpdate` with the
+  // full bounds + segment-adjusted patch; this is just a back-compat
+  // notification. Keeping it as a plain bounds setter (no segment
+  // math here) so a consumer wired only to it still works.
   const handleRegionResize = useCallback(
     (regionId: string, nextBounds: CellBounds) => {
-      handleRegionUpdate(regionId, { bounds: nextBounds });
+      setRegions((prev) =>
+        prev.map((r) => (r.id === regionId ? { ...r, bounds: nextBounds } : r))
+      );
     },
-    [handleRegionUpdate]
+    []
   );
 
   const handleCommit = useCallback(async () => {

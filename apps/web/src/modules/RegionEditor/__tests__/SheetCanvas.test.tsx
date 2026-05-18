@@ -175,7 +175,7 @@ describe("SheetCanvasUI", () => {
   });
 
   test("regions with segments still render resize handles (segments auto-adjust on resize)", () => {
-    // `mergeRegionUpdate` in `adjust-segments-for-bounds` keeps the
+    // `RegionDrawingStepUI`'s `handleBoundsChange` keeps the
     // trailing segment aligned with the new span when bounds change,
     // so segmented regions are resizable now — the old positionCount-
     // desync risk is gone.

@@ -571,9 +571,9 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
         // (Pre-segment-adjustment-util era: this used to bail when
         // the region had segments because moving / resizing would
         // leave `positionCount` totals out of sync with the new
-        // span. `mergeRegionUpdate` in `adjust-segments-for-bounds`
-        // now keeps the trailing segment aligned with the span on
-        // every bounds change, so the gate is no longer needed.)
+        // span. `RegionDrawingStepUI`'s `handleBoundsChange` now
+        // auto-aligns the trailing segment on every bounds change
+        // so the gate is no longer needed.)
         // The region body sets local `touchAction: "none"`, so touch and
         // mouse take the same synchronous path: capture the pointer and
         // start a move op. A pointerup with no movement is still a clean
@@ -1765,11 +1765,12 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
               );
             }
             // Resize / move are allowed on segmented regions now —
-            // `mergeRegionUpdate` (in `adjust-segments-for-bounds`)
-            // auto-aligns the trailing segment with the new span on
-            // every bounds change. Previously this was gated on
-            // `!hasSegments` because positionCount totals could
-            // silently desync; that gate is no longer load-bearing.
+            // `RegionDrawingStepUI`'s `handleBoundsChange` wraps the
+            // canvas's `onRegionResize` and auto-aligns the trailing
+            // segment on each axis with the new span. Previously
+            // this was gated on `!hasSegments` because positionCount
+            // totals could silently desync; that gate is no longer
+            // load-bearing.
             return (
               <RegionOverlayUI
                 key={region.id}

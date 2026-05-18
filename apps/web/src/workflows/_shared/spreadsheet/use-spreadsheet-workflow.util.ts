@@ -37,7 +37,6 @@ import type {
 } from "../../../modules/RegionEditor";
 import { ApiError } from "../../../utils/api.util";
 import type { ServerError } from "../../../utils/api.util";
-import { mergeRegionUpdate } from "../../../modules/RegionEditor/utils/adjust-segments-for-bounds.util";
 import { serializeLocator } from "../../FileUploadConnector/utils/layout-plan-mapping.util";
 
 // ── Shared types ────────────────────────────────────────────────────
@@ -582,14 +581,12 @@ export function useSpreadsheetWorkflow(
     (regionId: string, updates: Partial<RegionDraft>) => {
       setState((prev) => {
         if (!prev.regions.some((r) => r.id === regionId)) return prev;
-        // `mergeRegionUpdate` keeps `segmentsByAxis` aligned with
-        // `bounds` when callers resize a region (canvas drag-resize,
-        // manual bounds inputs). The trailing segment on each axis
-        // grows / shrinks / drops to match the new span — without
-        // this, a drag-resize past a segment boundary leaves
-        // positionCount totals out of sync with the rect.
+        // Plain spread — segment auto-adjustment lives inside
+        // `RegionDrawingStepUI`'s `handleBoundsChange`, so by the
+        // time a bounds-carrying update reaches this consumer the
+        // segments have already been re-aligned.
         const nextRegions = prev.regions.map((r) =>
-          r.id === regionId ? mergeRegionUpdate(r, updates) : r
+          r.id === regionId ? { ...r, ...updates } : r
         );
         // Identity edits arrive here through the IdentityPanel in the review
         // step. Commit ships state.plan, not state.regions, so without this
