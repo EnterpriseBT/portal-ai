@@ -177,16 +177,16 @@ Mirror §2 against **excel-365-cloud**. The pipeline is structurally identical; 
 
 ### 4.2 Route + breadcrumb
 
-- [ ] Click Modify Layout Plan → URL changes to `/connectors/<id>/layout-plan/edit` → editor mounts.
-- [ ] Breadcrumb reads: Dashboard → Connectors → \<connector name\> → Modify Layout Plan. Each crumb except the last navigates back when clicked.
-- [ ] Padding around the page matches the rest of the app (no double-margin, no edge-flush content). Compare side-by-side with the EntityDetail view.
+- [x] Click Modify Layout Plan → URL changes to `/connectors/<id>/layout-plan/edit` → editor mounts.
+- [x] Breadcrumb reads: Dashboard → Connectors → \<connector name\> → Modify Layout Plan. Each crumb except the last navigates back when clicked.
+- [x] Padding around the page matches the rest of the app (no double-margin, no edge-flush content). Compare side-by-side with the EntityDetail view.
 
 ### 4.3 Editor mounted with real data
 
-- [ ] Region overlays render against the seeded preview. The persisted plan's regions are visible and selectable.
-- [ ] **First region auto-selected on mount**: the configuration panel opens with the first sheet's first region pre-selected (Label, Target Entity, identity, etc. all populated) — NOT the empty "no region selected" state. If the panel is blank after mount, the auto-select in the hydration effect regressed.
-- [ ] **Label + entity round-trip from the committed plan**: for each persisted region, the Label TextField shows either the entity's catalog label (post-successful-commit) or the `targetEntityDefinitionId` key the user typed in the workflow (when the catalog is empty because commit failed). NEVER "New region" / empty Label on a persisted plan.
-- [ ] **Identity panel shows the locked locator**: if the plan persisted a `column`-kind identity, the "Identity field" Select shows the picked column's header text (not blank). If it's `rowPosition`, the panel renders the position-based option as selected.
+- [x] Region overlays render against the seeded preview. The persisted plan's regions are visible and selectable.
+- [x] **First region auto-selected on mount**: the configuration panel opens with the first sheet's first region pre-selected (Label, Target Entity, identity, etc. all populated) — NOT the empty "no region selected" state. If the panel is blank after mount, the auto-select in the hydration effect regressed.
+- [x] **Label + entity round-trip from the committed plan**: for each persisted region, the Label TextField shows either the entity's catalog label (post-successful-commit) or the `targetEntityDefinitionId` key the user typed in the workflow (when the catalog is empty because commit failed). NEVER "New region" / empty Label on a persisted plan.
+- [x] **Identity panel shows the locked locator**: if the plan persisted a `column`-kind identity, the "Identity field" Select shows the picked column's header text (not blank). If it's `rowPosition`, the panel renders the position-based option as selected.
 - [ ] Entity picker shows real options (sheet-derived). Stage a new entity via "+ Create new entity" → it appears in subsequent picker dropdowns.
 - [ ] For **gsheets-large** specifically, off-screen rows resolve via `loadSlice` — scroll past row 30 (the inline preview cap), confirm new sheet-slice requests fire and the canvas renders the freshly-loaded cells.
 - [ ] **Interpret button — runs real interpret**: clicking "Interpret" on the draw-regions step fires the AI pipeline against the rehydrated workbook (Network tab: a POST to `/api/layout-plans/interpret` with `{ connectorInstanceId, regionHints, priorPlan }`). An "Interpreting…" overlay covers the canvas during the call. On success the editor advances to Review with FRESH column bindings reflecting the current spreadsheet shape — renamed columns appear under their new headers, added columns get bound, removed columns drop out of the binding chips.
