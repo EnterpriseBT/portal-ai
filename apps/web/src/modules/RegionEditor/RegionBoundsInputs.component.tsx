@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 
 import { Stack, TextInput } from "@portalai/core/ui";
 
+import { colIndexToLetter, letterToColIndex } from "./utils/a1-notation.util";
 import type { CellBounds, RegionDraft } from "./utils/region-editor.types";
 
 export interface BoundsInputsUIProps {
@@ -18,42 +19,55 @@ const FIELD_LABELS: Record<BoundsField, string> = {
   endCol: "End col",
 };
 
-function toOneBased(value: number): string {
-  return String(value + 1);
+const ROW_FIELDS: ReadonlySet<BoundsField> = new Set(["startRow", "endRow"]);
+
+function isRowField(field: BoundsField): boolean {
+  return ROW_FIELDS.has(field);
 }
 
-function fromOneBasedOrNull(input: string): number | null {
-  const trimmed = input.trim();
+function toDisplay(field: BoundsField, value: number): string {
+  return isRowField(field) ? String(value + 1) : colIndexToLetter(value);
+}
+
+function parseInput(field: BoundsField, raw: string): number | null {
+  const trimmed = raw.trim();
   if (trimmed.length === 0) return null;
-  const n = Number(trimmed);
-  if (!Number.isInteger(n) || n < 1) return null;
-  return n - 1;
+  if (isRowField(field)) {
+    const n = Number(trimmed);
+    if (!Number.isInteger(n) || n < 1) return null;
+    return n - 1;
+  }
+  // Column input: letters only (A, B, …, Z, AA, AB, …). The A1
+  // notation the rest of the editor uses is letter-based, so the
+  // input mirrors what the user sees in the heading + the canvas.
+  if (!/^[A-Za-z]+$/.test(trimmed)) return null;
+  return letterToColIndex(trimmed);
 }
 
 /**
  * Manual bounds editor for the selected region. Lets users tighten or
  * grow the four edges by typing instead of dragging on the canvas —
  * critical when columns are added or removed in the source sheet
- * between a commit and a recommit, where the canvas drag-resize loses
+ * between a commit and a recommit, where canvas drag-resize loses
  * accuracy on a sheet whose dimensions have shifted underneath the
  * persisted plan.
  *
- * Inputs are 1-based (matching the A1 notation users see everywhere
- * else); the draft model stores 0-based offsets so the conversion
- * happens at the input boundary. Local state mirrors the inputs so
- * the user can mid-edit a value (e.g. clear the field, type a new
- * number) without the parent forcing a re-render mid-keystroke; a
- * commit fires on blur or Enter, never on every keystroke.
+ * Rows render as 1-based integers; columns render as A1 letters (A,
+ * B, …, AA, AB, …) so the inputs match the spreadsheet convention
+ * the heading + canvas already display. The draft model stores
+ * 0-based offsets, so conversion happens at the input boundary.
+ * Local state mirrors the inputs; commit fires on blur or Enter,
+ * never on every keystroke.
  */
 export const BoundsInputsUI: React.FC<BoundsInputsUIProps> = ({
   bounds,
   onUpdate,
 }) => {
   const [draft, setDraft] = useState<Record<BoundsField, string>>({
-    startRow: toOneBased(bounds.startRow),
-    endRow: toOneBased(bounds.endRow),
-    startCol: toOneBased(bounds.startCol),
-    endCol: toOneBased(bounds.endCol),
+    startRow: toDisplay("startRow", bounds.startRow),
+    endRow: toDisplay("endRow", bounds.endRow),
+    startCol: toDisplay("startCol", bounds.startCol),
+    endCol: toDisplay("endCol", bounds.endCol),
   });
 
   // Re-sync local input state whenever the canonical bounds change
@@ -62,19 +76,19 @@ export const BoundsInputsUI: React.FC<BoundsInputsUIProps> = ({
   // after the canvas overrides them.
   useEffect(() => {
     setDraft({
-      startRow: toOneBased(bounds.startRow),
-      endRow: toOneBased(bounds.endRow),
-      startCol: toOneBased(bounds.startCol),
-      endCol: toOneBased(bounds.endCol),
+      startRow: toDisplay("startRow", bounds.startRow),
+      endRow: toDisplay("endRow", bounds.endRow),
+      startCol: toDisplay("startCol", bounds.startCol),
+      endCol: toDisplay("endCol", bounds.endCol),
     });
   }, [bounds.startRow, bounds.endRow, bounds.startCol, bounds.endCol]);
 
   const commit = (field: BoundsField, raw: string): void => {
-    const parsed = fromOneBasedOrNull(raw);
+    const parsed = parseInput(field, raw);
     if (parsed === null) {
       // Invalid input — snap the visible value back to the canonical
       // bounds so the user sees the rejection.
-      setDraft((prev) => ({ ...prev, [field]: toOneBased(bounds[field]) }));
+      setDraft((prev) => ({ ...prev, [field]: toDisplay(field, bounds[field]) }));
       return;
     }
     const next: CellBounds = { ...bounds, [field]: parsed };
@@ -91,26 +105,43 @@ export const BoundsInputsUI: React.FC<BoundsInputsUIProps> = ({
     onUpdate({ bounds: next });
   };
 
-  const renderInput = (field: BoundsField) => (
-    <TextInput
-      label={FIELD_LABELS[field]}
-      size="small"
-      type="number"
-      value={draft[field]}
-      onChange={(e) =>
-        setDraft((prev) => ({ ...prev, [field]: e.target.value }))
-      }
-      onBlur={(e) => commit(field, e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          commit(field, (e.target as HTMLInputElement).value);
-        }
-      }}
-      slotProps={{ htmlInput: { min: 1, "aria-label": FIELD_LABELS[field] } }}
-      sx={{ flex: 1, minWidth: 0 }}
-    />
-  );
+  const renderInput = (field: BoundsField) => {
+    const row = isRowField(field);
+    return (
+      <TextInput
+        label={FIELD_LABELS[field]}
+        size="small"
+        type={row ? "number" : "text"}
+        value={draft[field]}
+        onChange={(e) => {
+          // Force uppercase for column letter inputs as the user
+          // types so "a3" can't sneak through and the display matches
+          // the canvas heading style.
+          const raw = e.target.value;
+          const next = row ? raw : raw.toUpperCase();
+          setDraft((prev) => ({ ...prev, [field]: next }));
+        }}
+        onBlur={(e) => commit(field, e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit(field, (e.target as HTMLInputElement).value);
+          }
+        }}
+        slotProps={{
+          htmlInput: row
+            ? { min: 1, "aria-label": FIELD_LABELS[field] }
+            : {
+                "aria-label": FIELD_LABELS[field],
+                inputMode: "text",
+                autoCapitalize: "characters",
+                pattern: "[A-Za-z]+",
+              },
+        }}
+        sx={{ flex: 1, minWidth: 0 }}
+      />
+    );
+  };
 
   return (
     <Stack spacing={1}>
