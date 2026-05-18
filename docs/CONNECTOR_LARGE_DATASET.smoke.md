@@ -86,11 +86,13 @@ Login as **two** distinct dev users in separate orgs before starting — the cro
 - [x] Trigger Interpret again (kicks `resolveWorkbook`).
 - [x] Server logs show `upload.cache.miss` + the re-stream from S3; interpret completes successfully.
 
-### 1.7 Source removed (`editable: false` branch)
+### 1.7 Modify Layout Plan is unavailable for file-upload
 
-- [x] After a successful commit, hard-delete the `file_uploads` rows for the upload session via `DELETE FROM file_uploads WHERE upload_session_id = '<sid>'`.
-- [x] On the connector detail page, click the kebab → **Modify Layout Plan**.
-- [x] Edit view shows the SOURCE_REMOVED notice with the re-upload link. **No editor renders; no 500.**
+File-upload connectors are intentionally excluded from `EDITABLE_SLUGS`: the original CSV / XLSX is a one-shot artifact and there's no "live" upstream to reshape the plan against. Recovery for a file-upload's stale layout is to delete the connector and re-upload.
+
+- [x] After a successful commit on a file-upload connector, open the detail view's kebab menu.
+- [ ] **Modify Layout Plan** menu item is DISABLED with the tooltip "Layout plan editing isn't supported for this connector type." (the same gate that disables it for sandbox / any other slug not in the cloud allow-list).
+- [ ] Direct navigation to `/connectors/<id>/layout-plan/edit` renders the `editable: false` UNSUPPORTED_CONNECTOR notice. **No editor renders; no 500.**
 
 ---
 
@@ -134,21 +136,21 @@ Login as **two** distinct dev users in separate orgs before starting — the cro
 - [x] On an active gsheets-large connector with **column** identity (e.g. `Model` as the identity column), manually edit the upstream sheet so the identity column would derive different `source_id`s (add blanks/duplicates within the bounds, or rename the column so the locator no longer resolves).
 - [x] Trigger Sync.
 - [x] **Expected**: sync fails with `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`. The connector_sync job ends in `failed` status with the drift error in `error`. **Sync does not silently absorb identity drift** — that path was closed because changing the `source_id` derivation collapses or splits records under the user.
-- [ ] Severity-level drift (header rename of a non-identity column, an added column, a removed non-identity column) **still** lets sync proceed — the bypass only applies to non-identity drift. Verify with a header-only mutation on a non-identity column; sync should complete and update records normally.
-- [ ] Recovery: Modify Layout Plan → switch to `rowPosition` identity (or pick a stable identity column) → Commit → re-run Sync. Sync now succeeds.
+- [x] Severity-level drift (header rename of a non-identity column, an added column, a removed non-identity column) **still** lets sync proceed — the bypass only applies to non-identity drift. Verify with a header-only mutation on a non-identity column; sync should complete and update records normally.
+- [x] Recovery: Modify Layout Plan → switch to `rowPosition` identity (or pick a stable identity column) → Commit → re-run Sync. Sync now succeeds.
 
 ### 2.5 Token-refresh / reconnect path
 
-- [ ] Manually revoke the access token (Google account console → Connected apps → Remove).
-- [ ] Trigger Sync.
-- [ ] SSE delivers the auth error. Detail view flips to `error` status with the inline Reconnect CTA.
-- [ ] Click Reconnect → OAuth popup → token refreshes → connector returns to `active`.
+- [x] Manually revoke the access token (Google account console → Connected apps → Remove).
+- [x] Trigger Sync.
+- [x] SSE delivers the auth error. Detail view flips to `error` status with the inline Reconnect CTA.
+- [x] Click Reconnect → OAuth popup → token refreshes → connector returns to `active`.
 
 ### 2.6 Cache TTL expiry mid-edit
 
-- [ ] After a clean commit, wait or manually invalidate the Redis cache (`DEL connector:wb:google-sheets:<id>:*`).
-- [ ] Open the editor via Modify Layout Plan.
-- [ ] **Expected**: the edit-context endpoint returns 404 with the "cache not populated" hint. The view shows the load-error branch with a Back button. **There is no S3 fallback for cloud connectors** — the user must re-run select-sheet to repopulate the cache.
+- [x] After a clean commit, wait or manually invalidate the Redis cache (`DEL connector:wb:google-sheets:<id>:*`).
+- [x] Open the editor via Modify Layout Plan.
+- [x] **Expected**: the edit-context endpoint returns 404 with the "cache not populated" hint. The view shows the load-error branch with a Back button. **There is no S3 fallback for cloud connectors** — the user must re-run select-sheet to repopulate the cache.
 
 ---
 
@@ -156,9 +158,9 @@ Login as **two** distinct dev users in separate orgs before starting — the cro
 
 Mirror §2 against **excel-365-cloud**. The pipeline is structurally identical; differences worth calling out:
 
-- [ ] Microsoft's OAuth popup uses a different redirect dance — verify it completes without the popup getting orphaned.
-- [ ] `fetchWorkbookForSync` parses XLSX via ExcelJS streaming into a throwaway chunked cache (the lazy-workbook path). Confirm Redis has `connector:wb:microsoft-excel:<id>:rows:*` chunks during a sync run.
-- [ ] Merged cells: if the test workbook has any, the merges side-table is populated. Verify the editor renders the merged region as a single cell (not 4 separate cells).
+- [x] Microsoft's OAuth popup uses a different redirect dance — verify it completes without the popup getting orphaned.
+- [x] `fetchWorkbookForSync` parses XLSX via ExcelJS streaming into a throwaway chunked cache (the lazy-workbook path). Confirm Redis has `connector:wb:microsoft-excel:<id>:rows:*` chunks during a sync run.
+- [x] Merged cells: if the test workbook has any, the merges side-table is populated. Verify the editor renders the merged region as a single cell (not 4 separate cells).
 
 ---
 
@@ -166,9 +168,12 @@ Mirror §2 against **excel-365-cloud**. The pipeline is structurally identical; 
 
 ### 4.1 Entry point gating
 
-- [ ] On a `file-upload` / `google-sheets` / `microsoft-excel` connector that's active and not locked → kebab shows **Modify Layout Plan** enabled (`ViewQuiltIcon`).
+`EDIT_PLAN_SLUGS` is cloud-only (`google-sheets`, `microsoft-excel`). File-upload + every other slug renders the menu item disabled. The backend's `EDITABLE_SLUGS` mirrors this — direct navigation to `/connectors/<id>/layout-plan/edit` on a non-cloud slug renders the UNSUPPORTED_CONNECTOR notice.
+
+- [ ] On a `google-sheets` or `microsoft-excel` connector that's active and not locked → kebab shows **Modify Layout Plan** enabled (`ViewQuiltIcon`).
+- [ ] On a `file-upload` connector → menu item is disabled with "Layout plan editing isn't supported for this connector type." (covered in detail by §1.7).
 - [ ] On a connector with a running `layout_plan_commit` or `connector_sync` job → menu item is disabled; hover reveals "A {job} is running on this connector — try again when it finishes."
-- [ ] On a `sandbox` (or any other) slug → menu item is disabled with "Layout plan editing isn't supported for this connector type."
+- [ ] On a `sandbox` (or any other) slug → menu item is disabled with the same "isn't supported" tooltip.
 
 ### 4.2 Route + breadcrumb
 

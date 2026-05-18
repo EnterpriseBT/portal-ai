@@ -1913,7 +1913,12 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(payload.uploadSessionId).toBeUndefined();
     });
 
-    it("case 3 — file-upload with source available: editable:true, preview present", async () => {
+    it("case 3 — file-upload connector: editable:false with UNSUPPORTED_CONNECTOR reason", async () => {
+      // File-upload was removed from `EDITABLE_SLUGS` — the original
+      // CSV / XLSX is a one-shot artifact and there's no live
+      // upstream to reshape the plan against. The endpoint returns
+      // the unsupported notice for any file-upload instance now,
+      // regardless of whether the source files still exist.
       const seeded = await seedConnectorInstanceWithSlug("file-upload");
       const planId = await seedPlanRow(seeded.instanceId);
       const uploadSessionId = generateId();
@@ -1951,37 +1956,9 @@ describe("Connector Instance Layout Plans Router", () => {
       const payload =
         res.body.payload as LayoutPlanEditContextResponsePayload;
       expect(payload.connectorDefinitionSlug).toBe("file-upload");
-      expect(payload.editable).toBe(true);
-      expect(payload.workbookPreview!.sheets).toHaveLength(1);
-      // Frontend's loadSlice dispatcher needs the uploadSessionId to
-      // route to `sdk.fileUploads.sheetSlice` for off-screen rows.
-      expect(payload.uploadSessionId).toBe(uploadSessionId);
-    });
-
-    it("case 4 — file-upload with source removed: editable:false + reason SOURCE_REMOVED", async () => {
-      const seeded = await seedConnectorInstanceWithSlug("file-upload");
-      const planId = await seedPlanRow(seeded.instanceId);
-      const lostUploadSessionId = generateId();
-      // Job exists referencing the upload session, but no file_uploads
-      // rows for that session — mirrors the "post-S3-sweep" state.
-      await seedPriorLayoutPlanCommitJob(
-        seeded.instanceId,
-        lostUploadSessionId,
-        planId
-      );
-
-      const res = await request(app)
-        .get(
-          `/api/connector-instances/${seeded.instanceId}/layout-plan/edit-context`
-        )
-        .set("Authorization", "Bearer test-token");
-
-      expect(res.status).toBe(200);
-      const payload =
-        res.body.payload as LayoutPlanEditContextResponsePayload;
       expect(payload.editable).toBe(false);
       expect(payload.workbookPreview).toBeNull();
-      expect(payload.reason?.code).toBe("SOURCE_REMOVED");
+      expect(payload.reason?.code).toBe("UNSUPPORTED_CONNECTOR");
     });
 
     it("case 5 — plan missing: returns 404 LAYOUT_PLAN_NOT_FOUND", async () => {

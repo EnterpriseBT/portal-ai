@@ -69,16 +69,13 @@ const STATUS_COLOR: Record<
 /**
  * Connector slugs whose layout plans can be opened in the edit-plan
  * view. Mirrors the backend's `EDITABLE_SLUGS` in
- * `connector-instance-layout-plans.service.ts`. The page-header menu
- * disables the "Edit layout plan" entry for any other slug so the
- * user never lands on a route that would only render the "unsupported
- * connector" notice.
+ * `connector-instance-layout-plans.service.ts` — cloud-only.
+ * File-upload connectors don't appear here: the original CSV / XLSX
+ * was a one-shot artifact and there's no "live" upstream to reshape
+ * the plan against. Recovery for a file-upload's stale layout is to
+ * delete and re-upload.
  */
-const EDIT_PLAN_SLUGS = new Set([
-  "file-upload",
-  "google-sheets",
-  "microsoft-excel",
-]);
+const EDIT_PLAN_SLUGS = new Set(["google-sheets", "microsoft-excel"]);
 
 /**
  * Heuristic: does the sync failure message indicate Google rejected

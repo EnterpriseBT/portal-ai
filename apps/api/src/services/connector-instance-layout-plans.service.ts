@@ -45,11 +45,15 @@ import { inflateSheetPreviewFromChunks } from "../utils/workbook-preview.util.js
  * of trying to mount the region editor against a workbook source it
  * doesn't understand.
  */
-const EDITABLE_SLUGS = new Set([
-  "file-upload",
-  "google-sheets",
-  "microsoft-excel",
-]);
+/**
+ * Connector slugs whose layout plans can be opened in the edit-plan
+ * view. Cloud-only — `file-upload` is excluded because the source
+ * file is a one-shot artifact: once committed, the original CSV /
+ * XLSX no longer mirrors any "live" upstream the user could reshape.
+ * The recovery path for a file-upload connector whose layout needs
+ * structural changes is to delete it and upload a new one.
+ */
+const EDITABLE_SLUGS = new Set(["google-sheets", "microsoft-excel"]);
 
 export interface LayoutPlanIncludeOptions {
   includeTrace: boolean;
