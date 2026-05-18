@@ -127,13 +127,13 @@ Login as **two** distinct dev users in separate orgs before starting — the cro
 - [x] SSE progress: 0 → 10 → 40 → ~80 (per-chunk write progress) → 100.
 - [x] **Regression for #61**: sync passes 40% without `ERR_INVALID_ARG_TYPE` (the Date-binding bug surfaced exactly at the commit phase boundary).
 - [x] Records reflect the upstream changes: the new row appears, the modified row's `data` is updated, the blanked-out row is either soft-deleted (if blanked beyond the terminator) or has the field cleared.
-- [ ] Watermark reaper: rows whose `syncedAt` predates the run watermark and weren't touched are soft-deleted; cross-check `entity_records` count drops accordingly.
+- [x] Watermark reaper: rows whose `syncedAt` predates the run watermark and weren't touched are soft-deleted; cross-check `entity_records` count drops accordingly.
 
 ### 2.4.1 Sync halts on identity drift (regression for the split drift gate)
 
-- [ ] On an active gsheets-large connector with **column** identity (e.g. `Model` as the identity column), manually edit the upstream sheet so the identity column would derive different `source_id`s (add blanks/duplicates within the bounds, or rename the column so the locator no longer resolves).
-- [ ] Trigger Sync.
-- [ ] **Expected**: sync fails with `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`. The connector_sync job ends in `failed` status with the drift error in `error`. **Sync does not silently absorb identity drift** — that path was closed because changing the `source_id` derivation collapses or splits records under the user.
+- [x] On an active gsheets-large connector with **column** identity (e.g. `Model` as the identity column), manually edit the upstream sheet so the identity column would derive different `source_id`s (add blanks/duplicates within the bounds, or rename the column so the locator no longer resolves).
+- [x] Trigger Sync.
+- [x] **Expected**: sync fails with `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED`. The connector_sync job ends in `failed` status with the drift error in `error`. **Sync does not silently absorb identity drift** — that path was closed because changing the `source_id` derivation collapses or splits records under the user.
 - [ ] Severity-level drift (header rename of a non-identity column, an added column, a removed non-identity column) **still** lets sync proceed — the bypass only applies to non-identity drift. Verify with a header-only mutation on a non-identity column; sync should complete and update records normally.
 - [ ] Recovery: Modify Layout Plan → switch to `rowPosition` identity (or pick a stable identity column) → Commit → re-run Sync. Sync now succeeds.
 
@@ -211,13 +211,14 @@ The standalone "Save draft" button was removed — the auto-PATCH that fires ins
 
 ### 4.6 Cloud-connector workbook cache rehydrates on edit-context
 
-The cloud-connector workbook cache has a 1h TTL and is **not** refreshed by sync (sync fetches fresh from the upstream API and skips the cache). Before this fix, opening Modify Layout Plan on a still-syncing connector after the TTL elapsed would surface the SOURCE_REMOVED placeholder — even though Google / Microsoft still had the workbook.
+The cloud-connector source of truth is Google / Microsoft itself — the local Redis cache is just a slice-loader optimization. The edit-context endpoint rehydrates the cache from the upstream API on **every** Modify Layout Plan visit so the editor always reflects the current spreadsheet shape. (Earlier behavior was "rehydrate only when the cache was missing"; that surfaced stale data when users renamed columns or added rows between visits.)
 
-- [ ] On an active gsheets-large or excel-365-cloud connector, manually flush the workbook cache: `DEL connector:wb:google-sheets:<id>:*` (or the matching microsoft-excel prefix). Verify `WorkbookCacheService.getSessionMeta` returns null.
+- [ ] On an active gsheets-large or excel-365-cloud connector, rename a column header (or add a new column, or shuffle rows) in the source spreadsheet.
 - [ ] Click **Modify Layout Plan** from the connector detail view.
-- [ ] **Expected**: the editor mounts normally with the persisted plan + workbook preview. The edit-context endpoint took an extra ~1-3s to re-fetch from the upstream API. Verify in server logs: a fresh call into `GoogleSheetsConnectorService.rehydrateWorkbookCache` (or `MicrosoftExcelConnectorService.rehydrateWorkbookCache`) before the preview is returned.
-- [ ] **Expected**: the cache is rebuilt — `WorkbookCacheService.getSessionMeta` now returns a populated meta with `status: "ready"` and one chunk per sheet. The next edit-context call on the same instance is back to the fast path.
-- [ ] **Regression**: if the SOURCE_REMOVED placeholder shows on a connector that still syncs successfully, the rehydrate path in `buildEditContextWorkbookPreview` regressed.
+- [ ] **Expected** — the editor mounts showing the CURRENT spreadsheet shape: the renamed column appears under its new header, added columns show up, etc. Edit-context took an extra ~1–3s to fetch from the upstream API. Verify in server logs: a fresh call into `GoogleSheetsConnectorService.rehydrateWorkbookCache` (or `MicrosoftExcelConnectorService.rehydrateWorkbookCache`) before the preview is returned.
+- [ ] **Expected** — `WorkbookCacheService.getSessionMeta` now returns a populated meta with `status: "ready"` matching the upstream's current shape.
+- [ ] **Regression** — if Modify Layout Plan shows stale data after an upstream change, the unconditional rehydrate in `buildEditContextWorkbookPreview` regressed back to the cache-miss-only path.
+- [ ] **Regression — empty cache path**: manually flush the workbook cache (`DEL connector:wb:google-sheets:<id>:*`), then open Modify Layout Plan. Editor still mounts normally (no SOURCE_REMOVED placeholder on a still-syncing connector).
 
 ### 4.7 Back button on placeholder branches navigates out
 

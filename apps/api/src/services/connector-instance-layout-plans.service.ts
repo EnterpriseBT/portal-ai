@@ -412,26 +412,28 @@ export class ConnectorInstanceLayoutPlansService {
       prefix = `upload-session:${source.uploadSessionId}`;
     } else {
       prefix = workbookCacheKey(slug, source.connectorInstanceId);
-      // Cloud-connector caches have a TTL (1h) and aren't refreshed
-      // by sync (sync fetches fresh and skips the cache). After the
-      // TTL elapses, the editor's slice loader has nothing to read
-      // — but the workbook itself is still recoverable from Google /
-      // Microsoft. Rehydrate from the upstream API before reading
-      // the cache so users don't see a misleading "source removed"
-      // notice on a still-syncable connector.
-      const existing = await WorkbookCacheService.getSessionMeta(prefix);
-      if (!existing || existing.status !== "ready") {
-        if (slug === "google-sheets") {
-          await GoogleSheetsConnectorService.rehydrateWorkbookCache(
-            source.connectorInstanceId,
-            organizationId
-          );
-        } else if (slug === "microsoft-excel") {
-          await MicrosoftExcelConnectorService.rehydrateWorkbookCache(
-            source.connectorInstanceId,
-            organizationId
-          );
-        }
+      // Cloud-connector source of truth is Google / Microsoft itself
+      // — the local Redis cache is just a slice-loader optimization.
+      // Rehydrate from the upstream API on EVERY edit-context call
+      // so the editor reflects the current spreadsheet state. Skipping
+      // this when the cache exists (the previous behavior) made
+      // Modify Layout Plan show stale data: a user who renamed
+      // columns or shuffled rows in Sheets would see the
+      // pre-edit shape in the editor, draw against the wrong cells,
+      // and recommit a plan that no longer matches the source. The
+      // cost is one round-trip to the upstream API per Modify
+      // Layout Plan visit; acceptable since the view isn't entered
+      // in a hot loop.
+      if (slug === "google-sheets") {
+        await GoogleSheetsConnectorService.rehydrateWorkbookCache(
+          source.connectorInstanceId,
+          organizationId
+        );
+      } else if (slug === "microsoft-excel") {
+        await MicrosoftExcelConnectorService.rehydrateWorkbookCache(
+          source.connectorInstanceId,
+          organizationId
+        );
       }
     }
     const meta = await WorkbookCacheService.getSessionMeta(prefix);
