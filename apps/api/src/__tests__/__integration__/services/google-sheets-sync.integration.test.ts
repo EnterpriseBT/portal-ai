@@ -620,12 +620,17 @@ describe("googleSheetsAdapter.syncInstance", () => {
       identityKind: "rowPosition",
     });
 
-    // Fetch the existing row's id so we can assert it's preserved.
+    // Fetch the existing row's id + sourceId so we can assert both
+    // are preserved across the resurrect. The sourceId is whatever
+    // the seed pipeline computed (a synthetic row-position key under
+    // `rowPosition` identity, or the email under column identity) —
+    // the resurrect path keys off it either way.
     const [originalRow] = await db
       .select()
       .from(entityRecords)
       .where(eq(entityRecords.connectorEntityId, entityId));
     const originalId = originalRow!.id;
+    const originalSourceId = originalRow!.sourceId;
 
     // Soft-delete the record (mirrors the "clear all records" route).
     await db
@@ -658,12 +663,12 @@ describe("googleSheetsAdapter.syncInstance", () => {
           isNull(entityRecords.deleted)
         )
       );
-    const aliceRows = liveRows.filter(
-      (r) => r.sourceId === "alice@example.com"
+    const matchedRows = liveRows.filter(
+      (r) => r.sourceId === originalSourceId
     );
-    expect(aliceRows).toHaveLength(1); // resurrected, not duplicated
-    expect(aliceRows[0]?.id).toBe(originalId); // same id preserved
-    expect(aliceRows[0]?.deleted).toBeNull();
-    expect(aliceRows[0]?.deletedBy).toBeNull();
+    expect(matchedRows).toHaveLength(1); // resurrected, not duplicated
+    expect(matchedRows[0]?.id).toBe(originalId); // same id preserved
+    expect(matchedRows[0]?.deleted).toBeNull();
+    expect(matchedRows[0]?.deletedBy).toBeNull();
   });
 });
