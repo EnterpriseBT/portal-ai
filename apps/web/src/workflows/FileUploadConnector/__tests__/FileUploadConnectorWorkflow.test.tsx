@@ -288,7 +288,7 @@ describe("FileUploadConnectorWorkflowUI — server error", () => {
 });
 
 describe("FileUploadConnectorWorkflowUI — pending flags", () => {
-  test('step 1 Interpret button label flips to "Interpreting…" when isInterpreting is true', () => {
+  test("step 1 swaps the region editor for the interpreting loader when isInterpreting is true", () => {
     render(
       <FileUploadConnectorWorkflowUI
         {...makeProps({
@@ -304,8 +304,11 @@ describe("FileUploadConnectorWorkflowUI — pending flags", () => {
       />
     );
     expect(
-      screen.getByRole("button", { name: /interpreting/i })
-    ).toBeDisabled();
+      screen.getByText(/interpreting your spreadsheet/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^interpret$/i })
+    ).toBeNull();
   });
 
   test('step 2 Commit button label flips to "Committing…" when isCommitting is true', () => {

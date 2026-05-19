@@ -342,12 +342,14 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
     );
   }
 
+  if (isInterpreting) {
+    return <InterpretingPanelUI />;
+  }
+
   const regionCountBySheet = (sheetId: string) =>
     regions.filter((r) => r.sheetId === sheetId).length;
 
   return (
-    <Box sx={{ position: "relative", width: "100%", minWidth: 0 }}>
-      {isInterpreting && <InterpretingOverlayUI />}
     <Stack
       spacing={2}
       sx={{
@@ -355,11 +357,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         maxWidth: "100%",
         minWidth: 0,
         overflow: "hidden",
-        // Disable interaction while the interpreter runs so users don't edit
-        // regions in-flight and desync state.
-        pointerEvents: isInterpreting ? "none" : undefined,
       }}
-      aria-busy={isInterpreting}
     >
       <Stack
         direction="row"
@@ -666,36 +664,30 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         <Button
           variant="contained"
           onClick={handleInterpret}
-          disabled={isInterpreting || regions.length === 0}
+          disabled={regions.length === 0}
         >
-          {isInterpreting ? "Interpreting…" : "Interpret"}
+          Interpret
         </Button>
       </Stack>
     </Stack>
-    </Box>
   );
 };
 
-const InterpretingOverlayUI: React.FC = () => (
+const InterpretingPanelUI: React.FC = () => (
   <Box
     role="status"
     aria-live="polite"
-    sx={(theme) => ({
-      position: "absolute",
-      inset: 0,
-      zIndex: theme.zIndex.modal,
+    aria-busy
+    sx={{
+      width: "100%",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor:
-        theme.palette.mode === "dark"
-          ? "rgba(0, 0, 0, 0.6)"
-          : "rgba(255, 255, 255, 0.75)",
-      backdropFilter: "blur(2px)",
-      pointerEvents: "auto",
-    })}
+      py: { xs: 8, sm: 12 },
+      px: 3,
+    }}
   >
-    <Stack spacing={2} alignItems="center" sx={{ maxWidth: 420, px: 3 }}>
+    <Stack spacing={2} alignItems="center" sx={{ maxWidth: 420 }}>
       <CircularProgress size={56} />
       <Typography variant="h6" sx={{ fontWeight: 600, textAlign: "center" }}>
         Interpreting your spreadsheet…
