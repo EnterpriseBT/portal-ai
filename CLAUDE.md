@@ -395,6 +395,59 @@ Every new dialog must have tests covering:
 
 Tests use ESM dynamic imports with `jest.unstable_mockModule` for SDK mocks. The test render utility (`__tests__/test-utils.tsx`) accepts an optional `queryClient` for verifying cache invalidation via `jest.spyOn(queryClient, "invalidateQueries")`.
 
+## Issue → PR Workflow
+
+Issues and PRs live on `EnterpriseBT/portal-ai`; use `gh` for all ticket/PR work.
+
+### Filing an issue
+
+- File on GitHub (`gh issue create --repo EnterpriseBT/portal-ai`), not in `docs/`. The `docs/` tree is reserved for design specs / plans / smoke checklists.
+- Set the **Issue Type** (`Bug` / `Feature` / `Task`) — this is GitHub's structured type field, not a label. There's no `gh issue edit --type` shortcut yet; set it via GraphQL:
+  ```bash
+  gh api graphql -f query='mutation($id:ID!,$typeId:ID!){updateIssue(input:{id:$id,issueTypeId:$typeId}){issue{number}}}' -f id=<issueNodeId> -f typeId=<IT_…>
+  ```
+  Fetch the issue node id and the type ids via `repository.issue(number:N){id}` and `repository.issueTypes(first:10){nodes{id name}}`.
+- Optional labels (`documentation`, `question`, `help wanted`, etc.) layer on top of the type.
+- Project board: the **Portal AI** Projects v2 board (project #1) auto-adds new issues to `Todo` and auto-moves them to `Done` when the linked PR merges. Move the card to `In Progress` manually when work starts on it — the snippet below sets that. The token needs `project` scope (`gh auth refresh -s read:project,project`). IDs:
+  - Project id: `PVT_kwDODs25Bc4BUMsm`
+  - Status field id: `PVTSSF_lADODs25Bc4BUMsmzhBWfpk`
+  - Status options: `Todo` = `f75ad846`, `In Progress` = `47fc9ee4`, `Done` = `98236657`
+  - One-liner to move issue `<N>` to In Progress:
+    ```bash
+    ITEM_ID=$(gh project item-list 1 --owner EnterpriseBT --format json --limit 100 \
+      | jq -r '.items[] | select(.content.number==<N>) | .id')
+    gh project item-edit --id "$ITEM_ID" \
+      --project-id PVT_kwDODs25Bc4BUMsm \
+      --field-id PVTSSF_lADODs25Bc4BUMsmzhBWfpk \
+      --single-select-option-id 47fc9ee4
+    ```
+- Closing: `gh issue close <N> --reason completed|not-planned`. PRs containing `Closes #N` in the body auto-close the issue with `reason: completed` on merge — no manual close needed.
+
+### Branching
+
+- Branch off `main`. Prefix by intent: `fix/<slug>` for bug fixes, `feat/<slug>` for new functionality; use `chore/`, `docs/`, `test/` for other types.
+
+### Commits
+
+- Conventional format: `type(scope): subject`
+- Types: `feat`, `fix`, `test`, `docs`, `refactor`, `chore`
+- Scopes: `web`, `api`, `core`, `db`, `smoke`. Comma-separate for cross-cutting changes — e.g. `fix(web,api): …`
+- Reference the issue in the subject when there is one: `fix(web): swap interpret loader in (#63)`
+
+### Pull requests
+
+- **Merge style**: squash (matches existing history). The repo allows merge / rebase / squash but squash is the convention.
+- **Title**: short imperative, mirrors the lead commit.
+- **Body**: two sections — `## Summary` (1–3 bullets) and `## Test plan` (checklist of what was / still needs to be verified). Reference the originating issue with `Closes #N` so it auto-closes on merge.
+- `deleteBranchOnMerge` is **off** on the repo — always pass `--delete-branch` to `gh pr merge` so the remote branch is removed.
+
+### After merge
+
+- `git checkout main && git pull --ff-only origin main`
+- `git remote prune origin` to drop tracking refs for deleted remote branches
+- Local branches that were squash-merged need `git branch -D` (squash rewrites the SHA, so `-d` refuses)
+- Run `git branch -vv` after pruning — anything still listed with a `gone` upstream or `ahead/behind` divergence is intentional kept work; confirm before deleting
+
 ## Detailed Documentation
 
 Each package has its own README with deeper documentation:
