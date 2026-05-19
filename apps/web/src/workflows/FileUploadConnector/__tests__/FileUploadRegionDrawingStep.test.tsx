@@ -75,7 +75,7 @@ describe("FileUploadRegionDrawingStepUI — Interpret", () => {
     expect(onInterpret).toHaveBeenCalledTimes(1);
   });
 
-  test("Interpret label and disabled state flip while interpreting", () => {
+  test("editor body is replaced by the loading panel while interpreting", () => {
     const region = SAMPLE_REGIONS[0];
     render(
       <FileUploadRegionDrawingStepUI
@@ -87,8 +87,8 @@ describe("FileUploadRegionDrawingStepUI — Interpret", () => {
         })}
       />
     );
-    const btn = screen.getByRole("button", { name: /interpreting/i });
-    expect(btn).toBeDisabled();
+    expect(screen.getByText(/interpreting your spreadsheet/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^interpret$/i })).toBeNull();
   });
 
   test("blocks onInterpret when an invalid region exists and surfaces the invalid banner", async () => {
