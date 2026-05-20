@@ -399,6 +399,25 @@ Tests use ESM dynamic imports with `jest.unstable_mockModule` for SDK mocks. The
 
 Issues and PRs live on `EnterpriseBT/portal-ai`; use `gh` for all ticket/PR work.
 
+### The four phases
+
+Every non-trivial change goes through four phases. Each phase produces an artifact you can link from the issue, and each phase is a separate PR so review stays focused.
+
+| Phase | What lands | Branch | Required in PR body |
+|---|---|---|---|
+| 1. Ticket | GitHub issue with requirements (feature) or repro steps (bug). Issue Type set; project board card in `Todo`. | n/a | n/a |
+| 2. Discovery | `docs/<SLUG>.discovery.md` — survey + design space + leans + open questions. | `docs/<slug>-discovery` | `Refs #N` (not `Closes` — issue stays open) |
+| 3. Spec + plan | `docs/<SLUG>.spec.md` (contract) and `docs/<SLUG>.plan.md` (phased TDD slices). | `docs/<slug>-spec` | `Refs #N` |
+| 4. Implementation | Code + tests for one plan slice. Many phase-4 PRs per ticket if the plan has multiple slices. | `feat/<slug>` / `fix/<slug>` / etc. | `Closes #N` on the final slice; `Refs #N` on intermediate slices |
+
+Notes:
+
+- **Skip phases only when proportionate.** A one-line typo fix or a localized bug with a clear reproduction can go straight from phase 1 to phase 4. Anything that touches more than one package, introduces a new pattern, or changes a contract goes through all four.
+- **Each phase merges before the next starts.** Discovery merges → spec PR opens from updated `main`. Spec merges → first implementation PR opens. This keeps every reviewer reading from the same baseline.
+- **Doc artifacts live in `docs/`** and follow the existing suffix convention (`.discovery.md`, `.spec.md`, `.plan.md`). Phase numbering for multi-slice plans uses `_PHASE_<N>.plan.md` / `.spec.md` (see `ENTITY_RECORDS_WIDE_TABLE_PHASE_1.plan.md` for the precedent).
+- **The issue body holds the index.** As each phase lands, edit the issue to append the new doc link. The issue is the canonical entry point for anyone catching up on the work.
+- **Move the project card by phase.** `Todo` → `In Progress` when phase 2 starts; stays in `In Progress` through phases 3 and 4; `Done` is set automatically when the final PR (the one with `Closes #N`) merges.
+
 ### Filing an issue
 
 - File on GitHub (`gh issue create --repo EnterpriseBT/portal-ai`), not in `docs/`. The `docs/` tree is reserved for design specs / plans / smoke checklists.
@@ -447,6 +466,17 @@ Issues and PRs live on `EnterpriseBT/portal-ai`; use `gh` for all ticket/PR work
 - `git remote prune origin` to drop tracking refs for deleted remote branches
 - Local branches that were squash-merged need `git branch -D` (squash rewrites the SHA, so `-d` refuses)
 - Run `git branch -vv` after pruning — anything still listed with a `gone` upstream or `ahead/behind` divergence is intentional kept work; confirm before deleting
+
+### Branch protection on `main`
+
+These are the protection rules `main` should carry. They are settings on the repo, not code in this branch — apply them via **Settings → Branches → Branch protection rules** on GitHub. Listing them here so the convention is documented and the rules can be re-applied if the repo is ever recreated.
+
+- **Require a pull request before merging.** Direct pushes to `main` blocked.
+- **Require status checks to pass before merging** — at minimum `unit-test` and `integration-test` (from `.github/workflows/`). Add new required checks as they're added to CI.
+- **Require branches to be up to date before merging.** Prevents merging a PR that hasn't seen the latest `main`.
+- **Require linear history.** Matches the squash convention; no merge commits on `main`.
+- **Do not allow bypassing the above settings** — applies to administrators too. Force-push and deletion are off by default once protection is enabled.
+- **Restrict who can push** is not needed if PR-required is on; everyone goes through PRs.
 
 ## Detailed Documentation
 

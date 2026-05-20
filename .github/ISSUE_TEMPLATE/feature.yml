@@ -1,0 +1,62 @@
+name: Feature
+description: New functionality or an enhancement to existing functionality.
+title: "<short imperative title>"
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        After filing, remember to set the **Issue Type** to `Feature` (the structured type field on the right sidebar — not a label).
+        See `CLAUDE.md` → "Issue → PR Workflow" for the four-phase flow that follows.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What user-facing or system problem does this solve? Who's blocked or slowed down today?
+      placeholder: |
+        Today, users have to … which means …
+    validations:
+      required: true
+
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Requirements
+      description: What the feature must do. Bulleted list. Keep it about *behavior*, not implementation.
+      placeholder: |
+        - User can …
+        - System guarantees …
+        - The flow is gated on …
+    validations:
+      required: true
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What we are deliberately *not* doing in this ticket. Helps reviewers and the spec author bound the work.
+      placeholder: |
+        - Not handling … (separate ticket)
+        - No migration of legacy …
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How we know it's done. Concrete, testable statements.
+      placeholder: |
+        - [ ] …
+        - [ ] …
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / prior art / related work
+      description: Links to related issues, prior discussions, designs, customer asks. Optional.
+    validations:
+      required: false

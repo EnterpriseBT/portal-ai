@@ -1,0 +1,44 @@
+name: Task
+description: Work that isn't a new feature or a bug — refactor, chore, docs, infra.
+title: "<short imperative title>"
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        After filing, remember to set the **Issue Type** to `Task`. Use this for refactors, cleanups, dependency upgrades, infra changes, doc-only work, etc.
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why is this worth doing? What's the cost of leaving it as-is?
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What changes. Bulleted list of the concrete work.
+      placeholder: |
+        - Rename …
+        - Move …
+        - Drop unused …
+    validations:
+      required: true
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: Adjacent work we are *not* doing here.
+    validations:
+      required: false
+
+  - type: textarea
+    id: done
+    attributes:
+      label: Definition of done
+    validations:
+      required: true
