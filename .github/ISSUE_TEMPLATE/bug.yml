@@ -1,0 +1,61 @@
+name: Bug
+description: Something is broken or behaves incorrectly.
+title: "<short description of the broken behavior>"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        After filing, remember to set the **Issue Type** to `Bug` (the structured type field on the right sidebar — separate from the auto-applied `bug` label).
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences — what is broken?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Numbered, minimal, deterministic. Anyone should be able to follow these and see the same failure.
+      placeholder: |
+        1. Go to …
+        2. Click …
+        3. Observe …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include logs, stack traces, screenshots if relevant.
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Branch / commit, browser (if frontend), Node version (if backend reproduces locally), env (local / dev / prod).
+      placeholder: "main @ abc123, Chrome 132, local"
+    validations:
+      required: false
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Suspected scope
+      description: Optional. If you have a guess about where the bug lives or what it touches, note it here.
+    validations:
+      required: false
