@@ -21,24 +21,30 @@ gh issue view <N> --repo EnterpriseBT/portal-ai --json number,title,body,labels,
 
 If the issue doesn't exist, or `state` is `CLOSED`, stop and tell the user. If `issueType` is unset, warn but continue — note in the doc that the type should be set before merging the discovery PR.
 
-### 2. Derive the slug
+### 2. Derive the slug and branch prefix
 
-The slug becomes the file name (`docs/<SLUG>.discovery.md`) and the branch suffix (`docs/<slug>-discovery`). Derive it from the issue title:
+The slug becomes the file name (`docs/<SLUG>.discovery.md`) and the branch suffix. Derive from the issue title:
 
 - `UPPER_SNAKE_CASE` for the file name (e.g. issue "API connector" → `API_CONNECTOR`)
-- `lower-kebab-case` for the branch (e.g. `api-connector`)
+- `lower-kebab-case` for the branch suffix (e.g. `api-connector`)
 
-Ask the user to confirm the slug if the title is ambiguous (more than five words, special characters, etc.). Otherwise pick and tell them in one sentence what you chose.
+The branch prefix follows the issue type, since this is the **single branch** the entire feature lives on (per CLAUDE.md → "One feature = one branch = one PR"):
+
+- `Feature` → `feat/<slug>`
+- `Bug` → `fix/<slug>`
+- `Task` → `chore/<slug>` (or `docs/<slug>` / `test/<slug>` if the work is purely docs- or test-only)
+
+Ask the user to confirm the slug if the issue title is ambiguous (more than five words, special characters, etc.). Otherwise pick and tell them in one sentence what you chose.
 
 ### 3. Create the branch
 
 ```bash
 git checkout main
 git pull --ff-only origin main
-git checkout -b docs/<slug>-discovery
+git checkout -b <prefix>/<slug>
 ```
 
-If a branch by that name already exists locally or remotely, stop and ask the user how to proceed (extend the existing branch vs. pick a new name).
+If a branch by that name already exists locally or remotely, stop and ask the user how to proceed (extend the existing branch vs. pick a new name). The branch is shared with later phases (spec, plan, implementation) — don't create a new branch when those commit.
 
 ### 4. Survey the codebase
 
@@ -129,14 +135,14 @@ Follow the house structure exactly:
 
 Stop. Report to the user:
 
-- The branch you created
+- The branch you created (this is the feature's single branch — spec, plan, and implementation will all commit here)
 - The doc you wrote and its line count
 - 2–3 specific things you'd flag for them to refine (places where the survey was thin, decisions where the lean was a coin-flip, etc.)
 
-Do **not** stage, commit, push, or open the PR. The user reads the draft, refines it, and runs the standard `gh` flow per `CLAUDE.md` → "Issue → PR Workflow". The PR body should use `Refs #<N>`, not `Closes` (issue stays open until phase 4).
+Do **not** stage, commit, push, or open the PR. The user reads the draft, refines it, then commits. A PR may be opened as a draft once the discovery commit lands so spec/plan/implementation commits flow into the same PR — per `CLAUDE.md` → "One feature = one branch = one PR". The PR body uses `Closes #<N>` (since the same PR carries the full work end-to-end).
 
 ## What this skill is not
 
-- It is not for **phase 3** (spec + plan). A sibling `/spec` skill will exist; if it doesn't yet and the user asks for spec scaffolding, point them at `CLAUDE.md` and the existing `docs/*.spec.md` files for now.
-- It is not for **trivial PRs**. If the user invokes it on an issue that's a one-line typo fix or a localized bug with a clear fix, tell them discovery isn't proportionate and they should go straight to phase 4.
+- It is not for **spec + plan** scaffolding. A sibling `/spec` skill will eventually own that; if it doesn't yet, point the user at `CLAUDE.md` and the existing `docs/*.spec.md` files. Either way, spec/plan land on the **same branch** this skill just created — not a new one.
+- It is not for **trivial PRs**. If the user invokes it on an issue that's a one-line typo fix or a localized bug with a clear fix, tell them discovery isn't proportionate and they should go straight to implementation.
 - It does not run CI, doesn't apply branch protection, doesn't move project-board cards. Those happen elsewhere.
