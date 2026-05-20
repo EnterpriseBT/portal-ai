@@ -399,24 +399,27 @@ Tests use ESM dynamic imports with `jest.unstable_mockModule` for SDK mocks. The
 
 Issues and PRs live on `EnterpriseBT/portal-ai`; use `gh` for all ticket/PR work.
 
-### The four phases
+### One feature = one branch = one PR
 
-Every non-trivial change goes through four phases. Each phase produces an artifact you can link from the issue, and each phase is a separate PR so review stays focused.
+Every non-trivial change lives on **one branch** with **one PR**. The four artifacts — discovery doc, spec doc, plan doc, implementation — land as separate commits on that branch as the work progresses. The PR is opened early (often as draft) and grows commit-by-commit; reviewers track progress at the commit level, not across multiple PRs.
 
-| Phase | What lands | Branch | Required in PR body |
-|---|---|---|---|
-| 1. Ticket | GitHub issue with requirements (feature) or repro steps (bug). Issue Type set; project board card in `Todo`. | n/a | n/a |
-| 2. Discovery | `docs/<SLUG>.discovery.md` — survey + design space + leans + open questions. | `docs/<slug>-discovery` | `Refs #N` (not `Closes` — issue stays open) |
-| 3. Spec + plan | `docs/<SLUG>.spec.md` (contract) and `docs/<SLUG>.plan.md` (phased TDD slices). | `docs/<slug>-spec` | `Refs #N` |
-| 4. Implementation | Code + tests for one plan slice. Many phase-4 PRs per ticket if the plan has multiple slices. | `feat/<slug>` / `fix/<slug>` / etc. | `Closes #N` on the final slice; `Refs #N` on intermediate slices |
+| Artifact | What lands | When it's needed |
+|---|---|---|
+| 1. Ticket | GitHub issue with requirements (feature) or repro steps (bug). Issue Type set; project board card in `Todo`. | Always for non-trivial work |
+| 2. Discovery | `docs/<SLUG>.discovery.md` — survey + design space + decisions. | Anything that touches more than one package, introduces a new pattern, or changes a contract |
+| 3. Spec + plan | `docs/<SLUG>.spec.md` (contract) and `docs/<SLUG>.plan.md` (phased TDD slices). | Same threshold as discovery — when discovery is warranted, spec + plan follow |
+| 4. Implementation | Code + tests, one commit per testable slice from the plan. | Always |
+
+Branch naming follows the work, not the artifact: `feat/<slug>` for new functionality, `fix/<slug>` for bug fixes, `chore/<slug>` / `docs/<slug>` / `test/<slug>` for everything else. The discovery/spec/plan commits live on this same branch — there is **no** `docs/<slug>-discovery` or `docs/<slug>-spec` interim branch.
 
 Notes:
 
-- **Skip phases only when proportionate.** A one-line typo fix or a localized bug with a clear reproduction can go straight from phase 1 to phase 4. Anything that touches more than one package, introduces a new pattern, or changes a contract goes through all four.
-- **Each phase merges before the next starts.** Discovery merges → spec PR opens from updated `main`. Spec merges → first implementation PR opens. This keeps every reviewer reading from the same baseline.
-- **Doc artifacts live in `docs/`** and follow the existing suffix convention (`.discovery.md`, `.spec.md`, `.plan.md`). Phase numbering for multi-slice plans uses `_PHASE_<N>.plan.md` / `.spec.md` (see `ENTITY_RECORDS_WIDE_TABLE_PHASE_1.plan.md` for the precedent).
-- **The issue body holds the index.** As each phase lands, edit the issue to append the new doc link. The issue is the canonical entry point for anyone catching up on the work.
-- **Move the project card by phase.** `Todo` → `In Progress` when phase 2 starts; stays in `In Progress` through phases 3 and 4; `Done` is set automatically when the final PR (the one with `Closes #N`) merges.
+- **Skip artifacts when proportionate.** A one-line typo fix or a localized bug with a clear reproduction goes straight to implementation — no discovery, no spec. Anything that touches more than one package, introduces a new pattern, or changes a contract produces all four artifacts.
+- **Phase = commit, not PR.** The four phases exist to (a) break work into single testable units and (b) keep each commit reviewable on its own. They do **not** mean four separate PRs.
+- **When to split a feature across multiple PRs.** Only when context-window management forces it — features so large that a single AI-assisted session can't hold the implementation in context end-to-end. Each split PR ships a complete, testable slice (its own branch off `main`, its own ticket reference, `Closes #N` on the final slice). For human-driven work, "too big" is rarely the reason — prefer one PR.
+- **Doc artifacts live in `docs/`** with the existing suffix convention (`.discovery.md`, `.spec.md`, `.plan.md`). For multi-PR features, the plan doc names the slices and the slice mapping appears in each PR's body.
+- **The issue body holds the index.** As each doc commits, edit the issue to append the link. The issue is the canonical entry point for anyone catching up on the work.
+- **Project-board card movement.** `Todo` → `In Progress` when the first commit lands on the branch (whichever phase it is). `Done` is set automatically when the PR with `Closes #N` merges.
 
 ### Filing an issue
 
