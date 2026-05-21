@@ -254,7 +254,7 @@ flowchart TD
     Skip --> CS[field_mappings POST / PATCH / DELETE]
     CS --> Done
 
-    What -->|Sync schedule] WIP[v1 has no schedule — manual triggers only<br/>v2 follow-up]
+    What -->|Sync schedule| WIP[v1 has no schedule — manual triggers only<br/>v2 follow-up]
 ```
 
 Cache invalidation on modification:
