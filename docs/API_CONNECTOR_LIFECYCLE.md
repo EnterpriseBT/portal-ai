@@ -81,12 +81,17 @@ sequenceDiagram
         WF->>API: POST /discover-columns
         API->>Adapter: discoverColumns(instance, entityKey)
         Adapter->>Adapter: ProbeCache.get → miss
-        Adapter->>Adapter: fetchFirstPage + inferColumns
-        Adapter->>Adapter: ProbeCache.set (60s TTL)
-        Adapter-->>API: { columns, samples, source: "live" }
+        Adapter->>Adapter: fetchFirstPage + inferColumns (heuristic)
+        opt classifier dep wired
+            Adapter->>Adapter: load column_definitions catalog
+            Adapter->>Adapter: classifier.classify(candidates, catalog) via Haiku 4.5
+            Adapter->>Adapter: merge suggestions into heuristic columns (on throw, degradation = llm-failed)
+        end
+        Adapter->>Adapter: ProbeCache.set (60s TTL — heuristic + AI together)
+        Adapter-->>API: { columns, samples, source: "live", degradation, suggestions }
     end
-    WF-->>User: editable columns table per endpoint
-    User->>WF: edit / add / remove / adopt-existing rows
+    WF-->>User: editable columns table per endpoint (Adopt chips + degradation banner)
+    User->>WF: edit / add / remove / adopt-suggestion / adopt-existing rows
 
     Note over User,WF: Step 4 — Review & commit
     User->>WF: commit
@@ -322,6 +327,7 @@ These are the rules that hold at every state. They're the underlying reason most
 | **No two concurrent syncs on the same instance** | `assertSyncEligibility` step 3 | Double-counted records; out-of-order watermark soft-deletes. |
 | **`MAX_RESPONSE_BYTES` cap enforced on every fetch** | `fetchJson` (fast path + slow path) | OOM on unpaginated huge JSON responses; converted to `REST_API_RESPONSE_TOO_LARGE`. Streaming lift tracked in [#72](https://github.com/EnterpriseBT/portal-ai/issues/72). |
 | **Probe cache TTL = 60 s in-process** | `ProbeCache` get/set | Stale samples shown in the workflow; mitigated by Re-probe button and on-modify invalidation. |
+| **AI-assist failures never abort the probe** | `discoverColumns`'s try/catch around the classifier | Without the catch, an LLM hiccup would make the entire workflow's probe step error out — instead the user just gets heuristic-only output + the degradation banner. |
 | **`runStartedAt` watermark per sync** | Adapter's sync orchestration | Without watermark, can't distinguish "missing in this sync" from "missing because we haven't reached that page yet" → false deletes. |
 
 ---

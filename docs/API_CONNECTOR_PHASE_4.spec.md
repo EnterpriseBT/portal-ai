@@ -1,6 +1,6 @@
 # API connector — Phase 4 — Spec
 
-**Replace phase 1's manual "user declares columns" step with a hybrid probe-then-review flow: when the user lands on the column-mapping step, the adapter fires a single page-1 fetch against each configured endpoint, infers a column schema from the first records, and the UI renders an editable table the user reconciles before commit. Probe responses are cached for 60 seconds to keep navigation snappy; nested fields fall back to JSONB columns; mixed-type or all-null fields fall back to `string`.** After this phase, configuring a 30-field SaaS endpoint takes one click instead of 30 manual field-mapping rows. Users who have existing manually-declared mappings (from phase-1 workflows) keep them; new endpoints default to probe-driven inference.
+**Replace phase 1's manual "user declares columns" step with a hybrid probe-then-review flow: when the user lands on the column-mapping step, the adapter fires a single page-1 fetch against each configured endpoint, runs a two-layer inference pipeline (heuristic typeof classification + an optional Haiku-4.5-driven `column_definitions` matcher that proposes `normalizedKey` and catalog binding per column), and the UI renders an editable table with one-click "Adopt suggestion" affordances the user reconciles before commit. Probe responses are cached for 60 seconds to keep navigation snappy; nested fields fall back to JSONB columns; mixed-type or all-null fields fall back to `string`; LLM failure silently degrades to heuristic-only without aborting the probe.** After this phase, configuring a 30-field SaaS endpoint takes a handful of clicks instead of 30 manual field-mapping rows. Users who have existing manually-declared mappings (from phase-1 workflows) keep them; new endpoints default to probe-driven inference.
 
 Discovery: `docs/API_CONNECTOR.discovery.md`. Phases 1–3: `docs/API_CONNECTOR_PHASE_{1,2,3}.{spec,plan}.md`.
 
@@ -9,7 +9,8 @@ Resolved phase-4 decisions:
 - **Probe fires per-endpoint, on demand.** Specifically: when the user navigates to the probe-review step, the frontend fires one `discoverColumns` call per configured endpoint in parallel. Adding an endpoint in step 2 does *not* trigger an immediate probe — adding an endpoint is a config action; probing is an inference action gated on the user's progression through the workflow.
 - **Cache shape: in-process Node `Map<connectorEntityId, { result, expiresAt }>`** with 60-second TTL, pruned lazily on read. Not Redis — the TTL is short, the cardinality bounded by configured endpoints, and the workflow's navigation pattern is local to one user's session anyway. Restart wipes the cache; that's acceptable.
 - **Sample size for inference: first page of records, capped at 25.** If phase-3 pagination is configured (e.g., `pageSize: 100`), the probe still uses only page 1 and slices to 25. If `pagination: "none"` returns 1000 records, the probe also slices to 25. Inference quality past 25 records is marginal; cost of fetching more is real.
-- **Inference is type-only, not semantic.** Phase 4 maps JSON values to `ColumnDataType` enum members (string, number, boolean, json). Date detection, currency parsing, ID-format inference, etc. are deliberately out. Users see the inferred type and override it through the standard dropdown if they want something more specific (date, currency).
+- **Inference is two-layer: heuristic + AI-assist.** Mirrors the spreadsheet connector's pattern (`packages/spreadsheet-parsing/src/interpret/stages/classify-field-segments.ts:164`, `apps/api/src/services/spreadsheet-parsing-llm.service.ts:101`). Heuristic baseline always runs: `typeof` value classification + truth table → `ColumnDataType` ∈ {string, number, boolean, json}. Optional LLM layer (Haiku 4.5) takes the heuristic output + sample values + the org's `column_definitions` catalog, and per column returns `{ columnDefinitionId | null, suggestedNormalizedKey, suggestedSemanticType, confidence, rationale }`. Suggestions are advisory — the UI shows them with one-click Adopt; the user can ignore or edit any of them. Date / currency / ID-format semantic types come from the LLM layer; the heuristic layer never emits them.
+- **LLM layer is optional and silently degradable.** The classifier is dependency-injected on `RestApiAdapter` (`deps.columnDefinitionClassifier`). If unset, or if the LLM call throws / times out, the adapter falls back to heuristic-only output — no error surfaced to the user, an advisory `note` field on the result indicates the degradation. Mirrors the spreadsheet stages' "no classifier wired" fallback.
 - **Nested objects + arrays → `json` column type.** The wide-table reconciler already handles JSONB columns; the column-inference util emits `json` for any non-scalar value at the top level of a record. Decision 2's "flatten to a JSONB column" applies here: the column is a single JSONB cell whose value is the original nested object/array verbatim.
 - **Mixed scalar types collapse to `string`.** If 24 records have `age` as `number` and 1 has it as `string`, infer `string`. Same if any record has a value of the wrong type for the consensus. Conservative — prefer no data loss to clever coercion.
 - **All-null / all-missing fields default to `string`.** Most heterogeneous APIs treat optional fields as null-or-string-or-missing; defaulting to `string` is the least-surprising choice.
@@ -25,44 +26,49 @@ After this phase: the workflow flow becomes Basics → Endpoints → Probe-revie
 
 ### In scope
 
-1. **`inferColumns` util** (`apps/api/src/adapters/rest-api/inference.util.ts`, new) — pure function that takes a record array and emits `DiscoveredColumn[]` plus a per-column sample-value map. Implements the inference rules in *Concept changes* below.
-2. **`ProbeCache`** (`apps/api/src/adapters/rest-api/probe-cache.util.ts`, new) — tiny in-process cache with 60-second TTL, `get(key)` + `set(key, value, ttlMs?)` + `invalidate(key)`. Pure modulo `Date.now()`.
-3. **`RestApiAdapter.discoverColumns` implementation.** Replaces the phase-1 stub that returned `[]`. Flow:
+1. **`inferColumns` util** (`apps/api/src/adapters/rest-api/inference.util.ts`, new) — pure function that takes a record array and emits `DiscoveredColumn[]` plus a per-column sample-value map. Heuristic-only layer; implements the typeof-based truth table in *Concept changes* below.
+2. **`ProbeCache`** (`apps/api/src/adapters/rest-api/probe-cache.util.ts`, new) — tiny in-process cache with 60-second TTL, `get(key)` + `set(key, value, ttlMs?)` + `invalidate(key)`. Pure modulo `Date.now()`. Caches the *combined* heuristic + AI-assist output so re-renders during the user's review don't re-fire either layer.
+3. **`ColumnDefinitionClassifier` dep + Haiku wiring** — optional dependency on `RestApiAdapter` mirroring the spreadsheet pattern's `deps.classifier` (`apps/api/src/services/spreadsheet-parsing-llm.service.ts:101`). Signature: `classify(candidates: ApiClassifierCandidate[], catalog: ColumnDefinitionCatalogEntry[]): Promise<ApiColumnClassification[]>`. Default implementation uses Haiku 4.5 with a `buildApiClassifierPrompt(candidates, catalog)` helper analogous to `buildClassifierPrompt`. Per-candidate `pLimit(8)` concurrency cap so a 30-column endpoint doesn't burst against the LLM rate limit. Test code injects a stub classifier; the production default is wired through `apps/api/src/adapters/adapter.registry.ts`.
+4. **`RestApiAdapter.discoverColumns` implementation.** Replaces the phase-1 stub that returned `[]`. Flow:
    1. Resolve the endpoint config by `entityKey`.
    2. Cache lookup keyed by `connectorEntityId`; cache hit returns immediately.
    3. Cache miss: drive the phase-3 pagination iterator for exactly one page (`.next()` once, then discard the iterator). Apply auth + templating + retries as the rest of the adapter does.
    4. Walk `recordsPath`; slice to 25 records.
-   5. `inferColumns(records)` → `{ columns, samples }`.
-   6. Cache the result; return.
-4. **`discoverColumns` route surface.** Two route options here (resolved below in *Surface*): either widen the shared `/test-connection` route to optionally return inference, or add a dedicated `POST /:id/api-endpoints/:entityId/discover-columns`. **Lean: dedicated route.** Test-connection (phase 2) is for connectivity validation; probe is for schema inference. Same underlying machinery (single page fetch) but different intent, different cacheability, different consumers.
-5. **`DiscoverColumnsResult` Zod schema** in `packages/core/src/contracts` — `{ columns: DiscoveredColumn[], samples: Record<string, unknown[]>, source: "cache" | "live", recordsScanned: number }`. `source` lets the UI surface a "cached 38s ago" hint; `recordsScanned` carries the actual count probed (e.g., 25 when capped, or fewer if the endpoint returned less).
-6. **Shared adapter helper: `fetchFirstPage`** (`apps/api/src/adapters/rest-api/fetch-first-page.util.ts`, new) — pulls out the "drive iterator once, get records out" code that both `testConnection` and `discoverColumns` use. Reduces duplication; keeps one place to fix auth/template/retry behavior for probe-shaped calls.
-7. **Frontend `ProbeReviewStep`** (`apps/web/src/workflows/RestApiConnector/ProbeReviewStep.component.tsx`, new) — replaces `FieldMappingsStep` in the workflow. Per-endpoint section showing:
-   - Loading state (probe in flight).
-   - Inferred columns table — one row per column with editable `normalizedKey`, `type` (dropdown), `required` (checkbox), `sample value` (read-only preview); a "Re-probe" button to invalidate cache and refire; an "Add column" button for manual additions.
-   - Error state with fallback-to-manual button.
+   5. **Heuristic layer:** `inferColumns(records)` → `{ columns, samples }`. Always runs.
+   6. **AI-assist layer (optional):** if `deps.columnDefinitionClassifier` is wired, build `ApiClassifierCandidate` per column (`{ sourceField, inferredType, samples: ≤5 }`), load the org's `column_definitions` catalog, call the classifier with `pLimit(8)` concurrency, and merge the returned `ApiColumnClassification[]` into the heuristic result as a `suggestion` field per column. LLM failures (timeout, error, malformed response) are logged and swallowed; the result includes a `degradation: "llm-failed" | "llm-disabled" | null` advisory tag.
+   7. Cache the merged result; return.
+5. **`discoverColumns` route surface.** Two route options here (resolved below in *Surface*): either widen the shared `/test-connection` route to optionally return inference, or add a dedicated `POST /:id/api-endpoints/:entityId/discover-columns`. **Lean: dedicated route.** Test-connection (phase 2) is for connectivity validation; probe is for schema inference. Same underlying machinery (single page fetch) but different intent, different cacheability, different consumers.
+6. **`DiscoverColumnsResult` Zod schema** in `packages/core/src/contracts` — widens to include the AI-assist suggestion shape per column. See *Surface* for the full type.
+7. **Shared adapter helper: `fetchFirstPage`** (`apps/api/src/adapters/rest-api/fetch-first-page.util.ts`, new) — pulls out the "drive iterator once, get records out" code that both `testConnection` and `discoverColumns` use. Reduces duplication; keeps one place to fix auth/template/retry behavior for probe-shaped calls.
+8. **Frontend `ProbeReviewStep`** (`apps/web/src/workflows/RestApiConnector/ProbeReviewStep.component.tsx`, new) — replaces `FieldMappingsStep` in the workflow. Per-endpoint section showing:
+   - Loading state (probe in flight; the LLM call is the longest-running step here — ~1–2 s typical).
+   - Inferred columns table — one row per column with editable `normalizedKey`, `type` (dropdown), `required` (checkbox), `sample value` (read-only preview), and (when suggestions exist) an **Adopt** chip displaying the LLM's `suggestedNormalizedKey` + `columnDefinition.label` + confidence; clicking Adopt copies the suggestion into the editable fields. "Re-probe" button to invalidate cache and re-fire; "Add column" button for manual additions.
+   - Error state with fallback-to-manual button (only fires for *probe* errors — LLM failures degrade silently).
    - Empty state (probe returned no records) with the same manual-entry affordance.
-8. **Frontend SDK addition** — `useDiscoverColumns()` on `sdk.apiConnector.endpoints` via `useAuthMutation` against the new route. Triggered by `ProbeReviewStep` on mount and on Re-probe click.
-9. **Workflow integration changes.** `RestApiConnectorWorkflow.component.tsx` swaps `FieldMappingsStep` → `ProbeReviewStep`. The commit-time payload writes one `field_mapping` per row that survived review (same `POST /api/field-mappings` flow that phase 1 used).
-10. **Existing-mappings reconciliation.** When `ProbeReviewStep` opens for an endpoint with existing `field_mappings` (loaded via `sdk.fieldMappings.list(entityId)`), the UI overlays them on the inferred columns:
-    - Matching `sourceField` between inferred + existing → existing wins (already configured); inferred type is shown as an advisory diff if different.
-    - Inferred-only → marked "new from probe" with an Adopt button.
+   - **Degradation banner.** When `degradation !== null`, render a small `<Alert severity="info">` strip above the table: "AI suggestions unavailable (`<reason>`). You can still inspect the inferred types and configure columns manually."
+9. **Frontend SDK addition** — `useDiscoverColumns()` on `sdk.apiConnector.endpoints` via `useAuthMutation` against the new route. Triggered by `ProbeReviewStep` on mount and on Re-probe click.
+10. **Workflow integration changes.** `RestApiConnectorWorkflow.component.tsx` swaps `FieldMappingsStep` → `ProbeReviewStep`. The commit-time payload writes one `field_mapping` per row that survived review (same `POST /api/field-mappings` flow that phase 1 used). When the row's `columnDefinitionId` came from an Adopted suggestion, that id is included in the field-mapping insert.
+11. **Existing-mappings reconciliation.** When `ProbeReviewStep` opens for an endpoint with existing `field_mappings` (loaded via `sdk.fieldMappings.list(entityId)`), the UI overlays them on the inferred columns:
+    - Matching `sourceField` between inferred + existing → existing wins (already configured); inferred type + LLM suggestion shown as an advisory diff if different.
+    - Inferred-only → marked "new from probe" with an Adopt button (adopts the suggestion if present, otherwise the heuristic defaults).
     - Existing-only → preserved as-is.
-11. **Tests** — `inferColumns` unit tests (the full inference matrix), `ProbeCache` tests, `discoverColumns` adapter integration test, route test, frontend ProbeReviewStep tests covering all four states (loading / success / error / empty).
+12. **Tests** — `inferColumns` unit tests (the full heuristic matrix), `ProbeCache` tests, classifier-dep contract tests (against a stub), `discoverColumns` adapter integration test (covering heuristic-only, classifier-success, classifier-failure-degradation, classifier-disabled paths), route test, frontend ProbeReviewStep tests covering all four states (loading / success / error / empty) and the degradation banner.
 
 ### Out of scope
 
 - **Probe-on-sync drift detection.** Out of v1 per discovery's "what this doesn't decide" — re-probe on drift is a follow-up.
-- **Date / enum / format inference.** Phase 4 only emits the scalar `ColumnDataType` members. Smarter inference is a v2 polish.
+- **Heuristic-side semantic inference** (date detection from string format, currency detection from `$`-prefixed values, etc.). The heuristic layer is intentionally simple; semantic enrichment is the LLM layer's job. Adding regex-based heuristic date/currency detection is a v2 polish if the LLM layer ever proves too cost-sensitive to enable by default.
+- **Auto-adopt of LLM suggestions.** Phase 4 always renders suggestions as advisory + user clicks Adopt. No "if confidence > 0.9, write directly" shortcut — the human-in-the-loop pattern matches how the spreadsheet connector treats `classify-field-segments` output.
 - **Cross-page schema differencing.** Probe uses only page 1; if pages 2–N have different shapes, the user catches it in review or in production. Documenting this explicitly so a future ticket can pick it up.
 - **Probe persistence.** Cache is in-process; no DB-backed cache table. The 60-second window is meant to absorb tab-switching navigation, not to survive a worker restart.
+- **LLM result caching across workflow sessions.** The cached probe result includes the LLM output, but the cache is per-process Map and expires in 60 s. No DB-backed durable suggestion cache (the spreadsheet pipeline doesn't have one either; same posture).
 - **Streaming inference.** The probe runs on the buffered response (same path as the sync). Lifting the per-response 50 MB cap is tracked in #72.
 
 ---
 
 ## Concept changes
 
-### Inference rules
+### Inference rules (heuristic layer)
 
 Given `records: unknown[]` (already sliced to ≤ 25):
 
@@ -85,6 +91,39 @@ Given `records: unknown[]` (already sliced to ≤ 25):
 | Mixed scalar + object | `json` |
 | All values null/missing | `string` |
 | No values (empty key — shouldn't happen) | `string` (defensive) |
+
+The heuristic layer never emits `date`, `currency`, `enum`, or other semantic refinements. Those come from the AI layer.
+
+### AI-assist rules (LLM layer)
+
+Runs only when `deps.columnDefinitionClassifier` is wired. Operates on the heuristic output, never bypasses it.
+
+Per column emitted by the heuristic, build an `ApiClassifierCandidate`:
+
+```ts
+{
+  sourceField: string;              // the JSON key
+  inferredType: ColumnDataType;     // what the heuristic decided
+  samples: unknown[];               // up to 5 from the heuristic's sample list
+}
+```
+
+The classifier receives the full candidate array + the org's `column_definitions` catalog (id, label, normalizedKey, description, type). For each candidate, it returns:
+
+```ts
+{
+  sourceField: string;              // echoed for matching back
+  columnDefinitionId: string | null; // matched catalog id, or null
+  suggestedNormalizedKey: string;    // normalized form regardless of catalog match
+  suggestedSemanticType: ColumnDataType; // may refine heuristic (e.g., string → date)
+  confidence: number;                // 0..1
+  rationale: string;                 // short LLM-emitted explanation
+}
+```
+
+Concurrency: `pLimit(8)` per-call, mirroring `DEFAULT_INTERPRET_CONCURRENCY` in the spreadsheet pipeline. A 50-column endpoint runs as 7 batches in parallel.
+
+Failure handling: any throw from the classifier — network error, timeout, malformed JSON, parse failure — is caught by the adapter. The probe completes with heuristic-only output and `degradation: "llm-failed"`. Logged at `error` level with the underlying cause; never surfaced as an HTTP failure to the user. Mirrors the spreadsheet stages' "stage falls back silently" discipline.
 
 ### Cache semantics
 
@@ -157,6 +196,48 @@ export class ProbeCache<T> {
 
 One singleton per process, instantiated in the adapter registry alongside `RestApiAdapter` and injected through its constructor.
 
+### `ColumnDefinitionClassifier` dep
+
+**File:** `apps/api/src/adapters/rest-api/classifier.types.ts` (new) — type-only definitions, imported by both the adapter and the wiring service.
+
+```ts
+import type { ColumnDataType } from "@portalai/core/models";
+
+export interface ApiClassifierCandidate {
+  sourceField: string;
+  inferredType: ColumnDataType;
+  samples: unknown[];                       // up to 5
+}
+
+export interface ColumnDefinitionCatalogEntry {
+  id: string;
+  label: string;
+  normalizedKey: string;
+  description: string | null;
+  type: ColumnDataType;
+}
+
+export interface ApiColumnClassification {
+  sourceField: string;                      // echoed for matching back
+  columnDefinitionId: string | null;
+  suggestedNormalizedKey: string;
+  suggestedSemanticType: ColumnDataType;
+  confidence: number;                       // 0..1
+  rationale: string;
+}
+
+export interface ColumnDefinitionClassifier {
+  classify(
+    candidates: ApiClassifierCandidate[],
+    catalog: ColumnDefinitionCatalogEntry[]
+  ): Promise<ApiColumnClassification[]>;
+}
+```
+
+**Default implementation:** `apps/api/src/adapters/rest-api/classifier.haiku.ts` (new) builds a prompt via `buildApiClassifierPrompt(candidates, catalog)`, calls `generateObject` with Haiku 4.5, parses the response into `ApiColumnClassification[]`. Concurrency cap `pLimit(8)` per call. Logged via `interpret.llm.call` shape for telemetry symmetry with the spreadsheet path.
+
+**Wiring:** the registry constructs `RestApiAdapter` with `deps.columnDefinitionClassifier: createDefaultClassifier(env)`. Tests construct it with a stub returning canned `ApiColumnClassification[]` so the spec's behavior is asserted without network.
+
 ### `RestApiAdapter.discoverColumns`
 
 Replaces the phase-1 stub. Signature unchanged (per `ConnectorAdapter`):
@@ -170,12 +251,19 @@ async discoverColumns(
   // 2. Cache lookup by connectorEntityId.
   // 3. Cache miss: fetchFirstPage(endpoint, instance, credentials).
   // 4. walkRecordsPath + slice to MAX_RECORDS_SCANNED.
-  // 5. inferColumns(records).
-  // 6. Cache { columns, samples }; return columns.
+  // 5. inferColumns(records) → heuristic columns + samples.
+  // 6. If deps.columnDefinitionClassifier is wired:
+  //    - Build ApiClassifierCandidate[] from heuristic output.
+  //    - Load org column_definitions catalog.
+  //    - try { classifications = await classifier.classify(candidates, catalog) }
+  //      catch { degradation = "llm-failed"; classifications = [] }
+  //    - Merge classifications by sourceField into a `suggestion` field per column.
+  //    Else: degradation = "llm-disabled".
+  // 7. Cache { columns, samples, suggestions, degradation }; return columns.
 }
 ```
 
-Sample values are cached alongside but `discoverColumns`'s return type only exposes `columns` (per the existing interface). The new `discoverColumnsWithSamples` method (or the route's response builder) reads from the cache to enrich the wire payload.
+Sample values + suggestions are cached alongside; `discoverColumns`'s return type still exposes only `columns` (per the existing interface). The new `discoverColumnsWithSamples` method (or the route's response builder) reads from the cache to enrich the wire payload.
 
 ### `fetchFirstPage` helper
 
@@ -210,13 +298,26 @@ Response shape (also Zod-validated):
 
 ```ts
 {
-  columns: DiscoveredColumn[];
+  columns: DiscoveredColumnWithSuggestion[]; // see below
   samples: Record<string, unknown[]>;        // keyed by column.key
   source: "cache" | "live";
   recordsScanned: number;                    // 0..MAX_RECORDS_SCANNED
   cachedAt?: number;                         // epoch ms; only when source === "cache"
+  degradation: "llm-failed" | "llm-disabled" | null;
 }
+
+type DiscoveredColumnWithSuggestion = DiscoveredColumn & {
+  suggestion?: {
+    columnDefinitionId: string | null;
+    normalizedKey: string;                   // suggested
+    semanticType: ColumnDataType;            // suggested (may equal or refine `type`)
+    confidence: number;
+    rationale: string;
+  };
+};
 ```
+
+When `degradation === null` and the LLM returned classifications, every column carries a `suggestion`. When `degradation === "llm-disabled"` or `"llm-failed"`, no `suggestion` fields are present and the UI renders the heuristic columns with no Adopt affordance + the degradation banner described in scope item 8.
 
 ### Frontend `ProbeReviewStep`
 
@@ -253,6 +354,10 @@ Container state holds per-endpoint draft column lists; commit-time it materializ
 | Probe trips the 50 MB cap | `REST_API_RESPONSE_TOO_LARGE` | "Endpoint returned > 50 MB on probe. Configure pagination with a smaller page size, or wait for streaming support (#72)." |
 | User clicks Re-probe twice rapidly | Both requests fire (no dedup); the later wins (UI shows the later result) | (No surfaced copy; the rapid-click race is acceptable.) |
 | Endpoint config invalid (no pagination, no recordsPath) | Per phase 1/3 validation; the probe route 400s | "Endpoint config is invalid — fix it in the Endpoints step." |
+| LLM classifier throws / times out / returns malformed JSON | `degradation: "llm-failed"`; heuristic-only columns; banner rendered | "AI suggestions unavailable — connection to the suggestion service failed. You can still configure columns manually below." |
+| LLM classifier dep not wired (e.g., env missing config) | `degradation: "llm-disabled"`; no banner — silent | (No copy; absence of suggestions is the only signal.) |
+| LLM returns classifications for a sourceField that wasn't in the candidate list | Unknown classification dropped; heuristic column has no `suggestion` | (No copy; one-off LLM hallucination.) |
+| LLM returns confidence < threshold (e.g., 0.3) | Suggestion still rendered, Adopt button greyed with tooltip "Low-confidence suggestion" | (Threshold is a constant in the adapter; not configurable from the UI.) |
 
 ---
 
@@ -268,6 +373,6 @@ Container state holds per-endpoint draft column lists; commit-time it materializ
 
 ## Next step
 
-Phase 4 plan: `docs/API_CONNECTOR_PHASE_4.plan.md`. Slicing target: ~7 slices — `inferColumns` first (leaf, biggest test surface), `ProbeCache` second (leaf), `fetchFirstPage` helper third (leaf — also retroactively refactors `testConnection`), `discoverColumns` adapter implementation fourth, new route + SDK hook fifth, frontend `ProbeReviewStep` + sub-components sixth, end-to-end test + workflow swap-in seventh.
+Phase 4 plan: `docs/API_CONNECTOR_PHASE_4.plan.md`. Slicing target: ~8 slices — `inferColumns` first (heuristic, biggest test surface), `ProbeCache` second, `fetchFirstPage` helper third (leaf — also retroactively refactors `testConnection`), `ColumnDefinitionClassifier` dep + Haiku default + prompt builder fourth (leaf), `discoverColumns` adapter implementation fifth (consumes everything above), new route + SDK hook sixth, frontend `ProbeReviewStep` + sub-components seventh, end-to-end test + workflow swap-in eighth.
 
 After phase 4 lands, PR #71 is ready-for-review and the feature ships when merged. No phase 5.
