@@ -31,6 +31,7 @@ import { organizationToolpacks } from "./organization-toolpacks.table.js";
 import { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
 import { fileUploads } from "./file-uploads.table.js";
 import { wideTableColumns } from "./wide-table-columns.table.js";
+import { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -373,3 +374,15 @@ export const WideTableColumnInsertSchema = createInsertSchema(wideTableColumns);
 /** Inferred types */
 export type WideTableColumnSelect = z.infer<typeof WideTableColumnSelectSchema>;
 export type WideTableColumnInsert = z.infer<typeof WideTableColumnInsertSchema>;
+
+// ── API Endpoint Configs ──────────────────────────────────────────────
+
+/** Zod schema for an `api_endpoint_configs` row returned by SELECT. */
+export const ApiEndpointConfigSelectSchema = createSelectSchema(apiEndpointConfigs);
+
+/** Zod schema for inserting into `api_endpoint_configs`. */
+export const ApiEndpointConfigInsertSchema = createInsertSchema(apiEndpointConfigs);
+
+/** Inferred types */
+export type ApiEndpointConfigSelect = z.infer<typeof ApiEndpointConfigSelectSchema>;
+export type ApiEndpointConfigInsert = z.infer<typeof ApiEndpointConfigInsertSchema>;

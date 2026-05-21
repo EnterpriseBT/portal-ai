@@ -299,4 +299,26 @@ export enum ApiCode {
   PORTAL_SQL_FORBIDDEN = "PORTAL_SQL_FORBIDDEN",
   /** Postgres' `statement_timeout` fired on a portal sql_query. */
   PORTAL_SQL_TIMEOUT = "PORTAL_SQL_TIMEOUT",
+
+  // REST API Connector (Phase 1)
+  /** Network error, DNS failure, timeout, or non-2xx response during a probe / sync fetch. */
+  REST_API_FETCH_FAILED = "REST_API_FETCH_FAILED",
+  /** Response body isn't valid JSON. */
+  REST_API_INVALID_JSON = "REST_API_INVALID_JSON",
+  /** Walking `recordsPath` returned `undefined`. */
+  REST_API_RECORDS_PATH_NOT_FOUND = "REST_API_RECORDS_PATH_NOT_FOUND",
+  /** Walking `recordsPath` returned a non-array value. */
+  REST_API_RECORDS_PATH_NOT_ARRAY = "REST_API_RECORDS_PATH_NOT_ARRAY",
+  /** Endpoint route lookup miss (entity not configured on this instance). */
+  REST_API_ENDPOINT_NOT_FOUND = "REST_API_ENDPOINT_NOT_FOUND",
+  /** `assertSyncEligibility` short-circuit — instance has no endpoints. */
+  REST_API_NO_ENDPOINTS_CONFIGURED = "REST_API_NO_ENDPOINTS_CONFIGURED",
+  /** Zod validation failure on endpoint config payload. */
+  REST_API_INVALID_CONFIG = "REST_API_INVALID_CONFIG",
+  /**
+   * Response body exceeded `MAX_RESPONSE_BYTES` (default 50 MB). Either
+   * `Content-Length` was already too high (fast path) or the streaming byte
+   * counter tripped (slow path). Tracked in #72 for streaming-parse v2.
+   */
+  REST_API_RESPONSE_TOO_LARGE = "REST_API_RESPONSE_TOO_LARGE",
 }
