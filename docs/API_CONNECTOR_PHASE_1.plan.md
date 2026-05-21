@@ -86,7 +86,7 @@ The smallest diff. New table, new repo, seven new error-code constants. Nothing 
    - `updateConfig(connectorEntityId, patch, actor, client?)` — updates only the config columns.
    - `softDeleteWithEntity(connectorEntityId, actor, client?)` — soft-deletes both rows in a transaction.
 
-5. **Wire the Zod / type-checks / repo registration / error codes.** Standard plumbing. The seven new `ApiCode` entries (`REST_API_FETCH_FAILED`, `REST_API_INVALID_JSON`, `REST_API_RECORDS_PATH_NOT_FOUND`, `REST_API_RECORDS_PATH_NOT_ARRAY`, `REST_API_ENDPOINT_NOT_FOUND`, `REST_API_NO_ENDPOINTS_CONFIGURED`, `REST_API_INVALID_CONFIG`).
+5. **Wire the Zod / type-checks / repo registration / error codes.** Standard plumbing. The eight new `ApiCode` entries (`REST_API_FETCH_FAILED`, `REST_API_INVALID_JSON`, `REST_API_RECORDS_PATH_NOT_FOUND`, `REST_API_RECORDS_PATH_NOT_ARRAY`, `REST_API_ENDPOINT_NOT_FOUND`, `REST_API_NO_ENDPOINTS_CONFIGURED`, `REST_API_INVALID_CONFIG`, `REST_API_RESPONSE_TOO_LARGE`).
 
 6. **Run focused tests.** `cd apps/api && npm run test:integration -- api-endpoints`. All 9 cases green.
 
@@ -155,28 +155,31 @@ The behavioral heart of the phase. Adapter is fully implemented and unit-tested 
    8. `syncInstance` raises `REST_API_RECORDS_PATH_NOT_ARRAY` when the path resolves to a non-array.
    9. `syncInstance` raises `REST_API_INVALID_JSON` when response body isn't parseable.
    10. `syncInstance` raises `REST_API_FETCH_FAILED` on non-2xx response or network error.
-   11. `syncInstance` with `idField` set: each record's `record[idField]` becomes its `sourceId`; second sync with one record dropped reports `deleted: 1`.
-   12. `syncInstance` with `idField` unset: every sync generates synthetic ids (`api:<runStartedAt>:<index>`); second sync reports `created: N, deleted: N_prev`.
-   13. `syncInstance` returns the `{ created, updated, unchanged, deleted }` tally.
-   14. `queryRows` delegates to the shared entity-records reader and never hits the network.
+   11. `syncInstance` raises `REST_API_RESPONSE_TOO_LARGE` when the mock response advertises `Content-Length` > 50 MB (fast path).
+   12. `syncInstance` raises `REST_API_RESPONSE_TOO_LARGE` when the mock streams more than 50 MB across chunks without a `Content-Length` (slow path).
+   13. `syncInstance` with `idField` set: each record's `record[idField]` becomes its `sourceId`; second sync with one record dropped reports `deleted: 1`.
+   14. `syncInstance` with `idField` unset: every sync generates synthetic ids (`api:<runStartedAt>:<index>`); second sync reports `created: N, deleted: N_prev`.
+   15. `syncInstance` returns the `{ created, updated, unchanged, deleted }` tally.
+   16. `queryRows` delegates to the shared entity-records reader and never hits the network.
    Run; all fail (adapter doesn't exist).
 
 2. **Author `rest-api.fetch.util.ts`.** A function `fetchJson(url, init): Promise<{ status, body }>` that:
    - Throws `ApiError("REST_API_FETCH_FAILED", ..., { status, url })` on `!response.ok`.
-   - Throws `ApiError("REST_API_INVALID_JSON", ..., { url })` if `await response.text()` doesn't parse as JSON.
+   - Enforces `MAX_RESPONSE_BYTES` (module-level constant, default 50 * 1024 * 1024). If `Content-Length` is set and exceeds the cap, throw `REST_API_RESPONSE_TOO_LARGE` immediately with `details: { bytesObserved: contentLength, limit }` (fast path). Otherwise read the body via a streaming reader (e.g. `response.body.getReader()` or `for await (const chunk of response.body)`), accumulate bytes, and abort + throw the same error as soon as the running total exceeds the cap (slow path for responses without `Content-Length`).
+   - Throws `ApiError("REST_API_INVALID_JSON", ..., { url })` if the accumulated text doesn't parse as JSON.
    - Returns `{ status, body }` otherwise.
-   Phase 1 has no retry / backoff (phase 3). The wrapper exists primarily so the adapter test can inject a mock.
+   Phase 1 has no retry / backoff (phase 3). The cap exists to convert OOM into a clear configuration error; streaming JSON parse to lift the cap is tracked in [#72](https://github.com/EnterpriseBT/portal-ai/issues/72).
 
 3. **Author the adapter.** Per the spec's pseudocode. Key helpers:
    - `walkRecordsPath(body, path): unknown` — dotted lookup. Empty string returns `body`. Throws `REST_API_RECORDS_PATH_NOT_FOUND` on miss.
    - `buildUrl(baseUrl, path, queryParams?): string` — joins baseUrl + path; appends `queryParams` as `URLSearchParams`. Trim trailing slash on baseUrl; ensure leading slash on path; never double-slash.
    - `deriveSourceId(record, idField | null, runStartedAt, index): string` — `record[idField]` (coerced to string) or `api:${runStartedAt}:${index}`.
 
-4. **Run focused tests.** `cd apps/api && npm run test:unit -- rest-api.adapter`. All 14 cases green.
+4. **Run focused tests.** `cd apps/api && npm run test:unit -- rest-api.adapter`. All 16 cases green.
 
 5. **Lint + type-check.** Clean.
 
-**Done when:** cases 1–14 pass; `RestApiAdapter` compiles in isolation; no other file imports it yet.
+**Done when:** cases 1–16 pass; `RestApiAdapter` compiles in isolation; no other file imports it yet.
 
 ---
 

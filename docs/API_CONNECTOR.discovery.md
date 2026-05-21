@@ -120,6 +120,7 @@ New code surface: one adapter + one auth-helper module + one workflow + one `api
 - **Webhook-driven sync.** v1 is poll-only via the existing `connector_sync` job. Webhooks would mean a new `api_webhook_received` job type, an HMAC-verification surface, and inbound HTTP routing — large enough to be its own ticket.
 - **Push capability** (writing records back to the API). Out of scope; the connector ships `read + sync` only.
 - **Schema-drift UI** specifically for API endpoints. The hybrid probe (decision 2) covers it on the way in; re-probe on drift is a follow-up.
+- **Streaming JSON parse for huge unpaginated responses.** v1 caps single-response payloads at 50 MB via `MAX_RESPONSE_BYTES` and fast-fails with `REST_API_RESPONSE_TOO_LARGE`, nudging users toward pagination. Streaming parse to lift the cap is tracked separately as [#72](https://github.com/EnterpriseBT/portal-ai/issues/72) — borrows the row-async pattern from the spreadsheet parser (see `docs/SPREADSHEET_PARSER_ROW_ASYNC.discovery.md`).
 - **GraphQL / gRPC / SOAP** endpoints. v1 is JSON REST only.
 
 ## Next step

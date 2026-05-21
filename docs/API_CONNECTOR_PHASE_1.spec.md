@@ -28,9 +28,10 @@ After this phase: `seed_connector_definitions` has a `rest-api` row; `api_endpoi
 7. **`api_endpoints` repository** (`apps/api/src/db/repositories/api-endpoints.repository.ts`) — wraps the joined read of `connector_entities` + `api_endpoint_configs`. Phase-1 surface: `findByInstance`, `findByEntityId`, `createWithEntity`, `updateConfig`, `softDeleteWithEntity`.
 8. **Frontend workflow** (`apps/web/src/workflows/RestApiConnector/`) — four steps mirroring the existing connector pattern: (1) name + base URL + auth dropdown (only `none` enabled), (2) add endpoints (path / method / recordsPath / idField), (3) per-endpoint field mappings (links into the existing `FieldMappingsTable` module — no new component), (4) review + commit. No probe step in phase 1; field mappings are user-declared.
 9. **Frontend SDK module** (`apps/web/src/api/api-connector.api.ts` + `apps/web/src/api/sdk.ts` edits) — `sdk.apiConnector.endpoints.list / get / create / update / delete`, all built on `useAuthQuery` / `useAuthMutation` per the existing pattern.
-10. **New `ApiCode` entries** — `REST_API_FETCH_FAILED`, `REST_API_INVALID_JSON`, `REST_API_RECORDS_PATH_NOT_FOUND`, `REST_API_RECORDS_PATH_NOT_ARRAY`, `REST_API_ENDPOINT_NOT_FOUND`, `REST_API_NO_ENDPOINTS_CONFIGURED`.
-11. **One Drizzle migration**, named `api_connector_phase_1`, that creates `api_endpoint_configs`.
-12. **Tests** — unit tests for the adapter (mock the network fetch), integration tests for the repository + routes, a workflow component test for the four-step UI.
+10. **`MAX_RESPONSE_BYTES` cap in `fetchJson`** (default 50 MB) — guards against OOM on unpaginated huge JSON blobs. Checked against `Content-Length` when present (fast path) and tracked against bytes received when absent (slow path for chunked responses). Above the cap, throws `REST_API_RESPONSE_TOO_LARGE`. Streaming JSON parse for genuinely-huge single responses is tracked separately as [#72](https://github.com/EnterpriseBT/portal-ai/issues/72).
+11. **New `ApiCode` entries** — `REST_API_FETCH_FAILED`, `REST_API_INVALID_JSON`, `REST_API_RECORDS_PATH_NOT_FOUND`, `REST_API_RECORDS_PATH_NOT_ARRAY`, `REST_API_ENDPOINT_NOT_FOUND`, `REST_API_NO_ENDPOINTS_CONFIGURED`, `REST_API_RESPONSE_TOO_LARGE`.
+12. **One Drizzle migration**, named `api_connector_phase_1`, that creates `api_endpoint_configs`.
+13. **Tests** — unit tests for the adapter (mock the network fetch), integration tests for the repository + routes, a workflow component test for the four-step UI.
 
 ### Out of scope
 
@@ -282,6 +283,7 @@ All routes validate `instance.connectorDefinition.slug === "rest-api"` and 404 o
 | `REST_API_ENDPOINT_NOT_FOUND` | Endpoint route lookup miss. 404. |
 | `REST_API_NO_ENDPOINTS_CONFIGURED` | `assertSyncEligibility` short-circuit. 409. |
 | `REST_API_INVALID_CONFIG` | Zod validation failure on endpoint config payload. 400. |
+| `REST_API_RESPONSE_TOO_LARGE` | Response body exceeded `MAX_RESPONSE_BYTES` (default 50 MB). Either `Content-Length` was already too high (fast path) or the streaming byte counter tripped (slow path). 502. `details.bytesObserved` carries the count. Tracked in [#72](https://github.com/EnterpriseBT/portal-ai/issues/72) for the streaming-parse v2. |
 
 ### Frontend SDK additions
 
@@ -318,6 +320,7 @@ Re-exported through `apps/web/src/api/sdk.ts` as `sdk.apiConnector.endpoints.{li
 | `recordsPath` lookup misses | `REST_API_RECORDS_PATH_NOT_FOUND` | "Couldn't find records at `<path>`. Try a different recordsPath." |
 | `recordsPath` resolves to a non-array | `REST_API_RECORDS_PATH_NOT_ARRAY` | "`<path>` resolved to a `<typeof>`. Records must be an array." |
 | User triggers sync on an instance with no endpoints | `REST_API_NO_ENDPOINTS_CONFIGURED` | "Add at least one endpoint before syncing." |
+| Response body exceeds 50 MB | `REST_API_RESPONSE_TOO_LARGE` | "Response exceeded 50 MB. Enable pagination or reduce page size. (Streaming support is tracked in #72.)" |
 | User PATCHes/DELETEs an endpoint mid-sync | `ENTITY_LOCKED_BY_JOB` (existing) | Standard locked-entity copy. |
 
 All failures bubble through `next(new ApiError(code, ..., details))` per the API style guide.
