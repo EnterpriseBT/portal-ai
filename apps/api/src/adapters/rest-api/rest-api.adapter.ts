@@ -12,7 +12,11 @@
  * into `discoverColumns`.
  */
 
-import type { ConnectorInstance } from "@portalai/core/models";
+import type {
+  ApiAuthConfig,
+  ApiCredentials,
+  ConnectorInstance,
+} from "@portalai/core/models";
 
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import {
@@ -27,6 +31,8 @@ import { ApiError } from "../../services/http.service.js";
 import { DbService } from "../../services/db.service.js";
 import { importModeQueryRows } from "../../utils/adapter.util.js";
 import { createLogger } from "../../utils/logger.util.js";
+import { applyAuth } from "./auth.util.js";
+import { loadCredentials } from "./credentials.util.js";
 import { fetchJson, type FetchJsonResult } from "./fetch.util.js";
 import type { ApiEndpoint } from "../../db/repositories/api-endpoints.repository.js";
 import { SystemUtilities } from "../../utils/system.util.js";
@@ -143,8 +149,17 @@ async function assertSyncEligibility(
       reason: "Add at least one endpoint before syncing",
     };
   }
-  // Phase 1 ships `auth.mode: "none"` only — credentials check is a
-  // no-op until phase 2 widens the auth modes.
+  const auth = readAuth(instance);
+  if (auth.mode !== "none") {
+    const credentials = loadCredentials(instance);
+    if (credentials === null || credentials.mode === "none") {
+      return {
+        ok: false,
+        reasonCode: ApiCode.REST_API_MISSING_CREDENTIALS,
+        reason: `Add ${auth.mode} credentials before syncing`,
+      };
+    }
+  }
   return { ok: true };
 }
 
@@ -168,6 +183,8 @@ async function syncInstance(
   }
 
   const baseUrl = readBaseUrl(instance);
+  const auth = readAuth(instance);
+  const credentials = loadCredentials(instance);
   let totalCreated = 0;
   let totalUpdated = 0;
   let totalUnchanged = 0;
@@ -181,6 +198,8 @@ async function syncInstance(
       endpoint,
       instance,
       baseUrl,
+      auth,
+      credentials,
       userId,
       runStartedAt
     );
@@ -228,13 +247,29 @@ async function syncOneEndpoint(
   endpoint: ApiEndpoint,
   instance: ConnectorInstance,
   baseUrl: string,
+  auth: ApiAuthConfig,
+  credentials: ApiCredentials | null,
   userId: string,
   runStartedAt: number
 ): Promise<{ created: number; updated: number; unchanged: number; deleted: number }> {
-  const url = buildUrl(baseUrl, endpoint.config.path);
-  const init: RequestInit = { method: endpoint.config.method };
+  const baseRequestUrl = buildUrl(
+    baseUrl,
+    endpoint.config.path,
+    endpoint.config.queryParams ?? undefined
+  );
+  const baseInit: RequestInit = {
+    method: endpoint.config.method,
+    ...(endpoint.config.headers ? { headers: endpoint.config.headers } : {}),
+  };
 
-  const page: FetchJsonResult = await fetchJson(url, init);
+  const { url, init } = applyAuth(baseRequestUrl, baseInit, auth, credentials);
+
+  let page: FetchJsonResult;
+  try {
+    page = await fetchJson(url, init);
+  } catch (err) {
+    throw remapAuthFailure(err, url);
+  }
   const records = assertRecordsArray(
     walkRecordsPath(page.body, endpoint.config.recordsPath ?? ""),
     endpoint.config.recordsPath ?? ""
@@ -319,6 +354,34 @@ function readBaseUrl(instance: ConnectorInstance): string {
     );
   }
   return baseUrl;
+}
+
+function readAuth(instance: ConnectorInstance): ApiAuthConfig {
+  const cfg = instance.config as { auth?: ApiAuthConfig } | null;
+  // Defensive default — older instances created before phase 1 may have
+  // a null config; treat as `none`. Phase-1 instances always carry a
+  // populated auth block.
+  return cfg?.auth ?? { mode: "none" };
+}
+
+/**
+ * Convert a 401/403 from upstream into REST_API_AUTH_FAILED so the
+ * frontend can distinguish "credentials are wrong" from "endpoint
+ * misbehaved." All other fetch failures pass through unchanged.
+ */
+function remapAuthFailure(err: unknown, url: string): unknown {
+  if (!(err instanceof ApiError)) return err;
+  if (err.code !== ApiCode.REST_API_FETCH_FAILED) return err;
+  const status = (err.details as { status?: number } | undefined)?.status;
+  if (status === 401 || status === 403) {
+    return new ApiError(
+      502,
+      ApiCode.REST_API_AUTH_FAILED,
+      `Upstream rejected credentials (HTTP ${status})`,
+      { url, status }
+    );
+  }
+  return err;
 }
 
 function checksumRecord(record: Record<string, unknown>): string {

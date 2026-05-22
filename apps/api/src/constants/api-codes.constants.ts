@@ -335,6 +335,13 @@ export enum ApiCode {
    */
   REST_API_AUTH_FAILED = "REST_API_AUTH_FAILED",
   /**
+   * `assertSyncEligibility` rejects a sync when the instance's
+   * `config.auth.mode` is non-`none` but credentials are missing,
+   * empty, or fail Zod parsing. Surfaced as 409 from the eligibility
+   * gate (route layer), not from the adapter itself.
+   */
+  REST_API_MISSING_CREDENTIALS = "REST_API_MISSING_CREDENTIALS",
+  /**
    * Org-wide entity-key uniqueness violated. Connector entity keys must
    * be unique per organization so `field_mapping.refEntityKey` resolves
    * unambiguously.

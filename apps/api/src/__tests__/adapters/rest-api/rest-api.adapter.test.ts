@@ -1,4 +1,4 @@
-import { jest, describe, it, expect, beforeEach } from "@jest/globals";
+import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 
@@ -16,6 +16,8 @@ const findByInstanceMock =
           method: "GET" | "POST";
           recordsPath: string;
           idField: string | null;
+          headers?: Record<string, string> | null;
+          queryParams?: Record<string, string> | null;
         };
       }>
     >
@@ -244,5 +246,244 @@ describe("restApiAdapter.assertSyncEligibility", () => {
     ]);
     const result = await restApiAdapter.assertSyncEligibility!(INSTANCE);
     expect(result).toEqual({ ok: true });
+  });
+
+  it("returns ok: false REST_API_MISSING_CREDENTIALS for bearer mode with no credentials", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "users", label: "Users" },
+        config: { path: "/users", method: "GET", recordsPath: "", idField: "id" },
+      },
+    ]);
+    const result = await restApiAdapter.assertSyncEligibility!({
+      ...INSTANCE,
+      config: { baseUrl: "https://api.example.com", auth: { mode: "bearer" } },
+      credentials: null,
+    });
+    expect(result).toEqual({
+      ok: false,
+      reasonCode: ApiCode.REST_API_MISSING_CREDENTIALS,
+      reason: expect.any(String),
+    });
+  });
+
+  it("returns ok: true for bearer mode with a populated token", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "users", label: "Users" },
+        config: { path: "/users", method: "GET", recordsPath: "", idField: "id" },
+      },
+    ]);
+    const result = await restApiAdapter.assertSyncEligibility!({
+      ...INSTANCE,
+      config: { baseUrl: "https://api.example.com", auth: { mode: "bearer" } },
+      credentials: { mode: "bearer", token: "tok" } as never,
+    });
+    expect(result).toEqual({ ok: true });
+  });
+});
+
+// ── syncInstance auth wiring ─────────────────────────────────────────
+
+describe("restApiAdapter.syncInstance — auth", () => {
+  let originalFetch: typeof globalThis.fetch;
+  let fetchMock: jest.Mock<typeof globalThis.fetch>;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    fetchMock = jest.fn<typeof globalThis.fetch>();
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+
+    findByInstanceMock.mockResolvedValue([
+      {
+        entity: { id: "e1", key: "users", label: "Users" },
+        config: { path: "/users", method: "GET", recordsPath: "", idField: "id" },
+      },
+    ]);
+    findBySourceIdsMock.mockResolvedValue([]);
+    upsertBySourceIdMock.mockResolvedValue(undefined);
+    bulkUpdateSyncedAtMock.mockResolvedValue(0);
+    softDeleteBeforeWatermarkMock.mockResolvedValue([]);
+    updateInstanceMock.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const okBody = () =>
+    new Response(JSON.stringify([{ id: "u1" }]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+  it("applies apiKey/header auth to every outbound request", async () => {
+    fetchMock.mockResolvedValueOnce(okBody());
+
+    await restApiAdapter.syncInstance!(
+      {
+        ...INSTANCE,
+        config: {
+          baseUrl: "https://api.example.com",
+          auth: { mode: "apiKey", keyName: "X-API-Key", placement: "header" },
+        },
+        credentials: { mode: "apiKey", value: "secret" } as never,
+      },
+      "u1"
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect((init?.headers as Record<string, string>)["X-API-Key"]).toBe("secret");
+  });
+
+  it("applies apiKey/query auth by appending the param to the url", async () => {
+    fetchMock.mockResolvedValueOnce(okBody());
+
+    await restApiAdapter.syncInstance!(
+      {
+        ...INSTANCE,
+        config: {
+          baseUrl: "https://api.example.com",
+          auth: { mode: "apiKey", keyName: "api_key", placement: "query" },
+        },
+        credentials: { mode: "apiKey", value: "abc" } as never,
+      },
+      "u1"
+    );
+
+    const [url] = fetchMock.mock.calls[0]!;
+    expect(new URL(url as string).searchParams.get("api_key")).toBe("abc");
+  });
+
+  it("applies bearer auth as Authorization: Bearer <token>", async () => {
+    fetchMock.mockResolvedValueOnce(okBody());
+
+    await restApiAdapter.syncInstance!(
+      {
+        ...INSTANCE,
+        config: { baseUrl: "https://api.example.com", auth: { mode: "bearer" } },
+        credentials: { mode: "bearer", token: "tok" } as never,
+      },
+      "u1"
+    );
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect((init?.headers as Record<string, string>).Authorization).toBe(
+      "Bearer tok"
+    );
+  });
+
+  it("applies basic auth as Authorization: Basic <base64(user:pass)>", async () => {
+    fetchMock.mockResolvedValueOnce(okBody());
+
+    await restApiAdapter.syncInstance!(
+      {
+        ...INSTANCE,
+        config: { baseUrl: "https://api.example.com", auth: { mode: "basic" } },
+        credentials: {
+          mode: "basic",
+          username: "u",
+          password: "p",
+        } as never,
+      },
+      "u1"
+    );
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    const expected = "Basic " + Buffer.from("u:p", "utf8").toString("base64");
+    expect((init?.headers as Record<string, string>).Authorization).toBe(
+      expected
+    );
+  });
+
+  it("remaps a 401 from upstream to REST_API_AUTH_FAILED", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response("unauthorized", {
+        status: 401,
+        headers: { "content-type": "text/plain" },
+      })
+    );
+
+    await expect(
+      restApiAdapter.syncInstance!(
+        {
+          ...INSTANCE,
+          config: { baseUrl: "https://api.example.com", auth: { mode: "bearer" } },
+          credentials: { mode: "bearer", token: "tok" } as never,
+        },
+        "u1"
+      )
+    ).rejects.toMatchObject({
+      code: ApiCode.REST_API_AUTH_FAILED,
+      details: expect.objectContaining({ status: 401 }),
+    });
+  });
+
+  it("remaps a 403 from upstream to REST_API_AUTH_FAILED", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response("forbidden", {
+        status: 403,
+        headers: { "content-type": "text/plain" },
+      })
+    );
+
+    await expect(
+      restApiAdapter.syncInstance!(
+        {
+          ...INSTANCE,
+          config: { baseUrl: "https://api.example.com", auth: { mode: "bearer" } },
+          credentials: { mode: "bearer", token: "tok" } as never,
+        },
+        "u1"
+      )
+    ).rejects.toMatchObject({
+      code: ApiCode.REST_API_AUTH_FAILED,
+      details: expect.objectContaining({ status: 403 }),
+    });
+  });
+
+  it("leaves non-auth fetch failures unchanged (500 stays REST_API_FETCH_FAILED)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response("oops", {
+        status: 500,
+        headers: { "content-type": "text/plain" },
+      })
+    );
+
+    await expect(
+      restApiAdapter.syncInstance!(
+        {
+          ...INSTANCE,
+          config: { baseUrl: "https://api.example.com", auth: { mode: "bearer" } },
+          credentials: { mode: "bearer", token: "tok" } as never,
+        },
+        "u1"
+      )
+    ).rejects.toMatchObject({
+      code: ApiCode.REST_API_FETCH_FAILED,
+    });
+  });
+
+  it("throws REST_API_AUTH_FAILED on config / credentials mode mismatch", async () => {
+    // No fetch should fire — applyAuth rejects before the request.
+    fetchMock.mockResolvedValue(okBody());
+
+    await expect(
+      restApiAdapter.syncInstance!(
+        {
+          ...INSTANCE,
+          config: { baseUrl: "https://api.example.com", auth: { mode: "bearer" } },
+          credentials: { mode: "apiKey", value: "x" } as never,
+        },
+        "u1"
+      )
+    ).rejects.toMatchObject({
+      code: ApiCode.REST_API_AUTH_FAILED,
+      details: expect.objectContaining({
+        mismatch: { configMode: "bearer", credentialsMode: "apiKey" },
+      }),
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
