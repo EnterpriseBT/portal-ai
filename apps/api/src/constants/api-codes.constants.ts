@@ -321,4 +321,12 @@ export enum ApiCode {
    * counter tripped (slow path). Tracked in #72 for streaming-parse v2.
    */
   REST_API_RESPONSE_TOO_LARGE = "REST_API_RESPONSE_TOO_LARGE",
+  /** Unhandled error in the rest-api endpoints router — 500 fallback. */
+  REST_API_OPERATION_FAILED = "REST_API_OPERATION_FAILED",
+  /**
+   * Org-wide entity-key uniqueness violated. Connector entity keys must
+   * be unique per organization so `field_mapping.refEntityKey` resolves
+   * unambiguously.
+   */
+  CONNECTOR_ENTITY_KEY_CONFLICT = "CONNECTOR_ENTITY_KEY_CONFLICT",
 }
