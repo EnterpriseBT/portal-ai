@@ -26,6 +26,8 @@ import {
   EntityDataResult,
   SyncEligibility,
   SyncInstanceResult,
+  TestConnectionParams,
+  TestConnectionResult,
 } from "../adapter.interface.js";
 import { ApiError } from "../../services/http.service.js";
 import { DbService } from "../../services/db.service.js";
@@ -406,6 +408,83 @@ function stableStringify(v: unknown): string {
     .join(",")}}`;
 }
 
+/**
+ * Per-endpoint dry run — exercises auth + reachability + recordsPath
+ * shape against a single configured endpoint and returns the first 5
+ * records as a preview. Read-only: no `entity_records` writes, no
+ * `connector_sync` job, no cache invalidation.
+ *
+ * Returns the structured `TestConnectionResult` for both success and
+ * failure. ApiErrors raised in the pipeline (fetch, auth, parse) are
+ * caught and projected into `{ ok: false, code, message, details? }`;
+ * any other exception bubbles up to the route's generic handler.
+ */
+async function testConnection(
+  instance: ConnectorInstance,
+  params: TestConnectionParams
+): Promise<TestConnectionResult> {
+  const endpointEntityId = params.endpointEntityId;
+  if (typeof endpointEntityId !== "string" || endpointEntityId.length === 0) {
+    return {
+      ok: false,
+      code: ApiCode.REST_API_ENDPOINT_NOT_FOUND,
+      message: "endpointEntityId is required",
+    };
+  }
+
+  const endpoint = await DbService.repository.apiEndpoints.findByEntityId(
+    endpointEntityId
+  );
+  if (!endpoint || endpoint.entity.connectorInstanceId !== instance.id) {
+    return {
+      ok: false,
+      code: ApiCode.REST_API_ENDPOINT_NOT_FOUND,
+      message: `Endpoint ${endpointEntityId} not configured on instance ${instance.id}`,
+    };
+  }
+
+  try {
+    const baseUrl = readBaseUrl(instance);
+    const auth = readAuth(instance);
+    const credentials = loadCredentials(instance);
+
+    const baseRequestUrl = buildUrl(
+      baseUrl,
+      endpoint.config.path,
+      endpoint.config.queryParams ?? undefined
+    );
+    const baseInit: RequestInit = {
+      method: endpoint.config.method,
+      ...(endpoint.config.headers ? { headers: endpoint.config.headers } : {}),
+    };
+    const { url, init } = applyAuth(baseRequestUrl, baseInit, auth, credentials);
+
+    let page: FetchJsonResult;
+    try {
+      page = await fetchJson(url, init);
+    } catch (err) {
+      throw remapAuthFailure(err, url);
+    }
+
+    const records = assertRecordsArray(
+      walkRecordsPath(page.body, endpoint.config.recordsPath ?? ""),
+      endpoint.config.recordsPath ?? ""
+    );
+
+    return { ok: true, sample: records.slice(0, 5) };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      return {
+        ok: false,
+        code: err.code,
+        message: err.message,
+        details: err.details,
+      };
+    }
+    throw err;
+  }
+}
+
 export const restApiAdapter: ConnectorAdapter = {
   queryRows: (instance: ConnectorInstance, query: EntityDataQuery):
     Promise<EntityDataResult> => importModeQueryRows(instance, query),
@@ -416,4 +495,5 @@ export const restApiAdapter: ConnectorAdapter = {
   },
   assertSyncEligibility,
   syncInstance,
+  testConnection,
 };

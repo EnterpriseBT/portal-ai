@@ -74,6 +74,30 @@ export interface DiscoveredColumn {
   required: boolean;
 }
 
+/**
+ * Free-shape parameters for `ConnectorAdapter.testConnection`. The
+ * shared route forwards `req.body` verbatim — each adapter reads the
+ * keys it cares about (the REST API adapter reads `endpointEntityId`).
+ */
+export interface TestConnectionParams {
+  endpointEntityId?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Outcome of `ConnectorAdapter.testConnection`. The route returns this
+ * payload as the 200 body regardless of `ok` — `ok: false` represents a
+ * successful invocation of the check that itself reported failure.
+ */
+export type TestConnectionResult =
+  | { ok: true; sample: unknown[] }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      details?: Record<string, unknown>;
+    };
+
 // ── Adapter interface ───────────────────────────────────────────────
 
 export interface ConnectorAdapter {
@@ -146,4 +170,21 @@ export interface ConnectorAdapter {
   assertSyncEligibility?(
     instance: ConnectorInstance
   ): Promise<SyncEligibility>;
+
+  /**
+   * Optional adapter-specific connectivity check. Called by the shared
+   * `POST /api/connector-instances/:id/test-connection` route to let
+   * users validate a config before persisting it. Pure read — never
+   * enqueues a job or mutates state. Adapters that don't implement it
+   * cause the route to 404 with `TEST_CONNECTION_NOT_SUPPORTED`.
+   *
+   * The REST API adapter exercises auth + endpoint reachability +
+   * recordsPath shape in one round-trip and returns the first 5
+   * records as a preview. Other adapters can implement different
+   * semantics so long as they conform to `TestConnectionResult`.
+   */
+  testConnection?(
+    instance: ConnectorInstance,
+    params: TestConnectionParams
+  ): Promise<TestConnectionResult>;
 }

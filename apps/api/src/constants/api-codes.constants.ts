@@ -342,6 +342,13 @@ export enum ApiCode {
    */
   REST_API_MISSING_CREDENTIALS = "REST_API_MISSING_CREDENTIALS",
   /**
+   * Shared `POST /api/connector-instances/:id/test-connection` route
+   * resolved an adapter that doesn't implement `testConnection`. 404
+   * — lives outside the `REST_API_*` namespace because it's a generic
+   * route concern that any adapter can opt into.
+   */
+  TEST_CONNECTION_NOT_SUPPORTED = "TEST_CONNECTION_NOT_SUPPORTED",
+  /**
    * Org-wide entity-key uniqueness violated. Connector entity keys must
    * be unique per organization so `field_mapping.refEntityKey` resolves
    * unambiguously.

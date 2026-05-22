@@ -38,6 +38,7 @@ import {
   redactInstances,
 } from "../services/connector-instances.service.js";
 import { SyncService } from "../services/sync.service.js";
+import type { TestConnectionParams } from "../adapters/adapter.interface.js";
 
 const logger = createLogger({ module: "connector-instance" });
 
@@ -1126,6 +1127,90 @@ connectorInstanceRouter.patch(
  *       500:
  *         description: Internal server error
  */
+/**
+ * @openapi
+ * /api/connector-instances/{id}/test-connection:
+ *   post:
+ *     tags:
+ *       - Connector Instances
+ *     summary: Run an adapter-specific dry-run / reachability check
+ *     description: >
+ *       Delegates to `ConnectorAdapter.testConnection` when the
+ *       instance's adapter implements it (REST API today). Read-only —
+ *       enqueues no job and writes no records. Returns the adapter's
+ *       `TestConnectionResult` verbatim as the 200 body; `ok: false`
+ *       indicates a successful check that itself reported failure.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             additionalProperties: true
+ *     responses:
+ *       200:
+ *         description: Adapter `TestConnectionResult` (either ok:true with sample or ok:false with code/message)
+ *       404:
+ *         description: Instance not found, or adapter doesn't implement testConnection
+ *       500:
+ *         description: Unexpected error in the adapter
+ */
+connectorInstanceRouter.post(
+  "/:id/test-connection",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { organizationId } = req.application!.metadata;
+
+      const { instance, adapter } = await SyncService.resolveAdapter(
+        id,
+        organizationId
+      );
+
+      if (!adapter.testConnection) {
+        throw new ApiError(
+          404,
+          ApiCode.TEST_CONNECTION_NOT_SUPPORTED,
+          `Adapter for instance ${id} does not implement testConnection`
+        );
+      }
+
+      const params = (req.body ?? {}) as TestConnectionParams;
+      const result = await adapter.testConnection(
+        instance as never,
+        params
+      );
+
+      return HttpService.success(res, result, 200);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to run test-connection"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to run test-connection"
+            )
+      );
+    }
+  }
+);
+
 connectorInstanceRouter.post(
   "/:id/sync",
   getApplicationMetadata,

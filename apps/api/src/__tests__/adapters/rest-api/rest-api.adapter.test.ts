@@ -4,24 +4,27 @@ import { ApiCode } from "../../../constants/api-codes.constants.js";
 
 // ── DbService mock ───────────────────────────────────────────────────
 
+type EndpointFixture = {
+  entity: {
+    id: string;
+    key: string;
+    label: string;
+    connectorInstanceId?: string;
+  };
+  config: {
+    path: string;
+    method: "GET" | "POST";
+    recordsPath: string;
+    idField: string | null;
+    headers?: Record<string, string> | null;
+    queryParams?: Record<string, string> | null;
+  };
+};
+
 const findByInstanceMock =
-  jest.fn<
-    (
-      connectorInstanceId: string
-    ) => Promise<
-      Array<{
-        entity: { id: string; key: string; label: string };
-        config: {
-          path: string;
-          method: "GET" | "POST";
-          recordsPath: string;
-          idField: string | null;
-          headers?: Record<string, string> | null;
-          queryParams?: Record<string, string> | null;
-        };
-      }>
-    >
-  >();
+  jest.fn<(connectorInstanceId: string) => Promise<EndpointFixture[]>>();
+const findByEntityIdMock =
+  jest.fn<(connectorEntityId: string) => Promise<EndpointFixture | null>>();
 const findBySourceIdsMock =
   jest.fn<
     (
@@ -46,7 +49,10 @@ const updateInstanceMock =
 jest.unstable_mockModule("../../../services/db.service.js", () => ({
   DbService: {
     repository: {
-      apiEndpoints: { findByInstance: findByInstanceMock },
+      apiEndpoints: {
+        findByInstance: findByInstanceMock,
+        findByEntityId: findByEntityIdMock,
+      },
       entityRecords: {
         findBySourceIds: findBySourceIdsMock,
         upsertBySourceId: upsertBySourceIdMock,
@@ -87,6 +93,7 @@ const INSTANCE = {
 
 beforeEach(() => {
   findByInstanceMock.mockReset();
+  findByEntityIdMock.mockReset();
   findBySourceIdsMock.mockReset();
   upsertBySourceIdMock.mockReset();
   bulkUpdateSyncedAtMock.mockReset();
@@ -485,5 +492,175 @@ describe("restApiAdapter.syncInstance — auth", () => {
       }),
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── testConnection ────────────────────────────────────────────────────
+
+describe("restApiAdapter.testConnection", () => {
+  let originalFetch: typeof globalThis.fetch;
+  let fetchMock: jest.Mock<typeof globalThis.fetch>;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    fetchMock = jest.fn<typeof globalThis.fetch>();
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const endpointFixture = (overrides: Partial<EndpointFixture> = {}): EndpointFixture => ({
+    entity: {
+      id: "ent-users",
+      key: "users",
+      label: "Users",
+      connectorInstanceId: INSTANCE.id,
+      ...(overrides.entity ?? {}),
+    },
+    config: {
+      path: "/users",
+      method: "GET",
+      recordsPath: "",
+      idField: "id",
+      ...(overrides.config ?? {}),
+    },
+  });
+
+  it("returns { ok: true, sample } with the first 5 records when more are returned", async () => {
+    findByEntityIdMock.mockResolvedValueOnce(endpointFixture());
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify([
+          { id: "1" },
+          { id: "2" },
+          { id: "3" },
+          { id: "4" },
+          { id: "5" },
+          { id: "6" },
+          { id: "7" },
+        ]),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    const result = await restApiAdapter.testConnection!(INSTANCE as never, {
+      endpointEntityId: "ent-users",
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      sample: [{ id: "1" }, { id: "2" }, { id: "3" }, { id: "4" }, { id: "5" }],
+    });
+  });
+
+  it("returns all records as the sample when fewer than 5 are returned", async () => {
+    findByEntityIdMock.mockResolvedValueOnce(endpointFixture());
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify([{ id: "1" }, { id: "2" }]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    const result = await restApiAdapter.testConnection!(INSTANCE as never, {
+      endpointEntityId: "ent-users",
+    });
+
+    expect(result).toEqual({ ok: true, sample: [{ id: "1" }, { id: "2" }] });
+  });
+
+  it("returns { ok: false, code: REST_API_AUTH_FAILED } on 401", async () => {
+    findByEntityIdMock.mockResolvedValueOnce(endpointFixture());
+    fetchMock.mockResolvedValueOnce(
+      new Response("unauthorized", {
+        status: 401,
+        headers: { "content-type": "text/plain" },
+      })
+    );
+
+    const result = await restApiAdapter.testConnection!(
+      {
+        ...INSTANCE,
+        config: { baseUrl: "https://api.example.com", auth: { mode: "bearer" } },
+        credentials: { mode: "bearer", token: "tok" } as never,
+      },
+      { endpointEntityId: "ent-users" }
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: ApiCode.REST_API_AUTH_FAILED,
+    });
+  });
+
+  it("returns { ok: false, code: REST_API_RECORDS_PATH_NOT_ARRAY } when recordsPath resolves to a non-array", async () => {
+    findByEntityIdMock.mockResolvedValueOnce(
+      endpointFixture({
+        config: { path: "/users", method: "GET", recordsPath: "data", idField: null },
+      })
+    );
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: { not: "an array" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    const result = await restApiAdapter.testConnection!(INSTANCE as never, {
+      endpointEntityId: "ent-users",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: ApiCode.REST_API_RECORDS_PATH_NOT_ARRAY,
+    });
+  });
+
+  it("returns { ok: false, code: REST_API_ENDPOINT_NOT_FOUND } when the endpoint isn't configured on the instance", async () => {
+    findByEntityIdMock.mockResolvedValueOnce(null);
+
+    const result = await restApiAdapter.testConnection!(INSTANCE as never, {
+      endpointEntityId: "missing",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: ApiCode.REST_API_ENDPOINT_NOT_FOUND,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns { ok: false, code: REST_API_ENDPOINT_NOT_FOUND } when the endpoint belongs to a different instance", async () => {
+    findByEntityIdMock.mockResolvedValueOnce(
+      endpointFixture({
+        entity: {
+          id: "ent-users",
+          key: "users",
+          label: "Users",
+          connectorInstanceId: "other-instance",
+        },
+      })
+    );
+
+    const result = await restApiAdapter.testConnection!(INSTANCE as never, {
+      endpointEntityId: "ent-users",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: ApiCode.REST_API_ENDPOINT_NOT_FOUND,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns { ok: false, code: REST_API_ENDPOINT_NOT_FOUND } when endpointEntityId is missing from params", async () => {
+    const result = await restApiAdapter.testConnection!(INSTANCE as never, {});
+    expect(result).toMatchObject({
+      ok: false,
+      code: ApiCode.REST_API_ENDPOINT_NOT_FOUND,
+    });
+    expect(findByEntityIdMock).not.toHaveBeenCalled();
   });
 });
