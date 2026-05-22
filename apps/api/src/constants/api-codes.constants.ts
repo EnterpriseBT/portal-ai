@@ -324,6 +324,17 @@ export enum ApiCode {
   /** Unhandled error in the rest-api endpoints router — 500 fallback. */
   REST_API_OPERATION_FAILED = "REST_API_OPERATION_FAILED",
   /**
+   * Authentication failure during sync, test-connection, or auth application:
+   *   - 401/403 response from upstream (502, raised by the adapter when
+   *     fetchJson reports an auth-bearing status).
+   *   - `config.auth.mode` and `credentials.mode` disagree (500 — the
+   *     instance is internally inconsistent; surfaced with
+   *     `details.mismatch: { configMode, credentialsMode }`).
+   *   - Credentials missing for a non-`none` mode at apply-time (500 —
+   *     surfaced with `details.reason: "missing"`).
+   */
+  REST_API_AUTH_FAILED = "REST_API_AUTH_FAILED",
+  /**
    * Org-wide entity-key uniqueness violated. Connector entity keys must
    * be unique per organization so `field_mapping.refEntityKey` resolves
    * unambiguously.
