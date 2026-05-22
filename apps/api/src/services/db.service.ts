@@ -32,6 +32,7 @@ import {
   fileUploadsRepo,
   wideTableColumnsRepo,
   wideTableRepo,
+  apiEndpointsRepo,
 } from "../db/index.js";
 import {
   Repository,
@@ -108,6 +109,7 @@ export class DbService {
       fileUploads: fileUploadsRepo,
       wideTableColumns: wideTableColumnsRepo,
       wideTable: wideTableRepo,
+      apiEndpoints: apiEndpointsRepo,
     };
   }
 }

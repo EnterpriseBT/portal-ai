@@ -31,7 +31,7 @@ export type ApiAuthConfig = z.infer<typeof ApiAuthConfigSchema>;
 // ── Instance config ──────────────────────────────────────────────────
 
 export const RestApiInstanceConfigSchema = z.object({
-  baseUrl: z.string().url(),
+  baseUrl: z.url(),
   auth: ApiAuthConfigSchema,
 });
 export type RestApiInstanceConfig = z.infer<typeof RestApiInstanceConfigSchema>;

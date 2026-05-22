@@ -400,6 +400,13 @@
       "when": 1779667200000,
       "tag": "0056_entity_records_drop_normalized_data",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1779753600000,
+      "tag": "0057_api_connector_phase_1",
+      "breakpoints": true
     }
   ]
 }
