@@ -29,6 +29,7 @@ import { importModeQueryRows } from "../../utils/adapter.util.js";
 import { createLogger } from "../../utils/logger.util.js";
 import { fetchJson, type FetchJsonResult } from "./fetch.util.js";
 import type { ApiEndpoint } from "../../db/repositories/api-endpoints.repository.js";
+import { SystemUtilities } from "../../utils/system.util.js";
 
 const logger = createLogger({ module: "rest-api-adapter" });
 
@@ -274,7 +275,7 @@ async function syncOneEndpoint(
     }
 
     await DbService.repository.entityRecords.upsertBySourceId({
-      id: prior?.id ?? `${endpoint.entity.id}-${sourceId}`,
+      id: prior?.id ?? SystemUtilities.id.v4.generate(),
       organizationId: instance.organizationId,
       connectorEntityId: endpoint.entity.id,
       sourceId,
