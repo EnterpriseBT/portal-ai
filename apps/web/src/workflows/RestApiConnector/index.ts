@@ -30,3 +30,16 @@ export {
   ReviewStepUI,
   type ReviewStepUIProps,
 } from "./ReviewStep.component";
+export {
+  ApiKeyCredentialsFormUI,
+  type ApiKeyCredentialsFormUIProps,
+  type ApiKeyPlacement,
+} from "./ApiKeyCredentialsForm.component";
+export {
+  BearerCredentialsFormUI,
+  type BearerCredentialsFormUIProps,
+} from "./BearerCredentialsForm.component";
+export {
+  BasicCredentialsFormUI,
+  type BasicCredentialsFormUIProps,
+} from "./BasicCredentialsForm.component";

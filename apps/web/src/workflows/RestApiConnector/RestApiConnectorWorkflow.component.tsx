@@ -37,8 +37,11 @@ import type { EndpointDraft } from "./ApiEndpointForm.component";
 import { FieldMappingsStep } from "./FieldMappingsStep.component";
 import { ReviewStep } from "./ReviewStep.component";
 import {
+  EMPTY_CREDENTIALS_DRAFT,
   validateBasics,
   validateEndpointsList,
+  type AuthMode,
+  type CredentialsDraft,
 } from "./utils/rest-api-validation.util";
 
 const STEPS: StepConfig[] = [
@@ -61,11 +64,18 @@ export interface RestApiConnectorWorkflowUIProps {
 
   name: string;
   baseUrl: string;
+  authMode: AuthMode;
+  credentials: CredentialsDraft;
   endpoints: EndpointDraft[];
   onNameChange: (value: string) => void;
   onBaseUrlChange: (value: string) => void;
+  onAuthModeChange: (mode: AuthMode) => void;
+  onCredentialsChange: <K extends keyof CredentialsDraft>(
+    field: K,
+    value: CredentialsDraft[K]
+  ) => void;
   onEndpointsChange: (next: EndpointDraft[]) => void;
-  onBasicsBlur: (field: "name" | "baseUrl") => void;
+  onBasicsBlur: (field: string) => void;
 
   basicsErrors: FormErrors;
   basicsTouched: Record<string, boolean>;
@@ -85,9 +95,13 @@ export const RestApiConnectorWorkflowUI: React.FC<
   canAdvance,
   name,
   baseUrl,
+  authMode,
+  credentials,
   endpoints,
   onNameChange,
   onBaseUrlChange,
+  onAuthModeChange,
+  onCredentialsChange,
   onEndpointsChange,
   onBasicsBlur,
   basicsErrors,
@@ -152,8 +166,12 @@ export const RestApiConnectorWorkflowUI: React.FC<
           <BasicsStep
             name={name}
             baseUrl={baseUrl}
+            authMode={authMode}
+            credentials={credentials}
             onNameChange={onNameChange}
             onBaseUrlChange={onBaseUrlChange}
+            onAuthModeChange={onAuthModeChange}
+            onCredentialsChange={onCredentialsChange}
             onBlur={onBasicsBlur}
             errors={basicsErrors}
             touched={basicsTouched}
@@ -201,6 +219,10 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
+  const [authMode, setAuthMode] = useState<AuthMode>("none");
+  const [credentials, setCredentials] = useState<CredentialsDraft>(
+    EMPTY_CREDENTIALS_DRAFT
+  );
   const [endpoints, setEndpoints] = useState<EndpointDraft[]>([]);
   const [basicsTouched, setBasicsTouched] = useState<Record<string, boolean>>(
     {}
@@ -208,8 +230,8 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
   const [serverError, setServerError] = useState<ServerError | null>(null);
 
   const basicsErrors = useMemo(
-    () => validateBasics({ name, baseUrl }),
-    [name, baseUrl]
+    () => validateBasics({ name, baseUrl, authMode, credentials }),
+    [name, baseUrl, authMode, credentials]
   );
   const endpointsErrors = useMemo(
     () => validateEndpointsList(endpoints),
@@ -230,12 +252,14 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
     setServerError(null);
     setIsCommitting(true);
     try {
+      const { auth, credentialsPayload } = buildAuthPayload(authMode, credentials);
       const created = await createInstance.mutateAsync({
         organizationId,
         connectorDefinitionId,
         name,
         status: "active",
-        config: { baseUrl, auth: { mode: "none" } },
+        config: { baseUrl, auth },
+        ...(credentialsPayload ? { credentials: credentialsPayload } : {}),
       } as never);
       // sdk.connectorInstances.create returns
       // `{ connectorInstance: { id, ... } }`.
@@ -295,6 +319,35 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
     }
   };
 
+  const handleAuthModeChange = (mode: AuthMode) => {
+    setAuthMode(mode);
+    // Reset the credentials draft on mode switch so a stale bearer
+    // token can't leak into the apiKey form on re-toggle. Keeping the
+    // placement default in sync with the empty-draft constant.
+    setCredentials(EMPTY_CREDENTIALS_DRAFT);
+    setBasicsTouched((t) => {
+      const next = { ...t };
+      for (const field of [
+        "keyName",
+        "placement",
+        "value",
+        "token",
+        "username",
+        "password",
+      ]) {
+        delete next[field];
+      }
+      return next;
+    });
+  };
+
+  const handleCredentialsChange = <K extends keyof CredentialsDraft>(
+    field: K,
+    value: CredentialsDraft[K]
+  ) => {
+    setCredentials((c) => ({ ...c, [field]: value }));
+  };
+
   return (
     <RestApiConnectorWorkflowUI
       open={open}
@@ -306,9 +359,13 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
       canAdvance={canAdvance}
       name={name}
       baseUrl={baseUrl}
+      authMode={authMode}
+      credentials={credentials}
       endpoints={endpoints}
       onNameChange={setName}
       onBaseUrlChange={setBaseUrl}
+      onAuthModeChange={handleAuthModeChange}
+      onCredentialsChange={handleCredentialsChange}
       onEndpointsChange={setEndpoints}
       onBasicsBlur={(field) =>
         setBasicsTouched((t) => ({ ...t, [field]: true }))
@@ -320,3 +377,51 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
     />
   );
 };
+
+/**
+ * Project the flat workflow state into the `(auth, credentials)` pair
+ * the create-connector-instance endpoint expects. `none` mode commits
+ * `credentials: undefined` (the API stores null); the other three modes
+ * carry the secret payload alongside the non-secret auth config.
+ */
+function buildAuthPayload(
+  authMode: AuthMode,
+  credentials: CredentialsDraft
+): {
+  auth: Record<string, unknown>;
+  credentialsPayload: Record<string, unknown> | null;
+} {
+  switch (authMode) {
+    case "none":
+      return { auth: { mode: "none" }, credentialsPayload: null };
+    case "apiKey":
+      return {
+        auth: {
+          mode: "apiKey",
+          keyName: credentials.keyName,
+          placement: credentials.placement,
+        },
+        credentialsPayload: {
+          mode: "apiKey",
+          value: credentials.apiKeyValue,
+        },
+      };
+    case "bearer":
+      return {
+        auth: { mode: "bearer" },
+        credentialsPayload: {
+          mode: "bearer",
+          token: credentials.bearerToken,
+        },
+      };
+    case "basic":
+      return {
+        auth: { mode: "basic" },
+        credentialsPayload: {
+          mode: "basic",
+          username: credentials.basicUsername,
+          password: credentials.basicPassword,
+        },
+      };
+  }
+}
