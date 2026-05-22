@@ -5,6 +5,7 @@ import {
   FileUploadConnectorDefinitionModelFactory,
   GoogleSheetsConnectorDefinitionModelFactory,
   MicrosoftExcelConnectorDefinitionModelFactory,
+  RestApiConnectorDefinitionModelFactory,
   SandboxConnectorDefinitionModelFactory,
 } from "@portalai/core/models";
 import type { ColumnDataType } from "@portalai/core/models";
@@ -388,6 +389,28 @@ export class SeedService {
           },
           version: "1.0.0",
           iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1777847292/960px-Microsoft_Office_Excel__2019_2025.svg_oprgxb.png',
+        })
+        .parse(),
+      new RestApiConnectorDefinitionModelFactory()
+        .create(SystemUtilities.id.system)
+        .update({
+          slug: "rest-api",
+          display: "REST API",
+          category: "API",
+          // Phase 1 ships `none` auth only; phase 2 widens the auth
+          // surface (api key, bearer, basic). The `authType` here is
+          // a free-text label shown on the connector card.
+          authType: "none",
+          isActive: true,
+          configSchema: {},
+          capabilityFlags: {
+            sync: true,
+            read: true,
+            write: false,
+            push: false,
+          },
+          version: "0.1.0",
+          iconUrl: null,
         })
         .parse(),
     ];

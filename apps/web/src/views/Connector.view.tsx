@@ -42,6 +42,7 @@ import { SyncTotal } from "../components/SyncTotal.component";
 import { FileUploadConnectorWorkflow } from "../workflows/FileUploadConnector";
 import { GoogleSheetsConnectorWorkflow } from "../workflows/GoogleSheetsConnector";
 import { MicrosoftExcelConnectorWorkflow } from "../workflows/MicrosoftExcelConnector";
+import { RestApiConnectorWorkflow } from "../workflows/RestApiConnector";
 import { SandboxConnectorWorkflow } from "../workflows/SandboxConnector";
 
 export interface ConnectorWorkflowProps {
@@ -58,6 +59,7 @@ const WORKFLOW_REGISTRY: Record<
   "file-upload": FileUploadConnectorWorkflow,
   "google-sheets": GoogleSheetsConnectorWorkflow,
   "microsoft-excel": MicrosoftExcelConnectorWorkflow,
+  "rest-api": RestApiConnectorWorkflow,
   sandbox: SandboxConnectorWorkflow,
 };
 

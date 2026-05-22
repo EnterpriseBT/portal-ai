@@ -210,3 +210,37 @@ export class MicrosoftExcelConnectorDefinitionModelFactory extends ModelFactory<
     return model;
   }
 }
+
+// ── REST API Connector Definition ────────────────────────────────────
+
+export const RestApiConnectorDefinitionSchema =
+  ConnectorDefinitionSchema.extend({});
+
+export type RestApiConnectorDefinition = z.infer<
+  typeof RestApiConnectorDefinitionSchema
+>;
+
+export class RestApiConnectorDefinitionModel extends CoreModel<RestApiConnectorDefinition> {
+  get schema() {
+    return RestApiConnectorDefinitionSchema;
+  }
+
+  parse(): RestApiConnectorDefinition {
+    return this.schema.parse(this._model);
+  }
+
+  validate(): z.ZodSafeParseResult<RestApiConnectorDefinition> {
+    return this.schema.safeParse(this._model);
+  }
+}
+
+export class RestApiConnectorDefinitionModelFactory extends ModelFactory<
+  RestApiConnectorDefinition,
+  RestApiConnectorDefinitionModel
+> {
+  create(createdBy: string): RestApiConnectorDefinitionModel {
+    const baseModel = this._coreModelFactory.create(createdBy);
+    const model = new RestApiConnectorDefinitionModel(baseModel.toJSON());
+    return model;
+  }
+}
