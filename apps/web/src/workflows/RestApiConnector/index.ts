@@ -49,3 +49,11 @@ export {
   BasicCredentialsFormUI,
   type BasicCredentialsFormUIProps,
 } from "./BasicCredentialsForm.component";
+export {
+  PaginationFieldsUI,
+  type PaginationFieldsUIProps,
+} from "./PaginationFields.component";
+export {
+  BodyTemplateFieldUI,
+  type BodyTemplateFieldUIProps,
+} from "./BodyTemplateField.component";

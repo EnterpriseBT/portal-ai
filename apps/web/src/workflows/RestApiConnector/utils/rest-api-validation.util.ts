@@ -8,7 +8,10 @@
  * entire instance shape in one payload.
  */
 
-import { ApiEndpointConfigSchema } from "@portalai/core/models";
+import {
+  ApiEndpointConfigSchema,
+  type PaginationConfig,
+} from "@portalai/core/models";
 import {
   validateWithSchema,
   type FormErrors,
@@ -17,6 +20,106 @@ import {
 import type { ApiKeyPlacement } from "../ApiKeyCredentialsForm.component";
 
 export type AuthMode = "none" | "apiKey" | "bearer" | "basic";
+
+/**
+ * Flat pagination draft held by the endpoint form. Mirrors the four
+ * `PaginationConfig` arms with every field always present (defaults
+ * applied) so the user can flip between strategies without losing
+ * pending field values. `paginationDraftToConfig` projects the active
+ * strategy back into a structured `PaginationConfig` on commit.
+ */
+export interface PaginationDraft {
+  strategy: "none" | "pageOffset" | "cursor" | "linkHeader";
+  // pageOffset
+  style: "page" | "offset";
+  param: string;
+  pageSize: number;
+  pageSizeParam: string;
+  startPage: number;
+  stopOnShortPage: boolean;
+  // cursor
+  cursorParam: string;
+  cursorPlacement: "query" | "header" | "body";
+  cursorResponsePath: string;
+}
+
+export const EMPTY_PAGINATION_DRAFT: PaginationDraft = {
+  strategy: "none",
+  style: "page",
+  param: "page",
+  pageSize: 50,
+  pageSizeParam: "",
+  startPage: 1,
+  stopOnShortPage: true,
+  cursorParam: "cursor",
+  cursorPlacement: "query",
+  cursorResponsePath: "",
+};
+
+/** Project the flat draft into a structured `PaginationConfig`. */
+export function paginationDraftToConfig(
+  d: PaginationDraft
+): PaginationConfig {
+  switch (d.strategy) {
+    case "none":
+      return { strategy: "none" };
+    case "pageOffset":
+      return {
+        strategy: "pageOffset",
+        style: d.style,
+        param: d.param,
+        pageSize: d.pageSize,
+        ...(d.pageSizeParam.trim() !== ""
+          ? { pageSizeParam: d.pageSizeParam }
+          : {}),
+        startPage: d.startPage,
+        stopOnShortPage: d.stopOnShortPage,
+      };
+    case "cursor":
+      return {
+        strategy: "cursor",
+        cursorParam: d.cursorParam,
+        cursorPlacement: d.cursorPlacement,
+        cursorResponsePath: d.cursorResponsePath,
+      };
+    case "linkHeader":
+      return { strategy: "linkHeader" };
+  }
+}
+
+// ── Templating lint ─────────────────────────────────────────────────
+
+const KNOWN_TEMPLATE_VARIABLES = new Set(["cursor", "pageNumber"]);
+
+/**
+ * Scan a string for `{{name}}` placeholders. Returns an entry for the
+ * first unknown variable (or empty name). Used by the endpoint form to
+ * reject saves with bad placeholders before they reach the backend
+ * (the backend would also reject via REST_API_TEMPLATE_UNKNOWN_VARIABLE).
+ */
+export function validatePlaceholders(value: string): {
+  ok: true;
+} | {
+  ok: false;
+  name: string;
+  message: string;
+} {
+  const pattern = /\{\{\s*([a-zA-Z_]\w*)?\s*\}\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(value)) !== null) {
+    const name = (match[1] ?? "").trim();
+    if (!KNOWN_TEMPLATE_VARIABLES.has(name)) {
+      return {
+        ok: false,
+        name,
+        message: name === ""
+          ? "Empty template placeholder {{}} is not allowed"
+          : `Unknown template variable "${name}". Allowed: cursor, pageNumber.`,
+      };
+    }
+  }
+  return { ok: true };
+}
 
 /**
  * Flat credentials draft held by the workflow container. Mirrors
@@ -106,20 +209,32 @@ export function validateEndpoint(input: {
   method: string;
   recordsPath: string;
   idField: string;
+  bodyTemplate?: string;
+  pagination?: PaginationDraft;
 }): FormErrors {
   const errors: FormErrors = {};
   if (!input.key.trim()) errors.key = "Key is required";
   if (!input.label.trim()) errors.label = "Label is required";
+
+  const pagination = input.pagination
+    ? paginationDraftToConfig(input.pagination)
+    : { strategy: "none" as const };
+
+  // Lint the body template before Zod sees it so we surface a more
+  // actionable error than the schema's generic refine.
+  const bodyTemplate = input.bodyTemplate?.trim() ? input.bodyTemplate : undefined;
+  if (bodyTemplate !== undefined) {
+    const check = validatePlaceholders(bodyTemplate);
+    if (!check.ok) errors.bodyTemplate = check.message;
+  }
 
   const result = validateWithSchema(ApiEndpointConfigSchema, {
     path: input.path,
     method: input.method,
     recordsPath: input.recordsPath,
     idField: input.idField || null,
-    // Phase 3 makes `pagination` required; the workflow's endpoint
-    // form ships drafts with the `none` default until slice 6
-    // surfaces the strategy dropdown.
-    pagination: { strategy: "none" },
+    ...(bodyTemplate !== undefined ? { bodyTemplate } : {}),
+    pagination,
   });
   if (!result.success) {
     return { ...errors, ...result.errors };

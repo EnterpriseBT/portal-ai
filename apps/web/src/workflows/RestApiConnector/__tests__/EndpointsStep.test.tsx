@@ -10,6 +10,8 @@ import type {
   EndpointRow,
 } from "../EndpointsStep.component";
 
+import { EMPTY_PAGINATION_DRAFT } from "../utils/rest-api-validation.util";
+
 const ROW: EndpointRow = {
   key: "users",
   label: "Users",
@@ -17,6 +19,8 @@ const ROW: EndpointRow = {
   method: "GET",
   recordsPath: "",
   idField: "id",
+  bodyTemplate: "",
+  pagination: EMPTY_PAGINATION_DRAFT,
 };
 
 function makeProps(

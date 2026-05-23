@@ -12,7 +12,13 @@ import { Button, Modal, Stack } from "@portalai/core/ui";
 
 import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
 import type { FormErrors } from "../../utils/form-validation.util";
-import { validateEndpoint } from "./utils/rest-api-validation.util";
+import {
+  EMPTY_PAGINATION_DRAFT,
+  validateEndpoint,
+  type PaginationDraft,
+} from "./utils/rest-api-validation.util";
+import { PaginationFieldsUI } from "./PaginationFields.component";
+import { BodyTemplateFieldUI } from "./BodyTemplateField.component";
 
 // ── Draft shape ──────────────────────────────────────────────────────
 
@@ -23,6 +29,8 @@ export interface EndpointDraft {
   method: "GET" | "POST";
   recordsPath: string;
   idField: string;
+  bodyTemplate: string;
+  pagination: PaginationDraft;
 }
 
 export const EMPTY_DRAFT: EndpointDraft = {
@@ -32,6 +40,8 @@ export const EMPTY_DRAFT: EndpointDraft = {
   method: "GET",
   recordsPath: "",
   idField: "",
+  bodyTemplate: "",
+  pagination: EMPTY_PAGINATION_DRAFT,
 };
 
 // ── Pure UI ──────────────────────────────────────────────────────────
@@ -143,6 +153,29 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
           "ID field",
           "e.g. id — leave empty for full replacement on each sync"
         )}
+
+        <PaginationFieldsUI
+          draft={draft.pagination}
+          onChange={(field_, value) =>
+            onChange("pagination", {
+              ...draft.pagination,
+              [field_]: value,
+            })
+          }
+          onBlur={(field_) => onBlur(field_ as keyof EndpointDraft)}
+          errors={errors}
+          touched={touched}
+        />
+
+        {draft.method === "POST" ? (
+          <BodyTemplateFieldUI
+            value={draft.bodyTemplate}
+            onChange={(value) => onChange("bodyTemplate", value)}
+            onBlur={() => onBlur("bodyTemplate")}
+            error={errors.bodyTemplate}
+            touched={touched.bodyTemplate}
+          />
+        ) : null}
       </Stack>
     </Modal>
   );
@@ -181,9 +214,22 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
     field: K,
     value: EndpointDraft[K]
   ) => {
-    setDraft((d) => ({ ...d, [field]: value }));
+    setDraft((d) => {
+      const next = { ...d, [field]: value } as EndpointDraft;
+      // Clear `bodyTemplate` when the method flips away from POST.
+      // GET requests have no body; carrying a stale template would
+      // fail backend validation on save.
+      if (field === "method" && value !== "POST") {
+        next.bodyTemplate = "";
+      }
+      return next;
+    });
     if (touched[field as string]) {
-      setErrors(validateEndpoint({ ...draft, [field]: value }));
+      const draftForValidation =
+        field === "method" && value !== "POST"
+          ? { ...draft, [field]: value, bodyTemplate: "" }
+          : { ...draft, [field]: value };
+      setErrors(validateEndpoint(draftForValidation));
     }
   };
 
@@ -202,6 +248,14 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
       method: true,
       recordsPath: true,
       idField: true,
+      bodyTemplate: true,
+      // Mark each pagination sub-field touched so its errors surface
+      // (the strategy dropdown change doesn't auto-touch each input).
+      strategy: true,
+      param: true,
+      pageSize: true,
+      cursorParam: true,
+      cursorResponsePath: true,
     });
     if (Object.keys(validation).length === 0) {
       onSubmit(draft);

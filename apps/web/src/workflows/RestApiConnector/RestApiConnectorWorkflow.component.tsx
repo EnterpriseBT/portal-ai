@@ -38,6 +38,7 @@ import { FieldMappingsStep } from "./FieldMappingsStep.component";
 import { ReviewStep } from "./ReviewStep.component";
 import {
   EMPTY_CREDENTIALS_DRAFT,
+  paginationDraftToConfig,
   validateBasics,
   validateEndpointsList,
   type AuthMode,
@@ -288,10 +289,10 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
               method: ep.method,
               recordsPath: ep.recordsPath,
               idField: ep.idField || null,
-              // Phase 3 widens the schema; the workflow's endpoint
-              // drafts ship with `none` until slice 6 surfaces the
-              // strategy dropdown in `ApiEndpointForm`.
-              pagination: { strategy: "none" },
+              ...(ep.method === "POST" && ep.bodyTemplate
+                ? { bodyTemplate: ep.bodyTemplate }
+                : {}),
+              pagination: paginationDraftToConfig(ep.pagination),
             },
           }),
         });

@@ -2,9 +2,12 @@ import { describe, it, expect } from "@jest/globals";
 
 import {
   EMPTY_CREDENTIALS_DRAFT,
+  EMPTY_PAGINATION_DRAFT,
+  paginationDraftToConfig,
   validateBasics,
   validateEndpoint,
   validateEndpointsList,
+  validatePlaceholders,
 } from "../utils/rest-api-validation.util";
 
 describe("validateBasics — common", () => {
@@ -177,6 +180,102 @@ describe("validateEndpoint", () => {
       idField: "",
     });
     expect(Object.keys(errors)).toContain("path");
+  });
+});
+
+describe("validatePlaceholders", () => {
+  it("accepts known placeholders", () => {
+    expect(validatePlaceholders("c={{cursor}}")).toEqual({ ok: true });
+    expect(validatePlaceholders("p={{pageNumber}}")).toEqual({ ok: true });
+    expect(
+      validatePlaceholders("p={{pageNumber}}&c={{cursor}}")
+    ).toEqual({ ok: true });
+  });
+
+  it("accepts strings with no placeholders", () => {
+    expect(validatePlaceholders("static")).toEqual({ ok: true });
+    expect(validatePlaceholders("")).toEqual({ ok: true });
+  });
+
+  it("rejects unknown placeholders with a typed error", () => {
+    const result = validatePlaceholders("{{lastSyncAt}}");
+    expect(result).toMatchObject({
+      ok: false,
+      name: "lastSyncAt",
+      message: expect.stringMatching(/unknown template variable "lastSyncAt"/i),
+    });
+  });
+
+  it("rejects empty placeholders", () => {
+    const result = validatePlaceholders("{{}}");
+    expect(result).toMatchObject({
+      ok: false,
+      name: "",
+      message: expect.stringMatching(/empty template placeholder/i),
+    });
+  });
+
+  it("reports the first unknown placeholder when several appear", () => {
+    const result = validatePlaceholders(
+      "{{cursor}}-{{nope}}-{{also}}"
+    );
+    expect(result).toMatchObject({ ok: false, name: "nope" });
+  });
+});
+
+describe("paginationDraftToConfig", () => {
+  it("projects the none strategy", () => {
+    expect(paginationDraftToConfig(EMPTY_PAGINATION_DRAFT)).toEqual({
+      strategy: "none",
+    });
+  });
+
+  it("projects pageOffset and omits pageSizeParam when blank", () => {
+    expect(
+      paginationDraftToConfig({
+        ...EMPTY_PAGINATION_DRAFT,
+        strategy: "pageOffset",
+        style: "page",
+        param: "page",
+        pageSize: 25,
+        pageSizeParam: "",
+        startPage: 0,
+        stopOnShortPage: false,
+      })
+    ).toEqual({
+      strategy: "pageOffset",
+      style: "page",
+      param: "page",
+      pageSize: 25,
+      startPage: 0,
+      stopOnShortPage: false,
+    });
+  });
+
+  it("projects cursor with all required fields", () => {
+    expect(
+      paginationDraftToConfig({
+        ...EMPTY_PAGINATION_DRAFT,
+        strategy: "cursor",
+        cursorParam: "cursor",
+        cursorPlacement: "query",
+        cursorResponsePath: "meta.next",
+      })
+    ).toEqual({
+      strategy: "cursor",
+      cursorParam: "cursor",
+      cursorPlacement: "query",
+      cursorResponsePath: "meta.next",
+    });
+  });
+
+  it("projects linkHeader with no extra fields", () => {
+    expect(
+      paginationDraftToConfig({
+        ...EMPTY_PAGINATION_DRAFT,
+        strategy: "linkHeader",
+      })
+    ).toEqual({ strategy: "linkHeader" });
   });
 });
 
