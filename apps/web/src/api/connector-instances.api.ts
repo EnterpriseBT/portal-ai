@@ -19,6 +19,31 @@ import type {
 export interface ConnectorInstanceSyncResponsePayload {
   jobId: string;
 }
+
+/**
+ * Body shape for `POST /api/connector-instances/:id/test-connection`.
+ * Adapter-specific — REST API reads `endpointEntityId`; other adapters
+ * may ignore it or interpret different keys. The shape is intentionally
+ * loose; the route forwards the body verbatim to the adapter.
+ */
+export interface TestConnectionRequestBody {
+  endpointEntityId?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Result shape returned by the adapter and surfaced as the 200 body of
+ * the test-connection route — `ok: false` is a *successful* invocation
+ * of a check that itself reported failure, not an HTTP-level error.
+ */
+export type TestConnectionResult =
+  | { ok: true; sample: unknown[] }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      details?: Record<string, unknown>;
+    };
 import { useInfiniteFilterOptions } from "@portalai/core/ui";
 import type {
   InfiniteFilterOptionsConfig,
@@ -169,6 +194,21 @@ export const connectorInstances = {
   sync: (id: string) =>
     useAuthMutation<ConnectorInstanceSyncResponsePayload, void>({
       url: `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}/sync`,
+      method: "POST",
+    }),
+
+  /**
+   * Dry-run an adapter's `testConnection` against a configured instance.
+   * Returns `{ ok: true, sample }` on success or `{ ok: false, code, ... }`
+   * on failure — both shapes arrive as HTTP 200, since `ok: false`
+   * represents a successful invocation of a check that itself reported
+   * failure (only network errors and 404s leak as ApiError).
+   *
+   * Read-only — no cache invalidation; the route doesn't mutate state.
+   */
+  testConnection: (id: string) =>
+    useAuthMutation<TestConnectionResult, TestConnectionRequestBody>({
+      url: `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}/test-connection`,
       method: "POST",
     }),
 
