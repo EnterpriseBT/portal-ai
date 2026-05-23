@@ -397,10 +397,12 @@ export class SeedService {
           slug: "rest-api",
           display: "REST API",
           category: "API",
-          // Phase 1 ships `none` auth only; phase 2 widens the auth
-          // surface (api key, bearer, basic). The `authType` here is
-          // a free-text label shown on the connector card.
-          authType: "none",
+          // Phase 2 widens the auth surface to four user-selectable
+          // modes (none, apiKey, bearer, basic). The `authType` here
+          // is a free-text label shown on the connector card; "multi"
+          // signals that the actual mode is chosen per-instance in
+          // the BasicsStep dropdown.
+          authType: "multi",
           isActive: true,
           configSchema: {},
           capabilityFlags: {

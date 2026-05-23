@@ -117,13 +117,21 @@ export interface ConnectorAdapter {
    * Project the decrypted credentials blob into the public `accountInfo`
    * shape rendered on the connector card chip + detail view. Adapters
    * implement this to surface non-secret fields (e.g. the authenticated
-   * account's email); omit the method entirely to opt out (the serializer
-   * defaults to `EMPTY_ACCOUNT_INFO`).
+   * account's email, or — for non-OAuth adapters — the configured base
+   * URL); omit the method entirely to opt out (the serializer defaults
+   * to `EMPTY_ACCOUNT_INFO`).
+   *
+   * `instance` is the full connector_instance row (with decrypted
+   * credentials, same shape the serializer received). Adapters that
+   * only need the credentials may ignore it; the REST API adapter
+   * reads `instance.config.baseUrl` since its non-OAuth auth modes
+   * carry no account identity.
    *
    * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md` §Slice 9.
    */
   toPublicAccountInfo?(
-    credentials: Record<string, unknown> | null
+    credentials: Record<string, unknown> | null,
+    instance?: ConnectorInstance
   ): PublicAccountInfo;
 
   /**

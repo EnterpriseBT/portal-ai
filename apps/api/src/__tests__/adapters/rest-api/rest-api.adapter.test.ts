@@ -664,3 +664,36 @@ describe("restApiAdapter.testConnection", () => {
     expect(findByEntityIdMock).not.toHaveBeenCalled();
   });
 });
+
+// ── toPublicAccountInfo ──────────────────────────────────────────────
+
+describe("restApiAdapter.toPublicAccountInfo", () => {
+  it("returns the instance's baseUrl as the identity label", () => {
+    const out = restApiAdapter.toPublicAccountInfo!(null, INSTANCE as never);
+    expect(out).toEqual({
+      identity: "https://api.example.com",
+      metadata: {},
+    });
+  });
+
+  it("ignores credentials — only baseUrl drives the label", () => {
+    const out = restApiAdapter.toPublicAccountInfo!(
+      { mode: "bearer", token: "tok" } as Record<string, unknown>,
+      INSTANCE as never
+    );
+    expect(out.identity).toBe("https://api.example.com");
+  });
+
+  it("falls back to a generic label when config.baseUrl is missing", () => {
+    const out = restApiAdapter.toPublicAccountInfo!(null, {
+      ...INSTANCE,
+      config: { auth: { mode: "none" } },
+    } as never);
+    expect(out.identity).toBe("REST API");
+  });
+
+  it("falls back to a generic label when instance is not provided", () => {
+    const out = restApiAdapter.toPublicAccountInfo!(null);
+    expect(out.identity).toBe("REST API");
+  });
+});

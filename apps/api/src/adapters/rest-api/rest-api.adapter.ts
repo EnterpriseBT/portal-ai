@@ -485,6 +485,24 @@ async function testConnection(
   }
 }
 
+/**
+ * REST API connectors have no account identity for the non-OAuth auth
+ * modes (none / apiKey / bearer / basic) — surface the configured
+ * baseUrl as the card-chip label so the user can tell instances apart.
+ * Falls back to a generic label when the config is malformed.
+ */
+function toPublicAccountInfo(
+  _credentials: Record<string, unknown> | null,
+  instance?: ConnectorInstance
+) {
+  const cfg = instance?.config as { baseUrl?: unknown } | null | undefined;
+  const baseUrl =
+    typeof cfg?.baseUrl === "string" && cfg.baseUrl.length > 0
+      ? cfg.baseUrl
+      : "REST API";
+  return { identity: baseUrl, metadata: {} };
+}
+
 export const restApiAdapter: ConnectorAdapter = {
   queryRows: (instance: ConnectorInstance, query: EntityDataQuery):
     Promise<EntityDataResult> => importModeQueryRows(instance, query),
@@ -493,6 +511,7 @@ export const restApiAdapter: ConnectorAdapter = {
     // Phase 1: no probe. Phase 4 implements probe-driven inference.
     return [];
   },
+  toPublicAccountInfo,
   assertSyncEligibility,
   syncInstance,
   testConnection,
