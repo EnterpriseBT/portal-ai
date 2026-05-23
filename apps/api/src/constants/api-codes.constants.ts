@@ -364,6 +364,26 @@ export enum ApiCode {
    */
   REST_API_RATE_LIMITED = "REST_API_RATE_LIMITED",
   /**
+   * A pagination iterator yielded more than `MAX_PAGES` pages without
+   * terminating — likely a misbehaving upstream that never returns
+   * an empty array / null cursor. Safety cap to prevent runaway
+   * fetches. 502.
+   */
+  REST_API_PAGINATION_EXCEEDED = "REST_API_PAGINATION_EXCEEDED",
+  /**
+   * The cursor strategy's `cursorResponsePath` doesn't exist on the
+   * first page's response body. On subsequent pages the missing path
+   * is interpreted as a termination signal; only the first page
+   * treats the absence as a configuration error. 502.
+   */
+  REST_API_CURSOR_NOT_FOUND = "REST_API_CURSOR_NOT_FOUND",
+  /**
+   * Pagination config is malformed (e.g. a cursor strategy with an
+   * empty `cursorResponsePath`). Surfaced by the route's validation
+   * pre-flight. 400.
+   */
+  REST_API_PAGINATION_INVALID = "REST_API_PAGINATION_INVALID",
+  /**
    * Org-wide entity-key uniqueness violated. Connector entity keys must
    * be unique per organization so `field_mapping.refEntityKey` resolves
    * unambiguously.
