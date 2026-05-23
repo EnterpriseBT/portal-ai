@@ -24,11 +24,11 @@ import { createLogger } from "../utils/logger.util.js";
 import {
   ApiEndpointConfigBaseSchema,
   ApiEndpointConfigSchema,
-  PaginationConfigSchema,
   type ApiEndpointConfig,
   type PaginationConfig,
 } from "@portalai/core/models";
 import type { ApiEndpoint } from "../db/repositories/api-endpoints.repository.js";
+import { reconstructPagination } from "../adapters/rest-api/pagination/index.js";
 
 const logger = createLogger({ module: "api-endpoints" });
 
@@ -73,20 +73,6 @@ function flattenPaginationForTable(pagination: PaginationConfig): {
     pagination: strategy,
     paginationConfig: Object.keys(rest).length > 0 ? rest : null,
   };
-}
-
-function reconstructPagination(
-  pagination: string,
-  paginationConfig: Record<string, unknown> | null
-): PaginationConfig {
-  // Defensive parse: drift between the table CHECK and the contract
-  // schema lands here as 400 REST_API_PAGINATION_INVALID at the call
-  // site (slice 5). For now, parse loosely — phase-1 rows are all
-  // {strategy:"none"}.
-  return PaginationConfigSchema.parse({
-    strategy: pagination,
-    ...(paginationConfig ?? {}),
-  });
 }
 
 // ── Wire-shape mapping ────────────────────────────────────────────────

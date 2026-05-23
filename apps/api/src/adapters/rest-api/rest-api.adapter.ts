@@ -16,6 +16,7 @@ import type {
   ApiAuthConfig,
   ApiCredentials,
   ConnectorInstance,
+  PaginationConfig,
 } from "@portalai/core/models";
 
 import { ApiCode } from "../../constants/api-codes.constants.js";
@@ -36,6 +37,18 @@ import { createLogger } from "../../utils/logger.util.js";
 import { applyAuth } from "./auth.util.js";
 import { loadCredentials } from "./credentials.util.js";
 import { fetchJson, type FetchJsonResult } from "./fetch.util.js";
+import {
+  resolveIterator,
+  reconstructPagination,
+  type FetchedPage,
+  type PageContext,
+} from "./pagination/index.js";
+import { withRetry } from "./retry.util.js";
+import {
+  applyTemplate,
+  applyTemplateToConfig,
+  type TemplateVariables,
+} from "./template.util.js";
 import type { ApiEndpoint } from "../../db/repositories/api-endpoints.repository.js";
 import { SystemUtilities } from "../../utils/system.util.js";
 
@@ -254,86 +267,88 @@ async function syncOneEndpoint(
   userId: string,
   runStartedAt: number
 ): Promise<{ created: number; updated: number; unchanged: number; deleted: number }> {
-  const baseRequestUrl = buildUrl(
-    baseUrl,
-    endpoint.config.path,
-    endpoint.config.queryParams ?? undefined
+  const pagination = reconstructPagination(
+    endpoint.config.pagination,
+    (endpoint.config.paginationConfig as Record<string, unknown> | null) ?? null
   );
-  const baseInit: RequestInit = {
-    method: endpoint.config.method,
-    ...(endpoint.config.headers ? { headers: endpoint.config.headers } : {}),
-  };
+  const iterator = resolveIterator(pagination);
 
-  const { url, init } = applyAuth(baseRequestUrl, baseInit, auth, credentials);
-
-  let page: FetchJsonResult;
-  try {
-    page = await fetchJson(url, init);
-  } catch (err) {
-    throw remapAuthFailure(err, url);
-  }
-  const records = assertRecordsArray(
-    walkRecordsPath(page.body, endpoint.config.recordsPath ?? ""),
-    endpoint.config.recordsPath ?? ""
-  );
-
-  // Phase 1: simple per-record upsert. Phase 3 introduces page iteration
-  // + batch upserts; phase 4 wires the probe-driven column mappings.
   let created = 0;
   let updated = 0;
   let unchanged = 0;
+  // Global across all pages so synthetic source ids stay unique for an
+  // endpoint that paginates without an `idField`.
+  let recordIndex = 0;
 
-  for (let i = 0; i < records.length; i++) {
-    const record = records[i];
-    if (record === null || typeof record !== "object") continue;
-    const recordObj = record as Record<string, unknown>;
-    const sourceId = deriveSourceId(
-      recordObj,
-      endpoint.config.idField,
-      runStartedAt,
-      i
+  let next = await iterator.next();
+  while (!next.done) {
+    const fetched = await fetchOnePage(
+      endpoint,
+      baseUrl,
+      auth,
+      credentials,
+      pagination,
+      next.value
     );
-    const checksum = checksumRecord(recordObj);
 
-    const existing = await DbService.repository.entityRecords.findBySourceIds(
-      endpoint.entity.id,
-      [sourceId]
-    );
-    const prior = existing[0];
-
-    if (prior && prior.checksum === checksum) {
-      // Unchanged → bump syncedAt so watermark reaper leaves it alone.
-      await DbService.repository.entityRecords.bulkUpdateSyncedAt(
-        [prior.id],
-        runStartedAt
+    for (const record of fetched.records) {
+      if (record === null || typeof record !== "object") {
+        recordIndex++;
+        continue;
+      }
+      const recordObj = record as Record<string, unknown>;
+      const sourceId = deriveSourceId(
+        recordObj,
+        endpoint.config.idField,
+        runStartedAt,
+        recordIndex
       );
-      unchanged++;
-      continue;
+      recordIndex++;
+      const checksum = checksumRecord(recordObj);
+
+      const existing =
+        await DbService.repository.entityRecords.findBySourceIds(
+          endpoint.entity.id,
+          [sourceId]
+        );
+      const prior = existing[0];
+
+      if (prior && prior.checksum === checksum) {
+        // Unchanged → bump syncedAt so watermark reaper leaves it alone.
+        await DbService.repository.entityRecords.bulkUpdateSyncedAt(
+          [prior.id],
+          runStartedAt
+        );
+        unchanged++;
+        continue;
+      }
+
+      await DbService.repository.entityRecords.upsertBySourceId({
+        id: prior?.id ?? SystemUtilities.id.v4.generate(),
+        organizationId: instance.organizationId,
+        connectorEntityId: endpoint.entity.id,
+        sourceId,
+        data: recordObj as never,
+        checksum,
+        syncedAt: runStartedAt,
+        origin: "sync",
+        isValid: true,
+        validationErrors: null,
+        created: prior?.created ?? Date.now(),
+        createdBy: prior?.createdBy ?? userId,
+        updated: Date.now(),
+        updatedBy: userId,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+
+      if (prior) updated++; else created++;
     }
 
-    await DbService.repository.entityRecords.upsertBySourceId({
-      id: prior?.id ?? SystemUtilities.id.v4.generate(),
-      organizationId: instance.organizationId,
-      connectorEntityId: endpoint.entity.id,
-      sourceId,
-      data: recordObj as never,
-      checksum,
-      syncedAt: runStartedAt,
-      origin: "sync",
-      isValid: true,
-      validationErrors: null,
-      created: prior?.created ?? Date.now(),
-      createdBy: prior?.createdBy ?? userId,
-      updated: Date.now(),
-      updatedBy: userId,
-      deleted: null,
-      deletedBy: null,
-    } as never);
-
-    if (prior) updated++; else created++;
+    next = await iterator.next(fetched);
   }
 
-  // Watermark reap: anything not touched by this run is stale.
+  // Watermark reap runs once per endpoint, AFTER all pages have synced.
   const reaped =
     await DbService.repository.entityRecords.softDeleteBeforeWatermark(
       endpoint.entity.id,
@@ -342,6 +357,128 @@ async function syncOneEndpoint(
     );
 
   return { created, updated, unchanged, deleted: reaped.length };
+}
+
+/**
+ * Fetch a single page: build the URL (or use the iterator's
+ * `overrideUrl` for linkHeader), apply templating to query / headers /
+ * body, splice pagination params per strategy, apply auth, run
+ * `withRetry(fetchJson)`, walk `recordsPath`, assert array.
+ *
+ * Returns a `FetchedPage` that the caller hands back to
+ * `iterator.next()` so the iterator can decide whether to continue.
+ */
+async function fetchOnePage(
+  endpoint: ApiEndpoint,
+  baseUrl: string,
+  auth: ApiAuthConfig,
+  credentials: ApiCredentials | null,
+  pagination: PaginationConfig,
+  ctx: PageContext
+): Promise<FetchedPage> {
+  const vars: TemplateVariables = {
+    cursor: ctx.cursor,
+    pageNumber: ctx.pageNumber,
+  };
+
+  const paginationParams = ctx.overrideUrl !== undefined
+    ? { query: {}, headers: {} }
+    : paginationRequestParams(pagination, ctx);
+
+  let baseRequestUrl: string;
+  if (ctx.overrideUrl !== undefined) {
+    // linkHeader: upstream provided the next URL verbatim; skip query
+    // templating + pagination params on this request.
+    baseRequestUrl = ctx.overrideUrl;
+  } else {
+    const templatedQuery = applyTemplateToConfig(
+      (endpoint.config.queryParams as Record<string, string> | null | undefined) ?? undefined,
+      vars
+    );
+    baseRequestUrl = buildUrl(baseUrl, endpoint.config.path, {
+      ...templatedQuery,
+      ...paginationParams.query,
+    });
+  }
+
+  const templatedHeaders = applyTemplateToConfig(
+    (endpoint.config.headers as Record<string, string> | null | undefined) ?? undefined,
+    vars
+  );
+  const allHeaders = { ...templatedHeaders, ...paginationParams.headers };
+
+  const body = endpoint.config.bodyTemplate
+    ? applyTemplate(endpoint.config.bodyTemplate, vars)
+    : undefined;
+
+  const baseInit: RequestInit = {
+    method: endpoint.config.method,
+    ...(Object.keys(allHeaders).length > 0 ? { headers: allHeaders } : {}),
+    ...(body !== undefined ? { body } : {}),
+  };
+
+  const { url, init } = applyAuth(baseRequestUrl, baseInit, auth, credentials);
+
+  let result: FetchJsonResult;
+  try {
+    result = await withRetry(() => fetchJson(url, init));
+  } catch (err) {
+    throw remapAuthFailure(err, url);
+  }
+
+  const records = assertRecordsArray(
+    walkRecordsPath(result.body, endpoint.config.recordsPath ?? ""),
+    endpoint.config.recordsPath ?? ""
+  );
+
+  return {
+    body: result.body,
+    headers: result.headers,
+    status: result.status,
+    records,
+  };
+}
+
+/**
+ * Compute the per-strategy request shape for a given page context:
+ *   - `pageOffset`: splices `{param}` (+ optional `{pageSizeParam}`)
+ *     into the query string.
+ *   - `cursor`: on pages ≥ 2, splices the cursor into the configured
+ *     placement (query or header). Body placement is left to the user
+ *     to template via `{{cursor}}` in `bodyTemplate`.
+ *   - `none` / `linkHeader`: no extra params (linkHeader's overrideUrl
+ *     handles the request shape).
+ */
+function paginationRequestParams(
+  config: PaginationConfig,
+  ctx: PageContext
+): { query: Record<string, string>; headers: Record<string, string> } {
+  switch (config.strategy) {
+    case "none":
+      return { query: {}, headers: {} };
+    case "pageOffset": {
+      const query: Record<string, string> = {
+        [config.param]: String(ctx.pageNumber),
+      };
+      if (config.pageSizeParam) {
+        query[config.pageSizeParam] = String(config.pageSize);
+      }
+      return { query, headers: {} };
+    }
+    case "cursor": {
+      if (ctx.cursor === "") return { query: {}, headers: {} };
+      if (config.cursorPlacement === "query") {
+        return { query: { [config.cursorParam]: ctx.cursor }, headers: {} };
+      }
+      if (config.cursorPlacement === "header") {
+        return { query: {}, headers: { [config.cursorParam]: ctx.cursor } };
+      }
+      // Body placement: user injects `{{cursor}}` through bodyTemplate.
+      return { query: {}, headers: {} };
+    }
+    case "linkHeader":
+      return { query: {}, headers: {} };
+  }
 }
 
 function readBaseUrl(instance: ConnectorInstance): string {
@@ -447,31 +584,30 @@ async function testConnection(
     const baseUrl = readBaseUrl(instance);
     const auth = readAuth(instance);
     const credentials = loadCredentials(instance);
-
-    const baseRequestUrl = buildUrl(
-      baseUrl,
-      endpoint.config.path,
-      endpoint.config.queryParams ?? undefined
+    const pagination = reconstructPagination(
+      endpoint.config.pagination,
+      (endpoint.config.paginationConfig as Record<string, unknown> | null) ?? null
     );
-    const baseInit: RequestInit = {
-      method: endpoint.config.method,
-      ...(endpoint.config.headers ? { headers: endpoint.config.headers } : {}),
+
+    // testConnection is page-1-only by design — drive the request
+    // through `fetchOnePage` so templating + per-strategy params land
+    // on the first request, but skip the iterator's termination loop.
+    const ctx: PageContext = {
+      pageNumber: 1,
+      cursor: "",
+      isFirstPage: true,
+      isLastPage: false,
     };
-    const { url, init } = applyAuth(baseRequestUrl, baseInit, auth, credentials);
-
-    let page: FetchJsonResult;
-    try {
-      page = await fetchJson(url, init);
-    } catch (err) {
-      throw remapAuthFailure(err, url);
-    }
-
-    const records = assertRecordsArray(
-      walkRecordsPath(page.body, endpoint.config.recordsPath ?? ""),
-      endpoint.config.recordsPath ?? ""
+    const fetched = await fetchOnePage(
+      endpoint,
+      baseUrl,
+      auth,
+      credentials,
+      pagination,
+      ctx
     );
 
-    return { ok: true, sample: records.slice(0, 5) };
+    return { ok: true, sample: fetched.records.slice(0, 5) };
   } catch (err) {
     if (err instanceof ApiError) {
       return {
