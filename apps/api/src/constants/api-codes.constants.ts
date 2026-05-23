@@ -349,6 +349,14 @@ export enum ApiCode {
    */
   TEST_CONNECTION_NOT_SUPPORTED = "TEST_CONNECTION_NOT_SUPPORTED",
   /**
+   * A header / queryParam / bodyTemplate string references a `{{name}}`
+   * placeholder outside the closed set ({cursor, pageNumber}). Fired
+   * by `applyTemplate` at sync/test-connection time and by the
+   * frontend lint at save time. Closed-set substitution is what
+   * makes templating safe to ship without a sandbox.
+   */
+  REST_API_TEMPLATE_UNKNOWN_VARIABLE = "REST_API_TEMPLATE_UNKNOWN_VARIABLE",
+  /**
    * Org-wide entity-key uniqueness violated. Connector entity keys must
    * be unique per organization so `field_mapping.refEntityKey` resolves
    * unambiguously.
