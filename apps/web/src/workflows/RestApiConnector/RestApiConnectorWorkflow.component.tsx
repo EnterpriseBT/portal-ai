@@ -288,6 +288,10 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
               method: ep.method,
               recordsPath: ep.recordsPath,
               idField: ep.idField || null,
+              // Phase 3 widens the schema; the workflow's endpoint
+              // drafts ship with `none` until slice 6 surfaces the
+              // strategy dropdown in `ApiEndpointForm`.
+              pagination: { strategy: "none" },
             },
           }),
         });

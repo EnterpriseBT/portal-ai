@@ -22,8 +22,11 @@ import { JobLockService } from "../services/job-lock.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { createLogger } from "../utils/logger.util.js";
 import {
+  ApiEndpointConfigBaseSchema,
   ApiEndpointConfigSchema,
+  PaginationConfigSchema,
   type ApiEndpointConfig,
+  type PaginationConfig,
 } from "@portalai/core/models";
 import type { ApiEndpoint } from "../db/repositories/api-endpoints.repository.js";
 
@@ -44,8 +47,47 @@ const CreateApiEndpointRequestBodySchema = z.object({
 
 const PatchApiEndpointRequestBodySchema = z.object({
   label: z.string().min(1).optional(),
-  config: ApiEndpointConfigSchema.partial().optional(),
+  // Partial of the *base* shape — refines (e.g. bodyTemplate vs method)
+  // can't survive `.partial()`, so PATCH-time validation accepts any
+  // subset of fields and the route enforces refinements only on full
+  // create payloads. Cross-field consistency on edit is enforced at
+  // the adapter layer (slice 5).
+  config: ApiEndpointConfigBaseSchema.partial().optional(),
 });
+
+// ── Pagination flatten / reconstruct helpers ─────────────────────────
+//
+// The table stores `pagination` as a discriminator string + a free-form
+// `paginationConfig` jsonb for the rest of the union arm. The contract
+// model surfaces both as a single `PaginationConfig` discriminated
+// union. These helpers do the bridge.
+
+function flattenPaginationForTable(pagination: PaginationConfig): {
+  pagination: string;
+  paginationConfig: Record<string, unknown> | null;
+} {
+  const { strategy, ...rest } = pagination as Record<string, unknown> & {
+    strategy: string;
+  };
+  return {
+    pagination: strategy,
+    paginationConfig: Object.keys(rest).length > 0 ? rest : null,
+  };
+}
+
+function reconstructPagination(
+  pagination: string,
+  paginationConfig: Record<string, unknown> | null
+): PaginationConfig {
+  // Defensive parse: drift between the table CHECK and the contract
+  // schema lands here as 400 REST_API_PAGINATION_INVALID at the call
+  // site (slice 5). For now, parse loosely — phase-1 rows are all
+  // {strategy:"none"}.
+  return PaginationConfigSchema.parse({
+    strategy: pagination,
+    ...(paginationConfig ?? {}),
+  });
+}
 
 // ── Wire-shape mapping ────────────────────────────────────────────────
 
@@ -66,6 +108,11 @@ function toWire(pair: ApiEndpoint): {
       idField: pair.config.idField ?? null,
       headers: (pair.config.headers as Record<string, string> | null) ?? undefined,
       queryParams: (pair.config.queryParams as Record<string, string> | null) ?? undefined,
+      bodyTemplate: pair.config.bodyTemplate ?? undefined,
+      pagination: reconstructPagination(
+        pair.config.pagination,
+        (pair.config.paginationConfig as Record<string, unknown> | null) ?? null
+      ),
     },
   };
 }
@@ -203,9 +250,7 @@ apiEndpointsRouter.post(
         organizationId
       );
 
-      // Phase 1 hard-codes `pagination: 'none'` at the DB CHECK
-      // constraint; populate it here even though the model schema
-      // doesn't surface it yet (phase 3 wires the choice into Zod).
+      const flattened = flattenPaginationForTable(body.config.pagination);
       const result = await DbService.repository.apiEndpoints
         .createWithEntity(
           {
@@ -220,9 +265,9 @@ apiEndpointsRouter.post(
               idField: body.config.idField ?? null,
               headers: body.config.headers ?? null,
               queryParams: body.config.queryParams ?? null,
-              bodyTemplate: null,
-              pagination: "none",
-              paginationConfig: null,
+              bodyTemplate: body.config.bodyTemplate ?? null,
+              pagination: flattened.pagination,
+              paginationConfig: flattened.paginationConfig,
             },
           },
           userId
@@ -326,9 +371,16 @@ apiEndpointsRouter.patch(
 
       // Update the config row if any config fields were sent.
       if (body.config && Object.keys(body.config).length > 0) {
+        const { pagination, ...rest } = body.config;
+        const patch = {
+          ...rest,
+          ...(pagination !== undefined
+            ? flattenPaginationForTable(pagination as PaginationConfig)
+            : {}),
+        };
         const updated = await DbService.repository.apiEndpoints.updateConfig(
           entityId,
-          body.config as never,
+          patch as never,
           userId
         );
         if (!updated) {

@@ -1,9 +1,12 @@
 import {
   ApiAuthConfigSchema,
   ApiCredentialsSchema,
+  PaginationConfigSchema,
   RestApiInstanceConfigSchema,
   ApiEndpointConfigSchema,
 } from "../../models/api-connector.model.js";
+
+const NONE_PAGINATION = { strategy: "none" as const };
 
 describe("ApiAuthConfigSchema", () => {
   it("accepts the `none` mode", () => {
@@ -172,11 +175,71 @@ describe("RestApiInstanceConfigSchema", () => {
   });
 });
 
+describe("PaginationConfigSchema", () => {
+  it("accepts the none strategy", () => {
+    const result = PaginationConfigSchema.safeParse({ strategy: "none" });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts pageOffset with required fields and applies defaults", () => {
+    const result = PaginationConfigSchema.safeParse({
+      strategy: "pageOffset",
+      style: "page",
+      param: "page",
+    });
+    expect(result.success).toBe(true);
+    if (result.success && result.data.strategy === "pageOffset") {
+      expect(result.data.pageSize).toBe(50);
+      expect(result.data.startPage).toBe(1);
+      expect(result.data.stopOnShortPage).toBe(true);
+    }
+  });
+
+  it("rejects pageOffset missing param", () => {
+    const result = PaginationConfigSchema.safeParse({
+      strategy: "pageOffset",
+      style: "page",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts cursor with cursorParam + cursorResponsePath", () => {
+    const result = PaginationConfigSchema.safeParse({
+      strategy: "cursor",
+      cursorParam: "cursor",
+      cursorResponsePath: "meta.next",
+    });
+    expect(result.success).toBe(true);
+    if (result.success && result.data.strategy === "cursor") {
+      expect(result.data.cursorPlacement).toBe("query");
+    }
+  });
+
+  it("rejects cursor missing cursorResponsePath", () => {
+    const result = PaginationConfigSchema.safeParse({
+      strategy: "cursor",
+      cursorParam: "cursor",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts linkHeader (no further config)", () => {
+    const result = PaginationConfigSchema.safeParse({ strategy: "linkHeader" });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects unknown strategy", () => {
+    const result = PaginationConfigSchema.safeParse({ strategy: "rfc5988" });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe("ApiEndpointConfigSchema", () => {
   it("accepts a minimal GET endpoint and defaults recordsPath to ''", () => {
     const result = ApiEndpointConfigSchema.safeParse({
       path: "/users",
       method: "GET",
+      pagination: NONE_PAGINATION,
     });
     expect(result.success).toBe(true);
     if (result.success) {
@@ -192,12 +255,49 @@ describe("ApiEndpointConfigSchema", () => {
       idField: "id",
       headers: { "X-Tenant": "acme" },
       queryParams: { active: "true" },
+      bodyTemplate: '{"q":1}',
+      pagination: NONE_PAGINATION,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects bodyTemplate on GET endpoints", () => {
+    const result = ApiEndpointConfigSchema.safeParse({
+      path: "/x",
+      method: "GET",
+      bodyTemplate: '{"q":1}',
+      pagination: NONE_PAGINATION,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("requires pagination", () => {
+    const result = ApiEndpointConfigSchema.safeParse({
+      path: "/x",
+      method: "GET",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a non-none pagination strategy", () => {
+    const result = ApiEndpointConfigSchema.safeParse({
+      path: "/x",
+      method: "GET",
+      pagination: {
+        strategy: "cursor",
+        cursorParam: "cursor",
+        cursorResponsePath: "meta.next",
+      },
     });
     expect(result.success).toBe(true);
   });
 
   it("rejects empty path", () => {
-    const result = ApiEndpointConfigSchema.safeParse({ path: "", method: "GET" });
+    const result = ApiEndpointConfigSchema.safeParse({
+      path: "",
+      method: "GET",
+      pagination: NONE_PAGINATION,
+    });
     expect(result.success).toBe(false);
   });
 
@@ -205,6 +305,7 @@ describe("ApiEndpointConfigSchema", () => {
     const result = ApiEndpointConfigSchema.safeParse({
       path: "/x",
       method: "PATCH",
+      pagination: NONE_PAGINATION,
     });
     expect(result.success).toBe(false);
   });
@@ -214,6 +315,7 @@ describe("ApiEndpointConfigSchema", () => {
       path: "/x",
       method: "GET",
       idField: null,
+      pagination: NONE_PAGINATION,
     });
     expect(result.success).toBe(true);
   });

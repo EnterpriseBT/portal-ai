@@ -82,19 +82,72 @@ export const RestApiInstanceConfigSchema = z.object({
 });
 export type RestApiInstanceConfig = z.infer<typeof RestApiInstanceConfigSchema>;
 
+// ── Pagination strategies (config side) ──────────────────────────────
+//
+// Discriminated union over `strategy`. The DB stores the discriminator
+// in the `pagination` text column (CHECK-constrained to the same four
+// values) and the rest of the union arm in the `pagination_config`
+// jsonb column; the route flattens / unflattens between the structured
+// model shape and the table shape.
+
+export const PaginationNoneSchema = z.object({ strategy: z.literal("none") });
+export type PaginationNone = z.infer<typeof PaginationNoneSchema>;
+
+export const PaginationPageOffsetSchema = z.object({
+  strategy: z.literal("pageOffset"),
+  style: z.enum(["page", "offset"]),
+  param: z.string().min(1),
+  pageSize: z.number().int().positive().default(50),
+  pageSizeParam: z.string().optional(),
+  startPage: z.number().int().nonnegative().default(1),
+  stopOnShortPage: z.boolean().default(true),
+});
+export type PaginationPageOffset = z.infer<typeof PaginationPageOffsetSchema>;
+
+export const PaginationCursorSchema = z.object({
+  strategy: z.literal("cursor"),
+  cursorParam: z.string().min(1),
+  cursorPlacement: z.enum(["query", "header", "body"]).default("query"),
+  cursorResponsePath: z.string().min(1),
+});
+export type PaginationCursor = z.infer<typeof PaginationCursorSchema>;
+
+export const PaginationLinkHeaderSchema = z.object({
+  strategy: z.literal("linkHeader"),
+});
+export type PaginationLinkHeader = z.infer<typeof PaginationLinkHeaderSchema>;
+
+export const PaginationConfigSchema = z.discriminatedUnion("strategy", [
+  PaginationNoneSchema,
+  PaginationPageOffsetSchema,
+  PaginationCursorSchema,
+  PaginationLinkHeaderSchema,
+]);
+export type PaginationConfig = z.infer<typeof PaginationConfigSchema>;
+
 // ── Endpoint config ──────────────────────────────────────────────────
 //
-// Pagination is NOT a field here in phase 1/2 — the api_endpoint_configs
-// CHECK constraint enforces 'none' at the DB level, so the model layer
-// exposes no choice either. Phase 3 adds a discriminated `pagination`
-// union to this schema.
+// `ApiEndpointConfigBaseSchema` is the raw shape (no cross-field
+// refinements); `ApiEndpointConfigSchema` layers the `bodyTemplate vs
+// method` refine on top. PATCH-style partial validation derives from
+// the base — Zod's `.partial()` cannot be applied after a refine.
 
-export const ApiEndpointConfigSchema = z.object({
+export const ApiEndpointConfigBaseSchema = z.object({
   path: z.string().min(1),
   method: z.enum(["GET", "POST"]),
   recordsPath: z.string().default(""),
   idField: z.string().nullable().optional(),
   headers: z.record(z.string(), z.string()).optional(),
   queryParams: z.record(z.string(), z.string()).optional(),
+  bodyTemplate: z.string().optional(),
+  pagination: PaginationConfigSchema,
 });
+
+export const ApiEndpointConfigSchema = ApiEndpointConfigBaseSchema.refine(
+  (cfg) => !(cfg.method === "GET" && cfg.bodyTemplate !== undefined),
+  {
+    message: "bodyTemplate is only valid when method is POST",
+    path: ["bodyTemplate"],
+  }
+);
 export type ApiEndpointConfig = z.infer<typeof ApiEndpointConfigSchema>;

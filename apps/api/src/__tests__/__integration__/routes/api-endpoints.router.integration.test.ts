@@ -127,6 +127,7 @@ describe("POST /api/connector-instances/:instanceId/api-endpoints", () => {
           method: "GET",
           recordsPath: "",
           idField: "id",
+          pagination: { strategy: "none" },
         },
       });
 
@@ -158,7 +159,7 @@ describe("POST /api/connector-instances/:instanceId/api-endpoints", () => {
       .send({
         key: "x",
         label: "X",
-        config: { path: "/x", method: "GET", recordsPath: "" },
+        config: { path: "/x", method: "GET", recordsPath: "", pagination: { strategy: "none" } },
       });
 
     expect(res.status).toBe(404);
@@ -172,7 +173,7 @@ describe("POST /api/connector-instances/:instanceId/api-endpoints", () => {
       .send({
         key: "uniq",
         label: "Uniq",
-        config: { path: "/x", method: "GET", recordsPath: "" },
+        config: { path: "/x", method: "GET", recordsPath: "", pagination: { strategy: "none" } },
       })
       .expect(201);
 
@@ -182,7 +183,7 @@ describe("POST /api/connector-instances/:instanceId/api-endpoints", () => {
       .send({
         key: "uniq",
         label: "Uniq Again",
-        config: { path: "/y", method: "GET", recordsPath: "" },
+        config: { path: "/y", method: "GET", recordsPath: "", pagination: { strategy: "none" } },
       });
 
     expect(res.status).toBe(409);
@@ -197,7 +198,7 @@ describe("GET /api/connector-instances/:instanceId/api-endpoints", () => {
       .send({
         key: "a",
         label: "A",
-        config: { path: "/a", method: "GET", recordsPath: "" },
+        config: { path: "/a", method: "GET", recordsPath: "", pagination: { strategy: "none" } },
       })
       .expect(201);
     await request(app)
@@ -205,7 +206,7 @@ describe("GET /api/connector-instances/:instanceId/api-endpoints", () => {
       .send({
         key: "b",
         label: "B",
-        config: { path: "/b", method: "POST", recordsPath: "data" },
+        config: { path: "/b", method: "POST", recordsPath: "data", pagination: { strategy: "none" } },
       })
       .expect(201);
 
@@ -228,7 +229,7 @@ describe("GET /api/connector-instances/:instanceId/api-endpoints/:entityId", () 
       .send({
         key: "single",
         label: "Single",
-        config: { path: "/single", method: "GET", recordsPath: "items" },
+        config: { path: "/single", method: "GET", recordsPath: "items", pagination: { strategy: "none" } },
       })
       .expect(201);
 
@@ -261,7 +262,7 @@ describe("PATCH /api/connector-instances/:instanceId/api-endpoints/:entityId", (
       .send({
         key: "patchable",
         label: "Patchable",
-        config: { path: "/old", method: "GET", recordsPath: "" },
+        config: { path: "/old", method: "GET", recordsPath: "", pagination: { strategy: "none" } },
       })
       .expect(201);
 
@@ -290,7 +291,7 @@ describe("DELETE /api/connector-instances/:instanceId/api-endpoints/:entityId", 
       .send({
         key: "deletable",
         label: "Deletable",
-        config: { path: "/d", method: "GET", recordsPath: "" },
+        config: { path: "/d", method: "GET", recordsPath: "", pagination: { strategy: "none" } },
       })
       .expect(201);
 

@@ -108,7 +108,13 @@ async function createUsersEndpoint(): Promise<string> {
     .send({
       key: "users",
       label: "Users",
-      config: { path: "/users", method: "GET", recordsPath: "", idField: "id" },
+      config: {
+        path: "/users",
+        method: "GET",
+        recordsPath: "",
+        idField: "id",
+        pagination: { strategy: "none" },
+      },
     });
   if (res.status !== 201) {
     throw new Error(

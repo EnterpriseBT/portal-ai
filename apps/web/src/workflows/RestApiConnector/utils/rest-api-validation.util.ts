@@ -116,6 +116,10 @@ export function validateEndpoint(input: {
     method: input.method,
     recordsPath: input.recordsPath,
     idField: input.idField || null,
+    // Phase 3 makes `pagination` required; the workflow's endpoint
+    // form ships drafts with the `none` default until slice 6
+    // surfaces the strategy dropdown.
+    pagination: { strategy: "none" },
   });
   if (!result.success) {
     return { ...errors, ...result.errors };

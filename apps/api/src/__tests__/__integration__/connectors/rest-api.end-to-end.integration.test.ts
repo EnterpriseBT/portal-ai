@@ -154,6 +154,7 @@ describe("REST API connector — end-to-end sync", () => {
           method: "GET",
           recordsPath: "",
           idField: "id",
+          pagination: { strategy: "none" },
         },
       })
       .expect(201);
@@ -246,6 +247,7 @@ describe("REST API connector — end-to-end sync", () => {
           method: "GET",
           recordsPath: "data.items",
           idField: "id",
+          pagination: { strategy: "none" },
         },
       })
       .expect(201);
@@ -286,6 +288,7 @@ describe("REST API connector — end-to-end sync", () => {
           method: "GET",
           recordsPath: "",
           idField: null,
+          pagination: { strategy: "none" },
         },
       })
       .expect(201);

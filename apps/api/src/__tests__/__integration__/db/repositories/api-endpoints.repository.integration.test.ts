@@ -272,7 +272,29 @@ describe("ApiEndpointsRepository Integration Tests", () => {
       ).rejects.toThrow();
     });
 
-    it("rejects pagination values other than 'none' in phase 1", async () => {
+    it("accepts the four phase-3 pagination strategies via the widened CHECK", async () => {
+      for (const strategy of ["none", "pageOffset", "cursor", "linkHeader"]) {
+        await expect(
+          repo.createWithEntity(
+            {
+              organizationId: orgId,
+              connectorInstanceId,
+              key: `paginated-${strategy}`,
+              label: `Paginated ${strategy}`,
+              config: {
+                path: `/${strategy}`,
+                method: "GET",
+                pagination: strategy,
+              },
+            },
+            actor,
+            db
+          )
+        ).resolves.toBeDefined();
+      }
+    });
+
+    it("rejects pagination values outside the closed set", async () => {
       await expect(
         repo.createWithEntity(
           {
@@ -283,7 +305,7 @@ describe("ApiEndpointsRepository Integration Tests", () => {
             config: {
               path: "/x",
               method: "GET",
-              pagination: "pageOffset",
+              pagination: "rfc5988",
             },
           },
           actor,
