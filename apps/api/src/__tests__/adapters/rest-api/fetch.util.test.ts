@@ -30,13 +30,34 @@ describe("fetchJson — happy path", () => {
 });
 
 describe("fetchJson — non-2xx", () => {
-  it("throws REST_API_FETCH_FAILED on 500 with status in details", async () => {
+  it("throws REST_API_FETCH_FAILED on 500 with status + headers in details", async () => {
     const fakeFetch = jest.fn<typeof fetch>().mockResolvedValueOnce(
       jsonResponse({ error: "internal" }, { status: 500 })
     );
     await expect(fetchJson("https://x.test", {}, fakeFetch)).rejects.toMatchObject({
       code: ApiCode.REST_API_FETCH_FAILED,
-      details: expect.objectContaining({ status: 500 }),
+      details: expect.objectContaining({
+        status: 500,
+        // headers is collected via the `Headers` iterator and downcased
+        // — assert just one well-known entry is present.
+        headers: expect.objectContaining({ "content-type": expect.any(String) }),
+      }),
+    });
+  });
+
+  it("attaches Retry-After to details so withRetry can read it", async () => {
+    const fakeFetch = jest.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse({ error: "slow down" }, {
+        status: 429,
+        headers: { "Retry-After": "30" },
+      })
+    );
+    await expect(fetchJson("https://x.test", {}, fakeFetch)).rejects.toMatchObject({
+      code: ApiCode.REST_API_FETCH_FAILED,
+      details: expect.objectContaining({
+        status: 429,
+        headers: expect.objectContaining({ "retry-after": "30" }),
+      }),
     });
   });
 
@@ -68,6 +89,22 @@ describe("fetchJson — invalid JSON", () => {
     );
     await expect(fetchJson("https://x.test", {}, fakeFetch)).rejects.toMatchObject({
       code: ApiCode.REST_API_INVALID_JSON,
+    });
+  });
+
+  it("attaches status + headers to details on parse failure (so callers can introspect)", async () => {
+    const fakeFetch = jest.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response("not-json{", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      })
+    );
+    await expect(fetchJson("https://x.test", {}, fakeFetch)).rejects.toMatchObject({
+      code: ApiCode.REST_API_INVALID_JSON,
+      details: expect.objectContaining({
+        status: 200,
+        headers: expect.objectContaining({ "content-type": "text/html" }),
+      }),
     });
   });
 });

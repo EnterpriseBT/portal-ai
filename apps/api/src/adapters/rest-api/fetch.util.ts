@@ -56,13 +56,14 @@ export async function fetchJson(
   }
 
   const headers = collectHeaders(response.headers);
+  const status = response.status;
 
   if (!response.ok) {
     throw new ApiError(
       502,
       ApiCode.REST_API_FETCH_FAILED,
-      `Endpoint returned HTTP ${response.status}`,
-      { url, status: response.status, headers }
+      `Endpoint returned HTTP ${status}`,
+      { url, status, headers }
     );
   }
 
@@ -91,11 +92,11 @@ export async function fetchJson(
       502,
       ApiCode.REST_API_INVALID_JSON,
       `Response body isn't valid JSON: ${(err as Error).message}`,
-      { url }
+      { url, status, headers }
     );
   }
 
-  return { status: response.status, body, headers };
+  return { status, body, headers };
 }
 
 async function readBodyWithCap(response: Response, url: string): Promise<string> {

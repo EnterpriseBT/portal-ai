@@ -357,6 +357,13 @@ export enum ApiCode {
    */
   REST_API_TEMPLATE_UNKNOWN_VARIABLE = "REST_API_TEMPLATE_UNKNOWN_VARIABLE",
   /**
+   * Upstream returned 429 and `withRetry` exhausted its budget.
+   * Surfaced as 502 with `details.lastRetryAfter` (the final
+   * Retry-After header value, if any) + `details.attempts` so the UI
+   * can tell users "the upstream API is rate-limiting us, slow down".
+   */
+  REST_API_RATE_LIMITED = "REST_API_RATE_LIMITED",
+  /**
    * Org-wide entity-key uniqueness violated. Connector entity keys must
    * be unique per organization so `field_mapping.refEntityKey` resolves
    * unambiguously.
