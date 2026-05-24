@@ -16,7 +16,6 @@ import type {
   ApiAuthConfig,
   ApiCredentials,
   ConnectorInstance,
-  PaginationConfig,
 } from "@portalai/core/models";
 
 import { ApiCode } from "../../constants/api-codes.constants.js";
@@ -34,21 +33,15 @@ import { ApiError } from "../../services/http.service.js";
 import { DbService } from "../../services/db.service.js";
 import { importModeQueryRows } from "../../utils/adapter.util.js";
 import { createLogger } from "../../utils/logger.util.js";
-import { applyAuth } from "./auth.util.js";
 import { loadCredentials } from "./credentials.util.js";
-import { fetchJson, type FetchJsonResult } from "./fetch.util.js";
+import {
+  fetchFirstPage,
+  fetchOnePage,
+} from "./fetch-first-page.util.js";
 import {
   resolveIterator,
   reconstructPagination,
-  type FetchedPage,
-  type PageContext,
 } from "./pagination/index.js";
-import { withRetry } from "./retry.util.js";
-import {
-  applyTemplate,
-  applyTemplateToConfig,
-  type TemplateVariables,
-} from "./template.util.js";
 import type { ApiEndpoint } from "../../db/repositories/api-endpoints.repository.js";
 import { SystemUtilities } from "../../utils/system.util.js";
 
@@ -359,128 +352,6 @@ async function syncOneEndpoint(
   return { created, updated, unchanged, deleted: reaped.length };
 }
 
-/**
- * Fetch a single page: build the URL (or use the iterator's
- * `overrideUrl` for linkHeader), apply templating to query / headers /
- * body, splice pagination params per strategy, apply auth, run
- * `withRetry(fetchJson)`, walk `recordsPath`, assert array.
- *
- * Returns a `FetchedPage` that the caller hands back to
- * `iterator.next()` so the iterator can decide whether to continue.
- */
-async function fetchOnePage(
-  endpoint: ApiEndpoint,
-  baseUrl: string,
-  auth: ApiAuthConfig,
-  credentials: ApiCredentials | null,
-  pagination: PaginationConfig,
-  ctx: PageContext
-): Promise<FetchedPage> {
-  const vars: TemplateVariables = {
-    cursor: ctx.cursor,
-    pageNumber: ctx.pageNumber,
-  };
-
-  const paginationParams = ctx.overrideUrl !== undefined
-    ? { query: {}, headers: {} }
-    : paginationRequestParams(pagination, ctx);
-
-  let baseRequestUrl: string;
-  if (ctx.overrideUrl !== undefined) {
-    // linkHeader: upstream provided the next URL verbatim; skip query
-    // templating + pagination params on this request.
-    baseRequestUrl = ctx.overrideUrl;
-  } else {
-    const templatedQuery = applyTemplateToConfig(
-      (endpoint.config.queryParams as Record<string, string> | null | undefined) ?? undefined,
-      vars
-    );
-    baseRequestUrl = buildUrl(baseUrl, endpoint.config.path, {
-      ...templatedQuery,
-      ...paginationParams.query,
-    });
-  }
-
-  const templatedHeaders = applyTemplateToConfig(
-    (endpoint.config.headers as Record<string, string> | null | undefined) ?? undefined,
-    vars
-  );
-  const allHeaders = { ...templatedHeaders, ...paginationParams.headers };
-
-  const body = endpoint.config.bodyTemplate
-    ? applyTemplate(endpoint.config.bodyTemplate, vars)
-    : undefined;
-
-  const baseInit: RequestInit = {
-    method: endpoint.config.method,
-    ...(Object.keys(allHeaders).length > 0 ? { headers: allHeaders } : {}),
-    ...(body !== undefined ? { body } : {}),
-  };
-
-  const { url, init } = applyAuth(baseRequestUrl, baseInit, auth, credentials);
-
-  let result: FetchJsonResult;
-  try {
-    result = await withRetry(() => fetchJson(url, init));
-  } catch (err) {
-    throw remapAuthFailure(err, url);
-  }
-
-  const records = assertRecordsArray(
-    walkRecordsPath(result.body, endpoint.config.recordsPath ?? ""),
-    endpoint.config.recordsPath ?? ""
-  );
-
-  return {
-    body: result.body,
-    headers: result.headers,
-    status: result.status,
-    records,
-  };
-}
-
-/**
- * Compute the per-strategy request shape for a given page context:
- *   - `pageOffset`: splices `{param}` (+ optional `{pageSizeParam}`)
- *     into the query string.
- *   - `cursor`: on pages ≥ 2, splices the cursor into the configured
- *     placement (query or header). Body placement is left to the user
- *     to template via `{{cursor}}` in `bodyTemplate`.
- *   - `none` / `linkHeader`: no extra params (linkHeader's overrideUrl
- *     handles the request shape).
- */
-function paginationRequestParams(
-  config: PaginationConfig,
-  ctx: PageContext
-): { query: Record<string, string>; headers: Record<string, string> } {
-  switch (config.strategy) {
-    case "none":
-      return { query: {}, headers: {} };
-    case "pageOffset": {
-      const query: Record<string, string> = {
-        [config.param]: String(ctx.pageNumber),
-      };
-      if (config.pageSizeParam) {
-        query[config.pageSizeParam] = String(config.pageSize);
-      }
-      return { query, headers: {} };
-    }
-    case "cursor": {
-      if (ctx.cursor === "") return { query: {}, headers: {} };
-      if (config.cursorPlacement === "query") {
-        return { query: { [config.cursorParam]: ctx.cursor }, headers: {} };
-      }
-      if (config.cursorPlacement === "header") {
-        return { query: {}, headers: { [config.cursorParam]: ctx.cursor } };
-      }
-      // Body placement: user injects `{{cursor}}` through bodyTemplate.
-      return { query: {}, headers: {} };
-    }
-    case "linkHeader":
-      return { query: {}, headers: {} };
-  }
-}
-
 function readBaseUrl(instance: ConnectorInstance): string {
   const cfg = instance.config as { baseUrl?: unknown } | null;
   const baseUrl = cfg?.baseUrl;
@@ -501,26 +372,6 @@ function readAuth(instance: ConnectorInstance): ApiAuthConfig {
   // a null config; treat as `none`. Phase-1 instances always carry a
   // populated auth block.
   return cfg?.auth ?? { mode: "none" };
-}
-
-/**
- * Convert a 401/403 from upstream into REST_API_AUTH_FAILED so the
- * frontend can distinguish "credentials are wrong" from "endpoint
- * misbehaved." All other fetch failures pass through unchanged.
- */
-function remapAuthFailure(err: unknown, url: string): unknown {
-  if (!(err instanceof ApiError)) return err;
-  if (err.code !== ApiCode.REST_API_FETCH_FAILED) return err;
-  const status = (err.details as { status?: number } | undefined)?.status;
-  if (status === 401 || status === 403) {
-    return new ApiError(
-      502,
-      ApiCode.REST_API_AUTH_FAILED,
-      `Upstream rejected credentials (HTTP ${status})`,
-      { url, status }
-    );
-  }
-  return err;
 }
 
 function checksumRecord(record: Record<string, unknown>): string {
@@ -589,22 +440,16 @@ async function testConnection(
       (endpoint.config.paginationConfig as Record<string, unknown> | null) ?? null
     );
 
-    // testConnection is page-1-only by design — drive the request
-    // through `fetchOnePage` so templating + per-strategy params land
-    // on the first request, but skip the iterator's termination loop.
-    const ctx: PageContext = {
-      pageNumber: 1,
-      cursor: "",
-      isFirstPage: true,
-      isLastPage: false,
-    };
-    const fetched = await fetchOnePage(
+    // testConnection is page-1-only by design. `fetchFirstPage` drives
+    // the iterator exactly once so per-strategy response inspection
+    // still runs (cursor extraction, Link header parsing, etc.) and
+    // any config errors surface — but no follow-up fetch fires.
+    const fetched = await fetchFirstPage(
       endpoint,
       baseUrl,
       auth,
       credentials,
-      pagination,
-      ctx
+      pagination
     );
 
     return { ok: true, sample: fetched.records.slice(0, 5) };
