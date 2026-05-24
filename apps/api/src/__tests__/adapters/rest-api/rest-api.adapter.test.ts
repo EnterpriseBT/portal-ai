@@ -50,6 +50,18 @@ const softDeleteBeforeWatermarkMock =
   >();
 const updateInstanceMock =
   jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const findColumnDefinitionsMock =
+  jest.fn<
+    (orgId: string) => Promise<
+      Array<{
+        id: string;
+        label: string;
+        key: string;
+        description: string | null;
+        type: string;
+      }>
+    >
+  >();
 
 jest.unstable_mockModule("../../../services/db.service.js", () => ({
   DbService: {
@@ -65,6 +77,7 @@ jest.unstable_mockModule("../../../services/db.service.js", () => ({
         softDeleteBeforeWatermark: softDeleteBeforeWatermarkMock,
       },
       connectorInstances: { update: updateInstanceMock },
+      columnDefinitions: { findByOrganizationId: findColumnDefinitionsMock },
     },
   },
 }));
@@ -75,7 +88,15 @@ const {
   assertRecordsArray,
   buildUrl,
   deriveSourceId,
+  configureRestApiAdapterDeps,
+  __resetRestApiAdapterDepsForTests,
 } = await import("../../../adapters/rest-api/rest-api.adapter.js");
+const { ProbeCache } = await import(
+  "../../../adapters/rest-api/probe-cache.util.js"
+);
+const { createStubClassifier, createThrowingClassifier } = await import(
+  "../../../adapters/rest-api/classifier.stub.js"
+);
 
 const INSTANCE = {
   id: "ci-rest-1",
@@ -104,6 +125,9 @@ beforeEach(() => {
   bulkUpdateSyncedAtMock.mockReset();
   softDeleteBeforeWatermarkMock.mockReset();
   updateInstanceMock.mockReset();
+  findColumnDefinitionsMock.mockReset();
+  findColumnDefinitionsMock.mockResolvedValue([]);
+  __resetRestApiAdapterDepsForTests();
 });
 
 // ── Pure helpers ─────────────────────────────────────────────────────
@@ -203,13 +227,6 @@ describe("deriveSourceId", () => {
 });
 
 // ── Adapter surface ──────────────────────────────────────────────────
-
-describe("restApiAdapter.discoverColumns", () => {
-  it("returns empty array in phase 1 (probe lands in phase 4)", async () => {
-    const cols = await restApiAdapter.discoverColumns(INSTANCE, "users");
-    expect(cols).toEqual([]);
-  });
-});
 
 describe("restApiAdapter.discoverEntities", () => {
   it("returns one DiscoveredEntity per configured endpoint", async () => {
@@ -933,3 +950,355 @@ describe("restApiAdapter.toPublicAccountInfo", () => {
     expect(out.identity).toBe("REST API");
   });
 });
+
+// ── discoverColumnsWithSamples (slice 5) ─────────────────────────────
+
+describe("restApiAdapter.discoverColumnsWithSamples", () => {
+  let originalFetch: typeof globalThis.fetch;
+  let fetchMock: jest.Mock<typeof globalThis.fetch>;
+
+  function okResponse(body: unknown, headers: Record<string, string> = {}) {
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json", ...headers },
+    });
+  }
+
+  function withEndpoint() {
+    findByInstanceMock.mockResolvedValue([
+      {
+        entity: {
+          id: "ent-users",
+          key: "users",
+          label: "Users",
+          connectorInstanceId: INSTANCE.id,
+        },
+        config: {
+          path: "/users",
+          method: "GET",
+          recordsPath: "",
+          idField: "id",
+          ...NONE_PAGINATION,
+        },
+      },
+    ]);
+  }
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    fetchMock = jest.fn<typeof globalThis.fetch>();
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("returns heuristic columns + suggestions when the classifier is wired", async () => {
+    withEndpoint();
+    fetchMock.mockResolvedValueOnce(
+      okResponse(
+        Array.from({ length: 10 }, (_, i) => ({
+          id: `u${i}`,
+          name: `User ${i}`,
+        }))
+      )
+    );
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: createStubClassifier([
+        {
+          sourceField: "id",
+          columnDefinitionId: "cd-id",
+          suggestedNormalizedKey: "user_id",
+          suggestedSemanticType: "string",
+          confidence: 0.9,
+          rationale: "ID-shaped",
+        },
+        {
+          sourceField: "name",
+          columnDefinitionId: "cd-name",
+          suggestedNormalizedKey: "user_name",
+          suggestedSemanticType: "string",
+          confidence: 0.7,
+          rationale: "Name-shaped",
+        },
+      ]),
+    });
+
+    const result = await restApiAdapter.discoverColumnsWithSamples(
+      INSTANCE,
+      "users"
+    );
+
+    expect(result.source).toBe("live");
+    expect(result.degradation).toBeNull();
+    expect(result.recordsScanned).toBe(10);
+    expect(result.columns).toHaveLength(2);
+    const byKey = Object.fromEntries(result.columns.map((c) => [c.key, c]));
+    expect(byKey.id.suggestion?.suggestedNormalizedKey).toBe("user_id");
+    expect(byKey.name.suggestion?.suggestedNormalizedKey).toBe("user_name");
+  });
+
+  it("marks degradation: 'llm-disabled' when no classifier is wired", async () => {
+    withEndpoint();
+    fetchMock.mockResolvedValueOnce(okResponse([{ id: "a" }, { id: "b" }]));
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: null,
+    });
+
+    const result = await restApiAdapter.discoverColumnsWithSamples(
+      INSTANCE,
+      "users"
+    );
+
+    expect(result.degradation).toBe("llm-disabled");
+    expect(result.columns[0].suggestion).toBeUndefined();
+  });
+
+  it("marks degradation: 'llm-failed' when the classifier throws (heuristic columns still returned)", async () => {
+    withEndpoint();
+    fetchMock.mockResolvedValueOnce(okResponse([{ id: "a" }]));
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: createThrowingClassifier("network-error", "boom"),
+    });
+
+    const result = await restApiAdapter.discoverColumnsWithSamples(
+      INSTANCE,
+      "users"
+    );
+
+    expect(result.degradation).toBe("llm-failed");
+    expect(result.columns).toHaveLength(1);
+    expect(result.columns[0].key).toBe("id");
+    expect(result.columns[0].suggestion).toBeUndefined();
+  });
+
+  it("drops classifications for unknown sourceFields (hallucinations)", async () => {
+    withEndpoint();
+    fetchMock.mockResolvedValueOnce(okResponse([{ id: "a", email: "x@y" }]));
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: createStubClassifier([
+        {
+          sourceField: "id",
+          columnDefinitionId: null,
+          suggestedNormalizedKey: "id",
+          suggestedSemanticType: "string",
+          confidence: 0.5,
+          rationale: "ok",
+        },
+        {
+          sourceField: "not-a-field",
+          columnDefinitionId: null,
+          suggestedNormalizedKey: "nope",
+          suggestedSemanticType: "string",
+          confidence: 0.9,
+          rationale: "hallucination",
+        },
+      ]),
+    });
+
+    const result = await restApiAdapter.discoverColumnsWithSamples(
+      INSTANCE,
+      "users"
+    );
+
+    expect(result.columns.find((c) => c.key === "id")?.suggestion).toBeDefined();
+    expect(result.columns.find((c) => c.key === "email")?.suggestion).toBeUndefined();
+    // The hallucinated sourceField doesn't appear as a column either.
+    expect(result.columns.map((c) => c.key).sort()).toEqual(["email", "id"]);
+  });
+
+  it("serves the second call from cache (no second fetch, no second classifier call)", async () => {
+    withEndpoint();
+    fetchMock.mockResolvedValueOnce(okResponse([{ id: "a" }]));
+    const stub = jest.fn(async () => [
+      {
+        sourceField: "id",
+        columnDefinitionId: null,
+        suggestedNormalizedKey: "id",
+        suggestedSemanticType: "string" as const,
+        confidence: 0.5,
+        rationale: "ok",
+      },
+    ]);
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: { classify: stub as never },
+    });
+
+    const first = await restApiAdapter.discoverColumnsWithSamples(
+      INSTANCE,
+      "users"
+    );
+    const second = await restApiAdapter.discoverColumnsWithSamples(
+      INSTANCE,
+      "users"
+    );
+
+    expect(first.source).toBe("live");
+    expect(second.source).toBe("cache");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(stub).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-probes both layers when forceRefresh is true", async () => {
+    withEndpoint();
+    fetchMock
+      .mockResolvedValueOnce(okResponse([{ id: "a" }]))
+      .mockResolvedValueOnce(okResponse([{ id: "b" }]));
+    const stub = jest.fn(async () => []);
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: { classify: stub as never },
+    });
+
+    await restApiAdapter.discoverColumnsWithSamples(INSTANCE, "users");
+    await restApiAdapter.discoverColumnsWithSamples(INSTANCE, "users", {
+      forceRefresh: true,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(stub).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns no columns and skips the classifier when records are empty", async () => {
+    withEndpoint();
+    fetchMock.mockResolvedValueOnce(okResponse([]));
+    const stub = jest.fn(async () => []);
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: { classify: stub as never },
+    });
+
+    const result = await restApiAdapter.discoverColumnsWithSamples(
+      INSTANCE,
+      "users"
+    );
+
+    expect(result.columns).toEqual([]);
+    expect(result.degradation).toBeNull();
+    expect(stub).not.toHaveBeenCalled();
+  });
+
+  it("propagates REST_API_AUTH_FAILED on 401 without populating the cache or calling the classifier", async () => {
+    withEndpoint();
+    fetchMock.mockResolvedValueOnce(
+      new Response("nope", {
+        status: 401,
+        headers: { "content-type": "text/plain" },
+      })
+    );
+    const stub = jest.fn(async () => []);
+    const cache = new ProbeCache<never>();
+    configureRestApiAdapterDeps({
+      cache: cache as never,
+      classifier: { classify: stub as never },
+    });
+
+    await expect(
+      restApiAdapter.discoverColumnsWithSamples(
+        {
+          ...INSTANCE,
+          config: {
+            baseUrl: "https://api.example.com",
+            auth: { mode: "bearer" },
+          },
+          credentials: { mode: "bearer", token: "tok" } as never,
+        },
+        "users"
+      )
+    ).rejects.toMatchObject({ code: ApiCode.REST_API_AUTH_FAILED });
+
+    expect(stub).not.toHaveBeenCalled();
+    expect(cache.size()).toBe(0);
+  });
+
+  it("slices to MAX_RECORDS_SCANNED (25) before running the heuristic", async () => {
+    withEndpoint();
+    // 100 records — heuristic should run over 25.
+    fetchMock.mockResolvedValueOnce(
+      okResponse(Array.from({ length: 100 }, (_, i) => ({ id: `u${i}` })))
+    );
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: null,
+    });
+
+    const result = await restApiAdapter.discoverColumnsWithSamples(
+      INSTANCE,
+      "users"
+    );
+
+    expect(result.recordsScanned).toBe(25);
+  });
+
+  it("returns 404 REST_API_ENDPOINT_NOT_FOUND when the entity key isn't configured", async () => {
+    findByInstanceMock.mockResolvedValueOnce([]);
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: null,
+    });
+
+    await expect(
+      restApiAdapter.discoverColumnsWithSamples(INSTANCE, "missing")
+    ).rejects.toMatchObject({ code: ApiCode.REST_API_ENDPOINT_NOT_FOUND });
+  });
+});
+
+// ── discoverColumns (the slim DiscoveredColumn[] view) ──────────────
+
+describe("restApiAdapter.discoverColumns", () => {
+  let originalFetch: typeof globalThis.fetch;
+  let fetchMock: jest.Mock<typeof globalThis.fetch>;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    fetchMock = jest.fn<typeof globalThis.fetch>();
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("returns DiscoveredColumn[] (no samples or suggestions) derived from the rich method", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: {
+          id: "ent-users",
+          key: "users",
+          label: "Users",
+          connectorInstanceId: INSTANCE.id,
+        },
+        config: {
+          path: "/users",
+          method: "GET",
+          recordsPath: "",
+          idField: "id",
+          ...NONE_PAGINATION,
+        },
+      },
+    ]);
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify([{ id: "a", name: "Alice" }]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: null,
+    });
+
+    const cols = await restApiAdapter.discoverColumns(INSTANCE, "users");
+    expect(cols).toEqual([
+      { key: "id", label: "id", type: "string", required: true },
+      { key: "name", label: "name", type: "string", required: true },
+    ]);
+  });
+});
+

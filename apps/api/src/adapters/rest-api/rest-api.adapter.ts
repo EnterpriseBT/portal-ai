@@ -17,10 +17,12 @@ import type {
   ApiCredentials,
   ConnectorInstance,
 } from "@portalai/core/models";
+import type { DiscoverColumnsResult } from "@portalai/core/contracts";
 
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import {
   ConnectorAdapter,
+  DiscoveredColumn,
   DiscoveredEntity,
   EntityDataQuery,
   EntityDataResult,
@@ -33,15 +35,26 @@ import { ApiError } from "../../services/http.service.js";
 import { DbService } from "../../services/db.service.js";
 import { importModeQueryRows } from "../../utils/adapter.util.js";
 import { createLogger } from "../../utils/logger.util.js";
+import type {
+  ApiClassifierCandidate,
+  ColumnDefinitionCatalogEntry,
+  ColumnDefinitionClassifier,
+} from "./classifier.types.js";
 import { loadCredentials } from "./credentials.util.js";
 import {
   fetchFirstPage,
   fetchOnePage,
 } from "./fetch-first-page.util.js";
 import {
+  inferColumns,
+  MAX_RECORDS_SCANNED,
+  MAX_SAMPLES_PER_COLUMN,
+} from "./inference.util.js";
+import {
   resolveIterator,
   reconstructPagination,
 } from "./pagination/index.js";
+import { ProbeCache } from "./probe-cache.util.js";
 import type { ApiEndpoint } from "../../db/repositories/api-endpoints.repository.js";
 import { SystemUtilities } from "../../utils/system.util.js";
 
@@ -484,14 +497,220 @@ function toPublicAccountInfo(
   return { identity: baseUrl, metadata: {} };
 }
 
-export const restApiAdapter: ConnectorAdapter = {
+// ── Probe pipeline (slice 5) ─────────────────────────────────────────
+//
+// `RestApiAdapter` carries two process-singletons injected at register
+// time via `configureRestApiAdapterDeps`: a `ProbeCache` (per-process,
+// 60s TTL) holding the merged heuristic + AI-assist result, and an
+// optional `ColumnDefinitionClassifier` (Haiku 4.5 by default).
+//
+// Both are mutable so tests can swap them per-suite.
+
+let probeCache: ProbeCache<DiscoverColumnsResult> | null = null;
+let columnClassifier: ColumnDefinitionClassifier | null = null;
+
+export interface RestApiAdapterDeps {
+  cache?: ProbeCache<DiscoverColumnsResult>;
+  /** Pass `null` explicitly to disable AI-assist; omit to leave unchanged. */
+  classifier?: ColumnDefinitionClassifier | null;
+}
+
+export function configureRestApiAdapterDeps(deps: RestApiAdapterDeps): void {
+  if (deps.cache !== undefined) probeCache = deps.cache;
+  if ("classifier" in deps) columnClassifier = deps.classifier ?? null;
+}
+
+/** Test-only — wipes both deps so suites start from a clean slate. */
+export function __resetRestApiAdapterDepsForTests(): void {
+  probeCache = null;
+  columnClassifier = null;
+}
+
+async function loadColumnDefinitionCatalog(
+  organizationId: string
+): Promise<ColumnDefinitionCatalogEntry[]> {
+  const rows = await DbService.repository.columnDefinitions.findByOrganizationId(
+    organizationId
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    label: row.label,
+    normalizedKey: row.key,
+    description: row.description ?? undefined,
+    type: row.type,
+  }));
+}
+
+/**
+ * The probe pipeline's rich entry point. Used by the discoverColumns
+ * route (slice 6) so the response carries samples + source +
+ * recordsScanned + degradation alongside the per-column suggestions.
+ *
+ * Flow:
+ *   1. resolve endpoint by entity key (404 if missing)
+ *   2. cache hit → return early with `source: "cache"`
+ *   3. cache miss → drive `fetchFirstPage`, slice to MAX_RECORDS_SCANNED
+ *   4. heuristic layer (`inferColumns`) always runs
+ *   5. AI-assist layer (optional): build candidates + load catalog +
+ *      call classifier; silent degradation on any throw
+ *   6. merge classifications by `sourceField` into the heuristic
+ *      columns; cache the merged result; return.
+ */
+async function discoverColumnsWithSamples(
+  instance: ConnectorInstance,
+  entityKey: string,
+  options: { forceRefresh?: boolean } = {}
+): Promise<DiscoverColumnsResult> {
+  if (!probeCache) {
+    throw new ApiError(
+      500,
+      ApiCode.REST_API_OPERATION_FAILED,
+      "RestApiAdapter probe cache not configured — register adapters before invoking discoverColumns"
+    );
+  }
+
+  const endpoints = await DbService.repository.apiEndpoints.findByInstance(
+    instance.id
+  );
+  const endpoint = endpoints.find((e) => e.entity.key === entityKey);
+  if (!endpoint) {
+    throw new ApiError(
+      404,
+      ApiCode.REST_API_ENDPOINT_NOT_FOUND,
+      `No endpoint configured on instance ${instance.id} for entity key "${entityKey}"`
+    );
+  }
+
+  const cacheKey = endpoint.entity.id;
+
+  if (options.forceRefresh) {
+    probeCache.invalidate(cacheKey);
+  } else {
+    const cached = probeCache.get(cacheKey);
+    if (cached) {
+      return { ...cached, source: "cache" };
+    }
+  }
+
+  // Live probe.
+  const baseUrl = readBaseUrl(instance);
+  const auth = readAuth(instance);
+  const credentials = loadCredentials(instance);
+  const pagination = reconstructPagination(
+    endpoint.config.pagination,
+    (endpoint.config.paginationConfig as Record<string, unknown> | null) ?? null
+  );
+
+  const fetched = await fetchFirstPage(
+    endpoint,
+    baseUrl,
+    auth,
+    credentials,
+    pagination
+  );
+  const scanned = fetched.records.slice(0, MAX_RECORDS_SCANNED);
+  const inference = inferColumns(scanned);
+
+  // AI-assist layer.
+  let degradation: DiscoverColumnsResult["degradation"] = null;
+  const suggestionsByField = new Map<
+    string,
+    {
+      columnDefinitionId: string | null;
+      suggestedNormalizedKey: string;
+      suggestedSemanticType: DiscoveredColumn["type"];
+      confidence: number;
+      rationale: string;
+    }
+  >();
+
+  if (inference.columns.length === 0) {
+    // No candidates — skip the classifier; degradation stays null.
+  } else if (!columnClassifier) {
+    degradation = "llm-disabled";
+  } else {
+    try {
+      const candidates: ApiClassifierCandidate[] = inference.columns.map(
+        (col) => ({
+          sourceField: col.key,
+          inferredType: col.type,
+          samples: (inference.samples[col.key] ?? []).slice(
+            0,
+            MAX_SAMPLES_PER_COLUMN
+          ),
+        })
+      );
+      const catalog = await loadColumnDefinitionCatalog(instance.organizationId);
+      const classifications = await columnClassifier.classify(candidates, catalog);
+      for (const c of classifications) {
+        suggestionsByField.set(c.sourceField, {
+          columnDefinitionId: c.columnDefinitionId,
+          suggestedNormalizedKey: c.suggestedNormalizedKey,
+          suggestedSemanticType: c.suggestedSemanticType,
+          confidence: c.confidence,
+          rationale: c.rationale,
+        });
+      }
+    } catch (err) {
+      logger.error(
+        {
+          event: "rest-api.probe.classifier-failed",
+          connectorInstanceId: instance.id,
+          entityKey,
+          cause: (err as Error).message,
+        },
+        "classifier failed; degrading to heuristic-only"
+      );
+      degradation = "llm-failed";
+    }
+  }
+
+  const columns = inference.columns.map((col) => {
+    const sugg = suggestionsByField.get(col.key);
+    return {
+      key: col.key,
+      label: col.label,
+      type: col.type,
+      required: col.required,
+      sourceField: col.key,
+      samples: inference.samples[col.key] ?? [],
+      ...(sugg ? { suggestion: sugg } : {}),
+    };
+  });
+
+  const result: DiscoverColumnsResult = {
+    columns,
+    source: "live",
+    cachedAt: Date.now(),
+    recordsScanned: scanned.length,
+    degradation,
+  };
+
+  probeCache.set(cacheKey, result);
+  return result;
+}
+
+async function discoverColumns(
+  instance: ConnectorInstance,
+  entityKey: string
+): Promise<DiscoveredColumn[]> {
+  const result = await discoverColumnsWithSamples(instance, entityKey);
+  return result.columns.map((c) => ({
+    key: c.key,
+    label: c.label,
+    type: c.type,
+    required: c.required,
+  }));
+}
+
+export const restApiAdapter: ConnectorAdapter & {
+  discoverColumnsWithSamples: typeof discoverColumnsWithSamples;
+} = {
   queryRows: (instance: ConnectorInstance, query: EntityDataQuery):
     Promise<EntityDataResult> => importModeQueryRows(instance, query),
   discoverEntities,
-  async discoverColumns() {
-    // Phase 1: no probe. Phase 4 implements probe-driven inference.
-    return [];
-  },
+  discoverColumns,
+  discoverColumnsWithSamples,
   toPublicAccountInfo,
   assertSyncEligibility,
   syncInstance,
