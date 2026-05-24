@@ -137,8 +137,8 @@ export const RestApiConnectorWorkflowUI: React.FC<
       open={open}
       onClose={onClose}
       title="Connect REST API"
-      maxWidth="md"
-      fullWidth
+      defaultMaximized
+      maximizable
       actions={
         <Stack direction="row" spacing={1}>
           <Button
