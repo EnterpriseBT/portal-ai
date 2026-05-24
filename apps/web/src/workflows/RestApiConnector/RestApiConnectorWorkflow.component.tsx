@@ -25,6 +25,7 @@ import {
 } from "@portalai/core/ui";
 import type { StepConfig } from "@portalai/core/ui";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../../api/sdk";
 import { toServerError, type ServerError } from "../../utils/api.util";
@@ -252,6 +253,7 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
   connectorDefinitionId,
 }) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
@@ -352,6 +354,14 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
       });
       await queryClient.invalidateQueries({
         queryKey: queryKeys.connectorEntities.root,
+      });
+      // Land the user on the new connector's detail page so they can
+      // see what got created (instance + endpoints + draft column
+      // mappings). Matches the GoogleSheetsConnector workflow's
+      // post-commit handoff.
+      navigate({
+        to: "/connectors/$connectorInstanceId",
+        params: { connectorInstanceId: instanceId },
       });
       onClose();
     } catch (err) {
