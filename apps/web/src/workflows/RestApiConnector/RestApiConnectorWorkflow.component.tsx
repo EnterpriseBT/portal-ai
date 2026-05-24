@@ -297,6 +297,7 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
   }, [step, basicsErrors, endpointsErrors, columnErrorsByEndpoint]);
 
   const createInstance = sdk.connectorInstances.create();
+  const createEndpoint = sdk.apiConnector.endpoints.createForInstance();
 
   const [isCommitting, setIsCommitting] = useState(false);
 
@@ -318,21 +319,15 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
       const instanceId = (created as { connectorInstance: { id: string } })
         .connectorInstance.id;
 
-      // Per-endpoint POST. We can't reuse `createEndpointInstance`'s URL
-      // because it was bound to the placeholder; instead we re-use the
-      // mutateAsync over a fresh hook scoped to the actual id. Easier
-      // path: imperatively fire fetchWithAuth — but the sdk hook needs
-      // a stable instanceId so we just re-mount the workflow's commit
-      // logic with a tiny imperative call here.
+      // Per-endpoint POST via the SDK so the Bearer token + standard
+      // ApiError handling apply. `createForInstance` takes the
+      // instanceId as a mutation variable, which is what we need —
+      // the standard `endpoints.create(instanceId)` hook binds the
+      // URL at mount time, before we know the id.
       for (const ep of endpoints) {
-        const url = `/api/connector-instances/${encodeURIComponent(
-          instanceId
-        )}/api-endpoints`;
-        const res = await fetch(url, {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        await createEndpoint.mutateAsync({
+          instanceId,
+          body: {
             key: ep.key,
             label: ep.label,
             config: {
@@ -344,18 +339,9 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
                 ? { bodyTemplate: ep.bodyTemplate }
                 : {}),
               pagination: paginationDraftToConfig(ep.pagination),
-            },
-          }),
+            } as never,
+          },
         });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw {
-            status: res.status,
-            code: body.code ?? "REST_API_OPERATION_FAILED",
-            message:
-              body.message ?? `Failed to create endpoint "${ep.key}"`,
-          };
-        }
       }
 
       await queryClient.invalidateQueries({

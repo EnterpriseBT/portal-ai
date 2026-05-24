@@ -82,6 +82,22 @@ export const apiConnector = {
         method: "POST",
       }),
 
+    /**
+     * Same wire shape as `create`, but the instanceId is a mutation
+     * variable instead of being bound at hook-mount time. Used by the
+     * REST API workflow's commit step where the instanceId isn't
+     * known until `connectorInstances.create` resolves.
+     */
+    createForInstance: () =>
+      useAuthMutation<
+        ApiEndpointWire,
+        { instanceId: string; body: CreateApiEndpointBody }
+      >({
+        url: (vars) => baseUrl(vars.instanceId),
+        method: "POST",
+        body: (vars) => vars.body,
+      }),
+
     update: (instanceId: string, entityId: string) =>
       useAuthMutation<ApiEndpointWire, PatchApiEndpointBody>({
         url: `${baseUrl(instanceId)}/${encodeURIComponent(entityId)}`,
