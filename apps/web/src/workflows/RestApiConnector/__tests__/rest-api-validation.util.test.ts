@@ -290,3 +290,49 @@ describe("validateEndpointsList", () => {
     expect(validateEndpointsList([{ key: "x" }])).toEqual({});
   });
 });
+
+import { validateColumnRows } from "../utils/rest-api-validation.util";
+import type { ColumnRowDraft } from "../utils/rest-api-validation.util";
+
+function row(overrides: Partial<ColumnRowDraft> = {}): ColumnRowDraft {
+  return {
+    sourceField: "id",
+    normalizedKey: "id",
+    type: "string",
+    required: true,
+    samples: [],
+    ...overrides,
+  };
+}
+
+describe("validateColumnRows", () => {
+  it("returns no errors for valid rows with unique snake_case keys", () => {
+    expect(
+      validateColumnRows([
+        row({ normalizedKey: "id" }),
+        row({ normalizedKey: "user_email" }),
+      ])
+    ).toEqual({});
+  });
+
+  it("flags empty normalizedKey", () => {
+    const errors = validateColumnRows([row({ normalizedKey: "" })]);
+    expect(errors["row-0-normalizedKey"]).toMatch(/required/i);
+  });
+
+  it("flags non-snake_case normalizedKey", () => {
+    const errors = validateColumnRows([row({ normalizedKey: "UserEmail" })]);
+    expect(errors["row-0-normalizedKey"]).toMatch(/snake_case/i);
+  });
+
+  it("flags duplicate normalizedKey on both offending rows", () => {
+    const errors = validateColumnRows([
+      row({ normalizedKey: "email" }),
+      row({ normalizedKey: "name" }),
+      row({ normalizedKey: "email" }),
+    ]);
+    expect(errors["row-0-normalizedKey"]).toMatch(/duplicate/i);
+    expect(errors["row-2-normalizedKey"]).toMatch(/duplicate/i);
+    expect(errors["row-1-normalizedKey"]).toBeUndefined();
+  });
+});

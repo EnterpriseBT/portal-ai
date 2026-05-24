@@ -10,8 +10,10 @@
 
 import {
   ApiEndpointConfigSchema,
+  type ColumnDataType,
   type PaginationConfig,
 } from "@portalai/core/models";
+import type { ApiColumnSuggestion } from "@portalai/core/contracts";
 import {
   validateWithSchema,
   type FormErrors,
@@ -248,4 +250,56 @@ export function validateEndpointsList(endpoints: unknown[]): FormErrors {
     return { endpoints: "Add at least one endpoint before continuing" };
   }
   return {};
+}
+
+// ── Probe-review column rows ────────────────────────────────────────
+
+/**
+ * One reviewed column row held in the workflow's ProbeReviewStep
+ * state. Mirrors the per-column shape persisted as a `field_mapping`
+ * on commit; `suggestion` + `columnDefinitionId` carry through when
+ * the user adopted an AI-assist suggestion.
+ */
+export interface ColumnRowDraft {
+  sourceField: string;
+  normalizedKey: string;
+  type: ColumnDataType;
+  required: boolean;
+  samples: unknown[];
+  columnDefinitionId?: string | null;
+  suggestion?: ApiColumnSuggestion;
+}
+
+/**
+ * Per-endpoint column-row validator used by the ProbeReviewStep
+ * before allowing the user to advance:
+ *   - every row's `normalizedKey` is non-empty and snake_case-ish;
+ *   - `normalizedKey` is unique within the endpoint.
+ *
+ * Returns row-indexed error keys (`row-<i>-normalizedKey`) so the
+ * table can highlight the offending cell.
+ */
+export function validateColumnRows(rows: ColumnRowDraft[]): FormErrors {
+  const errors: FormErrors = {};
+  const seen = new Map<string, number>();
+  rows.forEach((row, index) => {
+    const key = row.normalizedKey.trim();
+    if (!key) {
+      errors[`row-${index}-normalizedKey`] = "Normalized key is required";
+      return;
+    }
+    if (!/^[a-z][a-z0-9_]*$/.test(key)) {
+      errors[`row-${index}-normalizedKey`] =
+        "Must be snake_case (lowercase letters, digits, underscores)";
+      return;
+    }
+    if (seen.has(key)) {
+      errors[`row-${index}-normalizedKey`] = "Duplicate normalized key";
+      const prev = seen.get(key)!;
+      errors[`row-${prev}-normalizedKey`] = "Duplicate normalized key";
+    } else {
+      seen.set(key, index);
+    }
+  });
+  return errors;
 }

@@ -34,21 +34,23 @@ import type { ConnectorWorkflowProps } from "../../views/Connector.view";
 import { BasicsStep } from "./BasicsStep.component";
 import { EndpointsStep } from "./EndpointsStep.component";
 import type { EndpointDraft } from "./ApiEndpointForm.component";
-import { FieldMappingsStep } from "./FieldMappingsStep.component";
+import { ProbeReviewStep } from "./ProbeReviewStep.component";
 import { ReviewStep } from "./ReviewStep.component";
 import {
   EMPTY_CREDENTIALS_DRAFT,
   paginationDraftToConfig,
   validateBasics,
+  validateColumnRows,
   validateEndpointsList,
   type AuthMode,
+  type ColumnRowDraft,
   type CredentialsDraft,
 } from "./utils/rest-api-validation.util";
 
 const STEPS: StepConfig[] = [
   { label: "Basics", description: "Name + base URL" },
   { label: "Endpoints", description: "Add API endpoints" },
-  { label: "Field mappings", description: "Configure after commit (phase 1)" },
+  { label: "Probe & review", description: "Inspect + configure columns" },
   { label: "Review", description: "Confirm + commit" },
 ];
 
@@ -78,9 +80,21 @@ export interface RestApiConnectorWorkflowUIProps {
   onEndpointsChange: (next: EndpointDraft[]) => void;
   onBasicsBlur: (field: string) => void;
 
+  /** Per-endpoint column rows the user reviewed/edited. */
+  columnsByEndpoint: Record<string, ColumnRowDraft[]>;
+  onColumnRowChange: (
+    endpointKey: string,
+    index: number,
+    patch: Partial<ColumnRowDraft>
+  ) => void;
+  onAdoptSuggestion: (endpointKey: string, index: number) => void;
+  onAddColumnRow: (endpointKey: string) => void;
+  onRemoveColumnRow: (endpointKey: string, index: number) => void;
+
   basicsErrors: FormErrors;
   basicsTouched: Record<string, boolean>;
   endpointsErrors: FormErrors;
+  columnErrorsByEndpoint: Record<string, FormErrors>;
   serverError: ServerError | null;
 }
 
@@ -105,9 +119,15 @@ export const RestApiConnectorWorkflowUI: React.FC<
   onCredentialsChange,
   onEndpointsChange,
   onBasicsBlur,
+  columnsByEndpoint,
+  onColumnRowChange,
+  onAdoptSuggestion,
+  onAddColumnRow,
+  onRemoveColumnRow,
   basicsErrors,
   basicsTouched,
   endpointsErrors,
+  columnErrorsByEndpoint,
   serverError,
 }) => {
   const isLast = step === STEPS.length - 1;
@@ -188,8 +208,24 @@ export const RestApiConnectorWorkflowUI: React.FC<
           />
         </StepPanel>
         <StepPanel index={2} activeStep={step}>
-          <FieldMappingsStep
+          <ProbeReviewStep
             endpoints={endpoints}
+            // Create-mode workflow drafts have no entityId — the SDK
+            // probe call can't fire. The step shows manual-entry tables
+            // per endpoint with the Re-probe button disabled. An
+            // edit-mode workflow (or future detail-view consumer) wires
+            // real entityIds + probe responses into these props.
+            stateByKey={Object.fromEntries(
+              endpoints.map((e) => [e.key, { kind: "idle" as const }])
+            )}
+            rowsByKey={columnsByEndpoint}
+            errorsByKey={columnErrorsByEndpoint}
+            onRowChange={onColumnRowChange}
+            onAdoptSuggestion={onAdoptSuggestion}
+            onAddRow={onAddColumnRow}
+            onRemoveRow={onRemoveColumnRow}
+            reprobeDisabled
+            reprobeDisabledHint="Save the connector to enable probing"
             serverError={serverError}
           />
         </StepPanel>
@@ -225,6 +261,9 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
     EMPTY_CREDENTIALS_DRAFT
   );
   const [endpoints, setEndpoints] = useState<EndpointDraft[]>([]);
+  const [columnsByEndpoint, setColumnsByEndpoint] = useState<
+    Record<string, ColumnRowDraft[]>
+  >({});
   const [basicsTouched, setBasicsTouched] = useState<Record<string, boolean>>(
     {}
   );
@@ -238,12 +277,24 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
     () => validateEndpointsList(endpoints),
     [endpoints]
   );
+  const columnErrorsByEndpoint = useMemo<Record<string, FormErrors>>(() => {
+    const out: Record<string, FormErrors> = {};
+    for (const ep of endpoints) {
+      out[ep.key] = validateColumnRows(columnsByEndpoint[ep.key] ?? []);
+    }
+    return out;
+  }, [endpoints, columnsByEndpoint]);
 
   const canAdvance = useMemo(() => {
     if (step === 0) return Object.keys(basicsErrors).length === 0;
     if (step === 1) return Object.keys(endpointsErrors).length === 0;
+    if (step === 2) {
+      return Object.values(columnErrorsByEndpoint).every(
+        (errs) => Object.keys(errs).length === 0
+      );
+    }
     return true;
-  }, [step, basicsErrors, endpointsErrors]);
+  }, [step, basicsErrors, endpointsErrors, columnErrorsByEndpoint]);
 
   const createInstance = sdk.connectorInstances.create();
 
@@ -353,6 +404,63 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
     setCredentials((c) => ({ ...c, [field]: value }));
   };
 
+  const onColumnRowChange = (
+    endpointKey: string,
+    index: number,
+    patch: Partial<ColumnRowDraft>
+  ) => {
+    setColumnsByEndpoint((m) => {
+      const current = m[endpointKey] ?? [];
+      const next = current.map((row, i) =>
+        i === index ? { ...row, ...patch } : row
+      );
+      return { ...m, [endpointKey]: next };
+    });
+  };
+
+  const onAdoptSuggestion = (endpointKey: string, index: number) => {
+    setColumnsByEndpoint((m) => {
+      const current = m[endpointKey] ?? [];
+      const row = current[index];
+      if (!row?.suggestion) return m;
+      const next = current.map((r, i) =>
+        i === index
+          ? {
+              ...r,
+              normalizedKey: r.suggestion!.suggestedNormalizedKey,
+              type: r.suggestion!.suggestedSemanticType,
+              columnDefinitionId: r.suggestion!.columnDefinitionId,
+            }
+          : r
+      );
+      return { ...m, [endpointKey]: next };
+    });
+  };
+
+  const onAddColumnRow = (endpointKey: string) => {
+    setColumnsByEndpoint((m) => {
+      const current = m[endpointKey] ?? [];
+      const next: ColumnRowDraft[] = [
+        ...current,
+        {
+          sourceField: "",
+          normalizedKey: "",
+          type: "string",
+          required: false,
+          samples: [],
+        },
+      ];
+      return { ...m, [endpointKey]: next };
+    });
+  };
+
+  const onRemoveColumnRow = (endpointKey: string, index: number) => {
+    setColumnsByEndpoint((m) => {
+      const current = m[endpointKey] ?? [];
+      return { ...m, [endpointKey]: current.filter((_, i) => i !== index) };
+    });
+  };
+
   return (
     <RestApiConnectorWorkflowUI
       open={open}
@@ -375,9 +483,15 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
       onBasicsBlur={(field) =>
         setBasicsTouched((t) => ({ ...t, [field]: true }))
       }
+      columnsByEndpoint={columnsByEndpoint}
+      onColumnRowChange={onColumnRowChange}
+      onAdoptSuggestion={onAdoptSuggestion}
+      onAddColumnRow={onAddColumnRow}
+      onRemoveColumnRow={onRemoveColumnRow}
       basicsErrors={basicsErrors}
       basicsTouched={basicsTouched}
       endpointsErrors={endpointsErrors}
+      columnErrorsByEndpoint={columnErrorsByEndpoint}
       serverError={serverError}
     />
   );
