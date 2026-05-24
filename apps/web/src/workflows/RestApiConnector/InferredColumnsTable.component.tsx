@@ -79,8 +79,7 @@ export const InferredColumnsTableUI: React.FC<InferredColumnsTableUIProps> = ({
           <TableRow>
             <TableCell colSpan={6}>
               <Typography variant="body2" color="text.secondary">
-                No columns yet. Click <em>Add column</em> below to start, or
-                use the probe button to auto-infer from a sample.
+                No columns yet. Click <em>Add column</em> below to add one.
               </Typography>
             </TableCell>
           </TableRow>
