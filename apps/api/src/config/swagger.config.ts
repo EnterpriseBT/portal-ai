@@ -2,7 +2,16 @@ import swaggerJsdoc from "swagger-jsdoc";
 import { z } from "zod";
 
 import {
+  ApiColumnSuggestionSchema,
+  ApiEndpointEntityWireSchema,
+  ApiEndpointListResponsePayloadSchema,
+  ApiEndpointWireSchema,
   ColumnBindingSchema,
+  CreateApiEndpointRequestBodySchema,
+  DeleteApiEndpointResponsePayloadSchema,
+  DiscoverColumnsRequestBodySchema,
+  DiscoverColumnsResultSchema,
+  DiscoveredColumnWithSuggestionSchema,
   DriftReportSchema,
   HeaderStrategySchema,
   IdentityStrategySchema,
@@ -14,11 +23,21 @@ import {
   LayoutPlanCommitResultSchema,
   LayoutPlanInterpretDraftResponsePayloadSchema,
   LayoutPlanSchema,
+  PatchApiEndpointRequestBodySchema,
   RegionHintSchema,
   RegionSchema,
   SkipRuleSchema,
+  TestConnectionRequestBodySchema,
+  TestConnectionResultSchema,
   WarningSchema,
 } from "@portalai/core/contracts";
+import {
+  ApiAuthConfigSchema,
+  ApiCredentialsSchema,
+  ApiEndpointConfigSchema,
+  PaginationConfigSchema,
+  RestApiInstanceConfigSchema,
+} from "@portalai/core/models";
 
 import { environment } from "../environment.js";
 
@@ -70,6 +89,67 @@ const spreadsheetParsingSchemas: Record<string, unknown> = {
   ),
   LayoutPlanCommitDraftResponsePayload: z.toJSONSchema(
     LayoutPlanCommitDraftResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+};
+
+/**
+ * REST API connector schemas — phase 1-4. Sourced from
+ * `@portalai/core/{models,contracts}` so the route layer's JSDoc can
+ * reference one canonical schema per shape.
+ */
+const restApiConnectorSchemas: Record<string, unknown> = {
+  ApiAuthConfig: z.toJSONSchema(ApiAuthConfigSchema, JSON_SCHEMA_OPTS),
+  ApiCredentials: z.toJSONSchema(ApiCredentialsSchema, JSON_SCHEMA_OPTS),
+  PaginationConfig: z.toJSONSchema(PaginationConfigSchema, JSON_SCHEMA_OPTS),
+  RestApiInstanceConfig: z.toJSONSchema(
+    RestApiInstanceConfigSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  ApiEndpointConfig: z.toJSONSchema(ApiEndpointConfigSchema, JSON_SCHEMA_OPTS),
+  ApiEndpointEntity: z.toJSONSchema(
+    ApiEndpointEntityWireSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  ApiEndpoint: z.toJSONSchema(ApiEndpointWireSchema, JSON_SCHEMA_OPTS),
+  ApiEndpointListResponse: z.toJSONSchema(
+    ApiEndpointListResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  CreateApiEndpointRequestBody: z.toJSONSchema(
+    CreateApiEndpointRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  PatchApiEndpointRequestBody: z.toJSONSchema(
+    PatchApiEndpointRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  DeleteApiEndpointResponse: z.toJSONSchema(
+    DeleteApiEndpointResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  ApiColumnSuggestion: z.toJSONSchema(
+    ApiColumnSuggestionSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  DiscoveredColumnWithSuggestion: z.toJSONSchema(
+    DiscoveredColumnWithSuggestionSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  DiscoverColumnsResult: z.toJSONSchema(
+    DiscoverColumnsResultSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  DiscoverColumnsRequestBody: z.toJSONSchema(
+    DiscoverColumnsRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  TestConnectionRequestBody: z.toJSONSchema(
+    TestConnectionRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  TestConnectionResult: z.toJSONSchema(
+    TestConnectionResultSchema,
     JSON_SCHEMA_OPTS
   ),
 };
@@ -1250,6 +1330,7 @@ const options: swaggerJsdoc.Options = {
           ],
         },
         ...spreadsheetParsingSchemas,
+        ...restApiConnectorSchemas,
       },
     },
     tags: [
@@ -1268,6 +1349,11 @@ const options: swaggerJsdoc.Options = {
       {
         name: "Connector Instances",
         description: "Connector instance management endpoints",
+      },
+      {
+        name: "REST API Endpoints",
+        description:
+          "Per-entity endpoint configuration for the REST API connector — CRUD + the probe entry point that auto-infers columns from a sample request",
       },
       {
         name: "Jobs",

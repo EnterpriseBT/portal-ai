@@ -1153,15 +1153,41 @@ connectorInstanceRouter.patch(
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             additionalProperties: true
+ *             $ref: '#/components/schemas/TestConnectionRequestBody'
  *     responses:
  *       200:
- *         description: Adapter `TestConnectionResult` (either ok:true with sample or ok:false with code/message)
+ *         description: >
+ *           Adapter `TestConnectionResult` — `ok: true` carries the
+ *           first 5 sample records; `ok: false` carries an error code
+ *           + message + optional details so the user can fix the
+ *           config. Both shapes arrive as HTTP 200 — `ok: false` is
+ *           the check reporting failure, not the route failing.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, payload]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/TestConnectionResult'
  *       404:
- *         description: Instance not found, or adapter doesn't implement testConnection
+ *         description: >
+ *           CONNECTOR_INSTANCE_NOT_FOUND (no such instance for this org)
+ *           or TEST_CONNECTION_NOT_SUPPORTED (adapter doesn't implement
+ *           the method).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Unexpected error in the adapter
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 connectorInstanceRouter.post(
   "/:id/test-connection",

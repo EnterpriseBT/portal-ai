@@ -7,6 +7,10 @@
  */
 import { z } from "zod";
 
+import {
+  ApiEndpointConfigBaseSchema,
+  ApiEndpointConfigSchema,
+} from "../models/api-connector.model.js";
 import { ColumnDataTypeEnum } from "../models/column-definition.model.js";
 
 /**
@@ -76,3 +80,98 @@ export const DiscoverColumnsRequestBodySchema = z.object({
 export type DiscoverColumnsRequestBody = z.infer<
   typeof DiscoverColumnsRequestBodySchema
 >;
+
+// ── Endpoint CRUD wire shapes ───────────────────────────────────────
+
+/**
+ * The minimal `connector_entity` projection emitted alongside each
+ * api-endpoint row on the wire. Mirrors `toWire`'s entity object in
+ * `api-endpoints.router.ts`.
+ */
+export const ApiEndpointEntityWireSchema = z.object({
+  id: z.string(),
+  key: z.string(),
+  label: z.string(),
+});
+export type ApiEndpointEntityWire = z.infer<typeof ApiEndpointEntityWireSchema>;
+
+/**
+ * Wire shape for a single api-endpoint row: the connector_entity
+ * projection + the structured endpoint config.
+ */
+export const ApiEndpointWireSchema = z.object({
+  entity: ApiEndpointEntityWireSchema,
+  config: ApiEndpointConfigSchema,
+});
+export type ApiEndpointWire = z.infer<typeof ApiEndpointWireSchema>;
+
+/** Response payload for the list route. */
+export const ApiEndpointListResponsePayloadSchema = z.object({
+  endpoints: z.array(ApiEndpointWireSchema),
+});
+export type ApiEndpointListResponsePayload = z.infer<
+  typeof ApiEndpointListResponsePayloadSchema
+>;
+
+/** Request body for the create route. */
+export const CreateApiEndpointRequestBodySchema = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1),
+  config: ApiEndpointConfigSchema,
+});
+export type CreateApiEndpointRequestBody = z.infer<
+  typeof CreateApiEndpointRequestBodySchema
+>;
+
+/** Request body for the patch route — every field optional. */
+export const PatchApiEndpointRequestBodySchema = z.object({
+  label: z.string().min(1).optional(),
+  config: ApiEndpointConfigBaseSchema.partial().optional(),
+});
+export type PatchApiEndpointRequestBody = z.infer<
+  typeof PatchApiEndpointRequestBodySchema
+>;
+
+/** Response payload for the delete route. */
+export const DeleteApiEndpointResponsePayloadSchema = z.object({
+  ok: z.literal(true),
+});
+export type DeleteApiEndpointResponsePayload = z.infer<
+  typeof DeleteApiEndpointResponsePayloadSchema
+>;
+
+// ── testConnection contracts ────────────────────────────────────────
+
+/**
+ * Body forwarded to `ConnectorAdapter.testConnection` — adapter-
+ * specific; the REST API adapter reads `endpointEntityId`. The
+ * schema accepts unknown extra keys so other adapters can interpret
+ * different shapes in the future.
+ */
+export const TestConnectionRequestBodySchema = z
+  .object({
+    endpointEntityId: z.string().optional(),
+  })
+  .catchall(z.unknown());
+export type TestConnectionRequestBody = z.infer<
+  typeof TestConnectionRequestBodySchema
+>;
+
+/**
+ * Result of a `testConnection` invocation. `ok: false` is a
+ * *successful* invocation of a check that itself reported failure —
+ * not an HTTP-level error. Both shapes arrive as HTTP 200.
+ */
+export const TestConnectionResultSchema = z.discriminatedUnion("ok", [
+  z.object({
+    ok: z.literal(true),
+    sample: z.array(z.unknown()),
+  }),
+  z.object({
+    ok: z.literal(false),
+    code: z.string(),
+    message: z.string(),
+    details: z.record(z.string(), z.unknown()).optional(),
+  }),
+]);
+export type TestConnectionResult = z.infer<typeof TestConnectionResultSchema>;

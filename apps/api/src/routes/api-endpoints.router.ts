@@ -146,6 +146,53 @@ async function requireRestApiInstance(
 
 // ── Routes ────────────────────────────────────────────────────────────
 
+/**
+ * @openapi
+ * /api/connector-instances/{instanceId}/api-endpoints:
+ *   get:
+ *     tags:
+ *       - REST API Endpoints
+ *     summary: List endpoints for a REST API connector instance
+ *     description: >
+ *       Returns every `api_endpoint_config` row attached to the given
+ *       REST API connector instance, joined with the matching
+ *       `connector_entity`. Soft-deleted rows are excluded.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: instanceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector instance ID
+ *     responses:
+ *       200:
+ *         description: Endpoints list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, payload]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/ApiEndpointListResponse'
+ *       404:
+ *         description: Instance not found or is not a REST API connector
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
 apiEndpointsRouter.get(
   "/",
   getApplicationMetadata,
@@ -175,6 +222,57 @@ apiEndpointsRouter.get(
   }
 );
 
+/**
+ * @openapi
+ * /api/connector-instances/{instanceId}/api-endpoints/{entityId}:
+ *   get:
+ *     tags:
+ *       - REST API Endpoints
+ *     summary: Fetch a single endpoint
+ *     description: >
+ *       Returns the joined `connector_entity` + `api_endpoint_config`
+ *       row for the given entity ID, scoped to the instance.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: instanceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: entityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector entity ID
+ *     responses:
+ *       200:
+ *         description: Endpoint payload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, payload]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/ApiEndpoint'
+ *       404:
+ *         description: Instance or endpoint not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
 apiEndpointsRouter.get(
   "/:entityId",
   getApplicationMetadata,
@@ -212,6 +310,74 @@ apiEndpointsRouter.get(
   }
 );
 
+/**
+ * @openapi
+ * /api/connector-instances/{instanceId}/api-endpoints:
+ *   post:
+ *     tags:
+ *       - REST API Endpoints
+ *     summary: Create an endpoint (and its connector_entity)
+ *     description: >
+ *       Inserts a `connector_entity` + matching `api_endpoint_config`
+ *       pair in one transaction. The `config.pagination` discriminated
+ *       union is flattened into the table's `pagination` (string) +
+ *       `pagination_config` (jsonb) columns. Org-wide entity-key
+ *       uniqueness is enforced — 409 on conflict.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: instanceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateApiEndpointRequestBody'
+ *     responses:
+ *       201:
+ *         description: Endpoint created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, payload]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/ApiEndpoint'
+ *       400:
+ *         description: Invalid payload (Zod schema failure)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: Instance not found or is not a REST API connector
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       409:
+ *         description: >
+ *           `CONNECTOR_ENTITY_KEY_CONFLICT` (the org already has an
+ *           entity with this `key`) or `ENTITY_LOCKED_BY_JOB`
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
 apiEndpointsRouter.post(
   "/",
   getApplicationMetadata,
@@ -308,6 +474,77 @@ apiEndpointsRouter.post(
   }
 );
 
+/**
+ * @openapi
+ * /api/connector-instances/{instanceId}/api-endpoints/{entityId}:
+ *   patch:
+ *     tags:
+ *       - REST API Endpoints
+ *     summary: Patch endpoint config (and/or label)
+ *     description: >
+ *       Updates a subset of `connector_entity.label` and/or
+ *       `api_endpoint_config.*` fields. Cross-field refinements
+ *       (bodyTemplate-vs-method) are NOT re-checked on PATCH — that
+ *       only fires on full-create payloads. The adapter layer
+ *       enforces consistency at sync/probe time.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: instanceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: entityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/PatchApiEndpointRequestBody'
+ *     responses:
+ *       200:
+ *         description: Endpoint patched
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, payload]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/ApiEndpoint'
+ *       400:
+ *         description: Invalid patch payload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: Instance or endpoint not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       409:
+ *         description: "ENTITY_LOCKED_BY_JOB — a connector_sync job is in flight against this instance"
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
 apiEndpointsRouter.patch(
   "/:entityId",
   getApplicationMetadata,
@@ -400,6 +637,65 @@ apiEndpointsRouter.patch(
   }
 );
 
+/**
+ * @openapi
+ * /api/connector-instances/{instanceId}/api-endpoints/{entityId}:
+ *   delete:
+ *     tags:
+ *       - REST API Endpoints
+ *     summary: Soft-delete an endpoint
+ *     description: >
+ *       Soft-deletes the `connector_entity` + matching
+ *       `api_endpoint_config` pair in one transaction. The entity_records
+ *       attached to this entity remain — entity-records cascade deletion
+ *       is a separate concern that the connector-entity delete route
+ *       handles.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: instanceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: entityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Endpoint deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, payload]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/DeleteApiEndpointResponse'
+ *       404:
+ *         description: Instance or endpoint not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       409:
+ *         description: "ENTITY_LOCKED_BY_JOB — a connector_sync job is in flight against this instance"
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
 apiEndpointsRouter.delete(
   "/:entityId",
   getApplicationMetadata,
@@ -465,16 +761,87 @@ apiEndpointsRouter.delete(
 );
 
 /**
- * POST /api/connector-instances/:instanceId/api-endpoints/:entityId/discover-columns
- *
- * Phase 4 probe entry point. Drives a single page-1 fetch against the
- * configured endpoint, runs the heuristic + (optional) AI-assist
- * inference pipeline, and returns a `DiscoverColumnsResult` shape
- * (columns + samples + suggestions + degradation + source).
- *
- * The route layer is intentionally thin: ownership / locking guards,
- * body parsing, and dispatch into the adapter. The adapter owns
- * cache lookup, classifier failure handling, and merge logic.
+ * @openapi
+ * /api/connector-instances/{instanceId}/api-endpoints/{entityId}/discover-columns:
+ *   post:
+ *     tags:
+ *       - REST API Endpoints
+ *     summary: Probe + infer columns for a configured endpoint
+ *     description: >
+ *       Phase-4 probe entry point. Drives a single page-1 fetch
+ *       against the endpoint, runs heuristic type inference over up
+ *       to 25 records, and optionally enriches each column with an
+ *       AI-assist suggestion (Haiku 4.5) when the classifier dep is
+ *       wired. Results are cached for 60 seconds per `connectorEntityId`.
+ *       `forceRefresh: true` invalidates the cache and re-runs both
+ *       layers. The response's `degradation` field communicates
+ *       AI-assist availability — `null` is fully successful,
+ *       `"llm-disabled"` means no classifier wired, `"llm-failed"`
+ *       means the classifier errored and the heuristic-only result is
+ *       returned.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: instanceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: entityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/DiscoverColumnsRequestBody'
+ *     responses:
+ *       200:
+ *         description: Probe completed (possibly with degradation)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, payload]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/DiscoverColumnsResult'
+ *       400:
+ *         description: Invalid body
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: Instance or endpoint not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       502:
+ *         description: >
+ *           Upstream fetch failed — REST_API_FETCH_FAILED on 5xx,
+ *           REST_API_AUTH_FAILED on 401/403, REST_API_INVALID_JSON on
+ *           non-JSON bodies, REST_API_RECORDS_PATH_NOT_FOUND /
+ *           REST_API_RECORDS_PATH_NOT_ARRAY on misconfigured
+ *           recordsPath, REST_API_RATE_LIMITED on exhausted 429
+ *           retries.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 apiEndpointsRouter.post(
   "/:entityId/discover-columns",
