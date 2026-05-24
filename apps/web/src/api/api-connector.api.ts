@@ -10,6 +10,10 @@ import type {
   ApiAuthConfig,
   ApiEndpointConfig,
 } from "@portalai/core/models";
+import type {
+  DiscoverColumnsRequestBody,
+  DiscoverColumnsResult,
+} from "@portalai/core/contracts";
 import { useAuthMutation, useAuthQuery } from "../utils/api.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
@@ -88,6 +92,22 @@ export const apiConnector = {
       useAuthMutation<{ ok: true }, void>({
         url: `${baseUrl(instanceId)}/${encodeURIComponent(entityId)}`,
         method: "DELETE",
+      }),
+
+    /**
+     * Phase-4 probe entry point: drives a single page-1 fetch + the
+     * heuristic + (optional) AI-assist inference pipeline, returns
+     * `DiscoverColumnsResult` (columns + samples + suggestions +
+     * source + degradation).
+     *
+     * Read-only — no cache invalidation. The route serves cached
+     * results within 60 seconds; `body.forceRefresh: true` busts the
+     * cache.
+     */
+    discoverColumns: (instanceId: string, entityId: string) =>
+      useAuthMutation<DiscoverColumnsResult, DiscoverColumnsRequestBody>({
+        url: `${baseUrl(instanceId)}/${encodeURIComponent(entityId)}/discover-columns`,
+        method: "POST",
       }),
   },
 };

@@ -27,8 +27,10 @@ import {
   type ApiEndpointConfig,
   type PaginationConfig,
 } from "@portalai/core/models";
+import { DiscoverColumnsRequestBodySchema } from "@portalai/core/contracts";
 import type { ApiEndpoint } from "../db/repositories/api-endpoints.repository.js";
 import { reconstructPagination } from "../adapters/rest-api/pagination/index.js";
+import { restApiAdapter } from "../adapters/rest-api/rest-api.adapter.js";
 
 const logger = createLogger({ module: "api-endpoints" });
 
@@ -456,6 +458,93 @@ apiEndpointsRouter.delete(
               500,
               ApiCode.REST_API_OPERATION_FAILED,
               `Failed to delete api endpoint: ${(error as Error).message}`
+            )
+      );
+    }
+  }
+);
+
+/**
+ * POST /api/connector-instances/:instanceId/api-endpoints/:entityId/discover-columns
+ *
+ * Phase 4 probe entry point. Drives a single page-1 fetch against the
+ * configured endpoint, runs the heuristic + (optional) AI-assist
+ * inference pipeline, and returns a `DiscoverColumnsResult` shape
+ * (columns + samples + suggestions + degradation + source).
+ *
+ * The route layer is intentionally thin: ownership / locking guards,
+ * body parsing, and dispatch into the adapter. The adapter owns
+ * cache lookup, classifier failure handling, and merge logic.
+ */
+apiEndpointsRouter.post(
+  "/:entityId/discover-columns",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { instanceId, entityId } = req.params as {
+        instanceId: string;
+        entityId: string;
+      };
+      const { organizationId } = req.application!.metadata;
+      await requireRestApiInstance(instanceId, organizationId);
+
+      // Parse optional body. Empty body is fine — `forceRefresh`
+      // defaults to false.
+      let body: { forceRefresh?: boolean };
+      try {
+        body = DiscoverColumnsRequestBodySchema.parse(req.body ?? {});
+      } catch (err) {
+        throw new ApiError(
+          400,
+          ApiCode.REST_API_INVALID_CONFIG,
+          `Invalid discover-columns body: ${(err as Error).message}`,
+          { issues: (err as z.ZodError).issues }
+        );
+      }
+
+      // Load the full instance row (config + decrypted credentials)
+      // so the adapter can read `baseUrl` + `auth`. requireRestApiInstance
+      // returns only an id-pair for the guard.
+      const fullInstance =
+        await DbService.repository.connectorInstances.findById(instanceId);
+      if (!fullInstance) {
+        throw new ApiError(
+          404,
+          ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+          `Connector instance ${instanceId} not found`
+        );
+      }
+
+      const endpoint = await DbService.repository.apiEndpoints.findByEntityId(
+        entityId
+      );
+      if (!endpoint || endpoint.entity.connectorInstanceId !== instanceId) {
+        throw new ApiError(
+          404,
+          ApiCode.REST_API_ENDPOINT_NOT_FOUND,
+          `Api endpoint for entity ${entityId} not configured on instance ${instanceId}`
+        );
+      }
+
+      const result = await restApiAdapter.discoverColumnsWithSamples(
+        fullInstance as never,
+        endpoint.entity.key,
+        { forceRefresh: body.forceRefresh ?? false }
+      );
+
+      return HttpService.success(res, result, 200);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to discover columns"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.REST_API_OPERATION_FAILED,
+              `Failed to discover columns: ${(error as Error).message}`
             )
       );
     }
