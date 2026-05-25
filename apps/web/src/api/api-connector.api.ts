@@ -11,6 +11,7 @@ import type {
   ApiEndpointConfig,
 } from "@portalai/core/models";
 import type {
+  CreateApiEndpointColumnDraft,
   DiscoverColumnsRequestBody,
   DiscoverColumnsResult,
 } from "@portalai/core/contracts";
@@ -33,6 +34,13 @@ export interface CreateApiEndpointBody {
   key: string;
   label: string;
   config: ApiEndpointConfig;
+  /**
+   * Optional bulk column-mapping setup. Each entry materializes as a
+   * column_definition (find-or-create by `normalizedKey`) +
+   * field_mapping + wide-table reconcile in the server-side route.
+   * Omit to skip — the user can configure mappings later.
+   */
+  columns?: CreateApiEndpointColumnDraft[];
 }
 
 export interface PatchApiEndpointBody {

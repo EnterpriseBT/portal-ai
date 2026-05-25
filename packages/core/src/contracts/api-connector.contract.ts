@@ -113,11 +113,39 @@ export type ApiEndpointListResponsePayload = z.infer<
   typeof ApiEndpointListResponsePayloadSchema
 >;
 
+/**
+ * Per-column draft the workflow's ProbeReviewStep collects. When
+ * `columns` is present on the create body, the route materializes
+ * each draft as a column_definition (find-or-create by
+ * `normalizedKey`) + a field_mapping in one transaction, then
+ * reconciles the wide table. `columnDefinitionId` is set when the
+ * user adopted an AI-assist suggestion; otherwise the route looks
+ * up by key or creates fresh.
+ */
+export const CreateApiEndpointColumnDraftSchema = z.object({
+  sourceField: z.string().min(1),
+  normalizedKey: z.string().regex(/^[a-z][a-z0-9_]*$/),
+  type: ColumnDataTypeEnum,
+  required: z.boolean().default(false),
+  columnDefinitionId: z.string().nullable().optional(),
+});
+export type CreateApiEndpointColumnDraft = z.infer<
+  typeof CreateApiEndpointColumnDraftSchema
+>;
+
 /** Request body for the create route. */
 export const CreateApiEndpointRequestBodySchema = z.object({
   key: z.string().min(1),
   label: z.string().min(1),
   config: ApiEndpointConfigSchema,
+  /**
+   * Optional bulk column-mapping setup. Each entry materializes as a
+   * column_definition (find-or-create by `normalizedKey`) +
+   * field_mapping + wide-table reconcile in the same route handler.
+   * Omit (or send `[]`) to skip — the user can configure mappings
+   * later from the connector detail page.
+   */
+  columns: z.array(CreateApiEndpointColumnDraftSchema).optional(),
 });
 export type CreateApiEndpointRequestBody = z.infer<
   typeof CreateApiEndpointRequestBodySchema

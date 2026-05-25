@@ -327,6 +327,7 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
       // the standard `endpoints.create(instanceId)` hook binds the
       // URL at mount time, before we know the id.
       for (const ep of endpoints) {
+        const rows = columnsByEndpoint[ep.key] ?? [];
         await createEndpoint.mutateAsync({
           instanceId,
           body: {
@@ -342,6 +343,23 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
                 : {}),
               pagination: paginationDraftToConfig(ep.pagination),
             } as never,
+            // Materialize the workflow's per-endpoint column drafts as
+            // column_definitions + field_mappings server-side, in the
+            // same route handler that creates the endpoint. Drops the
+            // sourceField default to normalizedKey when the user added
+            // a manual row that didn't carry a sourceField.
+            ...(rows.length > 0
+              ? {
+                  columns: rows.map((row) => ({
+                    sourceField:
+                      row.sourceField.trim() || row.normalizedKey,
+                    normalizedKey: row.normalizedKey,
+                    type: row.type,
+                    required: row.required,
+                    columnDefinitionId: row.columnDefinitionId ?? null,
+                  })),
+                }
+              : {}),
           },
         });
       }
@@ -354,6 +372,12 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
       });
       await queryClient.invalidateQueries({
         queryKey: queryKeys.connectorEntities.root,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.fieldMappings.root,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.columnDefinitions.root,
       });
       // Land the user on the new connector's detail page so they can
       // see what got created (instance + endpoints + draft column

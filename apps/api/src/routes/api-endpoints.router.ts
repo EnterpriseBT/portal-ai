@@ -24,13 +24,20 @@ import { createLogger } from "../utils/logger.util.js";
 import {
   ApiEndpointConfigBaseSchema,
   ApiEndpointConfigSchema,
+  ColumnDefinitionModelFactory,
+  FieldMappingModelFactory,
   type ApiEndpointConfig,
   type PaginationConfig,
 } from "@portalai/core/models";
-import { DiscoverColumnsRequestBodySchema } from "@portalai/core/contracts";
+import {
+  CreateApiEndpointRequestBodySchema,
+  DiscoverColumnsRequestBodySchema,
+  type CreateApiEndpointColumnDraft,
+} from "@portalai/core/contracts";
 import type { ApiEndpoint } from "../db/repositories/api-endpoints.repository.js";
 import { reconstructPagination } from "../adapters/rest-api/pagination/index.js";
 import { restApiAdapter } from "../adapters/rest-api/rest-api.adapter.js";
+import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 
 const logger = createLogger({ module: "api-endpoints" });
 
@@ -40,12 +47,10 @@ const logger = createLogger({ module: "api-endpoints" });
 export const apiEndpointsRouter = Router({ mergeParams: true });
 
 // ── Validation schemas ────────────────────────────────────────────────
-
-const CreateApiEndpointRequestBodySchema = z.object({
-  key: z.string().min(1),
-  label: z.string().min(1),
-  config: ApiEndpointConfigSchema,
-});
+//
+// `CreateApiEndpointRequestBodySchema` is sourced from
+// `@portalai/core/contracts` so the wire shape stays in lockstep with
+// the SDK + swagger + the rest of the codebase.
 
 const PatchApiEndpointRequestBodySchema = z.object({
   label: z.string().min(1).optional(),
@@ -142,6 +147,103 @@ async function requireRestApiInstance(
     );
   }
   return { id: instance.id, organizationId: instance.organizationId };
+}
+
+// ── Column materialization (used by POST when `columns` is sent) ─────
+
+/**
+ * Materialize the workflow's per-endpoint `columns` draft as
+ * column_definition + field_mapping rows so the user lands on a
+ * connector that's ready to sync without a second pass through the
+ * field-mapping UI.
+ *
+ * Per-column flow:
+ *   1. Resolve the columnDefinitionId:
+ *      - if the draft adopted an AI-assist suggestion (`columnDefinitionId`
+ *        already set), use it verbatim;
+ *      - else look up an existing org column_definition by `key ===
+ *        normalizedKey` and reuse it (avoids duplicate-key conflicts
+ *        when two endpoints share a column name);
+ *      - else create a fresh column_definition with key/label/type
+ *        derived from the draft.
+ *   2. Create the field_mapping pointing at that column_definition.
+ *   3. After all rows in the batch are inserted, reconcile the wide
+ *      table once so the `c_<key>` columns appear in `er__<entityId>`.
+ *
+ * Bails on the first error so the workflow can surface the failure
+ * without leaving the connector half-configured.
+ */
+async function materializeColumns(
+  organizationId: string,
+  connectorEntityId: string,
+  columns: CreateApiEndpointColumnDraft[],
+  userId: string
+): Promise<void> {
+  if (columns.length === 0) return;
+
+  // Build a key→id map of existing org column_definitions so we don't
+  // race-create duplicates across endpoints (or across columns within
+  // one endpoint that share a normalizedKey).
+  const existing =
+    await DbService.repository.columnDefinitions.findByOrganizationId(
+      organizationId
+    );
+  const byKey = new Map<string, string>();
+  for (const cd of existing) byKey.set(cd.key, cd.id);
+
+  for (const col of columns) {
+    let columnDefinitionId = col.columnDefinitionId ?? null;
+
+    if (!columnDefinitionId) {
+      const cached = byKey.get(col.normalizedKey);
+      if (cached) {
+        columnDefinitionId = cached;
+      } else {
+        // Create a fresh column_definition for this normalizedKey.
+        const cdFactory = new ColumnDefinitionModelFactory();
+        const cdModel = cdFactory.create(userId);
+        cdModel.update({
+          organizationId,
+          key: col.normalizedKey,
+          label: col.normalizedKey,
+          type: col.type,
+          description: null,
+          validationPattern: null,
+          validationMessage: null,
+          canonicalFormat: null,
+          system: false,
+        });
+        const created = await DbService.repository.columnDefinitions.create(
+          cdModel.parse()
+        );
+        columnDefinitionId = created.id;
+        byKey.set(col.normalizedKey, columnDefinitionId);
+      }
+    }
+
+    const fmFactory = new FieldMappingModelFactory();
+    const fmModel = fmFactory.create(userId);
+    fmModel.update({
+      organizationId,
+      connectorEntityId,
+      columnDefinitionId,
+      sourceField: col.sourceField,
+      isPrimaryKey: false,
+      normalizedKey: col.normalizedKey,
+      required: col.required,
+      defaultValue: null,
+      format: null,
+      enumValues: null,
+      refNormalizedKey: null,
+      refEntityKey: null,
+    });
+    await DbService.repository.fieldMappings.create(fmModel.parse());
+  }
+
+  // Reconcile the wide table once at the end — adds the `c_<key>`
+  // columns to `er__<entityId>` so the sync writes will land + the
+  // entity-record route's JOIN succeeds.
+  await wideTableReconcilerService.reconcileEntity(connectorEntityId);
 }
 
 // ── Routes ────────────────────────────────────────────────────────────
@@ -450,11 +552,68 @@ apiEndpointsRouter.post(
           throw err;
         });
 
+      // Provision the wide-table partition for the new connector_entity.
+      // The reconciler owns DDL on `er__<id>` tables; calling
+      // `ensureTable` here keeps the entity ready for sync writes +
+      // record-fetch reads even before any field_mapping is added.
+      // Mirrors the direct connector-entity POST route.
+      try {
+        await wideTableReconcilerService.ensureTable(result.entity.id);
+      } catch (error) {
+        logger.error(
+          {
+            connectorEntityId: result.entity.id,
+            error: error instanceof Error ? error.message : "Unknown error",
+          },
+          "Wide-table provisioning failed after api-endpoint create"
+        );
+        throw new ApiError(
+          500,
+          ApiCode.WIDE_TABLE_RECONCILE_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to provision wide table"
+        );
+      }
+
+      // Materialize the workflow's per-endpoint column drafts as
+      // column_definitions + field_mappings + a reconcile pass.
+      // No-op when `columns` is absent (legacy callers / unconfigured
+      // endpoints).
+      if (body.columns && body.columns.length > 0) {
+        try {
+          await materializeColumns(
+            instance.organizationId,
+            result.entity.id,
+            body.columns,
+            userId
+          );
+        } catch (error) {
+          logger.error(
+            {
+              connectorEntityId: result.entity.id,
+              error: error instanceof Error ? error.message : "Unknown error",
+            },
+            "Column materialization failed after api-endpoint create"
+          );
+          throw error instanceof ApiError
+            ? error
+            : new ApiError(
+                500,
+                ApiCode.FIELD_MAPPING_CREATE_FAILED,
+                error instanceof Error
+                  ? error.message
+                  : "Failed to materialize field mappings"
+              );
+        }
+      }
+
       logger.info(
         {
           event: "api-endpoints.created",
           connectorInstanceId: instance.id,
           connectorEntityId: result.entity.id,
+          columnsMaterialized: body.columns?.length ?? 0,
         },
         "API endpoint created"
       );
