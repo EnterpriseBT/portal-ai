@@ -53,25 +53,30 @@ export const TransformEditorUI: React.FC<TransformEditorUIProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    if (!value || value.trim() === "") {
-      setLocal({ kind: "empty" });
-      return;
-    }
-    if (lastProbeResponse === null || lastProbeResponse === undefined) {
-      setLocal({ kind: "no-response" });
-      return;
-    }
-    let compiled: ReturnType<typeof jsonata>;
-    try {
-      compiled = jsonata(value);
-    } catch (err) {
-      setLocal({
-        kind: "parse",
-        message: err instanceof Error ? err.message : String(err),
-      });
-      return;
-    }
-    (async () => {
+    // All setState calls live inside the async callback so the effect
+    // body itself never synchronously updates state — satisfies
+    // react-hooks/set-state-in-effect.
+    void (async () => {
+      if (cancelled) return;
+      if (!value || value.trim() === "") {
+        setLocal({ kind: "empty" });
+        return;
+      }
+      if (lastProbeResponse === null || lastProbeResponse === undefined) {
+        setLocal({ kind: "no-response" });
+        return;
+      }
+      let compiled: ReturnType<typeof jsonata>;
+      try {
+        compiled = jsonata(value);
+      } catch (err) {
+        if (cancelled) return;
+        setLocal({
+          kind: "parse",
+          message: err instanceof Error ? err.message : String(err),
+        });
+        return;
+      }
       try {
         const evaluated = await compiled.evaluate(lastProbeResponse);
         if (cancelled) return;
