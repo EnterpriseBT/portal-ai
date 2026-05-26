@@ -159,8 +159,21 @@ describe("ApiEndpointForm — autofocus", () => {
   });
 });
 
-describe("ApiEndpointForm — records path ↔ transform mutual exclusion", () => {
-  it("disables Records path when an existing draft carries a transform", () => {
+describe("ApiEndpointForm — records source radio (mutual exclusion)", () => {
+  it("renders Records path by default and hides the transform editor", () => {
+    render(
+      <ApiEndpointForm open onSubmit={jest.fn()} onClose={jest.fn()} />
+    );
+    expect(
+      screen.getByRole("radio", { name: /records path/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("textbox", { name: /records path/i })
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("transform-editor")).not.toBeInTheDocument();
+  });
+
+  it("opens in Advanced mode when an existing draft carries a transform", () => {
     render(
       <ApiEndpointForm
         open
@@ -174,13 +187,15 @@ describe("ApiEndpointForm — records path ↔ transform mutual exclusion", () =
         onClose={jest.fn()}
       />
     );
-    expect(screen.getByLabelText(/records path/i)).toBeDisabled();
+    expect(screen.getByRole("radio", { name: /advanced/i })).toBeChecked();
+    expect(screen.getByTestId("transform-editor")).toBeInTheDocument();
     expect(
-      screen.getByText(/disabled — using advanced transform below/i)
-    ).toBeInTheDocument();
+      screen.queryByRole("textbox", { name: /records path/i })
+    ).not.toBeInTheDocument();
   });
 
-  it("disables the Transform editor when Records path is set", () => {
+  it("switching the radio swaps which input is rendered and clears the other", async () => {
+    const onSubmit = jest.fn();
     render(
       <ApiEndpointForm
         open
@@ -190,13 +205,28 @@ describe("ApiEndpointForm — records path ↔ transform mutual exclusion", () =
           path: "/users",
           recordsPath: "data.items",
         })}
-        onSubmit={jest.fn()}
+        onSubmit={onSubmit}
         onClose={jest.fn()}
       />
     );
-    // The accordion summary surfaces the disabled-state caption.
+
+    // Starts on recordsPath.
     expect(
-      screen.getByText(/disabled while records path is set/i)
-    ).toBeInTheDocument();
+      screen.getByRole("radio", { name: /records path/i })
+    ).toBeChecked();
+
+    // Switch to Advanced.
+    await userEvent.click(screen.getByRole("radio", { name: /advanced/i }));
+    expect(screen.getByRole("radio", { name: /advanced/i })).toBeChecked();
+    expect(
+      screen.queryByRole("textbox", { name: /records path/i })
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("transform-editor")).toBeInTheDocument();
+
+    // Submit — recordsPath should have been cleared on the toggle.
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const submitted = onSubmit.mock.calls[0]![0] as EndpointDraft;
+    expect(submitted.recordsPath).toBe("");
   });
 });

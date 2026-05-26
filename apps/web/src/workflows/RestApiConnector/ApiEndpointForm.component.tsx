@@ -6,13 +6,14 @@
 
 import React, { useState, useEffect } from "react";
 
-import Accordion from "@mui/material/Accordion";
-import AccordionDetails from "@mui/material/AccordionDetails";
-import AccordionSummary from "@mui/material/AccordionSummary";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import FormLabel from "@mui/material/FormLabel";
 import MenuItem from "@mui/material/MenuItem";
+import Radio from "@mui/material/Radio";
+import RadioGroup from "@mui/material/RadioGroup";
 import TextField from "@mui/material/TextField";
-import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
+import { Box, Button, Modal, Stack, Typography } from "@portalai/core/ui";
 
 import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
 import type { FormErrors } from "../../utils/form-validation.util";
@@ -55,6 +56,9 @@ export const EMPTY_DRAFT: EndpointDraft = {
 
 // ── Pure UI ──────────────────────────────────────────────────────────
 
+/** Which extractor the endpoint uses — mutually exclusive (decision 10). */
+export type ExtractionMode = "recordsPath" | "transform";
+
 export interface ApiEndpointFormUIProps {
   open: boolean;
   draft: EndpointDraft;
@@ -68,6 +72,10 @@ export interface ApiEndpointFormUIProps {
   errors: FormErrors;
   touched: Record<string, boolean>;
   isEditing: boolean;
+  /** Active extractor (radio choice). The inactive one is not rendered. */
+  extractionMode: ExtractionMode;
+  /** Switching modes clears the inactive field on the container side. */
+  onExtractionModeChange: (next: ExtractionMode) => void;
   /** Last raw HTTP probe response for the live transform preview
    *  (slice 8). Optional — when null the preview shows a hint. */
   lastProbeResponse?: unknown | null;
@@ -86,18 +94,12 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
   errors,
   touched,
   isEditing,
+  extractionMode,
+  onExtractionModeChange,
   lastProbeResponse,
   lastTransformError,
 }) => {
   const keyRef = useDialogAutoFocus(open);
-
-  // Mutual exclusion (decision 10): records path and transform can't
-  // both carry a value. Visually, the one without a value is fully
-  // enabled; the one with a value disables its counterpart with
-  // explanatory helper text so the user understands they need to
-  // clear the active extractor before using the other.
-  const recordsPathSet = !!draft.recordsPath && draft.recordsPath.length > 0;
-  const transformSet = !!draft.transform && draft.transform.trim().length > 0;
 
   const field = <K extends keyof EndpointDraft>(
     name: K,
@@ -168,78 +170,96 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
           <MenuItem value="GET">GET</MenuItem>
           <MenuItem value="POST">POST</MenuItem>
         </TextField>
-        <Stack spacing={0.5}>
-          <TextField
-            label="Records path"
-            value={draft.recordsPath}
-            placeholder={'e.g. "data.items" — leave empty if the response IS the array'}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              onChange("recordsPath", e.target.value)
-            }
-            onBlur={() => onBlur("recordsPath")}
-            fullWidth
-            disabled={transformSet}
-            error={touched.recordsPath && !!errors.recordsPath}
-            helperText={
-              transformSet
-                ? "Disabled — using Advanced transform below. Clear it to use Records path."
-                : touched.recordsPath && errors.recordsPath
-            }
-            slotProps={{
-              htmlInput: {
-                "aria-invalid": touched.recordsPath && !!errors.recordsPath,
-              },
-            }}
-          />
-          <Typography variant="caption" color="text.secondary" sx={{ pl: 0.5 }}>
-            Records path handles <code>data.items</code>-style extraction.
-            Use <strong>Advanced — transform</strong> below for multi-array
-            unions, projection, or filtering. Only one can be set.
-          </Typography>
-        </Stack>
-
-        <Accordion
-          defaultExpanded={transformSet}
-          disableGutters
-          square
+        <Box
           sx={{
-            boxShadow: "none",
             border: 1,
-            borderColor: transformSet ? "primary.main" : "divider",
+            borderColor: "divider",
+            borderRadius: 1,
+            p: 1.5,
           }}
         >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon fontSize="small" />}
-            aria-controls="transform-editor-panel"
-            id="transform-editor-header"
-          >
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <Typography variant="body2">
-                Advanced — transform (use JSONata for complex shapes)
-              </Typography>
-              {transformSet ? (
-                <Typography variant="caption" color="primary.main">
-                  · active
-                </Typography>
-              ) : null}
-              {recordsPathSet ? (
-                <Typography variant="caption" color="text.secondary">
-                  · disabled while Records path is set
-                </Typography>
-              ) : null}
-            </Stack>
-          </AccordionSummary>
-          <AccordionDetails>
-            <TransformEditorUI
-              value={draft.transform ?? ""}
-              onChange={(value) => onChange("transform", value)}
-              lastProbeResponse={lastProbeResponse ?? null}
-              serverError={lastTransformError ?? null}
-              disabled={recordsPathSet}
-              disabledHint="Clear Records path above to enable the Transform editor."
-            />
-          </AccordionDetails>
-        </Accordion>
+          <FormControl component="fieldset">
+            <FormLabel
+              component="legend"
+              sx={{ fontSize: 13, fontWeight: 500, mb: 0.5 }}
+            >
+              Records source — choose one
+            </FormLabel>
+            <RadioGroup
+              row
+              value={extractionMode}
+              onChange={(e) =>
+                onExtractionModeChange(e.target.value as ExtractionMode)
+              }
+              aria-label="Records source extraction mode"
+            >
+              <FormControlLabel
+                value="recordsPath"
+                control={<Radio size="small" />}
+                label={
+                  <Typography variant="body2">
+                    Records path{" "}
+                    <Typography
+                      variant="caption"
+                      component="span"
+                      color="text.secondary"
+                    >
+                      — dotted path, e.g. <code>data.items</code>
+                    </Typography>
+                  </Typography>
+                }
+              />
+              <FormControlLabel
+                value="transform"
+                control={<Radio size="small" />}
+                label={
+                  <Typography variant="body2">
+                    Advanced{" "}
+                    <Typography
+                      variant="caption"
+                      component="span"
+                      color="text.secondary"
+                    >
+                      — JSONata transform for complex shapes
+                    </Typography>
+                  </Typography>
+                }
+              />
+            </RadioGroup>
+          </FormControl>
+
+          <Box sx={{ mt: 1.5 }}>
+            {extractionMode === "recordsPath" ? (
+              <TextField
+                label="Records path"
+                value={draft.recordsPath}
+                placeholder={
+                  'e.g. "data.items" — leave empty if the response IS the array'
+                }
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  onChange("recordsPath", e.target.value)
+                }
+                onBlur={() => onBlur("recordsPath")}
+                fullWidth
+                error={touched.recordsPath && !!errors.recordsPath}
+                helperText={touched.recordsPath && errors.recordsPath}
+                slotProps={{
+                  htmlInput: {
+                    "aria-invalid":
+                      touched.recordsPath && !!errors.recordsPath,
+                  },
+                }}
+              />
+            ) : (
+              <TransformEditorUI
+                value={draft.transform ?? ""}
+                onChange={(value) => onChange("transform", value)}
+                lastProbeResponse={lastProbeResponse ?? null}
+                serverError={lastTransformError ?? null}
+              />
+            )}
+          </Box>
+        </Box>
 
         {field(
           "idField",
@@ -294,14 +314,39 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
+  // Mutual exclusion is enforced via the radio choice (decision 10).
+  // Initial mode is derived from the draft: if `transform` carries a
+  // value, the form opens in "transform" mode; otherwise "recordsPath".
+  // Switching modes clears the field that just lost focus so the
+  // mutually-exclusive invariant stays true at all times.
+  const deriveMode = (d: EndpointDraft): ExtractionMode =>
+    !!d.transform && d.transform.trim().length > 0
+      ? "transform"
+      : "recordsPath";
+
+  const [extractionMode, setExtractionMode] = useState<ExtractionMode>(
+    deriveMode(initial ?? EMPTY_DRAFT)
+  );
+
   // Reset draft each time the modal opens.
   useEffect(() => {
     if (open) {
-      setDraft(initial ?? EMPTY_DRAFT);
+      const next = initial ?? EMPTY_DRAFT;
+      setDraft(next);
+      setExtractionMode(deriveMode(next));
       setErrors({});
       setTouched({});
     }
   }, [open, initial]);
+
+  const onExtractionModeChange = (next: ExtractionMode) => {
+    setExtractionMode(next);
+    setDraft((d) =>
+      next === "recordsPath"
+        ? { ...d, transform: undefined }
+        : { ...d, recordsPath: "" }
+    );
+  };
 
   const onChange = <K extends keyof EndpointDraft>(
     field: K,
@@ -366,6 +411,8 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
       errors={errors}
       touched={touched}
       isEditing={isEditing}
+      extractionMode={extractionMode}
+      onExtractionModeChange={onExtractionModeChange}
     />
   );
 };
