@@ -136,6 +136,11 @@ export const ApiEndpointConfigBaseSchema = z.object({
   path: z.string().min(1),
   method: z.enum(["GET", "POST"]),
   recordsPath: z.string().default(""),
+  // JSONata expression applied to the raw HTTP response before
+  // inference / sync; mutually exclusive with recordsPath (see refine
+  // below). 4 KB cap is way above realistic user-typed transforms but
+  // bounds abuse.
+  transform: z.string().max(4096).optional(),
   idField: z.string().nullable().optional(),
   headers: z.record(z.string(), z.string()).optional(),
   queryParams: z.record(z.string(), z.string()).optional(),
@@ -148,6 +153,17 @@ export const ApiEndpointConfigSchema = ApiEndpointConfigBaseSchema.refine(
   {
     message: "bodyTemplate is only valid when method is POST",
     path: ["bodyTemplate"],
+  }
+).refine(
+  (cfg) => {
+    const recordsPathSet = !!cfg.recordsPath && cfg.recordsPath.length > 0;
+    const transformSet = !!cfg.transform && cfg.transform.length > 0;
+    return !(recordsPathSet && transformSet);
+  },
+  {
+    message:
+      "transform and recordsPath cannot both be set; choose one to extract records",
+    path: ["transform"],
   }
 );
 export type ApiEndpointConfig = z.infer<typeof ApiEndpointConfigSchema>;

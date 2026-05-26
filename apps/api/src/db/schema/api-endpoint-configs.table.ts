@@ -39,6 +39,7 @@ export const apiEndpointConfigs = pgTable(
     pagination: text("pagination").notNull(),
     paginationConfig: jsonb("pagination_config").$type<Record<string, unknown>>(),
     recordsPath: text("records_path").notNull().default(""),
+    transform: text("transform"),
     idField: text("id_field"),
   },
   (table) => [

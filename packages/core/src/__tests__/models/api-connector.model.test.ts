@@ -319,4 +319,67 @@ describe("ApiEndpointConfigSchema", () => {
     });
     expect(result.success).toBe(true);
   });
+
+  // ── transform ↔ recordsPath mutual exclusion ───────────────────────
+
+  it("accepts an endpoint with transform set and no recordsPath", () => {
+    const result = ApiEndpointConfigSchema.safeParse({
+      path: "/users",
+      method: "GET",
+      transform: "data.items",
+      pagination: NONE_PAGINATION,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts transform alongside an empty-string recordsPath", () => {
+    const result = ApiEndpointConfigSchema.safeParse({
+      path: "/users",
+      method: "GET",
+      transform: "data.items",
+      recordsPath: "",
+      pagination: NONE_PAGINATION,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects endpoints with both transform and recordsPath non-empty", () => {
+    const result = ApiEndpointConfigSchema.safeParse({
+      path: "/users",
+      method: "GET",
+      transform: "data.items",
+      recordsPath: "items",
+      pagination: NONE_PAGINATION,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find(
+        (i) => i.path.length === 1 && i.path[0] === "transform"
+      );
+      expect(issue).toBeDefined();
+      expect(issue?.message).toMatch(/transform/i);
+      expect(issue?.message).toMatch(/recordsPath/i);
+    }
+  });
+
+  it("treats an empty-string transform as unset (recordsPath alone is fine)", () => {
+    const result = ApiEndpointConfigSchema.safeParse({
+      path: "/users",
+      method: "GET",
+      transform: "",
+      recordsPath: "data.items",
+      pagination: NONE_PAGINATION,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects transform expressions longer than 4096 characters", () => {
+    const result = ApiEndpointConfigSchema.safeParse({
+      path: "/users",
+      method: "GET",
+      transform: "x".repeat(4097),
+      pagination: NONE_PAGINATION,
+    });
+    expect(result.success).toBe(false);
+  });
 });
