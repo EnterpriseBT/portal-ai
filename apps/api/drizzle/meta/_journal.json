@@ -421,6 +421,13 @@
       "when": 1779813834308,
       "tag": "0059_add_transform_to_api_endpoint_configs",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1779826800000,
+      "tag": "0060_pagination_link_body",
+      "breakpoints": true
     }
   ]
 }

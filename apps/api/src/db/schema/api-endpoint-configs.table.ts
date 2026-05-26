@@ -52,7 +52,7 @@ export const apiEndpointConfigs = pgTable(
     ),
     check(
       "api_endpoint_configs_pagination_check",
-      sql`${table.pagination} IN ('none', 'pageOffset', 'cursor', 'linkHeader')`
+      sql`${table.pagination} IN ('none', 'pageOffset', 'cursor', 'linkHeader', 'linkBody')`
     ),
   ]
 );

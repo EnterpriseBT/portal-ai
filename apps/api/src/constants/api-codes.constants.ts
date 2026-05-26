@@ -386,6 +386,19 @@ export enum ApiCode {
    */
   REST_API_CURSOR_NOT_FOUND = "REST_API_CURSOR_NOT_FOUND",
   /**
+   * `linkBody` pagination — the configured `nextUrlPath` doesn't
+   * resolve on the first page's response body. Subsequent pages treat
+   * the missing path as a termination signal (upstream signaling
+   * end-of-list); the first-page case is a config error. 502.
+   */
+  REST_API_NEXT_URL_NOT_FOUND = "REST_API_NEXT_URL_NOT_FOUND",
+  /**
+   * `linkBody` pagination — the path resolved but the value isn't a
+   * string. Common cause: upstream changed schema and the response
+   * shape no longer matches the configured path. 502.
+   */
+  REST_API_NEXT_URL_INVALID = "REST_API_NEXT_URL_INVALID",
+  /**
    * Pagination config is malformed (e.g. a cursor strategy with an
    * empty `cursorResponsePath`). Surfaced by the route's validation
    * pre-flight. 400.

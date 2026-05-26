@@ -31,7 +31,7 @@ export type AuthMode = "none" | "apiKey" | "bearer" | "basic";
  * strategy back into a structured `PaginationConfig` on commit.
  */
 export interface PaginationDraft {
-  strategy: "none" | "pageOffset" | "cursor" | "linkHeader";
+  strategy: "none" | "pageOffset" | "cursor" | "linkHeader" | "linkBody";
   // pageOffset
   style: "page" | "offset";
   param: string;
@@ -43,6 +43,8 @@ export interface PaginationDraft {
   cursorParam: string;
   cursorPlacement: "query" | "header" | "body";
   cursorResponsePath: string;
+  // linkBody
+  nextUrlPath: string;
 }
 
 export const EMPTY_PAGINATION_DRAFT: PaginationDraft = {
@@ -56,6 +58,7 @@ export const EMPTY_PAGINATION_DRAFT: PaginationDraft = {
   cursorParam: "cursor",
   cursorPlacement: "query",
   cursorResponsePath: "",
+  nextUrlPath: "",
 };
 
 /** Project the flat draft into a structured `PaginationConfig`. */
@@ -86,6 +89,8 @@ export function paginationDraftToConfig(
       };
     case "linkHeader":
       return { strategy: "linkHeader" };
+    case "linkBody":
+      return { strategy: "linkBody", nextUrlPath: d.nextUrlPath };
   }
 }
 

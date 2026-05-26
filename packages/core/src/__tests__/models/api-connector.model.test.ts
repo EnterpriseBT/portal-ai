@@ -228,6 +228,29 @@ describe("PaginationConfigSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts linkBody with a nextUrlPath", () => {
+    const result = PaginationConfigSchema.safeParse({
+      strategy: "linkBody",
+      nextUrlPath: "links.next",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects linkBody missing nextUrlPath", () => {
+    const result = PaginationConfigSchema.safeParse({
+      strategy: "linkBody",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects linkBody with empty nextUrlPath", () => {
+    const result = PaginationConfigSchema.safeParse({
+      strategy: "linkBody",
+      nextUrlPath: "",
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("rejects unknown strategy", () => {
     const result = PaginationConfigSchema.safeParse({ strategy: "rfc5988" });
     expect(result.success).toBe(false);

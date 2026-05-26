@@ -18,6 +18,7 @@ import { noneIterator } from "./none.iterator.js";
 import { pageOffsetIterator } from "./page-offset.iterator.js";
 import { cursorIterator } from "./cursor.iterator.js";
 import { linkHeaderIterator } from "./link-header.iterator.js";
+import { linkBodyIterator } from "./link-body.iterator.js";
 import { type PageIterator } from "./types.js";
 
 export { MAX_PAGES, type PageContext, type FetchedPage, type PageIterator } from "./types.js";
@@ -25,6 +26,7 @@ export { noneIterator } from "./none.iterator.js";
 export { pageOffsetIterator } from "./page-offset.iterator.js";
 export { cursorIterator } from "./cursor.iterator.js";
 export { linkHeaderIterator, parseLinkHeader } from "./link-header.iterator.js";
+export { linkBodyIterator } from "./link-body.iterator.js";
 
 export function resolveIterator(config: PaginationConfig): PageIterator {
   switch (config.strategy) {
@@ -36,6 +38,8 @@ export function resolveIterator(config: PaginationConfig): PageIterator {
       return cursorIterator(config);
     case "linkHeader":
       return linkHeaderIterator();
+    case "linkBody":
+      return linkBodyIterator(config);
   }
 }
 

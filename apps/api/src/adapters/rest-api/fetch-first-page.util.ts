@@ -212,6 +212,10 @@ function paginationRequestParams(
     }
     case "linkHeader":
       return { query: {}, headers: {} };
+    case "linkBody":
+      // Next URL comes from the response body; subsequent requests
+      // use `overrideUrl` so query/header injection is bypassed.
+      return { query: {}, headers: {} };
   }
 }
 

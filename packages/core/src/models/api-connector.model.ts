@@ -117,11 +117,23 @@ export const PaginationLinkHeaderSchema = z.object({
 });
 export type PaginationLinkHeader = z.infer<typeof PaginationLinkHeaderSchema>;
 
+// `linkBody` mirrors `linkHeader` but reads the next URL from a dotted
+// path in the response body instead of the HTTP `Link` header. The
+// extracted value must be a complete URL (the iterator follows it
+// verbatim via `overrideUrl`, same as the link-header path). Common
+// shape: NASA NEO returns `{ links: { next: "<full url>" } }`.
+export const PaginationLinkBodySchema = z.object({
+  strategy: z.literal("linkBody"),
+  nextUrlPath: z.string().min(1),
+});
+export type PaginationLinkBody = z.infer<typeof PaginationLinkBodySchema>;
+
 export const PaginationConfigSchema = z.discriminatedUnion("strategy", [
   PaginationNoneSchema,
   PaginationPageOffsetSchema,
   PaginationCursorSchema,
   PaginationLinkHeaderSchema,
+  PaginationLinkBodySchema,
 ]);
 export type PaginationConfig = z.infer<typeof PaginationConfigSchema>;
 

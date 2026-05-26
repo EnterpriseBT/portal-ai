@@ -84,6 +84,7 @@ export const PaginationFieldsUI: React.FC<PaginationFieldsUIProps> = ({
         <MenuItem value="pageOffset">Page / offset</MenuItem>
         <MenuItem value="cursor">Cursor</MenuItem>
         <MenuItem value="linkHeader">Link header (RFC 5988)</MenuItem>
+        <MenuItem value="linkBody">Next link in response body</MenuItem>
       </TextField>
 
       {draft.strategy === "pageOffset" ? (
@@ -153,6 +154,22 @@ export const PaginationFieldsUI: React.FC<PaginationFieldsUIProps> = ({
           <code>rel=&quot;next&quot;</code> (RFC 5988). No further configuration
           needed.
         </Typography>
+      ) : null}
+
+      {draft.strategy === "linkBody" ? (
+        <Stack spacing={1}>
+          <Typography variant="caption" color="text.secondary">
+            Reads the next page&apos;s URL from a dotted path in the response
+            body and follows it verbatim. Use when the upstream API returns
+            the next link in the body (e.g. NASA NEO&apos;s{" "}
+            <code>links.next</code>).
+          </Typography>
+          {textField(
+            "nextUrlPath",
+            "Next-URL response path",
+            "links.next"
+          )}
+        </Stack>
       ) : null}
     </Stack>
   );
