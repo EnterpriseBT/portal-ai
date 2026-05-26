@@ -63,6 +63,14 @@ import {
 import { ProbeCache } from "./probe-cache.util.js";
 import type { ApiEndpoint } from "../../db/repositories/api-endpoints.repository.js";
 import { SystemUtilities } from "../../utils/system.util.js";
+import { NormalizationService } from "../../services/normalization.service.js";
+import { wideTableStatementCache } from "../../services/wide-table-statement.cache.js";
+import {
+  projectToWideRow,
+  buildMappingsForProjection,
+} from "../../services/wide-table-projection.util.js";
+import { eq } from "drizzle-orm";
+import { fieldMappings } from "../../db/schema/index.js";
 
 const logger = createLogger({ module: "rest-api-adapter" });
 
@@ -292,6 +300,24 @@ async function syncOneEndpoint(
   // endpoint that paginates without an `idField`.
   let recordIndex = 0;
 
+  // Pre-fetch field mappings + the wide-table statement once per
+  // endpoint so the inner loop can normalize + project each record
+  // into the matching `er__<id>` row without hitting the DB twice.
+  // When `stmt.columns.length === 0` the entity has no live wide-table
+  // columns yet (workflow committed without column drafts) — skip the
+  // wide-table writes; the field-mapping route's reconciler picks
+  // them up later.
+  const mappingsForNormalize =
+    await DbService.repository.fieldMappings.findMany(
+      eq(fieldMappings.connectorEntityId, endpoint.entity.id),
+      { include: ["columnDefinition"] }
+    );
+  const wideStmt = await wideTableStatementCache.get(endpoint.entity.id);
+  const wideProjection =
+    wideStmt.columns.length > 0
+      ? buildMappingsForProjection(wideStmt.columns)
+      : null;
+
   let next = await iterator.next();
   while (!next.done) {
     const fetched = await fetchOnePage(
@@ -331,28 +357,83 @@ async function syncOneEndpoint(
           [prior.id],
           runStartedAt
         );
+        // Wide-table mirror: re-project + upsert (idempotent via
+        // ON CONFLICT). Backfills rows that exist in entity_records
+        // but are missing from the wide table — common right after
+        // landing field mappings on an already-synced entity.
+        if (wideProjection) {
+          const normalized = NormalizationService.normalizeWithMappings(
+            mappingsForNormalize as never,
+            recordObj
+          );
+          await DbService.repository.wideTable.upsertMany(
+            endpoint.entity.id,
+            [
+              projectToWideRow(
+                {
+                  id: prior.id,
+                  organizationId: instance.organizationId,
+                  sourceId,
+                  syncedAt: runStartedAt,
+                  isValid: normalized.isValid,
+                  normalizedData: normalized.normalizedData,
+                },
+                wideProjection
+              ),
+            ]
+          );
+        }
         unchanged++;
         continue;
       }
 
-      await DbService.repository.entityRecords.upsertBySourceId({
-        id: prior?.id ?? SystemUtilities.id.v4.generate(),
-        organizationId: instance.organizationId,
-        connectorEntityId: endpoint.entity.id,
-        sourceId,
-        data: recordObj as never,
-        checksum,
-        syncedAt: runStartedAt,
-        origin: "sync",
-        isValid: true,
-        validationErrors: null,
-        created: prior?.created ?? Date.now(),
-        createdBy: prior?.createdBy ?? userId,
-        updated: Date.now(),
-        updatedBy: userId,
-        deleted: null,
-        deletedBy: null,
-      } as never);
+      const rowId = prior?.id ?? SystemUtilities.id.v4.generate();
+      const upserted =
+        await DbService.repository.entityRecords.upsertBySourceId({
+          id: rowId,
+          organizationId: instance.organizationId,
+          connectorEntityId: endpoint.entity.id,
+          sourceId,
+          data: recordObj as never,
+          checksum,
+          syncedAt: runStartedAt,
+          origin: "sync",
+          isValid: true,
+          validationErrors: null,
+          created: prior?.created ?? Date.now(),
+          createdBy: prior?.createdBy ?? userId,
+          updated: Date.now(),
+          updatedBy: userId,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+
+      // Mirror into the wide table so the entity detail view sees the
+      // columns populated. Skip when the entity has no field_mappings
+      // yet (no c_* columns) — the field-mapping create route's
+      // reconciler will populate them once mappings land.
+      if (wideProjection) {
+        const normalized = NormalizationService.normalizeWithMappings(
+          mappingsForNormalize as never,
+          recordObj
+        );
+        await DbService.repository.wideTable.upsertMany(
+          endpoint.entity.id,
+          [
+            projectToWideRow(
+              {
+                id: upserted.id,
+                organizationId: instance.organizationId,
+                sourceId,
+                syncedAt: runStartedAt,
+                isValid: normalized.isValid,
+                normalizedData: normalized.normalizedData,
+              },
+              wideProjection
+            ),
+          ]
+        );
+      }
 
       if (prior) updated++; else created++;
     }

@@ -64,6 +64,9 @@ const findColumnDefinitionsMock =
     >
   >();
 
+const findFieldMappingsMock = jest.fn<() => Promise<unknown[]>>();
+const upsertWideManyMock = jest.fn<() => Promise<void>>();
+
 jest.unstable_mockModule("../../../services/db.service.js", () => ({
   DbService: {
     repository: {
@@ -79,8 +82,27 @@ jest.unstable_mockModule("../../../services/db.service.js", () => ({
       },
       connectorInstances: { update: updateInstanceMock },
       columnDefinitions: { findByOrganizationId: findColumnDefinitionsMock },
+      fieldMappings: { findMany: findFieldMappingsMock },
+      wideTable: { upsertMany: upsertWideManyMock },
     },
   },
+}));
+
+// Wide-table statement cache + db client are imported by the adapter
+// for the post-sync wide-table mirror writes. Stub `get` to return an
+// empty columns array so the adapter skips wide-table writes when the
+// test doesn't set up field-mapping fixtures, and stub the db client
+// so the unchanged-path's UPDATE statement is a no-op.
+jest.unstable_mockModule(
+  "../../../services/wide-table-statement.cache.js",
+  () => ({
+    wideTableStatementCache: {
+      get: jest.fn(async () => ({ columns: [] })),
+    },
+  })
+);
+jest.unstable_mockModule("../../../db/client.js", () => ({
+  db: { execute: jest.fn(async () => undefined) },
 }));
 
 const {
@@ -128,6 +150,13 @@ beforeEach(() => {
   updateInstanceMock.mockReset();
   findColumnDefinitionsMock.mockReset();
   findColumnDefinitionsMock.mockResolvedValue([]);
+  findFieldMappingsMock.mockReset();
+  findFieldMappingsMock.mockResolvedValue([]);
+  upsertWideManyMock.mockReset();
+  upsertWideManyMock.mockResolvedValue(undefined);
+  // Default upsertBySourceId returns a stub row carrying the input id —
+  // the adapter consumes `upserted.id` for the wide-table mirror write.
+  upsertBySourceIdMock.mockImplementation(async (input: unknown) => input);
   __resetRestApiAdapterDepsForTests();
 });
 
