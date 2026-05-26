@@ -198,6 +198,22 @@ export const connectorInstances = {
     }),
 
   /**
+   * Same wire shape as `sync`, but the instanceId is a mutation variable
+   * instead of being bound at hook-mount time. Used by workflows that
+   * need to kick an initial sync immediately after creating the
+   * connector instance (where the id isn't known when the hook mounts).
+   */
+  syncForInstance: () =>
+    useAuthMutation<
+      ConnectorInstanceSyncResponsePayload,
+      { instanceId: string }
+    >({
+      url: (vars) =>
+        `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(vars.instanceId)}/sync`,
+      method: "POST",
+    }),
+
+  /**
    * Dry-run an adapter's `testConnection` against a configured instance.
    * Returns `{ ok: true, sample }` on success or `{ ok: false, code, ... }`
    * on failure — both shapes arrive as HTTP 200, since `ok: false`

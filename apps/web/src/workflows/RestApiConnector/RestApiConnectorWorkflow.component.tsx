@@ -308,6 +308,9 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
   const createEndpoint = sdk.apiConnector.endpoints.createForInstance();
   const probeDraft = sdk.apiConnector.endpoints.probeDraft();
   const { mutateAsync: probeDraftMutate } = probeDraft;
+  // Initial-sync kick on commit so the user lands on the detail view
+  // with records already flowing in, not an empty wide table.
+  const syncForInstance = sdk.connectorInstances.syncForInstance();
 
   const [isCommitting, setIsCommitting] = useState(false);
 
@@ -578,6 +581,20 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
       await queryClient.invalidateQueries({
         queryKey: queryKeys.columnDefinitions.root,
       });
+
+      // Kick an initial sync so the user doesn't land on an empty
+      // detail view. Fire-and-tolerate-failure — the connector +
+      // endpoints are already persisted by this point, so a sync
+      // failure (e.g. upstream API unreachable) is not a commit
+      // failure. The detail view's running-jobs alert will pick the
+      // job up from here.
+      try {
+        await syncForInstance.mutateAsync({ instanceId });
+      } catch {
+        // Non-blocking — the connector + endpoints are committed.
+        // User can re-trigger from the detail view.
+      }
+
       // Land the user on the new connector's detail page so they can
       // see what got created (instance + endpoints + draft column
       // mappings). Matches the GoogleSheetsConnector workflow's
