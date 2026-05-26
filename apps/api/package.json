@@ -59,6 +59,7 @@
     "financial": "^0.2.4",
     "ioredis": "^5.10.0",
     "ipaddr.js": "^1.9.1",
+    "jsonata": "^2.2.1",
     "ml-kmeans": "^7.0.0",
     "node-sql-parser": "^5.4.0",
     "ollama-ai-provider-v2": "^3.3.1",
