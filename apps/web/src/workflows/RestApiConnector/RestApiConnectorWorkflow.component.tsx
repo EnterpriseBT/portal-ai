@@ -533,6 +533,9 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
               path: ep.path,
               method: ep.method,
               recordsPath: ep.recordsPath,
+              ...(ep.transform && ep.transform.trim().length > 0
+                ? { transform: ep.transform }
+                : {}),
               idField: ep.idField || null,
               ...(ep.method === "POST" && ep.bodyTemplate
                 ? { bodyTemplate: ep.bodyTemplate }
