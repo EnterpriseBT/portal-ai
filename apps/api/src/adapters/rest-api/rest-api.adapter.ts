@@ -628,14 +628,37 @@ async function runProbePipeline(
     }
   }
 
-  // Live probe.
-  const fetched = await fetchFirstPage(
-    ctx.endpoint,
-    ctx.baseUrl,
-    ctx.auth,
-    ctx.credentials,
-    ctx.pagination
-  );
+  // Live probe. Transform failures here are advisory (degradation),
+  // not fatal — the user is mid-edit and needs to see the error to
+  // fix their expression. Sync uses the same fetch path but lets the
+  // error propagate normally.
+  let fetched: Awaited<ReturnType<typeof fetchFirstPage>>;
+  try {
+    fetched = await fetchFirstPage(
+      ctx.endpoint,
+      ctx.baseUrl,
+      ctx.auth,
+      ctx.credentials,
+      ctx.pagination
+    );
+  } catch (err) {
+    if (err instanceof ApiError && err.code === ApiCode.REST_API_TRANSFORM_FAILED) {
+      const result: DiscoverColumnsResult = {
+        columns: [],
+        source: "live",
+        cachedAt: Date.now(),
+        recordsScanned: 0,
+        degradation: "transform-failed",
+        transformError: {
+          kind: (err.details?.kind as "parse" | "runtime") ?? "runtime",
+          message: (err.details?.message as string) ?? err.message,
+        },
+      };
+      probeCache.set(opts.cacheKey, result);
+      return result;
+    }
+    throw err;
+  }
   const scanned = fetched.records.slice(0, MAX_RECORDS_SCANNED);
   const inference = inferColumns(scanned);
 

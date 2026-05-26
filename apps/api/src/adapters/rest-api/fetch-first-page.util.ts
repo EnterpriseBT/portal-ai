@@ -44,6 +44,7 @@ import {
   buildUrl,
   walkRecordsPath,
 } from "./rest-api.adapter.js";
+import { applyTransform } from "./transform.util.js";
 
 export async function fetchOnePage(
   endpoint: ApiEndpoint,
@@ -103,10 +104,30 @@ export async function fetchOnePage(
     throw remapAuthFailure(err, url);
   }
 
-  const records = assertRecordsArray(
-    walkRecordsPath(result.body, endpoint.config.recordsPath ?? ""),
-    endpoint.config.recordsPath ?? ""
-  );
+  // Records extraction: JSONata transform takes precedence when set
+  // (decision 10 — mutually exclusive with recordsPath). Empty / unset
+  // transform falls through to the recordsPath walker. Used by both
+  // sync (errors throw normally) and probe (runProbePipeline catches
+  // REST_API_TRANSFORM_FAILED and surfaces it as a degradation).
+  const transform = endpoint.config.transform ?? "";
+  let records: unknown[];
+  if (transform.length > 0) {
+    const transformed = await applyTransform(transform, result.body);
+    if (transformed.error) {
+      throw new ApiError(
+        500,
+        ApiCode.REST_API_TRANSFORM_FAILED,
+        `JSONata transform ${transformed.error.kind} error: ${transformed.error.message}`,
+        { kind: transformed.error.kind, message: transformed.error.message }
+      );
+    }
+    records = transformed.records;
+  } else {
+    records = assertRecordsArray(
+      walkRecordsPath(result.body, endpoint.config.recordsPath ?? ""),
+      endpoint.config.recordsPath ?? ""
+    );
+  }
 
   return {
     body: result.body,

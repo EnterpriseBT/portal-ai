@@ -67,9 +67,25 @@ export const DiscoverColumnsResultSchema = z.object({
   /**
    * - `"llm-failed"` — classifier wired but threw; degraded silently.
    * - `"llm-disabled"` — classifier not wired in this process.
-   * - `null` — both layers ran successfully (or no candidates).
+   * - `"transform-failed"` — JSONata transform errored; columns empty,
+   *   `transformError` populated with the parse/runtime details.
+   * - `null` — all layers ran successfully (or no candidates).
    */
-  degradation: z.enum(["llm-failed", "llm-disabled"]).nullable(),
+  degradation: z
+    .enum(["llm-failed", "llm-disabled", "transform-failed"])
+    .nullable(),
+  /**
+   * Populated when `degradation === "transform-failed"`. Carries the
+   * classified failure (parse vs runtime) and message so the UI can
+   * surface it inline in the transform editor preview.
+   */
+  transformError: z
+    .object({
+      kind: z.enum(["parse", "runtime"]),
+      message: z.string(),
+    })
+    .nullable()
+    .optional(),
 });
 export type DiscoverColumnsResult = z.infer<typeof DiscoverColumnsResultSchema>;
 

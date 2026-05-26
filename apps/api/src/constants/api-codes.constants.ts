@@ -324,6 +324,14 @@ export enum ApiCode {
   /** Unhandled error in the rest-api endpoints router — 500 fallback. */
   REST_API_OPERATION_FAILED = "REST_API_OPERATION_FAILED",
   /**
+   * JSONata transform failed to parse or threw at runtime. Carried on
+   * ApiError.details as `{ kind: "parse" | "runtime", message: string }`.
+   * In probe context the pipeline catches this and returns a result with
+   * `degradation: "transform-failed"` + `transformError`. In sync context
+   * the error propagates as a normal adapter failure.
+   */
+  REST_API_TRANSFORM_FAILED = "REST_API_TRANSFORM_FAILED",
+  /**
    * Authentication failure during sync, test-connection, or auth application:
    *   - 401/403 response from upstream (502, raised by the adapter when
    *     fetchJson reports an auth-bearing status).

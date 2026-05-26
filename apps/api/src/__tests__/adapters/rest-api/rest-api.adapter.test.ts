@@ -15,6 +15,7 @@ type EndpointFixture = {
     path: string;
     method: "GET" | "POST";
     recordsPath: string;
+    transform?: string | null;
     idField: string | null;
     headers?: Record<string, string> | null;
     queryParams?: Record<string, string> | null;
@@ -745,6 +746,88 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
       code: ApiCode.REST_API_PAGINATION_INVALID,
     });
   });
+
+  // ── transform-bearing sync (slice 5) ────────────────────────────────
+
+  it("transform-bearing endpoint: sync yields transformed records page-by-page", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "users", label: "Users" },
+        config: {
+          path: "/users",
+          method: "GET",
+          recordsPath: "",
+          transform:
+            'data.{ "id": id, "user_name": user.name, "user_email": user.email }',
+          idField: "id",
+          pagination: "pageOffset",
+          paginationConfig: {
+            style: "page",
+            param: "page",
+            pageSize: 2,
+            startPage: 1,
+            stopOnShortPage: false,
+          },
+        },
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce(
+        okResponse({
+          data: [
+            { id: 1, user: { name: "Ada", email: "ada@x.test" } },
+            { id: 2, user: { name: "Grace", email: "grace@x.test" } },
+          ],
+        } as unknown as unknown[])
+      )
+      .mockResolvedValueOnce(
+        okResponse({ data: [] } as unknown as unknown[])
+      );
+
+    await restApiAdapter.syncInstance!(INSTANCE, "u1");
+
+    // Two outbound requests (page 1 with records, page 2 empty → stop).
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The reconciler saw the flat records — assert via upsert calls.
+    expect(upsertBySourceIdMock).toHaveBeenCalledTimes(2);
+    const upsertedDatas = upsertBySourceIdMock.mock.calls.map(
+      (call) => (call[0] as { data: Record<string, unknown> }).data
+    );
+    for (const data of upsertedDatas) {
+      expect(Object.keys(data).sort()).toEqual([
+        "id",
+        "user_email",
+        "user_name",
+      ]);
+    }
+  });
+
+  it("transform parse error during sync fails the page with REST_API_TRANSFORM_FAILED", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "users", label: "Users" },
+        config: {
+          path: "/users",
+          method: "GET",
+          recordsPath: "",
+          transform: "data.{ unclosed",
+          idField: "id",
+          pagination: "none",
+          paginationConfig: null,
+        },
+      },
+    ]);
+    fetchMock.mockResolvedValueOnce(
+      okResponse({ data: [{ id: 1 }] } as unknown as unknown[])
+    );
+
+    await expect(
+      restApiAdapter.syncInstance!(INSTANCE, "u1")
+    ).rejects.toMatchObject({
+      code: ApiCode.REST_API_TRANSFORM_FAILED,
+    });
+    expect(upsertBySourceIdMock).not.toHaveBeenCalled();
+  });
 });
 
 // ── testConnection ────────────────────────────────────────────────────
@@ -1246,6 +1329,149 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
     await expect(
       restApiAdapter.discoverColumnsWithSamples(INSTANCE, "missing")
     ).rejects.toMatchObject({ code: ApiCode.REST_API_ENDPOINT_NOT_FOUND });
+  });
+
+  // ── transform-bearing endpoints (slice 5) ────────────────────────
+
+  function withTransformEndpoint(transform: string) {
+    findByInstanceMock.mockResolvedValue([
+      {
+        entity: {
+          id: "ent-users",
+          key: "users",
+          label: "Users",
+          connectorInstanceId: INSTANCE.id,
+        },
+        config: {
+          path: "/users",
+          method: "GET",
+          recordsPath: "",
+          transform,
+          idField: "id",
+          ...NONE_PAGINATION,
+        },
+      },
+    ]);
+  }
+
+  it("extracts records via transform when set (basic recordsPath-equivalent)", async () => {
+    withTransformEndpoint("data.items");
+    fetchMock.mockResolvedValueOnce(
+      okResponse({
+        data: { items: [{ id: "a", name: "Alice" }, { id: "b", name: "Bob" }] },
+      })
+    );
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: null,
+    });
+
+    const result = await restApiAdapter.discoverColumnsWithSamples(
+      INSTANCE,
+      "users"
+    );
+    expect(result.degradation).toBe("llm-disabled");
+    expect(result.recordsScanned).toBe(2);
+    expect(result.columns.map((c) => c.key).sort()).toEqual(["id", "name"]);
+  });
+
+  it("flattens nested records via transform projection so the classifier sees flat candidates", async () => {
+    withTransformEndpoint(
+      'data.{ "id": id, "user_name": user.name, "user_email": user.email }'
+    );
+    fetchMock.mockResolvedValueOnce(
+      okResponse({
+        data: [
+          { id: 1, user: { name: "Ada", email: "ada@x.test" } },
+          { id: 2, user: { name: "Grace", email: "grace@x.test" } },
+        ],
+      })
+    );
+    const classifyMock =
+      jest.fn<(candidates: unknown[], catalog: unknown) => Promise<unknown[]>>()
+        .mockResolvedValue([]);
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: { classify: classifyMock as never },
+    });
+
+    const result = await restApiAdapter.discoverColumnsWithSamples(
+      INSTANCE,
+      "users"
+    );
+    expect(result.recordsScanned).toBe(2);
+    expect(result.columns.map((c) => c.key).sort()).toEqual([
+      "id",
+      "user_email",
+      "user_name",
+    ]);
+    // Classifier saw the flat candidate set, not the nested original shape.
+    expect(classifyMock).toHaveBeenCalledTimes(1);
+    const candidates = classifyMock.mock.calls[0][0] as unknown as Array<{
+      sourceField: string;
+    }>;
+    expect(candidates.map((c) => c.sourceField).sort()).toEqual([
+      "id",
+      "user_email",
+      "user_name",
+    ]);
+  });
+
+  it("returns degradation 'transform-failed' + transformError on a parse error", async () => {
+    withTransformEndpoint("data.{ unclosed");
+    fetchMock.mockResolvedValueOnce(
+      okResponse({ data: [{ id: 1 }] })
+    );
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: null,
+    });
+
+    const result = await restApiAdapter.discoverColumnsWithSamples(
+      INSTANCE,
+      "users"
+    );
+    expect(result.degradation).toBe("transform-failed");
+    expect(result.recordsScanned).toBe(0);
+    expect(result.columns).toEqual([]);
+    expect(result.transformError?.kind).toBe("parse");
+    expect(result.transformError?.message).toBeTruthy();
+  });
+
+  it("returns degradation 'transform-failed' on a runtime error", async () => {
+    withTransformEndpoint("$undefinedFn(items)");
+    fetchMock.mockResolvedValueOnce(okResponse({ items: [1, 2, 3] }));
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: null,
+    });
+
+    const result = await restApiAdapter.discoverColumnsWithSamples(
+      INSTANCE,
+      "users"
+    );
+    expect(result.degradation).toBe("transform-failed");
+    expect(result.recordsScanned).toBe(0);
+    expect(result.transformError?.kind).toBe("runtime");
+  });
+
+  it("treats an empty transform result as a valid 0-record probe (no degradation)", async () => {
+    withTransformEndpoint("data[active = true]");
+    fetchMock.mockResolvedValueOnce(
+      okResponse({ data: [{ id: 1, active: false }] })
+    );
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: null,
+    });
+
+    const result = await restApiAdapter.discoverColumnsWithSamples(
+      INSTANCE,
+      "users"
+    );
+    expect(result.recordsScanned).toBe(0);
+    expect(result.columns).toEqual([]);
+    expect(result.degradation).toBeNull();
   });
 });
 
