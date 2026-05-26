@@ -79,6 +79,12 @@ export const EndpointColumnReviewUI: React.FC<EndpointColumnReviewUIProps> = ({
       borderColor: "divider",
       borderRadius: 1,
       p: 2,
+      // Allow children (notably the InferredColumnsTable) to shrink
+      // within the modal's flex layout. DataTable provides its own
+      // TableContainer for horizontal scroll on overflow, so we don't
+      // clip here — a clip would also chop SuggestionChip tooltips
+      // and any popovers anchored inside.
+      minWidth: 0,
     }}
     data-testid={`endpoint-review-${endpointKey}`}
   >
