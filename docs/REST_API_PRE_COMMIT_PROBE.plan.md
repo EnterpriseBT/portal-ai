@@ -1,10 +1,10 @@
 # REST API connector — pre-commit probe + transform — Plan
 
-**TDD-sequenced implementation of the pre-commit probe refactor + JSONata transform feature: server-side transform utility, endpoint config schema update (transform ↔ recordsPath mutual exclusion), `discoverColumnsWithSamples` factored into a shared inner pipeline, transform applied during probe + sync, new `probe-endpoint-draft` route, SDK hook + workflow auto-fire on step-3 entry, transform editor with live preview in `ApiEndpointForm`. After this PR the create flow shows real suggestions before commit and complex JSON responses are first-class.**
+**TDD-sequenced implementation of the pre-commit probe refactor + JSONata transform feature: server-side transform utility, endpoint config schema update (transform ↔ recordsPath mutual exclusion), shared probe-input hash utility (client + server, per discovery decision 16), `discoverColumnsWithSamples` factored into a shared inner pipeline, transform applied during probe + sync, new `probe-endpoint-draft` route, SDK hook + workflow auto-fire on step-3 entry, transform editor with live preview in `ApiEndpointForm`. After this PR the create flow shows real suggestions before commit and complex JSON responses are first-class.**
 
 Discovery: `docs/REST_API_PRE_COMMIT_PROBE.discovery.md`. Standing on top of phase-4 (`docs/API_CONNECTOR_PHASE_4.{spec,plan}.md`), which landed the post-commit probe pipeline + classifier + UI components this plan reuses.
 
-Eight slices, each behind a green test suite. Slices 1–4 are backend-only and add no user-visible change. Slice 5 lights up the new route. Slice 6 swaps the workflow into auto-fire mode (first user-visible change — step 3 now shows real suggestions in create flow). Slice 7 adds the transform editor in step 2. Slice 8 locks behavior with an end-to-end test.
+Nine slices, each behind a green test suite. Slices 1–5 are backend-only and add no user-visible change. Slice 6 lights up the new route. Slice 7 swaps the workflow into auto-fire mode (first user-visible change — step 3 now shows real suggestions in create flow). Slice 8 adds the transform editor in step 2. Slice 9 locks behavior with an end-to-end test.
 
 Run tests with `npm run test:unit` (per repo convention — `npx jest` bypasses the `NODE_OPTIONS=--experimental-vm-modules` flag the ESM-deps need).
 
@@ -12,14 +12,15 @@ The slices are sequenced so that:
 
 - **Slice 1** lands `applyTransform` (pure JSONata wrapper) — biggest unit-test surface in this PR. Pure leaf, no caller.
 - **Slice 2** lands the endpoint config schema update — `transform` field + the `transform XOR recordsPath` refinement + drizzle-zod type-checks. Pure, no runtime caller.
-- **Slice 3** factors `discoverColumnsWithSamples` into `buildProbeContext` + `runProbePipeline`. Pure refactor — existing post-commit route call site is rewired to use the factored helpers; no observable change.
-- **Slice 4** wires `applyTransform` into the inner pipeline + the sync iterator. Probe and sync now both apply the transform when set; recordsPath-only endpoints unchanged. First slice where the transform actually does anything.
-- **Slice 5** lands the new route + service + SDK type. Pre-commit probe is reachable but not yet called by the workflow.
-- **Slice 6** swaps the workflow into auto-fire mode: step-3 entry triggers per-endpoint probes via the new SDK call; `reprobeDisabled` props drop; per-endpoint cache invalidation on config edit. First user-visible change.
-- **Slice 7** lands the transform editor in `ApiEndpointForm` — collapsible "Advanced — transform" section, client-side JSONata live preview, mutual-exclusion validation.
-- **Slice 8** lands the end-to-end integration test (mocked REST endpoint, both recordsPath and transform paths, classifier-disabled degradation, probe-failure-per-endpoint advancement, full commit) plus a manual smoke checklist for a real public API.
+- **Slice 3** lands the shared `probe-hash` utility in `packages/core` — canonical-key JSON stringify + sha256 via `crypto.subtle.digest` (browser) / `node:crypto` (server). Pure leaf, consumed by both slices 6 and 7. Codifies the canonical invalidation set from discovery decision 16.
+- **Slice 4** factors `discoverColumnsWithSamples` into `buildProbeContext` + `runProbePipeline`. Pure refactor — existing post-commit route call site is rewired to use the factored helpers; no observable change.
+- **Slice 5** wires `applyTransform` into the inner pipeline + the sync iterator. Probe and sync now both apply the transform when set; recordsPath-only endpoints unchanged. First slice where the transform actually does anything.
+- **Slice 6** lands the new route + service + SDK type. Server-side cache keys off the shared `probe-hash` util from slice 3. Pre-commit probe is reachable but not yet called by the workflow.
+- **Slice 7** swaps the workflow into auto-fire mode: step-3 entry triggers per-endpoint probes via the new SDK call; `reprobeDisabled` props drop; per-endpoint `EndpointRow.probeInputHash` (from slice 3's util) drives cache invalidation on config edit. First user-visible change.
+- **Slice 8** lands the transform editor in `ApiEndpointForm` — collapsible "Advanced — transform" section, client-side JSONata live preview, mutual-exclusion validation.
+- **Slice 9** lands the end-to-end integration test (mocked REST endpoint, both recordsPath and transform paths, classifier-disabled degradation, probe-failure-per-endpoint advancement, full commit) plus a manual smoke checklist for a real public API.
 
-After every slice the repo type-checks, `npm run test:unit` is green, and (through slice 5) the workflow's user-visible behavior is unchanged.
+After every slice the repo type-checks, `npm run test:unit` is green, and (through slice 6) the workflow's user-visible behavior is unchanged.
 
 ---
 
@@ -119,7 +120,78 @@ Adds `transform` to the endpoint config; enforces mutual exclusion with `records
 
 ---
 
-## Slice 3 — Factor `discoverColumnsWithSamples` into shared inner pipeline
+## Slice 3 — Shared `probe-hash` utility (`packages/core`)
+
+Pure leaf. Canonical, runtime-agnostic hash for the probe-input set. Consumed in slice 6 (server cache key) and slice 7 (client cache-staleness check). Discovery decision 16 fixes the invalidation set; this slice codifies it.
+
+**Files**
+
+- New: `packages/core/src/utils/probe-hash.util.ts`
+- New: `packages/core/src/__tests__/utils/probe-hash.util.test.ts`
+- Modified: `packages/core/src/index.ts` (export)
+
+**Contract**
+
+```ts
+export interface ProbeHashInput {
+  organizationId: string;
+  baseUrl: string;
+  auth: ApiAuthConfig;             // mode + mode-specific shape (no secrets)
+  credentials: CredentialsPayload | null;
+  endpoint: Pick<
+    ApiEndpointConfig,
+    | "path"
+    | "method"
+    | "recordsPath"
+    | "transform"
+    | "idField"
+    | "bodyTemplate"
+    | "pagination"
+  >;
+  // NOT in hash: endpoint.key, endpoint.label (rename-only, no probe effect)
+}
+
+export function probeInputHash(input: ProbeHashInput): Promise<string>;
+```
+
+The function picks the listed endpoint fields explicitly (drops anything else), canonicalizes via stable-key JSON stringify, and computes sha256. Runtime detection picks `crypto.subtle.digest` (browser) or `node:crypto.createHash("sha256")` (server) — no new dependency.
+
+**Steps**
+
+1. **Write the unit tests.** All run in both jsdom and node environments (`@jest-environment` per-file directive where needed):
+   1. Two inputs with the same payload but different key order on `endpoint.pagination` → identical hash (canonicalization works).
+   2. Two inputs with the same payload but different key order on `endpoint.bodyTemplate` → identical hash.
+   3. Changing `endpoint.path` → different hash.
+   4. Changing `endpoint.method` → different hash.
+   5. Changing `endpoint.recordsPath` → different hash.
+   6. Changing `endpoint.transform` (the new field) → different hash.
+   7. Changing `endpoint.idField` → different hash.
+   8. Changing `endpoint.bodyTemplate` → different hash.
+   9. Changing any `endpoint.pagination.*` subfield (strategy / param / style / pageSize / cursorParam / cursorPlacement / cursorResponsePath) → different hash, one assertion per subfield.
+   10. Changing `endpoint.key` → **same** hash (display-only).
+   11. Changing `endpoint.label` → **same** hash (display-only).
+   12. Changing `baseUrl` → different hash.
+   13. Changing `auth.mode` → different hash.
+   14. Changing `auth.keyName` (apiKey mode) → different hash.
+   15. Changing `auth.placement` (apiKey mode) → different hash.
+   16. Changing any field inside `credentials` → different hash.
+   17. `credentials = null` and `credentials = {}` → different hashes (distinguish missing from empty).
+   18. Changing `organizationId` → different hash (server cache must not collide across orgs).
+   19. Extra unrelated keys added to the input object (defense in depth) → ignored; same hash. This proves the projection layer is doing its job.
+   20. Hash output is hex-encoded, 64 chars long, deterministic across two consecutive calls with identical input.
+   Run; all fail.
+
+2. **Author the util.** Build the canonical projection helper, the stable-key stringifier, and the sha256 driver. Branch on `typeof window !== "undefined" && window.crypto?.subtle` to pick the runtime.
+
+3. **Export from `packages/core/src/index.ts`.**
+
+4. **Lint + type-check.** Clean.
+
+**Done when:** all 20 cases pass; util is exported; no caller imports it yet.
+
+---
+
+## Slice 4 — Factor `discoverColumnsWithSamples` into shared inner pipeline
 
 Pure refactor. Pulls "build adapter context → drive iterator one page → slice → infer → classify → tag degradation" out of the post-commit entry point and into reusable helpers. The existing route call site is rewired; behavior is unchanged.
 
@@ -168,7 +240,7 @@ async function runProbePipeline(
 
 ---
 
-## Slice 4 — Apply transform in probe + sync
+## Slice 5 — Apply transform in probe + sync
 
 Wires `applyTransform` into `runProbePipeline` and into the sync iterator. Endpoints with `transform` set bypass `recordsPath`; endpoints with `recordsPath` only are unchanged. Failures classify as a degradation.
 
@@ -207,9 +279,9 @@ Wires `applyTransform` into `runProbePipeline` and into the sync iterator. Endpo
 
 ---
 
-## Slice 5 — Probe-draft route + service + SDK type
+## Slice 6 — Probe-draft route + service + SDK type
 
-New `POST /api/connector-instances/probe-endpoint-draft` route. Reuses the inner pipeline from slice 3; reuses the transform wiring from slice 4.
+New `POST /api/connector-instances/probe-endpoint-draft` route. Reuses the inner pipeline from slice 4; reuses the transform wiring from slice 5; keys its 60-second in-process cache on the shared `probeInputHash` from slice 3.
 
 **Files**
 
@@ -245,11 +317,13 @@ ProbeEndpointDraftRequestBodySchema = z.object({
    4. POST with `transform` that errors → 200 with `degradation: "transform-failed"` (same shape as the post-commit route).
    5. POST against an endpoint that's unreachable (mocked fetch throws) → 200 with `degradation: …` or the appropriate failure shape (mirror what the post-commit route does today).
    6. Credentials in the body are **never** persisted — assert by inspecting any audit-log writes or by capturing the credentials repository's `create` calls (none should fire).
-   7. Cache key — fire two identical requests within 60 seconds; assert the second hits the cache (no second outbound HTTP). Cache key is `sha256(orgId + JSON.stringify(endpoint config + credentials))`.
-   8. `forceRefresh: true` in the body bypasses the cache.
+   7. Cache key — fire two identical requests within 60 seconds; assert the second hits the cache (no second outbound HTTP). Cache key is computed via the shared `probeInputHash` util from slice 3 — same input projection (orgId + baseUrl + auth + credentials + probe-relevant endpoint fields, excluding `key`/`label`).
+   8. Cache miss — change one probe-relevant field (e.g. `endpoint.path`) and fire again within 60s → second outbound HTTP fires (hash differs).
+   9. Cache invariance across rename-only edits — change `endpoint.label` between two requests → second request hits the cache (label is excluded from the hash per discovery decision 16).
+   10. `forceRefresh: true` in the body bypasses the cache.
    Run; all fail.
 
-2. **Add `probeEndpointDraft` on the adapter.** Builds a `ProbeContext` from the request body using `auth.util`, calls `runProbePipeline` with the derived cache key.
+2. **Add `probeEndpointDraft` on the adapter.** Builds a `ProbeContext` from the request body using `auth.util`, then computes the cache key via `probeInputHash({ organizationId, baseUrl, auth, credentials, endpoint })` from slice 3. Passes the cache key to `runProbePipeline`. The response envelope echoes the hash so the client can confirm drift-free cache hits.
 
 3. **Add the route handler.** Body validation via `ProbeEndpointDraftRequestBodySchema.safeParse`. Auth via the existing middleware. Logging at route + service per the API style guide.
 
@@ -259,13 +333,13 @@ ProbeEndpointDraftRequestBodySchema = z.object({
    sdk.apiConnector.endpoints.probeDraft.useAuthMutation(...)
    ```
 
-5. **Run the route tests.** All 8 cases green.
+5. **Run the route tests.** All 10 cases green.
 
 **Done when:** an SDK consumer can call `probeDraft({ config, credentials, endpoint })` and get suggestions back; the workflow doesn't call it yet.
 
 ---
 
-## Slice 6 — Workflow auto-fires probe on step-3 entry
+## Slice 7 — Workflow auto-fires probe on step-3 entry
 
 First user-visible change. The create flow's probe-review step now shows real suggestions.
 
@@ -279,17 +353,34 @@ First user-visible change. The create flow's probe-review step now shows real su
 
 **State shape (container-side)**
 
+Discovery decision 16 splits "what should be probed against right now" (`EndpointRow.probeInputHash`) from "what was last probed, including the hash it ran with" (`probeState.hash`). The re-fire condition is `probeState.hash !== probeInputHash`.
+
 ```ts
+// What was last probed (or is being probed) for this endpoint.
 type EndpointProbeState =
   | { kind: "idle" }
   | { kind: "loading"; hash: string }
   | { kind: "success"; hash: string; result: DiscoverColumnsResult }
   | { kind: "error"; hash: string; serverError: ServerError };
 
-const [probeStateByKey, setProbeStateByKey] = useState<Record<string, EndpointProbeState>>({});
+// Augmented EndpointRow shape (extension of today's draft + entityId pair).
+interface EndpointRow {
+  draft: EndpointDraft;
+  entityId?: string;            // existing — set in edit mode
+  probeInputHash: string;       // new — what should be probed now (slice 3 util)
+  probeState: EndpointProbeState; // new — what was last probed
+}
+
+const [rows, setRows] = useState<EndpointRow[]>(/* ... */);
 ```
 
-`hash` is `sha256(JSON.stringify(endpoint config + auth + credentials))` — stale when the user edits step 2. Re-fire fires for endpoints whose `hash !== probeStateByKey[key].hash`.
+`probeInputHash` is computed via `probeInputHash({ organizationId, baseUrl, auth, credentials, endpoint: row.draft })` from slice 3. It is recomputed:
+
+- On modal save (`ApiEndpointForm.onSubmit`).
+- On workflow mount, across every existing row (edit-mode hydration).
+- On instance-level field changes (baseUrl, auth, credentials) — every row's hash rebuilds simultaneously.
+
+The re-fire effect compares `row.probeState.hash` (last-fired hash, if any) against `row.probeInputHash` (current target). Unequal → fire and update `probeState` on settle. Equal → cached result is current; do nothing.
 
 **Steps**
 
@@ -299,23 +390,26 @@ const [probeStateByKey, setProbeStateByKey] = useState<Record<string, EndpointPr
    3. Probe returns failure for one endpoint → that section renders `state: "error"`; the OTHER endpoint's section still renders success; the step's Next button is **not** disabled (decision 7).
    4. User clicks Back to step 2, edits an endpoint's path, returns to step 3 → that endpoint re-probes; the unchanged endpoint hits the cache (no second SDK call).
    5. User clicks the per-endpoint Re-probe button → that endpoint re-fires with `forceRefresh: true`; other endpoints unaffected.
-   6. User commits in step 4 with all suggestions accepted → `connectorInstances.create` and per-endpoint `createForInstance` fire with the user-reviewed columns array (existing commit path, unchanged from today).
-   7. `reprobeDisabled` / `reprobeDisabledHint` props are gone from `ProbeReviewStep` and `EndpointColumnReview` — assert by reading the prop types.
+   6. User clicks Back to step 2, edits an endpoint's `label` only (rename, no probe-relevant change), returns to step 3 → that endpoint does **not** re-probe; both endpoints hit the cache. Pins decision 16's "key/label excluded from the invalidation set."
+   7. User commits in step 4 with all suggestions accepted → `connectorInstances.create` and per-endpoint `createForInstance` fire with the user-reviewed columns array (existing commit path, unchanged from today).
+   8. `reprobeDisabled` / `reprobeDisabledHint` props are gone from `ProbeReviewStep` and `EndpointColumnReview` — assert by reading the prop types.
    Run; all fail.
 
-2. **Wire the workflow.** Add the `probeStateByKey` reducer. On step-3 entry (`useEffect` keyed on `step === 2 && endpoints`), iterate endpoints; for any whose hash doesn't match its current state's hash, fire `probeDraft.mutateAsync` and update state on settle.
+2. **Wire the workflow.** Augment `EndpointRow` with `probeInputHash` + `probeState` (shape above). Compute `probeInputHash` for each row on modal save, on workflow mount, and on instance-level changes. On step-3 entry (`useEffect` keyed on `step === 2 && rows`), iterate rows; for any whose `probeState.hash !== probeInputHash`, fire `probeDraft.mutateAsync({ ..., hash: row.probeInputHash })` and update `probeState` on settle.
 
 3. **Drop the `reprobeDisabled` plumbing.** Remove props + the "Save the connector to enable probing" hint. The button is always enabled in create flow now.
 
 4. **Hook up real Re-probe.** The button on `EndpointColumnReview` now fires `probeDraft.mutateAsync({ ..., forceRefresh: true })` for that endpoint only.
 
-5. **Run the workflow tests.** All 7 cases green; existing workflow tests still pass.
+5. **(Optional, per discovery decision 13 open question.)** Extend the `SuggestionChip` tooltip in `InferredColumnsTable` to surface the matched `columnDefinitionId` label when the classifier returned one. Hint-only, no behavior change — primes users for the v1.5 popover swap (Path B follow-up) without changing what they can edit inline. Skip if it scope-creeps; the discovery captures it as recommended-but-deferrable.
 
-**Done when:** create-flow step 3 shows real suggestions; back/forward without edit hits the cache; edits invalidate per-endpoint; Re-probe works.
+6. **Run the workflow tests.** All 8 cases green; existing workflow tests still pass.
+
+**Done when:** create-flow step 3 shows real suggestions; back/forward without edit hits the cache; probe-relevant edits invalidate per-endpoint while rename-only edits don't; Re-probe works.
 
 ---
 
-## Slice 7 — Transform editor in `ApiEndpointForm`
+## Slice 8 — Transform editor in `ApiEndpointForm`
 
 Last functional slice. Collapsible "Advanced — transform" section, client-side JSONata live preview.
 
@@ -383,7 +477,7 @@ Expanding the section hides + clears `recordsPath`. Collapsing it (or unsetting 
 
 5. **Wire the editor into the form.** Use the existing `useDialogAutoFocus` pattern; first field after expansion focuses the transform textarea.
 
-6. **Plumb `lastProbeResponse`.** The form receives the last raw HTTP response from the workflow container (held alongside `probeStateByKey` from slice 6). When editing an endpoint that's been probed, the preview pane has data to show.
+6. **Plumb `lastProbeResponse`.** The form receives the last raw HTTP response from the workflow container (held alongside the per-row `probeState` from slice 7). When editing an endpoint that's been probed, the preview pane has data to show.
 
 7. **Run the editor + form tests.** All cases green.
 
@@ -391,7 +485,7 @@ Expanding the section hides + clears `recordsPath`. Collapsing it (or unsetting 
 
 ---
 
-## Slice 8 — End-to-end integration test + manual smoke
+## Slice 9 — End-to-end integration test + manual smoke
 
 Lock the new behavior with an integration test against a mocked REST endpoint. Manual smoke against a real public API.
 
@@ -430,8 +524,10 @@ Lock the new behavior with an integration test against a mocked REST endpoint. M
 Cross-checked against the discovery's "Out of scope" notes:
 
 - **Edit-mode workflow refactor.** Stays on the post-commit `discoverColumns` route. The split is naturally driven by `EndpointRow.entityId`.
+- **`BindingEditorPopover` adoption for the REST review step.** Per discovery decision 13 (Path B), v1 lights up real suggestions on the existing `InferredColumnsTable`; the chip + popover swap, ColumnDefinition picker, reference-field editor, exclusion toggle, and surfaced per-row validation land as a follow-up issue at ship time.
+- **Classifier-prompt changes.** Per discovery decision 14, the prompt at `classifier.prompt.ts:75` is already shape-agnostic ("REST API record fields"). The transform's job is feeding shallow `inference.util.ts` flat records, not appeasing the LLM.
+- **`transformLanguage` schema migration / sandboxed JS runtime.** Per discovery decision 15, JSONata is the only language in v1; sandboxed JS (likely `quickjs-emscripten`) is documented as a gated upgrade path requiring ≥3 user requests and a per-org allowlist. Schema rename + dual-language UI land if and when the gate trips.
 - **Monaco-grade editor.** v1 ships with a `<textarea>` + inline error surfacing. Monaco is a clean follow-up.
-- **Sandboxed-JS escape hatch.** JSONata only; revisit after real usage if anyone hits a wall.
 - **Transform snippet library.** Deferrable.
 - **Probe failure blocking step advancement.** Per decision 7, failures warn but don't block.
 - **App-layer encryption of credentials over the wire.** Per decision 5, this is theater; TLS + no-persistence + React-only draft state cover the real threat model.

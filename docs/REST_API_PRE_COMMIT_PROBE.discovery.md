@@ -198,6 +198,139 @@ A collapsible "Advanced — transform" section beneath `recordsPath` in the exis
 
 Both server-side. The JSONata runtime is one shared utility (`apps/api/src/adapters/rest-api/transform.util.ts`, new). Errors at sync time fail the page like any other adapter error and surface through the existing sync-job error path.
 
+### 13. Field-mapping review UX — adopt the spreadsheet chip + popover pattern (deferred to v1.5)
+
+The "consistent with other workflows" claim deserves to be sharper. The existing **InferredColumnsTable** is structurally divergent from how every other workflow lets the user review AI suggestions, and the gap is *feature*, not stylistic:
+
+| | Spreadsheet workflows | REST API workflow today |
+|---|---|---|
+| Where reviews live | `apps/web/src/modules/RegionEditor/ReviewStep.component.tsx` + `BindingEditorPopover.component.tsx` (chip-row + popover editor) | `apps/web/src/workflows/RestApiConnector/InferredColumnsTable.component.tsx` (inline-cell row editor) |
+| Row affordance | Chip per source-field-bound mapping; click to edit | Table row with inline `TextField` / `Select` / `Checkbox` cells |
+| Override target ColumnDefinition | `AsyncSearchableSelect` inside the popover | **Missing** — only the `type` enum is editable |
+| Reference-field editor | Yes (for `reference` types) | **Missing** |
+| Exclude-from-import toggle | Yes (omit) | **Missing** (delete row only) |
+| Derived normalizedKey default | Yes (source-field-derived default with override) | Free-text only — no derivation |
+| Per-row validation surface | Popover-scoped errors, Apply disabled until clean | **Missing** — `errors` prop exists at `InferredColumnsTable.component.tsx:54`, never consumed |
+
+Two paths:
+
+- **Path A — bundle the UX swap into v1.** Extract `BindingEditorPopover` from `modules/RegionEditor/` into a thinner shared module (it already lives under `modules/`, so the lift is slimming + props-cleanup, not creation) and render chips-per-suggestion in the REST review step. Deletes `InferredColumnsTable`. Adds ~2–3 slices to the plan (extraction, REST review-step rewrite, tests).
+- **Path B — v1 ships JSONata + pre-commit AI suggestions on the existing `InferredColumnsTable`; v1.5 swaps the UX.** Keeps the current PR scoped to the load-bearing user wins (real suggestions before commit, complex JSON works). UX consistency lands separately so reviewers can evaluate the data-flow change without an entangled UI rewrite.
+
+**Decision: Path B.** The current plan is already 8 slices; the popover adoption is its own substantial slice cluster and deserves an isolated review. File a follow-up issue at v1 ship time — "REST API workflow: adopt BindingEditorPopover for column review" — that captures the missing affordances explicitly: ColumnDefinition picker, reference-field editor, exclusion toggle, surfaced per-row validation, chip-row layout.
+
+Open question for v1: do we surface a soft hint in the v1 review step that ties suggestions back to ColumnDefinitions in the catalog (e.g. show the matched `columnDefinitionId` in the `SuggestionChip` tooltip), or stay strictly on what the user can change inline? Recommendation: hint-only, no behavior change — the chip already tooltips the rationale (`SuggestionChip` rendering at `InferredColumnsTable.component.tsx:96-100`); adding the matched catalog label costs nothing and primes users for the v1.5 picker.
+
+### 14. AI classifier is shape-agnostic; the transform's real job is feeding `inference.util.ts` shallow records
+
+Decision 2 ("service split — share the inner pipeline") was right but undersold *why* JSONata projection matters. The classifier prompt at `apps/api/src/adapters/rest-api/classifier.prompt.ts:75` reads "REST API record **fields**" — no spreadsheet-isms, no input-shape assumptions beyond `(field, samples)` candidate objects (`apps/api/src/adapters/rest-api/classifier.types.ts:25-32`). **No prompt change needed.**
+
+The constraint lives one layer earlier. `apps/api/src/adapters/rest-api/inference.util.ts:107` walks `Object.keys(record)` exactly once — top-level keys only. Given `{ user: { name: "Ada", email: "ada@x.test" } }`, inference emits **one** candidate: `user` with `inferredType: "json"`. The classifier never sees `name` or `email` separately, confidence is low, and the suggestion is useless.
+
+That is the precise reason JSONata projection (`data.{ "user_name": user.name, "user_email": user.email }`) is load-bearing. It is not "the AI prefers flat input"; it is "**inference is shallow by design, and the transform is the explicit user-facing surface for flattening.**" Worth saying out loud because it informs two downstream choices:
+
+- **Don't teach inference to recurse.** Considered. Rejected: (a) hides the flattening decision from the user (opaque heuristics replace explicit JSONata), (b) inflates candidate counts and classifier token costs proportional to nesting depth × breadth, (c) creates a "why `user_name` vs. `user.name` vs. `user[name]`?" naming ambiguity that JSONata makes explicit.
+- **Inference + classifier output shape is unchanged.** The shared inner pipeline (decision 2) takes flat records in either way (`recordsPath` extraction or `transform` projection). No downstream signature touches; degradation tag (decision 4-section in plan slice 4) adds `"transform-failed"` and is the only schema delta in the result envelope.
+
+Implication for spec / plan: no classifier-prompt changes in scope; the spec's narrative should foreground the "shallow inference is the reason transform exists" framing rather than the looser "AI likes flat input".
+
+### 15. Sandboxed JS — fuller comparison + the upgrade path is gated, not free
+
+Decision 9 reserved sandboxed JS as "the upgrade path if JSONata ever proves insufficient" in one line. Expanding because the cost of getting there is non-trivial and the gating criteria should be written down before the question shows up in a customer call.
+
+**When JSONata genuinely isn't enough.** Concrete shapes:
+
+- Decoding Base64-wrapped JSON-in-JSON, custom delimiter formats, or other payloads where the user wants imperative parsing.
+- Per-record enrichment that needs a lookup table the user wants to embed inline rather than as a second endpoint.
+- Custom date-format coercions JSONata's `$fromMillis` / format strings don't cover (e.g. ISO-8601 with non-UTC offsets that the API returns as separate fields).
+- Conditional projections where the branch depth exceeds what `?` / `:` keep readable.
+
+Most of these can be brute-forced in JSONata (`$eval`, predicate chains, `$reduce`), but the result is unreadable. Readability cost is the trigger, not raw expressiveness.
+
+**Sandbox runtime options:**
+
+| Option | Native dep | Sandbox model | CPU/mem caps | Audit footprint | Status |
+|---|---|---|---|---|---|
+| `isolated-vm` | Yes (V8 isolates) | Strong — separate V8 isolate per call | Yes, per-isolate | Moderate; mature, actively maintained | Production-viable |
+| `quickjs-emscripten` | No (WASM) | Strong — WASM-sandboxed JS interpreter | Yes, via host | Smaller — interpreter, not embedded V8 | Production-viable, ~5–10× slower than V8 but acceptable for 25-record probe + per-page sync |
+| `vm2` | No | Was strong, then broken | Yes | **Deprecated** — repeated escape CVEs, no longer maintained | Hard no |
+| Node built-in `vm` | No | None (shares the parent context) | No | N/A — not a sandbox | Hard no |
+| Server-side `eval` | No | None | No | RCE | Hard no |
+
+**`quickjs-emscripten` is the leading candidate** when/if we promote: no native dep simplifies deploys, slower-but-acceptable perf, smaller audit surface, and it fits a feature gated by usage signals.
+
+**Gating criteria — when to actually build this:**
+
+1. ≥3 distinct user reports of "JSONata won't express what we need", each with a concrete payload example JSONata genuinely can't handle (not "JSONata is hard to write", which is a docs / library problem).
+2. Per-org allowlist, off by default. Sandboxed JS is more powerful than JSONata; not every customer's transforms need or want that power. New column on `organizations` — e.g. `featureFlags: { sandboxedJsTransforms?: boolean }` — gates the second language toggle in the UI.
+3. Endpoint config schema migrates: `transform: string` becomes `transformExpression: string` + `transformLanguage: "jsonata" | "sandboxedJs"`. Existing rows default to `"jsonata"`.
+
+**Dual-language UI implications (cost of promotion):**
+
+- Language toggle in the transform editor (one more piece of state).
+- Two live-preview pipelines: JSONata client-side via the existing lib; sandboxed JS would need either a WASM interpreter client-side (~200kB gzipped extra) or a per-keystroke debounced server round-trip.
+- Two validation paths, two error-classification shapes.
+- Doc / help text forks.
+
+That UX complexity is the second reason to gate by per-org allowlist — most orgs see "transform" as JSONata-only with no toggle visible.
+
+v1 ships JSONata only. This decision documents the upgrade path so v1's schema (decision 10) doesn't paint into a corner — `transform` becomes `transformExpression` + `transformLanguage` in a minor schema iteration if/when the gate trips. The migration is a rename + default backfill, no data shape change.
+
+### 16. Re-probe + edit invalidation — explicit invalidation set + hash mechanics
+
+Decision 4 said "workflow state holds a per-endpoint probe-input hash" without specifying the inputs, where the hash is computed, or what the user sees during re-probe. Tightening:
+
+**The full invalidation set:**
+
+Per-endpoint config (from `EndpointDraft` at `ApiEndpointForm.component.tsx:25-34`):
+
+- `path`, `method`, `recordsPath`, `transform` (new), `idField`, `bodyTemplate`
+- `pagination.*` — all nested fields: `strategy`, `param`, `style`, `pageSize`, `cursorParam`, `cursorPlacement`, `cursorResponsePath`
+
+Instance-level config (from `RestApiConnectorWorkflow.component.tsx:310-316`):
+
+- `baseUrl`
+- `auth.mode`, plus the auth-mode-specific shape (`auth.keyName` + `auth.placement` for apiKey; `auth.tokenLocation` for bearer; basic carries everything in the credentials secret)
+
+Credentials payload:
+
+- The full `CredentialsPayload` value. Editing a secret invalidates every endpoint's hash.
+
+**Explicitly NOT invalidating:** `endpoint.key`, `endpoint.label`. Rename-only display fields; no probe semantics. Editing label shouldn't blow the cache.
+
+**Where the hash is computed.** Client-side. A new util at `packages/core/src/utils/probe-hash.util.ts` (in `core` so both sides share it):
+
+1. Builds a minimal projection of the input set above (drops `key` / `label`).
+2. Canonicalizes via stable-key JSON stringify (so `{a:1,b:2}` and `{b:2,a:1}` hash identically).
+3. Computes `sha256` via the browser-native `crypto.subtle.digest` on the web side and Node's `node:crypto` on the API side — no new dependency.
+
+No existing client-side hashing utility — confirmed by surveying the workflow (`crypto` imports only appear in `RegisterToolpackDialog` for HMAC signing). The util is ~30 lines + tests.
+
+**When the hash is computed.**
+
+- On modal save (`ApiEndpointForm.onSubmit`) against the just-saved endpoint draft + current instance config + credentials.
+- On workflow mount, across every endpoint in state. Matters for edit-mode hydration; create-mode mounts with no endpoints so this is a no-op there.
+- On instance-level field changes (baseUrl, auth, credentials) — re-hash **every** endpoint's hash simultaneously (the hash inputs include instance scope).
+
+**Where the hash lives.** Augment the per-endpoint state shape from plan slice 6:
+
+```ts
+interface EndpointRow {
+  draft: EndpointDraft;
+  entityId?: string;           // existing
+  probeInputHash: string;      // new — what should be probed against right now
+  probeState: EndpointProbeState; // new (slice 6) — what was probed, including the hash it ran with
+}
+```
+
+The probe-fire condition is `probeState.hash !== probeInputHash`. Equal → cached result is fresh, no fire. Unequal → fire and update `probeState` on settle. This collapses decision 4's "stale" notion into a single equality check.
+
+**Server-side echo + cache key.** The probe-draft route's response includes the hash it ran with, and the server keys its 60-second in-process cache on the same hash (per decision 3's "cache by config hash"). One hash function across client and server (`packages/core/src/utils/probe-hash.util.ts`), consumed by both sides. Drift detection is essentially free.
+
+**Mid-reprobe UX.** Reuse `EndpointColumnReviewUI`'s existing state machine (`apps/web/src/workflows/RestApiConnector/EndpointColumnReview.component.tsx:27-36`). The `loading` state already renders correctly — suggestion chips fade out, an inline progress hint replaces them, the rest of step 3 stays interactive. No full-step spinner overlay; per-endpoint cards re-fire independently.
+
+**Edit-mode feedback (optional polish, deferrable).** When a user opens `ApiEndpointForm` and changes a probe-affecting field (path / method / recordsPath / transform / pagination / etc.), surface a tiny inline hint beneath that field: "This will re-probe on next step." Visual only — the re-probe fires automatically on step-3 entry regardless. Out of scope if it complicates v1; the auto-fire alone is enough for correctness.
+
 ## Scope notes
 
 **In this PR:**
@@ -207,11 +340,14 @@ Both server-side. The JSONata runtime is one shared utility (`apps/api/src/adapt
 - Transform utility (server + client-shared JSONata wrapper).
 - Endpoint config schema accepts `transform` and validates the mutual-exclusion with `recordsPath`.
 - Frontend: workflow auto-fires probes on step-3 entry, per-endpoint cache invalidation on config edit, transform editor + live preview in `ApiEndpointForm`, `reprobeDisabled`/`reprobeDisabledHint` plumbing removed.
+- Per-endpoint probe-input hash util in `packages/core` (decision 16); consumed by both client cache-staleness check and server 60-second in-process cache key.
 - Migration: none — `transform` is a new optional column/field on the endpoint config JSONB; no existing rows touched.
 
 **Out of scope:**
 
 - Edit-mode workflow refactor (stays on the post-commit `discoverColumns` route).
 - Monaco-grade editor; v1 ships with a `<textarea>` plus syntax-error surfacing. Monaco is a follow-up if users ask.
-- A sandboxed-JS escape hatch beyond JSONata. Re-evaluate after real usage.
+- **Adoption of `BindingEditorPopover` for the REST review step** (decision 13, Path B). v1 keeps the existing `InferredColumnsTable` and lights up real suggestions inside it; the chip + popover swap, ColumnDefinition picker, reference-field editor, exclusion toggle, and surfaced per-row validation land as a follow-up issue at ship time.
+- A sandboxed-JS escape hatch beyond JSONata. Gating criteria + runtime comparison documented in decision 15; not built until they trip.
+- Classifier-prompt changes. Per decision 14, the prompt is already shape-agnostic; the JSONata transform is what makes nested responses tractable.
 - Bulk transform helpers (e.g. a library of common JSONata snippets in the UI). Deferrable.
