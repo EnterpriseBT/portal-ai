@@ -16,6 +16,7 @@ import type {
   ApiAuthConfig,
   ApiCredentials,
   ConnectorInstance,
+  PaginationConfig,
 } from "@portalai/core/models";
 import type { DiscoverColumnsResult } from "@portalai/core/contracts";
 
@@ -556,10 +557,59 @@ async function loadColumnDefinitionCatalog(
  *   6. merge classifications by `sourceField` into the heuristic
  *      columns; cache the merged result; return.
  */
-async function discoverColumnsWithSamples(
+/**
+ * Inputs to the probe pipeline. Built by `buildProbeContextFromInstance`
+ * for the post-commit detail-view route and (in slice 6) synthesized
+ * from the request body for the pre-commit workflow route. Once the
+ * context is built, `runProbePipeline` is the single inner pipeline.
+ */
+interface ProbeContext {
+  organizationId: string;
+  endpointKey: string;
+  /** Persisted instance id when known (post-commit path); used for logging only. */
+  connectorInstanceId?: string;
+  baseUrl: string;
+  auth: ApiAuthConfig;
+  credentials: ApiCredentials | null;
+  endpoint: ApiEndpoint;
+  pagination: PaginationConfig;
+}
+
+async function buildProbeContextFromInstance(
   instance: ConnectorInstance,
-  entityKey: string,
-  options: { forceRefresh?: boolean } = {}
+  endpointKey: string
+): Promise<ProbeContext> {
+  const endpoints = await DbService.repository.apiEndpoints.findByInstance(
+    instance.id
+  );
+  const endpoint = endpoints.find((e) => e.entity.key === endpointKey);
+  if (!endpoint) {
+    throw new ApiError(
+      404,
+      ApiCode.REST_API_ENDPOINT_NOT_FOUND,
+      `No endpoint configured on instance ${instance.id} for entity key "${endpointKey}"`
+    );
+  }
+
+  return {
+    organizationId: instance.organizationId,
+    endpointKey,
+    connectorInstanceId: instance.id,
+    baseUrl: readBaseUrl(instance),
+    auth: readAuth(instance),
+    credentials: loadCredentials(instance),
+    endpoint,
+    pagination: reconstructPagination(
+      endpoint.config.pagination,
+      (endpoint.config.paginationConfig as Record<string, unknown> | null) ??
+        null
+    ),
+  };
+}
+
+async function runProbePipeline(
+  ctx: ProbeContext,
+  opts: { forceRefresh?: boolean; cacheKey: string }
 ): Promise<DiscoverColumnsResult> {
   if (!probeCache) {
     throw new ApiError(
@@ -569,44 +619,22 @@ async function discoverColumnsWithSamples(
     );
   }
 
-  const endpoints = await DbService.repository.apiEndpoints.findByInstance(
-    instance.id
-  );
-  const endpoint = endpoints.find((e) => e.entity.key === entityKey);
-  if (!endpoint) {
-    throw new ApiError(
-      404,
-      ApiCode.REST_API_ENDPOINT_NOT_FOUND,
-      `No endpoint configured on instance ${instance.id} for entity key "${entityKey}"`
-    );
-  }
-
-  const cacheKey = endpoint.entity.id;
-
-  if (options.forceRefresh) {
-    probeCache.invalidate(cacheKey);
+  if (opts.forceRefresh) {
+    probeCache.invalidate(opts.cacheKey);
   } else {
-    const cached = probeCache.get(cacheKey);
+    const cached = probeCache.get(opts.cacheKey);
     if (cached) {
       return { ...cached, source: "cache" };
     }
   }
 
   // Live probe.
-  const baseUrl = readBaseUrl(instance);
-  const auth = readAuth(instance);
-  const credentials = loadCredentials(instance);
-  const pagination = reconstructPagination(
-    endpoint.config.pagination,
-    (endpoint.config.paginationConfig as Record<string, unknown> | null) ?? null
-  );
-
   const fetched = await fetchFirstPage(
-    endpoint,
-    baseUrl,
-    auth,
-    credentials,
-    pagination
+    ctx.endpoint,
+    ctx.baseUrl,
+    ctx.auth,
+    ctx.credentials,
+    ctx.pagination
   );
   const scanned = fetched.records.slice(0, MAX_RECORDS_SCANNED);
   const inference = inferColumns(scanned);
@@ -640,7 +668,7 @@ async function discoverColumnsWithSamples(
           ),
         })
       );
-      const catalog = await loadColumnDefinitionCatalog(instance.organizationId);
+      const catalog = await loadColumnDefinitionCatalog(ctx.organizationId);
       const classifications = await columnClassifier.classify(candidates, catalog);
       for (const c of classifications) {
         suggestionsByField.set(c.sourceField, {
@@ -655,8 +683,9 @@ async function discoverColumnsWithSamples(
       logger.error(
         {
           event: "rest-api.probe.classifier-failed",
-          connectorInstanceId: instance.id,
-          entityKey,
+          connectorInstanceId: ctx.connectorInstanceId,
+          organizationId: ctx.organizationId,
+          endpointKey: ctx.endpointKey,
           cause: (err as Error).message,
         },
         "classifier failed; degrading to heuristic-only"
@@ -686,8 +715,20 @@ async function discoverColumnsWithSamples(
     degradation,
   };
 
-  probeCache.set(cacheKey, result);
+  probeCache.set(opts.cacheKey, result);
   return result;
+}
+
+async function discoverColumnsWithSamples(
+  instance: ConnectorInstance,
+  entityKey: string,
+  options: { forceRefresh?: boolean } = {}
+): Promise<DiscoverColumnsResult> {
+  const ctx = await buildProbeContextFromInstance(instance, entityKey);
+  return runProbePipeline(ctx, {
+    forceRefresh: options.forceRefresh,
+    cacheKey: ctx.endpoint.entity.id,
+  });
 }
 
 async function discoverColumns(
@@ -702,6 +743,11 @@ async function discoverColumns(
     required: c.required,
   }));
 }
+
+// Exposed for slice 6 — pre-commit probe-draft route synthesizes its
+// own ProbeContext from the request body and feeds it to runProbePipeline.
+export type { ProbeContext };
+export { buildProbeContextFromInstance, runProbePipeline };
 
 export const restApiAdapter: ConnectorAdapter & {
   discoverColumnsWithSamples: typeof discoverColumnsWithSamples;
