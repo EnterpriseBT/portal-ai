@@ -73,7 +73,7 @@ describe("EndpointColumnReviewUI — state rendering", () => {
   it("renders the idle-state hint when no probe has run yet", () => {
     render(<EndpointColumnReviewUI {...makeProps()} />);
     expect(
-      screen.getByText(/probe runs after the connector is saved/i)
+      screen.getByText(/we.?ll probe it for inferred columns/i)
     ).toBeInTheDocument();
   });
 });

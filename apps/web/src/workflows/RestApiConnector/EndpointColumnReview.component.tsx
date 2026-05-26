@@ -29,8 +29,13 @@ export type EndpointReviewState =
   | { kind: "loading" }
   | {
       kind: "success";
-      degradation: "llm-failed" | "llm-disabled" | null;
+      degradation:
+        | "llm-failed"
+        | "llm-disabled"
+        | "transform-failed"
+        | null;
       recordsScanned: number;
+      transformError?: { kind: "parse" | "runtime"; message: string } | null;
     }
   | { kind: "empty" }
   | { kind: "error"; serverError: ServerError };
@@ -115,7 +120,10 @@ export const EndpointColumnReviewUI: React.FC<EndpointColumnReviewUIProps> = ({
 
     {state.kind === "success" ? (
       <>
-        <DegradationBannerUI degradation={state.degradation} />
+        <DegradationBannerUI
+          degradation={state.degradation}
+          transformError={state.transformError ?? null}
+        />
         <Typography variant="caption" color="text.secondary">
           Scanned {state.recordsScanned} record
           {state.recordsScanned === 1 ? "" : "s"}.
@@ -168,8 +176,8 @@ export const EndpointColumnReviewUI: React.FC<EndpointColumnReviewUIProps> = ({
     {state.kind === "idle" ? (
       <Stack spacing={1}>
         <Typography variant="body2" color="text.secondary">
-          Probe runs after the connector is saved. Add columns manually
-          below; the workflow commits the configuration as field mappings.
+          Add at least one endpoint and we&rsquo;ll probe it for inferred
+          columns. You can also add columns manually.
         </Typography>
         <InferredColumnsTableUI
           rows={rows}

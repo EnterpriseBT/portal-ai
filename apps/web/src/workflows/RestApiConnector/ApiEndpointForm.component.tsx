@@ -28,6 +28,10 @@ export interface EndpointDraft {
   path: string;
   method: "GET" | "POST";
   recordsPath: string;
+  /** JSONata transform expression (slice 8 wires the editor; slice 7
+   *  already invalidates the probe hash on changes). Mutually exclusive
+   *  with `recordsPath` — see ApiEndpointConfigSchema's refinement. */
+  transform?: string;
   idField: string;
   bodyTemplate: string;
   pagination: PaginationDraft;
