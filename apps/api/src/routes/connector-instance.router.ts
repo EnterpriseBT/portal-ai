@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
+import { z } from "zod";
 import {
   eq,
   and,
@@ -24,6 +25,7 @@ import {
   type ConnectorInstanceGetResponsePayload,
   ConnectorInstanceCreateRequestBodySchema,
   ConnectorInstancePatchRequestBodySchema,
+  ProbeEndpointDraftRequestBodySchema,
   type ConnectorInstanceCreateResponsePayload,
   type ConnectorInstanceApi,
   type ConnectorInstanceWithDefinitionApi,
@@ -39,6 +41,7 @@ import {
 } from "../services/connector-instances.service.js";
 import { SyncService } from "../services/sync.service.js";
 import type { TestConnectionParams } from "../adapters/adapter.interface.js";
+import { restApiAdapter } from "../adapters/rest-api/rest-api.adapter.js";
 
 const logger = createLogger({ module: "connector-instance" });
 
@@ -768,6 +771,94 @@ connectorInstanceRouter.post(
               error instanceof Error
                 ? error.message
                 : "Failed to create connector instance"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/connector-instances/probe-endpoint-draft:
+ *   post:
+ *     tags:
+ *       - REST API Endpoints
+ *     summary: Probe + infer columns for a draft (pre-commit) endpoint
+ *     description: >
+ *       Pure-compute pre-commit probe used by the REST API workflow's
+ *       step 3 ("Probe & review"). Synthesizes a ProbeContext from the
+ *       request body (no persisted ConnectorInstance or ApiEndpoint
+ *       row) and runs the same inner pipeline as the post-commit
+ *       discoverColumns route — fetch page 1, slice to 25 records,
+ *       heuristic inference, optional AI-assist classifier, optional
+ *       JSONata transform. Credentials live for the request duration
+ *       only and are never persisted. The 60-second in-process probe
+ *       cache is keyed on a canonical hash of all probe-relevant
+ *       inputs so back / forward navigation in the workflow within
+ *       the cache window is free.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ProbeEndpointDraftRequestBody'
+ *     responses:
+ *       200:
+ *         description: Probe completed (possibly with degradation)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, payload]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/DiscoverColumnsResult'
+ *       400:
+ *         description: Invalid body (Zod validation failure)
+ *       500:
+ *         description: Internal server error
+ */
+connectorInstanceRouter.post(
+  "/probe-endpoint-draft",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { organizationId } = req.application!.metadata;
+
+      const parsed = ProbeEndpointDraftRequestBodySchema.safeParse(
+        req.body ?? {}
+      );
+      if (!parsed.success) {
+        throw new ApiError(
+          400,
+          ApiCode.REST_API_INVALID_CONFIG,
+          `Invalid probe-endpoint-draft body`,
+          { issues: parsed.error.issues }
+        );
+      }
+
+      const result = await restApiAdapter.probeEndpointDraft(
+        organizationId,
+        parsed.data
+      );
+      return HttpService.success(res, result, 200);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "probe-endpoint-draft failed"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.REST_API_OPERATION_FAILED,
+              `Failed to probe endpoint draft: ${(error as Error).message}`
             )
       );
     }

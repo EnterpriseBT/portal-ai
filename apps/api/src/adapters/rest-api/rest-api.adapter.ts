@@ -15,10 +15,15 @@
 import type {
   ApiAuthConfig,
   ApiCredentials,
+  ApiEndpointConfig,
   ConnectorInstance,
   PaginationConfig,
 } from "@portalai/core/models";
-import type { DiscoverColumnsResult } from "@portalai/core/contracts";
+import { probeInputHash } from "@portalai/core/utils";
+import type {
+  DiscoverColumnsResult,
+  ProbeEndpointDraftRequestBody,
+} from "@portalai/core/contracts";
 
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import {
@@ -754,6 +759,62 @@ async function discoverColumnsWithSamples(
   });
 }
 
+/**
+ * Pre-commit probe — slice 6. Synthesizes a ProbeContext from a request
+ * body (no DB lookup, no persisted ConnectorInstance / ApiEndpoint) and
+ * delegates to the shared `runProbePipeline`. Cache key is the canonical
+ * `probeInputHash` so the 60-second probe-cache is shared with the
+ * client's cache-staleness check (decision 16). Credentials live for
+ * the request duration only — they are never persisted (decision 5).
+ */
+async function probeEndpointDraft(
+  organizationId: string,
+  body: ProbeEndpointDraftRequestBody
+): Promise<DiscoverColumnsResult> {
+  const cacheKey = await probeInputHash({
+    organizationId,
+    baseUrl: body.baseUrl,
+    auth: body.auth,
+    credentials: body.credentials,
+    endpoint: body.endpoint,
+  });
+  const ctx: ProbeContext = {
+    organizationId,
+    endpointKey: "<draft>",
+    baseUrl: body.baseUrl,
+    auth: body.auth,
+    credentials: body.credentials,
+    endpoint: synthesizeDraftApiEndpoint(body.endpoint, organizationId),
+    pagination: body.endpoint.pagination,
+  };
+  return runProbePipeline(ctx, {
+    forceRefresh: body.forceRefresh,
+    cacheKey,
+  });
+}
+
+/**
+ * Build a minimal `ApiEndpoint` shape from a workflow-draft config.
+ * `fetchOnePage` only reads `endpoint.config.*` fields at runtime, so
+ * the synthesized `entity` is a structural stub — never persisted,
+ * never used beyond signature compatibility with the post-commit path.
+ */
+function synthesizeDraftApiEndpoint(
+  config: ApiEndpointConfig,
+  organizationId: string
+): ApiEndpoint {
+  return {
+    entity: {
+      id: "<draft-probe>",
+      organizationId,
+      connectorInstanceId: "<draft-probe>",
+      key: "<draft>",
+      label: "<draft>",
+    } as unknown as ApiEndpoint["entity"],
+    config: config as unknown as ApiEndpoint["config"],
+  };
+}
+
 async function discoverColumns(
   instance: ConnectorInstance,
   entityKey: string
@@ -770,16 +831,18 @@ async function discoverColumns(
 // Exposed for slice 6 — pre-commit probe-draft route synthesizes its
 // own ProbeContext from the request body and feeds it to runProbePipeline.
 export type { ProbeContext };
-export { buildProbeContextFromInstance, runProbePipeline };
+export { buildProbeContextFromInstance, runProbePipeline, probeEndpointDraft };
 
 export const restApiAdapter: ConnectorAdapter & {
   discoverColumnsWithSamples: typeof discoverColumnsWithSamples;
+  probeEndpointDraft: typeof probeEndpointDraft;
 } = {
   queryRows: (instance: ConnectorInstance, query: EntityDataQuery):
     Promise<EntityDataResult> => importModeQueryRows(instance, query),
   discoverEntities,
   discoverColumns,
   discoverColumnsWithSamples,
+  probeEndpointDraft,
   toPublicAccountInfo,
   assertSyncEligibility,
   syncInstance,

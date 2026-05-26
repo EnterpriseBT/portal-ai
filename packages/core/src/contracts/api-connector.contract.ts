@@ -8,6 +8,8 @@
 import { z } from "zod";
 
 import {
+  ApiAuthConfigSchema,
+  ApiCredentialsSchema,
   ApiEndpointConfigBaseSchema,
   ApiEndpointConfigSchema,
 } from "../models/api-connector.model.js";
@@ -95,6 +97,26 @@ export const DiscoverColumnsRequestBodySchema = z.object({
 });
 export type DiscoverColumnsRequestBody = z.infer<
   typeof DiscoverColumnsRequestBodySchema
+>;
+
+/**
+ * Request body for the pre-commit probe-draft route.
+ *
+ * `POST /api/connector-instances/probe-endpoint-draft` — pure-compute,
+ * no row writes, no audit log. Carries the full workflow-draft state
+ * so the server can synthesize a ProbeContext without a persisted
+ * ConnectorInstance / ApiEndpoint. Credentials live for the request
+ * duration only.
+ */
+export const ProbeEndpointDraftRequestBodySchema = z.object({
+  baseUrl: z.string().url(),
+  auth: ApiAuthConfigSchema,
+  credentials: ApiCredentialsSchema.nullable(),
+  endpoint: ApiEndpointConfigSchema,
+  forceRefresh: z.boolean().optional(),
+});
+export type ProbeEndpointDraftRequestBody = z.infer<
+  typeof ProbeEndpointDraftRequestBodySchema
 >;
 
 // ── Endpoint CRUD wire shapes ───────────────────────────────────────

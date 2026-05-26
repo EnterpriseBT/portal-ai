@@ -1475,6 +1475,137 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
   });
 });
 
+// ── probeEndpointDraft (slice 6) ─────────────────────────────────────
+
+describe("restApiAdapter.probeEndpointDraft", () => {
+  let originalFetch: typeof globalThis.fetch;
+  let fetchMock: jest.Mock<typeof globalThis.fetch>;
+
+  const ORG_ID = "org-1";
+
+  function okResponse(body: unknown, headers: Record<string, string> = {}) {
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json", ...headers },
+    });
+  }
+
+  const baseBody = {
+    baseUrl: "https://api.example.com",
+    auth: { mode: "none" as const },
+    credentials: null,
+    endpoint: {
+      path: "/users",
+      method: "GET" as const,
+      recordsPath: "",
+      idField: "id",
+      pagination: { strategy: "none" as const },
+    },
+  };
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    fetchMock = jest.fn<typeof globalThis.fetch>();
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("returns DiscoverColumnsResult from a draft body — no DB lookup", async () => {
+    fetchMock.mockResolvedValueOnce(
+      okResponse([{ id: "a", name: "Alice" }, { id: "b", name: "Bob" }])
+    );
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: null,
+    });
+
+    const result = await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+
+    expect(result.source).toBe("live");
+    expect(result.recordsScanned).toBe(2);
+    expect(result.columns.map((c) => c.key).sort()).toEqual(["id", "name"]);
+    // The findByInstance DB mock must NOT have been called — the
+    // pre-commit path does not touch the DB.
+    expect(findByInstanceMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces transform failures as degradation: 'transform-failed'", async () => {
+    fetchMock.mockResolvedValueOnce(okResponse({ data: [{ id: 1 }] }));
+    configureRestApiAdapterDeps({
+      cache: new ProbeCache(),
+      classifier: null,
+    });
+
+    const result = await restApiAdapter.probeEndpointDraft(ORG_ID, {
+      ...baseBody,
+      endpoint: { ...baseBody.endpoint, transform: "data.{ unclosed" },
+    });
+
+    expect(result.degradation).toBe("transform-failed");
+    expect(result.recordsScanned).toBe(0);
+    expect(result.transformError?.kind).toBe("parse");
+  });
+
+  it("hits the cache on a second identical call (cache key = probeInputHash)", async () => {
+    fetchMock.mockResolvedValueOnce(okResponse([{ id: "a" }]));
+    const cache = new ProbeCache<never>();
+    configureRestApiAdapterDeps({ cache: cache as never, classifier: null });
+
+    const first = await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+    const second = await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+
+    expect(first.source).toBe("live");
+    expect(second.source).toBe("cache");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("misses the cache when a probe-relevant field changes", async () => {
+    fetchMock
+      .mockResolvedValueOnce(okResponse([{ id: "a" }]))
+      .mockResolvedValueOnce(okResponse([{ id: "b" }]));
+    configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
+
+    await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+    await restApiAdapter.probeEndpointDraft(ORG_ID, {
+      ...baseBody,
+      endpoint: { ...baseBody.endpoint, path: "/admins" },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("forceRefresh: true bypasses the cache and re-fires", async () => {
+    fetchMock
+      .mockResolvedValueOnce(okResponse([{ id: "a" }]))
+      .mockResolvedValueOnce(okResponse([{ id: "a" }]));
+    configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
+
+    await restApiAdapter.probeEndpointDraft(ORG_ID, baseBody);
+    await restApiAdapter.probeEndpointDraft(ORG_ID, {
+      ...baseBody,
+      forceRefresh: true,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("scopes the cache key to organizationId (no cross-org collisions)", async () => {
+    fetchMock
+      .mockResolvedValueOnce(okResponse([{ id: "a" }]))
+      .mockResolvedValueOnce(okResponse([{ id: "b" }]));
+    configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
+
+    await restApiAdapter.probeEndpointDraft("org-1", baseBody);
+    await restApiAdapter.probeEndpointDraft("org-2", baseBody);
+
+    // Two different orgs with identical bodies — both fire.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
 // ── discoverColumns (the slim DiscoveredColumn[] view) ──────────────
 
 describe("restApiAdapter.discoverColumns", () => {

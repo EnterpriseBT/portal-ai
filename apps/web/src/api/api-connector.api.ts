@@ -14,6 +14,7 @@ import type {
   CreateApiEndpointColumnDraft,
   DiscoverColumnsRequestBody,
   DiscoverColumnsResult,
+  ProbeEndpointDraftRequestBody,
 } from "@portalai/core/contracts";
 import { useAuthMutation, useAuthQuery } from "../utils/api.util";
 import { queryKeys } from "./keys";
@@ -131,6 +132,20 @@ export const apiConnector = {
     discoverColumns: (instanceId: string, entityId: string) =>
       useAuthMutation<DiscoverColumnsResult, DiscoverColumnsRequestBody>({
         url: `${baseUrl(instanceId)}/${encodeURIComponent(entityId)}/discover-columns`,
+        method: "POST",
+      }),
+
+    /**
+     * Pre-commit probe used by the REST API workflow's step 3
+     * ("Probe & review"). Synthesizes a probe context from the
+     * workflow's draft state (no persisted ConnectorInstance /
+     * ApiEndpoint) and returns the same `DiscoverColumnsResult` shape
+     * the post-commit `discoverColumns` route returns. Credentials in
+     * the body live for the request duration only — never persisted.
+     */
+    probeDraft: () =>
+      useAuthMutation<DiscoverColumnsResult, ProbeEndpointDraftRequestBody>({
+        url: "/api/connector-instances/probe-endpoint-draft",
         method: "POST",
       }),
   },
