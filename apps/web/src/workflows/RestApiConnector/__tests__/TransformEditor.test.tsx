@@ -92,6 +92,24 @@ describe("TransformEditorUI", () => {
     });
   });
 
+  it("disables the textarea and surfaces the hint when disabled is true", () => {
+    render(
+      <TransformEditorUI
+        value=""
+        onChange={jest.fn()}
+        lastProbeResponse={null}
+        disabled
+        disabledHint="Clear Records path above to enable the Transform editor."
+      />
+    );
+    expect(
+      screen.getByRole("textbox", { name: /transform expression/i })
+    ).toBeDisabled();
+    expect(
+      screen.getByTestId("transform-editor-disabled-hint")
+    ).toHaveTextContent(/clear records path above/i);
+  });
+
   it("renders a warning Alert when serverError is provided", () => {
     render(
       <TransformEditorUI

@@ -158,3 +158,45 @@ describe("ApiEndpointForm — autofocus", () => {
     });
   });
 });
+
+describe("ApiEndpointForm — records path ↔ transform mutual exclusion", () => {
+  it("disables Records path when an existing draft carries a transform", () => {
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "users",
+          label: "Users",
+          path: "/users",
+          transform: "data.items",
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+      />
+    );
+    expect(screen.getByLabelText(/records path/i)).toBeDisabled();
+    expect(
+      screen.getByText(/disabled — using advanced transform below/i)
+    ).toBeInTheDocument();
+  });
+
+  it("disables the Transform editor when Records path is set", () => {
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "users",
+          label: "Users",
+          path: "/users",
+          recordsPath: "data.items",
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+      />
+    );
+    // The accordion summary surfaces the disabled-state caption.
+    expect(
+      screen.getByText(/disabled while records path is set/i)
+    ).toBeInTheDocument();
+  });
+});

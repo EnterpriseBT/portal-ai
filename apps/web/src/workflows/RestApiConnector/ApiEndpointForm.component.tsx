@@ -91,6 +91,14 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
 }) => {
   const keyRef = useDialogAutoFocus(open);
 
+  // Mutual exclusion (decision 10): records path and transform can't
+  // both carry a value. Visually, the one without a value is fully
+  // enabled; the one with a value disables its counterpart with
+  // explanatory helper text so the user understands they need to
+  // clear the active extractor before using the other.
+  const recordsPathSet = !!draft.recordsPath && draft.recordsPath.length > 0;
+  const transformSet = !!draft.transform && draft.transform.trim().length > 0;
+
   const field = <K extends keyof EndpointDraft>(
     name: K,
     label: string,
@@ -160,26 +168,66 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
           <MenuItem value="GET">GET</MenuItem>
           <MenuItem value="POST">POST</MenuItem>
         </TextField>
-        {field(
-          "recordsPath",
-          "Records path",
-          'e.g. "data.items" — leave empty if the response IS the array'
-        )}
+        <Stack spacing={0.5}>
+          <TextField
+            label="Records path"
+            value={draft.recordsPath}
+            placeholder={'e.g. "data.items" — leave empty if the response IS the array'}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              onChange("recordsPath", e.target.value)
+            }
+            onBlur={() => onBlur("recordsPath")}
+            fullWidth
+            disabled={transformSet}
+            error={touched.recordsPath && !!errors.recordsPath}
+            helperText={
+              transformSet
+                ? "Disabled — using Advanced transform below. Clear it to use Records path."
+                : touched.recordsPath && errors.recordsPath
+            }
+            slotProps={{
+              htmlInput: {
+                "aria-invalid": touched.recordsPath && !!errors.recordsPath,
+              },
+            }}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ pl: 0.5 }}>
+            Records path handles <code>data.items</code>-style extraction.
+            Use <strong>Advanced — transform</strong> below for multi-array
+            unions, projection, or filtering. Only one can be set.
+          </Typography>
+        </Stack>
 
         <Accordion
-          defaultExpanded={!!draft.transform && draft.transform.length > 0}
+          defaultExpanded={transformSet}
           disableGutters
           square
-          sx={{ boxShadow: "none", border: 1, borderColor: "divider" }}
+          sx={{
+            boxShadow: "none",
+            border: 1,
+            borderColor: transformSet ? "primary.main" : "divider",
+          }}
         >
           <AccordionSummary
             expandIcon={<ExpandMoreIcon fontSize="small" />}
             aria-controls="transform-editor-panel"
             id="transform-editor-header"
           >
-            <Typography variant="body2">
-              Advanced — transform (use JSONata for complex shapes)
-            </Typography>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <Typography variant="body2">
+                Advanced — transform (use JSONata for complex shapes)
+              </Typography>
+              {transformSet ? (
+                <Typography variant="caption" color="primary.main">
+                  · active
+                </Typography>
+              ) : null}
+              {recordsPathSet ? (
+                <Typography variant="caption" color="text.secondary">
+                  · disabled while Records path is set
+                </Typography>
+              ) : null}
+            </Stack>
           </AccordionSummary>
           <AccordionDetails>
             <TransformEditorUI
@@ -187,6 +235,8 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
               onChange={(value) => onChange("transform", value)}
               lastProbeResponse={lastProbeResponse ?? null}
               serverError={lastTransformError ?? null}
+              disabled={recordsPathSet}
+              disabledHint="Clear Records path above to enable the Transform editor."
             />
           </AccordionDetails>
         </Accordion>

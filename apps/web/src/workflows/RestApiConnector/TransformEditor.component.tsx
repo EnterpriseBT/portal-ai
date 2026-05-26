@@ -34,6 +34,14 @@ export interface TransformEditorUIProps {
   lastProbeResponse: unknown | null;
   /** Server-side transform-failed details from the last probe (decision 5/15). */
   serverError?: { kind: "parse" | "runtime"; message: string } | null;
+  /**
+   * Disable the textarea + preview. Set when Records path has a value
+   * — the two are mutually exclusive (decision 10), and the form's
+   * counterpart accordion calls this to reflect that.
+   */
+  disabled?: boolean;
+  /** Helper text rendered when `disabled` is true. */
+  disabledHint?: string;
 }
 
 type LocalResult =
@@ -48,6 +56,8 @@ export const TransformEditorUI: React.FC<TransformEditorUIProps> = ({
   onChange,
   lastProbeResponse,
   serverError,
+  disabled = false,
+  disabledHint,
 }) => {
   const [local, setLocal] = useState<LocalResult>({ kind: "empty" });
 
@@ -102,6 +112,12 @@ export const TransformEditorUI: React.FC<TransformEditorUIProps> = ({
         Records path.
       </Typography>
 
+      {disabled && disabledHint ? (
+        <Alert severity="info" data-testid="transform-editor-disabled-hint">
+          {disabledHint}
+        </Alert>
+      ) : null}
+
       <TextField
         label="Transform expression"
         value={value}
@@ -111,6 +127,7 @@ export const TransformEditorUI: React.FC<TransformEditorUIProps> = ({
         multiline
         minRows={4}
         fullWidth
+        disabled={disabled}
         slotProps={{
           htmlInput: {
             "aria-label": "Transform expression",
