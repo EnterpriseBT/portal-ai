@@ -210,6 +210,7 @@ export function validateEndpoint(input: {
   path: string;
   method: string;
   recordsPath: string;
+  transform?: string;
   idField: string;
   bodyTemplate?: string;
   pagination?: PaginationDraft;
@@ -230,10 +231,22 @@ export function validateEndpoint(input: {
     if (!check.ok) errors.bodyTemplate = check.message;
   }
 
+  // Client-side backstop for the transform XOR recordsPath refinement
+  // — the Zod schema enforces this too, but surfacing it inline with
+  // a field-targeted error gives the user a clearer fix path than the
+  // generic schema message.
+  const transform = input.transform?.trim() ?? "";
+  const recordsPath = input.recordsPath ?? "";
+  if (transform.length > 0 && recordsPath.length > 0) {
+    errors.transform =
+      "Transform and Records path cannot both be set; clear one to continue.";
+  }
+
   const result = validateWithSchema(ApiEndpointConfigSchema, {
     path: input.path,
     method: input.method,
     recordsPath: input.recordsPath,
+    ...(transform.length > 0 ? { transform } : {}),
     idField: input.idField || null,
     ...(bodyTemplate !== undefined ? { bodyTemplate } : {}),
     pagination,

@@ -6,9 +6,13 @@
 
 import React, { useState, useEffect } from "react";
 
+import Accordion from "@mui/material/Accordion";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import AccordionSummary from "@mui/material/AccordionSummary";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import MenuItem from "@mui/material/MenuItem";
 import TextField from "@mui/material/TextField";
-import { Button, Modal, Stack } from "@portalai/core/ui";
+import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
 
 import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
 import type { FormErrors } from "../../utils/form-validation.util";
@@ -19,6 +23,7 @@ import {
 } from "./utils/rest-api-validation.util";
 import { PaginationFieldsUI } from "./PaginationFields.component";
 import { BodyTemplateFieldUI } from "./BodyTemplateField.component";
+import { TransformEditorUI } from "./TransformEditor.component";
 
 // ── Draft shape ──────────────────────────────────────────────────────
 
@@ -63,6 +68,12 @@ export interface ApiEndpointFormUIProps {
   errors: FormErrors;
   touched: Record<string, boolean>;
   isEditing: boolean;
+  /** Last raw HTTP probe response for the live transform preview
+   *  (slice 8). Optional — when null the preview shows a hint. */
+  lastProbeResponse?: unknown | null;
+  /** Last server-side transform-failed details so the editor can
+   *  surface "your last expression errored at the server" inline. */
+  lastTransformError?: { kind: "parse" | "runtime"; message: string } | null;
 }
 
 export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
@@ -75,6 +86,8 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
   errors,
   touched,
   isEditing,
+  lastProbeResponse,
+  lastTransformError,
 }) => {
   const keyRef = useDialogAutoFocus(open);
 
@@ -152,6 +165,32 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
           "Records path",
           'e.g. "data.items" — leave empty if the response IS the array'
         )}
+
+        <Accordion
+          defaultExpanded={!!draft.transform && draft.transform.length > 0}
+          disableGutters
+          square
+          sx={{ boxShadow: "none", border: 1, borderColor: "divider" }}
+        >
+          <AccordionSummary
+            expandIcon={<ExpandMoreIcon fontSize="small" />}
+            aria-controls="transform-editor-panel"
+            id="transform-editor-header"
+          >
+            <Typography variant="body2">
+              Advanced — transform (use JSONata for complex shapes)
+            </Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <TransformEditorUI
+              value={draft.transform ?? ""}
+              onChange={(value) => onChange("transform", value)}
+              lastProbeResponse={lastProbeResponse ?? null}
+              serverError={lastTransformError ?? null}
+            />
+          </AccordionDetails>
+        </Accordion>
+
         {field(
           "idField",
           "ID field",
