@@ -80,6 +80,7 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
     placeholder?: string
   ) => (
     <TextField
+      {...(name === "key" ? { inputRef: keyRef } : {})}
       label={label}
       value={draft[name]}
       placeholder={placeholder}
@@ -95,7 +96,6 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
           "aria-invalid":
             touched[name as string] && !!errors[name as string],
         },
-        ...(name === "key" ? { inputRef: keyRef } : {}),
       }}
     />
   );
@@ -127,7 +127,7 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
         </Stack>
       }
     >
-      <Stack spacing={2}>
+      <Stack spacing={2} sx={{ pt: 1 }}>
         {field("key", "Entity key", "users")}
         {field("label", "Entity label", "Users")}
         {field("path", "Path", "/users")}

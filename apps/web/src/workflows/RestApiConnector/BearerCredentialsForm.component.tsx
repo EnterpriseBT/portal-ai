@@ -12,6 +12,7 @@ import TextField from "@mui/material/TextField";
 import { Stack } from "@portalai/core/ui";
 
 import type { FormErrors } from "../../utils/form-validation.util";
+import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
 
 export interface BearerCredentialsFormUIProps {
   token: string;
@@ -27,9 +28,16 @@ export const BearerCredentialsFormUI: React.FC<BearerCredentialsFormUIProps> = (
   onBlur,
   errors,
   touched,
-}) => (
+}) => {
+  // Sub-form mounts when the user picks `bearer` in the auth dropdown.
+  // Focus the only field on mount so the user can paste the token
+  // without a second click.
+  const tokenRef = useDialogAutoFocus<HTMLInputElement>(true);
+
+  return (
   <Stack spacing={2}>
     <TextField
+      inputRef={tokenRef}
       label="Bearer token"
       type="password"
       value={token}
@@ -47,4 +55,5 @@ export const BearerCredentialsFormUI: React.FC<BearerCredentialsFormUIProps> = (
       }}
     />
   </Stack>
-);
+  );
+};

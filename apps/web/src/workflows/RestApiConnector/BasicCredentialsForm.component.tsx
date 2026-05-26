@@ -13,6 +13,7 @@ import TextField from "@mui/material/TextField";
 import { Stack } from "@portalai/core/ui";
 
 import type { FormErrors } from "../../utils/form-validation.util";
+import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
 
 export interface BasicCredentialsFormUIProps {
   username: string;
@@ -32,9 +33,16 @@ export const BasicCredentialsFormUI: React.FC<BasicCredentialsFormUIProps> = ({
   onBlur,
   errors,
   touched,
-}) => (
+}) => {
+  // Sub-form mounts when the user picks `basic` in the auth dropdown.
+  // Focus the first field on mount so the user can keep typing without
+  // a second click.
+  const usernameRef = useDialogAutoFocus<HTMLInputElement>(true);
+
+  return (
   <Stack spacing={2}>
     <TextField
+      inputRef={usernameRef}
       label="Username"
       value={username}
       onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
@@ -68,4 +76,5 @@ export const BasicCredentialsFormUI: React.FC<BasicCredentialsFormUIProps> = ({
       }}
     />
   </Stack>
-);
+  );
+};

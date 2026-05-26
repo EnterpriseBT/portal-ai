@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
+import { waitFor } from "@testing-library/react";
 
 import { render, screen } from "../../../__tests__/test-utils";
 
@@ -60,5 +61,12 @@ describe("BearerCredentialsFormUI", () => {
       "aria-invalid",
       "true"
     );
+  });
+
+  it("focuses the token field on mount", async () => {
+    render(<BearerCredentialsFormUI {...makeProps()} />);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/bearer token/i)).toHaveFocus();
+    });
   });
 });

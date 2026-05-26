@@ -147,3 +147,14 @@ describe("ApiEndpointForm — pagination", () => {
     expect(submitted.pagination.strategy).toBe("cursor");
   });
 });
+
+describe("ApiEndpointForm — autofocus", () => {
+  it("focuses the Entity key field when the modal opens", async () => {
+    render(
+      <ApiEndpointForm open onSubmit={jest.fn()} onClose={jest.fn()} />
+    );
+    await waitFor(() => {
+      expect(screen.getByLabelText(/entity key/i)).toHaveFocus();
+    });
+  });
+});

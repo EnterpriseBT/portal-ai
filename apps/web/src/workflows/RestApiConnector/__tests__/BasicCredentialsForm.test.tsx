@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
+import { waitFor } from "@testing-library/react";
 
 import { render, screen } from "../../../__tests__/test-utils";
 
@@ -65,5 +66,12 @@ describe("BasicCredentialsFormUI", () => {
     );
     expect(screen.getByText(/username is required/i)).toBeInTheDocument();
     expect(screen.getByText(/password is required/i)).toBeInTheDocument();
+  });
+
+  it("focuses the username field on mount", async () => {
+    render(<BasicCredentialsFormUI {...makeProps()} />);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^username/i)).toHaveFocus();
+    });
   });
 });

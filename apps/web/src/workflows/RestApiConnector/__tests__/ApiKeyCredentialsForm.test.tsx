@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
+import { waitFor } from "@testing-library/react";
 
 import { render, screen } from "../../../__tests__/test-utils";
 
@@ -85,5 +86,12 @@ describe("ApiKeyCredentialsFormUI", () => {
     expect(
       screen.queryByText(/header or query name is required/i)
     ).not.toBeInTheDocument();
+  });
+
+  it("focuses the keyName field on mount", async () => {
+    render(<ApiKeyCredentialsFormUI {...makeProps()} />);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/header or query name/i)).toHaveFocus();
+    });
   });
 });

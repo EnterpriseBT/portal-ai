@@ -16,6 +16,7 @@ import TextField from "@mui/material/TextField";
 import { Stack } from "@portalai/core/ui";
 
 import type { FormErrors } from "../../utils/form-validation.util";
+import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
 
 export type ApiKeyPlacement = "header" | "query";
 
@@ -41,9 +42,16 @@ export const ApiKeyCredentialsFormUI: React.FC<ApiKeyCredentialsFormUIProps> = (
   onBlur,
   errors,
   touched,
-}) => (
+}) => {
+  // Sub-form mounts when the user picks `apiKey` in the auth dropdown.
+  // Focus the first field on mount so the user can keep typing without
+  // a second click.
+  const keyNameRef = useDialogAutoFocus<HTMLInputElement>(true);
+
+  return (
   <Stack spacing={2}>
     <TextField
+      inputRef={keyNameRef}
       label="Header or query name"
       placeholder="X-API-Key"
       value={keyName}
@@ -90,4 +98,5 @@ export const ApiKeyCredentialsFormUI: React.FC<ApiKeyCredentialsFormUIProps> = (
       }}
     />
   </Stack>
-);
+  );
+};

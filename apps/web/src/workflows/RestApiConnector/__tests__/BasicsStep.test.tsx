@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
+import { waitFor } from "@testing-library/react";
 
 import { render, screen } from "../../../__tests__/test-utils";
 
@@ -123,5 +124,14 @@ describe("BasicsStepUI — name + baseUrl", () => {
       "aria-invalid",
       "true"
     );
+  });
+});
+
+describe("BasicsStepUI — autofocus", () => {
+  it("focuses the connector name field on mount", async () => {
+    render(<BasicsStepUI {...makeProps()} />);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/connector name/i)).toHaveFocus();
+    });
   });
 });

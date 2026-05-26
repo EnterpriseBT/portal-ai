@@ -21,6 +21,7 @@ import { Stack } from "@portalai/core/ui";
 import { FormAlert } from "../../components/FormAlert.component";
 import type { ServerError } from "../../utils/api.util";
 import type { FormErrors } from "../../utils/form-validation.util";
+import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
 
 import {
   ApiKeyCredentialsFormUI,
@@ -66,10 +67,18 @@ export const BasicsStepUI: React.FC<BasicsStepUIProps> = ({
   errors,
   touched,
   serverError,
-}) => (
+}) => {
+  // Step content mounts each time the user lands on step 0 (StepPanel
+  // unmounts inactive children). The native `autoFocus` prop races with
+  // MUI Modal's focus trap inside the workflow modal, so route through
+  // the same delayed-focus hook used by dialogs.
+  const nameRef = useDialogAutoFocus<HTMLInputElement>(true);
+
+  return (
   <Stack spacing={2}>
     <FormAlert serverError={serverError} />
     <TextField
+      inputRef={nameRef}
       label="Connector name"
       value={name}
       onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
@@ -77,7 +86,6 @@ export const BasicsStepUI: React.FC<BasicsStepUIProps> = ({
       }
       onBlur={() => onBlur("name")}
       required
-      autoFocus
       fullWidth
       error={touched.name && !!errors.name}
       helperText={touched.name && errors.name}
@@ -154,7 +162,8 @@ export const BasicsStepUI: React.FC<BasicsStepUIProps> = ({
       />
     ) : null}
   </Stack>
-);
+  );
+};
 
 // ── Container (no extra wiring — container lives one level up) ──────
 
