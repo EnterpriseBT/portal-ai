@@ -309,16 +309,40 @@ async function syncOneEndpoint(
   // columns yet (workflow committed without column drafts) — skip the
   // wide-table writes; the field-mapping route's reconciler picks
   // them up later.
-  const mappingsForNormalize =
-    await DbService.repository.fieldMappings.findMany(
-      eq(fieldMappings.connectorEntityId, endpoint.entity.id),
-      { include: ["columnDefinition"] }
+  //
+  // Setup is wrapped so a failure here (bad join, stale statement
+  // cache, etc.) degrades to a sync that still writes entity_records
+  // but skips the wide-table mirror. Without this guard, a setup
+  // error would fail the whole connector_sync job before the upstream
+  // fetch even happens — historically the source of an opaque
+  // "Cannot read properties of null (reading 'constructor')" failure
+  // when the field-mappings leftJoin returned a hollow columnDefinition.
+  let mappingsForNormalize: unknown = [];
+  let wideProjection: ReadonlyMap<string, string> | null = null;
+  try {
+    mappingsForNormalize =
+      await DbService.repository.fieldMappings.findMany(
+        eq(fieldMappings.connectorEntityId, endpoint.entity.id),
+        { include: ["columnDefinition"] }
+      );
+    const wideStmt = await wideTableStatementCache.get(endpoint.entity.id);
+    wideProjection =
+      wideStmt.columns.length > 0
+        ? buildMappingsForProjection(wideStmt.columns)
+        : null;
+  } catch (err) {
+    logger.error(
+      {
+        event: "rest-api.sync.wide-table-setup-failed",
+        connectorEntityId: endpoint.entity.id,
+        cause: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      },
+      "Wide-table mirror setup failed — sync continues but the mirror is skipped"
     );
-  const wideStmt = await wideTableStatementCache.get(endpoint.entity.id);
-  const wideProjection =
-    wideStmt.columns.length > 0
-      ? buildMappingsForProjection(wideStmt.columns)
-      : null;
+    mappingsForNormalize = [];
+    wideProjection = null;
+  }
 
   let next = await iterator.next();
   while (!next.done) {
