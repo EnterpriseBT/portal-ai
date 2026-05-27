@@ -119,6 +119,34 @@ export type ProbeEndpointDraftRequestBody = z.infer<
   typeof ProbeEndpointDraftRequestBodySchema
 >;
 
+/**
+ * Request body for the preview-endpoint-page route — same shape as
+ * the probe-draft body. Distinct from probe-draft so the route can
+ * skip inference + classification and just return the raw page.
+ */
+export const PreviewEndpointPageRequestBodySchema =
+  ProbeEndpointDraftRequestBodySchema.omit({ forceRefresh: true });
+export type PreviewEndpointPageRequestBody = z.infer<
+  typeof PreviewEndpointPageRequestBodySchema
+>;
+
+/**
+ * Response for the preview-endpoint-page route. Returns the raw HTTP
+ * response of page 1 so the form's preview pane can render formatted
+ * JSON, extract a records-path subtree, or evaluate a JSONata
+ * transform client-side. Body is capped at PREVIEW_BODY_BYTE_LIMIT
+ * server-side (truncated indicator surfaces in the response).
+ */
+export const PreviewEndpointPageResponseSchema = z.object({
+  body: z.unknown(),
+  status: z.number(),
+  headers: z.record(z.string(), z.string()),
+  truncated: z.boolean(),
+});
+export type PreviewEndpointPageResponse = z.infer<
+  typeof PreviewEndpointPageResponseSchema
+>;
+
 // ── Endpoint CRUD wire shapes ───────────────────────────────────────
 
 /**

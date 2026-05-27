@@ -24,6 +24,7 @@ import {
   type ConnectorInstanceGetResponsePayload,
   ConnectorInstanceCreateRequestBodySchema,
   ConnectorInstancePatchRequestBodySchema,
+  PreviewEndpointPageRequestBodySchema,
   ProbeEndpointDraftRequestBodySchema,
   type ConnectorInstanceCreateResponsePayload,
   type ConnectorInstanceApi,
@@ -858,6 +859,90 @@ connectorInstanceRouter.post(
             500,
             ApiCode.REST_API_OPERATION_FAILED,
             `Failed to probe endpoint draft: ${(error as Error).message}`
+          )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/connector-instances/preview-endpoint-page:
+ *   post:
+ *     tags:
+ *       - REST API Endpoints
+ *     summary: Fetch the raw first-page response for a draft endpoint
+ *     description: >
+ *       Companion to probe-endpoint-draft for the Add-endpoint form's
+ *       Preview pane. Fetches page 1 against the draft endpoint config
+ *       and returns the raw response body (capped at 256 KB) so the
+ *       form can render formatted JSON + drive client-side feedback
+ *       on the records-path / JSONata-transform configuration. Skips
+ *       inference and classification — strict subset of the probe
+ *       pipeline. Credentials live for the request duration only.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/PreviewEndpointPageRequestBody'
+ *     responses:
+ *       200:
+ *         description: Page 1 fetched
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, payload]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/PreviewEndpointPageResponse'
+ *       400:
+ *         description: Invalid body (Zod validation failure)
+ *       500:
+ *         description: Internal server error
+ */
+connectorInstanceRouter.post(
+  "/preview-endpoint-page",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { organizationId } = req.application!.metadata;
+
+      const parsed = PreviewEndpointPageRequestBodySchema.safeParse(
+        req.body ?? {}
+      );
+      if (!parsed.success) {
+        throw new ApiError(
+          400,
+          ApiCode.REST_API_INVALID_CONFIG,
+          `Invalid preview-endpoint-page body`,
+          { issues: parsed.error.issues }
+        );
+      }
+
+      const result = await restApiAdapter.previewEndpointPage(
+        organizationId,
+        parsed.data
+      );
+      return HttpService.success(res, result, 200);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "preview-endpoint-page failed"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+            500,
+            ApiCode.REST_API_OPERATION_FAILED,
+            `Failed to preview endpoint: ${(error as Error).message}`
           )
       );
     }

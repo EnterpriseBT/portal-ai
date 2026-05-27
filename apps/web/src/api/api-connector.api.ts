@@ -14,6 +14,8 @@ import type {
   CreateApiEndpointColumnDraft,
   DiscoverColumnsRequestBody,
   DiscoverColumnsResult,
+  PreviewEndpointPageRequestBody,
+  PreviewEndpointPageResponse,
   ProbeEndpointDraftRequestBody,
 } from "@portalai/core/contracts";
 import { useAuthMutation, useAuthQuery } from "../utils/api.util";
@@ -146,6 +148,22 @@ export const apiConnector = {
     probeDraft: () =>
       useAuthMutation<DiscoverColumnsResult, ProbeEndpointDraftRequestBody>({
         url: "/api/connector-instances/probe-endpoint-draft",
+        method: "POST",
+      }),
+
+    /**
+     * Fetch the raw first-page response for a draft endpoint. Drives
+     * the Add-endpoint form's Preview pane — the user sees the
+     * formatted JSON, plus a derived "what would be extracted" pane
+     * driven by the current records-path / JSONata-transform value.
+     * Body is capped server-side at ~256 KB.
+     */
+    previewPage: () =>
+      useAuthMutation<
+        PreviewEndpointPageResponse,
+        PreviewEndpointPageRequestBody
+      >({
+        url: "/api/connector-instances/preview-endpoint-page",
         method: "POST",
       }),
   },

@@ -22,6 +22,8 @@ import type {
 import { probeInputHash } from "@portalai/core/utils";
 import type {
   DiscoverColumnsResult,
+  PreviewEndpointPageRequestBody,
+  PreviewEndpointPageResponse,
   ProbeEndpointDraftRequestBody,
 } from "@portalai/core/contracts";
 
@@ -875,6 +877,67 @@ async function probeEndpointDraft(
 }
 
 /**
+ * Preview the raw first-page response for a draft endpoint. Used by
+ * the Add-endpoint form's Preview pane so the user can inspect the
+ * upstream's JSON shape before committing + drive client-side
+ * records-path / JSONata-transform feedback. Skips inference and
+ * classification — strict subset of the probe pipeline.
+ *
+ * Body is capped at PREVIEW_BODY_BYTE_LIMIT (256 KB JSON-serialized);
+ * larger responses are truncated and `truncated: true` is set so the
+ * UI can surface the cap.
+ */
+const PREVIEW_BODY_BYTE_LIMIT = 256 * 1024;
+
+async function previewEndpointPage(
+  organizationId: string,
+  body: PreviewEndpointPageRequestBody
+): Promise<PreviewEndpointPageResponse> {
+  const fetched = await fetchFirstPage(
+    synthesizeDraftApiEndpoint(body.endpoint, organizationId),
+    body.baseUrl,
+    body.auth,
+    body.credentials,
+    body.endpoint.pagination
+  );
+
+  // Cap the rendered body so a 10 MB upstream response doesn't crash
+  // the browser. Serialize, measure, slice if needed. `truncated`
+  // tells the UI to surface "preview truncated" inline.
+  const serialized = safeStringify(fetched.body);
+  let bodyForWire: unknown = fetched.body;
+  let truncated = false;
+  if (serialized.length > PREVIEW_BODY_BYTE_LIMIT) {
+    truncated = true;
+    // Parse only the truncation prefix on a best-effort basis; on
+    // failure pass through the raw string so the UI still has
+    // something to render.
+    try {
+      bodyForWire = JSON.parse(
+        serialized.slice(0, PREVIEW_BODY_BYTE_LIMIT)
+      );
+    } catch {
+      bodyForWire = serialized.slice(0, PREVIEW_BODY_BYTE_LIMIT);
+    }
+  }
+
+  return {
+    body: bodyForWire,
+    status: fetched.status,
+    headers: fetched.headers,
+    truncated,
+  };
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+/**
  * Build a minimal `ApiEndpoint` shape from a workflow-draft config.
  * `fetchOnePage` only reads `endpoint.config.*` fields at runtime, so
  * the synthesized `entity` is a structural stub — never persisted,
@@ -912,11 +975,17 @@ async function discoverColumns(
 // Exposed for slice 6 — pre-commit probe-draft route synthesizes its
 // own ProbeContext from the request body and feeds it to runProbePipeline.
 export type { ProbeContext };
-export { buildProbeContextFromInstance, runProbePipeline, probeEndpointDraft };
+export {
+  buildProbeContextFromInstance,
+  runProbePipeline,
+  probeEndpointDraft,
+  previewEndpointPage,
+};
 
 export const restApiAdapter: ConnectorAdapter & {
   discoverColumnsWithSamples: typeof discoverColumnsWithSamples;
   probeEndpointDraft: typeof probeEndpointDraft;
+  previewEndpointPage: typeof previewEndpointPage;
 } = {
   queryRows: (instance: ConnectorInstance, query: EntityDataQuery):
     Promise<EntityDataResult> => importModeQueryRows(instance, query),
@@ -924,6 +993,7 @@ export const restApiAdapter: ConnectorAdapter & {
   discoverColumns,
   discoverColumnsWithSamples,
   probeEndpointDraft,
+  previewEndpointPage,
   toPublicAccountInfo,
   assertSyncEligibility,
   syncInstance,

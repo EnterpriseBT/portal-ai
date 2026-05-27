@@ -25,6 +25,7 @@ import {
 import { PaginationFieldsUI } from "./PaginationFields.component";
 import { BodyTemplateFieldUI } from "./BodyTemplateField.component";
 import { TransformEditorUI } from "./TransformEditor.component";
+import { PreviewPaneUI } from "./PreviewPane.component";
 
 // ── Draft shape ──────────────────────────────────────────────────────
 
@@ -82,6 +83,16 @@ export interface ApiEndpointFormUIProps {
   /** Last server-side transform-failed details so the editor can
    *  surface "your last expression errored at the server" inline. */
   lastTransformError?: { kind: "parse" | "runtime"; message: string } | null;
+
+  /** Preview pane state (raw response + loading + error + truncation). */
+  previewResponse: unknown | null;
+  previewTruncated: boolean;
+  previewLoading: boolean;
+  previewError: string | null;
+  /** Fires the preview SDK call against the current draft. The
+   *  container owns the call so it has access to baseUrl + auth +
+   *  credentials without prop-drilling them through the form. */
+  onPreview: () => void;
 }
 
 export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
@@ -98,6 +109,11 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
   onExtractionModeChange,
   lastProbeResponse,
   lastTransformError,
+  previewResponse,
+  previewTruncated,
+  previewLoading,
+  previewError,
+  onPreview,
 }) => {
   const keyRef = useDialogAutoFocus(open);
 
@@ -170,6 +186,20 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
           <MenuItem value="GET">GET</MenuItem>
           <MenuItem value="POST">POST</MenuItem>
         </TextField>
+
+        <PaginationFieldsUI
+          draft={draft.pagination}
+          onChange={(field_, value) =>
+            onChange("pagination", {
+              ...draft.pagination,
+              [field_]: value,
+            })
+          }
+          onBlur={(field_) => onBlur(field_ as keyof EndpointDraft)}
+          errors={errors}
+          touched={touched}
+        />
+
         <Box
           sx={{
             border: 1,
@@ -259,6 +289,45 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
               />
             )}
           </Box>
+
+          <Box sx={{ mt: 1.5 }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <Button
+                type="button"
+                size="small"
+                variant="outlined"
+                onClick={onPreview}
+                disabled={
+                  previewLoading ||
+                  !draft.path.trim() ||
+                  !draft.method
+                }
+                aria-label="Preview endpoint response"
+              >
+                {previewLoading ? "Loading…" : "Preview response"}
+              </Button>
+              <Typography variant="caption" color="text.secondary">
+                Fetches page 1 of the endpoint so you can verify the
+                {extractionMode === "recordsPath"
+                  ? " records path"
+                  : " transform"}
+                {" "}
+                resolves to the right records before committing.
+              </Typography>
+            </Stack>
+          </Box>
+
+          <Box sx={{ mt: 1.5 }}>
+            <PreviewPaneUI
+              response={previewResponse}
+              truncated={previewTruncated}
+              loading={previewLoading}
+              error={previewError}
+              extractionMode={extractionMode}
+              recordsPath={draft.recordsPath}
+              transform={draft.transform ?? ""}
+            />
+          </Box>
         </Box>
 
         {field(
@@ -266,19 +335,6 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
           "ID field",
           "e.g. id — leave empty for full replacement on each sync"
         )}
-
-        <PaginationFieldsUI
-          draft={draft.pagination}
-          onChange={(field_, value) =>
-            onChange("pagination", {
-              ...draft.pagination,
-              [field_]: value,
-            })
-          }
-          onBlur={(field_) => onBlur(field_ as keyof EndpointDraft)}
-          errors={errors}
-          touched={touched}
-        />
 
         {draft.method === "POST" ? (
           <BodyTemplateFieldUI
@@ -301,6 +357,17 @@ export interface ApiEndpointFormProps {
   initial?: EndpointDraft;
   onSubmit: (draft: EndpointDraft) => void;
   onClose: () => void;
+  /**
+   * Async callback that fetches the upstream page-1 response for the
+   * current draft. Provided by the workflow container so it can
+   * supply baseUrl + auth + credentials without prop-drilling them
+   * through the form. Resolves with the preview payload; rejects
+   * with the user-facing error message on failure.
+   */
+  onPreview?: (draft: EndpointDraft) => Promise<{
+    body: unknown;
+    truncated: boolean;
+  }>;
 }
 
 export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
@@ -308,11 +375,19 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
   initial,
   onSubmit,
   onClose,
+  onPreview,
 }) => {
   const isEditing = !!initial;
   const [draft, setDraft] = useState<EndpointDraft>(initial ?? EMPTY_DRAFT);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  // Preview pane state — owned per modal session so closing + reopening
+  // the form starts fresh.
+  const [previewResponse, setPreviewResponse] = useState<unknown | null>(null);
+  const [previewTruncated, setPreviewTruncated] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   // Mutual exclusion is enforced via the radio choice (decision 10).
   // Initial mode is derived from the draft: if `transform` carries a
@@ -336,8 +411,30 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
       setExtractionMode(deriveMode(next));
       setErrors({});
       setTouched({});
+      setPreviewResponse(null);
+      setPreviewTruncated(false);
+      setPreviewError(null);
+      setPreviewLoading(false);
     }
   }, [open, initial]);
+
+  const handlePreview = async () => {
+    if (!onPreview) {
+      setPreviewError("Preview is unavailable in this context.");
+      return;
+    }
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const result = await onPreview(draft);
+      setPreviewResponse(result.body);
+      setPreviewTruncated(result.truncated);
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : "Preview failed");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
 
   const onExtractionModeChange = (next: ExtractionMode) => {
     setExtractionMode(next);
@@ -413,6 +510,11 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
       isEditing={isEditing}
       extractionMode={extractionMode}
       onExtractionModeChange={onExtractionModeChange}
+      previewResponse={previewResponse}
+      previewTruncated={previewTruncated}
+      previewLoading={previewLoading}
+      previewError={previewError}
+      onPreview={() => void handlePreview()}
     />
   );
 };

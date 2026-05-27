@@ -159,6 +159,16 @@ export interface EndpointsStepProps {
   serverError: ServerError | null;
   /** When set, the Test button on rows with `entityId` becomes functional. */
   instanceId?: string;
+  /**
+   * Preview callback the workflow container supplies. Fires the
+   * preview-endpoint-page SDK call against the current draft +
+   * instance config. Forwarded to ApiEndpointForm so the Preview pane
+   * inside the modal can render the raw response.
+   */
+  onPreview?: (draft: EndpointDraft) => Promise<{
+    body: unknown;
+    truncated: boolean;
+  }>;
 }
 
 export const EndpointsStep: React.FC<EndpointsStepProps> = ({
@@ -167,6 +177,7 @@ export const EndpointsStep: React.FC<EndpointsStepProps> = ({
   errors,
   serverError,
   instanceId,
+  onPreview,
 }) => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -224,6 +235,7 @@ export const EndpointsStep: React.FC<EndpointsStepProps> = ({
           setFormOpen(false);
           setEditingIndex(null);
         }}
+        onPreview={onPreview}
       />
       {testingRow && testingRow.entityId && instanceId ? (
         <EndpointTestDialog

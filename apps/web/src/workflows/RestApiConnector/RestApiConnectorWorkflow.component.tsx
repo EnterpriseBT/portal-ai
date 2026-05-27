@@ -87,6 +87,10 @@ export interface RestApiConnectorWorkflowUIProps {
     value: CredentialsDraft[K]
   ) => void;
   onEndpointsChange: (next: EndpointDraft[]) => void;
+  /** Add-endpoint form's Preview button — fetches page 1 for the draft. */
+  onPreviewEndpoint: (
+    draft: EndpointDraft
+  ) => Promise<{ body: unknown; truncated: boolean }>;
   onBasicsBlur: (field: string) => void;
 
   /** Per-endpoint column rows the user reviewed/edited. */
@@ -131,6 +135,7 @@ export const RestApiConnectorWorkflowUI: React.FC<
   onAuthModeChange,
   onCredentialsChange,
   onEndpointsChange,
+  onPreviewEndpoint,
   onBasicsBlur,
   columnsByEndpoint,
   probeStateByKey,
@@ -220,6 +225,7 @@ export const RestApiConnectorWorkflowUI: React.FC<
             onChange={onEndpointsChange}
             errors={endpointsErrors}
             serverError={serverError}
+            onPreview={onPreviewEndpoint}
           />
         </StepPanel>
         <StepPanel index={2} activeStep={step}>
@@ -308,6 +314,9 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
   const createEndpoint = sdk.apiConnector.endpoints.createForInstance();
   const probeDraft = sdk.apiConnector.endpoints.probeDraft();
   const { mutateAsync: probeDraftMutate } = probeDraft;
+  // Used by the Add-endpoint form's Preview button to fetch the raw
+  // page-1 response without going through the full probe pipeline.
+  const previewPage = sdk.apiConnector.endpoints.previewPage();
   // Initial-sync kick on commit so the user lands on the detail view
   // with records already flowing in, not an empty wide table.
   const syncForInstance = sdk.connectorInstances.syncForInstance();
@@ -444,6 +453,28 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
     const targetHash = probeInputHashByKey[endpointKey];
     if (!targetHash) return;
     void fireProbe(ep, targetHash, true);
+  };
+
+  /**
+   * Fetch the upstream page-1 response for an in-progress endpoint
+   * draft. Used by the Add-endpoint form's Preview button. Builds
+   * the same auth + credentials payload the probe/commit paths use
+   * so the user sees exactly what sync would see.
+   */
+  const onPreviewEndpoint = async (
+    draft: EndpointDraft
+  ): Promise<{ body: unknown; truncated: boolean }> => {
+    const { auth, credentialsPayload } = buildAuthPayload(
+      authMode,
+      credentials
+    );
+    const result = await previewPage.mutateAsync({
+      baseUrl,
+      auth: auth as never,
+      credentials: credentialsPayload as never,
+      endpoint: projectEndpointForHash(draft) as never,
+    } as never);
+    return { body: result.body, truncated: result.truncated };
   };
 
   /**
@@ -716,6 +747,7 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
       onAuthModeChange={handleAuthModeChange}
       onCredentialsChange={handleCredentialsChange}
       onEndpointsChange={setEndpoints}
+      onPreviewEndpoint={onPreviewEndpoint}
       onBasicsBlur={(field) =>
         setBasicsTouched((t) => ({ ...t, [field]: true }))
       }
