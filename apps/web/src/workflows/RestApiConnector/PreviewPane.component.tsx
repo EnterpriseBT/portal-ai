@@ -40,10 +40,27 @@ export interface PreviewPaneUIProps {
 type DerivedResult =
   | { kind: "idle" }
   | { kind: "empty" }
-  | { kind: "extracted"; value: unknown; count: number | null }
+  | { kind: "extracted"; value: unknown; count: number }
+  | {
+      /**
+       * Extractor resolved to a non-array, non-null value (e.g. a single
+       * object or a primitive). Sync coerces this into a one-element
+       * records array — usually wrong when the user expected many
+       * records, so we render the value AND a warning Alert.
+       */
+      kind: "not-array";
+      value: unknown;
+      valueType: string;
+    }
   | { kind: "missing"; message: string }
   | { kind: "parse"; message: string }
   | { kind: "runtime"; message: string };
+
+function describeNonArrayType(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value;
+}
 
 // Both panes maintain identical width + height regardless of state
 // (idle / loading / error / loaded) so the layout doesn't reflow as the
@@ -118,7 +135,11 @@ export const PreviewPaneUI: React.FC<PreviewPaneUIProps> = ({
         : { kind: "extracted", value, count: value.length };
     }
     if (value === null || value === undefined) return { kind: "empty" };
-    return { kind: "extracted", value, count: null };
+    return {
+      kind: "not-array",
+      value,
+      valueType: describeNonArrayType(value),
+    };
   }, [response, extractionMode, recordsPath]);
 
   // ── Transform derivation (async; runs jsonata) ───────────────────
@@ -172,9 +193,9 @@ export const PreviewPaneUI: React.FC<PreviewPaneUIProps> = ({
           return;
         }
         setTransformResult({
-          kind: "extracted",
+          kind: "not-array",
           value: evaluated,
-          count: null,
+          valueType: describeNonArrayType(evaluated),
         });
       } catch (err) {
         if (cancelled) return;
@@ -221,6 +242,13 @@ export const PreviewPaneUI: React.FC<PreviewPaneUIProps> = ({
             : "Transform produced an empty result — sync would import zero records."}
         </Alert>
       ) : null}
+      {derived.kind === "not-array" ? (
+        <Alert severity="warning">
+          {extractionMode === "recordsPath"
+            ? `Records path resolved to a ${derived.valueType}, not an array. Sync expects an array of records — the import would treat this as a single record.`
+            : `Transform returned a ${derived.valueType}, not an array. Sync expects an array of records — the import would treat this as a single record. Most JSONata expressions should end with an array constructor like \`[...]\` or a list comprehension like \`data.{ ... }\`.`}
+        </Alert>
+      ) : null}
 
       <Box
         sx={{
@@ -263,15 +291,16 @@ export const PreviewPaneUI: React.FC<PreviewPaneUIProps> = ({
             {extractionMode === "recordsPath"
               ? `Extracted via "${recordsPath || "(empty)"}"`
               : "Transformed output"}
-            {derived.kind === "extracted" && derived.count !== null
+            {derived.kind === "extracted"
               ? ` — ${derived.count} record${derived.count === 1 ? "" : "s"}`
               : ""}
           </Typography>
-          {derived.kind === "extracted" ? (
+          {derived.kind === "extracted" || derived.kind === "not-array" ? (
             <Box sx={{ "& pre": { height: PREVIEW_PANE_HEIGHT } }}>
               <HighlightedCode
                 code={safeStringify(
-                  Array.isArray(derived.value)
+                  derived.kind === "extracted" &&
+                    Array.isArray(derived.value)
                     ? derived.value.slice(0, 10)
                     : derived.value
                 )}

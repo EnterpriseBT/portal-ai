@@ -104,6 +104,35 @@ describe("PreviewPaneUI", () => {
     ).toBeInTheDocument();
   });
 
+  it("warns when the records path resolves to a non-array (object)", () => {
+    const response = { data: { items: { single: "record" } } };
+    render(
+      <PreviewPaneUI
+        {...makeProps({ response, recordsPath: "data.items" })}
+      />
+    );
+    expect(
+      screen.getByText(
+        /records path resolved to a object, not an array/i
+      )
+    ).toBeInTheDocument();
+    // The extracted pane still shows what was found so the user can
+    // see the shape they're dealing with.
+    expect(screen.getByTestId("preview-extracted")).toHaveTextContent(
+      /"single": "record"/
+    );
+  });
+
+  it("warns when the records path resolves to a primitive", () => {
+    const response = { count: 42 };
+    render(
+      <PreviewPaneUI {...makeProps({ response, recordsPath: "count" })} />
+    );
+    expect(
+      screen.getByText(/records path resolved to a number, not an array/i)
+    ).toBeInTheDocument();
+  });
+
   // ── Transform mode ────────────────────────────────────────────────
 
   it("renders the JSONata-transformed records when the expression evaluates", async () => {
@@ -162,6 +191,44 @@ describe("PreviewPaneUI", () => {
     await waitFor(() => {
       expect(
         screen.getByText(/transform runtime error/i)
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("warns when the JSONata transform returns a non-array (single object)", async () => {
+    render(
+      <PreviewPaneUI
+        {...makeProps({
+          response: { data: { user: { name: "Ada" } } },
+          extractionMode: "transform",
+          // Returns the user object directly — not an array.
+          transform: "data.user",
+        })}
+      />
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(/transform returned a object, not an array/i)
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("preview-extracted")).toHaveTextContent(
+      /"name": "Ada"/
+    );
+  });
+
+  it("warns when the JSONata transform returns a primitive", async () => {
+    render(
+      <PreviewPaneUI
+        {...makeProps({
+          response: { items: [1, 2, 3] },
+          extractionMode: "transform",
+          transform: "$count(items)",
+        })}
+      />
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(/transform returned a number, not an array/i)
       ).toBeInTheDocument();
     });
   });
