@@ -364,25 +364,15 @@ async function syncOneEndpoint(
         // but are missing from the wide table — common right after
         // landing field mappings on an already-synced entity.
         if (wideProjection) {
-          const normalized = NormalizationService.normalizeWithMappings(
-            mappingsForNormalize as never,
-            recordObj
-          );
-          await DbService.repository.wideTable.upsertMany(
+          await mirrorRecordToWideTable(
             endpoint.entity.id,
-            [
-              projectToWideRow(
-                {
-                  id: prior.id,
-                  organizationId: instance.organizationId,
-                  sourceId,
-                  syncedAt: runStartedAt,
-                  isValid: normalized.isValid,
-                  normalizedData: normalized.normalizedData,
-                },
-                wideProjection
-              ),
-            ]
+            prior.id,
+            instance.organizationId,
+            sourceId,
+            runStartedAt,
+            recordObj,
+            mappingsForNormalize,
+            wideProjection
           );
         }
         unchanged++;
@@ -415,25 +405,15 @@ async function syncOneEndpoint(
       // yet (no c_* columns) — the field-mapping create route's
       // reconciler will populate them once mappings land.
       if (wideProjection) {
-        const normalized = NormalizationService.normalizeWithMappings(
-          mappingsForNormalize as never,
-          recordObj
-        );
-        await DbService.repository.wideTable.upsertMany(
+        await mirrorRecordToWideTable(
           endpoint.entity.id,
-          [
-            projectToWideRow(
-              {
-                id: upserted.id,
-                organizationId: instance.organizationId,
-                sourceId,
-                syncedAt: runStartedAt,
-                isValid: normalized.isValid,
-                normalizedData: normalized.normalizedData,
-              },
-              wideProjection
-            ),
-          ]
+          upserted.id,
+          instance.organizationId,
+          sourceId,
+          runStartedAt,
+          recordObj,
+          mappingsForNormalize,
+          wideProjection
         );
       }
 
@@ -474,6 +454,60 @@ function readAuth(instance: ConnectorInstance): ApiAuthConfig {
   // a null config; treat as `none`. Phase-1 instances always carry a
   // populated auth block.
   return cfg?.auth ?? { mode: "none" };
+}
+
+/**
+ * Mirror a single synced record into the entity's wide table
+ * (`er__<id>`). Runs `NormalizationService.normalizeWithMappings` →
+ * `projectToWideRow` → `wideTable.upsertMany` for one row.
+ *
+ * The wide-table write is best-effort: a failure here leaves the
+ * record's data in `entity_records` (the source of truth) and the
+ * next reconcile / re-sync can backfill the wide row. Logs the
+ * underlying error so we can diagnose without breaking the whole
+ * sync run.
+ */
+async function mirrorRecordToWideTable(
+  connectorEntityId: string,
+  recordId: string,
+  organizationId: string,
+  sourceId: string,
+  syncedAt: number,
+  recordObj: Record<string, unknown>,
+  mappingsForNormalize: unknown,
+  wideProjection: ReadonlyMap<string, string>
+): Promise<void> {
+  try {
+    const normalized = NormalizationService.normalizeWithMappings(
+      mappingsForNormalize as never,
+      recordObj
+    );
+    await DbService.repository.wideTable.upsertMany(connectorEntityId, [
+      projectToWideRow(
+        {
+          id: recordId,
+          organizationId,
+          sourceId,
+          syncedAt,
+          isValid: normalized.isValid,
+          normalizedData: normalized.normalizedData,
+        },
+        wideProjection
+      ),
+    ]);
+  } catch (err) {
+    logger.error(
+      {
+        event: "rest-api.sync.wide-table-mirror-failed",
+        connectorEntityId,
+        recordId,
+        sourceId,
+        cause: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      },
+      "Wide-table mirror failed for record — entity_records row is intact; next reconcile will backfill"
+    );
+  }
 }
 
 function checksumRecord(record: Record<string, unknown>): string {
