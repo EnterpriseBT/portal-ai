@@ -20,6 +20,25 @@ describe("TransformEditorUI", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders an example expression as the textarea placeholder", () => {
+    render(<TransformEditorUI value="" onChange={jest.fn()} />);
+    const textarea = screen.getByRole("textbox", {
+      name: /transform expression/i,
+    });
+    expect(textarea).toHaveAttribute(
+      "placeholder",
+      expect.stringContaining('data.items.{ "id": id'),
+    );
+  });
+
+  it("renders a link to the JSONata documentation", () => {
+    render(<TransformEditorUI value="" onChange={jest.fn()} />);
+    const link = screen.getByTestId("jsonata-docs-link");
+    expect(link).toHaveAttribute("href", "https://docs.jsonata.org/");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
+  });
+
   it("fires onChange when the user types", () => {
     const onChange = jest.fn();
     render(<TransformEditorUI value="" onChange={onChange} />);

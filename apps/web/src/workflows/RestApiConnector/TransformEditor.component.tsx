@@ -18,8 +18,11 @@
 import React from "react";
 
 import Alert from "@mui/material/Alert";
+import Link from "@mui/material/Link";
 import TextField from "@mui/material/TextField";
 import { Stack, Typography } from "@portalai/core/ui";
+
+const EXAMPLE_TRANSFORM = `data.items.{ "id": id, "user_name": user.name }`;
 
 export interface TransformEditorUIProps {
   value: string;
@@ -44,12 +47,22 @@ export const TransformEditorUI: React.FC<TransformEditorUIProps> = ({
       <Typography variant="caption" color="text.secondary">
         JSONata expression — evaluates against the raw HTTP response and
         must return an array of flat records. Use the Preview button below
-        to see the transformed output as you type.
+        to see the transformed output as you type.{" "}
+        <Link
+          href="https://docs.jsonata.org/"
+          target="_blank"
+          rel="noopener noreferrer"
+          underline="hover"
+          data-testid="jsonata-docs-link"
+        >
+          JSONata documentation →
+        </Link>
       </Typography>
 
       <TextField
         label="Transform expression"
         value={value}
+        placeholder={EXAMPLE_TRANSFORM}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
           onChange(e.target.value)
         }
@@ -62,6 +75,7 @@ export const TransformEditorUI: React.FC<TransformEditorUIProps> = ({
             spellCheck: false,
             style: { fontFamily: "monospace", fontSize: 13 },
           },
+          inputLabel: { shrink: true },
         }}
       />
 
