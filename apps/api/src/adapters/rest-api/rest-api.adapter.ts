@@ -360,7 +360,21 @@ async function syncOneEndpoint(
         recordIndex++;
         continue;
       }
-      const recordObj = record as Record<string, unknown>;
+      // Defensively normalize the record's prototype before it touches
+      // Drizzle. Drizzle's PgInsertBuilder.values() walks each column
+      // value through `is(v, SQL)`, which reaches for
+      // `Object.getPrototypeOf(v).constructor` — that throws "Cannot
+      // read properties of null (reading 'constructor')" if `v` is a
+      // prototypeless object. Some upstreams (NASA's NEO feed when its
+      // body parses through certain runtimes; jsonata transform
+      // outputs in some cases) deliver `Object.create(null)`-shaped
+      // sub-objects, and that null-prototype value flows straight
+      // into the `data` jsonb column. Spreading via `{ ...record }`
+      // attaches Object.prototype to the top-level wrapper, which is
+      // all Drizzle needs to introspect at insert time. Sub-objects
+      // keep whatever shape they came in with — jsonb stores them
+      // verbatim either way.
+      const recordObj = { ...(record as Record<string, unknown>) };
       const sourceId = deriveSourceId(
         recordObj,
         endpoint.config.idField,
