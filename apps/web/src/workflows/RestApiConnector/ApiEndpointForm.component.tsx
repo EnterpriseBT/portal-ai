@@ -148,7 +148,10 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
       open={open}
       onClose={onClose}
       title={isEditing ? "Edit endpoint" : "Add endpoint"}
-      maxWidth="sm"
+      // `md` (900 px) — wide enough for the side-by-side Preview panes
+      // to show meaningful JSON without horizontal scroll. Modal stays
+      // fullWidth so smaller viewports still get the full breakpoint.
+      maxWidth="md"
       fullWidth
       slotProps={{
         paper: {

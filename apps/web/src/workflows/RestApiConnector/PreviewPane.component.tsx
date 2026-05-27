@@ -45,6 +45,12 @@ type DerivedResult =
   | { kind: "parse"; message: string }
   | { kind: "runtime"; message: string };
 
+// Both panes maintain identical width + height regardless of state
+// (idle / loading / error / loaded) so the layout doesn't reflow as the
+// user types. Stacked on xs, side-by-side from sm up. `minHeight` ==
+// `maxHeight` so placeholder text and dense JSON occupy the same box.
+const PREVIEW_PANE_HEIGHT = 320;
+
 const PREVIEW_PLACEHOLDER_SX = {
   margin: 0,
   padding: 1.5,
@@ -54,13 +60,11 @@ const PREVIEW_PLACEHOLDER_SX = {
   fontSize: 12,
   fontFamily:
     'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-  maxHeight: 320,
+  height: PREVIEW_PANE_HEIGHT,
   overflow: "auto",
   backgroundColor: "action.hover",
   color: "text.secondary",
 } as const;
-
-const PREVIEW_MAX_HEIGHT = 320;
 
 const PATH_MISSING = Symbol("path-missing");
 
@@ -218,8 +222,18 @@ export const PreviewPaneUI: React.FC<PreviewPaneUIProps> = ({
         </Alert>
       ) : null}
 
-      <Stack direction="row" spacing={1}>
-        <Stack flexGrow={1} spacing={0.5} sx={{ minWidth: 0 }}>
+      <Box
+        sx={{
+          display: "grid",
+          // xs: stack vertically. sm+: equal-width columns so the
+          // panes don't reflow as the user types or as the data
+          // changes shape between states.
+          gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+          gap: 1,
+          alignItems: "start",
+        }}
+      >
+        <Stack spacing={0.5} sx={{ minWidth: 0 }}>
           <Typography variant="caption" color="text.secondary">
             Raw response (page 1)
           </Typography>
@@ -234,15 +248,17 @@ export const PreviewPaneUI: React.FC<PreviewPaneUIProps> = ({
                 : "Click Preview to fetch the first page of the endpoint."}
             </Box>
           ) : (
-            <HighlightedCode
-              code={safeStringify(response)}
-              language="json"
-              maxHeight={PREVIEW_MAX_HEIGHT}
-              data-testid="preview-raw"
-            />
+            <Box sx={{ "& pre": { height: PREVIEW_PANE_HEIGHT } }}>
+              <HighlightedCode
+                code={safeStringify(response)}
+                language="json"
+                maxHeight={PREVIEW_PANE_HEIGHT}
+                data-testid="preview-raw"
+              />
+            </Box>
           )}
         </Stack>
-        <Stack flexGrow={1} spacing={0.5} sx={{ minWidth: 0 }}>
+        <Stack spacing={0.5} sx={{ minWidth: 0 }}>
           <Typography variant="caption" color="text.secondary">
             {extractionMode === "recordsPath"
               ? `Extracted via "${recordsPath || "(empty)"}"`
@@ -252,16 +268,18 @@ export const PreviewPaneUI: React.FC<PreviewPaneUIProps> = ({
               : ""}
           </Typography>
           {derived.kind === "extracted" ? (
-            <HighlightedCode
-              code={safeStringify(
-                Array.isArray(derived.value)
-                  ? derived.value.slice(0, 10)
-                  : derived.value
-              )}
-              language="json"
-              maxHeight={PREVIEW_MAX_HEIGHT}
-              data-testid="preview-extracted"
-            />
+            <Box sx={{ "& pre": { height: PREVIEW_PANE_HEIGHT } }}>
+              <HighlightedCode
+                code={safeStringify(
+                  Array.isArray(derived.value)
+                    ? derived.value.slice(0, 10)
+                    : derived.value
+                )}
+                language="json"
+                maxHeight={PREVIEW_PANE_HEIGHT}
+                data-testid="preview-extracted"
+              />
+            </Box>
           ) : (
             <Box
               component="pre"
@@ -278,7 +296,7 @@ export const PreviewPaneUI: React.FC<PreviewPaneUIProps> = ({
             </Box>
           )}
         </Stack>
-      </Stack>
+      </Box>
     </Stack>
   );
 };
