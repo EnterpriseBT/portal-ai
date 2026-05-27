@@ -65,6 +65,12 @@ export const useJobStream = (
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectRef = useRef(createSSEConnection);
+  // Synchronous "we've already seen a terminal event" flag. The
+  // snapshot / update handlers flip this before the server-side close
+  // triggers `onerror`; without it, React's setState lag lets a
+  // reconnect race through before the state reflects the terminal
+  // status — producing an endless snapshot/close/reconnect loop.
+  const terminatedRef = useRef(false);
 
   useEffect(() => {
     connectRef.current = createSSEConnection;
@@ -89,11 +95,19 @@ export const useJobStream = (
       }
     };
 
+    // Reset for a fresh subscription. `jobId` change → useEffect
+    // re-runs and we're starting from scratch against a new job.
+    terminatedRef.current = false;
+
     const openStream = async () => {
       closeEventSource();
       clearReconnect();
 
       if (cancelled) return;
+      // Bail out if a terminal event already arrived — guards against
+      // a scheduled reconnect that races a terminal status the hook
+      // already saw on a prior connection.
+      if (terminatedRef.current) return;
 
       let es: EventSource;
       try {
@@ -126,6 +140,7 @@ export const useJobStream = (
         });
 
         if (JobModel.isTerminalStatus(data.status)) {
+          terminatedRef.current = true;
           es.close();
           eventSourceRef.current = null;
           setState((prev) => ({ ...prev, connectionStatus: "closed" }));
@@ -153,6 +168,7 @@ export const useJobStream = (
         });
 
         if (JobModel.isTerminalStatus(data.status)) {
+          terminatedRef.current = true;
           es.close();
           eventSourceRef.current = null;
           setState((prev) => ({ ...prev, connectionStatus: "closed" }));
@@ -181,8 +197,17 @@ export const useJobStream = (
         eventSourceRef.current = null;
         if (cancelled) return;
 
+        // Sync ref check beats the setState-lag race. If a terminal
+        // snapshot/update already arrived (server closes the stream
+        // immediately after sending the terminal event), we must not
+        // reconnect — the close itself triggers onerror, and prev.state
+        // may not yet reflect "failed" at this point.
+        if (terminatedRef.current) {
+          setState((prev) => ({ ...prev, connectionStatus: "closed" }));
+          return;
+        }
+
         setState((prev) => {
-          // Don't reconnect if job is already terminal
           if (prev.status && JobModel.isTerminalStatus(prev.status)) {
             return { ...prev, connectionStatus: "closed" };
           }
