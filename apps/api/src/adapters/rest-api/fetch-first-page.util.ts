@@ -52,7 +52,8 @@ export async function fetchOnePage(
   auth: ApiAuthConfig,
   credentials: ApiCredentials | null,
   pagination: PaginationConfig,
-  ctx: PageContext
+  ctx: PageContext,
+  options: { skipRecordsExtraction?: boolean } = {}
 ): Promise<FetchedPage> {
   const vars: TemplateVariables = {
     cursor: ctx.cursor,
@@ -109,9 +110,16 @@ export async function fetchOnePage(
   // transform falls through to the recordsPath walker. Used by both
   // sync (errors throw normally) and probe (runProbePipeline catches
   // REST_API_TRANSFORM_FAILED and surfaces it as a degradation).
+  //
+  // Preview callers pass `skipRecordsExtraction: true` so the upstream
+  // body can be returned verbatim — they apply records-path / JSONata
+  // client-side against the rendered JSON and surface errors inline,
+  // independent of whether the body is shaped like a records array.
   const transform = endpoint.config.transform ?? "";
   let records: unknown[];
-  if (transform.length > 0) {
+  if (options.skipRecordsExtraction) {
+    records = [];
+  } else if (transform.length > 0) {
     const transformed = await applyTransform(transform, result.body);
     if (transformed.error) {
       throw new ApiError(
@@ -152,7 +160,8 @@ export async function fetchFirstPage(
   baseUrl: string,
   auth: ApiAuthConfig,
   credentials: ApiCredentials | null,
-  pagination: PaginationConfig
+  pagination: PaginationConfig,
+  options: { skipRecordsExtraction?: boolean } = {}
 ): Promise<FetchedPage> {
   const iterator = resolveIterator(pagination);
   const first = await iterator.next();
@@ -171,14 +180,17 @@ export async function fetchFirstPage(
     auth,
     credentials,
     pagination,
-    first.value
+    first.value,
+    options
   );
 
-  // Feed the page back so the iterator runs its per-strategy response
-  // inspection (cursor iterator throws REST_API_CURSOR_NOT_FOUND if
-  // cursorResponsePath is missing on page 1, etc.). We discard the
-  // second yield — the caller wants only page 1.
-  await iterator.next(fetched);
+  // For preview we skip the iterator's response-inspection feedback —
+  // the cursor iterator throws REST_API_CURSOR_NOT_FOUND when the
+  // configured path is missing, which would fail a preview against an
+  // endpoint the user is still mid-configuring.
+  if (!options.skipRecordsExtraction) {
+    await iterator.next(fetched);
+  }
 
   return fetched;
 }

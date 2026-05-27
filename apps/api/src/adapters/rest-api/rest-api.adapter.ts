@@ -893,12 +893,19 @@ async function previewEndpointPage(
   organizationId: string,
   body: PreviewEndpointPageRequestBody
 ): Promise<PreviewEndpointPageResponse> {
+  // Preview deliberately skips both transform application and
+  // recordsPath walking — the user's still configuring those, the
+  // response shape may not satisfy either yet, and the client-side
+  // PreviewPaneUI applies them locally for feedback. We just want
+  // the raw upstream body so the user can see what they're working
+  // with.
   const fetched = await fetchFirstPage(
     synthesizeDraftApiEndpoint(body.endpoint, organizationId),
     body.baseUrl,
     body.auth,
     body.credentials,
-    body.endpoint.pagination
+    body.endpoint.pagination,
+    { skipRecordsExtraction: true }
   );
 
   // Cap the rendered body so a 10 MB upstream response doesn't crash

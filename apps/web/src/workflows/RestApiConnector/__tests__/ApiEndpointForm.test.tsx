@@ -159,6 +159,127 @@ describe("ApiEndpointForm — autofocus", () => {
   });
 });
 
+describe("ApiEndpointForm — Preview button", () => {
+  it("is disabled until both Path and Method are filled in", async () => {
+    const onPreview = jest
+      .fn<
+        (draft: EndpointDraft) => Promise<{ body: unknown; truncated: boolean }>
+      >()
+      .mockResolvedValue({ body: null, truncated: false });
+    render(
+      <ApiEndpointForm
+        open
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+        onPreview={onPreview}
+      />
+    );
+    // Initial draft has empty Path → button disabled.
+    expect(
+      screen.getByRole("button", { name: /preview endpoint response/i })
+    ).toBeDisabled();
+
+    // Fill in path → button becomes enabled (method defaults to GET).
+    await userEvent.type(screen.getByLabelText(/^path$/i), "/users");
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /preview endpoint response/i })
+      ).not.toBeDisabled();
+    });
+  });
+
+  it("invokes onPreview with the current draft when clicked", async () => {
+    const onPreview = jest.fn<
+      (draft: EndpointDraft) => Promise<{ body: unknown; truncated: boolean }>
+    >().mockResolvedValue({ body: { ok: true }, truncated: false });
+
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "users",
+          label: "Users",
+          path: "/users",
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+        onPreview={onPreview}
+      />
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /preview endpoint response/i })
+    );
+
+    await waitFor(() => expect(onPreview).toHaveBeenCalledTimes(1));
+    const submitted = onPreview.mock.calls[0]![0];
+    expect(submitted.path).toBe("/users");
+    expect(submitted.method).toBe("GET");
+  });
+
+  it("renders the raw response body in the preview pane on success", async () => {
+    const onPreview = jest.fn<
+      (draft: EndpointDraft) => Promise<{ body: unknown; truncated: boolean }>
+    >().mockResolvedValue({
+      body: { data: { items: [{ id: "x", name: "Sample" }] } },
+      truncated: false,
+    });
+
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "users",
+          label: "Users",
+          path: "/users",
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+        onPreview={onPreview}
+      />
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /preview endpoint response/i })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("preview-raw")).toHaveTextContent(/"items"/);
+    });
+    expect(screen.getByTestId("preview-raw")).toHaveTextContent(/Sample/);
+  });
+
+  it("surfaces the preview error in an Alert when the SDK call rejects", async () => {
+    const onPreview = jest.fn<
+      (draft: EndpointDraft) => Promise<{ body: unknown; truncated: boolean }>
+    >().mockRejectedValue(new Error("Upstream unreachable"));
+
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "users",
+          label: "Users",
+          path: "/users",
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+        onPreview={onPreview}
+      />
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /preview endpoint response/i })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        /upstream unreachable/i
+      );
+    });
+  });
+});
+
 describe("ApiEndpointForm — records source radio (mutual exclusion)", () => {
   it("renders Records path by default and hides the transform editor", () => {
     render(

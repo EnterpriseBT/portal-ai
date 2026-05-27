@@ -1635,6 +1635,135 @@ describe("restApiAdapter.probeEndpointDraft", () => {
   });
 });
 
+// ── previewEndpointPage ──────────────────────────────────────────────
+
+describe("restApiAdapter.previewEndpointPage", () => {
+  let originalFetch: typeof globalThis.fetch;
+  let fetchMock: jest.Mock<typeof globalThis.fetch>;
+
+  const ORG_ID = "org-1";
+
+  function okResponse(body: unknown) {
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  const baseBody = {
+    baseUrl: "https://api.example.com",
+    auth: { mode: "none" as const },
+    credentials: null,
+    endpoint: {
+      path: "/users",
+      method: "GET" as const,
+      recordsPath: "",
+      idField: "id",
+      pagination: { strategy: "none" as const },
+    },
+  };
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    fetchMock = jest.fn<typeof globalThis.fetch>();
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+    configureRestApiAdapterDeps({ cache: new ProbeCache(), classifier: null });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("returns the raw page-1 body verbatim when under the size cap", async () => {
+    const payload = { data: [{ id: "a" }, { id: "b" }] };
+    fetchMock.mockResolvedValueOnce(okResponse(payload));
+
+    const result = await restApiAdapter.previewEndpointPage(ORG_ID, baseBody);
+
+    expect(result.body).toEqual(payload);
+    expect(result.status).toBe(200);
+    expect(result.truncated).toBe(false);
+    expect(result.headers["content-type"]).toMatch(/application\/json/);
+  });
+
+  it("sets truncated:true when the upstream body exceeds the 256 KB cap", async () => {
+    // 6,000 × ~50-byte records ≈ 300 KB serialized — comfortably past the cap.
+    const big = {
+      data: Array.from({ length: 6000 }, (_, i) => ({
+        id: `r-${i}`,
+        note: "x".repeat(40),
+      })),
+    };
+    fetchMock.mockResolvedValueOnce(okResponse(big));
+
+    const result = await restApiAdapter.previewEndpointPage(ORG_ID, baseBody);
+
+    expect(result.truncated).toBe(true);
+    // Truncation parses what it can on a best-effort basis; the result
+    // should still be one of: the original body (if parse succeeded on
+    // the truncated prefix), or a string prefix. Either way the wire
+    // payload exists.
+    expect(result.body).toBeDefined();
+  });
+
+  it("hits the upstream URL via fetch (no DB lookup, no probe-cache write)", async () => {
+    fetchMock.mockResolvedValueOnce(okResponse({ ok: true }));
+
+    await restApiAdapter.previewEndpointPage(ORG_ID, baseBody);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(findByInstanceMock).not.toHaveBeenCalled();
+    const url = fetchMock.mock.calls[0]?.[0];
+    expect(typeof url === "string" ? url : url?.toString()).toContain(
+      "/users"
+    );
+  });
+
+  it("propagates upstream auth failures as REST_API_AUTH_FAILED", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response("nope", {
+        status: 401,
+        headers: { "content-type": "text/plain" },
+      })
+    );
+
+    await expect(
+      restApiAdapter.previewEndpointPage(ORG_ID, {
+        ...baseBody,
+        auth: { mode: "bearer" },
+        credentials: { mode: "bearer", token: "tok" },
+      })
+    ).rejects.toMatchObject({ code: ApiCode.REST_API_AUTH_FAILED });
+  });
+
+  it("returns the raw body even when transform is malformed (errors surface client-side)", async () => {
+    fetchMock.mockResolvedValueOnce(okResponse({ data: [{ id: 1 }] }));
+
+    const result = await restApiAdapter.previewEndpointPage(ORG_ID, {
+      ...baseBody,
+      endpoint: { ...baseBody.endpoint, transform: "data.{ unclosed" },
+    });
+
+    // Server-side transform application is deliberately skipped for
+    // preview — the client renders the warning inline. The raw body
+    // still flows through so the user can see what they're working
+    // against.
+    expect(result.body).toEqual({ data: [{ id: 1 }] });
+    expect(result.truncated).toBe(false);
+  });
+
+  it("returns the raw body even when recordsPath doesn't resolve to an array", async () => {
+    fetchMock.mockResolvedValueOnce(okResponse({ data: { items: "string-not-array" } }));
+
+    const result = await restApiAdapter.previewEndpointPage(ORG_ID, {
+      ...baseBody,
+      endpoint: { ...baseBody.endpoint, recordsPath: "data.items" },
+    });
+
+    expect(result.body).toEqual({ data: { items: "string-not-array" } });
+  });
+});
+
 // ── discoverColumns (the slim DiscoveredColumn[] view) ──────────────
 
 describe("restApiAdapter.discoverColumns", () => {
