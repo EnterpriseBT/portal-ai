@@ -6,6 +6,19 @@ import { render, screen } from "../../../__tests__/test-utils";
 
 import { EndpointColumnReviewUI } from "../EndpointColumnReview.component";
 import type { EndpointColumnReviewUIProps } from "../EndpointColumnReview.component";
+import type { SearchResult } from "../../../api/types";
+
+function makeColumnDefinitionSearchStub(): SearchResult {
+  return {
+    onSearch: jest.fn(async () => []),
+    onSearchPending: false,
+    onSearchError: null,
+    getById: jest.fn(async () => null),
+    getByIdPending: false,
+    getByIdError: null,
+    labelMap: {},
+  };
+}
 
 function makeProps(
   overrides: Partial<EndpointColumnReviewUIProps> = {}
@@ -20,6 +33,7 @@ function makeProps(
     onAdoptSuggestion: jest.fn(),
     onAddRow: jest.fn(),
     onRemoveRow: jest.fn(),
+    columnDefinitionSearch: makeColumnDefinitionSearchStub(),
     ...overrides,
   };
 }

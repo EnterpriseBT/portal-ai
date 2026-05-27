@@ -23,6 +23,7 @@ import type { ColumnRowDraft } from "./utils/rest-api-validation.util";
 
 import { DegradationBannerUI } from "./DegradationBanner.component";
 import { InferredColumnsTableUI } from "./InferredColumnsTable.component";
+import type { SearchResult } from "../../api/types";
 
 export type EndpointReviewState =
   | { kind: "idle" }
@@ -56,6 +57,8 @@ export interface EndpointColumnReviewUIProps {
    *  visible; clicking it does nothing. */
   reprobeDisabled?: boolean;
   reprobeDisabledHint?: string;
+  /** Forwarded to InferredColumnsTableUI to power the column-definition picker. */
+  columnDefinitionSearch: SearchResult;
 }
 
 export const EndpointColumnReviewUI: React.FC<EndpointColumnReviewUIProps> = ({
@@ -70,6 +73,7 @@ export const EndpointColumnReviewUI: React.FC<EndpointColumnReviewUIProps> = ({
   onRemoveRow,
   onReprobe,
   reprobeDisabled,
+  columnDefinitionSearch,
   reprobeDisabledHint,
 }) => (
   <Stack
@@ -141,6 +145,7 @@ export const EndpointColumnReviewUI: React.FC<EndpointColumnReviewUIProps> = ({
           onAddRow={onAddRow}
           onRemoveRow={onRemoveRow}
           errors={errors}
+          columnDefinitionSearch={columnDefinitionSearch}
         />
       </>
     ) : null}
@@ -157,6 +162,7 @@ export const EndpointColumnReviewUI: React.FC<EndpointColumnReviewUIProps> = ({
           onAddRow={onAddRow}
           onRemoveRow={onRemoveRow}
           errors={errors}
+          columnDefinitionSearch={columnDefinitionSearch}
         />
       </Stack>
     ) : null}
@@ -175,6 +181,7 @@ export const EndpointColumnReviewUI: React.FC<EndpointColumnReviewUIProps> = ({
           onAddRow={onAddRow}
           onRemoveRow={onRemoveRow}
           errors={errors}
+          columnDefinitionSearch={columnDefinitionSearch}
         />
       </Stack>
     ) : null}
@@ -192,6 +199,7 @@ export const EndpointColumnReviewUI: React.FC<EndpointColumnReviewUIProps> = ({
           onAddRow={onAddRow}
           onRemoveRow={onRemoveRow}
           errors={errors}
+          columnDefinitionSearch={columnDefinitionSearch}
         />
       </Stack>
     ) : null}

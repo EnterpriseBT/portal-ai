@@ -25,6 +25,7 @@ import {
   type EndpointReviewState,
 } from "./EndpointColumnReview.component";
 import type { ColumnRowDraft } from "./utils/rest-api-validation.util";
+import type { SearchResult } from "../../api/types";
 
 // ── Pure UI ──────────────────────────────────────────────────────────
 
@@ -48,6 +49,8 @@ export interface ProbeReviewStepUIProps {
   reprobeDisabled?: boolean;
   reprobeDisabledHint?: string;
   serverError: ServerError | null;
+  /** Forwarded into each endpoint's InferredColumnsTableUI. */
+  columnDefinitionSearch: SearchResult;
 }
 
 export const ProbeReviewStepUI: React.FC<ProbeReviewStepUIProps> = ({
@@ -63,6 +66,7 @@ export const ProbeReviewStepUI: React.FC<ProbeReviewStepUIProps> = ({
   reprobeDisabled,
   reprobeDisabledHint,
   serverError,
+  columnDefinitionSearch,
 }) => (
   <Stack spacing={2}>
     <FormAlert serverError={serverError} />
@@ -88,6 +92,7 @@ export const ProbeReviewStepUI: React.FC<ProbeReviewStepUIProps> = ({
         onReprobe={onReprobe ? () => onReprobe(ep.key) : undefined}
         reprobeDisabled={reprobeDisabled}
         reprobeDisabledHint={reprobeDisabledHint}
+        columnDefinitionSearch={columnDefinitionSearch}
       />
     ))}
   </Stack>

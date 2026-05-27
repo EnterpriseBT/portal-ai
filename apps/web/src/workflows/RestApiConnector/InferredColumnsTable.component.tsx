@@ -15,26 +15,21 @@ import React from "react";
 
 import Checkbox from "@mui/material/Checkbox";
 import IconButton from "@mui/material/IconButton";
-import MenuItem from "@mui/material/MenuItem";
 import TextField from "@mui/material/TextField";
 import CloseIcon from "@mui/icons-material/Close";
 import {
+  AsyncSearchableSelect,
   Button,
   DataTable,
   Stack,
   Typography,
   type DataTableColumn,
 } from "@portalai/core/ui";
-import {
-  ColumnDataTypeEnum,
-  type ColumnDataType,
-} from "@portalai/core/models";
 
 import type { FormErrors } from "../../utils/form-validation.util";
 import type { ColumnRowDraft } from "./utils/rest-api-validation.util";
 import { SuggestionChipUI } from "./SuggestionChip.component";
-
-const COLUMN_TYPE_OPTIONS: ColumnDataType[] = [...ColumnDataTypeEnum.options];
+import type { SearchResult } from "../../api/types";
 
 const SAMPLE_PREVIEW_MAX = 60;
 
@@ -57,6 +52,14 @@ export interface InferredColumnsTableUIProps {
   onAddRow: () => void;
   onRemoveRow: (index: number) => void;
   errors: FormErrors;
+  /**
+   * Org-scoped ColumnDefinition search hook from
+   * `sdk.columnDefinitions.search()`. Drives the picker the user sees
+   * in each row's Column-definition cell; mirrors the
+   * BindingEditorPopover wiring in the spreadsheet workflows so the
+   * REST API workflow shares the same "Column → value" mental model.
+   */
+  columnDefinitionSearch: SearchResult;
 }
 
 // Internal row shape DataTable consumes. `__row` carries the original
@@ -75,6 +78,7 @@ export const InferredColumnsTableUI: React.FC<InferredColumnsTableUIProps> = ({
   onAddRow,
   onRemoveRow,
   errors,
+  columnDefinitionSearch,
 }) => {
   const tableRows: TableRow[] = React.useMemo(
     () =>
@@ -141,35 +145,25 @@ export const InferredColumnsTableUI: React.FC<InferredColumnsTableUIProps> = ({
         },
       },
       {
-        key: "type",
-        label: "Type",
+        key: "columnDefinitionId",
+        label: "Column definition",
         render: (_value, row) => {
           const r = row as TableRow;
           return (
-            <TextField
-              select
-              value={r.__row.type}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                onChange(r.__index, {
-                  type: e.target.value as ColumnDataType,
-                })
+            <AsyncSearchableSelect
+              value={r.__row.columnDefinitionId ?? null}
+              onChange={(value) =>
+                onChange(r.__index, { columnDefinitionId: value })
               }
+              onSearch={columnDefinitionSearch.onSearch}
+              loadSelectedOption={columnDefinitionSearch.getById}
+              placeholder="Pick a column definition"
               size="small"
               fullWidth
-              slotProps={{
-                htmlInput: {
-                  "aria-label": `Type for ${
-                    r.__row.sourceField || "row " + r.__index
-                  }`,
-                },
-              }}
-            >
-              {COLUMN_TYPE_OPTIONS.map((t) => (
-                <MenuItem key={t} value={t}>
-                  {t}
-                </MenuItem>
-              ))}
-            </TextField>
+              aria-label={`Column definition for ${
+                r.__row.sourceField || "row " + r.__index
+              }`}
+            />
           );
         },
       },
@@ -228,7 +222,13 @@ export const InferredColumnsTableUI: React.FC<InferredColumnsTableUIProps> = ({
         },
       },
     ],
-    [onChange, onAdoptSuggestion, onRemoveRow]
+    [
+      onChange,
+      onAdoptSuggestion,
+      onRemoveRow,
+      columnDefinitionSearch.onSearch,
+      columnDefinitionSearch.getById,
+    ]
   );
 
   return (

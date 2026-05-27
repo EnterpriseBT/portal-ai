@@ -91,6 +91,8 @@ export interface RestApiConnectorWorkflowUIProps {
   onPreviewEndpoint: (
     draft: EndpointDraft
   ) => Promise<{ body: unknown; truncated: boolean }>;
+  /** Shared column-definition search hook for the inferred-columns table picker. */
+  columnDefinitionSearch: import("../../api/types").SearchResult;
   onBasicsBlur: (field: string) => void;
 
   /** Per-endpoint column rows the user reviewed/edited. */
@@ -136,6 +138,7 @@ export const RestApiConnectorWorkflowUI: React.FC<
   onCredentialsChange,
   onEndpointsChange,
   onPreviewEndpoint,
+  columnDefinitionSearch,
   onBasicsBlur,
   columnsByEndpoint,
   probeStateByKey,
@@ -240,6 +243,7 @@ export const RestApiConnectorWorkflowUI: React.FC<
             onRemoveRow={onRemoveColumnRow}
             onReprobe={onReprobe}
             serverError={serverError}
+            columnDefinitionSearch={columnDefinitionSearch}
           />
         </StepPanel>
         <StepPanel index={3} activeStep={step}>
@@ -317,6 +321,10 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
   // Used by the Add-endpoint form's Preview button to fetch the raw
   // page-1 response without going through the full probe pipeline.
   const previewPage = sdk.apiConnector.endpoints.previewPage();
+  // ColumnDefinition search hook — drives the per-row picker in the
+  // ProbeReview step's inferred-columns table. Shared across endpoints
+  // + rows so we only instantiate once.
+  const columnDefinitionSearch = sdk.columnDefinitions.search();
   // Initial-sync kick on commit so the user lands on the detail view
   // with records already flowing in, not an empty wide table.
   const syncForInstance = sdk.connectorInstances.syncForInstance();
@@ -748,6 +756,7 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
       onCredentialsChange={handleCredentialsChange}
       onEndpointsChange={setEndpoints}
       onPreviewEndpoint={onPreviewEndpoint}
+      columnDefinitionSearch={columnDefinitionSearch}
       onBasicsBlur={(field) =>
         setBasicsTouched((t) => ({ ...t, [field]: true }))
       }

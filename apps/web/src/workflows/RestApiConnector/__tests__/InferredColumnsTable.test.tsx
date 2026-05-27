@@ -7,6 +7,7 @@ import { render, screen } from "../../../__tests__/test-utils";
 import { InferredColumnsTableUI } from "../InferredColumnsTable.component";
 import type { InferredColumnsTableUIProps } from "../InferredColumnsTable.component";
 import type { ColumnRowDraft } from "../utils/rest-api-validation.util";
+import type { SearchResult } from "../../../api/types";
 
 function row(overrides: Partial<ColumnRowDraft> = {}): ColumnRowDraft {
   return {
@@ -16,6 +17,18 @@ function row(overrides: Partial<ColumnRowDraft> = {}): ColumnRowDraft {
     required: true,
     samples: ["abc", "def"],
     ...overrides,
+  };
+}
+
+function makeColumnDefinitionSearchStub(): SearchResult {
+  return {
+    onSearch: jest.fn(async () => []),
+    onSearchPending: false,
+    onSearchError: null,
+    getById: jest.fn(async () => null),
+    getByIdPending: false,
+    getByIdError: null,
+    labelMap: {},
   };
 }
 
@@ -29,11 +42,30 @@ function makeProps(
     onAddRow: jest.fn(),
     onRemoveRow: jest.fn(),
     errors: {},
+    columnDefinitionSearch: makeColumnDefinitionSearchStub(),
     ...overrides,
   };
 }
 
 describe("InferredColumnsTableUI", () => {
+  it("renders a Column definition picker per row", () => {
+    render(
+      <InferredColumnsTableUI
+        {...makeProps({
+          rows: [row({ sourceField: "id", normalizedKey: "id" })],
+        })}
+      />
+    );
+    // The table header surfaces the new column-def column.
+    expect(
+      screen.getByRole("columnheader", { name: /column definition/i })
+    ).toBeInTheDocument();
+    // The cell renders a combobox-backed picker; querying by role
+    // verifies AsyncSearchableSelect mounted regardless of its
+    // labeling internals.
+    expect(screen.getAllByRole("combobox").length).toBeGreaterThan(0);
+  });
+
   it("renders one row per column with the source field + samples", () => {
     render(
       <InferredColumnsTableUI

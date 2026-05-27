@@ -7,6 +7,7 @@ import { ProbeReviewStepUI } from "../ProbeReviewStep.component";
 import type { ProbeReviewStepUIProps } from "../ProbeReviewStep.component";
 import type { EndpointDraft } from "../ApiEndpointForm.component";
 import { EMPTY_PAGINATION_DRAFT } from "../utils/rest-api-validation.util";
+import type { SearchResult } from "../../../api/types";
 
 function endpoint(
   overrides: Partial<EndpointDraft> = {}
@@ -24,6 +25,18 @@ function endpoint(
   };
 }
 
+function makeColumnDefinitionSearchStub(): SearchResult {
+  return {
+    onSearch: jest.fn(async () => []),
+    onSearchPending: false,
+    onSearchError: null,
+    getById: jest.fn(async () => null),
+    getByIdPending: false,
+    getByIdError: null,
+    labelMap: {},
+  };
+}
+
 function makeProps(
   overrides: Partial<ProbeReviewStepUIProps> = {}
 ): ProbeReviewStepUIProps {
@@ -37,6 +50,7 @@ function makeProps(
     onAddRow: jest.fn(),
     onRemoveRow: jest.fn(),
     serverError: null,
+    columnDefinitionSearch: makeColumnDefinitionSearchStub(),
     ...overrides,
   };
 }
