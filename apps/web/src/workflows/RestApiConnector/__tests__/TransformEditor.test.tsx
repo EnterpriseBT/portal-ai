@@ -1,29 +1,28 @@
 import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 
 import { render } from "../../../__tests__/test-utils";
 
 import { TransformEditorUI } from "../TransformEditor.component";
 
 describe("TransformEditorUI", () => {
-  it("renders the textarea + placeholder hint when no value + no probe response", () => {
-    render(
-      <TransformEditorUI value="" onChange={jest.fn()} lastProbeResponse={null} />
-    );
+  it("renders the textarea + the inline help caption", () => {
+    render(<TransformEditorUI value="" onChange={jest.fn()} />);
     expect(
       screen.getByRole("textbox", { name: /transform expression/i })
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/enter an expression to preview the transformed records/i)
+      screen.getByText(/jsonata expression/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/preview button below/i)
     ).toBeInTheDocument();
   });
 
   it("fires onChange when the user types", () => {
     const onChange = jest.fn();
-    render(
-      <TransformEditorUI value="" onChange={onChange} lastProbeResponse={null} />
-    );
+    render(<TransformEditorUI value="" onChange={onChange} />);
     fireEvent.change(
       screen.getByRole("textbox", { name: /transform expression/i }),
       { target: { value: "data.items" } }
@@ -31,65 +30,13 @@ describe("TransformEditorUI", () => {
     expect(onChange).toHaveBeenCalledWith("data.items");
   });
 
-  it("shows a 'probe first' hint when an expression is set but no response is cached", () => {
+  it("renders the current value in the textarea", () => {
     render(
-      <TransformEditorUI
-        value="data.items"
-        onChange={jest.fn()}
-        lastProbeResponse={null}
-      />
+      <TransformEditorUI value="data.items" onChange={jest.fn()} />
     );
-    expect(screen.getByTestId("transform-status")).toHaveTextContent(
-      /probe an endpoint first to see a live preview/i
-    );
-  });
-
-  it("renders the transformed records when expression + response are valid", async () => {
-    render(
-      <TransformEditorUI
-        value="data.items"
-        onChange={jest.fn()}
-        lastProbeResponse={{ data: { items: [{ id: 1 }, { id: 2 }] } }}
-      />
-    );
-    await waitFor(() => {
-      expect(screen.getByTestId("transform-status")).toHaveTextContent(
-        /✓ 2 records/i
-      );
-    });
-    expect(screen.getByTestId("transform-preview-out")).toHaveTextContent(
-      /"id": 1/
-    );
-  });
-
-  it("surfaces parse errors inline", async () => {
-    render(
-      <TransformEditorUI
-        value="data.{ unclosed"
-        onChange={jest.fn()}
-        lastProbeResponse={{ data: [{ id: 1 }] }}
-      />
-    );
-    await waitFor(() => {
-      expect(screen.getByTestId("transform-status")).toHaveTextContent(
-        /✗ Parse error/i
-      );
-    });
-  });
-
-  it("surfaces runtime errors inline", async () => {
-    render(
-      <TransformEditorUI
-        value="$undefinedFn(items)"
-        onChange={jest.fn()}
-        lastProbeResponse={{ items: [1, 2, 3] }}
-      />
-    );
-    await waitFor(() => {
-      expect(screen.getByTestId("transform-status")).toHaveTextContent(
-        /✗ Runtime error/i
-      );
-    });
+    expect(
+      screen.getByRole("textbox", { name: /transform expression/i })
+    ).toHaveValue("data.items");
   });
 
   it("renders a warning Alert when serverError is provided", () => {
@@ -97,7 +44,6 @@ describe("TransformEditorUI", () => {
       <TransformEditorUI
         value="data.items"
         onChange={jest.fn()}
-        lastProbeResponse={null}
         serverError={{ kind: "parse", message: "unexpected token" }}
       />
     );
@@ -105,5 +51,16 @@ describe("TransformEditorUI", () => {
       screen.getByText(/last probe: transform parse error/i)
     ).toBeInTheDocument();
     expect(screen.getByText(/unexpected token/i)).toBeInTheDocument();
+  });
+
+  it("does not render a serverError Alert when serverError is null", () => {
+    render(
+      <TransformEditorUI
+        value="data.items"
+        onChange={jest.fn()}
+        serverError={null}
+      />
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
