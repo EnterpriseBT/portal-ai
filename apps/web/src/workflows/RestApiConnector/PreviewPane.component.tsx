@@ -24,6 +24,7 @@ import jsonata from "jsonata";
 import Alert from "@mui/material/Alert";
 import { Box, Stack, Typography } from "@portalai/core/ui";
 
+import { HighlightedCode } from "../../components/HighlightedCode.component";
 import type { ExtractionMode } from "./ApiEndpointForm.component";
 
 export interface PreviewPaneUIProps {
@@ -44,20 +45,22 @@ type DerivedResult =
   | { kind: "parse"; message: string }
   | { kind: "runtime"; message: string };
 
-const PREVIEW_PANE_SX = {
+const PREVIEW_PLACEHOLDER_SX = {
   margin: 0,
-  padding: 1,
+  padding: 1.5,
   border: 1,
   borderColor: "divider",
-  borderRadius: 1,
+  borderRadius: 0.5,
   fontSize: 12,
-  fontFamily: "monospace",
+  fontFamily:
+    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
   maxHeight: 320,
   overflow: "auto",
-  backgroundColor: "rgba(0,0,0,0.02)",
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-word",
+  backgroundColor: "action.hover",
+  color: "text.secondary",
 } as const;
+
+const PREVIEW_MAX_HEIGHT = 320;
 
 const PATH_MISSING = Symbol("path-missing");
 
@@ -220,17 +223,24 @@ export const PreviewPaneUI: React.FC<PreviewPaneUIProps> = ({
           <Typography variant="caption" color="text.secondary">
             Raw response (page 1)
           </Typography>
-          <Box
-            component="pre"
-            sx={PREVIEW_PANE_SX}
-            data-testid="preview-raw"
-          >
-            {loading
-              ? "Loading…"
-              : response == null
-                ? "Click Preview to fetch the first page of the endpoint."
-                : safeStringify(response)}
-          </Box>
+          {response == null || loading ? (
+            <Box
+              component="pre"
+              sx={PREVIEW_PLACEHOLDER_SX}
+              data-testid="preview-raw"
+            >
+              {loading
+                ? "Loading…"
+                : "Click Preview to fetch the first page of the endpoint."}
+            </Box>
+          ) : (
+            <HighlightedCode
+              code={safeStringify(response)}
+              language="json"
+              maxHeight={PREVIEW_MAX_HEIGHT}
+              data-testid="preview-raw"
+            />
+          )}
         </Stack>
         <Stack flexGrow={1} spacing={0.5} sx={{ minWidth: 0 }}>
           <Typography variant="caption" color="text.secondary">
@@ -241,25 +251,32 @@ export const PreviewPaneUI: React.FC<PreviewPaneUIProps> = ({
               ? ` — ${derived.count} record${derived.count === 1 ? "" : "s"}`
               : ""}
           </Typography>
-          <Box
-            component="pre"
-            sx={PREVIEW_PANE_SX}
-            data-testid="preview-extracted"
-          >
-            {derived.kind === "extracted"
-              ? safeStringify(
-                  Array.isArray(derived.value)
-                    ? derived.value.slice(0, 10)
-                    : derived.value
-                )
-              : derived.kind === "idle"
+          {derived.kind === "extracted" ? (
+            <HighlightedCode
+              code={safeStringify(
+                Array.isArray(derived.value)
+                  ? derived.value.slice(0, 10)
+                  : derived.value
+              )}
+              language="json"
+              maxHeight={PREVIEW_MAX_HEIGHT}
+              data-testid="preview-extracted"
+            />
+          ) : (
+            <Box
+              component="pre"
+              sx={PREVIEW_PLACEHOLDER_SX}
+              data-testid="preview-extracted"
+            >
+              {derived.kind === "idle"
                 ? response == null
                   ? "Preview the response first."
                   : extractionMode === "transform"
                     ? "Enter a JSONata expression to see the transformed result."
                     : ""
                 : ""}
-          </Box>
+            </Box>
+          )}
         </Stack>
       </Stack>
     </Stack>
