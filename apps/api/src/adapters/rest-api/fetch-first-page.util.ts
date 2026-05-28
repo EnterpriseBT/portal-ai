@@ -34,6 +34,7 @@ import type {
   PageContext,
 } from "./pagination/types.js";
 import { withRetry } from "./retry.util.js";
+import { streamFetchRecords, type StreamFetchResult } from "./stream.util.js";
 import {
   applyTemplate,
   applyTemplateToConfig,
@@ -193,6 +194,85 @@ export async function fetchFirstPage(
   }
 
   return fetched;
+}
+
+/**
+ * Streaming counterpart to `fetchOnePage` for the unpaginated +
+ * recordsPath case. Mirrors the URL / template / header / body / auth
+ * plumbing so the records hot path stays config-identical to the
+ * buffered path; the only difference is that records arrive
+ * incrementally via the returned `recordsStream` instead of as a
+ * materialized array.
+ *
+ * Restricted to `pagination: "none"` by construction — callers ensure
+ * eligibility via `isStreamingEligible` (wired into `syncInstance` in
+ * slice 4). Throws `REST_API_INVALID_CONFIG` if `recordsPath` is empty
+ * while `transform` is set, since the streaming path doesn't run
+ * JSONata.
+ *
+ * `withRetry` wraps only the initial fetch — the streaming read is
+ * single-attempt by design. Mid-stream failures fail the sync the same
+ * way a mid-buffered-page failure does today (no resumable streaming
+ * — out of scope per the spec).
+ */
+export async function streamFetchOnePage(
+  endpoint: ApiEndpoint,
+  baseUrl: string,
+  auth: ApiAuthConfig,
+  credentials: ApiCredentials | null
+): Promise<StreamFetchResult> {
+  const recordsPath = endpoint.config.recordsPath ?? "";
+  const transform = (endpoint.config.transform ?? "").trim();
+
+  if (recordsPath === "" && transform.length > 0) {
+    throw new ApiError(
+      500,
+      ApiCode.REST_API_INVALID_CONFIG,
+      "streamFetchOnePage does not run JSONata transforms; route through fetchOnePage instead",
+      { recordsPath, transformLength: transform.length }
+    );
+  }
+
+  // Page-1 defaults — the eligibility predicate guarantees pagination
+  // is "none", so there's no cursor / offset to template.
+  const vars: TemplateVariables = { cursor: "", pageNumber: 1 };
+
+  const templatedQuery = applyTemplateToConfig(
+    (endpoint.config.queryParams as Record<string, string> | null | undefined) ??
+      undefined,
+    vars
+  );
+  const baseRequestUrl = buildUrl(
+    baseUrl,
+    endpoint.config.path,
+    templatedQuery
+  );
+
+  const templatedHeaders = applyTemplateToConfig(
+    (endpoint.config.headers as Record<string, string> | null | undefined) ??
+      undefined,
+    vars
+  );
+
+  const body = endpoint.config.bodyTemplate
+    ? applyTemplate(endpoint.config.bodyTemplate, vars)
+    : undefined;
+
+  const baseInit: RequestInit = {
+    method: endpoint.config.method,
+    ...(Object.keys(templatedHeaders).length > 0
+      ? { headers: templatedHeaders }
+      : {}),
+    ...(body !== undefined ? { body } : {}),
+  };
+
+  const { url, init } = applyAuth(baseRequestUrl, baseInit, auth, credentials);
+
+  try {
+    return await withRetry(() => streamFetchRecords(url, init, recordsPath));
+  } catch (err) {
+    throw remapAuthFailure(err, url);
+  }
 }
 
 function paginationRequestParams(
