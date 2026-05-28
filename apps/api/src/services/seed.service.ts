@@ -323,7 +323,7 @@ export class SeedService {
           },
           version: "1.0.0",
           iconUrl:
-            "https://res.cloudinary.com/dvloutv7e/image/upload/v1776276948/sandbox_zlwqke.png",
+            "https://res.cloudinary.com/dvloutv7e/image/upload/v1779930435/sandbox_r8gufh.svg",
         })
         .parse(),
       new FileUploadConnectorDefinitionModelFactory()
@@ -343,7 +343,7 @@ export class SeedService {
           },
           version: "1.0.0",
           iconUrl:
-            "https://res.cloudinary.com/dvloutv7e/image/upload/v1777417496/file-upload-svgrepo-com_uyhuzm.svg",
+            "https://res.cloudinary.com/dvloutv7e/image/upload/v1779930297/file-upload_oabjwh.svg",
         })
         .parse(),
       // Phase C flipped this on once the workflow shell + interpret/commit
@@ -366,7 +366,7 @@ export class SeedService {
           },
           version: "1.0.0",
           iconUrl:
-            "https://res.cloudinary.com/dvloutv7e/image/upload/v1777482548/500px-Google_Sheets_logo__2014-2020.svg_d7fj9r.png",
+            "https://res.cloudinary.com/dvloutv7e/image/upload/v1779930747/google-sheets_cqsxxx.svg",
         })
         .parse(),
       // Phase C flipped this on once the workflow shell + interpret/commit
@@ -388,7 +388,7 @@ export class SeedService {
             push: false,
           },
           version: "1.0.0",
-          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1777847292/960px-Microsoft_Office_Excel__2019_2025.svg_oprgxb.png',
+          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1779930737/microsoft-excel_spvnfl.svg',
         })
         .parse(),
       new RestApiConnectorDefinitionModelFactory()
