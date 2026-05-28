@@ -374,6 +374,7 @@ async function syncOneEndpoint(
           connectorInstanceId: instance.id,
           connectorEntityId: endpoint.entity.id,
           recordsEmitted: counts.recordIndex,
+          bytesObserved: page.recordsStream.getBytesObserved(),
           durationMs: Date.now() - streamStartedAt,
         },
         "Streaming page drained"

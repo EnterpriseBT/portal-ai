@@ -10,7 +10,7 @@
  * yet; `syncInstance` wires it in slice 4.
  */
 
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 
 import parserStream from "stream-json";
 import Pick from "stream-json/filters/pick.js";
@@ -20,6 +20,17 @@ import { ApiCode } from "../../constants/api-codes.constants.js";
 import { ApiError } from "../../services/http.service.js";
 
 export const DEFAULT_MAX_RECORD_BYTES = 50 * 1024 * 1024;
+
+/**
+ * High / low watermarks for the AsyncIterable's pending-record buffer.
+ * When pending records pile up past `HIGH`, we pause the parse stream;
+ * once the consumer drains back down to `LOW`, we resume. This is the
+ * actual mechanism that keeps memory bounded — without it, a slow DB
+ * writer lets the parser materialize the entire payload as JS objects
+ * in `buffered` before the first `next()` call drains them.
+ */
+const BUFFER_HIGH_WATERMARK = 64;
+const BUFFER_LOW_WATERMARK = 32;
 
 export interface StreamFetchOptions {
   /** Injectable for tests; defaults to `globalThis.fetch`. */
@@ -32,6 +43,17 @@ export interface StreamFetchOptions {
   maxRecordBytes?: number;
 }
 
+/**
+ * AsyncIterable surface returned by `streamFetchRecords`. The
+ * `getBytesObserved()` getter is the integration test's hook for
+ * verifying the parser actually streamed the body — it reports the
+ * running byte count fed into the parser. Reads safely before / after
+ * iteration; returns `0` until the first chunk lands.
+ */
+export interface RecordsStream extends AsyncIterable<unknown> {
+  getBytesObserved(): number;
+}
+
 export interface StreamFetchResult {
   status: number;
   headers: Record<string, string>;
@@ -40,7 +62,7 @@ export interface StreamFetchResult {
    * re-iterating throws `REST_API_STREAM_ALREADY_CONSUMED`. Mid-stream
    * parse / size / socket failures surface as throws inside `for await`.
    */
-  recordsStream: AsyncIterable<unknown>;
+  recordsStream: RecordsStream;
 }
 
 /**
@@ -135,16 +157,21 @@ function buildRecordsStream(
   body: ReadableStream<Uint8Array>,
   recordsPath: string,
   maxRecordBytes: number
-): AsyncIterable<unknown> {
+): RecordsStream {
   let consumed = false;
+  // Lives in the AsyncIterable closure so `getBytesObserved` reads the
+  // same counter the byte-counter Transform mutates. Stays `0` if the
+  // caller never iterates.
+  let bytesObserved = 0;
 
   return {
+    getBytesObserved: () => bytesObserved,
     [Symbol.asyncIterator]() {
       if (consumed) {
         throw new ApiError(
           500,
           ApiCode.REST_API_STREAM_ALREADY_CONSUMED,
-          "recordsStream was already consumed; build a new request to iterate again",
+          "The streaming response was already read once; retry the sync to fetch a fresh response",
           { recordsPath }
         );
       }
@@ -153,8 +180,16 @@ function buildRecordsStream(
       // Set up the parse pipeline. `parserStream` is a Duplex that
       // accepts text/Buffer and emits SAX-style tokens; `Pick`
       // sub-selects matching subtrees by path; `StreamArray` re-emits
-      // each array element as an assembled JS value.
+      // each array element as an assembled JS value. The byte counter
+      // sits at the head of the chain so `getBytesObserved` reports
+      // raw wire bytes, not post-parse object size.
       const nodeBody = Readable.fromWeb(body as never);
+      const byteCounter = new Transform({
+        transform(chunk: Buffer, _enc, callback) {
+          bytesObserved += chunk.length;
+          callback(null, chunk);
+        },
+      });
       const parser = parserStream();
 
       // Track Pick matches so we can distinguish "path missing" from
@@ -186,10 +221,11 @@ function buildRecordsStream(
       });
 
       nodeBody.on("error", (err) => parser.destroy(err));
+      byteCounter.on("error", (err) => parser.destroy(err));
       parser.on("error", (err) => arrayStream.destroy(err));
       pick.on("error", (err) => arrayStream.destroy(err));
 
-      nodeBody.pipe(parser).pipe(pick).pipe(arrayStream);
+      nodeBody.pipe(byteCounter).pipe(parser).pipe(pick).pipe(arrayStream);
 
       // ── Async iterator state machine ───────────────────────────────
       // We pull from `arrayStream` via its readable events. Each
@@ -203,8 +239,20 @@ function buildRecordsStream(
       const buffered: unknown[] = [];
       const errors: unknown[] = [];
       let ended = false;
+      let paused = false;
       let pendingResolve: Resolver | null = null;
       let pendingReject: Rejecter | null = null;
+
+      const maybeApplyBackpressure = () => {
+        if (ended) return;
+        if (buffered.length >= BUFFER_HIGH_WATERMARK && !paused) {
+          arrayStream.pause();
+          paused = true;
+        } else if (buffered.length <= BUFFER_LOW_WATERMARK && paused) {
+          arrayStream.resume();
+          paused = false;
+        }
+      };
 
       const settle = () => {
         if (pendingResolve === null) return;
@@ -220,6 +268,7 @@ function buildRecordsStream(
           pendingResolve = null;
           pendingReject = null;
           resolve({ value: buffered.shift(), done: false });
+          maybeApplyBackpressure();
           return;
         }
         if (ended) {
@@ -241,7 +290,9 @@ function buildRecordsStream(
               new ApiError(
                 502,
                 ApiCode.REST_API_RECORD_TOO_LARGE,
-                `Record at index ${item.key} exceeded ${maxRecordBytes} bytes`,
+                `A single record exceeded the ${Math.round(
+                  maxRecordBytes / (1024 * 1024)
+                )} MB streaming size at index ${item.key}. Check that the Records path points at an array of records, not the whole document.`,
                 { index: item.key, limit: maxRecordBytes }
               )
             );
@@ -254,6 +305,7 @@ function buildRecordsStream(
           // record through; downstream upsert will surface the issue.
         }
         buffered.push(item.value);
+        maybeApplyBackpressure();
         settle();
       });
 

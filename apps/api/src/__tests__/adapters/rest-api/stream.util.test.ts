@@ -170,6 +170,26 @@ describe("streamFetchRecords — happy path", () => {
     // Drain so we don't leak the stream into other tests.
     await collect(result.recordsStream);
   });
+
+  it("getBytesObserved reports raw upstream byte count after draining", async () => {
+    const body = '{"items":[{"id":1},{"id":2}]}';
+    const expected = Buffer.byteLength(body, "utf8");
+    const fake = staticFetch(body);
+
+    const result = await streamFetchRecords(
+      "https://x.test",
+      {},
+      "items",
+      { fetchImpl: fake }
+    );
+
+    // Counter starts at 0 — the iterator hasn't pulled any chunks yet.
+    expect(result.recordsStream.getBytesObserved()).toBe(0);
+
+    await collect(result.recordsStream);
+
+    expect(result.recordsStream.getBytesObserved()).toBe(expected);
+  });
 });
 
 describe("streamFetchRecords — error cases", () => {
