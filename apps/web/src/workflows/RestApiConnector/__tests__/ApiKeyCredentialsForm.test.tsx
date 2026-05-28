@@ -48,6 +48,13 @@ describe("ApiKeyCredentialsFormUI", () => {
   it("calls onValueChange when the user types into the value field", async () => {
     const onValueChange = jest.fn();
     render(<ApiKeyCredentialsFormUI {...makeProps({ onValueChange })} />);
+    // The form runs `useDialogAutoFocus` against the keyName input
+    // with a 50 ms timer. Wait for the deferred focus to land before
+    // typing into a different field, otherwise the focus race steals
+    // some of the keystrokes back to keyName on a slow CI worker.
+    await waitFor(() =>
+      expect(screen.getByLabelText(/header or query name/i)).toHaveFocus()
+    );
     await userEvent.type(screen.getByLabelText(/api key value/i), "secret");
     expect(onValueChange).toHaveBeenCalled();
   });

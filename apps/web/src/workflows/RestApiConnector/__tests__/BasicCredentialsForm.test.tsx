@@ -46,6 +46,14 @@ describe("BasicCredentialsFormUI", () => {
         {...makeProps({ onUsernameChange, onPasswordChange })}
       />
     );
+    // The form runs `useDialogAutoFocus` against the username input
+    // with a 50 ms timer. Wait for that focus to land before we start
+    // typing — otherwise a slow CI worker fires the deferred focus
+    // in the middle of `userEvent.type(passwordField, ...)`, refocuses
+    // username, and the "p" keystroke lands in the wrong field.
+    await waitFor(() =>
+      expect(screen.getByLabelText(/^username/i)).toHaveFocus()
+    );
     await userEvent.type(screen.getByLabelText(/username/i), "u");
     await userEvent.type(screen.getByLabelText(/password/i), "p");
     expect(onUsernameChange).toHaveBeenCalled();
