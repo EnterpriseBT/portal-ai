@@ -295,12 +295,12 @@ async function syncOneEndpoint(
   );
   const iterator = resolveIterator(pagination);
 
-  let created = 0;
-  let updated = 0;
-  let unchanged = 0;
-  // Global across all pages so synthetic source ids stay unique for an
-  // endpoint that paginates without an `idField`.
-  let recordIndex = 0;
+  // `counts` is a mutable bag so the extracted `upsertRecord` helper
+  // (shared with the slice-4 streaming branch) can mutate counters
+  // through the same reference instead of returning + accumulating.
+  // `recordIndex` is global across all pages so synthetic source ids
+  // stay unique for an endpoint that paginates without an `idField`.
+  const counts = { created: 0, updated: 0, unchanged: 0, recordIndex: 0 };
 
   // Pre-fetch field mappings + the wide-table statement once per
   // endpoint so the inner loop can normalize + project each record
@@ -355,107 +355,18 @@ async function syncOneEndpoint(
       next.value
     );
 
+    const ctx: UpsertContext = {
+      endpoint,
+      instance,
+      runStartedAt,
+      userId,
+      mappingsForNormalize,
+      wideProjection,
+      counts,
+    };
+
     for (const record of fetched.records) {
-      if (record === null || typeof record !== "object") {
-        recordIndex++;
-        continue;
-      }
-      // Defensively normalize the record's prototype before it touches
-      // Drizzle. Drizzle's PgInsertBuilder.values() walks each column
-      // value through `is(v, SQL)`, which reaches for
-      // `Object.getPrototypeOf(v).constructor` — that throws "Cannot
-      // read properties of null (reading 'constructor')" if `v` is a
-      // prototypeless object. Some upstreams (NASA's NEO feed when its
-      // body parses through certain runtimes; jsonata transform
-      // outputs in some cases) deliver `Object.create(null)`-shaped
-      // sub-objects, and that null-prototype value flows straight
-      // into the `data` jsonb column. Spreading via `{ ...record }`
-      // attaches Object.prototype to the top-level wrapper, which is
-      // all Drizzle needs to introspect at insert time. Sub-objects
-      // keep whatever shape they came in with — jsonb stores them
-      // verbatim either way.
-      const recordObj = { ...(record as Record<string, unknown>) };
-      const sourceId = deriveSourceId(
-        recordObj,
-        endpoint.config.idField,
-        runStartedAt,
-        recordIndex
-      );
-      recordIndex++;
-      const checksum = checksumRecord(recordObj);
-
-      const existing =
-        await DbService.repository.entityRecords.findBySourceIds(
-          endpoint.entity.id,
-          [sourceId]
-        );
-      const prior = existing[0];
-
-      if (prior && prior.checksum === checksum) {
-        // Unchanged → bump syncedAt so watermark reaper leaves it alone.
-        await DbService.repository.entityRecords.bulkUpdateSyncedAt(
-          [prior.id],
-          runStartedAt
-        );
-        // Wide-table mirror: re-project + upsert (idempotent via
-        // ON CONFLICT). Backfills rows that exist in entity_records
-        // but are missing from the wide table — common right after
-        // landing field mappings on an already-synced entity.
-        if (wideProjection) {
-          await mirrorRecordToWideTable(
-            endpoint.entity.id,
-            prior.id,
-            instance.organizationId,
-            sourceId,
-            runStartedAt,
-            recordObj,
-            mappingsForNormalize,
-            wideProjection
-          );
-        }
-        unchanged++;
-        continue;
-      }
-
-      const rowId = prior?.id ?? SystemUtilities.id.v4.generate();
-      const upserted =
-        await DbService.repository.entityRecords.upsertBySourceId({
-          id: rowId,
-          organizationId: instance.organizationId,
-          connectorEntityId: endpoint.entity.id,
-          sourceId,
-          data: recordObj as never,
-          checksum,
-          syncedAt: runStartedAt,
-          origin: "sync",
-          isValid: true,
-          validationErrors: null,
-          created: prior?.created ?? Date.now(),
-          createdBy: prior?.createdBy ?? userId,
-          updated: Date.now(),
-          updatedBy: userId,
-          deleted: null,
-          deletedBy: null,
-        } as never);
-
-      // Mirror into the wide table so the entity detail view sees the
-      // columns populated. Skip when the entity has no field_mappings
-      // yet (no c_* columns) — the field-mapping create route's
-      // reconciler will populate them once mappings land.
-      if (wideProjection) {
-        await mirrorRecordToWideTable(
-          endpoint.entity.id,
-          upserted.id,
-          instance.organizationId,
-          sourceId,
-          runStartedAt,
-          recordObj,
-          mappingsForNormalize,
-          wideProjection
-        );
-      }
-
-      if (prior) updated++; else created++;
+      await upsertRecord(record, ctx);
     }
 
     next = await iterator.next(fetched);
@@ -469,7 +380,164 @@ async function syncOneEndpoint(
       userId
     );
 
-  return { created, updated, unchanged, deleted: reaped.length };
+  return {
+    created: counts.created,
+    updated: counts.updated,
+    unchanged: counts.unchanged,
+    deleted: reaped.length,
+  };
+}
+
+/**
+ * Per-record sync state shared by the buffered iterator loop in
+ * `syncOneEndpoint` and the slice-4 streaming branch. Counters live
+ * in a mutable bag so both call sites mutate through the same
+ * reference without threading return values back through hot-path
+ * iteration.
+ */
+export interface UpsertContext {
+  endpoint: ApiEndpoint;
+  instance: ConnectorInstance;
+  runStartedAt: number;
+  userId: string;
+  /**
+   * Field mappings + their column-definition joins, pre-fetched once
+   * per endpoint. Passed through `NormalizationService` for wide-table
+   * mirroring; the helper doesn't inspect the shape.
+   */
+  mappingsForNormalize: unknown;
+  /**
+   * `null` when the entity has no live wide-table columns (workflow
+   * committed without column drafts, or the cache lookup failed).
+   * In that case the wide-table mirror is skipped — `entity_records`
+   * still receives the write.
+   */
+  wideProjection: ReadonlyMap<string, string> | null;
+  counts: {
+    created: number;
+    updated: number;
+    unchanged: number;
+    recordIndex: number;
+  };
+}
+
+/**
+ * Upsert a single record into `entity_records` and mirror into the
+ * wide table. Mutates `ctx.counts` in place — never returns the
+ * counters, and never throws on a non-object record (just bumps
+ * `recordIndex` and returns so synthetic source ids stay aligned
+ * across the array).
+ *
+ * Extracted from `syncOneEndpoint`'s inner loop so the slice-4
+ * streaming branch can call the same per-record body without
+ * duplicating it.
+ */
+export async function upsertRecord(
+  record: unknown,
+  ctx: UpsertContext
+): Promise<void> {
+  if (record === null || typeof record !== "object") {
+    ctx.counts.recordIndex++;
+    return;
+  }
+
+  // Defensively normalize the record's prototype before it touches
+  // Drizzle. Drizzle's PgInsertBuilder.values() walks each column
+  // value through `is(v, SQL)`, which reaches for
+  // `Object.getPrototypeOf(v).constructor` — that throws "Cannot
+  // read properties of null (reading 'constructor')" if `v` is a
+  // prototypeless object. Some upstreams (NASA's NEO feed when its
+  // body parses through certain runtimes; jsonata transform
+  // outputs in some cases) deliver `Object.create(null)`-shaped
+  // sub-objects, and that null-prototype value flows straight
+  // into the `data` jsonb column. Spreading via `{ ...record }`
+  // attaches Object.prototype to the top-level wrapper, which is
+  // all Drizzle needs to introspect at insert time. Sub-objects
+  // keep whatever shape they came in with — jsonb stores them
+  // verbatim either way.
+  const recordObj = { ...(record as Record<string, unknown>) };
+  const sourceId = deriveSourceId(
+    recordObj,
+    ctx.endpoint.config.idField,
+    ctx.runStartedAt,
+    ctx.counts.recordIndex
+  );
+  ctx.counts.recordIndex++;
+  const checksum = checksumRecord(recordObj);
+
+  const existing =
+    await DbService.repository.entityRecords.findBySourceIds(
+      ctx.endpoint.entity.id,
+      [sourceId]
+    );
+  const prior = existing[0];
+
+  if (prior && prior.checksum === checksum) {
+    // Unchanged → bump syncedAt so watermark reaper leaves it alone.
+    await DbService.repository.entityRecords.bulkUpdateSyncedAt(
+      [prior.id],
+      ctx.runStartedAt
+    );
+    // Wide-table mirror: re-project + upsert (idempotent via
+    // ON CONFLICT). Backfills rows that exist in entity_records
+    // but are missing from the wide table — common right after
+    // landing field mappings on an already-synced entity.
+    if (ctx.wideProjection) {
+      await mirrorRecordToWideTable(
+        ctx.endpoint.entity.id,
+        prior.id,
+        ctx.instance.organizationId,
+        sourceId,
+        ctx.runStartedAt,
+        recordObj,
+        ctx.mappingsForNormalize,
+        ctx.wideProjection
+      );
+    }
+    ctx.counts.unchanged++;
+    return;
+  }
+
+  const rowId = prior?.id ?? SystemUtilities.id.v4.generate();
+  const upserted =
+    await DbService.repository.entityRecords.upsertBySourceId({
+      id: rowId,
+      organizationId: ctx.instance.organizationId,
+      connectorEntityId: ctx.endpoint.entity.id,
+      sourceId,
+      data: recordObj as never,
+      checksum,
+      syncedAt: ctx.runStartedAt,
+      origin: "sync",
+      isValid: true,
+      validationErrors: null,
+      created: prior?.created ?? Date.now(),
+      createdBy: prior?.createdBy ?? ctx.userId,
+      updated: Date.now(),
+      updatedBy: ctx.userId,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+
+  // Mirror into the wide table so the entity detail view sees the
+  // columns populated. Skip when the entity has no field_mappings
+  // yet (no c_* columns) — the field-mapping create route's
+  // reconciler will populate them once mappings land.
+  if (ctx.wideProjection) {
+    await mirrorRecordToWideTable(
+      ctx.endpoint.entity.id,
+      upserted.id,
+      ctx.instance.organizationId,
+      sourceId,
+      ctx.runStartedAt,
+      recordObj,
+      ctx.mappingsForNormalize,
+      ctx.wideProjection
+    );
+  }
+
+  if (prior) ctx.counts.updated++;
+  else ctx.counts.created++;
 }
 
 function readBaseUrl(instance: ConnectorInstance): string {
