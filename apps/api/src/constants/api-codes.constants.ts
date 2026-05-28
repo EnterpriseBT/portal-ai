@@ -316,11 +316,24 @@ export enum ApiCode {
   /** Zod validation failure on endpoint config payload. */
   REST_API_INVALID_CONFIG = "REST_API_INVALID_CONFIG",
   /**
-   * Response body exceeded `MAX_RESPONSE_BYTES` (default 50 MB). Either
-   * `Content-Length` was already too high (fast path) or the streaming byte
-   * counter tripped (slow path). Tracked in #72 for streaming-parse v2.
+   * Response body exceeded `MAX_RESPONSE_BYTES` (default 500 MB) on the
+   * buffered fetch path — used by JSONata transform + Preview / probe.
+   * Streaming-eligible syncs (`recordsPath` + `pagination: "none"`) don't
+   * hit this; they parse incrementally via `streamFetchRecords`.
    */
   REST_API_RESPONSE_TOO_LARGE = "REST_API_RESPONSE_TOO_LARGE",
+  /**
+   * The streaming parser emitted a single record whose serialized JSON
+   * exceeded `maxRecordBytes` (default 50 MB). Almost always means
+   * `recordsPath` is pointing at a non-array node or the document root.
+   */
+  REST_API_RECORD_TOO_LARGE = "REST_API_RECORD_TOO_LARGE",
+  /**
+   * Caller tried to iterate a `recordsStream` more than once. Programmer
+   * error — the underlying `ReadableStream` is single-use; `fetchJson` is
+   * the right primitive for callers that need a snapshot.
+   */
+  REST_API_STREAM_ALREADY_CONSUMED = "REST_API_STREAM_ALREADY_CONSUMED",
   /** Unhandled error in the rest-api endpoints router — 500 fallback. */
   REST_API_OPERATION_FAILED = "REST_API_OPERATION_FAILED",
   /**
