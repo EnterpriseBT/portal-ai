@@ -412,7 +412,7 @@ export class SeedService {
             push: false,
           },
           version: "0.1.0",
-          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1779665775/language-json-svgrepo-com_a28tfx.svg',
+          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1779930297/rest-api_bzitc8.svg',
         })
         .parse(),
     ];
