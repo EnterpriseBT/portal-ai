@@ -26,7 +26,7 @@
     "test:integration": "NODE_OPTIONS='--experimental-vm-modules --import tsx/esm --max-old-space-size=6144' jest --config jest.integration.config.js --runInBand",
     "db:generate": "dotenv -e .env -- tsx ../../node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "dotenv -e .env -- tsx ../../node_modules/drizzle-kit/bin.cjs migrate",
-    "db:migrate:ci": "tsx ../../node_modules/drizzle-kit/bin.cjs migrate",
+    "db:migrate:ci": "drizzle-kit migrate",
     "db:push": "dotenv -e .env -- tsx ../../node_modules/drizzle-kit/bin.cjs push",
     "db:studio": "dotenv -e .env -- tsx ../../node_modules/drizzle-kit/bin.cjs studio",
     "db:seed": "dotenv -e .env -- tsx src/db/seed.ts",
