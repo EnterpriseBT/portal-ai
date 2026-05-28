@@ -52,6 +52,7 @@ import { loadCredentials } from "./credentials.util.js";
 import {
   fetchFirstPage,
   fetchOnePage,
+  streamFetchOnePage,
 } from "./fetch-first-page.util.js";
 import {
   inferColumns,
@@ -344,32 +345,58 @@ async function syncOneEndpoint(
     wideProjection = null;
   }
 
-  let next = await iterator.next();
-  while (!next.done) {
-    const fetched = await fetchOnePage(
+  const ctx: UpsertContext = {
+    endpoint,
+    instance,
+    runStartedAt,
+    userId,
+    mappingsForNormalize,
+    wideProjection,
+    counts,
+  };
+
+  if (isStreamingEligible(endpoint)) {
+    const streamStartedAt = Date.now();
+    const page = await streamFetchOnePage(
       endpoint,
       baseUrl,
       auth,
-      credentials,
-      pagination,
-      next.value
+      credentials
     );
-
-    const ctx: UpsertContext = {
-      endpoint,
-      instance,
-      runStartedAt,
-      userId,
-      mappingsForNormalize,
-      wideProjection,
-      counts,
-    };
-
-    for (const record of fetched.records) {
-      await upsertRecord(record, ctx);
+    try {
+      for await (const record of page.recordsStream) {
+        await upsertRecord(record, ctx);
+      }
+    } finally {
+      logger.info(
+        {
+          event: "rest-api.sync.stream-page",
+          connectorInstanceId: instance.id,
+          connectorEntityId: endpoint.entity.id,
+          recordsEmitted: counts.recordIndex,
+          durationMs: Date.now() - streamStartedAt,
+        },
+        "Streaming page drained"
+      );
     }
+  } else {
+    let next = await iterator.next();
+    while (!next.done) {
+      const fetched = await fetchOnePage(
+        endpoint,
+        baseUrl,
+        auth,
+        credentials,
+        pagination,
+        next.value
+      );
 
-    next = await iterator.next(fetched);
+      for (const record of fetched.records) {
+        await upsertRecord(record, ctx);
+      }
+
+      next = await iterator.next(fetched);
+    }
   }
 
   // Watermark reap runs once per endpoint, AFTER all pages have synced.
@@ -386,6 +413,23 @@ async function syncOneEndpoint(
     unchanged: counts.unchanged,
     deleted: reaped.length,
   };
+}
+
+/**
+ * Eligibility predicate for the streaming JSON parse path. True when:
+ *   - The endpoint's pagination strategy is `"none"` — paginated
+ *     responses already keep memory bounded per page; the streaming
+ *     primitive only wraps the single-shot case.
+ *   - The endpoint's `transform` is empty — JSONata expressions need
+ *     the whole document in memory; the streaming path is records-path
+ *     only.
+ *
+ * Anything that returns `false` here flows through the existing
+ * buffered iterator path in `syncOneEndpoint`, unchanged.
+ */
+export function isStreamingEligible(endpoint: ApiEndpoint): boolean {
+  const transform = (endpoint.config.transform ?? "").trim();
+  return endpoint.config.pagination === "none" && transform.length === 0;
 }
 
 /**
