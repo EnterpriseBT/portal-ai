@@ -103,6 +103,16 @@ describe("BasicsStepUI — name + baseUrl", () => {
     expect(screen.getByLabelText(/connector name/i)).toHaveValue("Acme");
     expect(screen.getByLabelText(/base url/i)).toHaveValue("https://x.test");
 
+    // BasicsStepUI runs `useDialogAutoFocus` against the connector-name
+    // input with a 50 ms timer. Wait for that focus to land before we
+    // start typing — otherwise on a slow CI worker the deferred focus
+    // fires mid-`userEvent.type(baseUrlField, "Y")`, refocuses
+    // connector-name, and the keystroke lands in the wrong field
+    // (onBaseUrlChange sees 0 calls).
+    await waitFor(() =>
+      expect(screen.getByLabelText(/connector name/i)).toHaveFocus()
+    );
+
     await userEvent.type(screen.getByLabelText(/connector name/i), "X");
     expect(onNameChange).toHaveBeenCalled();
 
