@@ -365,7 +365,7 @@ TanStack Router with file-based routing in `apps/web/src/routes/`. Route tree au
 
 ## Theming
 
-Three themes via `@portalai/core`: Brand (default), Light, Dark. Persisted in localStorage. Fonts: Noto Sans (body), Playfair Display (headings), Cutive Mono (monospace).
+Two themes via `@portalai/core`: Brand (default, light) and Brand Dark. Persisted in localStorage. Fonts: Noto Sans (body), Playfair Display (headings), Cutive Mono (monospace).
 
 ## Environment URLs
 
