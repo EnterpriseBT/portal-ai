@@ -71,6 +71,18 @@ export const queryKeys = {
     impact: (id: string) =>
       [...queryKeys.fieldMappings.root, "impact", id] as const,
   },
+  apiEndpoints: {
+    root: ["apiEndpoints"] as const,
+    byInstance: (instanceId: string) =>
+      [...queryKeys.apiEndpoints.root, "byInstance", instanceId] as const,
+    byEntity: (instanceId: string, entityId: string) =>
+      [
+        ...queryKeys.apiEndpoints.root,
+        "byEntity",
+        instanceId,
+        entityId,
+      ] as const,
+  },
   entityRecords: {
     root: ["entityRecords"] as const,
     list: (connectorEntityId: string, params?: EntityRecordListRequestQuery) =>

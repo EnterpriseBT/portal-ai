@@ -299,4 +299,115 @@ export enum ApiCode {
   PORTAL_SQL_FORBIDDEN = "PORTAL_SQL_FORBIDDEN",
   /** Postgres' `statement_timeout` fired on a portal sql_query. */
   PORTAL_SQL_TIMEOUT = "PORTAL_SQL_TIMEOUT",
+
+  // REST API Connector (Phase 1)
+  /** Network error, DNS failure, timeout, or non-2xx response during a probe / sync fetch. */
+  REST_API_FETCH_FAILED = "REST_API_FETCH_FAILED",
+  /** Response body isn't valid JSON. */
+  REST_API_INVALID_JSON = "REST_API_INVALID_JSON",
+  /** Walking `recordsPath` returned `undefined`. */
+  REST_API_RECORDS_PATH_NOT_FOUND = "REST_API_RECORDS_PATH_NOT_FOUND",
+  /** Walking `recordsPath` returned a non-array value. */
+  REST_API_RECORDS_PATH_NOT_ARRAY = "REST_API_RECORDS_PATH_NOT_ARRAY",
+  /** Endpoint route lookup miss (entity not configured on this instance). */
+  REST_API_ENDPOINT_NOT_FOUND = "REST_API_ENDPOINT_NOT_FOUND",
+  /** `assertSyncEligibility` short-circuit — instance has no endpoints. */
+  REST_API_NO_ENDPOINTS_CONFIGURED = "REST_API_NO_ENDPOINTS_CONFIGURED",
+  /** Zod validation failure on endpoint config payload. */
+  REST_API_INVALID_CONFIG = "REST_API_INVALID_CONFIG",
+  /**
+   * Response body exceeded `MAX_RESPONSE_BYTES` (default 50 MB). Either
+   * `Content-Length` was already too high (fast path) or the streaming byte
+   * counter tripped (slow path). Tracked in #72 for streaming-parse v2.
+   */
+  REST_API_RESPONSE_TOO_LARGE = "REST_API_RESPONSE_TOO_LARGE",
+  /** Unhandled error in the rest-api endpoints router — 500 fallback. */
+  REST_API_OPERATION_FAILED = "REST_API_OPERATION_FAILED",
+  /**
+   * JSONata transform failed to parse or threw at runtime. Carried on
+   * ApiError.details as `{ kind: "parse" | "runtime", message: string }`.
+   * In probe context the pipeline catches this and returns a result with
+   * `degradation: "transform-failed"` + `transformError`. In sync context
+   * the error propagates as a normal adapter failure.
+   */
+  REST_API_TRANSFORM_FAILED = "REST_API_TRANSFORM_FAILED",
+  /**
+   * Authentication failure during sync, test-connection, or auth application:
+   *   - 401/403 response from upstream (502, raised by the adapter when
+   *     fetchJson reports an auth-bearing status).
+   *   - `config.auth.mode` and `credentials.mode` disagree (500 — the
+   *     instance is internally inconsistent; surfaced with
+   *     `details.mismatch: { configMode, credentialsMode }`).
+   *   - Credentials missing for a non-`none` mode at apply-time (500 —
+   *     surfaced with `details.reason: "missing"`).
+   */
+  REST_API_AUTH_FAILED = "REST_API_AUTH_FAILED",
+  /**
+   * `assertSyncEligibility` rejects a sync when the instance's
+   * `config.auth.mode` is non-`none` but credentials are missing,
+   * empty, or fail Zod parsing. Surfaced as 409 from the eligibility
+   * gate (route layer), not from the adapter itself.
+   */
+  REST_API_MISSING_CREDENTIALS = "REST_API_MISSING_CREDENTIALS",
+  /**
+   * Shared `POST /api/connector-instances/:id/test-connection` route
+   * resolved an adapter that doesn't implement `testConnection`. 404
+   * — lives outside the `REST_API_*` namespace because it's a generic
+   * route concern that any adapter can opt into.
+   */
+  TEST_CONNECTION_NOT_SUPPORTED = "TEST_CONNECTION_NOT_SUPPORTED",
+  /**
+   * A header / queryParam / bodyTemplate string references a `{{name}}`
+   * placeholder outside the closed set ({cursor, pageNumber}). Fired
+   * by `applyTemplate` at sync/test-connection time and by the
+   * frontend lint at save time. Closed-set substitution is what
+   * makes templating safe to ship without a sandbox.
+   */
+  REST_API_TEMPLATE_UNKNOWN_VARIABLE = "REST_API_TEMPLATE_UNKNOWN_VARIABLE",
+  /**
+   * Upstream returned 429 and `withRetry` exhausted its budget.
+   * Surfaced as 502 with `details.lastRetryAfter` (the final
+   * Retry-After header value, if any) + `details.attempts` so the UI
+   * can tell users "the upstream API is rate-limiting us, slow down".
+   */
+  REST_API_RATE_LIMITED = "REST_API_RATE_LIMITED",
+  /**
+   * A pagination iterator yielded more than `MAX_PAGES` pages without
+   * terminating — likely a misbehaving upstream that never returns
+   * an empty array / null cursor. Safety cap to prevent runaway
+   * fetches. 502.
+   */
+  REST_API_PAGINATION_EXCEEDED = "REST_API_PAGINATION_EXCEEDED",
+  /**
+   * The cursor strategy's `cursorResponsePath` doesn't exist on the
+   * first page's response body. On subsequent pages the missing path
+   * is interpreted as a termination signal; only the first page
+   * treats the absence as a configuration error. 502.
+   */
+  REST_API_CURSOR_NOT_FOUND = "REST_API_CURSOR_NOT_FOUND",
+  /**
+   * `linkBody` pagination — the configured `nextUrlPath` doesn't
+   * resolve on the first page's response body. Subsequent pages treat
+   * the missing path as a termination signal (upstream signaling
+   * end-of-list); the first-page case is a config error. 502.
+   */
+  REST_API_NEXT_URL_NOT_FOUND = "REST_API_NEXT_URL_NOT_FOUND",
+  /**
+   * `linkBody` pagination — the path resolved but the value isn't a
+   * string. Common cause: upstream changed schema and the response
+   * shape no longer matches the configured path. 502.
+   */
+  REST_API_NEXT_URL_INVALID = "REST_API_NEXT_URL_INVALID",
+  /**
+   * Pagination config is malformed (e.g. a cursor strategy with an
+   * empty `cursorResponsePath`). Surfaced by the route's validation
+   * pre-flight. 400.
+   */
+  REST_API_PAGINATION_INVALID = "REST_API_PAGINATION_INVALID",
+  /**
+   * Org-wide entity-key uniqueness violated. Connector entity keys must
+   * be unique per organization so `field_mapping.refEntityKey` resolves
+   * unambiguously.
+   */
+  CONNECTOR_ENTITY_KEY_CONFLICT = "CONNECTOR_ENTITY_KEY_CONFLICT",
 }

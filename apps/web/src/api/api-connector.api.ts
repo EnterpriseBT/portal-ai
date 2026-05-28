@@ -1,0 +1,170 @@
+/**
+ * REST API connector — endpoint CRUD SDK.
+ *
+ * Frontend wrapper around `/api/connector-instances/:instanceId/api-endpoints`.
+ * Caller composes invalidation via `useQueryClient` per the convention
+ * established by `connector-entities.api`.
+ */
+
+import type {
+  ApiAuthConfig,
+  ApiEndpointConfig,
+} from "@portalai/core/models";
+import type {
+  CreateApiEndpointColumnDraft,
+  DiscoverColumnsRequestBody,
+  DiscoverColumnsResult,
+  PreviewEndpointPageRequestBody,
+  PreviewEndpointPageResponse,
+  ProbeEndpointDraftRequestBody,
+} from "@portalai/core/contracts";
+import { useAuthMutation, useAuthQuery } from "../utils/api.util";
+import { queryKeys } from "./keys";
+import type { QueryOptions } from "./types";
+
+// ── Wire shapes ──────────────────────────────────────────────────────
+
+export interface ApiEndpointWire {
+  entity: { id: string; key: string; label: string };
+  config: ApiEndpointConfig;
+}
+
+export interface ApiEndpointsListPayload {
+  endpoints: ApiEndpointWire[];
+}
+
+export interface CreateApiEndpointBody {
+  key: string;
+  label: string;
+  config: ApiEndpointConfig;
+  /**
+   * Optional bulk column-mapping setup. Each entry materializes as a
+   * column_definition (find-or-create by `normalizedKey`) +
+   * field_mapping + wide-table reconcile in the server-side route.
+   * Omit to skip — the user can configure mappings later.
+   */
+  columns?: CreateApiEndpointColumnDraft[];
+}
+
+export interface PatchApiEndpointBody {
+  label?: string;
+  config?: Partial<ApiEndpointConfig>;
+}
+
+// Re-exported here so consumers don't have to reach into the deeper
+// @portalai/core path for the auth shape.
+export type { ApiAuthConfig };
+
+// ── URL builders ─────────────────────────────────────────────────────
+
+const baseUrl = (instanceId: string) =>
+  `/api/connector-instances/${encodeURIComponent(instanceId)}/api-endpoints`;
+
+// ── SDK surface ──────────────────────────────────────────────────────
+
+export const apiConnector = {
+  endpoints: {
+    list: (
+      instanceId: string,
+      options?: QueryOptions<ApiEndpointsListPayload>
+    ) =>
+      useAuthQuery<ApiEndpointsListPayload>(
+        queryKeys.apiEndpoints.byInstance(instanceId),
+        baseUrl(instanceId),
+        undefined,
+        options
+      ),
+
+    get: (
+      instanceId: string,
+      entityId: string,
+      options?: QueryOptions<ApiEndpointWire>
+    ) =>
+      useAuthQuery<ApiEndpointWire>(
+        queryKeys.apiEndpoints.byEntity(instanceId, entityId),
+        `${baseUrl(instanceId)}/${encodeURIComponent(entityId)}`,
+        undefined,
+        options
+      ),
+
+    create: (instanceId: string) =>
+      useAuthMutation<ApiEndpointWire, CreateApiEndpointBody>({
+        url: baseUrl(instanceId),
+        method: "POST",
+      }),
+
+    /**
+     * Same wire shape as `create`, but the instanceId is a mutation
+     * variable instead of being bound at hook-mount time. Used by the
+     * REST API workflow's commit step where the instanceId isn't
+     * known until `connectorInstances.create` resolves.
+     */
+    createForInstance: () =>
+      useAuthMutation<
+        ApiEndpointWire,
+        { instanceId: string; body: CreateApiEndpointBody }
+      >({
+        url: (vars) => baseUrl(vars.instanceId),
+        method: "POST",
+        body: (vars) => vars.body,
+      }),
+
+    update: (instanceId: string, entityId: string) =>
+      useAuthMutation<ApiEndpointWire, PatchApiEndpointBody>({
+        url: `${baseUrl(instanceId)}/${encodeURIComponent(entityId)}`,
+        method: "PATCH",
+      }),
+
+    delete: (instanceId: string, entityId: string) =>
+      useAuthMutation<{ ok: true }, void>({
+        url: `${baseUrl(instanceId)}/${encodeURIComponent(entityId)}`,
+        method: "DELETE",
+      }),
+
+    /**
+     * Phase-4 probe entry point: drives a single page-1 fetch + the
+     * heuristic + (optional) AI-assist inference pipeline, returns
+     * `DiscoverColumnsResult` (columns + samples + suggestions +
+     * source + degradation).
+     *
+     * Read-only — no cache invalidation. The route serves cached
+     * results within 60 seconds; `body.forceRefresh: true` busts the
+     * cache.
+     */
+    discoverColumns: (instanceId: string, entityId: string) =>
+      useAuthMutation<DiscoverColumnsResult, DiscoverColumnsRequestBody>({
+        url: `${baseUrl(instanceId)}/${encodeURIComponent(entityId)}/discover-columns`,
+        method: "POST",
+      }),
+
+    /**
+     * Pre-commit probe used by the REST API workflow's step 3
+     * ("Probe & review"). Synthesizes a probe context from the
+     * workflow's draft state (no persisted ConnectorInstance /
+     * ApiEndpoint) and returns the same `DiscoverColumnsResult` shape
+     * the post-commit `discoverColumns` route returns. Credentials in
+     * the body live for the request duration only — never persisted.
+     */
+    probeDraft: () =>
+      useAuthMutation<DiscoverColumnsResult, ProbeEndpointDraftRequestBody>({
+        url: "/api/connector-instances/probe-endpoint-draft",
+        method: "POST",
+      }),
+
+    /**
+     * Fetch the raw first-page response for a draft endpoint. Drives
+     * the Add-endpoint form's Preview pane — the user sees the
+     * formatted JSON, plus a derived "what would be extracted" pane
+     * driven by the current records-path / JSONata-transform value.
+     * Body is capped server-side at ~256 KB.
+     */
+    previewPage: () =>
+      useAuthMutation<
+        PreviewEndpointPageResponse,
+        PreviewEndpointPageRequestBody
+      >({
+        url: "/api/connector-instances/preview-endpoint-page",
+        method: "POST",
+      }),
+  },
+};

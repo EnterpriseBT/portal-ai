@@ -70,7 +70,11 @@ export function redactInstance(
 ): ConnectorInstanceApi | ConnectorInstanceWithDefinitionApi {
   const { instance, slug, connectorDefinition, syncEligible, identityWarnings } =
     args;
-  const accountInfo = projectAccountInfo(instance.credentials ?? null, slug);
+  const accountInfo = projectAccountInfo(
+    instance.credentials ?? null,
+    slug,
+    instance
+  );
 
   const { credentials: _omit, ...rest } = instance;
   const redacted = {
@@ -165,12 +169,18 @@ export function redactInstances(
 
 function projectAccountInfo(
   credentials: Record<string, unknown> | null | string | undefined,
-  slug: string
+  slug: string,
+  instance: InstanceLike
 ): PublicAccountInfo {
   // The repository may hand back a string in edge cases (rows fetched via
   // a path that bypasses the decrypt overrides). Treat as opaque — never
   // return string contents in `accountInfo` and never throw.
   if (typeof credentials === "string") return EMPTY_ACCOUNT_INFO;
   const adapter = ConnectorAdapterRegistry.find(slug);
-  return adapter?.toPublicAccountInfo?.(credentials ?? null) ?? EMPTY_ACCOUNT_INFO;
+  return (
+    adapter?.toPublicAccountInfo?.(
+      credentials ?? null,
+      instance as unknown as ConnectorInstance
+    ) ?? EMPTY_ACCOUNT_INFO
+  );
 }

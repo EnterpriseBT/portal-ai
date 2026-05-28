@@ -1,0 +1,207 @@
+/**
+ * Per-endpoint section in `ProbeReviewStep`. Drives the four states:
+ *
+ *   - **loading** — probe in flight (spinner)
+ *   - **success** — degradation banner + InferredColumnsTable
+ *   - **error** — probe failed; FormAlert + "Switch to manual" button
+ *     that flips the table to an empty manual state
+ *   - **empty** — probe returned 0 records; manual-entry affordance
+ *
+ * The container is intentionally thin: the parent (ProbeReviewStep)
+ * owns the per-endpoint column-row state and the probe trigger. This
+ * component renders whatever it's handed.
+ */
+
+import React from "react";
+
+import { Button, CircularProgress, Stack, Typography } from "@portalai/core/ui";
+
+import { FormAlert } from "../../components/FormAlert.component";
+import type { ServerError } from "../../utils/api.util";
+import type { FormErrors } from "../../utils/form-validation.util";
+import type { ColumnRowDraft } from "./utils/rest-api-validation.util";
+
+import { DegradationBannerUI } from "./DegradationBanner.component";
+import { InferredColumnsTableUI } from "./InferredColumnsTable.component";
+import type { SearchResult } from "../../api/types";
+
+export type EndpointReviewState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | {
+      kind: "success";
+      degradation:
+        | "llm-failed"
+        | "llm-disabled"
+        | "transform-failed"
+        | null;
+      recordsScanned: number;
+      transformError?: { kind: "parse" | "runtime"; message: string } | null;
+    }
+  | { kind: "empty" }
+  | { kind: "error"; serverError: ServerError };
+
+export interface EndpointColumnReviewUIProps {
+  endpointKey: string;
+  endpointLabel: string;
+  state: EndpointReviewState;
+  rows: ColumnRowDraft[];
+  errors: FormErrors;
+  onChange: (index: number, patch: Partial<ColumnRowDraft>) => void;
+  onAdoptSuggestion: (index: number) => void;
+  onAddRow: () => void;
+  onRemoveRow: (index: number) => void;
+  onReprobe?: () => void;
+  /** Probe-trigger affordance disabled when no entityId is wired in
+   *  the create flow. The label still renders so the affordance is
+   *  visible; clicking it does nothing. */
+  reprobeDisabled?: boolean;
+  reprobeDisabledHint?: string;
+  /** Forwarded to InferredColumnsTableUI to power the column-definition picker. */
+  columnDefinitionSearch: SearchResult;
+}
+
+export const EndpointColumnReviewUI: React.FC<EndpointColumnReviewUIProps> = ({
+  endpointKey,
+  endpointLabel,
+  state,
+  rows,
+  errors,
+  onChange,
+  onAdoptSuggestion,
+  onAddRow,
+  onRemoveRow,
+  onReprobe,
+  reprobeDisabled,
+  columnDefinitionSearch,
+  reprobeDisabledHint,
+}) => (
+  <Stack
+    spacing={1.5}
+    sx={{
+      border: 1,
+      borderColor: "divider",
+      borderRadius: 1,
+      p: 2,
+      // Allow children (notably the InferredColumnsTable) to shrink
+      // within the modal's flex layout. DataTable provides its own
+      // TableContainer for horizontal scroll on overflow, so we don't
+      // clip here — a clip would also chop SuggestionChip tooltips
+      // and any popovers anchored inside.
+      minWidth: 0,
+    }}
+    data-testid={`endpoint-review-${endpointKey}`}
+  >
+    <Stack direction="row" alignItems="center" spacing={1}>
+      <Stack flexGrow={1}>
+        <Typography variant="subtitle1">{endpointLabel}</Typography>
+        <Typography variant="caption" color="text.secondary">
+          {endpointKey}
+        </Typography>
+      </Stack>
+      {onReprobe ? (
+        <Button
+          type="button"
+          size="small"
+          variant="outlined"
+          onClick={onReprobe}
+          disabled={reprobeDisabled || state.kind === "loading"}
+          aria-label={`Re-probe ${endpointKey}`}
+          title={reprobeDisabled ? reprobeDisabledHint : undefined}
+        >
+          Re-probe
+        </Button>
+      ) : null}
+    </Stack>
+
+    {state.kind === "loading" ? (
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1}
+        aria-live="polite"
+      >
+        <CircularProgress size={16} />
+        <Typography variant="body2" color="text.secondary">
+          Probing endpoint…
+        </Typography>
+      </Stack>
+    ) : null}
+
+    {state.kind === "success" ? (
+      <>
+        <DegradationBannerUI
+          degradation={state.degradation}
+          transformError={state.transformError ?? null}
+        />
+        <Typography variant="caption" color="text.secondary">
+          Scanned {state.recordsScanned} record
+          {state.recordsScanned === 1 ? "" : "s"}.
+        </Typography>
+        <InferredColumnsTableUI
+          rows={rows}
+          onChange={onChange}
+          onAdoptSuggestion={onAdoptSuggestion}
+          onAddRow={onAddRow}
+          onRemoveRow={onRemoveRow}
+          errors={errors}
+          columnDefinitionSearch={columnDefinitionSearch}
+        />
+      </>
+    ) : null}
+
+    {state.kind === "empty" ? (
+      <Stack spacing={1}>
+        <Typography variant="body2" color="text.secondary">
+          Probe returned no records. Add columns manually below.
+        </Typography>
+        <InferredColumnsTableUI
+          rows={rows}
+          onChange={onChange}
+          onAdoptSuggestion={onAdoptSuggestion}
+          onAddRow={onAddRow}
+          onRemoveRow={onRemoveRow}
+          errors={errors}
+          columnDefinitionSearch={columnDefinitionSearch}
+        />
+      </Stack>
+    ) : null}
+
+    {state.kind === "error" ? (
+      <Stack spacing={1}>
+        <FormAlert serverError={state.serverError} />
+        <Typography variant="body2" color="text.secondary">
+          The probe didn&rsquo;t complete. You can still configure columns
+          manually below.
+        </Typography>
+        <InferredColumnsTableUI
+          rows={rows}
+          onChange={onChange}
+          onAdoptSuggestion={onAdoptSuggestion}
+          onAddRow={onAddRow}
+          onRemoveRow={onRemoveRow}
+          errors={errors}
+          columnDefinitionSearch={columnDefinitionSearch}
+        />
+      </Stack>
+    ) : null}
+
+    {state.kind === "idle" ? (
+      <Stack spacing={1}>
+        <Typography variant="body2" color="text.secondary">
+          Add at least one endpoint and we&rsquo;ll probe it for inferred
+          columns. You can also add columns manually.
+        </Typography>
+        <InferredColumnsTableUI
+          rows={rows}
+          onChange={onChange}
+          onAdoptSuggestion={onAdoptSuggestion}
+          onAddRow={onAddRow}
+          onRemoveRow={onRemoveRow}
+          errors={errors}
+          columnDefinitionSearch={columnDefinitionSearch}
+        />
+      </Stack>
+    ) : null}
+  </Stack>
+);

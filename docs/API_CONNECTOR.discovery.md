@@ -37,6 +37,8 @@ Spreadsheet connectors defer schema discovery to the **layout-plan workflow** �
 
 One connector instance owns one API (base URL + auth) and many entities, each backed by its own endpoint. Mirrors the cloud-spreadsheet pattern (one Google account → many sheets), avoids re-authenticating per endpoint, and lets users add endpoints to an existing API without recreating credentials.
 
+**HTTP methods:** v1 supports `GET` and `POST` only. `POST` covers the common case of read endpoints that take a JSON body for filters/queries (more than a few enterprise APIs work this way). `PUT`, `PATCH`, `DELETE`, and `HEAD` are out of scope — they're either writes (which v1 doesn't ship) or don't return records.
+
 *Alternative considered:* one-instance-per-endpoint. Rejected — auth duplication, and awkward when the user wants to ingest multiple endpoints of the same API.
 
 ### 2. Column discovery — hybrid probe-then-review
@@ -59,9 +61,11 @@ All four are non-interactive: credentials are pasted into the connector-add moda
 
 ### 4. Request templating — fixed substitution variables
 
-Headers, query params, and body templates accept three placeholders — `{{lastSyncAt}}`, `{{cursor}}`, `{{pageNumber}}` — substituted by the adapter per page. No arbitrary expressions; the variable set is closed.
+Headers, query params, and body templates accept two placeholders — `{{cursor}}` and `{{pageNumber}}` — substituted by the adapter per page. No arbitrary expressions; the variable set is closed.
 
 The closed set is what makes this safe to ship without a sandbox: every substitution is a string interpolation against a value the adapter controls, not user-supplied code.
+
+`{{lastSyncAt}}` is **not** in the v1 set — v1 always does a full re-fetch (see decision 8). It returns in v2 alongside incremental fetching.
 
 ### 5. Pagination — all four strategies, per-endpoint
 
@@ -75,13 +79,22 @@ One row per `connector_entity_id`. Strict columns for `path`, `method`, `headers
 
 Respect `Retry-After` on `429`. Exponential backoff `250ms → 8s`, max 5 retries on `5xx`. The adapter owns this internally; no new queue config. Per-instance configurable rate cap is a v2 feature.
 
-### 8. Incremental sync — opt-in per endpoint
+### 8. Sync semantics — full re-fetch + identifier-based reconciliation
 
-If the endpoint supports a "since" filter, the user templates `{{lastSyncAt}}` into the query or body. If not, full re-fetch every sync. The checksum diff in `entity_records` produces correct `created / updated / unchanged` counts in either case, so the choice is a performance lever, not a correctness one.
+Every sync re-fetches the endpoint in full; v1 does no incremental fetching. Reconciliation against existing `entity_records` depends on whether the entity's `idField` (decision 6) is set:
 
-### 9. Sync eligibility — auth present + ≥1 endpoint + not in flight
+- **`idField` set** — each incoming record's value at `idField` becomes its `sourceId`. The existing `entity_records.sourceId` unique-per-entity constraint drives `created / updated / unchanged / deleted` accounting through the standard checksum diff. Records present in the prior sync but missing from the new fetch are soft-deleted.
+- **`idField` unset** — full replacement. All existing records for the entity are soft-deleted; all incoming records are inserted fresh. The sync result reports the old rows as `deleted` and the new rows as `created`. Use this for endpoints with no stable per-record identifier.
 
-`adapter.assertSyncEligibility` gates on: credentials present, at least one endpoint configured, no in-flight sync. The "no in-flight" check piggybacks on the existing entity-lock model (see `feedback_connector_domain_model`).
+Incremental fetching (`{{lastSyncAt}}` filters, since-cursors) is a v2 follow-up.
+
+### 9. Sync eligibility — endpoint + credentials (for the configured mode) + not in flight
+
+`adapter.assertSyncEligibility` gates on, in order:
+
+1. **≥ 1 endpoint configured** on the instance. An instance with no endpoints has nothing to sync.
+2. **Credentials present for the configured auth mode.** If the mode is `none`, this check is skipped. If the mode is `apiKey` / `bearer` / `basic`, the corresponding fields in `connectorInstances.credentials` must be populated.
+3. **No in-flight sync** for this instance. Piggybacks on the existing entity-lock model (see `feedback_connector_domain_model`).
 
 ### 10. Record origin — `sync`
 
@@ -107,6 +120,7 @@ New code surface: one adapter + one auth-helper module + one workflow + one `api
 - **Webhook-driven sync.** v1 is poll-only via the existing `connector_sync` job. Webhooks would mean a new `api_webhook_received` job type, an HMAC-verification surface, and inbound HTTP routing — large enough to be its own ticket.
 - **Push capability** (writing records back to the API). Out of scope; the connector ships `read + sync` only.
 - **Schema-drift UI** specifically for API endpoints. The hybrid probe (decision 2) covers it on the way in; re-probe on drift is a follow-up.
+- **Streaming JSON parse for huge unpaginated responses.** v1 caps single-response payloads at 50 MB via `MAX_RESPONSE_BYTES` and fast-fails with `REST_API_RESPONSE_TOO_LARGE`, nudging users toward pagination. Streaming parse to lift the cap is tracked separately as [#72](https://github.com/EnterpriseBT/portal-ai/issues/72) — borrows the row-async pattern from the spreadsheet parser (see `docs/SPREADSHEET_PARSER_ROW_ASYNC.discovery.md`).
 - **GraphQL / gRPC / SOAP** endpoints. v1 is JSON REST only.
 
 ## Next step

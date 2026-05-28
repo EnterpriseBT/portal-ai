@@ -2,23 +2,42 @@ import { describe, it, expect } from "@jest/globals";
 import { z } from "zod";
 
 import {
-  LayoutPlanSchema,
-  RegionSchema,
+  ApiColumnSuggestionSchema,
+  ApiEndpointEntityWireSchema,
+  ApiEndpointListResponsePayloadSchema,
+  ApiEndpointWireSchema,
   ColumnBindingSchema,
-  SkipRuleSchema,
+  CreateApiEndpointRequestBodySchema,
+  DeleteApiEndpointResponsePayloadSchema,
+  DiscoverColumnsRequestBodySchema,
+  DiscoverColumnsResultSchema,
+  DiscoveredColumnWithSuggestionSchema,
+  DriftReportSchema,
   HeaderStrategySchema,
   IdentityStrategySchema,
-  WarningSchema,
-  DriftReportSchema,
   InterpretInputSchema,
-  RegionHintSchema,
   InterpretRequestBodySchema,
   InterpretResponsePayloadSchema,
-  LayoutPlanCommitResultSchema,
-  LayoutPlanInterpretDraftResponsePayloadSchema,
   LayoutPlanCommitDraftRequestBodySchema,
   LayoutPlanCommitDraftResponsePayloadSchema,
+  LayoutPlanCommitResultSchema,
+  LayoutPlanInterpretDraftResponsePayloadSchema,
+  LayoutPlanSchema,
+  PatchApiEndpointRequestBodySchema,
+  RegionHintSchema,
+  RegionSchema,
+  SkipRuleSchema,
+  TestConnectionRequestBodySchema,
+  TestConnectionResultSchema,
+  WarningSchema,
 } from "@portalai/core/contracts";
+import {
+  ApiAuthConfigSchema,
+  ApiCredentialsSchema,
+  ApiEndpointConfigSchema,
+  PaginationConfigSchema,
+  RestApiInstanceConfigSchema,
+} from "@portalai/core/models";
 
 import { swaggerSpec } from "../../config/swagger.config.js";
 
@@ -39,6 +58,24 @@ const REQUIRED_SCHEMA_NAMES = [
   "LayoutPlanInterpretDraftResponsePayload",
   "LayoutPlanCommitDraftRequestBody",
   "LayoutPlanCommitDraftResponsePayload",
+  // REST API connector schemas — phase 1-4
+  "ApiAuthConfig",
+  "ApiCredentials",
+  "PaginationConfig",
+  "RestApiInstanceConfig",
+  "ApiEndpointConfig",
+  "ApiEndpointEntity",
+  "ApiEndpoint",
+  "ApiEndpointListResponse",
+  "CreateApiEndpointRequestBody",
+  "PatchApiEndpointRequestBody",
+  "DeleteApiEndpointResponse",
+  "ApiColumnSuggestion",
+  "DiscoveredColumnWithSuggestion",
+  "DiscoverColumnsResult",
+  "DiscoverColumnsRequestBody",
+  "TestConnectionRequestBody",
+  "TestConnectionResult",
 ] as const;
 
 interface OpenApiSchemaBag {
@@ -88,6 +125,26 @@ describe("swagger spec — spreadsheet-parsing schema registration", () => {
       "LayoutPlanCommitDraftResponsePayload",
       LayoutPlanCommitDraftResponsePayloadSchema,
     ],
+    ["ApiAuthConfig", ApiAuthConfigSchema],
+    ["ApiCredentials", ApiCredentialsSchema],
+    ["PaginationConfig", PaginationConfigSchema],
+    ["RestApiInstanceConfig", RestApiInstanceConfigSchema],
+    ["ApiEndpointConfig", ApiEndpointConfigSchema],
+    ["ApiEndpointEntity", ApiEndpointEntityWireSchema],
+    ["ApiEndpoint", ApiEndpointWireSchema],
+    ["ApiEndpointListResponse", ApiEndpointListResponsePayloadSchema],
+    ["CreateApiEndpointRequestBody", CreateApiEndpointRequestBodySchema],
+    ["PatchApiEndpointRequestBody", PatchApiEndpointRequestBodySchema],
+    ["DeleteApiEndpointResponse", DeleteApiEndpointResponsePayloadSchema],
+    ["ApiColumnSuggestion", ApiColumnSuggestionSchema],
+    [
+      "DiscoveredColumnWithSuggestion",
+      DiscoveredColumnWithSuggestionSchema,
+    ],
+    ["DiscoverColumnsResult", DiscoverColumnsResultSchema],
+    ["DiscoverColumnsRequestBody", DiscoverColumnsRequestBodySchema],
+    ["TestConnectionRequestBody", TestConnectionRequestBodySchema],
+    ["TestConnectionResult", TestConnectionResultSchema],
   ];
 
   it.each(pairs)(
@@ -179,6 +236,112 @@ describe("swagger spec — layout-plan endpoints", () => {
       };
     };
     expect(conflict.content?.["application/json"]?.schema?.allOf).toBeDefined();
+  });
+});
+
+describe("swagger spec — REST API connector endpoints", () => {
+  const spec = swaggerSpec as OpenApiSchemaBag;
+  const paths = spec.paths ?? {};
+
+  it.each([
+    [
+      "/api/connector-instances/{instanceId}/api-endpoints",
+      ["get", "post"] as const,
+    ],
+    [
+      "/api/connector-instances/{instanceId}/api-endpoints/{entityId}",
+      ["get", "patch", "delete"] as const,
+    ],
+    [
+      "/api/connector-instances/{instanceId}/api-endpoints/{entityId}/discover-columns",
+      ["post"] as const,
+    ],
+    [
+      "/api/connector-instances/{id}/test-connection",
+      ["post"] as const,
+    ],
+  ])("registers %s under paths with the expected verbs", (path, verbs) => {
+    const entry = paths[path] as Record<string, unknown> | undefined;
+    expect(entry).toBeDefined();
+    for (const v of verbs) {
+      expect(entry?.[v]).toBeDefined();
+    }
+  });
+
+  it("POST /api-endpoints accepts CreateApiEndpointRequestBody and returns ApiEndpoint", () => {
+    const entry = paths[
+      "/api/connector-instances/{instanceId}/api-endpoints"
+    ] as {
+      post?: {
+        requestBody?: { content: Record<string, { schema: unknown }> };
+        responses?: Record<string, { content?: Record<string, { schema: unknown }> }>;
+      };
+    };
+    expect(entry.post?.requestBody?.content["application/json"].schema).toEqual(
+      { $ref: "#/components/schemas/CreateApiEndpointRequestBody" }
+    );
+    const body201 =
+      entry.post?.responses?.["201"]?.content?.["application/json"]?.schema;
+    expect(body201).toBeDefined();
+  });
+
+  it("POST .../discover-columns accepts DiscoverColumnsRequestBody and returns DiscoverColumnsResult", () => {
+    const entry = paths[
+      "/api/connector-instances/{instanceId}/api-endpoints/{entityId}/discover-columns"
+    ] as {
+      post?: {
+        requestBody?: { content: Record<string, { schema: unknown }> };
+        responses?: Record<string, unknown>;
+      };
+    };
+    expect(entry.post?.requestBody?.content["application/json"].schema).toEqual(
+      { $ref: "#/components/schemas/DiscoverColumnsRequestBody" }
+    );
+    expect(entry.post?.responses?.["200"]).toBeDefined();
+    expect(entry.post?.responses?.["404"]).toBeDefined();
+    expect(entry.post?.responses?.["502"]).toBeDefined();
+  });
+
+  it("POST /test-connection accepts TestConnectionRequestBody and returns TestConnectionResult", () => {
+    const entry = paths[
+      "/api/connector-instances/{id}/test-connection"
+    ] as {
+      post?: {
+        requestBody?: { content: Record<string, { schema: unknown }> };
+        responses?: Record<string, unknown>;
+      };
+    };
+    expect(entry.post?.requestBody?.content["application/json"].schema).toEqual(
+      { $ref: "#/components/schemas/TestConnectionRequestBody" }
+    );
+    expect(entry.post?.responses?.["200"]).toBeDefined();
+    expect(entry.post?.responses?.["404"]).toBeDefined();
+  });
+
+  it("every registered REST API endpoint route declares a tag and security scheme", () => {
+    const routes: Array<[string, "get" | "post" | "patch" | "delete"]> = [
+      ["/api/connector-instances/{instanceId}/api-endpoints", "get"],
+      ["/api/connector-instances/{instanceId}/api-endpoints", "post"],
+      ["/api/connector-instances/{instanceId}/api-endpoints/{entityId}", "get"],
+      ["/api/connector-instances/{instanceId}/api-endpoints/{entityId}", "patch"],
+      ["/api/connector-instances/{instanceId}/api-endpoints/{entityId}", "delete"],
+      [
+        "/api/connector-instances/{instanceId}/api-endpoints/{entityId}/discover-columns",
+        "post",
+      ],
+    ];
+    for (const [path, verb] of routes) {
+      const entry = (paths[path] as Record<string, unknown> | undefined)?.[
+        verb
+      ] as
+        | {
+            tags?: string[];
+            security?: Array<Record<string, unknown>>;
+          }
+        | undefined;
+      expect(entry?.tags).toContain("REST API Endpoints");
+      expect(entry?.security?.[0]).toHaveProperty("bearerAuth");
+    }
   });
 });
 

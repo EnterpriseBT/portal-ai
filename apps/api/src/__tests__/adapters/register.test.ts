@@ -8,10 +8,15 @@ describe("registerAdapters", () => {
     ConnectorAdapterRegistry.clear();
   });
 
-  it("registers all three adapter slugs", () => {
+  it("registers all four adapter slugs", () => {
     registerAdapters();
     const slugs = ConnectorAdapterRegistry.slugs().sort();
-    expect(slugs).toEqual(["google-sheets", "microsoft-excel", "sandbox"]);
+    expect(slugs).toEqual([
+      "google-sheets",
+      "microsoft-excel",
+      "rest-api",
+      "sandbox",
+    ]);
   });
 
   it("microsoft-excel adapter exposes syncInstance + assertSyncEligibility", () => {
@@ -19,6 +24,14 @@ describe("registerAdapters", () => {
     const adapter = ConnectorAdapterRegistry.get("microsoft-excel");
     expect(typeof adapter.syncInstance).toBe("function");
     expect(typeof adapter.assertSyncEligibility).toBe("function");
+    expect(typeof adapter.toPublicAccountInfo).toBe("function");
+  });
+
+  it("rest-api adapter exposes syncInstance + testConnection + toPublicAccountInfo", () => {
+    registerAdapters();
+    const adapter = ConnectorAdapterRegistry.get("rest-api");
+    expect(typeof adapter.syncInstance).toBe("function");
+    expect(typeof adapter.testConnection).toBe("function");
     expect(typeof adapter.toPublicAccountInfo).toBe("function");
   });
 });

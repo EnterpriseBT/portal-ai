@@ -31,6 +31,7 @@ const {
   organizationToolpacks,
   stationInstances,
   wideTableColumns,
+  apiEndpointConfigs,
   portalResults,
   portalMessages,
   portals,
@@ -165,6 +166,7 @@ export async function teardownOrg(db: Db): Promise<void> {
   await db.delete(entityRecords);
   await db.delete(wideTableColumns);
   await db.delete(fieldMappings);
+  await db.delete(apiEndpointConfigs);
   await db.delete(connectorEntities);
   await db.delete(columnDefinitions);
   await db.delete(jobs);

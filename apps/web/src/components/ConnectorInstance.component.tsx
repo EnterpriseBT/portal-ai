@@ -109,12 +109,15 @@ export const ConnectorInstanceCardUI = ({
             borderRadius: 1,
             bgcolor: "white",
             p: 0.5,
+            // Connector icons come in mixed aspect ratios (square logos for
+            // some connectors, wider PNGs for others). `contain` letterboxes
+            // the image inside the fixed 40×40 frame; `objectPosition` pins
+            // the letterboxed asset to the avatar center so list rows align.
+            "& .MuiAvatar-img": {
+              objectFit: "contain",
+              objectPosition: "center",
+            },
           }}
-          // Connector icons come in mixed aspect ratios (square logos for
-          // some connectors, wider PNGs for others). `contain` letterboxes
-          // the image inside the fixed 40×40 frame so list rows align,
-          // while preserving the image's native ratio (no stretch, no crop).
-          slotProps={{ img: { style: { objectFit: "contain" } } }}
         >
           {ci.name.charAt(0).toUpperCase()}
         </Avatar>

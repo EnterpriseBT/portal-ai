@@ -27,3 +27,4 @@ export * from "./connector-instance-layout-plans.repository.js";
 export * from "./file-uploads.repository.js";
 export * from "./wide-table-columns.repository.js";
 export * from "./wide-table.repository.js";
+export * from "./api-endpoints.repository.js";

@@ -82,10 +82,12 @@ import type { stationToolpacks } from "./station-toolpacks.table.js";
 import type { organizationToolpacks } from "./organization-toolpacks.table.js";
 import type { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
 import type { wideTableColumns } from "./wide-table-columns.table.js";
+import type { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
 import type { InterpretationTrace, LayoutPlan } from "@portalai/core/contracts";
 import type {
   ConnectorInstanceLayoutPlanSelect,
   WideTableColumnSelect,
+  ApiEndpointConfigSelect,
 } from "./zod.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -579,3 +581,17 @@ const _wtcInferredToSelect: _WtcInferredToSelect = true;
 
 type _WtcSelectToInferred = IsAssignable<WideTableColumnSelect, _WtcInferredRow>;
 const _wtcSelectToInferred: _WtcSelectToInferred = true;
+
+// ── ApiEndpointConfig ────────────────────────────────────────────────
+//
+// API-internal table — no domain model in `@portalai/core`. Bidirectional
+// assertions between the Drizzle inferred row and the drizzle-zod
+// derived select schema.
+
+type _AecInferredRow = InferSelectModel<typeof apiEndpointConfigs>;
+
+type _AecInferredToSelect = IsAssignable<_AecInferredRow, ApiEndpointConfigSelect>;
+const _aecInferredToSelect: _AecInferredToSelect = true;
+
+type _AecSelectToInferred = IsAssignable<ApiEndpointConfigSelect, _AecInferredRow>;
+const _aecSelectToInferred: _AecSelectToInferred = true;

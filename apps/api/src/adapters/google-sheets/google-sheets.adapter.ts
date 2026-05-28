@@ -70,6 +70,8 @@ async function assertSyncEligibility(
 export const googleSheetsAdapter: ConnectorAdapter = {
   toPublicAccountInfo(
     credentials: Record<string, unknown> | null
+    // Google Sheets identifies the account via the OAuth-bound email
+    // in `credentials`; the second `instance` arg is unused.
   ): PublicAccountInfo {
     if (!credentials) return EMPTY_ACCOUNT_INFO;
     const email = credentials.googleAccountEmail;

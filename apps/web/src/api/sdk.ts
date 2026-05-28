@@ -21,6 +21,7 @@ import { portals } from "./portals.api";
 import { sse } from "./sse.api";
 import { stations } from "./stations.api";
 import { toolpacks } from "./toolpacks.api";
+import { apiConnector } from "./api-connector.api";
 
 export { queryKeys } from "./keys";
 
@@ -48,4 +49,5 @@ export const sdk = {
   sse,
   stations,
   toolpacks,
+  apiConnector,
 } as const;

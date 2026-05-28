@@ -24,6 +24,8 @@ import {
   type ConnectorInstanceGetResponsePayload,
   ConnectorInstanceCreateRequestBodySchema,
   ConnectorInstancePatchRequestBodySchema,
+  PreviewEndpointPageRequestBodySchema,
+  ProbeEndpointDraftRequestBodySchema,
   type ConnectorInstanceCreateResponsePayload,
   type ConnectorInstanceApi,
   type ConnectorInstanceWithDefinitionApi,
@@ -38,6 +40,8 @@ import {
   redactInstances,
 } from "../services/connector-instances.service.js";
 import { SyncService } from "../services/sync.service.js";
+import type { TestConnectionParams } from "../adapters/adapter.interface.js";
+import { restApiAdapter } from "../adapters/rest-api/rest-api.adapter.js";
 
 const logger = createLogger({ module: "connector-instance" });
 
@@ -221,8 +225,8 @@ connectorInstanceRouter.get(
       );
       const definitions = definitionIds.length
         ? await DbService.repository.connectorDefinitions.findMany(
-            inArray(connectorDefinitions.id, definitionIds)
-          )
+          inArray(connectorDefinitions.id, definitionIds)
+        )
         : [];
       const slugByDefinitionId = new Map(
         definitions.map((d) => [d.id, d.slug])
@@ -251,12 +255,12 @@ connectorInstanceRouter.get(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
-              error instanceof Error
-                ? error.message
-                : "Failed to list connector instances"
-            )
+            500,
+            ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to list connector instances"
+          )
       );
     }
   }
@@ -348,19 +352,19 @@ connectorInstanceRouter.get(
       const [syncEligible, identityWarnings] =
         supportsSync && connectorDefinition
           ? await Promise.all([
-              computeSyncEligible(
-                connectorInstance as unknown as Parameters<
-                  typeof computeSyncEligible
-                >[0],
-                connectorDefinition.slug
-              ),
-              computeIdentityWarnings(
-                connectorInstance as unknown as Parameters<
-                  typeof computeIdentityWarnings
-                >[0],
-                connectorDefinition.slug
-              ),
-            ])
+            computeSyncEligible(
+              connectorInstance as unknown as Parameters<
+                typeof computeSyncEligible
+              >[0],
+              connectorDefinition.slug
+            ),
+            computeIdentityWarnings(
+              connectorInstance as unknown as Parameters<
+                typeof computeIdentityWarnings
+              >[0],
+              connectorDefinition.slug
+            ),
+          ])
           : [undefined, undefined];
 
       return HttpService.success<ConnectorInstanceGetResponsePayload>(res, {
@@ -383,12 +387,12 @@ connectorInstanceRouter.get(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
-              error instanceof Error
-                ? error.message
-                : "Failed to fetch connector instance"
-            )
+            500,
+            ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to fetch connector instance"
+          )
       );
     }
   }
@@ -481,12 +485,12 @@ connectorInstanceRouter.get(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
-              error instanceof Error
-                ? error.message
-                : "Failed to fetch connector instance impact"
-            )
+            500,
+            ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to fetch connector instance impact"
+          )
       );
     }
   }
@@ -551,12 +555,12 @@ connectorInstanceRouter.get(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.JOB_FETCH_FAILED,
-              error instanceof Error
-                ? error.message
-                : "Failed to fetch running jobs"
-            )
+            500,
+            ApiCode.JOB_FETCH_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to fetch running jobs"
+          )
       );
     }
   }
@@ -762,12 +766,184 @@ connectorInstanceRouter.post(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.CONNECTOR_INSTANCE_CREATE_FAILED,
-              error instanceof Error
-                ? error.message
-                : "Failed to create connector instance"
-            )
+            500,
+            ApiCode.CONNECTOR_INSTANCE_CREATE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to create connector instance"
+          )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/connector-instances/probe-endpoint-draft:
+ *   post:
+ *     tags:
+ *       - REST API Endpoints
+ *     summary: Probe + infer columns for a draft (pre-commit) endpoint
+ *     description: >
+ *       Pure-compute pre-commit probe used by the REST API workflow's
+ *       step 3 ("Probe & review"). Synthesizes a ProbeContext from the
+ *       request body (no persisted ConnectorInstance or ApiEndpoint
+ *       row) and runs the same inner pipeline as the post-commit
+ *       discoverColumns route — fetch page 1, slice to 25 records,
+ *       heuristic inference, optional AI-assist classifier, optional
+ *       JSONata transform. Credentials live for the request duration
+ *       only and are never persisted. The 60-second in-process probe
+ *       cache is keyed on a canonical hash of all probe-relevant
+ *       inputs so back / forward navigation in the workflow within
+ *       the cache window is free.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ProbeEndpointDraftRequestBody'
+ *     responses:
+ *       200:
+ *         description: Probe completed (possibly with degradation)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, payload]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/DiscoverColumnsResult'
+ *       400:
+ *         description: Invalid body (Zod validation failure)
+ *       500:
+ *         description: Internal server error
+ */
+connectorInstanceRouter.post(
+  "/probe-endpoint-draft",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { organizationId } = req.application!.metadata;
+
+      const parsed = ProbeEndpointDraftRequestBodySchema.safeParse(
+        req.body ?? {}
+      );
+      if (!parsed.success) {
+        throw new ApiError(
+          400,
+          ApiCode.REST_API_INVALID_CONFIG,
+          `Invalid probe-endpoint-draft body`,
+          { issues: parsed.error.issues }
+        );
+      }
+
+      const result = await restApiAdapter.probeEndpointDraft(
+        organizationId,
+        parsed.data
+      );
+      return HttpService.success(res, result, 200);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "probe-endpoint-draft failed"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+            500,
+            ApiCode.REST_API_OPERATION_FAILED,
+            `Failed to probe endpoint draft: ${(error as Error).message}`
+          )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/connector-instances/preview-endpoint-page:
+ *   post:
+ *     tags:
+ *       - REST API Endpoints
+ *     summary: Fetch the raw first-page response for a draft endpoint
+ *     description: >
+ *       Companion to probe-endpoint-draft for the Add-endpoint form's
+ *       Preview pane. Fetches page 1 against the draft endpoint config
+ *       and returns the raw response body (capped at 256 KB) so the
+ *       form can render formatted JSON + drive client-side feedback
+ *       on the records-path / JSONata-transform configuration. Skips
+ *       inference and classification — strict subset of the probe
+ *       pipeline. Credentials live for the request duration only.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/PreviewEndpointPageRequestBody'
+ *     responses:
+ *       200:
+ *         description: Page 1 fetched
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, payload]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/PreviewEndpointPageResponse'
+ *       400:
+ *         description: Invalid body (Zod validation failure)
+ *       500:
+ *         description: Internal server error
+ */
+connectorInstanceRouter.post(
+  "/preview-endpoint-page",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { organizationId } = req.application!.metadata;
+
+      const parsed = PreviewEndpointPageRequestBodySchema.safeParse(
+        req.body ?? {}
+      );
+      if (!parsed.success) {
+        throw new ApiError(
+          400,
+          ApiCode.REST_API_INVALID_CONFIG,
+          `Invalid preview-endpoint-page body`,
+          { issues: parsed.error.issues }
+        );
+      }
+
+      const result = await restApiAdapter.previewEndpointPage(
+        organizationId,
+        parsed.data
+      );
+      return HttpService.success(res, result, 200);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "preview-endpoint-page failed"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+            500,
+            ApiCode.REST_API_OPERATION_FAILED,
+            `Failed to preview endpoint: ${(error as Error).message}`
+          )
       );
     }
   }
@@ -902,12 +1078,12 @@ connectorInstanceRouter.delete(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.CONNECTOR_INSTANCE_DELETE_FAILED,
-              error instanceof Error
-                ? error.message
-                : "Failed to delete connector instance"
-            )
+            500,
+            ApiCode.CONNECTOR_INSTANCE_DELETE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to delete connector instance"
+          )
       );
     }
   }
@@ -1057,17 +1233,17 @@ connectorInstanceRouter.patch(
       logger.info({ id }, "Connector instance updated");
       const updatedDefinition = updated
         ? await DbService.repository.connectorDefinitions.findById(
-            updated.connectorDefinitionId
-          )
+          updated.connectorDefinitionId
+        )
         : null;
       return HttpService.success(res, {
         connectorInstance: updated
           ? (redactInstance({
-              instance: updated as unknown as Parameters<
-                typeof redactInstance
-              >[0]["instance"],
-              slug: updatedDefinition?.slug ?? "",
-            }) as unknown as ConnectorInstanceApi)
+            instance: updated as unknown as Parameters<
+              typeof redactInstance
+            >[0]["instance"],
+            slug: updatedDefinition?.slug ?? "",
+          }) as unknown as ConnectorInstanceApi)
           : null,
       });
     } catch (error) {
@@ -1079,12 +1255,12 @@ connectorInstanceRouter.patch(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.CONNECTOR_INSTANCE_UPDATE_FAILED,
-              error instanceof Error
-                ? error.message
-                : "Failed to update connector instance"
-            )
+            500,
+            ApiCode.CONNECTOR_INSTANCE_UPDATE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to update connector instance"
+          )
       );
     }
   }
@@ -1126,6 +1302,116 @@ connectorInstanceRouter.patch(
  *       500:
  *         description: Internal server error
  */
+/**
+ * @openapi
+ * /api/connector-instances/{id}/test-connection:
+ *   post:
+ *     tags:
+ *       - Connector Instances
+ *     summary: Run an adapter-specific dry-run / reachability check
+ *     description: >
+ *       Delegates to `ConnectorAdapter.testConnection` when the
+ *       instance's adapter implements it (REST API today). Read-only —
+ *       enqueues no job and writes no records. Returns the adapter's
+ *       `TestConnectionResult` verbatim as the 200 body; `ok: false`
+ *       indicates a successful check that itself reported failure.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/TestConnectionRequestBody'
+ *     responses:
+ *       200:
+ *         description: >
+ *           Adapter `TestConnectionResult` — `ok: true` carries the
+ *           first 5 sample records; `ok: false` carries an error code
+ *           + message + optional details so the user can fix the
+ *           config. Both shapes arrive as HTTP 200 — `ok: false` is
+ *           the check reporting failure, not the route failing.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, payload]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/TestConnectionResult'
+ *       404:
+ *         description: >
+ *           CONNECTOR_INSTANCE_NOT_FOUND (no such instance for this org)
+ *           or TEST_CONNECTION_NOT_SUPPORTED (adapter doesn't implement
+ *           the method).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Unexpected error in the adapter
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+connectorInstanceRouter.post(
+  "/:id/test-connection",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { organizationId } = req.application!.metadata;
+
+      const { instance, adapter } = await SyncService.resolveAdapter(
+        id,
+        organizationId
+      );
+
+      if (!adapter.testConnection) {
+        throw new ApiError(
+          404,
+          ApiCode.TEST_CONNECTION_NOT_SUPPORTED,
+          `Adapter for instance ${id} does not implement testConnection`
+        );
+      }
+
+      const params = (req.body ?? {}) as TestConnectionParams;
+      const result = await adapter.testConnection(
+        instance as never,
+        params
+      );
+
+      return HttpService.success(res, result, 200);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to run test-connection"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+            500,
+            ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to run test-connection"
+          )
+      );
+    }
+  }
+);
+
 connectorInstanceRouter.post(
   "/:id/sync",
   getApplicationMetadata,
@@ -1169,12 +1455,12 @@ connectorInstanceRouter.post(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.JOB_ENQUEUE_FAILED,
-              error instanceof Error
-                ? error.message
-                : "Failed to enqueue sync job"
-            )
+            500,
+            ApiCode.JOB_ENQUEUE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to enqueue sync job"
+          )
       );
     }
   }

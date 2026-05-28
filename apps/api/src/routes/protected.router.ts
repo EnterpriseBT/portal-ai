@@ -16,6 +16,7 @@ import { portalRouter } from "./portal.router.js";
 import { portalResultsRouter } from "./portal-results.router.js";
 import { toolpacksRouter } from "./toolpacks.router.js";
 import { connectorInstanceLayoutPlansRouter } from "./connector-instance-layout-plans.router.js";
+import { apiEndpointsRouter } from "./api-endpoints.router.js";
 import { layoutPlansRouter } from "./layout-plans.router.js";
 import { googleSheetsConnectorRouter } from "./google-sheets-connector.router.js";
 import { microsoftExcelConnectorRouter } from "./microsoft-excel-connector.router.js";
@@ -32,6 +33,10 @@ protectedRouter.use("/organization", organizationRouter);
 protectedRouter.use("/connector-definitions", connectorDefinitionRouter);
 protectedRouter.use("/connector-instances", connectorInstanceRouter);
 protectedRouter.use("/connector-instances", connectorInstanceLayoutPlansRouter);
+protectedRouter.use(
+  "/connector-instances/:instanceId/api-endpoints",
+  apiEndpointsRouter
+);
 protectedRouter.use("/layout-plans", layoutPlansRouter);
 protectedRouter.use("/jobs", jobsRouter);
 protectedRouter.use("/column-definitions", columnDefinitionRouter);
