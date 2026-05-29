@@ -74,6 +74,31 @@ const SuggesterResponseSchema = z.object({
   expression: z.string().min(1),
 });
 
+/**
+ * Process singleton consumed by the suggest-transform route. Built
+ * lazily on first read so module load doesn't touch the Anthropic
+ * provider in tests that never invoke the route.
+ *
+ * Mutable so tests can swap in a stub via
+ * `__setJsonataSuggesterForTesting`. Mirrors the `probeCache` /
+ * `columnClassifier` deps on `rest-api.adapter.ts`.
+ */
+let _suggester: JsonataSuggester | null = null;
+
+export function getJsonataSuggester(): JsonataSuggester {
+  if (!_suggester) _suggester = createDefaultJsonataSuggester();
+  return _suggester;
+}
+
+/** Test-only — swap or clear the process-singleton suggester. Pass
+ *  `null` to drop the override and let the next read build a fresh
+ *  default. */
+export function __setJsonataSuggesterForTesting(
+  impl: JsonataSuggester | null,
+): void {
+  _suggester = impl;
+}
+
 export function createDefaultJsonataSuggester(
   opts: CreateJsonataSuggesterOptions = {},
 ): JsonataSuggester {
