@@ -17,6 +17,8 @@ import type {
   PreviewEndpointPageRequestBody,
   PreviewEndpointPageResponse,
   ProbeEndpointDraftRequestBody,
+  SuggestTransformRequestBody,
+  SuggestTransformResponse,
 } from "@portalai/core/contracts";
 import { useAuthMutation, useAuthQuery } from "../utils/api.util";
 import { queryKeys } from "./keys";
@@ -164,6 +166,28 @@ export const apiConnector = {
         PreviewEndpointPageRequestBody
       >({
         url: "/api/connector-instances/preview-endpoint-page",
+        method: "POST",
+      }),
+
+    /**
+     * One-shot AI-assist for the JSONata transform editor. Sends the
+     * captured `sampleResponse` (from a prior `previewPage` call) and
+     * an optional `promptHint` to the server, which asks a Haiku-4.5
+     * suggester for an expression, validates it against the full
+     * sample, retries once on validation failure, and returns
+     * `{ expression, warning }`. `warning` is `null` on success and
+     * populated when both attempts failed validation — the UI still
+     * replaces the textarea contents and surfaces the warning inline.
+     *
+     * Draft-side: no `instanceId` / `entityId` path params — the
+     * server makes no upstream HTTP call, only invokes the model.
+     */
+    suggestTransform: () =>
+      useAuthMutation<
+        SuggestTransformResponse,
+        SuggestTransformRequestBody
+      >({
+        url: "/api/connector-instances/suggest-transform",
         method: "POST",
       }),
   },
