@@ -1,20 +1,23 @@
 /**
- * Thin wrapper around `fetch` for the REST API connector.
+ * Thin wrapper around `fetch` for the REST API connector — the buffered
+ * fetch path used by JSONata transform, Preview, and probe.
  *
  * Two responsibilities:
  *   1. Convert non-2xx / network / parse failures into typed `ApiError`s
  *      so callers don't have to inspect response shape themselves.
- *   2. Cap response bodies at MAX_RESPONSE_BYTES (default 50 MB) so a
- *      misconfigured unpaginated endpoint can't OOM the worker.
+ *   2. Cap response bodies at MAX_RESPONSE_BYTES (default 500 MB) so a
+ *      misconfigured unpaginated endpoint can't OOM the worker on the
+ *      buffered path.
  *
- * Streaming JSON parse to lift the cap for genuinely huge responses is
- * tracked separately as #72.
+ * The streaming-eligible records hot path (recordsPath + pagination:
+ * "none") lives in `stream.util.ts` and parses incrementally without
+ * hitting the cap.
  */
 
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { ApiError } from "../../services/http.service.js";
 
-export const MAX_RESPONSE_BYTES = 50 * 1024 * 1024; // 50 MB
+export const MAX_RESPONSE_BYTES = 500 * 1024 * 1024; // 500 MB
 
 export interface FetchJsonResult {
   status: number;

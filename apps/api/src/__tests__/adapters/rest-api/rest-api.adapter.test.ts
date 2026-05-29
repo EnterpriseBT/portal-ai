@@ -111,6 +111,7 @@ const {
   assertRecordsArray,
   buildUrl,
   deriveSourceId,
+  isStreamingEligible,
   configureRestApiAdapterDeps,
   __resetRestApiAdapterDepsForTests,
 } = await import("../../../adapters/rest-api/rest-api.adapter.js");
@@ -1814,6 +1815,166 @@ describe("restApiAdapter.discoverColumns", () => {
       { key: "id", label: "id", type: "string", required: true },
       { key: "name", label: "name", type: "string", required: true },
     ]);
+  });
+});
+
+// ── Slice 4: streaming branch wiring ──────────────────────────────────
+
+describe("isStreamingEligible — eligibility matrix", () => {
+  type Endpoint = Parameters<typeof isStreamingEligible>[0];
+
+  const make = (pagination: string, transform: string | null): Endpoint =>
+    ({
+      entity: { id: "e1" },
+      config: { pagination, transform, recordsPath: "items" },
+    }) as unknown as Endpoint;
+
+  const cases: Array<[string, string | null, boolean]> = [
+    ["none", "", true],
+    ["none", null, true],
+    ["none", "   ", true],
+    ["none", "$.items", false],
+    ["pageOffset", "", false],
+    ["pageOffset", "$.items", false],
+    ["cursor", "", false],
+    ["cursor", "$.items", false],
+    ["linkHeader", "", false],
+    ["linkBody", "", false],
+  ];
+
+  it.each(cases)(
+    "pagination=%s transform=%j → %s",
+    (pagination, transform, expected) => {
+      expect(isStreamingEligible(make(pagination, transform))).toBe(expected);
+    }
+  );
+});
+
+describe("restApiAdapter.syncInstance — streaming branch", () => {
+  let originalFetch: typeof globalThis.fetch;
+  let fetchMock: jest.Mock<typeof globalThis.fetch>;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    fetchMock = jest.fn<typeof globalThis.fetch>();
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+    findBySourceIdsMock.mockResolvedValue([]);
+    upsertBySourceIdMock.mockImplementation(
+      async (input: unknown) => input as never
+    );
+    bulkUpdateSyncedAtMock.mockResolvedValue(0);
+    softDeleteBeforeWatermarkMock.mockResolvedValue([]);
+    updateInstanceMock.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("case 15: streams records under the configured recordsPath and upserts each one", async () => {
+    findByInstanceMock.mockResolvedValue([
+      {
+        entity: { id: "e-items", key: "items", label: "Items" },
+        config: {
+          path: "/items",
+          method: "GET",
+          recordsPath: "data.items",
+          idField: "id",
+          ...NONE_PAGINATION,
+        },
+      },
+    ]);
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: { items: [{ id: "a" }, { id: "b" }, { id: "c" }] },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    const result = await restApiAdapter.syncInstance!(INSTANCE, "u1");
+
+    // Three records → three upserts (none had a prior; all created).
+    expect(upsertBySourceIdMock).toHaveBeenCalledTimes(3);
+    expect(result.recordCounts).toEqual({
+      created: 3,
+      updated: 0,
+      unchanged: 0,
+      deleted: 0,
+    });
+    // One outbound HTTP request — single-shot streaming page.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("case 16: non-eligible endpoint (cursor pagination) falls through to the buffered iterator path", async () => {
+    findByInstanceMock.mockResolvedValue([
+      {
+        entity: { id: "e-cursor", key: "items", label: "Items" },
+        config: {
+          path: "/items",
+          method: "GET",
+          recordsPath: "items",
+          idField: "id",
+          pagination: "cursor",
+          paginationConfig: {
+            cursorParam: "cursor",
+            cursorPlacement: "query",
+            cursorResponsePath: "meta.next",
+          },
+        },
+      },
+    ]);
+    // Two pages — the iterator follows `meta.next` until it resolves empty.
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ items: [{ id: "a" }], meta: { next: "c2" } }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ items: [{ id: "b" }], meta: { next: "" } }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      );
+
+    const result = await restApiAdapter.syncInstance!(INSTANCE, "u1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Second request carries the cursor from page 1's response — only
+    // possible if we routed through the iterator (cursor) path.
+    const [page2Url] = fetchMock.mock.calls[1]!;
+    expect(new URL(page2Url as string).searchParams.get("cursor")).toBe("c2");
+    expect(result.recordCounts.created).toBe(2);
+  });
+
+  it("case 16b: non-eligible endpoint (transform set) falls through to the buffered path", async () => {
+    findByInstanceMock.mockResolvedValue([
+      {
+        entity: { id: "e-tx", key: "items", label: "Items" },
+        config: {
+          path: "/items",
+          method: "GET",
+          recordsPath: "",
+          transform: "data.items.{ id: id }",
+          idField: "id",
+          ...NONE_PAGINATION,
+        },
+      },
+    ]);
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ data: { items: [{ id: "a" }, { id: "b" }] } }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    const result = await restApiAdapter.syncInstance!(INSTANCE, "u1");
+
+    // JSONata-extracted records — exercises the buffered path's applyTransform.
+    expect(result.recordCounts.created).toBe(2);
   });
 });
 
