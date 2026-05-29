@@ -247,8 +247,8 @@ The slices are sequenced so the destructive cut (slice 4 — `syncInstance` bran
 7. Commit: `test(api): add memory smoke for streaming rest-api sync (#72)`.
 
 **Done when:**
-- The memory smoke passes under a constrained heap.
-- The two new ApiCodes have user-facing copy in the web app.
+- The memory smoke passes under a constrained heap. **Landed as `src/__tests__/utils/rest-api-stream-memory-smoke.test.ts` + `src/scripts/rest-api-stream-memory-smoke.ts`** — spawn-based child-process smoke matching the existing `row-async-memory-smoke` precedent. The in-process integration test originally specced (driving `syncInstance` against an http server + sampling heap mid-run) produced too-noisy a signal — V8 GC behavior + per-record DB overhead dominated the measurement. The standalone-script approach gives a clean pass/fail on the actual property: process survives `--max-old-space-size=256` while streaming ~300 MB. Plus a focused `getBytesObserved` unit test in `stream.util.test.ts` covers the "getter attached to wrong object" risk from slice 4.
+- The two new ApiCodes have user-facing copy. **Landed in the server-side `ApiError` messages** — apps/web renders `serverError.message` verbatim via `FormAlert`, with no central ApiCode → display-string map. The plan's note anticipated this; the right place was the server messages.
 - All gates (lint, type-check, full unit + non-gated integration) green.
 
 **Risk:**
