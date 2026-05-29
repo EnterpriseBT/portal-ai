@@ -345,6 +345,21 @@ export enum ApiCode {
    */
   REST_API_TRANSFORM_FAILED = "REST_API_TRANSFORM_FAILED",
   /**
+   * Haiku-backed JSONata transform suggester failed irrecoverably —
+   * model timeout, network error, or a response that didn't conform to
+   * the `{ expression: string }` schema. Mapped to HTTP 502 on the
+   * `/api/connector-instances/suggest-transform` route. The
+   * `JsonataSuggestError.reason` discriminator (timeout /
+   * network-error / malformed-response) goes on the structured log
+   * line, not the response body.
+   *
+   * Distinct from validation-warning paths: when the model returns an
+   * expression that fails server-side validation against the sample
+   * response, the route still returns 200 with a `warning` field —
+   * only model failures surface this error code.
+   */
+  REST_API_TRANSFORM_SUGGEST_FAILED = "REST_API_TRANSFORM_SUGGEST_FAILED",
+  /**
    * Authentication failure during sync, test-connection, or auth application:
    *   - 401/403 response from upstream (502, raised by the adapter when
    *     fetchJson reports an auth-bearing status).
