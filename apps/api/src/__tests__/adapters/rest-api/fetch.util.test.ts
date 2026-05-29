@@ -82,6 +82,79 @@ describe("fetchJson — non-2xx", () => {
   });
 });
 
+describe("fetchJson — non-2xx body surfacing (#78)", () => {
+  it("captures the response body on `details.responseBody`", async () => {
+    const fakeFetch = jest.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response('{"error":{"message":"required field missing"}}', {
+        status: 422,
+        headers: { "content-type": "application/json" },
+      })
+    );
+    await expect(fetchJson("https://x.test", {}, fakeFetch)).rejects.toMatchObject({
+      code: ApiCode.REST_API_FETCH_FAILED,
+      details: expect.objectContaining({
+        status: 422,
+        responseBody: '{"error":{"message":"required field missing"}}',
+      }),
+    });
+  });
+
+  it("appends the extracted user message to `ApiError.message`", async () => {
+    const fakeFetch = jest.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response('{"error":{"message":"required field missing"}}', {
+        status: 422,
+        headers: { "content-type": "application/json" },
+      })
+    );
+    await expect(fetchJson("https://x.test", {}, fakeFetch)).rejects.toMatchObject({
+      message: "Endpoint returned HTTP 422: required field missing",
+    });
+  });
+
+  it("falls back to the plain status message when the body has no recognized shape", async () => {
+    const fakeFetch = jest.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response("<html>500 Internal Server Error</html>", {
+        status: 500,
+        headers: { "content-type": "text/html" },
+      })
+    );
+    await expect(fetchJson("https://x.test", {}, fakeFetch)).rejects.toMatchObject({
+      message: "Endpoint returned HTTP 500",
+      details: expect.objectContaining({
+        responseBody: "<html>500 Internal Server Error</html>",
+      }),
+    });
+  });
+
+  it("omits responseBody when the upstream returns an empty body", async () => {
+    // Empty-body 404 — readErrorBody returns "" → no friendly message
+    // and the responseBody key is suppressed via the spread guard.
+    const fakeFetch = jest.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(null, { status: 404 })
+    );
+    const err = await fetchJson("https://x.test", {}, fakeFetch).catch(
+      (e) => e
+    );
+    expect(err.code).toBe(ApiCode.REST_API_FETCH_FAILED);
+    expect(err.details).toMatchObject({ status: 404 });
+    expect(err.details).not.toHaveProperty("responseBody");
+  });
+
+  it("truncates large error bodies to 8 KB", async () => {
+    const huge = "x".repeat(20 * 1024); // 20 KB
+    const fakeFetch = jest.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(huge, {
+        status: 500,
+        headers: { "content-type": "text/plain" },
+      })
+    );
+    const err = await fetchJson("https://x.test", {}, fakeFetch).catch(
+      (e) => e
+    );
+    expect(err.details.responseBody.length).toBe(8 * 1024);
+  });
+});
+
 describe("fetchJson — invalid JSON", () => {
   it("throws REST_API_INVALID_JSON when body isn't parseable", async () => {
     const fakeFetch = jest.fn<typeof fetch>().mockResolvedValueOnce(

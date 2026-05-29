@@ -204,6 +204,25 @@ describe("streamFetchRecords — error cases", () => {
     });
   });
 
+  it("case 5b: non-2xx body surfaces on details.responseBody + ApiError.message (#78)", async () => {
+    const fake = staticFetch(
+      '{"error":{"message":"required field \\"symbols\\" missing"}}',
+      { status: 422 }
+    );
+    await expect(
+      streamFetchRecords("https://x.test", {}, "items", { fetchImpl: fake })
+    ).rejects.toMatchObject({
+      code: ApiCode.REST_API_FETCH_FAILED,
+      message:
+        'Endpoint returned HTTP 422: required field "symbols" missing',
+      details: expect.objectContaining({
+        status: 422,
+        responseBody:
+          '{"error":{"message":"required field \\"symbols\\" missing"}}',
+      }),
+    });
+  });
+
   it("case 6: malformed JSON mid-stream throws inside for-await; earlier records observable", async () => {
     const ctrl = makeControlledFetch();
 

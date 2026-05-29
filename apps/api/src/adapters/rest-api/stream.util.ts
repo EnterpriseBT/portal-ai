@@ -18,6 +18,10 @@ import StreamArray from "stream-json/streamers/stream-array.js";
 
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { ApiError } from "../../services/http.service.js";
+import {
+  extractUserMessage,
+  readErrorBody,
+} from "./error-body.util.js";
 
 export const DEFAULT_MAX_RECORD_BYTES = 50 * 1024 * 1024;
 
@@ -106,12 +110,18 @@ export async function streamFetchRecords(
   const status = response.status;
 
   if (!response.ok) {
-    throw new ApiError(
-      502,
-      ApiCode.REST_API_FETCH_FAILED,
-      `Endpoint returned HTTP ${status}`,
-      { url, status, headers }
-    );
+    const responseBody = await readErrorBody(response);
+    const friendlyMessage = extractUserMessage(responseBody);
+    const message =
+      friendlyMessage !== null
+        ? `Endpoint returned HTTP ${status}: ${friendlyMessage}`
+        : `Endpoint returned HTTP ${status}`;
+    throw new ApiError(502, ApiCode.REST_API_FETCH_FAILED, message, {
+      url,
+      status,
+      headers,
+      ...(responseBody !== null ? { responseBody } : {}),
+    });
   }
 
   if (!response.body) {
