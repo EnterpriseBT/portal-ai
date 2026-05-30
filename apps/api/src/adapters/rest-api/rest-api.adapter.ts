@@ -1094,23 +1094,20 @@ async function previewEndpointPage(
   );
 
   // Cap the rendered body so a 10 MB upstream response doesn't crash
-  // the browser. Serialize, measure, slice if needed. `truncated`
-  // tells the UI to surface "preview truncated" inline.
-  const serialized = safeStringify(fetched.body);
+  // the browser. STRUCTURAL truncation: when the serialized body
+  // exceeds the cap, walk the tree and slice arrays — never cut the
+  // serialized string mid-token. The earlier "serialize → slice →
+  // re-parse" approach almost always failed the re-parse step
+  // (truncated JSON is invalid), and the fallback returned the raw
+  // string prefix, which the UI then JSON.stringified into an
+  // escape-laden mess. Structural truncation keeps the wire payload
+  // a valid object/array so the PreviewPane renders it like any
+  // other JSON.
   let bodyForWire: unknown = fetched.body;
   let truncated = false;
-  if (serialized.length > PREVIEW_BODY_BYTE_LIMIT) {
+  if (safeStringify(fetched.body).length > PREVIEW_BODY_BYTE_LIMIT) {
     truncated = true;
-    // Parse only the truncation prefix on a best-effort basis; on
-    // failure pass through the raw string so the UI still has
-    // something to render.
-    try {
-      bodyForWire = JSON.parse(
-        serialized.slice(0, PREVIEW_BODY_BYTE_LIMIT)
-      );
-    } catch {
-      bodyForWire = serialized.slice(0, PREVIEW_BODY_BYTE_LIMIT);
-    }
+    bodyForWire = structurallyTruncate(fetched.body);
   }
 
   return {
@@ -1119,6 +1116,44 @@ async function previewEndpointPage(
     headers: fetched.headers,
     truncated,
   };
+}
+
+/**
+ * Walk a JSON-shaped value and slice every array to at most
+ * `PREVIEW_ARRAY_KEEP` items, recursing into elements that survive.
+ * Appends a literal `"__truncated__"` sentinel when a slice happened
+ * so the UI can spot it. Objects pass through with their values
+ * recursed; primitives pass through unchanged.
+ *
+ * Conceptually similar to `truncateForPrompt` (used by the JSONata
+ * suggester), but with a higher per-array cap because the goal is
+ * "show the user enough rows to understand the response shape," not
+ * "keep prompt tokens bounded." 10 is enough to show repeat patterns
+ * without exploding wire size on responses with embedded large
+ * objects (e.g. ArcGIS polygon rings with millions of coordinates).
+ */
+const PREVIEW_ARRAY_KEEP = 10;
+const PREVIEW_TRUNCATED_SENTINEL = "__truncated__";
+
+function structurallyTruncate(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) {
+    const kept = value
+      .slice(0, PREVIEW_ARRAY_KEEP)
+      .map(structurallyTruncate);
+    if (value.length > PREVIEW_ARRAY_KEEP) kept.push(PREVIEW_TRUNCATED_SENTINEL);
+    return kept;
+  }
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>)) {
+      out[key] = structurallyTruncate(
+        (value as Record<string, unknown>)[key],
+      );
+    }
+    return out;
+  }
+  return value;
 }
 
 function safeStringify(value: unknown): string {
