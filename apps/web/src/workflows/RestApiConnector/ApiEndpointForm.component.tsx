@@ -310,30 +310,19 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
                 }}
               />
             ) : (
-              <Stack spacing={1.5}>
-                <TransformSuggesterUI
-                  promptHint={promptHint}
-                  onPromptHintChange={onPromptHintChange}
-                  onSuggest={onSuggest}
-                  isSuggesting={isSuggesting}
-                  disabled={previewResponse == null}
-                  disabledReason="Run Preview first to capture a sample response."
-                  serverError={suggestServerError}
-                />
-                <TransformEditorUI
-                  value={draft.transform ?? ""}
-                  onChange={(value) => onChange("transform", value)}
-                  lastProbeResponse={lastProbeResponse ?? null}
-                  serverError={
-                    suggestionWarning
-                      ? {
-                          kind: "runtime",
-                          message: suggestionWarning.message,
-                        }
-                      : lastTransformError ?? null
-                  }
-                />
-              </Stack>
+              <TransformEditorUI
+                value={draft.transform ?? ""}
+                onChange={(value) => onChange("transform", value)}
+                lastProbeResponse={lastProbeResponse ?? null}
+                serverError={
+                  suggestionWarning
+                    ? {
+                        kind: "runtime",
+                        message: suggestionWarning.message,
+                      }
+                    : lastTransformError ?? null
+                }
+              />
             )}
           </Box>
 
@@ -375,6 +364,20 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
               transform={draft.transform ?? ""}
             />
           </Box>
+
+          {extractionMode === "transform" ? (
+            <Box sx={{ mt: 1.5 }}>
+              <TransformSuggesterUI
+                promptHint={promptHint}
+                onPromptHintChange={onPromptHintChange}
+                onSuggest={onSuggest}
+                isSuggesting={isSuggesting}
+                disabled={previewResponse == null}
+                disabledReason="Run Preview first to capture a sample response."
+                serverError={suggestServerError}
+              />
+            </Box>
+          ) : null}
         </Box>
 
         {field(
