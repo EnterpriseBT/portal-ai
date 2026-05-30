@@ -143,3 +143,97 @@ describe("pageOffsetIterator", () => {
     }
   });
 });
+
+describe("pageOffsetIterator — offset-style", () => {
+  // Offset-style increments by `pageSize` (the row count per page) so
+  // the URL sequence matches what row-offset APIs expect:
+  //   resultOffset=0, resultOffset=1000, resultOffset=2000, …
+  // The page-style branch above unchanged: pageNumber increments by 1.
+
+  it("yields offsets 0, 1000, 2000 with pageSize=1000 + startPage=0", async () => {
+    const iter = pageOffsetIterator(
+      offsetFixtureConfig({
+        stopOnShortPage: false,
+        pageSize: 1000,
+        startPage: 0,
+      })
+    );
+    const yielded: number[] = [];
+    let r = await iter.next();
+    while (!r.done) {
+      yielded.push(r.value.pageNumber);
+      if (yielded.length === 1)
+        r = await iter.next(page(new Array(1000).fill({})));
+      else if (yielded.length === 2)
+        r = await iter.next(page(new Array(1000).fill({})));
+      else r = await iter.next(page([]));
+    }
+    expect(yielded).toEqual([0, 1000, 2000]);
+  });
+
+  it("yields offsets 0, 100, 200 with pageSize=100 + startPage=0", async () => {
+    const iter = pageOffsetIterator(
+      offsetFixtureConfig({
+        stopOnShortPage: false,
+        pageSize: 100,
+        startPage: 0,
+      })
+    );
+    const yielded: number[] = [];
+    let r = await iter.next();
+    while (!r.done) {
+      yielded.push(r.value.pageNumber);
+      if (yielded.length === 1)
+        r = await iter.next(page(new Array(100).fill({})));
+      else if (yielded.length === 2)
+        r = await iter.next(page(new Array(100).fill({})));
+      else r = await iter.next(page([]));
+    }
+    expect(yielded).toEqual([0, 100, 200]);
+  });
+
+  it("honors a non-zero startPage (e.g. 1-indexed row offset)", async () => {
+    const iter = pageOffsetIterator(
+      offsetFixtureConfig({ pageSize: 50, startPage: 1 })
+    );
+    const first = await iter.next();
+    expect(first.value!.pageNumber).toBe(1);
+    const second = await iter.next(page(new Array(50).fill({})));
+    expect(second.value!.pageNumber).toBe(51);
+  });
+
+  it("terminates on empty page", async () => {
+    const iter = pageOffsetIterator(
+      offsetFixtureConfig({
+        stopOnShortPage: false,
+        pageSize: 100,
+        startPage: 0,
+      })
+    );
+    const yielded: number[] = [];
+    let r = await iter.next();
+    while (!r.done) {
+      yielded.push(r.value.pageNumber);
+      r = await iter.next(page([]));
+    }
+    expect(yielded).toEqual([0]);
+  });
+
+  it("terminates early on short page with stopOnShortPage=true", async () => {
+    const iter = pageOffsetIterator(
+      offsetFixtureConfig({
+        stopOnShortPage: true,
+        pageSize: 1000,
+        startPage: 0,
+      })
+    );
+    const yielded: number[] = [];
+    let r = await iter.next();
+    while (!r.done) {
+      yielded.push(r.value.pageNumber);
+      // 250 < pageSize → terminate after this page
+      r = await iter.next(page(new Array(250).fill({})));
+    }
+    expect(yielded).toEqual([0]);
+  });
+});
