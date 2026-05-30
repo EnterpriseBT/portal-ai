@@ -1700,11 +1700,34 @@ describe("restApiAdapter.previewEndpointPage", () => {
     const result = await restApiAdapter.previewEndpointPage(ORG_ID, baseBody);
 
     expect(result.truncated).toBe(true);
-    // Truncation parses what it can on a best-effort basis; the result
-    // should still be one of: the original body (if parse succeeded on
-    // the truncated prefix), or a string prefix. Either way the wire
-    // payload exists.
-    expect(result.body).toBeDefined();
+    // Structural truncation: the body must remain a structured object
+    // (NOT a serialized string prefix) so the UI's PreviewPaneUI
+    // renders it as JSON, not as a quote-escaped string.
+    expect(typeof result.body).toBe("object");
+    expect(result.body).not.toBeNull();
+    expect(Array.isArray(result.body)).toBe(false);
+    // The top-level `data` array gets sliced — only the first N
+    // records survive, plus a marker indicating truncation.
+    const body = result.body as { data: unknown[] };
+    expect(Array.isArray(body.data)).toBe(true);
+    expect(body.data.length).toBeLessThan(6000);
+  });
+
+  it("keeps top-level arrays as arrays after structural truncation", async () => {
+    // Some upstreams (ArcGIS-style query endpoints) return an array at
+    // the top level. Make sure structural truncation produces an array,
+    // not an object.
+    const bigArray = Array.from({ length: 6000 }, (_, i) => ({
+      id: `r-${i}`,
+      note: "x".repeat(40),
+    }));
+    fetchMock.mockResolvedValueOnce(okResponse(bigArray));
+
+    const result = await restApiAdapter.previewEndpointPage(ORG_ID, baseBody);
+
+    expect(result.truncated).toBe(true);
+    expect(Array.isArray(result.body)).toBe(true);
+    expect((result.body as unknown[]).length).toBeLessThan(6000);
   });
 
   it("hits the upstream URL via fetch (no DB lookup, no probe-cache write)", async () => {

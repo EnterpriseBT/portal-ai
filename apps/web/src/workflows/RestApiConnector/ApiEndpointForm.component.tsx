@@ -25,7 +25,10 @@ import {
 import { PaginationFieldsUI } from "./PaginationFields.component";
 import { BodyTemplateFieldUI } from "./BodyTemplateField.component";
 import { TransformEditorUI } from "./TransformEditor.component";
+import { TransformSuggesterUI } from "./TransformSuggester.component";
 import { PreviewPaneUI } from "./PreviewPane.component";
+
+import type { ServerError } from "../../utils/api.util";
 
 // ── Draft shape ──────────────────────────────────────────────────────
 
@@ -93,6 +96,23 @@ export interface ApiEndpointFormUIProps {
    *  container owns the call so it has access to baseUrl + auth +
    *  credentials without prop-drilling them through the form. */
   onPreview: () => void;
+
+  /** Current value of the AI-suggest prompt-hint textarea. */
+  promptHint: string;
+  onPromptHintChange: (value: string) => void;
+  /** Fires the suggest-transform SDK call. Container-owned for the
+   *  same reason as `onPreview`. */
+  onSuggest: () => void;
+  isSuggesting: boolean;
+  /** ServerError from the suggest mutation; renders a FormAlert when set. */
+  suggestServerError: ServerError | null;
+  /** Validation warning from the route — populated when both Haiku
+   *  attempts produced an expression that failed the strict
+   *  array-of-objects check. Surfaced via `TransformEditorUI`'s
+   *  existing serverError-style Alert. */
+  suggestionWarning:
+    | { kind: "validation-failed"; message: string }
+    | null;
 }
 
 export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
@@ -114,6 +134,12 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
   previewLoading,
   previewError,
   onPreview,
+  promptHint,
+  onPromptHintChange,
+  onSuggest,
+  isSuggesting,
+  suggestServerError,
+  suggestionWarning,
 }) => {
   const keyRef = useDialogAutoFocus(open);
 
@@ -288,7 +314,14 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
                 value={draft.transform ?? ""}
                 onChange={(value) => onChange("transform", value)}
                 lastProbeResponse={lastProbeResponse ?? null}
-                serverError={lastTransformError ?? null}
+                serverError={
+                  suggestionWarning
+                    ? {
+                        kind: "runtime",
+                        message: suggestionWarning.message,
+                      }
+                    : lastTransformError ?? null
+                }
               />
             )}
           </Box>
@@ -331,6 +364,20 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
               transform={draft.transform ?? ""}
             />
           </Box>
+
+          {extractionMode === "transform" ? (
+            <Box sx={{ mt: 1.5 }}>
+              <TransformSuggesterUI
+                promptHint={promptHint}
+                onPromptHintChange={onPromptHintChange}
+                onSuggest={onSuggest}
+                isSuggesting={isSuggesting}
+                disabled={previewResponse == null}
+                disabledReason="Run Preview first to capture a sample response."
+                serverError={suggestServerError}
+              />
+            </Box>
+          ) : null}
         </Box>
 
         {field(
@@ -371,6 +418,23 @@ export interface ApiEndpointFormProps {
     body: unknown;
     truncated: boolean;
   }>;
+  /**
+   * Async callback that asks the API for a JSONata transform
+   * suggestion against the current preview response. Provided by the
+   * workflow so the form stays SDK-agnostic. Receives the trimmed
+   * `promptHint` (`undefined` when blank) and the captured
+   * `sampleResponse`. Resolves with the suggested expression + an
+   * optional validation warning; rejects with a `ServerError`-shaped
+   * exception (`{ message, code }`) so the form can surface it via
+   * FormAlert.
+   */
+  onSuggest?: (input: {
+    promptHint: string | undefined;
+    sampleResponse: unknown;
+  }) => Promise<{
+    expression: string;
+    warning: { kind: "validation-failed"; message: string } | null;
+  }>;
 }
 
 export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
@@ -379,6 +443,7 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
   onSubmit,
   onClose,
   onPreview,
+  onSuggest,
 }) => {
   const isEditing = !!initial;
   const [draft, setDraft] = useState<EndpointDraft>(initial ?? EMPTY_DRAFT);
@@ -391,6 +456,16 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
   const [previewTruncated, setPreviewTruncated] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+
+  // AI-suggest state — also owned per modal session so reopening the
+  // form clears the hint + any prior warning/error.
+  const [promptHint, setPromptHint] = useState("");
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [suggestServerError, setSuggestServerError] =
+    useState<ServerError | null>(null);
+  const [suggestionWarning, setSuggestionWarning] = useState<
+    { kind: "validation-failed"; message: string } | null
+  >(null);
 
   // Mutual exclusion is enforced via the radio choice (decision 10).
   // Initial mode is derived from the draft: if `transform` carries a
@@ -418,6 +493,10 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
       setPreviewTruncated(false);
       setPreviewError(null);
       setPreviewLoading(false);
+      setPromptHint("");
+      setIsSuggesting(false);
+      setSuggestServerError(null);
+      setSuggestionWarning(null);
     }
   }, [open, initial]);
 
@@ -436,6 +515,42 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
       setPreviewError(err instanceof Error ? err.message : "Preview failed");
     } finally {
       setPreviewLoading(false);
+    }
+  };
+
+  const handleSuggest = async () => {
+    if (!onSuggest) {
+      setSuggestServerError({
+        message: "Suggest is unavailable in this context.",
+        code: "REST_API_OPERATION_FAILED",
+      });
+      return;
+    }
+    // Defensive: the UI keeps the button disabled when there's no
+    // captured preview response, but the callback path checks anyway.
+    if (previewResponse == null) return;
+
+    const trimmed = promptHint.trim();
+    setIsSuggesting(true);
+    setSuggestServerError(null);
+    try {
+      const result = await onSuggest({
+        promptHint: trimmed.length > 0 ? trimmed : undefined,
+        sampleResponse: previewResponse,
+      });
+      setDraft((d) => ({ ...d, transform: result.expression }));
+      setSuggestionWarning(result.warning);
+    } catch (err) {
+      // The workflow rejects with a ServerError-shaped exception.
+      // Anything else degrades to a generic error code.
+      const message = err instanceof Error ? err.message : "Suggest failed";
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code?: unknown }).code ?? "REST_API_OPERATION_FAILED")
+          : "REST_API_OPERATION_FAILED";
+      setSuggestServerError({ message, code });
+    } finally {
+      setIsSuggesting(false);
     }
   };
 
@@ -462,6 +577,13 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
       }
       return next;
     });
+    // Any manual edit to the transform field invalidates the warning
+    // we surfaced from the last Suggest call — the warning is about
+    // the expression, not the current draft value once the user
+    // changes it.
+    if (field === "transform") {
+      setSuggestionWarning(null);
+    }
     if (touched[field as string]) {
       const draftForValidation =
         field === "method" && value !== "POST"
@@ -518,6 +640,12 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
       previewLoading={previewLoading}
       previewError={previewError}
       onPreview={() => void handlePreview()}
+      promptHint={promptHint}
+      onPromptHintChange={setPromptHint}
+      onSuggest={() => void handleSuggest()}
+      isSuggesting={isSuggesting}
+      suggestServerError={suggestServerError}
+      suggestionWarning={suggestionWarning}
     />
   );
 };

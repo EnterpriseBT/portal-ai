@@ -147,6 +147,55 @@ export type PreviewEndpointPageResponse = z.infer<
   typeof PreviewEndpointPageResponseSchema
 >;
 
+/**
+ * Request body for the JSONata transform suggestion route.
+ *
+ * `POST /api/connector-instances/suggest-transform` — single-shot AI
+ * assist. The user runs Preview first to capture `sampleResponse` (any
+ * JSON-decodable value, including `null`), optionally describes what
+ * records they want via `promptHint`, and the server returns a JSONata
+ * expression. The route does not make an upstream HTTP call, so it
+ * deliberately omits draft endpoint config / credentials — only the
+ * sample and the hint cross the wire.
+ *
+ * `sampleResponse` is required: `null` is accepted (some APIs return
+ * 200 with a null body), but the key must be present so the route
+ * doesn't accidentally invoke the model with an undefined sample.
+ */
+export const SuggestTransformRequestBodySchema = z.object({
+  promptHint: z.string().max(2000).optional(),
+  sampleResponse: z.unknown().refine((v) => v !== undefined, {
+    message: "sampleResponse is required",
+  }),
+});
+export type SuggestTransformRequestBody = z.infer<
+  typeof SuggestTransformRequestBodySchema
+>;
+
+/**
+ * Response for the suggest-transform route.
+ *
+ * `expression` is always populated (the AI returns *some* expression,
+ * even if it fails server-side validation against the sample after a
+ * retry). `warning` is `null` on success and populated when both
+ * attempts produced an expression that failed the strict
+ * array-of-objects validation in `applyTransform`. The UI populates
+ * the transform textarea unconditionally and surfaces the warning
+ * inline.
+ */
+export const SuggestTransformResponseSchema = z.object({
+  expression: z.string(),
+  warning: z
+    .object({
+      kind: z.literal("validation-failed"),
+      message: z.string(),
+    })
+    .nullable(),
+});
+export type SuggestTransformResponse = z.infer<
+  typeof SuggestTransformResponseSchema
+>;
+
 // ── Endpoint CRUD wire shapes ───────────────────────────────────────
 
 /**

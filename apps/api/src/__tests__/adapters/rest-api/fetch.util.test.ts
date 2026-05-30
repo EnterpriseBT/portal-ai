@@ -218,6 +218,91 @@ describe("fetchJson — response too large (fast path)", () => {
   });
 });
 
+describe("fetchJson — double-encoded JSON unwrap", () => {
+  // Some upstreams (notably misconfigured ArcGIS REST FeatureServer
+  // endpoints, JSONP-shimmed gateways, and a handful of legacy SOAP
+  // bridges) return a body whose top-level JSON value is itself a
+  // STRING containing JSON, e.g. body literally `"{\"x\":1}"`. The
+  // single JSON.parse leaves us with a JS string, which downstream
+  // (Preview pane, inference, transform) is useless to. Detect this
+  // case and unwrap once.
+
+  it("unwraps a body that's a JSON-encoded JSON object string", async () => {
+    const inner = { objectIdFieldName: "OBJECTID", features: [{ id: 1 }] };
+    // Body is `"{\"objectIdFieldName\":...}"` after escaping — one extra
+    // layer of JSON wrapping.
+    const wrapped = JSON.stringify(JSON.stringify(inner));
+    const fakeFetch = jest.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(wrapped, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const result = await fetchJson("https://x.test", {}, fakeFetch);
+    expect(result.body).toEqual(inner);
+  });
+
+  it("unwraps a body that's a JSON-encoded JSON array string", async () => {
+    const inner = [{ id: 1 }, { id: 2 }];
+    const wrapped = JSON.stringify(JSON.stringify(inner));
+    const fakeFetch = jest.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(wrapped, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const result = await fetchJson("https://x.test", {}, fakeFetch);
+    expect(result.body).toEqual(inner);
+  });
+
+  it("does NOT unwrap a body that's just a regular JSON string (not nested JSON)", async () => {
+    // A legitimate JSON-string body, e.g. an endpoint that returns a
+    // status message. The single JSON.parse already unwrapped one
+    // layer; we must not eat a second layer that isn't there.
+    const fakeFetch = jest.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(JSON.stringify("hello world"), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const result = await fetchJson("https://x.test", {}, fakeFetch);
+    expect(result.body).toBe("hello world");
+  });
+
+  it("does NOT unwrap a string body that starts with { but isn't valid JSON", async () => {
+    // String literally is `{not json}` — looks like JSON to a naive
+    // sniff, but the inner parse fails; keep the string body.
+    const fakeFetch = jest.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(JSON.stringify("{not json}"), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const result = await fetchJson("https://x.test", {}, fakeFetch);
+    expect(result.body).toBe("{not json}");
+  });
+
+  it("only unwraps one level (a triple-encoded body remains a string)", async () => {
+    const inner = { x: 1 };
+    // Triple-encoded — first parse yields a string whose JSON-parsed
+    // form is still a STRING (not an object), so we deliberately don't
+    // recurse. Triple-encoding is pathological; one level is enough.
+    const wrapped = JSON.stringify(JSON.stringify(JSON.stringify(inner)));
+    const fakeFetch = jest.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(wrapped, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const result = await fetchJson("https://x.test", {}, fakeFetch);
+    expect(typeof result.body).toBe("string");
+    // The body should still parse to a string (the inner-stringified
+    // JSON), which would itself parse to the object — but we stop one
+    // level shy of that.
+    expect(typeof JSON.parse(result.body as string)).toBe("string");
+  });
+});
+
 describe("fetchJson — response too large (slow path)", () => {
   it("throws REST_API_RESPONSE_TOO_LARGE when streamed bytes exceed cap and no Content-Length", async () => {
     // Build a ReadableStream that emits chunks adding up to > MAX_RESPONSE_BYTES.

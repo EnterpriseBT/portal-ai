@@ -1,8 +1,14 @@
 import "@testing-library/jest-dom";
+import React from "react";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-import { render, screen, waitFor } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  fireEvent,
+} from "../../../__tests__/test-utils";
 
 import {
   ApiEndpointForm,
@@ -349,5 +355,315 @@ describe("ApiEndpointForm — records source radio (mutual exclusion)", () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     const submitted = onSubmit.mock.calls[0]![0] as EndpointDraft;
     expect(submitted.recordsPath).toBe("");
+  });
+});
+
+// ── AI suggest wiring ────────────────────────────────────────────────
+
+describe("ApiEndpointForm — Suggest button + onSuggest wiring", () => {
+  type OnSuggest = NonNullable<
+    React.ComponentProps<typeof ApiEndpointForm>["onSuggest"]
+  >;
+  type SuggestResult = Awaited<ReturnType<OnSuggest>>;
+
+  const makeOnPreview = (body: unknown) =>
+    jest
+      .fn<
+        (draft: EndpointDraft) => Promise<{ body: unknown; truncated: boolean }>
+      >()
+      .mockResolvedValue({ body, truncated: false });
+
+  it("does not render the Suggest button in recordsPath mode", () => {
+    render(
+      <ApiEndpointForm open onSubmit={jest.fn()} onClose={jest.fn()} />,
+    );
+    expect(
+      screen.queryByRole("button", { name: /^suggest$/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders Suggest in transform mode, disabled until Preview captures a sample", async () => {
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "u",
+          label: "U",
+          path: "/x",
+          transform: "data.items",
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /^suggest$/i }),
+    ).toBeDisabled();
+  });
+
+  it("enables Suggest after a successful Preview, then replaces the textarea on success", async () => {
+    const onPreview = makeOnPreview({ data: { items: [{ id: 1 }] } });
+    const onSuggest = jest
+      .fn<OnSuggest>()
+      .mockResolvedValue({
+        expression: "data.items",
+        warning: null,
+      } as SuggestResult);
+
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "u",
+          label: "U",
+          path: "/x",
+          transform: "stale",
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+        onPreview={onPreview}
+        onSuggest={onSuggest}
+      />,
+    );
+
+    // Initially disabled.
+    expect(
+      screen.getByRole("button", { name: /^suggest$/i }),
+    ).toBeDisabled();
+
+    // Click Preview to capture a sample response.
+    await userEvent.click(
+      screen.getByRole("button", { name: /preview endpoint response/i }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /^suggest$/i }),
+      ).not.toBeDisabled(),
+    );
+
+    // Click Suggest.
+    await userEvent.click(
+      screen.getByRole("button", { name: /^suggest$/i }),
+    );
+
+    await waitFor(() => expect(onSuggest).toHaveBeenCalledTimes(1));
+    const arg = onSuggest.mock.calls[0]![0];
+    expect(arg.sampleResponse).toEqual({ data: { items: [{ id: 1 }] } });
+    expect(arg.promptHint).toBeUndefined();
+
+    // Textarea is replaced.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("textbox", { name: /transform expression/i }),
+      ).toHaveValue("data.items");
+    });
+  });
+
+  it("passes the trimmed hint via onSuggest's input arg", async () => {
+    const onPreview = makeOnPreview({ data: {} });
+    const onSuggest = jest
+      .fn<OnSuggest>()
+      .mockResolvedValue({
+        expression: "data",
+        warning: null,
+      } as SuggestResult);
+
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "u",
+          label: "U",
+          path: "/x",
+          transform: "stale",
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+        onPreview={onPreview}
+        onSuggest={onSuggest}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /preview endpoint response/i }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /^suggest$/i }),
+      ).not.toBeDisabled(),
+    );
+
+    // fireEvent.change instead of userEvent.type: the test only cares
+    // that the hint round-trips through onSuggest with whitespace
+    // trimmed; userEvent.type's per-keystroke rerender (32 chars × ~30
+    // ms each on a slow CI runner) was tripping Jest's default 5 s
+    // timeout.
+    fireEvent.change(
+      screen.getByRole("textbox", { name: /suggestion hint/i }),
+      { target: { value: "  one row per order line item  " } },
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /^suggest$/i }),
+    );
+
+    await waitFor(() => expect(onSuggest).toHaveBeenCalledTimes(1));
+    expect(onSuggest.mock.calls[0]![0].promptHint).toBe(
+      "one row per order line item",
+    );
+  });
+
+  it("surfaces a validation warning in the TransformEditor alert", async () => {
+    const onPreview = makeOnPreview({ data: {} });
+    const onSuggest = jest
+      .fn<OnSuggest>()
+      .mockResolvedValue({
+        expression: "data.items",
+        warning: {
+          kind: "validation-failed",
+          message: "the expression returned 0 records",
+        },
+      } as SuggestResult);
+
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "u",
+          label: "U",
+          path: "/x",
+          transform: "stale",
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+        onPreview={onPreview}
+        onSuggest={onSuggest}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /preview endpoint response/i }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /^suggest$/i }),
+      ).not.toBeDisabled(),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /^suggest$/i }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/the expression returned 0 records/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("clears the validation warning when the user edits the transform textarea", async () => {
+    const onPreview = makeOnPreview({ data: {} });
+    const onSuggest = jest
+      .fn<OnSuggest>()
+      .mockResolvedValue({
+        expression: "data.items",
+        warning: {
+          kind: "validation-failed",
+          message: "the expression returned 0 records",
+        },
+      } as SuggestResult);
+
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "u",
+          label: "U",
+          path: "/x",
+          transform: "stale",
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+        onPreview={onPreview}
+        onSuggest={onSuggest}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /preview endpoint response/i }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /^suggest$/i }),
+      ).not.toBeDisabled(),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /^suggest$/i }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText(/the expression returned 0 records/i),
+      ).toBeInTheDocument(),
+    );
+
+    // User edits the textarea — warning should clear.
+    await userEvent.type(
+      screen.getByRole("textbox", { name: /transform expression/i }),
+      "_edited",
+    );
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/the expression returned 0 records/i),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("renders the suggester FormAlert when onSuggest rejects", async () => {
+    const onPreview = makeOnPreview({ data: {} });
+    const onSuggest = jest
+      .fn<OnSuggest>()
+      .mockRejectedValue(
+        Object.assign(new Error("Haiku timed out"), {
+          code: "REST_API_TRANSFORM_SUGGEST_FAILED",
+        }),
+      );
+
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "u",
+          label: "U",
+          path: "/x",
+          transform: "stable",
+        })}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+        onPreview={onPreview}
+        onSuggest={onSuggest}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /preview endpoint response/i }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /^suggest$/i }),
+      ).not.toBeDisabled(),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /^suggest$/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/haiku timed out/i)).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(/rest_api_transform_suggest_failed/i),
+    ).toBeInTheDocument();
+
+    // Transform value should be unchanged from the initial.
+    expect(
+      screen.getByRole("textbox", { name: /transform expression/i }),
+    ).toHaveValue("stable");
   });
 });

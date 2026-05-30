@@ -26,6 +26,8 @@ import {
   ConnectorInstancePatchRequestBodySchema,
   PreviewEndpointPageRequestBodySchema,
   ProbeEndpointDraftRequestBodySchema,
+  SuggestTransformRequestBodySchema,
+  type SuggestTransformResponse,
   type ConnectorInstanceCreateResponsePayload,
   type ConnectorInstanceApi,
   type ConnectorInstanceWithDefinitionApi,
@@ -42,6 +44,10 @@ import {
 import { SyncService } from "../services/sync.service.js";
 import type { TestConnectionParams } from "../adapters/adapter.interface.js";
 import { restApiAdapter } from "../adapters/rest-api/rest-api.adapter.js";
+import jsonata from "jsonata";
+import { truncateForPrompt } from "../adapters/rest-api/jsonata-suggest.prompt.js";
+import { getJsonataSuggester } from "../adapters/rest-api/jsonata-suggest.haiku.js";
+import { JsonataSuggestError } from "../adapters/rest-api/jsonata-suggest.types.js";
 
 const logger = createLogger({ module: "connector-instance" });
 
@@ -948,6 +954,263 @@ connectorInstanceRouter.post(
     }
   }
 );
+
+/**
+ * @openapi
+ * /api/connector-instances/suggest-transform:
+ *   post:
+ *     tags:
+ *       - REST API Endpoints
+ *     summary: AI-suggest a JSONata transform expression for a sample response
+ *     description: >
+ *       Single-shot AI-assist for the JSONata transform editor in the
+ *       Add-endpoint form. Takes a sample HTTP response (already captured
+ *       via preview-endpoint-page) plus an optional natural-language
+ *       hint, and returns a JSONata expression that produces flat record
+ *       objects from that sample. The route never makes an upstream HTTP
+ *       call — credentials are not in the body.
+ *
+ *       Validate-then-retry orchestration: the server runs the suggested
+ *       expression through `applyTransform` against the full sample and
+ *       checks that the result is a non-empty array of plain objects.
+ *       If validation fails, the suggester is invoked once more with
+ *       the prior failure injected into the prompt. If both attempts
+ *       fail, the second expression is returned with a `warning` field
+ *       populated; the textarea is still populated on the client and
+ *       the warning surfaces inline.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/SuggestTransformRequestBody'
+ *     responses:
+ *       200:
+ *         description: Suggestion returned (with or without a warning).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, payload]
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/SuggestTransformResponse'
+ *       400:
+ *         description: Invalid body (Zod validation failure) — REST_API_INVALID_CONFIG.
+ *       401:
+ *         description: Auth missing or invalid.
+ *       502:
+ *         description: Haiku suggester failed — REST_API_TRANSFORM_SUGGEST_FAILED.
+ *       500:
+ *         description: Internal server error.
+ */
+connectorInstanceRouter.post(
+  "/suggest-transform",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = SuggestTransformRequestBodySchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        throw new ApiError(
+          400,
+          ApiCode.REST_API_INVALID_CONFIG,
+          "Invalid suggest-transform body",
+          { issues: parsed.error.issues }
+        );
+      }
+      const { promptHint, sampleResponse } = parsed.data;
+
+      const truncated = truncateForPrompt(sampleResponse);
+      const suggester = getJsonataSuggester();
+      const started = Date.now();
+
+      // Attempt 1
+      const first = await suggester.suggest({
+        sampleResponse: truncated,
+        promptHint,
+      });
+      const v1 = await validateSuggestion(first.expression, sampleResponse);
+      if (v1.valid) {
+        logger.info(
+          {
+            event: "rest-api.transform-suggest",
+            attempts: 1,
+            validatedFirstAttempt: true,
+            warningReturned: false,
+            latencyMs: Date.now() - started,
+            hadHint: !!promptHint,
+          },
+          "transform suggestion succeeded on first attempt"
+        );
+        const payload: SuggestTransformResponse = {
+          expression: first.expression,
+          warning: null,
+        };
+        return HttpService.success(res, payload, 200);
+      }
+
+      // Attempt 2 — feed the failure back through the prompt.
+      const second = await suggester.suggest({
+        sampleResponse: truncated,
+        promptHint,
+        previousAttempt: {
+          expression: first.expression,
+          error: v1.reason,
+        },
+      });
+      const v2 = await validateSuggestion(second.expression, sampleResponse);
+      if (v2.valid) {
+        logger.info(
+          {
+            event: "rest-api.transform-suggest",
+            attempts: 2,
+            validatedFirstAttempt: false,
+            warningReturned: false,
+            latencyMs: Date.now() - started,
+            hadHint: !!promptHint,
+          },
+          "transform suggestion succeeded on retry"
+        );
+        const payload: SuggestTransformResponse = {
+          expression: second.expression,
+          warning: null,
+        };
+        return HttpService.success(res, payload, 200);
+      }
+
+      // Both attempts produced an expression that failed validation.
+      // Return the second expression with the validation warning; the
+      // client still populates the textarea and surfaces the warning
+      // inline.
+      const validationMessage = v2.reason;
+      logger.info(
+        {
+          event: "rest-api.transform-suggest",
+          attempts: 2,
+          validatedFirstAttempt: false,
+          warningReturned: true,
+          latencyMs: Date.now() - started,
+          hadHint: !!promptHint,
+          warningMessage: validationMessage,
+        },
+        "transform suggestion returned a warning after retry"
+      );
+      const payload: SuggestTransformResponse = {
+        expression: second.expression,
+        warning: { kind: "validation-failed", message: validationMessage },
+      };
+      return HttpService.success(res, payload, 200);
+    } catch (error) {
+      if (error instanceof JsonataSuggestError) {
+        logger.warn(
+          {
+            event: "rest-api.transform-suggest.error",
+            reason: error.reason,
+            cause: error.message,
+          },
+          "jsonata suggester failed"
+        );
+        return next(
+          new ApiError(
+            502,
+            ApiCode.REST_API_TRANSFORM_SUGGEST_FAILED,
+            error.message,
+            { reason: error.reason }
+          )
+        );
+      }
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "suggest-transform failed"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+            500,
+            ApiCode.REST_API_OPERATION_FAILED,
+            `Failed to suggest transform: ${(error as Error).message}`
+          )
+      );
+    }
+  }
+);
+
+type SuggestionValidation =
+  | { valid: true }
+  | { valid: false; reason: string };
+
+/**
+ * Strict validation for a suggested JSONata expression against the
+ * full (untruncated) sample response.
+ *
+ * Does NOT go through `applyTransform`: that utility's wrap-to-array
+ * coercion (`primitive → [{value: prim}]`) would mask the very
+ * failure mode this validator is meant to catch (an expression like
+ * `$count(data)` returns a primitive, which is useless as a transform
+ * but would pass the strict-array-of-objects check on the *coerced*
+ * shape). Calls JSONata directly so the validator sees the raw
+ * evaluation result.
+ *
+ * Returns a discriminated result so the route can both gate the
+ * happy-path and inject the failure reason into the retry prompt /
+ * the response warning.
+ */
+async function validateSuggestion(
+  expression: string,
+  response: unknown,
+): Promise<SuggestionValidation> {
+  let compiled: ReturnType<typeof jsonata>;
+  try {
+    compiled = jsonata(expression);
+  } catch (err) {
+    return {
+      valid: false,
+      reason: `JSONata parse error: ${(err as Error).message}`,
+    };
+  }
+  let evaluated: unknown;
+  try {
+    evaluated = await compiled.evaluate(response);
+  } catch (err) {
+    return {
+      valid: false,
+      reason: `JSONata runtime error: ${(err as Error).message}`,
+    };
+  }
+  if (!Array.isArray(evaluated)) {
+    return {
+      valid: false,
+      reason: `the expression returned a non-array result (got ${
+        evaluated === null ? "null" : typeof evaluated
+      }); each suggestion must produce an array of plain objects`,
+    };
+  }
+  if (evaluated.length === 0) {
+    return {
+      valid: false,
+      reason:
+        "the expression returned 0 records; the response shape needs an expression that produces at least one record",
+    };
+  }
+  if (
+    !evaluated.every(
+      (r) => typeof r === "object" && r !== null && !Array.isArray(r),
+    )
+  ) {
+    return {
+      valid: false,
+      reason:
+        "the expression returned non-object records (got primitives or nested arrays); each record must be a plain object",
+    };
+  }
+  return { valid: true };
+}
 
 /**
  * @openapi

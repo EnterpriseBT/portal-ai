@@ -109,6 +109,30 @@ export async function fetchJson(
     );
   }
 
+  // Defensive unwrap for double-encoded JSON. Some upstreams — most
+  // commonly misconfigured ArcGIS REST FeatureServer endpoints and a
+  // handful of legacy JSONP-shimmed gateways — serve a body whose
+  // top-level JSON value is itself a string containing JSON. Our
+  // single JSON.parse above leaves us with a JS string, which is
+  // useless to downstream inference / transform / preview. If the
+  // parsed body is a string AND that string itself parses as a JSON
+  // object or array, unwrap once. Only one level: triple-encoding is
+  // pathological and we don't chase it.
+  if (typeof body === "string") {
+    try {
+      const inner = JSON.parse(body);
+      if (
+        inner !== null &&
+        typeof inner === "object" // arrays + plain objects
+      ) {
+        body = inner;
+      }
+    } catch {
+      // Inner parse failed — the string body is a legitimate string
+      // payload, not nested JSON. Keep as-is.
+    }
+  }
+
   return { status, body, headers };
 }
 
