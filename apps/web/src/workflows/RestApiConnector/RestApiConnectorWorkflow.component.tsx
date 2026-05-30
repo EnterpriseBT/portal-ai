@@ -91,6 +91,15 @@ export interface RestApiConnectorWorkflowUIProps {
   onPreviewEndpoint: (
     draft: EndpointDraft
   ) => Promise<{ body: unknown; truncated: boolean }>;
+  /** Add-endpoint form's Suggest button — asks the API for a JSONata
+   *  expression against the captured preview response. */
+  onSuggestTransform: (input: {
+    promptHint: string | undefined;
+    sampleResponse: unknown;
+  }) => Promise<{
+    expression: string;
+    warning: { kind: "validation-failed"; message: string } | null;
+  }>;
   /** Shared column-definition search hook for the inferred-columns table picker. */
   columnDefinitionSearch: import("../../api/types").SearchResult;
   onBasicsBlur: (field: string) => void;
@@ -138,6 +147,7 @@ export const RestApiConnectorWorkflowUI: React.FC<
   onCredentialsChange,
   onEndpointsChange,
   onPreviewEndpoint,
+  onSuggestTransform,
   columnDefinitionSearch,
   onBasicsBlur,
   columnsByEndpoint,
@@ -229,6 +239,7 @@ export const RestApiConnectorWorkflowUI: React.FC<
             errors={endpointsErrors}
             serverError={serverError}
             onPreview={onPreviewEndpoint}
+            onSuggest={onSuggestTransform}
           />
         </StepPanel>
         <StepPanel index={2} activeStep={step}>
@@ -321,6 +332,9 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
   // Used by the Add-endpoint form's Preview button to fetch the raw
   // page-1 response without going through the full probe pipeline.
   const previewPage = sdk.apiConnector.endpoints.previewPage();
+  // Used by the Add-endpoint form's Suggest button — single-shot AI
+  // assist for the JSONata transform editor.
+  const suggestTransform = sdk.apiConnector.endpoints.suggestTransform();
   // ColumnDefinition search hook — drives the per-row picker in the
   // ProbeReview step's inferred-columns table. Shared across endpoints
   // + rows so we only instantiate once.
@@ -483,6 +497,39 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
       endpoint: projectEndpointForHash(draft) as never,
     } as never);
     return { body: result.body, truncated: result.truncated };
+  };
+
+  /**
+   * Ask the API for a JSONata transform suggestion against the
+   * captured preview response. Re-shapes errors so the form sees a
+   * `{ message, code }` ServerError-ish object (the form's
+   * FormAlert renders that pair).
+   */
+  const onSuggestTransform = async (input: {
+    promptHint: string | undefined;
+    sampleResponse: unknown;
+  }): Promise<{
+    expression: string;
+    warning: { kind: "validation-failed"; message: string } | null;
+  }> => {
+    try {
+      const result = await suggestTransform.mutateAsync(input as never);
+      return {
+        expression: result.expression,
+        warning: result.warning,
+      };
+    } catch (err) {
+      // `useAuthMutation` surfaces `ApiError`s from the route with a
+      // `.code` property; preserve message + code so the form's
+      // FormAlert can render both.
+      const message =
+        err instanceof Error ? err.message : "Failed to suggest transform";
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code?: unknown }).code ?? "REST_API_OPERATION_FAILED")
+          : "REST_API_OPERATION_FAILED";
+      throw Object.assign(new Error(message), { code });
+    }
   };
 
   /**
@@ -756,6 +803,7 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
       onCredentialsChange={handleCredentialsChange}
       onEndpointsChange={setEndpoints}
       onPreviewEndpoint={onPreviewEndpoint}
+      onSuggestTransform={onSuggestTransform}
       columnDefinitionSearch={columnDefinitionSearch}
       onBasicsBlur={(field) =>
         setBasicsTouched((t) => ({ ...t, [field]: true }))

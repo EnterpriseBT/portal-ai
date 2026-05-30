@@ -169,6 +169,19 @@ export interface EndpointsStepProps {
     body: unknown;
     truncated: boolean;
   }>;
+  /**
+   * Suggest-transform callback. Fires the suggest-transform SDK call
+   * against the captured `sampleResponse` + an optional `promptHint`.
+   * Forwarded to ApiEndpointForm so the AI-assist affordance inside
+   * the modal can populate the transform textarea.
+   */
+  onSuggest?: (input: {
+    promptHint: string | undefined;
+    sampleResponse: unknown;
+  }) => Promise<{
+    expression: string;
+    warning: { kind: "validation-failed"; message: string } | null;
+  }>;
 }
 
 export const EndpointsStep: React.FC<EndpointsStepProps> = ({
@@ -178,6 +191,7 @@ export const EndpointsStep: React.FC<EndpointsStepProps> = ({
   serverError,
   instanceId,
   onPreview,
+  onSuggest,
 }) => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -236,6 +250,7 @@ export const EndpointsStep: React.FC<EndpointsStepProps> = ({
           setEditingIndex(null);
         }}
         onPreview={onPreview}
+        onSuggest={onSuggest}
       />
       {testingRow && testingRow.entityId && instanceId ? (
         <EndpointTestDialog
