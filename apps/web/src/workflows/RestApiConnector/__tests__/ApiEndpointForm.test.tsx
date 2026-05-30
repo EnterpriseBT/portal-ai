@@ -3,7 +3,12 @@ import React from "react";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
 
-import { render, screen, waitFor } from "../../../__tests__/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  fireEvent,
+} from "../../../__tests__/test-utils";
 
 import {
   ApiEndpointForm,
@@ -488,9 +493,14 @@ describe("ApiEndpointForm — Suggest button + onSuggest wiring", () => {
       ).not.toBeDisabled(),
     );
 
-    await userEvent.type(
+    // fireEvent.change instead of userEvent.type: the test only cares
+    // that the hint round-trips through onSuggest with whitespace
+    // trimmed; userEvent.type's per-keystroke rerender (32 chars × ~30
+    // ms each on a slow CI runner) was tripping Jest's default 5 s
+    // timeout.
+    fireEvent.change(
       screen.getByRole("textbox", { name: /suggestion hint/i }),
-      "  one row per order line item  ",
+      { target: { value: "  one row per order line item  " } },
     );
     await userEvent.click(
       screen.getByRole("button", { name: /^suggest$/i }),
