@@ -122,6 +122,33 @@ describe("fetchFirstPage — per-strategy single fetch", () => {
     expect(url.searchParams.get("page")).toBe("1");
   });
 
+  it("pageOffset offset-style: page 1 sends ?<param>=<startPage>&<pageSizeParam>=<pageSize>", async () => {
+    // Smoke target from #81 — the ArcGIS-style "?resultOffset=0&
+    // resultRecordCount=1000" sequence. We assert page 1 only here;
+    // multi-page increment is pinned in the iterator's own suite.
+    fetchMock.mockResolvedValueOnce(okResponse([{ id: "a" }]));
+    const pagination: PaginationConfig = {
+      strategy: "pageOffset",
+      style: "offset",
+      param: "resultOffset",
+      pageSize: 1000,
+      pageSizeParam: "resultRecordCount",
+      startPage: 0,
+      stopOnShortPage: false,
+    };
+    await fetchFirstPage(
+      makeEndpoint(),
+      "https://api.example.com",
+      NONE_AUTH,
+      null,
+      pagination
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = new URL(fetchMock.mock.calls[0]![0] as string);
+    expect(url.searchParams.get("resultOffset")).toBe("0");
+    expect(url.searchParams.get("resultRecordCount")).toBe("1000");
+  });
+
   it("cursor: fetches page 1 (no cursor param) and discards the page-2 iteration", async () => {
     fetchMock.mockResolvedValueOnce(
       okResponse({

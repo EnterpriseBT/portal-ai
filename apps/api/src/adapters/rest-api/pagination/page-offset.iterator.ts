@@ -1,7 +1,8 @@
 
 /**
- * Pagination strategy `pageOffset` — increment `{{pageNumber}}` until
- * the upstream stops returning records.
+ * Pagination strategy `pageOffset` — emit `{{pageNumber}}` per page,
+ * incrementing by 1 for page-style (`?page=1, 2, 3, …`) and by
+ * `pageSize` for offset-style (`?resultOffset=0, 1000, 2000, …`).
  *
  * Termination policies:
  *   1. Records array is empty → done.
@@ -23,6 +24,9 @@ export async function* pageOffsetIterator(
   config: PaginationPageOffset
 ): PageIterator {
   let pageNumber = config.startPage;
+  // page-style → +1 per page; offset-style → +pageSize per page (the
+  // URL parameter counts rows, not page numbers). See #81.
+  const step = config.style === "offset" ? config.pageSize : 1;
   for (let count = 0; count < MAX_PAGES; count++) {
     const page = yield {
       pageNumber,
@@ -32,7 +36,7 @@ export async function* pageOffsetIterator(
     };
     if (page.records.length === 0) return;
     if (config.stopOnShortPage && page.records.length < config.pageSize) return;
-    pageNumber += 1;
+    pageNumber += step;
   }
   throw new ApiError(
     502,

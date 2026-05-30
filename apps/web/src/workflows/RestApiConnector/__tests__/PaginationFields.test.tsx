@@ -56,12 +56,36 @@ describe("PaginationFieldsUI — per-strategy sub-form rendering", () => {
       strategy: "pageOffset",
     };
     render(<PaginationFieldsUI {...makeProps({ draft })} />);
-    expect(screen.getByLabelText(/^parameter name/i)).toBeInTheDocument();
+    // Label depends on `style` (page → "Page parameter name", offset →
+    // "Offset parameter name"). EMPTY_PAGINATION_DRAFT defaults to
+    // "page".
+    expect(
+      screen.getByLabelText(/^page parameter name/i),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText(/^page size/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^start page/i)).toBeInTheDocument();
     expect(
       screen.getByLabelText(/stop when a page returns fewer records/i)
     ).toBeInTheDocument();
+  });
+
+  it("renders offset-style inputs with the offset-specific labels", () => {
+    const draft: PaginationDraft = {
+      ...EMPTY_PAGINATION_DRAFT,
+      strategy: "pageOffset",
+      style: "offset",
+    };
+    render(<PaginationFieldsUI {...makeProps({ draft })} />);
+    expect(
+      screen.getByLabelText(/^offset parameter name/i),
+    ).toBeInTheDocument();
+    // pageSizeParam loses the "(optional)" suffix in offset mode.
+    expect(
+      screen.getByLabelText(/^page-size parameter name$/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/^page-size parameter name \(optional\)/i),
+    ).not.toBeInTheDocument();
   });
 
   it("calls onChange when the user updates pageSize", async () => {
