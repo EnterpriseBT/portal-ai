@@ -8,8 +8,14 @@ import {
   type FetchedPage,
 } from "../../../../adapters/rest-api/pagination/types.js";
 
+/**
+ * Page-style fixture: forgiving defaults, every field optional in
+ * the schema (param has no default but the test always supplies one).
+ */
 function fixtureConfig(
-  overrides: Partial<PaginationPageOffset> = {}
+  overrides: Partial<
+    Extract<PaginationPageOffset, { style: "page" }>
+  > = {}
 ): PaginationPageOffset {
   return {
     strategy: "pageOffset",
@@ -17,6 +23,28 @@ function fixtureConfig(
     param: "page",
     pageSize: 50,
     startPage: 1,
+    stopOnShortPage: true,
+    ...overrides,
+  };
+}
+
+/**
+ * Offset-style fixture: every field required per schema, so callers
+ * must spell out the offset/size param names + pageSize. Defaults
+ * here match a typical ArcGIS-style endpoint.
+ */
+function offsetFixtureConfig(
+  overrides: Partial<
+    Extract<PaginationPageOffset, { style: "offset" }>
+  > = {}
+): PaginationPageOffset {
+  return {
+    strategy: "pageOffset",
+    style: "offset",
+    param: "resultOffset",
+    pageSize: 1000,
+    pageSizeParam: "resultRecordCount",
+    startPage: 0,
     stopOnShortPage: true,
     ...overrides,
   };

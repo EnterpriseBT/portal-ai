@@ -101,14 +101,32 @@ export const PaginationFieldsUI: React.FC<PaginationFieldsUIProps> = ({
             <MenuItem value="page">Page number (1, 2, 3, …)</MenuItem>
             <MenuItem value="offset">Offset (0, 50, 100, …)</MenuItem>
           </TextField>
-          {textField("param", "Parameter name", "page")}
-          {textField("pageSize", "Page size", "50", "number")}
+          {textField(
+            "param",
+            draft.style === "offset"
+              ? "Offset parameter name"
+              : "Page parameter name",
+            draft.style === "offset" ? "resultOffset" : "page"
+          )}
+          {textField(
+            "pageSize",
+            "Page size",
+            draft.style === "offset" ? "1000" : "1",
+            "number"
+          )}
           {textField(
             "pageSizeParam",
-            "Page-size parameter name (optional)",
-            "per_page"
+            draft.style === "offset"
+              ? "Page-size parameter name"
+              : "Page-size parameter name (optional)",
+            draft.style === "offset" ? "resultRecordCount" : "per_page"
           )}
-          {textField("startPage", "Start page", "1", "number")}
+          {textField(
+            "startPage",
+            "Start page",
+            draft.style === "offset" ? "0" : "1",
+            "number"
+          )}
           <FormControlLabel
             control={
               <Checkbox

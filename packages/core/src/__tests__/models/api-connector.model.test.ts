@@ -181,7 +181,7 @@ describe("PaginationConfigSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts pageOffset with required fields and applies defaults", () => {
+  it("accepts pageOffset page-style with just param + applies defaults (pageSize: 1)", () => {
     const result = PaginationConfigSchema.safeParse({
       strategy: "pageOffset",
       style: "page",
@@ -189,9 +189,11 @@ describe("PaginationConfigSchema", () => {
     });
     expect(result.success).toBe(true);
     if (result.success && result.data.strategy === "pageOffset") {
-      expect(result.data.pageSize).toBe(50);
-      expect(result.data.startPage).toBe(1);
-      expect(result.data.stopOnShortPage).toBe(true);
+      expect(result.data.pageSize).toBe(1);
+      if (result.data.style === "page") {
+        expect(result.data.startPage).toBe(1);
+        expect(result.data.stopOnShortPage).toBe(true);
+      }
     }
   });
 
@@ -199,6 +201,73 @@ describe("PaginationConfigSchema", () => {
     const result = PaginationConfigSchema.safeParse({
       strategy: "pageOffset",
       style: "page",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // ── offset-style — every field required, no defaults ───────────────
+
+  it("accepts pageOffset offset-style with all required fields", () => {
+    const result = PaginationConfigSchema.safeParse({
+      strategy: "pageOffset",
+      style: "offset",
+      param: "resultOffset",
+      pageSize: 1000,
+      pageSizeParam: "resultRecordCount",
+      startPage: 0,
+    });
+    expect(result.success).toBe(true);
+    if (result.success && result.data.strategy === "pageOffset") {
+      expect(result.data.style).toBe("offset");
+      expect(result.data.pageSize).toBe(1000);
+      if (result.data.style === "offset") {
+        expect(result.data.pageSizeParam).toBe("resultRecordCount");
+        expect(result.data.startPage).toBe(0);
+      }
+    }
+  });
+
+  it("rejects pageOffset offset-style missing pageSize", () => {
+    const result = PaginationConfigSchema.safeParse({
+      strategy: "pageOffset",
+      style: "offset",
+      param: "resultOffset",
+      pageSizeParam: "resultRecordCount",
+      startPage: 0,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects pageOffset offset-style missing pageSizeParam", () => {
+    const result = PaginationConfigSchema.safeParse({
+      strategy: "pageOffset",
+      style: "offset",
+      param: "resultOffset",
+      pageSize: 1000,
+      startPage: 0,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects pageOffset offset-style missing startPage", () => {
+    const result = PaginationConfigSchema.safeParse({
+      strategy: "pageOffset",
+      style: "offset",
+      param: "resultOffset",
+      pageSize: 1000,
+      pageSizeParam: "resultRecordCount",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects pageOffset offset-style with empty pageSizeParam", () => {
+    const result = PaginationConfigSchema.safeParse({
+      strategy: "pageOffset",
+      style: "offset",
+      param: "resultOffset",
+      pageSize: 1000,
+      pageSizeParam: "",
+      startPage: 0,
     });
     expect(result.success).toBe(false);
   });

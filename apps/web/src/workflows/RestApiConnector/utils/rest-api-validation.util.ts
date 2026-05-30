@@ -51,7 +51,7 @@ export const EMPTY_PAGINATION_DRAFT: PaginationDraft = {
   strategy: "none",
   style: "page",
   param: "page",
-  pageSize: 50,
+  pageSize: 1,
   pageSizeParam: "",
   startPage: 1,
   stopOnShortPage: true,
@@ -69,9 +69,24 @@ export function paginationDraftToConfig(
     case "none":
       return { strategy: "none" };
     case "pageOffset":
+      // pageOffset is a union over `style`; build the variant
+      // explicitly so the inferred type narrows to the right branch.
+      // Offset-style requires pageSizeParam; page-style accepts it as
+      // optional.
+      if (d.style === "offset") {
+        return {
+          strategy: "pageOffset",
+          style: "offset",
+          param: d.param,
+          pageSize: d.pageSize,
+          pageSizeParam: d.pageSizeParam,
+          startPage: d.startPage,
+          stopOnShortPage: d.stopOnShortPage,
+        };
+      }
       return {
         strategy: "pageOffset",
-        style: d.style,
+        style: "page",
         param: d.param,
         pageSize: d.pageSize,
         ...(d.pageSizeParam.trim() !== ""
