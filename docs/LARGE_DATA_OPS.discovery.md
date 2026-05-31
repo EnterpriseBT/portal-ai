@@ -98,6 +98,33 @@ Writes need entity locks (existing pattern). Reads don't; PostgreSQL `statement_
 - **Writes lean: target entity only.** Sibling primitive `assertConnectorEntityUnlocked(entityId)` of the existing `assertConnectorInstanceUnlocked`. Reads on either source or target stay open while the bulk job runs.
 - **Reads lean: per-query `statement_timeout`.** Cap a single query's wall-clock at, say, 30 seconds. No lock, no job; just kill long queries and surface the failure to the agent so it can retry with a tighter SQL.
 
+#### S4 — Incremental UI rendering (live data, not a progress bar)
+
+The UI should NOT show a spinner-then-result for either direction. Both the bulk-write progress widget AND the read-side chart/table should render *the data itself* as it arrives — bars filling in column-by-column, points appearing on a scatter plot, table rows appending live, the user watching the operation materialize in real time.
+
+- **A. Spinner-then-result.** Show a progress bar (% done) during the operation; render the chart / refreshed table at terminal. Simplest. Loses the "alive" feeling.
+- **B. Incremental render: SSE deltas → UI append.** Server emits batches via SSE; UI maintains the rendered widget's data state, appending each delta as it lands. Writes: each committed batch is broadcast with the row payload (or a row-ref list the UI looks up). Reads: each query result batch is broadcast as it streams from PG. Chart re-renders on each delta via Vega-Lite's `vega.changeset` API (or the analogous mechanism for whichever renderer is in use).
+- **C. Polling.** UI re-fetches the full dataset every N seconds. Cheap server, expensive client; the chart "flickers" rather than animating.
+
+| | A (spinner) | B (incremental SSE) | C (polling) |
+|---|---|---|---|
+| Feels alive | ❌ | ✅ | Half — flicker, not animate |
+| Server complexity | Low | Medium (per-batch broadcast already exists for writes; new for reads) | Low |
+| Client complexity | Low | Medium (manage incremental state per widget type) | Medium (refetch + diff) |
+| Renders ≥50k smoothly | N/A (terminal one-shot) | Depends on widget — Vega-Lite handles ~1k incremental updates/sec; past that, batch | Bad past a few k (full re-render each tick) |
+| Final-state re-open | Trivial (cached snapshot) | Need to cache the final state separately to support re-open of the chart | Trivial |
+
+**Lean: B for both directions, with a cached final snapshot for re-open.** The SSE infrastructure for writes already broadcasts per-batch progress events; extending the payload to carry the row data (or row references) is incremental. For reads, the same SSE channel can stream query batches as they arrive from PG. The cached final state (Redis, per R3) is then *what's served when the user re-opens the chart later* — the streaming render is for the first viewing, the cache is the persistence. Same mechanism on both sides; same display-block resolver pattern.
+
+**Backpressure / batching policy.** Per-batch SSE event on writes is naturally rate-limited by the batch commit cadence (one event per ~1000-row commit ≈ every few hundred ms). For reads, the server cursors through the PG result and emits batches when (a) 1000 rows have accumulated OR (b) 250ms has elapsed since the last emit. Either trigger flushes a batch; whichever comes first. Keeps the UI's re-render rate bounded.
+
+**Widget-specific incremental support.**
+
+- *Table:* trivially append rows.
+- *Bar chart, line chart, scatter:* Vega-Lite supports incremental updates via `vega.changeset().insert(rows)` against a named dataset. Spec must declare `data: { name: "primary" }` rather than `data: { values: [] }`; the renderer attaches the changeset stream after mount.
+- *Tree / treemap / hierarchical:* incremental is harder — the layout depends on the full dataset. Lean: batch arrivals client-side, debounce re-layout to every 500ms.
+- *Map (per #84):* points / polygons append cleanly to a MapLibre layer; clustering / heatmap layers re-bucket on each batch.
+
 ### Write-specific decisions
 
 #### W1 — Tool-surface shape
@@ -156,7 +183,7 @@ For "acreage from geometry" / "centroid from polygon" / "normalized address" etc
 | Failure mode on large | Silent empty chart | Explicit cap message + sample | Streaming progress |
 | Complexity | None (status quo) | New endpoint, handle storage, TTL | Endpoint + streaming protocol |
 
-**Lean: B for v1; door open to C for >50k-row visualizations.** The data-handle pattern lifts the agent's caps (no rows in the tool result) AND fixes the silent-empty-chart bug (the agent sees `{ rowCount: 47213, truncated: false }` and reports that to the user accurately). Streaming (C) is a real follow-up if charts need to render 100k+ points incrementally, but Vega-Lite's practical ceiling makes that rare.
+**Lean: B + C combined.** The data-handle pattern (B) lifts the agent's caps and fixes the silent-empty-chart bug (the agent sees `{ rowCount: 47213, truncated: false }` and reports that accurately). On top of B, the **first render streams** (C) per S4 — the UI subscribes to an SSE channel keyed to the handle and the server pushes query batches as they arrive from PG; the chart fills in live. When all batches have arrived, the final state is what was cached in Redis (per R3). Re-opening the chart later serves from cache — the streaming render is only for the first viewing.
 
 #### R2 — Handle lifecycle
 
@@ -198,10 +225,10 @@ Different mark types have different practical ceilings.
 
 ## Tradeoff comparison
 
-| | UI surface (S1) | Agent ergonomics (S2) | Lock (S3) | Tool surface — writes (W1) | Cancel (W2) | Resume (W3) | Per-record compute (W5) | Read data path (R1) | Handle lifecycle (R2) | Storage (R3) | Sampling (R4) |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| Lean | Display block | Continue (W) / immediate-return (R) | Target entity (W) / `statement_timeout` (R) | Declarative SQL | Stop at batch | Idempotent re-run | SQL primary + tool fallback | Data handle | Session-scoped | Redis | Implicit + system-prompt nudge |
-| Spreads to spec | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| | UI surface (S1) | Agent ergonomics (S2) | Lock (S3) | Incremental render (S4) | Tool surface — writes (W1) | Cancel (W2) | Resume (W3) | Per-record compute (W5) | Read data path (R1) | Handle lifecycle (R2) | Storage (R3) | Sampling (R4) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Lean | Display block | Continue (W) / immediate-return (R) | Target entity (W) / `statement_timeout` (R) | SSE deltas → UI append | Declarative SQL | Stop at batch | Idempotent re-run | SQL primary + tool fallback | Handle + streaming | Session-scoped | Redis | Implicit + system-prompt nudge |
+| Spreads to spec | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 Every lean composes cleanly with the next.
 
@@ -222,8 +249,9 @@ Every lean composes cleanly with the next.
    ```
 3. Tool route validates, calls `assertConnectorEntityUnlocked(targetEntityId)`, EXPLAINs the expression, enqueues a `bulk_transform` job, returns `{ jobId, expectedRecords: 100000, estimatedSeconds: 180 }`.
 4. UI renders `bulk-job-progress` display block tied to the jobId; SSE subscription opens.
-5. Processor runs batched `INSERT INTO target_wide SELECT … FROM source_wide LIMIT 1000 OFFSET N` per batch; emits `{ _eventType: "batch", recordsProcessed: N, totalRecords: 100000 }` per batch commit.
-6. Widget updates in-place; on terminal, portal injects a synthetic message into the agent's context for follow-up.
+5. Processor runs batched `INSERT INTO target_wide SELECT … FROM source_wide LIMIT 1000 OFFSET N` per batch. **Per batch commit**, it emits `{ _eventType: "batch", recordsProcessed: N, totalRecords: 100000, batchDurationMs, rows: [...committed batch rows...] }` over the SSE channel (rows payload optional and capped at batch size; toggleable per-job if the rows are too large to broadcast).
+6. The `bulk-job-progress` widget renders **a live data view**, not just a percent bar. The user picks a view (bar chart of `acreage` distribution, or a paginated table of latest committed records) when the widget mounts. As each `batch` event lands, the widget calls `vega.changeset().insert(rows)` for chart views or appends to the table state. The user watches the histogram fill in column-by-column, or rows append in real time.
+7. On terminal, portal injects a synthetic message into the agent's context for follow-up.
 
 ### Smoke B — read: 10k-point scatter plot of parcel acreage vs assessed value
 
@@ -235,10 +263,11 @@ Every lean composes cleanly with the next.
      vegaLiteSpec: { mark: "point", encoding: { x: {field: "acreage", type: "quantitative"}, y: {field: "assessed_value", type: "quantitative"} } }
    )
    ```
-3. Tool route executes the SQL; rows materialize to Redis under a fresh `queryHandle`; response to the agent is `{ queryHandle: "qh-xyz", rowCount: 13427, schema: [{name: "acreage", type: "number"}, {name: "assessed_value", type: "number"}], sampled: false, truncated: false, samplePeek: [/* first 10 rows */] }`. Note: no 13427 rows in the agent's context.
-4. Agent's response renders as a portal message with a `query-result-data` display block carrying the handle + the Vega-Lite spec.
-5. UI receives the display block, fetches `/api/portal-sql/handle/qh-xyz` to get the rows, populates `data.values` in the spec client-side, renders the chart.
-6. Above 50k rows: sampling kicks in implicitly; agent sees `{ rowCount: 1_000_000, sampled: true, sampleSize: 50_000 }` and says "rendered as a 5% sample because the full dataset has 1M points." Past per-mark cap: agent steered toward aggregation via system-prompt guidance.
+3. Tool route enqueues the query (cursor-backed); response to the agent is **immediate**: `{ queryHandle: "qh-xyz", rowCount: 13427, schema: [{name: "acreage", type: "number"}, {name: "assessed_value", type: "number"}], sampled: false, truncated: false, samplePeek: [/* first 10 rows */] }`. The agent gets row count + schema before the rows have finished streaming server-side. The 13427 rows never enter the agent's context.
+4. Agent's response renders as a portal message with a `query-result-data` display block carrying the handle + the Vega-Lite spec. The spec is authored against a named dataset (`data: { name: "primary" }`) so the renderer can apply changesets.
+5. **UI subscribes to** `/api/portal-sql/handle/qh-xyz/stream` (SSE). Server cursors the PG query, emitting batches of ~1000 rows (or every 250ms, whichever first). Each batch is a `data` event carrying the rows array. The scatter plot mounts empty; as the first batch arrives, ~1000 points appear; the next batch adds another ~1000; the chart fills in over ~2-3 seconds for 13k rows. Same batches accumulate in Redis under the handle id for later re-open.
+6. After the cursor exhausts, server closes the SSE channel; the cached snapshot in Redis is the final state. If the user resizes the chart or re-opens the portal message later, the widget falls back to `GET /api/portal-sql/handle/qh-xyz` (the snapshot endpoint) — no re-streaming needed.
+7. Above 50k rows: sampling kicks in implicitly; agent sees `{ rowCount: 1_000_000, sampled: true, sampleSize: 50_000 }` and surfaces "rendered as a 5% sample because the full dataset has 1M points." Past per-mark cap: agent steered toward aggregation via system-prompt guidance.
 
 ## Recommendation
 
@@ -246,21 +275,24 @@ Every lean composes cleanly with the next.
 
 1. **New tool** `bulk_transform_entity_records`. Parameters: `sourceEntityId, targetEntityId, expression, keyField, batchSize?`. Expression is `{ kind: "sql", value: string }` for v1; `{ kind: "tool", ref: string }` deferred.
 2. **New JobType** `bulk_transform`. Metadata declares `targetEntityId` as the locked entity; result carries `recordsProcessed, recordsFailed, durationMs, partialFailures[]`.
-3. **New processor** `apps/api/src/queues/processors/bulk-transform.processor.ts`. Drives the batched INSERT/UPSERT loop, emits per-batch custom SSE events, honors the cancel flag.
-4. **New SSE event** `{ _eventType: "batch", recordsProcessed, totalRecords, batchDurationMs }` → `job:batch`.
+3. **New processor** `apps/api/src/queues/processors/bulk-transform.processor.ts`. Drives the batched INSERT/UPSERT loop, emits per-batch custom SSE events carrying both the counters and (optionally) the committed-batch row payload, honors the cancel flag.
+4. **New SSE event** `{ _eventType: "batch", recordsProcessed, totalRecords, batchDurationMs, rows? }` → `job:batch`. The `rows` payload is opt-in per job (caps at `BATCH_ROW_PAYLOAD_LIMIT` bytes; large rows fall back to row-id lists for the UI to fetch separately).
 5. **New lock primitive** `JobLockService.assertConnectorEntityUnlocked(entityId)` + sibling repository method.
-6. **New display block** `bulk-job-progress` (frontend: `apps/web/src/components/BulkJobProgressBlock.component.tsx`).
+6. **New display block** `bulk-job-progress` (frontend: `apps/web/src/components/BulkJobProgressBlock.component.tsx`). Renders a **live data widget** — bar chart, histogram, or table — that appends per `batch` SSE event via `vega.changeset` (chart) or React state (table). The user picks the view when the widget mounts; the default is a histogram over the most-recently-written column.
 7. **Portal follow-up injection** on terminal SSE; new helper in `portal.service.ts`.
 
 ### Reads track
 
-8. **New tool wrappers** — modify `sql_query`, `visualize`, `visualize_tree` to return a query-handle envelope instead of the raw rows. Backward compat: when `rowCount <= 100`, still embed `rows` inline (cheap small reads stay fast). When `rowCount > 100`, return `{ queryHandle, rowCount, schema, sampled, samplePeek }` and the data goes to Redis.
-9. **New endpoint** `GET /api/portal-sql/handle/:handleId` returning the materialized rows (with paging support: `?offset=&limit=`).
-10. **Redis-backed handle storage.** TTL 24h, keyed by `{ portalId, handleId }`. Eviction policy: LRU.
-11. **New display block** `query-result-data`. Carries handle + spec; UI fetches rows + renders. Existing chart renderer plugs in via this new block.
+8. **New tool wrappers** — modify `sql_query`, `visualize`, `visualize_tree` to return a query-handle envelope instead of the raw rows. Backward compat: when `rowCount <= 100`, still embed `rows` inline (cheap small reads stay fast). When `rowCount > 100`, return `{ queryHandle, rowCount, schema, sampled, samplePeek }`; the data streams to the UI and accumulates in Redis.
+9. **Two endpoints** for the handle:
+    - `GET /api/portal-sql/handle/:handleId/stream` — SSE stream emitting batches of ~1000 rows (or every 250ms, whichever first) as the PG cursor walks the result. Used for the first render. Server-side: cursor on a read-only transaction with `statement_timeout` applied; emit-and-cache pattern.
+    - `GET /api/portal-sql/handle/:handleId?offset=&limit=` — paged snapshot endpoint serving from Redis. Used for re-open (resize, scroll back, panel re-mount).
+10. **Redis-backed handle storage.** TTL 24h, keyed by `{ portalId, handleId }`. Eviction policy: LRU. Populated either as the SSE stream emits (concurrent write) or in a single shot when the cursor completes.
+11. **New display block** `query-result-data`. Carries handle + spec; UI opens the SSE stream on mount and appends per batch via `vega.changeset().insert(rows)` (chart) or React state (table). On the SSE channel closing, the widget switches to the snapshot endpoint for any further data access.
 12. **Sampling logic** in `PortalSqlService`: above `SAMPLING_THRESHOLD` (lean: 50000 rows), apply `TABLESAMPLE BERNOULLI` (or `ORDER BY random() LIMIT N` for deterministic small samples) and mark `sampled: true` in the response envelope.
 13. **Per-mark cap table** in the `visualize` / `visualize_tree` tool descriptions. Surfaced to the agent so it can plan around it.
 14. **`statement_timeout`** on every portal-SQL transaction. Lean: 30s. Caught as a typed error; surfaced to the agent so it can retry with a tighter query or apply aggregation.
+15. **Vega-Lite spec rewrite** at the visualize-tool layer. The agent emits a spec authored against `data: { values: [] }`; the server rewrites it to `data: { name: "primary" }` before returning to the UI, so the renderer can apply changesets. Document in the tool description so the agent doesn't need to know.
 
 ### Resource limits
 
@@ -278,17 +310,18 @@ Every lean composes cleanly with the next.
 3. **Per-record-tool-dispatch** (writes): the `expression: { kind: "tool", ref: "compute_area" }` shape. In-process function call vs sub-job per batch?
 4. **Handle ownership across users** (reads): if user A creates a query handle and user B opens the same portal, does the handle resolve? Lean: portal-scoped, not user-scoped (the handle is part of the portal state). But document.
 5. **Handle invalidation on source data change** (reads): if a connector sync runs between the agent fetching the handle and the user re-opening the chart, the handle data is stale. Tradeoff: serve cached (faster, possibly stale) vs re-execute (fresh, slower). Lean: serve cached; surface "last refreshed N minutes ago" in the chart corner.
-6. **Streaming (R1 option C)**: when does the 50k-row Redis ceiling become a real constraint? Probably not v1; flag.
-7. **Statement-timeout failure UX** (reads): when a 30s query times out, the agent sees a typed error and gets to retry. What's the agent prompt look like so it retries *productively* (tighter SQL, aggregation) rather than the same query? Probably a system-prompt addition.
-8. **Quota / billing**: a 1M-record bulk job is real compute; a 100k-row read materialized to Redis costs memory. Per-org budgets out of scope here.
+6. **Statement-timeout failure UX** (reads): when a 30s query times out, the agent sees a typed error and gets to retry. What's the agent prompt look like so it retries *productively* (tighter SQL, aggregation) rather than the same query? Probably a system-prompt addition.
+7. **Backpressure on the SSE stream** (reads + writes): if the UI is slow to drain (laggy network, paused tab), the server's emit-and-cache loop could outpace the client. Lean: cache always wins (server keeps writing batches to Redis), the SSE channel drops the slowest consumer if buffer exceeds a threshold; client re-syncs via the snapshot endpoint on reconnect.
+8. **Per-batch row payload size cap** (writes): the bulk-job SSE event carries committed-batch rows so the widget can render them live. If batch rows are large (geometry blobs, JSONB), the payload could blow past sensible SSE event sizes. Lean: cap at `BATCH_ROW_PAYLOAD_LIMIT` (lean: 256 KB); past the cap, emit row-id lists only and let the widget fetch by id from the wide table.
+9. **Vega-Lite spec compatibility** (reads): we rewrite the agent's spec to use a named dataset for changesets. Are there spec patterns the rewrite can't handle (e.g. specs that already declare named datasets, multi-source compositions)? Audit during implementation.
+10. **Quota / billing**: a 1M-record bulk job is real compute; a 100k-row read materialized to Redis costs memory; SSE streams keep connections open. Per-org budgets out of scope here.
 
 ## What this doesn't decide
 
 - **PostGIS** — staying in JSONB for geometry (per #84). Acreage SQL in Smoke A assumes PostGIS; if it's not in place, the smoke uses the deferred `{ kind: "tool", ref: "compute_area" }` shape. Either way, the bulk-job mechanism is orthogonal.
 - **Sandboxed JS** (W1 option C) — gated, deferred. Re-evaluate when ≥3 use cases surface that SQL projection can't express.
 - **Distributed sharding** — single worker pool in v1.
-- **Streaming reads** (R1 option C) — deferred until 50k-row Redis storage proves insufficient.
-- **Quota / billing** — flagged in open question 8.
+- **Quota / billing** — flagged in open question 10.
 - **Cross-portal handle sharing** (reads) — handles are portal-scoped; sharing a chart across portals is a copy operation, not a handle reference.
 
 ## Next step
@@ -296,12 +329,14 @@ Every lean composes cleanly with the next.
 Spec at `docs/LARGE_DATA_OPS.spec.md` codifies the wire contracts: `BulkTransformToolSchema`, `BulkTransformMetadataSchema`, `BulkTransformResultSchema`, new SSE event types, query-handle response envelope, handle-fetch endpoint contract. Plan at `docs/LARGE_DATA_OPS.plan.md` slices the work, roughly:
 
 - (1) writes: JobType + schemas + lock primitive
-- (2) writes: processor + cancel-flag + per-batch SSE
-- (3) writes: tool + EXPLAIN validation + portal follow-up
-- (4) writes: display block + smoke against the acreage target
-- (5) reads: query-handle envelope + Redis storage + fetch endpoint
-- (6) reads: `sql_query` / `visualize` / `visualize_tree` rewired for the envelope
-- (7) reads: sampling + statement_timeout + per-mark cap table
-- (8) reads: display block + smoke against the scatter-plot target
+- (2) writes: processor + cancel-flag + per-batch SSE (counters first)
+- (3) writes: per-batch SSE extended with row payload (or row-ref lists past payload cap); spec rewrite for changeset support
+- (4) writes: tool + EXPLAIN validation + portal follow-up
+- (5) writes: live-data display block (chart + table view variants) + smoke against the acreage target
+- (6) reads: query-handle envelope + Redis storage + snapshot endpoint
+- (7) reads: SSE streaming endpoint (cursor-driven, emit-and-cache)
+- (8) reads: `sql_query` / `visualize` / `visualize_tree` rewired for the envelope; Vega-Lite spec rewrite for named datasets
+- (9) reads: sampling + statement_timeout + per-mark cap table
+- (10) reads: streaming display block (mount SSE → append on each batch → fall back to snapshot on stream close) + smoke against the scatter-plot target
 
 Each slice is independently shippable; writes track and reads track can land in parallel since they only share the display-block-resolver seam.
