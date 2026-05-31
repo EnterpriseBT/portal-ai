@@ -58,33 +58,49 @@ The read-side failure mode is *worse* than the write-side: 100-cap is a number t
 | Pinnable types | same file, `PINNABLE_BLOCK_TYPES` | `text`, `vega-lite`, `vega`, `data-table` |
 | View | `apps/web/src/components/PinnedResultsList.component.tsx`, `DataResult.component.tsx` | Renders `content` directly; for vega-lite, the spec's `data.values` already holds the rows that were live at pin time |
 
-Today this works because **the rows are embedded in the spec**: when the user pins a 200-row scatter plot, the spec's `data.values` carries those 200 rows and they survive forever in the JSONB column. Source data can change, the connector entity can be re-synced, and the pinned chart still renders exactly what the user pinned.
+Today the rows are embedded in `content.data.values`, so the pin is effectively a screenshot — the chart renders the same data forever even after the source mutates. The new design forces a choice about what "pin" *means*:
 
-**The new design breaks that.** Under R1's data-handle pattern + S4's streaming render, the chart at the moment of pinning holds *a handle + a spec authored against a named dataset*. The actual rows live in Redis (24h TTL) and in the wide-table column store. If the pin operation copies the current display block verbatim, the pinned content becomes:
+- Is a pin **a screenshot** (preserves the data as it was when pinned)? Or
+- Is a pin **a dashboard widget** (shows the current data, recomputed from the source)?
 
-```json
-{ "queryHandle": "qh-xyz", "rowCount": 13427, "schema": [...], "spec": {...named-dataset-spec...} }
-```
-
-…with the rows stored separately under the handle id. **24 hours later, the handle is gone.** The pinned chart now references a missing handle; if the UI 404s on the handle endpoint, we're back to silent empty chart — the exact failure mode the new design was supposed to kill.
+**User-facing intent: dashboard widget.** Pins are how users build a working dashboard out of conversations. The expected behavior when sales data lands in a connector on Monday and the user opens their "Weekly revenue" pin on Friday is *Friday's number*, not Monday's. The snapshot semantics today are a side effect of how the data flowed through the agent (inline rows survive in JSONB by accident), not a designed contract.
 
 Design space:
 
-- **P1. Pin re-executes the query.** Save the SQL + spec; re-run on view. Always-fresh data, tiny storage. But source may have changed (the pin loses "this is what I saw" semantics); expensive queries re-paid per view; sampled results may differ across views.
-- **P2. Pin snapshots all rows inline.** Materialize the cached handle into `portal_results.content` at pin time; same shape as today. Pros: exact reproduction; works forever. Cons: a 50k-row pin = ~10MB JSONB blob; pinning is heavy; JSONB column bloats.
-- **P3. Pin promotes the Redis handle to a durable store.** New `portal_result_data` table (or S3 blob) keyed by `portal_result_id`. Pin copies the cached rows there; view reads from there. Pros: cheap pin storage layer separate from `portal_results`; durable; same access pattern. Cons: new infra; cleanup story (soft-delete of pin cascades to data); two tables to keep consistent.
-- **P4. Hybrid: small results inline, large results in the durable handle store.** Under a threshold (lean: same 100-row boundary used for the inline-vs-handle split in tool results), pin works exactly as today (rows in JSONB). Above the threshold, pin promotes to `portal_result_data`. The view path branches on which one the row is using.
+- **P1. Pin re-executes on view.** Save the SQL + spec + tool-call origin; re-run on view through the same handle/streaming pipeline used for fresh reads. Always-fresh data, tiny storage. Source may have changed (this is the point); expensive queries re-paid per view (mitigated by short-lived caching).
+- **P2. Pin snapshots all rows inline.** Materialize the cached handle into `portal_results.content` at pin time. Today's behavior, extended to large results. Cons: ~10MB JSONB blob per 50k-row pin; data goes stale silently.
+- **P3. Pin promotes the Redis handle to a durable store** (new `portal_result_data` table). Cheap pin storage but same "snapshot drifts from source" problem as P2.
+- **P4. Hybrid (inline-small / durable-large).** Variant of P2/P3; still snapshot semantics.
 
-**Lean: P4 (hybrid).** Preserves the today-behavior for small pins (no change to how 95% of pins work — text, small tables, charts of aggregated SQL output). Adds the durable handle path for the new "large dataset visualization" case. The pin operation is heavier for large results (one-time copy from Redis to Postgres + small wide-table query if Redis has evicted), but that's the price of "pin the chart of 13k points so my colleague can open it next Monday."
+**Lean: P1 (live re-execution).** Pins are dashboard widgets, not screenshots. Concrete implementation:
 
-Concrete implementation sketch:
+- **Pin route extension** (`apps/api/src/routes/portal-results.router.ts`). Instead of copying the display block's `content` verbatim, extract the tool-call origin into a structured shape:
+  ```ts
+  {
+    kind: "live-query",
+    origin: "sql_query" | "visualize" | "visualize_tree" | "bulk_transform_target_view",
+    sql: string,                    // the SQL that drove the original render
+    spec?: Record<string, unknown>, // Vega-Lite / Vega spec, for chart kinds
+    columnConfig?: ColumnConfig,    // for data-table kind
+    pinnedAt: number,               // timestamp; surface as "pinned 3 days ago"
+  }
+  ```
+  …stored in `portal_results.content`. No rows, no handle id.
+- **View route extension**. When `content.kind === "live-query"`, the route doesn't return rows directly. It returns the structured shape; the UI dispatches the same query through `sql_query` / `visualize` / `visualize_tree` as if the user had just asked. Same handle envelope, same streaming render — pins compose on the read-side infra rather than building their own.
+- **Caching.** Per-pin lightweight cache at the API layer (lean: 60-second TTL, keyed by `{ portalResultId, sourceDataChecksum? }`) so dashboard-style views with 20 pins don't fire 20 fresh queries every page load. Optional optimization; v1 ships without and adds if performance warrants.
 
-- New table `portal_result_data` with `{ portalResultId (PK, FK), rows (JSONB), rowCount, schema, columnDataTypes }`.
-- Pin route: when the pinned block carries a `queryHandle`, fetch the cached rows from Redis. If Redis missed (TTL elapsed) OR if the result was sampled, re-execute the original SQL against the live data — and surface that to the user ("the cached data had expired; the pin snapshots a fresh run against the live source"). Then write rows to `portal_result_data` and remove the handle from the pinned `content` (replace with a `dataSource: "pinned-store"` marker).
-- View route: when `portal_results.content` carries `dataSource: "pinned-store"`, the route joins `portal_result_data` and inlines the rows into the spec's `data.values` (or returns them alongside for the UI to compose). Otherwise fall through to today's path.
-- Soft-delete of `portal_results` cascades to `portal_result_data` via the existing soft-delete machinery.
+**Text pins remain snapshots.** Pinned text blocks (the agent's prose summarizing a finding) have no re-executable query. Those keep today's behavior — the text content goes into `content.text` and renders as-is. The `kind` discriminator in `content` is `"text"` for these.
 
-For writes specifically: pinning the `bulk-job-progress` widget at terminal is effectively pinning a chart of the target entity's recently-written records. Same path as a read-side pin under P4 — the widget already has a query (against the target entity's wide table) for its live view; at pin time we promote that to the same durable store. No special-case write-pin logic needed.
+**Pinned write outputs** (the `bulk-job-progress` widget pinned at terminal) become a live query against the target entity (filtered to what the bulk job wrote, e.g. `WHERE updated_by_job_id = '...'`). Same live-query mechanism. The histogram of acreage values that the user watched fill in during the bulk job is now a live histogram of the target entity — if acreages get edited later, the pin reflects that.
+
+**Compliance / snapshot opt-in.** Some use cases genuinely want "the chart as it was at time T" — legal exhibits, board-meeting prints, regulatory snapshots. Defer this as `pinMode: "snapshot"` opt-in for v1.5. The user picks "Pin live" (default) vs "Pin snapshot" at pin time; snapshot mode materializes rows to `portal_result_data` (essentially P3 reborn as an opt-in). For v1 every pin is live.
+
+**Migration of existing pins.** Existing rows in `portal_results` have `content` holding the spec with inline `data.values`. Two options:
+
+1. **Hard cut:** existing pins keep rendering exactly as today (legacy snapshot), new pins use live re-execution. Identify legacy pins by the absence of `content.kind`. View route falls through to the today-path for those. Lean.
+2. **Best-effort live migration:** for legacy pins where we can recover the original SQL (the agent's tool-call history is in `portal_messages`), upgrade the pin's content to `kind: "live-query"` on first view. Slow first view; harder to reason about ownership of the migration trigger; lean against.
+
+**Failure modes.** When the underlying query fails on view (source column removed, entity deleted, statement_timeout), the pinned widget renders the S5 error envelope — *"The data behind this chart is no longer available: column `acreage` doesn't exist in parcel_metrics anymore. Recommendation: edit the pin to point at a different column, or delete the pin."* No silent empty chart; the user gets the actionable next step.
 
 ## Profiling: where's the actual bottleneck?
 
@@ -307,7 +323,7 @@ Different mark types have different practical ceilings.
 
 | | UI surface (S1) | Agent ergonomics (S2) | Lock (S3) | Incremental render (S4) | Error UX (S5) | Tool surface — writes (W1) | Cancel (W2) | Resume (W3) | Per-record compute (W5) | Read data path (R1) | Handle lifecycle (R2) | Storage (R3) | Sampling (R4) | Pin storage (P4) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Lean | Display block | Continue (W) / immediate-return (R) | Target entity (W) / `statement_timeout` (R) | SSE deltas → UI append | `ApiUserError` envelope to UI + agent | Declarative SQL | Stop at batch | Idempotent re-run | SQL primary + tool fallback | Handle + streaming | Session-scoped | Redis | Implicit + system-prompt nudge | Inline ≤100 rows; durable handle store > 100 |
+| Lean | Display block | Continue (W) / immediate-return (R) | Target entity (W) / `statement_timeout` (R) | SSE deltas → UI append | `ApiUserError` envelope to UI + agent | Declarative SQL | Stop at batch | Idempotent re-run | SQL primary + tool fallback | Handle + streaming | Session-scoped | Redis | Implicit + system-prompt nudge | Live re-execution; snapshot mode v1.5 opt-in |
 | Spreads to spec | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 Every lean composes cleanly with the next.
@@ -376,17 +392,20 @@ Every lean composes cleanly with the next.
 
 ### Pinned-results track
 
-16. **New table `portal_result_data`** keyed by `portalResultId` with `{ rows: jsonb, rowCount, schema, columnDataTypes }`. Lives in `apps/api/src/db/schema/portal-result-data.table.ts`. Soft-delete cascades from `portal_results`.
-17. **Pin route extension** (`apps/api/src/routes/portal-results.router.ts`) — when the pinned block carries a `queryHandle`, branch on row count: `<=100` inline as today; `>100` fetches rows from Redis (or re-executes the SQL if Redis missed) and writes them to `portal_result_data`, replacing the handle in `content` with `{ dataSource: "pinned-store" }`.
-18. **View route extension** — when `content.dataSource === "pinned-store"`, join `portal_result_data` and inline rows into the spec before returning.
-19. **Re-execution-on-Redis-miss UX:** if the user pins a result whose handle has just expired, the pin operation re-runs the SQL against the live source. Surface that to the user via the S5 envelope (`severity: "info"`, recommendation: "Pinned data is fresh from the source — the original chart's cached data had expired."). Do NOT silently re-execute.
+16. **Live re-execution as the default.** Pins save `{ kind: "live-query", origin, sql, spec?, columnConfig?, pinnedAt }` in `portal_results.content`; no rows, no handle id. Text pins keep `kind: "text"` and the today-behavior (snapshot of prose).
+17. **Pin route extension** (`apps/api/src/routes/portal-results.router.ts`) — read the display block's tool-call origin (already available on the block; the resolver records it), extract the SQL + spec + columnConfig, write the structured shape into `content`. Reject pins for block types that aren't re-executable (writes-only tool outputs, etc.) with an S5 envelope: *"This block can't be pinned because it isn't backed by a re-executable query. Pin the agent's text summary instead."*
+18. **View route extension** — when `content.kind === "live-query"`, return the structured shape (NOT the rows); the UI dispatches it through `sql_query` / `visualize` / `visualize_tree` as if the user had just asked. Pins compose on read-side infra rather than building parallel paths.
+19. **Per-pin cache** at the API layer (60-second TTL, keyed by `{ portalResultId }`) so a dashboard with 20 pins doesn't fire 20 fresh queries per page load. Optional in v1; turn on if performance warrants.
+20. **Legacy-pin compatibility.** Existing `portal_results` rows have `content` with inline `data.values` and no `kind` discriminator. Hard-cut: detect absence of `kind`, fall through to today's render path. No data migration. Legacy pins stay snapshots; new pins go live.
+21. **Failure-mode rendering.** When the underlying query fails on view (column removed, entity deleted, statement_timeout, etc.), surface S5 envelope inline in the pin tile: *"The data behind this chart is no longer available: …. Recommendation: edit the pin or delete it."* No silent empty chart in dashboards either.
+22. **Snapshot mode (opt-in)** — deferred to v1.5 for compliance use cases. At pin time the user picks "Pin live" (default) vs "Pin snapshot"; snapshot mode materializes rows to `portal_result_data` (the table from the original P3/P4 sketch). Out of scope for v1.
 
 ### Error-UX track (cross-cutting)
 
-20. **Universal `ApiUserError` envelope** `{ code, message, recommendation, details? }`. Every error path in every new tool / route / display block emits this shape. The agent and the UI both consume it.
-21. **`FormAlert`-style rendering** in every new display block — `bulk-job-progress`, `query-result-data`, pinned-result viewer — surfacing both the `message` and the `recommendation`. No "loading..." → blank state; either it renders data, renders progress, or renders the envelope.
-22. **Informational envelopes** for non-error degradations (sampling, aggregation hint, per-mark cap fallback) — same shape with `severity: "info"`. Widget surfaces them subtly (footer chip, not modal alert) but always visibly.
-23. **Pre-flight error checks** in the bulk-tool route — lock check, max-records check, EXPLAIN validation — all run before the job is enqueued so the error surfaces immediately, not as a job-failed terminal event 30 seconds later.
+23. **Universal `ApiUserError` envelope** `{ code, message, recommendation, details? }`. Every error path in every new tool / route / display block emits this shape. The agent and the UI both consume it.
+24. **`FormAlert`-style rendering** in every new display block — `bulk-job-progress`, `query-result-data`, pinned-result viewer — surfacing both the `message` and the `recommendation`. No "loading..." → blank state; either it renders data, renders progress, or renders the envelope.
+25. **Informational envelopes** for non-error degradations (sampling, aggregation hint, per-mark cap fallback) — same shape with `severity: "info"`. Widget surfaces them subtly (footer chip, not modal alert) but always visibly.
+26. **Pre-flight error checks** in the bulk-tool route — lock check, max-records check, EXPLAIN validation — all run before the job is enqueued so the error surfaces immediately, not as a job-failed terminal event 30 seconds later.
 
 ### Resource limits
 
@@ -409,9 +428,10 @@ Every lean composes cleanly with the next.
 8. **Per-batch row payload size cap** (writes): the bulk-job SSE event carries committed-batch rows so the widget can render them live. If batch rows are large (geometry blobs, JSONB), the payload could blow past sensible SSE event sizes. Lean: cap at `BATCH_ROW_PAYLOAD_LIMIT` (lean: 256 KB); past the cap, emit row-id lists only and let the widget fetch by id from the wide table.
 9. **Vega-Lite spec compatibility** (reads): we rewrite the agent's spec to use a named dataset for changesets. Are there spec patterns the rewrite can't handle (e.g. specs that already declare named datasets, multi-source compositions)? Audit during implementation.
 10. **Quota / billing**: a 1M-record bulk job is real compute; a 100k-row read materialized to Redis costs memory; SSE streams keep connections open. Per-org budgets out of scope here.
-11. **Pinned-store size cap** (pins): a 50k-row pin written to `portal_result_data` is ~10MB; multiplied across an org's pinning culture this can grow fast. Lean: per-pin row cap (lean: 100k rows) enforced at pin time; pins exceeding it produce an envelope: *"This chart is too large to pin in full. Recommendation: ask for an aggregated view, or pin a representative sample."* No silent truncation.
-12. **Pin-time re-execution semantics** (pins): when Redis has evicted the handle's data and we re-execute, the new run may produce a slightly different result than the user saw at pin-click time (source data may have moved). Lean: surface as info envelope. Open: is there a stricter contract some flows need ("snapshot exactly what was on screen, fail if we can't")?
-13. **Error envelope back-compat** (cross-cutting): existing tools and routes don't all emit the `recommendation` field. Lean: required field on every NEW surface in this proposal; existing surfaces grow the field opportunistically rather than as a blocking back-compat sweep.
+11. **Pin caching strategy** (pins): live re-execution means a dashboard with 20 pins fires 20 queries per page load. Lean: 60-second per-pin cache at the API layer, keyed by `portalResultId`. Open during implementation: does the cache need to invalidate on connector sync events (so a Friday morning sync immediately shows in Friday afternoon dashboard views)? Lean yes; details TBD.
+12. **Pin-update UX** (pins): when the underlying query fails on view (column removed, entity deleted), the pin renders an S5 envelope with "edit the pin" as the recommended next step. Edit-the-pin UI doesn't exist today. Scope: ship the failure-mode rendering in v1; ship pin editing as a separate v1.5 feature (it's a meaningful UX surface on its own).
+13. **Snapshot opt-in semantics** (pins, deferred to v1.5): when does the snapshot lock in — at "Pin snapshot" click, at next view, both? Lean: at click. Open: do snapshots need a re-snapshot operation? Lean: re-snapshot is "delete and re-pin"; no special API.
+14. **Error envelope back-compat** (cross-cutting): existing tools and routes don't all emit the `recommendation` field. Lean: required field on every NEW surface in this proposal; existing surfaces grow the field opportunistically rather than as a blocking back-compat sweep.
 
 ## What this doesn't decide
 
@@ -420,6 +440,9 @@ Every lean composes cleanly with the next.
 - **Distributed sharding** — single worker pool in v1.
 - **Quota / billing** — flagged in open question 10.
 - **Cross-portal handle sharing** (reads) — handles are portal-scoped; sharing a chart across portals is a copy operation, not a handle reference.
+- **Snapshot pin mode** (pins) — defer to v1.5 for compliance / legal use cases. v1 ships live-only.
+- **Pin editing UI** (pins) — when a pin's underlying query fails, the recommended action is "edit the pin." That UI is a separate v1.5 feature; v1 ships the failure-mode rendering but the only recovery in v1 is delete-and-recreate.
+- **Pin cache invalidation on connector sync** (pins) — open question 11. v1 lives with the 60s TTL; intelligent invalidation is a follow-up.
 
 ## Next step
 
@@ -435,7 +458,7 @@ Spec at `docs/LARGE_DATA_OPS.spec.md` codifies the wire contracts: `BulkTransfor
 - (8) reads: `sql_query` / `visualize` / `visualize_tree` rewired for the envelope; Vega-Lite spec rewrite for named datasets
 - (9) reads: sampling + statement_timeout + per-mark cap table
 - (10) reads: streaming display block (mount SSE → append on each batch → fall back to snapshot on stream close) + smoke against the scatter-plot target
-- (11) pins: `portal_result_data` table + soft-delete cascade; pin route extension for size-aware storage; view route extension
+- (11) pins: pin route writes `kind: "live-query"` content (no rows, no handle); view route returns the structured shape; UI dispatches through `sql_query`/`visualize`/`visualize_tree`; legacy-pin fall-through; failure-mode rendering via S5
 - (12) cross-cutting: `ApiUserError` envelope shape canonicalized; error-renderer in every new display block; pre-flight checks on the bulk-tool route
 
 Each slice is independently shippable; writes track, reads track, and pins/error tracks can land in parallel — the writes/reads tracks share the display-block-resolver seam, and the error envelope is referenced by all of them but blocks none.
