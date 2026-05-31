@@ -49,6 +49,43 @@ The read-side failure mode is *worse* than the write-side: 100-cap is a number t
 
 **The critical observation:** the `resolveDisplayBlock()` path is the natural bridge for *both* directions. Writes use it to render a progress widget that fills in via SSE. Reads use it to render a chart widget whose data is fetched by query handle from the UI, never passing through the agent's context. Same mechanism, different display-block kind.
 
+### Pinned results — how the design affects them
+
+| Concern | Where | What it does |
+|---|---|---|
+| Model | `packages/core/src/models/portal-result.model.ts:13-31` | `portal_results` table; `content: z.record(z.string(), z.unknown())` JSONB column carries the full block payload at pin time |
+| Pin route | `apps/api/src/routes/portal-results.router.ts:166-191` | Walks `messages[i].blocks[blockIndex]`, copies `{ type, content }` straight into `portal_results.content` — **content is a snapshot at pin time**, including data |
+| Pinnable types | same file, `PINNABLE_BLOCK_TYPES` | `text`, `vega-lite`, `vega`, `data-table` |
+| View | `apps/web/src/components/PinnedResultsList.component.tsx`, `DataResult.component.tsx` | Renders `content` directly; for vega-lite, the spec's `data.values` already holds the rows that were live at pin time |
+
+Today this works because **the rows are embedded in the spec**: when the user pins a 200-row scatter plot, the spec's `data.values` carries those 200 rows and they survive forever in the JSONB column. Source data can change, the connector entity can be re-synced, and the pinned chart still renders exactly what the user pinned.
+
+**The new design breaks that.** Under R1's data-handle pattern + S4's streaming render, the chart at the moment of pinning holds *a handle + a spec authored against a named dataset*. The actual rows live in Redis (24h TTL) and in the wide-table column store. If the pin operation copies the current display block verbatim, the pinned content becomes:
+
+```json
+{ "queryHandle": "qh-xyz", "rowCount": 13427, "schema": [...], "spec": {...named-dataset-spec...} }
+```
+
+…with the rows stored separately under the handle id. **24 hours later, the handle is gone.** The pinned chart now references a missing handle; if the UI 404s on the handle endpoint, we're back to silent empty chart — the exact failure mode the new design was supposed to kill.
+
+Design space:
+
+- **P1. Pin re-executes the query.** Save the SQL + spec; re-run on view. Always-fresh data, tiny storage. But source may have changed (the pin loses "this is what I saw" semantics); expensive queries re-paid per view; sampled results may differ across views.
+- **P2. Pin snapshots all rows inline.** Materialize the cached handle into `portal_results.content` at pin time; same shape as today. Pros: exact reproduction; works forever. Cons: a 50k-row pin = ~10MB JSONB blob; pinning is heavy; JSONB column bloats.
+- **P3. Pin promotes the Redis handle to a durable store.** New `portal_result_data` table (or S3 blob) keyed by `portal_result_id`. Pin copies the cached rows there; view reads from there. Pros: cheap pin storage layer separate from `portal_results`; durable; same access pattern. Cons: new infra; cleanup story (soft-delete of pin cascades to data); two tables to keep consistent.
+- **P4. Hybrid: small results inline, large results in the durable handle store.** Under a threshold (lean: same 100-row boundary used for the inline-vs-handle split in tool results), pin works exactly as today (rows in JSONB). Above the threshold, pin promotes to `portal_result_data`. The view path branches on which one the row is using.
+
+**Lean: P4 (hybrid).** Preserves the today-behavior for small pins (no change to how 95% of pins work — text, small tables, charts of aggregated SQL output). Adds the durable handle path for the new "large dataset visualization" case. The pin operation is heavier for large results (one-time copy from Redis to Postgres + small wide-table query if Redis has evicted), but that's the price of "pin the chart of 13k points so my colleague can open it next Monday."
+
+Concrete implementation sketch:
+
+- New table `portal_result_data` with `{ portalResultId (PK, FK), rows (JSONB), rowCount, schema, columnDataTypes }`.
+- Pin route: when the pinned block carries a `queryHandle`, fetch the cached rows from Redis. If Redis missed (TTL elapsed) OR if the result was sampled, re-execute the original SQL against the live data — and surface that to the user ("the cached data had expired; the pin snapshots a fresh run against the live source"). Then write rows to `portal_result_data` and remove the handle from the pinned `content` (replace with a `dataSource: "pinned-store"` marker).
+- View route: when `portal_results.content` carries `dataSource: "pinned-store"`, the route joins `portal_result_data` and inlines the rows into the spec's `data.values` (or returns them alongside for the UI to compose). Otherwise fall through to today's path.
+- Soft-delete of `portal_results` cascades to `portal_result_data` via the existing soft-delete machinery.
+
+For writes specifically: pinning the `bulk-job-progress` widget at terminal is effectively pinning a chart of the target entity's recently-written records. Same path as a read-side pin under P4 — the widget already has a query (against the target entity's wide table) for its live view; at pin time we promote that to the same durable store. No special-case write-pin logic needed.
+
 ## Profiling: where's the actual bottleneck?
 
 Same caveat as the previous draft — no spike code yet, reasoning from the surfaces:
@@ -124,6 +161,49 @@ The UI should NOT show a spinner-then-result for either direction. Both the bulk
 - *Bar chart, line chart, scatter:* Vega-Lite supports incremental updates via `vega.changeset().insert(rows)` against a named dataset. Spec must declare `data: { name: "primary" }` rather than `data: { values: [] }`; the renderer attaches the changeset stream after mount.
 - *Tree / treemap / hierarchical:* incremental is harder — the layout depends on the full dataset. Lean: batch arrivals client-side, debounce re-layout to every 500ms.
 - *Map (per #84):* points / polygons append cleanly to a MapLibre layer; clustering / heatmap layers re-bucket on each batch.
+
+#### S5 — Error UX: surface every error + recommend a next action
+
+**First-order rule for this entire surface: every failure mode surfaces to the user, every surfaced error includes a recommendation of what to do next.** The silent-empty-chart bug (the read-side payload-collapse the new design already fixes) is the canonical anti-pattern we're escaping from. Don't reintroduce it on the write side or in the pinned-results store.
+
+Universal error envelope across all new tools, jobs, and endpoints in this proposal:
+
+```ts
+interface ApiUserError {
+  code: string;                  // machine-readable, in the existing ApiCode enum
+  message: string;               // human-readable summary
+  recommendation: string;        // actionable next step in plain English
+  details?: Record<string, unknown>; // structured context (lockingJob, expiredAt, ...)
+}
+```
+
+The envelope is delivered to **two consumers**:
+
+1. **The UI** — display blocks, the chart/table widget, the pinned-result viewer, and the bulk-job progress widget all render an MUI `<Alert>` with the `message` as the title and the `recommendation` as the body. Severity matches the kind (warning for recoverable, error for terminal). The `code` is rendered as the chip-style suffix already used by `FormAlert` so the user can quote it in a support thread.
+2. **The agent** — the same envelope appears in the tool result so the agent can react. Recommendations are written assuming the agent might be the actor that takes the next step ("retry with a tighter LIMIT" → the agent can do that immediately; "ask the user to confirm the lock should be cancelled" → the agent surfaces the question rather than retrying).
+
+Per-error-class recommendations (representative, not exhaustive):
+
+| Error | Surface | Recommendation (to user + agent) |
+|---|---|---|
+| `REST_API_TRANSFORM_SUGGEST_FAILED` (from #76) | already correct shape — uses this rule | (existing) |
+| `PORTAL_SQL_PARSE_ERROR` | read tool, agent + UI | "Review the SQL and retry. Agent: paste the syntax error verbatim." |
+| `PORTAL_SQL_TIMEOUT` (statement_timeout) | read tool, agent + UI | "Query exceeded 30s. Try adding a WHERE filter, a tighter date range, or aggregating the source." |
+| `PORTAL_SQL_PAYLOAD_TOO_LARGE` (legacy collapse path, kept for back-compat) | read tool | "The result was too large to inline. Use the handle endpoint, or filter the query down." |
+| `BULK_JOB_TARGET_LOCKED` (new sibling of ENTITY_LOCKED_BY_JOB) | bulk tool, UI | "Target entity is locked by another bulk job (started 2 min ago). Wait, or cancel that job first." `details: { lockingJobId, lockingJobType, startedAt }` |
+| `BULK_JOB_EXPRESSION_INVALID` (EXPLAIN failed) | bulk tool, agent + UI | "Your SQL expression failed validation. Fix the type / column mismatch and retry." `details: { pgError }` |
+| `BULK_JOB_BATCH_TIMEOUT` (per-batch wall clock) | bulk-job progress widget, terminal SSE | "The transform takes longer per batch than expected. Try a smaller `batchSize`, or simplify the expression." |
+| `BULK_JOB_MAX_RECORDS_EXCEEDED` | bulk tool | "The source has 2,134,000 records (max 1,000,000). Split the operation with a WHERE filter on the source." |
+| `BULK_JOB_CANCELLED` | bulk-job progress widget, terminal SSE | "Cancelled at 47,000 / 100,000. Re-run the job to finish (already-committed records are idempotent — they won't double-write)." |
+| `BULK_JOB_PARTIAL_FAILURE` (some records failed validation/upsert) | bulk-job progress widget, terminal SSE | "47,000 records written, 3 failed. The failed records' source ids are in the details. Inspect them and retry, or accept the partial." `details: { failures: [{ sourceId, error }] }` |
+| `READ_HANDLE_EXPIRED` (24h TTL, user views old handle) | chart widget, pinned-result viewer | "The chart's data has expired from cache. Re-run the original query to refresh." `details: { expiredAt, originalSql }` |
+| `READ_STREAM_INTERRUPTED` (SSE drop mid-render) | chart widget | "The data stream was interrupted. Reload to refetch from cache." |
+| `PINNED_RESULT_DATA_MISSING` (pin's durable store row missing/corrupted) | pinned-result viewer | "The pinned chart's data couldn't be loaded. Re-run the original query and pin again." `details: { originalSql, originalSpec }` |
+| `PORTAL_RESULT_NOT_FOUND` (pinned thing deleted) | pinned-result viewer | "This pinned result was deleted. Ask in the portal to recreate it." |
+
+The rule applies to **informational degradations** too, not just hard errors. When sampling kicks in (R4) or a per-mark cap (R5) triggers an aggregation rewrite, the response carries an `infos[]` array of the same envelope shape (`severity: "info"`), and the widget surfaces them: *"Rendered as a 5% sample because the full dataset has 1,000,000 rows. Recommendation: ask for an aggregated view to see exact counts."*
+
+**Rule for new code in this proposal:** no new tool, route, or display block ships without each of its error paths producing this envelope and the UI rendering it. The `silent-empty-X` class of failure is banned by contract.
 
 ### Write-specific decisions
 
@@ -225,10 +305,10 @@ Different mark types have different practical ceilings.
 
 ## Tradeoff comparison
 
-| | UI surface (S1) | Agent ergonomics (S2) | Lock (S3) | Incremental render (S4) | Tool surface — writes (W1) | Cancel (W2) | Resume (W3) | Per-record compute (W5) | Read data path (R1) | Handle lifecycle (R2) | Storage (R3) | Sampling (R4) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Lean | Display block | Continue (W) / immediate-return (R) | Target entity (W) / `statement_timeout` (R) | SSE deltas → UI append | Declarative SQL | Stop at batch | Idempotent re-run | SQL primary + tool fallback | Handle + streaming | Session-scoped | Redis | Implicit + system-prompt nudge |
-| Spreads to spec | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| | UI surface (S1) | Agent ergonomics (S2) | Lock (S3) | Incremental render (S4) | Error UX (S5) | Tool surface — writes (W1) | Cancel (W2) | Resume (W3) | Per-record compute (W5) | Read data path (R1) | Handle lifecycle (R2) | Storage (R3) | Sampling (R4) | Pin storage (P4) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Lean | Display block | Continue (W) / immediate-return (R) | Target entity (W) / `statement_timeout` (R) | SSE deltas → UI append | `ApiUserError` envelope to UI + agent | Declarative SQL | Stop at batch | Idempotent re-run | SQL primary + tool fallback | Handle + streaming | Session-scoped | Redis | Implicit + system-prompt nudge | Inline ≤100 rows; durable handle store > 100 |
+| Spreads to spec | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 Every lean composes cleanly with the next.
 
@@ -294,6 +374,20 @@ Every lean composes cleanly with the next.
 14. **`statement_timeout`** on every portal-SQL transaction. Lean: 30s. Caught as a typed error; surfaced to the agent so it can retry with a tighter query or apply aggregation.
 15. **Vega-Lite spec rewrite** at the visualize-tool layer. The agent emits a spec authored against `data: { values: [] }`; the server rewrites it to `data: { name: "primary" }` before returning to the UI, so the renderer can apply changesets. Document in the tool description so the agent doesn't need to know.
 
+### Pinned-results track
+
+16. **New table `portal_result_data`** keyed by `portalResultId` with `{ rows: jsonb, rowCount, schema, columnDataTypes }`. Lives in `apps/api/src/db/schema/portal-result-data.table.ts`. Soft-delete cascades from `portal_results`.
+17. **Pin route extension** (`apps/api/src/routes/portal-results.router.ts`) — when the pinned block carries a `queryHandle`, branch on row count: `<=100` inline as today; `>100` fetches rows from Redis (or re-executes the SQL if Redis missed) and writes them to `portal_result_data`, replacing the handle in `content` with `{ dataSource: "pinned-store" }`.
+18. **View route extension** — when `content.dataSource === "pinned-store"`, join `portal_result_data` and inline rows into the spec before returning.
+19. **Re-execution-on-Redis-miss UX:** if the user pins a result whose handle has just expired, the pin operation re-runs the SQL against the live source. Surface that to the user via the S5 envelope (`severity: "info"`, recommendation: "Pinned data is fresh from the source — the original chart's cached data had expired."). Do NOT silently re-execute.
+
+### Error-UX track (cross-cutting)
+
+20. **Universal `ApiUserError` envelope** `{ code, message, recommendation, details? }`. Every error path in every new tool / route / display block emits this shape. The agent and the UI both consume it.
+21. **`FormAlert`-style rendering** in every new display block — `bulk-job-progress`, `query-result-data`, pinned-result viewer — surfacing both the `message` and the `recommendation`. No "loading..." → blank state; either it renders data, renders progress, or renders the envelope.
+22. **Informational envelopes** for non-error degradations (sampling, aggregation hint, per-mark cap fallback) — same shape with `severity: "info"`. Widget surfaces them subtly (footer chip, not modal alert) but always visibly.
+23. **Pre-flight error checks** in the bulk-tool route — lock check, max-records check, EXPLAIN validation — all run before the job is enqueued so the error surfaces immediately, not as a job-failed terminal event 30 seconds later.
+
 ### Resource limits
 
 - `MAX_BULK_RECORDS = 1_000_000` (writes)
@@ -315,6 +409,9 @@ Every lean composes cleanly with the next.
 8. **Per-batch row payload size cap** (writes): the bulk-job SSE event carries committed-batch rows so the widget can render them live. If batch rows are large (geometry blobs, JSONB), the payload could blow past sensible SSE event sizes. Lean: cap at `BATCH_ROW_PAYLOAD_LIMIT` (lean: 256 KB); past the cap, emit row-id lists only and let the widget fetch by id from the wide table.
 9. **Vega-Lite spec compatibility** (reads): we rewrite the agent's spec to use a named dataset for changesets. Are there spec patterns the rewrite can't handle (e.g. specs that already declare named datasets, multi-source compositions)? Audit during implementation.
 10. **Quota / billing**: a 1M-record bulk job is real compute; a 100k-row read materialized to Redis costs memory; SSE streams keep connections open. Per-org budgets out of scope here.
+11. **Pinned-store size cap** (pins): a 50k-row pin written to `portal_result_data` is ~10MB; multiplied across an org's pinning culture this can grow fast. Lean: per-pin row cap (lean: 100k rows) enforced at pin time; pins exceeding it produce an envelope: *"This chart is too large to pin in full. Recommendation: ask for an aggregated view, or pin a representative sample."* No silent truncation.
+12. **Pin-time re-execution semantics** (pins): when Redis has evicted the handle's data and we re-execute, the new run may produce a slightly different result than the user saw at pin-click time (source data may have moved). Lean: surface as info envelope. Open: is there a stricter contract some flows need ("snapshot exactly what was on screen, fail if we can't")?
+13. **Error envelope back-compat** (cross-cutting): existing tools and routes don't all emit the `recommendation` field. Lean: required field on every NEW surface in this proposal; existing surfaces grow the field opportunistically rather than as a blocking back-compat sweep.
 
 ## What this doesn't decide
 
@@ -338,5 +435,7 @@ Spec at `docs/LARGE_DATA_OPS.spec.md` codifies the wire contracts: `BulkTransfor
 - (8) reads: `sql_query` / `visualize` / `visualize_tree` rewired for the envelope; Vega-Lite spec rewrite for named datasets
 - (9) reads: sampling + statement_timeout + per-mark cap table
 - (10) reads: streaming display block (mount SSE → append on each batch → fall back to snapshot on stream close) + smoke against the scatter-plot target
+- (11) pins: `portal_result_data` table + soft-delete cascade; pin route extension for size-aware storage; view route extension
+- (12) cross-cutting: `ApiUserError` envelope shape canonicalized; error-renderer in every new display block; pre-flight checks on the bulk-tool route
 
-Each slice is independently shippable; writes track and reads track can land in parallel since they only share the display-block-resolver seam.
+Each slice is independently shippable; writes track, reads track, and pins/error tracks can land in parallel — the writes/reads tracks share the display-block-resolver seam, and the error envelope is referenced by all of them but blocks none.
