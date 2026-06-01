@@ -380,7 +380,14 @@ describe("PortalSqlService integration tests", () => {
     // Case 34
     it("produces a temp view for each read-capable entity, named after entity.key", async () => {
       const { ddlByEntity } = await probeInsideTx("SELECT 1");
-      expect([...ddlByEntity.keys()].sort()).toEqual(["contacts", "deals"]);
+      // viewMap now also carries the two schema-introspection meta
+      // views (_meta_entities, _meta_columns) added in #87.
+      expect([...ddlByEntity.keys()].sort()).toEqual([
+        "_meta_columns",
+        "_meta_entities",
+        "contacts",
+        "deals",
+      ]);
       expect(ddlByEntity.get("contacts")).toMatch(
         /CREATE\s+OR\s+REPLACE\s+TEMP\s+VIEW\s+"contacts"/i
       );
@@ -514,6 +521,84 @@ describe("PortalSqlService integration tests", () => {
         `SELECT "c_phone" FROM "contacts"`
       );
       expect(rows.map((r) => r.c_phone)).toEqual(["555-1212"]);
+    });
+
+    // Cases 42–47 — schema-introspection meta views (#87).
+
+    it("emits a _meta_entities view listing every read-capable entity", async () => {
+      const { rows } = await probeInsideTx<{
+        id: string;
+        key: string;
+        label: string;
+      }>(
+        `SELECT id, key, label FROM "_meta_entities" ORDER BY key`
+      );
+      expect(rows).toEqual([
+        { id: contactsEntityId, key: "contacts", label: "Contacts" },
+        { id: dealsEntityId, key: "deals", label: "Deals" },
+      ]);
+    });
+
+    it("excludes read-disabled entities from _meta_entities", async () => {
+      const { rows } = await probeInsideTx<{ key: string }>(
+        `SELECT key FROM "_meta_entities" WHERE key = 'private_audit'`
+      );
+      expect(rows).toHaveLength(0);
+    });
+
+    it("emits a _meta_columns view with the joined column catalog", async () => {
+      const { rows } = await probeInsideTx<{
+        entity_key: string;
+        column_key: string;
+        label: string;
+        type: string;
+      }>(
+        `SELECT entity_key, column_key, label, type FROM "_meta_columns" ORDER BY entity_key, column_key`
+      );
+      expect(rows).toEqual([
+        { entity_key: "contacts", column_key: "age", label: "Age", type: "number" },
+        { entity_key: "contacts", column_key: "email", label: "Email", type: "string" },
+        { entity_key: "deals", column_key: "account_ref", label: "Account Ref", type: "string" },
+        { entity_key: "deals", column_key: "amount", label: "Amount", type: "number" },
+      ]);
+    });
+
+    it("excludes columns of read-disabled entities from _meta_columns", async () => {
+      const { rows } = await probeInsideTx<{ entity_key: string }>(
+        `SELECT entity_key FROM "_meta_columns" WHERE entity_key = 'private_audit'`
+      );
+      expect(rows).toHaveLength(0);
+    });
+
+    it("_meta_columns projects the wide_column_name so the agent knows the physical SQL column", async () => {
+      // The agent needs to know that the "email" column-definition maps to
+      // c_email on the entity view so it can write valid SELECTs.
+      const { rows } = await probeInsideTx<{
+        entity_key: string;
+        column_key: string;
+        wide_column_name: string;
+      }>(
+        `SELECT entity_key, column_key, wide_column_name FROM "_meta_columns" WHERE entity_key = 'contacts' ORDER BY column_key`
+      );
+      expect(rows).toEqual([
+        { entity_key: "contacts", column_key: "age", wide_column_name: "c_age" },
+        { entity_key: "contacts", column_key: "email", wide_column_name: "c_email" },
+      ]);
+    });
+
+    it("_meta_entities and _meta_columns DDL embeds the organizationId literal in the WHERE clause", async () => {
+      // Org-scope guard — mirror the same defensive check the entity-data
+      // views rely on. Cross-org leaks are prevented by the literal being
+      // baked into the view definition at build time.
+      const { ddlByEntity } = await probeInsideTx("SELECT 1");
+      const metaEntitiesDdl = ddlByEntity.get("_meta_entities") ?? "";
+      const metaColumnsDdl = ddlByEntity.get("_meta_columns") ?? "";
+      expect(metaEntitiesDdl).toMatch(
+        new RegExp(`WHERE\\s+[\\s\\S]*"organization_id"\\s*=\\s*'${orgId}'`)
+      );
+      expect(metaColumnsDdl).toMatch(
+        new RegExp(`WHERE\\s+[\\s\\S]*"organization_id"\\s*=\\s*'${orgId}'`)
+      );
     });
   });
 
