@@ -389,6 +389,35 @@ describe("buildSystemPrompt — schema introspection meta views (#87)", () => {
     expect(prompt).toMatch(/can't find a table you just created/i);
   });
 
+  it("mentions _meta_column_catalog and states column definitions are admin-only", () => {
+    const prompt = buildSystemPrompt(makeContext());
+    expect(prompt).toContain("_meta_column_catalog");
+    expect(prompt).toMatch(/admin-only/i);
+    // Specifically must NOT promise the agent a column_definition_create tool.
+    expect(prompt).not.toContain("column_definition_create");
+  });
+
+  it("includes the entity-creation guidance with the right failure-mode behavior", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["data_query", "entity_management"] })
+    );
+    expect(prompt).toContain("### Creating a new entity");
+    // The critical anti-pattern from the user's failing session:
+    // agent punted to "do this in the UI" without naming what was
+    // missing. The prompt must explicitly reject that.
+    expect(prompt).toMatch(/STOP and tell the user/i);
+    expect(prompt).toMatch(/unhelpful punt/i);
+    // And tell the agent to offer the proceed-with-subset path.
+    expect(prompt).toMatch(/proceed using only the fields/i);
+  });
+
+  it("omits entity-creation guidance when entity_management is NOT enabled", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["data_query"] })
+    );
+    expect(prompt).not.toContain("### Creating a new entity");
+  });
+
   it("does NOT mention a _meta_connector_instances view (instances are listed statically in the prompt instead)", () => {
     const prompt = buildSystemPrompt(
       makeContext({ toolPacks: ["data_query", "entity_management"] })

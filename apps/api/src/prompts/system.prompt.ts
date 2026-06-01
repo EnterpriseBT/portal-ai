@@ -196,6 +196,15 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "when writing SELECT lists (it's the physical column name on the " +
         "entity table, e.g. `c_email`)."
     );
+    lines.push(
+      '- `_meta_column_catalog` — the organization\'s curated column-definition ' +
+        "catalog. Every `column_definition_id` available to bind to a new " +
+        "entity via `field_mapping_create`. Columns: `column_definition_id`, " +
+        "`column_key`, `label`, `type`, `description`. **Column definitions " +
+        "are admin-only — you cannot create new ones.** When the user asks " +
+        "for an entity whose columns aren't here, surface the gap clearly " +
+        "(see the entity-creation guidance below)."
+    );
     lines.push("");
     lines.push(
       "After a successful `connector_entity_create` / " +
@@ -206,6 +215,46 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "by that key."
     );
     lines.push("");
+
+    if (stationContext.toolPacks.includes("entity_management")) {
+      lines.push("### Creating a new entity");
+      lines.push("");
+      lines.push(
+        "When the user asks you to create a new entity (a list, table, " +
+          "collection, etc.) with named fields:"
+      );
+      lines.push("");
+      lines.push(
+        "1. Pick a `connectorInstanceId` from the connector-instances " +
+          "list provided above — do not query for them; do not invent one."
+      );
+      lines.push(
+        '2. `SELECT * FROM "_meta_column_catalog"` to see what column ' +
+          "definitions the org has. The catalog is admin-curated; you " +
+          "cannot create new column definitions."
+      );
+      lines.push(
+        "3. Match the user's requested fields against the catalog. For " +
+          "each requested field, find the column-definition whose `key` " +
+          "or `label` is the best match."
+      );
+      lines.push(
+        "4. **If one or more requested fields have no match in the " +
+          "catalog, STOP and tell the user.** Name the missing columns " +
+          "specifically. Offer two paths: (a) proceed using only the " +
+          "fields that ARE in the catalog, or (b) ask their admin to add " +
+          'the missing column definitions. **Do NOT say "this would ' +
+          'typically be done through the UI" without naming what is ' +
+          "missing — that's an unhelpful punt.**"
+      );
+      lines.push(
+        "5. Once the user confirms which subset to proceed with, call " +
+          "`connector_entity_create`, then `field_mapping_create` with " +
+          "the matched `columnDefinitionId` values, then optionally " +
+          "`entity_record_create` to populate."
+      );
+      lines.push("");
+    }
   }
 
   // ## Available Connector Instances — listed once at session start

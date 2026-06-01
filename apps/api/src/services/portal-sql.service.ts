@@ -284,6 +284,35 @@ export class PortalSqlServiceImpl {
     views.push(metaColumnsDdl);
     viewMap.set("_meta_columns", "_meta_columns");
 
+    // `_meta_column_catalog` — the org's full column-definition catalog.
+    //
+    // Distinct from `_meta_columns` (which lists columns *currently
+    // bound to an entity*). This view exposes every column_definition
+    // the org's admins have curated, including ones not yet wired to
+    // any entity. The agent uses it when creating a new entity: it
+    // picks `columnDefinitionId` values from this catalog to pass to
+    // `field_mapping_create`. Column definitions are intentionally
+    // admin-only — the agent has no `column_definition_create` tool.
+    // If the user asks for a column that's not in the catalog, the
+    // agent surfaces the gap rather than fabricating one.
+    //
+    // Org-scope only (no station / read-capability filter — the
+    // catalog is org-wide and contains no per-row data, just labels +
+    // semantic types).
+    const metaColumnCatalogDdl =
+      `CREATE OR REPLACE TEMP VIEW "_meta_column_catalog" AS\n` +
+      `  SELECT\n` +
+      `    "id" AS "column_definition_id",\n` +
+      `    "key" AS "column_key",\n` +
+      `    "label" AS "label",\n` +
+      `    "type"::text AS "type",\n` +
+      `    "description" AS "description"\n` +
+      `  FROM "column_definitions"\n` +
+      `  WHERE "organization_id" = '${organizationId}'\n` +
+      `    AND "deleted" IS NULL`;
+    views.push(metaColumnCatalogDdl);
+    viewMap.set("_meta_column_catalog", "_meta_column_catalog");
+
     // Note: connector instances are NOT exposed as a meta view. They're
     // attached to the station via configuration *outside* the portal
     // session and don't change while a conversation is live — putting
