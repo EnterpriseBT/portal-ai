@@ -141,6 +141,16 @@ export class PortalSqlServiceImpl {
         `invalid organizationId for portal sql session: ${organizationId}`
       );
     }
+    if (!UUID_RE.test(stationId)) {
+      // stationId is interpolated into the _meta_connector_instances
+      // view's WHERE clause (and is used downstream by capability
+      // resolution). Same defensive check the org gets.
+      throw new ApiError(
+        500,
+        ApiCode.PORTAL_SQL_FORBIDDEN,
+        `invalid stationId for portal sql session: ${stationId}`
+      );
+    }
 
     const capsById = await resolveEntityCapabilities(stationId);
     const readableEntityIds = Object.entries(capsById)
@@ -283,6 +293,44 @@ export class PortalSqlServiceImpl {
       `    AND wtc."retired_at" IS NULL`;
     views.push(metaColumnsDdl);
     viewMap.set("_meta_columns", "_meta_columns");
+
+    // `_meta_connector_instances` — instances attached to this station.
+    //
+    // The agent needs this when calling `connector_entity_create` (or
+    // any other tool that takes a `connectorInstanceId`) — without it,
+    // it has no source of truth for which instances are valid targets
+    // and resorts to hallucinating IDs.
+    //
+    // **Safe projection only.** Sensitive fields on `connector_instances`
+    // (`config`, `credentials`, `last_error_message`) are NEVER projected
+    // — surfacing them via the agent's SQL surface would expose secrets
+    // and configuration details that the user-facing agent has no
+    // business reasoning about. The projection is locked to
+    // `(id, name, status, connector_definition_id, connector_definition_slug)`
+    // so a future schema change can't accidentally widen the surface.
+    //
+    // Filtered by attachment via the `station_instances` join + the
+    // existing station-id literal. Org-scope guard mirrors the other
+    // meta views.
+    const metaConnectorInstancesDdl =
+      `CREATE OR REPLACE TEMP VIEW "_meta_connector_instances" AS\n` +
+      `  SELECT\n` +
+      `    ci."id" AS "id",\n` +
+      `    ci."name" AS "name",\n` +
+      `    ci."status"::text AS "status",\n` +
+      `    ci."connector_definition_id" AS "connector_definition_id",\n` +
+      `    cdf."slug" AS "connector_definition_slug",\n` +
+      `    cdf."display" AS "connector_definition_display"\n` +
+      `  FROM "connector_instances" ci\n` +
+      `    JOIN "station_instances" si ON si."connector_instance_id" = ci."id"\n` +
+      `    JOIN "connector_definitions" cdf ON cdf."id" = ci."connector_definition_id"\n` +
+      `  WHERE ci."organization_id" = '${organizationId}'\n` +
+      `    AND si."station_id" = '${stationId}'\n` +
+      `    AND ci."deleted" IS NULL\n` +
+      `    AND si."deleted" IS NULL\n` +
+      `    AND cdf."deleted" IS NULL`;
+    views.push(metaConnectorInstancesDdl);
+    viewMap.set("_meta_connector_instances", "_meta_connector_instances");
 
     return { views, viewMap };
   }
