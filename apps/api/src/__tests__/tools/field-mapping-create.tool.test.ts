@@ -31,6 +31,22 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   Repository: { transaction: mockTransaction },
 }));
 
+// Stub the reconciler-service module — the tool calls
+// `reconcileEntity` after the transaction so wide-table columns
+// materialize. Tests don't need the real reconciler; importing it
+// pulls in the WideTableColumnsRepository which extends the mocked
+// Repository class and breaks at module-load.
+const mockReconcileEntity = jest.fn<any>().mockResolvedValue(undefined);
+jest.unstable_mockModule(
+  "../../services/wide-table-reconciler.service.js",
+  () => ({
+    wideTableReconcilerService: {
+      reconcileEntity: mockReconcileEntity,
+      ensureTable: jest.fn<any>().mockResolvedValue(undefined),
+    },
+  })
+);
+
 const { FieldMappingCreateTool } =
   await import("../../tools/field-mapping-create.tool.js");
 

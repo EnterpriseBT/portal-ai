@@ -300,10 +300,14 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
     const prompt = buildSystemPrompt(
       makeContext({ toolPacks: ["data_query", "entity_management"] })
     );
-    expect(prompt).not.toContain("_connector_instances");
-    expect(prompt).not.toContain("_connector_entities");
-    expect(prompt).not.toContain("_column_definitions");
-    expect(prompt).not.toContain("_field_mappings");
+    // The AlaSQL surface used bare names like `_connector_instances`,
+    // `_connector_entities`, etc. as the table identifier. They must
+    // NOT appear as a bare reference. The new schema-introspection
+    // views (#87) use a `_meta_` prefix and are explicitly excluded.
+    expect(prompt).not.toMatch(/(?<!_meta)_connector_instances\b/);
+    expect(prompt).not.toMatch(/(?<!_meta)_connector_entities\b/);
+    expect(prompt).not.toMatch(/(?<!_meta)_column_definitions\b/);
+    expect(prompt).not.toMatch(/(?<!_meta)_field_mappings\b/);
   });
 
   // Case 75
@@ -358,5 +362,126 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
     );
     expect(prompt).toContain("[read, write]");
     expect(prompt).toContain("[read]");
+  });
+});
+
+describe("buildSystemPrompt — schema introspection meta views (#87)", () => {
+  it("instructs the agent about _meta_entities + _meta_columns when data_query is enabled", () => {
+    const prompt = buildSystemPrompt(makeContext());
+    expect(prompt).toContain("## Schema Introspection (live)");
+    expect(prompt).toContain("_meta_entities");
+    expect(prompt).toContain("_meta_columns");
+    expect(prompt).toContain("wide_column_name");
+  });
+
+  it("omits the Schema Introspection section entirely when data_query is disabled", () => {
+    const prompt = buildSystemPrompt(makeContext({ toolPacks: [] }));
+    expect(prompt).not.toContain("## Schema Introspection");
+    expect(prompt).not.toContain("_meta_entities");
+  });
+
+  it("tells the agent to re-introspect after creating an entity mid-session", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["data_query", "entity_management"] })
+    );
+    // Specifically calls out the failure mode the user hit: created
+    // entity, can't find it via static prompt listing.
+    expect(prompt).toMatch(/can't find a table you just created/i);
+  });
+
+  it("mentions _meta_column_catalog and states column definitions are admin-only", () => {
+    const prompt = buildSystemPrompt(makeContext());
+    expect(prompt).toContain("_meta_column_catalog");
+    expect(prompt).toMatch(/admin-only/i);
+    // Specifically must NOT promise the agent a column_definition_create tool.
+    expect(prompt).not.toContain("column_definition_create");
+  });
+
+  it("includes the entity-creation guidance with the right failure-mode behavior", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["data_query", "entity_management"] })
+    );
+    expect(prompt).toContain("### Creating a new entity");
+    // The critical anti-pattern from the user's failing session:
+    // agent punted to "do this in the UI" without naming what was
+    // missing. The prompt must explicitly reject that.
+    expect(prompt).toMatch(/STOP and tell the user/i);
+    expect(prompt).toMatch(/unhelpful punt/i);
+    // And tell the agent to offer the proceed-with-subset path.
+    expect(prompt).toMatch(/proceed using only the fields/i);
+  });
+
+  it("omits entity-creation guidance when entity_management is NOT enabled", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["data_query"] })
+    );
+    expect(prompt).not.toContain("### Creating a new entity");
+  });
+
+  it("does NOT mention a _meta_connector_instances view (instances are listed statically in the prompt instead)", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["data_query", "entity_management"] })
+    );
+    expect(prompt).not.toContain("_meta_connector_instances");
+  });
+});
+
+describe("buildSystemPrompt — Available Connector Instances (#87 followup)", () => {
+  it("lists attached connector instances when entity_management is enabled", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        toolPacks: ["data_query", "entity_management"],
+        connectorInstances: [
+          { id: "ci-1", name: "Sandbox", display: "REST API", slug: "rest-api" },
+          {
+            id: "ci-2",
+            name: "Personal",
+            display: "File Upload",
+            slug: "file-upload",
+          },
+        ],
+      })
+    );
+    expect(prompt).toContain("## Available Connector Instances");
+    expect(prompt).toContain("ci-1");
+    expect(prompt).toContain("Sandbox");
+    expect(prompt).toContain("REST API");
+    expect(prompt).toContain("rest-api");
+    expect(prompt).toContain("ci-2");
+    expect(prompt).toContain("Personal");
+  });
+
+  it("instructs the agent to pick from the listed ids — do not invent one", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        toolPacks: ["data_query", "entity_management"],
+        connectorInstances: [
+          { id: "ci-1", name: "Sandbox", display: "REST API", slug: "rest-api" },
+        ],
+      })
+    );
+    expect(prompt).toMatch(/do not invent one/i);
+  });
+
+  it("omits the section when entity_management is NOT enabled", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        toolPacks: ["data_query"],
+        connectorInstances: [
+          { id: "ci-1", name: "Sandbox", display: "REST API", slug: "rest-api" },
+        ],
+      })
+    );
+    expect(prompt).not.toContain("## Available Connector Instances");
+  });
+
+  it("omits the section when connectorInstances is empty", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        toolPacks: ["data_query", "entity_management"],
+        connectorInstances: [],
+      })
+    );
+    expect(prompt).not.toContain("## Available Connector Instances");
   });
 });

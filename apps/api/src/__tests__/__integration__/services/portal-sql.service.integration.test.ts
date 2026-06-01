@@ -380,7 +380,17 @@ describe("PortalSqlService integration tests", () => {
     // Case 34
     it("produces a temp view for each read-capable entity, named after entity.key", async () => {
       const { ddlByEntity } = await probeInsideTx("SELECT 1");
-      expect([...ddlByEntity.keys()].sort()).toEqual(["contacts", "deals"]);
+      // viewMap now also carries the three schema-introspection meta
+      // views (_meta_entities, _meta_columns, _meta_column_catalog)
+      // added in #87. Connector instances are static for the session
+      // and live in the system prompt, not as a meta view.
+      expect([...ddlByEntity.keys()].sort()).toEqual([
+        "_meta_column_catalog",
+        "_meta_columns",
+        "_meta_entities",
+        "contacts",
+        "deals",
+      ]);
       expect(ddlByEntity.get("contacts")).toMatch(
         /CREATE\s+OR\s+REPLACE\s+TEMP\s+VIEW\s+"contacts"/i
       );
@@ -515,6 +525,155 @@ describe("PortalSqlService integration tests", () => {
       );
       expect(rows.map((r) => r.c_phone)).toEqual(["555-1212"]);
     });
+
+    // Cases 42–47 — schema-introspection meta views (#87).
+
+    it("emits a _meta_entities view listing every read-capable entity", async () => {
+      const { rows } = await probeInsideTx<{
+        id: string;
+        key: string;
+        label: string;
+      }>(
+        `SELECT id, key, label FROM "_meta_entities" ORDER BY key`
+      );
+      expect(rows).toEqual([
+        { id: contactsEntityId, key: "contacts", label: "Contacts" },
+        { id: dealsEntityId, key: "deals", label: "Deals" },
+      ]);
+    });
+
+    it("excludes read-disabled entities from _meta_entities", async () => {
+      const { rows } = await probeInsideTx<{ key: string }>(
+        `SELECT key FROM "_meta_entities" WHERE key = 'private_audit'`
+      );
+      expect(rows).toHaveLength(0);
+    });
+
+    it("emits a _meta_columns view with the joined column catalog", async () => {
+      const { rows } = await probeInsideTx<{
+        entity_key: string;
+        column_key: string;
+        label: string;
+        type: string;
+      }>(
+        `SELECT entity_key, column_key, label, type FROM "_meta_columns" ORDER BY entity_key, column_key`
+      );
+      expect(rows).toEqual([
+        { entity_key: "contacts", column_key: "age", label: "Age", type: "number" },
+        { entity_key: "contacts", column_key: "email", label: "Email", type: "string" },
+        { entity_key: "deals", column_key: "account_ref", label: "Account Ref", type: "string" },
+        { entity_key: "deals", column_key: "amount", label: "Amount", type: "number" },
+      ]);
+    });
+
+    it("excludes columns of read-disabled entities from _meta_columns", async () => {
+      const { rows } = await probeInsideTx<{ entity_key: string }>(
+        `SELECT entity_key FROM "_meta_columns" WHERE entity_key = 'private_audit'`
+      );
+      expect(rows).toHaveLength(0);
+    });
+
+    it("_meta_columns projects the wide_column_name so the agent knows the physical SQL column", async () => {
+      // The agent needs to know that the "email" column-definition maps to
+      // c_email on the entity view so it can write valid SELECTs.
+      const { rows } = await probeInsideTx<{
+        entity_key: string;
+        column_key: string;
+        wide_column_name: string;
+      }>(
+        `SELECT entity_key, column_key, wide_column_name FROM "_meta_columns" WHERE entity_key = 'contacts' ORDER BY column_key`
+      );
+      expect(rows).toEqual([
+        { entity_key: "contacts", column_key: "age", wide_column_name: "c_age" },
+        { entity_key: "contacts", column_key: "email", wide_column_name: "c_email" },
+      ]);
+    });
+
+    it("_meta_entities and _meta_columns DDL embeds the organizationId literal in the WHERE clause", async () => {
+      // Org-scope guard — mirror the same defensive check the entity-data
+      // views rely on. Cross-org leaks are prevented by the literal being
+      // baked into the view definition at build time.
+      const { ddlByEntity } = await probeInsideTx("SELECT 1");
+      const metaEntitiesDdl = ddlByEntity.get("_meta_entities") ?? "";
+      const metaColumnsDdl = ddlByEntity.get("_meta_columns") ?? "";
+      expect(metaEntitiesDdl).toMatch(
+        new RegExp(`WHERE\\s+[\\s\\S]*"organization_id"\\s*=\\s*'${orgId}'`)
+      );
+      expect(metaColumnsDdl).toMatch(
+        new RegExp(`WHERE\\s+[\\s\\S]*"organization_id"\\s*=\\s*'${orgId}'`)
+      );
+    });
+
+    // _meta_column_catalog — org-wide curated column-definition catalog.
+    // Distinct from _meta_columns, which only lists columns bound to
+    // entities; _meta_column_catalog includes unbound column definitions
+    // so the agent knows what's available to wire up when creating a
+    // new entity. Column definitions are admin-only — agent can't make
+    // new ones.
+
+    it("emits a _meta_column_catalog view listing every column definition in the org", async () => {
+      const { rows } = await probeInsideTx<{
+        column_key: string;
+        label: string;
+        type: string;
+      }>(
+        `SELECT column_key, label, type FROM "_meta_column_catalog" ORDER BY column_key`
+      );
+      // From the test fixture: email, age, amount, account_ref, payload.
+      // ALL appear — including `payload` whose entity (private_audit) is
+      // read-disabled. The catalog is the curated org-wide list, not
+      // station-filtered.
+      expect(rows).toEqual([
+        { column_key: "account_ref", label: "Account Ref", type: "string" },
+        { column_key: "age", label: "Age", type: "number" },
+        { column_key: "amount", label: "Amount", type: "number" },
+        { column_key: "email", label: "Email", type: "string" },
+        { column_key: "payload", label: "Payload", type: "string" },
+      ]);
+    });
+
+    it("_meta_column_catalog includes unbound column definitions", async () => {
+      // Seed a column definition with NO field_mapping. _meta_columns
+      // (entity-joined) won't see it; _meta_column_catalog (org-only)
+      // must. This is the case the agent needs to detect "this column
+      // exists in the catalog but isn't wired to anything yet."
+      const newCd = generateId();
+      const dbTyped = db as ReturnType<typeof drizzle>;
+      const now = Date.now();
+      await dbTyped.insert(schema.columnDefinitions).values(
+        mkColumnDef(newCd, orgId, "unbound_yet", "Unbound Yet", "string", now) as never
+      );
+
+      const { rows: catalog } = await probeInsideTx<{ column_key: string }>(
+        `SELECT column_key FROM "_meta_column_catalog" WHERE column_key = 'unbound_yet'`
+      );
+      expect(catalog).toEqual([{ column_key: "unbound_yet" }]);
+
+      const { rows: bound } = await probeInsideTx<{ column_key: string }>(
+        `SELECT column_key FROM "_meta_columns" WHERE column_key = 'unbound_yet'`
+      );
+      expect(bound).toHaveLength(0);
+    });
+
+    it("_meta_column_catalog DDL embeds the organizationId literal in the WHERE clause", async () => {
+      const { ddlByEntity } = await probeInsideTx("SELECT 1");
+      const ddl = ddlByEntity.get("_meta_column_catalog") ?? "";
+      expect(ddl).toMatch(
+        new RegExp(`WHERE\\s+[\\s\\S]*"organization_id"\\s*=\\s*'${orgId}'`)
+      );
+    });
+
+    it("does NOT emit a _meta_connector_instances view (instances are static in the prompt instead)", async () => {
+      // Connector instances are configuration: they don't change while
+      // a portal is live, so listing them once in the system prompt at
+      // session start (per system.prompt.ts → "## Available Connector
+      // Instances") is the right surface. A meta view here would just
+      // waste an LLM roundtrip on data the agent already has in its
+      // prompt.
+      const { ddlByEntity } = await probeInsideTx("SELECT 1");
+      expect(ddlByEntity.has("_meta_connector_instances")).toBe(false);
+    });
+
   });
 
   // ═════════════════════════════════════════════════════════════════════
