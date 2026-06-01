@@ -38,15 +38,23 @@ Each slice loop:
 
 **Steps**
 
-1. **Write `isValidIanaTimezone` tests:**
+1. **Write all failing tests** in `timezone.util.test.ts` (cases 11 + 12 from the spec). Imports point at the not-yet-existent `apps/api/src/utils/timezone.util.ts`; the test file fails to compile, which is the red state. Cases:
+
    - `isValidIanaTimezone("America/Los_Angeles") === true`
    - `isValidIanaTimezone("Europe/London") === true`
    - `isValidIanaTimezone("UTC") === true`
    - `isValidIanaTimezone("Mars/Olympus") === false`
    - `isValidIanaTimezone("") === false`
    - `isValidIanaTimezone("not a real tz") === false`
+   - `formatIsoWithOffset(new Date("2026-06-01T18:47:05Z"), "America/Los_Angeles") === "2026-06-01T11:47:05-07:00"` (PDT)
+   - `formatIsoWithOffset(new Date("2026-12-01T18:47:05Z"), "America/Los_Angeles") === "2026-12-01T10:47:05-08:00"` (PST — DST-aware)
+   - `formatIsoWithOffset(new Date("2026-06-01T18:47:05Z"), "UTC") === "2026-06-01T18:47:05+00:00"`
+   - `formatIsoWithOffset(new Date("2026-06-01T18:47:05Z"), "Europe/London") === "2026-06-01T19:47:05+01:00"` (BST)
+   - Round-trip: `new Date(formatIsoWithOffset(d, tz)).getTime() === d.getTime()` for each case above.
 
-2. **Implement `isValidIanaTimezone`:**
+2. **Confirm red.** `npm run test:unit --workspace=apps/api -- --testPathPattern=timezone` shows compile error / import failure.
+
+3. **Implement `isValidIanaTimezone`:**
    ```ts
    export function isValidIanaTimezone(tz: string): boolean {
      if (!tz) return false;
@@ -59,19 +67,12 @@ Each slice loop:
    }
    ```
 
-3. **Write `formatIsoWithOffset` tests:**
-   - `formatIsoWithOffset(new Date("2026-06-01T18:47:05Z"), "America/Los_Angeles") === "2026-06-01T11:47:05-07:00"` (PDT).
-   - `formatIsoWithOffset(new Date("2026-12-01T18:47:05Z"), "America/Los_Angeles") === "2026-12-01T10:47:05-08:00"` (PST — verifies DST-aware offset).
-   - `formatIsoWithOffset(new Date("2026-06-01T18:47:05Z"), "UTC") === "2026-06-01T18:47:05+00:00"`.
-   - `formatIsoWithOffset(new Date("2026-06-01T18:47:05Z"), "Europe/London") === "2026-06-01T19:47:05+01:00"` (BST).
-   - Round-trip: `new Date(formatIsoWithOffset(d, tz)).getTime() === d.getTime()` for the cases above.
-
 4. **Implement `formatIsoWithOffset`:**
    - Use `Intl.DateTimeFormat(...).formatToParts(date)` with the org timezone to extract year/month/day/hour/minute/second.
    - Compute the offset in minutes by comparing `date.getTime()` against a `Date.UTC(...)` reconstruction from those parts.
    - Format the offset as `±HH:MM` (e.g. `-07:00`, `+00:00`).
 
-5. **Run the util tests.** Green.
+5. **Confirm green.** Util tests pass.
 
 6. **Run the full `apps/api` unit suite.** Unchanged.
 
@@ -94,14 +95,17 @@ Each slice loop:
 
 **Steps**
 
-1. **Write the tool tests** following the `jest.unstable_mockModule` pattern used by the other tool tests (e.g. `connector-entity-create.tool.test.ts`):
+1. **Write all failing tests** in `get-current-time.tool.test.ts` following the `jest.unstable_mockModule` pattern used by the other tool tests (e.g. `connector-entity-create.tool.test.ts`). Imports point at the not-yet-existent `apps/api/src/tools/get-current-time.tool.ts`; the file fails to compile (red).
+
    - **6** — execute the tool with a mocked org returning `{ timezone: "America/Los_Angeles" }`; assert the response has `now` (ISO 8601 with `Z`), `timezone === "America/Los_Angeles"`, and `localTime` (ISO 8601 with `±HH:MM`).
    - **7** — `Math.abs(Date.parse(response.now) - Date.now()) < 1000`.
    - **8** — `Date.parse(response.localTime) === Date.parse(response.now)`.
    - **9** — mock org returns `{ timezone: "Mars/Olympus" }`; assert `response.timezone === "UTC"`, `response.localTime` ends in `+00:00`, and a `logger.warn` spy was called with the org id + bad value.
    - **10** — mock `findById` to return `undefined`; assert `response.timezone === "UTC"` and the tool returns a sensible response (no throw).
 
-2. **Implement `GetCurrentTimeTool`:**
+2. **Confirm red.** Test suite shows the import failure / missing class.
+
+3. **Implement `GetCurrentTimeTool`:**
    - Class extends `Tool<typeof InputSchema>` where `InputSchema = z.object({})`.
    - `description` matches the spec § Concept changes.
    - `build(organizationId)` returns the Vercel AI SDK `tool()` whose `execute`:
@@ -111,11 +115,11 @@ Each slice loop:
      - `nowDate = new Date()`.
      - Returns `{ now: nowDate.toISOString(), timezone, localTime: formatIsoWithOffset(nowDate, timezone) }`.
 
-3. **Run cases 6–10.** Green.
+4. **Confirm green.** Cases 6–10 pass.
 
-4. **Run the full `apps/api` unit suite.** Unchanged (the tool isn't yet registered, so no other test reaches it).
+5. **Run the full `apps/api` unit suite.** Unchanged (the tool isn't yet registered, so no other test reaches it).
 
-5. **Lint + type-check.** Clean.
+6. **Lint + type-check.** Clean.
 
 **Done when:** `GetCurrentTimeTool` is callable from a test, returns the spec's response shape, falls back to UTC for invalid IANA values, and logs the fallback. Production code does not yet expose it.
 
@@ -129,16 +133,17 @@ Each slice loop:
 
 **Files**
 
+- New (if not present) or Edit: `apps/api/src/__tests__/services/tools.service.test.ts` — case 15.
 - Edit: `apps/api/src/services/tools.service.ts` — import `GetCurrentTimeTool`; register `tools.get_current_time = new GetCurrentTimeTool().build(organizationId)` inside `buildAnalyticsTools`, immediately after `const tools: Record<string, Tool> = {};` and before the first toolpack switch.
-- Edit (only if a `tools.service.test.ts` exists): add case 15 — `get_current_time` present regardless of toolpack. If no test file exists, the slice ships without that micro-test; the integration coverage in slice 4's manual smoke is sufficient.
 
 **Steps**
 
-1. **If `tools.service.test.ts` exists**, add case 15:
-   - For a station fixture with only one toolpack enabled (e.g. `web_search`), `buildAnalyticsTools(...)` returns a `tools` record containing `get_current_time`.
-   - Failing assertion drives the implementation.
+1. **Write the failing test** (case 15). If `tools.service.test.ts` doesn't exist, create it with the minimal mocking scaffold (`jest.unstable_mockModule` for `db.service.js`, the repos `buildAnalyticsTools` reads, and `AnalyticsService.loadStation`). The single assertion:
+   - For a station fixture with only one toolpack enabled (e.g. `web_search`), `buildAnalyticsTools(orgId, stationId, userId)` returns a tools record containing `get_current_time`.
 
-2. **Implement the registration** in `tools.service.ts:316` area:
+2. **Confirm red.** The test fails — registration doesn't exist yet.
+
+3. **Implement the registration** in `tools.service.ts:316` area:
    ```ts
    const tools: Record<string, Tool> = {};
 
@@ -152,11 +157,11 @@ Each slice loop:
    if (enabledPacks.has("data_query")) { ... }
    ```
 
-3. **Run case 15 (if added).** Green.
+4. **Confirm green.** Case 15 passes.
 
-4. **Run the full `apps/api` unit suite.** Unchanged — existing tests don't assert which tools are absent, so they don't fail when a new one is added.
+5. **Run the full `apps/api` unit suite.** Unchanged — existing tests don't assert which tools are absent, so they don't fail when a new one is added.
 
-5. **Lint + type-check.** Clean.
+6. **Lint + type-check.** Clean.
 
 **Done when:** every call to `buildAnalyticsTools` returns a tools record that includes `get_current_time`.
 
@@ -178,17 +183,25 @@ Each slice loop:
 
 **Steps**
 
-1. **Add `organizationTimezone: string` to `StationContext`** (`system.prompt.ts:30+`). Required, not optional — see spec § Concept changes for the rationale.
+This slice runs two red-green cycles back-to-back: prompt behavior first, then service behavior. Within each cycle, all failing tests land before any implementation.
 
-2. **Update every existing fixture** in `system.prompt.test.ts` that constructs a `StationContext`. Search for `stationName` or `entities:` inside object literals in that file and add `organizationTimezone: "UTC"` to each. The type checker is the source of truth — failing compilation lists every fixture.
+### Cycle A — prompt section
 
-3. **Write the new prompt tests** (cases 2–5):
-   - **2** — fixture with `organizationTimezone: "America/Los_Angeles"`; assert rendered prompt contains `## Current time` and `America/Los_Angeles`.
-   - **3** — assert prompt contains `get_current_time` and a phrase like "relative time expression".
-   - **4** — assert prompt contains `canonicalFormat`, `YYYY-MM-DD`, and an example ISO 8601 with offset (e.g. regex match on `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}`).
-   - **5** — fixture with `toolPacks: []`; assert `## Current time` is still present.
+1. **Write all failing prompt tests** (cases 2–5) inside `system.prompt.test.ts`. Each builds its own fixture with `organizationTimezone: "America/Los_Angeles"` (or `"UTC"` where it doesn't matter for the assertion). The new fixtures *include* the not-yet-existent field on `StationContext`.
+   - **2** — `## Current time` and `America/Los_Angeles` present in rendered prompt.
+   - **3** — prompt contains `get_current_time` and a phrase like "relative time expression".
+   - **4** — prompt contains `canonicalFormat`, `YYYY-MM-DD`, and an ISO 8601 with offset matching `/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}/`.
+   - **5** — fixture with `toolPacks: []`; `## Current time` still present.
 
-4. **Implement the prompt section** in `buildSystemPrompt`, inserted after the lead line (`system.prompt.ts:50` area) and before `## Available Data`:
+2. **Confirm red — phase 1: compile failure.** The new fixtures reference `organizationTimezone` which doesn't exist on `StationContext`. The type checker fails on every fixture in the file (new and existing).
+
+3. **Add `organizationTimezone: string` to `StationContext`** (`system.prompt.ts:30+`). Required, not optional — see spec § Concept changes.
+
+4. **Update every existing fixture** in `system.prompt.test.ts` that constructs a `StationContext`. The type checker enumerates the sites; add `organizationTimezone: "UTC"` to each (~5–10 spots in this file plus any other test file that constructs the context).
+
+5. **Confirm red — phase 2: runtime failure.** Compilation passes. Cases 2–5 run and fail — the prompt builder doesn't render the new section yet, so the assertions on `## Current time` / `get_current_time` / `canonicalFormat` miss.
+
+6. **Implement the prompt section** in `buildSystemPrompt`, inserted after the lead line (`system.prompt.ts:50` area) and before `## Available Data`:
    ```ts
    const lines: string[] = [
      `You are an analytics assistant for the "${stationContext.stationName}" station.`,
@@ -207,37 +220,45 @@ Each slice loop:
    ];
    ```
 
-5. **Run cases 2–5.** Green.
+7. **Confirm green.** Cases 2–5 pass.
 
-6. **Implement the service population** in `portal.service.ts` between line 295 (after `loadStation`) and line 311 (before the `StationContext` assembly):
-   ```ts
-   const org = await DbService.repository.organizations.findById(organizationId);
-   if (!org) throw new ApiError(...);  // existing error pattern; ORG_NOT_FOUND
-   const organizationTimezone = isValidIanaTimezone(org.timezone)
-     ? org.timezone
-     : (logger.warn(
-         { organizationId, badValue: org.timezone },
-         "Org timezone is not a recognized IANA name, falling back to UTC"
-       ),
-       "UTC");
-   ```
-   Then add `organizationTimezone` to the `StationContext` assembly at line 311+.
+### Cycle B — service population
 
-7. **Run the full `apps/api` unit suite.** Every existing test passes — fixture updates are mechanical; the prompt builder still produces the same output for the `## Available Data` and downstream sections.
-
-8. **Add cases 13 + 14** if a portal-service integration test file exists; otherwise skip:
+8. **Write failing service tests** (cases 13 + 14) in `portal.service.integration.test.ts` (create the file if it doesn't yet exist; use the same integration scaffold as the other portal-related integration tests):
    - **13** — seed an org with `timezone: "Europe/London"`; call `createPortal`; assert `stationContext.organizationTimezone === "Europe/London"`.
    - **14** — seed an org with `timezone: "Not/Real"`; assert `stationContext.organizationTimezone === "UTC"` and `logger.warn` fired.
 
-9. **Run integration tests.** Green.
+9. **Confirm red.** The new field is on `StationContext` but `PortalService.createPortal` doesn't populate it; cases 13 + 14 fail (`stationContext.organizationTimezone` is `undefined`, which surfaces as the TS narrowing assertion or a missing-property check, depending on Jest's reporting).
 
-10. **Lint + type-check.** Clean.
+10. **Implement the service population** in `portal.service.ts` between line 295 (after `loadStation`) and line 311 (before the `StationContext` assembly):
+    ```ts
+    const org = await DbService.repository.organizations.findById(organizationId);
+    if (!org) throw new ApiError(...);  // existing error pattern; ORG_NOT_FOUND
+    const organizationTimezone = isValidIanaTimezone(org.timezone)
+      ? org.timezone
+      : (logger.warn(
+          { organizationId, badValue: org.timezone },
+          "Org timezone is not a recognized IANA name, falling back to UTC"
+        ),
+        "UTC");
+    ```
+    Then add `organizationTimezone` to the `StationContext` assembly at line 311+.
 
-**Done when:** `StationContext.organizationTimezone` is required and populated; every portal's system prompt includes the `## Current time` section; all snapshot/string tests pass.
+11. **Confirm green.** Cases 13 + 14 pass.
 
-**Risk:** missed fixture updates produce TypeScript compile errors at every test file that constructs a `StationContext`. **Mitigation:** that's the point of making the field required — the type checker enumerates every site to update. The search-and-replace is mechanical (~5–10 spots).
+### Slice close
 
-**Risk 2:** the snapshot test fixture for an existing prompt might compare against a frozen string that doesn't include the new section. **Mitigation:** if a snapshot test exists, regenerate it as part of this slice and confirm the diff matches the spec's section copy exactly.
+12. **Run the full `apps/api` unit suite.** Every existing test passes — fixture updates are mechanical; the prompt builder still produces the same output for `## Available Data` and downstream sections.
+
+13. **Run the full `apps/api` integration suite.** Green.
+
+14. **Lint + type-check.** Clean.
+
+**Done when:** cycle A and cycle B are both green; `StationContext.organizationTimezone` is required and populated; every portal's system prompt includes the `## Current time` section.
+
+**Risk:** missed fixture updates produce TypeScript compile errors at every test file that constructs a `StationContext`. **Mitigation:** that's the point of making the field required — step 4's type checker enumerates every site to update. Mechanical.
+
+**Risk 2:** a snapshot test exists for the rendered prompt and compares against a frozen string that doesn't include the new section. **Mitigation:** if found, regenerate the snapshot as part of step 6 and visually diff it against the spec's section copy before committing.
 
 ---
 
