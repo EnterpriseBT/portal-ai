@@ -257,12 +257,14 @@ How does the agent express "do X to every record in entity Y"?
 
 #### W5 — Per-record compute
 
-For "acreage from geometry" / "centroid from polygon" / "normalized address" etc.:
+For "acreage from geometry" / "centroid from polygon" / "normalized address" / "distance to nearest hospital" / "extract entities from raw text via LLM" / arbitrary computation provided by a custom toolpack (per #65 / #84):
 
 - **A. SQL projection at the wide table** (fastest, single statement, requires SQL-expressible operations + PostGIS for spatial).
-- **B. Server-side per-record tool dispatch** (slower, works without PostGIS, lets the agent compose registered tools per record).
+- **B. Server-side per-record tool dispatch** — bulk job invokes a registered tool once per record. Works for arbitrary computation: HTTP API lookups, sandboxed JS from a custom toolpack, geocoding services, LLM-per-record enrichment.
 
-**Lean: A primary + B fallback.** v1 ships `expression: { kind: "sql" | "tool", value }`; only `"sql"` works in v1, `"tool"` lands in a follow-up.
+**Lean: both, first-class in v1.** The `expression` discriminator is `{ kind: "sql", value: string } | { kind: "tool", ref: string, args?: Record<string, unknown> }`. SQL is the fast path for SQL-expressible operations; tool dispatch is the only path for "anything else" — and "anything else" covers the bulk of agent-driven workflows once custom toolpacks ship per #65. Deferring tool dispatch would force the agent to enumerate records inline for any compute the SQL function set doesn't cover, which is the exact failure mode the proposal exists to fix.
+
+The mechanics of tool dispatch (contract, batching, concurrency, rate limiting, failure surfacing) are substantive enough to need their own section — see *Per-record tool dispatch* below.
 
 ### Read-specific decisions
 
@@ -319,11 +321,138 @@ Different mark types have different practical ceilings.
 
 **Lean: per-mark caps published in the tool description.** Agent is prompted with the table; it picks an appropriate aggregation strategy based on row count and mark type. Past the cap, sampling kicks in (R4). No silent empty chart.
 
+## Per-record tool dispatch (the non-SQL case)
+
+The SQL-projection path covers operations like `ST_Area(geometry) / 4047` cleanly, but it can't express:
+
+- **External API lookups per record** (geocoding, currency conversion at point-in-time, third-party enrichment).
+- **Custom-toolpack invocations** — once #65 ships, an organization can register their own tools doing arbitrary computation. Some of those make sense to apply per-record (compute a credit-risk score from a row's columns; normalize an address through the org's own normalizer; classify a free-text column via the org's domain-specific model).
+- **LLM enrichment per record** — sentiment, entity extraction, summarization on a `notes` column. Each call is its own model invocation; can't be a single SQL statement.
+- **Built-in tools that wrap geometry / financial / statistical computation** beyond what's in PostgreSQL (the #84 GIS toolpack's `compute_distance_to_nearest`, `point_in_polygon`, `buffer`, etc.).
+
+For 50k+ records, none of these can be inline tool calls per S4's reasoning. They need bulk-job dispatch.
+
+### Dispatch contract
+
+A tool can opt into being a target of `bulk_transform` by declaring a `bulkDispatch` field on its `ToolpackTool` metadata (`packages/core/src/registries/builtin-toolpacks.ts:42-47`):
+
+```ts
+interface ToolpackTool {
+  name: string;
+  description: string;
+  parameterSchema: Record<string, unknown>;
+  examples?: ToolpackToolExample[];
+  bulkDispatch?: {
+    /** Max concurrent invocations the bulk processor will run at once.
+     *  External-API tools cap low (5-10) to respect rate limits;
+     *  pure-compute tools (turf.js distance math, sandboxed JS) can
+     *  go higher (50-100). */
+    maxConcurrency: number;
+    /** Per-call wall-clock cap. Calls past this are aborted and
+     *  recorded as a partial failure for that record. */
+    timeoutMs: number;
+    /** Optional org-wide rate limit, in calls per second. The bulk
+     *  processor applies a token bucket. Used by tools that wrap a
+     *  third-party API with metered access. */
+    ratePerSec?: number;
+    /** Whether the tool's per-record output is idempotent given the
+     *  same record + args. Affects resumability semantics (W3). */
+    idempotent: boolean;
+  };
+}
+```
+
+**Opt-in is deliberate.** A tool that makes external paid API calls or has side effects shouldn't get accidentally fanned-out 50k-wide by a curious agent. Tools without `bulkDispatch` are rejected at the bulk-tool route with an S5 envelope: *"This tool isn't bulk-dispatchable. Recommendation: ask the tool's author to add `bulkDispatch` metadata, or compose this operation with an SQL projection first."*
+
+### Per-batch mechanics
+
+The bulk-transform processor branches on `expression.kind`:
+
+- **`"sql"`:** existing batched `INSERT INTO target_wide SELECT … FROM source_wide LIMIT batchSize OFFSET N` path.
+- **`"tool"`:** load batch of N records via cursor; invoke the tool per record with `pLimit(maxConcurrency)`; collect `{ keyField, result | error }` tuples; upsert the successes into the target wide table (`INSERT … VALUES`-style, generated from results); record failures in a per-job `partialFailures[]` accumulator.
+
+Pseudocode:
+
+```ts
+const limit = pLimit(tool.bulkDispatch.maxConcurrency);
+const tokens = tool.bulkDispatch.ratePerSec
+  ? new TokenBucket(tool.bulkDispatch.ratePerSec)
+  : null;
+
+for (const batch of cursorBatches(sourceQuery, batchSize)) {
+  const results = await Promise.all(
+    batch.map((record) =>
+      limit(async () => {
+        if (tokens) await tokens.acquire();
+        try {
+          const result = await withTimeout(
+            tool.invoke(record, expression.args),
+            tool.bulkDispatch.timeoutMs,
+          );
+          return { key: record[keyField], result };
+        } catch (err) {
+          return { key: record[keyField], error: toApiUserError(err) };
+        }
+      }),
+    ),
+  );
+  await upsertSuccesses(targetEntity, results, keyField);
+  emitBatchSseEvent({ recordsProcessed, totalRecords, rows: successRows });
+  collectFailures(results);
+}
+```
+
+Per-tool concurrency is bounded by `maxConcurrency`; the per-batch wall-clock cap from W4 is the backstop ("if a batch takes longer than 10× typical, the job aborts with a clear failure").
+
+### Time / cost estimation up-front
+
+For SQL projection, the pre-flight EXPLAIN gives the agent + user a useful estimate ("expectedRecords / records-per-second"). Tool dispatch is wildly variable — an external geocoding API at 10 req/s on 50k records is ~83 minutes, whereas a pure-compute turf.js distance calculation at 100 concurrent is ~5 minutes. The agent has no way to know.
+
+Lean: tools declare a `costHint` (qualitative) and the bulk-tool route computes an ETA from `recordCount / (maxConcurrency × estimatedMsPerCall)`:
+
+```ts
+bulkDispatch: {
+  // …
+  estimatedMsPerCall?: number;  // typical per-call duration; for ETA
+  costHint?: "cheap" | "metered" | "expensive";  // pricing tier
+}
+```
+
+The tool-call response to the agent includes the ETA + a `costHint` echo so the agent can confirm with the user before launching a 90-minute job (*"This will take about 1h 30min and uses metered Mapbox API calls. Proceed?"*). For costHint `expensive`, the route can require an explicit `acknowledgeCost: true` field on the tool-call to force the agent through a confirmation gate.
+
+### Read-side: deriving columns for a visualization
+
+The agent can't `visualize` directly off a tool's per-record output — there's no SQL view to query. Two composition paths:
+
+- **A. Two-step.** Agent dispatches `bulk_transform` to materialize the derived column to a target entity, then `visualize`s the target. Persistent; reusable across multiple charts; works with the read-side handle/streaming pipeline as-is.
+- **B. One-shot fused** (future). A `map_and_visualize` tool pipelines: per-record tool call → result accumulated into the chart's data stream → SSE delivers the chart. No persisted intermediate.
+
+**Lean: A for v1.** It's composable, reuses every existing decision, and the agent can word the workflow as two distinct steps ("first I'll compute the distances; then I'll chart them"). B is a real optimization for the "one-off visualization derived from a custom compute" case; defer until the two-step pattern's friction is concrete.
+
+### Failure surfacing for tool dispatch
+
+Tool calls fail more diversely than SQL ones (API rate limit, transient network, malformed input, the tool itself throws). The per-record dispatcher catches and classifies into the S5 envelope. The terminal bulk-job result's `partialFailures` array carries:
+
+```ts
+{
+  sourceKey: string;
+  error: ApiUserError;  // { code, message, recommendation, details? }
+}
+```
+
+The bulk-job-progress widget surfaces partial-failure count live (*"47,000 written, 1,247 failed — click to inspect"*). On terminal, the widget renders the failure list as a paginated table with a "retry failed only" affordance — kicking off another bulk_transform scoped to just the failed source keys.
+
+### Custom toolpacks (#65 integration)
+
+Once organizations can register their own toolpacks, the `bulkDispatch` metadata is part of the registration contract: a custom tool author marks their tool as bulk-dispatchable + declares concurrency / rate limits. The bulk-tool route doesn't need to know whether the tool is built-in or org-registered; the dispatch contract is the same.
+
+This is the path through which an org's domain logic (proprietary scoring, internal API enrichment, custom geospatial calculations) lights up at 50k-record scale without the org's authors having to write a job processor.
+
 ## Tradeoff comparison
 
 | | UI surface (S1) | Agent ergonomics (S2) | Lock (S3) | Incremental render (S4) | Error UX (S5) | Tool surface — writes (W1) | Cancel (W2) | Resume (W3) | Per-record compute (W5) | Read data path (R1) | Handle lifecycle (R2) | Storage (R3) | Sampling (R4) | Pin storage (P4) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Lean | Display block | Continue (W) / immediate-return (R) | Target entity (W) / `statement_timeout` (R) | SSE deltas → UI append | `ApiUserError` envelope to UI + agent | Declarative SQL | Stop at batch | Idempotent re-run | SQL primary + tool fallback | Handle + streaming | Session-scoped | Redis | Implicit + system-prompt nudge | Live re-execution; snapshot mode v1.5 opt-in |
+| Lean | Display block | Continue (W) / immediate-return (R) | Target entity (W) / `statement_timeout` (R) | SSE deltas → UI append | `ApiUserError` envelope to UI + agent | Declarative SQL | Stop at batch | Idempotent re-run | **Both SQL + tool dispatch first-class in v1** | Handle + streaming | Session-scoped | Redis | Implicit + system-prompt nudge | Live re-execution; snapshot mode v1.5 opt-in |
 | Spreads to spec | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 Every lean composes cleanly with the next.
@@ -365,17 +494,47 @@ Every lean composes cleanly with the next.
 6. After the cursor exhausts, server closes the SSE channel; the cached snapshot in Redis is the final state. If the user resizes the chart or re-opens the portal message later, the widget falls back to `GET /api/portal-sql/handle/qh-xyz` (the snapshot endpoint) — no re-streaming needed.
 7. Above 50k rows: sampling kicks in implicitly; agent sees `{ rowCount: 1_000_000, sampled: true, sampleSize: 50_000 }` and surfaces "rendered as a 5% sample because the full dataset has 1M points." Past per-mark cap: agent steered toward aggregation via system-prompt guidance.
 
+### Smoke C — write via custom tool: 50k parcels, distance to nearest hospital
+
+1. User: *"For each parcel, compute the distance to the nearest hospital and store it in a `parcel_hospital_distance` entity keyed by parcel_id."*
+2. Distance-to-hospital is NOT SQL-expressible without a join against a hospitals table that the org may not have. They've registered (per #65) or built-in (per #84) a `compute_distance_to_nearest_hospital(parcel) → { distance_km, hospital_name }` tool that hits an external geospatial API. The tool declares `bulkDispatch: { maxConcurrency: 10, timeoutMs: 5000, ratePerSec: 50, idempotent: true, estimatedMsPerCall: 200, costHint: "metered" }`.
+3. Agent dispatches:
+   ```
+   bulk_transform_entity_records(
+     sourceEntityId: "ce-parcels-…",
+     targetEntityId: "ce-parcel-hospital-distance-…",
+     expression: { kind: "tool", ref: "compute_distance_to_nearest_hospital" },
+     keyField: "parcel_id",
+     batchSize: 1000,
+     acknowledgeCost: true,  // because the tool declared costHint: "metered"
+   )
+   ```
+4. Pre-flight: tool exists, `bulkDispatch` set, target unlocked. Route computes ETA: `50000 / (10 × 5 per second) = ~17 minutes`. Returns immediately to the agent: `{ jobId, expectedRecords: 50000, estimatedSeconds: 1020, costHint: "metered" }`. Agent surfaces the cost + ETA to the user: *"This will take about 17 minutes and uses metered API calls. Pulling now."*
+5. Processor loads batches of 1000 records via cursor. For each batch: invokes the tool 10 concurrently (capped by `maxConcurrency`); token bucket bounds total throughput at 50 calls/sec. Successful results are upserted in one statement per batch; failed records collected in `partialFailures[]`.
+6. Per-batch SSE event fires after each commit: `{ recordsProcessed: N, totalRecords: 50000, batchDurationMs: 20000, rows: [...successful results...], failureCount: 3 }`. The `bulk-job-progress` widget renders a live histogram of `distance_km` values; user watches the distribution fill in (most parcels near a hospital → left-skewed; rural parcels pushing the tail right).
+7. A few records fail mid-job: hospital API returns 500 for some, timeouts on others. The widget shows a live "47,000 written, 23 failed" counter; clicking opens a paginated failure list.
+8. On terminal: SSE final event carries `{ recordsProcessed: 49977, recordsFailed: 23, durationMs: 998000, partialFailures: [...] }`. Widget shows a "retry failed only" button; clicking dispatches a follow-up `bulk_transform` scoped to the 23 failed source keys.
+9. The agent can now visualize the derived data normally: `visualize("SELECT distance_km FROM parcel_hospital_distance", { mark: "bar", … })` — the read-side handle/streaming pipeline takes it from there.
+
 ## Recommendation
 
 ### Writes track
 
-1. **New tool** `bulk_transform_entity_records`. Parameters: `sourceEntityId, targetEntityId, expression, keyField, batchSize?`. Expression is `{ kind: "sql", value: string }` for v1; `{ kind: "tool", ref: string }` deferred.
+1. **New tool** `bulk_transform_entity_records`. Parameters: `sourceEntityId, targetEntityId, expression, keyField, batchSize?, acknowledgeCost?`. Expression is `{ kind: "sql", value: string } | { kind: "tool", ref: string, args?: object }` — **both shapes ship in v1**.
 2. **New JobType** `bulk_transform`. Metadata declares `targetEntityId` as the locked entity; result carries `recordsProcessed, recordsFailed, durationMs, partialFailures[]`.
-3. **New processor** `apps/api/src/queues/processors/bulk-transform.processor.ts`. Drives the batched INSERT/UPSERT loop, emits per-batch custom SSE events carrying both the counters and (optionally) the committed-batch row payload, honors the cancel flag.
-4. **New SSE event** `{ _eventType: "batch", recordsProcessed, totalRecords, batchDurationMs, rows? }` → `job:batch`. The `rows` payload is opt-in per job (caps at `BATCH_ROW_PAYLOAD_LIMIT` bytes; large rows fall back to row-id lists for the UI to fetch separately).
+3. **New processor** `apps/api/src/queues/processors/bulk-transform.processor.ts`. Drives the batched UPSERT loop; branches on `expression.kind` for the per-batch payload (SQL projection vs tool dispatch). Emits per-batch custom SSE events carrying counters and committed-row payload; honors the cancel flag.
+4. **New SSE event** `{ _eventType: "batch", recordsProcessed, totalRecords, batchDurationMs, rows?, failureCount? }` → `job:batch`. The `rows` payload is opt-in per job (caps at `BATCH_ROW_PAYLOAD_LIMIT` bytes; large rows fall back to row-id lists for the UI to fetch separately).
 5. **New lock primitive** `JobLockService.assertConnectorEntityUnlocked(entityId)` + sibling repository method.
-6. **New display block** `bulk-job-progress` (frontend: `apps/web/src/components/BulkJobProgressBlock.component.tsx`). Renders a **live data widget** — bar chart, histogram, or table — that appends per `batch` SSE event via `vega.changeset` (chart) or React state (table). The user picks the view when the widget mounts; the default is a histogram over the most-recently-written column.
+6. **New display block** `bulk-job-progress` (frontend: `apps/web/src/components/BulkJobProgressBlock.component.tsx`). Renders a **live data widget** — bar chart, histogram, or table — that appends per `batch` SSE event via `vega.changeset` (chart) or React state (table). The user picks the view when the widget mounts; the default is a histogram over the most-recently-written column. Failure count surfaces alongside; click expands a paginated failure list with a "retry failed only" affordance.
 7. **Portal follow-up injection** on terminal SSE; new helper in `portal.service.ts`.
+
+### Tool-dispatch track (non-SQL per-record compute)
+
+7a. **`bulkDispatch` metadata on `ToolpackTool`** (`packages/core/src/registries/builtin-toolpacks.ts:42`). Opt-in field with `{ maxConcurrency, timeoutMs, ratePerSec?, idempotent, estimatedMsPerCall?, costHint? }`. Tools without this field are rejected from `expression: { kind: "tool" }` dispatch at the bulk-tool route — with an S5 envelope explaining how to add it.
+7b. **Dispatcher** `apps/api/src/queues/processors/bulk-transform-tool.dispatcher.ts` (a helper invoked by the bulk-transform processor when `expression.kind === "tool"`). Loads each batch via cursor, fans out via `pLimit(maxConcurrency)` + optional token bucket for `ratePerSec`, applies `withTimeout(timeoutMs)` per call, collects success / failure tuples, upserts successes by `keyField`.
+7c. **Cost-acknowledgement gate.** Tools declared `costHint: "expensive"` require the agent to pass `acknowledgeCost: true` in the tool-call. Route rejects without it and surfaces the S5 envelope: *"This operation calls a costly tool. Confirm with the user, then retry with `acknowledgeCost: true`."* `"metered"` shows the cost in the ETA response; agent surfaces to user before launching but doesn't gate.
+7d. **Per-record-failure surfacing.** Bulk-job result's `partialFailures: [{ sourceKey, error: ApiUserError }]` array carries per-record errors. UI's bulk-job-progress widget renders a paginated failure table on terminal; "retry failed only" dispatches a follow-up `bulk_transform` scoped to those source keys.
+7e. **`compute_distance_to_nearest_hospital` smoke target** (or whichever GIS tool from #84 is the v1 vehicle) — adopts `bulkDispatch` metadata to validate the dispatcher end-to-end on a real-world tool with rate limits.
 
 ### Reads track
 
@@ -432,6 +591,9 @@ Every lean composes cleanly with the next.
 12. **Pin-update UX** (pins): when the underlying query fails on view (column removed, entity deleted), the pin renders an S5 envelope with "edit the pin" as the recommended next step. Edit-the-pin UI doesn't exist today. Scope: ship the failure-mode rendering in v1; ship pin editing as a separate v1.5 feature (it's a meaningful UX surface on its own).
 13. **Snapshot opt-in semantics** (pins, deferred to v1.5): when does the snapshot lock in — at "Pin snapshot" click, at next view, both? Lean: at click. Open: do snapshots need a re-snapshot operation? Lean: re-snapshot is "delete and re-pin"; no special API.
 14. **Error envelope back-compat** (cross-cutting): existing tools and routes don't all emit the `recommendation` field. Lean: required field on every NEW surface in this proposal; existing surfaces grow the field opportunistically rather than as a blocking back-compat sweep.
+15. **Tool-internal rate limits vs server-side `ratePerSec`** (tool dispatch): if a tool wraps an API with a quota the server can't see (e.g. customer's own Mapbox key has 5 req/s limit), how do we surface the rate-limit failure? Lean: the tool's per-call error path returns a typed `RATE_LIMITED` error, the dispatcher catches it and backs off + retries with exponential delay (cap N tries per record). Open: do we expose tool-internal backoff state to the user / agent?
+16. **Sub-tool dispatch depth** (tool dispatch): if a bulk-dispatched tool's per-record handler itself calls another tool — possibly another bulk-dispatchable one — what's the recursion contract? Lean: hard cap at depth 1; recursive bulk dispatch (a bulk job inside a bulk job) is rejected with an S5 envelope. Audit when implementing whether any legitimate use case is blocked.
+17. **Cost-acknowledgement UX through the agent** (tool dispatch): for `costHint: "expensive"` tools, the route requires `acknowledgeCost: true` and the agent surfaces a confirmation question to the user. The agent currently has no first-class affordance for "ask the user a yes/no before taking action." Need to confirm the existing portal-message flow supports this naturally, or add a system-prompt addition. Likely fine.
 
 ## What this doesn't decide
 
@@ -449,10 +611,12 @@ Every lean composes cleanly with the next.
 Spec at `docs/LARGE_DATA_OPS.spec.md` codifies the wire contracts: `BulkTransformToolSchema`, `BulkTransformMetadataSchema`, `BulkTransformResultSchema`, new SSE event types, query-handle response envelope, handle-fetch endpoint contract. Plan at `docs/LARGE_DATA_OPS.plan.md` slices the work, roughly:
 
 - (1) writes: JobType + schemas + lock primitive
-- (2) writes: processor + cancel-flag + per-batch SSE (counters first)
+- (2) writes: processor + cancel-flag + per-batch SSE (counters first) — SQL path only
 - (3) writes: per-batch SSE extended with row payload (or row-ref lists past payload cap); spec rewrite for changeset support
 - (4) writes: tool + EXPLAIN validation + portal follow-up
-- (5) writes: live-data display block (chart + table view variants) + smoke against the acreage target
+- (5) writes: live-data display block (chart + table view variants) + smoke against the acreage target (Smoke A)
+- (5a) writes — tool dispatch: `bulkDispatch` metadata on `ToolpackTool`; dispatcher with `pLimit` + token bucket + `withTimeout`; cost-acknowledgement gate
+- (5b) writes — tool dispatch: per-record-failure surfacing + "retry failed only" affordance; smoke target against the GIS distance-to-nearest tool (Smoke C)
 - (6) reads: query-handle envelope + Redis storage + snapshot endpoint
 - (7) reads: SSE streaming endpoint (cursor-driven, emit-and-cache)
 - (8) reads: `sql_query` / `visualize` / `visualize_tree` rewired for the envelope; Vega-Lite spec rewrite for named datasets
