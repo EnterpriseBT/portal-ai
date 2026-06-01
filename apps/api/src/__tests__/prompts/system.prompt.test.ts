@@ -12,6 +12,7 @@ function makeContext(overrides: Partial<StationContext> = {}): StationContext {
   return {
     stationId: "station-1",
     stationName: "Test Station",
+    organizationTimezone: "UTC",
     entities: [
       {
         id: "entity-1",
@@ -483,5 +484,42 @@ describe("buildSystemPrompt — Available Connector Instances (#87 followup)", (
       })
     );
     expect(prompt).not.toContain("## Available Connector Instances");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Current time section (#90)
+// ---------------------------------------------------------------------------
+
+describe("buildSystemPrompt — Current time (#90)", () => {
+  it("renders the ## Current time section with the org's timezone", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ organizationTimezone: "America/Los_Angeles" })
+    );
+    expect(prompt).toContain("## Current time");
+    expect(prompt).toContain("America/Los_Angeles");
+  });
+
+  it("directs the agent to call get_current_time before resolving relative time expressions", () => {
+    const prompt = buildSystemPrompt(makeContext());
+    expect(prompt).toContain("get_current_time");
+    expect(prompt).toMatch(/relative time expression/i);
+  });
+
+  it("renders the date-emission rule referencing canonicalFormat with an ISO 8601 fallback", () => {
+    const prompt = buildSystemPrompt(makeContext());
+    expect(prompt).toContain("canonicalFormat");
+    expect(prompt).toContain("YYYY-MM-DD");
+    // Example ISO 8601 with offset must be present.
+    expect(prompt).toMatch(
+      /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}/
+    );
+  });
+
+  it("renders ## Current time even when no toolpacks are enabled", () => {
+    // Temporal context is universal — not gated on data_query /
+    // entity_management.
+    const prompt = buildSystemPrompt(makeContext({ toolPacks: [] }));
+    expect(prompt).toContain("## Current time");
   });
 });

@@ -5,6 +5,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import {
   PortalService,
+  loadOrganizationTimezone,
   type StationContext,
 } from "../services/portal.service.js";
 import { AnalyticsService } from "../services/analytics.service.js";
@@ -100,9 +101,14 @@ portalEventsRouter.get(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const toolPacks = ((station as any).toolPacks as string[]) ?? [];
 
+      const organizationTimezone = await loadOrganizationTimezone(
+        portal.organizationId
+      );
+
       const stationContext: StationContext = {
         stationId: station.id,
         stationName: station.name,
+        organizationTimezone,
         entities: stationData.entities,
         entityGroups: stationData.entityGroups,
         toolPacks,
