@@ -380,12 +380,12 @@ describe("PortalSqlService integration tests", () => {
     // Case 34
     it("produces a temp view for each read-capable entity, named after entity.key", async () => {
       const { ddlByEntity } = await probeInsideTx("SELECT 1");
-      // viewMap now also carries the three schema-introspection meta
-      // views (_meta_entities, _meta_columns, _meta_connector_instances)
-      // added in #87.
+      // viewMap now also carries the two schema-introspection meta
+      // views (_meta_entities, _meta_columns) added in #87. Connector
+      // instances are static for the session and live in the system
+      // prompt, not as a meta view.
       expect([...ddlByEntity.keys()].sort()).toEqual([
         "_meta_columns",
-        "_meta_connector_instances",
         "_meta_entities",
         "contacts",
         "deals",
@@ -603,105 +603,17 @@ describe("PortalSqlService integration tests", () => {
       );
     });
 
-    // Cases 48–52 — _meta_connector_instances meta view (#87 follow-up).
-    //
-    // Bug surfaced in real-world usage: agent prompted with "create a
-    // todo list" calls connector_entity_create, but has no idea which
-    // connectorInstanceId values are attached to the station. It
-    // hallucinates an ID (or confuses connectorEntityId for
-    // connectorInstanceId since both are UUIDs). The tool's defensive
-    // check rejects with "Connector instance is not attached to this
-    // station" — correct rejection, but the agent had no way to do
-    // the right thing in the first place.
-
-    it("emits a _meta_connector_instances view listing every instance attached to the station", async () => {
-      const { rows } = await probeInsideTx<{
-        name: string;
-        status: string;
-      }>(
-        `SELECT name, status FROM "_meta_connector_instances" ORDER BY name`
-      );
-      expect(rows).toEqual([
-        { name: "Readable Instance", status: "active" },
-        { name: "Write-Only Instance", status: "active" },
-      ]);
-    });
-
-    it("excludes instances in the same org that are NOT attached to this station", async () => {
-      // Seed a third instance under the same org but DON'T attach it
-      // to the station. It should not appear in the view.
-      const unattachedId = generateId();
-      const dbTyped = db as ReturnType<typeof drizzle>;
-      await dbTyped.insert(schema.connectorInstances).values({
-        id: unattachedId,
-        connectorDefinitionId: (await dbTyped
-          .select({ id: schema.connectorDefinitions.id })
-          .from(schema.connectorDefinitions)
-          .limit(1))[0]!.id,
-        organizationId: orgId,
-        name: "Unattached Instance",
-        status: "active",
-        config: {},
-        credentials: null,
-        lastSyncAt: null,
-        lastErrorMessage: null,
-        enabledCapabilityFlags: { read: true, write: true, sync: true },
-        created: Date.now(),
-        createdBy: "SYSTEM_TEST",
-        updated: null,
-        updatedBy: null,
-        deleted: null,
-        deletedBy: null,
-      } as never);
-
-      const { rows } = await probeInsideTx<{ name: string }>(
-        `SELECT name FROM "_meta_connector_instances" WHERE name = 'Unattached Instance'`
-      );
-      expect(rows).toHaveLength(0);
-    });
-
-    it("projects only safe fields — no credentials, config, or lastErrorMessage exposed", async () => {
-      // The view's SELECT list is the contract. If the projection ever
-      // grows to include `credentials`, `config`, or `lastErrorMessage`,
-      // this test fails — those are sensitive and must not be reachable
-      // via the agent's SQL surface.
+    it("does NOT emit a _meta_connector_instances view (instances are static in the prompt instead)", async () => {
+      // Connector instances are configuration: they don't change while
+      // a portal is live, so listing them once in the system prompt at
+      // session start (per system.prompt.ts → "## Available Connector
+      // Instances") is the right surface. A meta view here would just
+      // waste an LLM roundtrip on data the agent already has in its
+      // prompt.
       const { ddlByEntity } = await probeInsideTx("SELECT 1");
-      const ddl = ddlByEntity.get("_meta_connector_instances") ?? "";
-      expect(ddl).not.toMatch(/"credentials"/);
-      expect(ddl).not.toMatch(/"config"/);
-      expect(ddl).not.toMatch(/"last_error_message"/);
-
-      // And the agent-visible columns are the safe ones we expect.
-      const { rows: cols } = await probeInsideTx<{ column_name: string }>(
-        `SELECT * FROM "_meta_connector_instances" LIMIT 0`
-      );
-      void cols; // column list comes from the SELECT, not the rows
+      expect(ddlByEntity.has("_meta_connector_instances")).toBe(false);
     });
 
-    it("includes the connector_definition slug so the agent knows what kind of instance it is", async () => {
-      // Instances of, say, the rest-api connector vs the file-upload
-      // connector should be distinguishable to the agent.
-      const { rows } = await probeInsideTx<{
-        name: string;
-        connector_definition_slug: string;
-      }>(
-        `SELECT name, connector_definition_slug FROM "_meta_connector_instances" ORDER BY name`
-      );
-      expect(rows).toHaveLength(2);
-      // Both fixture instances share the same connector definition; slug
-      // is asserted to be non-empty rather than to a specific value (the
-      // fixture generates a random slug suffix).
-      expect(rows[0]!.connector_definition_slug).toMatch(/^test-read-/);
-      expect(rows[1]!.connector_definition_slug).toMatch(/^test-read-/);
-    });
-
-    it("_meta_connector_instances DDL embeds the organizationId literal in the WHERE clause", async () => {
-      const { ddlByEntity } = await probeInsideTx("SELECT 1");
-      const ddl = ddlByEntity.get("_meta_connector_instances") ?? "";
-      expect(ddl).toMatch(
-        new RegExp(`WHERE\\s+[\\s\\S]*"organization_id"\\s*=\\s*'${orgId}'`)
-      );
-    });
   });
 
   // ═════════════════════════════════════════════════════════════════════

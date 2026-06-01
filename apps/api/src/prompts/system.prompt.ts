@@ -4,6 +4,29 @@ import type {
 } from "../services/analytics.service.js";
 import type { ResolvedCapabilities } from "../utils/resolve-capabilities.util.js";
 
+/**
+ * Connector instance attached to this station — surfaced in the
+ * system prompt so the agent has a static reference for any tool
+ * call that takes a `connectorInstanceId` (today: `connector_entity_create`).
+ *
+ * These are configuration: they don't change during a portal session,
+ * so the static prompt is the right home (versus the meta views in
+ * portal-sql.service.ts, which exist because their data DOES change
+ * mid-session).
+ *
+ * `name` + `display` are user-supplied labels; `slug` is the
+ * connector-definition machine name (`rest-api`, `file-upload`, …).
+ * Sensitive fields (config, credentials) are never surfaced here.
+ */
+export interface ConnectorInstanceContext {
+  id: string;
+  name: string;
+  /** Human-readable connector type, e.g. "REST API". */
+  display: string;
+  /** Machine slug, e.g. "rest-api". */
+  slug: string;
+}
+
 export interface StationContext {
   stationId: string;
   stationName: string;
@@ -11,6 +34,11 @@ export interface StationContext {
   entityGroups: EntityGroupContext[];
   toolPacks: string[];
   entityCapabilities?: Record<string, ResolvedCapabilities>;
+  /** Attached connector instances; rendered when the entity_management
+   *  pack is enabled so the agent knows what to pass for
+   *  `connectorInstanceId`. Empty array is fine (no entity-mgmt tool
+   *  call possible). */
+  connectorInstances?: ConnectorInstanceContext[];
 }
 
 /**
@@ -168,18 +196,6 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "when writing SELECT lists (it's the physical column name on the " +
         "entity table, e.g. `c_email`)."
     );
-    if (stationContext.toolPacks.includes("entity_management")) {
-      lines.push(
-        '- `_meta_connector_instances` — every connector instance attached to ' +
-          "this station, suitable as a `connectorInstanceId` argument when " +
-          "calling `connector_entity_create` or any other tool that asks " +
-          "for one. Columns: `id`, `name`, `status`, " +
-          "`connector_definition_id`, `connector_definition_slug`, " +
-          "`connector_definition_display`. **Always query this view first " +
-          "before calling `connector_entity_create`** — do not guess a " +
-          "`connectorInstanceId`."
-      );
-    }
     lines.push("");
     lines.push(
       "After a successful `connector_entity_create` / " +
@@ -189,6 +205,35 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "to confirm the key the entity was registered under, then query " +
         "by that key."
     );
+    lines.push("");
+  }
+
+  // ## Available Connector Instances — listed once at session start
+  // because connector-instance configuration is static for the
+  // lifetime of a portal session. The agent uses this for any tool
+  // call that takes a `connectorInstanceId` (today: connector_entity_create).
+  //
+  // Skipped when entity_management isn't enabled — no tool would
+  // accept the id, no reason to enumerate.
+  if (
+    stationContext.toolPacks.includes("entity_management") &&
+    stationContext.connectorInstances &&
+    stationContext.connectorInstances.length > 0
+  ) {
+    lines.push("## Available Connector Instances");
+    lines.push("");
+    lines.push(
+      "Pass one of the `id` values below when a tool asks for a " +
+        "`connectorInstanceId`. These are the only valid choices for this " +
+        "station — do not invent one, do not pass an `entityId` here. The " +
+        "list is static for this session."
+    );
+    lines.push("");
+    for (const inst of stationContext.connectorInstances) {
+      lines.push(
+        `- \`${inst.id}\` — ${inst.name} (${inst.display}, slug: ${inst.slug})`
+      );
+    }
     lines.push("");
   }
 

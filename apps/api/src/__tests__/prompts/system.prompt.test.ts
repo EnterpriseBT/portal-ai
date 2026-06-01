@@ -374,24 +374,6 @@ describe("buildSystemPrompt — schema introspection meta views (#87)", () => {
     expect(prompt).toContain("wide_column_name");
   });
 
-  it("omits _meta_connector_instances guidance when entity_management is NOT enabled", () => {
-    const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query"] })
-    );
-    expect(prompt).not.toContain("_meta_connector_instances");
-  });
-
-  it("instructs the agent to use _meta_connector_instances before connector_entity_create", () => {
-    const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] })
-    );
-    expect(prompt).toContain("_meta_connector_instances");
-    // Critical instruction: query the view BEFORE calling
-    // connector_entity_create. Without this the agent hallucinates an id.
-    expect(prompt).toContain("Always query this view first");
-    expect(prompt).toContain("connector_entity_create");
-  });
-
   it("omits the Schema Introspection section entirely when data_query is disabled", () => {
     const prompt = buildSystemPrompt(makeContext({ toolPacks: [] }));
     expect(prompt).not.toContain("## Schema Introspection");
@@ -405,5 +387,72 @@ describe("buildSystemPrompt — schema introspection meta views (#87)", () => {
     // Specifically calls out the failure mode the user hit: created
     // entity, can't find it via static prompt listing.
     expect(prompt).toMatch(/can't find a table you just created/i);
+  });
+
+  it("does NOT mention a _meta_connector_instances view (instances are listed statically in the prompt instead)", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["data_query", "entity_management"] })
+    );
+    expect(prompt).not.toContain("_meta_connector_instances");
+  });
+});
+
+describe("buildSystemPrompt — Available Connector Instances (#87 followup)", () => {
+  it("lists attached connector instances when entity_management is enabled", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        toolPacks: ["data_query", "entity_management"],
+        connectorInstances: [
+          { id: "ci-1", name: "Sandbox", display: "REST API", slug: "rest-api" },
+          {
+            id: "ci-2",
+            name: "Personal",
+            display: "File Upload",
+            slug: "file-upload",
+          },
+        ],
+      })
+    );
+    expect(prompt).toContain("## Available Connector Instances");
+    expect(prompt).toContain("ci-1");
+    expect(prompt).toContain("Sandbox");
+    expect(prompt).toContain("REST API");
+    expect(prompt).toContain("rest-api");
+    expect(prompt).toContain("ci-2");
+    expect(prompt).toContain("Personal");
+  });
+
+  it("instructs the agent to pick from the listed ids — do not invent one", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        toolPacks: ["data_query", "entity_management"],
+        connectorInstances: [
+          { id: "ci-1", name: "Sandbox", display: "REST API", slug: "rest-api" },
+        ],
+      })
+    );
+    expect(prompt).toMatch(/do not invent one/i);
+  });
+
+  it("omits the section when entity_management is NOT enabled", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        toolPacks: ["data_query"],
+        connectorInstances: [
+          { id: "ci-1", name: "Sandbox", display: "REST API", slug: "rest-api" },
+        ],
+      })
+    );
+    expect(prompt).not.toContain("## Available Connector Instances");
+  });
+
+  it("omits the section when connectorInstances is empty", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        toolPacks: ["data_query", "entity_management"],
+        connectorInstances: [],
+      })
+    );
+    expect(prompt).not.toContain("## Available Connector Instances");
   });
 });
