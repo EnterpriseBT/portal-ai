@@ -9,6 +9,10 @@ import {
   assertWriteCapability,
 } from "../utils/resolve-capabilities.util.js";
 import { Repository } from "../db/repositories/base.repository.js";
+import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
+import { createLogger } from "../utils/logger.util.js";
+
+const logger = createLogger({ module: "field-mapping-update-tool" });
 
 const ItemSchema = z.object({
   fieldMappingId: z.string().describe("The field mapping ID to update"),
@@ -154,6 +158,23 @@ export class FieldMappingUpdateTool extends Tool<typeof InputSchema> {
               );
             }
           });
+
+          // Reconcile each affected entity so renamed / retyped columns
+          // appear on the wide table. Per-entity failures don't abort —
+          // the update is already persisted.
+          for (const entityId of entityIds) {
+            try {
+              await wideTableReconcilerService.reconcileEntity(entityId);
+            } catch (err) {
+              logger.error(
+                {
+                  connectorEntityId: entityId,
+                  error: err instanceof Error ? err.message : String(err),
+                },
+                "reconcileEntity failed after field_mapping_update"
+              );
+            }
+          }
 
           return {
             success: true,

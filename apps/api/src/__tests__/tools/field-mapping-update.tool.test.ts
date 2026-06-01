@@ -37,6 +37,17 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   Repository: { transaction: mockTransaction },
 }));
 
+// See field-mapping-create.tool.test.ts for rationale.
+jest.unstable_mockModule(
+  "../../services/wide-table-reconciler.service.js",
+  () => ({
+    wideTableReconcilerService: {
+      reconcileEntity: jest.fn<any>().mockResolvedValue(undefined),
+      ensureTable: jest.fn<any>().mockResolvedValue(undefined),
+    },
+  })
+);
+
 const { FieldMappingUpdateTool } =
   await import("../../tools/field-mapping-update.tool.js");
 

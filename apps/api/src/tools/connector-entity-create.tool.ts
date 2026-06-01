@@ -8,6 +8,10 @@ import { stationInstancesRepo } from "../db/repositories/station-instances.repos
 import { connectorDefinitionsRepo } from "../db/repositories/connector-definitions.repository.js";
 import { resolveCapabilities } from "../utils/resolve-capabilities.util.js";
 import { Repository } from "../db/repositories/base.repository.js";
+import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
+import { createLogger } from "../utils/logger.util.js";
+
+const logger = createLogger({ module: "connector-entity-create-tool" });
 
 const ItemSchema = z.object({
   connectorInstanceId: z
@@ -149,6 +153,30 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
               results.push(result);
             }
           });
+
+          // Provision each new entity's `er__<id>` wide-table so it's
+          // immediately queryable through portal-sql `buildSessionViews`.
+          // Without this the CREATE VIEW statement that aliases the
+          // entity references a missing relation and the entire portal
+          // SQL surface errors. The route at
+          // `connector-entity.router.ts:459` does the same thing; this
+          // closes the gap between the route- and tool-driven creation
+          // paths. Per-entity failures don't abort the tool result —
+          // the entity row is already persisted; we just log so the
+          // user / agent can see what happened.
+          for (const created of results) {
+            try {
+              await wideTableReconcilerService.ensureTable(created.id);
+            } catch (err) {
+              logger.error(
+                {
+                  connectorEntityId: created.id,
+                  error: err instanceof Error ? err.message : String(err),
+                },
+                "ensureTable failed after connector_entity_create"
+              );
+            }
+          }
 
           return {
             success: true,

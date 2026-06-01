@@ -52,6 +52,21 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   return { Repository: MockRepository };
 });
 
+// Reconciler is now called after the transaction (see tool). Tests
+// don't need the real implementation — importing it pulls in
+// WideTableColumnsRepository which extends the mocked Repository and
+// trips a "Class extends value is not a constructor" at module load.
+const mockEnsureTable = jest.fn<() => Promise<void>>().mockResolvedValue();
+jest.unstable_mockModule(
+  "../../services/wide-table-reconciler.service.js",
+  () => ({
+    wideTableReconcilerService: {
+      ensureTable: mockEnsureTable,
+      reconcileEntity: jest.fn<() => Promise<void>>().mockResolvedValue(),
+    },
+  })
+);
+
 const { ConnectorEntityCreateTool } =
   await import("../../tools/connector-entity-create.tool.js");
 
@@ -82,6 +97,35 @@ describe("ConnectorEntityCreateTool", () => {
       expect.objectContaining({ key: "contacts", label: "Contacts" }),
       "mock-tx"
     );
+  });
+
+  it("provisions the wide table after creating the entity", async () => {
+    // Without this call, the `er__<id>` physical table doesn't exist
+    // and `buildSessionViews` later fails when it tries to alias the
+    // entity. Mirrors `connector-entity.router.ts:459`'s ensureTable
+    // call so the tool-driven and route-driven paths converge.
+    await exec({
+      items: [
+        { connectorInstanceId: "ci-1", key: "contacts", label: "Contacts" },
+      ],
+    });
+    expect(mockEnsureTable).toHaveBeenCalledTimes(1);
+    expect(mockEnsureTable).toHaveBeenCalledWith("ce-new");
+  });
+
+  it("returns success even if ensureTable fails — entity is already persisted", async () => {
+    // The entity row commits inside the transaction; reconciler runs
+    // after. If reconciliation fails for any reason, we still want the
+    // tool's caller (the agent) to see the entity it created and
+    // surface a follow-up. A swallowed log line is the contract.
+    mockEnsureTable.mockRejectedValueOnce(new Error("disk full"));
+    const result: any = await exec({
+      items: [
+        { connectorInstanceId: "ci-1", key: "contacts", label: "Contacts" },
+      ],
+    });
+    expect(result.success).toBe(true);
+    expect(result.items[0].entityId).toBe("ce-new");
   });
 
   it("bulk create — 3 entities in transaction", async () => {
