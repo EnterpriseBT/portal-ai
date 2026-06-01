@@ -520,7 +520,7 @@ Every lean composes cleanly with the next.
 
 ### Writes track
 
-1. **New tool** `bulk_transform_entity_records`. Parameters: `sourceEntityId, targetEntityId, expression, keyField, batchSize?, acknowledgeCost?`. Expression is `{ kind: "sql", value: string } | { kind: "tool", ref: string, args?: object }` — **both shapes ship in v1**.
+1. **New tool** `bulk_transform_entity_records` added to **`ENTITY_MANAGEMENT_PACK`** in `packages/core/src/registries/builtin-toolpacks.ts`. Wired in `tools.service.ts:419-…` alongside `entity_record_create` and gated on the existing `hasWrite` station-capability check (`apps/api/src/services/tools.service.ts:421-426`). **Not** in `DATA_QUERY_PACK` — even though the SQL-projection expression reads from the source, the operation produces writes and must be gated accordingly. Parameters: `sourceEntityId, targetEntityId, expression, keyField, batchSize?, acknowledgeCost?`. Expression is `{ kind: "sql", value: string } | { kind: "tool", ref: string, args?: object }` — **both shapes ship in v1**.
 2. **New JobType** `bulk_transform`. Metadata declares `targetEntityId` as the locked entity; result carries `recordsProcessed, recordsFailed, durationMs, partialFailures[]`.
 3. **New processor** `apps/api/src/queues/processors/bulk-transform.processor.ts`. Drives the batched UPSERT loop; branches on `expression.kind` for the per-batch payload (SQL projection vs tool dispatch). Emits per-batch custom SSE events carrying counters and committed-row payload; honors the cancel flag.
 4. **New SSE event** `{ _eventType: "batch", recordsProcessed, totalRecords, batchDurationMs, rows?, failureCount? }` → `job:batch`. The `rows` payload is opt-in per job (caps at `BATCH_ROW_PAYLOAD_LIMIT` bytes; large rows fall back to row-id lists for the UI to fetch separately).
@@ -538,7 +538,7 @@ Every lean composes cleanly with the next.
 
 ### Reads track
 
-8. **New tool wrappers** — modify `sql_query`, `visualize`, `visualize_tree` to return a query-handle envelope instead of the raw rows. Backward compat: when `rowCount <= 100`, still embed `rows` inline (cheap small reads stay fast). When `rowCount > 100`, return `{ queryHandle, rowCount, schema, sampled, samplePeek }`; the data streams to the UI and accumulates in Redis.
+8. **Modify existing tools in `DATA_QUERY_PACK`** — `sql_query`, `visualize`, `visualize_tree` keep their slots in the data-query pack but their **internals** rewire to return a query-handle envelope instead of raw rows. Backward compat: when `rowCount <= 100`, still embed `rows` inline (cheap small reads stay fast). When `rowCount > 100`, return `{ queryHandle, rowCount, schema, sampled, samplePeek }`; the data streams to the UI and accumulates in Redis. No new tools added to this pack.
 9. **Two endpoints** for the handle:
     - `GET /api/portal-sql/handle/:handleId/stream` — SSE stream emitting batches of ~1000 rows (or every 250ms, whichever first) as the PG cursor walks the result. Used for the first render. Server-side: cursor on a read-only transaction with `statement_timeout` applied; emit-and-cache pattern.
     - `GET /api/portal-sql/handle/:handleId?offset=&limit=` — paged snapshot endpoint serving from Redis. Used for re-open (resize, scroll back, panel re-mount).
