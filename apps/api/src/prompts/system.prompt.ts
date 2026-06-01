@@ -138,6 +138,58 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       '- Quote identifiers with double quotes (`"name"`), not brackets.'
     );
     lines.push("");
+
+    // Schema introspection (#87). The `## Available Data` listing above
+    // is a snapshot at session start — it does NOT include entities or
+    // columns created mid-session via the entity_management tools, and
+    // does NOT reflect schema changes made by syncs that happen during
+    // the conversation. The three meta views below are the live source
+    // of truth. Use them whenever the snapshot above might be stale.
+    lines.push("## Schema Introspection (live)");
+    lines.push("");
+    lines.push(
+      "Three system views give you the live schema at query time. " +
+        "Prefer these over the static `## Available Data` listing above " +
+        "whenever you've created an entity in this session, after a sync " +
+        "may have changed columns, or when in doubt about what exists."
+    );
+    lines.push("");
+    lines.push(
+      '- `_meta_entities` — every entity available to query in this station. ' +
+        "Columns: `id`, `key`, `label`. The `key` is the table name to use " +
+        "in your SELECT (e.g. `SELECT … FROM _meta_entities` returns the " +
+        "list; then `SELECT … FROM <key>` queries that entity)."
+    );
+    lines.push(
+      '- `_meta_columns` — joined column catalog across every readable entity. ' +
+        "Columns: `entity_key`, `column_key`, `normalized_key`, " +
+        "`wide_column_name`, `label`, `type`, `description`, " +
+        "`ref_entity_key`, `ref_normalized_key`. Use `wide_column_name` " +
+        "when writing SELECT lists (it's the physical column name on the " +
+        "entity table, e.g. `c_email`)."
+    );
+    if (stationContext.toolPacks.includes("entity_management")) {
+      lines.push(
+        '- `_meta_connector_instances` — every connector instance attached to ' +
+          "this station, suitable as a `connectorInstanceId` argument when " +
+          "calling `connector_entity_create` or any other tool that asks " +
+          "for one. Columns: `id`, `name`, `status`, " +
+          "`connector_definition_id`, `connector_definition_slug`, " +
+          "`connector_definition_display`. **Always query this view first " +
+          "before calling `connector_entity_create`** — do not guess a " +
+          "`connectorInstanceId`."
+      );
+    }
+    lines.push("");
+    lines.push(
+      "After a successful `connector_entity_create` / " +
+        "`field_mapping_create` / `entity_record_create` call, the new " +
+        "entity is immediately queryable by its `key`. If you can't find " +
+        'a table you just created, `SELECT * FROM "_meta_entities"` ' +
+        "to confirm the key the entity was registered under, then query " +
+        "by that key."
+    );
+    lines.push("");
   }
 
   lines.push("## Response Style");

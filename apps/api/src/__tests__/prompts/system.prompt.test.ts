@@ -300,10 +300,14 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
     const prompt = buildSystemPrompt(
       makeContext({ toolPacks: ["data_query", "entity_management"] })
     );
-    expect(prompt).not.toContain("_connector_instances");
-    expect(prompt).not.toContain("_connector_entities");
-    expect(prompt).not.toContain("_column_definitions");
-    expect(prompt).not.toContain("_field_mappings");
+    // The AlaSQL surface used bare names like `_connector_instances`,
+    // `_connector_entities`, etc. as the table identifier. They must
+    // NOT appear as a bare reference. The new schema-introspection
+    // views (#87) use a `_meta_` prefix and are explicitly excluded.
+    expect(prompt).not.toMatch(/(?<!_meta)_connector_instances\b/);
+    expect(prompt).not.toMatch(/(?<!_meta)_connector_entities\b/);
+    expect(prompt).not.toMatch(/(?<!_meta)_column_definitions\b/);
+    expect(prompt).not.toMatch(/(?<!_meta)_field_mappings\b/);
   });
 
   // Case 75
@@ -358,5 +362,48 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
     );
     expect(prompt).toContain("[read, write]");
     expect(prompt).toContain("[read]");
+  });
+});
+
+describe("buildSystemPrompt — schema introspection meta views (#87)", () => {
+  it("instructs the agent about _meta_entities + _meta_columns when data_query is enabled", () => {
+    const prompt = buildSystemPrompt(makeContext());
+    expect(prompt).toContain("## Schema Introspection (live)");
+    expect(prompt).toContain("_meta_entities");
+    expect(prompt).toContain("_meta_columns");
+    expect(prompt).toContain("wide_column_name");
+  });
+
+  it("omits _meta_connector_instances guidance when entity_management is NOT enabled", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["data_query"] })
+    );
+    expect(prompt).not.toContain("_meta_connector_instances");
+  });
+
+  it("instructs the agent to use _meta_connector_instances before connector_entity_create", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["data_query", "entity_management"] })
+    );
+    expect(prompt).toContain("_meta_connector_instances");
+    // Critical instruction: query the view BEFORE calling
+    // connector_entity_create. Without this the agent hallucinates an id.
+    expect(prompt).toContain("Always query this view first");
+    expect(prompt).toContain("connector_entity_create");
+  });
+
+  it("omits the Schema Introspection section entirely when data_query is disabled", () => {
+    const prompt = buildSystemPrompt(makeContext({ toolPacks: [] }));
+    expect(prompt).not.toContain("## Schema Introspection");
+    expect(prompt).not.toContain("_meta_entities");
+  });
+
+  it("tells the agent to re-introspect after creating an entity mid-session", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["data_query", "entity_management"] })
+    );
+    // Specifically calls out the failure mode the user hit: created
+    // entity, can't find it via static prompt listing.
+    expect(prompt).toMatch(/can't find a table you just created/i);
   });
 });
