@@ -9,6 +9,10 @@ import {
   assertWriteCapability,
 } from "../utils/resolve-capabilities.util.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
+import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
+import { createLogger } from "../utils/logger.util.js";
+
+const logger = createLogger({ module: "field-mapping-delete-tool" });
 
 const ItemSchema = z.object({
   fieldMappingId: z.string().describe("The field mapping ID to delete"),
@@ -127,6 +131,23 @@ export class FieldMappingDeleteTool extends Tool<typeof InputSchema> {
               userId
             );
             deleteResults.push(result);
+          }
+
+          // Reconcile each affected entity so deleted mappings retire
+          // their `c_<key>` columns from the wide table. Per-entity
+          // failures don't abort — the soft-delete is already persisted.
+          for (const entityId of entityIds) {
+            try {
+              await wideTableReconcilerService.reconcileEntity(entityId);
+            } catch (err) {
+              logger.error(
+                {
+                  connectorEntityId: entityId,
+                  error: err instanceof Error ? err.message : String(err),
+                },
+                "reconcileEntity failed after field_mapping_delete"
+              );
+            }
           }
 
           return {

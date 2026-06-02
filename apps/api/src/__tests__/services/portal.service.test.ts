@@ -13,6 +13,9 @@ const mockCreate_message = jest.fn<() => Promise<unknown>>();
 const mockFindByPortal = jest.fn<() => Promise<unknown[]>>();
 const mockDeleteByPortal = jest.fn<() => Promise<number>>();
 const mockFindByStationId_toolpacks = jest.fn<() => Promise<unknown[]>>();
+const mockFindById_organization = jest
+  .fn<() => Promise<unknown>>()
+  .mockResolvedValue({ id: "org-001", timezone: "UTC" });
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -28,8 +31,20 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
         create: mockCreate_message,
         deleteByPortal: mockDeleteByPortal,
       },
+      organizations: { findById: mockFindById_organization },
     },
   },
+}));
+
+// Logger mock — used by createPortal to warn on invalid org timezones.
+const mockWarn = jest.fn();
+jest.unstable_mockModule("../../utils/logger.util.js", () => ({
+  createLogger: () => ({
+    warn: mockWarn,
+    info: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+  }),
 }));
 
 // AnalyticsService
@@ -253,6 +268,55 @@ describe("PortalService", () => {
       expect(result.stationContext.stationName).toBe("Sales Station");
       expect(result.stationContext.entities).toBe(ENTITIES);
       expect(result.stationContext.entityGroups).toBe(ENTITY_GROUPS);
+    });
+
+    it("populates organizationTimezone from the org row", async () => {
+      mockFindById_station.mockResolvedValue(STATION);
+      mockFindByStationId_toolpacks.mockResolvedValue(
+        makeToolpackRows(["data_query"])
+      );
+      mockCreate_portal.mockResolvedValue(PORTAL);
+      mockLoadStation.mockResolvedValue(STATION_DATA);
+      mockFindById_organization.mockResolvedValueOnce({
+        id: ORG_ID,
+        timezone: "Europe/London",
+      });
+
+      const result = await PortalService.createPortal({
+        stationId: STATION_ID,
+        organizationId: ORG_ID,
+        userId: USER_ID,
+      });
+
+      expect(result.stationContext.organizationTimezone).toBe("Europe/London");
+    });
+
+    it("falls back to UTC with a warn log when the org's timezone is not a valid IANA name", async () => {
+      mockFindById_station.mockResolvedValue(STATION);
+      mockFindByStationId_toolpacks.mockResolvedValue(
+        makeToolpackRows(["data_query"])
+      );
+      mockCreate_portal.mockResolvedValue(PORTAL);
+      mockLoadStation.mockResolvedValue(STATION_DATA);
+      mockFindById_organization.mockResolvedValueOnce({
+        id: ORG_ID,
+        timezone: "Not/Real",
+      });
+
+      const result = await PortalService.createPortal({
+        stationId: STATION_ID,
+        organizationId: ORG_ID,
+        userId: USER_ID,
+      });
+
+      expect(result.stationContext.organizationTimezone).toBe("UTC");
+      expect(mockWarn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: ORG_ID,
+          badValue: "Not/Real",
+        }),
+        expect.stringMatching(/UTC/i)
+      );
     });
 
     it("calls loadStation and caches result", async () => {
@@ -514,6 +578,7 @@ describe("PortalService", () => {
     const stationContext = {
       stationId: STATION_ID,
       stationName: "Sales Station",
+      organizationTimezone: "UTC",
       entities: ENTITIES,
       entityGroups: [],
       toolPacks: ["data_query"],

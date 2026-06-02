@@ -29,6 +29,11 @@ import {
   type StationContext,
 } from "../prompts/system.prompt.js";
 import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
+import { isValidIanaTimezone } from "../utils/timezone.util.js";
+import { stationInstancesRepo } from "../db/repositories/station-instances.repository.js";
+import { connectorInstancesRepo } from "../db/repositories/connector-instances.repository.js";
+import { connectorDefinitionsRepo } from "../db/repositories/connector-definitions.repository.js";
+import type { ConnectorInstanceContext } from "../prompts/system.prompt.js";
 import { SseUtil } from "../utils/sse.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -293,13 +298,28 @@ export class PortalService {
       ? await resolveEntityCapabilities(stationId)
       : undefined;
 
+    // Load attached connector instances so the system prompt can list
+    // them. They're static for the session — connector instances don't
+    // change while a portal is live — so this one-shot load at portal
+    // creation is sufficient. Only loaded when entity_management is
+    // enabled, since that's the only pack today that takes a
+    // `connectorInstanceId` argument.
+    const connectorInstances: ConnectorInstanceContext[] | undefined =
+      toolPacks.includes("entity_management")
+        ? await loadConnectorInstanceContexts(stationId)
+        : undefined;
+
+    const organizationTimezone = await loadOrganizationTimezone(organizationId);
+
     const stationContext: StationContext = {
       stationId: station.id,
       stationName: station.name,
+      organizationTimezone,
       entities: stationData.entities,
       entityGroups: stationData.entityGroups,
       toolPacks,
       entityCapabilities,
+      connectorInstances,
     };
 
     logger.info({ portalId: portal.id, stationId }, "Portal created");
@@ -823,4 +843,73 @@ function reconstructModelMessages(
   }
 
   return coreMessages;
+}
+
+/**
+ * Load connector-instance contexts for the prompt.
+ *
+ * Pulled into a helper so the load order is explicit: station_instances
+ * → connector_instances → connector_definitions. Returns the safe
+ * projection: `id, name, display, slug`. Never includes
+ * `config`, `credentials`, or `lastErrorMessage`.
+ */
+/**
+ * Resolve the IANA timezone for an organization. Falls back to "UTC"
+ * with a logger.warn when the stored value isn't a recognized IANA
+ * name. Shared by `createPortal` (session start) and the events router
+ * (reconnect) so both code paths produce a `StationContext` with the
+ * same timezone semantics.
+ */
+export async function loadOrganizationTimezone(
+  organizationId: string
+): Promise<string> {
+  const org = await DbService.repository.organizations.findById(organizationId);
+  const rawTz = org?.timezone ?? "UTC";
+  if (isValidIanaTimezone(rawTz)) return rawTz;
+  logger.warn(
+    { organizationId, badValue: rawTz },
+    "Org timezone is not a recognized IANA name, falling back to UTC"
+  );
+  return "UTC";
+}
+
+async function loadConnectorInstanceContexts(
+  stationId: string
+): Promise<ConnectorInstanceContext[]> {
+  const links = await stationInstancesRepo.findByStationId(stationId);
+  if (links.length === 0) return [];
+
+  const instances = await Promise.all(
+    [...new Set(links.map((l) => l.connectorInstanceId))].map((id) =>
+      connectorInstancesRepo.findById(id)
+    )
+  );
+  const liveInstances = instances.filter(
+    (i): i is NonNullable<typeof i> => i !== null && i !== undefined
+  );
+
+  const defIds = [
+    ...new Set(liveInstances.map((i) => i.connectorDefinitionId)),
+  ];
+  const defs = await Promise.all(
+    defIds.map((id) => connectorDefinitionsRepo.findById(id))
+  );
+  const defMap = new Map(
+    defs
+      .filter((d): d is NonNullable<typeof d> => d !== null && d !== undefined)
+      .map((d) => [d.id, d])
+  );
+
+  const result: ConnectorInstanceContext[] = [];
+  for (const inst of liveInstances) {
+    const def = defMap.get(inst.connectorDefinitionId);
+    if (!def) continue;
+    result.push({
+      id: inst.id,
+      name: inst.name,
+      display: def.display,
+      slug: def.slug,
+    });
+  }
+  return result;
 }

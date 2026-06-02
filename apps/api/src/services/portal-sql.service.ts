@@ -147,9 +147,9 @@ export class PortalSqlServiceImpl {
       .filter(([, caps]) => caps.read === true)
       .map(([id]) => id);
 
-    if (readableEntityIds.length === 0) {
-      return { views: [], viewMap: new Map() };
-    }
+    // Even when no entities are readable, still emit the meta views (below)
+    // — the agent gets back empty rows rather than a confusing "table
+    // doesn't exist" error when it asks "what's available?"
 
     // Load the entities so we know their `key` (the public view name).
     const entities = await Promise.all(
@@ -210,6 +210,117 @@ export class PortalSqlServiceImpl {
       viewMap.set(entityKey, viewName);
       usedKeys.add(entityKey);
     }
+
+    // ── Schema-introspection meta views (#87) ─────────────────────────
+    //
+    // `_meta_entities` and `_meta_columns` give the agent a runtime path
+    // to ask "what entities are available?" and "what columns does X
+    // have, with what semantic types?" — independent of the system-
+    // prompt schema snapshot which is captured at session start and
+    // never refreshed.
+    //
+    // Same org-scope guard as the entity views: the orgId literal is
+    // embedded in the WHERE so the agent cannot escape the scope no
+    // matter what SQL it writes. Same station-scope filter via the
+    // readable-entity-ids whitelist.
+    //
+    // Each ID is validated against UUID_RE before interpolation. The
+    // values come from internal capability resolution; the defensive
+    // check protects against a future regression that lets a non-UUID
+    // through.
+    const readableIdsLiteral =
+      readableEntityIds.length === 0
+        ? // Sentinel that matches no rows — IN () is a SQL syntax error
+          // in Postgres, so we use an impossible-UUID literal instead.
+          "'00000000-0000-0000-0000-000000000000'"
+        : readableEntityIds
+            .map((id) => {
+              if (!UUID_RE.test(id)) {
+                throw new ApiError(
+                  500,
+                  ApiCode.PORTAL_SQL_FORBIDDEN,
+                  `invalid connectorEntityId for portal sql session: ${id}`
+                );
+              }
+              return `'${id}'`;
+            })
+            .join(", ");
+
+    const metaEntitiesDdl =
+      `CREATE OR REPLACE TEMP VIEW "_meta_entities" AS\n` +
+      `  SELECT "id", "key", "label"\n` +
+      `  FROM "connector_entities"\n` +
+      `  WHERE "organization_id" = '${organizationId}'\n` +
+      `    AND "id" IN (${readableIdsLiteral})\n` +
+      `    AND "deleted" IS NULL`;
+    views.push(metaEntitiesDdl);
+    viewMap.set("_meta_entities", "_meta_entities");
+
+    const metaColumnsDdl =
+      `CREATE OR REPLACE TEMP VIEW "_meta_columns" AS\n` +
+      `  SELECT\n` +
+      `    ce."id" AS "connector_entity_id",\n` +
+      `    ce."key" AS "entity_key",\n` +
+      `    cd."id" AS "column_definition_id",\n` +
+      `    cd."key" AS "column_key",\n` +
+      `    fm."normalized_key" AS "normalized_key",\n` +
+      `    wtc."column_name" AS "wide_column_name",\n` +
+      `    cd."label" AS "label",\n` +
+      `    cd."type"::text AS "type",\n` +
+      `    cd."description" AS "description",\n` +
+      `    fm."ref_entity_key" AS "ref_entity_key",\n` +
+      `    fm."ref_normalized_key" AS "ref_normalized_key"\n` +
+      `  FROM "column_definitions" cd\n` +
+      `    JOIN "field_mappings" fm ON fm."column_definition_id" = cd."id"\n` +
+      `    JOIN "connector_entities" ce ON ce."id" = fm."connector_entity_id"\n` +
+      `    JOIN "wide_table_columns" wtc ON wtc."field_mapping_id" = fm."id"\n` +
+      `  WHERE cd."organization_id" = '${organizationId}'\n` +
+      `    AND ce."id" IN (${readableIdsLiteral})\n` +
+      `    AND cd."deleted" IS NULL\n` +
+      `    AND fm."deleted" IS NULL\n` +
+      `    AND ce."deleted" IS NULL\n` +
+      `    AND wtc."deleted" IS NULL\n` +
+      `    AND wtc."retired_at" IS NULL`;
+    views.push(metaColumnsDdl);
+    viewMap.set("_meta_columns", "_meta_columns");
+
+    // `_meta_column_catalog` — the org's full column-definition catalog.
+    //
+    // Distinct from `_meta_columns` (which lists columns *currently
+    // bound to an entity*). This view exposes every column_definition
+    // the org's admins have curated, including ones not yet wired to
+    // any entity. The agent uses it when creating a new entity: it
+    // picks `columnDefinitionId` values from this catalog to pass to
+    // `field_mapping_create`. Column definitions are intentionally
+    // admin-only — the agent has no `column_definition_create` tool.
+    // If the user asks for a column that's not in the catalog, the
+    // agent surfaces the gap rather than fabricating one.
+    //
+    // Org-scope only (no station / read-capability filter — the
+    // catalog is org-wide and contains no per-row data, just labels +
+    // semantic types).
+    const metaColumnCatalogDdl =
+      `CREATE OR REPLACE TEMP VIEW "_meta_column_catalog" AS\n` +
+      `  SELECT\n` +
+      `    "id" AS "column_definition_id",\n` +
+      `    "key" AS "column_key",\n` +
+      `    "label" AS "label",\n` +
+      `    "type"::text AS "type",\n` +
+      `    "description" AS "description"\n` +
+      `  FROM "column_definitions"\n` +
+      `  WHERE "organization_id" = '${organizationId}'\n` +
+      `    AND "deleted" IS NULL`;
+    views.push(metaColumnCatalogDdl);
+    viewMap.set("_meta_column_catalog", "_meta_column_catalog");
+
+    // Note: connector instances are NOT exposed as a meta view. They're
+    // attached to the station via configuration *outside* the portal
+    // session and don't change while a conversation is live — putting
+    // them in the system prompt at session start is the right surface
+    // (see `system.prompt.ts` → `## Available Connector Instances`).
+    // Entities and column definitions, by contrast, CAN change
+    // mid-session (the agent creates new ones, syncs add columns), so
+    // they get meta views for runtime introspection.
 
     return { views, viewMap };
   }

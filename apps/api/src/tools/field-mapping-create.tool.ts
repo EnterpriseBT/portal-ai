@@ -10,6 +10,10 @@ import {
   assertWriteCapability,
 } from "../utils/resolve-capabilities.util.js";
 import { Repository } from "../db/repositories/base.repository.js";
+import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
+import { createLogger } from "../utils/logger.util.js";
+
+const logger = createLogger({ module: "field-mapping-create-tool" });
 
 const ItemSchema = z.object({
   connectorEntityId: z
@@ -161,6 +165,32 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
               results.push(result);
             }
           });
+
+          // Reconcile the wide-table for each affected entity so the
+          // new field mappings materialize as physical `c_<key>` columns
+          // on `er__<entity_id>`. Without this the wide-table statement
+          // cache stays empty for those columns, the entity-data view in
+          // `buildSessionViews` projects nothing, and the agent sees
+          // `entity_record_create` fail or `sql_query` return empty
+          // projections. Per-entity failures don't abort the result —
+          // the field-mapping rows are already persisted; we just log
+          // so the gap is visible.
+          const affectedEntityIds = [
+            ...new Set(items.map((item) => item.connectorEntityId)),
+          ];
+          for (const entityId of affectedEntityIds) {
+            try {
+              await wideTableReconcilerService.reconcileEntity(entityId);
+            } catch (err) {
+              logger.error(
+                {
+                  connectorEntityId: entityId,
+                  error: err instanceof Error ? err.message : String(err),
+                },
+                "reconcileEntity failed after field_mapping_create"
+              );
+            }
+          }
 
           return {
             success: true,

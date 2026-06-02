@@ -55,6 +55,7 @@ import { ConnectorEntityDeleteTool } from "../tools/connector-entity-delete.tool
 import { FieldMappingCreateTool } from "../tools/field-mapping-create.tool.js";
 import { FieldMappingUpdateTool } from "../tools/field-mapping-update.tool.js";
 import { FieldMappingDeleteTool } from "../tools/field-mapping-delete.tool.js";
+import { GetCurrentTimeTool } from "../tools/get-current-time.tool.js";
 import { resolveStationCapabilities } from "../utils/resolve-capabilities.util.js";
 import { signRequest } from "../utils/webhook-signing.util.js";
 import { assertUrlSafeToFetch } from "../utils/url-safety.util.js";
@@ -314,6 +315,13 @@ export class ToolService {
     );
 
     const tools: Record<string, Tool> = {};
+
+    // -------------------------------------------------------------------
+    // Universal: get_current_time
+    // -------------------------------------------------------------------
+    // Temporal context is universal — every portal session needs it
+    // regardless of which toolpacks are enabled.
+    tools.get_current_time = new GetCurrentTimeTool().build(organizationId);
 
     // -------------------------------------------------------------------
     // Pack: data_query

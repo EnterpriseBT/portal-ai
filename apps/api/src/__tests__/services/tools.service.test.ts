@@ -311,6 +311,28 @@ describe("buildAnalyticsTools()", () => {
   });
 
   // -----------------------------------------------------------------------
+  // Universal tools (no pack gate)
+  // -----------------------------------------------------------------------
+
+  it("registers get_current_time regardless of which toolpack is enabled", async () => {
+    // Temporal context is universal — the agent needs to know wall-clock
+    // time and the org's timezone whether or not data_query /
+    // entity_management / etc. are enabled.
+    for (const pack of [
+      "data_query",
+      "statistics",
+      "regression",
+      "financial",
+      "web_search",
+    ]) {
+      setupStationMocks([pack]);
+      mockResolveStationCapabilities.mockResolvedValue([]);
+      const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+      expect(tools.get_current_time).toBeDefined();
+    }
+  });
+
+  // -----------------------------------------------------------------------
   // resolve_identity conditional registration
   // -----------------------------------------------------------------------
 
