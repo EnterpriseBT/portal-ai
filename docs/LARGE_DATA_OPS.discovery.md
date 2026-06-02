@@ -80,8 +80,7 @@ Some decisions apply to both directions, some are direction-specific. Group acco
 How does the portal communicate the "actual" data the tool result is referencing (progress for writes, rows for reads)?
 
 - **A. Tool-result widget that fills in / fetches on render.** Display block tied to the tool result; renders a widget that pulls from SSE (writes) or fetches by handle (reads).
-- **B. Sidecar panel** outside the message thread.
-- **C. System-level messages** injected into the timeline per progress milestone.
+- **B. System-level messages** injected into the timeline per progress milestone.
 
 **Lean: A for both directions** — `resolveDisplayBlock()` is the natural bridge; we add two new display-block kinds (`bulk-job-progress` for writes, `query-result-data` for reads).
 
