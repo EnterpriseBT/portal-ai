@@ -49,7 +49,7 @@ The read-side failure mode is *worse* than the write-side: 100-cap is a number t
 | Entity lock | `apps/api/src/services/job-lock.service.ts:80-95` (`assertConnectorInstanceUnlocked`) | Throws 409 `ENTITY_LOCKED_BY_JOB` if any non-terminal job targets the entity. Routes call this before mutations. Releases on terminal |
 | Portal tool-call wiring | `apps/api/src/services/portal.service.ts:99-142` (`handleToolCall` / `handleToolResult`) | Vercel AI SDK loop; `resolveDisplayBlock()` already supports surfacing side-channel UI from a tool result — this is the seam for "tool returned, work still running" AND for "tool returned a query handle, UI fetches the data" |
 
-**The critical observation:** the `resolveDisplayBlock()` path is the natural bridge for reads — render a chart widget whose data is fetched by query handle from the UI, never passing through the agent's context. Writes use the *same* path differently: a `bulk-job-status` block that ticks progress text in place during the job, then a terminal *follow-up message* injected by the portal containing the result chart as a normal display block. No mid-job data widget; the chat thread is locked from user input while the job runs (same UX as waiting for any agent response), and the chart appears at terminal time in a fresh message, animating in via `vega.changeset` against the cached final dataset. Race conditions from a mid-job live widget (lock-vs-read-back conflicts, partial-state pins, cancel teardown, batch-visibility surprises) are designed out.
+**The critical observation:** the `resolveDisplayBlock()` path is the natural bridge for both directions. Writes render a `bulk-job-progress` block — a live table or chart that fills in via `vega.changeset` (chart) or React state (table) as each batch commits, alongside a counter / ETA affordance that makes the underlying process visible. Reads render a `query-result-data` block whose data is fetched by query handle from the UI and streams in as the PG cursor walks. Same mechanism, different display-block kind. The chat thread is locked from user input while the bulk job runs — same UX as waiting for any other long agent turn — which is the safety mechanism for the races that *would* otherwise bite (lock-vs-read-back, mid-job inconsistent reads). Mid-job pinning is suppressed by a `pinnable: false` flag on the block while running; cancel handling reconciles into the same widget by transitioning to a "Cancelled at 47k / 100k" terminal state.
 
 ## Profiling: where's the actual bottleneck?
 
@@ -83,9 +83,11 @@ How does the portal communicate the "actual" data the tool result is referencing
 - **B. Sidecar panel** outside the message thread.
 - **C. System-level messages** injected into the timeline per progress milestone.
 
-**Lean (reads): A.** `resolveDisplayBlock()` already does this; we add a `query-result-data` display-block kind that fetches by handle and streams in.
+**Lean: A for both directions** — `resolveDisplayBlock()` is the natural bridge; we add two new display-block kinds (`bulk-job-progress` for writes, `query-result-data` for reads).
 
-**Lean (writes): A in shape, but the block is status-only during the job and the chart is a *second* block posted in a follow-up message at terminal.** No live data widget mid-job. The bulk-tool result returns a `bulk-job-status` block bound to the job id; it ticks counters via SSE (`12,547 / 50,000 records written`) but renders no chart and accepts no pinning. On terminal, the portal injects a follow-up assistant message into the thread containing whatever display block(s) the agent prepared at dispatch time (typically a chart over the target wide table). That chart mounts empty and animates in via `vega.changeset` against the cached final dataset — same "materialize" feel as the read side, but triggered at arrival rather than during the job.
+For writes: the block is a live data view (table or chart) that fills in as batches commit. SSE per-batch event carries committed row payload (capped — see open question on `BATCH_ROW_PAYLOAD_LIMIT`); the widget calls `vega.changeset().insert(rows)` for chart views or appends to React state for table views. A counter / ETA affordance renders alongside so the user can see that an underlying process is running. The block is marked `pinnable: false` while the job is running; at terminal it becomes pinnable normally (the rendered widget IS the final view; no second chart needed in the agent's follow-up). The decision NOT to suppress this widget hinges on the chat-thread input lock (see S2) — without that lock the races below in S4 would bite, with it they don't.
+
+For reads: data is fetched by query handle from the UI and streams in via SSE. Chart fills in over the first few seconds; cached final state in Redis serves re-opens.
 
 #### S2 — Agent ergonomics after dispatching a long-running operation
 
@@ -106,33 +108,42 @@ Writes need entity locks (existing pattern). Reads don't; PostgreSQL `statement_
 - **Writes lean: target entity only.** Sibling primitive `assertConnectorEntityUnlocked(entityId)` of the existing `assertConnectorInstanceUnlocked`. Reads on either source or target stay open while the bulk job runs.
 - **Reads lean: per-query `statement_timeout`.** Cap a single query's wall-clock at, say, 30 seconds. No lock, no job; just kill long queries and surface the failure to the agent so it can retry with a tighter SQL.
 
-#### S4 — Incremental UI rendering
+#### S4 — Incremental UI rendering (live data, not a progress bar)
 
-- **A. Status-then-arrival (writes).** During the job, a status block ticks counters in place (`12,547 / 50,000 records written`). On terminal, a fresh follow-up message containing the result chart is injected; the chart mounts empty and animates in via `vega.changeset().insert(rows)` against the cached final dataset, filling in over ~2–3 seconds. Same "materialize" feel as a streaming render, but triggered when the user actually cares (job done) rather than during a long job the user isn't watching.
-- **B. Incremental render via SSE (reads).** Server cursors the PG result and emits batches; UI appends each delta as it lands via `vega.changeset().insert(rows)`. Cached final state in Redis for re-open.
+The UI should NOT show a spinner-then-result for either direction. Both the bulk-write widget AND the read-side chart/table render *the data itself* as it arrives — bars filling in column-by-column, points appearing on a scatter plot, table rows appending live. A counter / ETA affordance on the write side makes the underlying process visible alongside the populating data; without it the user can't tell the difference between "stalled" and "still working."
 
-**Lean: A for writes, B for reads.**
+- **A. Spinner-then-result.** Show a progress bar (% done); render the chart at terminal. Loses the alive feeling and wastes the per-batch SSE infrastructure that already exists.
+- **B. Incremental render: SSE deltas → UI append.** Server emits batches; UI appends each delta. Writes: each committed batch broadcasts its row payload (capped — see below). Reads: each query batch broadcasts as it streams from PG. Both paths render via `vega.changeset().insert(rows)` against a named dataset.
+- **C. Polling.** UI re-fetches every N seconds. Cheap server, expensive client; the chart flickers.
 
-The earlier draft of this doc leaned B for both directions and rendered a live data widget *during* the bulk job. That introduced real race conditions:
+| | A (spinner) | B (incremental SSE) | C (polling) |
+|---|---|---|---|
+| Feels alive | ❌ | ✅ | Half — flicker, not animate |
+| Server complexity | Low | Medium (per-batch broadcast extends easily on both sides) | Low |
+| Client complexity | Low | Medium (manage incremental state per widget type) | Medium (refetch + diff) |
+| Renders ≥50k smoothly | N/A (terminal one-shot) | Vega-Lite handles ~1k incremental updates/sec; past that, batch client-side | Bad past a few k |
+| Final-state re-open | Trivial (cached snapshot) | Cache the final state separately to support re-open | Trivial |
 
-- **Lock-vs-read-back.** The agent's tool-result widget shows partial data, but the target entity is locked — if the user asks a follow-up like "how many of those have acreage > 5?", the agent's read fails with `ENTITY_LOCKED_BY_JOB`. The widget says one thing; the agent says another.
-- **Mid-build pinning.** If pinning were enabled mid-job, the pin captures a partial state that re-renders differently next time.
-- **Cancel teardown.** Live widget has to reconcile "we received batch 47, then a `cancelled` terminal event" — non-trivial state transition.
-- **Batch-visibility surprises.** Other reads on the same wide table in the same conversation see committed-but-not-final state, giving inconsistent counts.
+**Lean: B for both directions, with a cached final snapshot for re-open.**
 
-Shifting writes to A removes all four. Reads stay on B because reads ARE the thing being asked for — there's no lock, no half-committed state, and the data is available immediately.
+**The race-condition surface that B *would* introduce for writes is closed off by S2's chat-thread input lock, not by avoiding the live render.** Without the chat lock, a live mid-job widget would create real problems:
 
-| | A — status + arrival (writes) | B — incremental SSE (reads) |
-|---|---|---|
-| Feels alive | ✅ at arrival | ✅ during stream |
-| Mid-op race surface | None | N/A (no concurrent mutation) |
-| Server complexity | Existing per-batch SSE used for status counters only; row payload not broadcast | Medium — cursor + emit-and-cache |
-| Client complexity | Low for status; chart is a normal mount-and-load | Medium — manage incremental state per widget type |
-| Final-state re-open | Trivial — chart's data IS the final snapshot | Need to cache the final state separately |
+- **Lock-vs-read-back.** The agent's widget shows partial data while the target is locked — if the user asked a follow-up like "how many of those have acreage > 5?", the agent's read fails with `ENTITY_LOCKED_BY_JOB`. The widget says one thing; the agent says another.
+- **Mid-job inconsistent reads.** Other tools in the same conversation see committed-but-not-final state, giving inconsistent counts.
 
-**Backpressure / batching policy.** Writes-side SSE carries status counters only (one event per batch commit ≈ every few hundred ms); payload size is bounded by the counter shape, no row data. Reads-side SSE cursors through the PG result and emits batches when (a) 1000 rows have accumulated OR (b) 250ms has elapsed since the last emit. Either trigger flushes a batch; whichever comes first. Keeps the UI's re-render rate bounded.
+With chat input locked while the job runs, neither happens: the user can't ask follow-ups during the job, no concurrent reads, the only thing on screen is the widget itself. The remaining edge cases are handled by widget contract, not by skipping the render:
 
-**Widget-specific incremental support** (applies to reads-side streaming render and to writes-side terminal-arrival animation):
+- **Mid-job pinning.** The widget carries `pinnable: false` while running; the pin affordance is hidden. At terminal the widget becomes pinnable normally — the rendered view is the final state, no half-built capture.
+- **Cancel.** SSE `cancelled` terminal event transitions the widget into a "Cancelled at 47k / 100k written" final state; partial data preserved, retry affordance offered. No teardown / remount.
+- **Re-open after navigation.** Cached final state in Redis (per R3) serves as the snapshot; widget mounts against the cache when the SSE channel has already closed.
+
+**The terminal follow-up message stays text-led, not chart-led.** Since the bulk-job-progress widget already IS the chart, the agent's follow-up doesn't re-render. It posts text observations on the result ("Done — 50,000 written, 23 failed. The acreage distribution is right-skewed with a heavy tail above 100 acres.") and, when applicable, a separate paginated failure-table block over `partialFailures[]`.
+
+**Backpressure / batching policy.** Per-batch SSE event on writes is naturally rate-limited by the batch commit cadence (one event per ~1000-row commit ≈ every few hundred ms). For reads, the server cursors through the PG result and emits batches when (a) 1000 rows have accumulated OR (b) 250ms has elapsed since the last emit. Either trigger flushes a batch; whichever comes first.
+
+**Per-batch row payload size cap (writes).** Geometry blobs and large JSONB rows can blow past sensible SSE event sizes. Lean: cap each batch's row payload at `BATCH_ROW_PAYLOAD_LIMIT` (lean: 256 KB); when a batch exceeds the cap, emit row-id lists only and let the widget look up rows from the wide table on demand.
+
+**Widget-specific incremental support.**
 
 - *Table:* trivially append rows.
 - *Bar chart, line chart, scatter:* Vega-Lite supports incremental updates via `vega.changeset().insert(rows)` against a named dataset. Spec must declare `data: { name: "primary" }` rather than `data: { values: [] }`; the renderer attaches the changeset stream after mount.
@@ -399,7 +410,7 @@ Tool calls fail more diversely than SQL ones (API rate limit, transient network,
 }
 ```
 
-The `bulk-job-status` block surfaces the partial-failure count live (*"47,000 written, 1,247 failed"*) — counters only, no inline list. At terminal, the agent's follow-up message includes a failure-table display block listing the per-record errors with a "retry failed only" affordance — kicking off another bulk_transform scoped to just the failed source keys.
+The `bulk-job-progress` block surfaces the partial-failure count live alongside the populating data (*"47,000 written, 1,247 failed"*). At terminal, the agent's text-led follow-up message includes a separate paginated failure-table display block listing the per-record errors with a "retry failed only" affordance — kicking off another bulk_transform scoped to just the failed source keys.
 
 ### Custom toolpacks (#65 integration)
 
@@ -411,7 +422,7 @@ This is the path through which an org's domain logic (proprietary scoring, inter
 
 | | UI surface (S1) | Agent ergonomics (S2) | Lock (S3) | Incremental render (S4) | Error UX (S5) | Tool surface — writes (W1) | Cancel (W2) | Resume (W3) | Per-record compute (W5) | Read data path (R1) | Handle lifecycle (R2) | Storage (R3) | Sampling (R4) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Lean | Display block (status-only for writes, data widget for reads) | Continue + chat-locked (W) / immediate-return (R) | Target entity (W) / `statement_timeout` (R) | Status-then-arrival (W) / SSE deltas → UI append (R) | `ApiUserError` envelope to UI + agent | Declarative SQL | Stop at batch | Idempotent re-run | **Both SQL + tool dispatch first-class in v1** | Handle + streaming | Session-scoped | Redis | Implicit + system-prompt nudge |
+| Lean | Live data display block (both directions) | Continue + chat-locked (W) / immediate-return (R) | Target entity (W) / `statement_timeout` (R) | SSE deltas → UI append (both directions) | `ApiUserError` envelope to UI + agent | Declarative SQL | Stop at batch | Idempotent re-run | **Both SQL + tool dispatch first-class in v1** | Handle + streaming | Session-scoped | Redis | Implicit + system-prompt nudge |
 | Spreads to spec | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 Every lean composes cleanly with the next.
@@ -432,10 +443,10 @@ Every lean composes cleanly with the next.
    )
    ```
 3. Tool route validates, calls `assertConnectorEntityUnlocked(targetEntityId)`, EXPLAINs the expression, enqueues a `bulk_transform` job, returns `{ jobId, expectedRecords: 100000, estimatedSeconds: 180 }`.
-4. UI renders a `bulk-job-status` display block tied to the jobId — counters + ETA, no chart. SSE subscription opens. Agent posts a final assistant message ("Importing 100,000 parcels — I'll let you know when it finishes.") and yields the floor. The portal disables new user input on the chat thread.
-5. Processor runs batched `INSERT INTO target_wide SELECT … FROM source_wide LIMIT 1000 OFFSET N` per batch. **Per batch commit**, it emits `{ _eventType: "batch", recordsProcessed: N, totalRecords: 100000, batchDurationMs }` over the SSE channel. Counters only — no row payload.
-6. The `bulk-job-status` block updates the counter text in place as each batch event arrives. No chart, no `vega.changeset` mid-job.
-7. On terminal, the portal injects a synthetic user-role message into the agent's context (`Job <id> completed. recordsProcessed: 100000, recordsFailed: 0, durationMs: …`). Agent generates a follow-up assistant message in the thread. The follow-up typically calls `visualize("SELECT acreage FROM parcel_metrics", { mark: "bar", … })` and the resulting chart block animates in via `vega.changeset().insert(rows)` against the (now-final) target wide table — same materialize feel as the read side, at arrival rather than during the job. Input unlocks when the follow-up posts.
+4. UI renders a `bulk-job-progress` display block tied to the jobId. The user picks a view at mount (histogram of `acreage`, paginated table of latest committed records, or a configurable bar chart). SSE subscription opens. Agent posts a final assistant message ("Importing 100,000 parcels — I'll let you know when it finishes.") and yields the floor. The portal disables new user input on the chat thread.
+5. Processor runs batched `INSERT INTO target_wide SELECT … FROM source_wide LIMIT 1000 OFFSET N` per batch. **Per batch commit**, it emits `{ _eventType: "batch", recordsProcessed: N, totalRecords: 100000, batchDurationMs, rows: [...committed batch rows...] }` over the SSE channel. The rows payload is capped at `BATCH_ROW_PAYLOAD_LIMIT` (256 KB); past the cap, the event carries row-id lists and the widget fetches the row data from the wide table on demand.
+6. The `bulk-job-progress` block updates live. Counter text ticks up alongside ("Importing… 12,547 / 100,000"); the histogram fills in column-by-column via `vega.changeset().insert(rows)`. The widget carries `pinnable: false` while the job is running.
+7. On terminal, the SSE final event flips the block to its terminal state ("100,000 written, 0 failed in 3m 12s"); `pinnable` becomes `true`. The portal injects a synthetic user-role message into the agent's context (`Job <id> completed. recordsProcessed: 100000, recordsFailed: 0, durationMs: …`). Agent generates a text-led follow-up assistant message — observations on the data, no re-rendered chart since the `bulk-job-progress` widget already IS the chart. Input unlocks when the follow-up posts.
 
 ### Smoke B — read: 10k-point scatter plot of parcel acreage vs assessed value
 
@@ -468,11 +479,11 @@ Every lean composes cleanly with the next.
      acknowledgeCost: true,  // because the tool declared costHint: "metered"
    )
    ```
-4. Pre-flight: tool exists, `bulkDispatch` set, target unlocked. Route computes ETA: `50000 / (10 × 5 per second) = ~17 minutes`. Returns immediately to the agent: `{ jobId, expectedRecords: 50000, estimatedSeconds: 1020, costHint: "metered" }`. Agent surfaces the cost + ETA to the user: *"This will take about 17 minutes and uses metered API calls. I'll let you know when it finishes."* Status block mounted; portal locks the chat thread.
+4. Pre-flight: tool exists, `bulkDispatch` set, target unlocked. Route computes ETA: `50000 / (10 × 5 per second) = ~17 minutes`. Returns immediately to the agent: `{ jobId, expectedRecords: 50000, estimatedSeconds: 1020, costHint: "metered" }`. Agent surfaces the cost + ETA to the user: *"This will take about 17 minutes and uses metered API calls. I'll let you know when it finishes."* `bulk-job-progress` block mounted (user picks the histogram view of `distance_km`); portal locks the chat thread.
 5. Processor loads batches of 1000 records via cursor. For each batch: invokes the tool 10 concurrently (capped by `maxConcurrency`); token bucket bounds total throughput at 50 calls/sec. Successful results are upserted in one statement per batch; failed records collected in `partialFailures[]`.
-6. Per-batch SSE event fires after each commit: `{ recordsProcessed: N, totalRecords: 50000, batchDurationMs: 20000, failureCount: 3 }`. Counters only — no row payload. The `bulk-job-status` block updates "47,000 / 50,000 written, 23 failed" in place. No mid-job histogram.
-7. On terminal: SSE final event carries `{ recordsProcessed: 49977, recordsFailed: 23, durationMs: 998000, partialFailures: [...] }`. Portal injects a synthetic user-role message; agent generates a follow-up assistant message. That follow-up typically contains (a) a chart block over the target wide table (live histogram of `distance_km`, animates in via `vega.changeset`), and (b) a paginated failure-table block over `partialFailures[]` with a "retry failed only" affordance. Clicking "retry failed only" dispatches a follow-up `bulk_transform` scoped to the 23 failed source keys (same chat-lock cycle).
-8. The agent can now visualize the derived data normally: `visualize("SELECT distance_km FROM parcel_hospital_distance", { mark: "bar", … })` — the read-side handle/streaming pipeline takes it from there. (In practice, step 7's follow-up already calls this.)
+6. Per-batch SSE event fires after each commit: `{ recordsProcessed: N, totalRecords: 50000, batchDurationMs: 20000, rows: [...successful results...], failureCount: 3 }`. The block updates live: distance_km histogram fills in via `vega.changeset` (most parcels near a hospital → left-skewed; rural parcels pushing the tail right), counters tick ("47,000 / 50,000 written, 23 failed"), `pinnable: false` while running.
+7. On terminal: SSE final event carries `{ recordsProcessed: 49977, recordsFailed: 23, durationMs: 998000, partialFailures: [...] }`. Block flips to terminal state; `pinnable` becomes `true`. Portal injects a synthetic user-role message; agent generates a text-led follow-up assistant message — observations on the distribution + a paginated failure-table display block over `partialFailures[]` with a "retry failed only" affordance. Clicking "retry failed only" dispatches a follow-up `bulk_transform` scoped to the 23 failed source keys (same chat-lock cycle).
+8. The agent can now reference the derived data normally for follow-ups (e.g. "what's the median distance?") via `sql_query` against `parcel_hospital_distance` — the read-side handle/streaming pipeline takes it from there.
 
 ## Recommendation
 
@@ -481,11 +492,11 @@ Every lean composes cleanly with the next.
 1. **New tool** `bulk_transform_entity_records` added to **`ENTITY_MANAGEMENT_PACK`** in `packages/core/src/registries/builtin-toolpacks.ts`. Wired in `tools.service.ts:419-…` alongside `entity_record_create` and gated on the existing `hasWrite` station-capability check (`apps/api/src/services/tools.service.ts:421-426`). **Not** in `DATA_QUERY_PACK` — even though the SQL-projection expression reads from the source, the operation produces writes and must be gated accordingly. Parameters: `sourceEntityId, targetEntityId, expression, keyField, batchSize?, acknowledgeCost?`. Expression is `{ kind: "sql", value: string } | { kind: "tool", ref: string, args?: object }` — **both shapes ship in v1**.
 2. **New JobType** `bulk_transform`. Metadata declares `targetEntityId` as the locked entity; result carries `recordsProcessed, recordsFailed, durationMs, partialFailures[]`.
 3. **New processor** `apps/api/src/queues/processors/bulk-transform.processor.ts`. Drives the batched UPSERT loop; branches on `expression.kind` for the per-batch payload (SQL projection vs tool dispatch). Emits per-batch custom SSE events carrying counters and committed-row payload; honors the cancel flag.
-4. **New SSE event** `{ _eventType: "batch", recordsProcessed, totalRecords, batchDurationMs, failureCount? }` → `job:batch`. **Counters only — no row payload.** The previous draft proposed broadcasting committed batch rows so the UI could render them live; that path is removed alongside the live data widget (S4 lean A).
+4. **New SSE event** `{ _eventType: "batch", recordsProcessed, totalRecords, batchDurationMs, rows?, failureCount? }` → `job:batch`. The `rows` payload carries committed-batch row data so the widget can render live; capped at `BATCH_ROW_PAYLOAD_LIMIT` (256 KB) per event, with row-id-list fallback past the cap (widget fetches by id from the wide table).
 5. **New lock primitive** `JobLockService.assertConnectorEntityUnlocked(entityId)` + sibling repository method.
-6. **New display block** `bulk-job-status` (frontend: `apps/web/src/components/BulkJobStatusBlock.component.tsx`). Renders a **status-only** block: counters (records processed / total / failed), ETA, and the SSE-driven progress text — no chart, no data view. Failure count surfaces inline; the failure list itself appears only at terminal time (in the agent's follow-up message, as a separate display block).
-7. **Chat-thread input lock** during a running bulk job. UI state derived from the open SSE channel for the job id (or from the `bulk-job-status` block's terminal flag). On terminal, input unlocks once the agent posts its follow-up message. Same UX as waiting for any other long agent turn.
-8. **Portal follow-up injection** on terminal SSE; new helper in `portal.service.ts`. Synthesizes a user-role message into the agent's context with the terminal result payload; the agent's follow-up assistant message typically contains a chart block over the target wide table (uses the read-side handle/streaming pipeline, animates in via `vega.changeset` against the cached final dataset) and, if applicable, a failure-table block.
+6. **New display block** `bulk-job-progress` (frontend: `apps/web/src/components/BulkJobProgressBlock.component.tsx`). Renders a **live data view** — bar chart, histogram, or paginated table — that appends per `batch` SSE event via `vega.changeset` (chart) or React state (table). The user picks the view when the widget mounts; the default is a histogram over the most-recently-written column. Counter / ETA / failure count surface alongside the data view so the user can see the underlying process running. Block carries `pinnable: false` while the job is running; flips to `pinnable: true` at terminal so the final rendered view IS the pinnable artifact.
+7. **Chat-thread input lock** during a running bulk job. UI state derived from the open SSE channel for the job id (or from the `bulk-job-progress` block's terminal flag). On terminal, input unlocks once the agent posts its follow-up message. Same UX as waiting for any other long agent turn — and the safety mechanism that closes off the lock-vs-read-back / mid-job-inconsistent-reads race surface.
+8. **Portal follow-up injection** on terminal SSE; new helper in `portal.service.ts`. Synthesizes a user-role message into the agent's context with the terminal result payload; the agent's follow-up assistant message is text-led (observations on the data, no re-rendered chart — the `bulk-job-progress` widget already IS the chart) and, when `partialFailures[]` is non-empty, includes a paginated failure-table display block with a "retry failed only" affordance.
 
 ### Tool-dispatch track (non-SQL per-record compute)
 
@@ -511,7 +522,7 @@ Every lean composes cleanly with the next.
 ### Error-UX track (cross-cutting)
 
 16. **Universal `ApiUserError` envelope** `{ code, message, recommendation, details? }`. Every error path in every new tool / route / display block emits this shape. The agent and the UI both consume it.
-17. **`FormAlert`-style rendering** in every new display block — `bulk-job-status`, `query-result-data` — surfacing both the `message` and the `recommendation`. No "loading..." → blank state; either it renders data, renders progress, or renders the envelope.
+17. **`FormAlert`-style rendering** in every new display block — `bulk-job-progress`, `query-result-data` — surfacing both the `message` and the `recommendation`. No "loading..." → blank state; either it renders data, renders progress, or renders the envelope.
 18. **Informational envelopes** for non-error degradations (sampling, aggregation hint, per-mark cap fallback) — same shape with `severity: "info"`. Widget surfaces them subtly (footer chip, not modal alert) but always visibly.
 19. **Pre-flight error checks** in the bulk-tool route — lock check, max-records check, EXPLAIN validation — all run before the job is enqueued so the error surfaces immediately, not as a job-failed terminal event 30 seconds later.
 
@@ -557,7 +568,7 @@ Spec at `docs/LARGE_DATA_OPS.spec.md` codifies the wire contracts: `BulkTransfor
 - (1) writes: JobType + schemas + lock primitive
 - (2) writes: processor + cancel-flag + per-batch SSE (counters only) — SQL path only
 - (3) writes: tool + EXPLAIN validation + portal follow-up injection on terminal
-- (4) writes: `bulk-job-status` display block (status-only, counters via SSE) + chat-thread input lock + smoke against the acreage target (Smoke A)
+- (4) writes: `bulk-job-progress` display block (live data view + counter affordance, mid-job `pinnable: false`) + chat-thread input lock + smoke against the acreage target (Smoke A)
 - (4a) writes — tool dispatch: `bulkDispatch` metadata on `ToolpackTool`; dispatcher with `pLimit` + token bucket + `withTimeout`; cost-acknowledgement gate
 - (4b) writes — tool dispatch: per-record-failure surfacing in the terminal follow-up + "retry failed only" affordance; smoke target against the GIS distance-to-nearest tool (Smoke C)
 - (5) reads: query-handle envelope + Redis storage + snapshot endpoint
