@@ -29,6 +29,7 @@ import {
   type StationContext,
 } from "../prompts/system.prompt.js";
 import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
+import { isValidIanaTimezone } from "../utils/timezone.util.js";
 import { stationInstancesRepo } from "../db/repositories/station-instances.repository.js";
 import { connectorInstancesRepo } from "../db/repositories/connector-instances.repository.js";
 import { connectorDefinitionsRepo } from "../db/repositories/connector-definitions.repository.js";
@@ -308,9 +309,12 @@ export class PortalService {
         ? await loadConnectorInstanceContexts(stationId)
         : undefined;
 
+    const organizationTimezone = await loadOrganizationTimezone(organizationId);
+
     const stationContext: StationContext = {
       stationId: station.id,
       stationName: station.name,
+      organizationTimezone,
       entities: stationData.entities,
       entityGroups: stationData.entityGroups,
       toolPacks,
@@ -849,6 +853,26 @@ function reconstructModelMessages(
  * projection: `id, name, display, slug`. Never includes
  * `config`, `credentials`, or `lastErrorMessage`.
  */
+/**
+ * Resolve the IANA timezone for an organization. Falls back to "UTC"
+ * with a logger.warn when the stored value isn't a recognized IANA
+ * name. Shared by `createPortal` (session start) and the events router
+ * (reconnect) so both code paths produce a `StationContext` with the
+ * same timezone semantics.
+ */
+export async function loadOrganizationTimezone(
+  organizationId: string
+): Promise<string> {
+  const org = await DbService.repository.organizations.findById(organizationId);
+  const rawTz = org?.timezone ?? "UTC";
+  if (isValidIanaTimezone(rawTz)) return rawTz;
+  logger.warn(
+    { organizationId, badValue: rawTz },
+    "Org timezone is not a recognized IANA name, falling back to UTC"
+  );
+  return "UTC";
+}
+
 async function loadConnectorInstanceContexts(
   stationId: string
 ): Promise<ConnectorInstanceContext[]> {

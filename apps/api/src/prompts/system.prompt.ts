@@ -39,6 +39,12 @@ export interface StationContext {
    *  `connectorInstanceId`. Empty array is fine (no entity-mgmt tool
    *  call possible). */
   connectorInstances?: ConnectorInstanceContext[];
+  /** IANA timezone for the org owning this portal. Always present;
+   *  resolved at session start and falls back to "UTC" if the stored
+   *  value isn't a recognized IANA name. The system prompt names it so
+   *  the agent can resolve relative time expressions against the org's
+   *  local clock without a tool round-trip just for the timezone. */
+  organizationTimezone: string;
 }
 
 /**
@@ -48,6 +54,15 @@ export interface StationContext {
 export function buildSystemPrompt(stationContext: StationContext): string {
   const lines: string[] = [
     `You are an analytics assistant for the "${stationContext.stationName}" station.`,
+    "",
+    "## Current time",
+    "",
+    `The organization's timezone is **${stationContext.organizationTimezone}**.`,
+    'Before resolving any relative time expression ("today", "this Friday", "next week", "in 3 days", "end of month", etc.), call the `get_current_time` tool. Resolve the expression against the timestamp in `localTime` (the org\'s timezone), not your training cutoff.',
+    "",
+    "When writing a `date` or `datetime` value into an entity:",
+    "- If `_meta_columns.canonicalFormat` is set for the column, emit the value in that exact format.",
+    "- Otherwise: `date` columns → `YYYY-MM-DD`; `datetime` columns → ISO 8601 with the org's UTC offset (e.g. `2026-06-01T15:00:00-07:00`).",
     "",
     "## Available Data",
     "",
