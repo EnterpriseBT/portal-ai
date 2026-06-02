@@ -31,6 +31,10 @@ export const ApiErrorSchema = z.object({
   success: z.literal(false),
   message: z.string(),
   code: z.string(),
+  /** Actionable next step in plain English. Optional in the wire shape
+   *  for back-compat with existing error paths; required by convention
+   *  for new code paths landing under the large-data-ops work (#85). */
+  recommendation: z.string().optional(),
   details: z.record(z.string(), z.unknown()).optional(),
 });
 
