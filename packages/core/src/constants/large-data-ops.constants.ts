@@ -1,0 +1,31 @@
+/**
+ * Resource-limit constants for the large-data-ops feature
+ * (issue #85). Shared between apps/api and (eventually) apps/web.
+ *
+ * See docs/LARGE_DATA_OPS_PHASE_1.spec.md for the contract these
+ * values pin.
+ */
+
+/** Per-job cap on total records written; bulk tool route rejects past this. */
+export const MAX_BULK_RECORDS = 1_000_000;
+
+/** Default batch size for bulk transforms (per-batch UPSERT count). */
+export const DEFAULT_BULK_BATCH = 1_000;
+
+/** Max concurrent non-terminal bulk jobs per organization. */
+export const MAX_CONCURRENT_BULK_PER_ORG = 2;
+
+/** Max bytes of serialized row payload per `job:batch` SSE event. */
+export const BATCH_ROW_PAYLOAD_LIMIT = 256 * 1024;
+
+/** TTL on a Redis-cached query handle. */
+export const READ_HANDLE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Above this row count, reads automatically sample. */
+export const SAMPLING_THRESHOLD = 50_000;
+
+/** Per-query wall-clock cap; PG `statement_timeout`. */
+export const STATEMENT_TIMEOUT_MS = 30_000;
+
+/** Below this row count, reads still inline rows instead of returning a handle. */
+export const INLINE_ROWS_THRESHOLD = 100;
