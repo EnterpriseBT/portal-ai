@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
+import { ApiErrorSchema } from "../contracts/api.contract.js";
+import { DEFAULT_BULK_BATCH } from "../constants/large-data-ops.constants.js";
 
 /**
  * Async job model.
@@ -38,6 +40,7 @@ export const JobTypeEnum = z.enum([
   "connector_sync",
   "file_upload_parse",
   "layout_plan_commit",
+  "bulk_transform",
 ]);
 export type JobType = z.infer<typeof JobTypeEnum>;
 
@@ -227,6 +230,69 @@ export type LayoutPlanCommitJobResult = z.infer<
   typeof LayoutPlanCommitJobResultSchema
 >;
 
+/**
+ * bulk_transform (#85) — agent-driven bulk write that runs a per-record
+ * transformation in batches. Two expression kinds: `sql` (declarative
+ * INSERT … SELECT projection) and `tool` (per-record dispatch through a
+ * bulkDispatch-able tool; Phase 4 wires the dispatcher).
+ *
+ * Locks `targetConnectorEntityId` while non-terminal (see
+ * CLAUDE.md → "Async Job State & Data Locking").
+ */
+export const BulkTransformExpressionSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("sql"),
+    /** SELECT projection or scalar expression. Per-batch processor wraps
+     *  in INSERT … SELECT against the source wide table. */
+    value: z.string(),
+  }),
+  z.object({
+    kind: z.literal("tool"),
+    /** Tool name; must be a registered bulkDispatch-able tool. */
+    ref: z.string(),
+    args: z.record(z.string(), z.unknown()).optional(),
+  }),
+]);
+export type BulkTransformExpression = z.infer<
+  typeof BulkTransformExpressionSchema
+>;
+
+export const BulkTransformMetadataSchema = z.object({
+  /** Source entity to scan; read-only during the job, no lock. */
+  sourceConnectorEntityId: z.string(),
+  /** Target entity to write into; locked while the job is non-terminal. */
+  targetConnectorEntityId: z.string(),
+  expression: BulkTransformExpressionSchema,
+  /** Source field used as the upsert key on the target. */
+  keyField: z.string(),
+  batchSize: z
+    .number()
+    .int()
+    .positive()
+    .max(10_000)
+    .default(DEFAULT_BULK_BATCH),
+  /** Required when the dispatched tool declared `costHint: "expensive"`. */
+  acknowledgeCost: z.boolean().optional(),
+});
+export type BulkTransformMetadata = z.infer<typeof BulkTransformMetadataSchema>;
+
+export const BulkTransformResultSchema = z.object({
+  recordsProcessed: z.number().int().nonnegative(),
+  recordsFailed: z.number().int().nonnegative(),
+  durationMs: z.number().int().nonnegative(),
+  partialFailures: z
+    .array(
+      z.object({
+        sourceKey: z.string(),
+        /** Per-record error envelope; reuses the universal shape so
+         *  the agent and UI consume the same payload. */
+        error: ApiErrorSchema,
+      })
+    )
+    .optional(),
+});
+export type BulkTransformResult = z.infer<typeof BulkTransformResultSchema>;
+
 // --- Type Map ---
 
 /**
@@ -251,6 +317,10 @@ export interface JobTypeMap {
   layout_plan_commit: {
     metadata: LayoutPlanCommitMetadata;
     result: LayoutPlanCommitJobResult;
+  };
+  bulk_transform: {
+    metadata: BulkTransformMetadata;
+    result: BulkTransformResult;
   };
 }
 
@@ -283,6 +353,10 @@ export const JOB_TYPE_SCHEMAS: {
   layout_plan_commit: {
     metadata: LayoutPlanCommitMetadataSchema,
     result: LayoutPlanCommitJobResultSchema,
+  },
+  bulk_transform: {
+    metadata: BulkTransformMetadataSchema,
+    result: BulkTransformResultSchema,
   },
 };
 
