@@ -438,4 +438,68 @@ export enum ApiCode {
    * unambiguously.
    */
   CONNECTOR_ENTITY_KEY_CONFLICT = "CONNECTOR_ENTITY_KEY_CONFLICT",
+
+  // Large-data-ops — bulk writes (#85)
+  /** A non-terminal `bulk_transform` job already locks the target entity. 409. */
+  BULK_JOB_TARGET_LOCKED = "BULK_JOB_TARGET_LOCKED",
+  /** EXPLAIN of the user expression / source filter failed against PG. 400. */
+  BULK_JOB_EXPRESSION_INVALID = "BULK_JOB_EXPRESSION_INVALID",
+  /** Source has more records than `MAX_BULK_RECORDS`. 400. */
+  BULK_JOB_MAX_RECORDS_EXCEEDED = "BULK_JOB_MAX_RECORDS_EXCEEDED",
+  /** A per-batch transaction exceeded its wall-clock budget. */
+  BULK_JOB_BATCH_TIMEOUT = "BULK_JOB_BATCH_TIMEOUT",
+  /** Job was cancelled by the user; partial results may be present. */
+  BULK_JOB_CANCELLED = "BULK_JOB_CANCELLED",
+  /** Some records failed validation/upsert; details in `partialFailures`. */
+  BULK_JOB_PARTIAL_FAILURE = "BULK_JOB_PARTIAL_FAILURE",
+
+  // Large-data-ops — reads (#85)
+  /** The query handle's cached data has expired from Redis (24h TTL). */
+  READ_HANDLE_EXPIRED = "READ_HANDLE_EXPIRED",
+  /** SSE channel dropped mid-stream. Client should fetch the snapshot. */
+  READ_STREAM_INTERRUPTED = "READ_STREAM_INTERRUPTED",
+  // PORTAL_SQL_TIMEOUT already declared above (portal SQL surface); reused
+  // by the reads track without re-declaration.
+
+  // Large-data-ops — tool dispatch (#85, Phase 4)
+  /** `expression.ref` doesn't resolve to a tool in the station's tools. */
+  BULK_DISPATCH_TOOL_NOT_FOUND = "BULK_DISPATCH_TOOL_NOT_FOUND",
+  /** Tool exists but didn't declare `bulkDispatch` metadata. */
+  BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE = "BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE",
+  /** Tool declared `costHint: "expensive"` and call didn't set `acknowledgeCost: true`. */
+  BULK_DISPATCH_COST_NOT_ACKNOWLEDGED = "BULK_DISPATCH_COST_NOT_ACKNOWLEDGED",
 }
+
+/**
+ * Default `recommendation` per `ApiCode`, used by error constructors
+ * that don't override per call site. Optional — only the codes
+ * intended to surface to the agent + UI have entries.
+ *
+ * Added under #85 for the large-data-ops error envelope work.
+ */
+export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
+  [ApiCode.BULK_JOB_TARGET_LOCKED]:
+    "Wait for the running bulk job to finish, or cancel it before retrying.",
+  [ApiCode.BULK_JOB_EXPRESSION_INVALID]:
+    "Fix the type / column mismatch in your expression and retry.",
+  [ApiCode.BULK_JOB_MAX_RECORDS_EXCEEDED]:
+    "Split the operation with a WHERE filter on the source.",
+  [ApiCode.BULK_JOB_BATCH_TIMEOUT]:
+    "Try a smaller batchSize, or simplify the expression.",
+  [ApiCode.BULK_JOB_CANCELLED]:
+    "Re-run the job to finish; already-committed records are idempotent.",
+  [ApiCode.BULK_JOB_PARTIAL_FAILURE]:
+    "Inspect the failed records' source ids and retry, or accept the partial.",
+  [ApiCode.READ_HANDLE_EXPIRED]:
+    "Re-run the original query to refresh the chart's data.",
+  [ApiCode.READ_STREAM_INTERRUPTED]:
+    "Reload to refetch the cached snapshot.",
+  [ApiCode.PORTAL_SQL_TIMEOUT]:
+    "Query exceeded 30s. Try a tighter WHERE filter, a tighter date range, or aggregating the source.",
+  [ApiCode.BULK_DISPATCH_TOOL_NOT_FOUND]:
+    "The named tool isn't available in this station. Verify the tool name and that its toolpack is enabled.",
+  [ApiCode.BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE]:
+    "The tool exists but isn't bulk-dispatchable. Add a `bulkDispatch` metadata block to its toolpack descriptor.",
+  [ApiCode.BULK_DISPATCH_COST_NOT_ACKNOWLEDGED]:
+    "This operation calls a costly tool. Confirm with the user, then retry with `acknowledgeCost: true`.",
+};
