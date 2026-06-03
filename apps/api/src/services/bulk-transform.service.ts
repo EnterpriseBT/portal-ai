@@ -38,6 +38,30 @@ function quoteIdent(name: string): string {
 
 export class BulkTransformService {
   /**
+   * Pre-flight: run an EXPLAIN against the SELECT that the processor
+   * will eventually execute, with a `LIMIT 1` so it touches as little
+   * as possible. Surfaces PG syntax / type errors as a typed throw
+   * (`BULK_JOB_EXPRESSION_INVALID`) before the job is enqueued.
+   *
+   * The tool calls this from its pre-flight; integration tests in
+   * slice 6 verify the EXPLAIN catches malformed expressions.
+   */
+  static async explainExpression(
+    sourceConnectorEntityId: string,
+    organizationId: string,
+    expression: string
+  ): Promise<void> {
+    const sourceTable = quoteIdent(
+      wideTableRepo.tableName(sourceConnectorEntityId)
+    );
+    const orgLit = `'${organizationId.replace(/'/g, "''")}'`;
+    const sqlText =
+      `EXPLAIN SELECT ${expression} FROM ${sourceTable} ` +
+      `WHERE "organization_id" = ${orgLit} LIMIT 1`;
+    await db.execute(sql.raw(sqlText));
+  }
+
+  /**
    * Count rows visible in the source wide table for the given org.
    * Used by the processor to derive `totalRecords` for the per-batch
    * SSE event.
@@ -81,7 +105,6 @@ export class BulkTransformService {
     // subsequent re-runs of the same job idempotently UPDATE.
     const keyCol = quoteIdent(opts.keyField);
     const orgLit = `'${opts.organizationId.replace(/'/g, "''")}'`;
-    const jobLit = `'${opts.jobId.replace(/'/g, "''")}'`;
     const now = Date.now();
 
     // The agent's expression is wrapped as a SELECT projection. The
@@ -112,8 +135,6 @@ export class BulkTransformService {
     // the target wide-table columns surfaces there. Slice 6 may need
     // to refine this SQL based on real-world failures; the seam stays
     // the same.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const _jobLitForFutureUse = jobLit;
 
     const result = await db.execute(sql.raw(insertSql));
     // postgres-js returns rows[]; we don't get rowCount portably,

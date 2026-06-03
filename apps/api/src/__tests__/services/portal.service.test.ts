@@ -1052,7 +1052,8 @@ describe("PortalService", () => {
       expect(mockBuildAnalyticsTools).toHaveBeenCalledWith(
         ORG_ID,
         STATION_ID,
-        "user-001"
+        "user-001",
+        PORTAL_ID
       );
       expect(capturedTools).toBe(tools);
     });

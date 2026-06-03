@@ -160,6 +160,23 @@ export function resolveDisplayBlock(
   block: Record<string, unknown>;
   sseResult?: Record<string, unknown>;
 } | null {
+  // bulk_transform_entity_records returns a tool-result shape carrying
+  // a `blockKind: "bulk-job-progress"` + `blockContent` payload. The
+  // frontend mounts a live-data widget against the job id (#85 Phase 2).
+  if (
+    toolName === "bulk_transform_entity_records" &&
+    toolResult != null &&
+    toolResult.blockKind === "bulk-job-progress" &&
+    typeof toolResult.blockContent === "object"
+  ) {
+    return {
+      block: {
+        type: "bulk-job-progress",
+        content: toolResult.blockContent as Record<string, unknown>,
+      },
+    };
+  }
+
   const isVegaLite =
     toolName === "visualize" ||
     (toolResult != null && toolResult.type === "vega-lite");
@@ -493,7 +510,8 @@ export class PortalService {
     const analyticsTools = await ToolService.buildAnalyticsTools(
       organizationId,
       stationContext.stationId,
-      userId
+      userId,
+      portalId
     );
 
     // streamText() is lazy in AI SDK v6 — it returns immediately and
