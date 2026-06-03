@@ -94,6 +94,37 @@ export class JobsRepository extends Repository<
   }
 
   /**
+   * Find every non-terminal job whose metadata declares the given
+   * connector entity id as its lock target. Today this covers
+   * `bulk_transform` (`metadata.targetConnectorEntityId`); future job
+   * types that lock at the entity level extend this query.
+   *
+   * Used by `JobLockService.assertConnectorEntityUnlocked` to surface
+   * entity-level locks alongside the existing instance-level path.
+   */
+  async findRunningByTargetEntityId(
+    connectorEntityId: string,
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<JobSelect[]> {
+    return (await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(jobs.organizationId, organizationId),
+          inArray(jobs.type, ["bulk_transform"] as JobSelect["type"][]),
+          inArray(
+            jobs.status,
+            NON_TERMINAL_JOB_STATUSES as unknown as JobSelect["status"][]
+          ),
+          sql`${jobs.metadata}->>'targetConnectorEntityId' = ${connectorEntityId}`,
+          this.notDeleted()
+        )
+      )) as JobSelect[];
+  }
+
+  /**
    * Find the upload-session id that backed the most recent
    * `layout_plan_commit` job for `connectorInstanceId`. Returns
    * `undefined` if no prior commit job referenced an upload session
