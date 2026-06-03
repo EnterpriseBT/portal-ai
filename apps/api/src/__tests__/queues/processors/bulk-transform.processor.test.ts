@@ -11,7 +11,13 @@ import type { Job as BullJob } from "bullmq";
 
 const mockCountSourceRows =
   jest.fn<() => Promise<number>>().mockResolvedValue(0);
-const mockRunBatch = jest.fn<() => Promise<number>>().mockResolvedValue(0);
+type BatchResult = {
+  rowsCommitted: number;
+  rows: Array<Record<string, unknown>>;
+};
+const mockRunBatch = jest
+  .fn<() => Promise<BatchResult>>()
+  .mockResolvedValue({ rowsCommitted: 0, rows: [] });
 
 jest.unstable_mockModule(
   "../../../services/bulk-transform.service.js",
@@ -72,16 +78,20 @@ function makeJob(
 describe("bulkTransformProcessor — SQL path (Phase 2 slice 0)", () => {
   beforeEach(() => {
     mockCountSourceRows.mockReset().mockResolvedValue(0);
-    mockRunBatch.mockReset().mockResolvedValue(0);
+    mockRunBatch
+      .mockReset()
+      .mockResolvedValue({ rowsCommitted: 0, rows: [] });
     mockPublishCustomEvent.mockReset().mockResolvedValue(undefined);
   });
 
   it("processes a 3-batch SQL job and emits 3 job:batch events with monotonic counters", async () => {
     mockCountSourceRows.mockResolvedValue(3_000);
+    const smallRows = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ id: `r-${i}`, c_acreage: i }));
     mockRunBatch
-      .mockResolvedValueOnce(1_000)
-      .mockResolvedValueOnce(1_000)
-      .mockResolvedValueOnce(1_000);
+      .mockResolvedValueOnce({ rowsCommitted: 1_000, rows: smallRows(1_000) })
+      .mockResolvedValueOnce({ rowsCommitted: 1_000, rows: smallRows(1_000) })
+      .mockResolvedValueOnce({ rowsCommitted: 1_000, rows: smallRows(1_000) });
 
     const result = await bulkTransformProcessor(makeJob());
 
@@ -100,7 +110,10 @@ describe("bulkTransformProcessor — SQL path (Phase 2 slice 0)", () => {
 
   it("each emitted event has _eventType = 'batch' and is keyed to the jobId", async () => {
     mockCountSourceRows.mockResolvedValue(1_000);
-    mockRunBatch.mockResolvedValueOnce(1_000);
+    mockRunBatch.mockResolvedValueOnce({
+      rowsCommitted: 1_000,
+      rows: [{ id: "r-1", c_acreage: 3.7 }],
+    });
 
     await bulkTransformProcessor(makeJob());
 
@@ -115,11 +128,62 @@ describe("bulkTransformProcessor — SQL path (Phase 2 slice 0)", () => {
     );
   });
 
+  it("includes rows in the SSE event when payload fits BATCH_ROW_PAYLOAD_LIMIT", async () => {
+    mockCountSourceRows.mockResolvedValue(2);
+    mockRunBatch.mockResolvedValueOnce({
+      rowsCommitted: 2,
+      rows: [
+        { id: "r-1", c_acreage: 3.7 },
+        { id: "r-2", c_acreage: 5.1 },
+      ],
+    });
+
+    await bulkTransformProcessor(makeJob({ batchSize: 2 }));
+
+    const evt = (
+      mockPublishCustomEvent.mock.calls[0] as unknown as [
+        string,
+        string,
+        { rows?: unknown[] },
+      ]
+    )[2];
+    expect(evt.rows).toEqual([
+      { id: "r-1", c_acreage: 3.7 },
+      { id: "r-2", c_acreage: 5.1 },
+    ]);
+  });
+
+  it("omits rows when serialized payload exceeds BATCH_ROW_PAYLOAD_LIMIT", async () => {
+    // Build a row whose JSON serializes well past 256 KB.
+    const huge = "x".repeat(300_000);
+    mockCountSourceRows.mockResolvedValue(1);
+    mockRunBatch.mockResolvedValueOnce({
+      rowsCommitted: 1,
+      rows: [{ id: "r-1", payload: huge }],
+    });
+
+    await bulkTransformProcessor(makeJob({ batchSize: 1 }));
+
+    const evt = (
+      mockPublishCustomEvent.mock.calls[0] as unknown as [
+        string,
+        string,
+        { rows?: unknown[]; recordsProcessed: number },
+      ]
+    )[2];
+    expect(evt.rows).toBeUndefined();
+    // Counters still update — the widget keeps its progress bar
+    // moving even when the per-batch row payload is dropped.
+    expect(evt.recordsProcessed).toBe(1);
+  });
+
   it("honors cancellation between batches", async () => {
     mockCountSourceRows.mockResolvedValue(3_000);
+    const smallRows = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ id: `r-${i}` }));
     mockRunBatch
-      .mockResolvedValueOnce(1_000)
-      .mockResolvedValueOnce(1_000);
+      .mockResolvedValueOnce({ rowsCommitted: 1_000, rows: smallRows(1_000) })
+      .mockResolvedValueOnce({ rowsCommitted: 1_000, rows: smallRows(1_000) });
 
     const job = makeJob();
     let callCount = 0;

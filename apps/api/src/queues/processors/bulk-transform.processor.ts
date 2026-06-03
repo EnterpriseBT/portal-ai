@@ -4,6 +4,7 @@ import { ApiError } from "../../services/http.service.js";
 import { BulkTransformService } from "../../services/bulk-transform.service.js";
 import { JobEventsService } from "../../services/job-events.service.js";
 import { createLogger } from "../../utils/logger.util.js";
+import { BATCH_ROW_PAYLOAD_LIMIT } from "@portalai/core/constants";
 
 const logger = createLogger({ module: "bulk-transform-processor" });
 
@@ -102,7 +103,7 @@ export const bulkTransformProcessor: TypedJobProcessor<
     }
 
     const batchStart = Date.now();
-    const rowsCommitted = await BulkTransformService.runBatch({
+    const { rowsCommitted, rows } = await BulkTransformService.runBatch({
       sourceConnectorEntityId,
       targetConnectorEntityId,
       organizationId,
@@ -117,11 +118,19 @@ export const bulkTransformProcessor: TypedJobProcessor<
     recordsProcessed += rowsCommitted;
     offset += batchSize;
 
+    // Row payload selection: inline rows when serialized JSON fits the
+    // 256 KB cap, otherwise degrade to counters-only. The `rowIds`
+    // fallback path (per-entity row-fetch endpoint) lands in Phase 3.
+    const serializedRows = JSON.stringify(rows);
+    const includeRows =
+      serializedRows.length <= BATCH_ROW_PAYLOAD_LIMIT && rows.length > 0;
+
     await JobEventsService.publishCustomEvent(jobId, "batch", {
       recordsProcessed,
       totalRecords,
       batchDurationMs,
       failureCount: 0,
+      ...(includeRows ? { rows } : {}),
     });
 
     // Safety: if a batch returned fewer rows than requested, we've

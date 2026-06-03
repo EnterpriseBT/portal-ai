@@ -84,14 +84,17 @@ export class BulkTransformService {
   }
 
   /**
-   * Run one batch's INSERT-SELECT. Returns the number of rows written
-   * to the target this batch (idempotent: ON CONFLICT … DO UPDATE).
+   * Run one batch's INSERT-SELECT. Returns the committed-row count AND
+   * the row data (via INSERT ... RETURNING), so the processor can
+   * include the rows in its per-batch SSE event.
    *
    * The processor calls this in a loop, advancing `offset` by
    * `batchSize` each iteration. Per-batch work is its own transaction
    * so a mid-job failure leaves committed batches in place.
    */
-  static async runBatch(opts: BulkTransformBatchOptions): Promise<number> {
+  static async runBatch(
+    opts: BulkTransformBatchOptions
+  ): Promise<{ rowsCommitted: number; rows: Array<Record<string, unknown>> }> {
     const sourceTable = quoteIdent(
       wideTableRepo.tableName(opts.sourceConnectorEntityId)
     );
@@ -127,7 +130,8 @@ export class BulkTransformService {
       `  ORDER BY "entity_record_id" ` +
       `  LIMIT ${opts.batchSize} OFFSET ${opts.offset}` +
       `) src ` +
-      `ON CONFLICT ("source_id") DO UPDATE SET "synced_at" = EXCLUDED."synced_at"`;
+      `ON CONFLICT ("source_id") DO UPDATE SET "synced_at" = EXCLUDED."synced_at" ` +
+      `RETURNING *`;
 
     // NOTE: the SQL shape above is a Phase 2 scaffold. The smoke test
     // in slice 6 will exercise this against a real seeded source and
@@ -137,13 +141,9 @@ export class BulkTransformService {
     // the same.
 
     const result = await db.execute(sql.raw(insertSql));
-    // postgres-js returns rows[]; we don't get rowCount portably,
-    // so fall back to a SELECT COUNT against the LIMIT/OFFSET window.
-    const rowCount = (result as unknown as { count?: number }).count;
-    if (typeof rowCount === "number") return rowCount;
-    // Estimate from batchSize; the processor uses this as a stop
-    // signal when fewer rows come back than requested.
-    const arrLen = Array.isArray(result) ? result.length : 0;
-    return arrLen || opts.batchSize;
+    const rows = Array.isArray(result)
+      ? (result as unknown as Array<Record<string, unknown>>)
+      : [];
+    return { rowsCommitted: rows.length, rows };
   }
 }
