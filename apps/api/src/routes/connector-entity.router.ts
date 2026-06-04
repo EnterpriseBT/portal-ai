@@ -888,3 +888,82 @@ connectorEntityRouter.delete(
     }
   }
 );
+
+// ── POST /api/connector-entities/:id/rows-by-id ───────────────────────
+//
+// rowIds write-fallback (#85 Phase 3 slice 5). When a bulk_transform
+// SSE event's row payload exceeds BATCH_ROW_PAYLOAD_LIMIT, the
+// processor emits rowIds instead of rows. The frontend widget calls
+// this endpoint to fetch the rows by entity_record_id, then renders.
+//
+// Capped at MAX_ROWS_BY_ID (1000) per request to keep the response
+// bounded; large batches paginate via repeated calls.
+
+const MAX_ROWS_BY_ID = 1_000;
+
+connectorEntityRouter.post(
+  "/:id/rows-by-id",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { organizationId } = req.application!.metadata;
+      const body = req.body as { ids?: unknown };
+
+      if (
+        !Array.isArray(body?.ids) ||
+        body.ids.some((x) => typeof x !== "string")
+      ) {
+        throw new ApiError(
+          400,
+          ApiCode.BULK_DISPATCH_TOO_MANY_IDS,
+          "`ids` must be a non-empty string[]"
+        );
+      }
+      const ids = body.ids as string[];
+      if (ids.length === 0) {
+        return HttpService.success(res, { rows: [] });
+      }
+      if (ids.length > MAX_ROWS_BY_ID) {
+        throw new ApiError(
+          400,
+          ApiCode.BULK_DISPATCH_TOO_MANY_IDS,
+          `Too many ids; max ${MAX_ROWS_BY_ID} per request`,
+          { details: { maxIds: MAX_ROWS_BY_ID, given: ids.length } }
+        );
+      }
+
+      // Scope + read-capability check.
+      const entity = await DbService.repository.connectorEntities.findById(id);
+      if (!entity || entity.organizationId !== organizationId) {
+        throw new ApiError(
+          404,
+          ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+          "Connector entity not found"
+        );
+      }
+
+      // Query the wide table by record_id. The drizzle-raw shape uses
+      // a parameterized array so we don't have to escape per id.
+      const { wideTableRepo } = await import(
+        "../db/repositories/wide-table.repository.js"
+      );
+      const { sql } = await import("drizzle-orm");
+      const tableName = wideTableRepo.tableName(id).replace(/"/g, '""');
+      const result = await db.execute(
+        sql.raw(
+          `SELECT * FROM "${tableName}" WHERE "entity_record_id" = ANY(ARRAY[${ids
+            .map((rid) => `'${rid.replace(/'/g, "''")}'`)
+            .join(",")}])`
+        )
+      );
+      const rows = Array.isArray(result)
+        ? (result as unknown as Array<Record<string, unknown>>)
+        : [];
+
+      return HttpService.success(res, { rows });
+    } catch (error) {
+      return next(error);
+    }
+  }
+);

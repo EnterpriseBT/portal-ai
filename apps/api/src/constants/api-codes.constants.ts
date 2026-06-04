@@ -468,6 +468,8 @@ export enum ApiCode {
   BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE = "BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE",
   /** Tool declared `costHint: "expensive"` and call didn't set `acknowledgeCost: true`. */
   BULK_DISPATCH_COST_NOT_ACKNOWLEDGED = "BULK_DISPATCH_COST_NOT_ACKNOWLEDGED",
+  /** rows-by-id request exceeded the per-call id-count cap. */
+  BULK_DISPATCH_TOO_MANY_IDS = "BULK_DISPATCH_TOO_MANY_IDS",
 }
 
 /**
@@ -502,4 +504,6 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
     "The tool exists but isn't bulk-dispatchable. Add a `bulkDispatch` metadata block to its toolpack descriptor.",
   [ApiCode.BULK_DISPATCH_COST_NOT_ACKNOWLEDGED]:
     "This operation calls a costly tool. Confirm with the user, then retry with `acknowledgeCost: true`.",
+  [ApiCode.BULK_DISPATCH_TOO_MANY_IDS]:
+    "Too many ids in one request. Split into multiple calls of ≤ 1000 ids each.",
 };
