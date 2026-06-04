@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import { jobEventsRouter } from "./job-events.router.js";
 import { portalEventsRouter } from "./portal-events.router.js";
+import { portalSqlHandleSseRouter } from "./portal-sql-handle.router.js";
 
 /**
  * Top-level SSE router — aggregates all Server-Sent Event endpoints.
@@ -14,3 +15,4 @@ export const sseRouter = Router();
 
 sseRouter.use("/jobs", jobEventsRouter);
 sseRouter.use("/portals", portalEventsRouter);
+sseRouter.use("/portal-sql", portalSqlHandleSseRouter);
