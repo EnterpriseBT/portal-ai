@@ -26,7 +26,7 @@ import {
 } from "@portalai/core/constants";
 // Inline the QueryHandleEnvelope type — the core barrel doesn't yet
 // export portal-sql.contract directly. Shape mirrors Phase 1 spec.
-interface QueryHandleEnvelope {
+export interface QueryHandleEnvelope {
   queryHandle: string;
   rowCount: number;
   schema: Array<{ name: string; type: string }>;
