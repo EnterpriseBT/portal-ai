@@ -1329,6 +1329,109 @@ const options: swaggerJsdoc.Options = {
             },
           ],
         },
+        // ── Large data operations (#85) — bulk writes + reads ────────
+        RunningJob: {
+          type: "object",
+          required: ["id", "type", "status", "created"],
+          properties: {
+            id: { type: "string" },
+            type: { type: "string" },
+            status: { type: "string" },
+            startedAt: { type: "integer", nullable: true },
+            created: { type: "integer", description: "Epoch ms" },
+          },
+        },
+        PortalRunningJobsResponse: {
+          type: "object",
+          required: ["jobs"],
+          properties: {
+            jobs: {
+              type: "array",
+              items: { $ref: "#/components/schemas/RunningJob" },
+            },
+          },
+        },
+        BulkJobTerminalEvent: {
+          type: "object",
+          required: [
+            "type",
+            "jobId",
+            "portalId",
+            "status",
+            "recordsProcessed",
+            "recordsFailed",
+            "timestamp",
+          ],
+          properties: {
+            type: { type: "string", enum: ["bulk_job_terminal"] },
+            jobId: { type: "string" },
+            portalId: { type: "string" },
+            status: {
+              type: "string",
+              enum: ["completed", "failed", "cancelled"],
+            },
+            recordsProcessed: { type: "integer" },
+            recordsFailed: { type: "integer" },
+            timestamp: { type: "integer", description: "Epoch ms" },
+          },
+        },
+        QueryHandleSnapshotResponse: {
+          type: "object",
+          required: ["rows", "total", "offset", "limit"],
+          properties: {
+            rows: {
+              type: "array",
+              items: { type: "object", additionalProperties: true },
+            },
+            total: { type: "integer" },
+            offset: { type: "integer" },
+            limit: { type: "integer" },
+          },
+        },
+        QueryHandleStreamEvent: {
+          oneOf: [
+            {
+              type: "object",
+              required: ["type", "batchIndex", "rows"],
+              properties: {
+                type: { type: "string", enum: ["data"] },
+                batchIndex: { type: "integer" },
+                rows: {
+                  type: "array",
+                  items: { type: "object", additionalProperties: true },
+                },
+              },
+            },
+            {
+              type: "object",
+              required: ["type"],
+              properties: {
+                type: { type: "string", enum: ["complete"] },
+              },
+            },
+          ],
+        },
+        RowsByIdRequestBody: {
+          type: "object",
+          required: ["ids"],
+          properties: {
+            ids: {
+              type: "array",
+              items: { type: "string" },
+              maxItems: 1000,
+            },
+          },
+        },
+        RowsByIdResponse: {
+          type: "object",
+          required: ["rows"],
+          properties: {
+            rows: {
+              type: "array",
+              items: { type: "object", additionalProperties: true },
+            },
+          },
+        },
         ...spreadsheetParsingSchemas,
         ...restApiConnectorSchemas,
       },
@@ -1414,6 +1517,11 @@ const options: swaggerJsdoc.Options = {
       {
         name: "Toolpacks",
         description: "Built-in and custom toolpack discovery endpoints",
+      },
+      {
+        name: "Portal SQL",
+        description:
+          "Query handle endpoints for the reads track (#85 Phase 3) — snapshot + SSE stream of staged batches",
       },
     ],
   },

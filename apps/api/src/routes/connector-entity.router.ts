@@ -924,13 +924,7 @@ const MAX_ROWS_BY_ID = 1_000;
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [ids]
- *             properties:
- *               ids:
- *                 type: array
- *                 items: { type: string }
- *                 maxItems: 1000
+ *             $ref: '#/components/schemas/RowsByIdRequestBody'
  *     responses:
  *       200:
  *         description: Rows
@@ -939,13 +933,9 @@ const MAX_ROWS_BY_ID = 1_000;
  *             schema:
  *               type: object
  *               properties:
- *                 success: { type: boolean }
+ *                 success: { type: boolean, example: true }
  *                 payload:
- *                   type: object
- *                   properties:
- *                     rows:
- *                       type: array
- *                       items: { type: object, additionalProperties: true }
+ *                   $ref: '#/components/schemas/RowsByIdResponse'
  *       400:
  *         description: BULK_DISPATCH_TOO_MANY_IDS
  *         content:

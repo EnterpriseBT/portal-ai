@@ -752,22 +752,9 @@ portalRouter.post(
  *             schema:
  *               type: object
  *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
+ *                 success: { type: boolean, example: true }
  *                 payload:
- *                   type: object
- *                   properties:
- *                     jobs:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           id: { type: string }
- *                           type: { type: string }
- *                           status: { type: string }
- *                           startedAt: { type: integer, nullable: true }
- *                           created: { type: integer }
+ *                   $ref: '#/components/schemas/PortalRunningJobsResponse'
  *       404:
  *         description: Portal not found
  *         content:

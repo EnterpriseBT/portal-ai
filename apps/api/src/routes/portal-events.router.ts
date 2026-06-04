@@ -198,13 +198,13 @@ portalEventsRouter.get(
  *         content:
  *           text/event-stream:
  *             schema:
- *               type: string
- *               description: >
- *                 Each `data:` line is a JSON envelope. Today's shape:
- *                 `{ type: "bulk_job_terminal", jobId, portalId, status,
- *                 recordsProcessed, recordsFailed, timestamp }`.
+ *               $ref: '#/components/schemas/BulkJobTerminalEvent'
  *       404:
  *         description: Portal not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 portalEventsRouter.get(
   "/:portalId/events",

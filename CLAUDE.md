@@ -317,7 +317,11 @@ Reference implementation: `packages/core/src/models/user.model.ts`
 - **Response validation**: Validate payload structure before sending
 - **Error handling**: Use `ApiError` class with `next(error)` — never send error responses directly
 - **Error codes**: Add to `ApiCode` enum in `src/constants/api-codes.constants.ts`, format: `<DOMAIN>_<FAILURE>`
-- **OpenAPI annotations**: Every route handler must carry a `@openapi` JSDoc block above it. The block declares the route path, method, tags, security scheme, parameters, request body schema, and per-status response schemas. SSE endpoints declare `text/event-stream` as the response content type and document each event's `data:` payload shape in the description. The annotations feed `/api/docs` (Swagger UI at `http://localhost:3001/api-docs`); a route without `@openapi` is a missing-docs bug, not "deferred."
+- **OpenAPI annotations**: Every route handler must carry a `@openapi` JSDoc block above it. The block declares the route path, method, tags, security scheme, parameters, request body schema, and per-status response schemas. SSE endpoints declare `text/event-stream` as the response content type and reference the event's payload schema.
+
+  Request bodies, payloads, and response shapes are referenced by `$ref` against components registered in `src/config/swagger.config.ts`, **not** spelled inline. Adding a new route generally means: (a) register the shape(s) under `components.schemas` (often `z.toJSONSchema` from the source Zod schema), and (b) refer to them via `$ref: '#/components/schemas/<Name>'` in the route's JSDoc. Inline shapes are reserved for tiny one-off `properties` that exist nowhere else; if you'd reuse a shape twice, register it.
+
+  The annotations feed `/api/docs` (Swagger UI at `http://localhost:3001/api-docs`); a route without `@openapi`, or one that re-spells a shape inline that's already a registered component, is a missing-docs bug, not "deferred."
 
 ### Include / Join Convention
 

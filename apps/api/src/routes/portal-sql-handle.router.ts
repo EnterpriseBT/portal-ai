@@ -66,16 +66,9 @@ export const portalSqlHandleRouter = Router();
  *             schema:
  *               type: object
  *               properties:
- *                 success: { type: boolean }
+ *                 success: { type: boolean, example: true }
  *                 payload:
- *                   type: object
- *                   properties:
- *                     rows:
- *                       type: array
- *                       items: { type: object, additionalProperties: true }
- *                     total: { type: integer }
- *                     offset: { type: integer }
- *                     limit: { type: integer }
+ *                   $ref: '#/components/schemas/QueryHandleSnapshotResponse'
  *       404:
  *         description: Handle expired or unknown
  *         content:
@@ -143,11 +136,7 @@ export const portalSqlHandleSseRouter = Router();
  *         content:
  *           text/event-stream:
  *             schema:
- *               type: string
- *               description: >
- *                 `event: data` then `data: { type: "data", batchIndex, rows }`,
- *                 followed eventually by `event: complete` with `data:
- *                 { type: "complete" }`.
+ *               $ref: '#/components/schemas/QueryHandleStreamEvent'
  */
 portalSqlHandleSseRouter.get(
   "/handle/:handleId/stream",
