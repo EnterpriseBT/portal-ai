@@ -9,8 +9,8 @@ import {
 } from "@mui/material";
 import CancelIcon from "@mui/icons-material/CancelOutlined";
 
+import { sdk } from "../api/sdk";
 import { sse } from "../api/sse.api";
-import { useAuthFetch } from "../utils/api.util";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -193,8 +193,7 @@ export const BulkJobProgressBlock: React.FC<BulkJobProgressBlockProps> = ({
     ...INITIAL,
     totalRecords: content.expectedRecords,
   });
-  const [cancelling, setCancelling] = React.useState(false);
-  const { fetchWithAuth } = useAuthFetch();
+  const cancelMutation = sdk.jobs.cancel(content.jobId);
   const connect = sse.create();
   const esRef = useRef<EventSource | null>(null);
 
@@ -241,27 +240,19 @@ export const BulkJobProgressBlock: React.FC<BulkJobProgressBlockProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content.jobId]);
 
-  const handleCancel = React.useCallback(async () => {
-    if (cancelling) return;
-    setCancelling(true);
+  const handleCancel = React.useCallback(() => {
+    if (cancelMutation.isPending) return;
     dispatch({ kind: "cancel-requested" });
-    try {
-      await fetchWithAuth(
-        `/api/jobs/${encodeURIComponent(content.jobId)}/cancel`,
-        { method: "POST" }
-      );
-    } catch {
-      // Worker-side cancel propagation will surface the terminal event;
-      // a fetch failure here doesn't block that path.
-    } finally {
-      setCancelling(false);
-    }
-  }, [cancelling, content.jobId, fetchWithAuth]);
+    // Fire-and-forget: the worker-side cancel propagation will
+    // surface the terminal event regardless of whether the request
+    // succeeded — a failed POST here doesn't block the SSE path.
+    cancelMutation.mutate(undefined);
+  }, [cancelMutation]);
 
   return (
     <BulkJobProgressBlockUI
       state={state}
-      cancelling={cancelling}
+      cancelling={cancelMutation.isPending}
       onCancel={handleCancel}
     />
   );

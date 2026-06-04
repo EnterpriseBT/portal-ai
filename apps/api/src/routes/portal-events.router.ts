@@ -169,6 +169,43 @@ portalEventsRouter.get(
 // frontend hook (slice 5) subscribes to this channel to release the
 // chat-input lock as soon as the worker fires its terminal hook.
 
+/**
+ * @openapi
+ * /api/sse/portals/{portalId}/events:
+ *   get:
+ *     tags:
+ *       - Portal Events
+ *     summary: Portal-level event stream
+ *     description: >
+ *       SSE channel for events bound to a portal (rather than a single job).
+ *       Today emits `bulk_job_terminal` when a bulk_transform job tied to
+ *       this portal reaches terminal status (#85 Phase 2). Heartbeats every
+ *       25s. Query-param auth via the `token` parameter.
+ *     parameters:
+ *       - in: path
+ *         name: portalId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: SSE stream of portal events
+ *         content:
+ *           text/event-stream:
+ *             schema:
+ *               type: string
+ *               description: >
+ *                 Each `data:` line is a JSON envelope. Today's shape:
+ *                 `{ type: "bulk_job_terminal", jobId, portalId, status,
+ *                 recordsProcessed, recordsFailed, timestamp }`.
+ *       404:
+ *         description: Portal not found
+ */
 portalEventsRouter.get(
   "/:portalId/events",
   sseAuth,

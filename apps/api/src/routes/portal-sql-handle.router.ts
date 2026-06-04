@@ -32,6 +32,57 @@ const logger = createLogger({ module: "portal-sql-handle-router" });
 
 export const portalSqlHandleRouter = Router();
 
+/**
+ * @openapi
+ * /api/portal-sql/handle/{handleId}:
+ *   get:
+ *     tags:
+ *       - Portal SQL
+ *     summary: Paged snapshot of a query handle's staged rows
+ *     description: >
+ *       Returns a paged window of rows the producer staged in Redis
+ *       (#85 Phase 3). The handle was issued by `sql_query` / `visualize`
+ *       / `visualize_tree` when the result row count exceeded
+ *       `INLINE_ROWS_THRESHOLD`. Surfaces `READ_HANDLE_EXPIRED` when the
+ *       cache has aged out (24h TTL).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: handleId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: offset
+ *         schema: { type: integer, minimum: 0, default: 0 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, minimum: 1, maximum: 5000, default: 1000 }
+ *     responses:
+ *       200:
+ *         description: Paged window of rows
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     rows:
+ *                       type: array
+ *                       items: { type: object, additionalProperties: true }
+ *                     total: { type: integer }
+ *                     offset: { type: integer }
+ *                     limit: { type: integer }
+ *       404:
+ *         description: Handle expired or unknown
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
 portalSqlHandleRouter.get(
   "/handle/:handleId",
   getApplicationMetadata,
@@ -65,6 +116,39 @@ portalSqlHandleRouter.get(
 
 export const portalSqlHandleSseRouter = Router();
 
+/**
+ * @openapi
+ * /api/sse/portal-sql/handle/{handleId}/stream:
+ *   get:
+ *     tags:
+ *       - Portal SQL
+ *     summary: SSE stream of staged batches for a query handle
+ *     description: >
+ *       Subscribes to the producer's `portal-sql:stream:<handleId>` Pub/Sub
+ *       channel and forwards each event to the client. Emits named events
+ *       `data` (a batch of rows) and `complete` (cursor exhausted). Heartbeat
+ *       every 25s. Query-param auth via `token`.
+ *     parameters:
+ *       - in: path
+ *         name: handleId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: SSE stream
+ *         content:
+ *           text/event-stream:
+ *             schema:
+ *               type: string
+ *               description: >
+ *                 `event: data` then `data: { type: "data", batchIndex, rows }`,
+ *                 followed eventually by `event: complete` with `data:
+ *                 { type: "complete" }`.
+ */
 portalSqlHandleSseRouter.get(
   "/handle/:handleId/stream",
   sseAuth,

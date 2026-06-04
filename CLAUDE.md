@@ -317,6 +317,7 @@ Reference implementation: `packages/core/src/models/user.model.ts`
 - **Response validation**: Validate payload structure before sending
 - **Error handling**: Use `ApiError` class with `next(error)` — never send error responses directly
 - **Error codes**: Add to `ApiCode` enum in `src/constants/api-codes.constants.ts`, format: `<DOMAIN>_<FAILURE>`
+- **OpenAPI annotations**: Every route handler must carry a `@openapi` JSDoc block above it. The block declares the route path, method, tags, security scheme, parameters, request body schema, and per-status response schemas. SSE endpoints declare `text/event-stream` as the response content type and document each event's `data:` payload shape in the description. The annotations feed `/api/docs` (Swagger UI at `http://localhost:3001/api-docs`); a route without `@openapi` is a missing-docs bug, not "deferred."
 
 ### Include / Join Convention
 

@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Box, CircularProgress, Typography } from "@mui/material";
 
 import { ContentBlockRenderer } from "@portalai/core";
 import type { PortalMessageBlock } from "@portalai/core/contracts";
 
-import { useAuthFetch } from "../utils/api.util";
+import { sdk } from "../api/sdk";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -22,13 +22,6 @@ export interface QueryResultDataBlockContent {
   sampled?: boolean;
   samplePeek?: Array<Record<string, unknown>>;
   spec: Record<string, unknown>;
-}
-
-interface SnapshotPayload {
-  rows: Array<Record<string, unknown>>;
-  total: number;
-  offset: number;
-  limit: number;
 }
 
 // ── UI (pure) ──────────────────────────────────────────────────────────
@@ -98,56 +91,32 @@ export interface QueryResultDataBlockProps {
 export const QueryResultDataBlock: React.FC<QueryResultDataBlockProps> = ({
   content,
 }) => {
-  const { fetchWithAuth } = useAuthFetch();
-  const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Snapshot first — gives us the full dataset for the chart's
+  // initial render. Slice-level live SSE streaming is a Phase 3
+  // polish follow-up; the snapshot is canonical anyway.
+  const query = sdk.portalSql.handleSnapshot(content.queryHandle, {
+    offset: 0,
+    limit: 5_000,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        setLoading(true);
-        // Snapshot first — gives us the full dataset for the chart's
-        // initial render. Slice-level live SSE streaming is a Phase 3
-        // polish follow-up; the snapshot is canonical anyway.
-        const body = await fetchWithAuth<{
-          success: true;
-          payload: SnapshotPayload;
-        }>(
-          `/api/portal-sql/handle/${encodeURIComponent(
-            content.queryHandle
-          )}?offset=0&limit=5000`
-        );
-        if (cancelled) return;
-        setRows(body.payload.rows);
-      } catch (err) {
-        if (cancelled) return;
-        // fetchWithAuth throws ApiError on non-OK; READ_HANDLE_EXPIRED
-        // surfaces a friendlier message.
-        const code = (err as { code?: string }).code;
-        if (code === "READ_HANDLE_EXPIRED") {
-          setError(
-            "The chart's data has expired from cache. Re-run the original query to refresh."
-          );
-        } else {
-          setError(err instanceof Error ? err.message : "Unknown error");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [content.queryHandle, fetchWithAuth]);
+  const rows = query.data?.rows ?? [];
+  const error = (() => {
+    if (!query.error) return null;
+    const code = (query.error as { code?: string }).code;
+    if (code === "READ_HANDLE_EXPIRED") {
+      return "The chart's data has expired from cache. Re-run the original query to refresh.";
+    }
+    return query.error instanceof Error
+      ? query.error.message
+      : "Unknown error";
+  })();
 
   return (
     <QueryResultDataBlockUI
       rowCount={content.rowCount}
       rows={rows}
       spec={content.spec}
-      loading={loading}
+      loading={query.isLoading}
       error={error}
     />
   );

@@ -164,6 +164,19 @@ export const queryKeys = {
       [...queryKeys.portalResults.root, "list", params] as const,
     get: (id: string) => [...queryKeys.portalResults.root, "get", id] as const,
   },
+  portalSql: {
+    root: ["portalSql"] as const,
+    handleSnapshot: (
+      handleId: string,
+      params?: { offset?: number; limit?: number }
+    ) =>
+      [
+        ...queryKeys.portalSql.root,
+        "handleSnapshot",
+        handleId,
+        params,
+      ] as const,
+  },
   toolpacks: {
     root: ["toolpacks"] as const,
     list: (params?: ToolpackListRequestQuery) =>

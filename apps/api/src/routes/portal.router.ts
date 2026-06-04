@@ -723,6 +723,58 @@ portalRouter.post(
 // Used by the chat-input lock (#85 Phase 2 slice 5) — when this array
 // is non-empty, the chat input is disabled at the UI layer.
 
+/**
+ * @openapi
+ * /api/portals/{id}/running-jobs:
+ *   get:
+ *     tags:
+ *       - Portals
+ *     summary: List non-terminal jobs bound to this portal
+ *     description: >
+ *       Returns the running-job summaries whose metadata.portalId matches
+ *       the requested portal. The frontend chat-input lock derives from
+ *       this list — non-empty means a bulk operation is in flight and the
+ *       chat input is disabled (#85 Phase 2 slice 3).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Portal ID
+ *     responses:
+ *       200:
+ *         description: Running-job summaries
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     jobs:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: string }
+ *                           type: { type: string }
+ *                           status: { type: string }
+ *                           startedAt: { type: integer, nullable: true }
+ *                           created: { type: integer }
+ *       404:
+ *         description: Portal not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
 portalRouter.get(
   "/:id/running-jobs",
   getApplicationMetadata,

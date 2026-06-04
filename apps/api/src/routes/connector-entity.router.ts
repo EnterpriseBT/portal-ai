@@ -901,6 +901,64 @@ connectorEntityRouter.delete(
 
 const MAX_ROWS_BY_ID = 1_000;
 
+/**
+ * @openapi
+ * /api/connector-entities/{id}/rows-by-id:
+ *   post:
+ *     tags:
+ *       - Connector Entities
+ *     summary: Fetch wide-table rows by record id
+ *     description: >
+ *       Used by `bulk-job-progress` widgets to fetch row payloads when the
+ *       per-batch SSE event carried `rowIds` instead of `rows` (#85 Phase 3
+ *       slice 5; closes the Phase 2 deferral). Capped at 1000 ids per call.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [ids]
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items: { type: string }
+ *                 maxItems: 1000
+ *     responses:
+ *       200:
+ *         description: Rows
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     rows:
+ *                       type: array
+ *                       items: { type: object, additionalProperties: true }
+ *       400:
+ *         description: BULK_DISPATCH_TOO_MANY_IDS
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: Connector entity not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
 connectorEntityRouter.post(
   "/:id/rows-by-id",
   getApplicationMetadata,

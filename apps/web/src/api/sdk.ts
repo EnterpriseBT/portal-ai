@@ -17,6 +17,7 @@ import { layoutPlans } from "./layout-plans.api";
 import { jobs } from "./jobs.api";
 import { organizations } from "./organizations.api";
 import { portalResults } from "./portal-results.api";
+import { portalSql } from "./portal-sql.api";
 import { portals } from "./portals.api";
 import { sse } from "./sse.api";
 import { stations } from "./stations.api";
@@ -45,6 +46,7 @@ export const sdk = {
   jobs,
   organizations,
   portalResults,
+  portalSql,
   portals,
   sse,
   stations,
