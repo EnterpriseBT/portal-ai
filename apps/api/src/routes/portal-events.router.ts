@@ -160,3 +160,67 @@ portalEventsRouter.get(
     }
   }
 );
+
+// ── GET /api/sse/portals/:portalId/events ────────────────────────────────
+//
+// Portal-level Pub/Sub channel for events that aren't bound to a single
+// job (#85 Phase 2 slice 3). Today: `bulk_job_terminal` lands here when
+// a bulk_transform job tied to this portal reaches terminal. The
+// frontend hook (slice 5) subscribes to this channel to release the
+// chat-input lock as soon as the worker fires its terminal hook.
+
+portalEventsRouter.get(
+  "/:portalId/events",
+  sseAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { portalId } = req.params;
+
+      const portal = await DbService.repository.portals.findById(portalId);
+      if (!portal) {
+        return next(
+          new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found")
+        );
+      }
+
+      const { PORTAL_EVENTS_CHANNEL_PREFIX } = await import(
+        "../services/portal.service.js"
+      );
+      const { getRedisClient } = await import("../utils/redis.util.js");
+
+      const channel = `${PORTAL_EVENTS_CHANNEL_PREFIX}${portalId}`;
+      const subscriber = getRedisClient().duplicate();
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders?.();
+
+      await subscriber.subscribe(channel);
+      subscriber.on("message", (_chan, message) => {
+        res.write(`data: ${message}\n\n`);
+      });
+
+      // Heartbeat every 25s to keep proxies from idling out.
+      const heartbeat = setInterval(() => {
+        res.write(`: heartbeat ${Date.now()}\n\n`);
+      }, 25_000);
+
+      req.on("close", async () => {
+        clearInterval(heartbeat);
+        try {
+          await subscriber.unsubscribe(channel);
+          await subscriber.quit();
+        } catch {
+          // ignore
+        }
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown" },
+        "Failed to subscribe to portal events"
+      );
+      return next(error);
+    }
+  }
+);

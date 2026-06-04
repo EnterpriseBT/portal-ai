@@ -716,3 +716,44 @@ portalRouter.post(
     }
   }
 );
+
+// ── GET /api/portals/:id/running-jobs ────────────────────────────────────
+//
+// Returns non-terminal jobs whose metadata declares this portal id.
+// Used by the chat-input lock (#85 Phase 2 slice 5) — when this array
+// is non-empty, the chat input is disabled at the UI layer.
+
+portalRouter.get(
+  "/:id/running-jobs",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { organizationId } = req.application!.metadata;
+
+      // Scope check — portal must belong to the requesting org.
+      const portal = await DbService.repository.portals.findById(id);
+      if (!portal || portal.organizationId !== organizationId) {
+        throw new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found");
+      }
+
+      const rows =
+        await DbService.repository.jobs.findRunningByPortalId(
+          id,
+          organizationId
+        );
+
+      return HttpService.success(res, {
+        jobs: rows.map((j) => ({
+          id: j.id,
+          type: j.type,
+          status: j.status,
+          startedAt: j.startedAt,
+          created: j.created,
+        })),
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+);
