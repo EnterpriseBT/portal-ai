@@ -39,11 +39,37 @@ export interface ToolpackToolExample {
   output?: unknown;
 }
 
+/**
+ * Opt-in metadata that allows a tool to be dispatched per-record by
+ * the bulk-transform processor (#85 Phase 4). When set, the tool is
+ * eligible for `bulk_transform_entity_records` with
+ * `expression.kind === "tool"`; the dispatcher uses these values to
+ * fan out within bounded concurrency / rate / timeout.
+ *
+ * `costHint` drives the route's cost-acknowledgement gate:
+ *  - "free": no gate; agent dispatches freely.
+ *  - "metered": agent surfaces cost + ETA to user, no API gate.
+ *  - "expensive": route requires `acknowledgeCost: true`; agent
+ *    must confirm before dispatching.
+ */
+export interface BulkDispatchMetadata {
+  maxConcurrency: number;
+  timeoutMs: number;
+  ratePerSec?: number;
+  idempotent: boolean;
+  estimatedMsPerCall?: number;
+  costHint?: "free" | "metered" | "expensive";
+}
+
 export interface ToolpackTool {
   name: string;
   description: string;
   parameterSchema: Record<string, unknown>;
   examples?: ToolpackToolExample[];
+  /** Opt-in: declares the tool can be bulk-dispatched per-record by
+   *  `bulk_transform_entity_records`. Tools without this field are
+   *  rejected from the tool-kind dispatch route. */
+  bulkDispatch?: BulkDispatchMetadata;
 }
 
 export interface BuiltinToolpack {
