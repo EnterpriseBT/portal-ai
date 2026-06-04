@@ -23,6 +23,10 @@ import {
   BulkFailuresTableBlock,
   type BulkFailuresTableBlockContent,
 } from "./BulkFailuresTableBlock.component";
+import {
+  QueryResultDataBlock,
+  type QueryResultDataBlockContent,
+} from "./QueryResultDataBlock.component";
 
 /**
  * Render override for block types that the core ContentBlockRenderer
@@ -43,6 +47,17 @@ function renderWebBlock(block: PortalMessageBlock): React.ReactNode | null {
         content={block.content as BulkFailuresTableBlockContent}
       />
     );
+  }
+  // vega-lite block carrying a queryHandle (Phase 3 slice 3): the
+  // tool returned an envelope shape instead of inline rows. The
+  // QueryResultDataBlock fetches the snapshot and renders.
+  if (block.type === "vega-lite") {
+    const content = block.content as
+      | (QueryResultDataBlockContent & { queryHandle?: string })
+      | undefined;
+    if (content && typeof content.queryHandle === "string") {
+      return <QueryResultDataBlock content={content} />;
+    }
   }
   return null;
 }
@@ -72,6 +87,17 @@ const WEB_BLOCK_TYPES = new Set<string>([
   "bulk-job-progress",
   "bulk-failures-table",
 ]);
+
+/** True when a block needs the web layer rather than the core
+ *  ContentBlockRenderer — either by type or by carrying a queryHandle. */
+function shouldRenderViaWeb(block: PortalMessageBlock): boolean {
+  if (WEB_BLOCK_TYPES.has(block.type as string)) return true;
+  if (block.type === "vega-lite") {
+    const c = block.content as { queryHandle?: unknown } | undefined;
+    return typeof c?.queryHandle === "string";
+  }
+  return false;
+}
 
 // ── UI ────────────────────────────────────────────────────────────────
 
@@ -142,7 +168,7 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
         // Web-specific blocks render without a pin affordance (the
         // bulk-job-progress widget pins on terminal once the underlying
         // data is canonical; pin work is filed as #92).
-        if (WEB_BLOCK_TYPES.has(block.type as string)) {
+        if (shouldRenderViaWeb(block)) {
           return (
             <Box key={i} sx={{ p: 1, mb: 1 }}>
               {renderWebBlock(block)}
