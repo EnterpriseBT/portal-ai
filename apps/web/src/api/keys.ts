@@ -155,6 +155,8 @@ export const queryKeys = {
       [...queryKeys.portals.root, "list", params] as const,
     get: (id: string, params?: Record<string, unknown>) =>
       [...queryKeys.portals.root, "get", id, params] as const,
+    runningJobs: (id: string) =>
+      [...queryKeys.portals.root, "running-jobs", id] as const,
   },
   portalResults: {
     root: ["portalResults"] as const,

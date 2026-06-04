@@ -72,4 +72,23 @@ export const portals = {
       url: `/api/portals/${encodeURIComponent(id)}`,
       method: "PATCH",
     }),
+
+  /**
+   * Non-terminal jobs whose metadata declares this portal id (#85
+   * Phase 2 slice 3). The chat-input lock derives from this query —
+   * empty array → input enabled.
+   */
+  runningJobs: (portalId: string) =>
+    useAuthQuery<{
+      jobs: Array<{
+        id: string;
+        type: string;
+        status: string;
+        startedAt: number | null;
+        created: number;
+      }>;
+    }>(
+      queryKeys.portals.runningJobs(portalId),
+      `/api/portals/${encodeURIComponent(portalId)}/running-jobs`
+    ),
 };
