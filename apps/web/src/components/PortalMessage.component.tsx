@@ -14,6 +14,38 @@ import {
 import PushPinIcon from "@mui/icons-material/PushPin";
 import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
 import { ContentBlockRenderer } from "@portalai/core";
+
+import {
+  BulkJobProgressBlock,
+  type BulkJobProgressContent,
+} from "./BulkJobProgressBlock.component";
+import {
+  BulkFailuresTableBlock,
+  type BulkFailuresTableBlockContent,
+} from "./BulkFailuresTableBlock.component";
+
+/**
+ * Render override for block types that the core ContentBlockRenderer
+ * doesn't know about. Returns null when the block isn't one of the
+ * web-specific types; the caller falls through to the core renderer.
+ */
+function renderWebBlock(block: PortalMessageBlock): React.ReactNode | null {
+  if (block.type === "bulk-job-progress") {
+    return (
+      <BulkJobProgressBlock
+        content={block.content as BulkJobProgressContent}
+      />
+    );
+  }
+  if (block.type === "bulk-failures-table") {
+    return (
+      <BulkFailuresTableBlock
+        content={block.content as BulkFailuresTableBlockContent}
+      />
+    );
+  }
+  return null;
+}
 import type {
   PortalMessageResponse,
   PortalMessageBlock,
@@ -34,6 +66,12 @@ function hasPinnableContent(block: PortalMessageBlock): boolean {
     return Object.keys(block.content as object).length > 0;
   return false;
 }
+
+/** Block types that the web layer renders directly (bypass pin path). */
+const WEB_BLOCK_TYPES = new Set<string>([
+  "bulk-job-progress",
+  "bulk-failures-table",
+]);
 
 // ── UI ────────────────────────────────────────────────────────────────
 
@@ -101,6 +139,17 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
       sx={{ mb: 2, minWidth: 0, maxWidth: "100%" }}
     >
       {message.blocks.map((block: PortalMessageBlock, i: number) => {
+        // Web-specific blocks render without a pin affordance (the
+        // bulk-job-progress widget pins on terminal once the underlying
+        // data is canonical; pin work is filed as #92).
+        if (WEB_BLOCK_TYPES.has(block.type as string)) {
+          return (
+            <Box key={i} sx={{ p: 1, mb: 1 }}>
+              {renderWebBlock(block)}
+            </Box>
+          );
+        }
+
         const pinnable = hasPinnableContent(block);
         if (!pinnable) return null;
         const pinKey = `${message.id}:${i}`;
