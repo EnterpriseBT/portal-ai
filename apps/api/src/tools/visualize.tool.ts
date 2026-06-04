@@ -2,7 +2,10 @@ import { z } from "zod";
 import { tool } from "ai";
 
 import { AnalyticsService } from "../services/analytics.service.js";
+import { PortalSqlHandleService } from "../services/portal-sql-handle.service.js";
 import { Tool } from "../types/tools.js";
+import { rewriteForNamedDataset } from "../utils/vega-spec-rewrite.util.js";
+import { INLINE_ROWS_THRESHOLD } from "@portalai/core/constants";
 // ---------------------------------------------------------------------------
 // Vega-Lite spec schema — kept minimal to reduce tool-definition token cost.
 //
@@ -54,13 +57,54 @@ export class VisualizeTool extends Tool<typeof InputSchema> {
       inputSchema: this.schema,
       execute: async (input) => {
         const { sql, vegaLiteSpec } = this.validate(input);
-        return AnalyticsService.visualize({
+
+        // Inline path first — small datasets still pass straight
+        // through to the visualize service so the chart renders with
+        // its rows baked into the spec.
+        const inlineResponse = await AnalyticsService.sqlQuery({
           sql,
-          vegaLiteSpec,
           stationId,
           organizationId,
         });
+
+        const rowCount = countRows(inlineResponse);
+        if (rowCount <= INLINE_ROWS_THRESHOLD) {
+          return AnalyticsService.visualize({
+            sql,
+            vegaLiteSpec,
+            stationId,
+            organizationId,
+          });
+        }
+
+        // Handle path — produce a handle, rewrite the spec for the
+        // named-dataset / changeset render shape, return the
+        // composite payload so the agent sees the envelope + spec
+        // without the rows.
+        const { envelope } = await PortalSqlHandleService.produce({
+          stationId,
+          organizationId,
+          sql,
+        });
+        const rewrittenSpec = rewriteForNamedDataset(vegaLiteSpec);
+        return {
+          type: "vega-lite",
+          ...envelope,
+          spec: rewrittenSpec,
+        };
       },
     });
   }
+}
+
+function countRows(
+  response: Awaited<ReturnType<typeof AnalyticsService.sqlQuery>>
+): number {
+  if ("sample" in response) {
+    return response.totalCount;
+  }
+  if ("truncated" in response && response.truncated) {
+    return response.totalCount;
+  }
+  return response.rows.length;
 }
