@@ -182,34 +182,41 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("");
     lines.push("This is PostgreSQL-compatible SQL. Specifically:");
     lines.push(
-      "- Always include a LIMIT clause when scanning rows for exploratory work."
+      "- **Large result sets are a first-class path, not a problem.** " +
+        "Results > 100 rows automatically return a query-handle envelope " +
+        "`{queryHandle, rowCount, schema, samplePeek}`. The full rows " +
+        "stream directly to the UI's live-hydrating table/chart and never " +
+        "enter your context. You reason over `rowCount` + `samplePeek`; " +
+        "the user sees every row in the rendered widget."
     );
     lines.push(
-      '- Avoid `SELECT *` on entity tables — project only the columns you need.'
+      "- **When the user asks to see / show / display / list rows, run " +
+        "the query without a LIMIT and pass the result through.** Any " +
+        'cardinality up to ~50,000 rows is fine. Do NOT preface with "let ' +
+        'me show you a sample", do NOT add `LIMIT 50` to "be safe", and ' +
+        'do NOT first call COUNT and then pivot to a LIMITed query — that ' +
+        "is the exact wrong move. The widget renders the full result."
     );
     lines.push(
-      "- Prefer aggregations (COUNT, AVG, MAX, SUM) when the user is " +
-        "asking summary questions — not when they want to see records."
+      "- Above 50,000 rows the result auto-samples server-side; " +
+        "`samplePeek` is a useful slice for follow-up reasoning, and the " +
+        "user sees the sampled view live in the same widget."
     );
     lines.push(
-      "- Results ≤ 100 rows come back inline. Larger results " +
-        "automatically return a query-handle envelope " +
-        "`{queryHandle, rowCount, schema, samplePeek}` — the full rows " +
-        "stream directly to the UI's live-hydrating table/chart and " +
-        "never enter your context."
+      "- Only add a `LIMIT` clause when **you yourself** are exploring " +
+        "the data (peeking at a few rows to learn the shape before a " +
+        "follow-up query). A user-facing request to see rows is NOT " +
+        "exploratory — pass it through unbounded."
     );
     lines.push(
-      "- When the user asks to **see / show / display all** rows " +
-        "(any cardinality up to ~50k), call `sql_query` or `visualize` " +
-        "and return the envelope. Do NOT refuse, narrow, or pivot to " +
-        "aggregations unless the user asked for a summary. Reason over " +
-        "`rowCount` + `samplePeek` for follow-ups; the user already " +
-        "sees every row in the rendered widget."
+      "- Prefer aggregations (COUNT, AVG, MAX, SUM) **only when the user " +
+        "explicitly asked a summary question** (e.g. 'how many', 'average', " +
+        "'total'). Never pivot to an aggregation in response to a 'show me' " +
+        "request."
     );
     lines.push(
-      "- Above 50,000 rows the result auto-samples — `samplePeek` is " +
-        "still a useful slice for follow-up reasoning, and the user " +
-        "sees the sampled view live."
+      '- Avoid `SELECT *` on entity tables — project only the columns you ' +
+        "need (this is a width/readability concern, not a row-count one)."
     );
     lines.push(
       '- Quote identifiers with double quotes (`"name"`), not brackets.'
