@@ -25,16 +25,15 @@ Run **§Preflight** once before any other section; the rest can be walked top-to
 
 ### Fixtures
 
+The minimum viable setup for the §1-§3 walk is a `parcels` entity
+with ~5k rows (address, city, parcel_id, optional geometry). §4
+additionally requires a dev-only stub tool — see §4 setup.
+
 | Alias | Shape | Used by |
 |---|---|---|
-| **source-small** | Connector entity with ~50 rows | Phase 2 SQL sanity, Phase 3 lock visibility |
-| **source-medium** | Connector entity with ~1500 rows | Phase 2 progress, Phase 4 dispatch ETA |
-| **source-large** | Connector entity with ~15000 rows | Phase 2 max-records, Phase 3 cancel |
-| **target-derived** | Empty connector entity that accepts a `c_acreage` or `c_score` derived column, with `source_id` as the upsert key | Phase 2 + 4 writes |
-| **stub-tool-fast** | Toolpack tool with `bulkDispatch: {maxConcurrency: 10, timeoutMs: 5_000, idempotent: true, estimatedMsPerCall: 50}` | Phase 4 dispatch |
-| **stub-tool-flaky** | Same as fast but throws for source keys matching `p-%99` (or similar) | Phase 4 partial failures + retry |
-| **stub-tool-expensive** | Same as fast but `costHint: "expensive"` | Phase 4 cost gate |
-| **non-bulk-tool** | Toolpack tool **without** `bulkDispatch` metadata | Phase 4 not-dispatchable rejection |
+| **parcels** | Existing entity, ~5,402 rows with `c_address`, `c_city`, `c_parcel_id` columns | §1, §2, §3, §4 (source) |
+| **parcel_display** | New entity with `c_full_address` (text), `c_parcel_id` as the upsert key. Created during §2a. | §2, §3, §4 (target) |
+| **bulk_dispatch_smoke_stub** | Dev-only per-record stub tool with `bulkDispatch` metadata, four modes (fast / expensive / flaky / no-bulk-dispatch). **Not yet committed** — see §4 setup. | §4 |
 
 Log in as two dev users in separate orgs — the cross-org lock assertion in §3 needs the second.
 
@@ -62,61 +61,114 @@ exceed `INLINE_ROWS_THRESHOLD` (100 rows). Both render through the same
 
 ---
 
-## §2 — SQL transform (Phase 2)
+## §2 — SQL transform (Phase 2) — no GIS needed
 
-- [ ] Prompt: **"Compute the acreage of every parcel in source-medium and upsert it into target-derived as `c_acreage`. Use `ST_Area(geometry::geography) / 4047`."**
-- [ ] Initial tool response is a `BulkJobProgressBlock` with `expectedRecords` and ETA (e.g. "Importing 1500 records. ETA 8s.").
+This walk uses a pure-SQL string-concatenation transform against an
+existing `parcels` entity (~5,402 rows), writing into a new
+`parcel_display` entity. No PostGIS required.
+
+### §2a — One-time target setup
+
+- [ ] Create a target entity called `parcel_display` on the same station as `parcels`. Easiest path: in chat, prompt **"Create a new entity called `parcel_display` with a column `full_address` (text)."** The agent will use `connector_entity_create` + `field_mapping_create` to set it up.
+- [ ] Confirm in `_meta_entities` (via chat: **"Show me _meta_entities"**) that `parcel_display` is listed.
+- [ ] Confirm in `_meta_columns` the new column's `wide_column_name` is `c_full_address`.
+
+### §2b — Happy-path transform
+
+- [ ] Prompt: **"For every parcel, build a `c_full_address` value by concatenating address with city (uppercase the city), and upsert it into `parcel_display` keyed by `c_parcel_id`."**
+- [ ] The agent calls `bulk_transform_entity_records` with:
+  - `expression.kind` = `"sql"`
+  - `expression.value` = something equivalent to `` `"c_address" || ', ' || UPPER("c_city") AS c_full_address` ``
+  - `keyField` = `c_parcel_id`
+- [ ] Initial tool response renders a `BulkJobProgressBlock` with `expectedRecords` (5,402) and an ETA.
 - [ ] Chat input is locked while the job runs (placeholder copy explains a job is in flight).
-- [ ] Progress bar / histogram advances per batch (visible in the chat).
-- [ ] Terminal SSE flips the block to "Done"; chat unlocks; `target-derived` now has rows with `c_acreage` set, `source_id` matching source keys.
-- [ ] **Re-run the same prompt.** Row count on target stays stable; `synced_at` advances (verifies `ON CONFLICT (source_id) DO UPDATE`).
-- [ ] **Invalid SQL test:** prompt **"Compute `bogus_func(x)` into `c_x` on target-derived."** Tool returns `BULK_JOB_EXPRESSION_INVALID`; agent surfaces the pgError detail; no job appears in the jobs table.
-- [ ] **Max-records guard:** prompt against **source-large** with the count above `MAX_BULK_RECORDS`. Tool returns `BULK_JOB_MAX_RECORDS_EXCEEDED`; no job is enqueued.
+- [ ] Progress block advances per batch.
+- [ ] Terminal SSE flips the block to "Done"; chat unlocks; `parcel_display` now has 5,402 rows with `c_full_address` populated and `source_id` matching each parcel's `c_parcel_id`.
+- [ ] Verify in `npm run db:studio` (from `apps/api/`) → the `er__<parcel_display id>` table has the expected rows.
+
+### §2c — Re-run idempotency
+
+- [ ] Re-run the same prompt. Row count on `parcel_display` stays stable at 5,402; `synced_at` advances (verifies `ON CONFLICT (source_id) DO UPDATE`).
+
+### §2d — Error paths
+
+- [ ] **Invalid SQL test:** prompt **"Build a `c_x` column on parcel_display using `bogus_func("c_address")`."** Tool returns `BULK_JOB_EXPRESSION_INVALID`; agent surfaces the pgError detail; no job appears in the jobs table.
+- [ ] **Max-records guard:** seed an entity with more than `MAX_BULK_RECORDS` rows (or temporarily lower the constant) and re-run. Tool returns `BULK_JOB_MAX_RECORDS_EXCEEDED`; no job is enqueued. *(Skip if you don't have a fixture this large.)*
 
 ---
 
 ## §3 — Chat lock, entity lock, cancel (Phase 3)
 
-- [ ] Start a transform against **source-large** (long enough to take ≥30s).
-- [ ] In a second tab as the **same** user, open the `target-derived` connector-entity detail view. Expected: MUI `<Alert severity="info">` listing the running `bulk_transform` job with a "started X ago" timestamp; edit + delete are visibly disabled with a tooltip pointing at the running job.
-- [ ] Try to enqueue another `bulk_transform` targeting `target-derived` from the original chat. Expected: API rejection with HTTP 409 + `ENTITY_LOCKED_BY_JOB`; the agent surfaces the lock and explains the wait.
+Reuses the §2 transform — long enough at 5,402 rows to observe locks
+and cancel mid-job.
+
+- [ ] Re-run the §2b prompt. While the job is in flight, in a **second tab** as the same user, open the `parcel_display` connector-entity detail view. Expected: MUI `<Alert severity="info">` listing the running `bulk_transform` job with a "started X ago" timestamp; edit + delete are visibly disabled with a tooltip pointing at the running job.
+- [ ] Try to enqueue another `bulk_transform` targeting `parcel_display` from the original chat. Expected: API rejection with HTTP 409 + `ENTITY_LOCKED_BY_JOB`; the agent surfaces the lock and explains the wait.
 - [ ] Log in as a **different org's** user; open their dashboard. Expected: no visibility of the running job; their own entity flows are unaffected (org isolation).
 - [ ] In the original chat, click **Cancel** on the progress block.
-- [ ] Job status flips to `cancelled` within a batch; terminal SSE arrives; chat unlocks; lock alert on the target dismisses without a manual refetch.
-- [ ] Rows committed before cancel remain in `target-derived` (per spec — no rollback).
+- [ ] Job status flips to `cancelled` within a batch; terminal SSE arrives; chat unlocks; lock alert on `parcel_display` dismisses without a manual refetch.
+- [ ] Rows committed before cancel remain in `parcel_display` (per spec — no rollback).
+
+> If 5,402 rows runs too fast to grab a lock screenshot, prompt the
+> agent to widen the projection (e.g. include several derived columns
+> at once) or temporarily seed extra rows.
 
 ---
 
-## §4 — Tool-dispatch path (Phase 4)
+## §4 — Tool-dispatch path (Phase 4) — needs a stub tool
+
+Phase 4 dispatches a **per-record tool call** rather than an SQL
+projection. To exercise it without GIS or any external API, we need a
+synthetic stub tool registered on the toolpack with
+`bulkDispatch` metadata. The stub is **not yet committed** — see the
+"Setup" subsection.
+
+### §4 setup — register a smoke stub tool
+
+The stub is a per-record string transform with a deliberate sleep so
+the concurrency cap is observable, plus three knobs that cover all
+four §4 cases via input args:
+
+| Knob | Behavior |
+|---|---|
+| `mode: "fast"` (default) | Returns `{ c_full_address }` derived from the row; ~50 ms per call. |
+| `mode: "expensive"` | Same as fast but the tool declares `costHint: "expensive"`. |
+| `mode: "flaky"` | Throws for ~5% of source keys (e.g. when `c_parcel_id` ends in `99`). |
+| `mode: "no-bulk-dispatch"` | A second tool registration without `bulkDispatch` metadata, for §4c. |
+
+File to add: `apps/api/src/tools/bulk-dispatch-smoke-stub.tool.ts`,
+wired into the `data_query` toolpack for development environments
+only (gate on `NODE_ENV !== "production"`). Track as a separate
+commit before walking §4.
 
 ### §4a — Happy path
 
-- [ ] Register **stub-tool-fast** on the station's toolpack.
-- [ ] Prompt: **"Run stub-tool-fast against every record in source-medium and store the result in target-derived as `c_score`."**
-- [ ] Tool returns `BulkJobProgressBlock` with an ETA derived from `estimatedMsPerCall × expectedRecords / (maxConcurrency × 1000)` — not the generic 5ms/record heuristic.
-- [ ] API logs show no more than `maxConcurrency` (10) in-flight tool calls at once.
-- [ ] On completion, `target-derived` has `c_score` populated for every source key; jobs table row carries `committedRows` and `batchDurationMs` in `result`.
+- [ ] Bind the stub in `"fast"` mode.
+- [ ] Prompt: **"Run `bulk_dispatch_smoke_stub` against every parcel and store the result in `parcel_display.c_full_address`."**
+- [ ] Tool returns `BulkJobProgressBlock` with an ETA derived from `estimatedMsPerCall × expectedRecords / (maxConcurrency × 1000)` — not the generic 5 ms/record heuristic.
+- [ ] API logs show no more than `maxConcurrency` in-flight tool calls at once (default 10).
+- [ ] On completion, `parcel_display.c_full_address` is populated for every source key; the jobs row carries `committedRows` and `batchDurationMs` in `result`.
 
 ### §4b — Cost gate
 
-- [ ] Replace the bound tool with **stub-tool-expensive**; prompt the same flow.
+- [ ] Bind the stub in `"expensive"` mode; prompt the same flow.
 - [ ] First attempt: tool returns `BULK_DISPATCH_COST_NOT_ACKNOWLEDGED`; the agent asks the user to confirm.
 - [ ] Confirm in chat; the agent retries with `acknowledgeCost: true`; job enqueues.
 
 ### §4c — Not bulk-dispatchable
 
-- [ ] Bind **non-bulk-tool**; prompt the same flow.
+- [ ] Bind the stub's `"no-bulk-dispatch"` registration; prompt the same flow.
 - [ ] Tool returns `BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE` with the recommendation to add a `bulkDispatch` block; no job appears in the jobs table.
 
 ### §4d — Partial failures + retry-failed-only
 
-- [ ] Bind **stub-tool-flaky**; run against source-medium.
+- [ ] Bind the stub in `"flaky"` mode; run against parcels.
 - [ ] On completion, terminal envelope has a non-empty `partialFailures` array.
 - [ ] Chat renders a `BulkFailuresTableBlock` listing each failed `sourceKey` + error code + recommendation; expand a row to see details.
 - [ ] Pagination works (10 / 25 / 50 rows per page).
 - [ ] Click **"Retry failed only"**. Expected: a synthetic user message appears in the chat naming the failed keys.
 - [ ] The agent re-invokes `bulk_transform_entity_records` with `sourceFilter.whereSqlFragment` scoping to those keys (inspect via API logs or the new job's metadata).
-- [ ] The retry job processes **only** the previously failed records; successful retries land in `target-derived` via UPSERT; the new job's `partialFailures` is empty (or smaller).
+- [ ] The retry job processes **only** the previously failed records; successful retries land in `parcel_display` via UPSERT; the new job's `partialFailures` is empty (or smaller).
 
 ---
 
