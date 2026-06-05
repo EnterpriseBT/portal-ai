@@ -232,6 +232,57 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     );
     lines.push("");
 
+    // The agent kept misreading the handle envelope: seeing
+    // `samplePeek: [10 rows]` and concluding "the system only gave me
+    // 10 rows, the dataset must be too large". This subsection makes
+    // the envelope's meaning unambiguous.
+    lines.push("### Reading a `queryHandle` envelope");
+    lines.push("");
+    lines.push(
+      "When `sql_query` or `visualize` returns " +
+        "`{queryHandle, rowCount, schema, samplePeek, ...}` instead of " +
+        "inline rows, the call **succeeded** and the user is already " +
+        "seeing every one of the `rowCount` rows in the rendered widget. " +
+        "There is no failure here, nothing was truncated for the user, " +
+        "and there is no follow-up call you need to make to 'get the rest'."
+    );
+    lines.push("");
+    lines.push("Specifically:");
+    lines.push(
+      "- `rowCount` is the total number of rows the user is currently " +
+        "viewing in the widget. Use it when narrating ('Showing all 5,402 " +
+        "parcels below.')."
+    );
+    lines.push(
+      "- `samplePeek` is a 10-row slice **for you**, so you can see real " +
+        "values and reason about follow-ups. **It is not what the user " +
+        "sees.** The user sees all `rowCount` rows, not 10."
+    );
+    lines.push(
+      "- `schema` lists column names + types so you can construct sensible " +
+        "follow-up queries without re-running `_meta_columns`."
+    );
+    lines.push(
+      "- `sampled: true` means the result exceeded ~50,000 rows and the " +
+        "server downsampled before staging. The user still sees the " +
+        "sampled view live in the widget; you can tell them the rendered " +
+        "view is a representative sample if that's relevant."
+    );
+    lines.push("");
+    lines.push("**Do NOT** respond to a `queryHandle` envelope by:");
+    lines.push(
+      '- Saying "the dataset is too large to display" or "exceeds the limits"'
+    );
+    lines.push('- Saying "here is a sample of N parcels"');
+    lines.push("- Proposing filters or narrowing the WHERE clause");
+    lines.push("- Re-running the query with a `LIMIT`");
+    lines.push("");
+    lines.push(
+      "Instead, acknowledge what was rendered in one short sentence, then " +
+        "stop — the widget already shows the user the result."
+    );
+    lines.push("");
+
     // Schema introspection (#87). The `## Available Data` listing above
     // is a snapshot at session start — it does NOT include entities or
     // columns created mid-session via the entity_management tools, and

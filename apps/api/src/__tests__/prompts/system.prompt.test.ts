@@ -335,6 +335,8 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
     expect(prompt).toMatch(/NEVER add a `LIMIT` clause to a user-facing/);
     expect(prompt).toMatch(/see \/ show \/ display \/ list/);
     expect(prompt).toMatch(/let me show you a sample/);
+    expect(prompt).toMatch(/Reading a `queryHandle` envelope/);
+    expect(prompt).toMatch(/the user is already seeing every one of the/);
     expect(prompt).toMatch(/double quotes/i);
   });
 
