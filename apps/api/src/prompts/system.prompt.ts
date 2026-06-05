@@ -186,24 +186,21 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     );
     lines.push("");
     lines.push(
-      "Result-set size is handled for you. When the user asks to see, " +
-        "show, display, or list records, run the query as written and " +
-        "return the tool's result. The tool returns either inline rows " +
-        "or a `{queryHandle, rowCount, schema, samplePeek}` envelope — " +
-        "both render as a single table widget containing every row. " +
-        "Adding a `LIMIT` to keep the result small is unnecessary and " +
-        "produces a worse user experience."
+      "There are two tools to reach for, depending on intent:"
     );
     lines.push("");
     lines.push(
-      "**One call is enough.** A single unbounded query renders all " +
-        "`rowCount` rows in one widget — there is no manual pagination, no " +
-        "`OFFSET` loop, and no second call needed to 'get the rest'. If you " +
-        "receive an envelope, the call succeeded and the user is already " +
-        "looking at the full dataset. `samplePeek` is a 10-row peek for " +
-        "your own follow-up reasoning, not what the user sees. Acknowledge " +
-        "what rendered in one short sentence ('Showing all 5,402 parcels " +
-        "below.') and stop."
+      "- **`display_entity_records`** — when the user asks to **see, " +
+        "show, display, or list** records of an entity (any cardinality). " +
+        "This is purpose-built: pass `entityKey` (and optionally `columns`), " +
+        "the UI renders every row in a single live table widget. No SQL, no " +
+        "row-count question, no pagination needed."
+    );
+    lines.push(
+      "- **`sql_query`** — for analytical work: filters, joins, " +
+        "aggregations, derived columns, exploratory peeks. Returns inline " +
+        "rows for small results, or a `{queryHandle, rowCount, schema, " +
+        "samplePeek}` envelope for larger ones. Either renders correctly."
     );
     lines.push("");
     lines.push(
@@ -217,33 +214,18 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("");
     lines.push("  Good (one call, one widget):");
     lines.push(
-      '    [sql_query: SELECT * FROM "parcels"]'
+      '    [display_entity_records: entityKey="parcels"]'
     );
     lines.push("    Showing all 5,402 parcels below.");
     lines.push("");
-    lines.push("  Bad (apologetic pre-amble, then a sampled query):");
     lines.push(
-      '    "The dataset is too large. Let me show you a sample…"'
+      "  Bad (using sql_query with defensive LIMIT for a display request):"
     );
     lines.push(
       "    [sql_query: SELECT * FROM \"parcels\" LIMIT 100]"
     );
     lines.push(
       "    \"Here's a sample of 100 parcels.\""
-    );
-    lines.push("");
-    lines.push("  Bad (manual pagination, one widget per batch):");
-    lines.push(
-      "    [sql_query: SELECT * FROM \"parcels\" LIMIT 1000 OFFSET 0]"
-    );
-    lines.push(
-      "    [sql_query: SELECT * FROM \"parcels\" LIMIT 1000 OFFSET 1000]"
-    );
-    lines.push(
-      "    [sql_query: SELECT * FROM \"parcels\" LIMIT 1000 OFFSET 2000]…"
-    );
-    lines.push(
-      "    (Each batch creates a separate table — the user wants one.)"
     );
     lines.push("");
 

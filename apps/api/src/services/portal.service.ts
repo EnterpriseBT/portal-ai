@@ -71,7 +71,12 @@ export interface PortalWithMessages {
 // ---------------------------------------------------------------------------
 
 /** Tools whose results contain row sets and should be surfaced as data-table blocks. */
-const ROW_SET_TOOLS = new Set(["sql_query", "detect_outliers", "cluster"]);
+const ROW_SET_TOOLS = new Set([
+  "sql_query",
+  "display_entity_records",
+  "detect_outliers",
+  "cluster",
+]);
 
 /** Tools whose results represent mutations and should be surfaced as mutation-result blocks. */
 const MUTATION_TOOLS = new Set([

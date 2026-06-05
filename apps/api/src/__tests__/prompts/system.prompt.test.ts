@@ -332,11 +332,8 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
     expect(prompt).toMatch(/project only the columns you need/i);
     expect(prompt).toContain("queryHandle");
     expect(prompt).toContain("samplePeek");
-    expect(prompt).toMatch(/see, show, display, or list records/);
-    expect(prompt).toMatch(/the call succeeded/);
-    expect(prompt).toMatch(/One call is enough/);
-    expect(prompt).toMatch(/no `OFFSET` loop/);
-    expect(prompt).toMatch(/Adding a `LIMIT` to keep the result small/);
+    expect(prompt).toContain("display_entity_records");
+    expect(prompt).toMatch(/see, show, display, or list/);
     expect(prompt).toMatch(/double-quoted identifiers/i);
   });
 

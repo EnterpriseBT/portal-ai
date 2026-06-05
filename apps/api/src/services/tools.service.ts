@@ -15,6 +15,7 @@ import { createLogger } from "../utils/logger.util.js";
 
 // Tool classes
 import { SqlQueryTool } from "../tools/sql-query.tool.js";
+import { DisplayEntityRecordsTool } from "../tools/display-entity-records.tool.js";
 import { VisualizeTool } from "../tools/visualize.tool.js";
 import { VisualizeTreeTool } from "../tools/visualize-tree.tool.js";
 import { ResolveIdentityTool } from "../tools/resolve-identity.tool.js";
@@ -397,6 +398,10 @@ export class ToolService {
     // -------------------------------------------------------------------
     if (enabledPacks.has("data_query")) {
       tools.sql_query = new SqlQueryTool().build(stationId, organizationId);
+      tools.display_entity_records = new DisplayEntityRecordsTool().build(
+        stationId,
+        organizationId
+      );
       tools.visualize = new VisualizeTool().build(stationId, organizationId);
       tools.visualize_tree = new VisualizeTreeTool().build(
         stationId,
