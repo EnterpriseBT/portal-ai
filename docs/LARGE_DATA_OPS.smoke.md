@@ -75,9 +75,13 @@ entity, writing the diameter midpoint (in kilometers) into a new
 
 ### §2a — One-time target setup
 
-- [ ] Create a target entity called `neo_summary` on the same station as `neos`. Easiest path: in chat, prompt **"Create a new entity called `neo_summary` with a numeric column `diameter_avg_km`."** The agent will use `connector_entity_create` + `field_mapping_create` to set it up.
-- [ ] Confirm in `_meta_entities` (via chat: **"Show me _meta_entities"**) that `neo_summary` is listed.
-- [ ] Confirm in `_meta_columns` the new column's `wide_column_name` is `c_diameter_avg_km`.
+- [x] Create a target entity called `neo_summary` on the same station as `neos`. Easiest path: in chat, prompt **"Create a new entity called `neo_summary` with a numeric column `diameter_avg_km`."** The agent will use `connector_entity_create` + `field_mapping_create` to set it up.
+- [x] Confirm in `_meta_entities` (via chat: **"Show me _meta_entities"**) that `neo_summary` is listed.
+- [x] Confirm in `_meta_columns` the new column's `wide_column_name` is `c_diameter_avg_km`.
+
+> Required a fresh portal session to work around #95 (per-message
+> context omitted `connectorInstances`). PR #96 is the long-term fix
+> against main.
 
 ### §2b — Happy-path transform
 
