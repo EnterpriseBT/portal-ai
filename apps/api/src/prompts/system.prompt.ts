@@ -153,6 +153,21 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         'There is no `currency` type — use `number` with `canonicalFormat` (e.g. "USD") instead.'
     );
     lines.push("");
+    // Phase 4 retry-failed-only nudge: when the user asks to retry
+    // failed records from a previous bulk_transform, call the tool
+    // again with the same expression + a sourceFilter scoping to the
+    // failed source keys. The "retry failed only" button on the
+    // bulk-failures-table widget posts a message in exactly this
+    // shape; recognize it and act accordingly.
+    lines.push(
+      "When the user asks to retry failed records from a previous bulk_transform job, " +
+        "call `bulk_transform_entity_records` again with the same source, target, " +
+        "expression, and keyField — but add a `sourceFilter.whereSqlFragment` that " +
+        "scopes the source-side scan to the failed source keys " +
+        "(e.g. `\"c_parcel_id IN ('p-99','p-499','p-999')\"`). Do not re-run the " +
+        "whole job; just the failed subset."
+    );
+    lines.push("");
   }
 
   // SQL guidance — applies whenever the LLM can reach `sql_query` /
