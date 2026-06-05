@@ -54,6 +54,43 @@ jest.unstable_mockModule("../../services/analytics.service.js", () => ({
   AnalyticsService: { loadStation: mockLoadStation },
 }));
 
+// Station-instance + connector repos used by buildStationContext when
+// entity_management is enabled (#95).
+const mockStationInstancesFindByStationId = jest
+  .fn<() => Promise<unknown[]>>()
+  .mockResolvedValue([]);
+const mockConnectorInstancesFindById = jest.fn<() => Promise<unknown>>();
+const mockConnectorDefinitionsFindById = jest.fn<() => Promise<unknown>>();
+
+jest.unstable_mockModule(
+  "../../db/repositories/station-instances.repository.js",
+  () => ({
+    stationInstancesRepo: {
+      findByStationId: mockStationInstancesFindByStationId,
+    },
+  })
+);
+jest.unstable_mockModule(
+  "../../db/repositories/connector-instances.repository.js",
+  () => ({
+    connectorInstancesRepo: { findById: mockConnectorInstancesFindById },
+  })
+);
+jest.unstable_mockModule(
+  "../../db/repositories/connector-definitions.repository.js",
+  () => ({
+    connectorDefinitionsRepo: { findById: mockConnectorDefinitionsFindById },
+  })
+);
+
+// resolveEntityCapabilities — used when entity_management is enabled.
+const mockResolveEntityCapabilities = jest
+  .fn<() => Promise<Record<string, unknown>>>()
+  .mockResolvedValue({});
+jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
+  resolveEntityCapabilities: mockResolveEntityCapabilities,
+}));
+
 // buildAnalyticsTools
 const mockBuildAnalyticsTools =
   jest.fn<() => Promise<Record<string, unknown>>>();
@@ -400,6 +437,119 @@ describe("PortalService", () => {
           userId: USER_ID,
         })
       ).rejects.toMatchObject({ code: ApiCode.PORTAL_STATION_NO_TOOLS });
+    });
+  });
+
+  // ── buildStationContext (#95) ─────────────────────────────────────────────
+
+  describe("buildStationContext", () => {
+    it("populates connectorInstances + entityCapabilities when entity_management is enabled", async () => {
+      // Re-import to pick up the freshly-mocked repos.
+      const { buildStationContext } = await import(
+        "../../services/portal.service.js"
+      );
+
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+      mockStationInstancesFindByStationId.mockResolvedValueOnce([
+        { connectorInstanceId: "ci-7" },
+      ]);
+      mockConnectorInstancesFindById.mockResolvedValueOnce({
+        id: "ci-7",
+        name: "NASA NeoWs",
+        connectorDefinitionId: "cd-rest",
+      });
+      mockConnectorDefinitionsFindById.mockResolvedValueOnce({
+        id: "cd-rest",
+        display: "REST API",
+        slug: "rest-api",
+      });
+      mockResolveEntityCapabilities.mockResolvedValueOnce({
+        "ent-1": { read: true, write: true, push: false },
+      });
+
+      const ctx = await buildStationContext({
+        station: { id: STATION_ID, name: "Sales Station" },
+        organizationId: ORG_ID,
+        toolPacks: ["data_query", "entity_management"],
+      });
+
+      expect(ctx.connectorInstances).toEqual([
+        {
+          id: "ci-7",
+          name: "NASA NeoWs",
+          display: "REST API",
+          slug: "rest-api",
+        },
+      ]);
+      expect(ctx.entityCapabilities).toEqual({
+        "ent-1": { read: true, write: true, push: false },
+      });
+    });
+
+    it("omits connectorInstances + entityCapabilities when entity_management is not enabled", async () => {
+      const { buildStationContext } = await import(
+        "../../services/portal.service.js"
+      );
+
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+
+      const ctx = await buildStationContext({
+        station: { id: STATION_ID, name: "Sales Station" },
+        organizationId: ORG_ID,
+        toolPacks: ["data_query"],
+      });
+
+      expect(ctx.connectorInstances).toBeUndefined();
+      expect(ctx.entityCapabilities).toBeUndefined();
+      // The connector-loading helpers must not even run.
+      expect(mockStationInstancesFindByStationId).not.toHaveBeenCalled();
+      expect(mockResolveEntityCapabilities).not.toHaveBeenCalled();
+    });
+
+    it("reflects newly-attached connectors on a second call (no stale caching)", async () => {
+      const { buildStationContext } = await import(
+        "../../services/portal.service.js"
+      );
+
+      mockLoadStation.mockResolvedValue(STATION_DATA);
+      mockResolveEntityCapabilities.mockResolvedValue({});
+
+      // First call: zero connector instances attached.
+      mockStationInstancesFindByStationId.mockResolvedValueOnce([]);
+      const first = await buildStationContext({
+        station: { id: STATION_ID, name: "Sales Station" },
+        organizationId: ORG_ID,
+        toolPacks: ["entity_management"],
+      });
+      expect(first.connectorInstances).toEqual([]);
+
+      // Second call: one connector attached mid-session.
+      mockStationInstancesFindByStationId.mockResolvedValueOnce([
+        { connectorInstanceId: "ci-late" },
+      ]);
+      mockConnectorInstancesFindById.mockResolvedValueOnce({
+        id: "ci-late",
+        name: "Late-bound",
+        connectorDefinitionId: "cd-rest",
+      });
+      mockConnectorDefinitionsFindById.mockResolvedValueOnce({
+        id: "cd-rest",
+        display: "REST API",
+        slug: "rest-api",
+      });
+      const second = await buildStationContext({
+        station: { id: STATION_ID, name: "Sales Station" },
+        organizationId: ORG_ID,
+        toolPacks: ["entity_management"],
+      });
+      expect(second.connectorInstances).toEqual([
+        {
+          id: "ci-late",
+          name: "Late-bound",
+          display: "REST API",
+          slug: "rest-api",
+        },
+      ]);
     });
   });
 

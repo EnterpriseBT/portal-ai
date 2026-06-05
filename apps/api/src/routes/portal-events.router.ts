@@ -5,10 +5,8 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import {
   PortalService,
-  loadOrganizationTimezone,
-  type StationContext,
+  buildStationContext,
 } from "../services/portal.service.js";
-import { AnalyticsService } from "../services/analytics.service.js";
 import { SseUtil } from "../utils/sse.util.js";
 import { sseAuth } from "../middleware/sse-auth.middleware.js";
 
@@ -93,26 +91,17 @@ portalEventsRouter.get(
         );
       }
 
-      const stationData = await AnalyticsService.loadStation(
-        portal.stationId,
-        portal.organizationId
-      );
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const toolPacks = ((station as any).toolPacks as string[]) ?? [];
 
-      const organizationTimezone = await loadOrganizationTimezone(
-        portal.organizationId
-      );
-
-      const stationContext: StationContext = {
-        stationId: station.id,
-        stationName: station.name,
-        organizationTimezone,
-        entities: stationData.entities,
-        entityGroups: stationData.entityGroups,
+      // Rebuild context per message so newly-attached connectors,
+      // updated entity capabilities, and freshly-synced entities show
+      // up in this turn's system prompt (#95).
+      const stationContext = await buildStationContext({
+        station: { id: station.id, name: station.name },
+        organizationId: portal.organizationId,
         toolPacks,
-      };
+      });
 
       sse = new SseUtil(res);
 
