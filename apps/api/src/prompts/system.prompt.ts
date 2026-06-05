@@ -180,106 +180,34 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   if (stationContext.toolPacks.includes("data_query")) {
     lines.push("## SQL Guidance");
     lines.push("");
-    lines.push("This is PostgreSQL-compatible SQL. Specifically:");
     lines.push(
-      "- **NEVER add a `LIMIT` clause to a user-facing read query.** When " +
-        "the user asks to see / show / display / list records, run the " +
-        "query unbounded. The system handles row count automatically: the " +
-        "user sees every row in the rendered widget regardless of " +
-        "cardinality (the UI streams large result sets in via a handle). " +
-        "You do NOT need to keep the result small to keep the UI happy."
-    );
-    lines.push(
-      "- Specifically, the following are wrong and you must avoid them:"
-    );
-    lines.push(
-      '  - Saying "let me show you a sample" before issuing the query.'
-    );
-    lines.push(
-      '  - Calling `COUNT(*)` first and then "sampling" with `LIMIT 100`.'
-    );
-    lines.push(
-      '  - Adding `LIMIT 100`, `LIMIT 1000`, or any other cap to a "show ' +
-        'me all" request "to be safe".'
-    );
-    lines.push(
-      "  - Pivoting to an aggregation when the user asked to see records."
-    );
-    lines.push(
-      "- For large result sets you may receive a handle envelope " +
-        "`{queryHandle, rowCount, schema, samplePeek}` instead of inline " +
-        "rows. The `samplePeek` is a small slice **for your own follow-up " +
-        "reasoning** — it is NOT a 'sample for the user'. The user sees " +
-        "all `rowCount` rows in the rendered widget."
-    );
-    lines.push(
-      "- It is fine to add a `LIMIT` clause when **you yourself** are " +
-        "peeking at a few rows to learn an entity's shape before a " +
-        "follow-up query — that's exploration, not a user-facing display."
-    );
-    lines.push(
-      "- Prefer aggregations (COUNT, AVG, MAX, SUM) **only when the user " +
-        "explicitly asked a summary question** (e.g. 'how many', 'average', " +
-        "'total'). Never pivot to an aggregation in response to a 'show me' " +
-        "request."
-    );
-    lines.push(
-      '- Avoid `SELECT *` on entity tables — project only the columns you ' +
-        "need (this is a width/readability concern, not a row-count one)."
-    );
-    lines.push(
-      '- Quote identifiers with double quotes (`"name"`), not brackets.'
+      "This is PostgreSQL-compatible SQL. Use double-quoted identifiers " +
+        '(`"name"`), not brackets.'
     );
     lines.push("");
-
-    // The agent kept misreading the handle envelope: seeing
-    // `samplePeek: [10 rows]` and concluding "the system only gave me
-    // 10 rows, the dataset must be too large". This subsection makes
-    // the envelope's meaning unambiguous.
-    lines.push("### Reading a `queryHandle` envelope");
-    lines.push("");
     lines.push(
-      "When `sql_query` or `visualize` returns " +
-        "`{queryHandle, rowCount, schema, samplePeek, ...}` instead of " +
-        "inline rows, the call **succeeded** and the user is already " +
-        "seeing every one of the `rowCount` rows in the rendered widget. " +
-        "There is no failure here, nothing was truncated for the user, " +
-        "and there is no follow-up call you need to make to 'get the rest'."
+      "Result-set size is handled for you. When the user asks to see, " +
+        "show, display, or list records, run the query as written and " +
+        "return the tool's result — small results inline, large results " +
+        "via a `{queryHandle, rowCount, schema, samplePeek}` envelope. " +
+        "Either way the user sees every row in the rendered widget. " +
+        "Adding a `LIMIT` to keep the result small is unnecessary and " +
+        "produces a worse user experience."
     );
     lines.push("");
-    lines.push("Specifically:");
     lines.push(
-      "- `rowCount` is the total number of rows the user is currently " +
-        "viewing in the widget. Use it when narrating ('Showing all 5,402 " +
-        "parcels below.')."
-    );
-    lines.push(
-      "- `samplePeek` is a 10-row slice **for you**, so you can see real " +
-        "values and reason about follow-ups. **It is not what the user " +
-        "sees.** The user sees all `rowCount` rows, not 10."
-    );
-    lines.push(
-      "- `schema` lists column names + types so you can construct sensible " +
-        "follow-up queries without re-running `_meta_columns`."
-    );
-    lines.push(
-      "- `sampled: true` means the result exceeded ~50,000 rows and the " +
-        "server downsampled before staging. The user still sees the " +
-        "sampled view live in the widget; you can tell them the rendered " +
-        "view is a representative sample if that's relevant."
+      "If you receive an envelope, the call succeeded — the user is " +
+        "looking at all `rowCount` rows right now. `samplePeek` is a 10-row " +
+        "peek for your follow-up reasoning, not what the user sees. " +
+        "Acknowledge what rendered in one short sentence ('Showing all " +
+        "5,402 parcels below.') and stop."
     );
     lines.push("");
-    lines.push("**Do NOT** respond to a `queryHandle` envelope by:");
     lines.push(
-      '- Saying "the dataset is too large to display" or "exceeds the limits"'
-    );
-    lines.push('- Saying "here is a sample of N parcels"');
-    lines.push("- Proposing filters or narrowing the WHERE clause");
-    lines.push("- Re-running the query with a `LIMIT`");
-    lines.push("");
-    lines.push(
-      "Instead, acknowledge what was rendered in one short sentence, then " +
-        "stop — the widget already shows the user the result."
+      "Use aggregations (COUNT, AVG, MAX, SUM) when the user asked a " +
+        "summary question. Use `LIMIT` when you're peeking at an entity's " +
+        "shape for your own reasoning before a follow-up. Project only the " +
+        "columns you need on wide tables."
     );
     lines.push("");
 

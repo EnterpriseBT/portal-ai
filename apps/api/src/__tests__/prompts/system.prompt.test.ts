@@ -328,16 +328,14 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
     expect(prompt).toContain("## SQL Guidance");
     expect(prompt).toContain("PostgreSQL-compatible SQL");
     expect(prompt).toContain("LIMIT");
-    expect(prompt).toContain("SELECT *");
     expect(prompt).toMatch(/COUNT|AVG|MAX|SUM/);
+    expect(prompt).toMatch(/project only the columns you need/i);
     expect(prompt).toContain("queryHandle");
     expect(prompt).toContain("samplePeek");
-    expect(prompt).toMatch(/NEVER add a `LIMIT` clause to a user-facing/);
-    expect(prompt).toMatch(/see \/ show \/ display \/ list/);
-    expect(prompt).toMatch(/let me show you a sample/);
-    expect(prompt).toMatch(/Reading a `queryHandle` envelope/);
-    expect(prompt).toMatch(/the user is already seeing every one of the/);
-    expect(prompt).toMatch(/double quotes/i);
+    expect(prompt).toMatch(/see, show, display, or list records/);
+    expect(prompt).toMatch(/the call succeeded/);
+    expect(prompt).toMatch(/Adding a `LIMIT` to keep the result small/);
+    expect(prompt).toMatch(/double-quoted identifiers/i);
   });
 
   it("omits the SQL guidance block when data_query is not enabled", () => {
