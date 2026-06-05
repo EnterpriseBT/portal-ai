@@ -54,16 +54,16 @@ analytical queries — the latter returns a query-handle envelope when results
 exceed `INLINE_ROWS_THRESHOLD` (100 rows). Both render through the same
 `QueryResultDataBlock` snapshot-fetch path.
 
-- [ ] Open a portal session on a station that owns the **neos** entity.
-- [ ] Prompt: **"Show me all the near-earth objects in a table."**
-- [ ] Agent calls `display_entity_records` (not `sql_query`); one tool call → one widget.
-- [ ] Table widget appears and renders all rows (any wide cells included) — handle-path queries lift `cellCap` / `payloadCap` so wide cells don't collapse the response.
-- [ ] Browser DevTools → Network shows a single `GET /api/portal-sql/handle/qh-...?offset=0&limit=5000` returning `{rows, total, offset, limit}` with the full row payload.
-- [ ] API log prints `portal-sql handle produced` with the correct `rowCount` and `batches`.
+- [x] Open a portal session on a station that owns the **neos** entity.
+- [x] Prompt: **"Show me all the near-earth objects in a table."**
+- [x] Agent calls `display_entity_records` (not `sql_query`); one tool call → one widget.
+- [x] Table widget appears and renders all rows (any wide cells included) — handle-path queries lift `cellCap` / `payloadCap` so wide cells don't collapse the response.
+- [x] Browser DevTools → Network shows a single `GET /api/portal-sql/handle/qh-...?offset=0&limit=5000` returning `{rows, total, offset, limit}` with the full row payload.
+- [x] API log prints `portal-sql handle produced` with the correct `rowCount` and `batches`.
 
-> Previously walked successfully against a 5,402-row `parcels` entity
-> (commits `448a37f`, `3019755`, `b28c4d0`); re-walk against your NEO
-> dataset before signing off Phase 1.
+> Verified against the live NEO dataset (~8,000 rows) — Phase 1
+> signed off. Prior parcels walk (commits `448a37f`, `3019755`,
+> `b28c4d0`) was the path's first confirmation.
 
 ---
 
