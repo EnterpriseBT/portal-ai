@@ -25,14 +25,16 @@ Run **§Preflight** once before any other section; the rest can be walked top-to
 
 ### Fixtures
 
-The minimum viable setup for the §1-§3 walk is a `parcels` entity
-with ~5k rows (address, city, parcel_id, optional geometry). §4
-additionally requires a dev-only stub tool — see §4 setup.
+The minimum viable setup for §1-§3 is a NASA NEO (Near-Earth Object)
+entity sourced from the NASA NeoWs API. The exact column names depend
+on how the connector mapped them; this doc assumes the schema below.
+**Substitute your real column names before running** — they should be
+visible via `_meta_columns`.
 
 | Alias | Shape | Used by |
 |---|---|---|
-| **parcels** | Existing entity, ~5,402 rows with `c_address`, `c_city`, `c_parcel_id` columns | §1, §2, §3, §4 (source) |
-| **parcel_display** | New entity with `c_full_address` (text), `c_parcel_id` as the upsert key. Created during §2a. | §2, §3, §4 (target) |
+| **neos** | Existing entity sourced from `api.nasa.gov/neo/rest/v1`. Expected columns (rename to match yours): `c_neo_reference_id` (key), `c_name`, `c_absolute_magnitude`, `c_estimated_diameter_min_m`, `c_estimated_diameter_max_m`, `c_is_potentially_hazardous` | §1, §2, §3, §4 (source) |
+| **neo_summary** | New entity with `c_diameter_avg_m` (numeric), `c_neo_reference_id` as the upsert key. Created during §2a. | §2, §3, §4 (target) |
 | **bulk_dispatch_smoke_stub** | Dev-only per-record stub tool with `bulkDispatch` metadata, four modes (fast / expensive / flaky / no-bulk-dispatch). **Not yet committed** — see §4 setup. | §4 |
 
 Log in as two dev users in separate orgs — the cross-org lock assertion in §3 needs the second.
@@ -52,66 +54,72 @@ analytical queries — the latter returns a query-handle envelope when results
 exceed `INLINE_ROWS_THRESHOLD` (100 rows). Both render through the same
 `QueryResultDataBlock` snapshot-fetch path.
 
-- [x] Open a portal session on a station that owns a ~5k-row entity (parcels).
-- [x] Prompt: **"Show me all the parcels in a table."**
-- [x] Agent calls `display_entity_records` (not `sql_query`); one tool call → one widget.
-- [x] Table widget appears and renders all rows (geometry blobs included) — handle-path queries lift `cellCap` / `payloadCap` so wide cells don't collapse the response.
-- [x] Browser DevTools → Network shows a single `GET /api/portal-sql/handle/qh-...?offset=0&limit=5000` returning `{rows, total, offset, limit}` with the full row payload.
-- [x] API log prints `portal-sql handle produced` with the correct `rowCount` and `batches`.
+- [ ] Open a portal session on a station that owns the **neos** entity.
+- [ ] Prompt: **"Show me all the near-earth objects in a table."**
+- [ ] Agent calls `display_entity_records` (not `sql_query`); one tool call → one widget.
+- [ ] Table widget appears and renders all rows (any wide cells included) — handle-path queries lift `cellCap` / `payloadCap` so wide cells don't collapse the response.
+- [ ] Browser DevTools → Network shows a single `GET /api/portal-sql/handle/qh-...?offset=0&limit=5000` returning `{rows, total, offset, limit}` with the full row payload.
+- [ ] API log prints `portal-sql handle produced` with the correct `rowCount` and `batches`.
+
+> Previously walked successfully against a 5,402-row `parcels` entity
+> (commits `448a37f`, `3019755`, `b28c4d0`); re-walk against your NEO
+> dataset before signing off Phase 1.
 
 ---
 
 ## §2 — SQL transform (Phase 2) — no GIS needed
 
-This walk uses a pure-SQL string-concatenation transform against an
-existing `parcels` entity (~5,402 rows), writing into a new
-`parcel_display` entity. No PostGIS required.
+This walk uses a pure-SQL numeric transform against the **neos**
+entity, writing the diameter midpoint into a new **neo_summary**
+entity. No PostGIS / no external dependencies.
 
 ### §2a — One-time target setup
 
-- [ ] Create a target entity called `parcel_display` on the same station as `parcels`. Easiest path: in chat, prompt **"Create a new entity called `parcel_display` with a column `full_address` (text)."** The agent will use `connector_entity_create` + `field_mapping_create` to set it up.
-- [ ] Confirm in `_meta_entities` (via chat: **"Show me _meta_entities"**) that `parcel_display` is listed.
-- [ ] Confirm in `_meta_columns` the new column's `wide_column_name` is `c_full_address`.
+- [ ] Create a target entity called `neo_summary` on the same station as `neos`. Easiest path: in chat, prompt **"Create a new entity called `neo_summary` with a numeric column `diameter_avg_m`."** The agent will use `connector_entity_create` + `field_mapping_create` to set it up.
+- [ ] Confirm in `_meta_entities` (via chat: **"Show me _meta_entities"**) that `neo_summary` is listed.
+- [ ] Confirm in `_meta_columns` the new column's `wide_column_name` is `c_diameter_avg_m`.
 
 ### §2b — Happy-path transform
 
-- [ ] Prompt: **"For every parcel, build a `c_full_address` value by concatenating address with city (uppercase the city), and upsert it into `parcel_display` keyed by `c_parcel_id`."**
+- [ ] Prompt: **"For every near-earth object, compute the average diameter in meters as `(min + max) / 2` and upsert it into `neo_summary.c_diameter_avg_m`, keyed by `c_neo_reference_id`."**
 - [ ] The agent calls `bulk_transform_entity_records` with:
   - `expression.kind` = `"sql"`
-  - `expression.value` = something equivalent to `` `"c_address" || ', ' || UPPER("c_city") AS c_full_address` ``
-  - `keyField` = `c_parcel_id`
-- [ ] Initial tool response renders a `BulkJobProgressBlock` with `expectedRecords` (5,402) and an ETA.
+  - `expression.value` = something equivalent to `` `("c_estimated_diameter_min_m" + "c_estimated_diameter_max_m") / 2.0 AS c_diameter_avg_m` ``
+  - `keyField` = `c_neo_reference_id`
+- [ ] Initial tool response renders a `BulkJobProgressBlock` with `expectedRecords` and an ETA.
 - [ ] Chat input is locked while the job runs (placeholder copy explains a job is in flight).
 - [ ] Progress block advances per batch.
-- [ ] Terminal SSE flips the block to "Done"; chat unlocks; `parcel_display` now has 5,402 rows with `c_full_address` populated and `source_id` matching each parcel's `c_parcel_id`.
-- [ ] Verify in `npm run db:studio` (from `apps/api/`) → the `er__<parcel_display id>` table has the expected rows.
+- [ ] Terminal SSE flips the block to "Done"; chat unlocks; `neo_summary` now has rows with `c_diameter_avg_m` populated and `source_id` matching each NEO's `c_neo_reference_id`.
+- [ ] Verify in `npm run db:studio` (from `apps/api/`) → the `er__<neo_summary id>` table has the expected rows.
+- [ ] Spot-check a few rows: `c_diameter_avg_m` should be the arithmetic midpoint of the source row's min and max.
 
 ### §2c — Re-run idempotency
 
-- [ ] Re-run the same prompt. Row count on `parcel_display` stays stable at 5,402; `synced_at` advances (verifies `ON CONFLICT (source_id) DO UPDATE`).
+- [ ] Re-run the same prompt. Row count on `neo_summary` stays stable; `synced_at` advances (verifies `ON CONFLICT (source_id) DO UPDATE`).
 
 ### §2d — Error paths
 
-- [ ] **Invalid SQL test:** prompt **"Build a `c_x` column on parcel_display using `bogus_func("c_address")`."** Tool returns `BULK_JOB_EXPRESSION_INVALID`; agent surfaces the pgError detail; no job appears in the jobs table.
+- [ ] **Invalid SQL test:** prompt **"Compute `bogus_func("c_estimated_diameter_min_m")` into `c_x` on neo_summary."** Tool returns `BULK_JOB_EXPRESSION_INVALID`; agent surfaces the pgError detail; no job appears in the jobs table.
 - [ ] **Max-records guard:** seed an entity with more than `MAX_BULK_RECORDS` rows (or temporarily lower the constant) and re-run. Tool returns `BULK_JOB_MAX_RECORDS_EXCEEDED`; no job is enqueued. *(Skip if you don't have a fixture this large.)*
 
 ---
 
 ## §3 — Chat lock, entity lock, cancel (Phase 3)
 
-Reuses the §2 transform — long enough at 5,402 rows to observe locks
-and cancel mid-job.
+Reuses the §2 transform — should be long enough to observe locks
+and cancel mid-job if the neos entity has more than a few hundred rows.
 
-- [ ] Re-run the §2b prompt. While the job is in flight, in a **second tab** as the same user, open the `parcel_display` connector-entity detail view. Expected: MUI `<Alert severity="info">` listing the running `bulk_transform` job with a "started X ago" timestamp; edit + delete are visibly disabled with a tooltip pointing at the running job.
-- [ ] Try to enqueue another `bulk_transform` targeting `parcel_display` from the original chat. Expected: API rejection with HTTP 409 + `ENTITY_LOCKED_BY_JOB`; the agent surfaces the lock and explains the wait.
+- [ ] Re-run the §2b prompt. While the job is in flight, in a **second tab** as the same user, open the `neo_summary` connector-entity detail view. Expected: MUI `<Alert severity="info">` listing the running `bulk_transform` job with a "started X ago" timestamp; edit + delete are visibly disabled with a tooltip pointing at the running job.
+- [ ] Try to enqueue another `bulk_transform` targeting `neo_summary` from the original chat. Expected: API rejection with HTTP 409 + `ENTITY_LOCKED_BY_JOB`; the agent surfaces the lock and explains the wait.
 - [ ] Log in as a **different org's** user; open their dashboard. Expected: no visibility of the running job; their own entity flows are unaffected (org isolation).
 - [ ] In the original chat, click **Cancel** on the progress block.
-- [ ] Job status flips to `cancelled` within a batch; terminal SSE arrives; chat unlocks; lock alert on `parcel_display` dismisses without a manual refetch.
-- [ ] Rows committed before cancel remain in `parcel_display` (per spec — no rollback).
+- [ ] Job status flips to `cancelled` within a batch; terminal SSE arrives; chat unlocks; lock alert on `neo_summary` dismisses without a manual refetch.
+- [ ] Rows committed before cancel remain in `neo_summary` (per spec — no rollback).
 
-> If 5,402 rows runs too fast to grab a lock screenshot, prompt the
-> agent to widen the projection (e.g. include several derived columns
-> at once) or temporarily seed extra rows.
+> If the NEO row count is small enough that the job finishes before
+> you can grab the lock alert, ask the agent to widen the projection
+> (multiple derived columns at once) or paginate through additional
+> NeoWs date ranges to grow the source dataset.
 
 ---
 
@@ -125,16 +133,16 @@ synthetic stub tool registered on the toolpack with
 
 ### §4 setup — register a smoke stub tool
 
-The stub is a per-record string transform with a deliberate sleep so
-the concurrency cap is observable, plus three knobs that cover all
-four §4 cases via input args:
+The stub is a per-record arithmetic transform with a deliberate sleep
+so the concurrency cap is observable, plus four modes that cover the
+§4 cases via input args:
 
-| Knob | Behavior |
+| Mode | Behavior |
 |---|---|
-| `mode: "fast"` (default) | Returns `{ c_full_address }` derived from the row; ~50 ms per call. |
-| `mode: "expensive"` | Same as fast but the tool declares `costHint: "expensive"`. |
-| `mode: "flaky"` | Throws for ~5% of source keys (e.g. when `c_parcel_id` ends in `99`). |
-| `mode: "no-bulk-dispatch"` | A second tool registration without `bulkDispatch` metadata, for §4c. |
+| `"fast"` (default) | Returns `{ c_diameter_avg_m }` = midpoint of the row's min/max diameter; ~50 ms per call. |
+| `"expensive"` | Same as fast but the tool declares `costHint: "expensive"`. |
+| `"flaky"` | Throws for ~5% of source keys (e.g. when `c_neo_reference_id` ends in `99`). |
+| `"no-bulk-dispatch"` | A second tool registration without `bulkDispatch` metadata, for §4c. |
 
 File to add: `apps/api/src/tools/bulk-dispatch-smoke-stub.tool.ts`,
 wired into the `data_query` toolpack for development environments
@@ -144,10 +152,10 @@ commit before walking §4.
 ### §4a — Happy path
 
 - [ ] Bind the stub in `"fast"` mode.
-- [ ] Prompt: **"Run `bulk_dispatch_smoke_stub` against every parcel and store the result in `parcel_display.c_full_address`."**
+- [ ] Prompt: **"Run `bulk_dispatch_smoke_stub` against every NEO and store the result in `neo_summary.c_diameter_avg_m`."**
 - [ ] Tool returns `BulkJobProgressBlock` with an ETA derived from `estimatedMsPerCall × expectedRecords / (maxConcurrency × 1000)` — not the generic 5 ms/record heuristic.
 - [ ] API logs show no more than `maxConcurrency` in-flight tool calls at once (default 10).
-- [ ] On completion, `parcel_display.c_full_address` is populated for every source key; the jobs row carries `committedRows` and `batchDurationMs` in `result`.
+- [ ] On completion, `neo_summary.c_diameter_avg_m` is populated for every source key; the jobs row carries `committedRows` and `batchDurationMs` in `result`.
 
 ### §4b — Cost gate
 
@@ -162,19 +170,19 @@ commit before walking §4.
 
 ### §4d — Partial failures + retry-failed-only
 
-- [ ] Bind the stub in `"flaky"` mode; run against parcels.
+- [ ] Bind the stub in `"flaky"` mode; run against neos.
 - [ ] On completion, terminal envelope has a non-empty `partialFailures` array.
 - [ ] Chat renders a `BulkFailuresTableBlock` listing each failed `sourceKey` + error code + recommendation; expand a row to see details.
 - [ ] Pagination works (10 / 25 / 50 rows per page).
 - [ ] Click **"Retry failed only"**. Expected: a synthetic user message appears in the chat naming the failed keys.
 - [ ] The agent re-invokes `bulk_transform_entity_records` with `sourceFilter.whereSqlFragment` scoping to those keys (inspect via API logs or the new job's metadata).
-- [ ] The retry job processes **only** the previously failed records; successful retries land in `parcel_display` via UPSERT; the new job's `partialFailures` is empty (or smaller).
+- [ ] The retry job processes **only** the previously failed records; successful retries land in `neo_summary` via UPSERT; the new job's `partialFailures` is empty (or smaller).
 
 ---
 
 ## §5 — Verify post-conditions
 
-- [ ] **DB inspection** (`npm run db:studio` from `apps/api/`): `target-derived` rows have `c_*` columns populated; `source_id` matches the source key; `synced_at` reflects the latest run.
+- [ ] **DB inspection** (`npm run db:studio` from `apps/api/`): `neo_summary` rows have `c_diameter_avg_m` populated; `source_id` matches the source key; `synced_at` reflects the latest run.
 - [ ] **Jobs table**: every completed / cancelled / failed `bulk_transform` row carries the expected `result` shape (`committedRows`, `partialFailures`, `batchDurationMs`).
 - [ ] **Lock release**: no `bulk_transform` job is left in `active` / `pending` / `awaiting_confirmation`; the target entity's detail view shows no lock alert.
 
