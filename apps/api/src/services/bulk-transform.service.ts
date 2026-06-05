@@ -16,6 +16,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { wideTableRepo } from "../db/repositories/wide-table.repository.js";
+import { parseProjections } from "../utils/sql-projection.util.js";
 
 export interface BulkTransformBatchOptions {
   sourceConnectorEntityId: string;
@@ -127,35 +128,43 @@ export class BulkTransformService {
     const orgLit = `'${opts.organizationId.replace(/'/g, "''")}'`;
     const now = Date.now();
 
-    // The agent's expression is wrapped as a SELECT projection. The
-    // smoke test in slice 6 validates real-world expressions; in
-    // Phase 2 we treat the string as an opaque PG fragment that
-    // produces aliased columns named after target field-mapping keys.
+    // Split the agent's projection into `{ value, alias }` pairs so
+    // the INSERT column list gets the alias *names* (PG won't parse
+    // expressions there) and the SELECT row gets the *values*. The
+    // pre-flight EXPLAIN already validated each value as a legal PG
+    // expression — here we just slice the string.
+    const projections = parseProjections(opts.expression);
+    const aliasList = projections
+      .map((p) => quoteIdent(p.alias))
+      .join(", ");
+    const valueList = projections.map((p) => p.value).join(", ");
+
+    // SET clause for the upsert: every derived column refreshes on
+    // conflict; synced_at always advances.
+    const setClause = projections
+      .map(
+        (p) =>
+          `${quoteIdent(p.alias)} = EXCLUDED.${quoteIdent(p.alias)}`
+      )
+      .concat([`"synced_at" = EXCLUDED."synced_at"`])
+      .join(", ");
+
     const insertSql =
       `INSERT INTO ${targetTable} ` +
-      `("entity_record_id", "organization_id", "synced_at", "is_valid", "source_id", ${opts.expression}) ` +
+      `("entity_record_id", "organization_id", "synced_at", "is_valid", "source_id", ${aliasList}) ` +
       `SELECT ` +
-      `  gen_random_uuid() AS "entity_record_id", ` +
-      `  ${orgLit} AS "organization_id", ` +
-      `  ${now} AS "synced_at", ` +
-      `  true AS "is_valid", ` +
-      `  ${keyCol}::text AS "source_id", ` +
-      `  src.* ` +
-      `FROM (` +
-      `  SELECT ${opts.expression} FROM ${sourceTable} ` +
-      `  WHERE "organization_id" = ${orgLit} ` +
-      `  ORDER BY "entity_record_id" ` +
-      `  LIMIT ${opts.batchSize} OFFSET ${opts.offset}` +
-      `) src ` +
-      `ON CONFLICT ("source_id") DO UPDATE SET "synced_at" = EXCLUDED."synced_at" ` +
+      `  gen_random_uuid(), ` +
+      `  ${orgLit}, ` +
+      `  ${now}, ` +
+      `  true, ` +
+      `  ${keyCol}::text, ` +
+      `  ${valueList} ` +
+      `FROM ${sourceTable} ` +
+      `WHERE "organization_id" = ${orgLit} ` +
+      `ORDER BY "entity_record_id" ` +
+      `LIMIT ${opts.batchSize} OFFSET ${opts.offset} ` +
+      `ON CONFLICT ("source_id") DO UPDATE SET ${setClause} ` +
       `RETURNING *`;
-
-    // NOTE: the SQL shape above is a Phase 2 scaffold. The smoke test
-    // in slice 6 will exercise this against a real seeded source and
-    // target — any drift between the agent's expression aliases and
-    // the target wide-table columns surfaces there. Slice 6 may need
-    // to refine this SQL based on real-world failures; the seam stays
-    // the same.
 
     const result = await db.execute(sql.raw(insertSql));
     const rows = Array.isArray(result)
