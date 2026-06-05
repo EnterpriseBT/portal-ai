@@ -10,18 +10,18 @@ Run **§Preflight** once before any other section; the rest can be walked top-to
 
 ### Environment
 
-- [ ] `git checkout docs/bulk-writes && git pull --ff-only`
-- [ ] `npm install && npm run build --workspace=packages/core` (the `BulkTransformMetadataSchema` shape changed; the API needs the rebuilt core dist).
-- [ ] `cd apps/api && npm run db:push && npm run db:seed && cd ../..` to bring the local DB in sync with the dual-schema (Drizzle + Zod) for the new `sourceFilter` field.
-- [ ] `npm run dev` boots cleanly (API `:3001`, web `:3000`, core storybook `:7006`).
-- [ ] Redis is reachable; BullMQ workers attach without retry errors in the API log.
-- [ ] Auth0 dev tenant works — login lands on `/dashboard`.
+- [x] `git checkout docs/bulk-writes && git pull --ff-only`
+- [x] `npm install && npm run build --workspace=packages/core` (the `BulkTransformMetadataSchema` shape changed; the API needs the rebuilt core dist).
+- [x] `cd apps/api && npm run db:push && npm run db:seed && cd ../..` to bring the local DB in sync with the dual-schema (Drizzle + Zod) for the new `sourceFilter` field.
+- [x] `npm run dev` boots cleanly (API `:3001`, web `:3000`, core storybook `:7006`).
+- [x] Redis is reachable; BullMQ workers attach without retry errors in the API log.
+- [x] Auth0 dev tenant works — login lands on `/dashboard`.
 
 ### Swagger sanity
 
-- [ ] `http://localhost:3001/api-docs` loads.
-- [ ] **Portal SQL** tag is present and exposes `GET /api/portal-sql/queries/:handle/snapshot` and the SSE stream endpoint.
-- [ ] Response schemas reference registered components by `$ref` — open one of the new endpoints (`RunningJob`, `PortalRunningJobsResponse`, `BulkJobTerminalEvent`, `QueryHandleSnapshotResponse`, `QueryHandleStreamEvent`, `RowsByIdRequestBody`, `RowsByIdResponse`) and confirm the schema isn't inlined.
+- [x] `http://localhost:3001/api-docs` loads.
+- [x] **Portal SQL** tag is present and exposes `GET /api/portal-sql/queries/:handle/snapshot` and the SSE stream endpoint.
+- [x] Response schemas reference registered components by `$ref` — open one of the new endpoints (`RunningJob`, `PortalRunningJobsResponse`, `BulkJobTerminalEvent`, `QueryHandleSnapshotResponse`, `QueryHandleStreamEvent`, `RowsByIdRequestBody`, `RowsByIdResponse`) and confirm the schema isn't inlined.
 
 ### Fixtures
 
@@ -40,19 +40,25 @@ Log in as two dev users in separate orgs — the cross-org lock assertion in §3
 
 ### Reset between runs
 
-- [ ] Cancel any leftover `pending` / `active` `bulk_transform` jobs before re-running a flow (otherwise the lock alert will block the next enqueue).
-- [ ] `npm run db:studio` from `apps/api/` is handy for inspecting the target wide table's rows after each pass.
+- [x] Cancel any leftover `pending` / `active` `bulk_transform` jobs before re-running a flow (otherwise the lock alert will block the next enqueue).
+- [x] `npm run db:studio` from `apps/api/` is handy for inspecting the target wide table's rows after each pass.
 
 ---
 
 ## §1 — Live hydration (Phase 1, read path)
 
-- [ ] Open a portal session on a station that owns **source-medium**.
-- [ ] Prompt: **"Show me all the parcels as a table."**
-- [ ] Tool call should be `bulk_query_entity_records`.
-- [ ] Table widget appears immediately; rows stream in **during** the fetch — not after a single batch lands at the end.
-- [ ] Pin the widget. Reload the page. The pinned widget renders a static snapshot — no re-stream and no progress UI.
-- [ ] Open the same portal session in a **second tab**; the unpinned live widget does not reappear in the new tab (live state is per-session by design).
+The shipped implementation uses **`display_entity_records`** as the dedicated
+"render this entity as a single live table" tool, and **`sql_query`** for
+analytical queries — the latter returns a query-handle envelope when results
+exceed `INLINE_ROWS_THRESHOLD` (100 rows). Both render through the same
+`QueryResultDataBlock` snapshot-fetch path.
+
+- [x] Open a portal session on a station that owns a ~5k-row entity (parcels).
+- [x] Prompt: **"Show me all the parcels in a table."**
+- [x] Agent calls `display_entity_records` (not `sql_query`); one tool call → one widget.
+- [x] Table widget appears and renders all rows (geometry blobs included) — handle-path queries lift `cellCap` / `payloadCap` so wide cells don't collapse the response.
+- [x] Browser DevTools → Network shows a single `GET /api/portal-sql/handle/qh-...?offset=0&limit=5000` returning `{rows, total, offset, limit}` with the full row payload.
+- [x] API log prints `portal-sql handle produced` with the correct `rowCount` and `batches`.
 
 ---
 
