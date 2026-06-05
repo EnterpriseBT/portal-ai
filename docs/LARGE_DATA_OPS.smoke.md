@@ -33,8 +33,8 @@ visible via `_meta_columns`.
 
 | Alias | Shape | Used by |
 |---|---|---|
-| **neos** | Existing entity sourced from `api.nasa.gov/neo/rest/v1`. Expected columns (rename to match yours): `c_neo_reference_id` (key), `c_name`, `c_absolute_magnitude`, `c_estimated_diameter_min_m`, `c_estimated_diameter_max_m`, `c_is_potentially_hazardous` | §1, §2, §3, §4 (source) |
-| **neo_summary** | New entity with `c_diameter_avg_m` (numeric), `c_neo_reference_id` as the upsert key. Created during §2a. | §2, §3, §4 (target) |
+| **neos** | Existing entity sourced from `api.nasa.gov/neo/rest/v1`. Columns: `c_id` (number, key), `c_name`, `c_date`, `c_diameter_km_min`, `c_diameter_km_max`, `c_diameter_m_min`, `c_diameter_m_max`, `c_diameter_miles_min`, `c_diameter_miles_max`, `c_diameter_feet_min`, `c_diameter_feet_max`, `c_absolute_magnitude_h` | §1, §2, §3, §4 (source) |
+| **neo_summary** | New entity with `c_diameter_avg_km` (numeric), `c_id` as the upsert key. Created during §2a. | §2, §3, §4 (target) |
 | **bulk_dispatch_smoke_stub** | Dev-only per-record stub tool with `bulkDispatch` metadata, four modes (fast / expensive / flaky / no-bulk-dispatch). **Not yet committed** — see §4 setup. | §4 |
 
 Log in as two dev users in separate orgs — the cross-org lock assertion in §3 needs the second.
@@ -70,28 +70,28 @@ exceed `INLINE_ROWS_THRESHOLD` (100 rows). Both render through the same
 ## §2 — SQL transform (Phase 2) — no GIS needed
 
 This walk uses a pure-SQL numeric transform against the **neos**
-entity, writing the diameter midpoint into a new **neo_summary**
-entity. No PostGIS / no external dependencies.
+entity, writing the diameter midpoint (in kilometers) into a new
+**neo_summary** entity. No PostGIS / no external dependencies.
 
 ### §2a — One-time target setup
 
-- [ ] Create a target entity called `neo_summary` on the same station as `neos`. Easiest path: in chat, prompt **"Create a new entity called `neo_summary` with a numeric column `diameter_avg_m`."** The agent will use `connector_entity_create` + `field_mapping_create` to set it up.
+- [ ] Create a target entity called `neo_summary` on the same station as `neos`. Easiest path: in chat, prompt **"Create a new entity called `neo_summary` with a numeric column `diameter_avg_km`."** The agent will use `connector_entity_create` + `field_mapping_create` to set it up.
 - [ ] Confirm in `_meta_entities` (via chat: **"Show me _meta_entities"**) that `neo_summary` is listed.
-- [ ] Confirm in `_meta_columns` the new column's `wide_column_name` is `c_diameter_avg_m`.
+- [ ] Confirm in `_meta_columns` the new column's `wide_column_name` is `c_diameter_avg_km`.
 
 ### §2b — Happy-path transform
 
-- [ ] Prompt: **"For every near-earth object, compute the average diameter in meters as `(min + max) / 2` and upsert it into `neo_summary.c_diameter_avg_m`, keyed by `c_neo_reference_id`."**
+- [ ] Prompt: **"For every near-earth object, compute the average diameter in kilometers as `(diameter_km_min + diameter_km_max) / 2` and upsert it into `neo_summary.c_diameter_avg_km`, keyed by `c_id`."**
 - [ ] The agent calls `bulk_transform_entity_records` with:
   - `expression.kind` = `"sql"`
-  - `expression.value` = something equivalent to `` `("c_estimated_diameter_min_m" + "c_estimated_diameter_max_m") / 2.0 AS c_diameter_avg_m` ``
-  - `keyField` = `c_neo_reference_id`
-- [ ] Initial tool response renders a `BulkJobProgressBlock` with `expectedRecords` and an ETA.
+  - `expression.value` = something equivalent to `` `("c_diameter_km_min" + "c_diameter_km_max") / 2.0 AS c_diameter_avg_km` ``
+  - `keyField` = `c_id`
+- [ ] Initial tool response renders a `BulkJobProgressBlock` with `expectedRecords` (~8,000) and an ETA.
 - [ ] Chat input is locked while the job runs (placeholder copy explains a job is in flight).
 - [ ] Progress block advances per batch.
-- [ ] Terminal SSE flips the block to "Done"; chat unlocks; `neo_summary` now has rows with `c_diameter_avg_m` populated and `source_id` matching each NEO's `c_neo_reference_id`.
+- [ ] Terminal SSE flips the block to "Done"; chat unlocks; `neo_summary` now has rows with `c_diameter_avg_km` populated and `source_id` matching each NEO's `c_id`.
 - [ ] Verify in `npm run db:studio` (from `apps/api/`) → the `er__<neo_summary id>` table has the expected rows.
-- [ ] Spot-check a few rows: `c_diameter_avg_m` should be the arithmetic midpoint of the source row's min and max.
+- [ ] Spot-check a few rows: `c_diameter_avg_km` should be the arithmetic midpoint of the source row's `c_diameter_km_min` and `c_diameter_km_max`.
 
 ### §2c — Re-run idempotency
 
@@ -99,7 +99,7 @@ entity. No PostGIS / no external dependencies.
 
 ### §2d — Error paths
 
-- [ ] **Invalid SQL test:** prompt **"Compute `bogus_func("c_estimated_diameter_min_m")` into `c_x` on neo_summary."** Tool returns `BULK_JOB_EXPRESSION_INVALID`; agent surfaces the pgError detail; no job appears in the jobs table.
+- [ ] **Invalid SQL test:** prompt **"Compute `bogus_func("c_diameter_km_min")` into `c_x` on neo_summary."** Tool returns `BULK_JOB_EXPRESSION_INVALID`; agent surfaces the pgError detail; no job appears in the jobs table.
 - [ ] **Max-records guard:** seed an entity with more than `MAX_BULK_RECORDS` rows (or temporarily lower the constant) and re-run. Tool returns `BULK_JOB_MAX_RECORDS_EXCEEDED`; no job is enqueued. *(Skip if you don't have a fixture this large.)*
 
 ---
@@ -139,9 +139,9 @@ so the concurrency cap is observable, plus four modes that cover the
 
 | Mode | Behavior |
 |---|---|
-| `"fast"` (default) | Returns `{ c_diameter_avg_m }` = midpoint of the row's min/max diameter; ~50 ms per call. |
+| `"fast"` (default) | Returns `{ c_diameter_avg_km }` = midpoint of the row's `c_diameter_km_min` / `c_diameter_km_max`; ~50 ms per call. |
 | `"expensive"` | Same as fast but the tool declares `costHint: "expensive"`. |
-| `"flaky"` | Throws for ~5% of source keys (e.g. when `c_neo_reference_id` ends in `99`). |
+| `"flaky"` | Throws for ~5% of source keys (e.g. when `c_id % 20 === 0`). |
 | `"no-bulk-dispatch"` | A second tool registration without `bulkDispatch` metadata, for §4c. |
 
 File to add: `apps/api/src/tools/bulk-dispatch-smoke-stub.tool.ts`,
@@ -152,10 +152,10 @@ commit before walking §4.
 ### §4a — Happy path
 
 - [ ] Bind the stub in `"fast"` mode.
-- [ ] Prompt: **"Run `bulk_dispatch_smoke_stub` against every NEO and store the result in `neo_summary.c_diameter_avg_m`."**
+- [ ] Prompt: **"Run `bulk_dispatch_smoke_stub` against every NEO and store the result in `neo_summary.c_diameter_avg_km`."**
 - [ ] Tool returns `BulkJobProgressBlock` with an ETA derived from `estimatedMsPerCall × expectedRecords / (maxConcurrency × 1000)` — not the generic 5 ms/record heuristic.
 - [ ] API logs show no more than `maxConcurrency` in-flight tool calls at once (default 10).
-- [ ] On completion, `neo_summary.c_diameter_avg_m` is populated for every source key; the jobs row carries `committedRows` and `batchDurationMs` in `result`.
+- [ ] On completion, `neo_summary.c_diameter_avg_km` is populated for every source key; the jobs row carries `committedRows` and `batchDurationMs` in `result`.
 
 ### §4b — Cost gate
 
@@ -182,7 +182,7 @@ commit before walking §4.
 
 ## §5 — Verify post-conditions
 
-- [ ] **DB inspection** (`npm run db:studio` from `apps/api/`): `neo_summary` rows have `c_diameter_avg_m` populated; `source_id` matches the source key; `synced_at` reflects the latest run.
+- [ ] **DB inspection** (`npm run db:studio` from `apps/api/`): `neo_summary` rows have `c_diameter_avg_km` populated; `source_id` matches the source key (`c_id` from neos); `synced_at` reflects the latest run.
 - [ ] **Jobs table**: every completed / cancelled / failed `bulk_transform` row carries the expected `result` shape (`committedRows`, `partialFailures`, `batchDurationMs`).
 - [ ] **Lock release**: no `bulk_transform` job is left in `active` / `pending` / `awaiting_confirmation`; the target entity's detail view shows no lock alert.
 
