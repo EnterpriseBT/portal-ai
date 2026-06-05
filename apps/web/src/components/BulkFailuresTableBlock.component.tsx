@@ -1,4 +1,7 @@
 import React, { useState } from "react";
+import { useParams } from "@tanstack/react-router";
+
+import { sdk } from "../api/sdk";
 import {
   Box,
   Button,
@@ -207,22 +210,33 @@ export interface BulkFailuresTableBlockProps {
 export const BulkFailuresTableBlock: React.FC<BulkFailuresTableBlockProps> = ({
   content,
 }) => {
-  // Retry flow is chat-driven (#85 Phase 4 spec § Retry-failed-only). For
-  // now the button stub is wired up to a no-op; Phase 4 plumbs it
-  // through the chat-message POST endpoint.
-  const [retrying] = useState(false);
+  // Retry is chat-driven (#85 Phase 4 spec § Retry-failed-only): we
+  // POST a synthetic user message naming the failed source keys, the
+  // agent reads it + re-dispatches bulk_transform_entity_records with
+  // a sourceFilter scoped to those keys. We rely on the route param
+  // for portalId — failures table is always mounted inside a portal
+  // session view.
+  const params = useParams({ strict: false }) as { portalId?: string };
+  const portalId = params.portalId ?? "";
+  const sendMessage = sdk.portals.sendMessage(portalId);
+  const [submitted, setSubmitted] = useState(false);
 
-  const handleRetry = (_failedKeys: string[]) => {
-    // Phase 4 wires this through `chat.postUserMessage` with a synthetic
-    // retry message. Stubbed here to keep the UI affordance visible.
-    void _failedKeys;
+  const handleRetry = (failedKeys: string[]) => {
+    if (!portalId || failedKeys.length === 0 || submitted) return;
+    setSubmitted(true);
+    const message =
+      `Retry the failed records from job ${content.jobId}. ` +
+      `The failed source keys are: ${failedKeys.join(", ")}. ` +
+      `Call bulk_transform_entity_records again with the same expression ` +
+      `and a sourceFilter.whereSqlFragment that scopes to these keys.`;
+    sendMessage.mutate({ message } as never);
   };
 
   return (
     <BulkFailuresTableBlockUI
       content={content}
       onRetryFailedOnly={handleRetry}
-      retrying={retrying}
+      retrying={sendMessage.isPending || submitted}
     />
   );
 };
