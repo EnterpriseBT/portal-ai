@@ -263,6 +263,37 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     expect(mockJobsCreate).toHaveBeenCalled();
   });
 
+  it("threads sourceFilter.whereSqlFragment into the job metadata", async () => {
+    // Retry-failed-only contract (Phase 4 slice 5). The agent passes
+    // sourceFilter through; the tool persists it in job.metadata;
+    // the processor injects it into the cursor's WHERE clause.
+    mockLookupBulkDispatchable.mockResolvedValueOnce({
+      executor: async () => ({}),
+      metadata: {
+        maxConcurrency: 10,
+        timeoutMs: 5_000,
+        idempotent: true,
+      },
+    });
+    mockCountSourceRows.mockResolvedValueOnce(3);
+
+    await exec({
+      ...VALID_INPUT,
+      expression: { kind: "tool", ref: "compute_x" },
+      sourceFilter: {
+        whereSqlFragment: "c_parcel_id IN ('p-99','p-499','p-999')",
+      },
+    });
+
+    const metadata = mockJobsCreate.mock.calls[0][1].metadata as Record<
+      string,
+      unknown
+    >;
+    expect(metadata.sourceFilter).toEqual({
+      whereSqlFragment: "c_parcel_id IN ('p-99','p-499','p-999')",
+    });
+  });
+
   it("rejects when EXPLAIN fails (BULK_JOB_EXPRESSION_INVALID)", async () => {
     mockExplain.mockRejectedValueOnce(new Error("syntax error at AS"));
     const result = (await exec()) as { code: string };

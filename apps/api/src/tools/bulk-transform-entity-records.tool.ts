@@ -61,6 +61,22 @@ const InputSchema = z.object({
     .describe(
       "Required when the dispatched tool declared costHint: 'expensive' (Phase 4)."
     ),
+  sourceFilter: z
+    .object({
+      whereSqlFragment: z
+        .string()
+        .describe(
+          "PostgreSQL WHERE fragment injected into the source-side cursor. " +
+            "Used for retry-failed-only flows: pass a fragment like " +
+            "\"c_parcel_id IN ('p-99','p-499','p-999')\" to scope the run " +
+            "to those source keys. Validated via EXPLAIN at pre-flight."
+        ),
+    })
+    .optional()
+    .describe(
+      "Optional source-side filter. Use this for retry-failed-only and " +
+        "any other case where only a subset of source rows should run."
+    ),
 });
 
 /**
@@ -267,6 +283,7 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
               keyField: parsed.keyField,
               batchSize,
               acknowledgeCost: parsed.acknowledgeCost,
+              sourceFilter: parsed.sourceFilter,
               organizationId,
               portalId,
             },

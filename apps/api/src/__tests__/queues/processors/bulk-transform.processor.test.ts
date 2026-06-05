@@ -28,15 +28,21 @@ jest.unstable_mockModule(
       // Phase 4 additions — these mocks aren't exercised by the
       // SQL-path tests in this file, but the imports resolve through
       // them at module load.
-      fetchSourceBatch: jest.fn().mockResolvedValue([]),
-      upsertSuccesses: jest.fn().mockResolvedValue(0),
+      fetchSourceBatch: jest
+        .fn<() => Promise<Array<Record<string, unknown>>>>()
+        .mockResolvedValue([]),
+      upsertSuccesses: jest
+        .fn<() => Promise<number>>()
+        .mockResolvedValue(0),
     },
   })
 );
 
 jest.unstable_mockModule("../../../services/tools.service.js", () => ({
   ToolService: {
-    lookupBulkDispatchable: jest.fn().mockResolvedValue(null),
+    lookupBulkDispatchable: jest
+      .fn<() => Promise<unknown | null>>()
+      .mockResolvedValue(null),
   },
 }));
 

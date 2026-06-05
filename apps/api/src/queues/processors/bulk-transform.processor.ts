@@ -58,6 +58,9 @@ export const bulkTransformProcessor: TypedJobProcessor<
   );
 
   if (expression.kind === "tool") {
+    const sourceFilter = (bullJob.data as unknown as {
+      sourceFilter?: { whereSqlFragment: string };
+    }).sourceFilter;
     return await runToolDispatchLoop(bullJob, {
       jobId,
       sourceConnectorEntityId,
@@ -67,6 +70,7 @@ export const bulkTransformProcessor: TypedJobProcessor<
       toolArgs: expression.args,
       keyField,
       batchSize,
+      whereSqlFragment: sourceFilter?.whereSqlFragment,
     });
   }
 
@@ -176,6 +180,7 @@ async function runToolDispatchLoop(
     toolArgs?: Record<string, unknown>;
     keyField: string;
     batchSize: number;
+    whereSqlFragment?: string;
   }
 ): Promise<BulkTransformResult> {
   const startedAt = Date.now();
@@ -231,6 +236,7 @@ async function runToolDispatchLoop(
       keyField: opts.keyField,
       batchSize: opts.batchSize,
       offset,
+      whereSqlFragment: opts.whereSqlFragment,
     });
     if (sourceBatch.length === 0) break;
 

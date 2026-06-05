@@ -273,6 +273,15 @@ export const BulkTransformMetadataSchema = z.object({
     .default(DEFAULT_BULK_BATCH),
   /** Required when the dispatched tool declared `costHint: "expensive"`. */
   acknowledgeCost: z.boolean().optional(),
+  /** Optional source-side WHERE fragment (#85 Phase 4 retry-failed-only).
+   *  Injected into the cursor's WHERE clause. The fragment is validated
+   *  via EXPLAIN at the tool's pre-flight; runtime SQL injection is
+   *  bounded by the org-scope guard the processor applies. */
+  sourceFilter: z
+    .object({
+      whereSqlFragment: z.string(),
+    })
+    .optional(),
 });
 export type BulkTransformMetadata = z.infer<typeof BulkTransformMetadataSchema>;
 

@@ -42,6 +42,8 @@ export interface FetchSourceBatchOptions {
   keyField: string;
   batchSize: number;
   offset: number;
+  /** Optional source-side WHERE fragment (#85 Phase 4 retry-failed-only). */
+  whereSqlFragment?: string;
 }
 
 export interface UpsertSuccessesOptions {
@@ -175,10 +177,13 @@ export class BulkTransformService {
       wideTableRepo.tableName(opts.sourceConnectorEntityId)
     );
     const orgLit = `'${opts.organizationId.replace(/'/g, "''")}'`;
+    const filterClause = opts.whereSqlFragment
+      ? ` AND (${opts.whereSqlFragment})`
+      : "";
     const result = await db.execute(
       sql.raw(
         `SELECT * FROM ${sourceTable} ` +
-          `WHERE "organization_id" = ${orgLit} ` +
+          `WHERE "organization_id" = ${orgLit}${filterClause} ` +
           `ORDER BY "entity_record_id" ` +
           `LIMIT ${opts.batchSize} OFFSET ${opts.offset}`
       )
