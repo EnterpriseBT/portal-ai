@@ -97,11 +97,22 @@ export class PortalSqlHandleService {
     // Run the query through the existing pipeline. The handle path
     // uses a higher row cap; sampling for >SAMPLING_THRESHOLD rows is
     // applied to the envelope.
+    //
+    // The default `cellCap` (500 bytes/cell) and `payloadCap` (100KB)
+    // exist to protect the agent's context window from being flooded
+    // by large response bodies — they make sense for the inline path
+    // where the JSON envelope IS what the agent sees. The handle path
+    // stages rows to Redis instead; the agent only ever sees the
+    // small envelope `{queryHandle, rowCount, schema, samplePeek}`,
+    // so those caps would only damage the user-visible rendering for
+    // no benefit. Lift them here.
     const result = await PortalSqlService.runSqlQuery({
       stationId: opts.stationId,
       organizationId: opts.organizationId,
       sql: opts.sql,
       rowCap: HANDLE_ROW_CAP,
+      cellCap: Number.MAX_SAFE_INTEGER,
+      payloadCap: Number.MAX_SAFE_INTEGER,
     });
 
     // The three response shapes:
