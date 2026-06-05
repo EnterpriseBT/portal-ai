@@ -334,6 +334,8 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
     expect(prompt).toContain("samplePeek");
     expect(prompt).toMatch(/see, show, display, or list records/);
     expect(prompt).toMatch(/the call succeeded/);
+    expect(prompt).toMatch(/One call is enough/);
+    expect(prompt).toMatch(/no `OFFSET` loop/);
     expect(prompt).toMatch(/Adding a `LIMIT` to keep the result small/);
     expect(prompt).toMatch(/double-quoted identifiers/i);
   });

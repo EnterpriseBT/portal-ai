@@ -188,19 +188,22 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push(
       "Result-set size is handled for you. When the user asks to see, " +
         "show, display, or list records, run the query as written and " +
-        "return the tool's result — small results inline, large results " +
-        "via a `{queryHandle, rowCount, schema, samplePeek}` envelope. " +
-        "Either way the user sees every row in the rendered widget. " +
+        "return the tool's result. The tool returns either inline rows " +
+        "or a `{queryHandle, rowCount, schema, samplePeek}` envelope — " +
+        "both render as a single table widget containing every row. " +
         "Adding a `LIMIT` to keep the result small is unnecessary and " +
         "produces a worse user experience."
     );
     lines.push("");
     lines.push(
-      "If you receive an envelope, the call succeeded — the user is " +
-        "looking at all `rowCount` rows right now. `samplePeek` is a 10-row " +
-        "peek for your follow-up reasoning, not what the user sees. " +
-        "Acknowledge what rendered in one short sentence ('Showing all " +
-        "5,402 parcels below.') and stop."
+      "**One call is enough.** A single unbounded query renders all " +
+        "`rowCount` rows in one widget — there is no manual pagination, no " +
+        "`OFFSET` loop, and no second call needed to 'get the rest'. If you " +
+        "receive an envelope, the call succeeded and the user is already " +
+        "looking at the full dataset. `samplePeek` is a 10-row peek for " +
+        "your own follow-up reasoning, not what the user sees. Acknowledge " +
+        "what rendered in one short sentence ('Showing all 5,402 parcels " +
+        "below.') and stop."
     );
     lines.push("");
     lines.push(
@@ -212,21 +215,35 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("");
     lines.push('Example — user asks "show me all the parcels":');
     lines.push("");
-    lines.push("  Good:");
+    lines.push("  Good (one call, one widget):");
     lines.push(
-      '    [sql_query tool call: SELECT * FROM "parcels"]'
+      '    [sql_query: SELECT * FROM "parcels"]'
     );
     lines.push("    Showing all 5,402 parcels below.");
     lines.push("");
-    lines.push("  Bad:");
+    lines.push("  Bad (apologetic pre-amble, then a sampled query):");
     lines.push(
-      '    "The dataset is too large to display. Let me show you a sample…"'
+      '    "The dataset is too large. Let me show you a sample…"'
     );
     lines.push(
-      "    [sql_query tool call: SELECT * FROM \"parcels\" LIMIT 100]"
+      "    [sql_query: SELECT * FROM \"parcels\" LIMIT 100]"
     );
     lines.push(
       "    \"Here's a sample of 100 parcels.\""
+    );
+    lines.push("");
+    lines.push("  Bad (manual pagination, one widget per batch):");
+    lines.push(
+      "    [sql_query: SELECT * FROM \"parcels\" LIMIT 1000 OFFSET 0]"
+    );
+    lines.push(
+      "    [sql_query: SELECT * FROM \"parcels\" LIMIT 1000 OFFSET 1000]"
+    );
+    lines.push(
+      "    [sql_query: SELECT * FROM \"parcels\" LIMIT 1000 OFFSET 2000]…"
+    );
+    lines.push(
+      "    (Each batch creates a separate table — the user wants one.)"
     );
     lines.push("");
 
