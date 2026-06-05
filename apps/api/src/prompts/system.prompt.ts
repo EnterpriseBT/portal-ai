@@ -210,6 +210,25 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "columns you need on wide tables."
     );
     lines.push("");
+    lines.push('Example — user asks "show me all the parcels":');
+    lines.push("");
+    lines.push("  Good:");
+    lines.push(
+      '    [sql_query tool call: SELECT * FROM "parcels"]'
+    );
+    lines.push("    Showing all 5,402 parcels below.");
+    lines.push("");
+    lines.push("  Bad:");
+    lines.push(
+      '    "The dataset is too large to display. Let me show you a sample…"'
+    );
+    lines.push(
+      "    [sql_query tool call: SELECT * FROM \"parcels\" LIMIT 100]"
+    );
+    lines.push(
+      "    \"Here's a sample of 100 parcels.\""
+    );
+    lines.push("");
 
     // Schema introspection (#87). The `## Available Data` listing above
     // is a snapshot at session start — it does NOT include entities or
