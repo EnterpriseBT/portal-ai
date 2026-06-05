@@ -11,6 +11,7 @@ import { DbService } from "../services/db.service.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { BulkTransformService } from "../services/bulk-transform.service.js";
 import { JobsService } from "../services/jobs.service.js";
+import { ToolService } from "../services/tools.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { MAX_BULK_RECORDS } from "@portalai/core/constants";
 
@@ -145,43 +146,76 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
             organizationId
           );
 
-          // Step 3 — expression kind: sql only in Phase 2.
+          // Step 3 — expression kind: sql + tool both supported in
+          // Phase 4. Tool kind has its own pre-flight chain (lookup,
+          // cost-gate, ETA); sql kind continues to the EXPLAIN path.
+          let toolMetadata:
+            | import("@portalai/core/registries").BulkDispatchMetadata
+            | undefined;
+          let estimatedSecondsOverride: number | undefined;
           if (parsed.expression.kind === "tool") {
-            throw new ApiError(
-              400,
-              ApiCode.BULK_DISPATCH_TOOL_NOT_FOUND,
-              "Tool-kind dispatch is not yet implemented (Phase 4).",
-              {
-                recommendation:
-                  ApiCodeDefaultRecommendation[
-                    ApiCode.BULK_DISPATCH_TOOL_NOT_FOUND
-                  ],
-              }
-            );
-          }
-
-          // Step 4 — EXPLAIN the assembled SQL.
-          try {
-            await BulkTransformService.explainExpression(
-              parsed.sourceConnectorEntityId,
+            const lookup = await ToolService.lookupBulkDispatchable(
+              parsed.expression.ref,
               organizationId,
-              parsed.expression.value
+              stationId,
+              userId
             );
-          } catch (err) {
-            throw new ApiError(
-              400,
-              ApiCode.BULK_JOB_EXPRESSION_INVALID,
-              "The SQL expression failed validation against the source.",
-              {
-                recommendation:
-                  ApiCodeDefaultRecommendation[
-                    ApiCode.BULK_JOB_EXPRESSION_INVALID
-                  ],
-                details: {
-                  pgError: err instanceof Error ? err.message : String(err),
-                },
-              }
-            );
+            if (!lookup) {
+              throw new ApiError(
+                400,
+                ApiCode.BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE,
+                `Tool '${parsed.expression.ref}' isn't bulk-dispatchable. Add a 'bulkDispatch' metadata block to its toolpack descriptor.`,
+                {
+                  recommendation:
+                    ApiCodeDefaultRecommendation[
+                      ApiCode.BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE
+                    ],
+                }
+              );
+            }
+            toolMetadata = lookup.metadata;
+
+            // Cost gate — `expensive` requires explicit acknowledge.
+            if (
+              toolMetadata.costHint === "expensive" &&
+              parsed.acknowledgeCost !== true
+            ) {
+              throw new ApiError(
+                400,
+                ApiCode.BULK_DISPATCH_COST_NOT_ACKNOWLEDGED,
+                `Tool '${parsed.expression.ref}' is declared expensive. Confirm with the user, then retry with acknowledgeCost: true.`,
+                {
+                  recommendation:
+                    ApiCodeDefaultRecommendation[
+                      ApiCode.BULK_DISPATCH_COST_NOT_ACKNOWLEDGED
+                    ],
+                }
+              );
+            }
+          } else {
+            // Step 4 — EXPLAIN the assembled SQL (sql-kind only).
+            try {
+              await BulkTransformService.explainExpression(
+                parsed.sourceConnectorEntityId,
+                organizationId,
+                parsed.expression.value
+              );
+            } catch (err) {
+              throw new ApiError(
+                400,
+                ApiCode.BULK_JOB_EXPRESSION_INVALID,
+                "The SQL expression failed validation against the source.",
+                {
+                  recommendation:
+                    ApiCodeDefaultRecommendation[
+                      ApiCode.BULK_JOB_EXPRESSION_INVALID
+                    ],
+                  details: {
+                    pgError: err instanceof Error ? err.message : String(err),
+                  },
+                }
+              );
+            }
           }
 
           // Step 5 — max-records guard.
@@ -189,6 +223,22 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
             parsed.sourceConnectorEntityId,
             organizationId
           );
+
+          // Phase 4 ETA: when toolMetadata.estimatedMsPerCall is set,
+          // override the generic 5ms/record estimate with the actual
+          // tool-declared cost.
+          if (
+            toolMetadata?.estimatedMsPerCall &&
+            toolMetadata.maxConcurrency > 0
+          ) {
+            estimatedSecondsOverride = Math.max(
+              5,
+              Math.ceil(
+                (expectedRecords * toolMetadata.estimatedMsPerCall) /
+                  (toolMetadata.maxConcurrency * 1000)
+              )
+            );
+          }
           if (expectedRecords > MAX_BULK_RECORDS) {
             throw new ApiError(
               400,
@@ -222,13 +272,13 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
             },
           });
 
-          // Rough ETA: assume ~5ms per record processed by the SQL
-          // path. Real numbers come from observed batch durations; the
-          // tool's ETA is a hint for the user before the job starts.
-          const estimatedSeconds = Math.max(
-            5,
-            Math.ceil((expectedRecords * 5) / 1000)
-          );
+          // Rough ETA — tool-kind paths use the tool's
+          // estimatedMsPerCall when set; sql-kind falls back to the
+          // generic 5ms/record heuristic. Either way, this is a hint
+          // for the user before the job starts.
+          const estimatedSeconds =
+            estimatedSecondsOverride ??
+            Math.max(5, Math.ceil((expectedRecords * 5) / 1000));
 
           logger.info(
             {

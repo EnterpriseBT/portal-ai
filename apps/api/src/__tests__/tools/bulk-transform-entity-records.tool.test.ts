@@ -68,6 +68,15 @@ jest.unstable_mockModule("../../services/jobs.service.js", () => ({
   },
 }));
 
+const mockLookupBulkDispatchable = jest
+  .fn<() => Promise<unknown | null>>()
+  .mockResolvedValue(null);
+jest.unstable_mockModule("../../services/tools.service.js", () => ({
+  ToolService: {
+    lookupBulkDispatchable: mockLookupBulkDispatchable,
+  },
+}));
+
 const { BulkTransformEntityRecordsTool } = await import(
   "../../tools/bulk-transform-entity-records.tool.js"
 );
@@ -176,13 +185,82 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     expect(mockJobsCreate).not.toHaveBeenCalled();
   });
 
-  it("rejects expression.kind === 'tool' (Phase 4)", async () => {
+  it("rejects expression.kind === 'tool' when the tool isn't bulk-dispatchable", async () => {
+    // Default lookup mock returns null → tool not registered or
+    // bulkDispatch metadata missing.
     const result = (await exec({
       ...VALID_INPUT,
       expression: { kind: "tool", ref: "compute_x" },
     })) as { code: string };
-    expect(result.code).toBe(ApiCode.BULK_DISPATCH_TOOL_NOT_FOUND);
+    expect(result.code).toBe(
+      ApiCode.BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE
+    );
     expect(mockJobsCreate).not.toHaveBeenCalled();
+  });
+
+  it("accepts expression.kind === 'tool' when bulkDispatch is declared", async () => {
+    mockLookupBulkDispatchable.mockResolvedValueOnce({
+      executor: async () => ({}),
+      metadata: {
+        maxConcurrency: 10,
+        timeoutMs: 5_000,
+        idempotent: true,
+        estimatedMsPerCall: 200,
+        costHint: "metered",
+      },
+    });
+    mockCountSourceRows.mockResolvedValueOnce(50_000);
+
+    const result = (await exec({
+      ...VALID_INPUT,
+      expression: { kind: "tool", ref: "compute_distance" },
+    })) as { jobId?: string; estimatedSeconds?: number };
+
+    expect(result.jobId).toBe("job-created-1");
+    // ETA: 50_000 * 200ms / (10 * 1000) = 1000s
+    expect(result.estimatedSeconds).toBe(1_000);
+    expect(mockJobsCreate).toHaveBeenCalled();
+  });
+
+  it("rejects costHint expensive without acknowledgeCost", async () => {
+    mockLookupBulkDispatchable.mockResolvedValueOnce({
+      executor: async () => ({}),
+      metadata: {
+        maxConcurrency: 5,
+        timeoutMs: 5_000,
+        idempotent: true,
+        costHint: "expensive",
+      },
+    });
+    const result = (await exec({
+      ...VALID_INPUT,
+      expression: { kind: "tool", ref: "compute_costly" },
+    })) as { code: string };
+
+    expect(result.code).toBe(
+      ApiCode.BULK_DISPATCH_COST_NOT_ACKNOWLEDGED
+    );
+    expect(mockJobsCreate).not.toHaveBeenCalled();
+  });
+
+  it("accepts costHint expensive when acknowledgeCost is true", async () => {
+    mockLookupBulkDispatchable.mockResolvedValueOnce({
+      executor: async () => ({}),
+      metadata: {
+        maxConcurrency: 5,
+        timeoutMs: 5_000,
+        idempotent: true,
+        costHint: "expensive",
+      },
+    });
+    const result = (await exec({
+      ...VALID_INPUT,
+      expression: { kind: "tool", ref: "compute_costly" },
+      acknowledgeCost: true,
+    })) as { jobId?: string };
+
+    expect(result.jobId).toBe("job-created-1");
+    expect(mockJobsCreate).toHaveBeenCalled();
   });
 
   it("rejects when EXPLAIN fails (BULK_JOB_EXPRESSION_INVALID)", async () => {
