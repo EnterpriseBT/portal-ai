@@ -196,6 +196,28 @@ export function resolveDisplayBlock(
   }
 
   if (ROW_SET_TOOLS.has(toolName)) {
+    // Handle path (#85 Phase 1): the tool returned a queryHandle
+    // envelope instead of inline rows. Route it through the
+    // streaming-table block so the frontend hydrates via the Redis
+    // snapshot. The envelope is the block content verbatim (web layer
+    // detects `queryHandle` + renders QueryResultDataBlock).
+    if (
+      toolResult != null &&
+      typeof toolResult.queryHandle === "string"
+    ) {
+      const handleContent = {
+        type: "data-table" as const,
+        queryHandle: toolResult.queryHandle,
+        rowCount: toolResult.rowCount,
+        schema: toolResult.schema,
+        samplePeek: toolResult.samplePeek,
+        sampled: toolResult.sampled,
+      };
+      return {
+        block: { type: "data-table" as const, content: handleContent },
+        sseResult: handleContent,
+      };
+    }
     const rows = Array.isArray(toolResult)
       ? (toolResult as Record<string, unknown>[])
       : Array.isArray(toolResult?.rows)

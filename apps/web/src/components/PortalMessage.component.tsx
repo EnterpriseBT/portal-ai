@@ -48,10 +48,12 @@ function renderWebBlock(block: PortalMessageBlock): React.ReactNode | null {
       />
     );
   }
-  // vega-lite block carrying a queryHandle (Phase 3 slice 3): the
-  // tool returned an envelope shape instead of inline rows. The
-  // QueryResultDataBlock fetches the snapshot and renders.
-  if (block.type === "vega-lite") {
+  // vega-lite OR data-table block carrying a queryHandle (#85
+  // Phase 1 + Phase 3): the tool returned an envelope shape instead
+  // of inline rows. The QueryResultDataBlock fetches the snapshot
+  // from Redis and renders — as a chart when `spec` is present,
+  // as a tabular grid when it isn't.
+  if (block.type === "vega-lite" || block.type === "data-table") {
     const content = block.content as
       | (QueryResultDataBlockContent & { queryHandle?: string })
       | undefined;
@@ -92,7 +94,7 @@ const WEB_BLOCK_TYPES = new Set<string>([
  *  ContentBlockRenderer — either by type or by carrying a queryHandle. */
 function shouldRenderViaWeb(block: PortalMessageBlock): boolean {
   if (WEB_BLOCK_TYPES.has(block.type as string)) return true;
-  if (block.type === "vega-lite") {
+  if (block.type === "vega-lite" || block.type === "data-table") {
     const c = block.content as { queryHandle?: unknown } | undefined;
     return typeof c?.queryHandle === "string";
   }

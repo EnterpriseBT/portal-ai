@@ -9,19 +9,20 @@ import { sdk } from "../api/sdk";
 // ── Types ──────────────────────────────────────────────────────────────
 
 /**
- * A vega-lite tool result returns this shape when the row count exceeds
- * INLINE_ROWS_THRESHOLD (per Phase 3 slice 3 in api/tools/visualize):
- *   { type, queryHandle, rowCount, schema, sampled, samplePeek, spec }
- *
- * The spec was rewritten server-side: `data: { name: "primary" }` (the
- * named dataset).
+ * Streaming render envelope used by both `visualize` (chart) and
+ * `sql_query` (data table) when the row count exceeds the inline
+ * threshold. `spec` is present for chart envelopes and omitted for
+ * tabular envelopes; the UI branches on its presence.
  */
 export interface QueryResultDataBlockContent {
   queryHandle: string;
   rowCount: number;
   sampled?: boolean;
   samplePeek?: Array<Record<string, unknown>>;
-  spec: Record<string, unknown>;
+  schema?: Array<{ name: string; type?: string }>;
+  /** Present for chart envelopes (`visualize`); absent for tabular
+   *  envelopes (`sql_query`). */
+  spec?: Record<string, unknown>;
 }
 
 // ── UI (pure) ──────────────────────────────────────────────────────────
@@ -29,7 +30,8 @@ export interface QueryResultDataBlockContent {
 export interface QueryResultDataBlockUIProps {
   rowCount: number;
   rows: Array<Record<string, unknown>>;
-  spec: Record<string, unknown>;
+  /** Vega-Lite spec when rendering a chart; omit for tabular output. */
+  spec?: Record<string, unknown>;
   loading: boolean;
   error: string | null;
 }
@@ -67,10 +69,22 @@ export const QueryResultDataBlockUI: React.FC<
     );
   }
 
-  // Substitute the rows directly into the spec under
-  // `datasets.primary` — same shape Vega-Lite consumes when a named
-  // dataset is declared via `data: { name: "primary" }`. Renders via
-  // the existing core ContentBlockRenderer's vega-lite branch.
+  // Tabular path (sql_query handle): no Vega spec; render the rows
+  // through the core data-table block so the user gets the same look
+  // as inline results.
+  if (!spec) {
+    const columns =
+      rows.length > 0 ? Object.keys(rows[0] as Record<string, unknown>) : [];
+    const block: PortalMessageBlock = {
+      type: "data-table",
+      content: { columns, rows },
+    };
+    return <ContentBlockRenderer block={block} />;
+  }
+
+  // Chart path (visualize handle): substitute the rows directly into
+  // the spec under `datasets.primary` — same shape Vega-Lite consumes
+  // when a named dataset is declared via `data: { name: "primary" }`.
   const specWithData = {
     ...spec,
     datasets: { ...(spec.datasets as object | undefined), primary: rows },

@@ -43,12 +43,15 @@ export class SqlQueryTool extends Tool<typeof InputSchema> {
 
         // Handle path: stage the rows in Redis + return the envelope.
         // The actual data never threads through the agent's context.
+        // Tag with `type: "data-table"` so portal.service.ts routes to
+        // the streaming-table block (the same envelope shape `visualize`
+        // uses, minus the vega-lite spec).
         const { envelope } = await PortalSqlHandleService.produce({
           stationId,
           organizationId,
           sql,
         });
-        return envelope;
+        return { type: "data-table", ...envelope };
       },
     });
   }
