@@ -14,7 +14,7 @@ export class SqlQueryTool extends Tool<typeof InputSchema> {
   slug = "sql_query";
   name = "SQL Query Tool";
   description =
-    "Executes a SQL query and returns the results. Small results (≤ 100 rows) come back inline; larger results return a query-handle envelope { queryHandle, rowCount, schema, samplePeek }. The actual rows for large results stream to the UI directly via the handle — never enter the agent's context. Use aggregations (COUNT, AVG, GROUP BY) when you want a summary; use the envelope's rowCount + samplePeek to reason about large result sets.";
+    "Executes a SQL query and returns the results to the user. Result-set size is handled automatically: small results come back inline, larger results return a handle envelope `{queryHandle, rowCount, schema, samplePeek}` and the full rows stream to the UI without entering your context. Either way the user sees every row. **Do not add a LIMIT clause to optimize for inline delivery** — pass the user's query through unbounded. `samplePeek` is a small slice for your own follow-up reasoning, NOT a 'sample for the user'. Use aggregations (COUNT, AVG, GROUP BY) only when the user explicitly asked a summary question.";
 
   get schema() {
     return InputSchema;

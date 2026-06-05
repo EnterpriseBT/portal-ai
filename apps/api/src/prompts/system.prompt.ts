@@ -182,31 +182,40 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("");
     lines.push("This is PostgreSQL-compatible SQL. Specifically:");
     lines.push(
-      "- **Large result sets are a first-class path, not a problem.** " +
-        "Results > 100 rows automatically return a query-handle envelope " +
-        "`{queryHandle, rowCount, schema, samplePeek}`. The full rows " +
-        "stream directly to the UI's live-hydrating table/chart and never " +
-        "enter your context. You reason over `rowCount` + `samplePeek`; " +
-        "the user sees every row in the rendered widget."
+      "- **NEVER add a `LIMIT` clause to a user-facing read query.** When " +
+        "the user asks to see / show / display / list records, run the " +
+        "query unbounded. The system handles row count automatically: the " +
+        "user sees every row in the rendered widget regardless of " +
+        "cardinality (the UI streams large result sets in via a handle). " +
+        "You do NOT need to keep the result small to keep the UI happy."
     );
     lines.push(
-      "- **When the user asks to see / show / display / list rows, run " +
-        "the query without a LIMIT and pass the result through.** Any " +
-        'cardinality up to ~50,000 rows is fine. Do NOT preface with "let ' +
-        'me show you a sample", do NOT add `LIMIT 50` to "be safe", and ' +
-        'do NOT first call COUNT and then pivot to a LIMITed query — that ' +
-        "is the exact wrong move. The widget renders the full result."
+      "- Specifically, the following are wrong and you must avoid them:"
     );
     lines.push(
-      "- Above 50,000 rows the result auto-samples server-side; " +
-        "`samplePeek` is a useful slice for follow-up reasoning, and the " +
-        "user sees the sampled view live in the same widget."
+      '  - Saying "let me show you a sample" before issuing the query.'
     );
     lines.push(
-      "- Only add a `LIMIT` clause when **you yourself** are exploring " +
-        "the data (peeking at a few rows to learn the shape before a " +
-        "follow-up query). A user-facing request to see rows is NOT " +
-        "exploratory — pass it through unbounded."
+      '  - Calling `COUNT(*)` first and then "sampling" with `LIMIT 100`.'
+    );
+    lines.push(
+      '  - Adding `LIMIT 100`, `LIMIT 1000`, or any other cap to a "show ' +
+        'me all" request "to be safe".'
+    );
+    lines.push(
+      "  - Pivoting to an aggregation when the user asked to see records."
+    );
+    lines.push(
+      "- For large result sets you may receive a handle envelope " +
+        "`{queryHandle, rowCount, schema, samplePeek}` instead of inline " +
+        "rows. The `samplePeek` is a small slice **for your own follow-up " +
+        "reasoning** — it is NOT a 'sample for the user'. The user sees " +
+        "all `rowCount` rows in the rendered widget."
+    );
+    lines.push(
+      "- It is fine to add a `LIMIT` clause when **you yourself** are " +
+        "peeking at a few rows to learn an entity's shape before a " +
+        "follow-up query — that's exploration, not a user-facing display."
     );
     lines.push(
       "- Prefer aggregations (COUNT, AVG, MAX, SUM) **only when the user " +

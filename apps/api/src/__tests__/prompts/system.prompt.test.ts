@@ -332,8 +332,9 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
     expect(prompt).toMatch(/COUNT|AVG|MAX|SUM/);
     expect(prompt).toContain("queryHandle");
     expect(prompt).toContain("samplePeek");
+    expect(prompt).toMatch(/NEVER add a `LIMIT` clause to a user-facing/);
     expect(prompt).toMatch(/see \/ show \/ display \/ list/);
-    expect(prompt).toMatch(/without a LIMIT/);
+    expect(prompt).toMatch(/let me show you a sample/);
     expect(prompt).toMatch(/double quotes/i);
   });
 

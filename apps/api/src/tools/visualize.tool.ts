@@ -45,7 +45,7 @@ export class VisualizeTool extends Tool<typeof InputSchema> {
   slug = "visualize";
   name = "Visualize";
   description =
-    "Run a SQL query and inject the results into a Vega-Lite specification for charting.";
+    "Run a SQL query and inject the results into a Vega-Lite specification for charting. Result-set size is handled automatically — small results bake into the spec inline, larger results stream via a handle to the chart widget. Do not add a LIMIT clause to keep results small; pass the user's intended query through.";
 
   get schema() {
     return InputSchema;
