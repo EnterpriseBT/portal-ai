@@ -172,8 +172,11 @@ export function buildSystemPrompt(stationContext: StationContext): string {
 
   // SQL guidance — applies whenever the LLM can reach `sql_query` /
   // `visualize` / `visualize_tree`. The new session-view surface is
-  // PostgreSQL-compatible, has a 500-row response cap, and uses
-  // double-quoted identifiers (not AlaSQL's `[…]`).
+  // PostgreSQL-compatible and uses double-quoted identifiers (not
+  // AlaSQL's `[…]`). Large result sets return a queryHandle envelope
+  // that streams to the UI without entering the agent's context — the
+  // bullets below teach the agent to lean into that path instead of
+  // refusing on row count.
   if (stationContext.toolPacks.includes("data_query")) {
     lines.push("## SQL Guidance");
     lines.push("");
@@ -185,12 +188,28 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       '- Avoid `SELECT *` on entity tables — project only the columns you need.'
     );
     lines.push(
-      "- Prefer aggregations (COUNT, AVG, MAX, SUM) over scanning rows when the " +
-        "user is asking summary questions."
+      "- Prefer aggregations (COUNT, AVG, MAX, SUM) when the user is " +
+        "asking summary questions — not when they want to see records."
     );
     lines.push(
-      "- Responses cap at 500 rows. If you see `truncated: true` in the response, " +
-        "narrow your filter or aggregate instead of paging."
+      "- Results ≤ 100 rows come back inline. Larger results " +
+        "automatically return a query-handle envelope " +
+        "`{queryHandle, rowCount, schema, samplePeek}` — the full rows " +
+        "stream directly to the UI's live-hydrating table/chart and " +
+        "never enter your context."
+    );
+    lines.push(
+      "- When the user asks to **see / show / display all** rows " +
+        "(any cardinality up to ~50k), call `sql_query` or `visualize` " +
+        "and return the envelope. Do NOT refuse, narrow, or pivot to " +
+        "aggregations unless the user asked for a summary. Reason over " +
+        "`rowCount` + `samplePeek` for follow-ups; the user already " +
+        "sees every row in the rendered widget."
+    );
+    lines.push(
+      "- Above 50,000 rows the result auto-samples — `samplePeek` is " +
+        "still a useful slice for follow-up reasoning, and the user " +
+        "sees the sampled view live."
     );
     lines.push(
       '- Quote identifiers with double quotes (`"name"`), not brackets.'
