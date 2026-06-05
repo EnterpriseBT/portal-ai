@@ -215,6 +215,65 @@ export class ToolService {
   /** Re-exported for any caller still going via the class. */
   static readonly PACK_TOOL_NAMES = BUILTIN_TOOL_NAMES;
 
+  /**
+   * Look up a tool's bulkDispatch metadata by name (#85 Phase 4).
+   * Returns the metadata + a closed-over executor when:
+   *   - the tool exists in the station's analytics tools, AND
+   *   - its toolpack descriptor declares `bulkDispatch` metadata.
+   * Returns null otherwise; the bulk-transform processor surfaces a
+   * typed error to the caller in that case.
+   *
+   * Today only built-in tools are looked up; custom toolpacks (#65)
+   * gain the same surface once their bulkDispatch flow is wired in
+   * a follow-up.
+   */
+  static async lookupBulkDispatchable(
+    toolName: string,
+    organizationId: string,
+    stationId: string,
+    userId: string
+  ): Promise<{
+    executor: (input: Record<string, unknown>) => Promise<unknown>;
+    metadata: import("@portalai/core/registries").BulkDispatchMetadata;
+  } | null> {
+    // Find the toolpack tool descriptor with bulkDispatch.
+    const { BUILTIN_TOOLPACKS } = await import(
+      "@portalai/core/registries"
+    );
+    let descriptor:
+      | import("@portalai/core/registries").ToolpackTool
+      | null = null;
+    for (const pack of BUILTIN_TOOLPACKS) {
+      const found = pack.tools.find((t) => t.name === toolName);
+      if (found) {
+        descriptor = found;
+        break;
+      }
+    }
+    if (!descriptor || !descriptor.bulkDispatch) return null;
+
+    // Build the station's analytics tools and pluck the matching one.
+    const tools = await ToolService.buildAnalyticsTools(
+      organizationId,
+      stationId,
+      userId
+    );
+    const aiTool = tools[toolName];
+    if (!aiTool) return null;
+
+    const executor = async (input: Record<string, unknown>) => {
+      // The Vercel AI SDK's `tool()` returns a record with `execute`.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return await (aiTool as any).execute(input, {
+        toolCallId: `bulk-dispatch-${Date.now()}`,
+        messages: [],
+        abortSignal: new AbortController().signal,
+      });
+    };
+
+    return { executor, metadata: descriptor.bulkDispatch };
+  }
+
   // -----------------------------------------------------------------------
   // Public API
   // -----------------------------------------------------------------------

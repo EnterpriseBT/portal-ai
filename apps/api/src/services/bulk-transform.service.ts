@@ -36,6 +36,21 @@ function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
+export interface FetchSourceBatchOptions {
+  sourceConnectorEntityId: string;
+  organizationId: string;
+  keyField: string;
+  batchSize: number;
+  offset: number;
+}
+
+export interface UpsertSuccessesOptions {
+  targetConnectorEntityId: string;
+  organizationId: string;
+  jobId: string;
+  successes: Array<{ sourceKey: string; value: Record<string, unknown> }>;
+}
+
 export class BulkTransformService {
   /**
    * Pre-flight: run an EXPLAIN against the SELECT that the processor
@@ -145,5 +160,98 @@ export class BulkTransformService {
       ? (result as unknown as Array<Record<string, unknown>>)
       : [];
     return { rowsCommitted: rows.length, rows };
+  }
+
+  /**
+   * Read a paged window of source rows (#85 Phase 4). The
+   * tool-dispatch processor calls this per batch to seed the
+   * dispatcher's input; for each row, the dispatcher passes the row
+   * + the keyField value to the tool's execute.
+   */
+  static async fetchSourceBatch(
+    opts: FetchSourceBatchOptions
+  ): Promise<Array<Record<string, unknown>>> {
+    const sourceTable = quoteIdent(
+      wideTableRepo.tableName(opts.sourceConnectorEntityId)
+    );
+    const orgLit = `'${opts.organizationId.replace(/'/g, "''")}'`;
+    const result = await db.execute(
+      sql.raw(
+        `SELECT * FROM ${sourceTable} ` +
+          `WHERE "organization_id" = ${orgLit} ` +
+          `ORDER BY "entity_record_id" ` +
+          `LIMIT ${opts.batchSize} OFFSET ${opts.offset}`
+      )
+    );
+    return Array.isArray(result)
+      ? (result as unknown as Array<Record<string, unknown>>)
+      : [];
+  }
+
+  /**
+   * UPSERT dispatcher successes into the target wide table (#85
+   * Phase 4). Each success contributes one target row keyed by
+   * `source_id`. The success's `value` provides the per-row c_*
+   * column payload.
+   *
+   * This SQL — like `runBatch` — is a Phase 4 scaffold; the smoke
+   * test in slice 4 exercises it against a real wide table.
+   */
+  static async upsertSuccesses(
+    opts: UpsertSuccessesOptions
+  ): Promise<number> {
+    if (opts.successes.length === 0) return 0;
+    const targetTable = quoteIdent(
+      wideTableRepo.tableName(opts.targetConnectorEntityId)
+    );
+    const orgLit = `'${opts.organizationId.replace(/'/g, "''")}'`;
+    const now = Date.now();
+
+    // Collect the union of value-keys across the batch — that's the
+    // c_* column set we write. Tools that return varying shapes get
+    // NULLs for missing columns (documented in spec § Risks).
+    const colSet = new Set<string>();
+    for (const s of opts.successes) {
+      for (const k of Object.keys(s.value)) colSet.add(k);
+    }
+    const cols = Array.from(colSet);
+
+    const colList = [
+      `"entity_record_id"`,
+      `"organization_id"`,
+      `"synced_at"`,
+      `"is_valid"`,
+      `"source_id"`,
+      ...cols.map((c) => quoteIdent(c)),
+    ].join(", ");
+
+    const valueLiteral = (v: unknown): string => {
+      if (v === null || v === undefined) return "NULL";
+      if (typeof v === "number" || typeof v === "boolean") return String(v);
+      return `'${String(v).replace(/'/g, "''")}'`;
+    };
+
+    const valuesSql = opts.successes
+      .map(
+        (s) =>
+          `(gen_random_uuid(), ${orgLit}, ${now}, true, ` +
+          `${valueLiteral(s.sourceKey)}, ${cols
+            .map((c) => valueLiteral(s.value[c]))
+            .join(", ")})`
+      )
+      .join(", ");
+
+    const setClause = cols
+      .map((c) => `${quoteIdent(c)} = EXCLUDED.${quoteIdent(c)}`)
+      .concat([`"synced_at" = EXCLUDED."synced_at"`])
+      .join(", ");
+
+    const sqlText =
+      `INSERT INTO ${targetTable} (${colList}) ` +
+      `VALUES ${valuesSql} ` +
+      `ON CONFLICT ("source_id") DO UPDATE SET ${setClause}`;
+
+    await db.execute(sql.raw(sqlText));
+    return opts.successes.length;
   }
 }

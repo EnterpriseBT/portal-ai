@@ -25,9 +25,20 @@ jest.unstable_mockModule(
     BulkTransformService: {
       countSourceRows: mockCountSourceRows,
       runBatch: mockRunBatch,
+      // Phase 4 additions — these mocks aren't exercised by the
+      // SQL-path tests in this file, but the imports resolve through
+      // them at module load.
+      fetchSourceBatch: jest.fn().mockResolvedValue([]),
+      upsertSuccesses: jest.fn().mockResolvedValue(0),
     },
   })
 );
+
+jest.unstable_mockModule("../../../services/tools.service.js", () => ({
+  ToolService: {
+    lookupBulkDispatchable: jest.fn().mockResolvedValue(null),
+  },
+}));
 
 const mockPublishCustomEvent =
   jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
@@ -201,7 +212,8 @@ describe("bulkTransformProcessor — SQL path (Phase 2 slice 0)", () => {
     expect(result.recordsProcessed).toBe(2_000);
   });
 
-  it("throws BULK_DISPATCH_TOOL_NOT_FOUND for an expression.kind === 'tool' payload", async () => {
+  it("throws BULK_DISPATCH_TOOL_NOT_FOUND when the tool isn't bulk-dispatchable", async () => {
+    // ToolService.lookupBulkDispatchable mock returns null by default.
     const job = makeJob({
       expression: {
         kind: "tool",

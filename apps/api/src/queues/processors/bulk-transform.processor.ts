@@ -3,8 +3,11 @@ import { ApiCode } from "../../constants/api-codes.constants.js";
 import { ApiError } from "../../services/http.service.js";
 import { BulkTransformService } from "../../services/bulk-transform.service.js";
 import { JobEventsService } from "../../services/job-events.service.js";
+import { ToolService } from "../../services/tools.service.js";
 import { createLogger } from "../../utils/logger.util.js";
 import { BATCH_ROW_PAYLOAD_LIMIT } from "@portalai/core/constants";
+import { dispatchBatch } from "./bulk-transform-tool.dispatcher.js";
+import type { BulkTransformResult } from "@portalai/core/models";
 
 const logger = createLogger({ module: "bulk-transform-processor" });
 
@@ -55,14 +58,16 @@ export const bulkTransformProcessor: TypedJobProcessor<
   );
 
   if (expression.kind === "tool") {
-    // Phase 4 handles this branch. Fail fast with a typed error so the
-    // tool's pre-flight (which also rejects this in Phase 2) is the
-    // only path agents can use before Phase 4 lands.
-    throw new ApiError(
-      400,
-      ApiCode.BULK_DISPATCH_TOOL_NOT_FOUND,
-      "Tool-kind dispatch is not yet implemented (Phase 4)."
-    );
+    return await runToolDispatchLoop(bullJob, {
+      jobId,
+      sourceConnectorEntityId,
+      targetConnectorEntityId,
+      organizationId,
+      toolRef: expression.ref,
+      toolArgs: expression.args,
+      keyField,
+      batchSize,
+    });
   }
 
   const startedAt = Date.now();
@@ -144,3 +149,145 @@ export const bulkTransformProcessor: TypedJobProcessor<
     durationMs: Date.now() - startedAt,
   };
 };
+
+/**
+ * Tool-dispatch processor loop (#85 Phase 4).
+ *
+ * Branched from the main processor when `expression.kind === "tool"`.
+ * Per batch: read source rows → dispatch tool calls → UPSERT successes
+ * → accumulate failures. Emits per-batch SSE events with the
+ * dispatcher's `successes[]` rows when payload fits the cap. Returns
+ * a BulkTransformResult with the accumulated `partialFailures`.
+ *
+ * `userId` defaults to `"SYSTEM"` here — the calling job stores its
+ * actor on the job row; for processor-side tool lookups we only need
+ * "a user the station authorizes," and the bulk job's actor is the
+ * canonical choice. (Future: thread the job's createdBy through.)
+ */
+async function runToolDispatchLoop(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  bullJob: any,
+  opts: {
+    jobId: string;
+    sourceConnectorEntityId: string;
+    targetConnectorEntityId: string;
+    organizationId: string;
+    toolRef: string;
+    toolArgs?: Record<string, unknown>;
+    keyField: string;
+    batchSize: number;
+  }
+): Promise<BulkTransformResult> {
+  const startedAt = Date.now();
+  const stationId = (bullJob.data as { stationId?: string }).stationId ?? "";
+  const userId = (bullJob.data as { userId?: string }).userId ?? "SYSTEM";
+
+  const lookup = await ToolService.lookupBulkDispatchable(
+    opts.toolRef,
+    opts.organizationId,
+    stationId,
+    userId
+  );
+  if (!lookup) {
+    throw new ApiError(
+      400,
+      ApiCode.BULK_DISPATCH_TOOL_NOT_FOUND,
+      `Tool '${opts.toolRef}' is not bulk-dispatchable on this station`
+    );
+  }
+
+  const totalRecords = await BulkTransformService.countSourceRows(
+    opts.sourceConnectorEntityId,
+    opts.organizationId
+  );
+  if (totalRecords === 0) {
+    return {
+      recordsProcessed: 0,
+      recordsFailed: 0,
+      durationMs: Date.now() - startedAt,
+    };
+  }
+
+  let recordsProcessed = 0;
+  let offset = 0;
+  const partialFailures: BulkTransformResult["partialFailures"] = [];
+  const maxIterations = Math.ceil(totalRecords / opts.batchSize) + 1;
+  let iter = 0;
+
+  while (recordsProcessed < totalRecords && iter < maxIterations) {
+    iter += 1;
+    const state = await bullJob.getState();
+    if (state === "failed") {
+      logger.info(
+        { jobId: opts.jobId, recordsProcessed, totalRecords },
+        "bulk_transform (tool) cancel detected; exiting loop"
+      );
+      break;
+    }
+
+    const sourceBatch = await BulkTransformService.fetchSourceBatch({
+      sourceConnectorEntityId: opts.sourceConnectorEntityId,
+      organizationId: opts.organizationId,
+      keyField: opts.keyField,
+      batchSize: opts.batchSize,
+      offset,
+    });
+    if (sourceBatch.length === 0) break;
+
+    const dispatched = await dispatchBatch({
+      toolMetadata: lookup.metadata,
+      staticArgs: opts.toolArgs,
+      keyField: opts.keyField,
+      batch: sourceBatch,
+      toolExecutor: lookup.executor,
+    });
+
+    await BulkTransformService.upsertSuccesses({
+      targetConnectorEntityId: opts.targetConnectorEntityId,
+      organizationId: opts.organizationId,
+      jobId: opts.jobId,
+      successes: dispatched.successes,
+    });
+
+    recordsProcessed += dispatched.successes.length + dispatched.failures.length;
+    offset += opts.batchSize;
+
+    for (const f of dispatched.failures) {
+      partialFailures.push({
+        sourceKey: f.sourceKey,
+        error: {
+          success: false,
+          code: f.error.code,
+          message: f.error.message,
+          ...(f.error.recommendation
+            ? { recommendation: f.error.recommendation }
+            : {}),
+        },
+      });
+    }
+
+    const serializedRows = JSON.stringify(
+      dispatched.successes.map((s) => s.value)
+    );
+    const includeRows =
+      serializedRows.length <= BATCH_ROW_PAYLOAD_LIMIT &&
+      dispatched.successes.length > 0;
+
+    await JobEventsService.publishCustomEvent(opts.jobId, "batch", {
+      recordsProcessed,
+      totalRecords,
+      batchDurationMs: dispatched.batchDurationMs,
+      failureCount: dispatched.failures.length,
+      ...(includeRows ? { rows: dispatched.successes.map((s) => s.value) } : {}),
+    });
+
+    if (sourceBatch.length < opts.batchSize) break;
+  }
+
+  return {
+    recordsProcessed,
+    recordsFailed: partialFailures.length,
+    durationMs: Date.now() - startedAt,
+    ...(partialFailures.length > 0 ? { partialFailures } : {}),
+  };
+}
