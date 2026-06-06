@@ -44,11 +44,19 @@ const ExpressionSchema = z.discriminatedUnion("kind", [
 const InputSchema = z.object({
   sourceConnectorEntityId: z
     .string()
-    .describe("Connector entity to scan; read-only during the job."),
+    .describe(
+      "Connector entity to scan; read-only during the job. Use the " +
+        "`connectorEntityId` listed next to the entity in `## Available " +
+        "Data`, or query `SELECT id FROM _meta_entities WHERE key = '<entity_key>'`. " +
+        "Do NOT ask the user — the value is in your context."
+    ),
   targetConnectorEntityId: z
     .string()
     .describe(
-      "Connector entity to write into; locked while the job is non-terminal."
+      "Connector entity to write into; locked while the job is non-terminal. " +
+        "Use the `connectorEntityId` listed next to the entity in " +
+        "`## Available Data`, or query `SELECT id FROM _meta_entities WHERE key = " +
+        "'<entity_key>'`. Do NOT ask the user — the value is in your context."
     ),
   expression: ExpressionSchema,
   keyField: z
