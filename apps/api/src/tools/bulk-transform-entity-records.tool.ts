@@ -297,6 +297,7 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
               sourceFilter: parsed.sourceFilter,
               organizationId,
               portalId,
+              userId,
             },
           });
 

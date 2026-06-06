@@ -31,6 +31,8 @@ export interface BulkTransformBatchOptions {
   batchSize: number;
   offset: number;
   jobId: string;
+  /** User id stamped into the created entity_records audit columns. */
+  userId: string;
 }
 
 function quoteIdent(name: string): string {
@@ -140,7 +142,10 @@ export class BulkTransformService {
     const valueList = projections.map((p) => p.value).join(", ");
 
     // SET clause for the upsert: every derived column refreshes on
-    // conflict; synced_at always advances.
+    // conflict; synced_at always advances. The wide-table conflict
+    // target is `entity_record_id` (the PK) because the entity_records
+    // CTE returns the existing record id on its own conflict, so the
+    // wide-table INSERT references an already-present PK on re-runs.
     const setClause = projections
       .map(
         (p) =>
@@ -149,21 +154,63 @@ export class BulkTransformService {
       .concat([`"synced_at" = EXCLUDED."synced_at"`])
       .join(", ");
 
+    const targetEntityIdLit = `'${opts.targetConnectorEntityId.replace(/'/g, "''")}'`;
+    const userIdLit = `'${opts.userId.replace(/'/g, "''")}'`;
+
+    // The wide table's `entity_record_id` is a FK to entity_records.id,
+    // so we can't just gen_random_uuid() for it — entity_records must
+    // exist first. Do both in a single CTE-chained statement so the
+    // batch is atomic:
+    //   1. Read the batch window of source rows.
+    //   2. Upsert one entity_records row per source row (keyed by
+    //      (connector_entity_id, source_id) per the partial unique
+    //      index that ignores soft-deleted rows). RETURNING the
+    //      resulting id+source_id, whether inserted or updated.
+    //   3. Upsert the wide-table row referencing the entity_record_id
+    //      from step 2 + the derived columns from the source batch.
     const insertSql =
+      `WITH batch AS (` +
+      `  SELECT * FROM ${sourceTable} ` +
+      `  WHERE "organization_id" = ${orgLit} ` +
+      `  ORDER BY "entity_record_id" ` +
+      `  LIMIT ${opts.batchSize} OFFSET ${opts.offset}` +
+      `), ` +
+      `upserted_records AS (` +
+      `  INSERT INTO "entity_records" (` +
+      `    "id", "organization_id", "connector_entity_id", "data", "source_id", ` +
+      `    "checksum", "synced_at", "origin", "is_valid", "created", "created_by"` +
+      `  ) ` +
+      `  SELECT ` +
+      `    gen_random_uuid(), ` +
+      `    ${orgLit}, ` +
+      `    ${targetEntityIdLit}, ` +
+      `    '{}'::jsonb, ` +
+      `    ${keyCol}::text, ` +
+      `    md5(${keyCol}::text || '|' || ${now}::text), ` +
+      `    ${now}, ` +
+      `    'portal'::entity_record_origin, ` +
+      `    true, ` +
+      `    ${now}, ` +
+      `    ${userIdLit} ` +
+      `  FROM batch ` +
+      `  ON CONFLICT ("connector_entity_id", "source_id") WHERE "deleted" IS NULL DO UPDATE SET ` +
+      `    "synced_at" = EXCLUDED."synced_at", ` +
+      `    "updated" = EXCLUDED."created", ` +
+      `    "updated_by" = EXCLUDED."created_by" ` +
+      `  RETURNING "id", "source_id"` +
+      `) ` +
       `INSERT INTO ${targetTable} ` +
       `("entity_record_id", "organization_id", "synced_at", "is_valid", "source_id", ${aliasList}) ` +
       `SELECT ` +
-      `  gen_random_uuid(), ` +
+      `  ur."id", ` +
       `  ${orgLit}, ` +
       `  ${now}, ` +
       `  true, ` +
-      `  ${keyCol}::text, ` +
+      `  ur."source_id", ` +
       `  ${valueList} ` +
-      `FROM ${sourceTable} ` +
-      `WHERE "organization_id" = ${orgLit} ` +
-      `ORDER BY "entity_record_id" ` +
-      `LIMIT ${opts.batchSize} OFFSET ${opts.offset} ` +
-      `ON CONFLICT ("source_id") DO UPDATE SET ${setClause} ` +
+      `FROM upserted_records ur ` +
+      `JOIN batch b ON b.${keyCol}::text = ur."source_id" ` +
+      `ON CONFLICT ("entity_record_id") DO UPDATE SET ${setClause} ` +
       `RETURNING *`;
 
     const result = await db.execute(sql.raw(insertSql));

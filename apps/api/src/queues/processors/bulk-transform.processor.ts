@@ -46,6 +46,11 @@ export const bulkTransformProcessor: TypedJobProcessor<
   const organizationId = (
     bullJob.data as unknown as { organizationId: string }
   ).organizationId;
+  // Stamped into the entity_records audit columns on each batch insert.
+  // Defaults to "SYSTEM" for back-compat with jobs enqueued before the
+  // tool started forwarding userId in metadata.
+  const userId =
+    (bullJob.data as unknown as { userId?: string }).userId ?? "SYSTEM";
 
   logger.info(
     {
@@ -121,6 +126,7 @@ export const bulkTransformProcessor: TypedJobProcessor<
       batchSize,
       offset,
       jobId,
+      userId,
     });
     const batchDurationMs = Date.now() - batchStart;
 
