@@ -23,7 +23,15 @@ const ExpressionSchema = z.discriminatedUnion("kind", [
     value: z
       .string()
       .describe(
-        "SQL projection expression. Aliases on the SELECT list must match target wide-column names (c_<normalized_key>)."
+        "SQL projection expression containing ONLY the derived columns " +
+          "you want to write into the target. Every segment MUST use " +
+          "`<expr> AS c_<column_name>` syntax — bare column references " +
+          "are rejected. Do NOT include the key field here (it's passed " +
+          "separately via `keyField` and written to the target's " +
+          "`source_id` automatically). " +
+          'Example: `("c_diameter_km_min" + "c_diameter_km_max") / 2.0 ' +
+          "AS c_diameter_avg_km`. Multi-column example: " +
+          '`UPPER("c_name") AS c_name_upper, "c_a" + "c_b" AS c_sum`.'
       ),
   }),
   z.object({
@@ -46,7 +54,10 @@ const InputSchema = z.object({
   keyField: z
     .string()
     .describe(
-      "Wide-column name on the source used as the upsert key on the target."
+      "Wide-column name on the source row used as the upsert key on the " +
+        "target's `source_id` column. The key value is read from the source " +
+        "and written to the target automatically — do NOT also include this " +
+        "column in `expression.value`. Example: `c_id`, `c_parcel_id`."
     ),
   batchSize: z
     .number()

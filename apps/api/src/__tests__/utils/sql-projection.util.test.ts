@@ -62,8 +62,9 @@ describe("parseProjections", () => {
     ]);
   });
 
-  it("throws when a segment has no AS alias", () => {
+  it("throws with actionable guidance when a segment has no AS alias", () => {
     expect(() => parseProjections('"c_a"')).toThrow(/missing an AS alias/);
+    expect(() => parseProjections('"c_a"')).toThrow(/keyField/);
   });
 
   it("throws when alias is empty", () => {

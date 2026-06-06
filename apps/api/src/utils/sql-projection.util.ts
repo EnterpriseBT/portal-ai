@@ -36,10 +36,14 @@ export function parseProjections(input: string): Projection[] {
 }
 
 function parseOneProjection(segment: string): Projection {
+  const trimmed = segment.trim();
   const asIdx = findLastTopLevelAs(segment);
   if (asIdx === -1) {
     throw new Error(
-      `bulk_transform expression segment is missing an AS alias: ${segment.trim()}`
+      `bulk_transform expression segment "${trimmed}" is missing an AS alias. ` +
+        `Every segment must be \`<expr> AS c_<column_name>\`. If this is the ` +
+        `upsert key, pass it via \`keyField\` instead and remove it from ` +
+        `\`expression.value\` — the key is written to source_id automatically.`
     );
   }
   const value = segment.slice(0, asIdx).trim();
@@ -47,7 +51,8 @@ function parseOneProjection(segment: string): Projection {
   const alias = stripQuotes(aliasRaw);
   if (!alias) {
     throw new Error(
-      `bulk_transform expression segment has empty alias: ${segment.trim()}`
+      `bulk_transform expression segment "${trimmed}" has an empty alias. ` +
+        `Provide a target wide-column name after AS, e.g. \`<expr> AS c_my_column\`.`
     );
   }
   return { value, alias };
