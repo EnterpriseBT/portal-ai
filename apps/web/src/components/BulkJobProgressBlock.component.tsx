@@ -230,6 +230,29 @@ export const BulkJobProgressBlock: React.FC<BulkJobProgressBlockProps> = ({
       es.addEventListener("job:completed", handleTerminal("completed"));
       es.addEventListener("job:failed", handleTerminal("failed"));
       es.addEventListener("job:cancelled", handleTerminal("cancelled"));
+
+      // Recovery snapshot — server sends this on connect and, for
+      // jobs that already reached terminal, immediately closes. Without
+      // this listener the close would trip EventSource auto-reconnect
+      // (server sets retry: 0) → infinite reconnect loop on every
+      // portal reopen with a failed/completed job in history.
+      es.addEventListener("snapshot", (event) => {
+        try {
+          const payload = JSON.parse((event as MessageEvent).data) as {
+            status: JobStatus;
+          };
+          if (
+            payload.status === "completed" ||
+            payload.status === "failed" ||
+            payload.status === "cancelled"
+          ) {
+            dispatch({ kind: "terminal", status: payload.status });
+            es.close();
+          }
+        } catch {
+          // ignore malformed snapshots
+        }
+      });
     })();
 
     return () => {

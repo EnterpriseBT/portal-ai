@@ -12,8 +12,14 @@ export class SseUtil {
       Connection: "keep-alive",
       "X-Accel-Buffering": "no",
     });
-    // Disable EventSource auto-reconnect. Each reconnect would trigger a
-    // brand new AI stream request, which compounds rate-limit pressure.
+    // `retry: 0` tells EventSource to reconnect *immediately* when the
+    // server closes the stream — it does NOT disable auto-reconnect
+    // (the SSE spec has no opt-out). The intent here is that every SSE
+    // endpoint's client MUST `es.close()` once it has seen its expected
+    // terminal event (e.g. `done` for the AI stream, terminal-status
+    // `snapshot`/`job:*` for job events). When a client forgets to do
+    // that the immediate-reconnect causes a tight loop — and the
+    // server-side handler re-runs from scratch (e.g. AI stream re-fires).
     res.write("retry: 0\n\n");
     res.write(": connected\n\n");
   }
