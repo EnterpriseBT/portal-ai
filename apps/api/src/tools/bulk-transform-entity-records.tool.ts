@@ -12,6 +12,7 @@ import { JobLockService } from "../services/job-lock.service.js";
 import { BulkTransformService } from "../services/bulk-transform.service.js";
 import { JobsService } from "../services/jobs.service.js";
 import { ToolService } from "../services/tools.service.js";
+import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
 import { createLogger } from "../utils/logger.util.js";
 import { MAX_BULK_RECORDS } from "@portalai/core/constants";
 
@@ -180,6 +181,34 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
             parsed.targetConnectorEntityId,
             organizationId
           );
+
+          // Step 2a — validate keyField exists on the source's wide
+          // table. Catches the case where the agent invents a friendly
+          // name (e.g. `asteroid_id` instead of `c_id`) — the SQL
+          // would only blow up at runtime otherwise, and the job
+          // would consume the target lock + sit failed in the queue.
+          const sourceStmt = await wideTableStatementCache.get(
+            parsed.sourceConnectorEntityId
+          );
+          const sourceWideColumns = sourceStmt.columns.map(
+            (c) => c.columnName
+          );
+          if (!sourceWideColumns.includes(parsed.keyField)) {
+            throw new ApiError(
+              400,
+              ApiCode.BULK_JOB_KEY_FIELD_INVALID,
+              `keyField '${parsed.keyField}' is not a wide-column on the source entity.`,
+              {
+                recommendation:
+                  ApiCodeDefaultRecommendation[
+                    ApiCode.BULK_JOB_KEY_FIELD_INVALID
+                  ],
+                details: {
+                  availableColumns: sourceWideColumns.slice().sort(),
+                },
+              }
+            );
+          }
 
           // Step 3 — expression kind: sql + tool both supported in
           // Phase 4. Tool kind has its own pre-flight chain (lookup,

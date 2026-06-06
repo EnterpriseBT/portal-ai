@@ -444,6 +444,8 @@ export enum ApiCode {
   BULK_JOB_TARGET_LOCKED = "BULK_JOB_TARGET_LOCKED",
   /** EXPLAIN of the user expression / source filter failed against PG. 400. */
   BULK_JOB_EXPRESSION_INVALID = "BULK_JOB_EXPRESSION_INVALID",
+  /** Agent's `keyField` doesn't match any wide-column on the source. 400. */
+  BULK_JOB_KEY_FIELD_INVALID = "BULK_JOB_KEY_FIELD_INVALID",
   /** Source has more records than `MAX_BULK_RECORDS`. 400. */
   BULK_JOB_MAX_RECORDS_EXCEEDED = "BULK_JOB_MAX_RECORDS_EXCEEDED",
   /** A per-batch transaction exceeded its wall-clock budget. */
@@ -484,6 +486,8 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
     "Wait for the running bulk job to finish, or cancel it before retrying.",
   [ApiCode.BULK_JOB_EXPRESSION_INVALID]:
     "Fix the type / column mismatch in your expression and retry.",
+  [ApiCode.BULK_JOB_KEY_FIELD_INVALID]:
+    "Use a wide-column name (e.g. `c_id`) listed for the source entity in `## Available Data` or `_meta_columns`. Do not invent friendly names.",
   [ApiCode.BULK_JOB_MAX_RECORDS_EXCEEDED]:
     "Split the operation with a WHERE filter on the source.",
   [ApiCode.BULK_JOB_BATCH_TIMEOUT]:

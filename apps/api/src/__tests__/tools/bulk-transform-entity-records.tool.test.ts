@@ -77,6 +77,22 @@ jest.unstable_mockModule("../../services/tools.service.js", () => ({
   },
 }));
 
+// Wide-table statement cache — drives the keyField pre-flight (#85).
+// Default mock provides the keyField columns used by VALID_INPUT.
+const mockWideTableStatementCacheGet = jest
+  .fn<() => Promise<{ columns: { columnName: string }[] }>>()
+  .mockResolvedValue({
+    columns: [
+      { columnName: "c_parcel_id" },
+      { columnName: "c_id" },
+      { columnName: "c_diameter_km_min" },
+      { columnName: "c_diameter_km_max" },
+    ],
+  });
+jest.unstable_mockModule("../../services/wide-table-statement.cache.js", () => ({
+  wideTableStatementCache: { get: mockWideTableStatementCacheGet },
+}));
+
 const { BulkTransformEntityRecordsTool } = await import(
   "../../tools/bulk-transform-entity-records.tool.js"
 );
@@ -305,6 +321,24 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     mockCountSourceRows.mockResolvedValueOnce(10_000_000);
     const result = (await exec()) as { code: string };
     expect(result.code).toBe(ApiCode.BULK_JOB_MAX_RECORDS_EXCEEDED);
+    expect(mockJobsCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects when keyField is not a wide-column on the source", async () => {
+    mockWideTableStatementCacheGet.mockResolvedValueOnce({
+      columns: [
+        { columnName: "c_id" },
+        { columnName: "c_diameter_km_min" },
+      ],
+    });
+    const result = (await exec({
+      ...VALID_INPUT,
+      keyField: "asteroid_id",
+    })) as { code: string; details?: { availableColumns?: string[] } };
+    expect(result.code).toBe(ApiCode.BULK_JOB_KEY_FIELD_INVALID);
+    expect(result.details?.availableColumns).toEqual(
+      expect.arrayContaining(["c_id", "c_diameter_km_min"])
+    );
     expect(mockJobsCreate).not.toHaveBeenCalled();
   });
 
