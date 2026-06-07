@@ -147,20 +147,20 @@ declaration to cover §4a–d.
 
 ### §4 setup — run the mock and register it
 
-- [ ] **Start the mock**:
+- [x] **Start the mock**:
   ```bash
   cd apps/api
   MOCK_TOOLPACK_SIGNING_SECRET=whsec_<paste-after-registration> \
     npm run webhook:toolpack
   ```
   Listens on `http://localhost:4100` by default. Override with `PORT=…`. Latency per call defaults to 50 ms (`MOCK_TOOLPACK_LATENCY_MS`); flaky-mode failure cadence is `c_id % 20 === 0` (`MOCK_TOOLPACK_FLAKY_MOD`).
-- [ ] **Register the toolpack** via `POST /api/toolpacks` (or the UI) with:
+- [x] **Register the toolpack** via `POST /api/toolpacks` (or the UI) with:
   - `endpoints.schema` = `http://localhost:4100/schema`
   - `endpoints.runtime` = `http://localhost:4100/runtime`
   - `endpoints.metadata` = `http://localhost:4100/metadata`
   The registration response includes the freshly-generated `signingSecret`. Restart the mock with that value in `MOCK_TOOLPACK_SIGNING_SECRET` so its HMAC verifier accepts subsequent requests.
-- [ ] **Attach the toolpack to your station** (UI: edit station → add toolpack, picking the `org:<id>` ref).
-- [ ] **Confirm the agent sees it**: ask the agent **"list tools containing 'nasa'"**. Expected: `nasa_diameter_avg_fast`, `nasa_diameter_avg_expensive`, `nasa_diameter_avg_flaky`, `nasa_diameter_avg_no_bulk`.
+- [x] **Attach the toolpack to your station** (UI: edit station → add toolpack, picking the `org:<id>` ref).
+- [x] **Confirm the agent sees it**: ask the agent **"list tools containing 'nasa'"**. Expected: `nasa_diameter_avg_fast`, `nasa_diameter_avg_expensive`, `nasa_diameter_avg_flaky`, `nasa_diameter_avg_no_bulk`.
 
 Tools advertised by the mock:
 
