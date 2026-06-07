@@ -68,29 +68,30 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     "",
   ];
 
-  for (const entity of stationContext.entities) {
-    let heading = `### ${entity.label} (\`${entity.key}\`)`;
-    if (stationContext.toolPacks.includes("entity_management")) {
-      heading += ` [connectorEntityId: ${entity.id}]`;
+  // Lightweight roster — entity keys + labels only. The agent uses
+  // this to know WHAT exists. For any id (`connectorEntityId`,
+  // `columnDefinitionId`, `fieldMappingId`, wide-column name) or full
+  // column inventory, the agent calls the `get_station_context` tool
+  // (#97). Previously this section re-emitted every entity's full
+  // column list plus all ID markers on every turn — expensive at
+  // scale and the agent still kept inventing wrong column names.
+  if (stationContext.entities.length === 0) {
+    lines.push("_No entities attached to this station yet._");
+    lines.push("");
+  } else {
+    lines.push("Entities on this station:");
+    for (const entity of stationContext.entities) {
+      lines.push(`- \`${entity.key}\` — ${entity.label}`);
     }
-    if (stationContext.entityCapabilities) {
-      const caps = stationContext.entityCapabilities[entity.id];
-      if (caps) {
-        const flags = caps.write ? "[read, write]" : "[read]";
-        heading += ` ${flags}`;
-      }
-    }
-    lines.push(heading);
-    lines.push("Columns:");
-    const hasEntityMgmt =
-      stationContext.toolPacks.includes("entity_management");
-    for (const col of entity.columns) {
-      let line = `  - \`${col.key}\` (${col.type}): ${col.label}`;
-      if (hasEntityMgmt) {
-        line += ` [columnDefinitionId: ${col.columnDefinitionId}, fieldMappingId: ${col.fieldMappingId}, sourceField: "${col.sourceField}"]`;
-      }
-      lines.push(line);
-    }
+    lines.push("");
+    lines.push(
+      "Call `get_station_context` for full schemas (column keys, " +
+        "wide-column names, connectorEntityId, columnDefinitionId, " +
+        "fieldMappingId, capabilities). Pass `entityKeys: ['<key>']` to " +
+        "narrow the response when you only need one entity. **Always call " +
+        "this before any tool that takes an id** — do not invent names, " +
+        "do not ask the user."
+    );
     lines.push("");
   }
 
@@ -98,22 +99,10 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("## Cross-Entity Relationships");
     lines.push("");
     lines.push(
-      "Use the specified link columns when joining across member entities. " +
-        "Prefer data from the primary entity when displaying a unified view."
+      `${stationContext.entityGroups.length} entity group${stationContext.entityGroups.length === 1 ? "" : "s"} attached. ` +
+        "Call `get_station_context` to read each group's members and link columns."
     );
     lines.push("");
-
-    for (const group of stationContext.entityGroups) {
-      lines.push(`### ${group.name}`);
-      lines.push("Members:");
-      for (const member of group.members) {
-        const primaryFlag = member.isPrimary ? " [primary]" : "";
-        lines.push(
-          `  - \`${member.entityKey}\` — link column: \`${member.linkColumnKey}\` (${member.linkColumnLabel})${primaryFlag}`
-        );
-      }
-      lines.push("");
-    }
   }
 
   if (stationContext.toolPacks.includes("entity_management")) {
@@ -319,32 +308,25 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     }
   }
 
-  // ## Available Connector Instances — listed once at session start
-  // because connector-instance configuration is static for the
-  // lifetime of a portal session. The agent uses this for any tool
-  // call that takes a `connectorInstanceId` (today: connector_entity_create).
-  //
-  // Skipped when entity_management isn't enabled — no tool would
-  // accept the id, no reason to enumerate.
+  // Pointer to the on-demand id lookup (#97). The full
+  // connectorInstance list now lives in get_station_context — the
+  // static prompt only names a count + reminds the agent where to
+  // call. Skipped when entity_management isn't enabled (no tool
+  // needs a connectorInstanceId).
   if (
     stationContext.toolPacks.includes("entity_management") &&
     stationContext.connectorInstances &&
     stationContext.connectorInstances.length > 0
   ) {
-    lines.push("## Available Connector Instances");
+    lines.push("## Connector Instances");
     lines.push("");
     lines.push(
-      "Pass one of the `id` values below when a tool asks for a " +
-        "`connectorInstanceId`. These are the only valid choices for this " +
-        "station — do not invent one, do not pass an `entityId` here. The " +
-        "list is static for this session."
+      `${stationContext.connectorInstances.length} connector instance${stationContext.connectorInstances.length === 1 ? "" : "s"} ` +
+        "attached. Call `get_station_context` to read each instance's " +
+        "`id`, `name`, `display`, and `slug`. Never invent a " +
+        "`connectorInstanceId`, never ask the user — the value is in " +
+        "the tool response."
     );
-    lines.push("");
-    for (const inst of stationContext.connectorInstances) {
-      lines.push(
-        `- \`${inst.id}\` — ${inst.name} (${inst.display}, slug: ${inst.slug})`
-      );
-    }
     lines.push("");
   }
 

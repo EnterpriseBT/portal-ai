@@ -16,6 +16,7 @@ import { createLogger } from "../utils/logger.util.js";
 // Tool classes
 import { SqlQueryTool } from "../tools/sql-query.tool.js";
 import { DisplayEntityRecordsTool } from "../tools/display-entity-records.tool.js";
+import { GetStationContextTool } from "../tools/get-station-context.tool.js";
 import { VisualizeTool } from "../tools/visualize.tool.js";
 import { VisualizeTreeTool } from "../tools/visualize-tree.tool.js";
 import { ResolveIdentityTool } from "../tools/resolve-identity.tool.js";
@@ -167,6 +168,8 @@ export type ToolPackName = (typeof ALL_TOOL_PACKS)[number];
 /** All built-in tool names — used to detect webhook name conflicts. */
 export const BUILTIN_TOOL_NAMES = new Set<string>([
   "sql_query",
+  "display_entity_records",
+  "get_station_context",
   "visualize",
   "visualize_tree",
   "resolve_identity",
@@ -402,6 +405,15 @@ export class ToolService {
         stationId,
         organizationId
       );
+      // get_station_context is the canonical id-lookup tool (#97). Always
+      // register it when any data_query / entity_management work is
+      // possible — the agent calls it to resolve `connectorEntityId`,
+      // `connectorInstanceId`, `fieldMappingId`, `columnDefinitionId`,
+      // and wide-column names without inventing or asking the user.
+      tools.get_station_context = new GetStationContextTool().build(
+        stationId,
+        organizationId
+      );
       tools.visualize = new VisualizeTool().build(stationId, organizationId);
       tools.visualize_tree = new VisualizeTreeTool().build(
         stationId,
@@ -501,6 +513,16 @@ export class ToolService {
     // Pack: entity_management
     // -------------------------------------------------------------------
     if (enabledPacks.has("entity_management")) {
+      // Make sure get_station_context is registered even when
+      // data_query isn't (#97). It's the canonical id-lookup path
+      // that entity_management tools depend on.
+      if (!tools.get_station_context) {
+        tools.get_station_context = new GetStationContextTool().build(
+          stationId,
+          organizationId
+        );
+      }
+
       // Write tools — only if any attached instance has write capability
       const stationCaps = await resolveStationCapabilities(stationId);
       const hasWrite = stationCaps.some((sc) => sc.capabilities.write);

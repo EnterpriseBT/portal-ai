@@ -1046,7 +1046,7 @@ export async function loadOrganizationTimezone(
   return "UTC";
 }
 
-async function loadConnectorInstanceContexts(
+export async function loadConnectorInstanceContexts(
   stationId: string
 ): Promise<ConnectorInstanceContext[]> {
   const links = await stationInstancesRepo.findByStationId(stationId);

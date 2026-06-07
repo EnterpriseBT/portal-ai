@@ -65,79 +65,45 @@ function makeContext(overrides: Partial<StationContext> = {}): StationContext {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("buildSystemPrompt — entityCapabilities", () => {
-  it("renders [read, write] when entity has both capabilities", () => {
-    const prompt = buildSystemPrompt(
-      makeContext({
-        entityCapabilities: {
-          "entity-1": { read: true, write: true, push: false },
-          "entity-2": { read: true, write: true, push: false },
-        },
-      })
-    );
+describe("buildSystemPrompt — Available Data roster (#97)", () => {
+  it("lists each entity by key + label in a lightweight roster", () => {
+    const prompt = buildSystemPrompt(makeContext());
 
-    expect(prompt).toContain("[read, write]");
-    expect(prompt).toContain("Contacts (`contacts`)");
-    expect(prompt).toContain("Orders (`orders`)");
+    expect(prompt).toContain("Entities on this station:");
+    expect(prompt).toContain("- `contacts` — Contacts");
+    expect(prompt).toContain("- `orders` — Orders");
   });
 
-  it("renders [read] for read-only entities", () => {
+  it("points the agent at get_station_context for the full schema", () => {
+    const prompt = buildSystemPrompt(makeContext());
+
+    expect(prompt).toMatch(/Call `get_station_context`/);
+    expect(prompt).toMatch(/Always call this before any tool that takes an id/);
+  });
+
+  it("renders empty-state copy when no entities are attached", () => {
+    const prompt = buildSystemPrompt(makeContext({ entities: [] }));
+
+    expect(prompt).toContain("_No entities attached to this station yet._");
+    expect(prompt).not.toContain("Entities on this station:");
+  });
+
+  it("never embeds connectorEntityId / columnDefinitionId / fieldMappingId / capability markers (those moved to the tool)", () => {
     const prompt = buildSystemPrompt(
       makeContext({
         toolPacks: ["entity_management"],
         entityCapabilities: {
-          "entity-1": { read: true, write: false, push: false },
-          "entity-2": { read: true, write: true, push: false },
+          "entity-1": { read: true, write: true, push: false },
+          "entity-2": { read: true, write: false, push: false },
         },
       })
     );
 
-    expect(prompt).toContain(
-      "Contacts (`contacts`) [connectorEntityId: entity-1] [read]"
-    );
-    expect(prompt).toContain(
-      "Orders (`orders`) [connectorEntityId: entity-2] [read, write]"
-    );
-  });
-
-  it("omits capability flags when entityCapabilities is undefined", () => {
-    const prompt = buildSystemPrompt(makeContext());
-
-    expect(prompt).toContain("### Contacts (`contacts`)");
-    expect(prompt).not.toContain("[read");
-  });
-});
-
-describe("buildSystemPrompt — entity management IDs", () => {
-  it("renders connectorEntityId in heading when entity_management is in toolPacks", () => {
-    const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] })
-    );
-
-    expect(prompt).toContain("[connectorEntityId: entity-1]");
-    expect(prompt).toContain("[connectorEntityId: entity-2]");
-  });
-
-  it("renders columnDefinitionId, fieldMappingId, sourceField per column", () => {
-    const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] })
-    );
-
-    expect(prompt).toContain(
-      '[columnDefinitionId: cd-1, fieldMappingId: fm-1, sourceField: "Full Name"]'
-    );
-    expect(prompt).toContain(
-      '[columnDefinitionId: cd-3, fieldMappingId: fm-3, sourceField: "Order Total"]'
-    );
-  });
-
-  it("omits IDs when entity_management is not in toolPacks", () => {
-    const prompt = buildSystemPrompt(makeContext());
-
-    expect(prompt).not.toContain("connectorEntityId:");
-    expect(prompt).not.toContain("columnDefinitionId:");
-    expect(prompt).not.toContain("fieldMappingId:");
-    expect(prompt).not.toContain("sourceField:");
+    expect(prompt).not.toContain("[connectorEntityId:");
+    expect(prompt).not.toContain("[columnDefinitionId:");
+    expect(prompt).not.toContain("[fieldMappingId:");
+    expect(prompt).not.toContain("[read, write]");
+    expect(prompt).not.toContain("[read]");
   });
 });
 
@@ -352,9 +318,9 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
     expect(prompt).toMatch(/FROM "contacts"/);
   });
 
-  // Case 77 — capability tag continues to render per entity. Covered above
-  // under "entityCapabilities"; restated here as the explicit phase-3 assertion.
-  it("still renders the [read, write] capability tag per entity", () => {
+  // #97 — capability tags moved out of the static prompt and into
+  // the get_station_context tool's response.
+  it("no longer embeds capability tags in the prompt (moved to get_station_context)", () => {
     const prompt = buildSystemPrompt(
       makeContext({
         toolPacks: ["data_query", "entity_management"],
@@ -364,8 +330,10 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
         },
       })
     );
-    expect(prompt).toContain("[read, write]");
-    expect(prompt).toContain("[read]");
+    expect(prompt).not.toContain("[read, write]");
+    expect(prompt).not.toContain("[read]");
+    // But the agent is still told where capabilities live.
+    expect(prompt).toMatch(/get_station_context/);
   });
 });
 
@@ -430,8 +398,8 @@ describe("buildSystemPrompt — schema introspection meta views (#87)", () => {
   });
 });
 
-describe("buildSystemPrompt — Available Connector Instances (#87 followup)", () => {
-  it("lists attached connector instances when entity_management is enabled", () => {
+describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
+  it("mentions the count of attached connector instances + points at get_station_context", () => {
     const prompt = buildSystemPrompt(
       makeContext({
         toolPacks: ["data_query", "entity_management"],
@@ -446,16 +414,15 @@ describe("buildSystemPrompt — Available Connector Instances (#87 followup)", (
         ],
       })
     );
-    expect(prompt).toContain("## Available Connector Instances");
-    expect(prompt).toContain("ci-1");
-    expect(prompt).toContain("Sandbox");
-    expect(prompt).toContain("REST API");
-    expect(prompt).toContain("rest-api");
-    expect(prompt).toContain("ci-2");
-    expect(prompt).toContain("Personal");
+    expect(prompt).toContain("## Connector Instances");
+    expect(prompt).toMatch(/2 connector instances? attached/);
+    expect(prompt).toMatch(/get_station_context/);
+    // The ids themselves are NOT in the prompt — the tool delivers them.
+    expect(prompt).not.toContain("ci-1");
+    expect(prompt).not.toContain("ci-2");
   });
 
-  it("instructs the agent to pick from the listed ids — do not invent one", () => {
+  it("instructs the agent to call the tool — never invent or ask the user", () => {
     const prompt = buildSystemPrompt(
       makeContext({
         toolPacks: ["data_query", "entity_management"],
@@ -464,7 +431,8 @@ describe("buildSystemPrompt — Available Connector Instances (#87 followup)", (
         ],
       })
     );
-    expect(prompt).toMatch(/do not invent one/i);
+    expect(prompt).toMatch(/Never invent/i);
+    expect(prompt).toMatch(/never ask the user/i);
   });
 
   it("omits the section when entity_management is NOT enabled", () => {
@@ -476,7 +444,7 @@ describe("buildSystemPrompt — Available Connector Instances (#87 followup)", (
         ],
       })
     );
-    expect(prompt).not.toContain("## Available Connector Instances");
+    expect(prompt).not.toContain("## Connector Instances");
   });
 
   it("omits the section when connectorInstances is empty", () => {
@@ -486,7 +454,7 @@ describe("buildSystemPrompt — Available Connector Instances (#87 followup)", (
         connectorInstances: [],
       })
     );
-    expect(prompt).not.toContain("## Available Connector Instances");
+    expect(prompt).not.toContain("## Connector Instances");
   });
 });
 

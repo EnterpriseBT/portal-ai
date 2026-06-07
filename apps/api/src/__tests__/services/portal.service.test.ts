@@ -980,7 +980,7 @@ describe("PortalService", () => {
       expect(capturedSystem).toContain("Cross-Entity Relationships");
     });
 
-    it("system prompt Entity Group section lists member entities and link columns", async () => {
+    it("system prompt Entity Group section names the group count + points at get_station_context (#97)", async () => {
       let capturedSystem: string | undefined;
       (mockStreamText as any).mockImplementation((opts: any) => {
         capturedSystem = opts.system;
@@ -997,15 +997,17 @@ describe("PortalService", () => {
         sse: sse as any,
       });
 
-      expect(capturedSystem).toContain("Customer Orders");
-      expect(capturedSystem).toContain("`customers`");
-      expect(capturedSystem).toContain("link column: `id`");
-      expect(capturedSystem).toContain("[primary]");
-      expect(capturedSystem).toContain("`orders`");
-      expect(capturedSystem).toContain("link column: `customer_id`");
+      expect(capturedSystem).toContain("## Cross-Entity Relationships");
+      expect(capturedSystem).toMatch(/1 entity group/);
+      expect(capturedSystem).toMatch(/get_station_context/);
+      // The full member/link detail moved out of the prompt and into
+      // the tool's response.
+      expect(capturedSystem).not.toContain("Customer Orders");
+      expect(capturedSystem).not.toContain("link column: `id`");
+      expect(capturedSystem).not.toContain("[primary]");
     });
 
-    it("system prompt includes entity schemas", async () => {
+    it("system prompt lists entities as a roster + points at get_station_context (#97)", async () => {
       let capturedSystem: string | undefined;
       (mockStreamText as any).mockImplementation((opts: any) => {
         capturedSystem = opts.system;
@@ -1023,10 +1025,11 @@ describe("PortalService", () => {
       });
 
       expect(capturedSystem).toContain("Sales Station");
-      expect(capturedSystem).toContain("Customers");
-      expect(capturedSystem).toContain("`customers`");
-      expect(capturedSystem).toContain("`revenue`");
-      expect(capturedSystem).toContain("Orders");
+      expect(capturedSystem).toContain("- `customers` — Customers");
+      expect(capturedSystem).toContain("- `orders` — Orders");
+      expect(capturedSystem).toMatch(/get_station_context/);
+      // Column detail no longer in the static prompt.
+      expect(capturedSystem).not.toContain("`revenue`");
     });
 
     it("calls buildAnalyticsTools with correct args and passes tools to streamText", async () => {
