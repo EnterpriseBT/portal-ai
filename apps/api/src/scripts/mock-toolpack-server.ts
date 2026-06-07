@@ -141,6 +141,37 @@ function logHeaders(prefix: string, headers: Record<string, unknown>): void {
   }
 }
 
+// ── Tool defaults for the NEO bulk-dispatch suite ────────────────────
+//
+// Used by the four `nasa_diameter_avg_*` tools — they all wrap the
+// same per-record midpoint derivation but vary in their bulkDispatch
+// declaration so §4a–d of docs/LARGE_DATA_OPS.smoke.md can exercise:
+//   a) happy path                — fast
+//   b) cost-acknowledgement gate — expensive
+//   c) not-bulk-dispatchable     — no_bulk (no bulkDispatch field)
+//   d) partial-failures + retry  — flaky (throws on every 20th c_id)
+
+const NEO_PER_CALL_LATENCY_MS = Number(
+  process.env.MOCK_TOOLPACK_LATENCY_MS ?? 50
+);
+const NEO_FLAKY_MOD = Number(process.env.MOCK_TOOLPACK_FLAKY_MOD ?? 20);
+
+const NEO_PARAM_SCHEMA = {
+  type: "object",
+  properties: {
+    c_id: { type: "number", description: "NEO source id (numeric)." },
+    c_diameter_km_min: { type: "number" },
+    c_diameter_km_max: { type: "number" },
+  },
+  required: ["c_id", "c_diameter_km_min", "c_diameter_km_max"],
+};
+
+const NEO_TOOL_DESC =
+  "Compute the diameter midpoint (km) for one NEO record. Returns " +
+  "`{ c_diameter_avg_km }` shaped to land in the target wide table's " +
+  "`c_diameter_avg_km` column. Designed to be dispatched per-record " +
+  "by `bulk_transform_entity_records` with `expression.kind === \"tool\"`.";
+
 const tools = [
   {
     name: "echo",
@@ -178,7 +209,64 @@ const tools = [
       required: ["min", "max"],
     },
   },
+  // ── #85 Phase 4 webhook bulkDispatch suite ──────────────────────────
+  {
+    name: "nasa_diameter_avg_fast",
+    description: NEO_TOOL_DESC,
+    parameterSchema: NEO_PARAM_SCHEMA,
+    bulkDispatch: {
+      maxConcurrency: 10,
+      timeoutMs: 5_000,
+      idempotent: true,
+      estimatedMsPerCall: NEO_PER_CALL_LATENCY_MS,
+    },
+  },
+  {
+    name: "nasa_diameter_avg_expensive",
+    description: `${NEO_TOOL_DESC} Declared as expensive — the API gates dispatch behind \`acknowledgeCost: true\`.`,
+    parameterSchema: NEO_PARAM_SCHEMA,
+    bulkDispatch: {
+      maxConcurrency: 10,
+      timeoutMs: 5_000,
+      idempotent: true,
+      estimatedMsPerCall: NEO_PER_CALL_LATENCY_MS,
+      costHint: "expensive" as const,
+    },
+  },
+  {
+    name: "nasa_diameter_avg_flaky",
+    description: `${NEO_TOOL_DESC} Throws for ~${Math.round(100 / NEO_FLAKY_MOD)}% of records (every \`c_id % ${NEO_FLAKY_MOD} === 0\`). Exercises the partialFailures + retry-failed-only flow.`,
+    parameterSchema: NEO_PARAM_SCHEMA,
+    bulkDispatch: {
+      maxConcurrency: 10,
+      timeoutMs: 5_000,
+      idempotent: true,
+      estimatedMsPerCall: NEO_PER_CALL_LATENCY_MS,
+    },
+  },
+  {
+    name: "nasa_diameter_avg_no_bulk",
+    description: `${NEO_TOOL_DESC} Same body as fast, but no \`bulkDispatch\` field — covers the §4c BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE rejection path.`,
+    parameterSchema: NEO_PARAM_SCHEMA,
+  },
 ];
+
+function neoDiameterAvg(input: Record<string, unknown>): {
+  c_diameter_avg_km: number;
+} {
+  const min = Number(input.c_diameter_km_min);
+  const max = Number(input.c_diameter_km_max);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    throw new Error(
+      "c_diameter_km_min / c_diameter_km_max must be numeric"
+    );
+  }
+  return { c_diameter_avg_km: (min + max) / 2 };
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const metadata = {
   summary:
@@ -505,6 +593,43 @@ export function createMockApp(): Application {
         }
         const value = Math.floor(Math.random() * (max - min + 1)) + min;
         res.json({ value });
+        return;
+      }
+      case "nasa_diameter_avg_fast":
+      case "nasa_diameter_avg_expensive":
+      case "nasa_diameter_avg_no_bulk": {
+        (async () => {
+          try {
+            await sleep(NEO_PER_CALL_LATENCY_MS);
+            res.json(neoDiameterAvg(input as Record<string, unknown>));
+          } catch (err) {
+            res.status(400).json({
+              error: err instanceof Error ? err.message : "bad_input",
+            });
+          }
+        })();
+        return;
+      }
+      case "nasa_diameter_avg_flaky": {
+        (async () => {
+          try {
+            await sleep(NEO_PER_CALL_LATENCY_MS);
+            const id = Number(
+              (input as Record<string, unknown>)?.c_id
+            );
+            if (Number.isFinite(id) && id % NEO_FLAKY_MOD === 0) {
+              res.status(500).json({
+                error: `Flaky failure injected for c_id=${id} (every ${NEO_FLAKY_MOD}th).`,
+              });
+              return;
+            }
+            res.json(neoDiameterAvg(input as Record<string, unknown>));
+          } catch (err) {
+            res.status(400).json({
+              error: err instanceof Error ? err.message : "bad_input",
+            });
+          }
+        })();
         return;
       }
       default:

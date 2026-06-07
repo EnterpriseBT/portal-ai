@@ -238,9 +238,11 @@ export class ToolService {
    * Returns null otherwise; the bulk-transform processor surfaces a
    * typed error to the caller in that case.
    *
-   * Today only built-in tools are looked up; custom toolpacks (#65)
-   * gain the same surface once their bulkDispatch flow is wired in
-   * a follow-up.
+   * Resolves built-in toolpacks first, then organization (webhook)
+   * toolpacks. A webhook tool can declare `bulkDispatch` on its
+   * schema-endpoint definition (see
+   * `ToolpackToolDefinitionSchema.bulkDispatch`); when present, the
+   * dispatcher uses the runtime endpoint as the executor.
    */
   static async lookupBulkDispatchable(
     toolName: string,
@@ -251,42 +253,88 @@ export class ToolService {
     executor: (input: Record<string, unknown>) => Promise<unknown>;
     metadata: import("@portalai/core/registries").BulkDispatchMetadata;
   } | null> {
-    // Find the toolpack tool descriptor with bulkDispatch.
+    // 1. Built-in toolpacks — descriptor inspection only; the
+    //    executor goes through the per-station tool registration
+    //    (handles auth + injects stationId/orgId/userId).
     const { BUILTIN_TOOLPACKS } = await import(
       "@portalai/core/registries"
     );
-    let descriptor:
+    let builtinDescriptor:
       | import("@portalai/core/registries").ToolpackTool
       | null = null;
     for (const pack of BUILTIN_TOOLPACKS) {
       const found = pack.tools.find((t) => t.name === toolName);
       if (found) {
-        descriptor = found;
+        builtinDescriptor = found;
         break;
       }
     }
-    if (!descriptor || !descriptor.bulkDispatch) return null;
 
-    // Build the station's analytics tools and pluck the matching one.
-    const tools = await ToolService.buildAnalyticsTools(
-      organizationId,
-      stationId,
-      userId
-    );
-    const aiTool = tools[toolName];
-    if (!aiTool) return null;
+    if (builtinDescriptor) {
+      if (!builtinDescriptor.bulkDispatch) return null;
+      const tools = await ToolService.buildAnalyticsTools(
+        organizationId,
+        stationId,
+        userId
+      );
+      const aiTool = tools[toolName];
+      if (!aiTool) return null;
+      const executor = async (input: Record<string, unknown>) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return await (aiTool as any).execute(input, {
+          toolCallId: `bulk-dispatch-${Date.now()}`,
+          messages: [],
+          abortSignal: new AbortController().signal,
+        });
+      };
+      return { executor, metadata: builtinDescriptor.bulkDispatch };
+    }
 
-    const executor = async (input: Record<string, unknown>) => {
-      // The Vercel AI SDK's `tool()` returns a record with `execute`.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return await (aiTool as any).execute(input, {
-        toolCallId: `bulk-dispatch-${Date.now()}`,
-        messages: [],
-        abortSignal: new AbortController().signal,
-      });
-    };
+    // 2. Organization (webhook) toolpacks — scan org packs enabled
+    //    for this station. The dispatch executor goes through the
+    //    runtime endpoint via `callWebhook` (HMAC + auth headers
+    //    handled at the seam).
+    const stationToolpacks =
+      await DbService.repository.stationToolpacks.findByStationId(stationId);
+    const orgToolpackIds = stationToolpacks
+      .map((r) => r.organizationToolpackId)
+      .filter((id): id is string => id !== null);
+    if (orgToolpackIds.length === 0) return null;
 
-    return { executor, metadata: descriptor.bulkDispatch };
+    const orgToolpacks =
+      await DbService.repository.organizationToolpacks.findManyByIds(
+        orgToolpackIds,
+        { organizationId }
+      );
+
+    for (const pack of orgToolpacks) {
+      const tool = pack.tools.find((t) => t.name === toolName);
+      if (!tool) continue;
+      if (!tool.bulkDispatch) return null;
+      // `authHeaders` is encrypted-at-rest in the DB type
+      // (`string | null`) but the repository decrypts it to a
+      // `Record<string, string> | null` on read. The Select-row
+      // type signature still claims the raw shape, so cast at the
+      // boundary.
+      const decryptedHeaders = pack.authHeaders as unknown as
+        | Record<string, string>
+        | null;
+      const implementation: WebhookImplementation = {
+        type: "webhook",
+        url: pack.endpoints.runtime,
+        headers: decryptedHeaders ?? undefined,
+        signingSecret: pack.signingSecret,
+      };
+      const executor = async (input: Record<string, unknown>) => {
+        return await ToolService.callWebhook(implementation, {
+          tool: toolName,
+          input,
+        });
+      };
+      return { executor, metadata: tool.bulkDispatch };
+    }
+
+    return null;
   }
 
   // -----------------------------------------------------------------------

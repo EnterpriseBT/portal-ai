@@ -17,6 +17,10 @@
 
 import { z } from "zod";
 
+import type { BulkDispatchMetadata } from "../models/organization-toolpack.model.js";
+
+export type { BulkDispatchMetadata };
+
 // ── Slugs ─────────────────────────────────────────────────────────────
 
 export const BuiltinToolpackSlugSchema = z.enum([
@@ -40,11 +44,10 @@ export interface ToolpackToolExample {
 }
 
 /**
- * Opt-in metadata that allows a tool to be dispatched per-record by
- * the bulk-transform processor (#85 Phase 4). When set, the tool is
- * eligible for `bulk_transform_entity_records` with
- * `expression.kind === "tool"`; the dispatcher uses these values to
- * fan out within bounded concurrency / rate / timeout.
+ * `BulkDispatchMetadata` is defined in `organization-toolpack.model.ts`
+ * so the schema + type are the single source of truth for both the
+ * built-in registry (this file) and the webhook-toolpack schema
+ * endpoint shape. Re-exported above.
  *
  * `costHint` drives the route's cost-acknowledgement gate:
  *  - "free": no gate; agent dispatches freely.
@@ -52,14 +55,6 @@ export interface ToolpackToolExample {
  *  - "expensive": route requires `acknowledgeCost: true`; agent
  *    must confirm before dispatching.
  */
-export interface BulkDispatchMetadata {
-  maxConcurrency: number;
-  timeoutMs: number;
-  ratePerSec?: number;
-  idempotent: boolean;
-  estimatedMsPerCall?: number;
-  costHint?: "free" | "metered" | "expensive";
-}
 
 export interface ToolpackTool {
   name: string;

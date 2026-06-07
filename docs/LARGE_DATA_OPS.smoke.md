@@ -35,7 +35,7 @@ visible via `_meta_columns`.
 |---|---|---|
 | **neos** | Existing entity sourced from `api.nasa.gov/neo/rest/v1`. Columns: `c_id` (number, key), `c_name`, `c_date`, `c_diameter_km_min`, `c_diameter_km_max`, `c_diameter_m_min`, `c_diameter_m_max`, `c_diameter_miles_min`, `c_diameter_miles_max`, `c_diameter_feet_min`, `c_diameter_feet_max`, `c_absolute_magnitude_h` | §1, §2, §3, §4 (source) |
 | **neo_summary** | New entity with `c_diameter_avg_km` (numeric), `c_id` as the upsert key. Created during §2a. | §2, §3, §4 (target) |
-| **bulk_dispatch_smoke_stub** | Dev-only per-record stub tool with `bulkDispatch` metadata, four modes (fast / expensive / flaky / no-bulk-dispatch). **Not yet committed** — see §4 setup. | §4 |
+| **mock toolpack** | `apps/api/src/scripts/mock-toolpack-server.ts` — local Express server advertising four `nasa_diameter_avg_*` webhook tools (fast / expensive / flaky / no-bulk-dispatch). Start via `npm run webhook:toolpack`, register via `POST /api/toolpacks`. | §4 |
 
 Log in as two dev users in separate orgs — the cross-org lock assertion in §3 needs the second.
 
@@ -137,55 +137,62 @@ and cancel mid-job if the neos entity has more than a few hundred rows.
 
 ---
 
-## §4 — Tool-dispatch path (Phase 4) — needs a stub tool
+## §4 — Tool-dispatch path (Phase 4) — webhook toolpack mock
 
 Phase 4 dispatches a **per-record tool call** rather than an SQL
-projection. To exercise it without GIS or any external API, we need a
-synthetic stub tool registered on the toolpack with
-`bulkDispatch` metadata. The stub is **not yet committed** — see the
-"Setup" subsection.
+projection. We exercise it against the in-repo mock toolpack server
+at `apps/api/src/scripts/mock-toolpack-server.ts`, which advertises
+four `nasa_diameter_avg_*` tools varying their `bulkDispatch`
+declaration to cover §4a–d.
 
-### §4 setup — register a smoke stub tool
+### §4 setup — run the mock and register it
 
-The stub is a per-record arithmetic transform with a deliberate sleep
-so the concurrency cap is observable, plus four modes that cover the
-§4 cases via input args:
+- [ ] **Start the mock**:
+  ```bash
+  cd apps/api
+  MOCK_TOOLPACK_SIGNING_SECRET=whsec_<paste-after-registration> \
+    npm run webhook:toolpack
+  ```
+  Listens on `http://localhost:4100` by default. Override with `PORT=…`. Latency per call defaults to 50 ms (`MOCK_TOOLPACK_LATENCY_MS`); flaky-mode failure cadence is `c_id % 20 === 0` (`MOCK_TOOLPACK_FLAKY_MOD`).
+- [ ] **Register the toolpack** via `POST /api/toolpacks` (or the UI) with:
+  - `endpoints.schema` = `http://localhost:4100/schema`
+  - `endpoints.runtime` = `http://localhost:4100/runtime`
+  - `endpoints.metadata` = `http://localhost:4100/metadata`
+  The registration response includes the freshly-generated `signingSecret`. Restart the mock with that value in `MOCK_TOOLPACK_SIGNING_SECRET` so its HMAC verifier accepts subsequent requests.
+- [ ] **Attach the toolpack to your station** (UI: edit station → add toolpack, picking the `org:<id>` ref).
+- [ ] **Confirm the agent sees it**: ask the agent **"list tools containing 'nasa'"**. Expected: `nasa_diameter_avg_fast`, `nasa_diameter_avg_expensive`, `nasa_diameter_avg_flaky`, `nasa_diameter_avg_no_bulk`.
 
-| Mode | Behavior |
-|---|---|
-| `"fast"` (default) | Returns `{ c_diameter_avg_km }` = midpoint of the row's `c_diameter_km_min` / `c_diameter_km_max`; ~50 ms per call. |
-| `"expensive"` | Same as fast but the tool declares `costHint: "expensive"`. |
-| `"flaky"` | Throws for ~5% of source keys (e.g. when `c_id % 20 === 0`). |
-| `"no-bulk-dispatch"` | A second tool registration without `bulkDispatch` metadata, for §4c. |
+Tools advertised by the mock:
 
-File to add: `apps/api/src/tools/bulk-dispatch-smoke-stub.tool.ts`,
-wired into the `data_query` toolpack for development environments
-only (gate on `NODE_ENV !== "production"`). Track as a separate
-commit before walking §4.
+| Name | `bulkDispatch` | Behavior |
+|---|---|---|
+| `nasa_diameter_avg_fast` | yes, default | `{c_diameter_avg_km}` from `(min+max)/2`. |
+| `nasa_diameter_avg_expensive` | yes, `costHint: "expensive"` | Same body as fast; trips the §4b cost gate. |
+| `nasa_diameter_avg_flaky` | yes | Throws for every 20th `c_id` — exercises §4d partial failures. |
+| `nasa_diameter_avg_no_bulk` | **no** | Same body but no `bulkDispatch` field → §4c reject. |
 
 ### §4a — Happy path
 
-- [ ] Bind the stub in `"fast"` mode.
-- [ ] Prompt: **"Run `bulk_dispatch_smoke_stub` against every NEO and store the result in `neo_summary.c_diameter_avg_km`."**
+- [ ] Prompt: **"Run `nasa_diameter_avg_fast` against every NEO and store the result in `neo_summary.c_diameter_avg_km`."**
 - [ ] Tool returns `BulkJobProgressBlock` with an ETA derived from `estimatedMsPerCall × expectedRecords / (maxConcurrency × 1000)` — not the generic 5 ms/record heuristic.
-- [ ] API logs show no more than `maxConcurrency` in-flight tool calls at once (default 10).
+- [ ] Mock server logs show no more than `maxConcurrency` (default 10) overlapping `/runtime` POSTs at once.
 - [ ] On completion, `neo_summary.c_diameter_avg_km` is populated for every source key; the jobs row carries `committedRows` and `batchDurationMs` in `result`.
 
 ### §4b — Cost gate
 
-- [ ] Bind the stub in `"expensive"` mode; prompt the same flow.
+- [ ] Prompt the same flow against `nasa_diameter_avg_expensive`.
 - [ ] First attempt: tool returns `BULK_DISPATCH_COST_NOT_ACKNOWLEDGED`; the agent asks the user to confirm.
 - [ ] Confirm in chat; the agent retries with `acknowledgeCost: true`; job enqueues.
 
 ### §4c — Not bulk-dispatchable
 
-- [ ] Bind the stub's `"no-bulk-dispatch"` registration; prompt the same flow.
+- [ ] Prompt the same flow against `nasa_diameter_avg_no_bulk`.
 - [ ] Tool returns `BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE` with the recommendation to add a `bulkDispatch` block; no job appears in the jobs table.
 
 ### §4d — Partial failures + retry-failed-only
 
-- [ ] Bind the stub in `"flaky"` mode; run against neos.
-- [ ] On completion, terminal envelope has a non-empty `partialFailures` array.
+- [ ] Prompt the same flow against `nasa_diameter_avg_flaky`.
+- [ ] On completion, terminal envelope has a non-empty `partialFailures` array (~5% of records by `c_id % 20`).
 - [ ] Chat renders a `BulkFailuresTableBlock` listing each failed `sourceKey` + error code + recommendation; expand a row to see details.
 - [ ] Pagination works (10 / 25 / 50 rows per page).
 - [ ] Click **"Retry failed only"**. Expected: a synthetic user message appears in the chat naming the failed keys.
