@@ -123,12 +123,12 @@ entity, writing the diameter midpoint (in kilometers) into a new
 Reuses the §2 transform — should be long enough to observe locks
 and cancel mid-job if the neos entity has more than a few hundred rows.
 
-- [ ] Re-run the §2b prompt. While the job is in flight, in a **second tab** as the same user, open the `neo_summary` connector-entity detail view. Expected: MUI `<Alert severity="info">` listing the running `bulk_transform` job with a "started X ago" timestamp; edit + delete are visibly disabled with a tooltip pointing at the running job.
-- [ ] Try to enqueue another `bulk_transform` targeting `neo_summary` from the original chat. Expected: API rejection with HTTP 409 + `ENTITY_LOCKED_BY_JOB`; the agent surfaces the lock and explains the wait.
-- [ ] Log in as a **different org's** user; open their dashboard. Expected: no visibility of the running job; their own entity flows are unaffected (org isolation).
-- [ ] In the original chat, click **Cancel** on the progress block.
-- [ ] Job status flips to `cancelled` within a batch; terminal SSE arrives; chat unlocks; lock alert on `neo_summary` dismisses without a manual refetch.
-- [ ] Rows committed before cancel remain in `neo_summary` (per spec — no rollback).
+- [x] Re-run the §2b prompt. While the job is in flight, in a **second tab** as the same user, open the `neo_summary` connector-entity detail view. Expected: MUI `<Alert severity="info">` listing the running `bulk_transform` job with a "started X ago" timestamp; edit + delete are visibly disabled with a tooltip pointing at the running job.
+- [x] Try to enqueue another `bulk_transform` targeting `neo_summary` from the original chat. Expected: API rejection with HTTP 409 + `ENTITY_LOCKED_BY_JOB`; the agent surfaces the lock and explains the wait.
+- [x] Log in as a **different org's** user; open their dashboard. Expected: no visibility of the running job; their own entity flows are unaffected (org isolation).
+- [x] In the original chat, click **Cancel** on the progress block.
+- [x] Job status flips to `cancelled` within a batch; terminal SSE arrives; chat unlocks; lock alert on `neo_summary` dismisses without a manual refetch.
+- [x] Rows committed before cancel remain in `neo_summary` (per spec — no rollback).
 
 > If the NEO row count is small enough that the job finishes before
 > you can grab the lock alert, ask the agent to widen the projection
