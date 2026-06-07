@@ -79,6 +79,10 @@ jest.unstable_mockModule("../../services/tools.service.js", () => ({
 
 // Wide-table statement cache — drives the keyField pre-flight (#85).
 // Default mock provides the keyField columns used by VALID_INPUT.
+// Default mock returns a column set that covers both the source
+// keyField check (Step 2a) and the target alias check (Step 2b)
+// for VALID_INPUT — `acreage` matches the default expression's
+// alias, `c_parcel_id` matches its keyField.
 const mockWideTableStatementCacheGet = jest
   .fn<() => Promise<{ columns: { columnName: string }[] }>>()
   .mockResolvedValue({
@@ -87,6 +91,7 @@ const mockWideTableStatementCacheGet = jest
       { columnName: "c_id" },
       { columnName: "c_diameter_km_min" },
       { columnName: "c_diameter_km_max" },
+      { columnName: "acreage" },
     ],
   });
 jest.unstable_mockModule("../../services/wide-table-statement.cache.js", () => ({
@@ -321,6 +326,46 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     mockCountSourceRows.mockResolvedValueOnce(10_000_000);
     const result = (await exec()) as { code: string };
     expect(result.code).toBe(ApiCode.BULK_JOB_MAX_RECORDS_EXCEEDED);
+    expect(mockJobsCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects when a projection alias is not a wide-column on the target", async () => {
+    // First cache.get() is for the source's keyField check (Step 2a),
+    // second is for the target's alias check (Step 2b).
+    mockWideTableStatementCacheGet
+      .mockResolvedValueOnce({
+        columns: [
+          { columnName: "c_id" },
+          { columnName: "c_diameter_km_min" },
+          { columnName: "c_diameter_km_max" },
+        ],
+      })
+      .mockResolvedValueOnce({
+        columns: [{ columnName: "c_diameter_avg_km" }],
+      });
+
+    const result = (await exec({
+      ...VALID_INPUT,
+      keyField: "c_id",
+      expression: {
+        kind: "sql" as const,
+        // Includes the key under an invented name + a real derived col.
+        value:
+          "c_id::text AS asteroid_id, (c_diameter_km_min + c_diameter_km_max) / 2 AS c_diameter_avg_km",
+      },
+    })) as {
+      code: string;
+      details?: {
+        unknownAliases?: string[];
+        availableTargetColumns?: string[];
+      };
+    };
+
+    expect(result.code).toBe(ApiCode.BULK_JOB_EXPRESSION_INVALID);
+    expect(result.details?.unknownAliases).toEqual(["asteroid_id"]);
+    expect(result.details?.availableTargetColumns).toContain(
+      "c_diameter_avg_km"
+    );
     expect(mockJobsCreate).not.toHaveBeenCalled();
   });
 

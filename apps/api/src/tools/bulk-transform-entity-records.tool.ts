@@ -210,6 +210,62 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
             );
           }
 
+          // Step 2b — for SQL-kind, validate every projection alias is
+          // a wide-column on the **target**. Catches the case where the
+          // agent included the key in the projection under an invented
+          // name (e.g. `c_id::text AS asteroid_id, ...`) — the SQL
+          // would otherwise fail at the first batch with PG 42703 and
+          // sit failed in the queue. Tool-kind has no projection.
+          if (parsed.expression.kind === "sql") {
+            const { parseProjections } = await import(
+              "../utils/sql-projection.util.js"
+            );
+            let aliases: string[];
+            try {
+              aliases = parseProjections(parsed.expression.value).map(
+                (p) => p.alias
+              );
+            } catch (err) {
+              throw new ApiError(
+                400,
+                ApiCode.BULK_JOB_EXPRESSION_INVALID,
+                err instanceof Error
+                  ? err.message
+                  : "Could not parse expression aliases.",
+                {
+                  recommendation:
+                    ApiCodeDefaultRecommendation[
+                      ApiCode.BULK_JOB_EXPRESSION_INVALID
+                    ],
+                }
+              );
+            }
+            const targetStmt = await wideTableStatementCache.get(
+              parsed.targetConnectorEntityId
+            );
+            const targetColumns = targetStmt.columns.map((c) => c.columnName);
+            const unknownAliases = aliases.filter(
+              (a) => !targetColumns.includes(a)
+            );
+            if (unknownAliases.length > 0) {
+              throw new ApiError(
+                400,
+                ApiCode.BULK_JOB_EXPRESSION_INVALID,
+                `Projection alias(es) ${unknownAliases.map((a) => `'${a}'`).join(", ")} are not wide-columns on the target entity. Drop any projection of the key field (it writes to source_id automatically via keyField) and use only target column names like ${targetColumns.slice(0, 3).map((c) => `'${c}'`).join(", ")}.`,
+                {
+                  recommendation:
+                    ApiCodeDefaultRecommendation[
+                      ApiCode.BULK_JOB_EXPRESSION_INVALID
+                    ],
+                  details: {
+                    unknownAliases,
+                    availableTargetColumns: targetColumns.slice().sort(),
+                  },
+                }
+              );
+            }
+          }
+
           // Step 3 — expression kind: sql + tool both supported in
           // Phase 4. Tool kind has its own pre-flight chain (lookup,
           // cost-gate, ETA); sql kind continues to the EXPLAIN path.
