@@ -173,10 +173,17 @@ Tools advertised by the mock:
 
 ### §4a — Happy path
 
-- [ ] Prompt: **"Run `nasa_diameter_avg_fast` against every NEO and store the result in `neo_summary.c_diameter_avg_km`."**
-- [ ] Tool returns `BulkJobProgressBlock` with an ETA derived from `estimatedMsPerCall × expectedRecords / (maxConcurrency × 1000)` — not the generic 5 ms/record heuristic.
-- [ ] Mock server logs show no more than `maxConcurrency` (default 10) overlapping `/runtime` POSTs at once.
-- [ ] On completion, `neo_summary.c_diameter_avg_km` is populated for every source key; the jobs row carries `committedRows` and `batchDurationMs` in `result`.
+- [x] Prompt: **"Run `nasa_diameter_avg_fast` against every NEO and store the result in `neo_summary.c_diameter_avg_km`."**
+- [x] Tool returns `BulkJobProgressBlock` with an ETA derived from `estimatedMsPerCall × expectedRecords / (maxConcurrency × 1000)` — not the generic 5 ms/record heuristic.
+- [x] Mock server logs show no more than `maxConcurrency` (default 10) overlapping `/runtime` POSTs at once.
+- [x] On completion, `neo_summary.c_diameter_avg_km` is populated for every source key; the jobs row carries `committedRows` and `batchDurationMs` in `result`.
+
+> §4a shipped on live NEO data (~10,299 records). Path to green
+> required these mid-walk fixes:
+> - `6e2ec30` — wire bulkDispatch through webhook toolpacks
+> - `e6a21b3` — thread stationId into job metadata (pre-flight/worker drift)
+> - `32dab3d` — spread source row at top of tool input + document `expression.args`
+> - `873fd4c` — upsertSuccesses via entity_records CTE + drop unknown keys (#98)
 
 ### §4b — Cost gate
 
