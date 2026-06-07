@@ -30,6 +30,12 @@ interface State {
   recordsProcessed: number;
   totalRecords: number;
   failureCount: number;
+  /** Records the tool dispatch succeeded for but the upsert dropped
+   *  because the return-value keys didn't exist on the target's
+   *  wide table (#98). Surfaced inline so silent column-name drift
+   *  is visible to the user. */
+  droppedCount: number;
+  droppedKeys: string[];
   batchDurationMsAvg: number | null;
   batchCount: number;
 }
@@ -51,6 +57,8 @@ type Action =
       recordsProcessed?: number;
       recordsFailed?: number;
       totalRecords?: number;
+      droppedRecords?: number;
+      droppedKeys?: string[];
     }
   | { kind: "cancel-requested" };
 
@@ -82,6 +90,8 @@ function reducer(state: State, action: Action): State {
         totalRecords:
           action.totalRecords ?? state.totalRecords,
         failureCount: action.recordsFailed ?? state.failureCount,
+        droppedCount: action.droppedRecords ?? state.droppedCount,
+        droppedKeys: action.droppedKeys ?? state.droppedKeys,
       };
     case "cancel-requested":
       // Optimistic: show "Cancelling…" until the terminal event lands.
@@ -166,12 +176,48 @@ export const BulkJobProgressBlockUI: React.FC<BulkJobProgressBlockUIProps> = ({
             {state.failureCount.toLocaleString()} failed
           </Typography>
         )}
+        {state.droppedCount > 0 && (
+          <Typography variant="caption" color="warning.main">
+            {state.droppedCount.toLocaleString()} dropped
+          </Typography>
+        )}
         {state.status === "running" && etaSeconds != null && (
           <Typography variant="caption" color="text.secondary">
             ETA ~{etaSeconds}s
           </Typography>
         )}
       </Stack>
+
+      {state.droppedCount > 0 && (
+        <Box
+          sx={{
+            mt: 1.5,
+            p: 1.25,
+            border: "1px solid",
+            borderColor: "warning.light",
+            borderRadius: 1,
+            bgcolor: "warning.light",
+            color: "warning.contrastText",
+          }}
+          role="alert"
+          aria-label="Dropped records detail"
+        >
+          <Typography variant="caption" component="div">
+            <strong>{state.droppedCount.toLocaleString()} records</strong>{" "}
+            were dropped because the tool returned keys that aren&rsquo;t
+            wide-columns on the target.
+          </Typography>
+          {state.droppedKeys.length > 0 && (
+            <Typography
+              variant="caption"
+              component="div"
+              sx={{ mt: 0.5, fontFamily: "monospace" }}
+            >
+              Dropped keys: {state.droppedKeys.join(", ")}
+            </Typography>
+          )}
+        </Box>
+      )}
 
       {state.status === "running" && (
         <Box sx={{ mt: 1.5 }}>
@@ -202,6 +248,8 @@ const INITIAL: State = {
   recordsProcessed: 0,
   totalRecords: 0,
   failureCount: 0,
+  droppedCount: 0,
+  droppedKeys: [],
   batchDurationMsAvg: null,
   batchCount: 0,
 };
@@ -268,6 +316,8 @@ export const BulkJobProgressBlock: React.FC<BulkJobProgressBlockProps> = ({
             result?: {
               recordsProcessed?: number;
               recordsFailed?: number;
+              droppedRecords?: number;
+              droppedKeys?: string[];
             } | null;
           };
           if (
@@ -280,6 +330,8 @@ export const BulkJobProgressBlock: React.FC<BulkJobProgressBlockProps> = ({
               status: payload.status,
               recordsProcessed: payload.result?.recordsProcessed,
               recordsFailed: payload.result?.recordsFailed,
+              droppedRecords: payload.result?.droppedRecords,
+              droppedKeys: payload.result?.droppedKeys,
             });
             es.close();
           }

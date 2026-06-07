@@ -10,6 +10,8 @@ type State = {
   recordsProcessed: number;
   totalRecords: number;
   failureCount: number;
+  droppedCount: number;
+  droppedKeys: string[];
   batchDurationMsAvg: number | null;
   batchCount: number;
 };
@@ -20,6 +22,8 @@ function makeState(overrides: Partial<State> = {}): State {
     recordsProcessed: 0,
     totalRecords: 100,
     failureCount: 0,
+    droppedCount: 0,
+    droppedKeys: [],
     batchDurationMsAvg: null,
     batchCount: 0,
     ...overrides,
@@ -69,6 +73,27 @@ describe("BulkJobProgressBlockUI", () => {
       />
     );
     expect(screen.getByText(/3 failed/)).toBeInTheDocument();
+  });
+
+  it("renders dropped-count + alert when droppedCount > 0 (#98 fallback surfacing)", () => {
+    render(
+      <BulkJobProgressBlockUI
+        state={makeState({
+          status: "completed",
+          recordsProcessed: 0,
+          totalRecords: 100,
+          droppedCount: 100,
+          droppedKeys: ["c_diameter_avg_km"],
+        })}
+        cancelling={false}
+        onCancel={() => {}}
+      />
+    );
+    expect(screen.getByText(/100 dropped/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("alert", { name: /Dropped records detail/ })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/c_diameter_avg_km/)).toBeInTheDocument();
   });
 
   it("calls onCancel when the Cancel button is clicked", () => {

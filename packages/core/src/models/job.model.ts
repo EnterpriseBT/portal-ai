@@ -286,6 +286,10 @@ export const BulkTransformMetadataSchema = z.object({
 export type BulkTransformMetadata = z.infer<typeof BulkTransformMetadataSchema>;
 
 export const BulkTransformResultSchema = z.object({
+  /** Rows actually written to the target's wide table. For tool-kind
+   *  jobs this excludes records whose tool output keys didn't match
+   *  any of the target's wide-column names (those land in
+   *  `droppedRecords` and the keys are listed in `droppedKeys`). */
   recordsProcessed: z.number().int().nonnegative(),
   recordsFailed: z.number().int().nonnegative(),
   durationMs: z.number().int().nonnegative(),
@@ -299,6 +303,14 @@ export const BulkTransformResultSchema = z.object({
       })
     )
     .optional(),
+  /** Tool-dispatch records whose return-value keys didn't exist on
+   *  the target's wide table. The dispatcher succeeded for each one
+   *  but `upsertSuccesses` skipped the write (#85 Phase 4 / #98). */
+  droppedRecords: z.number().int().nonnegative().optional(),
+  /** Distinct tool-output keys that were dropped because no matching
+   *  wide-column existed. Useful for surfacing the contract mismatch
+   *  in the terminal SSE event + UI. */
+  droppedKeys: z.array(z.string()).optional(),
 });
 export type BulkTransformResult = z.infer<typeof BulkTransformResultSchema>;
 

@@ -234,6 +234,8 @@ async function runToolDispatchLoop(
   }
 
   let recordsProcessed = 0;
+  let droppedRecords = 0;
+  const droppedKeysSet = new Set<string>();
   let offset = 0;
   const partialFailures: BulkTransformResult["partialFailures"] = [];
   const maxIterations = Math.ceil(totalRecords / opts.batchSize) + 1;
@@ -276,6 +278,7 @@ async function runToolDispatchLoop(
       userId,
     });
     if (upsertResult.droppedKeys.length > 0) {
+      for (const k of upsertResult.droppedKeys) droppedKeysSet.add(k);
       logger.warn(
         {
           jobId: opts.jobId,
@@ -285,7 +288,16 @@ async function runToolDispatchLoop(
       );
     }
 
-    recordsProcessed += dispatched.successes.length + dispatched.failures.length;
+    // The dispatcher counts a record as "succeeded" if the tool call
+    // didn't throw, but `upsertSuccesses` may have dropped the row
+    // entirely when its keys didn't match the target's wide columns.
+    // Count only rows actually written to the target as processed;
+    // the difference goes into droppedRecords so the terminal
+    // envelope can surface the discrepancy.
+    const droppedThisBatch =
+      dispatched.successes.length - upsertResult.rowsUpserted;
+    recordsProcessed += upsertResult.rowsUpserted + dispatched.failures.length;
+    droppedRecords += droppedThisBatch;
     offset += opts.batchSize;
 
     for (const f of dispatched.failures) {
@@ -325,5 +337,11 @@ async function runToolDispatchLoop(
     recordsFailed: partialFailures.length,
     durationMs: Date.now() - startedAt,
     ...(partialFailures.length > 0 ? { partialFailures } : {}),
+    ...(droppedRecords > 0
+      ? {
+          droppedRecords,
+          droppedKeys: Array.from(droppedKeysSet).sort(),
+        }
+      : {}),
   };
 }
