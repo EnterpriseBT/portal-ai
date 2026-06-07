@@ -268,12 +268,22 @@ async function runToolDispatchLoop(
       toolExecutor: lookup.executor,
     });
 
-    await BulkTransformService.upsertSuccesses({
+    const upsertResult = await BulkTransformService.upsertSuccesses({
       targetConnectorEntityId: opts.targetConnectorEntityId,
       organizationId: opts.organizationId,
       jobId: opts.jobId,
       successes: dispatched.successes,
+      userId,
     });
+    if (upsertResult.droppedKeys.length > 0) {
+      logger.warn(
+        {
+          jobId: opts.jobId,
+          droppedKeys: upsertResult.droppedKeys,
+        },
+        "bulk_transform tool-output keys dropped (#98 fallback)"
+      );
+    }
 
     recordsProcessed += dispatched.successes.length + dispatched.failures.length;
     offset += opts.batchSize;

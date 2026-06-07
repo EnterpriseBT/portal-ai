@@ -16,7 +16,11 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { wideTableRepo } from "../db/repositories/wide-table.repository.js";
+import { wideTableStatementCache } from "./wide-table-statement.cache.js";
 import { parseProjections } from "../utils/sql-projection.util.js";
+import { createLogger } from "../utils/logger.util.js";
+
+const logger = createLogger({ module: "bulk-transform-service" });
 
 export interface BulkTransformBatchOptions {
   sourceConnectorEntityId: string;
@@ -54,6 +58,18 @@ export interface UpsertSuccessesOptions {
   organizationId: string;
   jobId: string;
   successes: Array<{ sourceKey: string; value: Record<string, unknown> }>;
+  /** User id stamped into the created entity_records audit columns
+   *  (same FK-aware pattern runBatch uses). */
+  userId: string;
+}
+
+export interface UpsertSuccessesResult {
+  /** Number of rows actually upserted into the target wide table. */
+  rowsUpserted: number;
+  /** Tool-output keys that didn't exist on the target's wide table and
+   *  were dropped (#85 Phase 4 — defense-in-depth until #98 lands the
+   *  proper pre-flight). Empty array on a clean batch. */
+  droppedKeys: string[];
 }
 
 export class BulkTransformService {
@@ -260,8 +276,10 @@ export class BulkTransformService {
    */
   static async upsertSuccesses(
     opts: UpsertSuccessesOptions
-  ): Promise<number> {
-    if (opts.successes.length === 0) return 0;
+  ): Promise<UpsertSuccessesResult> {
+    if (opts.successes.length === 0) {
+      return { rowsUpserted: 0, droppedKeys: [] };
+    }
     const targetTable = quoteIdent(
       wideTableRepo.tableName(opts.targetConnectorEntityId)
     );
@@ -275,9 +293,74 @@ export class BulkTransformService {
     for (const s of opts.successes) {
       for (const k of Object.keys(s.value)) colSet.add(k);
     }
-    const cols = Array.from(colSet);
 
-    const colList = [
+    // Defense-in-depth against tool-output keys that don't exist on
+    // the target wide table (#98). Without this filter, a single
+    // mismatched key blows up the whole batch with PG 42703. The
+    // proper fix is a pre-flight check in the tool; until that lands,
+    // we drop unknown keys, log a warning, and surface the dropped
+    // names back to the caller so the terminal job result can carry
+    // them.
+    const targetStmt = await wideTableStatementCache.get(
+      opts.targetConnectorEntityId
+    );
+    const targetWideColumns = new Set(
+      targetStmt.columns.map((c) => c.columnName)
+    );
+    const droppedKeys: string[] = [];
+    const cols: string[] = [];
+    for (const k of colSet) {
+      if (targetWideColumns.has(k)) {
+        cols.push(k);
+      } else {
+        droppedKeys.push(k);
+      }
+    }
+    if (droppedKeys.length > 0) {
+      logger.warn(
+        {
+          jobId: opts.jobId,
+          targetConnectorEntityId: opts.targetConnectorEntityId,
+          droppedKeys,
+          availableTargetColumns: Array.from(targetWideColumns).sort(),
+        },
+        "bulk_transform tool returned keys that aren't wide-columns on the target; dropped"
+      );
+    }
+
+    // Edge case: every key was unknown. Skip the INSERT entirely —
+    // nothing to write. The job still reports success at the dispatch
+    // layer; the droppedKeys field surfaces the discrepancy.
+    if (cols.length === 0) {
+      return { rowsUpserted: 0, droppedKeys };
+    }
+
+    // Wide-table `entity_record_id` is a FK to `entity_records.id`,
+    // so we can't just `gen_random_uuid()` for it. Mirror runBatch's
+    // CTE pattern: upsert entity_records first (partial unique index
+    // on (connector_entity_id, source_id) WHERE deleted IS NULL),
+    // then upsert the wide table referencing the returned ids.
+    const targetEntityIdLit = `'${opts.targetConnectorEntityId.replace(/'/g, "''")}'`;
+    const userIdLit = `'${opts.userId.replace(/'/g, "''")}'`;
+
+    const valueLiteral = (v: unknown): string => {
+      if (v === null || v === undefined) return "NULL";
+      if (typeof v === "number" || typeof v === "boolean") return String(v);
+      return `'${String(v).replace(/'/g, "''")}'`;
+    };
+
+    // VALUES list for the input rows CTE: one row per success.
+    const colAliases = ["src_id", ...cols.map((_, i) => `v_${i}`)];
+    const valuesTuples = opts.successes
+      .map(
+        (s) =>
+          `(${valueLiteral(s.sourceKey)}, ${cols
+            .map((c) => valueLiteral(s.value[c]))
+            .join(", ")})`
+      )
+      .join(", ");
+
+    const wideColList = [
       `"entity_record_id"`,
       `"organization_id"`,
       `"synced_at"`,
@@ -286,21 +369,14 @@ export class BulkTransformService {
       ...cols.map((c) => quoteIdent(c)),
     ].join(", ");
 
-    const valueLiteral = (v: unknown): string => {
-      if (v === null || v === undefined) return "NULL";
-      if (typeof v === "number" || typeof v === "boolean") return String(v);
-      return `'${String(v).replace(/'/g, "''")}'`;
-    };
-
-    const valuesSql = opts.successes
-      .map(
-        (s) =>
-          `(gen_random_uuid(), ${orgLit}, ${now}, true, ` +
-          `${valueLiteral(s.sourceKey)}, ${cols
-            .map((c) => valueLiteral(s.value[c]))
-            .join(", ")})`
-      )
-      .join(", ");
+    const wideValueList = [
+      `ur."id"`,
+      `${orgLit}`,
+      `${now}`,
+      `true`,
+      `ur."source_id"`,
+      ...cols.map((_c, i) => `ir."v_${i}"`),
+    ].join(", ");
 
     const setClause = cols
       .map((c) => `${quoteIdent(c)} = EXCLUDED.${quoteIdent(c)}`)
@@ -308,11 +384,40 @@ export class BulkTransformService {
       .join(", ");
 
     const sqlText =
-      `INSERT INTO ${targetTable} (${colList}) ` +
-      `VALUES ${valuesSql} ` +
-      `ON CONFLICT ("source_id") DO UPDATE SET ${setClause}`;
+      `WITH input_rows(${colAliases.map((a) => `"${a}"`).join(", ")}) AS (` +
+      `  VALUES ${valuesTuples}` +
+      `), ` +
+      `upserted_records AS (` +
+      `  INSERT INTO "entity_records" (` +
+      `    "id", "organization_id", "connector_entity_id", "data", "source_id", ` +
+      `    "checksum", "synced_at", "origin", "is_valid", "created", "created_by"` +
+      `  ) ` +
+      `  SELECT ` +
+      `    gen_random_uuid(), ` +
+      `    ${orgLit}, ` +
+      `    ${targetEntityIdLit}, ` +
+      `    '{}'::jsonb, ` +
+      `    "src_id"::text, ` +
+      `    md5("src_id"::text || '|' || ${now}::text), ` +
+      `    ${now}, ` +
+      `    'portal'::entity_record_origin, ` +
+      `    true, ` +
+      `    ${now}, ` +
+      `    ${userIdLit} ` +
+      `  FROM input_rows ` +
+      `  ON CONFLICT ("connector_entity_id", "source_id") WHERE "deleted" IS NULL DO UPDATE SET ` +
+      `    "synced_at" = EXCLUDED."synced_at", ` +
+      `    "updated" = EXCLUDED."created", ` +
+      `    "updated_by" = EXCLUDED."created_by" ` +
+      `  RETURNING "id", "source_id"` +
+      `) ` +
+      `INSERT INTO ${targetTable} (${wideColList}) ` +
+      `SELECT ${wideValueList} ` +
+      `FROM upserted_records ur ` +
+      `JOIN input_rows ir ON ir."src_id"::text = ur."source_id" ` +
+      `ON CONFLICT ("entity_record_id") DO UPDATE SET ${setClause}`;
 
     await db.execute(sql.raw(sqlText));
-    return opts.successes.length;
+    return { rowsUpserted: opts.successes.length, droppedKeys };
   }
 }
