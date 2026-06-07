@@ -391,6 +391,14 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
               organizationId,
               portalId,
               userId,
+              // The worker reads this back via `bullJob.data.stationId`
+              // and threads it into `lookupBulkDispatchable` so the
+              // org-toolpack scan (#85 Phase 4 webhook bulkDispatch
+              // wiring) can resolve the same tool the pre-flight just
+              // resolved. Without it the worker uses "" and the lookup
+              // fails — pre-flight passes but the worker throws
+              // BULK_DISPATCH_TOOL_NOT_FOUND.
+              stationId,
             },
           });
 

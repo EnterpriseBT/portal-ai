@@ -190,7 +190,21 @@ async function runToolDispatchLoop(
   }
 ): Promise<BulkTransformResult> {
   const startedAt = Date.now();
-  const stationId = (bullJob.data as { stationId?: string }).stationId ?? "";
+  // Both ids are persisted into the job metadata by
+  // bulk_transform_entity_records.tool. A missing stationId was a
+  // silent footgun: the worker would call lookupBulkDispatchable
+  // with stationId="" and the org-toolpack scan would find no
+  // attached packs → BULK_DISPATCH_TOOL_NOT_FOUND, even though the
+  // tool's pre-flight (with the real stationId) had just succeeded.
+  // Fail fast if the metadata didn't carry it.
+  const stationId = (bullJob.data as { stationId?: string }).stationId;
+  if (!stationId) {
+    throw new ApiError(
+      500,
+      ApiCode.BULK_DISPATCH_TOOL_NOT_FOUND,
+      "bulk_transform job is missing `stationId` in metadata — re-enqueue from a current portal session."
+    );
+  }
   const userId = (bullJob.data as { userId?: string }).userId ?? "SYSTEM";
 
   const lookup = await ToolService.lookupBulkDispatchable(

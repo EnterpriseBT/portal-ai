@@ -387,7 +387,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     expect(mockJobsCreate).not.toHaveBeenCalled();
   });
 
-  it("threads portalId + organizationId into the job metadata", async () => {
+  it("threads portalId + organizationId + stationId + userId into the job metadata", async () => {
     await exec();
     const metadata = mockJobsCreate.mock.calls[0][1].metadata as Record<
       string,
@@ -395,6 +395,12 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     >;
     expect(metadata.portalId).toBe(PORTAL_ID);
     expect(metadata.organizationId).toBe(ORG_ID);
+    // stationId + userId are the ids the worker reads back to call
+    // lookupBulkDispatchable for tool-kind expressions. Missing
+    // stationId would cause BULK_DISPATCH_TOOL_NOT_FOUND mid-job
+    // even when the pre-flight passed.
+    expect(metadata.stationId).toBe(STATION_ID);
+    expect(metadata.userId).toBe(USER_ID);
     expect(metadata.sourceConnectorEntityId).toBe(
       VALID_INPUT.sourceConnectorEntityId
     );
