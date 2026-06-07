@@ -109,7 +109,7 @@ entity, writing the diameter midpoint (in kilometers) into a new
 
 ### §2c — Re-run idempotency
 
-- [ ] Re-run the same prompt. Row count on `neo_summary` stays stable; `synced_at` advances (verifies `ON CONFLICT (source_id) DO UPDATE`).
+- [x] Re-run the same prompt. Row count on `neo_summary` stays stable; `synced_at` advances (verifies `ON CONFLICT (entity_record_id) DO UPDATE`).
 
 ### §2d — Error paths
 
