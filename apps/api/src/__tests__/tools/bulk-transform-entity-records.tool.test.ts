@@ -211,7 +211,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     // bulkDispatch metadata missing.
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_x" },
+      expression: { kind: "tool", ref: "compute_x", targetColumn: "acreage" },
     })) as { code: string };
     expect(result.code).toBe(
       ApiCode.BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE
@@ -234,7 +234,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
 
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_distance" },
+      expression: { kind: "tool", ref: "compute_distance", targetColumn: "acreage" },
     })) as { jobId?: string; estimatedSeconds?: number };
 
     expect(result.jobId).toBe("job-created-1");
@@ -255,7 +255,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     });
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_costly" },
+      expression: { kind: "tool", ref: "compute_costly", targetColumn: "acreage" },
     })) as { code: string };
 
     expect(result.code).toBe(
@@ -276,7 +276,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     });
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_costly" },
+      expression: { kind: "tool", ref: "compute_costly", targetColumn: "acreage" },
       acknowledgeCost: true,
     })) as { jobId?: string };
 
@@ -300,7 +300,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
 
     await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_x" },
+      expression: { kind: "tool", ref: "compute_x", targetColumn: "acreage" },
       sourceFilter: {
         whereSqlFragment: "c_parcel_id IN ('p-99','p-499','p-999')",
       },

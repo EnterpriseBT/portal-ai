@@ -251,6 +251,10 @@ export const BulkTransformExpressionSchema = z.discriminatedUnion("kind", [
     /** Tool name; must be a registered bulkDispatch-able tool. */
     ref: z.string(),
     args: z.record(z.string(), z.unknown()).optional(),
+    /** Wide-column on the target where each per-record tool result
+     *  is written. Required — the tool stays target-agnostic and
+     *  the agent decides where the value lands (#98). */
+    targetColumn: z.string(),
   }),
 ]);
 export type BulkTransformExpression = z.infer<

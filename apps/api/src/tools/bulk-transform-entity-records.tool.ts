@@ -49,12 +49,20 @@ const ExpressionSchema = z.discriminatedUnion("kind", [
       .describe(
         "Optional tool-wide static arguments passed alongside every " +
           "per-record call. Use this for invariants like a model name, " +
-          "a unit system, or an API version. **Do NOT pass field-name " +
-          "hints or column mappings here** — the source row's columns " +
+          "a unit system, or an API version. The source row's columns " +
           "arrive at the top level of the tool's input automatically " +
-          "(plus `sourceKey` and `sourceRow` for tools that need " +
-          "metadata). Leave this undefined unless you have a real tool-" +
-          "wide setting to pass."
+          "(plus `sourceKey` and `sourceRow`); don't repeat them here. " +
+          "Leave undefined unless you have a real tool-wide setting."
+      ),
+    targetColumn: z
+      .string()
+      .describe(
+        "Wide-column name on the target where each per-record tool " +
+          "result should be written (e.g. `c_diameter_avg_km`). The tool " +
+          "returns one value per call; that value lands in this column. " +
+          "Pre-flight rejects names that aren't wide-columns on the " +
+          "target — look them up via `station_context` " +
+          "(`columns[].wideColumnName`)."
       ),
   }),
 ]);
@@ -291,6 +299,34 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
             | undefined;
           let estimatedSecondsOverride: number | undefined;
           if (parsed.expression.kind === "tool") {
+            // Step 3a — validate the agent-supplied targetColumn exists
+            // on the target's wide table. The tool stays target-agnostic
+            // (returns one value per call); the agent decides which
+            // column receives that value. A typo fails fast here
+            // before the worker dispatches thousands of wasted calls.
+            const targetStmt = await wideTableStatementCache.get(
+              parsed.targetConnectorEntityId
+            );
+            const targetCols = new Set(
+              targetStmt.columns.map((c) => c.columnName)
+            );
+            if (!targetCols.has(parsed.expression.targetColumn)) {
+              throw new ApiError(
+                400,
+                ApiCode.BULK_JOB_EXPRESSION_INVALID,
+                `targetColumn '${parsed.expression.targetColumn}' is not a wide-column on the target entity.`,
+                {
+                  recommendation:
+                    ApiCodeDefaultRecommendation[
+                      ApiCode.BULK_JOB_EXPRESSION_INVALID
+                    ],
+                  details: {
+                    availableTargetColumns: Array.from(targetCols).sort(),
+                  },
+                }
+              );
+            }
+
             const lookup = await ToolService.lookupBulkDispatchable(
               parsed.expression.ref,
               organizationId,

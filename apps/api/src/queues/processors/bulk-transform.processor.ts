@@ -73,6 +73,7 @@ export const bulkTransformProcessor: TypedJobProcessor<
       organizationId,
       toolRef: expression.ref,
       toolArgs: expression.args,
+      targetColumn: expression.targetColumn,
       keyField,
       batchSize,
       whereSqlFragment: sourceFilter?.whereSqlFragment,
@@ -184,6 +185,8 @@ async function runToolDispatchLoop(
     organizationId: string;
     toolRef: string;
     toolArgs?: Record<string, unknown>;
+    /** Agent-supplied target wide-column for each per-record write. */
+    targetColumn: string;
     keyField: string;
     batchSize: number;
     whereSqlFragment?: string;
@@ -270,13 +273,39 @@ async function runToolDispatchLoop(
       toolExecutor: lookup.executor,
     });
 
+    // Tool returns one value per call; the agent's `targetColumn`
+    // says where that value lands. The tool stays target-agnostic
+    // (its return shape has no inherent relation to entity columns
+    // — see feedback_tool_purity in memory). If a tool returns a
+    // non-primitive, JSON-stringify it; the agent picked a text
+    // column to receive complex outputs.
+    const shapedSuccesses = dispatched.successes.map((s) => {
+      const raw = s.value as unknown;
+      const val =
+        raw === null ||
+        raw === undefined ||
+        typeof raw === "number" ||
+        typeof raw === "string" ||
+        typeof raw === "boolean"
+          ? raw
+          : JSON.stringify(raw);
+      return {
+        sourceKey: s.sourceKey,
+        value: { [opts.targetColumn]: val } as Record<string, unknown>,
+      };
+    });
+
     const upsertResult = await BulkTransformService.upsertSuccesses({
       targetConnectorEntityId: opts.targetConnectorEntityId,
       organizationId: opts.organizationId,
       jobId: opts.jobId,
-      successes: dispatched.successes,
+      successes: shapedSuccesses,
       userId,
     });
+    // upsertSuccesses' droppedKeys path is now defense-in-depth —
+    // Step 3a's pre-flight already rejected unknown targetColumns,
+    // so this branch shouldn't fire. If it does, it's a bug worth
+    // surfacing.
     if (upsertResult.droppedKeys.length > 0) {
       for (const k of upsertResult.droppedKeys) droppedKeysSet.add(k);
       logger.warn(
@@ -284,16 +313,10 @@ async function runToolDispatchLoop(
           jobId: opts.jobId,
           droppedKeys: upsertResult.droppedKeys,
         },
-        "bulk_transform tool-output keys dropped (#98 fallback)"
+        "bulk_transform: upsert dropped keys despite targetColumn pre-flight — investigate"
       );
     }
 
-    // The dispatcher counts a record as "succeeded" if the tool call
-    // didn't throw, but `upsertSuccesses` may have dropped the row
-    // entirely when its keys didn't match the target's wide columns.
-    // Count only rows actually written to the target as processed;
-    // the difference goes into droppedRecords so the terminal
-    // envelope can surface the discrepancy.
     const droppedThisBatch =
       dispatched.successes.length - upsertResult.rowsUpserted;
     recordsProcessed += upsertResult.rowsUpserted + dispatched.failures.length;
