@@ -113,8 +113,8 @@ entity, writing the diameter midpoint (in kilometers) into a new
 
 ### §2d — Error paths
 
-- [ ] **Invalid SQL test:** prompt **"Compute `bogus_func("c_diameter_km_min")` into `c_x` on neo_summary."** Tool returns `BULK_JOB_EXPRESSION_INVALID`; agent surfaces the pgError detail; no job appears in the jobs table.
-- [ ] **Max-records guard:** seed an entity with more than `MAX_BULK_RECORDS` rows (or temporarily lower the constant) and re-run. Tool returns `BULK_JOB_MAX_RECORDS_EXCEEDED`; no job is enqueued. *(Skip if you don't have a fixture this large.)*
+- [x] **Invalid SQL test:** prompt **"Compute `bogus_func("c_diameter_km_min")` into `c_x` on neo_summary."** Tool returns `BULK_JOB_EXPRESSION_INVALID`; agent surfaces the pgError detail; no job appears in the jobs table.
+- [x] **Max-records guard:** seed an entity with more than `MAX_BULK_RECORDS` rows (or temporarily lower the constant) and re-run. Tool returns `BULK_JOB_MAX_RECORDS_EXCEEDED`; no job is enqueued. *(Skip if you don't have a fixture this large.)*
 
 ---
 
