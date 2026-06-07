@@ -85,17 +85,27 @@ entity, writing the diameter midpoint (in kilometers) into a new
 
 ### §2b — Happy-path transform
 
-- [ ] Prompt: **"For every near-earth object, compute the average diameter in kilometers as `(diameter_km_min + diameter_km_max) / 2` and upsert it into `neo_summary.c_diameter_avg_km`, keyed by `c_id`."**
-- [ ] The agent calls `bulk_transform_entity_records` with:
+- [x] Prompt: **"For every near-earth object, compute the average diameter in kilometers as `(diameter_km_min + diameter_km_max) / 2` and upsert it into `neo_summary.c_diameter_avg_km`, keyed by `c_id`."**
+- [x] The agent calls `bulk_transform_entity_records` with:
   - `expression.kind` = `"sql"`
   - `expression.value` = something equivalent to `` `("c_diameter_km_min" + "c_diameter_km_max") / 2.0 AS c_diameter_avg_km` ``
   - `keyField` = `c_id`
-- [ ] Initial tool response renders a `BulkJobProgressBlock` with `expectedRecords` (~8,000) and an ETA.
-- [ ] Chat input is locked while the job runs (placeholder copy explains a job is in flight).
-- [ ] Progress block advances per batch.
-- [ ] Terminal SSE flips the block to "Done"; chat unlocks; `neo_summary` now has rows with `c_diameter_avg_km` populated and `source_id` matching each NEO's `c_id`.
-- [ ] Verify in `npm run db:studio` (from `apps/api/`) → the `er__<neo_summary id>` table has the expected rows.
-- [ ] Spot-check a few rows: `c_diameter_avg_km` should be the arithmetic midpoint of the source row's `c_diameter_km_min` and `c_diameter_km_max`.
+- [x] Initial tool response renders a `BulkJobProgressBlock` with `expectedRecords` (~10,299) and an ETA.
+- [x] Chat input is locked while the job runs (placeholder copy explains a job is in flight).
+- [x] Progress block advances per batch.
+- [x] Terminal SSE flips the block to "Done"; chat unlocks; `neo_summary` now has rows with `c_diameter_avg_km` populated and `source_id` matching each NEO's `c_id`.
+- [x] Verify in `npm run db:studio` (from `apps/api/`) → the `er__<neo_summary id>` table has the expected rows.
+- [x] Spot-check a few rows: `c_diameter_avg_km` should be the arithmetic midpoint of the source row's `c_diameter_km_min` and `c_diameter_km_max`.
+
+> §2b shipped on live NEO data (~10,299 rows). Path to green
+> required these mid-walk fixes:
+> - `d93ccca` — SQL projection alias parser (split INSERT cols from values)
+> - `06381f6` — write `entity_records` first, then wide table via CTE
+> - `fee52c7` — pre-flight: validate `keyField` against source columns
+> - `b407aa8` — tool description: tell agent where to find connectorEntityIds
+> - `9ffdff1` + `6a9f2de` — `station_context` tool + always-attached pack (#97)
+> - `489990c` — pre-flight: validate projection aliases against target columns
+> - `3c45d8b` — backfill UI counters from terminal snapshot result
 
 ### §2c — Re-run idempotency
 
