@@ -42,7 +42,16 @@ type Action =
       batchDurationMs: number;
       failureCount?: number;
     }
-  | { kind: "terminal"; status: "completed" | "failed" | "cancelled" }
+  | {
+      kind: "terminal";
+      status: "completed" | "failed" | "cancelled";
+      /** Carried in the snapshot's `result` envelope when the widget
+       *  mounts after the job already finished. Backfills the counts
+       *  the live `job:batch` stream would have delivered. */
+      recordsProcessed?: number;
+      recordsFailed?: number;
+      totalRecords?: number;
+    }
   | { kind: "cancel-requested" };
 
 function reducer(state: State, action: Action): State {
@@ -62,7 +71,18 @@ function reducer(state: State, action: Action): State {
         batchCount: state.batchCount + 1,
       };
     case "terminal":
-      return { ...state, status: action.status };
+      return {
+        ...state,
+        status: action.status,
+        // Only overwrite counters when the terminal payload carries
+        // them — `job:*` terminal events from the live stream don't,
+        // but the recovery `snapshot` does (via the job's `result`).
+        recordsProcessed:
+          action.recordsProcessed ?? state.recordsProcessed,
+        totalRecords:
+          action.totalRecords ?? state.totalRecords,
+        failureCount: action.recordsFailed ?? state.failureCount,
+      };
     case "cancel-requested":
       // Optimistic: show "Cancelling…" until the terminal event lands.
       return state;
@@ -236,17 +256,31 @@ export const BulkJobProgressBlock: React.FC<BulkJobProgressBlockProps> = ({
       // this listener the close would trip EventSource auto-reconnect
       // (server sets retry: 0) → infinite reconnect loop on every
       // portal reopen with a failed/completed job in history.
+      //
+      // For terminal snapshots we backfill the record counters from
+      // `result` (BulkTransformResultSchema: recordsProcessed,
+      // recordsFailed) so the post-reload widget doesn't render as
+      // "Completed — 0 / N records".
       es.addEventListener("snapshot", (event) => {
         try {
           const payload = JSON.parse((event as MessageEvent).data) as {
             status: JobStatus;
+            result?: {
+              recordsProcessed?: number;
+              recordsFailed?: number;
+            } | null;
           };
           if (
             payload.status === "completed" ||
             payload.status === "failed" ||
             payload.status === "cancelled"
           ) {
-            dispatch({ kind: "terminal", status: payload.status });
+            dispatch({
+              kind: "terminal",
+              status: payload.status,
+              recordsProcessed: payload.result?.recordsProcessed,
+              recordsFailed: payload.result?.recordsFailed,
+            });
             es.close();
           }
         } catch {
