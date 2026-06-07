@@ -97,7 +97,10 @@ describe("dispatchBatch (Phase 4 slice 0)", () => {
     expect(maxObserved).toBeGreaterThanOrEqual(1);
   }, 5_000);
 
-  it("merges staticArgs + sourceKey + sourceRow into the tool input", async () => {
+  it("spreads the source row at the top level of the tool input + adds sourceKey/sourceRow helpers", async () => {
+    // Tools declare their parameterSchema against source-row columns
+    // and expect them at the top of `input`. The dispatcher must
+    // spread the row directly, not nest it.
     let captured: unknown = null;
     const tool = jest.fn(async (input: unknown) => {
       captured = input;
@@ -107,15 +110,57 @@ describe("dispatchBatch (Phase 4 slice 0)", () => {
     await dispatchBatch({
       toolMetadata: { maxConcurrency: 1, timeoutMs: 1_000, idempotent: true },
       staticArgs: { radius_km: 50 },
-      keyField: "sourceKey",
-      batch: [{ sourceKey: "p-1", extra: "data" }],
+      keyField: "c_id",
+      batch: [
+        {
+          c_id: "p-1",
+          c_diameter_km_min: 0.02,
+          c_diameter_km_max: 0.05,
+        },
+      ],
       toolExecutor: tool as never,
     });
 
     expect(captured).toEqual({
       radius_km: 50,
+      c_id: "p-1",
+      c_diameter_km_min: 0.02,
+      c_diameter_km_max: 0.05,
       sourceKey: "p-1",
-      sourceRow: { sourceKey: "p-1", extra: "data" },
+      sourceRow: {
+        c_id: "p-1",
+        c_diameter_km_min: 0.02,
+        c_diameter_km_max: 0.05,
+      },
+    });
+  });
+
+  it("lets row columns win over staticArgs with the same key (agent footgun guard)", async () => {
+    // The user's smoke walk surfaced this: the agent passed
+    // `{c_id: "c_id", c_diameter_km_min: "c_diameter_km_min", ...}`
+    // as expression.args, thinking they were field-name mappings.
+    // The dispatcher must NOT let those literal strings clobber the
+    // real row values.
+    let captured: unknown = null;
+    const tool = jest.fn(async (input: unknown) => {
+      captured = input;
+      return { ok: true };
+    });
+
+    await dispatchBatch({
+      toolMetadata: { maxConcurrency: 1, timeoutMs: 1_000, idempotent: true },
+      staticArgs: {
+        c_id: "c_id",
+        c_diameter_km_min: "c_diameter_km_min",
+      },
+      keyField: "c_id",
+      batch: [{ c_id: "real-id-42", c_diameter_km_min: 0.02 }],
+      toolExecutor: tool as never,
+    });
+
+    expect(captured).toMatchObject({
+      c_id: "real-id-42",
+      c_diameter_km_min: 0.02,
     });
   });
 });

@@ -37,8 +37,25 @@ const ExpressionSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("tool"),
-    ref: z.string(),
-    args: z.record(z.string(), z.unknown()).optional(),
+    ref: z
+      .string()
+      .describe(
+        "Exact tool name from `station_context` (e.g. " +
+          "'nasa_diameter_avg_fast'). Must declare bulkDispatch metadata."
+      ),
+    args: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe(
+        "Optional tool-wide static arguments passed alongside every " +
+          "per-record call. Use this for invariants like a model name, " +
+          "a unit system, or an API version. **Do NOT pass field-name " +
+          "hints or column mappings here** — the source row's columns " +
+          "arrive at the top level of the tool's input automatically " +
+          "(plus `sourceKey` and `sourceRow` for tools that need " +
+          "metadata). Leave this undefined unless you have a real tool-" +
+          "wide setting to pass."
+      ),
   }),
 ]);
 

@@ -108,8 +108,18 @@ export async function dispatchBatch(
       const sourceKey = String(row[opts.keyField] ?? "");
       return limit(async () => {
         if (bucket) await bucket.acquire();
+        // Tools declare their `parameterSchema` against the source
+        // row's columns (e.g. `c_id`, `c_diameter_km_min`) and expect
+        // those values at the top level of `input`. Spread the row
+        // last so its columns ALWAYS win over `staticArgs` — agents
+        // sometimes pass static args that overlap row keys (e.g. as
+        // "field-name hints"), and we don't want those literal strings
+        // clobbering the real values. `sourceKey` + `sourceRow` are
+        // kept alongside as canonical helpers for tools that need
+        // metadata or full-row access.
         const input = {
           ...(opts.staticArgs ?? {}),
+          ...row,
           sourceKey,
           sourceRow: row,
         };
