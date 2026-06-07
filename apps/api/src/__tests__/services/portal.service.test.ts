@@ -980,7 +980,7 @@ describe("PortalService", () => {
       expect(capturedSystem).toContain("Cross-Entity Relationships");
     });
 
-    it("system prompt Entity Group section names the group count + points at get_station_context (#97)", async () => {
+    it("system prompt Entity Group section names the group count + points at station_context (#97)", async () => {
       let capturedSystem: string | undefined;
       (mockStreamText as any).mockImplementation((opts: any) => {
         capturedSystem = opts.system;
@@ -999,7 +999,7 @@ describe("PortalService", () => {
 
       expect(capturedSystem).toContain("## Cross-Entity Relationships");
       expect(capturedSystem).toMatch(/1 entity group/);
-      expect(capturedSystem).toMatch(/get_station_context/);
+      expect(capturedSystem).toMatch(/station_context/);
       // The full member/link detail moved out of the prompt and into
       // the tool's response.
       expect(capturedSystem).not.toContain("Customer Orders");
@@ -1007,7 +1007,7 @@ describe("PortalService", () => {
       expect(capturedSystem).not.toContain("[primary]");
     });
 
-    it("system prompt lists entities as a roster + points at get_station_context (#97)", async () => {
+    it("system prompt lists entities as a roster + points at station_context (#97)", async () => {
       let capturedSystem: string | undefined;
       (mockStreamText as any).mockImplementation((opts: any) => {
         capturedSystem = opts.system;
@@ -1027,7 +1027,7 @@ describe("PortalService", () => {
       expect(capturedSystem).toContain("Sales Station");
       expect(capturedSystem).toContain("- `customers` — Customers");
       expect(capturedSystem).toContain("- `orders` — Orders");
-      expect(capturedSystem).toMatch(/get_station_context/);
+      expect(capturedSystem).toMatch(/station_context/);
       // Column detail no longer in the static prompt.
       expect(capturedSystem).not.toContain("`revenue`");
     });

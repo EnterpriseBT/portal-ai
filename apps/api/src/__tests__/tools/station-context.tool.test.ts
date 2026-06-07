@@ -51,8 +51,8 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
 // Dynamic import after mocks
 // ---------------------------------------------------------------------------
 
-const { GetStationContextTool } = await import(
-  "../../tools/get-station-context.tool.js"
+const { StationContextTool } = await import(
+  "../../tools/station-context.tool.js"
 );
 
 // ---------------------------------------------------------------------------
@@ -115,7 +115,7 @@ const STATION_DATA = {
 };
 
 function buildTool() {
-  return new GetStationContextTool().build(STATION_ID, ORG_ID);
+  return new StationContextTool().build(STATION_ID, ORG_ID);
 }
 
 async function exec(input: Record<string, unknown> = {}) {
@@ -132,7 +132,7 @@ async function exec(input: Record<string, unknown> = {}) {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("GetStationContextTool", () => {
+describe("StationContextTool", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFindStationById.mockResolvedValue({

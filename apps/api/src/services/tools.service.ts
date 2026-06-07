@@ -16,7 +16,7 @@ import { createLogger } from "../utils/logger.util.js";
 // Tool classes
 import { SqlQueryTool } from "../tools/sql-query.tool.js";
 import { DisplayEntityRecordsTool } from "../tools/display-entity-records.tool.js";
-import { GetStationContextTool } from "../tools/get-station-context.tool.js";
+import { StationContextTool } from "../tools/station-context.tool.js";
 import { VisualizeTool } from "../tools/visualize.tool.js";
 import { VisualizeTreeTool } from "../tools/visualize-tree.tool.js";
 import { ResolveIdentityTool } from "../tools/resolve-identity.tool.js";
@@ -57,7 +57,7 @@ import { ConnectorEntityDeleteTool } from "../tools/connector-entity-delete.tool
 import { FieldMappingCreateTool } from "../tools/field-mapping-create.tool.js";
 import { FieldMappingUpdateTool } from "../tools/field-mapping-update.tool.js";
 import { FieldMappingDeleteTool } from "../tools/field-mapping-delete.tool.js";
-import { GetCurrentTimeTool } from "../tools/get-current-time.tool.js";
+import { CurrentTimeTool } from "../tools/current-time.tool.js";
 import { BulkTransformEntityRecordsTool } from "../tools/bulk-transform-entity-records.tool.js";
 import { resolveStationCapabilities } from "../utils/resolve-capabilities.util.js";
 import { signRequest } from "../utils/webhook-signing.util.js";
@@ -151,6 +151,7 @@ export interface WebhookImplementation {
 
 /** All recognized tool pack names. */
 export const ALL_TOOL_PACKS = [
+  "station_context",
   "data_query",
   "statistics",
   "regression",
@@ -161,15 +162,25 @@ export const ALL_TOOL_PACKS = [
 
 export type ToolPackName = (typeof ALL_TOOL_PACKS)[number];
 
+/**
+ * Tool packs that are always attached to every station regardless of
+ * what's recorded in `station_toolpacks`. Holds the "system" tools
+ * every portal session needs — temporal context + on-demand station
+ * lookup — so the agent can never end up in a state where it can't
+ * resolve a connector entity id or a column's wide-table name.
+ */
+export const SYSTEM_TOOL_PACKS: readonly ToolPackName[] = ["station_context"];
+
 // ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 
 /** All built-in tool names — used to detect webhook name conflicts. */
 export const BUILTIN_TOOL_NAMES = new Set<string>([
+  "current_time",
+  "station_context",
   "sql_query",
   "display_entity_records",
-  "get_station_context",
   "visualize",
   "visualize_tree",
   "resolve_identity",
@@ -379,7 +390,14 @@ export class ToolService {
     }
 
     const toolPacks = builtinSlugs;
-    const enabledPacks = new Set<string>(builtinSlugs);
+    // Always include the system packs alongside whatever the station
+    // has recorded. `station_context` lives here so every session has
+    // temporal context + on-demand id lookup regardless of which other
+    // packs are enabled.
+    const enabledPacks = new Set<string>([
+      ...builtinSlugs,
+      ...SYSTEM_TOOL_PACKS,
+    ]);
 
     // Load station data into memory
     const stationData = await AnalyticsService.loadStation(
@@ -390,11 +408,22 @@ export class ToolService {
     const tools: Record<string, Tool> = {};
 
     // -------------------------------------------------------------------
-    // Universal: get_current_time
+    // Pack: station_context (always attached via SYSTEM_TOOL_PACKS)
     // -------------------------------------------------------------------
-    // Temporal context is universal — every portal session needs it
-    // regardless of which toolpacks are enabled.
-    tools.get_current_time = new GetCurrentTimeTool().build(organizationId);
+    // System tools every portal session needs:
+    //   - `current_time` — temporal context for resolving relative
+    //     expressions ("today", "next week") against the org's timezone.
+    //   - `station_context` — on-demand lookup of attached entities,
+    //     connector instances, column inventory, and capabilities.
+    //     Replaces the static `## Available Data` wall (#97) for id
+    //     resolution.
+    if (enabledPacks.has("station_context")) {
+      tools.current_time = new CurrentTimeTool().build(organizationId);
+      tools.station_context = new StationContextTool().build(
+        stationId,
+        organizationId
+      );
+    }
 
     // -------------------------------------------------------------------
     // Pack: data_query
@@ -402,15 +431,6 @@ export class ToolService {
     if (enabledPacks.has("data_query")) {
       tools.sql_query = new SqlQueryTool().build(stationId, organizationId);
       tools.display_entity_records = new DisplayEntityRecordsTool().build(
-        stationId,
-        organizationId
-      );
-      // get_station_context is the canonical id-lookup tool (#97). Always
-      // register it when any data_query / entity_management work is
-      // possible — the agent calls it to resolve `connectorEntityId`,
-      // `connectorInstanceId`, `fieldMappingId`, `columnDefinitionId`,
-      // and wide-column names without inventing or asking the user.
-      tools.get_station_context = new GetStationContextTool().build(
         stationId,
         organizationId
       );
@@ -513,16 +533,6 @@ export class ToolService {
     // Pack: entity_management
     // -------------------------------------------------------------------
     if (enabledPacks.has("entity_management")) {
-      // Make sure get_station_context is registered even when
-      // data_query isn't (#97). It's the canonical id-lookup path
-      // that entity_management tools depend on.
-      if (!tools.get_station_context) {
-        tools.get_station_context = new GetStationContextTool().build(
-          stationId,
-          organizationId
-        );
-      }
-
       // Write tools — only if any attached instance has write capability
       const stationCaps = await resolveStationCapabilities(stationId);
       const hasWrite = stationCaps.some((sc) => sc.capabilities.write);

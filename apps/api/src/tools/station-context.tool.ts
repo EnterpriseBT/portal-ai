@@ -10,21 +10,19 @@ import { isValidIanaTimezone } from "../utils/timezone.util.js";
 import { Tool } from "../types/tools.js";
 
 /**
- * `get_station_context` (#97).
+ * `station_context` (#97).
  *
  * Returns the authoritative, on-demand view of everything attached to
  * the current station: entities (with their full column inventory —
  * including the `c_<…>` wide-column names — capabilities, and
  * connector-entity ids), connector instances, and entity groups.
  *
- * Exists to replace the agent's reliance on the static `## Available
- * Data` block in the system prompt for *id resolution*. The static
- * block remains useful as a high-level roster, but every time the
- * agent needs a `connectorEntityId`, `connectorInstanceId`,
- * `columnDefinitionId`, `fieldMappingId`, or wide-column name to pass
- * to another tool, it should call this and read the value from the
- * structured response — never invent friendly names, never ask the
- * user.
+ * Lives in the `station_context` toolpack — auto-attached to every
+ * station regardless of the other packs enabled. The agent should
+ * call it whenever it needs a `connectorEntityId`,
+ * `connectorInstanceId`, `columnDefinitionId`, `fieldMappingId`, or
+ * wide-column name to pass to another tool — never invent friendly
+ * names, never ask the user.
  */
 
 const InputSchema = z.object({
@@ -94,9 +92,9 @@ interface StationContextResponse {
   }>;
 }
 
-export class GetStationContextTool extends Tool<typeof InputSchema> {
-  slug = "get_station_context";
-  name = "Get Station Context";
+export class StationContextTool extends Tool<typeof InputSchema> {
+  slug = "station_context";
+  name = "Station Context";
   description =
     "Return the live, authoritative view of everything attached to the " +
     "current station: entities (with `connectorEntityId`, `[read,write,push]` " +

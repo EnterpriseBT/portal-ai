@@ -58,7 +58,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     "## Current time",
     "",
     `The organization's timezone is **${stationContext.organizationTimezone}**.`,
-    'Before resolving any relative time expression ("today", "this Friday", "next week", "in 3 days", "end of month", etc.), call the `get_current_time` tool. Resolve the expression against the timestamp in `localTime` (the org\'s timezone), not your training cutoff.',
+    'Before resolving any relative time expression ("today", "this Friday", "next week", "in 3 days", "end of month", etc.), call the `current_time` tool. Resolve the expression against the timestamp in `localTime` (the org\'s timezone), not your training cutoff.',
     "",
     "When writing a `date` or `datetime` value into an entity:",
     "- If `_meta_columns.canonicalFormat` is set for the column, emit the value in that exact format.",
@@ -71,7 +71,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // Lightweight roster — entity keys + labels only. The agent uses
   // this to know WHAT exists. For any id (`connectorEntityId`,
   // `columnDefinitionId`, `fieldMappingId`, wide-column name) or full
-  // column inventory, the agent calls the `get_station_context` tool
+  // column inventory, the agent calls the `station_context` tool
   // (#97). Previously this section re-emitted every entity's full
   // column list plus all ID markers on every turn — expensive at
   // scale and the agent still kept inventing wrong column names.
@@ -85,7 +85,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     }
     lines.push("");
     lines.push(
-      "Call `get_station_context` for full schemas (column keys, " +
+      "Call `station_context` for full schemas (column keys, " +
         "wide-column names, connectorEntityId, columnDefinitionId, " +
         "fieldMappingId, capabilities). Pass `entityKeys: ['<key>']` to " +
         "narrow the response when you only need one entity. **Always call " +
@@ -100,7 +100,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("");
     lines.push(
       `${stationContext.entityGroups.length} entity group${stationContext.entityGroups.length === 1 ? "" : "s"} attached. ` +
-        "Call `get_station_context` to read each group's members and link columns."
+        "Call `station_context` to read each group's members and link columns."
     );
     lines.push("");
   }
@@ -309,7 +309,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   }
 
   // Pointer to the on-demand id lookup (#97). The full
-  // connectorInstance list now lives in get_station_context — the
+  // connectorInstance list now lives in station_context — the
   // static prompt only names a count + reminds the agent where to
   // call. Skipped when entity_management isn't enabled (no tool
   // needs a connectorInstanceId).
@@ -322,7 +322,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("");
     lines.push(
       `${stationContext.connectorInstances.length} connector instance${stationContext.connectorInstances.length === 1 ? "" : "s"} ` +
-        "attached. Call `get_station_context` to read each instance's " +
+        "attached. Call `station_context` to read each instance's " +
         "`id`, `name`, `display`, and `slug`. Never invent a " +
         "`connectorInstanceId`, never ask the user — the value is in " +
         "the tool response."

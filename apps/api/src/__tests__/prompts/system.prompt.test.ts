@@ -74,10 +74,10 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
     expect(prompt).toContain("- `orders` — Orders");
   });
 
-  it("points the agent at get_station_context for the full schema", () => {
+  it("points the agent at station_context for the full schema", () => {
     const prompt = buildSystemPrompt(makeContext());
 
-    expect(prompt).toMatch(/Call `get_station_context`/);
+    expect(prompt).toMatch(/Call `station_context`/);
     expect(prompt).toMatch(/Always call this before any tool that takes an id/);
   });
 
@@ -319,8 +319,8 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
   });
 
   // #97 — capability tags moved out of the static prompt and into
-  // the get_station_context tool's response.
-  it("no longer embeds capability tags in the prompt (moved to get_station_context)", () => {
+  // the station_context tool's response.
+  it("no longer embeds capability tags in the prompt (moved to station_context)", () => {
     const prompt = buildSystemPrompt(
       makeContext({
         toolPacks: ["data_query", "entity_management"],
@@ -333,7 +333,7 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
     expect(prompt).not.toContain("[read, write]");
     expect(prompt).not.toContain("[read]");
     // But the agent is still told where capabilities live.
-    expect(prompt).toMatch(/get_station_context/);
+    expect(prompt).toMatch(/station_context/);
   });
 });
 
@@ -399,7 +399,7 @@ describe("buildSystemPrompt — schema introspection meta views (#87)", () => {
 });
 
 describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
-  it("mentions the count of attached connector instances + points at get_station_context", () => {
+  it("mentions the count of attached connector instances + points at station_context", () => {
     const prompt = buildSystemPrompt(
       makeContext({
         toolPacks: ["data_query", "entity_management"],
@@ -416,7 +416,7 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
     );
     expect(prompt).toContain("## Connector Instances");
     expect(prompt).toMatch(/2 connector instances? attached/);
-    expect(prompt).toMatch(/get_station_context/);
+    expect(prompt).toMatch(/station_context/);
     // The ids themselves are NOT in the prompt — the tool delivers them.
     expect(prompt).not.toContain("ci-1");
     expect(prompt).not.toContain("ci-2");
@@ -471,9 +471,9 @@ describe("buildSystemPrompt — Current time (#90)", () => {
     expect(prompt).toContain("America/Los_Angeles");
   });
 
-  it("directs the agent to call get_current_time before resolving relative time expressions", () => {
+  it("directs the agent to call current_time before resolving relative time expressions", () => {
     const prompt = buildSystemPrompt(makeContext());
-    expect(prompt).toContain("get_current_time");
+    expect(prompt).toContain("current_time");
     expect(prompt).toMatch(/relative time expression/i);
   });
 
