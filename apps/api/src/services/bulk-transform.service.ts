@@ -184,12 +184,21 @@ export class BulkTransformService {
     //      resulting id+source_id, whether inserted or updated.
     //   3. Upsert the wide-table row referencing the entity_record_id
     //      from step 2 + the derived columns from the source batch.
+    // `batch_deduped` is the last-wins dedupe of `batch` by keyField.
+    // Without it, PG's ON CONFLICT DO UPDATE on the target wide table
+    // throws 21000 when the source has duplicate keyField values
+    // (e.g., NASA NEO entities where one asteroid `c_id` repeats
+    // across multiple close-approach dates).
     const insertSql =
       `WITH batch AS (` +
       `  SELECT * FROM ${sourceTable} ` +
       `  WHERE "organization_id" = ${orgLit} ` +
       `  ORDER BY "entity_record_id" ` +
       `  LIMIT ${opts.batchSize} OFFSET ${opts.offset}` +
+      `), ` +
+      `batch_deduped AS (` +
+      `  SELECT DISTINCT ON (${keyCol}) * FROM batch ` +
+      `  ORDER BY ${keyCol}, "entity_record_id" DESC` +
       `), ` +
       `upserted_records AS (` +
       `  INSERT INTO "entity_records" (` +
@@ -208,7 +217,7 @@ export class BulkTransformService {
       `    true, ` +
       `    ${now}, ` +
       `    ${userIdLit} ` +
-      `  FROM batch ` +
+      `  FROM batch_deduped ` +
       `  ON CONFLICT ("connector_entity_id", "source_id") WHERE "deleted" IS NULL DO UPDATE SET ` +
       `    "synced_at" = EXCLUDED."synced_at", ` +
       `    "updated" = EXCLUDED."created", ` +
@@ -225,7 +234,7 @@ export class BulkTransformService {
       `  ur."source_id", ` +
       `  ${valueList} ` +
       `FROM upserted_records ur ` +
-      `JOIN batch b ON b.${keyCol}::text = ur."source_id" ` +
+      `JOIN batch_deduped b ON b.${keyCol}::text = ur."source_id" ` +
       `ON CONFLICT ("entity_record_id") DO UPDATE SET ${setClause} ` +
       `RETURNING *`;
 
@@ -286,11 +295,40 @@ export class BulkTransformService {
     const orgLit = `'${opts.organizationId.replace(/'/g, "''")}'`;
     const now = Date.now();
 
-    // Collect the union of value-keys across the batch — that's the
-    // c_* column set we write. Tools that return varying shapes get
-    // NULLs for missing columns (documented in spec § Risks).
-    const colSet = new Set<string>();
+    // Dedupe successes by sourceKey, keeping the LAST occurrence.
+    // PG's `ON CONFLICT DO UPDATE` rejects two rows with the same
+    // conflict-target in one statement (error 21000). When the source
+    // has duplicate keyField values — e.g., the NASA NEO entity where
+    // a single asteroid can appear in multiple close-approach rows
+    // sharing one `c_id` — the dispatcher produces multiple successes
+    // for the same sourceKey. We collapse those before INSERT,
+    // last-wins, and log the count so the agent knows.
+    const dedupedMap = new Map<
+      string,
+      { sourceKey: string; value: Record<string, unknown> }
+    >();
     for (const s of opts.successes) {
+      dedupedMap.set(s.sourceKey, s);
+    }
+    const successes = Array.from(dedupedMap.values());
+    const duplicatesCollapsed = opts.successes.length - successes.length;
+    if (duplicatesCollapsed > 0) {
+      logger.warn(
+        {
+          jobId: opts.jobId,
+          duplicatesCollapsed,
+          inputSuccesses: opts.successes.length,
+          afterDedupe: successes.length,
+        },
+        "bulk_transform upsertSuccesses: duplicate keyField values in batch — collapsed, last-wins"
+      );
+    }
+
+    // Collect the union of value-keys across the (deduped) batch —
+    // that's the c_* column set we write. Tools that return varying
+    // shapes get NULLs for missing columns (documented in spec § Risks).
+    const colSet = new Set<string>();
+    for (const s of successes) {
       for (const k of Object.keys(s.value)) colSet.add(k);
     }
 
@@ -351,7 +389,7 @@ export class BulkTransformService {
 
     // VALUES list for the input rows CTE: one row per success.
     const colAliases = ["src_id", ...cols.map((_, i) => `v_${i}`)];
-    const valuesTuples = opts.successes
+    const valuesTuples = successes
       .map(
         (s) =>
           `(${valueLiteral(s.sourceKey)}, ${cols
@@ -418,6 +456,6 @@ export class BulkTransformService {
       `ON CONFLICT ("entity_record_id") DO UPDATE SET ${setClause}`;
 
     await db.execute(sql.raw(sqlText));
-    return { rowsUpserted: opts.successes.length, droppedKeys };
+    return { rowsUpserted: successes.length, droppedKeys };
   }
 }
