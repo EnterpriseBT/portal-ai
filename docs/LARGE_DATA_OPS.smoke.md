@@ -178,12 +178,20 @@ Tools advertised by the mock:
 - [x] Mock server logs show no more than `maxConcurrency` (default 10) overlapping `/runtime` POSTs at once.
 - [x] On completion, `neo_summary.c_diameter_avg_km` is populated for every source key; the jobs row carries `committedRows` and `batchDurationMs` in `result`.
 
-> §4a shipped on live NEO data (~10,299 records). Path to green
-> required these mid-walk fixes:
+> §4a shipped on live NEO data (~10,299 records, deduped by `c_id`).
+> The asteroid id lives in `source_id` (metadata column) on each
+> target row, but isn't mirrored to a queryable wide-column on
+> `neo_summary` — today's primitive writes only the single
+> `targetColumn`. The multi-write `writes[]` generalization in **#99**
+> covers that case; deferred there.
+>
+> Path to green required these mid-walk fixes:
 > - `6e2ec30` — wire bulkDispatch through webhook toolpacks
 > - `e6a21b3` — thread stationId into job metadata (pre-flight/worker drift)
 > - `32dab3d` — spread source row at top of tool input + document `expression.args`
 > - `873fd4c` — upsertSuccesses via entity_records CTE + drop unknown keys (#98)
+> - `70a3393` — tool returns one value, agent supplies `targetColumn` (closed #98)
+> - `ffcf980` — dedupe duplicate keyField values per batch (NEO `c_id` repeats across close-approach rows)
 
 ### §4b — Cost gate
 
