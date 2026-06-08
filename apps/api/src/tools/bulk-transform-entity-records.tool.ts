@@ -104,7 +104,20 @@ const InputSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Required when the dispatched tool declared costHint: 'expensive' (Phase 4)."
+      "**User-confirmation gate for expensive tools.** Set this ONLY " +
+        "after the user has explicitly confirmed (in chat, in their " +
+        "next message) that the cost is acceptable. The flow:\n" +
+        "  1. Call without `acknowledgeCost`.\n" +
+        "  2. If the tool is `costHint: 'expensive'`, the API rejects " +
+        "with `BULK_DISPATCH_COST_NOT_ACKNOWLEDGED`.\n" +
+        "  3. Tell the user the cost estimate (expectedRecords × the " +
+        "tool's `estimatedMsPerCall`) and ASK them to confirm.\n" +
+        "  4. WAIT for their next message confirming.\n" +
+        "  5. Retry with `acknowledgeCost: true`.\n" +
+        "Never set this true on the first attempt. Never set this true " +
+        "in the same turn as the rejection — the user must respond " +
+        "first. Setting it true without explicit user confirmation " +
+        "bypasses a safety gate the user expects to encounter."
     ),
   sourceFilter: z
     .object({
