@@ -25,6 +25,12 @@ jest.unstable_mockModule("../api/sdk", () => ({
         mutateAsync: mockResetMessages,
         isPending: false,
       }),
+      // Added when `usePortalChatLock` started reading running-job state.
+      runningJobs: () => ({
+        data: undefined,
+        isLoading: false,
+        error: null,
+      }),
     },
     portalResults: {
       pin: () => ({
@@ -46,6 +52,23 @@ jest.unstable_mockModule("@auth0/auth0-react", () => ({
       .fn<() => Promise<string>>()
       .mockResolvedValue("test-token"),
   }),
+}));
+
+// `usePortalChatLock` + `portal-stream.util` open SSE connections —
+// short-circuit them (the real path reads
+// `import.meta.env.VITE_AUTH0_AUDIENCE`, undefined in tests). Returns
+// a no-op EventSource-shaped object with both legacy `onmessage` and
+// the `addEventListener` API used by the streaming consumer.
+jest.unstable_mockModule("../api/sse.api", () => ({
+  sse: {
+    create: () => async () => ({
+      onmessage: null,
+      onerror: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      close: () => {},
+    }),
+  },
 }));
 
 jest.unstable_mockModule("react-markdown", () => ({

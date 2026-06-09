@@ -195,41 +195,41 @@ Tools advertised by the mock:
 
 ### §4b — Cost gate
 
-- [ ] Prompt the same flow against `nasa_diameter_avg_expensive`.
-- [ ] First attempt: tool returns `BULK_DISPATCH_COST_NOT_ACKNOWLEDGED`; the agent asks the user to confirm.
-- [ ] Confirm in chat; the agent retries with `acknowledgeCost: true`; job enqueues.
+- [x] Prompt the same flow against `nasa_diameter_avg_expensive`.
+- [x] First attempt: tool returns `BULK_DISPATCH_COST_NOT_ACKNOWLEDGED`; the agent asks the user to confirm.
+- [x] Confirm in chat; the agent retries with `acknowledgeCost: true`; job enqueues.
 
 ### §4c — Not bulk-dispatchable
 
-- [ ] Prompt the same flow against `nasa_diameter_avg_no_bulk`.
-- [ ] Tool returns `BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE` with the recommendation to add a `bulkDispatch` block; no job appears in the jobs table.
+- [x] Prompt the same flow against `nasa_diameter_avg_no_bulk`.
+- [x] Tool returns `BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE` with the recommendation to add a `bulkDispatch` block; no job appears in the jobs table.
 
 ### §4d — Partial failures + retry-failed-only
 
-- [ ] Prompt the same flow against `nasa_diameter_avg_flaky`.
-- [ ] On completion, terminal envelope has a non-empty `partialFailures` array (~5% of records by `c_id % 20`).
-- [ ] Chat renders a `BulkFailuresTableBlock` listing each failed `sourceKey` + error code + recommendation; expand a row to see details.
-- [ ] Pagination works (10 / 25 / 50 rows per page).
-- [ ] Click **"Retry failed only"**. Expected: a synthetic user message appears in the chat naming the failed keys.
-- [ ] The agent re-invokes `bulk_transform_entity_records` with `sourceFilter.whereSqlFragment` scoping to those keys (inspect via API logs or the new job's metadata).
-- [ ] The retry job processes **only** the previously failed records; successful retries land in `neo_summary` via UPSERT; the new job's `partialFailures` is empty (or smaller).
+- [x] Prompt the same flow against `nasa_diameter_avg_flaky`.
+- [x] On completion, terminal envelope has a non-empty `partialFailures` array (~5% of records by `c_id % 20`).
+- [x] Chat renders a `BulkFailuresTableBlock` listing each failed `sourceKey` + error code + recommendation; expand a row to see details.
+- [x] Pagination works (10 / 25 / 50 rows per page).
+- [x] Click **"Retry failed only"**. Expected: a synthetic user message appears in the chat naming the failed keys.
+- [x] The agent re-invokes `bulk_transform_entity_records` with `sourceFilter.whereSqlFragment` scoping to those keys (inspect via API logs or the new job's metadata).
+- [x] The retry job processes **only** the previously failed records; successful retries land in `neo_summary` via UPSERT; the new job's `partialFailures` is empty (or smaller).
 
 ---
 
 ## §5 — Verify post-conditions
 
-- [ ] **DB inspection** (`npm run db:studio` from `apps/api/`): `neo_summary` rows have `c_diameter_avg_km` populated; `source_id` matches the source key (`c_id` from neos); `synced_at` reflects the latest run.
-- [ ] **Jobs table**: every completed / cancelled / failed `bulk_transform` row carries the expected `result` shape (`committedRows`, `partialFailures`, `batchDurationMs`).
-- [ ] **Lock release**: no `bulk_transform` job is left in `active` / `pending` / `awaiting_confirmation`; the target entity's detail view shows no lock alert.
+- [x] **DB inspection** (`npm run db:studio` from `apps/api/`): `neo_summary` rows have `c_diameter_avg_km` populated; `source_id` matches the source key (`c_id` from neos); `synced_at` reflects the latest run.
+- [x] **Jobs table**: every completed / cancelled / failed `bulk_transform` row carries the expected `result` shape (`committedRows`, `partialFailures`, `batchDurationMs`).
+- [x] **Lock release**: no `bulk_transform` job is left in `active` / `pending` / `awaiting_confirmation`; the target entity's detail view shows no lock alert.
 
 ---
 
 ## Unit-test baseline
 
-- [ ] `npm run test:unit --workspace=apps/api -- --testPathPattern=bulk-transform` — **25 / 25 passing**
-- [ ] `npm run test:unit --workspace=apps/api -- --testPathPattern=bulk-query` (Phase 1 path)
-- [ ] `npm run type-check` clean across the monorepo
-- [ ] `npm run lint` clean
+- [x] `npm run test:unit --workspace=apps/api -- --testPathPattern=bulk-transform` — **25 / 25 passing**
+- [x] `npm run test:unit --workspace=apps/api -- --testPathPattern=bulk-query` (Phase 1 path)
+- [x] `npm run type-check` clean across the monorepo
+- [x] `npm run lint` clean
 
 ## What "green" looks like
 

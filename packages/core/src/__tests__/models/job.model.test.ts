@@ -361,6 +361,8 @@ describe("BulkTransform schemas (#85)", () => {
         kind: "tool",
         ref: "compute_distance_to_nearest_hospital",
         args: { radius_km: 50 },
+        // Required since the per-record targetColumn refactor.
+        targetColumn: "c_distance_to_hospital",
       },
       keyField: "parcel_id",
       batchSize: 500,
@@ -371,6 +373,7 @@ describe("BulkTransform schemas (#85)", () => {
       expect(parsed.expression.ref).toBe(
         "compute_distance_to_nearest_hospital"
       );
+      expect(parsed.expression.targetColumn).toBe("c_distance_to_hospital");
     }
     expect(parsed.batchSize).toBe(500);
     expect(parsed.acknowledgeCost).toBe(true);
