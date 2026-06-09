@@ -77,6 +77,22 @@ jest.unstable_mockModule("../../services/tools.service.js", () => ({
   },
 }));
 
+// Cost-acknowledgement gate (#85 §4b server enforcement).
+const mockRecordRejection =
+  jest.fn<() => Promise<void>>().mockResolvedValue();
+const mockValidateAck = jest
+  .fn<
+    () => Promise<{ ok: true } | { ok: false; reason: "missing" | "stale" }>
+  >()
+  .mockResolvedValue({ ok: true });
+jest.unstable_mockModule("../../services/cost-acknowledgement.service.js", () => ({
+  CostAcknowledgementService: {
+    recordRejection: mockRecordRejection,
+    validate: mockValidateAck,
+  },
+  computeJobSignature: jest.fn(() => "sig-fixed"),
+}));
+
 // Wide-table statement cache — drives the keyField pre-flight (#85).
 // Default mock provides the keyField columns used by VALID_INPUT.
 // Default mock returns a column set that covers both the source
@@ -243,7 +259,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     expect(mockJobsCreate).toHaveBeenCalled();
   });
 
-  it("rejects costHint expensive without acknowledgeCost", async () => {
+  it("rejects costHint expensive without acknowledgeCost AND records the pending acknowledgement", async () => {
     mockLookupBulkDispatchable.mockResolvedValueOnce({
       executor: async () => ({}),
       metadata: {
@@ -261,10 +277,14 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     expect(result.code).toBe(
       ApiCode.BULK_DISPATCH_COST_NOT_ACKNOWLEDGED
     );
+    // Server stashes the rejection so a future legitimate retry can
+    // be validated against it. Without this side effect, the agent
+    // could never escape the gate.
+    expect(mockRecordRejection).toHaveBeenCalledTimes(1);
     expect(mockJobsCreate).not.toHaveBeenCalled();
   });
 
-  it("accepts costHint expensive when acknowledgeCost is true", async () => {
+  it("accepts costHint expensive when acknowledgeCost passes server validation", async () => {
     mockLookupBulkDispatchable.mockResolvedValueOnce({
       executor: async () => ({}),
       metadata: {
@@ -274,6 +294,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
         costHint: "expensive",
       },
     });
+    mockValidateAck.mockResolvedValueOnce({ ok: true });
     const result = (await exec({
       ...VALID_INPUT,
       expression: { kind: "tool", ref: "compute_costly", targetColumn: "acreage" },
@@ -282,6 +303,55 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
 
     expect(result.jobId).toBe("job-created-1");
     expect(mockJobsCreate).toHaveBeenCalled();
+    expect(mockValidateAck).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects acknowledgeCost when validation returns missing (agent skipped first rejection)", async () => {
+    mockLookupBulkDispatchable.mockResolvedValueOnce({
+      executor: async () => ({}),
+      metadata: {
+        maxConcurrency: 5,
+        timeoutMs: 5_000,
+        idempotent: true,
+        costHint: "expensive",
+      },
+    });
+    mockValidateAck.mockResolvedValueOnce({ ok: false, reason: "missing" });
+    const result = (await exec({
+      ...VALID_INPUT,
+      expression: { kind: "tool", ref: "compute_costly", targetColumn: "acreage" },
+      acknowledgeCost: true,
+    })) as { code: string; details?: { reason?: string } };
+
+    expect(result.code).toBe(
+      ApiCode.BULK_DISPATCH_COST_ACKNOWLEDGEMENT_INVALID
+    );
+    expect(result.details?.reason).toBe("missing");
+    expect(mockJobsCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects acknowledgeCost when validation returns stale (agent retried same turn)", async () => {
+    mockLookupBulkDispatchable.mockResolvedValueOnce({
+      executor: async () => ({}),
+      metadata: {
+        maxConcurrency: 5,
+        timeoutMs: 5_000,
+        idempotent: true,
+        costHint: "expensive",
+      },
+    });
+    mockValidateAck.mockResolvedValueOnce({ ok: false, reason: "stale" });
+    const result = (await exec({
+      ...VALID_INPUT,
+      expression: { kind: "tool", ref: "compute_costly", targetColumn: "acreage" },
+      acknowledgeCost: true,
+    })) as { code: string; details?: { reason?: string } };
+
+    expect(result.code).toBe(
+      ApiCode.BULK_DISPATCH_COST_ACKNOWLEDGEMENT_INVALID
+    );
+    expect(result.details?.reason).toBe("stale");
+    expect(mockJobsCreate).not.toHaveBeenCalled();
   });
 
   it("threads sourceFilter.whereSqlFragment into the job metadata", async () => {

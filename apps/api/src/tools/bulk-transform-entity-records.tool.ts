@@ -13,6 +13,10 @@ import { BulkTransformService } from "../services/bulk-transform.service.js";
 import { JobsService } from "../services/jobs.service.js";
 import { ToolService } from "../services/tools.service.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
+import {
+  CostAcknowledgementService,
+  computeJobSignature,
+} from "../services/cost-acknowledgement.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { MAX_BULK_RECORDS } from "@portalai/core/constants";
 
@@ -104,20 +108,16 @@ const InputSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "**User-confirmation gate for expensive tools.** Set this ONLY " +
-        "after the user has explicitly confirmed (in chat, in their " +
-        "next message) that the cost is acceptable. The flow:\n" +
-        "  1. Call without `acknowledgeCost`.\n" +
-        "  2. If the tool is `costHint: 'expensive'`, the API rejects " +
-        "with `BULK_DISPATCH_COST_NOT_ACKNOWLEDGED`.\n" +
-        "  3. Tell the user the cost estimate (expectedRecords × the " +
-        "tool's `estimatedMsPerCall`) and ASK them to confirm.\n" +
-        "  4. WAIT for their next message confirming.\n" +
-        "  5. Retry with `acknowledgeCost: true`.\n" +
-        "Never set this true on the first attempt. Never set this true " +
-        "in the same turn as the rejection — the user must respond " +
-        "first. Setting it true without explicit user confirmation " +
-        "bypasses a safety gate the user expects to encounter."
+      "User-confirmation gate for expensive tools. The server enforces " +
+        "the gate: on a first call without this flag against a " +
+        "`costHint: \"expensive\"` tool, the API rejects with " +
+        "`BULK_DISPATCH_COST_NOT_ACKNOWLEDGED` and records a pending " +
+        "acknowledgement. To retry with `acknowledgeCost: true`, the " +
+        "user must send a new message between the rejection and the " +
+        "retry — that's the objective signal that they consented. " +
+        "Setting this flag on a first attempt or in the same turn as " +
+        "the rejection is rejected with " +
+        "`BULK_DISPATCH_COST_ACKNOWLEDGEMENT_INVALID`."
     ),
   sourceFilter: z
     .object({
@@ -171,7 +171,36 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
     "immediately with a jobId and an ETA, the user sees a live progress widget, and the chat is " +
     "locked from new input until the job completes. " +
     "Express the per-record derivation as a SQL projection in `expression.value` whose aliases match " +
-    "target wide-column names (e.g. `ST_Area(geometry::geography) / 4047 AS c_acreage`).";
+    "target wide-column names (e.g. `ST_Area(geometry::geography) / 4047 AS c_acreage`).\n\n" +
+    "**Expensive-tool confirmation gate.** When `expression.kind === 'tool'` and the tool declared " +
+    "`costHint: \"expensive\"`, the API rejects the first call with " +
+    "`BULK_DISPATCH_COST_NOT_ACKNOWLEDGED`. You MUST ask the user to confirm and WAIT for their next " +
+    "message before retrying with `acknowledgeCost: true`.\n\n" +
+    "Worked example — user prompts \"Run nasa_diameter_avg_expensive against every NEO\":\n\n" +
+    "  Good (two turns, user confirms in between):\n" +
+    "    Turn 1 (your turn):\n" +
+    "      [bulk_transform_entity_records — NO acknowledgeCost field at all]\n" +
+    "      → API returns BULK_DISPATCH_COST_NOT_ACKNOWLEDGED with the cost estimate\n" +
+    "      You say: \"This tool is declared expensive. With 10,299 records at 50ms each over\n" +
+    "       10 concurrent calls, it'll take ~52 seconds. Should I proceed?\"\n" +
+    "      [you stop — no more tool calls this turn]\n\n" +
+    "    Turn 2 (user's turn): \"yes, proceed\"\n\n" +
+    "    Turn 3 (your turn):\n" +
+    "      [bulk_transform_entity_records with acknowledgeCost: true]\n\n" +
+    "  Bad (skipping the user's turn):\n" +
+    "    Turn 1:\n" +
+    "      [tool call without acknowledgeCost]\n" +
+    "      → rejection\n" +
+    "      You: \"This is expensive but I'll proceed.\"\n" +
+    "      [tool call WITH acknowledgeCost: true] ← WRONG. User never consented.\n\n" +
+    "  Bad (asking but retrying same turn):\n" +
+    "    Turn 1:\n" +
+    "      [...rejection...]\n" +
+    "      You: \"Should I proceed?\"\n" +
+    "      [tool call with acknowledgeCost: true] ← WRONG. Question wasn't answered yet.\n\n" +
+    "The user MUST respond between the rejection and the retry. The two tool calls live in " +
+    "different turns. If you find yourself about to make the second call in the same turn, stop " +
+    "and end the turn instead.";
 
   get schema() {
     return InputSchema;
@@ -361,22 +390,70 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
             }
             toolMetadata = lookup.metadata;
 
-            // Cost gate — `expensive` requires explicit acknowledge.
-            if (
-              toolMetadata.costHint === "expensive" &&
-              parsed.acknowledgeCost !== true
-            ) {
-              throw new ApiError(
-                400,
-                ApiCode.BULK_DISPATCH_COST_NOT_ACKNOWLEDGED,
-                `Tool '${parsed.expression.ref}' is declared expensive. Confirm with the user, then retry with acknowledgeCost: true.`,
-                {
-                  recommendation:
-                    ApiCodeDefaultRecommendation[
-                      ApiCode.BULK_DISPATCH_COST_NOT_ACKNOWLEDGED
-                    ],
-                }
+            // Cost gate — server-enforced. Two-step:
+            //   1) No acknowledgeCost + expensive tool → record a
+            //      pending entry tagged with `now`, reject with
+            //      COST_NOT_ACKNOWLEDGED.
+            //   2) acknowledgeCost: true on an expensive tool →
+            //      validate against the recorded entry. The retry
+            //      passes only if the user has sent a new message
+            //      since the rejection (objective server-knowable
+            //      signal). Otherwise reject with
+            //      COST_ACKNOWLEDGEMENT_INVALID.
+            //
+            // Tool description's prompt-side flow is now belt-and-
+            // suspenders; the agent CAN'T bypass this gate by setting
+            // the flag unilaterally.
+            if (toolMetadata.costHint === "expensive") {
+              const signature = computeJobSignature({
+                sourceConnectorEntityId: parsed.sourceConnectorEntityId,
+                targetConnectorEntityId: parsed.targetConnectorEntityId,
+                expression: parsed.expression,
+                keyField: parsed.keyField,
+                batchSize: parsed.batchSize ?? 1_000,
+              });
+
+              if (parsed.acknowledgeCost !== true) {
+                await CostAcknowledgementService.recordRejection(
+                  portalId,
+                  signature,
+                  Date.now()
+                );
+                throw new ApiError(
+                  400,
+                  ApiCode.BULK_DISPATCH_COST_NOT_ACKNOWLEDGED,
+                  `Tool '${parsed.expression.ref}' is declared expensive. Surface the cost to the user, then retry with acknowledgeCost: true AFTER they reply.`,
+                  {
+                    recommendation:
+                      ApiCodeDefaultRecommendation[
+                        ApiCode.BULK_DISPATCH_COST_NOT_ACKNOWLEDGED
+                      ],
+                  }
+                );
+              }
+
+              const ack = await CostAcknowledgementService.validate(
+                portalId,
+                signature
               );
+              if (!ack.ok) {
+                const message =
+                  ack.reason === "missing"
+                    ? `No prior cost rejection on file for this operation. Call without acknowledgeCost first to surface the cost to the user.`
+                    : `User has not replied since the cost rejection. Wait for their next message before retrying with acknowledgeCost: true.`;
+                throw new ApiError(
+                  400,
+                  ApiCode.BULK_DISPATCH_COST_ACKNOWLEDGEMENT_INVALID,
+                  message,
+                  {
+                    recommendation:
+                      ApiCodeDefaultRecommendation[
+                        ApiCode.BULK_DISPATCH_COST_ACKNOWLEDGEMENT_INVALID
+                      ],
+                    details: { reason: ack.reason },
+                  }
+                );
+              }
             }
           } else {
             // Step 4 — EXPLAIN the assembled SQL (sql-kind only).

@@ -468,6 +468,10 @@ export enum ApiCode {
   BULK_DISPATCH_TOOL_NOT_FOUND = "BULK_DISPATCH_TOOL_NOT_FOUND",
   /** Tool exists but didn't declare `bulkDispatch` metadata. */
   BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE = "BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE",
+  /** `acknowledgeCost: true` was set but server-side enforcement rejected — either no prior
+   *  rejection exists for this portal+job-signature, or the user hasn't sent a message
+   *  since the prior rejection (the agent retried in the same turn). */
+  BULK_DISPATCH_COST_ACKNOWLEDGEMENT_INVALID = "BULK_DISPATCH_COST_ACKNOWLEDGEMENT_INVALID",
   /** Tool declared `costHint: "expensive"` and call didn't set `acknowledgeCost: true`. */
   BULK_DISPATCH_COST_NOT_ACKNOWLEDGED = "BULK_DISPATCH_COST_NOT_ACKNOWLEDGED",
   /** rows-by-id request exceeded the per-call id-count cap. */
@@ -502,6 +506,8 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
     "Reload to refetch the cached snapshot.",
   [ApiCode.PORTAL_SQL_TIMEOUT]:
     "Query exceeded 30s. Try a tighter WHERE filter, a tighter date range, or aggregating the source.",
+  [ApiCode.BULK_DISPATCH_COST_ACKNOWLEDGEMENT_INVALID]:
+    "Server rejected the acknowledgement. Either no prior cost rejection exists for this exact operation (call without `acknowledgeCost` first), or the user hasn't replied since the rejection (wait for their message, then retry).",
   [ApiCode.BULK_DISPATCH_TOOL_NOT_FOUND]:
     "The named tool isn't available in this station. Verify the tool name and that its toolpack is enabled.",
   [ApiCode.BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE]:
