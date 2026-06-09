@@ -31,7 +31,19 @@ const ItemSchema = z.object({
   normalizedKey: z
     .string()
     .regex(/^[a-z][a-z0-9_]*$/)
-    .describe("A snake_case normalized key for the field"),
+    .refine((s) => !/^c_/.test(s), {
+      message:
+        "normalizedKey must NOT start with `c_` — the system reserves that prefix for the physical wide-table column name and adds it automatically. Use the base name (e.g. `diameter_avg_km`, not `c_diameter_avg_km`). The resulting wide column will be `c_<normalizedKey>`.",
+    })
+    .describe(
+      "The base snake_case key for the field (e.g. `diameter_avg_km`). " +
+        "**Do NOT prefix with `c_`** — the system reserves that prefix for " +
+        "the physical wide-table column name (`c_<normalizedKey>`) and " +
+        "adds it automatically. When you see a column rendered as " +
+        "`c_diameter_avg_km` in `station_context.columns[].wideColumnName`, " +
+        "the corresponding `key` is `diameter_avg_km`, not " +
+        "`c_diameter_avg_km`."
+    ),
   required: z.boolean().optional().describe("Whether this field is required"),
   defaultValue: z
     .string()
