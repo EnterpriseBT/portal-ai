@@ -337,38 +337,11 @@ export class PortalService {
       deletedBy: null,
     });
 
-    // Load station data and cache it for the session
-    const stationData = await AnalyticsService.loadStation(
-      stationId,
-      organizationId
-    );
-    const entityCapabilities = toolPacks.includes("entity_management")
-      ? await resolveEntityCapabilities(stationId)
-      : undefined;
-
-    // Load attached connector instances so the system prompt can list
-    // them. They're static for the session — connector instances don't
-    // change while a portal is live — so this one-shot load at portal
-    // creation is sufficient. Only loaded when entity_management is
-    // enabled, since that's the only pack today that takes a
-    // `connectorInstanceId` argument.
-    const connectorInstances: ConnectorInstanceContext[] | undefined =
-      toolPacks.includes("entity_management")
-        ? await loadConnectorInstanceContexts(stationId)
-        : undefined;
-
-    const organizationTimezone = await loadOrganizationTimezone(organizationId);
-
-    const stationContext: StationContext = {
-      stationId: station.id,
-      stationName: station.name,
-      organizationTimezone,
-      entities: stationData.entities,
-      entityGroups: stationData.entityGroups,
+    const stationContext = await buildStationContext({
+      station,
+      organizationId,
       toolPacks,
-      entityCapabilities,
-      connectorInstances,
-    };
+    });
 
     logger.info({ portalId: portal.id, stationId }, "Portal created");
     return { portalId: portal.id, stationContext };
@@ -1044,6 +1017,48 @@ export async function loadOrganizationTimezone(
     "Org timezone is not a recognized IANA name, falling back to UTC"
   );
   return "UTC";
+}
+
+/**
+ * Build a fresh StationContext from current DB state. Called by both
+ * the portal-creation path AND the per-message stream path
+ * (`portal-events.router.ts`) so each chat turn sees up-to-date
+ * `connectorInstances` and `entityCapabilities` — connectors attached
+ * mid-session must show up in the next turn's system prompt.
+ *
+ * Caller passes in the resolved `station` row and `toolPacks` to
+ * avoid re-fetching them when they're already in scope.
+ */
+export async function buildStationContext(args: {
+  station: { id: string; name: string };
+  organizationId: string;
+  toolPacks: string[];
+}): Promise<StationContext> {
+  const { station, organizationId, toolPacks } = args;
+
+  const stationData = await AnalyticsService.loadStation(
+    station.id,
+    organizationId
+  );
+  const entityCapabilities = toolPacks.includes("entity_management")
+    ? await resolveEntityCapabilities(station.id)
+    : undefined;
+  const connectorInstances: ConnectorInstanceContext[] | undefined =
+    toolPacks.includes("entity_management")
+      ? await loadConnectorInstanceContexts(station.id)
+      : undefined;
+  const organizationTimezone = await loadOrganizationTimezone(organizationId);
+
+  return {
+    stationId: station.id,
+    stationName: station.name,
+    organizationTimezone,
+    entities: stationData.entities,
+    entityGroups: stationData.entityGroups,
+    toolPacks,
+    entityCapabilities,
+    connectorInstances,
+  };
 }
 
 export async function loadConnectorInstanceContexts(
