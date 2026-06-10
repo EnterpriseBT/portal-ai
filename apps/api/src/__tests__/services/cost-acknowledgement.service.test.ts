@@ -3,7 +3,12 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 // ── Mocks ────────────────────────────────────────────────────────────
 
 const mockRedisGet = jest.fn<() => Promise<string | null>>();
-const mockRedisSet = jest.fn<() => Promise<unknown>>().mockResolvedValue("OK");
+const mockRedisSet =
+  jest
+    .fn<
+      (key: string, value: string, mode: "EX", seconds: number) => Promise<unknown>
+    >()
+    .mockResolvedValue("OK");
 const mockRedisDel = jest.fn<() => Promise<number>>().mockResolvedValue(1);
 
 jest.unstable_mockModule("../../utils/redis.util.js", () => ({
