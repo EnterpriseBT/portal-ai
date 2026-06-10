@@ -106,4 +106,84 @@ describe("ApiError", () => {
     expect(error.code).toBe(ApiCode.PROFILE_INVALID_RESPONSE);
     expect(error.message).toBe("Invalid data");
   });
+
+  it("accepts a {recommendation} options bag as fourth argument", () => {
+    const error = new ApiError(
+      409,
+      ApiCode.HEALTH_CHECK_FAILED,
+      "Locked",
+      { recommendation: "Wait and retry." }
+    );
+
+    expect(error.recommendation).toBe("Wait and retry.");
+    expect(error.details).toBeUndefined();
+  });
+
+  it("accepts a {recommendation, details} options bag", () => {
+    const error = new ApiError(
+      409,
+      ApiCode.HEALTH_CHECK_FAILED,
+      "Locked",
+      {
+        recommendation: "Wait and retry.",
+        details: { jobId: "job-1" },
+      }
+    );
+
+    expect(error.recommendation).toBe("Wait and retry.");
+    expect(error.details).toEqual({ jobId: "job-1" });
+  });
+
+  it("treats a legacy plain-record fourth arg as `details`", () => {
+    // Back-compat: an arg with no `recommendation` key is the legacy
+    // details map. (No production call sites use this today, but the
+    // signature accepts it.)
+    const error = new ApiError(
+      400,
+      ApiCode.HEALTH_CHECK_FAILED,
+      "Bad",
+      { foo: "bar", count: 3 }
+    );
+
+    expect(error.details).toEqual({ foo: "bar", count: 3 });
+    expect(error.recommendation).toBeUndefined();
+  });
+});
+
+describe("HttpService.error — recommendation in response body", () => {
+  it("includes `recommendation` in the JSON response when set", async () => {
+    const res = createMockResponse();
+    const error = new ApiError(
+      409,
+      ApiCode.HEALTH_CHECK_FAILED,
+      "Locked",
+      { recommendation: "Wait and retry." }
+    );
+
+    await HttpService.error(res, error);
+
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: "Locked",
+      code: ApiCode.HEALTH_CHECK_FAILED,
+      recommendation: "Wait and retry.",
+    });
+  });
+
+  it("omits `recommendation` when not set", async () => {
+    const res = createMockResponse();
+    const error = new ApiError(
+      404,
+      ApiCode.HEALTH_CHECK_FAILED,
+      "Missing"
+    );
+
+    await HttpService.error(res, error);
+
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: "Missing",
+      code: ApiCode.HEALTH_CHECK_FAILED,
+    });
+  });
 });

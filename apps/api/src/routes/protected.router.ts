@@ -21,6 +21,7 @@ import { layoutPlansRouter } from "./layout-plans.router.js";
 import { googleSheetsConnectorRouter } from "./google-sheets-connector.router.js";
 import { microsoftExcelConnectorRouter } from "./microsoft-excel-connector.router.js";
 import { adminRouter } from "./admin.router.js";
+import { portalSqlHandleRouter } from "./portal-sql-handle.router.js";
 
 export const protectedRouter = Router();
 
@@ -48,6 +49,7 @@ protectedRouter.use("/entity-groups", entityGroupRouter);
 protectedRouter.use("/stations", stationRouter);
 protectedRouter.use("/portals", portalRouter);
 protectedRouter.use("/portal-results", portalResultsRouter);
+protectedRouter.use("/portal-sql", portalSqlHandleRouter);
 protectedRouter.use("/toolpacks", toolpacksRouter);
 protectedRouter.use(
   "/connectors/google-sheets",

@@ -2,6 +2,8 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockFindRunningForConnectorInstance =
   jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
+const mockFindRunningByTargetEntityId =
+  jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
 const mockConnectorEntitiesFindById =
   jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockEntityRecordsFindById =
@@ -14,6 +16,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
     repository: {
       jobs: {
         findRunningForConnectorInstance: mockFindRunningForConnectorInstance,
+        findRunningByTargetEntityId: mockFindRunningByTargetEntityId,
       },
       connectorEntities: { findById: mockConnectorEntitiesFindById },
       entityRecords: { findById: mockEntityRecordsFindById },
@@ -143,6 +146,10 @@ describe("JobLockService", () => {
   describe("assertConnectorEntityUnlocked", () => {
     beforeEach(() => {
       mockConnectorEntitiesFindById.mockReset();
+      mockFindRunningByTargetEntityId.mockReset();
+      // Default: no bulk_transform locks. Individual tests that
+      // exercise the entity-level lock override this.
+      mockFindRunningByTargetEntityId.mockResolvedValue([]);
     });
 
     it("walks entity → instance and throws when the instance is locked", async () => {
@@ -171,6 +178,72 @@ describe("JobLockService", () => {
         JobLockService.assertConnectorEntityUnlocked("missing", "org-1")
       ).resolves.toBeUndefined();
       expect(mockFindRunningForConnectorInstance).not.toHaveBeenCalled();
+      expect(mockFindRunningByTargetEntityId).not.toHaveBeenCalled();
+    });
+
+    // Phase 1 of #85 — entity-level lock for bulk_transform jobs whose
+    // metadata declares targetConnectorEntityId. Lives alongside the
+    // existing instance-level check; both must pass.
+    it("throws BULK_JOB_TARGET_LOCKED when a non-terminal bulk_transform locks the entity", async () => {
+      mockConnectorEntitiesFindById.mockResolvedValue({
+        id: "entity-1",
+        connectorInstanceId: "ci-1",
+      });
+      mockFindRunningForConnectorInstance.mockResolvedValue([]);
+      mockFindRunningByTargetEntityId.mockResolvedValue([
+        fakeJob({
+          id: "job-bulk-1",
+          type: "bulk_transform",
+          metadata: { targetConnectorEntityId: "entity-1" },
+        }),
+      ]);
+
+      await expect(
+        JobLockService.assertConnectorEntityUnlocked("entity-1", "org-1")
+      ).rejects.toMatchObject({
+        status: 409,
+        code: ApiCode.BULK_JOB_TARGET_LOCKED,
+      });
+    });
+
+    it("BULK_JOB_TARGET_LOCKED error carries the locking job id in details", async () => {
+      mockConnectorEntitiesFindById.mockResolvedValue({
+        id: "entity-1",
+        connectorInstanceId: "ci-1",
+      });
+      mockFindRunningForConnectorInstance.mockResolvedValue([]);
+      mockFindRunningByTargetEntityId.mockResolvedValue([
+        fakeJob({
+          id: "job-bulk-1",
+          type: "bulk_transform",
+          metadata: { targetConnectorEntityId: "entity-1" },
+        }),
+      ]);
+
+      try {
+        await JobLockService.assertConnectorEntityUnlocked(
+          "entity-1",
+          "org-1"
+        );
+        throw new Error("expected throw");
+      } catch (err) {
+        const e = err as { details?: { lockingJobs?: Array<{ id: string }> } };
+        expect(e.details?.lockingJobs).toBeDefined();
+        expect(e.details?.lockingJobs?.[0]?.id).toBe("job-bulk-1");
+      }
+    });
+
+    it("resolves when no jobs lock either the instance or the entity", async () => {
+      mockConnectorEntitiesFindById.mockResolvedValue({
+        id: "entity-1",
+        connectorInstanceId: "ci-1",
+      });
+      mockFindRunningForConnectorInstance.mockResolvedValue([]);
+      mockFindRunningByTargetEntityId.mockResolvedValue([]);
+
+      await expect(
+        JobLockService.assertConnectorEntityUnlocked("entity-1", "org-1")
+      ).resolves.toBeUndefined();
     });
   });
 

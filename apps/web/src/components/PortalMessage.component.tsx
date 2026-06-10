@@ -14,6 +14,55 @@ import {
 import PushPinIcon from "@mui/icons-material/PushPin";
 import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
 import { ContentBlockRenderer } from "@portalai/core";
+
+import {
+  BulkJobProgressBlock,
+  type BulkJobProgressContent,
+} from "./BulkJobProgressBlock.component";
+import {
+  BulkFailuresTableBlock,
+  type BulkFailuresTableBlockContent,
+} from "./BulkFailuresTableBlock.component";
+import {
+  QueryResultDataBlock,
+  type QueryResultDataBlockContent,
+} from "./QueryResultDataBlock.component";
+
+/**
+ * Render override for block types that the core ContentBlockRenderer
+ * doesn't know about. Returns null when the block isn't one of the
+ * web-specific types; the caller falls through to the core renderer.
+ */
+function renderWebBlock(block: PortalMessageBlock): React.ReactNode | null {
+  if (block.type === "bulk-job-progress") {
+    return (
+      <BulkJobProgressBlock
+        content={block.content as BulkJobProgressContent}
+      />
+    );
+  }
+  if (block.type === "bulk-failures-table") {
+    return (
+      <BulkFailuresTableBlock
+        content={block.content as BulkFailuresTableBlockContent}
+      />
+    );
+  }
+  // vega-lite OR data-table block carrying a queryHandle (#85
+  // Phase 1 + Phase 3): the tool returned an envelope shape instead
+  // of inline rows. The QueryResultDataBlock fetches the snapshot
+  // from Redis and renders — as a chart when `spec` is present,
+  // as a tabular grid when it isn't.
+  if (block.type === "vega-lite" || block.type === "data-table") {
+    const content = block.content as
+      | (QueryResultDataBlockContent & { queryHandle?: string })
+      | undefined;
+    if (content && typeof content.queryHandle === "string") {
+      return <QueryResultDataBlock content={content} />;
+    }
+  }
+  return null;
+}
 import type {
   PortalMessageResponse,
   PortalMessageBlock,
@@ -32,6 +81,23 @@ function hasPinnableContent(block: PortalMessageBlock): boolean {
   if (typeof block.content === "string") return block.content.trim().length > 0;
   if (typeof block.content === "object")
     return Object.keys(block.content as object).length > 0;
+  return false;
+}
+
+/** Block types that the web layer renders directly (bypass pin path). */
+const WEB_BLOCK_TYPES = new Set<string>([
+  "bulk-job-progress",
+  "bulk-failures-table",
+]);
+
+/** True when a block needs the web layer rather than the core
+ *  ContentBlockRenderer — either by type or by carrying a queryHandle. */
+function shouldRenderViaWeb(block: PortalMessageBlock): boolean {
+  if (WEB_BLOCK_TYPES.has(block.type as string)) return true;
+  if (block.type === "vega-lite" || block.type === "data-table") {
+    const c = block.content as { queryHandle?: unknown } | undefined;
+    return typeof c?.queryHandle === "string";
+  }
   return false;
 }
 
@@ -101,6 +167,17 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
       sx={{ mb: 2, minWidth: 0, maxWidth: "100%" }}
     >
       {message.blocks.map((block: PortalMessageBlock, i: number) => {
+        // Web-specific blocks render without a pin affordance (the
+        // bulk-job-progress widget pins on terminal once the underlying
+        // data is canonical; pin work is filed as #92).
+        if (shouldRenderViaWeb(block)) {
+          return (
+            <Box key={i} sx={{ p: 1, mb: 1 }}>
+              {renderWebBlock(block)}
+            </Box>
+          );
+        }
+
         const pinnable = hasPinnableContent(block);
         if (!pinnable) return null;
         const pinKey = `${message.id}:${i}`;

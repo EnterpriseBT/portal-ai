@@ -81,12 +81,31 @@ const nullableString = z
   .nullable()
   .transform((v) => (v === "" ? null : v));
 
+/**
+ * Shared validation for the `normalizedKey` field across field-mapping
+ * create/update contracts.
+ *
+ * The system uses `c_<normalizedKey>` as the physical wide-table column
+ * name — so any normalizedKey already starting with `c_` would yield a
+ * `c_c_*` column, corrupting downstream field-mapping resolution.
+ * Reject those inputs at the contract layer with an actionable error;
+ * `sanitizeColumnName` in the API also strips defensively as a last
+ * line of defense.
+ */
+const normalizedKeyBase = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]*$/)
+  .refine((s) => !/^c_/.test(s), {
+    message:
+      "normalizedKey must NOT start with `c_` — the system reserves that prefix for the physical wide-table column name and adds it automatically. Use the base name (e.g. `diameter_avg_km`).",
+  });
+
 export const FieldMappingCreateRequestBodySchema = z.object({
   connectorEntityId: z.string(),
   columnDefinitionId: z.string(),
   sourceField: z.string().min(1),
   isPrimaryKey: z.boolean().optional().default(false),
-  normalizedKey: z.string().regex(/^[a-z][a-z0-9_]*$/),
+  normalizedKey: normalizedKeyBase,
   required: z.boolean().optional().default(false),
   defaultValue: nullableString.optional().default(null),
   format: nullableString.optional().default(null),
@@ -113,10 +132,7 @@ export const FieldMappingUpdateRequestBodySchema = z.object({
   sourceField: z.string().min(1),
   isPrimaryKey: z.boolean().optional(),
   columnDefinitionId: z.string(),
-  normalizedKey: z
-    .string()
-    .regex(/^[a-z][a-z0-9_]*$/)
-    .optional(),
+  normalizedKey: normalizedKeyBase.optional(),
   required: z.boolean().optional(),
   defaultValue: nullableString.optional(),
   format: nullableString.optional(),

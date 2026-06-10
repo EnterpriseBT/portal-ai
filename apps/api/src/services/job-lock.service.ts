@@ -16,7 +16,10 @@
  */
 
 import type { JobSelect } from "../db/schema/zod.js";
-import { ApiCode } from "../constants/api-codes.constants.js";
+import {
+  ApiCode,
+  ApiCodeDefaultRecommendation,
+} from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
 
@@ -95,15 +98,24 @@ export class JobLockService {
   }
 
   /**
-   * Lock check for mutations on a connector entity — resolves the
-   * parent connector instance via the entity row, then delegates.
+   * Lock check for mutations on a connector entity. Two layers:
+   *
+   *  1. Instance-level: resolves the parent connector instance and
+   *     delegates to `assertConnectorInstanceUnlocked` so connector-
+   *     sync / layout-plan-commit jobs lock the entity transitively.
+   *  2. Entity-level: checks for non-terminal `bulk_transform` jobs
+   *     whose metadata declares this entity as their target. These
+   *     don't lock the parent instance (so other entities under the
+   *     same instance stay mutable) but they do lock this entity.
+   *
    * No-op when the entity doesn't exist; the caller's own 404
    * handling fires for missing rows so the API surfaces an
    * entity-specific code rather than a generic lock 409.
    *
-   * The connector-instance lookup inside the delegate is
-   * org-scoped, so a leak across orgs is structurally impossible
-   * even if the caller forgets to authz the entity itself.
+   * The connector-instance lookup inside the delegate is org-scoped,
+   * and the entity-level repo query is org-scoped, so a leak across
+   * orgs is structurally impossible even if the caller forgets to
+   * authz the entity itself.
    */
   static async assertConnectorEntityUnlocked(
     connectorEntityId: string,
@@ -112,9 +124,32 @@ export class JobLockService {
     const entity =
       await DbService.repository.connectorEntities.findById(connectorEntityId);
     if (!entity) return;
+
+    // Layer 1: instance-level lock (existing behavior).
     await JobLockService.assertConnectorInstanceUnlocked(
       entity.connectorInstanceId,
       organizationId
+    );
+
+    // Layer 2: entity-level lock (bulk_transform; #85).
+    const entityLockingJobs =
+      await DbService.repository.jobs.findRunningByTargetEntityId(
+        connectorEntityId,
+        organizationId
+      );
+    if (entityLockingJobs.length === 0) return;
+    throw new ApiError(
+      409,
+      ApiCode.BULK_JOB_TARGET_LOCKED,
+      "Target entity is locked by an in-flight bulk job",
+      {
+        recommendation: ApiCodeDefaultRecommendation[
+          ApiCode.BULK_JOB_TARGET_LOCKED
+        ],
+        details: {
+          lockingJobs: entityLockingJobs.map(toSummary),
+        },
+      }
     );
   }
 

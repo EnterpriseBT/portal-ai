@@ -2,7 +2,9 @@ import { z } from "zod";
 import { tool } from "ai";
 
 import { AnalyticsService } from "../services/analytics.service.js";
+import { PortalSqlHandleService } from "../services/portal-sql-handle.service.js";
 import { Tool } from "../types/tools.js";
+import { INLINE_ROWS_THRESHOLD } from "@portalai/core/constants";
 
 // ---------------------------------------------------------------------------
 // Vega spec schema — kept minimal to reduce tool-definition token cost.
@@ -57,13 +59,50 @@ export class VisualizeTreeTool extends Tool<typeof InputSchema> {
       inputSchema: this.schema,
       execute: async (input) => {
         const { sql, vegaSpec } = this.validate(input);
-        return AnalyticsService.visualizeVega({
+
+        const inlineResponse = await AnalyticsService.sqlQuery({
           sql,
-          vegaSpec,
           stationId,
           organizationId,
         });
+
+        const rowCount = countRows(inlineResponse);
+        if (rowCount <= INLINE_ROWS_THRESHOLD) {
+          return AnalyticsService.visualizeVega({
+            sql,
+            vegaSpec,
+            stationId,
+            organizationId,
+          });
+        }
+
+        // Handle path: tree specs accumulate the full dataset before
+        // rendering — the widget batches arrivals client-side and
+        // debounces re-layout, but the wire shape is the same as
+        // visualize.
+        const { envelope } = await PortalSqlHandleService.produce({
+          stationId,
+          organizationId,
+          sql,
+        });
+        return {
+          type: "vega",
+          ...envelope,
+          spec: vegaSpec,
+        };
       },
     });
   }
+}
+
+function countRows(
+  response: Awaited<ReturnType<typeof AnalyticsService.sqlQuery>>
+): number {
+  if ("sample" in response) {
+    return response.totalCount;
+  }
+  if ("truncated" in response && response.truncated) {
+    return response.totalCount;
+  }
+  return response.rows.length;
 }

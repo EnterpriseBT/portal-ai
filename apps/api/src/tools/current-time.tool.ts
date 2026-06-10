@@ -9,15 +9,15 @@ import {
   formatIsoWithOffset,
 } from "../utils/timezone.util.js";
 
-const logger = createLogger({ module: "get-current-time-tool" });
+const logger = createLogger({ module: "current-time-tool" });
 
 const InputSchema = z
   .object({})
   .describe("No arguments — returns the current server time.");
 
-export class GetCurrentTimeTool extends Tool<typeof InputSchema> {
-  slug = "get_current_time";
-  name = "Get Current Time";
+export class CurrentTimeTool extends Tool<typeof InputSchema> {
+  slug = "current_time";
+  name = "Current Time";
   description =
     "Return the current date and time. Use this before resolving any " +
     'relative time expression like "today", "this Friday", "next week", ' +

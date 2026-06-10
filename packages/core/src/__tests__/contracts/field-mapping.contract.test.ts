@@ -163,6 +163,22 @@ describe("FieldMappingCreateRequestBodySchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("should reject normalizedKey that already starts with `c_` (#85 §4d guard)", () => {
+    // The system reserves `c_` for the physical wide-table column
+    // name (`c_<normalizedKey>`); accepting `c_foo` would produce
+    // `c_c_foo` and corrupt downstream field-mapping resolution.
+    const result = FieldMappingCreateRequestBodySchema.safeParse({
+      connectorEntityId: "ce-1",
+      columnDefinitionId: "cd-1",
+      sourceField: "account_name",
+      normalizedKey: "c_account_name",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toMatch(/c_/);
+    }
+  });
+
   it("should default required to false", () => {
     const result = FieldMappingCreateRequestBodySchema.parse({
       connectorEntityId: "ce-1",

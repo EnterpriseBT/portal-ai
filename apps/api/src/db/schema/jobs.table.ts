@@ -24,6 +24,7 @@ export const jobTypeEnum = pgEnum("job_type", [
   "connector_sync",
   "file_upload_parse",
   "layout_plan_commit",
+  "bulk_transform",
 ]);
 
 /**
