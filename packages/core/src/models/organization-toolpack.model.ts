@@ -46,12 +46,36 @@ export const ToolpackEndpointsSchema = z.object({
 });
 export type ToolpackEndpoints = z.infer<typeof ToolpackEndpointsSchema>;
 
+// ── Bulk-dispatch metadata ──────────────────────────────────────────
+//
+// Opt-in metadata that allows a tool to be dispatched per-record by
+// the bulk-transform processor (#85 Phase 4). When the schema
+// endpoint declares this on a tool, the tool becomes eligible for
+// `bulk_transform_entity_records` with `expression.kind === "tool"`;
+// the dispatcher uses these values to fan out within bounded
+// concurrency / rate / timeout.
+
+export const BulkDispatchMetadataSchema = z.object({
+  maxConcurrency: z.number().int().positive(),
+  timeoutMs: z.number().int().positive(),
+  ratePerSec: z.number().positive().optional(),
+  idempotent: z.boolean(),
+  estimatedMsPerCall: z.number().positive().optional(),
+  costHint: z.enum(["free", "metered", "expensive"]).optional(),
+});
+export type BulkDispatchMetadata = z.infer<typeof BulkDispatchMetadataSchema>;
+
 // ── Tool definition ─────────────────────────────────────────────────
 
 export const ToolpackToolDefinitionSchema = z.object({
   name: z.string().regex(TOOLPACK_SLUG_REGEX),
   description: z.string().min(1),
   parameterSchema: z.record(z.string(), z.unknown()),
+  /** Optional bulk-dispatch eligibility — webhook schemas can declare
+   *  this so the tool becomes available to `bulk_transform_entity_records`
+   *  with `expression.kind === "tool"`. Absent means the tool is rejected
+   *  from the dispatch path (matches the existing builtin contract). */
+  bulkDispatch: BulkDispatchMetadataSchema.optional(),
 });
 export type ToolpackToolDefinition = z.infer<
   typeof ToolpackToolDefinitionSchema

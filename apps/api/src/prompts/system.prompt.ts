@@ -58,7 +58,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     "## Current time",
     "",
     `The organization's timezone is **${stationContext.organizationTimezone}**.`,
-    'Before resolving any relative time expression ("today", "this Friday", "next week", "in 3 days", "end of month", etc.), call the `get_current_time` tool. Resolve the expression against the timestamp in `localTime` (the org\'s timezone), not your training cutoff.',
+    'Before resolving any relative time expression ("today", "this Friday", "next week", "in 3 days", "end of month", etc.), call the `current_time` tool. Resolve the expression against the timestamp in `localTime` (the org\'s timezone), not your training cutoff.',
     "",
     "When writing a `date` or `datetime` value into an entity:",
     "- If `_meta_columns.canonicalFormat` is set for the column, emit the value in that exact format.",
@@ -68,29 +68,30 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     "",
   ];
 
-  for (const entity of stationContext.entities) {
-    let heading = `### ${entity.label} (\`${entity.key}\`)`;
-    if (stationContext.toolPacks.includes("entity_management")) {
-      heading += ` [connectorEntityId: ${entity.id}]`;
+  // Lightweight roster — entity keys + labels only. The agent uses
+  // this to know WHAT exists. For any id (`connectorEntityId`,
+  // `columnDefinitionId`, `fieldMappingId`, wide-column name) or full
+  // column inventory, the agent calls the `station_context` tool
+  // (#97). Previously this section re-emitted every entity's full
+  // column list plus all ID markers on every turn — expensive at
+  // scale and the agent still kept inventing wrong column names.
+  if (stationContext.entities.length === 0) {
+    lines.push("_No entities attached to this station yet._");
+    lines.push("");
+  } else {
+    lines.push("Entities on this station:");
+    for (const entity of stationContext.entities) {
+      lines.push(`- \`${entity.key}\` — ${entity.label}`);
     }
-    if (stationContext.entityCapabilities) {
-      const caps = stationContext.entityCapabilities[entity.id];
-      if (caps) {
-        const flags = caps.write ? "[read, write]" : "[read]";
-        heading += ` ${flags}`;
-      }
-    }
-    lines.push(heading);
-    lines.push("Columns:");
-    const hasEntityMgmt =
-      stationContext.toolPacks.includes("entity_management");
-    for (const col of entity.columns) {
-      let line = `  - \`${col.key}\` (${col.type}): ${col.label}`;
-      if (hasEntityMgmt) {
-        line += ` [columnDefinitionId: ${col.columnDefinitionId}, fieldMappingId: ${col.fieldMappingId}, sourceField: "${col.sourceField}"]`;
-      }
-      lines.push(line);
-    }
+    lines.push("");
+    lines.push(
+      "Call `station_context` for full schemas (column keys, " +
+        "wide-column names, connectorEntityId, columnDefinitionId, " +
+        "fieldMappingId, capabilities). Pass `entityKeys: ['<key>']` to " +
+        "narrow the response when you only need one entity. **Always call " +
+        "this before any tool that takes an id** — do not invent names, " +
+        "do not ask the user."
+    );
     lines.push("");
   }
 
@@ -98,22 +99,10 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("## Cross-Entity Relationships");
     lines.push("");
     lines.push(
-      "Use the specified link columns when joining across member entities. " +
-        "Prefer data from the primary entity when displaying a unified view."
+      `${stationContext.entityGroups.length} entity group${stationContext.entityGroups.length === 1 ? "" : "s"} attached. ` +
+        "Call `station_context` to read each group's members and link columns."
     );
     lines.push("");
-
-    for (const group of stationContext.entityGroups) {
-      lines.push(`### ${group.name}`);
-      lines.push("Members:");
-      for (const member of group.members) {
-        const primaryFlag = member.isPrimary ? " [primary]" : "";
-        lines.push(
-          `  - \`${member.entityKey}\` — link column: \`${member.linkColumnKey}\` (${member.linkColumnLabel})${primaryFlag}`
-        );
-      }
-      lines.push("");
-    }
   }
 
   if (stationContext.toolPacks.includes("entity_management")) {
@@ -153,32 +142,79 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         'There is no `currency` type — use `number` with `canonicalFormat` (e.g. "USD") instead.'
     );
     lines.push("");
+    // Phase 4 retry-failed-only nudge: when the user asks to retry
+    // failed records from a previous bulk_transform, call the tool
+    // again with the same expression + a sourceFilter scoping to the
+    // failed source keys. The "retry failed only" button on the
+    // bulk-failures-table widget posts a message in exactly this
+    // shape; recognize it and act accordingly.
+    lines.push(
+      "When the user asks to retry failed records from a previous bulk_transform job, " +
+        "call `bulk_transform_entity_records` again with the same source, target, " +
+        "expression, and keyField — but add a `sourceFilter.whereSqlFragment` that " +
+        "scopes the source-side scan to the failed source keys " +
+        "(e.g. `\"c_parcel_id IN ('p-99','p-499','p-999')\"`). Do not re-run the " +
+        "whole job; just the failed subset."
+    );
+    lines.push("");
   }
 
   // SQL guidance — applies whenever the LLM can reach `sql_query` /
   // `visualize` / `visualize_tree`. The new session-view surface is
-  // PostgreSQL-compatible, has a 500-row response cap, and uses
-  // double-quoted identifiers (not AlaSQL's `[…]`).
+  // PostgreSQL-compatible and uses double-quoted identifiers (not
+  // AlaSQL's `[…]`). Large result sets return a queryHandle envelope
+  // that streams to the UI without entering the agent's context — the
+  // bullets below teach the agent to lean into that path instead of
+  // refusing on row count.
   if (stationContext.toolPacks.includes("data_query")) {
     lines.push("## SQL Guidance");
     lines.push("");
-    lines.push("This is PostgreSQL-compatible SQL. Specifically:");
     lines.push(
-      "- Always include a LIMIT clause when scanning rows for exploratory work."
+      "This is PostgreSQL-compatible SQL. Use double-quoted identifiers " +
+        '(`"name"`), not brackets.'
+    );
+    lines.push("");
+    lines.push(
+      "There are two tools to reach for, depending on intent:"
+    );
+    lines.push("");
+    lines.push(
+      "- **`display_entity_records`** — when the user asks to **see, " +
+        "show, display, or list** records of an entity (any cardinality). " +
+        "This is purpose-built: pass `entityKey` (and optionally `columns`), " +
+        "the UI renders every row in a single live table widget. No SQL, no " +
+        "row-count question, no pagination needed."
     );
     lines.push(
-      '- Avoid `SELECT *` on entity tables — project only the columns you need.'
+      "- **`sql_query`** — for analytical work: filters, joins, " +
+        "aggregations, derived columns, exploratory peeks. Returns inline " +
+        "rows for small results, or a `{queryHandle, rowCount, schema, " +
+        "samplePeek}` envelope for larger ones. Either renders correctly."
+    );
+    lines.push("");
+    lines.push(
+      "Use aggregations (COUNT, AVG, MAX, SUM) when the user asked a " +
+        "summary question. Use `LIMIT` when you're peeking at an entity's " +
+        "shape for your own reasoning before a follow-up. Project only the " +
+        "columns you need on wide tables."
+    );
+    lines.push("");
+    lines.push('Example — user asks "show me all the parcels":');
+    lines.push("");
+    lines.push("  Good (one call, one widget):");
+    lines.push(
+      '    [display_entity_records: entityKey="parcels"]'
+    );
+    lines.push("    Showing all 5,402 parcels below.");
+    lines.push("");
+    lines.push(
+      "  Bad (using sql_query with defensive LIMIT for a display request):"
     );
     lines.push(
-      "- Prefer aggregations (COUNT, AVG, MAX, SUM) over scanning rows when the " +
-        "user is asking summary questions."
+      "    [sql_query: SELECT * FROM \"parcels\" LIMIT 100]"
     );
     lines.push(
-      "- Responses cap at 500 rows. If you see `truncated: true` in the response, " +
-        "narrow your filter or aggregate instead of paging."
-    );
-    lines.push(
-      '- Quote identifiers with double quotes (`"name"`), not brackets.'
+      "    \"Here's a sample of 100 parcels.\""
     );
     lines.push("");
 
@@ -272,32 +308,25 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     }
   }
 
-  // ## Available Connector Instances — listed once at session start
-  // because connector-instance configuration is static for the
-  // lifetime of a portal session. The agent uses this for any tool
-  // call that takes a `connectorInstanceId` (today: connector_entity_create).
-  //
-  // Skipped when entity_management isn't enabled — no tool would
-  // accept the id, no reason to enumerate.
+  // Pointer to the on-demand id lookup (#97). The full
+  // connectorInstance list now lives in station_context — the
+  // static prompt only names a count + reminds the agent where to
+  // call. Skipped when entity_management isn't enabled (no tool
+  // needs a connectorInstanceId).
   if (
     stationContext.toolPacks.includes("entity_management") &&
     stationContext.connectorInstances &&
     stationContext.connectorInstances.length > 0
   ) {
-    lines.push("## Available Connector Instances");
+    lines.push("## Connector Instances");
     lines.push("");
     lines.push(
-      "Pass one of the `id` values below when a tool asks for a " +
-        "`connectorInstanceId`. These are the only valid choices for this " +
-        "station — do not invent one, do not pass an `entityId` here. The " +
-        "list is static for this session."
+      `${stationContext.connectorInstances.length} connector instance${stationContext.connectorInstances.length === 1 ? "" : "s"} ` +
+        "attached. Call `station_context` to read each instance's " +
+        "`id`, `name`, `display`, and `slug`. Never invent a " +
+        "`connectorInstanceId`, never ask the user — the value is in " +
+        "the tool response."
     );
-    lines.push("");
-    for (const inst of stationContext.connectorInstances) {
-      lines.push(
-        `- \`${inst.id}\` — ${inst.name} (${inst.display}, slug: ${inst.slug})`
-      );
-    }
     lines.push("");
   }
 

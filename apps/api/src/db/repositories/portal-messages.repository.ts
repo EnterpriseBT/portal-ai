@@ -4,7 +4,7 @@
  * Messages are immutable — only create and read operations are supported.
  */
 
-import { eq } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 
 import { portalMessages } from "../schema/index.js";
 import { db } from "../client.js";
@@ -33,6 +33,30 @@ export class PortalMessagesRepository extends Repository<
       { orderBy: { column: this.cols.created, direction: "asc" } },
       client
     );
+  }
+
+  /**
+   * Return the `created` timestamp of the most recent USER message in
+   * the portal (`role === "user"`), or `null` if no user message
+   * exists yet. Used by the cost-acknowledgement gate to verify the
+   * user has spoken since a prior rejection.
+   */
+  async latestUserMessageTimestamp(
+    portalId: string,
+    client: DbClient = db
+  ): Promise<number | null> {
+    const [row] = await (client as typeof db)
+      .select({ created: portalMessages.created })
+      .from(portalMessages)
+      .where(
+        and(
+          eq(portalMessages.portalId, portalId),
+          eq(portalMessages.role, "user")
+        )
+      )
+      .orderBy(desc(portalMessages.created))
+      .limit(1);
+    return row?.created ?? null;
   }
 
   /** Hard-delete all messages for a portal. Returns the count deleted. */

@@ -30,6 +30,7 @@ import {
 } from "../prompts/system.prompt.js";
 import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
 import { isValidIanaTimezone } from "../utils/timezone.util.js";
+import { getRedisClient } from "../utils/redis.util.js";
 import { stationInstancesRepo } from "../db/repositories/station-instances.repository.js";
 import { connectorInstancesRepo } from "../db/repositories/connector-instances.repository.js";
 import { connectorDefinitionsRepo } from "../db/repositories/connector-definitions.repository.js";
@@ -41,6 +42,9 @@ import type { PortalSelect, PortalMessageSelect } from "../db/schema/zod.js";
 import { portalResults } from "../db/schema/index.js";
 
 const logger = createLogger({ module: "portal-service" });
+
+/** Redis Pub/Sub channel prefix for portal-level events (#85 Phase 2). */
+export const PORTAL_EVENTS_CHANNEL_PREFIX = "portal:events:";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -67,7 +71,12 @@ export interface PortalWithMessages {
 // ---------------------------------------------------------------------------
 
 /** Tools whose results contain row sets and should be surfaced as data-table blocks. */
-const ROW_SET_TOOLS = new Set(["sql_query", "detect_outliers", "cluster"]);
+const ROW_SET_TOOLS = new Set([
+  "sql_query",
+  "display_entity_records",
+  "detect_outliers",
+  "cluster",
+]);
 
 /** Tools whose results represent mutations and should be surfaced as mutation-result blocks. */
 const MUTATION_TOOLS = new Set([
@@ -160,6 +169,23 @@ export function resolveDisplayBlock(
   block: Record<string, unknown>;
   sseResult?: Record<string, unknown>;
 } | null {
+  // bulk_transform_entity_records returns a tool-result shape carrying
+  // a `blockKind: "bulk-job-progress"` + `blockContent` payload. The
+  // frontend mounts a live-data widget against the job id (#85 Phase 2).
+  if (
+    toolName === "bulk_transform_entity_records" &&
+    toolResult != null &&
+    toolResult.blockKind === "bulk-job-progress" &&
+    typeof toolResult.blockContent === "object"
+  ) {
+    return {
+      block: {
+        type: "bulk-job-progress",
+        content: toolResult.blockContent as Record<string, unknown>,
+      },
+    };
+  }
+
   const isVegaLite =
     toolName === "visualize" ||
     (toolResult != null && toolResult.type === "vega-lite");
@@ -175,6 +201,28 @@ export function resolveDisplayBlock(
   }
 
   if (ROW_SET_TOOLS.has(toolName)) {
+    // Handle path (#85 Phase 1): the tool returned a queryHandle
+    // envelope instead of inline rows. Route it through the
+    // streaming-table block so the frontend hydrates via the Redis
+    // snapshot. The envelope is the block content verbatim (web layer
+    // detects `queryHandle` + renders QueryResultDataBlock).
+    if (
+      toolResult != null &&
+      typeof toolResult.queryHandle === "string"
+    ) {
+      const handleContent = {
+        type: "data-table" as const,
+        queryHandle: toolResult.queryHandle,
+        rowCount: toolResult.rowCount,
+        schema: toolResult.schema,
+        samplePeek: toolResult.samplePeek,
+        sampled: toolResult.sampled,
+      };
+      return {
+        block: { type: "data-table" as const, content: handleContent },
+        sseResult: handleContent,
+      };
+    }
     const rows = Array.isArray(toolResult)
       ? (toolResult as Record<string, unknown>[])
       : Array.isArray(toolResult?.rows)
@@ -381,6 +429,130 @@ export class PortalService {
   }
 
   // -------------------------------------------------------------------------
+  // notifyJobTerminal (#85 Phase 2 slice 3)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Called by the worker hook after a portal-bound job reaches a
+   * terminal status. Two side effects:
+   *
+   *   1. Persist a synthetic assistant-role message into the portal's
+   *      message history. The message is template-driven (text summary
+   *      + a failure-table block when applicable); no agent re-prompt.
+   *   2. Publish a `bulk_job_terminal` event on the portal-events
+   *      Pub/Sub channel so live clients see the terminal event
+   *      immediately and unlock the chat input.
+   *
+   * Idempotency: the assistant message is keyed on jobId via a tag in
+   * the block content. A second call for the same jobId would create a
+   * duplicate row today — the worker hook (see jobs.worker.ts) guards
+   * against double-invocation by checking the job's status before
+   * firing.
+   */
+  static async notifyJobTerminal(
+    portalId: string,
+    jobId: string,
+    terminal: {
+      status: "completed" | "failed" | "cancelled";
+      recordsProcessed: number;
+      recordsFailed: number;
+      durationMs: number;
+      partialFailures?: Array<{
+        sourceKey: string;
+        error: Record<string, unknown>;
+      }>;
+      errorMessage?: string;
+    }
+  ): Promise<void> {
+    const repo = DbService.repository;
+    const portal = await repo.portals.findById(portalId);
+    if (!portal) {
+      logger.warn(
+        { portalId, jobId },
+        "notifyJobTerminal: portal not found; skipping"
+      );
+      return;
+    }
+
+    const blocks: Record<string, unknown>[] = [];
+
+    if (terminal.status === "completed") {
+      const ok = terminal.recordsProcessed - terminal.recordsFailed;
+      const seconds = Math.max(1, Math.round(terminal.durationMs / 1000));
+      blocks.push({
+        type: "text",
+        content:
+          terminal.recordsFailed > 0
+            ? `Done — ${ok} records written, ${terminal.recordsFailed} failed in ${seconds}s.`
+            : `Done — ${terminal.recordsProcessed} records written in ${seconds}s.`,
+      });
+    } else if (terminal.status === "cancelled") {
+      blocks.push({
+        type: "text",
+        content: `Cancelled at ${terminal.recordsProcessed} records. Already-committed batches are preserved.`,
+      });
+    } else {
+      blocks.push({
+        type: "text",
+        content: `Failed: ${terminal.errorMessage ?? "the job did not complete"}.`,
+      });
+    }
+
+    if (
+      terminal.partialFailures &&
+      terminal.partialFailures.length > 0
+    ) {
+      blocks.push({
+        type: "bulk-failures-table",
+        content: {
+          jobId,
+          failures: terminal.partialFailures,
+        },
+      });
+    }
+
+    const now = SystemUtilities.utc.now().getTime();
+    await repo.portalMessages.create({
+      id: SystemUtilities.id.v4.generate(),
+      portalId,
+      organizationId: portal.organizationId,
+      role: "assistant",
+      blocks,
+      created: now,
+      createdBy: portal.createdBy,
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    });
+
+    const channel = `${PORTAL_EVENTS_CHANNEL_PREFIX}${portalId}`;
+    const redis = getRedisClient();
+    await redis.publish(
+      channel,
+      JSON.stringify({
+        type: "bulk_job_terminal",
+        jobId,
+        portalId,
+        status: terminal.status,
+        recordsProcessed: terminal.recordsProcessed,
+        recordsFailed: terminal.recordsFailed,
+        timestamp: now,
+      })
+    );
+
+    logger.info(
+      {
+        portalId,
+        jobId,
+        status: terminal.status,
+        recordsProcessed: terminal.recordsProcessed,
+      },
+      "notifyJobTerminal: assistant message persisted + portal SSE published"
+    );
+  }
+
+  // -------------------------------------------------------------------------
   // resetPortal
   // -------------------------------------------------------------------------
 
@@ -466,7 +638,8 @@ export class PortalService {
     const analyticsTools = await ToolService.buildAnalyticsTools(
       organizationId,
       stationContext.stationId,
-      userId
+      userId,
+      portalId
     );
 
     // streamText() is lazy in AI SDK v6 — it returns immediately and
@@ -888,7 +1061,7 @@ export async function buildStationContext(args: {
   };
 }
 
-async function loadConnectorInstanceContexts(
+export async function loadConnectorInstanceContexts(
   stationId: string
 ): Promise<ConnectorInstanceContext[]> {
   const links = await stationInstancesRepo.findByStationId(stationId);

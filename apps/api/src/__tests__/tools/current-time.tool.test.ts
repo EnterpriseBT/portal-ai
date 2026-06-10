@@ -24,8 +24,8 @@ jest.unstable_mockModule("../../utils/logger.util.js", () => ({
   }),
 }));
 
-const { GetCurrentTimeTool } = await import(
-  "../../tools/get-current-time.tool.js"
+const { CurrentTimeTool } = await import(
+  "../../tools/current-time.tool.js"
 );
 
 beforeEach(() => {
@@ -39,7 +39,7 @@ beforeEach(() => {
 type Response = { now: string; timezone: string; localTime: string };
 
 const exec = async (organizationId = "org-1"): Promise<Response> => {
-  const result = await new GetCurrentTimeTool().build(organizationId).execute!(
+  const result = await new CurrentTimeTool().build(organizationId).execute!(
     {},
     {
       toolCallId: "t",
@@ -50,7 +50,7 @@ const exec = async (organizationId = "org-1"): Promise<Response> => {
   return result as Response;
 };
 
-describe("GetCurrentTimeTool", () => {
+describe("CurrentTimeTool", () => {
   it("returns now, timezone, and localTime for a valid org timezone", async () => {
     const r = await exec();
     expect(r.timezone).toBe("America/Los_Angeles");

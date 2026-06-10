@@ -12,6 +12,7 @@ import type {
 import { sdk } from "../api/sdk";
 import { usePortalStream } from "../utils/portal-stream.util";
 import { ChatWindowUI, type ChatWindowHandle } from "./ChatWindow.component";
+import { usePortalChatLock } from "../utils/portal-chat-lock.util";
 import { PortalMessage } from "./PortalMessage.component";
 
 // ── Message List (memoized to avoid re-renders on input changes) ─────
@@ -125,6 +126,8 @@ export interface PortalSessionUIProps {
   onCancel: () => void;
   onExit: () => void;
   isStreaming: boolean;
+  /** Locked when a non-terminal bulk job is bound to this portal (#85). */
+  chatLocked?: boolean;
 }
 
 export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
@@ -140,6 +143,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
   onCancel,
   onExit,
   isStreaming,
+  chatLocked,
 }) => (
   <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
     <ChatWindowUI
@@ -148,7 +152,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
       onReset={onReset}
       onCancel={onCancel}
       onExit={onExit}
-      disabled={isStreaming}
+      disabled={isStreaming || chatLocked}
     >
       <MessageList
         portalId={portalId}
@@ -322,6 +326,8 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     await streamActions.send(portalId);
   };
 
+  const chatLock = usePortalChatLock(portalId);
+
   return (
     <PortalSessionUI
       portalId={portalId}
@@ -336,6 +342,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       onCancel={handleCancel}
       onExit={() => router.history.back()}
       isStreaming={streamState.isStreaming}
+      chatLocked={chatLock.locked}
     />
   );
 };

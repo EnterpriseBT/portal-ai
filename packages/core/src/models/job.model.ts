@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
+import { ApiErrorSchema } from "../contracts/api.contract.js";
+import { DEFAULT_BULK_BATCH } from "../constants/large-data-ops.constants.js";
 
 /**
  * Async job model.
@@ -38,6 +40,7 @@ export const JobTypeEnum = z.enum([
   "connector_sync",
   "file_upload_parse",
   "layout_plan_commit",
+  "bulk_transform",
 ]);
 export type JobType = z.infer<typeof JobTypeEnum>;
 
@@ -227,6 +230,94 @@ export type LayoutPlanCommitJobResult = z.infer<
   typeof LayoutPlanCommitJobResultSchema
 >;
 
+/**
+ * bulk_transform (#85) — agent-driven bulk write that runs a per-record
+ * transformation in batches. Two expression kinds: `sql` (declarative
+ * INSERT … SELECT projection) and `tool` (per-record dispatch through a
+ * bulkDispatch-able tool; Phase 4 wires the dispatcher).
+ *
+ * Locks `targetConnectorEntityId` while non-terminal (see
+ * CLAUDE.md → "Async Job State & Data Locking").
+ */
+export const BulkTransformExpressionSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("sql"),
+    /** SELECT projection or scalar expression. Per-batch processor wraps
+     *  in INSERT … SELECT against the source wide table. */
+    value: z.string(),
+  }),
+  z.object({
+    kind: z.literal("tool"),
+    /** Tool name; must be a registered bulkDispatch-able tool. */
+    ref: z.string(),
+    args: z.record(z.string(), z.unknown()).optional(),
+    /** Wide-column on the target where each per-record tool result
+     *  is written. Required — the tool stays target-agnostic and
+     *  the agent decides where the value lands (#98). */
+    targetColumn: z.string(),
+  }),
+]);
+export type BulkTransformExpression = z.infer<
+  typeof BulkTransformExpressionSchema
+>;
+
+export const BulkTransformMetadataSchema = z.object({
+  /** Source entity to scan; read-only during the job, no lock. */
+  sourceConnectorEntityId: z.string(),
+  /** Target entity to write into; locked while the job is non-terminal. */
+  targetConnectorEntityId: z.string(),
+  expression: BulkTransformExpressionSchema,
+  /** Source field used as the upsert key on the target. */
+  keyField: z.string(),
+  batchSize: z
+    .number()
+    .int()
+    .positive()
+    .max(10_000)
+    .default(DEFAULT_BULK_BATCH),
+  /** Required when the dispatched tool declared `costHint: "expensive"`. */
+  acknowledgeCost: z.boolean().optional(),
+  /** Optional source-side WHERE fragment (#85 Phase 4 retry-failed-only).
+   *  Injected into the cursor's WHERE clause. The fragment is validated
+   *  via EXPLAIN at the tool's pre-flight; runtime SQL injection is
+   *  bounded by the org-scope guard the processor applies. */
+  sourceFilter: z
+    .object({
+      whereSqlFragment: z.string(),
+    })
+    .optional(),
+});
+export type BulkTransformMetadata = z.infer<typeof BulkTransformMetadataSchema>;
+
+export const BulkTransformResultSchema = z.object({
+  /** Rows actually written to the target's wide table. For tool-kind
+   *  jobs this excludes records whose tool output keys didn't match
+   *  any of the target's wide-column names (those land in
+   *  `droppedRecords` and the keys are listed in `droppedKeys`). */
+  recordsProcessed: z.number().int().nonnegative(),
+  recordsFailed: z.number().int().nonnegative(),
+  durationMs: z.number().int().nonnegative(),
+  partialFailures: z
+    .array(
+      z.object({
+        sourceKey: z.string(),
+        /** Per-record error envelope; reuses the universal shape so
+         *  the agent and UI consume the same payload. */
+        error: ApiErrorSchema,
+      })
+    )
+    .optional(),
+  /** Tool-dispatch records whose return-value keys didn't exist on
+   *  the target's wide table. The dispatcher succeeded for each one
+   *  but `upsertSuccesses` skipped the write (#85 Phase 4 / #98). */
+  droppedRecords: z.number().int().nonnegative().optional(),
+  /** Distinct tool-output keys that were dropped because no matching
+   *  wide-column existed. Useful for surfacing the contract mismatch
+   *  in the terminal SSE event + UI. */
+  droppedKeys: z.array(z.string()).optional(),
+});
+export type BulkTransformResult = z.infer<typeof BulkTransformResultSchema>;
+
 // --- Type Map ---
 
 /**
@@ -251,6 +342,10 @@ export interface JobTypeMap {
   layout_plan_commit: {
     metadata: LayoutPlanCommitMetadata;
     result: LayoutPlanCommitJobResult;
+  };
+  bulk_transform: {
+    metadata: BulkTransformMetadata;
+    result: BulkTransformResult;
   };
 }
 
@@ -283,6 +378,10 @@ export const JOB_TYPE_SCHEMAS: {
   layout_plan_commit: {
     metadata: LayoutPlanCommitMetadataSchema,
     result: LayoutPlanCommitJobResultSchema,
+  },
+  bulk_transform: {
+    metadata: BulkTransformMetadataSchema,
+    result: BulkTransformResultSchema,
   },
 };
 

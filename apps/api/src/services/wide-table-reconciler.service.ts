@@ -97,18 +97,30 @@ export function pgTypeForColumnDefinitionType(type: ColumnDataType): string {
  * Rules:
  *   - lowercase
  *   - non-alphanumeric → `_`
+ *   - strip any leading `c_` prefixes the caller already added
+ *     (idempotence guard — without this, an input of `c_foo`
+ *     becomes `c_c_foo` and downstream resolution can't find the
+ *     mapping by either spelling)
  *   - prefix `c_` to avoid reserved words and ensure leading letter
  *   - on collision with `taken`, suffix `_2`, `_3`, …
+ *
+ * The function is intentionally tolerant of doubly-prefixed input:
+ * call sites validate at input time (rejecting `c_*` normalizedKeys
+ * with an actionable error), but this normalization is the last
+ * line of defense so the column-name namespace stays single-prefix
+ * regardless of how the key got into the system.
  */
 export function sanitizeColumnName(
   normalizedKey: string,
   taken: ReadonlySet<string>
 ): string {
-  const base = `c_${normalizedKey
+  const stripped = normalizedKey
     .toLowerCase()
     .replace(/[^a-z0-9_]/g, "_")
     .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "")}`;
+    .replace(/^_+|_+$/g, "")
+    .replace(/^(c_)+/, "");
+  const base = `c_${stripped}`;
   if (!taken.has(base)) return base;
 
   for (let i = 2; ; i++) {

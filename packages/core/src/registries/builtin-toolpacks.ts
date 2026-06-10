@@ -17,6 +17,10 @@
 
 import { z } from "zod";
 
+import type { BulkDispatchMetadata } from "../models/organization-toolpack.model.js";
+
+export type { BulkDispatchMetadata };
+
 // ── Slugs ─────────────────────────────────────────────────────────────
 
 export const BuiltinToolpackSlugSchema = z.enum([
@@ -39,11 +43,28 @@ export interface ToolpackToolExample {
   output?: unknown;
 }
 
+/**
+ * `BulkDispatchMetadata` is defined in `organization-toolpack.model.ts`
+ * so the schema + type are the single source of truth for both the
+ * built-in registry (this file) and the webhook-toolpack schema
+ * endpoint shape. Re-exported above.
+ *
+ * `costHint` drives the route's cost-acknowledgement gate:
+ *  - "free": no gate; agent dispatches freely.
+ *  - "metered": agent surfaces cost + ETA to user, no API gate.
+ *  - "expensive": route requires `acknowledgeCost: true`; agent
+ *    must confirm before dispatching.
+ */
+
 export interface ToolpackTool {
   name: string;
   description: string;
   parameterSchema: Record<string, unknown>;
   examples?: ToolpackToolExample[];
+  /** Opt-in: declares the tool can be bulk-dispatched per-record by
+   *  `bulk_transform_entity_records`. Tools without this field are
+   *  rejected from the tool-kind dispatch route. */
+  bulkDispatch?: BulkDispatchMetadata;
 }
 
 export interface BuiltinToolpack {

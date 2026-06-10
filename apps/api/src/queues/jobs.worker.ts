@@ -73,6 +73,48 @@ const getJobEventsService = async () => {
   return JobEventsService;
 };
 
+/**
+ * Best-effort terminal-status hook for `bulk_transform` jobs (#85
+ * Phase 2 slice 3). Persists the synthetic assistant message + emits
+ * the portal-events SSE. Failures are logged but do not bubble — the
+ * job's primary result is already persisted.
+ */
+async function runBulkTransformTerminalHook(
+  jobId: string,
+  data: JobData<"bulk_transform">,
+  result: JobTypeMap["bulk_transform"]["result"] | null,
+  status: "completed" | "failed" | "cancelled",
+  errorMessage?: string
+): Promise<void> {
+  const portalId = (data as unknown as { portalId?: string }).portalId;
+  if (!portalId) {
+    logger.warn(
+      { jobId },
+      "bulk_transform terminal hook: missing portalId in metadata"
+    );
+    return;
+  }
+  try {
+    const { PortalService } = await import("../services/portal.service.js");
+    await PortalService.notifyJobTerminal(portalId, jobId, {
+      status,
+      recordsProcessed: result?.recordsProcessed ?? 0,
+      recordsFailed: result?.recordsFailed ?? 0,
+      durationMs: result?.durationMs ?? 0,
+      partialFailures: result?.partialFailures?.map((f) => ({
+        sourceKey: f.sourceKey,
+        error: f.error as Record<string, unknown>,
+      })),
+      errorMessage,
+    });
+  } catch (err) {
+    logger.error(
+      { jobId, portalId, err },
+      "bulk_transform terminal hook failed"
+    );
+  }
+}
+
 export const createJobsWorker = (
   processors: Record<string, JobProcessor>
 ): Worker => {
@@ -94,11 +136,32 @@ export const createJobsWorker = (
           progress: 100,
           result: result as Record<string, unknown>,
         });
+        // Terminal hook: bulk_transform jobs notify their portal so
+        // the chat-input lock can release + the assistant message
+        // lands (#85 Phase 2 slice 3). Best-effort; we don't fail the
+        // job if notification fails (the result is already persisted).
+        if (type === "bulk_transform") {
+          await runBulkTransformTerminalHook(
+            jobId,
+            bullJob.data as JobData<"bulk_transform">,
+            result as JobTypeMap["bulk_transform"]["result"],
+            "completed"
+          );
+        }
         return result;
       } catch (err) {
         const message = formatJobError(err);
         logger.error({ jobId, err }, "Job failed");
         await JobEventsService.transition(jobId, "failed", { error: message });
+        if (type === "bulk_transform") {
+          await runBulkTransformTerminalHook(
+            jobId,
+            bullJob.data as JobData<"bulk_transform">,
+            null,
+            "failed",
+            message
+          );
+        }
         throw err;
       }
     },

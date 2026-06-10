@@ -24,8 +24,16 @@ const ItemSchema = z.object({
   normalizedKey: z
     .string()
     .regex(/^[a-z][a-z0-9_]*$/)
+    .refine((s) => !/^c_/.test(s), {
+      message:
+        "normalizedKey must NOT start with `c_` — the system reserves that prefix for the physical wide-table column name and adds it automatically. Use the base name (e.g. `diameter_avg_km`).",
+    })
     .optional()
-    .describe("Key used in normalizedData for this entity-column pair"),
+    .describe(
+      "Base snake_case key for this entity-column pair. **Do NOT prefix " +
+        "with `c_`** — the system adds it when building the wide-table " +
+        "column name (`c_<normalizedKey>`)."
+    ),
   required: z
     .boolean()
     .optional()

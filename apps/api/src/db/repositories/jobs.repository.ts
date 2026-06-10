@@ -94,6 +94,68 @@ export class JobsRepository extends Repository<
   }
 
   /**
+   * Find every non-terminal job whose metadata declares the given
+   * portal id. Used by the portal chat-input lock (#85 Phase 2):
+   * while any of these jobs are running, the portal's input is
+   * disabled at the UI layer.
+   *
+   * Today only `bulk_transform` carries `metadata.portalId`; future
+   * job types that should lock the chat extend the type filter.
+   */
+  async findRunningByPortalId(
+    portalId: string,
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<JobSelect[]> {
+    return (await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(jobs.organizationId, organizationId),
+          inArray(jobs.type, ["bulk_transform"] as JobSelect["type"][]),
+          inArray(
+            jobs.status,
+            NON_TERMINAL_JOB_STATUSES as unknown as JobSelect["status"][]
+          ),
+          sql`${jobs.metadata}->>'portalId' = ${portalId}`,
+          this.notDeleted()
+        )
+      )) as JobSelect[];
+  }
+
+  /**
+   * Find every non-terminal job whose metadata declares the given
+   * connector entity id as its lock target. Today this covers
+   * `bulk_transform` (`metadata.targetConnectorEntityId`); future job
+   * types that lock at the entity level extend this query.
+   *
+   * Used by `JobLockService.assertConnectorEntityUnlocked` to surface
+   * entity-level locks alongside the existing instance-level path.
+   */
+  async findRunningByTargetEntityId(
+    connectorEntityId: string,
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<JobSelect[]> {
+    return (await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(jobs.organizationId, organizationId),
+          inArray(jobs.type, ["bulk_transform"] as JobSelect["type"][]),
+          inArray(
+            jobs.status,
+            NON_TERMINAL_JOB_STATUSES as unknown as JobSelect["status"][]
+          ),
+          sql`${jobs.metadata}->>'targetConnectorEntityId' = ${connectorEntityId}`,
+          this.notDeleted()
+        )
+      )) as JobSelect[];
+  }
+
+  /**
    * Find the upload-session id that backed the most recent
    * `layout_plan_commit` job for `connectorInstanceId`. Returns
    * `undefined` if no prior commit job referenced an upload session

@@ -15,6 +15,8 @@ import { createLogger } from "../utils/logger.util.js";
 
 // Tool classes
 import { SqlQueryTool } from "../tools/sql-query.tool.js";
+import { DisplayEntityRecordsTool } from "../tools/display-entity-records.tool.js";
+import { StationContextTool } from "../tools/station-context.tool.js";
 import { VisualizeTool } from "../tools/visualize.tool.js";
 import { VisualizeTreeTool } from "../tools/visualize-tree.tool.js";
 import { ResolveIdentityTool } from "../tools/resolve-identity.tool.js";
@@ -55,7 +57,8 @@ import { ConnectorEntityDeleteTool } from "../tools/connector-entity-delete.tool
 import { FieldMappingCreateTool } from "../tools/field-mapping-create.tool.js";
 import { FieldMappingUpdateTool } from "../tools/field-mapping-update.tool.js";
 import { FieldMappingDeleteTool } from "../tools/field-mapping-delete.tool.js";
-import { GetCurrentTimeTool } from "../tools/get-current-time.tool.js";
+import { CurrentTimeTool } from "../tools/current-time.tool.js";
+import { BulkTransformEntityRecordsTool } from "../tools/bulk-transform-entity-records.tool.js";
 import { resolveStationCapabilities } from "../utils/resolve-capabilities.util.js";
 import { signRequest } from "../utils/webhook-signing.util.js";
 import { assertUrlSafeToFetch } from "../utils/url-safety.util.js";
@@ -148,6 +151,7 @@ export interface WebhookImplementation {
 
 /** All recognized tool pack names. */
 export const ALL_TOOL_PACKS = [
+  "station_context",
   "data_query",
   "statistics",
   "regression",
@@ -158,13 +162,25 @@ export const ALL_TOOL_PACKS = [
 
 export type ToolPackName = (typeof ALL_TOOL_PACKS)[number];
 
+/**
+ * Tool packs that are always attached to every station regardless of
+ * what's recorded in `station_toolpacks`. Holds the "system" tools
+ * every portal session needs — temporal context + on-demand station
+ * lookup — so the agent can never end up in a state where it can't
+ * resolve a connector entity id or a column's wide-table name.
+ */
+export const SYSTEM_TOOL_PACKS: readonly ToolPackName[] = ["station_context"];
+
 // ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 
 /** All built-in tool names — used to detect webhook name conflicts. */
 export const BUILTIN_TOOL_NAMES = new Set<string>([
+  "current_time",
+  "station_context",
   "sql_query",
+  "display_entity_records",
   "visualize",
   "visualize_tree",
   "resolve_identity",
@@ -213,6 +229,113 @@ export class ToolService {
 
   /** Re-exported for any caller still going via the class. */
   static readonly PACK_TOOL_NAMES = BUILTIN_TOOL_NAMES;
+
+  /**
+   * Look up a tool's bulkDispatch metadata by name (#85 Phase 4).
+   * Returns the metadata + a closed-over executor when:
+   *   - the tool exists in the station's analytics tools, AND
+   *   - its toolpack descriptor declares `bulkDispatch` metadata.
+   * Returns null otherwise; the bulk-transform processor surfaces a
+   * typed error to the caller in that case.
+   *
+   * Resolves built-in toolpacks first, then organization (webhook)
+   * toolpacks. A webhook tool can declare `bulkDispatch` on its
+   * schema-endpoint definition (see
+   * `ToolpackToolDefinitionSchema.bulkDispatch`); when present, the
+   * dispatcher uses the runtime endpoint as the executor.
+   */
+  static async lookupBulkDispatchable(
+    toolName: string,
+    organizationId: string,
+    stationId: string,
+    userId: string
+  ): Promise<{
+    executor: (input: Record<string, unknown>) => Promise<unknown>;
+    metadata: import("@portalai/core/registries").BulkDispatchMetadata;
+  } | null> {
+    // 1. Built-in toolpacks — descriptor inspection only; the
+    //    executor goes through the per-station tool registration
+    //    (handles auth + injects stationId/orgId/userId).
+    const { BUILTIN_TOOLPACKS } = await import(
+      "@portalai/core/registries"
+    );
+    let builtinDescriptor:
+      | import("@portalai/core/registries").ToolpackTool
+      | null = null;
+    for (const pack of BUILTIN_TOOLPACKS) {
+      const found = pack.tools.find((t) => t.name === toolName);
+      if (found) {
+        builtinDescriptor = found;
+        break;
+      }
+    }
+
+    if (builtinDescriptor) {
+      if (!builtinDescriptor.bulkDispatch) return null;
+      const tools = await ToolService.buildAnalyticsTools(
+        organizationId,
+        stationId,
+        userId
+      );
+      const aiTool = tools[toolName];
+      if (!aiTool) return null;
+      const executor = async (input: Record<string, unknown>) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return await (aiTool as any).execute(input, {
+          toolCallId: `bulk-dispatch-${Date.now()}`,
+          messages: [],
+          abortSignal: new AbortController().signal,
+        });
+      };
+      return { executor, metadata: builtinDescriptor.bulkDispatch };
+    }
+
+    // 2. Organization (webhook) toolpacks — scan org packs enabled
+    //    for this station. The dispatch executor goes through the
+    //    runtime endpoint via `callWebhook` (HMAC + auth headers
+    //    handled at the seam).
+    const stationToolpacks =
+      await DbService.repository.stationToolpacks.findByStationId(stationId);
+    const orgToolpackIds = stationToolpacks
+      .map((r) => r.organizationToolpackId)
+      .filter((id): id is string => id !== null);
+    if (orgToolpackIds.length === 0) return null;
+
+    const orgToolpacks =
+      await DbService.repository.organizationToolpacks.findManyByIds(
+        orgToolpackIds,
+        { organizationId }
+      );
+
+    for (const pack of orgToolpacks) {
+      const tool = pack.tools.find((t) => t.name === toolName);
+      if (!tool) continue;
+      if (!tool.bulkDispatch) return null;
+      // `authHeaders` is encrypted-at-rest in the DB type
+      // (`string | null`) but the repository decrypts it to a
+      // `Record<string, string> | null` on read. The Select-row
+      // type signature still claims the raw shape, so cast at the
+      // boundary.
+      const decryptedHeaders = pack.authHeaders as unknown as
+        | Record<string, string>
+        | null;
+      const implementation: WebhookImplementation = {
+        type: "webhook",
+        url: pack.endpoints.runtime,
+        headers: decryptedHeaders ?? undefined,
+        signingSecret: pack.signingSecret,
+      };
+      const executor = async (input: Record<string, unknown>) => {
+        return await ToolService.callWebhook(implementation, {
+          tool: toolName,
+          input,
+        });
+      };
+      return { executor, metadata: tool.bulkDispatch };
+    }
+
+    return null;
+  }
 
   // -----------------------------------------------------------------------
   // Public API
@@ -285,7 +408,16 @@ export class ToolService {
   static async buildAnalyticsTools(
     organizationId: string,
     stationId: string,
-    userId: string
+    userId: string,
+    /**
+     * Portal id whose context owns this tools record. Threaded through
+     * to tools that need to bind themselves to the calling portal
+     * session (`bulk_transform_entity_records` is the first such tool;
+     * its terminal hook needs to know which portal to notify on job
+     * completion). Optional for back-compat with non-portal callers
+     * (tests, scratch scripts); production always supplies it.
+     */
+    portalId?: string
   ): Promise<Record<string, Tool>> {
     const repo = DbService.repository;
 
@@ -306,7 +438,14 @@ export class ToolService {
     }
 
     const toolPacks = builtinSlugs;
-    const enabledPacks = new Set<string>(builtinSlugs);
+    // Always include the system packs alongside whatever the station
+    // has recorded. `station_context` lives here so every session has
+    // temporal context + on-demand id lookup regardless of which other
+    // packs are enabled.
+    const enabledPacks = new Set<string>([
+      ...builtinSlugs,
+      ...SYSTEM_TOOL_PACKS,
+    ]);
 
     // Load station data into memory
     const stationData = await AnalyticsService.loadStation(
@@ -317,17 +456,32 @@ export class ToolService {
     const tools: Record<string, Tool> = {};
 
     // -------------------------------------------------------------------
-    // Universal: get_current_time
+    // Pack: station_context (always attached via SYSTEM_TOOL_PACKS)
     // -------------------------------------------------------------------
-    // Temporal context is universal — every portal session needs it
-    // regardless of which toolpacks are enabled.
-    tools.get_current_time = new GetCurrentTimeTool().build(organizationId);
+    // System tools every portal session needs:
+    //   - `current_time` — temporal context for resolving relative
+    //     expressions ("today", "next week") against the org's timezone.
+    //   - `station_context` — on-demand lookup of attached entities,
+    //     connector instances, column inventory, and capabilities.
+    //     Replaces the static `## Available Data` wall (#97) for id
+    //     resolution.
+    if (enabledPacks.has("station_context")) {
+      tools.current_time = new CurrentTimeTool().build(organizationId);
+      tools.station_context = new StationContextTool().build(
+        stationId,
+        organizationId
+      );
+    }
 
     // -------------------------------------------------------------------
     // Pack: data_query
     // -------------------------------------------------------------------
     if (enabledPacks.has("data_query")) {
       tools.sql_query = new SqlQueryTool().build(stationId, organizationId);
+      tools.display_entity_records = new DisplayEntityRecordsTool().build(
+        stationId,
+        organizationId
+      );
       tools.visualize = new VisualizeTool().build(stationId, organizationId);
       tools.visualize_tree = new VisualizeTreeTool().build(
         stationId,
@@ -472,6 +626,17 @@ export class ToolService {
           organizationId,
           userId
         );
+        // bulk_transform_entity_records: only registered when portalId
+        // is known (production callers always supply it).
+        if (portalId) {
+          tools.bulk_transform_entity_records =
+            new BulkTransformEntityRecordsTool().build(
+              portalId,
+              stationId,
+              organizationId,
+              userId
+            );
+        }
       }
     }
 
