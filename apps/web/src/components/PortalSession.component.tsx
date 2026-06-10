@@ -14,6 +14,7 @@ import { usePortalStream } from "../utils/portal-stream.util";
 import { ChatWindowUI, type ChatWindowHandle } from "./ChatWindow.component";
 import { usePortalChatLock } from "../utils/portal-chat-lock.util";
 import { PortalMessage } from "./PortalMessage.component";
+import { TypingIndicator } from "./TypingIndicator.component";
 
 // ── Message List (memoized to avoid re-renders on input changes) ─────
 
@@ -24,6 +25,7 @@ interface MessageListProps {
   onPinChange: () => void;
   streamingBlocks: PortalMessageBlock[] | null;
   streamError: string | null;
+  isStreaming: boolean;
 }
 
 const MessageList = React.memo<MessageListProps>(
@@ -34,11 +36,16 @@ const MessageList = React.memo<MessageListProps>(
     onPinChange,
     streamingBlocks,
     streamError,
+    isStreaming,
   }) => {
     const hasStreamingContent =
       streamingBlocks !== null && streamingBlocks.length > 0;
     const isEmpty =
       messages.length === 0 && !hasStreamingContent && !streamError;
+    // Show typing indicator only between user-send and first delta —
+    // once any streamed block arrives, the block itself is the visual
+    // confirmation that the assistant is responding.
+    const showTypingIndicator = isStreaming && !hasStreamingContent;
 
     if (isEmpty) {
       return <PortalSessionEmptyState />;
@@ -65,6 +72,8 @@ const MessageList = React.memo<MessageListProps>(
             ))}
           </Box>
         )}
+
+        {showTypingIndicator && <TypingIndicator />}
 
         {streamError && <StatusMessage variant="error" message={streamError} />}
       </>
@@ -161,6 +170,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
         onPinChange={onPinChange}
         streamingBlocks={streamingBlocks}
         streamError={streamError}
+        isStreaming={isStreaming}
       />
     </ChatWindowUI>
   </Box>
