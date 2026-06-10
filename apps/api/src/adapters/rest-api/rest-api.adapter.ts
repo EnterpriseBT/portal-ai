@@ -228,9 +228,18 @@ async function syncInstance(
   let totalUnchanged = 0;
   let totalDeleted = 0;
 
+  // The 0-90% band is split evenly across endpoints. For each
+  // endpoint we hand `syncOneEndpoint` a per-page reporter that ticks
+  // an asymptotic curve toward the endpoint's slice without ever
+  // reaching it — so on a single-endpoint paginated sync the meter
+  // visibly advances during pagination instead of sitting at 0%
+  // (issue #94). We don't know the total page count upfront for
+  // cursor/link-paginated APIs, so the curve doesn't claim a real ETA.
+  const slicePct = 90 / endpoints.length;
   for (let i = 0; i < endpoints.length; i++) {
     const endpoint = endpoints[i];
-    progress?.(Math.round((i / endpoints.length) * 90));
+    const basePct = (i / endpoints.length) * 90;
+    progress?.(Math.round(basePct));
 
     const counts = await syncOneEndpoint(
       endpoint,
@@ -239,7 +248,13 @@ async function syncInstance(
       auth,
       credentials,
       userId,
-      runStartedAt
+      runStartedAt,
+      progress
+        ? (pagesEmitted: number) => {
+            const intra = 1 - Math.exp(-pagesEmitted / 20);
+            progress(Math.round(basePct + intra * slicePct));
+          }
+        : undefined
     );
     totalCreated += counts.created;
     totalUpdated += counts.updated;
@@ -288,7 +303,14 @@ async function syncOneEndpoint(
   auth: ApiAuthConfig,
   credentials: ApiCredentials | null,
   userId: string,
-  runStartedAt: number
+  runStartedAt: number,
+  // Per-page progress reporter. Called with the running count of
+  // "pages" emitted for this endpoint (1, 2, …). Caller maps that
+  // count onto the meter via an asymptotic curve so the bar advances
+  // visibly during pagination without claiming a false ETA.
+  // Streaming-eligible endpoints emit one page at stream start and
+  // another after the stream drains — enough motion to signal liveness.
+  reportPage?: (pagesEmitted: number) => void
 ): Promise<{ created: number; updated: number; unchanged: number; deleted: number }> {
   const pagination = reconstructPagination(
     endpoint.config.pagination,
@@ -355,6 +377,7 @@ async function syncOneEndpoint(
     counts,
   };
 
+  let pagesEmitted = 0;
   if (isStreamingEligible(endpoint)) {
     const streamStartedAt = Date.now();
     const page = await streamFetchOnePage(
@@ -363,6 +386,8 @@ async function syncOneEndpoint(
       auth,
       credentials
     );
+    pagesEmitted++;
+    reportPage?.(pagesEmitted);
     try {
       for await (const record of page.recordsStream) {
         await upsertRecord(record, ctx);
@@ -380,6 +405,8 @@ async function syncOneEndpoint(
         "Streaming page drained"
       );
     }
+    pagesEmitted++;
+    reportPage?.(pagesEmitted);
   } else {
     let next = await iterator.next();
     while (!next.done) {
@@ -396,6 +423,8 @@ async function syncOneEndpoint(
         await upsertRecord(record, ctx);
       }
 
+      pagesEmitted++;
+      reportPage?.(pagesEmitted);
       next = await iterator.next(fetched);
     }
   }
