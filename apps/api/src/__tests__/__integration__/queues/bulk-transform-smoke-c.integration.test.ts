@@ -53,7 +53,11 @@ jest.unstable_mockModule("../../../services/bulk-transform.service.js", () => ({
     countSourceRows: async () => sourceRows.length,
     fetchSourceBatch: async (opts: { offset: number; batchSize: number }) =>
       sourceRows.slice(opts.offset, opts.offset + opts.batchSize),
-    upsertSuccesses: async () => 0,
+    // Processor expects `{ rowsUpserted, droppedKeys }` since the
+    // upsert-result refactor that added targetColumn-aware drops.
+    upsertSuccesses: async (opts: {
+      successes: Array<{ sourceKey: string }>;
+    }) => ({ rowsUpserted: opts.successes.length, droppedKeys: [] }),
     explainExpression: async () => undefined,
     runBatch: async () => ({ rowsCommitted: 0, rows: [] }),
   },
@@ -94,6 +98,7 @@ describe("Smoke C — tool-dispatch processor pipeline (#85 Phase 4)", () => {
   let orgId: string;
   let userId: string;
   let portalId: string;
+  let stationId: string;
   const cleanupQueues: Queue[] = [];
   const cleanupWorkers: Worker[] = [];
 
@@ -111,7 +116,7 @@ describe("Smoke C — tool-dispatch processor pipeline (#85 Phase 4)", () => {
     orgId = seeded.organizationId;
     userId = seeded.userId;
 
-    const stationId = generateId();
+    stationId = generateId();
     await db.insert(schema.stations).values({
       id: stationId,
       organizationId: orgId,
@@ -168,11 +173,14 @@ describe("Smoke C — tool-dispatch processor pipeline (#85 Phase 4)", () => {
       metadata: {
         portalId,
         organizationId: orgId,
+        stationId,
+        userId,
         sourceConnectorEntityId: "ce-source",
         targetConnectorEntityId: "ce-target",
         expression: {
           kind: "tool",
           ref: "compute_distance_to_nearest_hospital",
+          targetColumn: "c_distance_km",
         },
         keyField: "source_id",
         batchSize: 5,
@@ -238,11 +246,14 @@ describe("Smoke C — tool-dispatch processor pipeline (#85 Phase 4)", () => {
         expression: {
           kind: "tool",
           ref: "compute_distance_to_nearest_hospital",
+          targetColumn: "c_distance_km",
         },
         keyField: "source_id",
         batchSize: 5,
         organizationId: orgId,
         portalId,
+        stationId,
+        userId,
       },
       { jobId }
     );
