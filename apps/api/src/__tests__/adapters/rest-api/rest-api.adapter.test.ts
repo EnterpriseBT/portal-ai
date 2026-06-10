@@ -610,6 +610,60 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
     expect(upsertBySourceIdMock).toHaveBeenCalledTimes(4);
   });
 
+  // Regression for #94. Before the per-page progress wiring, a
+  // single-endpoint paginated sync called `progress` exactly twice:
+  // 0% at the top of the endpoint loop and 100% after the final
+  // updateInstance. The meter sat at 0% the whole sync. With the
+  // fix, `progress` ticks per page along an asymptotic curve toward
+  // the endpoint's slice of the 0-90% band.
+  it("ticks progress per page during a single-endpoint paginated sync", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "users", label: "Users" },
+        config: {
+          path: "/users",
+          method: "GET",
+          recordsPath: "",
+          idField: "id",
+          pagination: "pageOffset",
+          paginationConfig: {
+            style: "page",
+            param: "page",
+            pageSize: 2,
+            startPage: 1,
+            stopOnShortPage: false,
+          },
+        },
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce(okResponse([{ id: "a" }, { id: "b" }]))
+      .mockResolvedValueOnce(okResponse([{ id: "c" }, { id: "d" }]))
+      .mockResolvedValueOnce(okResponse([]));
+
+    const progress = jest.fn<(percent: number) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", progress);
+
+    // Per-page ticks lift the call count above the old start+end pair.
+    const calls = progress.mock.calls.map((c) => c[0]);
+    expect(calls.length).toBeGreaterThan(2);
+    // Monotonic non-decreasing — the curve only ever moves the meter
+    // forward.
+    for (let i = 1; i < calls.length; i++) {
+      expect(calls[i]).toBeGreaterThanOrEqual(calls[i - 1]);
+    }
+    // Sync still ends at 100% after the final updateInstance.
+    expect(calls[calls.length - 1]).toBe(100);
+    // First tick is the endpoint's base — single endpoint starts at 0.
+    expect(calls[0]).toBe(0);
+    // The meter visibly advances during pagination — at least one
+    // tick lands strictly between the endpoint's start (0) and the
+    // post-loop wrap-up tick at 95. This is the regression-proof
+    // assertion: before the fix this gap stayed empty.
+    const intraPagination = calls.filter((v) => v > 0 && v < 95);
+    expect(intraPagination.length).toBeGreaterThan(0);
+  });
+
   it("cursor: page 1 has no cursor; page 2 carries ?cursor=a; terminates on null", async () => {
     findByInstanceMock.mockResolvedValueOnce([
       {
