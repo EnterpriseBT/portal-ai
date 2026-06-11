@@ -74,10 +74,17 @@ function makeJob(
       jobId: "job-bt-001",
       type: "bulk_transform",
       sourceConnectorEntityId: "ce-source",
-      targetConnectorEntityId: "ce-target",
+      targetConnectorEntityIds: ["ce-target"],
       expression: {
         kind: "sql",
         value: "ST_Area(geometry::geography) / 4047 AS acreage",
+        writes: [
+          {
+            targetConnectorEntityId: "ce-target",
+            column: "acreage",
+            valueFrom: { kind: "sql_alias", alias: "acreage" },
+          },
+        ],
       },
       keyField: "parcel_id",
       batchSize: 1000,
@@ -224,6 +231,13 @@ describe("bulkTransformProcessor — SQL path (Phase 2 slice 0)", () => {
       expression: {
         kind: "tool",
         ref: "compute_distance_to_nearest_hospital",
+        writes: [
+          {
+            targetConnectorEntityId: "ce-target",
+            column: "c_distance_km",
+            valueFrom: { kind: "tool_result" },
+          },
+        ],
       },
     });
 

@@ -127,16 +127,33 @@ const ORG_ID = "org-001";
 const USER_ID = "user-001";
 const PORTAL_ID = "portal-001";
 
+// Slice 0 (#99): the tool's contract migrated from a top-level
+// `targetConnectorEntityId` + per-expression `targetColumn` to an
+// explicit `writes[]` mapping. Single-write happy path keeps shape +
+// behavior compatible with the prior tests.
+const TARGET_ID = "ce-target";
 const VALID_INPUT = {
   sourceConnectorEntityId: "ce-source",
-  targetConnectorEntityId: "ce-target",
   expression: {
     kind: "sql" as const,
     value: "ST_Area(geometry::geography) / 4047 AS acreage",
+    writes: [
+      {
+        targetConnectorEntityId: TARGET_ID,
+        column: "acreage",
+        valueFrom: { kind: "sql_alias" as const, alias: "acreage" },
+      },
+    ],
   },
   keyField: "c_parcel_id",
   batchSize: 1_000,
 };
+
+const toolWrite = (column: string) => ({
+  targetConnectorEntityId: TARGET_ID,
+  column,
+  valueFrom: { kind: "tool_result" as const },
+});
 
 function buildTool() {
   return new BulkTransformEntityRecordsTool().build(
@@ -201,7 +218,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
 
   it("rejects when the target entity isn't found", async () => {
     mockFindEntityById.mockImplementation(async (id) =>
-      id === VALID_INPUT.targetConnectorEntityId
+      id === TARGET_ID
         ? undefined
         : { id, organizationId: ORG_ID, connectorInstanceId: "ci-1" }
     );
@@ -227,7 +244,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     // bulkDispatch metadata missing.
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_x", targetColumn: "acreage" },
+      expression: { kind: "tool", ref: "compute_x", writes: [toolWrite("acreage")] },
     })) as { code: string };
     expect(result.code).toBe(
       ApiCode.BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE
@@ -250,7 +267,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
 
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_distance", targetColumn: "acreage" },
+      expression: { kind: "tool", ref: "compute_distance", writes: [toolWrite("acreage")] },
     })) as { jobId?: string; estimatedSeconds?: number };
 
     expect(result.jobId).toBe("job-created-1");
@@ -271,7 +288,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     });
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_costly", targetColumn: "acreage" },
+      expression: { kind: "tool", ref: "compute_costly", writes: [toolWrite("acreage")] },
     })) as { code: string };
 
     expect(result.code).toBe(
@@ -297,7 +314,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     mockValidateAck.mockResolvedValueOnce({ ok: true });
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_costly", targetColumn: "acreage" },
+      expression: { kind: "tool", ref: "compute_costly", writes: [toolWrite("acreage")] },
       acknowledgeCost: true,
     })) as { jobId?: string };
 
@@ -319,7 +336,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     mockValidateAck.mockResolvedValueOnce({ ok: false, reason: "missing" });
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_costly", targetColumn: "acreage" },
+      expression: { kind: "tool", ref: "compute_costly", writes: [toolWrite("acreage")] },
       acknowledgeCost: true,
     })) as { code: string; details?: { reason?: string } };
 
@@ -343,7 +360,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
     mockValidateAck.mockResolvedValueOnce({ ok: false, reason: "stale" });
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_costly", targetColumn: "acreage" },
+      expression: { kind: "tool", ref: "compute_costly", writes: [toolWrite("acreage")] },
       acknowledgeCost: true,
     })) as { code: string; details?: { reason?: string } };
 
@@ -370,7 +387,7 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
 
     await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_x", targetColumn: "acreage" },
+      expression: { kind: "tool", ref: "compute_x", writes: [toolWrite("acreage")] },
       sourceFilter: {
         whereSqlFragment: "c_parcel_id IN ('p-99','p-499','p-999')",
       },
@@ -422,6 +439,13 @@ describe("BulkTransformEntityRecordsTool — pre-flight", () => {
         // Includes the key under an invented name + a real derived col.
         value:
           "c_id::text AS asteroid_id, (c_diameter_km_min + c_diameter_km_max) / 2 AS c_diameter_avg_km",
+        writes: [
+          {
+            targetConnectorEntityId: TARGET_ID,
+            column: "c_diameter_avg_km",
+            valueFrom: { kind: "sql_alias" as const, alias: "c_diameter_avg_km" },
+          },
+        ],
       },
     })) as {
       code: string;

@@ -35,11 +35,15 @@ export const bulkTransformProcessor: TypedJobProcessor<
   const {
     jobId,
     sourceConnectorEntityId,
-    targetConnectorEntityId,
+    targetConnectorEntityIds,
     expression,
     keyField,
     batchSize,
   } = bullJob.data;
+  // Slice 0 (#99): writes[] is the agent's per-column mapping. Slice 0
+  // keeps single-write behavior — derive the single target from
+  // writes[0]. Slice 4 fans out to the full per-target group.
+  const targetConnectorEntityId = targetConnectorEntityIds[0];
   // `organizationId` lives on the Job row metadata; threaded through
   // the BullMQ payload for SQL scoping. (`JobData` widens metadata to
   // a Record, so the field arrives as part of `bullJob.data`.)
@@ -73,7 +77,9 @@ export const bulkTransformProcessor: TypedJobProcessor<
       organizationId,
       toolRef: expression.ref,
       toolArgs: expression.args,
-      targetColumn: expression.targetColumn,
+      // Slice 0 (#99): use writes[0].column as the single landing
+      // column. Slice 4 expands to the full writes[] fan-out.
+      targetColumn: expression.writes[0].column,
       keyField,
       batchSize,
       whereSqlFragment: sourceFilter?.whereSqlFragment,

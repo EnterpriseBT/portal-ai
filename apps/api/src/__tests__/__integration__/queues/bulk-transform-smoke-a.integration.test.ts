@@ -158,10 +158,17 @@ describe("Smoke A — bulk_transform worker pipeline (#85 Phase 2)", () => {
         portalId,
         organizationId: orgId,
         sourceConnectorEntityId: "ce-source",
-        targetConnectorEntityId: "ce-target",
+        targetConnectorEntityIds: ["ce-target"],
         expression: {
           kind: "sql",
           value: "c_value * 2 AS c_doubled",
+          writes: [
+            {
+              targetConnectorEntityId: "ce-target",
+              column: "c_doubled",
+              valueFrom: { kind: "sql_alias", alias: "c_doubled" },
+            },
+          ],
         },
         keyField: "c_parcel_id",
         batchSize: 1,
@@ -232,8 +239,18 @@ describe("Smoke A — bulk_transform worker pipeline (#85 Phase 2)", () => {
         jobId,
         type: "bulk_transform",
         sourceConnectorEntityId: "ce-source",
-        targetConnectorEntityId: "ce-target",
-        expression: { kind: "sql", value: "c_value * 2 AS c_doubled" },
+        targetConnectorEntityIds: ["ce-target"],
+        expression: {
+          kind: "sql",
+          value: "c_value * 2 AS c_doubled",
+          writes: [
+            {
+              targetConnectorEntityId: "ce-target",
+              column: "c_doubled",
+              valueFrom: { kind: "sql_alias", alias: "c_doubled" },
+            },
+          ],
+        },
         keyField: "c_parcel_id",
         batchSize: 1,
         organizationId: orgId,

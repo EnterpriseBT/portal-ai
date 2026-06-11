@@ -126,9 +126,15 @@ export class JobsRepository extends Repository<
 
   /**
    * Find every non-terminal job whose metadata declares the given
-   * connector entity id as its lock target. Today this covers
-   * `bulk_transform` (`metadata.targetConnectorEntityId`); future job
-   * types that lock at the entity level extend this query.
+   * connector entity id in its lock-set. Today this covers
+   * `bulk_transform` (`metadata.targetConnectorEntityIds: string[]`);
+   * future job types that lock at the entity level extend this query.
+   *
+   * Slice 0 (#99): the metadata field migrated from a single
+   * `targetConnectorEntityId` to a denormalized `targetConnectorEntityIds`
+   * array, so the SQL switches from `->>` equality to the `?|` JSONB
+   * array-overlap predicate. Input is still single-entity; slice 3
+   * generalizes the input to an array.
    *
    * Used by `JobLockService.assertConnectorEntityUnlocked` to surface
    * entity-level locks alongside the existing instance-level path.
@@ -149,7 +155,7 @@ export class JobsRepository extends Repository<
             jobs.status,
             NON_TERMINAL_JOB_STATUSES as unknown as JobSelect["status"][]
           ),
-          sql`${jobs.metadata}->>'targetConnectorEntityId' = ${connectorEntityId}`,
+          sql`${jobs.metadata}->'targetConnectorEntityIds' ?| ARRAY[${connectorEntityId}]::text[]`,
           this.notDeleted()
         )
       )) as JobSelect[];

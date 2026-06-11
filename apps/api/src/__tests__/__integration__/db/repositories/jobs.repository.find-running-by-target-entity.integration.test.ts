@@ -44,7 +44,7 @@ describe("JobsRepository.findRunningByTargetEntityId", () => {
       type: "bulk_transform",
       status: "active",
       progress: 0,
-      metadata: { targetConnectorEntityId: "entity-1" },
+      metadata: { targetConnectorEntityIds: ["entity-1"] },
       result: null,
       error: null,
       startedAt: Date.now(),
@@ -92,7 +92,7 @@ describe("JobsRepository.findRunningByTargetEntityId", () => {
   it("distinguishes between two entities — locking A doesn't trip B", async () => {
     await db.insert(schema.jobs).values(
       newJob({
-        metadata: { targetConnectorEntityId: "entity-A" },
+        metadata: { targetConnectorEntityIds: ["entity-A"] },
       })
     );
     const entityA = await repo.findRunningByTargetEntityId("entity-A", orgId);

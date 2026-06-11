@@ -169,8 +169,9 @@ const NEO_PARAM_SCHEMA = {
 const NEO_TOOL_DESC =
   "Compute the diameter midpoint (km) for one NEO record. Returns " +
   "a single numeric value (the midpoint). The caller decides what to " +
-  "do with it — for bulk_transform_entity_records, supply " +
-  "`targetColumn` to land the value in a wide-column on the target.";
+  "do with it — for bulk_transform_entity_records, supply a `writes` " +
+  "entry with `valueFrom: { kind: 'tool_result' }` to land the value " +
+  "in a wide-column on the target.";
 
 const tools = [
   {
