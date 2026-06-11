@@ -98,6 +98,31 @@ export class BulkTransformService {
   }
 
   /**
+   * Pre-flight cast check for #99's `constant`-kind writes. Returns
+   * `true` if PG can cast the value to the target column's pgType,
+   * `false` otherwise. Uses a parameterized `SELECT $1::<pgType>`
+   * round-trip — cheap (no rows, no plan).
+   *
+   * `pgType` comes from `wideTableStatementCache` (`columns[].pgType`),
+   * which sources it from `wide_table_columns` — safe to `sql.raw`.
+   * `value` is bound as a parameter so the agent's literal can't
+   * inject SQL.
+   */
+  static async canCastConstant(
+    value: unknown,
+    pgType: string
+  ): Promise<boolean> {
+    try {
+      await db.execute(
+        sql`SELECT ${value as never}::${sql.raw(pgType)} AS _check`
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Count rows visible in the source wide table for the given org.
    * Used by the processor to derive `totalRecords` for the per-batch
    * SSE event.
