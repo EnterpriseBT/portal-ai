@@ -17,7 +17,6 @@ import { sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { wideTableRepo } from "../db/repositories/wide-table.repository.js";
 import { wideTableStatementCache } from "./wide-table-statement.cache.js";
-import { parseProjections } from "../utils/sql-projection.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "bulk-transform-service" });
@@ -145,13 +144,28 @@ export class BulkTransformService {
   }
 
   /**
-   * Run one batch's INSERT-SELECT. Returns the committed-row count AND
-   * the row data (via INSERT ... RETURNING), so the processor can
-   * include the rows in its per-batch SSE event.
+   * Read one batch's source rows + projected aliases (#99 slice 4).
    *
-   * The processor calls this in a loop, advancing `offset` by
-   * `batchSize` each iteration. Per-batch work is its own transaction
-   * so a mid-job failure leaves committed batches in place.
+   * Slice 4 (#99) split the prior INSERT-SELECT into two stages:
+   * `runBatch` now SELECTs the source batch with the agent's
+   * projection applied, returning one row per source record. The
+   * processor's per-target fan-out (via
+   * `BulkTransformService.upsertSuccesses`) is what actually writes to
+   * the wide table(s) — that's how the same job can land values into
+   * N target columns spanning K target entities.
+   *
+   * Each returned row has:
+   *   - `__src_key`: the source row's keyField value as text (the
+   *     upsert key on every target's wide table).
+   *   - `__source_row`: a JSON object containing every source column,
+   *     so `valueFrom.kind === "source_column"` writes can look up
+   *     values without a second query.
+   *   - …the projection's `AS aliases` as top-level fields, consumed
+   *     by `valueFrom.kind === "sql_alias"` writes.
+   *
+   * `batch_deduped` is the last-wins dedupe of `batch` by keyField
+   * (NEO-style sources can repeat one asteroid across close-approach
+   * rows; dedupe avoids PG 21000 in the downstream UPSERT).
    */
   static async runBatch(
     opts: BulkTransformBatchOptions
@@ -159,62 +173,17 @@ export class BulkTransformService {
     const sourceTable = quoteIdent(
       wideTableRepo.tableName(opts.sourceConnectorEntityId)
     );
-    const targetTable = quoteIdent(
-      wideTableRepo.tableName(opts.targetConnectorEntityId)
-    );
 
-    // Build the per-row source_id (upsert key on the target). The
-    // agent supplies `keyField` as the wide-column name on the source;
-    // we pass its value through to the target's `source_id` so
-    // subsequent re-runs of the same job idempotently UPDATE.
     const keyCol = quoteIdent(opts.keyField);
     const orgLit = `'${opts.organizationId.replace(/'/g, "''")}'`;
-    const now = Date.now();
 
-    // Split the agent's projection into `{ value, alias }` pairs so
-    // the INSERT column list gets the alias *names* (PG won't parse
-    // expressions there) and the SELECT row gets the *values*. The
-    // pre-flight EXPLAIN already validated each value as a legal PG
-    // expression — here we just slice the string.
-    const projections = parseProjections(opts.expression);
-    const aliasList = projections
-      .map((p) => quoteIdent(p.alias))
-      .join(", ");
-    const valueList = projections.map((p) => p.value).join(", ");
+    // The agent's projection — passed through to the SELECT verbatim.
+    // The pre-flight EXPLAIN already validated each segment as a legal
+    // PG expression with a usable alias; here we just splice.
+    const projection = opts.expression.trim();
+    const projectionClause = projection.length > 0 ? `, ${projection}` : "";
 
-    // SET clause for the upsert: every derived column refreshes on
-    // conflict; synced_at always advances. The wide-table conflict
-    // target is `entity_record_id` (the PK) because the entity_records
-    // CTE returns the existing record id on its own conflict, so the
-    // wide-table INSERT references an already-present PK on re-runs.
-    const setClause = projections
-      .map(
-        (p) =>
-          `${quoteIdent(p.alias)} = EXCLUDED.${quoteIdent(p.alias)}`
-      )
-      .concat([`"synced_at" = EXCLUDED."synced_at"`])
-      .join(", ");
-
-    const targetEntityIdLit = `'${opts.targetConnectorEntityId.replace(/'/g, "''")}'`;
-    const userIdLit = `'${opts.userId.replace(/'/g, "''")}'`;
-
-    // The wide table's `entity_record_id` is a FK to entity_records.id,
-    // so we can't just gen_random_uuid() for it — entity_records must
-    // exist first. Do both in a single CTE-chained statement so the
-    // batch is atomic:
-    //   1. Read the batch window of source rows.
-    //   2. Upsert one entity_records row per source row (keyed by
-    //      (connector_entity_id, source_id) per the partial unique
-    //      index that ignores soft-deleted rows). RETURNING the
-    //      resulting id+source_id, whether inserted or updated.
-    //   3. Upsert the wide-table row referencing the entity_record_id
-    //      from step 2 + the derived columns from the source batch.
-    // `batch_deduped` is the last-wins dedupe of `batch` by keyField.
-    // Without it, PG's ON CONFLICT DO UPDATE on the target wide table
-    // throws 21000 when the source has duplicate keyField values
-    // (e.g., NASA NEO entities where one asteroid `c_id` repeats
-    // across multiple close-approach dates).
-    const insertSql =
+    const selectSql =
       `WITH batch AS (` +
       `  SELECT * FROM ${sourceTable} ` +
       `  WHERE "organization_id" = ${orgLit} ` +
@@ -224,46 +193,13 @@ export class BulkTransformService {
       `batch_deduped AS (` +
       `  SELECT DISTINCT ON (${keyCol}) * FROM batch ` +
       `  ORDER BY ${keyCol}, "entity_record_id" DESC` +
-      `), ` +
-      `upserted_records AS (` +
-      `  INSERT INTO "entity_records" (` +
-      `    "id", "organization_id", "connector_entity_id", "data", "source_id", ` +
-      `    "checksum", "synced_at", "origin", "is_valid", "created", "created_by"` +
-      `  ) ` +
-      `  SELECT ` +
-      `    gen_random_uuid(), ` +
-      `    ${orgLit}, ` +
-      `    ${targetEntityIdLit}, ` +
-      `    '{}'::jsonb, ` +
-      `    ${keyCol}::text, ` +
-      `    md5(${keyCol}::text || '|' || ${now}::text), ` +
-      `    ${now}, ` +
-      `    'portal'::entity_record_origin, ` +
-      `    true, ` +
-      `    ${now}, ` +
-      `    ${userIdLit} ` +
-      `  FROM batch_deduped ` +
-      `  ON CONFLICT ("connector_entity_id", "source_id") WHERE "deleted" IS NULL DO UPDATE SET ` +
-      `    "synced_at" = EXCLUDED."synced_at", ` +
-      `    "updated" = EXCLUDED."created", ` +
-      `    "updated_by" = EXCLUDED."created_by" ` +
-      `  RETURNING "id", "source_id"` +
       `) ` +
-      `INSERT INTO ${targetTable} ` +
-      `("entity_record_id", "organization_id", "synced_at", "is_valid", "source_id", ${aliasList}) ` +
-      `SELECT ` +
-      `  ur."id", ` +
-      `  ${orgLit}, ` +
-      `  ${now}, ` +
-      `  true, ` +
-      `  ur."source_id", ` +
-      `  ${valueList} ` +
-      `FROM upserted_records ur ` +
-      `JOIN batch_deduped b ON b.${keyCol}::text = ur."source_id" ` +
-      `ON CONFLICT ("entity_record_id") DO UPDATE SET ${setClause} ` +
-      `RETURNING *`;
+      `SELECT ${keyCol}::text AS "__src_key", ` +
+      `row_to_json(batch_deduped.*) AS "__source_row"` +
+      projectionClause +
+      ` FROM batch_deduped`;
 
-    const result = await db.execute(sql.raw(insertSql));
+    const result = await db.execute(sql.raw(selectSql));
     const rows = Array.isArray(result)
       ? (result as unknown as Array<Record<string, unknown>>)
       : [];

@@ -46,20 +46,55 @@ jest.unstable_mockModule(
     BulkTransformService: {
       countSourceRows: async () => 3,
       // Three batches × 1 row each so the loop emits 3 SSE events.
+      // Slice 4 (#99): runBatch returns the projection rows with
+      // `__src_key` + `__source_row` framing keys + the projection's
+      // aliases at the top level. The processor's fan-out reads
+      // `__src_key` as the upsert key.
       runBatch: jest
         .fn<() => Promise<unknown>>()
         .mockResolvedValueOnce({
           rowsCommitted: 1,
-          rows: [{ entity_record_id: "r-1", c_doubled: 2 }],
+          rows: [
+            {
+              __src_key: "r-1",
+              __source_row: { c_parcel_id: "r-1" },
+              c_doubled: 2,
+            },
+          ],
         })
         .mockResolvedValueOnce({
           rowsCommitted: 1,
-          rows: [{ entity_record_id: "r-2", c_doubled: 4 }],
+          rows: [
+            {
+              __src_key: "r-2",
+              __source_row: { c_parcel_id: "r-2" },
+              c_doubled: 4,
+            },
+          ],
         })
         .mockResolvedValueOnce({
           rowsCommitted: 1,
-          rows: [{ entity_record_id: "r-3", c_doubled: 6 }],
+          rows: [
+            {
+              __src_key: "r-3",
+              __source_row: { c_parcel_id: "r-3" },
+              c_doubled: 6,
+            },
+          ],
         }),
+      // Slice 4 (#99): the fan-out calls upsertSuccesses per target
+      // per batch. Smoke A is single-target so this fires once per
+      // batch.
+      upsertSuccesses: jest
+        .fn<
+          (args: {
+            successes: Array<{ sourceKey: string }>;
+          }) => Promise<{ rowsUpserted: number; droppedKeys: string[] }>
+        >()
+        .mockImplementation(async (args) => ({
+          rowsUpserted: args.successes.length,
+          droppedKeys: [],
+        })),
     },
   })
 );

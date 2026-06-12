@@ -7,27 +7,32 @@ import { ToolService } from "../../services/tools.service.js";
 import { createLogger } from "../../utils/logger.util.js";
 import { BATCH_ROW_PAYLOAD_LIMIT } from "@portalai/core/constants";
 import { dispatchBatch } from "./bulk-transform-tool.dispatcher.js";
-import type { BulkTransformResult } from "@portalai/core/models";
+import { shapeWritesForRecord } from "./bulk-transform-writes.util.js";
+import type {
+  BulkTransformResult,
+  BulkTransformWrite,
+} from "@portalai/core/models";
 
 const logger = createLogger({ module: "bulk-transform-processor" });
 
 /**
- * Processor for `bulk_transform` jobs (#85, Phase 2).
+ * Processor for `bulk_transform` jobs (#85, #99).
  *
- * Cursors the source wide table in batches, runs the agent's
- * expression as a SQL projection per batch, UPSERTs the results into
- * the target wide table. Emits a `job:batch` SSE event after each
- * batch commits so the `bulk-job-progress` widget can update its
- * counter in real time.
+ * Slice 4 (#99): per-batch flow ends with a write-fan-out across the
+ * union of `writes[].targetConnectorEntityId`. One `upsertSuccesses`
+ * call per unique target, each in its own transaction so a failing
+ * target doesn't roll back the others (per-target failure isolation
+ * per the spec). Per-record per-target write failures surface as
+ * `partialFailures[]` entries tagged with `{ targetConnectorEntityId,
+ * column }`.
  *
- * Phase 2 covers `expression.kind === "sql"` only. The
- * `expression.kind === "tool"` path throws `BULK_DISPATCH_TOOL_NOT_FOUND`
- * until Phase 4 wires the dispatcher.
+ * Tool-kind: `dispatchBatch` runs the tool against each source row →
+ * `shapeWritesForRecord(writes, toolResult, sourceRow, null)` per
+ * success → fan-out.
  *
- * Cancellation is checked between batches via the BullMQ job state
- * (BullMQ surfaces a discarded job as "failed" during processing).
- * Committed batches stay in the target wide table; a re-run is
- * idempotent because the per-batch UPSERT keys on `source_id`.
+ * SQL-kind: `runBatch` SELECTs the source rows with the agent's
+ * projection applied → `shapeWritesForRecord(writes, null, sourceRow,
+ * sqlAliasValues)` per row → fan-out.
  */
 export const bulkTransformProcessor: TypedJobProcessor<
   "bulk_transform"
@@ -40,10 +45,6 @@ export const bulkTransformProcessor: TypedJobProcessor<
     keyField,
     batchSize,
   } = bullJob.data;
-  // Slice 0 (#99): writes[] is the agent's per-column mapping. Slice 0
-  // keeps single-write behavior — derive the single target from
-  // writes[0]. Slice 4 fans out to the full per-target group.
-  const targetConnectorEntityId = targetConnectorEntityIds[0];
   // `organizationId` lives on the Job row metadata; threaded through
   // the BullMQ payload for SQL scoping. (`JobData` widens metadata to
   // a Record, so the field arrives as part of `bullJob.data`.)
@@ -60,7 +61,7 @@ export const bulkTransformProcessor: TypedJobProcessor<
     {
       jobId,
       sourceConnectorEntityId,
-      targetConnectorEntityId,
+      targetConnectorEntityIds,
       expressionKind: expression.kind,
     },
     "bulk_transform started"
@@ -73,129 +74,47 @@ export const bulkTransformProcessor: TypedJobProcessor<
     return await runToolDispatchLoop(bullJob, {
       jobId,
       sourceConnectorEntityId,
-      targetConnectorEntityId,
       organizationId,
       toolRef: expression.ref,
       toolArgs: expression.args,
-      // Slice 0 (#99): use writes[0].column as the single landing
-      // column. Slice 4 expands to the full writes[] fan-out.
-      targetColumn: expression.writes[0].column,
+      writes: expression.writes,
       keyField,
       batchSize,
       whereSqlFragment: sourceFilter?.whereSqlFragment,
-    });
-  }
-
-  const startedAt = Date.now();
-
-  const totalRecords = await BulkTransformService.countSourceRows(
-    sourceConnectorEntityId,
-    organizationId
-  );
-
-  if (totalRecords === 0) {
-    return {
-      recordsProcessed: 0,
-      recordsFailed: 0,
-      durationMs: Date.now() - startedAt,
-    };
-  }
-
-  let recordsProcessed = 0;
-  let offset = 0;
-
-  // Loop guard — even if runBatch returns unexpected counts, bound the
-  // iterations to totalRecords / batchSize + 1.
-  const maxIterations = Math.ceil(totalRecords / batchSize) + 1;
-  let iter = 0;
-
-  while (recordsProcessed < totalRecords && iter < maxIterations) {
-    iter += 1;
-
-    // Cancel check between batches. BullMQ marks a discarded job's
-    // state as "failed"; the processor exits with the so-far results.
-    const state = await bullJob.getState();
-    if (state === "failed") {
-      logger.info(
-        { jobId, recordsProcessed, totalRecords },
-        "bulk_transform cancel detected; exiting loop"
-      );
-      break;
-    }
-
-    const batchStart = Date.now();
-    const { rowsCommitted, rows } = await BulkTransformService.runBatch({
-      sourceConnectorEntityId,
-      targetConnectorEntityId,
-      organizationId,
-      expression: expression.value,
-      keyField,
-      batchSize,
-      offset,
-      jobId,
       userId,
     });
-    const batchDurationMs = Date.now() - batchStart;
-
-    recordsProcessed += rowsCommitted;
-    offset += batchSize;
-
-    // Row payload selection: inline rows when serialized JSON fits the
-    // 256 KB cap, otherwise degrade to counters-only. The `rowIds`
-    // fallback path (per-entity row-fetch endpoint) lands in Phase 3.
-    const serializedRows = JSON.stringify(rows);
-    const includeRows =
-      serializedRows.length <= BATCH_ROW_PAYLOAD_LIMIT && rows.length > 0;
-
-    await JobEventsService.publishCustomEvent(jobId, "batch", {
-      recordsProcessed,
-      totalRecords,
-      batchDurationMs,
-      failureCount: 0,
-      ...(includeRows ? { rows } : {}),
-    });
-
-    // Safety: if a batch returned fewer rows than requested, we've
-    // run past the end of the source. Stop.
-    if (rowsCommitted < batchSize) break;
   }
 
-  return {
-    recordsProcessed,
-    recordsFailed: 0,
-    durationMs: Date.now() - startedAt,
-  };
+  return await runSqlBatchLoop(bullJob, {
+    jobId,
+    sourceConnectorEntityId,
+    organizationId,
+    expression: expression.value,
+    writes: expression.writes,
+    keyField,
+    batchSize,
+    userId,
+  });
 };
 
-/**
- * Tool-dispatch processor loop (#85 Phase 4).
- *
- * Branched from the main processor when `expression.kind === "tool"`.
- * Per batch: read source rows → dispatch tool calls → UPSERT successes
- * → accumulate failures. Emits per-batch SSE events with the
- * dispatcher's `successes[]` rows when payload fits the cap. Returns
- * a BulkTransformResult with the accumulated `partialFailures`.
- *
- * `userId` defaults to `"SYSTEM"` here — the calling job stores its
- * actor on the job row; for processor-side tool lookups we only need
- * "a user the station authorizes," and the bulk job's actor is the
- * canonical choice. (Future: thread the job's createdBy through.)
- */
+// ── Tool-kind branch ─────────────────────────────────────────────────
+
 async function runToolDispatchLoop(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   bullJob: any,
   opts: {
     jobId: string;
     sourceConnectorEntityId: string;
-    targetConnectorEntityId: string;
     organizationId: string;
     toolRef: string;
     toolArgs?: Record<string, unknown>;
-    /** Agent-supplied target wide-column for each per-record write. */
-    targetColumn: string;
+    /** Agent-supplied write mapping (#99 slice 4). The processor fans
+     *  out to every unique `targetConnectorEntityId` per batch. */
+    writes: BulkTransformWrite[];
     keyField: string;
     batchSize: number;
     whereSqlFragment?: string;
+    userId: string;
   }
 ): Promise<BulkTransformResult> {
   const startedAt = Date.now();
@@ -214,13 +133,12 @@ async function runToolDispatchLoop(
       "bulk_transform job is missing `stationId` in metadata — re-enqueue from a current portal session."
     );
   }
-  const userId = (bullJob.data as { userId?: string }).userId ?? "SYSTEM";
 
   const lookup = await ToolService.lookupBulkDispatchable(
     opts.toolRef,
     opts.organizationId,
     stationId,
-    userId
+    opts.userId
   );
   if (!lookup) {
     throw new ApiError(
@@ -243,10 +161,11 @@ async function runToolDispatchLoop(
   }
 
   let recordsProcessed = 0;
-  let droppedRecords = 0;
-  const droppedKeysSet = new Set<string>();
   let offset = 0;
-  const partialFailures: BulkTransformResult["partialFailures"] = [];
+  const partialFailures: NonNullable<
+    BulkTransformResult["partialFailures"]
+  > = [];
+  const droppedAcc = new DroppedAccumulator();
   const maxIterations = Math.ceil(totalRecords / opts.batchSize) + 1;
   let iter = 0;
 
@@ -271,6 +190,12 @@ async function runToolDispatchLoop(
     });
     if (sourceBatch.length === 0) break;
 
+    const sourceRowsByKey = new Map<string, Record<string, unknown>>();
+    for (const row of sourceBatch) {
+      const key = String(row[opts.keyField]);
+      sourceRowsByKey.set(key, row);
+    }
+
     const dispatched = await dispatchBatch({
       toolMetadata: lookup.metadata,
       staticArgs: opts.toolArgs,
@@ -279,54 +204,24 @@ async function runToolDispatchLoop(
       toolExecutor: lookup.executor,
     });
 
-    // Tool returns one value per call; the agent's `targetColumn`
-    // says where that value lands. The tool stays target-agnostic
-    // (its return shape has no inherent relation to entity columns
-    // — see feedback_tool_purity in memory). If a tool returns a
-    // non-primitive, JSON-stringify it; the agent picked a text
-    // column to receive complex outputs.
-    const shapedSuccesses = dispatched.successes.map((s) => {
-      const raw = s.value as unknown;
-      const val =
-        raw === null ||
-        raw === undefined ||
-        typeof raw === "number" ||
-        typeof raw === "string" ||
-        typeof raw === "boolean"
-          ? raw
-          : JSON.stringify(raw);
-      return {
+    // Shape each success per writes[]; group by target; fan out to
+    // upsertSuccesses (one call per target). Per-target failures
+    // surface in `fanOut.failures` with sourceKey + target + column.
+    const fanOut = await fanOutBatch({
+      records: dispatched.successes.map((s) => ({
         sourceKey: s.sourceKey,
-        value: { [opts.targetColumn]: val } as Record<string, unknown>,
-      };
-    });
-
-    const upsertResult = await BulkTransformService.upsertSuccesses({
-      targetConnectorEntityId: opts.targetConnectorEntityId,
+        toolResult: s.value,
+        sourceRow: sourceRowsByKey.get(s.sourceKey) ?? {},
+        sqlAliasValues: null,
+      })),
+      writes: opts.writes,
       organizationId: opts.organizationId,
       jobId: opts.jobId,
-      successes: shapedSuccesses,
-      userId,
+      userId: opts.userId,
     });
-    // upsertSuccesses' droppedKeys path is now defense-in-depth —
-    // Step 3a's pre-flight already rejected unknown targetColumns,
-    // so this branch shouldn't fire. If it does, it's a bug worth
-    // surfacing.
-    if (upsertResult.droppedKeys.length > 0) {
-      for (const k of upsertResult.droppedKeys) droppedKeysSet.add(k);
-      logger.warn(
-        {
-          jobId: opts.jobId,
-          droppedKeys: upsertResult.droppedKeys,
-        },
-        "bulk_transform: upsert dropped keys despite targetColumn pre-flight — investigate"
-      );
-    }
+    droppedAcc.absorb(fanOut.droppedByTarget);
 
-    const droppedThisBatch =
-      dispatched.successes.length - upsertResult.rowsUpserted;
-    recordsProcessed += upsertResult.rowsUpserted + dispatched.failures.length;
-    droppedRecords += droppedThisBatch;
+    recordsProcessed += dispatched.successes.length + dispatched.failures.length;
     offset += opts.batchSize;
 
     for (const f of dispatched.failures) {
@@ -342,35 +237,349 @@ async function runToolDispatchLoop(
         },
       });
     }
+    for (const wf of fanOut.failures) partialFailures.push(wf);
 
-    const serializedRows = JSON.stringify(
-      dispatched.successes.map((s) => s.value)
-    );
+    // SSE row payload — the union of per-target shaped values per
+    // record so the live chart sees the multi-target writes.
+    const sseRows = dispatched.successes.map((s) => {
+      const shaped = shapeWritesForRecord(
+        opts.writes,
+        s.value,
+        sourceRowsByKey.get(s.sourceKey) ?? {},
+        null
+      );
+      const merged: Record<string, unknown> = {};
+      for (const cols of shaped.values()) {
+        for (const [k, v] of Object.entries(cols)) merged[k] = v;
+      }
+      return merged;
+    });
+    const serializedRows = JSON.stringify(sseRows);
     const includeRows =
-      serializedRows.length <= BATCH_ROW_PAYLOAD_LIMIT &&
-      dispatched.successes.length > 0;
+      serializedRows.length <= BATCH_ROW_PAYLOAD_LIMIT && sseRows.length > 0;
 
     await JobEventsService.publishCustomEvent(opts.jobId, "batch", {
       recordsProcessed,
       totalRecords,
       batchDurationMs: dispatched.batchDurationMs,
-      failureCount: dispatched.failures.length,
-      ...(includeRows ? { rows: dispatched.successes.map((s) => s.value) } : {}),
+      failureCount: dispatched.failures.length + fanOut.failures.length,
+      ...(includeRows ? { rows: sseRows } : {}),
     });
 
     if (sourceBatch.length < opts.batchSize) break;
   }
 
-  return {
+  return finalize({
+    startedAt,
     recordsProcessed,
-    recordsFailed: partialFailures.length,
-    durationMs: Date.now() - startedAt,
-    ...(partialFailures.length > 0 ? { partialFailures } : {}),
-    ...(droppedRecords > 0
-      ? {
-          droppedRecords,
-          droppedKeys: Array.from(droppedKeysSet).sort(),
+    partialFailures,
+    droppedAcc,
+  });
+}
+
+// ── SQL-kind branch ──────────────────────────────────────────────────
+
+async function runSqlBatchLoop(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  bullJob: any,
+  opts: {
+    jobId: string;
+    sourceConnectorEntityId: string;
+    organizationId: string;
+    expression: string;
+    writes: BulkTransformWrite[];
+    keyField: string;
+    batchSize: number;
+    userId: string;
+  }
+): Promise<BulkTransformResult> {
+  const startedAt = Date.now();
+
+  const totalRecords = await BulkTransformService.countSourceRows(
+    opts.sourceConnectorEntityId,
+    opts.organizationId
+  );
+  if (totalRecords === 0) {
+    return {
+      recordsProcessed: 0,
+      recordsFailed: 0,
+      durationMs: Date.now() - startedAt,
+    };
+  }
+
+  let recordsProcessed = 0;
+  let offset = 0;
+  const partialFailures: NonNullable<
+    BulkTransformResult["partialFailures"]
+  > = [];
+  const droppedAcc = new DroppedAccumulator();
+  const maxIterations = Math.ceil(totalRecords / opts.batchSize) + 1;
+  let iter = 0;
+
+  while (recordsProcessed < totalRecords && iter < maxIterations) {
+    iter += 1;
+
+    const state = await bullJob.getState();
+    if (state === "failed") {
+      logger.info(
+        { jobId: opts.jobId, recordsProcessed, totalRecords },
+        "bulk_transform cancel detected; exiting loop"
+      );
+      break;
+    }
+
+    const batchStart = Date.now();
+    // runBatch (#99 slice 4) returns the projected rows; the actual
+    // wide-table write happens below via the fan-out.
+    const { rowsCommitted, rows } = await BulkTransformService.runBatch({
+      sourceConnectorEntityId: opts.sourceConnectorEntityId,
+      // Carried for back-compat; runBatch ignores it under the
+      // SELECT-only contract.
+      targetConnectorEntityId: opts.writes[0].targetConnectorEntityId,
+      organizationId: opts.organizationId,
+      expression: opts.expression,
+      keyField: opts.keyField,
+      batchSize: opts.batchSize,
+      offset,
+      jobId: opts.jobId,
+      userId: opts.userId,
+    });
+    const batchDurationMs = Date.now() - batchStart;
+    if (rows.length === 0) break;
+
+    const fanOut = await fanOutBatch({
+      records: rows.map((row) => {
+        const sourceRow =
+          (row["__source_row"] as Record<string, unknown> | undefined) ?? {};
+        // Strip the framing keys; the rest is the projection's aliases.
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { __src_key, __source_row, ...aliasValues } = row;
+        return {
+          sourceKey: String(row["__src_key"]),
+          toolResult: null as unknown,
+          sourceRow,
+          sqlAliasValues: aliasValues as Record<string, unknown>,
+        };
+      }),
+      writes: opts.writes,
+      organizationId: opts.organizationId,
+      jobId: opts.jobId,
+      userId: opts.userId,
+    });
+    droppedAcc.absorb(fanOut.droppedByTarget);
+
+    recordsProcessed += rowsCommitted;
+    offset += opts.batchSize;
+
+    for (const wf of fanOut.failures) partialFailures.push(wf);
+
+    // SSE rows: just the projection aliases (drop the framing keys).
+    const sseRows = rows.map((row) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { __src_key, __source_row, ...aliasValues } = row;
+      return aliasValues;
+    });
+    const serializedRows = JSON.stringify(sseRows);
+    const includeRows =
+      serializedRows.length <= BATCH_ROW_PAYLOAD_LIMIT && sseRows.length > 0;
+
+    await JobEventsService.publishCustomEvent(opts.jobId, "batch", {
+      recordsProcessed,
+      totalRecords,
+      batchDurationMs,
+      failureCount: fanOut.failures.length,
+      ...(includeRows ? { rows: sseRows } : {}),
+    });
+
+    if (rowsCommitted < opts.batchSize) break;
+  }
+
+  return finalize({
+    startedAt,
+    recordsProcessed,
+    partialFailures,
+    droppedAcc,
+  });
+}
+
+// ── Fan-out helper ──────────────────────────────────────────────────
+
+interface FanOutRecord {
+  sourceKey: string;
+  toolResult: unknown;
+  sourceRow: Record<string, unknown>;
+  sqlAliasValues: Record<string, unknown> | null;
+}
+
+interface FanOutResult {
+  failures: NonNullable<BulkTransformResult["partialFailures"]>;
+  droppedByTarget: Map<string, Set<string>>;
+}
+
+/**
+ * Per-batch fan-out: shape each record's `writes[]` into per-target
+ * column maps, group by target, run one `upsertSuccesses` per target.
+ * Each per-target call runs independently — a thrown target rolls
+ * back only its own statement; sibling targets are unaffected.
+ *
+ * Per-target failures surface in `failures[]` (one entry per
+ * source-key × failing-target pair) with `column` set to the first
+ * write that targets that entity (good-enough attribution; the spec
+ * notes a single-column attribution is sufficient).
+ *
+ * Dropped columns (defense-in-depth — wide-column disappeared between
+ * pre-flight and execution) surface in `droppedByTarget` keyed by
+ * target.
+ */
+async function fanOutBatch(args: {
+  records: FanOutRecord[];
+  writes: BulkTransformWrite[];
+  organizationId: string;
+  jobId: string;
+  userId: string;
+}): Promise<FanOutResult> {
+  // Group successes by target.
+  const perTarget = new Map<
+    string,
+    Array<{ sourceKey: string; value: Record<string, unknown> }>
+  >();
+  for (const record of args.records) {
+    const shaped = shapeWritesForRecord(
+      args.writes,
+      record.toolResult,
+      record.sourceRow,
+      record.sqlAliasValues
+    );
+    for (const [targetId, columnValues] of shaped) {
+      let bucket = perTarget.get(targetId);
+      if (!bucket) {
+        bucket = [];
+        perTarget.set(targetId, bucket);
+      }
+      bucket.push({ sourceKey: record.sourceKey, value: columnValues });
+    }
+  }
+
+  // First write per target — used to attribute per-target failures
+  // back to a representative column name.
+  const firstWriteColumnByTarget = new Map<string, string>();
+  for (const w of args.writes) {
+    if (!firstWriteColumnByTarget.has(w.targetConnectorEntityId)) {
+      firstWriteColumnByTarget.set(w.targetConnectorEntityId, w.column);
+    }
+  }
+
+  const failures: NonNullable<BulkTransformResult["partialFailures"]> = [];
+  const droppedByTarget = new Map<string, Set<string>>();
+
+  for (const [targetId, successes] of perTarget) {
+    try {
+      const result = await BulkTransformService.upsertSuccesses({
+        targetConnectorEntityId: targetId,
+        organizationId: args.organizationId,
+        jobId: args.jobId,
+        successes,
+        userId: args.userId,
+      });
+      if (result.droppedKeys.length > 0) {
+        let bucket = droppedByTarget.get(targetId);
+        if (!bucket) {
+          bucket = new Set();
+          droppedByTarget.set(targetId, bucket);
         }
+        for (const k of result.droppedKeys) bucket.add(k);
+        logger.warn(
+          {
+            jobId: args.jobId,
+            targetConnectorEntityId: targetId,
+            droppedKeys: result.droppedKeys,
+          },
+          "bulk_transform: upsert dropped keys despite pre-flight — investigate"
+        );
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(
+        {
+          jobId: args.jobId,
+          targetConnectorEntityId: targetId,
+          err: message,
+        },
+        "bulk_transform: per-target upsert failed; other targets in batch unaffected"
+      );
+      const column = firstWriteColumnByTarget.get(targetId);
+      for (const s of successes) {
+        failures.push({
+          sourceKey: s.sourceKey,
+          targetConnectorEntityId: targetId,
+          ...(column !== undefined ? { column } : {}),
+          error: {
+            success: false,
+            code: "BULK_TRANSFORM_TARGET_UPSERT_FAILED",
+            message,
+          },
+        });
+      }
+    }
+  }
+
+  return { failures, droppedByTarget };
+}
+
+// ── Result finalization ─────────────────────────────────────────────
+
+class DroppedAccumulator {
+  private byTarget = new Map<string, Set<string>>();
+
+  absorb(batch: Map<string, Set<string>>): void {
+    for (const [targetId, cols] of batch) {
+      let bucket = this.byTarget.get(targetId);
+      if (!bucket) {
+        bucket = new Set();
+        this.byTarget.set(targetId, bucket);
+      }
+      for (const c of cols) bucket.add(c);
+    }
+  }
+
+  toResult(): {
+    droppedByTarget?: NonNullable<BulkTransformResult["droppedByTarget"]>;
+    droppedRecords?: number;
+  } {
+    if (this.byTarget.size === 0) return {};
+    const entries = Array.from(this.byTarget.entries())
+      .map(([targetConnectorEntityId, cols]) => ({
+        targetConnectorEntityId,
+        droppedColumns: Array.from(cols).sort(),
+      }))
+      .sort((a, b) =>
+        a.targetConnectorEntityId.localeCompare(b.targetConnectorEntityId)
+      );
+    // recordsDropped count: best-effort sum of column-drop occurrences.
+    // The number isn't load-bearing — the agent reads `droppedByTarget`
+    // for the actionable list.
+    const droppedRecords = entries.reduce(
+      (acc, e) => acc + e.droppedColumns.length,
+      0
+    );
+    return { droppedByTarget: entries, droppedRecords };
+  }
+}
+
+function finalize(args: {
+  startedAt: number;
+  recordsProcessed: number;
+  partialFailures: NonNullable<BulkTransformResult["partialFailures"]>;
+  droppedAcc: DroppedAccumulator;
+}): BulkTransformResult {
+  const dropped = args.droppedAcc.toResult();
+  return {
+    recordsProcessed: args.recordsProcessed,
+    recordsFailed: args.partialFailures.length,
+    durationMs: Date.now() - args.startedAt,
+    ...(args.partialFailures.length > 0
+      ? { partialFailures: args.partialFailures }
       : {}),
+    ...dropped,
   };
 }
