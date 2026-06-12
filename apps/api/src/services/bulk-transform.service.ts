@@ -306,6 +306,17 @@ export class BulkTransformService {
     const targetWideColumns = new Set(
       targetStmt.columns.map((c) => c.columnName)
     );
+    // Per-column PG type — used to cast each VALUES literal to the
+    // column's type in the wide-table INSERT (#99). Without the cast
+    // PG sees a text literal and refuses to coerce it into a
+    // numeric / boolean / timestamp / bigint / etc. column. The
+    // SQL-kind path is the canonical victim: postgres.js returns PG
+    // `numeric` columns as JS strings, those flow through
+    // `valueLiteral` quoted, and the INSERT then fails 22P02.
+    const pgTypeByColumn = new Map<string, string>();
+    for (const c of targetStmt.columns) {
+      pgTypeByColumn.set(c.columnName, c.pgType);
+    }
     const droppedKeys: string[] = [];
     const cols: string[] = [];
     for (const k of colSet) {
@@ -345,7 +356,13 @@ export class BulkTransformService {
     const valueLiteral = (v: unknown): string => {
       if (v === null || v === undefined) return "NULL";
       if (typeof v === "number" || typeof v === "boolean") return String(v);
-      return `'${String(v).replace(/'/g, "''")}'`;
+      // Objects and arrays serialize as JSON so they can land in
+      // jsonb / text columns. Primitives (strings) pass through.
+      // The per-column cast in the wide-table INSERT handles the
+      // final coercion to the target type (numeric / text / jsonb).
+      const serialized =
+        typeof v === "string" ? v : JSON.stringify(v);
+      return `'${serialized.replace(/'/g, "''")}'`;
     };
 
     // VALUES list for the input rows CTE: one row per success.
@@ -374,7 +391,14 @@ export class BulkTransformService {
       `${now}`,
       `true`,
       `ur."source_id"`,
-      ...cols.map((_c, i) => `ir."v_${i}"`),
+      // Explicit per-column cast — `v_${i}` lives in the input_rows
+      // VALUES CTE as a text literal; PG won't implicitly cast text
+      // to numeric/bigint/boolean/timestamp/etc. on INSERT. Falls
+      // back to `text` (no-op) when a column's pgType is unknown.
+      ...cols.map(
+        (c, i) =>
+          `ir."v_${i}"::${pgTypeByColumn.get(c) ?? "text"}`
+      ),
     ].join(", ");
 
     const setClause = cols
