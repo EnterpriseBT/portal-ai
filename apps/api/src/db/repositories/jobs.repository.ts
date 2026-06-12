@@ -125,25 +125,36 @@ export class JobsRepository extends Repository<
   }
 
   /**
-   * Find every non-terminal job whose metadata declares the given
-   * connector entity id in its lock-set. Today this covers
-   * `bulk_transform` (`metadata.targetConnectorEntityIds: string[]`);
-   * future job types that lock at the entity level extend this query.
+   * Find every non-terminal job whose metadata's lock-set overlaps the
+   * given connector entity ids. Today this covers `bulk_transform`
+   * (`metadata.targetConnectorEntityIds: string[]`); future job types
+   * that lock at the entity level extend this query.
    *
-   * Slice 0 (#99): the metadata field migrated from a single
-   * `targetConnectorEntityId` to a denormalized `targetConnectorEntityIds`
-   * array, so the SQL switches from `->>` equality to the `?|` JSONB
-   * array-overlap predicate. Input is still single-entity; slice 3
-   * generalizes the input to an array.
+   * Slice 3 (#99): generalized from a single entity id to an array.
+   * The SQL uses PG's JSONB array-overlap operator (`?|`): a row
+   * matches when its metadata's `targetConnectorEntityIds` JSON array
+   * shares at least one element with the requested set. Returns `[]`
+   * when `connectorEntityIds` is empty (the predicate against an empty
+   * `text[]` is always false; short-circuit to skip the DB hit).
    *
    * Used by `JobLockService.assertConnectorEntityUnlocked` to surface
    * entity-level locks alongside the existing instance-level path.
    */
-  async findRunningByTargetEntityId(
-    connectorEntityId: string,
+  async findRunningByTargetEntityIds(
+    connectorEntityIds: string[],
     organizationId: string,
     client: DbClient = db
   ): Promise<JobSelect[]> {
+    if (connectorEntityIds.length === 0) return [];
+    // postgres.js doesn't auto-bind a JS array as a PG array literal,
+    // so build the `text[]` via `sql.join` so each element binds as
+    // its own parameter (`ARRAY[$n, $n+1, …]::text[]`). The `?|`
+    // operator then matches rows whose JSONB array on the left
+    // overlaps the requested set on the right.
+    const entityIdsSql = sql.join(
+      connectorEntityIds.map((id) => sql`${id}`),
+      sql`, `
+    );
     return (await (client as typeof db)
       .select()
       .from(this.table)
@@ -155,7 +166,7 @@ export class JobsRepository extends Repository<
             jobs.status,
             NON_TERMINAL_JOB_STATUSES as unknown as JobSelect["status"][]
           ),
-          sql`${jobs.metadata}->'targetConnectorEntityIds' ?| ARRAY[${connectorEntityId}]::text[]`,
+          sql`${jobs.metadata}->'targetConnectorEntityIds' ?| ARRAY[${entityIdsSql}]::text[]`,
           this.notDeleted()
         )
       )) as JobSelect[];

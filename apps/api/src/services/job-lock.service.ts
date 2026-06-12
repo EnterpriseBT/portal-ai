@@ -98,56 +98,90 @@ export class JobLockService {
   }
 
   /**
-   * Lock check for mutations on a connector entity. Two layers:
+   * Lock check for mutations against one or more connector entities.
+   * Two layers:
    *
-   *  1. Instance-level: resolves the parent connector instance and
-   *     delegates to `assertConnectorInstanceUnlocked` so connector-
-   *     sync / layout-plan-commit jobs lock the entity transitively.
-   *  2. Entity-level: checks for non-terminal `bulk_transform` jobs
-   *     whose metadata declares this entity as their target. These
-   *     don't lock the parent instance (so other entities under the
-   *     same instance stay mutable) but they do lock this entity.
+   *  1. Instance-level: resolves each entity's parent connector
+   *     instance and delegates to `assertConnectorInstanceUnlocked` so
+   *     connector-sync / layout-plan-commit jobs lock the entity
+   *     transitively. Unique instance ids only — overlapping inputs
+   *     don't hit the DB twice.
+   *  2. Entity-level: single array-overlap query for non-terminal
+   *     `bulk_transform` jobs whose metadata declares any of these
+   *     entities as a target (#99). When the throw fires, the error
+   *     details enumerate every entity in the input that's blocked
+   *     plus the jobs locking them, so the caller can surface the
+   *     whole conflict at once rather than one entity at a time.
    *
-   * No-op when the entity doesn't exist; the caller's own 404
-   * handling fires for missing rows so the API surfaces an
-   * entity-specific code rather than a generic lock 409.
+   * No-op for any id whose entity doesn't exist; the caller's own
+   * 404 handling fires for missing rows. Empty input is a no-op.
    *
-   * The connector-instance lookup inside the delegate is org-scoped,
-   * and the entity-level repo query is org-scoped, so a leak across
-   * orgs is structurally impossible even if the caller forgets to
-   * authz the entity itself.
+   * Org-scoped end-to-end — leak across orgs is structurally
+   * impossible even if the caller forgets to authz the entities.
    */
   static async assertConnectorEntityUnlocked(
-    connectorEntityId: string,
+    connectorEntityIds: string[],
     organizationId: string
   ): Promise<void> {
-    const entity =
-      await DbService.repository.connectorEntities.findById(connectorEntityId);
-    if (!entity) return;
+    if (connectorEntityIds.length === 0) return;
 
-    // Layer 1: instance-level lock (existing behavior).
-    await JobLockService.assertConnectorInstanceUnlocked(
-      entity.connectorInstanceId,
-      organizationId
+    const entities = await Promise.all(
+      connectorEntityIds.map((id) =>
+        DbService.repository.connectorEntities.findById(id)
+      )
     );
+    const liveEntities = entities.filter(
+      (e): e is NonNullable<typeof e> => e !== null && e !== undefined
+    );
+    if (liveEntities.length === 0) return;
 
-    // Layer 2: entity-level lock (bulk_transform; #85).
+    // Layer 1: instance-level lock per unique instance.
+    const uniqueInstanceIds = Array.from(
+      new Set(liveEntities.map((e) => e.connectorInstanceId))
+    );
+    for (const instanceId of uniqueInstanceIds) {
+      await JobLockService.assertConnectorInstanceUnlocked(
+        instanceId,
+        organizationId
+      );
+    }
+
+    // Layer 2: entity-level lock (bulk_transform; #85, #99).
+    const liveEntityIds = liveEntities.map((e) => e.id);
     const entityLockingJobs =
-      await DbService.repository.jobs.findRunningByTargetEntityId(
-        connectorEntityId,
+      await DbService.repository.jobs.findRunningByTargetEntityIds(
+        liveEntityIds,
         organizationId
       );
     if (entityLockingJobs.length === 0) return;
+
+    // Enumerate the requested entity ids each locking job blocks.
+    const blockedSet = new Set<string>();
+    for (const job of entityLockingJobs) {
+      const metadataIds = ((job.metadata as {
+        targetConnectorEntityIds?: string[];
+      })?.targetConnectorEntityIds) ?? [];
+      for (const id of metadataIds) {
+        if (liveEntityIds.includes(id)) blockedSet.add(id);
+      }
+    }
+    const blockedEntities = Array.from(blockedSet).sort();
+    const messageLead =
+      blockedEntities.length === 1
+        ? `Target entity '${blockedEntities[0]}' is locked by an in-flight bulk job`
+        : `Target entities ${blockedEntities
+            .map((e) => `'${e}'`)
+            .join(", ")} are locked by in-flight bulk jobs`;
     throw new ApiError(
       409,
       ApiCode.BULK_JOB_TARGET_LOCKED,
-      "Target entity is locked by an in-flight bulk job",
+      messageLead,
       {
-        recommendation: ApiCodeDefaultRecommendation[
-          ApiCode.BULK_JOB_TARGET_LOCKED
-        ],
+        recommendation:
+          ApiCodeDefaultRecommendation[ApiCode.BULK_JOB_TARGET_LOCKED],
         details: {
           lockingJobs: entityLockingJobs.map(toSummary),
+          blockedEntities,
         },
       }
     );
@@ -167,7 +201,7 @@ export class JobLockService {
       await DbService.repository.entityRecords.findById(entityRecordId);
     if (!record) return;
     await JobLockService.assertConnectorEntityUnlocked(
-      record.connectorEntityId,
+      [record.connectorEntityId],
       organizationId
     );
   }
@@ -186,7 +220,7 @@ export class JobLockService {
       await DbService.repository.fieldMappings.findById(fieldMappingId);
     if (!mapping) return;
     await JobLockService.assertConnectorEntityUnlocked(
-      mapping.connectorEntityId,
+      [mapping.connectorEntityId],
       organizationId
     );
   }

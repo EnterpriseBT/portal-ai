@@ -326,9 +326,12 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
             );
           }
 
-          // Step 2 — target lock.
+          // Step 2 — target lock. Slice 3 (#99): passes the full union
+          // of write targets, not just `primaryTargetId`. A locked
+          // entity anywhere in the set surfaces in the 409 details so
+          // the agent (and UI) see every blocked target at once.
           await JobLockService.assertConnectorEntityUnlocked(
-            primaryTargetId,
+            targetConnectorEntityIds,
             organizationId
           );
 
