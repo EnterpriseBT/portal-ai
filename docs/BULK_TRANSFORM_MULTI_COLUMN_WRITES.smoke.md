@@ -14,17 +14,17 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, lin
 
 ### Environment
 
-- [ ] `git checkout feat/bulk-transform-multi-column-writes && git pull --ff-only`
-- [ ] `npm install && npm run build --workspace=packages/core` — `BulkTransformExpressionSchema`, `BulkTransformMetadataSchema`, and `BulkTransformResultSchema` all changed; the API needs the rebuilt core dist.
-- [ ] `cd apps/api && npm run db:push && npm run db:seed && cd ../..` — no migrations changed, but `db:push` is the safest way to land any seed/schema drift.
-- [ ] `npm run dev` boots cleanly (API `:3001`, web `:3000`).
-- [ ] Redis is reachable; BullMQ workers attach without retry errors in the API log.
-- [ ] Auth0 dev tenant works — login lands on `/dashboard`.
+- [x] `git checkout feat/bulk-transform-multi-column-writes && git pull --ff-only`
+- [x] `npm install && npm run build --workspace=packages/core` — `BulkTransformExpressionSchema`, `BulkTransformMetadataSchema`, and `BulkTransformResultSchema` all changed; the API needs the rebuilt core dist.
+- [x] `cd apps/api && npm run db:push && npm run db:seed && cd ../..` — no migrations changed, but `db:push` is the safest way to land any seed/schema drift.
+- [x] `npm run dev` boots cleanly (API `:3001`, web `:3000`).
+- [x] Redis is reachable; BullMQ workers attach without retry errors in the API log.
+- [x] Auth0 dev tenant works — login lands on `/dashboard`.
 
 ### Swagger sanity
 
-- [ ] `http://localhost:3001/api-docs` loads.
-- [ ] Open the `bulk_transform_entity_records` tool schema (via the OpenAPI doc or by inspecting a sample tool call in the agent transcript). Confirm:
+- [x] `http://localhost:3001/api-docs` loads.
+- [x] Open the `bulk_transform_entity_records` tool schema (via the OpenAPI doc or by inspecting a sample tool call in the agent transcript). Confirm:
   - The tool's input no longer exposes a top-level `targetConnectorEntityId`.
   - `expression.tool.writes` is required and is an array of `BulkTransformWrite`.
   - `BulkTransformWrite` declares `targetConnectorEntityId`, `column`, and a `valueFrom` discriminated union with kinds `tool_result | tool_path | sql_alias | source_column | constant`.
@@ -55,8 +55,8 @@ The contract cut is invisible at the user level for the single-write case. This 
 
 ### §1a — Target setup
 
-- [ ] In chat, prompt **"Create a new entity called `neo_summary` with two numeric columns `diameter_avg_km` and `diameter_avg_miles`."** Confirm the agent uses `connector_entity_create` + two `field_mapping_create` calls and reports success.
-- [ ] Verify in chat **"Show me _meta_columns for neo_summary."** The wide-column names should be `c_diameter_avg_km` and `c_diameter_avg_miles`.
+- [x] In chat, prompt **"Create a new entity called `neo_summary` with two numeric columns `diameter_avg_km` and `diameter_avg_miles`."** Confirm the agent uses `connector_entity_create` + two `field_mapping_create` calls and reports success.
+- [x] Verify in chat **"Show me _meta_columns for neo_summary."** The wide-column names should be `c_diameter_avg_km` and `c_diameter_avg_miles`.
 
 ### §1b — One-write run
 
