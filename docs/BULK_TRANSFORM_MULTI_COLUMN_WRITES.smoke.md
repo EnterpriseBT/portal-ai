@@ -82,13 +82,13 @@ The contract cut is invisible at the user level for the single-write case. This 
 
 Two columns derived from one tool call landing on the same target.
 
-- [ ] Prompt: **"For every near-earth object, compute the diameter midpoint in BOTH km and miles and store both on `neo_summary`."**
-- [ ] Inspect the tool call. The `writes` array contains **exactly two entries**, both targeting the same `connectorEntityId`, with `column` set to `c_diameter_avg_km` and `c_diameter_avg_miles`. The `valueFrom` is `tool_path` referencing fields on the tool's output (e.g. `{ kind: "tool_path", path: "km" }`).
-- [ ] **One job is enqueued, not two.** Inspect the job count via `npm run db:studio` or chat **"Show me the latest bulk_transform jobs"** — there's a single new row.
-- [ ] The bulk-job progress widget shows one job (not two). ETA scales to N records, not 2N.
-- [ ] After completion: both `c_diameter_avg_km` and `c_diameter_avg_miles` are populated on every NEO row in `neo_summary`.
-- [ ] Terminal message reports `Done — N records written, 0 failed in Xs.` `N` matches the NEO count.
-- [ ] Re-run the same prompt. Both columns refresh on each row idempotently.
+- [x] Prompt: **"For every near-earth object, compute the diameter midpoint in BOTH km and miles and store both on `neo_summary`."**
+- [x] Inspect the tool call. The `writes` array contains **exactly two entries**, both targeting the same `connectorEntityId`, with `column` set to `c_diameter_avg_km` and `c_diameter_avg_miles`. The `valueFrom` is `tool_path` referencing fields on the tool's output (e.g. `{ kind: "tool_path", path: "km" }`).
+- [x] **One job is enqueued, not two.** Inspect the job count via `npm run db:studio` or chat **"Show me the latest bulk_transform jobs"** — there's a single new row.
+- [x] The bulk-job progress widget shows one job (not two). ETA scales to N records, not 2N.
+- [x] After completion: both `c_diameter_avg_km` and `c_diameter_avg_miles` are populated on every NEO row in `neo_summary`.
+- [x] Terminal message reports `Done — N records written, 0 failed in Xs.` `N` matches the NEO count.
+- [x] Re-run the same prompt. Both columns refresh on each row idempotently.
 
 > Implementation note: `shapeWritesForRecord` groups both writes under the same `targetConnectorEntityId`, so one `upsertSuccesses` call per batch carries both columns in each success's value.
 
