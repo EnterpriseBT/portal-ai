@@ -60,11 +60,21 @@ The contract cut is invisible at the user level for the single-write case. This 
 
 ### §1b — One-write run
 
-- [ ] Prompt: **"For every near-earth object, compute the diameter midpoint in kilometers and store it on `neo_summary`."**
-- [ ] Agent calls `bulk_transform_entity_records` with `expression.kind === "tool"`, one tool ref, and `writes` of length 1 against `neo_summary`'s `c_diameter_avg_km`. Confirm by inspecting the tool-call panel.
-- [ ] The bulk-job progress widget appears, ETA is displayed, and the bar advances. After completion: terminal message says `Done — N records written, 0 failed in Xs.`
-- [ ] Open `neo_summary` in the entity-detail view. `c_diameter_avg_km` is populated for every NEO. `c_diameter_avg_miles` is still `null` (we didn't write to it in this run).
-- [ ] Re-run the same prompt. Job completes idempotently — same row count, same values. No duplicate `entity_records` rows.
+- [x] Prompt: **"For every near-earth object, compute the diameter midpoint in kilometers and store it on `neo_summary`."**
+- [x] Agent calls `bulk_transform_entity_records` with `expression.kind === "tool"`, one tool ref, and `writes` of length 1 against `neo_summary`'s `c_diameter_avg_km`. Confirm by inspecting the tool-call panel.
+- [x] The bulk-job progress widget appears, ETA is displayed, and the bar advances. After completion: terminal message says `Done — N records written, 0 failed in Xs.`
+- [x] Open `neo_summary` in the entity-detail view. `c_diameter_avg_km` is populated for every NEO. `c_diameter_avg_miles` is still `null` (we didn't write to it in this run).
+- [x] Re-run the same prompt. Job completes idempotently — same row count, same values. No duplicate `entity_records` rows.
+
+> Path-to-green notes: §1b's first attempt surfaced two bugs in
+> `upsertSuccesses` that smoke C had mocked around. Fixed in-line:
+> (a) `8e56560` adds explicit `::<pgType>` casts to the wide-table
+> INSERT so PG `numeric` columns accept text-quoted JS values (the
+> SQL-kind path and tool-kind w/ stringified output were both
+> tripping `22P02 invalid input syntax`); (b) `b33b73f` trims the
+> per-failure message to the PG cause's short reason and caps
+> `partialFailures[]` at 100 entries — the prior pathological run
+> generated a 500MB+ result row that locked up the job-details view.
 
 ---
 
