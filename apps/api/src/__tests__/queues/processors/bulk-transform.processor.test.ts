@@ -436,4 +436,77 @@ describe("bulkTransformProcessor — tool path multi-write (Phase 4 / #99 slice 
       expect(f.error.message).toContain("target B exploded");
     }
   });
+
+  // Bloat-control (#99 follow-up): drizzle wraps PG errors in
+  // DrizzleQueryError whose .message is a giant SQL+params dump.
+  // The processor should persist the .cause's short PG message
+  // instead, so the result row stays a sensible size.
+  it("uses the PG cause's short message, not the drizzle wrapper's SQL+params dump", async () => {
+    const drizzleErr = new Error(
+      "Failed query: WITH input_rows ... massive sql text ...\nparams: ..."
+    );
+    (drizzleErr as Error & { cause?: unknown }).cause = Object.assign(
+      new Error('invalid input syntax for type numeric: "hello"'),
+      { code: "22P02" }
+    );
+    mockUpsertSuccesses.mockImplementation(async () => {
+      throw drizzleErr;
+    });
+
+    const job = makeToolJob([
+      {
+        targetConnectorEntityId: TARGET_A,
+        column: "c_km",
+        valueFrom: { kind: "tool_path", path: "km" },
+      },
+    ]);
+
+    const result = await bulkTransformProcessor(job);
+
+    expect(result.partialFailures).toHaveLength(2);
+    for (const f of result.partialFailures!) {
+      // Short, includes the PG code prefix + the cause's message.
+      expect(f.error.message).toBe(
+        '22P02: invalid input syntax for type numeric: "hello"'
+      );
+      expect(f.error.message).not.toContain("Failed query:");
+      expect(f.error.message).not.toContain("WITH input_rows");
+    }
+  });
+
+  // Bloat-control (#99 follow-up): even with the short-message fix,
+  // a pathological run (every record fails for the same reason) can
+  // pile up tens of thousands of entries. Cap at MAX_PARTIAL_FAILURES
+  // and surface the omitted count.
+  it("caps partialFailures[] to bound the result row size", async () => {
+    // Generate a batch larger than the cap by setting the fixture's
+    // batch size + source count high enough.
+    const manyRows = Array.from({ length: 150 }, (_, i) => ({
+      c_id: `p-${i}`,
+      c_name: `n-${i}`,
+    }));
+    mockCountSourceRows.mockResolvedValue(manyRows.length);
+    mockFetchSourceBatch.mockResolvedValue(manyRows);
+    mockUpsertSuccesses.mockImplementation(async () => {
+      throw new Error("everything explodes");
+    });
+
+    const job = makeToolJob([
+      {
+        targetConnectorEntityId: TARGET_A,
+        column: "c_km",
+        valueFrom: { kind: "tool_path", path: "km" },
+      },
+    ]);
+    // Override the job's batchSize to fit all rows in one batch.
+    (job.data as Record<string, unknown>).batchSize = 200;
+
+    const result = await bulkTransformProcessor(job);
+
+    expect(result.recordsFailed).toBe(150);
+    // Array capped at the per-job ceiling.
+    expect(result.partialFailures).toHaveLength(100);
+    // Tail is summarized as a count.
+    expect(result.partialFailuresOmitted).toBe(50);
+  });
 });

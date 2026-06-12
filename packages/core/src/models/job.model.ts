@@ -382,6 +382,13 @@ export const BulkTransformResultSchema = z.object({
   /** Aggregate count of records that experienced at least one dropped
    *  write across any target. */
   droppedRecords: z.number().int().nonnegative().optional(),
+  /** Count of `partialFailures` entries that were elided from the
+   *  array to keep the result row bounded. The processor caps the
+   *  array at a fixed size (see `MAX_PARTIAL_FAILURES`); when a
+   *  pathological run produces more, the head is kept and the tail
+   *  is summarized as a count here. `recordsFailed` always carries
+   *  the true total. */
+  partialFailuresOmitted: z.number().int().nonnegative().optional(),
 });
 export type BulkTransformResult = z.infer<typeof BulkTransformResultSchema>;
 

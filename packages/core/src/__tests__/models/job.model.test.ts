@@ -463,11 +463,13 @@ describe("BulkTransform schemas (#85, #99)", () => {
         },
       ],
       droppedRecords: 5,
+      partialFailuresOmitted: 42,
     });
     expect(parsed.partialFailures?.[0].targetConnectorEntityId).toBeUndefined();
     expect(parsed.partialFailures?.[1].targetConnectorEntityId).toBe(TARGET);
     expect(parsed.partialFailures?.[1].column).toBe("c_distance_km");
     expect(parsed.droppedByTarget?.[0].droppedColumns).toEqual(["c_zombie"]);
+    expect(parsed.partialFailuresOmitted).toBe(42);
   });
 
   // ── Migrated existing happy-path coverage ──────────────────────────

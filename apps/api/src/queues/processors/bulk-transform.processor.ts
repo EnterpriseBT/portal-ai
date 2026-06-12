@@ -498,12 +498,19 @@ async function fanOutBatch(args: {
         );
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      // Extract the underlying PG cause's message — drizzle wraps PG
+      // errors as DrizzleQueryError whose `.message` is the full SQL
+      // text + params dump (tens of KB). The `.cause` is the
+      // PostgresError with the actual short reason (e.g. "invalid
+      // input syntax for type numeric"). Persisting the wrapper's
+      // message would bloat the jobs.result column by N × that size.
+      const message = extractShortErrorMessage(err);
+      const fullMessage = err instanceof Error ? err.message : String(err);
       logger.error(
         {
           jobId: args.jobId,
           targetConnectorEntityId: targetId,
-          err: message,
+          err: fullMessage,
         },
         "bulk_transform: per-target upsert failed; other targets in batch unaffected"
       );
@@ -525,6 +532,36 @@ async function fanOutBatch(args: {
 
   return { failures, droppedByTarget };
 }
+
+// ── Error-message helpers ───────────────────────────────────────────
+
+/**
+ * Extract a short, jobs.result-friendly message from a thrown error.
+ * Drizzle-orm wraps Postgres failures in `DrizzleQueryError` whose
+ * `.message` is the full SQL + params dump (often tens of KB).
+ * Persisting that per failure × thousands of records would balloon
+ * the jobs.result jsonb column. The PG cause's own message — plus
+ * its code prefix — is the short, actionable form.
+ */
+function extractShortErrorMessage(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const cause = (err as { cause?: unknown }).cause;
+  if (cause instanceof Error) {
+    const code = (cause as { code?: string }).code;
+    return code ? `${code}: ${cause.message}` : cause.message;
+  }
+  return err.message;
+}
+
+/**
+ * Per-job cap on `partialFailures[]` entries. A pathological run
+ * where every record fails (e.g. a column-type mismatch) would
+ * otherwise produce one entry per source row — N entries times the
+ * per-entry overhead bloats the result row. Capping at 100 keeps
+ * the job detail page scrollable and the result row bounded; the
+ * `partialFailuresOmitted` field carries the dropped count.
+ */
+const MAX_PARTIAL_FAILURES = 100;
 
 // ── Result finalization ─────────────────────────────────────────────
 
@@ -573,13 +610,26 @@ function finalize(args: {
   droppedAcc: DroppedAccumulator;
 }): BulkTransformResult {
   const dropped = args.droppedAcc.toResult();
+  // Cap partialFailures so a pathological run can't bloat the jobs
+  // result row (and the job-details page) without bound. We keep
+  // recordsFailed at the true total so the user still sees the
+  // headline count; `partialFailuresOmitted` carries the dropped
+  // tail count for the entries-array.
+  const totalFailed = args.partialFailures.length;
+  const partialFailures =
+    totalFailed > MAX_PARTIAL_FAILURES
+      ? args.partialFailures.slice(0, MAX_PARTIAL_FAILURES)
+      : args.partialFailures;
+  const partialFailuresOmitted =
+    totalFailed > MAX_PARTIAL_FAILURES
+      ? totalFailed - MAX_PARTIAL_FAILURES
+      : 0;
   return {
     recordsProcessed: args.recordsProcessed,
-    recordsFailed: args.partialFailures.length,
+    recordsFailed: totalFailed,
     durationMs: Date.now() - args.startedAt,
-    ...(args.partialFailures.length > 0
-      ? { partialFailures: args.partialFailures }
-      : {}),
+    ...(partialFailures.length > 0 ? { partialFailures } : {}),
+    ...(partialFailuresOmitted > 0 ? { partialFailuresOmitted } : {}),
     ...dropped,
   };
 }
