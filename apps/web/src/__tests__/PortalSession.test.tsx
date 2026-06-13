@@ -38,6 +38,17 @@ jest.unstable_mockModule("../api/sdk", () => ({
         isPending: false,
       }),
     },
+    // Used by QueryResultDataBlock when a streaming or persisted
+    // chart/table block carries a queryHandle. Tests that exercise
+    // that path inject a `data` shape; the default returns nothing
+    // so untargeted tests are unaffected.
+    portalSql: {
+      handleSnapshot: () => ({
+        data: { rows: [{ x: 1 }, { x: 2 }], total: 2, offset: 0, limit: 5000 },
+        isLoading: false,
+        error: null,
+      }),
+    },
   },
   queryKeys: {
     portals: {
@@ -241,6 +252,58 @@ describe("PortalSessionUI", () => {
     };
     render(<PortalSessionUI {...defaultProps} streamingBlocks={[vegaBlock]} />);
     expect(await screen.findByTestId("vega-chart")).toBeInTheDocument();
+  });
+
+  // #109: streaming chart blocks carrying a queryHandle were rendered
+  // via raw `ContentBlockRenderer`, which doesn't know about the
+  // snapshot-fetch path — so the chart drew axes only during the
+  // stream and then re-rendered filled once the message persisted,
+  // briefly showing both. The streaming path now goes through the
+  // same web/core dispatch (`renderWebBlock`) as persisted messages,
+  // so the streaming block fetches the snapshot too.
+  it("routes a streaming vega-lite handle block through QueryResultDataBlock", async () => {
+    const streamingHandleBlock = {
+      type: "vega-lite" as const,
+      content: {
+        queryHandle: "qh-test-streaming",
+        rowCount: 2,
+        spec: { mark: "circle", data: { name: "primary" } },
+      },
+    };
+    render(
+      <PortalSessionUI
+        {...defaultProps}
+        streamingBlocks={[streamingHandleBlock]}
+      />
+    );
+    // The QRDB UI renders a vega chart with rows from the snapshot
+    // mock — if streaming bypassed the QRDB routing (raw
+    // ContentBlockRenderer), the chart would render against a spec
+    // referencing a named dataset that no one populated.
+    expect(await screen.findByTestId("vega-lite-chart")).toBeInTheDocument();
+  });
+
+  // Same logic for the tabular envelope shape (`sql_query` handle
+  // path). Streaming should resolve the rows from the snapshot, not
+  // render an empty table.
+  it("routes a streaming data-table handle block through QueryResultDataBlock", async () => {
+    const streamingHandleBlock = {
+      type: "data-table" as const,
+      content: {
+        queryHandle: "qh-test-streaming-table",
+        rowCount: 2,
+      },
+    };
+    render(
+      <PortalSessionUI
+        {...defaultProps}
+        streamingBlocks={[streamingHandleBlock]}
+      />
+    );
+    // Snapshot mock returns rows [{x:1},{x:2}] → data-table renders
+    // them under an `x` column header.
+    expect(await screen.findByText("x")).toBeInTheDocument();
+    expect(await screen.findByText("1")).toBeInTheDocument();
   });
 
   it("calls onSubmit with message when submit button clicked", async () => {

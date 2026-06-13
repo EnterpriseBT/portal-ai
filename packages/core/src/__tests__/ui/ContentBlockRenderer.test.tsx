@@ -8,8 +8,14 @@ jest.unstable_mockModule("react-markdown", () => ({
   ),
 }));
 
+// Capture the props handed to VegaLite so the wrapper-shape tests
+// can assert the spec + data prop forwarding.
+const vegaLiteCalls: Array<{ spec: unknown; data: unknown }> = [];
 jest.unstable_mockModule("react-vega", () => ({
-  VegaLite: () => <div data-testid="vega-lite-chart" />,
+  VegaLite: (props: { spec: unknown; data?: unknown }) => {
+    vegaLiteCalls.push({ spec: props.spec, data: props.data });
+    return <div data-testid="vega-lite-chart" />;
+  },
   Vega: () => <div data-testid="vega-chart" />,
 }));
 
@@ -38,12 +44,51 @@ describe("ContentBlockRenderer", () => {
   });
 
   it("renders vega-lite block via VegaLite", async () => {
+    vegaLiteCalls.length = 0;
     render(
       <ContentBlockRenderer
         block={{ type: "vega-lite", content: { mark: "bar" } }}
       />
     );
     expect(await screen.findByTestId("vega-lite-chart")).toBeInTheDocument();
+  });
+
+  // #109: vega-lite block content can carry `{ spec, datasets }` —
+  // the spec keeps a `data: { name: "primary" }` reference while the
+  // datasets sidecar holds the actual rows. The renderer must hand
+  // the spec to VegaLite and forward the datasets via its `data`
+  // prop so react-vega's named-dataset binding fires.
+  it("forwards spec + datasets via react-vega's data prop for wrapped vega-lite blocks", async () => {
+    vegaLiteCalls.length = 0;
+    const spec = { mark: "circle", data: { name: "primary" } };
+    const datasets = { primary: [{ x: 1 }, { x: 2 }] };
+    render(
+      <ContentBlockRenderer
+        block={{ type: "vega-lite", content: { spec, datasets } }}
+      />
+    );
+    expect(await screen.findByTestId("vega-lite-chart")).toBeInTheDocument();
+    expect(vegaLiteCalls).toHaveLength(1);
+    expect(vegaLiteCalls[0].spec).toEqual(spec);
+    expect(vegaLiteCalls[0].data).toEqual(datasets);
+  });
+
+  // Bare-spec content (the inline ≤100-row path) hands the entire
+  // content to VegaLite as the spec — no `data` prop because the
+  // rows are already baked into `spec.data.values`.
+  it("renders bare vega-lite content as the spec with no data prop", async () => {
+    vegaLiteCalls.length = 0;
+    const inlineSpec = {
+      mark: "bar",
+      data: { values: [{ x: 1 }] },
+    };
+    render(
+      <ContentBlockRenderer block={{ type: "vega-lite", content: inlineSpec }} />
+    );
+    expect(await screen.findByTestId("vega-lite-chart")).toBeInTheDocument();
+    expect(vegaLiteCalls).toHaveLength(1);
+    expect(vegaLiteCalls[0].spec).toEqual(inlineSpec);
+    expect(vegaLiteCalls[0].data).toBeUndefined();
   });
 
   it("renders vega block via Vega", async () => {
