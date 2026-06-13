@@ -82,16 +82,23 @@ export const QueryResultDataBlockUI: React.FC<
     return <ContentBlockRenderer block={block} />;
   }
 
-  // Chart path (visualize handle): substitute the rows directly into
-  // the spec under `datasets.primary` — same shape Vega-Lite consumes
-  // when a named dataset is declared via `data: { name: "primary" }`.
-  const specWithData = {
-    ...spec,
-    datasets: { ...(spec.datasets as object | undefined), primary: rows },
-  };
+  // Chart path (visualize handle): the visualize tool's
+  // `rewriteForNamedDataset` already produced a spec with
+  // `data: { name: "primary" }`. Pass the fetched rows alongside the
+  // spec via react-vega's `data` prop (its documented injection
+  // point for named datasets) so the binding is correct AND the
+  // streaming-ready shape is preserved — when SSE-driven incremental
+  // updates land, the same `data` prop accepts `vega.changeset()`
+  // payloads. The earlier `spec.datasets.primary` pattern (#109)
+  // produced a spec react-vega's VegaLite didn't reliably resolve:
+  // axes rendered but marks did not.
+  //
+  // The block carries `{ spec, datasets }` — ContentBlockRenderer
+  // unwraps both and forwards the datasets to react-vega's `data`
+  // prop.
   const block: PortalMessageBlock = {
     type: "vega-lite",
-    content: specWithData,
+    content: { spec, datasets: { primary: rows } },
   };
   return <ContentBlockRenderer block={block} />;
 };

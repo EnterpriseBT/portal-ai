@@ -222,10 +222,28 @@ export const ContentBlockRenderer: React.FC<ContentBlockRendererProps> = ({
   }
 
   if (block.type === "vega-lite") {
+    // Two block-content shapes:
+    //   - `{ spec, datasets }` — used by the query-handle path (#109).
+    //     `datasets` is a `{ <name>: rows[] }` map; we forward it to
+    //     react-vega's `data` prop, which is the documented injection
+    //     point for named datasets and the streaming-ready mount
+    //     point for future `vega.changeset()` increments.
+    //   - bare spec — used by the inline path (≤100 rows) where rows
+    //     are baked into `data.values`. No external `datasets` needed.
+    const content = block.content as Record<string, unknown>;
+    const hasWrapper =
+      typeof content === "object" &&
+      content !== null &&
+      "spec" in content &&
+      typeof content.spec === "object";
+    const spec = (hasWrapper ? content.spec : content) as object;
+    const datasets = hasWrapper
+      ? (content.datasets as Record<string, unknown> | undefined)
+      : undefined;
     return (
       <VegaErrorBoundary>
         <Suspense fallback={null}>
-          <LazyVegaLite spec={block.content as object} />
+          <LazyVegaLite spec={spec} {...(datasets ? { data: datasets } : {})} />
         </Suspense>
       </VegaErrorBoundary>
     );
