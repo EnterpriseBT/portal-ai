@@ -330,22 +330,157 @@ import {
   BulkTransformExpressionSchema,
   BulkTransformMetadataSchema,
   BulkTransformResultSchema,
+  BulkTransformWriteSchema,
   JOB_TYPE_SCHEMAS,
 } from "../../models/job.model.js";
 import { DEFAULT_BULK_BATCH } from "../../constants/large-data-ops.constants.js";
 
-describe("BulkTransform schemas (#85)", () => {
+const TARGET = "ce-target";
+const SOURCE = "ce-source";
+
+const writeToolResult = (column: string) => ({
+  targetConnectorEntityId: TARGET,
+  column,
+  valueFrom: { kind: "tool_result" as const },
+});
+
+const writeSqlAlias = (column: string, alias: string) => ({
+  targetConnectorEntityId: TARGET,
+  column,
+  valueFrom: { kind: "sql_alias" as const, alias },
+});
+
+describe("BulkTransform schemas (#85, #99)", () => {
   it("JobTypeEnum includes bulk_transform", () => {
     expect(JobTypeEnum.safeParse("bulk_transform").success).toBe(true);
   });
 
-  it("BulkTransformMetadataSchema accepts an sql-kind expression", () => {
+  // ── Case 0.1 — all five `valueFrom` kinds accepted ─────────────────
+  it("BulkTransformWriteSchema accepts all five valueFrom kinds", () => {
+    const kinds: Array<{ kind: string; extra: Record<string, unknown> }> = [
+      { kind: "tool_result", extra: {} },
+      { kind: "tool_path", extra: { path: "a.b[0]" } },
+      { kind: "sql_alias", extra: { alias: "acreage" } },
+      { kind: "source_column", extra: { column: "c_id" } },
+      { kind: "constant", extra: { value: 42 } },
+    ];
+    for (const { kind, extra } of kinds) {
+      const parsed = BulkTransformWriteSchema.parse({
+        targetConnectorEntityId: TARGET,
+        column: "c_x",
+        valueFrom: { kind, ...extra },
+      });
+      expect(parsed.valueFrom.kind).toBe(kind);
+    }
+  });
+
+  // ── Case 0.2 — required fields ─────────────────────────────────────
+  it("BulkTransformWriteSchema rejects a write missing targetConnectorEntityId", () => {
+    const result = BulkTransformWriteSchema.safeParse({
+      column: "c_x",
+      valueFrom: { kind: "tool_result" },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("BulkTransformWriteSchema rejects a write missing column", () => {
+    const result = BulkTransformWriteSchema.safeParse({
+      targetConnectorEntityId: TARGET,
+      valueFrom: { kind: "tool_result" },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // ── Case 0.3 — metadata requires targetConnectorEntityIds ──────────
+  it("BulkTransformMetadataSchema requires non-empty targetConnectorEntityIds", () => {
+    const empty = BulkTransformMetadataSchema.safeParse({
+      sourceConnectorEntityId: SOURCE,
+      targetConnectorEntityIds: [],
+      expression: { kind: "sql", value: "1 AS x", writes: [writeSqlAlias("c_x", "x")] },
+      keyField: "k",
+    });
+    expect(empty.success).toBe(false);
+
+    const missing = BulkTransformMetadataSchema.safeParse({
+      sourceConnectorEntityId: SOURCE,
+      expression: { kind: "sql", value: "1 AS x", writes: [writeSqlAlias("c_x", "x")] },
+      keyField: "k",
+    });
+    expect(missing.success).toBe(false);
+  });
+
+  // ── Case 0.4 — expression rejects missing/empty writes ─────────────
+  it("BulkTransformExpressionSchema (tool variant) rejects when writes is missing", () => {
+    const result = BulkTransformExpressionSchema.safeParse({
+      kind: "tool",
+      ref: "compute_x",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("BulkTransformExpressionSchema (tool variant) rejects when writes is empty", () => {
+    const result = BulkTransformExpressionSchema.safeParse({
+      kind: "tool",
+      ref: "compute_x",
+      writes: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // ── Case 0.5 — result schema round-trips per-target failure info ──
+  it("BulkTransformResultSchema round-trips partialFailures with optional target + column and droppedByTarget[]", () => {
+    const parsed = BulkTransformResultSchema.parse({
+      recordsProcessed: 47000,
+      recordsFailed: 3,
+      durationMs: 998000,
+      partialFailures: [
+        // Tool-dispatch failure — no per-write target/column attribution.
+        {
+          sourceKey: "p-99",
+          error: {
+            success: false,
+            message: "Tool call failed.",
+            code: "BULK_DISPATCH_CALL_TIMEOUT",
+            recommendation: "Retry; the hospital API returned a 500.",
+          },
+        },
+        // Per-write failure — names the target + column that failed.
+        {
+          sourceKey: "p-42",
+          targetConnectorEntityId: TARGET,
+          column: "c_distance_km",
+          error: {
+            success: false,
+            message: "Constraint violation on target write.",
+            code: "BULK_DISPATCH_UPSERT_FAILED",
+          },
+        },
+      ],
+      droppedByTarget: [
+        {
+          targetConnectorEntityId: TARGET,
+          droppedColumns: ["c_zombie"],
+        },
+      ],
+      droppedRecords: 5,
+      partialFailuresOmitted: 42,
+    });
+    expect(parsed.partialFailures?.[0].targetConnectorEntityId).toBeUndefined();
+    expect(parsed.partialFailures?.[1].targetConnectorEntityId).toBe(TARGET);
+    expect(parsed.partialFailures?.[1].column).toBe("c_distance_km");
+    expect(parsed.droppedByTarget?.[0].droppedColumns).toEqual(["c_zombie"]);
+    expect(parsed.partialFailuresOmitted).toBe(42);
+  });
+
+  // ── Migrated existing happy-path coverage ──────────────────────────
+  it("BulkTransformMetadataSchema accepts an sql-kind expression with writes[]", () => {
     const parsed = BulkTransformMetadataSchema.parse({
-      sourceConnectorEntityId: "ce-source",
-      targetConnectorEntityId: "ce-target",
+      sourceConnectorEntityId: SOURCE,
+      targetConnectorEntityIds: [TARGET],
       expression: {
         kind: "sql",
         value: "ST_Area(geometry::geography) / 4047 AS acreage",
+        writes: [writeSqlAlias("c_acreage", "acreage")],
       },
       keyField: "parcel_id",
     });
@@ -353,16 +488,15 @@ describe("BulkTransform schemas (#85)", () => {
     expect(parsed.batchSize).toBe(DEFAULT_BULK_BATCH);
   });
 
-  it("BulkTransformMetadataSchema accepts a tool-kind expression", () => {
+  it("BulkTransformMetadataSchema accepts a tool-kind expression with writes[]", () => {
     const parsed = BulkTransformMetadataSchema.parse({
-      sourceConnectorEntityId: "ce-source",
-      targetConnectorEntityId: "ce-target",
+      sourceConnectorEntityId: SOURCE,
+      targetConnectorEntityIds: [TARGET],
       expression: {
         kind: "tool",
         ref: "compute_distance_to_nearest_hospital",
         args: { radius_km: 50 },
-        // Required since the per-record targetColumn refactor.
-        targetColumn: "c_distance_to_hospital",
+        writes: [writeToolResult("c_distance_to_hospital")],
       },
       keyField: "parcel_id",
       batchSize: 500,
@@ -373,7 +507,7 @@ describe("BulkTransform schemas (#85)", () => {
       expect(parsed.expression.ref).toBe(
         "compute_distance_to_nearest_hospital"
       );
-      expect(parsed.expression.targetColumn).toBe("c_distance_to_hospital");
+      expect(parsed.expression.writes[0].column).toBe("c_distance_to_hospital");
     }
     expect(parsed.batchSize).toBe(500);
     expect(parsed.acknowledgeCost).toBe(true);
@@ -383,6 +517,7 @@ describe("BulkTransform schemas (#85)", () => {
     const result = BulkTransformExpressionSchema.safeParse({
       kind: "sql",
       ref: "compute_x",
+      writes: [writeSqlAlias("c_x", "x")],
     });
     expect(result.success).toBe(false);
   });
@@ -390,8 +525,8 @@ describe("BulkTransform schemas (#85)", () => {
   it("defaults batchSize to DEFAULT_BULK_BATCH when omitted", () => {
     const parsed = BulkTransformMetadataSchema.parse({
       sourceConnectorEntityId: "a",
-      targetConnectorEntityId: "b",
-      expression: { kind: "sql", value: "1" },
+      targetConnectorEntityIds: ["b"],
+      expression: { kind: "sql", value: "1 AS x", writes: [writeSqlAlias("c_x", "x")] },
       keyField: "k",
     });
     expect(parsed.batchSize).toBe(DEFAULT_BULK_BATCH);
@@ -400,35 +535,12 @@ describe("BulkTransform schemas (#85)", () => {
   it("rejects batchSize past 10_000", () => {
     const result = BulkTransformMetadataSchema.safeParse({
       sourceConnectorEntityId: "a",
-      targetConnectorEntityId: "b",
-      expression: { kind: "sql", value: "1" },
+      targetConnectorEntityIds: ["b"],
+      expression: { kind: "sql", value: "1 AS x", writes: [writeSqlAlias("c_x", "x")] },
       keyField: "k",
       batchSize: 50_000,
     });
     expect(result.success).toBe(false);
-  });
-
-  it("BulkTransformResultSchema accepts partialFailures with nested ApiError envelope", () => {
-    const parsed = BulkTransformResultSchema.parse({
-      recordsProcessed: 47000,
-      recordsFailed: 3,
-      durationMs: 998000,
-      partialFailures: [
-        {
-          sourceKey: "p-99",
-          error: {
-            success: false,
-            message: "Tool call failed.",
-            code: "BULK_DISPATCH_CALL_TIMEOUT",
-            recommendation: "Retry; the hospital API returned a 500.",
-          },
-        },
-      ],
-    });
-    expect(parsed.recordsFailed).toBe(3);
-    expect(parsed.partialFailures?.[0].error.recommendation).toBe(
-      "Retry; the hospital API returned a 500."
-    );
   });
 
   it("JOB_TYPE_SCHEMAS has a bulk_transform entry whose schemas match the exported types", () => {

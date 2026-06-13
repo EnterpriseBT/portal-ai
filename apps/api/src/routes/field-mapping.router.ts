@@ -625,7 +625,7 @@ fieldMappingRouter.patch(
       await assertWriteCapability(existing.connectorEntityId);
 
       await JobLockService.assertConnectorEntityUnlocked(
-        existing.connectorEntityId,
+        [existing.connectorEntityId],
         req.application!.metadata.organizationId
       );
 
@@ -994,7 +994,7 @@ fieldMappingRouter.delete(
         await assertWriteCapability(mappingToDelete.connectorEntityId);
 
         await JobLockService.assertConnectorEntityUnlocked(
-          mappingToDelete.connectorEntityId,
+          [mappingToDelete.connectorEntityId],
           organizationId
         );
 

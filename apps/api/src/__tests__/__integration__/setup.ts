@@ -47,14 +47,30 @@ export default async function globalSetup() {
     await connection`SELECT 1`;
     console.log("✅ Database connection established");
 
-    // Clean up existing data
+    // Clean up existing data. Drop dynamic `er__*` wide tables one
+    // at a time (the reconciler creates them per connector entity;
+    // integration runs accumulate hundreds across sessions, and
+    // dropping them all in one DO block trips PG's
+    // `max_locks_per_transaction` budget). The static schema gets
+    // TRUNCATEd in a single transaction; `er__*` tables get recreated
+    // on demand by the reconciler.
     console.log("🧹 Cleaning up existing data...");
+    const wideTables = (await db.execute<{ tablename: string }>(sql`
+      SELECT tablename FROM pg_tables
+      WHERE schemaname = 'public' AND tablename LIKE 'er\\_\\_%'
+    `)) as unknown as Array<{ tablename: string }>;
+    for (const { tablename } of wideTables) {
+      await db.execute(sql.raw(`DROP TABLE "${tablename}" CASCADE`));
+    }
     await db.execute(sql`
       DO $$
       DECLARE
         r RECORD;
       BEGIN
-        FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+        FOR r IN (
+          SELECT tablename FROM pg_tables
+          WHERE schemaname = 'public' AND tablename NOT LIKE 'er\\_\\_%'
+        ) LOOP
           EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE';
         END LOOP;
       END $$;

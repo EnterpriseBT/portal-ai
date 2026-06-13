@@ -176,11 +176,17 @@ describe("Smoke C — tool-dispatch processor pipeline (#85 Phase 4)", () => {
         stationId,
         userId,
         sourceConnectorEntityId: "ce-source",
-        targetConnectorEntityId: "ce-target",
+        targetConnectorEntityIds: ["ce-target"],
         expression: {
           kind: "tool",
           ref: "compute_distance_to_nearest_hospital",
-          targetColumn: "c_distance_km",
+          writes: [
+            {
+              targetConnectorEntityId: "ce-target",
+              column: "c_distance_km",
+              valueFrom: { kind: "tool_result" },
+            },
+          ],
         },
         keyField: "source_id",
         batchSize: 5,
@@ -242,11 +248,17 @@ describe("Smoke C — tool-dispatch processor pipeline (#85 Phase 4)", () => {
         jobId,
         type: "bulk_transform",
         sourceConnectorEntityId: "ce-source",
-        targetConnectorEntityId: "ce-target",
+        targetConnectorEntityIds: ["ce-target"],
         expression: {
           kind: "tool",
           ref: "compute_distance_to_nearest_hospital",
-          targetColumn: "c_distance_km",
+          writes: [
+            {
+              targetConnectorEntityId: "ce-target",
+              column: "c_distance_km",
+              valueFrom: { kind: "tool_result" },
+            },
+          ],
         },
         keyField: "source_id",
         batchSize: 5,

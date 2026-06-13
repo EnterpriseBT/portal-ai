@@ -231,30 +231,87 @@ export type LayoutPlanCommitJobResult = z.infer<
 >;
 
 /**
- * bulk_transform (#85) — agent-driven bulk write that runs a per-record
- * transformation in batches. Two expression kinds: `sql` (declarative
- * INSERT … SELECT projection) and `tool` (per-record dispatch through a
- * bulkDispatch-able tool; Phase 4 wires the dispatcher).
+ * bulk_transform (#85, #99) — agent-driven bulk write that runs a
+ * per-record transformation in batches. Two expression kinds: `sql`
+ * (declarative SELECT projection per row) and `tool` (per-record
+ * dispatch through a bulkDispatch-able tool).
  *
- * Locks `targetConnectorEntityId` while non-terminal (see
+ * Each job carries `writes: BulkTransformWrite[]` — an explicit mapping
+ * from per-record computed values to wide-table columns. A single job
+ * can land values into N columns across K target entities. The agent
+ * supplies how each value binds via `valueFrom` (five kinds; see below).
+ *
+ * Locks the union of `writes[].targetConnectorEntityId` (denormalized
+ * into `metadata.targetConnectorEntityIds`) while non-terminal (see
  * CLAUDE.md → "Async Job State & Data Locking").
  */
+
+/**
+ * `valueFrom` discriminates how each `BulkTransformWrite` resolves its
+ * per-record value:
+ *
+ * - `tool_result` — the entire tool output (whatever its schema yields,
+ *   primitive/object/array). For SQL-kind jobs this kind is rejected at
+ *   pre-flight (there is no tool result to read).
+ * - `tool_path` — a Lodash-style path into the tool output: `a.b[0].c`.
+ *   Empty path resolves to the whole result. SQL-kind jobs reject.
+ * - `sql_alias` — read the named alias from the SQL projection. Tool-kind
+ *   jobs reject (there's no SQL projection).
+ * - `source_column` — passthrough the named wide-column from the source
+ *   row (always the source row; never a SQL-projected value).
+ * - `constant` — the agent supplies a literal value.
+ */
+export const BulkTransformValueFromSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("tool_result") }),
+  z.object({
+    kind: z.literal("tool_path"),
+    /** Lodash-style path: `a.b[0].c`. Empty string resolves to the
+     *  whole tool result — useful for primitive-typed outputs. */
+    path: z.string(),
+  }),
+  z.object({
+    kind: z.literal("sql_alias"),
+    /** Alias declared in the SQL-kind `expression.value` projection. */
+    alias: z.string(),
+  }),
+  z.object({
+    kind: z.literal("source_column"),
+    /** Wide-column name on the SOURCE entity. */
+    column: z.string(),
+  }),
+  z.object({
+    kind: z.literal("constant"),
+    /** Any JSON-serializable value the agent picks. Pre-flight validates
+     *  it casts to the target column's pgType. */
+    value: z.unknown(),
+  }),
+]);
+export type BulkTransformValueFrom = z.infer<typeof BulkTransformValueFromSchema>;
+
+export const BulkTransformWriteSchema = z.object({
+  /** Target entity to write into. The aggregate set is locked while the
+   *  job runs; pre-flight rejects unknown columns. */
+  targetConnectorEntityId: z.string(),
+  /** Wide-column name on the target entity. */
+  column: z.string(),
+  valueFrom: BulkTransformValueFromSchema,
+});
+export type BulkTransformWrite = z.infer<typeof BulkTransformWriteSchema>;
+
 export const BulkTransformExpressionSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("sql"),
-    /** SELECT projection or scalar expression. Per-batch processor wraps
-     *  in INSERT … SELECT against the source wide table. */
+    /** SELECT projection with `AS aliases`; each write of `kind:
+     *  "sql_alias"` references one of those aliases. */
     value: z.string(),
+    writes: z.array(BulkTransformWriteSchema).min(1),
   }),
   z.object({
     kind: z.literal("tool"),
     /** Tool name; must be a registered bulkDispatch-able tool. */
     ref: z.string(),
     args: z.record(z.string(), z.unknown()).optional(),
-    /** Wide-column on the target where each per-record tool result
-     *  is written. Required — the tool stays target-agnostic and
-     *  the agent decides where the value lands (#98). */
-    targetColumn: z.string(),
+    writes: z.array(BulkTransformWriteSchema).min(1),
   }),
 ]);
 export type BulkTransformExpression = z.infer<
@@ -264,8 +321,9 @@ export type BulkTransformExpression = z.infer<
 export const BulkTransformMetadataSchema = z.object({
   /** Source entity to scan; read-only during the job, no lock. */
   sourceConnectorEntityId: z.string(),
-  /** Target entity to write into; locked while the job is non-terminal. */
-  targetConnectorEntityId: z.string(),
+  /** Denormalized union of `writes[].targetConnectorEntityId`, sorted.
+   *  This is what the lock query matches against (`?|` array overlap). */
+  targetConnectorEntityIds: z.array(z.string()).min(1),
   expression: BulkTransformExpressionSchema,
   /** Source field used as the upsert key on the target. */
   keyField: z.string(),
@@ -290,10 +348,7 @@ export const BulkTransformMetadataSchema = z.object({
 export type BulkTransformMetadata = z.infer<typeof BulkTransformMetadataSchema>;
 
 export const BulkTransformResultSchema = z.object({
-  /** Rows actually written to the target's wide table. For tool-kind
-   *  jobs this excludes records whose tool output keys didn't match
-   *  any of the target's wide-column names (those land in
-   *  `droppedRecords` and the keys are listed in `droppedKeys`). */
+  /** Rows actually written to a target's wide table. */
   recordsProcessed: z.number().int().nonnegative(),
   recordsFailed: z.number().int().nonnegative(),
   durationMs: z.number().int().nonnegative(),
@@ -301,20 +356,39 @@ export const BulkTransformResultSchema = z.object({
     .array(
       z.object({
         sourceKey: z.string(),
+        /** Present for per-write failures (a single target's UPSERT
+         *  threw for one record); absent for tool-dispatch failures
+         *  (the tool itself threw for the record). */
+        targetConnectorEntityId: z.string().optional(),
+        column: z.string().optional(),
         /** Per-record error envelope; reuses the universal shape so
          *  the agent and UI consume the same payload. */
         error: ApiErrorSchema,
       })
     )
     .optional(),
-  /** Tool-dispatch records whose return-value keys didn't exist on
-   *  the target's wide table. The dispatcher succeeded for each one
-   *  but `upsertSuccesses` skipped the write (#85 Phase 4 / #98). */
+  /** Defence-in-depth: wide-columns that were dropped per target
+   *  because they disappeared between pre-flight and execution.
+   *  Pre-flight rejects unknown columns, so this should only fire
+   *  if a schema mutation races a running job. */
+  droppedByTarget: z
+    .array(
+      z.object({
+        targetConnectorEntityId: z.string(),
+        droppedColumns: z.array(z.string()),
+      })
+    )
+    .optional(),
+  /** Aggregate count of records that experienced at least one dropped
+   *  write across any target. */
   droppedRecords: z.number().int().nonnegative().optional(),
-  /** Distinct tool-output keys that were dropped because no matching
-   *  wide-column existed. Useful for surfacing the contract mismatch
-   *  in the terminal SSE event + UI. */
-  droppedKeys: z.array(z.string()).optional(),
+  /** Count of `partialFailures` entries that were elided from the
+   *  array to keep the result row bounded. The processor caps the
+   *  array at a fixed size (see `MAX_PARTIAL_FAILURES`); when a
+   *  pathological run produces more, the head is kept and the tail
+   *  is summarized as a count here. `recordsFailed` always carries
+   *  the true total. */
+  partialFailuresOmitted: z.number().int().nonnegative().optional(),
 });
 export type BulkTransformResult = z.infer<typeof BulkTransformResultSchema>;
 

@@ -843,7 +843,7 @@ connectorEntityRouter.delete(
       const { id } = req.params;
       const { userId, organizationId } = req.application!.metadata;
 
-      await JobLockService.assertConnectorEntityUnlocked(id, organizationId);
+      await JobLockService.assertConnectorEntityUnlocked([id], organizationId);
       await ConnectorEntityValidationService.validateDelete(id);
 
       const cascaded = await ConnectorEntityValidationService.executeDelete(

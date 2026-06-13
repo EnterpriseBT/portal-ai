@@ -22,6 +22,72 @@ import { MAX_BULK_RECORDS } from "@portalai/core/constants";
 
 const logger = createLogger({ module: "bulk-transform-entity-records-tool" });
 
+const ValueFromSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("tool_result") }),
+  z.object({
+    kind: z.literal("tool_path"),
+    path: z
+      .string()
+      .describe(
+        "Lodash-style path into the tool's per-record output, e.g. " +
+          "`diameter.km.avg` or `matches[0].score`. Empty string " +
+          "resolves to the whole tool result — useful for primitive " +
+          "outputs (e.g. `z.number()`)."
+      ),
+  }),
+  z.object({
+    kind: z.literal("sql_alias"),
+    alias: z
+      .string()
+      .describe(
+        "Alias declared in the SQL-kind `expression.value` projection " +
+          "(the name after `AS`). Only valid when `expression.kind === 'sql'`."
+      ),
+  }),
+  z.object({
+    kind: z.literal("source_column"),
+    column: z
+      .string()
+      .describe(
+        "Wide-column name on the SOURCE entity. The per-record value " +
+          "is read from the source row and copied to the target column."
+      ),
+  }),
+  z.object({
+    kind: z.literal("constant"),
+    value: z
+      .unknown()
+      .describe(
+        "Literal value written to every per-record row. Pre-flight " +
+          "validates the value casts to the target column's pgType."
+      ),
+  }),
+]);
+
+const WriteSchema = z.object({
+  targetConnectorEntityId: z
+    .string()
+    .describe(
+      "Connector entity to write into; locked while the job runs. Look " +
+        "up the id via `station_context`. The aggregate set of " +
+        "`targetConnectorEntityId` across all writes is the lock set."
+    ),
+  column: z
+    .string()
+    .describe(
+      "Wide-column name on the target entity (e.g. `c_diameter_avg_km`). " +
+        "Look up via `station_context` (`columns[].wideColumnName`). " +
+        "Pre-flight rejects names that aren't wide-columns on the target."
+    ),
+  valueFrom: ValueFromSchema.describe(
+    "How this column's value is sourced for each record. Five kinds: " +
+      "`tool_result` (whole tool output), `tool_path` (sub-value via " +
+      "Lodash path), `sql_alias` (named alias in the SQL projection), " +
+      "`source_column` (passthrough from the source row), `constant` " +
+      "(literal value)."
+  ),
+});
+
 const ExpressionSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("sql"),
@@ -30,13 +96,22 @@ const ExpressionSchema = z.discriminatedUnion("kind", [
       .describe(
         "SQL projection expression containing ONLY the derived columns " +
           "you want to write into the target. Every segment MUST use " +
-          "`<expr> AS c_<column_name>` syntax — bare column references " +
-          "are rejected. Do NOT include the key field here (it's passed " +
-          "separately via `keyField` and written to the target's " +
+          "`<expr> AS <alias>` syntax — bare column references are " +
+          "rejected. Aliases are referenced by `writes[].valueFrom` of " +
+          "kind `sql_alias`. Do NOT include the key field here (it's " +
+          "passed separately via `keyField` and written to the target's " +
           "`source_id` automatically). " +
           'Example: `("c_diameter_km_min" + "c_diameter_km_max") / 2.0 ' +
-          "AS c_diameter_avg_km`. Multi-column example: " +
-          '`UPPER("c_name") AS c_name_upper, "c_a" + "c_b" AS c_sum`.'
+          "AS diameter_avg_km`."
+      ),
+    writes: z
+      .array(WriteSchema)
+      .min(1)
+      .describe(
+        "One or more (column, valueFrom) mappings. Each write lands a " +
+          "per-record value into a target wide-column. Multiple writes " +
+          "can target the same entity (multi-column landing) or " +
+          "different entities (cross-entity writes)."
       ),
   }),
   z.object({
@@ -58,15 +133,15 @@ const ExpressionSchema = z.discriminatedUnion("kind", [
           "(plus `sourceKey` and `sourceRow`); don't repeat them here. " +
           "Leave undefined unless you have a real tool-wide setting."
       ),
-    targetColumn: z
-      .string()
+    writes: z
+      .array(WriteSchema)
+      .min(1)
       .describe(
-        "Wide-column name on the target where each per-record tool " +
-          "result should be written (e.g. `c_diameter_avg_km`). The tool " +
-          "returns one value per call; that value lands in this column. " +
-          "Pre-flight rejects names that aren't wide-columns on the " +
-          "target — look them up via `station_context` " +
-          "(`columns[].wideColumnName`)."
+        "One or more (column, valueFrom) mappings. The tool returns one " +
+          "value per record; `writes[]` decides where that value (or " +
+          "sub-values via `tool_path`) lands. Multiple writes from a " +
+          "single tool call land per-record values into N target columns " +
+          "without re-dispatching the tool."
       ),
   }),
 ]);
@@ -79,14 +154,6 @@ const InputSchema = z.object({
         "`connectorEntityId` listed next to the entity in `## Available " +
         "Data`, or query `SELECT id FROM _meta_entities WHERE key = '<entity_key>'`. " +
         "Do NOT ask the user — the value is in your context."
-    ),
-  targetConnectorEntityId: z
-    .string()
-    .describe(
-      "Connector entity to write into; locked while the job is non-terminal. " +
-        "Use the `connectorEntityId` listed next to the entity in " +
-        "`## Available Data`, or query `SELECT id FROM _meta_entities WHERE key = " +
-        "'<entity_key>'`. Do NOT ask the user — the value is in your context."
     ),
   expression: ExpressionSchema,
   keyField: z
@@ -219,6 +286,22 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
         try {
           const parsed = this.validate(input);
 
+          // Slice 0 (#99): writes[] is the agent's per-column mapping.
+          // Slice 0 keeps single-write behavior — read writes[0] where
+          // the prior `targetConnectorEntityId` / `targetColumn` lived.
+          // Slice 2 expands pre-flight to validate every entry; slice 3
+          // expands the lock check to the array; slice 4 expands the
+          // processor's write path.
+          const writes = parsed.expression.writes;
+          const targetConnectorEntityIds = Array.from(
+            new Set(writes.map((w) => w.targetConnectorEntityId))
+          ).sort();
+          // Slice 0 (#99) used `primaryTargetId` for the legacy
+          // single-target lock + signature paths. Slice 3 generalizes
+          // the lock to the full array; until then, `writes[0]`'s
+          // target stands in.
+          const primaryTargetId = writes[0].targetConnectorEntityId;
+
           // Step 1 — source + target exist + org-scoped.
           const source =
             await DbService.repository.connectorEntities.findById(
@@ -233,19 +316,22 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
           }
           const target =
             await DbService.repository.connectorEntities.findById(
-              parsed.targetConnectorEntityId
+              primaryTargetId
             );
           if (!target) {
             throw new ApiError(
               404,
               ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
-              `Target entity not found: ${parsed.targetConnectorEntityId}`
+              `Target entity not found: ${primaryTargetId}`
             );
           }
 
-          // Step 2 — target lock.
+          // Step 2 — target lock. Slice 3 (#99): passes the full union
+          // of write targets, not just `primaryTargetId`. A locked
+          // entity anywhere in the set surfaces in the 409 details so
+          // the agent (and UI) see every blocked target at once.
           await JobLockService.assertConnectorEntityUnlocked(
-            parsed.targetConnectorEntityId,
+            targetConnectorEntityIds,
             organizationId
           );
 
@@ -277,21 +363,125 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
             );
           }
 
-          // Step 2b — for SQL-kind, validate every projection alias is
-          // a wide-column on the **target**. Catches the case where the
-          // agent included the key in the projection under an invented
-          // name (e.g. `c_id::text AS asteroid_id, ...`) — the SQL
-          // would otherwise fail at the first batch with PG 42703 and
-          // sit failed in the queue. Tool-kind has no projection.
+          // Step 2b — slice 2 (#99): per-write validation pipeline.
+          // For each unique target id load its wide-column map (one
+          // cache.get per target); validate every write's column
+          // exists on its target; per-kind sub-checks (constant cast,
+          // source_column existence, sql_alias declared); for SQL kind,
+          // reject declared aliases that no write references (catches
+          // the agent projecting the keyField under an invented name).
+          const targetColumnMaps = new Map<
+            string,
+            Map<string, string>
+          >();
+          for (const tid of targetConnectorEntityIds) {
+            const stmt = await wideTableStatementCache.get(tid);
+            const colMap = new Map<string, string>();
+            for (const c of stmt.columns) colMap.set(c.columnName, c.pgType);
+            targetColumnMaps.set(tid, colMap);
+          }
+
+          for (const [i, write] of writes.entries()) {
+            const targetCols = targetColumnMaps.get(
+              write.targetConnectorEntityId
+            )!;
+
+            // 2b.1 — target column exists.
+            if (!targetCols.has(write.column)) {
+              throw new ApiError(
+                400,
+                ApiCode.BULK_JOB_EXPRESSION_INVALID,
+                `writes[${i}]: column '${write.column}' is not a wide-column on target entity '${write.targetConnectorEntityId}'.`,
+                {
+                  recommendation:
+                    ApiCodeDefaultRecommendation[
+                      ApiCode.BULK_JOB_EXPRESSION_INVALID
+                    ],
+                  details: {
+                    write: {
+                      targetConnectorEntityId: write.targetConnectorEntityId,
+                      column: write.column,
+                    },
+                    availableTargetColumns: Array.from(targetCols.keys()).sort(),
+                  },
+                }
+              );
+            }
+
+            // 2b.2 — constant cast check against the target column's
+            // PG type. Uses `BulkTransformService.canCastConstant` so
+            // tests can mock the round-trip.
+            if (write.valueFrom.kind === "constant") {
+              const pgType = targetCols.get(write.column)!;
+              const ok = await BulkTransformService.canCastConstant(
+                write.valueFrom.value,
+                pgType
+              );
+              if (!ok) {
+                throw new ApiError(
+                  400,
+                  ApiCode.BULK_JOB_EXPRESSION_INVALID,
+                  `writes[${i}]: constant value cannot be cast to '${pgType}' for column '${write.column}'.`,
+                  {
+                    recommendation:
+                      ApiCodeDefaultRecommendation[
+                        ApiCode.BULK_JOB_EXPRESSION_INVALID
+                      ],
+                    details: {
+                      write: {
+                        targetConnectorEntityId:
+                          write.targetConnectorEntityId,
+                        column: write.column,
+                      },
+                      pgType,
+                    },
+                  }
+                );
+              }
+            }
+
+            // 2b.3 — source_column existence on the source wide table.
+            if (write.valueFrom.kind === "source_column") {
+              if (!sourceWideColumns.includes(write.valueFrom.column)) {
+                throw new ApiError(
+                  400,
+                  ApiCode.BULK_JOB_EXPRESSION_INVALID,
+                  `writes[${i}]: source_column '${write.valueFrom.column}' is not a wide-column on the source entity.`,
+                  {
+                    recommendation:
+                      ApiCodeDefaultRecommendation[
+                        ApiCode.BULK_JOB_EXPRESSION_INVALID
+                      ],
+                    details: {
+                      write: {
+                        targetConnectorEntityId:
+                          write.targetConnectorEntityId,
+                        column: write.column,
+                      },
+                      availableSourceColumns: sourceWideColumns
+                        .slice()
+                        .sort(),
+                    },
+                  }
+                );
+              }
+            }
+          }
+
+          // 2b.4 — SQL-kind only: parse projection aliases, validate
+          // each `sql_alias` write references a declared alias, and
+          // flag declared aliases that no write picks up (the agent
+          // projected something the writes[] map doesn't use — often
+          // the keyField under an invented name).
           if (parsed.expression.kind === "sql") {
             const { parseProjections } = await import(
               "../utils/sql-projection.util.js"
             );
-            let aliases: string[];
+            let declaredAliases: string[];
             try {
-              aliases = parseProjections(parsed.expression.value).map(
-                (p) => p.alias
-              );
+              declaredAliases = parseProjections(
+                parsed.expression.value
+              ).map((p) => p.alias);
             } catch (err) {
               throw new ApiError(
                 400,
@@ -307,26 +497,47 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
                 }
               );
             }
-            const targetStmt = await wideTableStatementCache.get(
-              parsed.targetConnectorEntityId
+            const declaredSet = new Set(declaredAliases);
+            const referencedAliases = new Set<string>();
+            for (const [i, write] of writes.entries()) {
+              if (write.valueFrom.kind !== "sql_alias") continue;
+              const alias = write.valueFrom.alias;
+              if (!declaredSet.has(alias)) {
+                throw new ApiError(
+                  400,
+                  ApiCode.BULK_JOB_EXPRESSION_INVALID,
+                  `writes[${i}]: sql_alias '${alias}' is not declared in expression.value's projection.`,
+                  {
+                    recommendation:
+                      ApiCodeDefaultRecommendation[
+                        ApiCode.BULK_JOB_EXPRESSION_INVALID
+                      ],
+                    details: {
+                      alias,
+                      declaredAliases,
+                    },
+                  }
+                );
+              }
+              referencedAliases.add(alias);
+            }
+            const unreferenced = declaredAliases.filter(
+              (a) => !referencedAliases.has(a)
             );
-            const targetColumns = targetStmt.columns.map((c) => c.columnName);
-            const unknownAliases = aliases.filter(
-              (a) => !targetColumns.includes(a)
-            );
-            if (unknownAliases.length > 0) {
+            if (unreferenced.length > 0) {
               throw new ApiError(
                 400,
                 ApiCode.BULK_JOB_EXPRESSION_INVALID,
-                `Projection alias(es) ${unknownAliases.map((a) => `'${a}'`).join(", ")} are not wide-columns on the target entity. Drop any projection of the key field (it writes to source_id automatically via keyField) and use only target column names like ${targetColumns.slice(0, 3).map((c) => `'${c}'`).join(", ")}.`,
+                `expression.value declares alias(es) ${unreferenced
+                  .map((a) => `'${a}'`)
+                  .join(", ")} that no writes[] entry references. Either drop the alias from the projection or add a writes[] entry with valueFrom.kind === 'sql_alias' that references it.`,
                 {
                   recommendation:
                     ApiCodeDefaultRecommendation[
                       ApiCode.BULK_JOB_EXPRESSION_INVALID
                     ],
                   details: {
-                    unknownAliases,
-                    availableTargetColumns: targetColumns.slice().sort(),
+                    unreferencedAliases: unreferenced,
                   },
                 }
               );
@@ -341,33 +552,9 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
             | undefined;
           let estimatedSecondsOverride: number | undefined;
           if (parsed.expression.kind === "tool") {
-            // Step 3a — validate the agent-supplied targetColumn exists
-            // on the target's wide table. The tool stays target-agnostic
-            // (returns one value per call); the agent decides which
-            // column receives that value. A typo fails fast here
-            // before the worker dispatches thousands of wasted calls.
-            const targetStmt = await wideTableStatementCache.get(
-              parsed.targetConnectorEntityId
-            );
-            const targetCols = new Set(
-              targetStmt.columns.map((c) => c.columnName)
-            );
-            if (!targetCols.has(parsed.expression.targetColumn)) {
-              throw new ApiError(
-                400,
-                ApiCode.BULK_JOB_EXPRESSION_INVALID,
-                `targetColumn '${parsed.expression.targetColumn}' is not a wide-column on the target entity.`,
-                {
-                  recommendation:
-                    ApiCodeDefaultRecommendation[
-                      ApiCode.BULK_JOB_EXPRESSION_INVALID
-                    ],
-                  details: {
-                    availableTargetColumns: Array.from(targetCols).sort(),
-                  },
-                }
-              );
-            }
+            // Step 2b above already validated each write's column on
+            // its target — including the writes[0] case the prior
+            // narrow Step 3a covered.
 
             const lookup = await ToolService.lookupBulkDispatchable(
               parsed.expression.ref,
@@ -407,7 +594,7 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
             if (toolMetadata.costHint === "expensive") {
               const signature = computeJobSignature({
                 sourceConnectorEntityId: parsed.sourceConnectorEntityId,
-                targetConnectorEntityId: parsed.targetConnectorEntityId,
+                targetConnectorEntityId: primaryTargetId,
                 expression: parsed.expression,
                 keyField: parsed.keyField,
                 batchSize: parsed.batchSize ?? 1_000,
@@ -525,7 +712,7 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
             type: "bulk_transform",
             metadata: {
               sourceConnectorEntityId: parsed.sourceConnectorEntityId,
-              targetConnectorEntityId: parsed.targetConnectorEntityId,
+              targetConnectorEntityIds,
               expression: parsed.expression,
               keyField: parsed.keyField,
               batchSize,

@@ -2,7 +2,7 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockFindRunningForConnectorInstance =
   jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
-const mockFindRunningByTargetEntityId =
+const mockFindRunningByTargetEntityIds =
   jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
 const mockConnectorEntitiesFindById =
   jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -16,7 +16,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
     repository: {
       jobs: {
         findRunningForConnectorInstance: mockFindRunningForConnectorInstance,
-        findRunningByTargetEntityId: mockFindRunningByTargetEntityId,
+        findRunningByTargetEntityIds: mockFindRunningByTargetEntityIds,
       },
       connectorEntities: { findById: mockConnectorEntitiesFindById },
       entityRecords: { findById: mockEntityRecordsFindById },
@@ -146,21 +146,21 @@ describe("JobLockService", () => {
   describe("assertConnectorEntityUnlocked", () => {
     beforeEach(() => {
       mockConnectorEntitiesFindById.mockReset();
-      mockFindRunningByTargetEntityId.mockReset();
+      mockFindRunningByTargetEntityIds.mockReset();
       // Default: no bulk_transform locks. Individual tests that
       // exercise the entity-level lock override this.
-      mockFindRunningByTargetEntityId.mockResolvedValue([]);
+      mockFindRunningByTargetEntityIds.mockResolvedValue([]);
     });
 
     it("walks entity → instance and throws when the instance is locked", async () => {
-      mockConnectorEntitiesFindById.mockResolvedValue({
-        id: "entity-1",
+      mockConnectorEntitiesFindById.mockImplementation(async (id) => ({
+        id,
         connectorInstanceId: "ci-1",
-      });
+      }));
       mockFindRunningForConnectorInstance.mockResolvedValue([fakeJob()]);
 
       await expect(
-        JobLockService.assertConnectorEntityUnlocked("entity-1", "org-1")
+        JobLockService.assertConnectorEntityUnlocked(["entity-1"], "org-1")
       ).rejects.toMatchObject({
         status: 409,
         code: ApiCode.ENTITY_LOCKED_BY_JOB,
@@ -172,78 +172,134 @@ describe("JobLockService", () => {
       );
     });
 
-    it("no-ops when the entity doesn't exist — caller's own 404 fires", async () => {
+    it("no-ops when no entities in the input exist — caller's own 404 fires", async () => {
       mockConnectorEntitiesFindById.mockResolvedValue(undefined);
       await expect(
-        JobLockService.assertConnectorEntityUnlocked("missing", "org-1")
+        JobLockService.assertConnectorEntityUnlocked(["missing"], "org-1")
       ).resolves.toBeUndefined();
       expect(mockFindRunningForConnectorInstance).not.toHaveBeenCalled();
-      expect(mockFindRunningByTargetEntityId).not.toHaveBeenCalled();
+      expect(mockFindRunningByTargetEntityIds).not.toHaveBeenCalled();
     });
 
-    // Phase 1 of #85 — entity-level lock for bulk_transform jobs whose
-    // metadata declares targetConnectorEntityId. Lives alongside the
-    // existing instance-level check; both must pass.
-    it("throws BULK_JOB_TARGET_LOCKED when a non-terminal bulk_transform locks the entity", async () => {
-      mockConnectorEntitiesFindById.mockResolvedValue({
-        id: "entity-1",
+    it("no-ops on empty input", async () => {
+      await expect(
+        JobLockService.assertConnectorEntityUnlocked([], "org-1")
+      ).resolves.toBeUndefined();
+      expect(mockConnectorEntitiesFindById).not.toHaveBeenCalled();
+      expect(mockFindRunningByTargetEntityIds).not.toHaveBeenCalled();
+    });
+
+    // Case 3.1 (#99) — no locks anywhere across the input array.
+    it("resolves when neither instance nor entity-level locks fire across the array", async () => {
+      mockConnectorEntitiesFindById.mockImplementation(async (id) => ({
+        id,
         connectorInstanceId: "ci-1",
-      });
+      }));
       mockFindRunningForConnectorInstance.mockResolvedValue([]);
-      mockFindRunningByTargetEntityId.mockResolvedValue([
-        fakeJob({
-          id: "job-bulk-1",
-          type: "bulk_transform",
-          metadata: { targetConnectorEntityId: "entity-1" },
-        }),
-      ]);
+      mockFindRunningByTargetEntityIds.mockResolvedValue([]);
 
       await expect(
-        JobLockService.assertConnectorEntityUnlocked("entity-1", "org-1")
-      ).rejects.toMatchObject({
-        status: 409,
-        code: ApiCode.BULK_JOB_TARGET_LOCKED,
-      });
+        JobLockService.assertConnectorEntityUnlocked(
+          ["entity-a", "entity-b"],
+          "org-1"
+        )
+      ).resolves.toBeUndefined();
+      // Layer 1 visits each unique instance — in this case both ids
+      // share `ci-1`, so one call.
+      expect(mockFindRunningForConnectorInstance).toHaveBeenCalledTimes(1);
+      // Layer 2 fires a single array-overlap query.
+      expect(mockFindRunningByTargetEntityIds).toHaveBeenCalledWith(
+        ["entity-a", "entity-b"],
+        "org-1"
+      );
     });
 
-    it("BULK_JOB_TARGET_LOCKED error carries the locking job id in details", async () => {
-      mockConnectorEntitiesFindById.mockResolvedValue({
-        id: "entity-1",
+    // Case 3.2 (#99) — one of the requested entities is locked. The
+    // 409 details carry both the locking job AND the specific entity
+    // (`entity-b`) that's blocked.
+    it("throws BULK_JOB_TARGET_LOCKED naming the single blocked entity when only one of the inputs is locked", async () => {
+      mockConnectorEntitiesFindById.mockImplementation(async (id) => ({
+        id,
         connectorInstanceId: "ci-1",
-      });
+      }));
       mockFindRunningForConnectorInstance.mockResolvedValue([]);
-      mockFindRunningByTargetEntityId.mockResolvedValue([
+      mockFindRunningByTargetEntityIds.mockResolvedValue([
         fakeJob({
-          id: "job-bulk-1",
+          id: "job-bulk-b",
           type: "bulk_transform",
-          metadata: { targetConnectorEntityId: "entity-1" },
+          metadata: { targetConnectorEntityIds: ["entity-b"] },
         }),
       ]);
 
       try {
         await JobLockService.assertConnectorEntityUnlocked(
-          "entity-1",
+          ["entity-a", "entity-b"],
           "org-1"
         );
         throw new Error("expected throw");
       } catch (err) {
-        const e = err as { details?: { lockingJobs?: Array<{ id: string }> } };
-        expect(e.details?.lockingJobs).toBeDefined();
-        expect(e.details?.lockingJobs?.[0]?.id).toBe("job-bulk-1");
+        const e = err as {
+          code?: string;
+          message?: string;
+          details?: {
+            lockingJobs?: Array<{ id: string }>;
+            blockedEntities?: string[];
+          };
+        };
+        expect(e.code).toBe(ApiCode.BULK_JOB_TARGET_LOCKED);
+        expect(e.details?.blockedEntities).toEqual(["entity-b"]);
+        expect(e.details?.lockingJobs?.map((j) => j.id)).toEqual([
+          "job-bulk-b",
+        ]);
+        expect(e.message).toContain("entity-b");
       }
     });
 
-    it("resolves when no jobs lock either the instance or the entity", async () => {
-      mockConnectorEntitiesFindById.mockResolvedValue({
-        id: "entity-1",
+    // Case 3.3 (#99) — both inputs are locked, by two different jobs.
+    // Details enumerate both blocked entities + both locking jobs.
+    it("throws BULK_JOB_TARGET_LOCKED enumerating every blocked entity + job when multiple are locked", async () => {
+      mockConnectorEntitiesFindById.mockImplementation(async (id) => ({
+        id,
         connectorInstanceId: "ci-1",
-      });
+      }));
       mockFindRunningForConnectorInstance.mockResolvedValue([]);
-      mockFindRunningByTargetEntityId.mockResolvedValue([]);
+      mockFindRunningByTargetEntityIds.mockResolvedValue([
+        fakeJob({
+          id: "job-bulk-a",
+          type: "bulk_transform",
+          metadata: { targetConnectorEntityIds: ["entity-a"] },
+        }),
+        fakeJob({
+          id: "job-bulk-b",
+          type: "bulk_transform",
+          metadata: { targetConnectorEntityIds: ["entity-b"] },
+        }),
+      ]);
 
-      await expect(
-        JobLockService.assertConnectorEntityUnlocked("entity-1", "org-1")
-      ).resolves.toBeUndefined();
+      try {
+        await JobLockService.assertConnectorEntityUnlocked(
+          ["entity-a", "entity-b"],
+          "org-1"
+        );
+        throw new Error("expected throw");
+      } catch (err) {
+        const e = err as {
+          code?: string;
+          message?: string;
+          details?: {
+            lockingJobs?: Array<{ id: string }>;
+            blockedEntities?: string[];
+          };
+        };
+        expect(e.code).toBe(ApiCode.BULK_JOB_TARGET_LOCKED);
+        expect(e.details?.blockedEntities).toEqual(["entity-a", "entity-b"]);
+        expect(e.details?.lockingJobs?.map((j) => j.id).sort()).toEqual([
+          "job-bulk-a",
+          "job-bulk-b",
+        ]);
+        expect(e.message).toContain("entity-a");
+        expect(e.message).toContain("entity-b");
+      }
     });
   });
 
