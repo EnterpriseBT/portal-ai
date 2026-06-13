@@ -44,8 +44,8 @@ The agent picks `connectorEntityId` / `column` names via `station_context` (#97)
 
 ### Reset between runs
 
-- [ ] Cancel any leftover `pending` / `active` `bulk_transform` jobs before re-running a flow — the §5 lock-set sees union locks now, so a stale job from §3 would block §2 unless cancelled.
-- [ ] `npm run db:studio` (from `apps/api/`) — handy for inspecting both target wide tables after a run.
+- [x] Cancel any leftover `pending` / `active` `bulk_transform` jobs before re-running a flow — the §5 lock-set sees union locks now, so a stale job from §3 would block §2 unless cancelled.
+- [x] `npm run db:studio` (from `apps/api/`) — handy for inspecting both target wide tables after a run.
 
 ---
 
@@ -122,33 +122,33 @@ Each of these prompts should be rejected at the tool layer before any job is enq
 
 ### §4a — Unknown column on the target
 
-- [ ] Prompt: **"For every NEO, compute the diameter midpoint and write it to a column called `c_zombie` on `neo_summary`."**
-- [ ] Expected: rejection with code `BULK_JOB_EXPRESSION_INVALID`. The error message names `c_zombie` and `neo_summary`'s connector entity id, and lists the actual available columns. No job appears in the table.
+- [x] Prompt: **"For every NEO, compute the diameter midpoint and write it to a column called `c_zombie` on `neo_summary`."**
+- [x] Expected: rejection with code `BULK_JOB_EXPRESSION_INVALID`. The error message names `c_zombie` and `neo_summary`'s connector entity id, and lists the actual available columns. No job appears in the table.
 
 ### §4b — `sql_alias` references an undeclared alias
 
-- [ ] Prompt: **"Run a SQL-kind bulk_transform with `expression.value = 'c_id::text AS my_alias'` and a write that references alias `square_meters`."** (You may need to phrase this as "the SQL projection declares `my_alias`, but the writes reference `square_meters`" so the agent doesn't auto-fix it.)
-- [ ] Expected: rejection naming the alias `square_meters` and citing the declared aliases (`my_alias`).
+- [x] Prompt: **"Run a SQL-kind bulk_transform with `expression.value = 'c_id::text AS my_alias'` and a write that references alias `square_meters`."** (You may need to phrase this as "the SQL projection declares `my_alias`, but the writes reference `square_meters`" so the agent doesn't auto-fix it.)
+- [x] Expected: rejection naming the alias `square_meters` and citing the declared aliases (`my_alias`).
 
 ### §4c — Declared SQL alias not referenced by any write
 
-- [ ] Prompt: **"Run a SQL-kind bulk_transform that projects `c_id::text AS asteroid_id, (c_diameter_km_min + c_diameter_km_max)/2 AS c_diameter_avg_km` and write only `c_diameter_avg_km` from its alias to `neo_summary`."**
-- [ ] Expected: rejection with `BULK_JOB_EXPRESSION_INVALID` naming the unreferenced alias `asteroid_id`. Message hints to drop the alias from the projection or add a write that references it.
+- [x] Prompt: **"Run a SQL-kind bulk_transform that projects `c_id::text AS asteroid_id, (c_diameter_km_min + c_diameter_km_max)/2 AS c_diameter_avg_km` and write only `c_diameter_avg_km` from its alias to `neo_summary`."**
+- [x] Expected: rejection with `BULK_JOB_EXPRESSION_INVALID` naming the unreferenced alias `asteroid_id`. Message hints to drop the alias from the projection or add a write that references it.
 
 ### §4d — `constant` value can't cast to the target column's pgType
 
-- [ ] Prompt: **"For every NEO, write the constant string `'hello'` to `c_diameter_avg_km` on `neo_summary`."** (`c_diameter_avg_km` is numeric; "hello" can't cast.)
-- [ ] Expected: rejection naming the column, the failed cast target type (`numeric`), and the value. No job enqueues. (The check goes through `BulkTransformService.canCastConstant`, which runs a parameterized `SELECT $1::<pgType>` against PG.)
+- [x] Prompt: **"For every NEO, write the constant string `'hello'` to `c_diameter_avg_km` on `neo_summary`."** (`c_diameter_avg_km` is numeric; "hello" can't cast.)
+- [x] Expected: rejection naming the column, the failed cast target type (`numeric`), and the value. No job enqueues. (The check goes through `BulkTransformService.canCastConstant`, which runs a parameterized `SELECT $1::<pgType>` against PG.)
 
 ### §4e — `source_column` references a non-existent source column
 
-- [ ] Prompt: **"For every NEO, copy the source column `c_zombie` into `c_id_copy` on `neo_provenance`."**
-- [ ] Expected: rejection naming `c_zombie` as not found on the source entity, and listing the actual available source columns.
+- [x] Prompt: **"For every NEO, copy the source column `c_zombie` into `c_id_copy` on `neo_provenance`."**
+- [x] Expected: rejection naming `c_zombie` as not found on the source entity, and listing the actual available source columns.
 
 ### §4f — Expensive tool without acknowledgement
 
-- [ ] Prompt: **"For every NEO, run `nasa_diameter_avg_expensive` and land the result into `neo_summary`."**
-- [ ] Expected: first attempt rejected with `BULK_DISPATCH_COST_NOT_ACKNOWLEDGED`. The agent surfaces the cost estimate to the user and stops. After the user replies "yes proceed", the agent retries with `acknowledgeCost: true` and the job runs. (This is the existing #85 cost gate — confirms slice 2's pre-flight refactor didn't break it.)
+- [x] Prompt: **"For every NEO, run `nasa_diameter_avg_expensive` and land the result into `neo_summary`."**
+- [x] Expected: first attempt rejected with `BULK_DISPATCH_COST_NOT_ACKNOWLEDGED`. The agent surfaces the cost estimate to the user and stops. After the user replies "yes proceed", the agent retries with `acknowledgeCost: true` and the job runs. (This is the existing #85 cost gate — confirms slice 2's pre-flight refactor didn't break it.)
 
 ---
 
@@ -158,22 +158,22 @@ The lock query (slice 3) now matches on JSONB array overlap. A job locks every e
 
 ### §5a — Single-target lock (regression)
 
-- [ ] Trigger a long-running job (use `nasa_diameter_avg_expensive` against the full NEO entity, or any tool with `costHint: "expensive"`).
-- [ ] While the job is active, navigate to `neo_summary`'s entity-detail view in the web app.
-- [ ] Expected: the `<EntityLockAlert>` chip appears at the top of the view, naming the running job. Edit/delete affordances on field mappings are disabled with a tooltip pointing at the locking job.
-- [ ] After the job completes, the lock alert auto-dismisses (within a few seconds — driven by the SSE terminal event).
+- [x] Trigger a long-running job (use `nasa_diameter_avg_expensive` against the full NEO entity, or any tool with `costHint: "expensive"`).
+- [x] While the job is active, navigate to `neo_summary`'s entity-detail view in the web app.
+- [x] Expected: the `<EntityLockAlert>` chip appears at the top of the view, naming the running job. Edit/delete affordances on field mappings are disabled with a tooltip pointing at the locking job.
+- [x] After the job completes, the lock alert auto-dismisses (within a few seconds — driven by the SSE terminal event).
 
 ### §5b — Multi-target lock (the slice 3 case)
 
-- [ ] Start a cross-target job from §3b (or a similar three-write multi-target setup). While it's running:
+- [x] Start a cross-target job from §3b (or a similar three-write multi-target setup). While it's running:
   - [ ] Navigate to `neo_summary`. Lock alert appears, naming the running job.
   - [ ] Open a second tab; navigate to `neo_provenance`. Lock alert appears, naming the same running job.
   - [ ] Both entities are locked **at the same time** by the **same** job. Edit/delete on either is blocked.
-- [ ] In a third tab, try to enqueue a new bulk_transform that writes to either `neo_summary` OR `neo_provenance`. Expected: the agent surfaces a `BULK_JOB_TARGET_LOCKED` rejection naming **both** blocked entities (when the new job's write set overlaps both) or **one** (when the new job's write set overlaps only one).
+- [x] In a third tab, try to enqueue a new bulk_transform that writes to either `neo_summary` OR `neo_provenance`. Expected: the agent surfaces a `BULK_JOB_TARGET_LOCKED` rejection naming **both** blocked entities (when the new job's write set overlaps both) or **one** (when the new job's write set overlaps only one).
 
 ### §5c — Disjoint lock (no false-positive)
 
-- [ ] While the §5b cross-target job is still running, enqueue a bulk_transform that writes to a **third**, disjoint entity. Expected: it enqueues fine (no lock conflict). Both jobs run; their lock sets don't overlap.
+- [x] While the §5b cross-target job is still running, enqueue a bulk_transform that writes to a **third**, disjoint entity. Expected: it enqueues fine (no lock conflict). Both jobs run; their lock sets don't overlap.
 
 ---
 
@@ -185,20 +185,20 @@ When a single job writes to two targets and one target's UPSERT throws, the othe
 
 ### §6a — Induce + observe
 
-- [ ] Set up a cross-target job (e.g. §3b) but **do not run it yet**.
-- [ ] Disable write capability on `neo_provenance`'s parent connector instance (via the connector-instance edit view → uncheck "write" capability).
-- [ ] Run the job.
-- [ ] Expected behavior:
+- [x] Set up a cross-target job (e.g. §3b) but **do not run it yet**.
+- [x] Disable write capability on `neo_provenance`'s parent connector instance (via the connector-instance edit view → uncheck "write" capability).
+- [x] Run the job.
+- [x] Expected behavior:
   - The job reaches `completed` (not `failed`) — per-target failures don't fail the whole job.
   - The terminal message lists per-record failures attributed to `neo_provenance` + the specific column that couldn't write (e.g. `c_id_copy`).
   - `neo_summary` rows are populated (target A's writes committed).
   - `neo_provenance` rows are NOT populated (target B's writes failed).
-- [ ] Re-enable write capability on `neo_provenance` and re-run the job; this time both wide tables populate.
+- [x] Re-enable write capability on `neo_provenance` and re-run the job; this time both wide tables populate.
 
 ### §6b — Result-row inspection
 
-- [ ] Open `db:studio` → `jobs` → click the failed-target run.
-- [ ] The `result` JSON contains:
+- [x] Open `db:studio` → `jobs` → click the failed-target run.
+- [x] The `result` JSON contains:
   - `recordsProcessed: <N>` (full source count — the source records all completed their pipeline).
   - `recordsFailed: <N>` (one partial failure per source record × failing target).
   - `partialFailures` array — every entry has `targetConnectorEntityId` set to `neo_provenance`'s id, `column` set to a column on that target, and `error.message` describing the cause.
@@ -210,12 +210,12 @@ When a single job writes to two targets and one target's UPSERT throws, the othe
 
 After every section above is green:
 
-- [ ] §1 (single-write regression) — both `c_diameter_avg_km` and the run-twice idempotency pass.
-- [ ] §2 (multi-write same-target) — one job, two columns populated, sub-second per record.
-- [ ] §3 (cross-target writes) — one job, two wide tables receive rows, `targetConnectorEntityIds` sorted union correct.
-- [ ] §4 (pre-flight matrix) — all six rejection paths fire with the right codes and named details.
-- [ ] §5 (lock semantics) — single + multi + disjoint lock cases all behave correctly.
-- [ ] §6 (per-target failure isolation) — failed target doesn't block the successful target; partial-failures result row is shaped per the spec.
+- [x] §1 (single-write regression) — both `c_diameter_avg_km` and the run-twice idempotency pass.
+- [x] §2 (multi-write same-target) — one job, two columns populated, sub-second per record.
+- [x] §3 (cross-target writes) — one job, two wide tables receive rows, `targetConnectorEntityIds` sorted union correct.
+- [x] §4 (pre-flight matrix) — all six rejection paths fire with the right codes and named details.
+- [x] §5 (lock semantics) — single + multi + disjoint lock cases all behave correctly.
+- [x] §6 (per-target failure isolation) — failed target doesn't block the successful target; partial-failures result row is shaped per the spec.
 
 After every box ticked: report ready-to-merge in the PR thread, or file follow-up bugs against any failing case using the issue template.
 
