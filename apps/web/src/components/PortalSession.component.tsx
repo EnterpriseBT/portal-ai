@@ -13,7 +13,11 @@ import { sdk } from "../api/sdk";
 import { usePortalStream } from "../utils/portal-stream.util";
 import { ChatWindowUI, type ChatWindowHandle } from "./ChatWindow.component";
 import { usePortalChatLock } from "../utils/portal-chat-lock.util";
-import { PortalMessage } from "./PortalMessage.component";
+import {
+  PortalMessage,
+  renderWebBlock,
+  shouldRenderViaWeb,
+} from "./PortalMessage.component";
 import { TypingIndicator } from "./TypingIndicator.component";
 
 // ── Message List (memoized to avoid re-renders on input changes) ─────
@@ -67,7 +71,17 @@ const MessageList = React.memo<MessageListProps>(
           <Box sx={{ mb: 2, minWidth: 0, maxWidth: "100%" }}>
             {streamingBlocks!.map((block, i) => (
               <Box key={i} sx={{ overflow: "auto" }}>
-                <ContentBlockRenderer block={block} />
+                {/* Route through the same web/core dispatch
+                 *  `PortalMessage` uses for persisted blocks — without
+                 *  this, a queryHandle-carrying chart block renders
+                 *  axes-only during the stream (no QRDB → no snapshot
+                 *  fetch) and then renders filled once the message
+                 *  persists, briefly showing both (#109). */}
+                {shouldRenderViaWeb(block) ? (
+                  renderWebBlock(block)
+                ) : (
+                  <ContentBlockRenderer block={block} />
+                )}
               </Box>
             ))}
           </Box>

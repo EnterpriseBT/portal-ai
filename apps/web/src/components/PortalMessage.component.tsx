@@ -32,8 +32,15 @@ import {
  * Render override for block types that the core ContentBlockRenderer
  * doesn't know about. Returns null when the block isn't one of the
  * web-specific types; the caller falls through to the core renderer.
+ *
+ * Exported so the streaming-blocks path in `PortalSession` can route
+ * through the same logic — otherwise a queryHandle-carrying block
+ * renders empty during the stream (no QRDB → no snapshot fetch) and
+ * the persisted version renders filled, briefly showing both (#109).
  */
-function renderWebBlock(block: PortalMessageBlock): React.ReactNode | null {
+export function renderWebBlock(
+  block: PortalMessageBlock
+): React.ReactNode | null {
   if (block.type === "bulk-job-progress") {
     return (
       <BulkJobProgressBlock
@@ -92,7 +99,7 @@ const WEB_BLOCK_TYPES = new Set<string>([
 
 /** True when a block needs the web layer rather than the core
  *  ContentBlockRenderer — either by type or by carrying a queryHandle. */
-function shouldRenderViaWeb(block: PortalMessageBlock): boolean {
+export function shouldRenderViaWeb(block: PortalMessageBlock): boolean {
   if (WEB_BLOCK_TYPES.has(block.type as string)) return true;
   if (block.type === "vega-lite" || block.type === "data-table") {
     const c = block.content as { queryHandle?: unknown } | undefined;
