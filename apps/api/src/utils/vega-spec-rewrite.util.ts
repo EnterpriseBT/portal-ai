@@ -35,6 +35,15 @@ export function rewriteForNamedDataset(
   ) {
     return { ...spec, data: { name: datasetName } };
   }
-  // Already-named or no data field — pass through.
+  // No `data` field at all — common shape when the agent expects the
+  // runtime to provide the data. The handle path needs a
+  // named-dataset anchor on the spec so react-vega's `data` prop can
+  // bind the fetched rows; without it, the rows arrive with nowhere
+  // to land and the chart renders axes-only (#109).
+  if (data === undefined || data === null) {
+    return { ...spec, data: { name: datasetName } };
+  }
+  // Already-named (`data: { name }`) or external (`data: { url }`) —
+  // pass through.
   return spec;
 }

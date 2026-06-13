@@ -37,8 +37,22 @@ describe("rewriteForNamedDataset", () => {
     expect(rewriteForNamedDataset(spec)).toEqual(spec);
   });
 
-  it("passes through specs with no data field at all", () => {
-    const spec = { mark: "bar", encoding: {} };
+  // #109: agents commonly emit specs without a `data` field at all
+  // and expect the runtime to provide it. Pre-fix the rewrite passed
+  // through unchanged; the handle path then had nowhere for the
+  // snapshot rows to bind (chart rendered axes but no marks). Post-
+  // fix the rewrite injects `data: { name: "primary" }` so the rows
+  // land via react-vega's `data` prop.
+  it("injects data: { name: 'primary' } when the spec has no data field", () => {
+    const spec = { mark: "bar", encoding: { x: { field: "c_date" } } };
+    const out = rewriteForNamedDataset(spec);
+    expect(out.data).toEqual({ name: "primary" });
+    expect(out.mark).toBe("bar");
+    expect(out.encoding).toEqual(spec.encoding);
+  });
+
+  it("passes through specs with a URL-loaded data source", () => {
+    const spec = { mark: "bar", data: { url: "https://example.com/data.json" } };
     expect(rewriteForNamedDataset(spec)).toEqual(spec);
   });
 });
