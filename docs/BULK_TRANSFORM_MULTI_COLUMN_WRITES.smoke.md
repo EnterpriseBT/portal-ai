@@ -100,19 +100,19 @@ The agent writes derived values into a side entity alongside the primary target.
 
 ### §3a — Side target setup
 
-- [ ] In chat, prompt **"Create a new entity called `neo_provenance` with columns `id_copy` (text) and `origin` (text)."** Confirm `c_id_copy` and `c_origin` appear in `_meta_columns`.
+- [x] In chat, prompt **"Create a new entity called `neo_provenance` with columns `id_copy` (text) and `origin` (text)."** Confirm `c_id_copy` and `c_origin` appear in `_meta_columns`.
 
 ### §3b — Cross-target run
 
-- [ ] Prompt: **"For every near-earth object, compute the diameter midpoint in km on `neo_summary`, and also stamp the source id into `id_copy` and the literal string 'bulk_transform' into `origin` on `neo_provenance`."**
-- [ ] Inspect the tool call. The `writes` array contains **three entries**:
+- [x] Prompt: **"For every near-earth object, compute the diameter midpoint in km on `neo_summary`, and also stamp the source id into `id_copy` and the literal string 'bulk_transform' into `origin` on `neo_provenance`."**
+- [x] Inspect the tool call. The `writes` array contains **three entries**:
   - Target `neo_summary`, column `c_diameter_avg_km`, `valueFrom: { kind: "tool_path", path: "km" }` (or `tool_result` if the tool returns a single number).
   - Target `neo_provenance`, column `c_id_copy`, `valueFrom: { kind: "source_column", column: "c_id" }`.
   - Target `neo_provenance`, column `c_origin`, `valueFrom: { kind: "constant", value: "bulk_transform" }`.
-- [ ] **One job is enqueued** — not two, not three. Confirm via the job table.
-- [ ] The job's persisted metadata has `targetConnectorEntityIds: [<neo_provenance_id>, <neo_summary_id>]` (sorted alphabetically). Inspect via `db:studio` → `jobs` → click the latest row.
-- [ ] After completion: both wide tables receive rows. `neo_summary.c_diameter_avg_km` is populated; `neo_provenance.c_id_copy` matches each NEO's `c_id`; `neo_provenance.c_origin` is `"bulk_transform"` on every row.
-- [ ] Terminal message reports a single `N records written` summary.
+- [x] **One job is enqueued** — not two, not three. Confirm via the job table.
+- [x] The job's persisted metadata has `targetConnectorEntityIds: [<neo_provenance_id>, <neo_summary_id>]` (sorted alphabetically). Inspect via `db:studio` → `jobs` → click the latest row.
+- [x] After completion: both wide tables receive rows. `neo_summary.c_diameter_avg_km` is populated; `neo_provenance.c_id_copy` matches each NEO's `c_id`; `neo_provenance.c_origin` is `"bulk_transform"` on every row.
+- [x] Terminal message reports a single `N records written` summary.
 
 ---
 
