@@ -94,7 +94,7 @@ Each slice loop: write failing tests → confirm red → implement smallest chan
 **Steps**
 1. Write failing tests: unknown source (9), invalid expression (10), happy-path enqueue→await→envelope (11), terminal failure rethrow (12), **no lock check** (13 — spy `assertConnectorEntityUnlocked`, assert not called).
 2. Confirm red.
-3. Implement the tool: 2-step pre-flight (source exists, EXPLAIN), `JobsService.create`, await terminal via the job-events channel (mock the channel in tests), return/throw on terminal status. Wire the abort signal → `JobsService.cancel`; the in-flight-query `pg_cancel_backend` wiring lands here (the processor records its backend pid; `statement_timeout` is the backstop if cancel can't reach it).
+3. Implement the tool: 2-step pre-flight (source exists, EXPLAIN), `JobsService.create`, await terminal by subscribing to the job-events channel + poll-the-job-row fallback (mock both in tests), return/throw on terminal status. Wire the `abortSignal` → `JobsService.cancel(jobId)` so an aborted agent turn cancels the job — the same generic cancel path the write tools use. No `pg_cancel_backend` (no job type does mid-query kill today); `statement_timeout` is the hard backstop.
 4. Register under `data_query`.
 5. Confirm green; existing tools-service tests still green.
 6. Lint + type-check. Commit.
@@ -139,4 +139,4 @@ After all slices: cases 1–14 pass; acceptance checkboxes ticked; a grep for `b
 
 ## Next step
 
-Implementation lands slice-by-slice on this `feat/bulk-aggregate` branch, flowing into draft PR [#111](https://github.com/EnterpriseBT/portal-ai/pull/111). The two decisions flagged for review before coding starts: **(a)** the await-inline result delivery + 120s `statement_timeout`, and **(b)** the in-flight-query cancel mechanism (`pg_cancel_backend` vs. relying on the timeout).
+Implementation lands slice-by-slice on this `feat/bulk-aggregate` branch, flowing into draft PR [#111](https://github.com/EnterpriseBT/portal-ai/pull/111). Both flagged decisions are resolved: **(a)** await-inline result delivery by subscribing to the job-events Redis channel + 120s `statement_timeout` (confirmed), and **(b)** cancel via the generic `JobsService.cancel` path (abort signal + the existing cancel route), `statement_timeout` as the backstop — no `pg_cancel_backend`, consistent with the write tools.

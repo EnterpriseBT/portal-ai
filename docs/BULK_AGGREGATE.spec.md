@@ -48,11 +48,11 @@ This deliberately differs from `bulk_transform`'s fire-and-forget delivery; the 
 
 3. **Processor** — new `apps/api/src/queues/processors/bulk-aggregate.processor.ts`. Parse metadata via `BulkAggregateMetadataSchema`; call `BulkAggregateService.runAggregate`; enforce the **result-size cap** (`JSON.stringify(result).length <= BULK_AGGREGATE_RESULT_LIMIT`, propose 1 MB) — over the cap → fail `BULK_AGGREGATE_RESULT_TOO_LARGE` with a "use bulk_query / narrow the projection" recommendation. Return `{ result, recordsProcessed, durationMs }`. Register in `apps/api/src/queues/processors/index.ts`.
 
-4. **Tool** — new `apps/api/src/tools/bulk-aggregate-entity-records.tool.ts`. `build(stationId, organizationId, userId)` returns the AI SDK tool. `execute` pre-flight, in order:
+4. **Tool** — new `apps/api/src/tools/bulk-aggregate-entity-records.tool.ts`. `build(organizationId, userId)` returns the AI SDK tool. `execute` pre-flight, in order:
    1. Source entity exists + org-scoped (`repo.connectorEntities.findById`) → `CONNECTOR_ENTITY_NOT_FOUND`.
    2. `expression` EXPLAINs clean → `BULK_AGGREGATE_EXPRESSION_INVALID`.
    3. Enqueue via `JobsService.create(userId, { organizationId, type: "bulk_aggregate", metadata })`.
-   4. **Await** the job's terminal status via the job-events channel (abort signal → `JobsService.cancel` + `pg_cancel_backend` for the in-flight query — see Risks).
+   4. **Await** the job's terminal status by subscribing to the job-events Redis channel (`JobEventsService.subscribe`), with a poll-the-job-row fallback for the subscribe race. The AI-SDK `abortSignal` → `JobsService.cancel(jobId)`, and the generic `POST /api/jobs/:id/cancel` route works too — same cancel path the write tools use. `statement_timeout` bounds the in-flight query (see Risks).
    5. On `completed` → return the `result` envelope; on `failed`/`cancelled` → throw the carried `ApiError`.
 
    No lock check (reads only), no cost-ack gate (one query).
@@ -125,7 +125,7 @@ This deliberately differs from `bulk_transform`'s fire-and-forget delivery; the 
 
 | Risk | Mitigation |
 |---|---|
-| **Cancel doesn't stop the in-flight query.** `JobsService.cancel` only removes the BullMQ job; a query already executing in the worker keeps running. | The processor must register its PG backend pid and respond to a cancel signal with `pg_cancel_backend(pid)` (or rely on `statement_timeout` as the hard backstop). Implementation note for slice 3; the `statement_timeout` guarantees termination regardless. |
+| **Cancel doesn't stop the in-flight query.** `JobsService.cancel` marks the job cancelled + publishes the terminal event, but a query already executing in the worker keeps running until it returns. | Same best-effort posture as the write tools, which run their in-flight batch to completion before honoring cancel — no job type does `pg_cancel_backend` today. The awaiting tool unblocks immediately on the cancelled event; `statement_timeout` (120s) is the hard backstop that guarantees the query ends. True mid-query kill (`pg_cancel_backend`) is a future enhancement if needed. |
 | Awaited tool holds the agent stream open for up to `statement_timeout`. | Bounded at 120s; acceptable per the resolved Open Q2. The API handler parks on a promise — no DB connection held on the API side (the worker owns it). |
 | `statement_timeout` too short for a genuinely huge aggregate. | Tunable constant; if real datasets exceed it, raise it + add a late-read follow-up (out of scope here). Flagged. |
 | `whereSqlFragment` injection. | Same posture as `bulk_transform`: EXPLAIN-validated at pre-flight, runtime bounded by the `organization_id = $1` guard inside a `READ ONLY` txn. |
