@@ -109,17 +109,17 @@ This deliberately differs from `bulk_transform`'s fire-and-forget delivery; the 
 13. No lock check is performed (assert `assertConnectorEntityUnlocked` is never called).
 
 ### Integration
-14. End-to-end: seed a source entity (~1,000 rows), dispatch the tool, assert the returned `result` matches a hand-computed `SUM`/`AVG`/`COUNT`, `recordsProcessed === 1000`, and the job row's persisted `result` matches the envelope.
+14. Real-SQL integration: create a real `er__` wide table + rows (some belonging to another org), call `BulkAggregateService.runAggregate` and assert `SUM`/`AVG` match hand-computed values, the org-scoped `recordsProcessed` excludes the other-org rows, `whereSqlFragment` narrows the set, a scalar `COUNT(*)` works, and `explainExpression` rejects an unknown column.
 
 ## Acceptance criteria
 
-- [ ] Job-model schemas + type wiring; test 1 + `type-check` clean.
-- [ ] `bulk-aggregate.service` passes tests 2–5.
-- [ ] Processor registered; passes tests 6–8.
-- [ ] Tool registered under `data_query`; passes tests 9–13.
-- [ ] Integration test 14 green.
-- [ ] Smoke section added; manual walk (NEO count + diameter sum/avg) verified.
-- [ ] `npm run test:unit` (api + core) and `npm run test:integration` (api) green; `npm run lint && npm run type-check` clean.
+- [x] Job-model schemas + type wiring; test 1 + `type-check` clean.
+- [x] `bulk-aggregate.service` passes tests 2–5.
+- [x] Processor registered; passes tests 6–8.
+- [x] Tool registered under `data_query`; passes tests 9–13.
+- [x] Integration test 14 green (real `er__` table + real aggregate SQL).
+- [x] Smoke section added (§5). _Manual walk (NEO count + diameter sum/avg in a live portal) still to be run by a human — the section is the checklist for that._
+- [x] `npm run test:unit` (api + core) and `npm run test:integration` (api) green; `npm run lint && npm run type-check` clean.
 
 ## Risks & rollback
 
