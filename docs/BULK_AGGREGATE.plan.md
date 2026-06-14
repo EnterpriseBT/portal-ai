@@ -24,14 +24,17 @@ Each slice loop: write failing tests → confirm red → implement smallest chan
 
 **Files**
 - Edit: `packages/core/src/models/job.model.ts` — `bulk_aggregate` enum entry, `BulkAggregateMetadataSchema`, `BulkAggregateResultSchema`, `JobTypeMap` + `JOB_TYPE_SCHEMAS` entries.
+- Edit: `apps/api/src/db/schema/jobs.table.ts` — `bulk_aggregate` in the Drizzle `jobTypeEnum` (the `IsAssignable<Job, JobSelect>` check fails otherwise).
+- New: `drizzle/00XX_add-bulk-aggregate-job-type.sql` — `ALTER TYPE "job_type" ADD VALUE` (via `npm run db:generate`).
 - New: `packages/core/src/__tests__/models/job.bulk-aggregate.test.ts` — case 1.
 
 **Steps**
 1. Write the failing schema round-trip test (case 1): valid metadata/result parse; `JOB_TYPE_SCHEMAS.bulk_aggregate` is defined.
 2. Confirm red.
 3. Add the enum entry + both schemas following the `BulkTransform*` shape (minus targets/writes/batchSize); wire the type-map + registry.
-4. Confirm green; `type-check` clean (proves the `JobTypeMap` completeness).
-5. Lint + type-check. Commit.
+4. Add the same value to the Drizzle `jobTypeEnum`; `npm run db:generate -- --name add-bulk-aggregate-job-type`.
+5. Confirm green; `type-check` clean (proves both `JobTypeMap` completeness and the dual-schema enum sync).
+6. Lint + type-check. Commit.
 
 **Done when:** the new job type compiles and its schemas round-trip.
 

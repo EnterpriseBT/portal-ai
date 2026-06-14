@@ -18,7 +18,7 @@ This deliberately differs from `bulk_transform`'s fire-and-forget delivery; the 
 
 ### In scope
 
-1. **Job model** (`packages/core/src/models/job.model.ts`). Add `"bulk_aggregate"` to `JobTypeEnum`; add `BulkAggregateMetadataSchema` + `BulkAggregateResultSchema`; wire `JobTypeMap` + `JOB_TYPE_SCHEMAS` (the build fails if any of the three is incomplete — see the JSDoc recipe at `job.model.ts:397-403`).
+1. **Job model** (`packages/core/src/models/job.model.ts`). Add `"bulk_aggregate"` to `JobTypeEnum`; add `BulkAggregateMetadataSchema` + `BulkAggregateResultSchema`; wire `JobTypeMap` + `JOB_TYPE_SCHEMAS` (the build fails if any of the three is incomplete — see the JSDoc recipe at `job.model.ts:397-403`). **Also** add `"bulk_aggregate"` to the Drizzle `jobTypeEnum` (`apps/api/src/db/schema/jobs.table.ts`) — `jobs.type` is a pg enum, so the compile-time `IsAssignable<Job, JobSelect>` check (`type-checks.ts:226`) fails unless both enums move together — and generate the migration (`ALTER TYPE "job_type" ADD VALUE 'bulk_aggregate'`).
 
    ```ts
    BulkAggregateMetadataSchema = z.object({
@@ -76,6 +76,7 @@ This deliberately differs from `bulk_transform`'s fire-and-forget delivery; the 
 | File | Change |
 |---|---|
 | `packages/core/src/models/job.model.ts` | + `bulk_aggregate` enum, metadata/result schemas, type-map + registry entries |
+| `apps/api/src/db/schema/jobs.table.ts` + `drizzle/*.sql` | + `bulk_aggregate` in the Drizzle `jobTypeEnum`; `ALTER TYPE` migration |
 | `apps/api/src/services/bulk-aggregate.service.ts` | new — `explainExpression`, `runAggregate` (READ ONLY + statement_timeout + COUNT injection) |
 | `apps/api/src/queues/processors/bulk-aggregate.processor.ts` | new — runs the aggregate, enforces size cap, returns envelope |
 | `apps/api/src/queues/processors/index.ts` | + `bulk_aggregate` in the processors map |
@@ -129,7 +130,7 @@ This deliberately differs from `bulk_transform`'s fire-and-forget delivery; the 
 | `statement_timeout` too short for a genuinely huge aggregate. | Tunable constant; if real datasets exceed it, raise it + add a late-read follow-up (out of scope here). Flagged. |
 | `whereSqlFragment` injection. | Same posture as `bulk_transform`: EXPLAIN-validated at pre-flight, runtime bounded by the `organization_id = $1` guard inside a `READ ONLY` txn. |
 
-**Rollback**: revert the merge commit. New job type, service, processor, and tool disappear; no migration (the job row's `result`/`metadata` are already generic `jsonb`). Any in-flight `bulk_aggregate` job would fail "no processor registered" on retry — operator cancels via the existing job-cancel route; nothing was written to any entity.
+**Rollback**: revert the merge commit. New job type, service, processor, and tool disappear. The only migration is an `ALTER TYPE … ADD VALUE` on the `job_type` enum — Postgres can't drop an enum value, but a leftover unused value is harmless (no rows reference it once the job type is gone), so the migration is effectively forward-only and needs no down-migration. Any in-flight `bulk_aggregate` job would fail "no processor registered" on retry — operator cancels via the existing job-cancel route; nothing was written to any entity.
 
 ## Cross-references
 
