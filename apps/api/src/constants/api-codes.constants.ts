@@ -476,6 +476,14 @@ export enum ApiCode {
   BULK_DISPATCH_COST_NOT_ACKNOWLEDGED = "BULK_DISPATCH_COST_NOT_ACKNOWLEDGED",
   /** rows-by-id request exceeded the per-call id-count cap. */
   BULK_DISPATCH_TOO_MANY_IDS = "BULK_DISPATCH_TOO_MANY_IDS",
+
+  // Large-data-ops — aggregate (#100)
+  /** EXPLAIN of the aggregate expression / source filter failed against PG. 400. */
+  BULK_AGGREGATE_EXPRESSION_INVALID = "BULK_AGGREGATE_EXPRESSION_INVALID",
+  /** The aggregate query exceeded its `statement_timeout`. 400. */
+  BULK_AGGREGATE_TIMEOUT = "BULK_AGGREGATE_TIMEOUT",
+  /** The computed result exceeded the serialized result-size cap. 400. */
+  BULK_AGGREGATE_RESULT_TOO_LARGE = "BULK_AGGREGATE_RESULT_TOO_LARGE",
 }
 
 /**
@@ -516,4 +524,10 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
     "This operation calls a costly tool. Confirm with the user, then retry with `acknowledgeCost: true`.",
   [ApiCode.BULK_DISPATCH_TOO_MANY_IDS]:
     "Too many ids in one request. Split into multiple calls of ≤ 1000 ids each.",
+  [ApiCode.BULK_AGGREGATE_EXPRESSION_INVALID]:
+    "Fix the SQL aggregate expression (use wide-column names like `c_area`, e.g. `SUM(c_area) AS total`) and retry.",
+  [ApiCode.BULK_AGGREGATE_TIMEOUT]:
+    "The aggregate took too long. Add a `sourceFilter.whereSqlFragment` to narrow the rows, or use a coarser aggregate.",
+  [ApiCode.BULK_AGGREGATE_RESULT_TOO_LARGE]:
+    "The result is too large to return inline. Use a coarser aggregate, or materialize grouped output into an entity and read it with bulk_query.",
 };
