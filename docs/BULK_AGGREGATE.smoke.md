@@ -68,9 +68,9 @@ The agent resolves `sourceConnectorEntityId` and the `c_*` wide-column names via
 
 ## §2 — Scoped aggregate (`whereSqlFragment`)
 
-- [ ] Prompt a filtered question: **"What's the average diameter of NEOs larger than 1 km?"**
-- [ ] The tool call carries `sourceFilter.whereSqlFragment` (e.g. `"c_diameter_km_max > 1"`); the `expression` is the aggregate.
-- [ ] `recordsProcessed` reflects **only the filtered rows** (smaller than §1b's full count); the value matches a manual `… WHERE organization_id = '<org>' AND (c_diameter_km_max > 1)`.
+- [x] Prompt a filtered question: **"What's the average diameter of NEOs larger than 1 km?"**
+- [x] The tool call carries `sourceFilter.whereSqlFragment` (e.g. `"c_diameter_km_max > 1"`); the `expression` is the aggregate.
+- [x] `recordsProcessed` reflects **only the filtered rows** (smaller than §1b's full count); the value matches a manual `… WHERE organization_id = '<org>' AND (c_diameter_km_max > 1)`.
 
 ---
 
