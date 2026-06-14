@@ -78,9 +78,9 @@ The agent resolves `sourceConnectorEntityId` and the `c_*` wide-column names via
 
 Per the discovery, `result` is any bounded serializable JSON value.
 
-- [ ] **Scalar-ish:** a single-alias aggregate (`COUNT(*) AS total`) → `result.result` is `{ total: n }` (a one-key object — SQL rows are always keyed; this is expected).
-- [ ] **Object:** multi-alias (§1b) → object with multiple keys.
-- [ ] **Array:** prompt a small grouped aggregate that the agent expresses with `JSON_AGG` / `ARRAY_AGG` (e.g. **"give me the count of NEOs per orbit class"** if such a column exists) → `result.result` is a bounded array. Confirm it stays small (a handful of groups); large grouped output belongs in `bulk_materialize` (#112) + `bulk_query`, not here.
+- [x] **Scalar-ish:** a single-alias aggregate (`COUNT(*) AS total`) → `result.result` is `{ total: n }` (a one-key object — SQL rows are always keyed; this is expected).
+- [x] **Object:** multi-alias (§1b) → object with multiple keys.
+- [x] **Array:** prompt a small grouped aggregate that the agent expresses with `JSON_AGG` / `ARRAY_AGG` (e.g. **"give me the count of NEOs per orbit class"** if such a column exists) → `result.result` is a bounded array. Confirm it stays small (a handful of groups); large grouped output belongs in `bulk_materialize` (#112) + `bulk_query`, not here.
 
 ---
 
