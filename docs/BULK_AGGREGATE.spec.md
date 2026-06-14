@@ -9,7 +9,7 @@ Discovery: `docs/BULK_AGGREGATE.discovery.md`. Issue: [#100](https://github.com/
 `bulk_transform` returns a progress block and injects a template terminal message; the agent is never re-prompted — fine for a side-effect. `bulk_aggregate`'s output *is the answer the agent must use*, so it needs the value in-hand. Per discovery Open Q2 (resolved: *"more concerned about large datasets than blocking the agent"*), the tool **awaits the job inline** and returns the value:
 
 - The worker runs the aggregate in a `READ ONLY` transaction with `SET LOCAL statement_timeout` (reusing the `portal-sql.service.ts:347-359` pattern), org-scoped. This keeps the heavy scan **off the API request thread** (the API handler parks on a promise; PG + the worker do the work) and bounds the runtime.
-- The tool polls/subscribes for the job's terminal status (the job-events Redis channel that `JobEventsService.transition` already publishes), then returns the persisted `result`.
+- **(confirmed)** The tool subscribes to the job-events Redis channel that `JobEventsService.transition` already publishes for the `jobId`, resolving on the terminal event — this is the established convention, not a new await primitive. A poll-the-job-row fallback (bounded by `statement_timeout + buffer`) covers a missed publish.
 - `statement_timeout` is the wait bound. Proposed **120s** (vs. interactive `sql_query`'s 30s — this is the async/large path). If it fires, the job fails `BULK_AGGREGATE_TIMEOUT` and the agent surfaces a "narrow the filter / use a coarser aggregate" recommendation.
 
 This deliberately differs from `bulk_transform`'s fire-and-forget delivery; the divergence is the point (aggregate returns an answer, transform performs a side-effect).

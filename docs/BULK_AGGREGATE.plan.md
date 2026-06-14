@@ -101,7 +101,7 @@ Each slice loop: write failing tests → confirm red → implement smallest chan
 
 **Done when:** the agent can dispatch `bulk_aggregate_records` and receive the computed value inline in the same turn.
 
-**Risk:** awaiting a job from the producer side isn't an existing pattern. Lean: subscribe to the job-events Redis channel for the `jobId` and resolve on the terminal event, with a poll-the-job-row fallback bounded by `statement_timeout + buffer`. Decide the concrete await primitive at implementation.
+**Await mechanism (confirmed):** subscribe to the job-events Redis channel for the `jobId` and resolve on the terminal event — the existing convention `JobEventsService.transition` already publishes on. A poll-the-job-row fallback (bounded by `statement_timeout + buffer`) covers a missed publish.
 
 ---
 
