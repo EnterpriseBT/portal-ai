@@ -14,17 +14,17 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, lin
 
 ### Environment
 
-- [ ] `git checkout feat/bulk-aggregate && git pull --ff-only`
-- [ ] `npm install && npm run build --workspace=packages/core` — `job.model.ts` added `BulkAggregate*` schemas + a new `JobType`; the API needs the rebuilt core dist.
-- [ ] `cd apps/api && npm run db:migrate && cd ../..` — migration `0062_add-bulk-aggregate-job-type.sql` adds the `bulk_aggregate` value to the `job_type` pg enum. Confirm it applies cleanly (`ALTER TYPE … ADD VALUE`).
-- [ ] `npm run dev` boots cleanly (API `:3001`, web `:3000`).
-- [ ] Redis is reachable; BullMQ workers attach without retry errors in the API log (the `bulk_aggregate` processor is registered).
-- [ ] Auth0 dev tenant works — login lands on `/dashboard`.
+- [x] `git checkout feat/bulk-aggregate && git pull --ff-only`
+- [x] `npm install && npm run build --workspace=packages/core` — `job.model.ts` added `BulkAggregate*` schemas + a new `JobType`; the API needs the rebuilt core dist.
+- [x] `cd apps/api && npm run db:migrate && cd ../..` — migration `0062_add-bulk-aggregate-job-type.sql` adds the `bulk_aggregate` value to the `job_type` pg enum. Confirm it applies cleanly (`ALTER TYPE … ADD VALUE`).
+- [x] `npm run dev` boots cleanly (API `:3001`, web `:3000`).
+- [x] Redis is reachable; BullMQ workers attach without retry errors in the API log (the `bulk_aggregate` processor is registered).
+- [x] Auth0 dev tenant works — login lands on `/dashboard`.
 
 ### Tool sanity
 
-- [ ] The station under test has the **`data_query`** toolpack enabled (this is where `bulk_aggregate_records` lives, alongside `sql_query`).
-- [ ] In an agent transcript (or `http://localhost:3001/api-docs`), confirm the `bulk_aggregate_records` tool is offered and its input schema exposes: `sourceConnectorEntityId` (string), `expression` (string), and optional `sourceFilter.whereSqlFragment`. There is **no** `writes`, `targetConnectorEntityId`, `keyField`, `batchSize`, `acknowledgeCost`, or `fold_tool` / aggregator union.
+- [x] The station under test has the **`data_query`** toolpack enabled (this is where `bulk_aggregate_records` lives, alongside `sql_query`).
+- [x] In an agent transcript (or `http://localhost:3001/api-docs`), confirm the `bulk_aggregate_records` tool is offered and its input schema exposes: `sourceConnectorEntityId` (string), `expression` (string), and optional `sourceFilter.whereSqlFragment`. There is **no** `writes`, `targetConnectorEntityId`, `keyField`, `batchSize`, `acknowledgeCost`, or `fold_tool` / aggregator union.
 
 ### Fixtures
 
@@ -38,8 +38,8 @@ The agent resolves `sourceConnectorEntityId` and the `c_*` wide-column names via
 
 ### Reset between runs
 
-- [ ] No special reset needed — `bulk_aggregate` writes nothing. Cancel any leftover `pending`/`active` `bulk_aggregate` jobs before re-running cancel tests so the job list is clean.
-- [ ] `npm run db:studio` (from `apps/api/`) — handy for inspecting the `jobs` table `result` column after a run.
+- [x] No special reset needed — `bulk_aggregate` writes nothing. Cancel any leftover `pending`/`active` `bulk_aggregate` jobs before re-running cancel tests so the job list is clean.
+- [x] `npm run db:studio` (from `apps/api/`) — handy for inspecting the `jobs` table `result` column after a run.
 
 ---
 
@@ -47,10 +47,10 @@ The agent resolves `sourceConnectorEntityId` and the `c_*` wide-column names via
 
 ### §1a — Count via SQL
 
-- [ ] Prompt: **"How many near-earth objects are there?"**
-- [ ] The agent calls `bulk_aggregate_records` with `expression: "COUNT(*) AS total"` against the neos entity (inspect the tool-call panel).
-- [ ] The agent **answers with the number in the same turn** (it does not just say "a job is running" and stop).
-- [ ] In `db:studio` → `jobs`: a `bulk_aggregate` row exists, `status = completed`, and `result` is `{ result: { total: <n> }, recordsProcessed: <n>, durationMs: <ms> }`. `result.total` equals `recordsProcessed` for a pure `COUNT(*)`.
+- [x] Prompt: **"How many near-earth objects are there?"**
+- [x] The agent calls `bulk_aggregate_records` with `expression: "COUNT(*) AS total"` against the neos entity (inspect the tool-call panel).
+- [x] The agent **answers with the number in the same turn** (it does not just say "a job is running" and stop).
+- [x] In `db:studio` → `jobs`: a `bulk_aggregate` row exists, `status = completed`, and `result` is `{ result: { total: <n> }, recordsProcessed: <n>, durationMs: <ms> }`. `result.total` equals `recordsProcessed` for a pure `COUNT(*)`.
 
 ### §1b — Sum + average via multi-alias SQL (object result)
 
