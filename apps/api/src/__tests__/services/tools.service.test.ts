@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
+import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
+
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
@@ -111,7 +113,9 @@ jest.unstable_mockModule("../../utils/url-safety.util.js", () => ({
   validateToolpackUrl: () => null,
 }));
 
-const { ToolService } = await import("../../services/tools.service.js");
+const { ToolService, BUILTIN_TOOL_NAMES } = await import(
+  "../../services/tools.service.js"
+);
 const buildAnalyticsTools = ToolService.buildAnalyticsTools.bind(ToolService);
 const callWebhook = ToolService.callWebhook.bind(ToolService);
 
@@ -671,6 +675,69 @@ describe("buildAnalyticsTools()", () => {
 
     expect(tools.entity_record_create).toBeUndefined();
     expect(tools.field_mapping_delete).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Registry consistency (#115) — guards against descriptor / name-set drift.
+//
+// Two sources must agree with what `buildAnalyticsTools` actually registers:
+//   1. `BUILTIN_TOOL_NAMES` (the webhook name-collision guard).
+//   2. The built-in toolpack descriptor registry (`BUILTIN_TOOLPACKS`),
+//      which feeds `GET /api/toolpacks` and the web metadata modal.
+// `current_time` / `station_context` are always-attached system tools that
+// intentionally belong to no pack, so the descriptor check allowlists them.
+// ---------------------------------------------------------------------------
+
+describe("built-in tool registry consistency (#115)", () => {
+  const SYSTEM_TOOLS = new Set(["current_time", "station_context"]);
+  const descriptorNames = new Set(
+    BUILTIN_TOOLPACKS.flatMap((p) => p.tools.map((t) => t.name))
+  );
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("every registered built-in tool is in BUILTIN_TOOL_NAMES and (non-system) has a pack descriptor", async () => {
+    // Enable every pack, grant write capability, and pass a portalId so the
+    // job-enqueuing tools register too — the widest possible built-in surface.
+    setupStationMocks([
+      "data_query",
+      "statistics",
+      "regression",
+      "financial",
+      "web_search",
+      "entity_management",
+    ]);
+    mockResolveStationCapabilities.mockResolvedValue([
+      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true } },
+    ]);
+
+    const tools = await buildAnalyticsTools(
+      ORG_ID,
+      STATION_ID,
+      "user-001",
+      "portal-001"
+    );
+
+    // No custom packs are enabled here, so every registered tool is built-in.
+    for (const name of Object.keys(tools)) {
+      expect(BUILTIN_TOOL_NAMES.has(name)).toBe(true);
+      if (!SYSTEM_TOOLS.has(name)) {
+        expect(descriptorNames.has(name)).toBe(true);
+      }
+    }
+
+    // Sanity: the three tools that previously drifted are present.
+    expect(tools.display_entity_records).toBeDefined();
+    expect(tools.bulk_aggregate_records).toBeDefined();
+    expect(tools.bulk_transform_entity_records).toBeDefined();
+  });
+
+  it("BUILTIN_TOOL_NAMES equals the descriptor tool set plus the system tools", () => {
+    const expected = new Set([...descriptorNames, ...SYSTEM_TOOLS]);
+    expect(new Set(BUILTIN_TOOL_NAMES)).toEqual(expected);
   });
 });
 

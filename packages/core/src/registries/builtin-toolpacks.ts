@@ -149,6 +149,49 @@ const DATA_QUERY_PACK: BuiltinToolpack = {
       ],
     },
     {
+      name: "bulk_aggregate_records",
+      description:
+        "Compute a single aggregate value (or a small grouped object) across ALL matching records of a source entity, asynchronously, without writing anything. Use for 'how many / total / average / min / max' questions over large datasets where an inline sql_query would be too slow. Returns `{ result, recordsProcessed, durationMs }`.",
+      parameterSchema: objectSchema(
+        {
+          sourceConnectorEntityId: stringField(
+            "The source entity whose records are aggregated."
+          ),
+          expression: stringField(
+            "SQL aggregate projection over the source's wide columns (`c_*`), e.g. \"COUNT(*) AS total\" or \"SUM(c_area) AS total, AVG(c_age) AS avg_age\"."
+          ),
+          sourceFilter: {
+            type: "object",
+            description:
+              "Optional filter on the source rows before aggregating.",
+            properties: {
+              whereSqlFragment: stringField(
+                "SQL WHERE fragment scoping which rows are aggregated."
+              ),
+            },
+            required: ["whereSqlFragment"],
+          },
+        },
+        ["sourceConnectorEntityId", "expression"]
+      ),
+    },
+    {
+      name: "display_entity_records",
+      description:
+        "Render every record of an entity as a single live table widget for the user. Use for 'show / display / list' requests regardless of row count; rows stream through a query-handle and the UI renders them in one hydrating table. For analytical work (filters, joins, aggregations) use `sql_query` instead.",
+      parameterSchema: objectSchema(
+        {
+          entityKey: stringField(
+            "The entity's table key as listed in `_meta_entities` (e.g. 'parcels', 'contacts')."
+          ),
+          columns: stringArrayField(
+            "Optional list of wide-column names (`c_<normalized_key>`) to project. Omit to project every column."
+          ),
+        },
+        ["entityKey"]
+      ),
+    },
+    {
       name: "visualize",
       description:
         "Run a SQL query and inject the results into a Vega-Lite specification for charting.",
@@ -982,6 +1025,43 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpack = {
       parameterSchema: objectSchema(
         { ids: stringArrayField("Field mapping ids") },
         ["ids"]
+      ),
+    },
+    {
+      name: "bulk_transform_entity_records",
+      description:
+        "Run a per-record transform across a source entity and upsert the results into one or more target entities, asynchronously. Use for high-cardinality writes (≥100 records) where calling `entity_record_create` in a loop would exhaust the agent's context. Returns a jobId and ETA; the run is tracked as a job and the entity is locked until it completes. Expensive tool dispatches require `acknowledgeCost: true`.",
+      parameterSchema: objectSchema(
+        {
+          sourceConnectorEntityId: stringField(
+            "The source entity whose records are transformed (read-only; not locked)."
+          ),
+          expression: {
+            type: "object",
+            description:
+              "The per-record derivation. `kind: \"sql\"` carries a SQL projection in `value` whose aliases match target wide-columns; `kind: \"tool\"` carries a tool `ref` (+ optional `args`). Both carry a `writes[]` array mapping each derived value into a target wide-column.",
+          },
+          keyField: stringField(
+            "Upsert key on the target's `source_id`."
+          ),
+          batchSize: integerField(
+            "Records per batch (default 1000, max 10000)."
+          ),
+          acknowledgeCost: booleanField(
+            "Set true to proceed past the expensive-tool confirmation gate. Only after the user has confirmed."
+          ),
+          sourceFilter: {
+            type: "object",
+            description: "Optional WHERE filter on the source rows.",
+            properties: {
+              whereSqlFragment: stringField(
+                "SQL WHERE fragment scoping which source rows are transformed."
+              ),
+            },
+            required: ["whereSqlFragment"],
+          },
+        },
+        ["sourceConnectorEntityId", "expression", "keyField"]
       ),
     },
   ],
