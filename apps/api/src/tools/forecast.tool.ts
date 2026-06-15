@@ -1,17 +1,16 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import {
-  AnalyticsService,
-  type StationData,
-} from "../services/analytics.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { fetchEntityRows } from "../utils/tools.util.js";
+import {
+  withComputeInput,
+  resolveComputeRecords,
+} from "./compute-input.util.js";
 
-const InputSchema = z.object({
-  entity: z.string().describe("Entity key (table name)"),
-  dateColumn: z.string().describe("Date column key"),
-  valueColumn: z.string().describe("Numeric value column key"),
+const InputSchema = withComputeInput({
+  dateColumn: z.string().describe("Date column (a key in the rows)"),
+  valueColumn: z.string().describe("Numeric value column (a key in the rows)"),
   horizon: z
     .number()
     .int()
@@ -71,30 +70,22 @@ export class ForecastTool extends Tool<typeof InputSchema> {
   slug = "forecast";
   name = "Forecast";
   description =
-    "Holt-Winters exponential smoothing forecast. Returns in-sample fits, " +
-    "multi-step point forecasts, prediction intervals, and MAPE. " +
+    "Holt-Winters exponential smoothing forecast over a dataset you provide. Pass a `queryHandle` from sql_query (or inline `rows`) plus the date/value columns. " +
+    "Returns in-sample fits, multi-step point forecasts, prediction intervals, and MAPE. " +
     "Smoothing parameters are not auto-optimized — defaults are 0.5 / 0.1 / 0.1.";
 
   get schema() {
     return InputSchema;
   }
 
-  build(stationData: StationData, organizationId: string) {
+  build() {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const validated = this.validate(input);
-        const records = await fetchEntityRows(
-          stationData,
-          validated.entity,
-          [validated.dateColumn, validated.valueColumn],
-          organizationId
-        );
-        return AnalyticsService.forecast({
-          ...validated,
-          records,
-        });
+        const { queryHandle, rows, ...rest } = this.validate(input);
+        const records = await resolveComputeRecords({ queryHandle, rows });
+        return AnalyticsService.forecast({ ...rest, records });
       },
     });
   }

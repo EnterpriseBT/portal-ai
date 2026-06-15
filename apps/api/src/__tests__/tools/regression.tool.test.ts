@@ -7,7 +7,7 @@ describe("RegressionTool — schema", () => {
 
   it("accepts a polynomial spec without degree (degree is optional)", () => {
     const result = tool.schema.safeParse({
-      entity: "rev",
+      queryHandle: "qh-rev",
       x: "month",
       y: "revenue",
       type: "polynomial",
@@ -18,7 +18,7 @@ describe("RegressionTool — schema", () => {
   it("accepts degree within the [2, 10] bound", () => {
     for (const degree of [2, 5, 10]) {
       const result = tool.schema.safeParse({
-        entity: "rev",
+        queryHandle: "qh-rev",
         x: "month",
         y: "revenue",
         type: "polynomial",
@@ -30,7 +30,7 @@ describe("RegressionTool — schema", () => {
 
   it("rejects degree below 2", () => {
     const result = tool.schema.safeParse({
-      entity: "rev",
+      queryHandle: "qh-rev",
       x: "month",
       y: "revenue",
       type: "polynomial",
@@ -41,7 +41,7 @@ describe("RegressionTool — schema", () => {
 
   it("rejects degree above 10", () => {
     const result = tool.schema.safeParse({
-      entity: "rev",
+      queryHandle: "qh-rev",
       x: "month",
       y: "revenue",
       type: "polynomial",
@@ -52,7 +52,7 @@ describe("RegressionTool — schema", () => {
 
   it("rejects non-integer degree", () => {
     const result = tool.schema.safeParse({
-      entity: "rev",
+      queryHandle: "qh-rev",
       x: "month",
       y: "revenue",
       type: "polynomial",

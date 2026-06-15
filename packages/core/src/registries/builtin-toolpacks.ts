@@ -448,68 +448,59 @@ const REGRESSION_PACK: BuiltinToolpack = {
     {
       name: "regression",
       description:
-        "Perform linear, multivariate-linear, or polynomial regression. Returns coefficients, R-squared, residuals, standard errors, t-statistics, p-values, and confidence intervals on each coefficient.",
+        "Perform linear, multivariate-linear, or polynomial regression over a dataset you provide. Returns coefficients, R-squared, residuals, standard errors, t-statistics, p-values, and confidence intervals on each coefficient.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
+          ...computeSourceFields(),
           x: stringField(
-            "Independent variable column (linear / polynomial only)"
+            "Independent variable column (a key in the rows). Use this OR `xColumns`."
           ),
           xColumns: stringArrayField(
-            "Independent variables for multivariate-linear regression"
+            "Independent variables for multivariate-linear regression (keys in the rows)"
           ),
-          y: stringField("Dependent variable column"),
-          type: enumField(
-            ["linear", "multivariate", "polynomial"],
-            "Regression type"
-          ),
+          y: stringField("Dependent variable column (a key in the rows)"),
+          type: enumField(["linear", "polynomial"], "Regression type"),
           degree: integerField(
-            "Polynomial degree (default 2; ignored for linear/multivariate)"
+            "Polynomial degree (default 2; ignored for linear)"
           ),
-          intercept: booleanField(
-            "Fit an intercept term (default true). Force through origin when false."
+          confidence: numberField(
+            "Confidence level for the coefficient intervals (default 0.95)"
           ),
         },
-        ["entity", "y", "type"]
+        ["y", "type"]
       ),
       examples: [
         {
           title: "Linear fit of price vs. square footage",
-          input: {
-            entity: "listings",
-            x: "sqft",
-            y: "price",
-            type: "linear",
-          },
-          output: {
-            coefficients: [25000, 188.4],
-            rSquared: 0.74,
-          },
+          input: { queryHandle: "qh-9f3c", x: "sqft", y: "price", type: "linear" },
+          output: { coefficients: [25000, 188.4], rSquared: 0.74 },
         },
       ],
     },
     {
       name: "logistic_regression",
       description:
-        "Binary logistic regression via IRLS. Returns coefficients (intercept first), per-row predicted probabilities, log-loss, accuracy at threshold 0.5, and IRLS iteration count.",
+        "Binary logistic regression via IRLS over a dataset you provide. Returns coefficients (intercept first), per-row predicted probabilities, log-loss, accuracy at threshold 0.5, and IRLS iteration count.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          xColumns: stringArrayField("Predictor columns"),
+          ...computeSourceFields(),
+          x: stringField("Single predictor column. Use this OR `xColumns`."),
+          xColumns: stringArrayField("Predictor columns (keys in the rows)"),
           y: stringField("Binary outcome column (0/1, true/false)"),
+          maxIterations: integerField("Maximum IRLS iterations (default 100)"),
         },
-        ["entity", "xColumns", "y"]
+        ["y"]
       ),
     },
     {
       name: "trend",
       description:
-        "Aggregate a time series by interval and compute a linear trend line.",
+        "Aggregate a time series by interval and compute a linear trend line, over a dataset you provide.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          dateColumn: stringField("Date / timestamp column"),
-          valueColumn: stringField("Numeric column to aggregate"),
+          ...computeSourceFields(),
+          dateColumn: stringField("Date / timestamp column (a key in the rows)"),
+          valueColumn: stringField("Numeric column to aggregate (a key in the rows)"),
           interval: enumField(
             ["day", "week", "month", "quarter", "year"],
             "Bucket size"
@@ -518,63 +509,74 @@ const REGRESSION_PACK: BuiltinToolpack = {
             "Periods past the last bucket to project the linear fit"
           ),
         },
-        ["entity", "dateColumn", "valueColumn", "interval"]
+        ["dateColumn", "valueColumn", "interval"]
       ),
     },
     {
       name: "changepoint",
       description:
-        "Detect mean-shift changepoints in a numeric series via CUSUM. Returns indices, optional dates, per-segment means, and segment ranges.",
+        "Detect mean-shift changepoints in a numeric series via CUSUM, over a dataset you provide. Returns indices, optional dates, per-segment means, and segment ranges.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          column: stringField("Numeric column"),
+          ...computeSourceFields(),
+          valueColumn: stringField("Numeric column (a key in the rows)"),
           dateColumn: stringField(
             "Optional date column to attach to each changepoint"
           ),
-          minSegmentSize: integerField(
-            "Minimum points per segment (default 5)"
+          threshold: numberField(
+            "CUSUM threshold in stddevs of the standardized series (default 5.0)"
+          ),
+          minSegmentLength: integerField(
+            "Minimum spacing between changepoints (default ⌈n/20⌉, floor 5)"
           ),
         },
-        ["entity", "column"]
+        ["valueColumn"]
       ),
     },
     {
       name: "decompose",
       description:
-        "Classical seasonal decomposition of a time series into trend, seasonal, and residual components. Additive or multiplicative.",
+        "Classical seasonal decomposition of a time series into trend, seasonal, and residual components, over a dataset you provide. Additive or multiplicative.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          dateColumn: stringField("Date column"),
-          valueColumn: stringField("Numeric column to decompose"),
-          period: integerField(
+          ...computeSourceFields(),
+          dateColumn: stringField("Date column (a key in the rows)"),
+          valueColumn: stringField("Numeric column to decompose (a key in the rows)"),
+          seasonalPeriod: integerField(
             "Seasonal period (e.g. 12 for monthly data with annual seasonality)"
           ),
-          model: enumField(
+          seasonality: enumField(
             ["additive", "multiplicative"],
-            "Decomposition model"
+            "Decomposition type (default additive)"
           ),
         },
-        ["entity", "dateColumn", "valueColumn", "period"]
+        ["dateColumn", "valueColumn", "seasonalPeriod"]
       ),
     },
     {
       name: "forecast",
       description:
-        "Holt-Winters exponential smoothing forecast. Returns in-sample fits, multi-step point forecasts, prediction intervals, and MAPE.",
+        "Holt-Winters exponential smoothing forecast over a dataset you provide. Returns in-sample fits, multi-step point forecasts, prediction intervals, and MAPE.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          dateColumn: stringField("Date column"),
-          valueColumn: stringField("Numeric column to forecast"),
+          ...computeSourceFields(),
+          dateColumn: stringField("Date column (a key in the rows)"),
+          valueColumn: stringField("Numeric column to forecast (a key in the rows)"),
           horizon: integerField("Number of future periods to forecast"),
-          period: integerField("Seasonal period (omit for non-seasonal)"),
+          seasonalPeriod: integerField("Seasonal period (omit for non-seasonal)"),
+          seasonality: enumField(
+            ["none", "additive", "multiplicative"],
+            "Seasonal component (default none)"
+          ),
+          trend: enumField(["none", "additive"], "Trend component (default additive)"),
           alpha: numberField("Level smoothing parameter (default 0.5)"),
           beta: numberField("Trend smoothing parameter (default 0.1)"),
           gamma: numberField("Seasonal smoothing parameter (default 0.1)"),
+          confidence: numberField(
+            "Confidence level for the prediction intervals (default 0.95)"
+          ),
         },
-        ["entity", "dateColumn", "valueColumn", "horizon"]
+        ["dateColumn", "valueColumn", "horizon"]
       ),
     },
   ],

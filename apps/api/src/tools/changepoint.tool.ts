@@ -1,22 +1,21 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import {
-  AnalyticsService,
-  type StationData,
-} from "../services/analytics.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { fetchEntityRows } from "../utils/tools.util.js";
+import {
+  withComputeInput,
+  resolveComputeRecords,
+} from "./compute-input.util.js";
 
-const InputSchema = z.object({
-  entity: z.string().describe("Entity key (table name)"),
+const InputSchema = withComputeInput({
   dateColumn: z
     .string()
     .optional()
     .describe(
-      "Optional date column for output labels. When omitted, indices are returned without dates."
+      "Optional date column for output labels (a key in the rows). When omitted, indices are returned without dates."
     ),
-  valueColumn: z.string().describe("Numeric value column key"),
+  valueColumn: z.string().describe("Numeric value column (a key in the rows)"),
   threshold: z
     .number()
     .positive()
@@ -38,38 +37,26 @@ export class ChangepointTool extends Tool<typeof InputSchema> {
   slug = "changepoint";
   name = "Changepoint";
   description =
-    "Detect mean-shift changepoints in a numeric series via CUSUM. " +
+    "Detect mean-shift changepoints in a numeric series via CUSUM, over a dataset you provide. Pass a `queryHandle` from sql_query (or inline `rows`) plus the value column. " +
     "Returns indices, optional dates, per-segment means, and segment ranges.";
 
   get schema() {
     return InputSchema;
   }
 
-  build(stationData: StationData, organizationId: string) {
+  build() {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const {
-          entity,
-          dateColumn,
-          valueColumn,
-          threshold,
-          minSegmentLength,
-        } = this.validate(input);
-        const cols = dateColumn ? [dateColumn, valueColumn] : [valueColumn];
-        const records = await fetchEntityRows(
-          stationData,
-          entity,
-          cols,
-          organizationId
-        );
+        const params = this.validate(input);
+        const records = await resolveComputeRecords(params);
         return AnalyticsService.changepoint({
           records,
-          dateColumn,
-          valueColumn,
-          threshold,
-          minSegmentLength,
+          dateColumn: params.dateColumn,
+          valueColumn: params.valueColumn,
+          threshold: params.threshold,
+          minSegmentLength: params.minSegmentLength,
         });
       },
     });

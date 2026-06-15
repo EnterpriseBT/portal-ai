@@ -521,18 +521,14 @@ export class ToolService {
     // Pack: regression
     // -------------------------------------------------------------------
     if (enabledPacks.has("regression")) {
-      tools.regression = new RegressionTool().build(stationData, organizationId);
-      tools.logistic_regression = new LogisticRegressionTool().build(
-        stationData,
-        organizationId
-      );
-      tools.trend = new TrendTool().build(stationData, organizationId);
-      tools.changepoint = new ChangepointTool().build(
-        stationData,
-        organizationId
-      );
-      tools.decompose = new DecomposeTool().build(stationData, organizationId);
-      tools.forecast = new ForecastTool().build(stationData, organizationId);
+      // Pure compute tools (#114): data arrives as input (a sql_query
+      // handle or inline rows), so build() takes no station context.
+      tools.regression = new RegressionTool().build();
+      tools.logistic_regression = new LogisticRegressionTool().build();
+      tools.trend = new TrendTool().build();
+      tools.changepoint = new ChangepointTool().build();
+      tools.decompose = new DecomposeTool().build();
+      tools.forecast = new ForecastTool().build();
     }
 
     // -------------------------------------------------------------------
