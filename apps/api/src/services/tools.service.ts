@@ -222,6 +222,7 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "field_mapping_update",
   "field_mapping_delete",
   "bulk_aggregate_records",
+  "bulk_transform_entity_records",
 ]);
 
 export class ToolService {
