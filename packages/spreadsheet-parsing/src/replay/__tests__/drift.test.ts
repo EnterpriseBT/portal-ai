@@ -614,7 +614,7 @@ describe("detectRegionDrift — header normalization", () => {
   // Regression: xlsx files exported with a UTF-8 BOM carry U+FEFF into
   // the first cell. interpret-side header detection trims it (so
   // `binding.sourceLocator.name` lands as "email"); without a matching
-  // trim in resolve-headers, drift saw the live header as "﻿email"
+  // trim in resolve-headers, drift saw the live header as "\uFEFFemail"
   // and flagged the same column as both removed and added — surfacing
   // as LAYOUT_PLAN_DRIFT_BLOCKER on real ~100MB uploads.
   it("does not flag drift when the header cell carries a UTF-8 BOM (U+FEFF)", async () => {
@@ -624,7 +624,7 @@ describe("detectRegionDrift — header normalization", () => {
           name: "Sheet1",
           dimensions: { rows: 4, cols: 3 },
           cells: [
-            { row: 1, col: 1, value: "﻿email" },
+            { row: 1, col: 1, value: "\uFEFFemail" },
             { row: 1, col: 2, value: "name" },
             { row: 1, col: 3, value: "age" },
             { row: 2, col: 1, value: "a@x.com" },

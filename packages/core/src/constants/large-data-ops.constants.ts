@@ -18,6 +18,12 @@ export const MAX_CONCURRENT_BULK_PER_ORG = 2;
 /** Max bytes of serialized row payload per `job:batch` SSE event. */
 export const BATCH_ROW_PAYLOAD_LIMIT = 256 * 1024;
 
+/** Max bytes of a serialized `bulk_aggregate` result (#100). Over this,
+ *  the job fails BULK_AGGREGATE_RESULT_TOO_LARGE rather than persisting
+ *  a multi-MB job row — the agent should use a coarser aggregate or
+ *  materialize grouped output into an entity and read it with bulk_query. */
+export const BULK_AGGREGATE_RESULT_LIMIT = 1024 * 1024;
+
 /** TTL on a Redis-cached query handle. */
 export const READ_HANDLE_TTL_MS = 24 * 60 * 60 * 1000;
 

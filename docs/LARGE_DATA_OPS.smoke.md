@@ -216,10 +216,45 @@ Tools advertised by the mock:
 
 ---
 
-## §5 — Verify post-conditions
+## §5 — Aggregate to a single value (#100)
+
+`bulk_aggregate_records` reduces N source records to one value via a SQL
+aggregate run as a job — no writes, no lock (reads-only). The tool runs
+the scan off the request thread under a 120s `statement_timeout`, awaits
+the terminal envelope (subscribing to the job-events channel), and
+returns `{ result, recordsProcessed, durationMs }` inline so the agent
+answers in the same turn.
+
+### §5a — Count via SQL
+
+- [ ] Prompt: "How many NEOs are there?"
+- [ ] The agent calls `bulk_aggregate_records` with `expression: "COUNT(*) AS total"` against the `neos` entity.
+- [ ] The agent answers with the count; the jobs table has a completed `bulk_aggregate` row whose `result` is `{ result: { total: <n> }, recordsProcessed: <n>, durationMs: <ms> }`.
+
+### §5b — Sum + average via multi-alias SQL
+
+- [ ] Prompt: "What's the total and average estimated diameter across all NEOs?"
+- [ ] The agent calls `bulk_aggregate_records` with `expression: "SUM(c_diameter_km_max) AS total, AVG(c_diameter_km_max) AS avg_diameter"`.
+- [ ] The answer matches a manual `SELECT SUM(c_diameter_km_max), AVG(c_diameter_km_max) FROM er__<neos> WHERE organization_id = '<org>'`; `recordsProcessed` equals the neos row count.
+
+### §5c — Scoped aggregate
+
+- [ ] Prompt a filtered question ("…for NEOs larger than 1 km").
+- [ ] The tool call carries `sourceFilter.whereSqlFragment`; `recordsProcessed` reflects only the filtered rows.
+
+### §5d — Error + cancel paths
+
+- [ ] Invalid expression (e.g. a non-existent column) → tool returns `BULK_AGGREGATE_EXPRESSION_INVALID` at pre-flight; no job appears in the jobs table.
+- [ ] A deliberately huge `ARRAY_AGG` / `JSON_AGG` result → job fails `BULK_AGGREGATE_RESULT_TOO_LARGE`.
+- [ ] Cancel a running aggregate via `POST /api/jobs/:id/cancel` (or abort the turn) → the awaiting tool unblocks and the job row is `cancelled`. The in-flight query is bounded by the 120s `statement_timeout` (same best-effort cancel as the write tools).
+
+---
+
+## §6 — Verify post-conditions
 
 - [x] **DB inspection** (`npm run db:studio` from `apps/api/`): `neo_summary` rows have `c_diameter_avg_km` populated; `source_id` matches the source key (`c_id` from neos); `synced_at` reflects the latest run.
 - [x] **Jobs table**: every completed / cancelled / failed `bulk_transform` row carries the expected `result` shape (`committedRows`, `partialFailures`, `batchDurationMs`).
+- [ ] **Aggregate jobs**: every completed `bulk_aggregate` row carries `result = { result, recordsProcessed, durationMs }`; no `bulk_aggregate` row holds a target/lock key, and none is left non-terminal.
 - [x] **Lock release**: no `bulk_transform` job is left in `active` / `pending` / `awaiting_confirmation`; the target entity's detail view shows no lock alert.
 
 ---
