@@ -362,9 +362,11 @@ export class AnalyticsService {
   // The 17 `apply*` methods + their `cache*` helpers existed to keep an
   // in-memory AlaSQL station database coherent with each mutation tool's
   // Postgres write. After slice 2 wired sql_query / visualize directly to
-  // Postgres and slice 3 routed every math tool through `fetchEntityRows`,
-  // nothing read from the in-memory cache; the methods became dead weight.
-  // Mutation tools rely on Postgres' own read-after-write semantics now.
+  // Postgres and slice 3 routed every math tool through a direct Postgres
+  // row fetch, nothing read from the in-memory cache; the methods became
+  // dead weight. (#114 later made the math tools pure — they now receive
+  // rows as input rather than reading at all.) Mutation tools rely on
+  // Postgres' own read-after-write semantics now.
   // -------------------------------------------------------------------------
 
 

@@ -250,7 +250,35 @@ answers in the same turn.
 
 ---
 
-## §6 — Verify post-conditions
+## §6 — Pure compute: read → compute (#114)
+
+The statistics / regression / financial compute tools are pure — they no
+longer read the backend. The agent composes `read → compute`: it runs a
+`sql_query` (or `display_entity_records`) and passes the resulting
+`queryHandle` (or small inline `rows`) into the compute tool, which
+materializes the rows server-side (capped at `COMPUTE_MAX_ROWS` = 100k)
+before computing. This is the manual walk for the path the unit tests
+cover with a mocked handle service (`compute-input.util.test.ts`) and the
+per-tool pure tests.
+
+### §6a — Inline compose (small result)
+
+- [ ] Prompt: "What's the average estimated diameter of the NEOs?" against a small entity (≤ 100 rows).
+- [ ] The agent calls `sql_query` (inline rows, ≤ `INLINE_ROWS_THRESHOLD`) then `describe_column` with `rows` + `column`, OR passes the `queryHandle`. The answer matches a manual `AVG`.
+
+### §6b — Handle compose (large result)
+
+- [ ] Prompt the same kind of question against an entity with > 100 rows.
+- [ ] `sql_query` returns a `queryHandle` envelope (rows never enter the chat). The agent passes that `queryHandle` to the compute tool; the result is computed server-side and matches a manual SQL check. Confirm the rows did **not** appear in the model's context.
+
+### §6c — Over-cap → hard error
+
+- [ ] Drive a compute tool at a `queryHandle` whose `rowCount` exceeds `COMPUTE_MAX_ROWS` (100k).
+- [ ] The tool returns `COMPUTE_INPUT_TOO_LARGE`; the agent follows the recommendation — pre-aggregating/sampling in SQL (`GROUP BY` rollup, `LIMIT n`, or `bulk_aggregate`) — and retries against the smaller result.
+
+---
+
+## §7 — Verify post-conditions
 
 - [x] **DB inspection** (`npm run db:studio` from `apps/api/`): `neo_summary` rows have `c_diameter_avg_km` populated; `source_id` matches the source key (`c_id` from neos); `synced_at` reflects the latest run.
 - [x] **Jobs table**: every completed / cancelled / failed `bulk_transform` row carries the expected `result` shape (`committedRows`, `partialFailures`, `batchDurationMs`).
