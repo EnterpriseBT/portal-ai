@@ -23,6 +23,7 @@ import { randomUUID } from "crypto";
 import {
   READ_HANDLE_TTL_MS,
   SAMPLING_THRESHOLD,
+  HANDLE_ROW_CAP,
 } from "@portalai/core/constants";
 // Inline the QueryHandleEnvelope type — the core barrel doesn't yet
 // export portal-sql.contract directly. Shape mirrors Phase 1 spec.
@@ -48,7 +49,6 @@ const HANDLE_PREFIX = "portal-sql:handle:";
 const STREAM_CHANNEL_PREFIX = "portal-sql:stream:";
 const BATCH_SIZE = 1_000;
 const SAMPLE_PEEK_SIZE = 10;
-const HANDLE_ROW_CAP = 100_000;
 
 export interface ProduceOptions {
   stationId: string;
