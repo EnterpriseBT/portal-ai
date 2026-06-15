@@ -257,9 +257,10 @@ longer read the backend. The agent composes `read → compute`: it runs a
 `sql_query` (or `display_entity_records`) and passes the resulting
 `queryHandle` (or small inline `rows`) into the compute tool, which
 materializes the rows server-side (capped at `COMPUTE_MAX_ROWS` = 100k)
-before computing. This is the manual walk for the path the unit tests
-cover with a mocked handle service (`compute-input.util.test.ts`) and the
-per-tool pure tests.
+before computing. The handle→compute round-trip is covered automatically
+by `compute-from-handle.integration.test.ts` (real Redis) and
+`compute-input.util.test.ts` (mocked handle); this is the agent-driven
+manual walk over the same path.
 
 ### §6a — Inline compose (small result)
 
