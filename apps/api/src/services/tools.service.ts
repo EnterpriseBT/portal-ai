@@ -507,21 +507,14 @@ export class ToolService {
     // Pack: statistics
     // -------------------------------------------------------------------
     if (enabledPacks.has("statistics")) {
-      tools.describe_column = new DescribeColumnTool().build(
-        stationData,
-        organizationId
-      );
-      tools.correlate = new CorrelateTool().build(stationData, organizationId);
-      tools.detect_outliers = new DetectOutliersTool().build(
-        stationData,
-        organizationId
-      );
-      tools.cluster = new ClusterTool().build(stationData, organizationId);
-      tools.aggregate = new AggregateTool().build(stationData, organizationId);
-      tools.hypothesis_test = new HypothesisTestTool().build(
-        stationData,
-        organizationId
-      );
+      // Pure compute tools (#114): data arrives as input (a sql_query
+      // handle or inline rows), so build() takes no station context.
+      tools.describe_column = new DescribeColumnTool().build();
+      tools.correlate = new CorrelateTool().build();
+      tools.detect_outliers = new DetectOutliersTool().build();
+      tools.cluster = new ClusterTool().build();
+      tools.aggregate = new AggregateTool().build();
+      tools.hypothesis_test = new HypothesisTestTool().build();
     }
 
     // -------------------------------------------------------------------

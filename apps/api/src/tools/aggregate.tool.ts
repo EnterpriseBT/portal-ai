@@ -1,19 +1,18 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import {
-  AnalyticsService,
-  type StationData,
-} from "../services/analytics.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { fetchEntityRows } from "../utils/tools.util.js";
+import {
+  withComputeInput,
+  resolveComputeRecords,
+} from "./compute-input.util.js";
 
-const InputSchema = z.object({
-  entity: z.string().describe("Entity (table) to aggregate."),
+const InputSchema = withComputeInput({
   groupBy: z
     .array(z.string())
     .describe(
-      "Columns to group by. Pass [] to aggregate over the whole table."
+      "Columns to group by (keys in the rows). Pass [] to aggregate over the whole dataset."
     ),
   metrics: z
     .array(
@@ -56,29 +55,24 @@ export class AggregateTool extends Tool<typeof InputSchema> {
   slug = "aggregate";
   name = "Aggregate";
   description =
-    "Group-by + reduce. Produces one row per group with the requested metrics.";
+    "Group-by + reduce over a dataset you provide. Produces one row per group with the requested metrics. Pass a `queryHandle` from sql_query (or inline `rows`) plus `groupBy` and `metrics`.";
 
   get schema() {
     return InputSchema;
   }
 
-  build(stationData: StationData, organizationId: string) {
+  build() {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, groupBy, metrics } = this.validate(input);
-        const metricCols = metrics
-          .map((m) => m.column)
-          .filter((c): c is string => typeof c === "string");
-        const cols = [...new Set([...groupBy, ...metricCols])];
-        const records = await fetchEntityRows(
-          stationData,
-          entity,
-          cols,
-          organizationId
-        );
-        return AnalyticsService.aggregate({ records, groupBy, metrics });
+        const params = this.validate(input);
+        const records = await resolveComputeRecords(params);
+        return AnalyticsService.aggregate({
+          records,
+          groupBy: params.groupBy,
+          metrics: params.metrics,
+        });
       },
     });
   }

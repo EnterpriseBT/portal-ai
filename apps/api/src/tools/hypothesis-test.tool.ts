@@ -1,13 +1,16 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import {
-  AnalyticsService,
-  type StationData,
-} from "../services/analytics.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { fetchEntityRows } from "../utils/tools.util.js";
+import {
+  type ComputeRecord,
+  resolveComputeRecords,
+} from "./compute-input.util.js";
 
+// hypothesis_test does NOT use `withComputeInput`: chi_squared reads
+// `observed`/`expected` directly and needs no row data, so the data
+// source (queryHandle / rows) is optional here rather than required.
 const InputSchema = z.object({
   test: z
     .enum([
@@ -20,12 +23,17 @@ const InputSchema = z.object({
     .describe(
       "Which test to run. Each test reads a different combination of the inputs below."
     ),
-  entity: z
+  queryHandle: z
     .string()
     .optional()
     .describe(
-      "Entity (table) to read columns from. Required for t- and Mann-Whitney tests; omit for chi_squared (which uses observed/expected directly)."
+      "A queryHandle from sql_query whose rows hold the sample columns. " +
+        "Required for t- and Mann-Whitney tests; omit for chi_squared."
     ),
+  rows: z
+    .array(z.record(z.string(), z.unknown()))
+    .optional()
+    .describe("Inline rows holding the sample columns (alternative to queryHandle)."),
   columnA: z
     .string()
     .optional()
@@ -69,31 +77,24 @@ export class HypothesisTestTool extends Tool<typeof InputSchema> {
   name = "Hypothesis Test";
   description =
     "Run a hypothesis test (one-sample / two-sample / paired t-test, Mann-Whitney U, or chi-squared) " +
-    "and return the statistic and a two-tailed p-value. Mann-Whitney p-values use the normal approximation " +
-    "and degrade for small samples (n < 10) with heavy ties. The two-sample t-test assumes equal variance " +
-    "(Student's t, not Welch's).";
+    "and return the statistic and a two-tailed p-value. For column-based tests, pass a `queryHandle` " +
+    "from sql_query (or inline `rows`) plus the sample columns; chi_squared takes `observed`/`expected` " +
+    "directly with no data source. Mann-Whitney p-values use the normal approximation and degrade for " +
+    "small samples (n < 10) with heavy ties. The two-sample t-test assumes equal variance (Student's t, not Welch's).";
 
   get schema() {
     return InputSchema;
   }
 
-  build(stationData: StationData, organizationId: string) {
+  build() {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, ...rest } = this.validate(input);
-        let records: Record<string, unknown>[] | undefined;
-        if (entity !== undefined) {
-          const cols = [rest.columnA, rest.columnB].filter(
-            (c): c is string => typeof c === "string"
-          );
-          records = await fetchEntityRows(
-            stationData,
-            entity,
-            cols,
-            organizationId
-          );
+        const { queryHandle, rows, ...rest } = this.validate(input);
+        let records: ComputeRecord[] | undefined;
+        if (queryHandle != null || rows != null) {
+          records = await resolveComputeRecords({ queryHandle, rows });
         }
         return AnalyticsService.hypothesisTest({ ...rest, records });
       },

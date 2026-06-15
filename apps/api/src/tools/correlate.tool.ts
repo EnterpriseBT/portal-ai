@@ -1,17 +1,16 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import {
-  AnalyticsService,
-  type StationData,
-} from "../services/analytics.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { fetchEntityRows } from "../utils/tools.util.js";
+import {
+  withComputeInput,
+  resolveComputeRecords,
+} from "./compute-input.util.js";
 
-const InputSchema = z.object({
-  entity: z.string().describe("Entity key (table name)"),
-  columnA: z.string().describe("First numeric column"),
-  columnB: z.string().describe("Second numeric column"),
+const InputSchema = withComputeInput({
+  columnA: z.string().describe("First numeric column (a key in the rows)"),
+  columnB: z.string().describe("Second numeric column (a key in the rows)"),
   method: z
     .enum(["pearson", "spearman", "kendall"])
     .optional()
@@ -26,30 +25,26 @@ export class CorrelateTool extends Tool<typeof InputSchema> {
   slug = "correlate";
   name = "Correlate";
   description =
-    "Compute the correlation between two numeric columns. " +
+    "Compute the correlation between two numeric columns over a dataset you provide. " +
+    "Pass a `queryHandle` from sql_query (or inline `rows`) plus the two columns. " +
     "Supports Pearson (default), Spearman (rank-based, monotonic), and Kendall τ-b.";
 
   get schema() {
     return InputSchema;
   }
 
-  build(stationData: StationData, organizationId: string) {
+  build() {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, columnA, columnB, method } = this.validate(input);
-        const records = await fetchEntityRows(
-          stationData,
-          entity,
-          [columnA, columnB],
-          organizationId
-        );
+        const params = this.validate(input);
+        const records = await resolveComputeRecords(params);
         return AnalyticsService.correlate({
           records,
-          columnA,
-          columnB,
-          method,
+          columnA: params.columnA,
+          columnB: params.columnB,
+          method: params.method,
         });
       },
     });

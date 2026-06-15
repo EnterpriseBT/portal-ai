@@ -1,16 +1,15 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import {
-  AnalyticsService,
-  type StationData,
-} from "../services/analytics.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { fetchEntityRows } from "../utils/tools.util.js";
+import {
+  withComputeInput,
+  resolveComputeRecords,
+} from "./compute-input.util.js";
 
-const InputSchema = z.object({
-  entity: z.string().describe("Entity key (table name)"),
-  column: z.string().describe("Numeric column key"),
+const InputSchema = withComputeInput({
+  column: z.string().describe("Numeric column to scan (a key in the rows)"),
   method: z
     .enum(["iqr", "zscore", "mad"])
     .describe(
@@ -29,29 +28,24 @@ export class DetectOutliersTool extends Tool<typeof InputSchema> {
   slug = "detect_outliers";
   name = "Detect Outliers";
   description =
-    "Detect outliers in a numeric column using IQR, Z-score, or modified Z (MAD).";
+    "Detect outliers in a numeric column using IQR, Z-score, or modified Z (MAD), over a dataset you provide. Pass a `queryHandle` from sql_query (or inline `rows`) plus the `column`.";
 
   get schema() {
     return InputSchema;
   }
 
-  build(stationData: StationData, organizationId: string) {
+  build() {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, column, method, threshold } = this.validate(input);
-        const records = await fetchEntityRows(
-          stationData,
-          entity,
-          [column],
-          organizationId
-        );
+        const params = this.validate(input);
+        const records = await resolveComputeRecords(params);
         return AnalyticsService.detectOutliers({
           records,
-          column,
-          method,
-          threshold,
+          column: params.column,
+          method: params.method,
+          threshold: params.threshold,
         });
       },
     });

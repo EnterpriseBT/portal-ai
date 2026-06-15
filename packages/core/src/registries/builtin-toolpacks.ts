@@ -116,6 +116,21 @@ const enumField = (values: string[], description: string) => ({
   description,
 });
 
+/** The standard pure-compute data source (#114): exactly one of a query
+ *  handle or inline rows. Spread into a compute tool's `properties`; the
+ *  XOR is enforced by the tool's Zod schema, not the JSON-schema `required`. */
+const computeSourceFields = (): Record<string, Record<string, unknown>> => ({
+  queryHandle: stringField(
+    "A queryHandle from sql_query or display_entity_records; the rows it staged are the dataset to compute over. Provide this OR `rows`, not both."
+  ),
+  rows: {
+    type: "array",
+    items: { type: "object" },
+    description:
+      "Inline rows to compute over (alternative to `queryHandle`), keyed by column name.",
+  },
+});
+
 // ── Registry ──────────────────────────────────────────────────────────
 
 const DATA_QUERY_PACK: BuiltinToolpack = {
@@ -253,8 +268,8 @@ const STATISTICS_PACK: BuiltinToolpack = {
         "Compute descriptive statistics (count, mean, median, stddev, variance, mode, min/max, p25/p75, IQR, skewness, kurtosis) for a numeric column. Optionally include arbitrary percentiles.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key (table name)"),
-          column: stringField("Numeric column key"),
+          ...computeSourceFields(),
+          column: stringField("Numeric column to describe (a key in the rows)"),
           percentiles: {
             type: "array",
             items: { type: "number", minimum: 0, maximum: 1 },
@@ -262,12 +277,12 @@ const STATISTICS_PACK: BuiltinToolpack = {
               "Optional list of percentiles to compute (each in [0, 1]).",
           },
         },
-        ["entity", "column"]
+        ["column"]
       ),
       examples: [
         {
           title: "Describe order amounts",
-          input: { entity: "orders", column: "amount" },
+          input: { queryHandle: "qh-1a2b", column: "amount" },
           output: {
             count: 144,
             mean: 312.4,
@@ -285,15 +300,15 @@ const STATISTICS_PACK: BuiltinToolpack = {
         "Compute the correlation between two numeric columns. Supports Pearson (default), Spearman (rank-based, monotonic), and Kendall τ-b.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key (table name)"),
-          columnA: stringField("First numeric column"),
-          columnB: stringField("Second numeric column"),
+          ...computeSourceFields(),
+          columnA: stringField("First numeric column (a key in the rows)"),
+          columnB: stringField("Second numeric column (a key in the rows)"),
           method: enumField(
             ["pearson", "spearman", "kendall"],
             "Correlation method. Default 'pearson'."
           ),
         },
-        ["entity", "columnA", "columnB"]
+        ["columnA", "columnB"]
       ),
     },
     {
@@ -302,8 +317,8 @@ const STATISTICS_PACK: BuiltinToolpack = {
         "Detect outliers in a numeric column using IQR, Z-score, or modified Z (MAD).",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key (table name)"),
-          column: stringField("Numeric column key"),
+          ...computeSourceFields(),
+          column: stringField("Numeric column to scan (a key in the rows)"),
           method: enumField(
             ["iqr", "zscore", "mad"],
             "Detection method: iqr, zscore, or mad (median absolute deviation)"
@@ -312,7 +327,7 @@ const STATISTICS_PACK: BuiltinToolpack = {
             "Cutoff: IQR multiplier (default 1.5), |z| cutoff (default 3), or |modified z| cutoff (default 3.5)"
           ),
         },
-        ["entity", "column", "method"]
+        ["column", "method"]
       ),
     },
     {
@@ -320,8 +335,10 @@ const STATISTICS_PACK: BuiltinToolpack = {
       description: "Perform k-means clustering on specified numeric columns.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key (table name)"),
-          columns: stringArrayField("Numeric columns to cluster on"),
+          ...computeSourceFields(),
+          columns: stringArrayField(
+            "Numeric columns to cluster on (keys in the rows)"
+          ),
           k: integerField("Number of clusters (>= 2)"),
           standardize: booleanField(
             "Z-score each column before clustering. Centroids are returned in original units. Default false."
@@ -329,7 +346,7 @@ const STATISTICS_PACK: BuiltinToolpack = {
           seed: integerField("Seed for reproducible cluster initialization"),
           maxIterations: integerField("Maximum k-means iterations"),
         },
-        ["entity", "columns", "k"]
+        ["columns", "k"]
       ),
     },
     {
@@ -338,9 +355,9 @@ const STATISTICS_PACK: BuiltinToolpack = {
         "Group-by + reduce. Produces one row per group with the requested metrics.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity (table) to aggregate"),
+          ...computeSourceFields(),
           groupBy: stringArrayField(
-            "Columns to group by. Pass [] to aggregate over the whole table."
+            "Columns to group by (keys in the rows). Pass [] to aggregate over the whole dataset."
           ),
           metrics: {
             type: "array",
@@ -364,14 +381,14 @@ const STATISTICS_PACK: BuiltinToolpack = {
                   ],
                   "Aggregation operator"
                 ),
-                alias: stringField("Output column name (defaults to op_column)"),
+                as: stringField("Output column name (defaults to op_column)"),
               },
               required: ["op"],
             },
             description: "List of metrics to compute per group.",
           },
         },
-        ["entity", "groupBy", "metrics"]
+        ["groupBy", "metrics"]
       ),
     },
     {
@@ -390,11 +407,29 @@ const STATISTICS_PACK: BuiltinToolpack = {
             ],
             "Which test to run."
           ),
-          entity: stringField("Entity key. Required for column-based tests."),
-          column: stringField("Numeric column for one-sample / paired tests"),
-          columnB: stringField("Second column for two-sample / paired tests"),
-          mu0: numberField(
+          // Optional data source: column-based tests need rows; chi_squared
+          // uses observed/expected directly and needs neither.
+          ...computeSourceFields(),
+          columnA: stringField(
+            "First numeric column (one-sample sample, or sample 1)"
+          ),
+          columnB: stringField("Second numeric column (sample 2)"),
+          mu: numberField(
             "Hypothesized mean for one-sample t-test. Default 0."
+          ),
+          observed: {
+            type: "array",
+            items: { type: "number", minimum: 0 },
+            description: "Observed counts for chi_squared.",
+          },
+          expected: {
+            type: "array",
+            items: { type: "number" },
+            description:
+              "Expected counts for chi_squared (same length as observed; each > 0).",
+          },
+          df: integerField(
+            "Degrees of freedom for chi_squared. Default observed.length - 1."
           ),
         },
         ["test"]
