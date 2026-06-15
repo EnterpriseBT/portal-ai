@@ -111,7 +111,7 @@ jest.unstable_mockModule("ai", () => ({
 
 jest.unstable_mockModule("../../services/ai.service.js", () => ({
   AiService: {
-    DEFAULT_MODEL: "claude-sonnet-4-20250514",
+    DEFAULT_MODEL: "claude-sonnet-4-6",
     providers: {
       anthropic: jest.fn(() => "mock-model"),
     },
