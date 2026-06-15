@@ -535,10 +535,11 @@ export class ToolService {
     // Pack: financial
     // -------------------------------------------------------------------
     if (enabledPacks.has("financial")) {
-      tools.technical_indicator = new TechnicalIndicatorTool().build(
-        stationData,
-        organizationId
-      );
+      // Data-dependent financial tools are pure compute (#114): data
+      // arrives as input (a sql_query handle or inline rows), so build()
+      // takes no station context. The pure-math tools (npv, irr, …) never
+      // read the backend and already take no args.
+      tools.technical_indicator = new TechnicalIndicatorTool().build();
       tools.npv = new NpvTool().build();
       tools.irr = new IrrTool().build();
       tools.tvm = new TvmTool().build();
@@ -546,23 +547,11 @@ export class ToolService {
       tools.xirr = new XirrTool().build();
       tools.depreciation = new DepreciationTool().build();
       tools.amortize = new AmortizeTool().build();
-      tools.sharpe_ratio = new SharpeRatioTool().build(
-        stationData,
-        organizationId
-      );
-      tools.max_drawdown = new MaxDrawdownTool().build(
-        stationData,
-        organizationId
-      );
-      tools.rolling_returns = new RollingReturnsTool().build(
-        stationData,
-        organizationId
-      );
-      tools.var_cvar = new VarCvarTool().build(stationData, organizationId);
-      tools.portfolio_metrics = new PortfolioMetricsTool().build(
-        stationData,
-        organizationId
-      );
+      tools.sharpe_ratio = new SharpeRatioTool().build();
+      tools.max_drawdown = new MaxDrawdownTool().build();
+      tools.rolling_returns = new RollingReturnsTool().build();
+      tools.var_cvar = new VarCvarTool().build();
+      tools.portfolio_metrics = new PortfolioMetricsTool().build();
       tools.bond_math = new BondMathTool().build();
     }
 

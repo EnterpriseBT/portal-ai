@@ -719,74 +719,87 @@ const FINANCIAL_PACK: BuiltinToolpack = {
     {
       name: "sharpe_ratio",
       description:
-        "Compute the Sharpe ratio from a series of values. Optionally annualize via the `periodicity` field (daily, weekly, monthly, quarterly, annual).",
+        "Compute the Sharpe ratio from a series of values you provide. Optionally annualize via the `periodicity` field (daily, weekly, monthly, quarterly, annual).",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          column: stringField("Returns column"),
+          ...computeSourceFields(),
+          valueColumn: stringField("Value/price column (a key in the rows)"),
           riskFreeRate: numberField("Per-period risk-free rate (default 0)"),
           periodicity: enumField(
             ["daily", "weekly", "monthly", "quarterly", "annual"],
             "Annualization periodicity"
           ),
         },
-        ["entity", "column"]
+        ["valueColumn"]
       ),
     },
     {
       name: "max_drawdown",
       description:
-        "Compute maximum drawdown (peak-to-trough decline) from a time series.",
+        "Compute maximum drawdown (peak-to-trough decline) from a time series you provide.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          column: stringField("Numeric column"),
+          ...computeSourceFields(),
+          dateColumn: stringField("Date column (a key in the rows)"),
+          valueColumn: stringField("Value/price column (a key in the rows)"),
         },
-        ["entity", "column"]
+        ["dateColumn", "valueColumn"]
       ),
     },
     {
       name: "rolling_returns",
       description:
-        "Compute period-over-period returns within a rolling window.",
+        "Compute period-over-period returns within a rolling window over a time series you provide.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          column: stringField("Numeric column"),
+          ...computeSourceFields(),
+          dateColumn: stringField("Date column (a key in the rows)"),
+          valueColumn: stringField("Value/price column (a key in the rows)"),
           window: integerField("Rolling window size in periods"),
         },
-        ["entity", "column", "window"]
+        ["dateColumn", "valueColumn", "window"]
       ),
     },
     {
       name: "var_cvar",
       description:
-        "Compute Value-at-Risk and Conditional VaR (Expected Shortfall) at a confidence level. Both return positive loss magnitudes.",
+        "Compute Value-at-Risk and Conditional VaR (Expected Shortfall) at a confidence level, over a returns series you provide. Both return positive loss magnitudes.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          column: stringField("Returns column"),
+          ...computeSourceFields(),
+          returnColumn: stringField("Returns column (a key in the rows)"),
           confidence: numberField("Confidence level in (0, 1) (default 0.95)"),
           method: enumField(
             ["historical", "parametric"],
             "Estimation method"
           ),
         },
-        ["entity", "column"]
+        ["returnColumn"]
       ),
     },
     {
       name: "portfolio_metrics",
       description:
-        "Compute portfolio performance metrics: total return, CAGR, Sortino, Calmar, max drawdown. With a benchmark: beta, alpha, information ratio, tracking error, up/down capture.",
+        "Compute portfolio performance metrics over a returns series you provide: total return, CAGR, Sortino, Calmar, max drawdown. With a benchmark source: beta, alpha, information ratio, tracking error, up/down capture.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key holding the returns series"),
-          column: stringField("Returns column"),
-          benchmarkEntity: stringField("Optional benchmark entity"),
-          benchmarkColumn: stringField("Optional benchmark column"),
+          ...computeSourceFields(),
+          returnColumn: stringField("Returns column (a key in the rows)"),
+          benchmarkQueryHandle: stringField(
+            "Optional queryHandle for benchmark returns (enables beta/alpha/etc.)"
+          ),
+          benchmarkReturnColumn: stringField(
+            "Return column within the benchmark rows. Required when a benchmark source is supplied."
+          ),
+          riskFreeRate: numberField(
+            "Per-period risk-free rate for Sortino / alpha (default 0)"
+          ),
+          periodicity: enumField(
+            ["daily", "weekly", "monthly", "quarterly", "annual"],
+            "Annualization periodicity"
+          ),
         },
-        ["entity", "column"]
+        ["returnColumn"]
       ),
     },
     {
@@ -816,18 +829,19 @@ const FINANCIAL_PACK: BuiltinToolpack = {
     {
       name: "technical_indicator",
       description:
-        "Compute a technical indicator (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, OBV, Stochastic, ADX, VWAP, Williams %R, CCI, ROC, PSAR, Ichimoku Cloud, Donchian Channels) on a time series.",
+        "Compute a technical indicator (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, OBV, Stochastic, ADX, VWAP, Williams %R, CCI, ROC, PSAR, Ichimoku Cloud, Donchian Channels) on a time series you provide.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          dateColumn: stringField("Date column"),
+          ...computeSourceFields(),
+          dateColumn: stringField("Date column (a key in the rows)"),
+          valueColumn: stringField("Price/value column (a key in the rows)"),
           indicator: enumField(
             [
               "SMA",
               "EMA",
               "RSI",
               "MACD",
-              "BollingerBands",
+              "BB",
               "ATR",
               "OBV",
               "Stochastic",
@@ -840,15 +854,15 @@ const FINANCIAL_PACK: BuiltinToolpack = {
               "Ichimoku",
               "Donchian",
             ],
-            "Indicator name"
+            "Indicator type"
           ),
-          period: integerField("Lookback period"),
-          closeColumn: stringField("Close-price column"),
-          highColumn: stringField("High-price column (when required)"),
-          lowColumn: stringField("Low-price column (when required)"),
-          volumeColumn: stringField("Volume column (when required)"),
+          params: {
+            type: "object",
+            description:
+              "Optional indicator parameters (e.g. period, stdDev, signalPeriod, conversionPeriod, basePeriod, spanPeriod, displacement, step, max).",
+          },
         },
-        ["entity", "dateColumn", "indicator"]
+        ["dateColumn", "valueColumn", "indicator"]
       ),
     },
   ],
