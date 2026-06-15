@@ -167,7 +167,7 @@ export const BasicsStepUI: React.FC<BasicsStepUIProps> = ({
 
 // ── Container (no extra wiring — container lives one level up) ──────
 
-export interface BasicsStepProps extends BasicsStepUIProps {}
+export type BasicsStepProps = BasicsStepUIProps;
 
 export const BasicsStep: React.FC<BasicsStepProps> = (props) => (
   <BasicsStepUI {...props} />

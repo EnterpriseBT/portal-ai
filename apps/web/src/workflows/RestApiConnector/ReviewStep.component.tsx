@@ -57,7 +57,7 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
 
 // ── Container ────────────────────────────────────────────────────────
 
-export interface ReviewStepProps extends ReviewStepUIProps {}
+export type ReviewStepProps = ReviewStepUIProps;
 
 export const ReviewStep: React.FC<ReviewStepProps> = (props) => (
   <ReviewStepUI {...props} />
