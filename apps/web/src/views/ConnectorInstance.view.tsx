@@ -1,4 +1,10 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 
 import type {
   ConnectorEntityCreateRequestBody,
@@ -125,7 +131,14 @@ export const ConnectorInstanceView = ({
   const runningJobsQuery = sdk.connectorInstances.runningJobs(
     connectorInstanceId
   );
-  const runningJobs = runningJobsQuery.data?.runningJobs ?? [];
+  // Memoize so the array identity is stable across renders — the
+  // lock-SSE effect below lists `runningJobs` in its deps and would
+  // otherwise re-subscribe on every render (the `?? []` makes a fresh
+  // array each time).
+  const runningJobs = useMemo(
+    () => runningJobsQuery.data?.runningJobs ?? [],
+    [runningJobsQuery.data?.runningJobs]
+  );
   const connectSseForLock = sse.create();
   /**
    * Tracks which running-job SSE streams we already have open, so
@@ -202,7 +215,6 @@ export const ConnectorInstanceView = ({
       // when `connectorInstanceId` changes — same-id re-renders
       // pass through because the ref persists across them.
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runningJobs, connectorInstanceId, connectSseForLock, queryClient]);
   // Final cleanup: abort every open SSE on view unmount or
   // connector-instance switch.
