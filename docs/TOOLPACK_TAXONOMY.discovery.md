@@ -54,7 +54,7 @@ The issue frames A–D as alternatives. Grounded in the code, **they compose** �
 
 ### Decision 2 — Handle as universal data currency (issue option A)
 
-**Lean: adopt it.** Carve tools by position relative to the data-table envelope: **producer** (`sql_query`, `display_entity_records`), **transformer** (`bulk_transform`), **consumer** (the 18 compute tools, `visualize`). Privilege = which side of the handle a tool sits on. #114 already made compute tools consumers; this generalizes it and is the precondition #124 (webhook scaling) waits on.
+**Decided: adopt it; role derived** (confirmed 2026-06-16). Carve tools by position relative to the data-table envelope: **producer** (`sql_query`, `display_entity_records`), **transformer** (`bulk_transform`), **consumer** (the 18 compute tools, `visualize`). Privilege = which side of the handle a tool sits on. The producer/transformer/consumer role is **derived** from the D1 capability fields (produces a handle/`resultKind` → producer; declares `consumption` → consumer; both → transformer) — it's a *view* over the metadata, **not a separate declared field**. #114 already made compute tools consumers; this generalizes it and is the precondition #124 (webhook scaling) waits on.
 
 ### Decision 3 — Runtime matches data cardinality to the tool's declared consumption contract (issue option D)
 
