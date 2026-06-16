@@ -86,7 +86,7 @@ The issue frames A–D as alternatives. Grounded in the code, **they compose** �
 | New format = curated, reviewed | yes | yes | no — arbitrary author JS |
 | Security surface | low | low | high (client sandbox, CSP) |
 
-**Lean: B.** An open `resultKind` plus a web renderer registry keyed on it makes new visualizations (D3-backed graphs, the #84 GIS map, future formats) **curated frontend additions** addressable by `resultKind`, with the portal/agent layer never learning a format. Note D3 is *imperative* JS — so "a D3 tool" means a curated D3-backed renderer the tool targets *declaratively* (`resultKind` + spec/params + handle), **not** running arbitrary author D3. **C** (author-supplied sandboxed render code) is the genuine "anyone adds any viz" escape hatch — real, but a separate security-gated feature; out of scope here.
+**Decided: B** (confirmed 2026-06-16). An open `resultKind` plus a web renderer registry keyed on it makes new visualizations (D3-backed graphs, the #84 GIS map, future formats) **curated frontend additions** addressable by `resultKind`, with the portal/agent layer never learning a format. Note D3 is *imperative* JS — so "a D3 tool" means a curated D3-backed renderer the tool targets *declaratively* (`resultKind` + spec/params + handle), **not** running arbitrary author D3. **C** (author-supplied sandboxed render code) is the genuine "anyone adds any viz" escape hatch — real, but a separate security-gated feature; out of scope here.
 
 ## Tradeoff comparison
 
