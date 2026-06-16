@@ -70,7 +70,7 @@ The issue frames A–D as alternatives. Grounded in the code, **they compose** �
 
 ### Decision 5 — Enforcement reads declared capability, not slug
 
-**Lean: declarative.** Cost-ack reads `costHint`; the `409` lock reads a declared `locks: [entityIds]` (or `mutates` capability), not job-type inspection; "always available" is a declared flag. Half-there already (`costHint`). Dissolves seam 3 and makes adding a new write/expensive tool config-only.
+**Decided: fully declarative** (confirmed 2026-06-16). Cost-ack reads `costHint`; the `409` lock reads a declared `locks: [entityIds]` (or `mutates` capability), not job-type inspection; "always available" is a declared flag; write-gating reads per-tool `writes` (finer than today's pack-level gate, invisible to attach UX). Half-there already (`costHint`). Dissolves seam 3 and makes adding a new write/expensive/locking tool config-only.
 
 ### Decision 6 — Visualization is a handle consumer with aggregate-before-render
 
