@@ -100,7 +100,7 @@ export const ProbeReviewStepUI: React.FC<ProbeReviewStepUIProps> = ({
 
 // ── Container ────────────────────────────────────────────────────────
 
-export interface ProbeReviewStepProps extends ProbeReviewStepUIProps {}
+export type ProbeReviewStepProps = ProbeReviewStepUIProps;
 
 export const ProbeReviewStep: React.FC<ProbeReviewStepProps> = (props) => (
   <ProbeReviewStepUI {...props} />
