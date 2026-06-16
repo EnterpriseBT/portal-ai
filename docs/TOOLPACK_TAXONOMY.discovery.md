@@ -48,7 +48,7 @@ The issue frames A–D as alternatives. Grounded in the code, **they compose** �
 | Enforcement is declarative | no (slug-keyed) | yes |
 | Blast radius | low | schema + every enforcement site |
 
-**Lean: B, additive.** Declare *what a tool does* once, and make **enforcement** a projection of that metadata. **The toolpack stays the station-enablement unit, the custom-registration unit, and the UI grouping — unchanged UX/mental model** (see Open Q1); capability metadata is layered onto the tools *inside* packs, not a replacement for packs. `costHint` already lives on metadata — extend the pattern to `locks`/`alwaysAvailable`/`writes`/`resultKind`. For custom packs the author declares these in the served `/schema` (optional fields, clean-cut per Open Q6) — the registration form is unchanged.
+**Decided: B, additive** (confirmed 2026-06-16). Declare *what a tool does* once, and make **enforcement** a projection of that metadata. **The toolpack stays the station-enablement unit, the custom-registration unit, and the UI grouping — unchanged UX/mental model** (see Open Q1); capability metadata is layered onto the tools *inside* packs, not a replacement for packs. `costHint` already lives on metadata — extend the pattern to `locks`/`alwaysAvailable`/`writes`/`resultKind`. For custom packs the author declares these in the served `/schema` (optional fields, clean-cut per Open Q6) — the registration form is unchanged.
 
 ### Decision 2 — Handle as universal data currency (issue option A)
 
