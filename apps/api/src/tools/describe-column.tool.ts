@@ -1,16 +1,15 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import {
-  AnalyticsService,
-  type StationData,
-} from "../services/analytics.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { fetchEntityRows } from "../utils/tools.util.js";
+import {
+  withComputeInput,
+  resolveComputeRecords,
+} from "./compute-input.util.js";
 
-const InputSchema = z.object({
-  entity: z.string().describe("Entity key (table name)"),
-  column: z.string().describe("Numeric column key"),
+const InputSchema = withComputeInput({
+  column: z.string().describe("Numeric column to describe (a key in the rows)"),
   percentiles: z
     .array(z.number().min(0).max(1))
     .optional()
@@ -24,28 +23,23 @@ export class DescribeColumnTool extends Tool<typeof InputSchema> {
   slug = "describe_column";
   name = "Describe Column";
   description =
-    "Compute descriptive statistics (count, mean, median, stddev, variance, mode, min/max, p25/p75, IQR, skewness, kurtosis) for a numeric column. Optionally include arbitrary percentiles.";
+    "Compute descriptive statistics (count, mean, median, stddev, variance, mode, min/max, p25/p75, IQR, skewness, kurtosis) for a numeric column over a dataset you provide. Pass a `queryHandle` from sql_query (or inline `rows`) plus the `column` to describe.";
 
   get schema() {
     return InputSchema;
   }
 
-  build(stationData: StationData, organizationId: string) {
+  build() {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, column, percentiles } = this.validate(input);
-        const records = await fetchEntityRows(
-          stationData,
-          entity,
-          [column],
-          organizationId
-        );
+        const params = this.validate(input);
+        const records = await resolveComputeRecords(params);
         return AnalyticsService.describeColumn({
           records,
-          column,
-          percentiles,
+          column: params.column,
+          percentiles: params.percentiles,
         });
       },
     });

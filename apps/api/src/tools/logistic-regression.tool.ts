@@ -1,21 +1,18 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import {
-  AnalyticsService,
-  type StationData,
-} from "../services/analytics.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { fetchEntityRows } from "../utils/tools.util.js";
+import {
+  withComputeInput,
+  resolveComputeRecords,
+} from "./compute-input.util.js";
 
-const InputSchema = z.object({
-  entity: z.string().describe("Entity key (table name)"),
+const InputSchema = withComputeInput({
   x: z
     .string()
     .optional()
-    .describe(
-      "Single independent-variable column. Use this OR `xColumns`."
-    ),
+    .describe("Single independent-variable column. Use this OR `xColumns`."),
   xColumns: z
     .array(z.string())
     .optional()
@@ -39,36 +36,26 @@ export class LogisticRegressionTool extends Tool<typeof InputSchema> {
   slug = "logistic_regression";
   name = "Logistic Regression";
   description =
-    "Binary logistic regression via IRLS. Returns coefficients (intercept first), " +
-    "per-row predicted probabilities, log-loss, accuracy at threshold 0.5, and IRLS iteration count.";
+    "Binary logistic regression via IRLS over a dataset you provide. Pass a `queryHandle` from sql_query (or inline `rows`) plus the columns. " +
+    "Returns coefficients (intercept first), per-row predicted probabilities, log-loss, accuracy at threshold 0.5, and IRLS iteration count.";
 
   get schema() {
     return InputSchema;
   }
 
-  build(stationData: StationData, organizationId: string) {
+  build() {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, x, xColumns, y, maxIterations } =
-          this.validate(input);
-        const cols = [
-          ...(xColumns ?? (x !== undefined ? [x] : [])),
-          y,
-        ];
-        const records = await fetchEntityRows(
-          stationData,
-          entity,
-          cols,
-          organizationId
-        );
+        const params = this.validate(input);
+        const records = await resolveComputeRecords(params);
         return AnalyticsService.logisticRegression({
           records,
-          x,
-          xColumns,
-          y,
-          maxIterations,
+          x: params.x,
+          xColumns: params.xColumns,
+          y: params.y,
+          maxIterations: params.maxIterations,
         });
       },
     });

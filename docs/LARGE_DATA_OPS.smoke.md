@@ -250,7 +250,53 @@ answers in the same turn.
 
 ---
 
-## §6 — Verify post-conditions
+## §6 — Pure compute: read → compute (#114)
+
+The statistics / regression / financial compute tools are pure — they no
+longer read the backend. The agent composes `read → compute`: it runs a
+`sql_query` (or `display_entity_records`) and passes the resulting
+`queryHandle` (or small inline `rows`) into the compute tool, which
+materializes the rows server-side (capped at `COMPUTE_MAX_ROWS` = 100k)
+before computing. The handle→compute round-trip is covered automatically
+by `compute-from-handle.integration.test.ts` (real Redis) and
+`compute-input.util.test.ts` (mocked handle); this is the agent-driven
+manual walk over the same path.
+
+> **Prompt choice matters.** The agent does anything SQL can express (descriptive
+> stats, even skewness/kurtosis) directly in `sql_query` and never reaches for a
+> compute tool. To exercise the read→compute path you must prompt for an algorithm
+> SQL can't express in one query — **k-means (`cluster`)**, `forecast`,
+> `logistic_regression`, or `hypothesis_test`.
+
+### §6a — Inline compose (small result)
+
+- [x] Prompt: **"Cluster the 50 closest NEOs into 3 groups by max diameter and velocity (k-means)."** (`AVG`-style prompts are answered in SQL and skip the compute tools.)
+- [x] The agent calls `sql_query` (50 rows inline, ≤ `INLINE_ROWS_THRESHOLD`) then **`cluster`**; `resolveComputeRecords` passes the inline rows in and `AnalyticsService.cluster` returns real `{clusters, centroids}` that the model consumes (3 clusters, sensible centroids).
+
+### §6b — Handle compose (large result)
+
+- [x] Prompt the same over a > 100-row set: **"Cluster all NEOs into 4 groups by diameter and velocity."**
+- [x] `sql_query` returns a `queryHandle` envelope (`rowCount` 500, only a `samplePeek` — rows never enter the chat). The agent passes the `queryHandle` to `cluster`; `resolveComputeRecords` resolves it server-side via `getSnapshot` (500 assignments + centroids reach the model). Confirmed the rows did **not** appear in the model's context.
+
+### §6c — Over-cap → hard error
+
+- [x] Covered automatically by `apps/api/src/__tests__/__integration__/tools/compute-from-handle.integration.test.ts` — a handle whose `rowCount` exceeds `COMPUTE_MAX_ROWS` yields `COMPUTE_INPUT_TOO_LARGE`. Manual repro (optional) needs a >100k-row handle or a temporarily-lowered cap.
+
+> **Findings from this walk:**
+> - ✅ Read→compute works end-to-end through a live agent on both the inline and
+>   handle paths. The chart rendered correctly for both the 50-row and 500-row runs.
+> - 🟡 `cluster`/`detect_outliers` emit a **spurious empty data-table block** (their
+>   object results are mis-routed via `ROW_SET_TOOLS`), and the agent does extra
+>   work (a second `sql_query` with a `row_idx` column to positionally join the
+>   cluster labels) to build its chart. Chart output is fine; the empty widget +
+>   agent contortion are the issue. Pre-existing, not #114 — tracked in
+>   [#120](https://github.com/EnterpriseBT/portal-ai/issues/120).
+> - 💡 The agent prefers SQL over the statistics/regression compute tools whenever
+>   SQL can express the computation — input for the tool-taxonomy investigation.
+
+---
+
+## §7 — Verify post-conditions
 
 - [x] **DB inspection** (`npm run db:studio` from `apps/api/`): `neo_summary` rows have `c_diameter_avg_km` populated; `source_id` matches the source key (`c_id` from neos); `synced_at` reflects the latest run.
 - [x] **Jobs table**: every completed / cancelled / failed `bulk_transform` row carries the expected `result` shape (`committedRows`, `partialFailures`, `batchDurationMs`).

@@ -1,20 +1,19 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import {
-  AnalyticsService,
-  type StationData,
-} from "../services/analytics.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { fetchEntityRows } from "../utils/tools.util.js";
+import {
+  withComputeInput,
+  resolveComputeRecords,
+} from "./compute-input.util.js";
 
-const InputSchema = z.object({
-  entity: z.string().describe("Entity key (table name)"),
+const InputSchema = withComputeInput({
   x: z
     .string()
     .optional()
     .describe(
-      "Independent-variable column name. Required when `xColumns` is omitted. Required for `type: polynomial`."
+      "Independent-variable column name (a key in the rows). Required when `xColumns` is omitted. Required for `type: polynomial`."
     ),
   xColumns: z
     .array(z.string())
@@ -22,7 +21,7 @@ const InputSchema = z.object({
     .describe(
       "List of independent-variable columns for multivariate linear regression. Use this OR `x`, not both. Rejected for `type: polynomial`."
     ),
-  y: z.string().describe("Dependent variable column"),
+  y: z.string().describe("Dependent variable column (a key in the rows)"),
   type: z.enum(["linear", "polynomial"]).describe("Regression type"),
   degree: z
     .number()
@@ -47,7 +46,8 @@ export class RegressionTool extends Tool<typeof InputSchema> {
   slug = "regression";
   name = "Regression";
   description =
-    "Perform linear, multivariate-linear, or polynomial regression. " +
+    "Perform linear, multivariate-linear, or polynomial regression over a dataset you provide. " +
+    "Pass a `queryHandle` from sql_query (or inline `rows`) plus the column names. " +
     "Returns coefficients, R-squared, residuals, standard errors, t-statistics, " +
     "p-values, and confidence intervals on each coefficient.";
 
@@ -55,31 +55,21 @@ export class RegressionTool extends Tool<typeof InputSchema> {
     return InputSchema;
   }
 
-  build(stationData: StationData, organizationId: string) {
+  build() {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, x, xColumns, y, type, degree, confidence } =
-          this.validate(input);
-        const cols = [
-          ...(xColumns ?? (x !== undefined ? [x] : [])),
-          y,
-        ];
-        const records = await fetchEntityRows(
-          stationData,
-          entity,
-          cols,
-          organizationId
-        );
+        const params = this.validate(input);
+        const records = await resolveComputeRecords(params);
         return AnalyticsService.regression({
           records,
-          x,
-          xColumns,
-          y,
-          type,
-          degree,
-          confidence,
+          x: params.x,
+          xColumns: params.xColumns,
+          y: params.y,
+          type: params.type,
+          degree: params.degree,
+          confidence: params.confidence,
         });
       },
     });

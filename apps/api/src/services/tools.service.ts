@@ -507,49 +507,39 @@ export class ToolService {
     // Pack: statistics
     // -------------------------------------------------------------------
     if (enabledPacks.has("statistics")) {
-      tools.describe_column = new DescribeColumnTool().build(
-        stationData,
-        organizationId
-      );
-      tools.correlate = new CorrelateTool().build(stationData, organizationId);
-      tools.detect_outliers = new DetectOutliersTool().build(
-        stationData,
-        organizationId
-      );
-      tools.cluster = new ClusterTool().build(stationData, organizationId);
-      tools.aggregate = new AggregateTool().build(stationData, organizationId);
-      tools.hypothesis_test = new HypothesisTestTool().build(
-        stationData,
-        organizationId
-      );
+      // Pure compute tools (#114): data arrives as input (a sql_query
+      // handle or inline rows), so build() takes no station context.
+      tools.describe_column = new DescribeColumnTool().build();
+      tools.correlate = new CorrelateTool().build();
+      tools.detect_outliers = new DetectOutliersTool().build();
+      tools.cluster = new ClusterTool().build();
+      tools.aggregate = new AggregateTool().build();
+      tools.hypothesis_test = new HypothesisTestTool().build();
     }
 
     // -------------------------------------------------------------------
     // Pack: regression
     // -------------------------------------------------------------------
     if (enabledPacks.has("regression")) {
-      tools.regression = new RegressionTool().build(stationData, organizationId);
-      tools.logistic_regression = new LogisticRegressionTool().build(
-        stationData,
-        organizationId
-      );
-      tools.trend = new TrendTool().build(stationData, organizationId);
-      tools.changepoint = new ChangepointTool().build(
-        stationData,
-        organizationId
-      );
-      tools.decompose = new DecomposeTool().build(stationData, organizationId);
-      tools.forecast = new ForecastTool().build(stationData, organizationId);
+      // Pure compute tools (#114): data arrives as input (a sql_query
+      // handle or inline rows), so build() takes no station context.
+      tools.regression = new RegressionTool().build();
+      tools.logistic_regression = new LogisticRegressionTool().build();
+      tools.trend = new TrendTool().build();
+      tools.changepoint = new ChangepointTool().build();
+      tools.decompose = new DecomposeTool().build();
+      tools.forecast = new ForecastTool().build();
     }
 
     // -------------------------------------------------------------------
     // Pack: financial
     // -------------------------------------------------------------------
     if (enabledPacks.has("financial")) {
-      tools.technical_indicator = new TechnicalIndicatorTool().build(
-        stationData,
-        organizationId
-      );
+      // Data-dependent financial tools are pure compute (#114): data
+      // arrives as input (a sql_query handle or inline rows), so build()
+      // takes no station context. The pure-math tools (npv, irr, …) never
+      // read the backend and already take no args.
+      tools.technical_indicator = new TechnicalIndicatorTool().build();
       tools.npv = new NpvTool().build();
       tools.irr = new IrrTool().build();
       tools.tvm = new TvmTool().build();
@@ -557,23 +547,11 @@ export class ToolService {
       tools.xirr = new XirrTool().build();
       tools.depreciation = new DepreciationTool().build();
       tools.amortize = new AmortizeTool().build();
-      tools.sharpe_ratio = new SharpeRatioTool().build(
-        stationData,
-        organizationId
-      );
-      tools.max_drawdown = new MaxDrawdownTool().build(
-        stationData,
-        organizationId
-      );
-      tools.rolling_returns = new RollingReturnsTool().build(
-        stationData,
-        organizationId
-      );
-      tools.var_cvar = new VarCvarTool().build(stationData, organizationId);
-      tools.portfolio_metrics = new PortfolioMetricsTool().build(
-        stationData,
-        organizationId
-      );
+      tools.sharpe_ratio = new SharpeRatioTool().build();
+      tools.max_drawdown = new MaxDrawdownTool().build();
+      tools.rolling_returns = new RollingReturnsTool().build();
+      tools.var_cvar = new VarCvarTool().build();
+      tools.portfolio_metrics = new PortfolioMetricsTool().build();
       tools.bond_math = new BondMathTool().build();
     }
 

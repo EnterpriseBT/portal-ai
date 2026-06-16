@@ -35,3 +35,14 @@ export const STATEMENT_TIMEOUT_MS = 30_000;
 
 /** Below this row count, reads still inline rows instead of returning a handle. */
 export const INLINE_ROWS_THRESHOLD = 100;
+
+/** Max rows a query handle stages in Redis; results past this truncate
+ *  (the handle's `truncated` flag is set and only this many rows are cached). */
+export const HANDLE_ROW_CAP = 100_000;
+
+/** Max rows a pure compute tool (#114) will materialize from a handle, or
+ *  accept inline. Equal to HANDLE_ROW_CAP — the read primitive cannot stage
+ *  more than that, so this is the faithful-inline ceiling. Past it the tool
+ *  throws COMPUTE_INPUT_TOO_LARGE and the agent must pre-aggregate/sample in
+ *  SQL (a GROUP BY rollup, `LIMIT n`, or bulk_aggregate). */
+export const COMPUTE_MAX_ROWS = HANDLE_ROW_CAP;

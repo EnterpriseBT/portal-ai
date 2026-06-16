@@ -1,31 +1,37 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import {
-  AnalyticsService,
-  type StationData,
-} from "../services/analytics.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { fetchEntityRows } from "../utils/tools.util.js";
+import {
+  withComputeInput,
+  resolveComputeRecords,
+} from "./compute-input.util.js";
 
-const InputSchema = z.object({
-  entity: z.string().describe("Entity (table) of per-period returns."),
+// `withComputeInput` supplies the PRIMARY data source (queryHandle / rows)
+// for the portfolio's returns. The optional benchmark is a SECOND dataset,
+// so it gets its own optional source fields resolved separately.
+const InputSchema = withComputeInput({
   returnColumn: z
     .string()
     .describe(
-      "Column with per-period returns (decimal — 0.01 = 1% per period)."
+      "Column with per-period returns, decimal — 0.01 = 1% (a key in the rows)."
     ),
-  benchmarkEntity: z
+  benchmarkQueryHandle: z
     .string()
     .optional()
     .describe(
-      "Optional benchmark entity. When supplied, the result includes beta, alpha, information ratio, tracking error, and up/down capture."
+      "Optional queryHandle for benchmark returns. When supplied, the result adds beta, alpha, information ratio, tracking error, and up/down capture."
     ),
+  benchmarkRows: z
+    .array(z.record(z.string(), z.unknown()))
+    .optional()
+    .describe("Inline benchmark rows (alternative to benchmarkQueryHandle)."),
   benchmarkReturnColumn: z
     .string()
     .optional()
     .describe(
-      "Column on the benchmark entity. Required when benchmarkEntity is supplied."
+      "Return column within the benchmark rows. Required when a benchmark source is supplied."
     ),
   riskFreeRate: z
     .number()
@@ -45,54 +51,44 @@ export class PortfolioMetricsTool extends Tool<typeof InputSchema> {
   slug = "portfolio_metrics";
   name = "Portfolio Metrics";
   description =
-    "Compute portfolio performance metrics: total return, CAGR, Sortino, " +
-    "Calmar, max drawdown. With a benchmark: beta, alpha, information ratio, " +
-    "tracking error, up/down capture.";
+    "Compute portfolio performance metrics over a returns series you provide " +
+    "(pass a `queryHandle` from sql_query or inline `rows`): total return, CAGR, " +
+    "Sortino, Calmar, max drawdown. With a benchmark source: beta, alpha, " +
+    "information ratio, tracking error, up/down capture.";
 
   get schema() {
     return InputSchema;
   }
 
-  build(stationData: StationData, organizationId: string) {
+  build() {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const {
-          entity,
-          returnColumn,
-          benchmarkEntity,
-          benchmarkReturnColumn,
-          riskFreeRate,
-          periodicity,
-        } = this.validate(input);
-        if (benchmarkEntity !== undefined && !benchmarkReturnColumn) {
+        const params = this.validate(input);
+        const records = await resolveComputeRecords(params);
+
+        const hasBenchmark =
+          params.benchmarkQueryHandle != null || params.benchmarkRows != null;
+        if (hasBenchmark && !params.benchmarkReturnColumn) {
           throw new Error(
-            "benchmarkReturnColumn is required when benchmarkEntity is supplied"
+            "benchmarkReturnColumn is required when a benchmark source is supplied"
           );
         }
-        const records = await fetchEntityRows(
-          stationData,
-          entity,
-          [returnColumn],
-          organizationId
-        );
-        const benchmarkRecords =
-          benchmarkEntity !== undefined && benchmarkReturnColumn !== undefined
-            ? await fetchEntityRows(
-                stationData,
-                benchmarkEntity,
-                [benchmarkReturnColumn],
-                organizationId
-              )
-            : undefined;
+        const benchmarkRecords = hasBenchmark
+          ? await resolveComputeRecords({
+              queryHandle: params.benchmarkQueryHandle,
+              rows: params.benchmarkRows,
+            })
+          : undefined;
+
         return AnalyticsService.portfolioMetrics({
           records,
-          returnColumn,
+          returnColumn: params.returnColumn,
           benchmarkRecords,
-          benchmarkReturnColumn,
-          riskFreeRate,
-          periodicity,
+          benchmarkReturnColumn: params.benchmarkReturnColumn,
+          riskFreeRate: params.riskFreeRate,
+          periodicity: params.periodicity,
         });
       },
     });

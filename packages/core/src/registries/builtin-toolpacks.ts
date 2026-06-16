@@ -116,6 +116,21 @@ const enumField = (values: string[], description: string) => ({
   description,
 });
 
+/** The standard pure-compute data source (#114): exactly one of a query
+ *  handle or inline rows. Spread into a compute tool's `properties`; the
+ *  XOR is enforced by the tool's Zod schema, not the JSON-schema `required`. */
+const computeSourceFields = (): Record<string, Record<string, unknown>> => ({
+  queryHandle: stringField(
+    "A queryHandle from sql_query or display_entity_records; the rows it staged are the dataset to compute over. Provide this OR `rows`, not both."
+  ),
+  rows: {
+    type: "array",
+    items: { type: "object" },
+    description:
+      "Inline rows to compute over (alternative to `queryHandle`), keyed by column name.",
+  },
+});
+
 // ── Registry ──────────────────────────────────────────────────────────
 
 const DATA_QUERY_PACK: BuiltinToolpack = {
@@ -253,8 +268,8 @@ const STATISTICS_PACK: BuiltinToolpack = {
         "Compute descriptive statistics (count, mean, median, stddev, variance, mode, min/max, p25/p75, IQR, skewness, kurtosis) for a numeric column. Optionally include arbitrary percentiles.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key (table name)"),
-          column: stringField("Numeric column key"),
+          ...computeSourceFields(),
+          column: stringField("Numeric column to describe (a key in the rows)"),
           percentiles: {
             type: "array",
             items: { type: "number", minimum: 0, maximum: 1 },
@@ -262,12 +277,12 @@ const STATISTICS_PACK: BuiltinToolpack = {
               "Optional list of percentiles to compute (each in [0, 1]).",
           },
         },
-        ["entity", "column"]
+        ["column"]
       ),
       examples: [
         {
           title: "Describe order amounts",
-          input: { entity: "orders", column: "amount" },
+          input: { queryHandle: "qh-1a2b", column: "amount" },
           output: {
             count: 144,
             mean: 312.4,
@@ -285,15 +300,15 @@ const STATISTICS_PACK: BuiltinToolpack = {
         "Compute the correlation between two numeric columns. Supports Pearson (default), Spearman (rank-based, monotonic), and Kendall τ-b.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key (table name)"),
-          columnA: stringField("First numeric column"),
-          columnB: stringField("Second numeric column"),
+          ...computeSourceFields(),
+          columnA: stringField("First numeric column (a key in the rows)"),
+          columnB: stringField("Second numeric column (a key in the rows)"),
           method: enumField(
             ["pearson", "spearman", "kendall"],
             "Correlation method. Default 'pearson'."
           ),
         },
-        ["entity", "columnA", "columnB"]
+        ["columnA", "columnB"]
       ),
     },
     {
@@ -302,8 +317,8 @@ const STATISTICS_PACK: BuiltinToolpack = {
         "Detect outliers in a numeric column using IQR, Z-score, or modified Z (MAD).",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key (table name)"),
-          column: stringField("Numeric column key"),
+          ...computeSourceFields(),
+          column: stringField("Numeric column to scan (a key in the rows)"),
           method: enumField(
             ["iqr", "zscore", "mad"],
             "Detection method: iqr, zscore, or mad (median absolute deviation)"
@@ -312,7 +327,7 @@ const STATISTICS_PACK: BuiltinToolpack = {
             "Cutoff: IQR multiplier (default 1.5), |z| cutoff (default 3), or |modified z| cutoff (default 3.5)"
           ),
         },
-        ["entity", "column", "method"]
+        ["column", "method"]
       ),
     },
     {
@@ -320,8 +335,10 @@ const STATISTICS_PACK: BuiltinToolpack = {
       description: "Perform k-means clustering on specified numeric columns.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key (table name)"),
-          columns: stringArrayField("Numeric columns to cluster on"),
+          ...computeSourceFields(),
+          columns: stringArrayField(
+            "Numeric columns to cluster on (keys in the rows)"
+          ),
           k: integerField("Number of clusters (>= 2)"),
           standardize: booleanField(
             "Z-score each column before clustering. Centroids are returned in original units. Default false."
@@ -329,7 +346,7 @@ const STATISTICS_PACK: BuiltinToolpack = {
           seed: integerField("Seed for reproducible cluster initialization"),
           maxIterations: integerField("Maximum k-means iterations"),
         },
-        ["entity", "columns", "k"]
+        ["columns", "k"]
       ),
     },
     {
@@ -338,9 +355,9 @@ const STATISTICS_PACK: BuiltinToolpack = {
         "Group-by + reduce. Produces one row per group with the requested metrics.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity (table) to aggregate"),
+          ...computeSourceFields(),
           groupBy: stringArrayField(
-            "Columns to group by. Pass [] to aggregate over the whole table."
+            "Columns to group by (keys in the rows). Pass [] to aggregate over the whole dataset."
           ),
           metrics: {
             type: "array",
@@ -364,14 +381,14 @@ const STATISTICS_PACK: BuiltinToolpack = {
                   ],
                   "Aggregation operator"
                 ),
-                alias: stringField("Output column name (defaults to op_column)"),
+                as: stringField("Output column name (defaults to op_column)"),
               },
               required: ["op"],
             },
             description: "List of metrics to compute per group.",
           },
         },
-        ["entity", "groupBy", "metrics"]
+        ["groupBy", "metrics"]
       ),
     },
     {
@@ -390,11 +407,29 @@ const STATISTICS_PACK: BuiltinToolpack = {
             ],
             "Which test to run."
           ),
-          entity: stringField("Entity key. Required for column-based tests."),
-          column: stringField("Numeric column for one-sample / paired tests"),
-          columnB: stringField("Second column for two-sample / paired tests"),
-          mu0: numberField(
+          // Optional data source: column-based tests need rows; chi_squared
+          // uses observed/expected directly and needs neither.
+          ...computeSourceFields(),
+          columnA: stringField(
+            "First numeric column (one-sample sample, or sample 1)"
+          ),
+          columnB: stringField("Second numeric column (sample 2)"),
+          mu: numberField(
             "Hypothesized mean for one-sample t-test. Default 0."
+          ),
+          observed: {
+            type: "array",
+            items: { type: "number", minimum: 0 },
+            description: "Observed counts for chi_squared.",
+          },
+          expected: {
+            type: "array",
+            items: { type: "number" },
+            description:
+              "Expected counts for chi_squared (same length as observed; each > 0).",
+          },
+          df: integerField(
+            "Degrees of freedom for chi_squared. Default observed.length - 1."
           ),
         },
         ["test"]
@@ -413,68 +448,59 @@ const REGRESSION_PACK: BuiltinToolpack = {
     {
       name: "regression",
       description:
-        "Perform linear, multivariate-linear, or polynomial regression. Returns coefficients, R-squared, residuals, standard errors, t-statistics, p-values, and confidence intervals on each coefficient.",
+        "Perform linear, multivariate-linear, or polynomial regression over a dataset you provide. Returns coefficients, R-squared, residuals, standard errors, t-statistics, p-values, and confidence intervals on each coefficient.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
+          ...computeSourceFields(),
           x: stringField(
-            "Independent variable column (linear / polynomial only)"
+            "Independent variable column (a key in the rows). Use this OR `xColumns`."
           ),
           xColumns: stringArrayField(
-            "Independent variables for multivariate-linear regression"
+            "Independent variables for multivariate-linear regression (keys in the rows)"
           ),
-          y: stringField("Dependent variable column"),
-          type: enumField(
-            ["linear", "multivariate", "polynomial"],
-            "Regression type"
-          ),
+          y: stringField("Dependent variable column (a key in the rows)"),
+          type: enumField(["linear", "polynomial"], "Regression type"),
           degree: integerField(
-            "Polynomial degree (default 2; ignored for linear/multivariate)"
+            "Polynomial degree (default 2; ignored for linear)"
           ),
-          intercept: booleanField(
-            "Fit an intercept term (default true). Force through origin when false."
+          confidence: numberField(
+            "Confidence level for the coefficient intervals (default 0.95)"
           ),
         },
-        ["entity", "y", "type"]
+        ["y", "type"]
       ),
       examples: [
         {
           title: "Linear fit of price vs. square footage",
-          input: {
-            entity: "listings",
-            x: "sqft",
-            y: "price",
-            type: "linear",
-          },
-          output: {
-            coefficients: [25000, 188.4],
-            rSquared: 0.74,
-          },
+          input: { queryHandle: "qh-9f3c", x: "sqft", y: "price", type: "linear" },
+          output: { coefficients: [25000, 188.4], rSquared: 0.74 },
         },
       ],
     },
     {
       name: "logistic_regression",
       description:
-        "Binary logistic regression via IRLS. Returns coefficients (intercept first), per-row predicted probabilities, log-loss, accuracy at threshold 0.5, and IRLS iteration count.",
+        "Binary logistic regression via IRLS over a dataset you provide. Returns coefficients (intercept first), per-row predicted probabilities, log-loss, accuracy at threshold 0.5, and IRLS iteration count.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          xColumns: stringArrayField("Predictor columns"),
+          ...computeSourceFields(),
+          x: stringField("Single predictor column. Use this OR `xColumns`."),
+          xColumns: stringArrayField("Predictor columns (keys in the rows)"),
           y: stringField("Binary outcome column (0/1, true/false)"),
+          maxIterations: integerField("Maximum IRLS iterations (default 100)"),
         },
-        ["entity", "xColumns", "y"]
+        ["y"]
       ),
     },
     {
       name: "trend",
       description:
-        "Aggregate a time series by interval and compute a linear trend line.",
+        "Aggregate a time series by interval and compute a linear trend line, over a dataset you provide.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          dateColumn: stringField("Date / timestamp column"),
-          valueColumn: stringField("Numeric column to aggregate"),
+          ...computeSourceFields(),
+          dateColumn: stringField("Date / timestamp column (a key in the rows)"),
+          valueColumn: stringField("Numeric column to aggregate (a key in the rows)"),
           interval: enumField(
             ["day", "week", "month", "quarter", "year"],
             "Bucket size"
@@ -483,63 +509,74 @@ const REGRESSION_PACK: BuiltinToolpack = {
             "Periods past the last bucket to project the linear fit"
           ),
         },
-        ["entity", "dateColumn", "valueColumn", "interval"]
+        ["dateColumn", "valueColumn", "interval"]
       ),
     },
     {
       name: "changepoint",
       description:
-        "Detect mean-shift changepoints in a numeric series via CUSUM. Returns indices, optional dates, per-segment means, and segment ranges.",
+        "Detect mean-shift changepoints in a numeric series via CUSUM, over a dataset you provide. Returns indices, optional dates, per-segment means, and segment ranges.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          column: stringField("Numeric column"),
+          ...computeSourceFields(),
+          valueColumn: stringField("Numeric column (a key in the rows)"),
           dateColumn: stringField(
             "Optional date column to attach to each changepoint"
           ),
-          minSegmentSize: integerField(
-            "Minimum points per segment (default 5)"
+          threshold: numberField(
+            "CUSUM threshold in stddevs of the standardized series (default 5.0)"
+          ),
+          minSegmentLength: integerField(
+            "Minimum spacing between changepoints (default ⌈n/20⌉, floor 5)"
           ),
         },
-        ["entity", "column"]
+        ["valueColumn"]
       ),
     },
     {
       name: "decompose",
       description:
-        "Classical seasonal decomposition of a time series into trend, seasonal, and residual components. Additive or multiplicative.",
+        "Classical seasonal decomposition of a time series into trend, seasonal, and residual components, over a dataset you provide. Additive or multiplicative.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          dateColumn: stringField("Date column"),
-          valueColumn: stringField("Numeric column to decompose"),
-          period: integerField(
+          ...computeSourceFields(),
+          dateColumn: stringField("Date column (a key in the rows)"),
+          valueColumn: stringField("Numeric column to decompose (a key in the rows)"),
+          seasonalPeriod: integerField(
             "Seasonal period (e.g. 12 for monthly data with annual seasonality)"
           ),
-          model: enumField(
+          seasonality: enumField(
             ["additive", "multiplicative"],
-            "Decomposition model"
+            "Decomposition type (default additive)"
           ),
         },
-        ["entity", "dateColumn", "valueColumn", "period"]
+        ["dateColumn", "valueColumn", "seasonalPeriod"]
       ),
     },
     {
       name: "forecast",
       description:
-        "Holt-Winters exponential smoothing forecast. Returns in-sample fits, multi-step point forecasts, prediction intervals, and MAPE.",
+        "Holt-Winters exponential smoothing forecast over a dataset you provide. Returns in-sample fits, multi-step point forecasts, prediction intervals, and MAPE.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          dateColumn: stringField("Date column"),
-          valueColumn: stringField("Numeric column to forecast"),
+          ...computeSourceFields(),
+          dateColumn: stringField("Date column (a key in the rows)"),
+          valueColumn: stringField("Numeric column to forecast (a key in the rows)"),
           horizon: integerField("Number of future periods to forecast"),
-          period: integerField("Seasonal period (omit for non-seasonal)"),
+          seasonalPeriod: integerField("Seasonal period (omit for non-seasonal)"),
+          seasonality: enumField(
+            ["none", "additive", "multiplicative"],
+            "Seasonal component (default none)"
+          ),
+          trend: enumField(["none", "additive"], "Trend component (default additive)"),
           alpha: numberField("Level smoothing parameter (default 0.5)"),
           beta: numberField("Trend smoothing parameter (default 0.1)"),
           gamma: numberField("Seasonal smoothing parameter (default 0.1)"),
+          confidence: numberField(
+            "Confidence level for the prediction intervals (default 0.95)"
+          ),
         },
-        ["entity", "dateColumn", "valueColumn", "horizon"]
+        ["dateColumn", "valueColumn", "horizon"]
       ),
     },
   ],
@@ -682,74 +719,87 @@ const FINANCIAL_PACK: BuiltinToolpack = {
     {
       name: "sharpe_ratio",
       description:
-        "Compute the Sharpe ratio from a series of values. Optionally annualize via the `periodicity` field (daily, weekly, monthly, quarterly, annual).",
+        "Compute the Sharpe ratio from a series of values you provide. Optionally annualize via the `periodicity` field (daily, weekly, monthly, quarterly, annual).",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          column: stringField("Returns column"),
+          ...computeSourceFields(),
+          valueColumn: stringField("Value/price column (a key in the rows)"),
           riskFreeRate: numberField("Per-period risk-free rate (default 0)"),
           periodicity: enumField(
             ["daily", "weekly", "monthly", "quarterly", "annual"],
             "Annualization periodicity"
           ),
         },
-        ["entity", "column"]
+        ["valueColumn"]
       ),
     },
     {
       name: "max_drawdown",
       description:
-        "Compute maximum drawdown (peak-to-trough decline) from a time series.",
+        "Compute maximum drawdown (peak-to-trough decline) from a time series you provide.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          column: stringField("Numeric column"),
+          ...computeSourceFields(),
+          dateColumn: stringField("Date column (a key in the rows)"),
+          valueColumn: stringField("Value/price column (a key in the rows)"),
         },
-        ["entity", "column"]
+        ["dateColumn", "valueColumn"]
       ),
     },
     {
       name: "rolling_returns",
       description:
-        "Compute period-over-period returns within a rolling window.",
+        "Compute period-over-period returns within a rolling window over a time series you provide.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          column: stringField("Numeric column"),
+          ...computeSourceFields(),
+          dateColumn: stringField("Date column (a key in the rows)"),
+          valueColumn: stringField("Value/price column (a key in the rows)"),
           window: integerField("Rolling window size in periods"),
         },
-        ["entity", "column", "window"]
+        ["dateColumn", "valueColumn", "window"]
       ),
     },
     {
       name: "var_cvar",
       description:
-        "Compute Value-at-Risk and Conditional VaR (Expected Shortfall) at a confidence level. Both return positive loss magnitudes.",
+        "Compute Value-at-Risk and Conditional VaR (Expected Shortfall) at a confidence level, over a returns series you provide. Both return positive loss magnitudes.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          column: stringField("Returns column"),
+          ...computeSourceFields(),
+          returnColumn: stringField("Returns column (a key in the rows)"),
           confidence: numberField("Confidence level in (0, 1) (default 0.95)"),
           method: enumField(
             ["historical", "parametric"],
             "Estimation method"
           ),
         },
-        ["entity", "column"]
+        ["returnColumn"]
       ),
     },
     {
       name: "portfolio_metrics",
       description:
-        "Compute portfolio performance metrics: total return, CAGR, Sortino, Calmar, max drawdown. With a benchmark: beta, alpha, information ratio, tracking error, up/down capture.",
+        "Compute portfolio performance metrics over a returns series you provide: total return, CAGR, Sortino, Calmar, max drawdown. With a benchmark source: beta, alpha, information ratio, tracking error, up/down capture.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key holding the returns series"),
-          column: stringField("Returns column"),
-          benchmarkEntity: stringField("Optional benchmark entity"),
-          benchmarkColumn: stringField("Optional benchmark column"),
+          ...computeSourceFields(),
+          returnColumn: stringField("Returns column (a key in the rows)"),
+          benchmarkQueryHandle: stringField(
+            "Optional queryHandle for benchmark returns (enables beta/alpha/etc.)"
+          ),
+          benchmarkReturnColumn: stringField(
+            "Return column within the benchmark rows. Required when a benchmark source is supplied."
+          ),
+          riskFreeRate: numberField(
+            "Per-period risk-free rate for Sortino / alpha (default 0)"
+          ),
+          periodicity: enumField(
+            ["daily", "weekly", "monthly", "quarterly", "annual"],
+            "Annualization periodicity"
+          ),
         },
-        ["entity", "column"]
+        ["returnColumn"]
       ),
     },
     {
@@ -779,18 +829,19 @@ const FINANCIAL_PACK: BuiltinToolpack = {
     {
       name: "technical_indicator",
       description:
-        "Compute a technical indicator (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, OBV, Stochastic, ADX, VWAP, Williams %R, CCI, ROC, PSAR, Ichimoku Cloud, Donchian Channels) on a time series.",
+        "Compute a technical indicator (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, OBV, Stochastic, ADX, VWAP, Williams %R, CCI, ROC, PSAR, Ichimoku Cloud, Donchian Channels) on a time series you provide.",
       parameterSchema: objectSchema(
         {
-          entity: stringField("Entity key"),
-          dateColumn: stringField("Date column"),
+          ...computeSourceFields(),
+          dateColumn: stringField("Date column (a key in the rows)"),
+          valueColumn: stringField("Price/value column (a key in the rows)"),
           indicator: enumField(
             [
               "SMA",
               "EMA",
               "RSI",
               "MACD",
-              "BollingerBands",
+              "BB",
               "ATR",
               "OBV",
               "Stochastic",
@@ -803,15 +854,15 @@ const FINANCIAL_PACK: BuiltinToolpack = {
               "Ichimoku",
               "Donchian",
             ],
-            "Indicator name"
+            "Indicator type"
           ),
-          period: integerField("Lookback period"),
-          closeColumn: stringField("Close-price column"),
-          highColumn: stringField("High-price column (when required)"),
-          lowColumn: stringField("Low-price column (when required)"),
-          volumeColumn: stringField("Volume column (when required)"),
+          params: {
+            type: "object",
+            description:
+              "Optional indicator parameters (e.g. period, stdDev, signalPeriod, conversionPeriod, basePeriod, spanPeriod, displacement, step, max).",
+          },
         },
-        ["entity", "dateColumn", "indicator"]
+        ["dateColumn", "valueColumn", "indicator"]
       ),
     },
   ],

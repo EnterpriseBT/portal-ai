@@ -1,18 +1,17 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import {
-  AnalyticsService,
-  type StationData,
-} from "../services/analytics.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { fetchEntityRows } from "../utils/tools.util.js";
+import {
+  withComputeInput,
+  resolveComputeRecords,
+} from "./compute-input.util.js";
 
-const InputSchema = z.object({
-  entity: z.string().describe("Entity (table) of per-period returns."),
+const InputSchema = withComputeInput({
   returnColumn: z
     .string()
-    .describe("Column with per-period returns (decimal)."),
+    .describe("Column with per-period returns, decimal (a key in the rows)."),
   confidence: z
     .number()
     .gt(0)
@@ -32,31 +31,25 @@ export class VarCvarTool extends Tool<typeof InputSchema> {
   name = "VaR / CVaR";
   description =
     "Compute Value-at-Risk and Conditional VaR (Expected Shortfall) at a " +
-    "confidence level. Historical method sorts returns and reads the tail; " +
+    "confidence level, over a returns series you provide. Pass a `queryHandle` from sql_query (or inline `rows`) plus the return column. Historical method sorts returns and reads the tail; " +
     "parametric assumes normal returns. Both return positive loss magnitudes.";
 
   get schema() {
     return InputSchema;
   }
 
-  build(stationData: StationData, organizationId: string) {
+  build() {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, returnColumn, confidence, method } =
-          this.validate(input);
-        const records = await fetchEntityRows(
-          stationData,
-          entity,
-          [returnColumn],
-          organizationId
-        );
+        const params = this.validate(input);
+        const records = await resolveComputeRecords(params);
         return AnalyticsService.varCvar({
           records,
-          returnColumn,
-          confidence,
-          method,
+          returnColumn: params.returnColumn,
+          confidence: params.confidence,
+          method: params.method,
         });
       },
     });

@@ -1,16 +1,15 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import {
-  AnalyticsService,
-  type StationData,
-} from "../services/analytics.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import { fetchEntityRows } from "../utils/tools.util.js";
+import {
+  withComputeInput,
+  resolveComputeRecords,
+} from "./compute-input.util.js";
 
-const InputSchema = z.object({
-  entity: z.string().describe("Entity key (table name)"),
-  valueColumn: z.string().describe("Value/price column key"),
+const InputSchema = withComputeInput({
+  valueColumn: z.string().describe("Value/price column (a key in the rows)"),
   riskFreeRate: z
     .number()
     .optional()
@@ -27,31 +26,25 @@ export class SharpeRatioTool extends Tool<typeof InputSchema> {
   slug = "sharpe_ratio";
   name = "Sharpe Ratio";
   description =
-    "Compute the Sharpe ratio from a series of values. Optionally annualize via " +
+    "Compute the Sharpe ratio from a series of values you provide. Pass a `queryHandle` from sql_query (or inline `rows`) plus the value column. Optionally annualize via " +
     "the `periodicity` field (daily, weekly, monthly, quarterly, annual).";
 
   get schema() {
     return InputSchema;
   }
 
-  build(stationData: StationData, organizationId: string) {
+  build() {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, valueColumn, riskFreeRate, periodicity } =
-          this.validate(input);
-        const records = await fetchEntityRows(
-          stationData,
-          entity,
-          [valueColumn],
-          organizationId
-        );
+        const params = this.validate(input);
+        const records = await resolveComputeRecords(params);
         return AnalyticsService.sharpeRatio({
           records,
-          valueColumn,
-          riskFreeRate,
-          periodicity,
+          valueColumn: params.valueColumn,
+          riskFreeRate: params.riskFreeRate,
+          periodicity: params.periodicity,
         });
       },
     });
