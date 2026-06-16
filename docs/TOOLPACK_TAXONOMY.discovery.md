@@ -74,7 +74,7 @@ The issue frames A–D as alternatives. Grounded in the code, **they compose** �
 
 ### Decision 6 — Visualization is a handle consumer with aggregate-before-render
 
-**Lean.** Charts declare they *consume a handle* (Decision 2); the engine **aggregates-before-render** to a renderable cardinality before the Vega spec is built (no inlining >threshold rows). Display routing reads a declared `resultKind` (`data-table` / `vega` / `vega-tree` / `scalar` / `mutation`) instead of the hardcoded `ROW_SET_TOOLS`/tool-name checks — **which also fixes #120**. #92 (trace pins) and #84 (GIS/map) are additional consumers of this contract.
+**Decided** (confirmed 2026-06-16). Charts declare they *consume a handle* (Decision 2); the engine **aggregates-before-render** to a renderable cardinality before the Vega spec is built (no inlining >threshold rows). Display routing reads a declared `resultKind` (`data-table` / `vega` / `vega-tree` / `scalar` / `mutation`) instead of the hardcoded `ROW_SET_TOOLS`/tool-name checks — **which also fixes #120**. #92 (trace pins) and #84 (GIS/map) are additional consumers of this contract.
 
 ### Decision 7 — Visualization is extensible to new render formats (e.g. D3)
 
