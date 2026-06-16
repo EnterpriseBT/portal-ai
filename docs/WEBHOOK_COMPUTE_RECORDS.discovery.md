@@ -118,6 +118,7 @@ Built-in compute resolves up to `COMPUTE_MAX_ROWS` (100k) **in-process** — che
 - **Toolpack reorganization / the tool-taxonomy investigation** — separate, larger effort.
 - **A general webhook request-size cap for non-compute tools** — this ticket adds the cap for records injection; whether all webhook calls get a request-byte cap is a small adjacent hardening, mention but don't scope.
 - **`bulk_transform` tool-dispatch of webhook tools** (per-record map) — already works via `bulkDispatch`; this ticket is the *reduce*/whole-dataset records path, orthogonal.
+- **Datasets beyond the cap / streaming to or from the webhook** — the records-in-body path is bounded by `COMPUTE_MAX_ROWS` (+ the request-byte cap) and hard-errors past it. For larger work the existing primitives apply: *map* → `bulk_transform` (per-batch dispatch), *SQL reduce* → `bulk_aggregate`. The genuinely-unsolved case — a **non-SQL reduce over >cap rows in a custom tool**, or a tool that **produces a large result set** — needs handle-passing for webhooks (pull-on-read inputs, return-a-handle outputs), which is a separate, security-sensitive feature tracked in [#124](https://github.com/EnterpriseBT/portal-ai/issues/124). Not in #122.
 
 ## Next step
 
