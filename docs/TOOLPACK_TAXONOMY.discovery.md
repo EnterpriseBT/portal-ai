@@ -58,9 +58,11 @@ The issue frames A–D as alternatives. Grounded in the code, **they compose** �
 
 ### Decision 3 — Runtime matches data cardinality to the tool's declared consumption contract (issue option D)
 
-**A. Agent picks inline/handle/job.** **B. Agent picks the *operation*; the runtime matches the data's N to the tool's declared `consumption` (Decision 1) and selects the delivery mode** — generalize the `INLINE_ROWS_THRESHOLD` auto-switch (already in `sql_query`). `engine-pushdown` → run set-wise (any N); `streaming` → feed the cursor/stream (any N); `bounded(maxRows)` → materialize inline/handle up to the bound, and past it apply the tool's `onOverflow` (`stream | sample | decompose | error`).
+**A. Agent picks inline/handle/job.** **B. Agent picks the *operation*; the runtime delivers via the cheapest mechanism the data's N requires, bounded above by the tool's declared `consumption` (Decision 1).** Tools read a uniform **record-source** abstraction; the runtime backs it by the cheapest substrate for N — in-memory array (small) / Redis handle (mid) / engine cursor or stream (large) — generalizing the `INLINE_ROWS_THRESHOLD` auto-switch already in `sql_query`.
 
-**Lean: B.** Makes "bulk" a *mode* of an operation (dissolves seam 2), and — crucially — the unbounded behavior is no longer a runtime guess or a hidden fudge: it's a **match against the tool's declared contract**. Streaming/pushdown tools are exact at any N; only `bounded` tools without a streaming form hit `onOverflow`, and that's an explicit, surfaced, author-chosen fallback (the honest residue of the caveat).
+`consumption` is a **ceiling, not a mandate** — an ordering `bounded(maxRows) ⊂ streaming ≈ engine-pushdown`. A `streaming`/`engine-pushdown` tool *can* take an unbounded source but equally accepts a tiny inline one, so **small N → inline with zero streaming overhead, no matter how capable the tool is**; the streaming/job machinery engages only when N actually demands it. At large N: `engine-pushdown` runs set-wise, `streaming` feeds the cursor, `bounded` materializes up to its bound and past it applies the tool's `onOverflow` (`stream | sample | decompose | error`).
+
+**Lean: B.** Makes "bulk" a *mode* of an operation (dissolves seam 2); unbounded behavior is a **match against the tool's declared contract**, not a guess; and — because `consumption` is a ceiling — declaring `streaming` costs nothing on the common small-data path. Streaming/pushdown tools are exact at any N; only `bounded` tools without a streaming form hit `onOverflow`, an explicit, surfaced, author-chosen fallback (the honest residue of the caveat).
 
 ### Decision 4 — Shrink the reduce tier; push SQL-expressible reduce into the engine (issue option C)
 
