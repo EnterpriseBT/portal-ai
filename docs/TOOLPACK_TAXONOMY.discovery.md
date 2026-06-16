@@ -66,7 +66,7 @@ The issue frames A–D as alternatives. Grounded in the code, **they compose** �
 
 ### Decision 4 — Shrink the reduce tier; push SQL-expressible reduce into the engine (issue option C)
 
-**Lean: spike, then push.** The §6 smoke (issue #120 walk) showed the live agent does *everything SQL can express* — descriptive stats incl. skewness/kurtosis — directly in `sql_query`, never reaching for `describe_column`/`correlate`/`aggregate`. Strong evidence most of the 18-tool reduce tier is dead weight as agent-facing tools. Express the SQL-expressible majority as engine aggregates/window functions; keep the pure-fn tier only for the genuinely-iterative escape hatch (k-means, Holt-Winters, IRLS). Needs a spike (Open Q2) to measure the fraction.
+**Decided: spike, then push** (confirmed 2026-06-16). The §6 smoke (issue #120 walk) showed the live agent does *everything SQL can express* — descriptive stats incl. skewness/kurtosis — directly in `sql_query`, never reaching for `describe_column`/`correlate`/`aggregate`. Strong evidence most of the 18-tool reduce tier is dead weight as agent-facing tools. Express the SQL-expressible majority as engine aggregates/window functions; keep the pure-fn tier only for the genuinely-iterative escape hatch (k-means, Holt-Winters, IRLS). Needs a spike (Open Q2) to measure the fraction.
 
 ### Decision 5 — Enforcement reads declared capability, not slug
 
