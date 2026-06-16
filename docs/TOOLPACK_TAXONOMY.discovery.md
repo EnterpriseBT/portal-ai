@@ -94,6 +94,8 @@ The issue frames A–D as alternatives. Grounded in the code, **they compose** �
 
 ## Recommendation
 
+**Cross-cutting requirement (confirmed):** **unbounded datasets work seamlessly for every operation — no hard wall.** Handles are streamable / cursor-backed; the runtime auto-escalates inline → handle → stream/job by scale; 100k is the in-memory-materialization threshold, not a processing ceiling. The lone tradeoff is non-SQL reduce, which becomes streamed/online/sampled (approximate) rather than failing — exactness, not capability. See the Appendix for the full prompt→render graph.
+
 1. **Make declared capability metadata the substrate** — each tool declares `{ pure, reads, writes, cardinality, computeShape, costHint, locks, resultKind, alwaysAvailable }`; "toolpack" becomes a UI/discovery projection, enablement a station-config projection, enforcement a capability projection.
 2. **Adopt handle-as-currency**: tools are producers / transformers / consumers of the data-table envelope; privilege = side of the handle.
 3. **Runtime selects cardinality mode** (inline / handle / job) from scale; the agent picks the operation. Generalize the `INLINE_ROWS_THRESHOLD` pattern; escalate to a job past `HANDLE_ROW_CAP`.
@@ -114,7 +116,7 @@ The issue frames A–D as alternatives. Grounded in the code, **they compose** �
 ## What this doesn't decide
 
 - **Shipping the reorg** — child slices (spawned from the slice map) own implementation; this is design-only.
-- **Re-deciding #114's contract** (`resolveComputeRecords`, the 100k ceiling) — consumed as settled.
+- **Re-deciding #114's contract** (`resolveComputeRecords`, the 100k threshold) — consumed as settled *for the in-memory tier*. But the **experience beyond the threshold is in scope here**: #114 surfaced a hard `COMPUTE_INPUT_TOO_LARGE`; this redesign replaces that wall with the seamless-unbounded path (streamable cursor / transparent decompose) per the cross-cutting requirement. The 100k figure stays; the dead-end past it does not.
 - **Re-modeling the toolpack attach/register UX** — explicitly preserved. Stations still attach/detach packs; custom packs register via the same dialog/flow; the pack stays the user-facing unit. The redesign is additive (per-tool capability metadata for enforcement) and must not change either flow's UX or mental model.
 - **The bulk family implementations** (`bulk_delete` #101, `bulk_apply` #102, `bulk_materialize` #112) — the taxonomy gives them a coherent home (transformers/producers at job cardinality); they ship as children.
 - **#124 (webhook scaling)** — consumes this taxonomy's handle contract; sequenced after.
@@ -123,3 +125,35 @@ The issue frames A–D as alternatives. Grounded in the code, **they compose** �
 ## Next step
 
 Write `docs/TOOLPACK_TAXONOMY.spec.md` (the capability-metadata schema; the producer/transformer/consumer + resultKind contract; the mode-selection rule; the declarative enforcement points) and `docs/TOOLPACK_TAXONOMY.plan.md`. The plan's headline output is the **slice map**: a foundation slice (capability-metadata schema + projections), then independent slices for runtime mode-selection, declarative enforcement, the reduce-tier spike→push, and the visualization-consumer contract + the web renderer registry (open `resultKind` → renderer, so new formats like D3/GIS slot in) — each a child ticket sequenced behind #114, each green-testable on its own.
+
+## Appendix — Worked example: prompt → render across all cardinalities
+
+**Requirement this encodes: unbounded datasets work seamlessly for *every* operation — no hard wall.** The agent picks the operation; the runtime auto-escalates the mode by scale. The 100k figure (`HANDLE_ROW_CAP` / `COMPUTE_MAX_ROWS`) is an **in-memory materialization** threshold for the pure-fn path, **not a ceiling on what the system can process** — beyond it, operations stream (cursor-backed handle) or run engine-side / decomposed, transparently.
+
+```
+PROMPT
+  │  agent picks the OPERATION only (D3); runtime picks the mode
+  ▼
+classify by COMPUTE SHAPE:  scan · reduce · map · mutate · visualize
+  ▼
+runtime estimates N (rows the op touches)
+  ▼
+cardinality gate ─ N≤100 INLINE ─ 100<N≤100k HANDLE(materialized) ─ N>100k STREAM / JOB
+  ▼
+RESULT { resultKind }  →  resolveDisplayBlock routes by resultKind   (D6, fixes #120)
+  ▼
+web renderer registry (D7): data-table · scalar · vega · vega-tree · d3 · geo · mutation-result
+```
+
+| Operation | N ≤ 100 (inline) | 100 < N ≤ 100k (handle) | **N > 100k — seamless unbounded path** | resultKind |
+|---|---|---|---|---|
+| **scan/read** | rows inline | materialized handle | **streamable cursor — paged/streamed, unbounded** | `data-table` |
+| **reduce (SQL)** | engine, inline | engine | **engine set-wise / `bulk_aggregate`, unbounded** | `scalar`/`data-table` |
+| **reduce (non-SQL)** | pure-fn, inline | pure-fn over handle | **runtime auto-decomposes (sample-reduce → map-assign) or streams an online variant — see caveat** | `data-table`/custom |
+| **map/transform** | SQL / few inline calls | `bulk_transform` | **`bulk_transform` job, batched, unbounded** | progress |
+| **mutate/write** | `entity_record_*` + lock | — | **`bulk_transform` job + lock, unbounded** | `mutation-result` |
+| **visualize** | inline spec | aggregate-before-render | **aggregate-before-render over the cursor/engine → small handle → render, unbounded** | `vega`/`vega-tree`/`d3`/`geo` |
+
+**Commits to (resolves the handle-backing question):** a handle becomes a **streamable, cursor-backed reference** (unbounded paged reads over the engine), not only a materialized ≤100k Redis snapshot. The snapshot stays as the cheap in-memory tier (≤100k); the cursor is the unbounded tier. Read / compute / viz / #124-webhook consumers stream pages and never hit a wall. (The cursor mechanism — engine cursor vs temp table vs re-runnable query, and Postgres vs DuckDB — is a spec/spike detail; the *requirement* is fixed.)
+
+**The one honest caveat — non-SQL reduce (k-means, Holt-Winters, IRLS).** Exact, in-memory reduce over an unbounded set is physically impossible. "Seamless" here means the runtime **never hard-errors and never makes the agent decompose by hand** — it transparently uses a streaming/online variant or sample-reduce → map-assign, and surfaces that it sampled/streamed. The tradeoff is *exactness*, not *capability*. Everything else (scan, SQL-reduce, map, mutate, viz-after-aggregation) is exact and unbounded.
