@@ -23,6 +23,7 @@ import { z } from "zod";
 import {
   ToolpackToolDefinitionSchema,
   ToolpackMetadataSchema,
+  customToolCapabilityError,
   type ToolpackToolDefinition,
   type ToolpackMetadata,
 } from "@portalai/core/models";
@@ -205,6 +206,24 @@ export class ToolpackRegistrationService {
         ApiCode.TOOLPACK_SCHEMA_INVALID,
         `The toolpack schema response from ${url} did not match the expected shape (${describeFirstZodIssue(validated.error.issues)}).`
       );
+    }
+
+    // #121 child I: a custom tool may declare only the pure-consumer
+    // capability subset. Consumption is gated to what the runtime can feed
+    // today — `none` (inline) — until #124 ships the records-in-body /
+    // pull-on-read transport, which widens the allowed modes.
+    for (const t of validated.data.tools) {
+      if (!t.capability) continue;
+      const reason = customToolCapabilityError(t.capability, {
+        allowedConsumptionModes: ["none"],
+      });
+      if (reason) {
+        throw new ApiError(
+          400,
+          ApiCode.TOOLPACK_CAPABILITY_INVALID,
+          `Tool '${t.name}' from ${url} declares a capability outside the allowed subset: ${reason}.`
+        );
+      }
     }
 
     return validated.data.tools;

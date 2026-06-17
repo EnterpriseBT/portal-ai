@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
+import { ToolCapabilitySchema } from "./tool-capability.model.js";
 
 /**
  * Organization Toolpack model — the canonical record for a custom
@@ -76,6 +77,10 @@ export const ToolpackToolDefinitionSchema = z.object({
    *  with `expression.kind === "tool"`. Absent means the tool is rejected
    *  from the dispatch path (matches the existing builtin contract). */
   bulkDispatch: BulkDispatchMetadataSchema.optional(),
+  /** Optional declared capability (#121). Custom tools may declare only the
+   *  pure-consumer subset — enforced at registration via
+   *  `customToolCapabilityError`. Absent means a legacy pure inline tool. */
+  capability: ToolCapabilitySchema.optional(),
 });
 export type ToolpackToolDefinition = z.infer<
   typeof ToolpackToolDefinitionSchema

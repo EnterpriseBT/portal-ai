@@ -193,6 +193,86 @@ describe("ToolpackRegistrationService", () => {
       );
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
+
+    // ── capability subset (#121 child I) ────────────────────────────
+    const toolWithCapability = (capability: Record<string, unknown>) => ({
+      tools: [
+        {
+          name: "summarize",
+          description: "Summarize the records.",
+          parameterSchema: { type: "object", properties: {} },
+          capability,
+        },
+      ],
+    });
+
+    const pureConsumerCapability = {
+      pure: true,
+      reads: [],
+      writes: [],
+      consumption: { mode: "none" },
+      computeShape: "reduce",
+      costHint: "free",
+      locks: [],
+      resultKind: "data-table",
+      alwaysAvailable: false,
+    };
+
+    it("accepts a tool declaring a valid pure-consumer capability", async () => {
+      mockFetch.mockResolvedValue(
+        fetchOk(toolWithCapability(pureConsumerCapability))
+      );
+      const tools = await ToolpackRegistrationService.fetchSchema(
+        "https://example.com/schema",
+        undefined
+      );
+      expect(tools[0].capability).toMatchObject({ pure: true });
+    });
+
+    it("accepts a tool with no capability (legacy inline tool)", async () => {
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+      const tools = await ToolpackRegistrationService.fetchSchema(
+        "https://example.com/schema",
+        undefined
+      );
+      expect(tools[0].capability).toBeUndefined();
+    });
+
+    it("rejects a capability outside the subset (non-pure) with TOOLPACK_CAPABILITY_INVALID", async () => {
+      mockFetch.mockResolvedValue(
+        fetchOk(
+          toolWithCapability({
+            ...pureConsumerCapability,
+            pure: false,
+            reads: ["entity_records"],
+            consumption: { mode: "engine-pushdown" },
+          })
+        )
+      );
+      await expect(
+        ToolpackRegistrationService.fetchSchema(
+          "https://example.com/schema",
+          undefined
+        )
+      ).rejects.toMatchObject({ code: ApiCode.TOOLPACK_CAPABILITY_INVALID });
+    });
+
+    it("rejects a bounded consumption mode until #124 (gated to none)", async () => {
+      mockFetch.mockResolvedValue(
+        fetchOk(
+          toolWithCapability({
+            ...pureConsumerCapability,
+            consumption: { mode: "bounded", maxRows: 1000, onOverflow: "error" },
+          })
+        )
+      );
+      await expect(
+        ToolpackRegistrationService.fetchSchema(
+          "https://example.com/schema",
+          undefined
+        )
+      ).rejects.toMatchObject({ code: ApiCode.TOOLPACK_CAPABILITY_INVALID });
+    });
   });
 
   // ── fetchMetadata ─────────────────────────────────────────────────

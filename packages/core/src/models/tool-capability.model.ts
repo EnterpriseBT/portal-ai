@@ -184,3 +184,44 @@ export function deriveToolRole(cap: ToolCapability): ToolRole {
   if (cap.consumption.mode !== "none") return "consumer"; // reduces/visualizes a consumed set
   return "none"; // pure-math: no record input, no output dataset
 }
+
+/**
+ * Validate a custom (webhook) tool's declared capability against the
+ * **pure-consumer subset** (#121 child I, discovery D7). Custom tools run
+ * third-party with no backend access, so they may declare only a constrained
+ * slice of the capability model. Returns a human-readable reason when the
+ * capability is outside the subset, or `null` when it's allowed.
+ *
+ * Note that the base `ToolCapabilitySchema` refinements already reject the
+ * privileged combinations (pure ⇒ no reads/writes/locks/engine-pushdown;
+ * mutation-result ⇒ writes). This adds the *custom-only* rules on top:
+ * `pure` is mandatory, no `alwaysAvailable`, compute shape limited to
+ * map/reduce/pure, no write-result render kinds, and the consumption mode
+ * gated to what the runtime can actually feed today (`allowedConsumptionModes`
+ * — `["none"]` until #124 ships the records-in-body / pull-on-read transport).
+ */
+export function customToolCapabilityError(
+  cap: ToolCapability,
+  opts: { allowedConsumptionModes: readonly ConsumptionMode[] }
+): string | null {
+  if (!cap.pure) {
+    return "custom tools must be pure — they have no backend access (no reads, writes, locks, or engine pushdown)";
+  }
+  if (cap.alwaysAvailable) {
+    return "custom tools cannot be always-available";
+  }
+  if (
+    cap.computeShape !== "map" &&
+    cap.computeShape !== "reduce" &&
+    cap.computeShape !== "pure"
+  ) {
+    return `custom tools cannot declare computeShape '${cap.computeShape}' (only map, reduce, or pure)`;
+  }
+  if (cap.resultKind === "mutation-result" || cap.resultKind === "progress") {
+    return `custom tools cannot declare resultKind '${cap.resultKind}' (they don't write)`;
+  }
+  if (!opts.allowedConsumptionModes.includes(cap.consumption.mode)) {
+    return `custom tools cannot declare consumption mode '${cap.consumption.mode}' yet (allowed: ${opts.allowedConsumptionModes.join(", ")})`;
+  }
+  return null;
+}
