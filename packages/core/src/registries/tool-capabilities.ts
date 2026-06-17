@@ -47,7 +47,8 @@ export const SYSTEM_TOOL_CAPABILITIES: Record<string, ToolCapability> = {
     computeShape: "scan",
     costHint: "free",
     locks: [],
-    resultKind: "data-table",
+    // on-demand lookup the agent consumes; not auto-surfaced as a table.
+    resultKind: "scalar",
     alwaysAvailable: true,
   },
 };

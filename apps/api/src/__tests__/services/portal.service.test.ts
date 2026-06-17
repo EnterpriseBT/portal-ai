@@ -970,35 +970,40 @@ describe("PortalService", () => {
       });
     });
 
-    it("sends data-table SSE event for detect_outliers tool results", async () => {
-      const outlierResult = { rows: [{ value: 99, is_outlier: true }] };
-      const chunks = [
-        {
-          type: "tool-result",
-          toolName: "detect_outliers",
-          toolCallId: "tc-2",
-          output: outlierResult,
-        },
-        { type: "finish" },
-      ];
-      mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
+    // #120 regression: cluster/detect_outliers are reduce tools (resultKind
+    // "scalar"), not row producers. They must NOT auto-surface a data-table
+    // — previously they were in ROW_SET_TOOLS and emitted spurious empty
+    // widgets because their result shape carries no top-level `rows`.
+    it.each(["detect_outliers", "cluster"])(
+      "does not surface a data-table for %s (fixes #120)",
+      async (toolName) => {
+        const chunks = [
+          {
+            type: "tool-result",
+            toolName,
+            toolCallId: "tc-2",
+            output: { outliers: [{ value: 99 }], indices: [3] },
+          },
+          { type: "finish" },
+        ];
+        mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
 
-      const sse = makeSse();
-      await PortalService.streamResponse({
-        portalId: PORTAL_ID,
-        messages: [],
-        stationContext,
-        organizationId: ORG_ID,
-        userId: "user-001",
-        sse: sse as any,
-      });
+        const sse = makeSse();
+        await PortalService.streamResponse({
+          portalId: PORTAL_ID,
+          messages: [],
+          stationContext,
+          organizationId: ORG_ID,
+          userId: "user-001",
+          sse: sse as any,
+        });
 
-      const toolResultCalls = (sse.send as any).mock.calls.filter(
-        (c: unknown[]) => c[0] === "tool_result"
-      );
-      expect(toolResultCalls).toHaveLength(1);
-      expect(toolResultCalls[0][1].result.type).toBe("data-table");
-    });
+        const toolResultCalls = (sse.send as any).mock.calls.filter(
+          (c: unknown[]) => c[0] === "tool_result"
+        );
+        expect(toolResultCalls).toHaveLength(0);
+      }
+    );
 
     it("does not send tool_result SSE for scalar tool results (correlate)", async () => {
       const chunks = [
