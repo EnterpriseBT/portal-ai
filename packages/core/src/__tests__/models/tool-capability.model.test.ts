@@ -1,6 +1,7 @@
 import {
   ToolCapabilitySchema,
   deriveToolRole,
+  customToolCapabilityError,
   type ToolCapability,
 } from "../../models/tool-capability.model.js";
 
@@ -172,5 +173,74 @@ describe("deriveToolRole", () => {
     ["writer/transformer", writer, "transformer"],
   ] as const)("classifies %s", (_label, cap, role) => {
     expect(deriveToolRole(cap)).toBe(role);
+  });
+});
+
+// ── Custom-pack subset (#121 child I) ────────────────────────────────
+
+describe("customToolCapabilityError", () => {
+  const customConsumer: ToolCapability = {
+    pure: true,
+    reads: [],
+    writes: [],
+    consumption: { mode: "none" },
+    computeShape: "reduce",
+    costHint: "free",
+    locks: [],
+    resultKind: "data-table",
+    alwaysAvailable: false,
+  };
+  const allowNone = { allowedConsumptionModes: ["none"] as const };
+
+  it("accepts a valid pure-consumer capability (consumption none)", () => {
+    expect(customToolCapabilityError(customConsumer, allowNone)).toBeNull();
+  });
+
+  it("rejects a non-pure tool", () => {
+    expect(
+      customToolCapabilityError(
+        { ...customConsumer, pure: false, reads: ["entity_records"] },
+        allowNone
+      )
+    ).toMatch(/pure/);
+  });
+
+  it("rejects an always-available tool", () => {
+    expect(
+      customToolCapabilityError({ ...customConsumer, alwaysAvailable: true }, allowNone)
+    ).toMatch(/always-available/);
+  });
+
+  it("rejects a non-map/reduce/pure computeShape", () => {
+    expect(
+      customToolCapabilityError({ ...customConsumer, computeShape: "scan" }, allowNone)
+    ).toMatch(/computeShape/);
+  });
+
+  it("rejects a write-result render kind", () => {
+    expect(
+      customToolCapabilityError({ ...customConsumer, resultKind: "progress" }, allowNone)
+    ).toMatch(/resultKind/);
+  });
+
+  it("gates consumption to the allowed modes (bounded rejected until #124)", () => {
+    expect(
+      customToolCapabilityError(
+        {
+          ...customConsumer,
+          consumption: { mode: "bounded", maxRows: 1000, onOverflow: "error" },
+        },
+        allowNone
+      )
+    ).toMatch(/consumption mode 'bounded'/);
+  });
+
+  it("permits a wider consumption set when allowed (e.g. once #124 ships)", () => {
+    expect(
+      customToolCapabilityError(
+        { ...customConsumer, consumption: { mode: "streaming" } },
+        { allowedConsumptionModes: ["none", "bounded", "streaming"] }
+      )
+    ).toBeNull();
   });
 });

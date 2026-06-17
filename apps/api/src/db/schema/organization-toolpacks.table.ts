@@ -7,6 +7,8 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
+import type { ToolCapability } from "@portalai/core/models";
+
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
 
@@ -68,6 +70,9 @@ export const organizationToolpacks = pgTable(
             estimatedMsPerCall?: number;
             costHint?: "free" | "metered" | "expensive";
           };
+          /** Optional declared capability (#121); custom tools carry the
+           *  pure-consumer subset, validated at registration. */
+          capability?: ToolCapability;
         }>
       >()
       .notNull(),

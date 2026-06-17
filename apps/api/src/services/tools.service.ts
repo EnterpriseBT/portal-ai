@@ -325,7 +325,14 @@ export class ToolService {
           input,
         });
       };
-      return { executor, metadata: tool.bulkDispatch };
+      // #121 child I (gate 3): the cost-ack gate reads `costHint` from the
+      // tool's declared capability when present, falling back to the legacy
+      // `bulkDispatch.costHint`. capability is the taxonomy source of truth.
+      const metadata = {
+        ...tool.bulkDispatch,
+        costHint: tool.capability?.costHint ?? tool.bulkDispatch.costHint,
+      };
+      return { executor, metadata };
     }
 
     return null;
