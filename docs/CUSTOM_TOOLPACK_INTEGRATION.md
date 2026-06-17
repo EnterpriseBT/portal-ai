@@ -212,6 +212,33 @@ Returns the catalog of tools your toolpack provides.
 - `description` and `parameterSchema` are passed verbatim to the model — quality matters for tool-selection accuracy.
 - 1–32 tools per pack. The schema response is capped at **256 KB**.
 
+#### `capability` (optional)
+
+A tool may declare a `capability` object describing how Portal.ai consumes it. Custom tools run third-party with no backend access, so they may declare only the **pure-consumer subset** — registration rejects anything outside it with `TOOLPACK_CAPABILITY_INVALID`:
+
+| Field | Allowed for a custom tool |
+|---|---|
+| `pure` | must be `true` |
+| `reads` / `writes` / `locks` | must be empty (`[]`) |
+| `alwaysAvailable` | must be `false` |
+| `computeShape` | `map` \| `reduce` \| `pure` |
+| `consumption.mode` | `none` only, for now — `bounded` (records-in-body) and `streaming` (pull-on-read) are reserved for a future release and rejected until then |
+| `resultKind` | `scalar` \| `data-table` \| `vega-lite` \| `vega` \| `d3` \| `geo` (not `mutation-result` / `progress`) |
+| `costHint` | `free` \| `metered` \| `expensive` (drives the cost-acknowledgement gate) |
+
+```json
+"capability": {
+  "pure": true, "reads": [], "writes": [], "locks": [],
+  "consumption": { "mode": "none" },
+  "computeShape": "pure",
+  "costHint": "free",
+  "resultKind": "scalar",
+  "alwaysAvailable": false
+}
+```
+
+A tool that omits `capability` is treated as a pure inline tool.
+
 ### `GET /metadata` (optional)
 
 Returns human-readable descriptions, summaries, and worked examples shown in the in-app help.

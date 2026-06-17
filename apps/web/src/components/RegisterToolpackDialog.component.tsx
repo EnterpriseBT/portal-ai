@@ -484,6 +484,14 @@ const SCHEMA_RESPONSE_EXAMPLE = `{
           "domain": { "type": "string" }
         },
         "required": ["domain"]
+      },
+      "capability": {
+        "pure": true, "reads": [], "writes": [], "locks": [],
+        "consumption": { "mode": "none" },
+        "computeShape": "pure",
+        "costHint": "free",
+        "resultKind": "scalar",
+        "alwaysAvailable": false
       }
     }
   ]
