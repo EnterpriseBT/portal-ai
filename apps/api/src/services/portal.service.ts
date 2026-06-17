@@ -16,6 +16,7 @@ import type {
   DoneEvent,
   PinnedBlockEntry,
 } from "@portalai/core/contracts";
+import { ALL_TOOL_CAPABILITIES } from "@portalai/core/registries";
 import { eq, and } from "drizzle-orm";
 
 import { AiService } from "./ai.service.js";
@@ -70,26 +71,9 @@ export interface PortalWithMessages {
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Tools whose results contain row sets and should be surfaced as data-table blocks. */
-const ROW_SET_TOOLS = new Set([
-  "sql_query",
-  "display_entity_records",
-  "detect_outliers",
-  "cluster",
-]);
-
-/** Tools whose results represent mutations and should be surfaced as mutation-result blocks. */
-const MUTATION_TOOLS = new Set([
-  "entity_record_create",
-  "entity_record_update",
-  "entity_record_delete",
-  "connector_entity_create",
-  "connector_entity_update",
-  "connector_entity_delete",
-  "field_mapping_create",
-  "field_mapping_update",
-  "field_mapping_delete",
-]);
+// Display routing keys off each tool's declared `capability.resultKind`
+// (#121 child G) — see `resolveDisplayBlock`. The former `ROW_SET_TOOLS` /
+// `MUTATION_TOOLS` slug sets are gone; the routing reads metadata instead.
 
 // ---------------------------------------------------------------------------
 // Stream chunk handlers
@@ -169,11 +153,12 @@ export function resolveDisplayBlock(
   block: Record<string, unknown>;
   sseResult?: Record<string, unknown>;
 } | null {
-  // bulk_transform_entity_records returns a tool-result shape carrying
-  // a `blockKind: "bulk-job-progress"` + `blockContent` payload. The
-  // frontend mounts a live-data widget against the job id (#85 Phase 2).
+  const resultKind = ALL_TOOL_CAPABILITIES[toolName]?.resultKind;
+
+  // Progress (async bulk job): content-carried `blockKind`, robust
+  // regardless of the declared kind. The frontend mounts a live-data
+  // widget against the job id (#85 Phase 2).
   if (
-    toolName === "bulk_transform_entity_records" &&
     toolResult != null &&
     toolResult.blockKind === "bulk-job-progress" &&
     typeof toolResult.blockContent === "object"
@@ -186,21 +171,23 @@ export function resolveDisplayBlock(
     };
   }
 
-  const isVegaLite =
-    toolName === "visualize" ||
-    (toolResult != null && toolResult.type === "vega-lite");
-  if (isVegaLite) {
+  // Charts. Built-ins route by declared `resultKind`; custom (webhook)
+  // tools carry no capability yet (#134) and are detected by their
+  // result's `type` field.
+  if (
+    resultKind === "vega-lite" ||
+    (resultKind === undefined && toolResult?.type === "vega-lite")
+  ) {
     return { block: { type: "vega-lite", content: toolResult } };
   }
-
-  const isVega =
-    toolName === "visualize_tree" ||
-    (toolResult != null && toolResult.type === "vega");
-  if (isVega) {
+  if (
+    resultKind === "vega" ||
+    (resultKind === undefined && toolResult?.type === "vega")
+  ) {
     return { block: { type: "vega", content: toolResult } };
   }
 
-  if (ROW_SET_TOOLS.has(toolName)) {
+  if (resultKind === "data-table") {
     // Handle path (#85 Phase 1): the tool returned a queryHandle
     // envelope instead of inline rows. Route it through the
     // streaming-table block so the frontend hydrates via the Redis
@@ -228,7 +215,12 @@ export function resolveDisplayBlock(
       : Array.isArray(toolResult?.rows)
         ? (toolResult!.rows as Record<string, unknown>[])
         : [];
-    const columns = rows.length > 0 ? Object.keys(rows[0] as object) : [];
+    // #120: never surface an empty data-table. A data-table tool whose
+    // result carries neither a handle nor rows produces no block — this
+    // is what made cluster/detect_outliers (now resultKind "scalar")
+    // emit spurious empty widgets when they were in ROW_SET_TOOLS.
+    if (rows.length === 0) return null;
+    const columns = Object.keys(rows[0] as object);
     const dataTableContent = { type: "data-table" as const, columns, rows };
     return {
       block: { type: "data-table" as const, content: dataTableContent },
@@ -237,7 +229,7 @@ export function resolveDisplayBlock(
   }
 
   if (
-    MUTATION_TOOLS.has(toolName) &&
+    resultKind === "mutation-result" &&
     toolResult != null &&
     toolResult.success === true &&
     typeof toolResult.operation === "string" &&
