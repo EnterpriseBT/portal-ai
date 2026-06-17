@@ -4,6 +4,10 @@ import {
   BuiltinToolpackSlugSchema,
   isBuiltinToolpackSlug,
 } from "../../registries/builtin-toolpacks.js";
+import {
+  ToolCapabilitySchema,
+  deriveToolRole,
+} from "../../models/tool-capability.model.js";
 
 describe("BUILTIN_TOOLPACKS", () => {
   // Case 1
@@ -84,6 +88,49 @@ describe("BUILTIN_TOOLPACKS", () => {
         expect(typeof tool.parameterSchema.properties).toBe("object");
       }
     }
+  });
+
+  // Case 11 — #121 child A: every tool carries a coherent capability.
+  it("every tool declares a capability that passes the coherence schema", () => {
+    for (const pack of BUILTIN_TOOLPACKS) {
+      for (const tool of pack.tools) {
+        const parsed = ToolCapabilitySchema.safeParse(tool.capability);
+        expect(parsed.success).toBe(true);
+      }
+    }
+  });
+
+  // Case 12 — privilege sanity per pack.
+  it("entity_management tools write + lock; pure-math financial tools are pure", () => {
+    const em = BUILTIN_TOOLPACK_BY_SLUG.entity_management;
+    for (const tool of em.tools) {
+      expect(tool.capability.writes.length).toBeGreaterThan(0);
+      expect(tool.capability.locks.length).toBeGreaterThan(0);
+    }
+    const fin = BUILTIN_TOOLPACK_BY_SLUG.financial;
+    const pureMathNames = [
+      "npv", "irr", "tvm", "xnpv", "xirr", "depreciation", "amortize", "bond_math",
+    ];
+    for (const tool of fin.tools) {
+      if (pureMathNames.includes(tool.name)) {
+        expect(tool.capability.pure).toBe(true);
+        expect(tool.capability.consumption.mode).toBe("none");
+      }
+    }
+  });
+
+  // Case 13 — derived role lines up with privilege.
+  it("readers derive as producers, writers as transformers, pure-math as none", () => {
+    const byName = new Map<string, ReturnType<typeof deriveToolRole>>();
+    for (const pack of BUILTIN_TOOLPACKS) {
+      for (const tool of pack.tools) {
+        byName.set(tool.name, deriveToolRole(tool.capability));
+      }
+    }
+    expect(byName.get("sql_query")).toBe("producer");
+    expect(byName.get("entity_record_create")).toBe("transformer");
+    expect(byName.get("describe_column")).toBe("consumer");
+    expect(byName.get("npv")).toBe("none");
   });
 });
 

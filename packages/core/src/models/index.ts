@@ -64,5 +64,8 @@ export * from "./station-toolpack.model.js";
 /** Organization toolpack model schema & type */
 export * from "./organization-toolpack.model.js";
 
+/** Tool capability metadata — the taxonomy substrate (#121 child A) */
+export * from "./tool-capability.model.js";
+
 /** REST API connector config + credentials schemas */
 export * from "./api-connector.model.js";
