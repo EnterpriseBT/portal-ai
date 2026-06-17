@@ -322,6 +322,10 @@ describe("ApiEndpointForm — records source radio (mutual exclusion)", () => {
   });
 
   it("switching the radio swaps which input is rendered and clears the other", async () => {
+    // `delay: null` removes the inter-event event-loop yields the direct
+    // userEvent API applies; under a loaded CI runner those yields balloon
+    // ~10x and trip jest's 5s default (the test is correct, just slow).
+    const user = userEvent.setup({ delay: null });
     const onSubmit = jest.fn();
     render(
       <ApiEndpointForm
@@ -343,7 +347,7 @@ describe("ApiEndpointForm — records source radio (mutual exclusion)", () => {
     ).toBeChecked();
 
     // Switch to Advanced.
-    await userEvent.click(screen.getByRole("radio", { name: /advanced/i }));
+    await user.click(screen.getByRole("radio", { name: /advanced/i }));
     expect(screen.getByRole("radio", { name: /advanced/i })).toBeChecked();
     expect(
       screen.queryByRole("textbox", { name: /records path/i })
@@ -351,11 +355,11 @@ describe("ApiEndpointForm — records source radio (mutual exclusion)", () => {
     expect(screen.getByTestId("transform-editor")).toBeInTheDocument();
 
     // Submit — recordsPath should have been cleared on the toggle.
-    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await user.click(screen.getByRole("button", { name: /save/i }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     const submitted = onSubmit.mock.calls[0]![0] as EndpointDraft;
     expect(submitted.recordsPath).toBe("");
-  });
+  }, 15000);
 });
 
 // ── AI suggest wiring ────────────────────────────────────────────────
