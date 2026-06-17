@@ -20,9 +20,7 @@ import { z } from "zod";
 
 import { COMPUTE_MAX_ROWS } from "@portalai/core/constants";
 
-import { PortalSqlHandleService } from "../services/portal-sql-handle.service.js";
-import { ApiError } from "../services/http.service.js";
-import { ApiCode } from "../constants/api-codes.constants.js";
+import { resolveRecordSource } from "./record-source.js";
 
 /** A resolved compute row, keyed by SQL alias / column name. */
 export type ComputeRecord = Record<string, unknown>;
@@ -68,11 +66,13 @@ export function withComputeInput<T extends z.ZodRawShape>(shape: T) {
 /**
  * Materialize the records a pure compute tool runs over.
  *
- * Enforces COMPUTE_MAX_ROWS: past it the dataset can't be faithfully
- * materialized (the read primitive caps handle staging at the same number),
- * so we throw COMPUTE_INPUT_TOO_LARGE rather than compute on a truncated
- * set. Expired/missing handles surface as READ_HANDLE_EXPIRED (from
- * `getSnapshot`).
+ * Thin wrapper over the consumption-aware `resolveRecordSource` (#121 child
+ * C) pinned to the #114 contract: `bounded(COMPUTE_MAX_ROWS)` with
+ * `onOverflow: "error"`. Past the cap the dataset can't be faithfully
+ * materialized in memory, so it throws COMPUTE_INPUT_TOO_LARGE rather than
+ * compute on a truncated set; expired/missing handles surface as
+ * READ_HANDLE_EXPIRED (from `getSnapshot`). Tools that declare a different
+ * `consumption` (sampling, streaming) call `resolveRecordSource` directly.
  *
  * Input is expected to have passed `withComputeInput` validation, so exactly
  * one of `queryHandle` / `rows` is set.
@@ -81,35 +81,10 @@ export async function resolveComputeRecords(input: {
   queryHandle?: string;
   rows?: ComputeRecord[];
 }): Promise<ComputeRecord[]> {
-  if (input.rows != null) {
-    if (input.rows.length > COMPUTE_MAX_ROWS) {
-      throw new ApiError(
-        400,
-        ApiCode.COMPUTE_INPUT_TOO_LARGE,
-        `Compute input has ${input.rows.length} rows; the limit is ${COMPUTE_MAX_ROWS}.`
-      );
-    }
-    return input.rows;
-  }
-
-  if (input.queryHandle != null) {
-    const snapshot = await PortalSqlHandleService.getSnapshot(
-      input.queryHandle,
-      { offset: 0, limit: COMPUTE_MAX_ROWS }
-    );
-    if (snapshot.total > COMPUTE_MAX_ROWS) {
-      throw new ApiError(
-        400,
-        ApiCode.COMPUTE_INPUT_TOO_LARGE,
-        `Query handle has ${snapshot.total} rows; the compute limit is ` +
-          `${COMPUTE_MAX_ROWS}. Pre-aggregate or sample in SQL first.`
-      );
-    }
-    return snapshot.rows;
-  }
-
-  // Unreachable once input has passed `withComputeInput` validation.
-  throw new Error(
-    "resolveComputeRecords requires exactly one of `queryHandle` or `rows`."
-  );
+  const { rows } = await resolveRecordSource(input, {
+    mode: "bounded",
+    maxRows: COMPUTE_MAX_ROWS,
+    onOverflow: "error",
+  });
+  return rows;
 }
