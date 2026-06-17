@@ -163,15 +163,6 @@ export const ALL_TOOL_PACKS = [
 
 export type ToolPackName = (typeof ALL_TOOL_PACKS)[number];
 
-/**
- * Tool packs that are always attached to every station regardless of
- * what's recorded in `station_toolpacks`. Holds the "system" tools
- * every portal session needs — temporal context + on-demand station
- * lookup — so the agent can never end up in a state where it can't
- * resolve a connector entity id or a column's wide-table name.
- */
-export const SYSTEM_TOOL_PACKS: readonly ToolPackName[] = ["station_context"];
-
 // ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
@@ -441,14 +432,9 @@ export class ToolService {
     }
 
     const toolPacks = builtinSlugs;
-    // Always include the system packs alongside whatever the station
-    // has recorded. `station_context` lives here so every session has
-    // temporal context + on-demand id lookup regardless of which other
-    // packs are enabled.
-    const enabledPacks = new Set<string>([
-      ...builtinSlugs,
-      ...SYSTEM_TOOL_PACKS,
-    ]);
+    // Station-enabled packs only. System tools are attached below by their
+    // `alwaysAvailable` capability (#121), not via pack membership.
+    const enabledPacks = new Set<string>(builtinSlugs);
 
     // Load station data into memory
     const stationData = await AnalyticsService.loadStation(
@@ -458,18 +444,24 @@ export class ToolService {
 
     const tools: Record<string, Tool> = {};
 
+    // Capability projections (#121): the enablement + enforcement gates
+    // below read declared capability instead of slug/name hardcodes.
+    const { SYSTEM_TOOL_CAPABILITIES, ALL_TOOL_CAPABILITIES, isWriteGated } =
+      await import("@portalai/core/registries");
+
     // -------------------------------------------------------------------
-    // Pack: station_context (always attached via SYSTEM_TOOL_PACKS)
+    // Always-available system tools (#121: driven by the `alwaysAvailable`
+    // capability — replaces the SYSTEM_TOOL_PACKS slug constant).
     // -------------------------------------------------------------------
     // System tools every portal session needs:
     //   - `current_time` — temporal context for resolving relative
     //     expressions ("today", "next week") against the org's timezone.
     //   - `station_context` — on-demand lookup of attached entities,
     //     connector instances, column inventory, and capabilities.
-    //     Replaces the static `## Available Data` wall (#97) for id
-    //     resolution.
-    if (enabledPacks.has("station_context")) {
+    if (SYSTEM_TOOL_CAPABILITIES.current_time?.alwaysAvailable) {
       tools.current_time = new CurrentTimeTool().build(organizationId);
+    }
+    if (SYSTEM_TOOL_CAPABILITIES.station_context?.alwaysAvailable) {
       tools.station_context = new StationContextTool().build(
         stationId,
         organizationId
@@ -566,62 +558,59 @@ export class ToolService {
     // Pack: entity_management
     // -------------------------------------------------------------------
     if (enabledPacks.has("entity_management")) {
-      // Write tools — only if any attached instance has write capability
-      const stationCaps = await resolveStationCapabilities(stationId);
-      const hasWrite = stationCaps.some((sc) => sc.capabilities.write);
-
-      if (hasWrite) {
-        tools.entity_record_create = new EntityRecordCreateTool().build(
-          stationId,
-          organizationId,
-          userId
-        );
-        tools.entity_record_update = new EntityRecordUpdateTool().build(
-          stationId,
-          userId
-        );
-        tools.entity_record_delete = new EntityRecordDeleteTool().build(
-          stationId,
-          userId
-        );
-        tools.connector_entity_create = new ConnectorEntityCreateTool().build(
-          stationId,
-          userId
-        );
-        tools.connector_entity_update = new ConnectorEntityUpdateTool().build(
-          stationId,
-          userId
-        );
-        tools.connector_entity_delete = new ConnectorEntityDeleteTool().build(
-          stationId,
-          userId
-        );
-        tools.field_mapping_create = new FieldMappingCreateTool().build(
-          stationId,
-          organizationId,
-          userId
-        );
-        tools.field_mapping_update = new FieldMappingUpdateTool().build(
-          stationId,
-          organizationId,
-          userId
-        );
-        tools.field_mapping_delete = new FieldMappingDeleteTool().build(
-          stationId,
-          organizationId,
-          userId
-        );
-        // bulk_transform_entity_records: only registered when portalId
-        // is known (production callers always supply it).
-        if (portalId) {
-          tools.bulk_transform_entity_records =
-            new BulkTransformEntityRecordsTool().build(
-              portalId,
-              stationId,
-              organizationId,
-              userId
-            );
-        }
+      // Write tools are built here; the capability-driven write gate below
+      // (#121) removes them when no attached connector instance permits
+      // writes — replacing the pack-level `hasWrite` wrapper.
+      tools.entity_record_create = new EntityRecordCreateTool().build(
+        stationId,
+        organizationId,
+        userId
+      );
+      tools.entity_record_update = new EntityRecordUpdateTool().build(
+        stationId,
+        userId
+      );
+      tools.entity_record_delete = new EntityRecordDeleteTool().build(
+        stationId,
+        userId
+      );
+      tools.connector_entity_create = new ConnectorEntityCreateTool().build(
+        stationId,
+        userId
+      );
+      tools.connector_entity_update = new ConnectorEntityUpdateTool().build(
+        stationId,
+        userId
+      );
+      tools.connector_entity_delete = new ConnectorEntityDeleteTool().build(
+        stationId,
+        userId
+      );
+      tools.field_mapping_create = new FieldMappingCreateTool().build(
+        stationId,
+        organizationId,
+        userId
+      );
+      tools.field_mapping_update = new FieldMappingUpdateTool().build(
+        stationId,
+        organizationId,
+        userId
+      );
+      tools.field_mapping_delete = new FieldMappingDeleteTool().build(
+        stationId,
+        organizationId,
+        userId
+      );
+      // bulk_transform_entity_records: only registered when portalId
+      // is known (production callers always supply it).
+      if (portalId) {
+        tools.bulk_transform_entity_records =
+          new BulkTransformEntityRecordsTool().build(
+            portalId,
+            stationId,
+            organizationId,
+            userId
+          );
       }
     }
 
@@ -655,6 +644,23 @@ export class ToolService {
             stationId
           ).build();
         }
+      }
+    }
+
+    // Capability-driven write gate (#121): drop any tool that declares a
+    // write when no attached connector instance permits writes. Replaces
+    // the pack-level `hasWrite` block; per-tool, so it covers any write
+    // tool in any pack. Custom webhook tools carry no capability yet
+    // (child I) and never write, so they are unaffected.
+    const writeGated = Object.keys(tools).filter((name) => {
+      const cap = ALL_TOOL_CAPABILITIES[name];
+      return cap !== undefined && isWriteGated(cap);
+    });
+    if (writeGated.length > 0) {
+      const stationCaps = await resolveStationCapabilities(stationId);
+      const hasWrite = stationCaps.some((sc) => sc.capabilities.write);
+      if (!hasWrite) {
+        for (const name of writeGated) delete tools[name];
       }
     }
 
