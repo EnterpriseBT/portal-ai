@@ -63,8 +63,13 @@ export type Consumption = z.infer<typeof ConsumptionSchema>;
 
 // ── Result + shape + cost ───────────────────────────────────────────
 
-/** The render-routing key (discovery D6). The portal/agent layer is
- *  agnostic to the value; the web renderer registry (D7) dispatches on it. */
+/** The render category of the tool's result (discovery D6) — a passive
+ *  label, NOT a render trigger. It answers "render as what?" *if* a result
+ *  is surfaced for display; it does not mean every call renders. Most
+ *  results in a chain are intermediate (e.g. a handle threaded into the
+ *  next call) and never reach `resolveDisplayBlock`. When a result IS
+ *  surfaced, the web renderer registry (D7) dispatches on this value; the
+ *  portal/agent layer stays agnostic to it. */
 export const ResultKindSchema = z.enum([
   "data-table",
   "scalar",
