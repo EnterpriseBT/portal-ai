@@ -206,6 +206,103 @@ class VegaErrorBoundary extends Component<
   }
 }
 
+// ── Renderer registry (#121 child H) ────────────────────────────────
+//
+// Display routing is an OPEN set: each block type (the projection of a
+// tool's `resultKind`) maps to a renderer here, and a new format —
+// a D3-backed graph, a GIS map (#84) — is added by REGISTERING a renderer,
+// with no edit to a central switch. `ContentBlockRenderer` is the single
+// `block.type`-agnostic dispatch; it just looks the renderer up.
+
+/** Renders one display block. Returns null when there's nothing to show. */
+export type BlockRenderer = (block: PortalMessageBlock) => React.ReactNode;
+
+const renderText: BlockRenderer = (block) => (
+  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+    {String(block.content ?? "")}
+  </ReactMarkdown>
+);
+
+const renderVegaLite: BlockRenderer = (block) => {
+  // Two block-content shapes:
+  //   - `{ spec, datasets }` — used by the query-handle path (#109).
+  //     `datasets` is a `{ <name>: rows[] }` map; we forward it to
+  //     react-vega's `data` prop, which is the documented injection
+  //     point for named datasets and the streaming-ready mount
+  //     point for future `vega.changeset()` increments.
+  //   - bare spec — used by the inline path (≤100 rows) where rows
+  //     are baked into `data.values`. No external `datasets` needed.
+  const content = block.content as Record<string, unknown>;
+  const hasWrapper =
+    typeof content === "object" &&
+    content !== null &&
+    "spec" in content &&
+    typeof content.spec === "object";
+  const spec = (hasWrapper ? content.spec : content) as object;
+  const datasets = hasWrapper
+    ? (content.datasets as Record<string, unknown> | undefined)
+    : undefined;
+  return (
+    <VegaErrorBoundary>
+      <Suspense fallback={null}>
+        <LazyVegaLite spec={spec} {...(datasets ? { data: datasets } : {})} />
+      </Suspense>
+    </VegaErrorBoundary>
+  );
+};
+
+const renderVega: BlockRenderer = (block) => {
+  const spec = normalizeVegaSpec(block.content as Record<string, unknown>);
+  return (
+    <VegaErrorBoundary>
+      <Suspense fallback={null}>
+        <LazyVega spec={spec} />
+      </Suspense>
+    </VegaErrorBoundary>
+  );
+};
+
+const renderDataTable: BlockRenderer = (block) => {
+  const raw = (block.content ?? {}) as {
+    columns?: string[];
+    rows?: Record<string, unknown>[];
+  };
+  const columns = raw.columns ?? [];
+  const rows = raw.rows ?? [];
+  return <DataTableBlock columns={columns} rows={rows} />;
+};
+
+const renderMutationResult: BlockRenderer = (block) => (
+  <MutationResultBlock content={block.content as MutationResultContentBlock} />
+);
+
+const blockRenderers = new Map<string, BlockRenderer>([
+  ["text", renderText],
+  ["vega-lite", renderVegaLite],
+  ["vega", renderVega],
+  ["data-table", renderDataTable],
+  ["mutation-result", renderMutationResult],
+]);
+
+/**
+ * Register (or override) the renderer for a block type / `resultKind`. New
+ * display formats register here — `registerBlockRenderer("d3", …)`,
+ * `registerBlockRenderer("geo", …)` — and the central dispatch picks them up
+ * with no further change (#121 child H, discovery D7). The portal/agent layer
+ * stays format-agnostic; only this web registry learns the format.
+ */
+export function registerBlockRenderer(
+  type: string,
+  renderer: BlockRenderer
+): void {
+  blockRenderers.set(type, renderer);
+}
+
+/** Whether a renderer is registered for `type`. */
+export function hasBlockRenderer(type: string): boolean {
+  return blockRenderers.has(type);
+}
+
 export interface ContentBlockRendererProps {
   block: PortalMessageBlock;
 }
@@ -213,70 +310,7 @@ export interface ContentBlockRendererProps {
 export const ContentBlockRenderer: React.FC<ContentBlockRendererProps> = ({
   block,
 }) => {
-  if (block.type === "text") {
-    return (
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-        {String(block.content ?? "")}
-      </ReactMarkdown>
-    );
-  }
-
-  if (block.type === "vega-lite") {
-    // Two block-content shapes:
-    //   - `{ spec, datasets }` — used by the query-handle path (#109).
-    //     `datasets` is a `{ <name>: rows[] }` map; we forward it to
-    //     react-vega's `data` prop, which is the documented injection
-    //     point for named datasets and the streaming-ready mount
-    //     point for future `vega.changeset()` increments.
-    //   - bare spec — used by the inline path (≤100 rows) where rows
-    //     are baked into `data.values`. No external `datasets` needed.
-    const content = block.content as Record<string, unknown>;
-    const hasWrapper =
-      typeof content === "object" &&
-      content !== null &&
-      "spec" in content &&
-      typeof content.spec === "object";
-    const spec = (hasWrapper ? content.spec : content) as object;
-    const datasets = hasWrapper
-      ? (content.datasets as Record<string, unknown> | undefined)
-      : undefined;
-    return (
-      <VegaErrorBoundary>
-        <Suspense fallback={null}>
-          <LazyVegaLite spec={spec} {...(datasets ? { data: datasets } : {})} />
-        </Suspense>
-      </VegaErrorBoundary>
-    );
-  }
-
-  if (block.type === "vega") {
-    const spec = normalizeVegaSpec(block.content as Record<string, unknown>);
-    return (
-      <VegaErrorBoundary>
-        <Suspense fallback={null}>
-          <LazyVega spec={spec} />
-        </Suspense>
-      </VegaErrorBoundary>
-    );
-  }
-
-  if (block.type === "data-table") {
-    const raw = (block.content ?? {}) as {
-      columns?: string[];
-      rows?: Record<string, unknown>[];
-    };
-    const columns = raw.columns ?? [];
-    const rows = raw.rows ?? [];
-    return <DataTableBlock columns={columns} rows={rows} />;
-  }
-
-  if (block.type === "mutation-result") {
-    return (
-      <MutationResultBlock
-        content={block.content as MutationResultContentBlock}
-      />
-    );
-  }
-
-  return null;
+  const renderer = blockRenderers.get(block.type);
+  if (!renderer) return null;
+  return <>{renderer(block)}</>;
 };

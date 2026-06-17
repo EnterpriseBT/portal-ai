@@ -21,7 +21,8 @@ jest.unstable_mockModule("react-vega", () => ({
 
 jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
-const { ContentBlockRenderer } = await import("../../ui/ContentBlockRenderer");
+const { ContentBlockRenderer, registerBlockRenderer, hasBlockRenderer } =
+  await import("../../ui/ContentBlockRenderer");
 
 describe("ContentBlockRenderer", () => {
   it("renders text block via ReactMarkdown", () => {
@@ -130,5 +131,38 @@ describe("ContentBlockRenderer", () => {
       <ContentBlockRenderer block={{ type: "unknown", content: "data" }} />
     );
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+// #121 child H: the dispatch is an open registry — new formats register a
+// renderer with no edit to the central switch.
+describe("registerBlockRenderer", () => {
+  it("renders a newly registered block type with no central-switch edit", () => {
+    registerBlockRenderer("custom-test-block", (b) => (
+      <div data-testid="custom-test">
+        {String((b.content as { label: string }).label)}
+      </div>
+    ));
+    expect(hasBlockRenderer("custom-test-block")).toBe(true);
+    render(
+      <ContentBlockRenderer
+        block={{ type: "custom-test-block", content: { label: "hi" } }}
+      />
+    );
+    expect(screen.getByTestId("custom-test")).toHaveTextContent("hi");
+  });
+
+  it("hasBlockRenderer is false for an unregistered type", () => {
+    expect(hasBlockRenderer("never-registered-xyz")).toBe(false);
+  });
+
+  it("a later registration overrides an earlier one for the same type", () => {
+    registerBlockRenderer("override-test", () => <div data-testid="v1" />);
+    registerBlockRenderer("override-test", () => <div data-testid="v2" />);
+    render(
+      <ContentBlockRenderer block={{ type: "override-test", content: null }} />
+    );
+    expect(screen.getByTestId("v2")).toBeInTheDocument();
+    expect(screen.queryByTestId("v1")).not.toBeInTheDocument();
   });
 });
