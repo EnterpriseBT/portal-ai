@@ -18,6 +18,12 @@
 import { z } from "zod";
 
 import type { BulkDispatchMetadata } from "../models/organization-toolpack.model.js";
+import type {
+  ToolCapability,
+  ResultKind,
+  ComputeShape,
+  CostHint,
+} from "../models/tool-capability.model.js";
 
 export type { BulkDispatchMetadata };
 
@@ -65,7 +71,17 @@ export interface ToolpackTool {
    *  `bulk_transform_entity_records`. Tools without this field are
    *  rejected from the tool-kind dispatch route. */
   bulkDispatch?: BulkDispatchMetadata;
+  /** Declared capability metadata — the taxonomy substrate (#121).
+   *  The three projections (UI/enablement/enforcement) + runtime
+   *  cardinality selection all read from this. Attached from the
+   *  `CAPABILITIES` matrix below at registry-build time. */
+  capability: ToolCapability;
 }
+
+/** A tool literal as authored in a pack below — capability is attached
+ *  from the `CAPABILITIES` matrix, not declared inline, so the whole
+ *  capability matrix stays auditable in one place. */
+export type ToolpackToolSpec = Omit<ToolpackTool, "capability">;
 
 export interface BuiltinToolpack {
   slug: BuiltinToolpackSlug;
@@ -74,6 +90,11 @@ export interface BuiltinToolpack {
   iconSlug: string;
   tools: ToolpackTool[];
 }
+
+/** A pack as authored below — its tools carry no inline capability. */
+export type BuiltinToolpackSpec = Omit<BuiltinToolpack, "tools"> & {
+  tools: ToolpackToolSpec[];
+};
 
 // ── Helpers for declaring schemas inline ──────────────────────────────
 
@@ -133,7 +154,7 @@ const computeSourceFields = (): Record<string, Record<string, unknown>> => ({
 
 // ── Registry ──────────────────────────────────────────────────────────
 
-const DATA_QUERY_PACK: BuiltinToolpack = {
+const DATA_QUERY_PACK: BuiltinToolpackSpec = {
   slug: "data_query",
   name: "Data Query",
   description:
@@ -255,7 +276,7 @@ const DATA_QUERY_PACK: BuiltinToolpack = {
   ],
 };
 
-const STATISTICS_PACK: BuiltinToolpack = {
+const STATISTICS_PACK: BuiltinToolpackSpec = {
   slug: "statistics",
   name: "Statistics",
   description:
@@ -438,7 +459,7 @@ const STATISTICS_PACK: BuiltinToolpack = {
   ],
 };
 
-const REGRESSION_PACK: BuiltinToolpack = {
+const REGRESSION_PACK: BuiltinToolpackSpec = {
   slug: "regression",
   name: "Regression",
   description:
@@ -582,7 +603,7 @@ const REGRESSION_PACK: BuiltinToolpack = {
   ],
 };
 
-const FINANCIAL_PACK: BuiltinToolpack = {
+const FINANCIAL_PACK: BuiltinToolpackSpec = {
   slug: "financial",
   name: "Financial",
   description:
@@ -868,7 +889,7 @@ const FINANCIAL_PACK: BuiltinToolpack = {
   ],
 };
 
-const WEB_SEARCH_PACK: BuiltinToolpack = {
+const WEB_SEARCH_PACK: BuiltinToolpackSpec = {
   slug: "web_search",
   name: "Web Search",
   description:
@@ -893,7 +914,7 @@ const WEB_SEARCH_PACK: BuiltinToolpack = {
   ],
 };
 
-const ENTITY_MANAGEMENT_PACK: BuiltinToolpack = {
+const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
   slug: "entity_management",
   name: "Entity Management",
   description:
@@ -1118,16 +1139,192 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpack = {
   ],
 };
 
+// ── Capability matrix ──────────────────────────────────────────────────
+//
+// Every built-in tool's declared capability (#121 child A), in one place.
+// Attached to the pack tools at registry-build time; a missing entry throws
+// (the completeness guarantee that the required `capability` field would
+// give if declared inline). Capability semantics + refinements live in
+// `tool-capability.model.ts`; the disposition rationale is in
+// `docs/TOOLPACK_TAXONOMY.spec.md` (the census + the D4 spike).
+//
+// NOTE: these declare the *current* behavior (no behavior change in child A).
+// The reduce-tier reclassification (10 → SQL, 3 → engine-pushdown) is child E;
+// `resultKind`-driven routing is child G. Until then capability is declared
+// metadata, read by nothing.
+
+/** Pure-math: touches no backend, computes over inline params. */
+const pureMath = (resultKind: ResultKind = "scalar"): ToolCapability => ({
+  pure: true,
+  reads: [],
+  writes: [],
+  consumption: { mode: "none" },
+  computeShape: "pure",
+  costHint: "free",
+  locks: [],
+  resultKind,
+  alwaysAvailable: false,
+});
+
+/** Pure compute consumer over a handed-in dataset. Today the runtime
+ *  materializes the handle up to COMPUTE_MAX_ROWS and hard-errors past it
+ *  (#114) — i.e. bounded(100k) + onOverflow:error. */
+const pureReduce = (
+  resultKind: ResultKind,
+  costHint: CostHint = "free"
+): ToolCapability => ({
+  pure: true,
+  reads: [],
+  writes: [],
+  consumption: { mode: "bounded", maxRows: 100_000, onOverflow: "error" },
+  computeShape: "reduce",
+  costHint,
+  locks: [],
+  resultKind,
+  alwaysAvailable: false,
+});
+
+/** Reads the engine (a producer / SQL-pushed read or visualize). */
+const engineRead = (
+  resultKind: ResultKind,
+  computeShape: ComputeShape
+): ToolCapability => ({
+  pure: false,
+  reads: ["entity_records"],
+  writes: [],
+  consumption: { mode: "engine-pushdown" },
+  computeShape,
+  costHint: "free",
+  locks: [],
+  resultKind,
+  alwaysAvailable: false,
+});
+
+/** Synchronous entity write (inline payload; mutates; locks). */
+const entityWrite = (writes: string[], locks: string[]): ToolCapability => ({
+  pure: false,
+  reads: [],
+  writes,
+  consumption: { mode: "none" },
+  computeShape: "mutate",
+  costHint: "free",
+  locks,
+  resultKind: "mutation-result",
+  alwaysAvailable: false,
+});
+
+const CAPABILITIES: Record<string, ToolCapability> = {
+  // data_query
+  sql_query: engineRead("data-table", "scan"),
+  bulk_aggregate_records: engineRead("scalar", "reduce"),
+  display_entity_records: engineRead("data-table", "scan"),
+  visualize: engineRead("vega", "visualize"),
+  visualize_tree: engineRead("vega-tree", "visualize"),
+  resolve_identity: engineRead("data-table", "scan"),
+  // statistics
+  describe_column: pureReduce("scalar"),
+  correlate: pureReduce("scalar"),
+  detect_outliers: pureReduce("data-table"),
+  cluster: pureReduce("data-table"),
+  aggregate: pureReduce("data-table"),
+  hypothesis_test: pureReduce("scalar"),
+  // regression
+  regression: pureReduce("data-table"),
+  logistic_regression: pureReduce("data-table"),
+  trend: pureReduce("data-table"),
+  changepoint: pureReduce("data-table"),
+  decompose: pureReduce("data-table"),
+  forecast: pureReduce("data-table"),
+  // financial — pure math
+  tvm: pureMath(),
+  npv: pureMath(),
+  irr: pureMath(),
+  xnpv: pureMath(),
+  xirr: pureMath(),
+  depreciation: pureMath("data-table"),
+  amortize: pureMath("data-table"),
+  bond_math: pureMath(),
+  // financial — compute over a dataset
+  sharpe_ratio: pureReduce("scalar"),
+  max_drawdown: pureReduce("scalar"),
+  rolling_returns: pureReduce("data-table"),
+  var_cvar: pureReduce("scalar"),
+  portfolio_metrics: pureReduce("scalar"),
+  technical_indicator: pureReduce("data-table"),
+  // web_search — external read, no record input
+  web_search: {
+    pure: false,
+    reads: [],
+    writes: [],
+    consumption: { mode: "none" },
+    computeShape: "scan",
+    costHint: "metered",
+    locks: [],
+    resultKind: "data-table",
+    alwaysAvailable: false,
+  },
+  // entity_management — synchronous writes
+  entity_record_create: entityWrite(["entity_records"], ["connectorEntityId"]),
+  entity_record_update: entityWrite(["entity_records"], ["recordIds"]),
+  entity_record_delete: entityWrite(["entity_records"], ["recordIds"]),
+  connector_entity_create: entityWrite(
+    ["connector_entities"],
+    ["connectorInstanceId"]
+  ),
+  connector_entity_update: entityWrite(
+    ["connector_entities"],
+    ["connectorInstanceId"]
+  ),
+  connector_entity_delete: entityWrite(
+    ["connector_entities"],
+    ["connectorInstanceId"]
+  ),
+  field_mapping_create: entityWrite(["field_mappings"], ["connectorEntityId"]),
+  field_mapping_update: entityWrite(["field_mappings"], ["connectorEntityId"]),
+  field_mapping_delete: entityWrite(["field_mappings"], ["connectorEntityId"]),
+  // entity_management — async bulk write job (per-record map dispatch)
+  bulk_transform_entity_records: {
+    pure: false,
+    reads: ["entity_records"],
+    writes: ["entity_records"],
+    consumption: { mode: "streaming" },
+    computeShape: "map",
+    costHint: "expensive",
+    locks: ["targetConnectorEntityIds"],
+    resultKind: "progress",
+    alwaysAvailable: false,
+  },
+};
+
+/** Attach each tool's declared capability from the matrix; throw on any
+ *  tool that lacks one (the completeness guarantee). */
+function attachCapabilities(spec: BuiltinToolpackSpec): BuiltinToolpack {
+  return {
+    ...spec,
+    tools: spec.tools.map((tool) => {
+      const capability = CAPABILITIES[tool.name];
+      if (!capability) {
+        throw new Error(
+          `builtin-toolpacks: no capability declared for tool '${tool.name}'`
+        );
+      }
+      return { ...tool, capability };
+    }),
+  };
+}
+
 // ── Public registry ──────────────────────────────────────────────────
 
-export const BUILTIN_TOOLPACKS: ReadonlyArray<BuiltinToolpack> = Object.freeze([
-  DATA_QUERY_PACK,
-  STATISTICS_PACK,
-  REGRESSION_PACK,
-  FINANCIAL_PACK,
-  WEB_SEARCH_PACK,
-  ENTITY_MANAGEMENT_PACK,
-]);
+export const BUILTIN_TOOLPACKS: ReadonlyArray<BuiltinToolpack> = Object.freeze(
+  [
+    DATA_QUERY_PACK,
+    STATISTICS_PACK,
+    REGRESSION_PACK,
+    FINANCIAL_PACK,
+    WEB_SEARCH_PACK,
+    ENTITY_MANAGEMENT_PACK,
+  ].map(attachCapabilities)
+);
 
 export const BUILTIN_TOOLPACK_BY_SLUG: Record<
   BuiltinToolpackSlug,
