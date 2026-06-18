@@ -9,6 +9,11 @@ import { ApiCode } from "../../constants/api-codes.constants.js";
 const mockGetSnapshot = jest.fn<() => Promise<unknown>>();
 jest.unstable_mockModule("../../services/portal-sql-handle.service.js", () => ({
   PortalSqlHandleService: { getSnapshot: mockGetSnapshot },
+  // record-source.ts (loaded transitively via compute-input) imports this
+  // named export; the ESM mock must provide it or the import binding fails.
+  resolveTiebreaker: (schema: Array<{ name: string }>) =>
+    schema.find((c) => c.name === "_record_id" || c.name === "id")?.name ??
+    null,
 }));
 
 const { resolveComputeRecords, withComputeInput } = await import(
