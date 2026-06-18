@@ -15,6 +15,10 @@ jest.unstable_mockModule("../../services/portal-sql-handle.service.js", () => ({
     getMeta: mockGetMeta,
     streamHandle: mockStreamHandle,
   },
+  // pure helper — mirror the real resolution (`_record_id` or `id`).
+  resolveTiebreaker: (schema: Array<{ name: string }>) =>
+    schema.find((c) => c.name === "_record_id" || c.name === "id")?.name ??
+    null,
 }));
 
 const { resolveRecordSource, resolveRecordStream } = await import(

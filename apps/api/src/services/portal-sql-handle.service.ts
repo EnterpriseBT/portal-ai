@@ -328,14 +328,14 @@ export class PortalSqlHandleService {
     orderBy: string
   ): AsyncGenerator<Array<Record<string, unknown>>> {
     const meta = await this.getMeta(handleId);
-    const idCol = meta.schema.find((c) => c.name === "id")?.name;
+    const idCol = resolveTiebreaker(meta.schema);
     const hasOrder = meta.schema.some((c) => c.name === orderBy);
     if (!idCol || !hasOrder) {
       throw new ApiError(
         400,
         ApiCode.COMPUTE_INPUT_TOO_LARGE,
-        `Streaming requires the result to project '${orderBy}' and a unique 'id'; ` +
-          `project them or pre-aggregate.`
+        `Streaming requires the result to project '${orderBy}' and a unique key ` +
+          `(\`_record_id\` or \`id\`); project them or pre-aggregate.`
       );
     }
 
@@ -403,6 +403,18 @@ function sqlLiteral(v: unknown): string {
  *  query column, validated by membership before use), but quote defensively. */
 function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
+}
+
+/** The unique keyset tiebreaker in a result: the entity view's synthetic
+ *  `_record_id` (the common case), else a projected `id`. `null` when neither
+ *  is present — then the cursor is unavailable and the bounded tier owns it. */
+export function resolveTiebreaker(
+  schema: Array<{ name: string; type: string }>
+): string | null {
+  const names = new Set(schema.map((c) => c.name));
+  if (names.has("_record_id")) return "_record_id";
+  if (names.has("id")) return "id";
+  return null;
 }
 
 function cmpValue(a: unknown, b: unknown): number {

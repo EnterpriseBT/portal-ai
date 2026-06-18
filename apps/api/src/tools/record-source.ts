@@ -24,7 +24,10 @@
 import { COMPUTE_MAX_ROWS } from "@portalai/core/constants";
 import type { Consumption } from "@portalai/core/models";
 
-import { PortalSqlHandleService } from "../services/portal-sql-handle.service.js";
+import {
+  PortalSqlHandleService,
+  resolveTiebreaker,
+} from "../services/portal-sql-handle.service.js";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import type { ComputeRecord } from "./compute-input.util.js";
@@ -136,11 +139,11 @@ export async function* resolveRecordStream(
   }
 
   const meta = await PortalSqlHandleService.getMeta(input.queryHandle);
-  const hasId = meta.schema.some((c) => c.name === "id");
+  const hasTiebreaker = resolveTiebreaker(meta.schema) !== null;
   const hasOrder =
     opts.orderBy != null && meta.schema.some((c) => c.name === opts.orderBy);
 
-  if (hasId && hasOrder) {
+  if (hasTiebreaker && hasOrder) {
     yield* PortalSqlHandleService.streamHandle(input.queryHandle, opts.orderBy!);
     return;
   }
