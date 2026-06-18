@@ -6,10 +6,17 @@
  */
 
 import { eq, and, inArray, sql } from "drizzle-orm";
+import { jobTypesLocking } from "@portalai/core/models";
 import { jobs } from "../schema/index.js";
 import { db } from "../client.js";
 import { ListOptions, Repository, type DbClient } from "./base.repository.js";
 import type { JobSelect, JobInsert } from "../schema/zod.js";
+
+/** Job types that lock under a given key, from the central registry
+ *  (`JOB_LOCK_KEYS`). Derives the lock queries' type filter so a new locking
+ *  job type is config-only — declared in the registry, no edit here (#121 F). */
+const lockingTypes = (field: Parameters<typeof jobTypesLocking>[0]) =>
+  jobTypesLocking(field).map((t) => t.type) as JobSelect["type"][];
 
 /**
  * Job statuses that mean the worker still owns the entity referenced
@@ -79,10 +86,7 @@ export class JobsRepository extends Repository<
       .where(
         and(
           eq(jobs.organizationId, organizationId),
-          inArray(
-            jobs.type,
-            ["connector_sync", "layout_plan_commit"] as JobSelect["type"][]
-          ),
+          inArray(jobs.type, lockingTypes("connectorInstanceId")),
           inArray(
             jobs.status,
             NON_TERMINAL_JOB_STATUSES as unknown as JobSelect["status"][]
@@ -113,7 +117,7 @@ export class JobsRepository extends Repository<
       .where(
         and(
           eq(jobs.organizationId, organizationId),
-          inArray(jobs.type, ["bulk_transform"] as JobSelect["type"][]),
+          inArray(jobs.type, lockingTypes("portalId")),
           inArray(
             jobs.status,
             NON_TERMINAL_JOB_STATUSES as unknown as JobSelect["status"][]
@@ -161,7 +165,7 @@ export class JobsRepository extends Repository<
       .where(
         and(
           eq(jobs.organizationId, organizationId),
-          inArray(jobs.type, ["bulk_transform"] as JobSelect["type"][]),
+          inArray(jobs.type, lockingTypes("targetConnectorEntityIds")),
           inArray(
             jobs.status,
             NON_TERMINAL_JOB_STATUSES as unknown as JobSelect["status"][]

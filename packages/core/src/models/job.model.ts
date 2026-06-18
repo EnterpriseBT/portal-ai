@@ -509,6 +509,50 @@ export const JOB_TYPE_SCHEMAS: {
   },
 };
 
+// --- Entity-lock registry (#121 child F, gate 4) ---
+
+/**
+ * Which `metadata` keys a job type uses to declare the entities it locks
+ * while non-terminal (CLAUDE.md §"Async Job State & Data Locking"). The lock
+ * queries (`JobsRepository.findRunning*`) derive their job-type filter from
+ * this registry instead of hardcoding `inArray(jobs.type, […])`, so a new
+ * locking job type becomes config-only — declare its key here and the lock
+ * checks cover it, with no repository edit.
+ *
+ * Each field names the `metadata` key holding the locked id(s):
+ *  - `targetConnectorEntityIds` — a `string[]` of connector-entity ids;
+ *    matched by JSONB array-overlap (a job locks any entity it overlaps).
+ *  - `connectorInstanceId` — a single connector-instance id (equality).
+ *  - `portalId` — a single portal id (equality; locks the chat input).
+ *
+ * Job types absent here lock nothing (system_check, revalidation,
+ * file_upload_parse, bulk_aggregate — read-only or non-locking).
+ */
+export interface JobLockKeys {
+  targetConnectorEntityIds?: string;
+  connectorInstanceId?: string;
+  portalId?: string;
+}
+
+export const JOB_LOCK_KEYS: Partial<Record<JobType, JobLockKeys>> = {
+  connector_sync: { connectorInstanceId: "connectorInstanceId" },
+  layout_plan_commit: { connectorInstanceId: "connectorInstanceId" },
+  bulk_transform: {
+    targetConnectorEntityIds: "targetConnectorEntityIds",
+    portalId: "portalId",
+  },
+};
+
+/** Job types that declare a lock under the given `JobLockKeys` field, with
+ *  the metadata key each uses. Drives the lock queries' type filter + key. */
+export function jobTypesLocking(
+  field: keyof JobLockKeys
+): Array<{ type: JobType; metadataKey: string }> {
+  return (Object.entries(JOB_LOCK_KEYS) as Array<[JobType, JobLockKeys]>)
+    .filter(([, keys]) => keys[field] != null)
+    .map(([type, keys]) => ({ type, metadataKey: keys[field] as string }));
+}
+
 // --- Schema ---
 
 export const JobSchema = CoreSchema.extend({
