@@ -1768,6 +1768,226 @@ describe("AnalyticsService", () => {
   });
 
   // -----------------------------------------------------------------------
+  // forecastFromStream (#129 streaming fold) — must equal forecast()
+  // -----------------------------------------------------------------------
+
+  describe("forecastFromStream()", () => {
+    type Rec = Record<string, unknown>;
+
+    // Yield records in fixed-size batches, mimicking the cursor's paging.
+    async function* asStream(records: Rec[], batchSize: number) {
+      for (let i = 0; i < records.length; i += batchSize) {
+        yield records.slice(i, i + batchSize);
+      }
+    }
+
+    const expectAllClose = (a: number[], b: number[], digits = 8) => {
+      expect(a).toHaveLength(b.length);
+      a.forEach((v, i) => expect(v).toBeCloseTo(b[i], digits));
+    };
+
+    // Assert the online fold reproduces the whole-array agent-facing payload.
+    const expectMatchesWholeArray = async (
+      records: Rec[],
+      params: Parameters<typeof AnalyticsService.forecast>[0],
+      batchSize = 7
+    ) => {
+      const whole = AnalyticsService.forecast({ ...params, records });
+      const streamed = await AnalyticsService.forecastFromStream(
+        asStream(records, batchSize),
+        params
+      );
+      expectAllClose(streamed.forecast.values, whole.forecast.values);
+      expectAllClose(streamed.forecast.lower, whole.forecast.lower);
+      expectAllClose(streamed.forecast.upper, whole.forecast.upper);
+      expect(streamed.forecast.dates).toEqual(whole.forecast.dates);
+      expect(streamed.parameters).toEqual(whole.parameters);
+      expect(streamed.mape).toBeCloseTo(whole.mape, 8);
+      return streamed;
+    };
+
+    const trendSeries = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        date: `2020-01-01T00:00:${String(i).padStart(2, "0")}.000Z`,
+        value: 10 + 2 * i,
+      }));
+
+    const additiveSeasonalSeries = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        date: `2020-01-01T00:00:${String(i).padStart(2, "0")}.000Z`,
+        value: 100 + 10 * Math.sin((2 * Math.PI * i) / 12),
+      }));
+
+    const multiplicativeSeasonalSeries = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        date: `2020-01-01T00:00:${String(i).padStart(2, "0")}.000Z`,
+        value: 100 * (1 + 0.2 * Math.sin((2 * Math.PI * i) / 12)) * (1 + i / 100),
+      }));
+
+    it("matches whole-array forecast for Holt's linear (no seasonality)", async () => {
+      await expectMatchesWholeArray(trendSeries(20), {
+        records: [],
+        dateColumn: "date",
+        valueColumn: "value",
+        horizon: 5,
+        trend: "additive",
+      });
+    });
+
+    it("matches whole-array forecast for additive seasonality", async () => {
+      await expectMatchesWholeArray(additiveSeasonalSeries(48), {
+        records: [],
+        dateColumn: "date",
+        valueColumn: "value",
+        horizon: 12,
+        seasonalPeriod: 12,
+        seasonality: "additive",
+        trend: "none",
+      });
+    });
+
+    it("matches whole-array forecast for multiplicative seasonality + trend", async () => {
+      await expectMatchesWholeArray(multiplicativeSeasonalSeries(48), {
+        records: [],
+        dateColumn: "date",
+        valueColumn: "value",
+        horizon: 12,
+        seasonalPeriod: 12,
+        seasonality: "multiplicative",
+        trend: "additive",
+      });
+    });
+
+    it("matches whole-array forecast with custom smoothing parameters", async () => {
+      await expectMatchesWholeArray(additiveSeasonalSeries(48), {
+        records: [],
+        dateColumn: "date",
+        valueColumn: "value",
+        horizon: 6,
+        seasonalPeriod: 12,
+        seasonality: "additive",
+        trend: "additive",
+        alpha: 0.7,
+        beta: 0.2,
+        gamma: 0.3,
+        confidence: 0.9,
+      });
+    });
+
+    it("is invariant to batch boundaries (chunk size doesn't change the result)", async () => {
+      const records = additiveSeasonalSeries(48);
+      const params = {
+        records: [] as Rec[],
+        dateColumn: "date",
+        valueColumn: "value",
+        horizon: 8,
+        seasonalPeriod: 12,
+        seasonality: "additive" as const,
+        trend: "none" as const,
+      };
+      const r1 = await AnalyticsService.forecastFromStream(
+        asStream(records, 1),
+        params
+      );
+      const r5 = await AnalyticsService.forecastFromStream(
+        asStream(records, 5),
+        params
+      );
+      const rAll = await AnalyticsService.forecastFromStream(
+        asStream(records, records.length),
+        params
+      );
+      expect(r1.forecast.values).toEqual(r5.forecast.values);
+      expect(r5.forecast.values).toEqual(rAll.forecast.values);
+      expect(r1.mape).toEqual(rAll.mape);
+    });
+
+    it("skips non-numeric rows yet derives spacing from the last record's date", async () => {
+      // 20-point trend, then a trailing row whose VALUE is non-numeric but
+      // whose DATE jumps far ahead. extractNumericColumn drops the value, so
+      // both paths fold the same 20 observations — but forecast-date spacing
+      // is taken from the last two *records*, so the jump must be honored.
+      const records: Rec[] = [
+        ...trendSeries(20),
+        { date: "2030-01-01T00:00:00.000Z", value: "n/a" },
+      ];
+      const streamed = await expectMatchesWholeArray(
+        records,
+        {
+          records: [],
+          dateColumn: "date",
+          valueColumn: "value",
+          horizon: 4,
+          trend: "additive",
+        },
+        6
+      );
+      // 20 valid observations folded (the non-numeric row excluded).
+      expect(streamed.count).toBe(20);
+    });
+
+    it("returns the reduced shape — no full-length series arrays", async () => {
+      const streamed = await AnalyticsService.forecastFromStream(
+        asStream(trendSeries(20), 7),
+        {
+          dateColumn: "date",
+          valueColumn: "value",
+          horizon: 3,
+          trend: "additive",
+        }
+      );
+      expect(streamed).not.toHaveProperty("observed");
+      expect(streamed).not.toHaveProperty("fitted");
+      expect(streamed).not.toHaveProperty("dates");
+      expect(streamed.forecast.values).toHaveLength(3);
+      expect(streamed.count).toBe(20);
+    });
+
+    it("rejects multiplicative seasonality with a non-positive observation", async () => {
+      const records = Array.from({ length: 48 }, (_, i) => ({
+        date: `2020-01-01T00:00:${String(i).padStart(2, "0")}.000Z`,
+        value: i === 30 ? -1 : 100,
+      }));
+      await expect(
+        AnalyticsService.forecastFromStream(asStream(records, 7), {
+          dateColumn: "date",
+          valueColumn: "value",
+          horizon: 12,
+          seasonalPeriod: 12,
+          seasonality: "multiplicative",
+        })
+      ).rejects.toThrow(/multiplicative seasonality requires positive/);
+    });
+
+    it("rejects a series shorter than 2 full seasons (matches forecast)", async () => {
+      const records = Array.from({ length: 10 }, (_, i) => ({
+        date: `2024-01-${String(i + 1).padStart(2, "0")}`,
+        value: i,
+      }));
+      await expect(
+        AnalyticsService.forecastFromStream(asStream(records, 3), {
+          dateColumn: "date",
+          valueColumn: "value",
+          horizon: 5,
+          seasonalPeriod: 8,
+          seasonality: "additive",
+        })
+      ).rejects.toThrow(/at least 2 full seasons/);
+    });
+
+    it("rejects a non-seasonal series shorter than 4 observations", async () => {
+      const records = trendSeries(3);
+      await expect(
+        AnalyticsService.forecastFromStream(asStream(records, 2), {
+          dateColumn: "date",
+          valueColumn: "value",
+          horizon: 2,
+        })
+      ).rejects.toThrow(/at least 4 observations/);
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // decompose
   // -----------------------------------------------------------------------
 
