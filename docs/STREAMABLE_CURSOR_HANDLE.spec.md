@@ -81,6 +81,15 @@ cursor: boolean;             // true iff sortKey != null && rowCount > HANDLE_RO
 
 **Rollback:** revert the merge. The envelope fields are additive; `streamHandle`/`resolveRecordStream` are new and unreferenced after revert; the three tools fall back to `resolveComputeRecords` (bounded). No schema/migration.
 
+## Display of >100k (the boundary — this cursor is compute-only)
+
+**Nothing >100k ever reaches the browser, and the frontend never consumes this cursor.** `streamHandle` is forward-only *server-side* compute. What crosses to the client is always bounded, by block type:
+
+- **Charts** → **aggregate-before-render** (D6 viz-consumer contract): the engine bins/down-samples the >100k result to a renderable cardinality (`GROUP BY`/`width_bucket` — engine-pushdown, no cursor) *before* the spec is built; the client gets a small spec and renders ~thousands of marks. (Also a perceptual necessity, not just scaling.)
+- **Tables** → **virtualized windows** over the ≤100k Redis snapshot via `getSnapshot` (random-access, ≤5k/call), optionally live-hydrated by the existing `portal-sql:stream` SSE as `produce` stages rows. The snapshot is capped at `HANDLE_ROW_CAP`, so a >100k result shows the first 100k (`truncated`) with a "sample / refine" affordance — a human never scrolls to row 400k.
+
+This is why D2 keeps **two read APIs**: `getSnapshot` (random-access — the UI table's source) vs `streamHandle` (forward-only — compute's source). A forward cursor can't cheaply serve "rows 50k–55k," so the UI never uses it. **The >100k *display* story is D6 aggregate-before-render (its own viz-consumer slice, consumed by #92/#84), not #129.**
+
 ## Out of scope
 
 - **Streaming variants of `bounded` tools** (mini-batch k-means / SGD) — #130/E2.
