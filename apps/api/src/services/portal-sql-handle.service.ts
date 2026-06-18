@@ -35,6 +35,15 @@ export interface QueryHandleEnvelope {
   sampleSize?: number;
   truncated: boolean;
   samplePeek: Array<Record<string, unknown>>;
+  /** #129: the query retained for cursor-tier re-execution past the
+   *  snapshot. */
+  sql: string;
+  /** #129: resolved deterministic keyset column, or null when the query has
+   *  no stable unique total order (cursor unavailable; snapshot is all
+   *  there is). Resolution is the slice-2 spike — null until then. */
+  sortKey: string | null;
+  /** #129: true iff a sortKey resolved AND rowCount > HANDLE_ROW_CAP. */
+  cursor: boolean;
 }
 
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -157,6 +166,13 @@ export class PortalSqlHandleService {
       Record<string, unknown>
     >;
 
+    // #129 slice 1: retain the query for the cursor tier. Sort-key
+    // resolution (and thus a live cursor) is the slice-2 spike — until then
+    // `sortKey` is null and `cursor` is false, so behavior is unchanged
+    // (every handle stays the ≤HANDLE_ROW_CAP snapshot it is today).
+    const sortKey: string | null = null;
+    const cursor = sortKey !== null && totalCount > HANDLE_ROW_CAP;
+
     const envelope: QueryHandleEnvelope = {
       queryHandle: handleId,
       rowCount: totalCount,
@@ -165,6 +181,9 @@ export class PortalSqlHandleService {
       ...(sampleSize ? { sampleSize } : {}),
       truncated: rowsRaw.length < totalCount,
       samplePeek,
+      sql: opts.sql,
+      sortKey,
+      cursor,
     };
 
     // Stage batches in Redis + broadcast.

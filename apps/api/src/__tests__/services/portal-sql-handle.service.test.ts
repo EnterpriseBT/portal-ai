@@ -71,6 +71,22 @@ describe("PortalSqlHandleService.produce", () => {
     });
   });
 
+  // #129 slice 1: the envelope retains the query for the cursor tier.
+  // Sort-key resolution (and a live cursor) is the slice-2 spike — for now
+  // sortKey is null and cursor is false, so every handle stays the
+  // ≤HANDLE_ROW_CAP snapshot it is today.
+  it("retains sql and reports no cursor yet (sortKey null, cursor false)", async () => {
+    mockRunSqlQuery.mockResolvedValueOnce({ rows: [{ x: 1 }] });
+    const { envelope } = await PortalSqlHandleService.produce({
+      stationId: "station-1",
+      organizationId: "org-1",
+      sql: "SELECT x FROM t",
+    });
+    expect(envelope.sql).toBe("SELECT x FROM t");
+    expect(envelope.sortKey).toBeNull();
+    expect(envelope.cursor).toBe(false);
+  });
+
   it("marks the envelope sampled when rowCount > SAMPLING_THRESHOLD", async () => {
     const rows = Array.from({ length: 60_000 }, (_, i) => ({ x: i }));
     mockRunSqlQuery.mockResolvedValueOnce({ rows });

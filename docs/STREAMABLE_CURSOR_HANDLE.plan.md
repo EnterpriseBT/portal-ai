@@ -10,18 +10,20 @@ Each slice: failing tests → red → smallest change → green → full unit (+
 
 ---
 
-## Slice 1 — Envelope + sort-key resolution
-**Why first.** Everything keys off the retained `sql` + resolved `sortKey`; no behavior change yet.
+## Slice 1 — Envelope + retained `sql` ✅
+**Why first.** Everything keys off the retained `sql`; additive schema, no behavior change.
 
-- Edit: `portal-sql.contract.ts` — envelope += `sql` / `sortKey` / `cursor`.
-- Edit: `portal-sql-handle.service.ts` — `produce` retains `sql`, calls `resolveSortKey`, sets `cursor`.
-- New: `resolveSortKey(sql, stationData)` — entity-record source → the stable id column; un-keyable SQL → `null`.
-- Tests: spec unit 1 (resolution: entity-source → id, arbitrary → null); `produce` populates the new fields; `cursor` is true only when sortKey resolves AND rowCount > 100k.
+- Edit: `portal-sql.contract.ts` — envelope += `sql` / `sortKey` / `cursor` + a `cursor ⇒ sortKey` coherence guard.
+- Edit: `portal-sql-handle.service.ts` — `produce` retains `sql`; `sortKey: null`, `cursor: false` for now.
+- Tests: `produce` retains `sql` and reports `sortKey: null` / `cursor: false`; the contract guard (cursor requires a non-null sortKey).
 
-**Done when:** envelopes carry the fields; nothing reads them yet.
+**Boundary note (realized while implementing):** `resolveSortKey` was originally bundled here, but a correct keyset key must be **both unique AND match the order the tool needs** (a `forecast` needs the agent's `ORDER BY ts`, not a uuid `id`) — deriving it (the query's `ORDER BY` + a unique tiebreaker) is inseparable from validating its keyset stability. So **resolution moves to slice 2 with the spike.** Slice 1 ships the envelope + `sql` retention; `cursor` stays `false` everywhere (behavior unchanged — every handle is the ≤100k snapshot it is today).
 
-## Slice 2 — Spike, then the keyset read path + `streamHandle`
-**Why a spike first.** Keyset over a *re-executed* query is A's load-bearing risk. **Spike:** stage a >100k stable-id `er__` source; re-execute `WHERE id > :last ORDER BY id LIMIT n` page-by-page; assert every row once, no skips/dups, including under concurrent inserts (rows appear at the tail or not at all). If the spike fails for the entity-source case, stop and escalate — the mechanism needs rework before building on it.
+**Done when:** envelopes carry `sql`/`sortKey`/`cursor`; nothing reads them yet. *(done)*
+
+## Slice 2 — Spike → `resolveSortKey` → the keyset read path + `streamHandle`
+**Why a spike first.** Keyset over a *re-executed* query is A's load-bearing risk, and the key design is part of it. **Spike (key design + stability together):** derive the keyset key from the query's `ORDER BY` + a unique tiebreaker (append the source id); stage a >100k `er__` source; re-execute `… WHERE (<key>) > :last ORDER BY <key> LIMIT n` page-by-page; assert every row once, in the query's order, no skips/dups, including under concurrent inserts (rows appear at the tail or not at all). If it fails for the entity-source case, stop and escalate — the mechanism needs rework before building on it.
+- New: `resolveSortKey(sql, schema)` — derive the ordered unique keyset key (ORDER BY + tiebreaker); `null` when none resolves. `produce` calls it and sets `cursor`.
 
 - New: `streamHandle(handleId): AsyncIterable<ComputeRecord[]>` — Redis snapshot batches up to 100k, then (if `cursor`) keyset re-execution under a per-page `statement_timeout`, advancing `:last`, terminating on a short page; `null` sortKey stops at the snapshot.
 - Tests: spec unit 2–4 (snapshot-only; cursor pages; null stops) + integration 7–8 (real >100k stream, one batch resident; keyset exactness = the promoted spike).
