@@ -72,6 +72,14 @@ export interface SnapshotResult {
   limit: number;
 }
 
+/** The Redis meta record: the public envelope plus the station/org the
+ *  cursor tier (#129) needs to re-execute `sql`. The underscore-prefixed
+ *  fields are internal and never returned to the agent. */
+export interface StoredHandleMeta extends QueryHandleEnvelope {
+  _stationId: string;
+  _organizationId: string;
+}
+
 /**
  * Channel + key derivation. Exposed so the route layer (slice 1) can
  * subscribe to the same channel the producer publishes to.
@@ -186,11 +194,20 @@ export class PortalSqlHandleService {
       cursor,
     };
 
-    // Stage batches in Redis + broadcast.
+    // Stage batches in Redis + broadcast. The stored meta carries the
+    // station/org alongside the public envelope (#129): the cursor tier
+    // re-executes `sql` via PortalSqlService, which needs them to rebuild
+    // the entity views. They are internal (omitted from the agent-facing
+    // envelope), under the same handle scope + 24h TTL as the rows.
     const ttlSeconds = Math.ceil(READ_HANDLE_TTL_MS / 1000);
+    const storedMeta: StoredHandleMeta = {
+      ...envelope,
+      _stationId: opts.stationId,
+      _organizationId: opts.organizationId,
+    };
     await redis.set(
       metaKey(handleId),
-      JSON.stringify(envelope),
+      JSON.stringify(storedMeta),
       "EX",
       ttlSeconds
     );

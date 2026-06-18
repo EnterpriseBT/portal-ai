@@ -87,6 +87,31 @@ describe("PortalSqlHandleService.produce", () => {
     expect(envelope.cursor).toBe(false);
   });
 
+  // #129 slice 2: the stored meta carries station/org (internal) so the
+  // cursor tier can re-execute `sql` via PortalSqlService. They are NOT on
+  // the agent-facing envelope.
+  it("stores stationId/organizationId on the meta but not the envelope", async () => {
+    mockRunSqlQuery.mockResolvedValueOnce({ rows: [{ x: 1 }] });
+    const { envelope } = await PortalSqlHandleService.produce({
+      stationId: "station-9",
+      organizationId: "org-9",
+      sql: "SELECT x FROM t",
+    });
+    // not on the public envelope
+    expect(
+      (envelope as unknown as Record<string, unknown>)._stationId
+    ).toBeUndefined();
+    // present on the stored meta JSON
+    const calls = mockRedisSet.mock.calls as unknown as Array<[string, string]>;
+    const metaCall = calls.find(
+      (c) => typeof c[0] === "string" && c[0].endsWith(":meta")
+    );
+    expect(metaCall).toBeDefined();
+    const stored = JSON.parse(metaCall![1]) as Record<string, unknown>;
+    expect(stored._stationId).toBe("station-9");
+    expect(stored._organizationId).toBe("org-9");
+  });
+
   it("marks the envelope sampled when rowCount > SAMPLING_THRESHOLD", async () => {
     const rows = Array.from({ length: 60_000 }, (_, i) => ({ x: i }));
     mockRunSqlQuery.mockResolvedValueOnce({ rows });
