@@ -109,6 +109,48 @@ export async function resolveRecordSource(
   );
 }
 
+/**
+ * Forward-only stream of a tool's dataset for the `streaming` consumption
+ * mode (#129). The tool declares its semantic order via `opts.orderBy`; when
+ * the result also projects a unique `id` tiebreaker, the handle's cursor
+ * delivers the full set (any N) in `(orderBy, id)` order via keyset
+ * re-execution. Otherwise it falls back to the bounded tier (materialize;
+ * the tool sorts in-memory) — and a >cap fallback surfaces the contract's
+ * `onOverflow` (e.g. `COMPUTE_INPUT_TOO_LARGE`), never a silent truncation.
+ *
+ * Inline `rows` yield as a single batch (small by the ceiling).
+ */
+export async function* resolveRecordStream(
+  input: RecordSourceInput,
+  consumption: Consumption,
+  opts: { orderBy?: string } = {}
+): AsyncGenerator<ComputeRecord[]> {
+  if (input.rows != null) {
+    yield input.rows;
+    return;
+  }
+  if (input.queryHandle == null) {
+    throw new Error(
+      "resolveRecordStream requires exactly one of `queryHandle` or `rows`."
+    );
+  }
+
+  const meta = await PortalSqlHandleService.getMeta(input.queryHandle);
+  const hasId = meta.schema.some((c) => c.name === "id");
+  const hasOrder =
+    opts.orderBy != null && meta.schema.some((c) => c.name === opts.orderBy);
+
+  if (hasId && hasOrder) {
+    yield* PortalSqlHandleService.streamHandle(input.queryHandle, opts.orderBy!);
+    return;
+  }
+
+  // No resolvable keyset (no declared order, or no `id` tiebreaker): the
+  // bounded tier owns it — materialize ≤cap (the tool sorts), >cap → onOverflow.
+  const { rows } = await resolveRecordSource(input, consumption);
+  yield rows;
+}
+
 /** Apply the contract's overflow behavior once N exceeds the bound. */
 function overflow(
   rows: ComputeRecord[],
