@@ -1,6 +1,6 @@
 # Streamable cursor-backed handle — Spec
 
-**After this lands, a query handle can stream its *full* result past `HANDLE_ROW_CAP` (100k), not just page a ≤100k Redis snapshot.** The ≤100k snapshot stays the hot random-access tier (`getSnapshot`, unchanged); a new forward-only `streamHandle` pages the snapshot then, beyond it, **re-executes the retained query with keyset pagination** (decision A). A new `resolveRecordStream` exposes that stream to the `streaming` consumption mode, and the three single-pass reduce tools (`forecast`, `technical_indicator`, `portfolio_metrics`) fold over it — exact at any N, one batch resident at a time. This is the shared in-process dataset-scaling substrate; #124 (remote pull-on-read), #92 (pin replay), and `bulk_transform`'s worker read are later consumers of the *same* cursor.
+**After this lands, a query handle can stream its *full* result past `HANDLE_ROW_CAP` (100k), not just page a ≤100k Redis snapshot.** The ≤100k snapshot stays the hot random-access tier (`getSnapshot`, unchanged); a new forward-only `streamHandle` pages the snapshot then, beyond it, **re-executes the retained query with keyset pagination** (decision A). A new `resolveRecordStream` exposes that stream to the `streaming` consumption mode, and the single-pass **reduce** tools (`forecast`, `portfolio_metrics`) fold over it — exact at any N, one batch resident at a time. (`technical_indicator` was originally bucketed here but is a **map** — one output value per input row — so its scaling wall is the O(N) *output*, which #129 explicitly defers to aggregate-before-render / a raw-series output handle; see Decision 4. It stays on the bounded path.) This is the shared in-process dataset-scaling substrate; #124 (remote pull-on-read), #92 (pin replay), and `bulk_transform`'s worker read are later consumers of the *same* cursor.
 
 Discovery: `docs/STREAMABLE_CURSOR_HANDLE.discovery.md`. Issue: [#129](https://github.com/EnterpriseBT/portal-ai/issues/129). Builds on #121 (`resolveRecordSource`, the `consumption` contract).
 
@@ -14,7 +14,8 @@ Discovery: `docs/STREAMABLE_CURSOR_HANDLE.discovery.md`. Issue: [#129](https://g
 
 3. **Two tiers + a separate forward-only API (D2, confirmed).** `getSnapshot(handle,{offset,limit})` unchanged (random-access, ≤100k, ≤5k/call). New `streamHandle(handle): AsyncIterable<Batch>` — forward-only; yields Redis snapshot batches up to 100k, then keyset re-execution batches beyond. Envelope gains `sql`, the resolved `sortKey`, and `cursor: boolean` (true iff a sort key resolved and `rowCount > HANDLE_ROW_CAP`).
 
-4. **`resolveRecordStream` + three folds (D3, confirmed).** New `resolveRecordStream(input, consumption): AsyncIterable<ComputeRecord[]>` is the `streaming` branch (parallel to `resolveRecordSource` for inline/`bounded`). `forecast`/`technical_indicator`/`portfolio_metrics` fold over batches (online accumulator forms of their `AnalyticsService` methods). `bounded` tools (`cluster`/`logistic_regression`) are unchanged — their streaming variants are #130/E2.
+4. **`resolveRecordStream` + the reduce folds (D3, confirmed; refined in implementation).** New `resolveRecordStream(input, consumption): AsyncIterable<ComputeRecord[]>` is the `streaming` branch (parallel to `resolveRecordSource` for inline/`bounded`), and it **guarantees `orderBy` ordering on every path** (cursor via SQL `ORDER BY`; inline/fallback sorted in-memory) since a single-pass fold needs ordered input. `forecast` and `portfolio_metrics` fold over batches (online accumulator forms of their `AnalyticsService` methods — Holt-Winters recurrence; cumulative/streamed covariance). `bounded` tools (`cluster`/`logistic_regression`) are unchanged — their streaming variants are #130/E2.
+   - **`technical_indicator` is a map, not a reduce — deferred (refinement).** Discovery bucketed it with the reduces, but it emits one value per input row (`{ dates, values }`, length ≈ N). Folding its *input* over the cursor doesn't scale it: the *output* is O(N) and is exactly the "large raw-series output" this spec defers (aggregate-before-render / a `produceFromRows` output handle, overlapping #124). Removing the 100k input cap while still materializing an N-length output array would move the wall, not remove it. So it keeps the `bounded` + `onOverflow:error` path (`resolveComputeRecords`); its >100k story rides the map/output track (the per-record `bulk_transform kind:tool` lineage + F's job-escalation), not this in-process reduce fold.
 
 5. **Cap semantics (D4, confirmed).** 100k is the *in-memory materialization* threshold, not a processing ceiling; `COMPUTE_INPUT_TOO_LARGE` is demoted to the `bounded` + `onOverflow:error` outcome only. No new global cap: the query bounds N, keyset keeps one batch resident, a per-page `statement_timeout` (`STATEMENT_TIMEOUT_MS`) bounds a runaway page. **Follow-up (F):** a very-large *synchronous* streaming reduce blocks the agent turn; total-work job-escalation is F's machinery, noted not built.
 
@@ -41,8 +42,8 @@ cursor: boolean;             // true iff sortKey != null && rowCount > HANDLE_RO
 | `apps/api/src/services/portal-sql-handle.service.ts` | `produce` retains `sql` + `resolveSortKey` + `cursor`; new `streamHandle` (snapshot batches → keyset re-execution) |
 | `apps/api/src/services/portal-sql-handle.service.ts` (or a util) | `resolveSortKey(sql, stationData)` — entity-id case + null fallback |
 | `apps/api/src/tools/record-source.ts` | new `resolveRecordStream(input, consumption)`; `streaming` branch delegates to `streamHandle` |
-| `apps/api/src/services/analytics.service.ts` | online/fold forms for `forecast` / `technical_indicator` / `portfolio_metrics` |
-| `apps/api/src/tools/{forecast,technical-indicator,portfolio-metrics}.tool.ts` | consume `resolveRecordStream` + fold |
+| `apps/api/src/services/analytics.service.ts` | online/fold forms for `forecast` / `portfolio_metrics` (`technical_indicator` deferred — map, see Decision 4) |
+| `apps/api/src/tools/{forecast,portfolio-metrics}.tool.ts` | consume `resolveRecordStream` + fold |
 | `packages/core/src/constants/large-data-ops.constants.ts` | doc the 100k as materialization-threshold (no value change) |
 
 ## Tests
@@ -53,7 +54,7 @@ cursor: boolean;             // true iff sortKey != null && rowCount > HANDLE_RO
 3. `streamHandle` — `cursor` handle yields snapshot batches then keyset pages; advances `:last`; terminates on a short page (mock engine returns ordered pages).
 4. `streamHandle` — `sortKey: null` ends at the snapshot (no step 2).
 5. `resolveRecordStream` — `streaming` consumption yields batches; small inline/handle still works (ceiling-not-mandate).
-6. The three folds — given a fixture stream, the online form equals the current whole-array result (`forecast` MAPE/forecast values; EMA series; cumulative metrics).
+6. The reduce folds — given a fixture stream, the online form equals the current whole-array result (`forecast` MAPE/forecast values incl. shuffled-input ordering; `portfolio_metrics` cumulative/covariance metrics).
 
 **Integration**
 7. Real `er__` source > 100k rows → `streamHandle` streams every row once, in keyset order, one batch resident (assert peak rows held ≈ pageSize, total = rowCount); a `forecast` over it equals the hand-computed forward fit.
@@ -64,7 +65,7 @@ cursor: boolean;             // true iff sortKey != null && rowCount > HANDLE_RO
 - [ ] Envelope carries `sql`/`sortKey`/`cursor`; `produce` retains + resolves them.
 - [ ] `streamHandle` streams ≤100k from the snapshot and >100k via keyset re-execution; `null` sortKey stops at the snapshot.
 - [ ] `resolveRecordStream` feeds the `streaming` mode; `resolveRecordSource` (bounded/inline) unchanged.
-- [ ] The three reduces fold over the stream; results match the whole-array forms (test 6).
+- [ ] The reduce folds (`forecast`, `portfolio_metrics`) match the whole-array forms over a stream (test 6); `technical_indicator` deferred as a map (Decision 4).
 - [ ] `COMPUTE_INPUT_TOO_LARGE` only fires for `bounded` + `onOverflow:error` (a `streaming` tool over >100k keyed source succeeds).
 - [ ] Integration tests 7–8 green; one batch resident; keyset exact.
 - [ ] `npm run test:unit` + `test:integration` + `lint` + `type-check` green.
