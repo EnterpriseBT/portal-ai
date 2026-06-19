@@ -40,9 +40,13 @@ export const INLINE_ROWS_THRESHOLD = 100;
  *  (the handle's `truncated` flag is set and only this many rows are cached). */
 export const HANDLE_ROW_CAP = 100_000;
 
-/** Max rows a pure compute tool (#114) will materialize from a handle, or
- *  accept inline. Equal to HANDLE_ROW_CAP — the read primitive cannot stage
- *  more than that, so this is the faithful-inline ceiling. Past it the tool
- *  throws COMPUTE_INPUT_TOO_LARGE and the agent must pre-aggregate/sample in
- *  SQL (a GROUP BY rollup, `LIMIT n`, or bulk_aggregate). */
+/** The in-memory *materialization* threshold for a pure compute tool (#114),
+ *  not a processing ceiling (#129). Equal to HANDLE_ROW_CAP — the read
+ *  primitive stages at most that many rows in Redis, so this is the
+ *  faithful-inline limit for the `bounded` path (`resolveRecordSource`).
+ *  A `streaming` tool folds *past* it over the cursor (`resolveRecordStream`
+ *  → keyset re-execution), one batch resident, with no row ceiling. The
+ *  COMPUTE_INPUT_TOO_LARGE error is now scoped to the cases the cursor can't
+ *  serve: `bounded` + `onOverflow:error`, and a `streaming` tool over a >cap
+ *  source that lacks a keyset (no projected `id` / no declared order). */
 export const COMPUTE_MAX_ROWS = HANDLE_ROW_CAP;

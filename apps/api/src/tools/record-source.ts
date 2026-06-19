@@ -14,11 +14,12 @@
  *   - `bounded`         → apply the declared `onOverflow`.
  *   - `streaming` / `engine-pushdown` → stream over a cursor.
  *
- * The cursor (the unbounded > HANDLE_ROW_CAP tier) and engine-side
- * representative sampling ship in #129 (child D). Until then, over-bound
- * delivery that needs the cursor surfaces a clear COMPUTE_INPUT_TOO_LARGE
- * pointing at the streaming work. The in-memory tier (inline rows, ≤ cap
- * handle snapshots, and in-memory sampling of inline rows) lands here.
+ * The unbounded > HANDLE_ROW_CAP tier is the cursor (#129): a `streaming`
+ * tool reaches it via `resolveRecordStream` (keyset re-execution over the
+ * retained query). This `resolveRecordSource` is the bounded/inline path —
+ * inline rows, ≤ cap handle snapshots, and in-memory sampling of inline rows;
+ * over-bound delivery that can't be served here (a non-keyable >cap source,
+ * or representative handle sampling) surfaces a clear COMPUTE_INPUT_TOO_LARGE.
  */
 
 import { COMPUTE_MAX_ROWS } from "@portalai/core/constants";
@@ -92,9 +93,9 @@ export async function resolveRecordSource(
     return overflow(input.rows, total, cap, consumption, /* inMemory */ true);
   }
 
-  // Handle — read the snapshot tier (≤ cap). Past it, only `error` is
-  // serviceable in-memory; representative sampling / streaming over a
-  // larger-than-cap handle is the cursor work in #129.
+  // Handle — read the snapshot tier (≤ cap). Past it, this bounded path only
+  // serves `error`; streaming a >cap source is `resolveRecordStream`'s cursor
+  // (it requires a keyset), and representative sampling stays SQL-side.
   if (input.queryHandle != null) {
     const snapshot = await PortalSqlHandleService.getSnapshot(
       input.queryHandle,
@@ -207,22 +208,26 @@ function overflow(
     case "sample":
       // In-memory sampling is faithful only when we hold the whole set
       // (inline rows). Over a larger-than-cap handle, only the first `cap`
-      // rows were read — a representative engine-side sample ships in #129.
+      // rows were read; the forward-only cursor can't cheaply draw a
+      // representative sample, so sample SQL-side instead.
       if (!inMemory) {
         throw tooLarge(
           total,
           cap,
-          "Representative sampling of a query handle ships in #129 (streaming/cursor)."
+          "Sample a >N query handle in SQL (`TABLESAMPLE`, `ORDER BY random() LIMIT n`, or a `GROUP BY` rollup) — the forward cursor can't sample representatively."
         );
       }
       return { rows: systematicSample(rows, cap), total, sampled: true };
     case "stream":
     case "decompose":
     default:
+      // A `streaming` tool reaches the bounded fallback only when no keyset
+      // resolved (the query didn't project a unique `id`, or the tool didn't
+      // declare an order). To stream a >N source it needs both.
       throw tooLarge(
         total,
         cap,
-        "Streaming/decomposed delivery for this size ships in #129 (cursor-backed handle)."
+        "To stream a source past N rows, the query must project a unique `id` and the tool must declare its order column; otherwise pre-aggregate or `LIMIT` in SQL."
       );
   }
 }
