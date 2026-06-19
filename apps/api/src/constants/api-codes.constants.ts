@@ -490,6 +490,18 @@ export enum ApiCode {
   /** Compute input (rows resolved from a query handle, or inline rows)
    *  exceeded COMPUTE_MAX_ROWS — too many rows for an in-memory compute. 400. */
   COMPUTE_INPUT_TOO_LARGE = "COMPUTE_INPUT_TOO_LARGE",
+
+  // Webhook compute scaling (#124)
+  /** The webhook read/write token is unknown or malformed. 401. */
+  WEBHOOK_READ_TOKEN_INVALID = "WEBHOOK_READ_TOKEN_INVALID",
+  /** The webhook read/write token has expired (TTL elapsed or revoked). 401. */
+  WEBHOOK_READ_TOKEN_EXPIRED = "WEBHOOK_READ_TOKEN_EXPIRED",
+  /** The token is valid but scoped to a different handle/org/mode than the
+   *  request targets. 403. */
+  WEBHOOK_HANDLE_SCOPE_MISMATCH = "WEBHOOK_HANDLE_SCOPE_MISMATCH",
+  /** A webhook returned a `{ resultHandle }` that doesn't resolve to a staged
+   *  handle for the caller's org. 400. */
+  WEBHOOK_RESULT_HANDLE_INVALID = "WEBHOOK_RESULT_HANDLE_INVALID",
 }
 
 /**
@@ -538,4 +550,12 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
     "The result is too large to return inline. Use a coarser aggregate, or materialize grouped output into an entity and read it with bulk_query.",
   [ApiCode.COMPUTE_INPUT_TOO_LARGE]:
     "Too many rows for an in-memory compute. Pre-aggregate or sample in SQL — a `GROUP BY` rollup, `… LIMIT n`, or `bulk_aggregate` — then pass the smaller result.",
+  [ApiCode.WEBHOOK_READ_TOKEN_INVALID]:
+    "The read/write token is unknown. Use the `readToken` from the call body's `source` grant, sent as `Authorization: Bearer <token>`.",
+  [ApiCode.WEBHOOK_READ_TOKEN_EXPIRED]:
+    "The token has expired or the tool call already settled. Tokens are valid only for the duration of the originating webhook call.",
+  [ApiCode.WEBHOOK_HANDLE_SCOPE_MISMATCH]:
+    "The token is scoped to a different handle, org, or mode. Read with the read token against the granted handle only.",
+  [ApiCode.WEBHOOK_RESULT_HANDLE_INVALID]:
+    "The returned `resultHandle` doesn't resolve. Stage output via the write endpoint and return the handle it issued.",
 };
