@@ -3,10 +3,8 @@ import { tool } from "ai";
 
 import { AnalyticsService } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import {
-  withComputeInput,
-  resolveComputeRecords,
-} from "./compute-input.util.js";
+import { withComputeInput } from "./compute-input.util.js";
+import { resolveRecordStream } from "./record-source.js";
 
 const InputSchema = withComputeInput({
   dateColumn: z.string().describe("Date column (a key in the rows)"),
@@ -71,7 +69,7 @@ export class ForecastTool extends Tool<typeof InputSchema> {
   name = "Forecast";
   description =
     "Holt-Winters exponential smoothing forecast over a dataset you provide. Pass a `queryHandle` from sql_query (or inline `rows`) plus the date/value columns. " +
-    "Returns in-sample fits, multi-step point forecasts, prediction intervals, and MAPE. " +
+    "Returns multi-step point forecasts, prediction intervals, and MAPE. Folds over the source in a single ordered pass, so it scales to an unbounded query handle (any row count). " +
     "Smoothing parameters are not auto-optimized — defaults are 0.5 / 0.1 / 0.1.";
 
   get schema() {
@@ -84,8 +82,15 @@ export class ForecastTool extends Tool<typeof InputSchema> {
       inputSchema: this.schema,
       execute: async (input) => {
         const { queryHandle, rows, ...rest } = this.validate(input);
-        const records = await resolveComputeRecords({ queryHandle, rows });
-        return AnalyticsService.forecast({ ...rest, records });
+        // Streaming reduce (#129): fold over the source in `dateColumn` order.
+        // The cursor delivers any N a batch at a time; small inline/≤cap
+        // sources resolve to a single ordered batch — same fold either way.
+        const stream = resolveRecordStream(
+          { queryHandle, rows },
+          { mode: "streaming" },
+          { orderBy: rest.dateColumn }
+        );
+        return AnalyticsService.forecastFromStream(stream, rest);
       },
     });
   }

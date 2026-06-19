@@ -112,16 +112,47 @@ export async function resolveRecordSource(
   );
 }
 
+/** Order-aware comparison for the in-memory tier: numbers numerically, Dates
+ *  by instant, everything else by string order (ISO timestamps sort
+ *  chronologically). Nulls sort first. Mirrors the engine's `ASC` intent so
+ *  the in-memory paths order the same way the cursor's `ORDER BY` does. */
+function cmpByKey(a: unknown, b: unknown): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return -1;
+  if (b == null) return 1;
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  if (a instanceof Date && b instanceof Date) return a.getTime() - b.getTime();
+  const as = String(a);
+  const bs = String(b);
+  return as < bs ? -1 : as > bs ? 1 : 0;
+}
+
+/** Stably order an in-memory batch by `orderBy` ascending. No `orderBy` →
+ *  returned as-is (identity preserved). */
+function orderInMemory(
+  rows: ComputeRecord[],
+  orderBy?: string
+): ComputeRecord[] {
+  if (orderBy == null) return rows;
+  return [...rows].sort((x, y) => cmpByKey(x[orderBy], y[orderBy]));
+}
+
 /**
  * Forward-only stream of a tool's dataset for the `streaming` consumption
- * mode (#129). The tool declares its semantic order via `opts.orderBy`; when
- * the result also projects a unique `id` tiebreaker, the handle's cursor
- * delivers the full set (any N) in `(orderBy, id)` order via keyset
- * re-execution. Otherwise it falls back to the bounded tier (materialize;
- * the tool sorts in-memory) — and a >cap fallback surfaces the contract's
- * `onOverflow` (e.g. `COMPUTE_INPUT_TOO_LARGE`), never a silent truncation.
+ * mode (#129), **ordered by `opts.orderBy` on every path** — the single-pass
+ * folds (`forecast`, …) require their input in semantic order, so the
+ * contract is "ordered, one batch at a time," not just "one batch at a time."
  *
- * Inline `rows` yield as a single batch (small by the ceiling).
+ * The tool declares its order via `opts.orderBy`:
+ *   - Handle + a unique `id` tiebreaker → the cursor delivers the full set
+ *     (any N) in `(orderBy, id)` order via keyset re-execution (`streamHandle`).
+ *   - Otherwise → the bounded tier materializes ≤cap and we sort it in-memory
+ *     by `orderBy` here (a >cap fallback surfaces the contract's `onOverflow`,
+ *     e.g. `COMPUTE_INPUT_TOO_LARGE` — never a silent truncation).
+ *   - Inline `rows` (small by the ceiling) yield as one in-memory-ordered batch.
+ *
+ * (For a true date column the cursor's SQL `ORDER BY` is authoritative; the
+ * in-memory comparator assumes sortable values — ISO timestamps qualify.)
  */
 export async function* resolveRecordStream(
   input: RecordSourceInput,
@@ -129,7 +160,7 @@ export async function* resolveRecordStream(
   opts: { orderBy?: string } = {}
 ): AsyncGenerator<ComputeRecord[]> {
   if (input.rows != null) {
-    yield input.rows;
+    yield orderInMemory(input.rows, opts.orderBy);
     return;
   }
   if (input.queryHandle == null) {
@@ -149,9 +180,10 @@ export async function* resolveRecordStream(
   }
 
   // No resolvable keyset (no declared order, or no `id` tiebreaker): the
-  // bounded tier owns it — materialize ≤cap (the tool sorts), >cap → onOverflow.
+  // bounded tier owns it — materialize ≤cap and order in-memory; >cap →
+  // onOverflow.
   const { rows } = await resolveRecordSource(input, consumption);
-  yield rows;
+  yield orderInMemory(rows, opts.orderBy);
 }
 
 /** Apply the contract's overflow behavior once N exceeds the bound. */

@@ -156,6 +156,45 @@ describe("resolveRecordStream — streaming consumption (#129)", () => {
     expect(mockGetMeta).not.toHaveBeenCalled();
   });
 
+  it("orders inline rows by orderBy (folds need ordered input)", async () => {
+    const rows = [{ ts: 3 }, { ts: 1 }, { ts: 2 }];
+    const out = await collect(
+      resolveRecordStream({ rows }, streaming, { orderBy: "ts" })
+    );
+    expect(out).toEqual([[{ ts: 1 }, { ts: 2 }, { ts: 3 }]]);
+  });
+
+  it("orders ISO-timestamp inline rows chronologically", async () => {
+    const rows = [
+      { ts: "2020-03-01T00:00:00.000Z" },
+      { ts: "2020-01-01T00:00:00.000Z" },
+      { ts: "2020-02-01T00:00:00.000Z" },
+    ];
+    const out = await collect(
+      resolveRecordStream({ rows }, streaming, { orderBy: "ts" })
+    );
+    expect(out[0].map((r) => r.ts)).toEqual([
+      "2020-01-01T00:00:00.000Z",
+      "2020-02-01T00:00:00.000Z",
+      "2020-03-01T00:00:00.000Z",
+    ]);
+  });
+
+  it("orders the bounded fallback batch by orderBy too", async () => {
+    mockGetMeta.mockResolvedValue({ schema: [{ name: "ts" }] }); // no id → fallback
+    mockGetSnapshot.mockResolvedValue({
+      rows: [{ ts: 3 }, { ts: 1 }, { ts: 2 }],
+      total: 3,
+      offset: 0,
+      limit: COMPUTE_MAX_ROWS,
+    });
+    const out = await collect(
+      resolveRecordStream({ queryHandle: "qh" }, streaming, { orderBy: "ts" })
+    );
+    expect(out).toEqual([[{ ts: 1 }, { ts: 2 }, { ts: 3 }]]);
+    expect(mockStreamHandle).not.toHaveBeenCalled();
+  });
+
   it("delegates to streamHandle when orderBy + an id tiebreaker resolve", async () => {
     mockGetMeta.mockResolvedValue({
       schema: [{ name: "id" }, { name: "ts" }],
