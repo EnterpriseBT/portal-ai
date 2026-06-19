@@ -48,6 +48,11 @@ export const environment = {
     process.env.TOOLPACK_RUNTIME_MAX_RESPONSE_BYTES || String(1024 * 1024),
     10
   ),
+  // The portal's externally-reachable API base, handed to webhook tools in
+  // the `streaming` pull-on-read grant so a third-party runtime can call back
+  // to `GET /api/webhook/handle/:id` (#124). Defaults to the local dev API.
+  PUBLIC_API_BASE_URL:
+    process.env.PUBLIC_API_BASE_URL || "http://localhost:3001",
   // Emergency rollback flags. Both default false. Flip via env to
   // disable without redeploying: SSRF agent stops resolving+filtering
   // outbound IPs; signing stops appending HMAC headers. The static
