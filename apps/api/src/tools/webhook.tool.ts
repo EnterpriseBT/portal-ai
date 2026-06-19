@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { randomUUID } from "crypto";
+
 import { z } from "zod";
 import { tool } from "ai";
 
@@ -105,28 +107,45 @@ export class WebhookTool extends Tool {
         //  - `bounded`: resolve the dataset server-side (≤ maxRows, onOverflow
         //    honored) and POST `{tool, input, records}` — rows never enter the
         //    agent's context.
-        //  - `streaming` + queryHandle: mint a scoped read token and POST a
-        //    pull-on-read `source` grant; the webhook fetches pages itself. The
-        //    token is revoked when this call settles (success OR error).
+        //  - `streaming` + queryHandle: mint a scoped read token + POST a
+        //    pull-on-read `source` grant; the webhook fetches pages itself.
         //  - `streaming` + inline rows: small data runs inline (ceiling, not
-        //    mandate) → records-in-body, same as `bounded`.
+        //    mandate) → records-in-body.
+        //  - `streaming` also gets an `output` write grant so a large result
+        //    can be staged (`produceFromRows`) and returned as `{ resultHandle }`
+        //    past the 1 MB inline cap. All grants are revoked when the call
+        //    settles (success OR error).
         //  - `none` (default): inline params, today's `{tool, input}`.
         let body: Record<string, unknown>;
-        let mintedToken: string | undefined;
+        let readToken: string | undefined;
+        let writeToken: string | undefined;
+        let sessionId: string | undefined;
         try {
           if (this.consumption?.mode === "streaming") {
             const { queryHandle, rows, ...input } = validated;
+            // Resolve the input first (the org check in buildPullGrant fails
+            // before we mint anything), then the output write grant.
+            let sourcePart: Record<string, unknown>;
             if (typeof queryHandle === "string" && queryHandle.length > 0) {
               const grant = await this.buildPullGrant(queryHandle);
-              mintedToken = grant.readToken;
-              body = { tool: this.slug, input, source: grant };
+              readToken = grant.readToken;
+              sourcePart = { source: grant };
             } else {
               const resolved = await resolveRecordSource(
                 { rows: rows as any },
                 this.consumption
               );
-              body = { tool: this.slug, input, records: resolved.rows };
+              sourcePart = { records: resolved.rows };
             }
+            const output = await this.buildOutputGrant();
+            sessionId = output.sessionId;
+            writeToken = output.writeToken;
+            body = {
+              tool: this.slug,
+              input,
+              ...sourcePart,
+              output: output.grant,
+            };
           } else if (this.needsRecordSource) {
             const { queryHandle, rows, ...input } = validated;
             const resolved = await resolveRecordSource(
@@ -142,6 +161,21 @@ export class WebhookTool extends Tool {
             this.implementation,
             body
           );
+
+          // #124 outbound: a `{ resultHandle }` response opts into the staged
+          // handle. Resolve it against what we staged this session (a webhook
+          // can't name an arbitrary handle) and return its envelope.
+          if (
+            sessionId &&
+            result &&
+            typeof result === "object" &&
+            typeof (result as any).resultHandle === "string"
+          ) {
+            return await this.resolveStagedResult(
+              sessionId,
+              (result as any).resultHandle
+            );
+          }
 
           // Propagate vega-lite and vega chart results
           if (
@@ -162,15 +196,75 @@ export class WebhookTool extends Tool {
 
           return result;
         } finally {
-          // The grant lives only for the duration of this call.
-          if (mintedToken) {
-            await WebhookReadTokenService.revoke(mintedToken).catch(() => {
-              /* best-effort; the short TTL is the backstop */
-            });
-          }
+          // The grants live only for the duration of this call.
+          const cleanup: Array<Promise<unknown>> = [];
+          if (readToken) cleanup.push(WebhookReadTokenService.revoke(readToken));
+          if (writeToken)
+            cleanup.push(WebhookReadTokenService.revoke(writeToken));
+          if (sessionId)
+            cleanup.push(WebhookReadTokenService.clearStagedResult(sessionId));
+          await Promise.allSettled(cleanup);
         }
       },
     });
+  }
+
+  /** Mint a write grant for a fresh staging session — handed to every
+   *  `streaming` webhook so it can stage a large result and return a handle
+   *  (used only if it opts in). (#124 outbound) */
+  private async buildOutputGrant(): Promise<{
+    sessionId: string;
+    writeToken: string;
+    grant: { writeUrl: string; writeToken: string };
+  }> {
+    const sessionId = randomUUID();
+    const writeToken = await WebhookReadTokenService.mint({
+      organizationId: this.organizationId!,
+      handleId: sessionId,
+      mode: "write",
+      stationId: this.stationId,
+    });
+    return {
+      sessionId,
+      writeToken,
+      grant: {
+        writeUrl: `${environment.PUBLIC_API_BASE_URL}/api/webhook/handle/${sessionId}`,
+        writeToken,
+      },
+    };
+  }
+
+  /** Resolve a webhook's claimed `{ resultHandle }` — it must equal the handle
+   *  staged under THIS call's session, and belong to the calling org. Returns
+   *  the handle envelope (the agent reads it like any query handle). (#124) */
+  private async resolveStagedResult(
+    sessionId: string,
+    claimedHandle: string
+  ): Promise<Record<string, unknown>> {
+    const staged = await WebhookReadTokenService.getStagedResult(sessionId);
+    if (!staged || staged !== claimedHandle) {
+      throw new ApiError(
+        400,
+        ApiCode.WEBHOOK_RESULT_HANDLE_INVALID,
+        "Returned resultHandle was not staged by this call"
+      );
+    }
+    const meta = await PortalSqlHandleService.getMeta(staged);
+    if (meta._organizationId !== this.organizationId) {
+      throw new ApiError(
+        403,
+        ApiCode.WEBHOOK_HANDLE_SCOPE_MISMATCH,
+        "Staged handle belongs to a different organization"
+      );
+    }
+    return {
+      queryHandle: staged,
+      rowCount: meta.rowCount,
+      schema: meta.schema,
+      sampled: meta.sampled,
+      truncated: meta.truncated,
+      samplePeek: meta.samplePeek,
+    };
   }
 
   /** Mint a scoped read token for `handleId` and assemble the pull-on-read

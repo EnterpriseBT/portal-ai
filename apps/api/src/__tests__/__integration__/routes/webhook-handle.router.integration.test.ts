@@ -165,3 +165,80 @@ describe("GET /api/webhook/handle/:handleId (#124)", () => {
     expect(res.body.code).toBe("WEBHOOK_READ_TOKEN_INVALID");
   });
 });
+
+describe("POST /api/webhook/handle/:sessionId — outbound staging (#124)", () => {
+  beforeAll(() => {
+    if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL not set");
+  });
+
+  afterEach(async () => {
+    const redis = getRedisClient();
+    for (const h of staged.splice(0)) {
+      await redis.del(`portal-sql:handle:${h.slice(3)}:meta`);
+    }
+  });
+
+  const POST = (sessionId: string, token: string | undefined, body: unknown) => {
+    const r = request(app).post(`/api/webhook/handle/${sessionId}`);
+    return (token ? r.set("Authorization", `Bearer ${token}`) : r).send(
+      body as object
+    );
+  };
+
+  it("stages supplied rows with a write token and returns a readable resultHandle", async () => {
+    const sessionId = "sess-write-1";
+    const writeToken = await WebhookReadTokenService.mint({
+      organizationId: ORG,
+      handleId: sessionId,
+      mode: "write",
+      stationId: "station-1",
+    });
+
+    const res = await POST(sessionId, writeToken, {
+      rows: [{ k: "a", n: 1 }, { k: "b", n: 2 }, { k: "c", n: 3 }],
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.payload.resultHandle).toMatch(/^qh-/);
+    expect(res.body.payload.rowCount).toBe(3);
+    staged.push(res.body.payload.resultHandle);
+
+    // The staged handle is a real, readable handle.
+    const snap = await PortalSqlHandleService.getSnapshot(
+      res.body.payload.resultHandle,
+      { offset: 0, limit: 10 }
+    );
+    expect(snap.total).toBe(3);
+    expect(snap.rows[1]).toEqual({ k: "b", n: 2 });
+  });
+
+  it("401 with no token", async () => {
+    const res = await POST("sess-x", undefined, { rows: [] });
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("WEBHOOK_READ_TOKEN_INVALID");
+  });
+
+  it("403 for a READ token on the write endpoint", async () => {
+    const sessionId = "sess-readwrong";
+    const readToken = await WebhookReadTokenService.mint({
+      organizationId: ORG,
+      handleId: sessionId,
+      mode: "read",
+    });
+    const res = await POST(sessionId, readToken, { rows: [{ a: 1 }] });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("WEBHOOK_HANDLE_SCOPE_MISMATCH");
+  });
+
+  it("400 when rows is missing", async () => {
+    const sessionId = "sess-norows";
+    const writeToken = await WebhookReadTokenService.mint({
+      organizationId: ORG,
+      handleId: sessionId,
+      mode: "write",
+      stationId: "station-1",
+    });
+    const res = await POST(sessionId, writeToken, { schema: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("WEBHOOK_RESULT_HANDLE_INVALID");
+  });
+});

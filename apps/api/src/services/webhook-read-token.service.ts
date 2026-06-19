@@ -27,13 +27,26 @@ export type WebhookTokenMode = "read" | "write";
 
 interface TokenRecord {
   organizationId: string;
+  /** For a read token, the handle to page; for a write token, the staging
+   *  session id (no handle exists yet — it's created on finalize). */
   handleId: string;
   mode: WebhookTokenMode;
+  /** Owning station — carried on write tokens so the staged handle's meta is
+   *  attributed correctly by `produceFromRows`. */
+  stationId?: string;
   /** ms-epoch logical expiry; the Redis key outlives this by `GRACE_MS`. */
   exp: number;
 }
 
 const TOKEN_PREFIX = "webhook-token:";
+/** Maps a staging session → the handle `produceFromRows` created for it, so
+ *  the runtime can verify a webhook's `{ resultHandle }` is the one it staged
+ *  under this call (not an arbitrary handle id). Short-lived. */
+const STAGED_RESULT_PREFIX = "webhook-staged-result:";
+
+function stagedResultKey(sessionId: string): string {
+  return `${STAGED_RESULT_PREFIX}${sessionId}`;
+}
 /** The Redis key survives this long past `exp` so a late request reads as
  *  EXPIRED (not INVALID) before final eviction. */
 const GRACE_MS = 60_000;
@@ -52,6 +65,7 @@ export class WebhookReadTokenService {
     organizationId: string;
     handleId: string;
     mode: WebhookTokenMode;
+    stationId?: string;
     ttlMs?: number;
     now?: number;
   }): Promise<string> {
@@ -65,6 +79,7 @@ export class WebhookReadTokenService {
       organizationId: opts.organizationId,
       handleId: opts.handleId,
       mode: opts.mode,
+      ...(opts.stationId ? { stationId: opts.stationId } : {}),
       exp: now + ttlMs,
     };
     await getRedisClient().set(
@@ -118,5 +133,31 @@ export class WebhookReadTokenService {
   /** Revoke a token (best-effort) — called when the originating tool settles. */
   static async revoke(token: string): Promise<void> {
     await getRedisClient().del(tokenKey(token));
+  }
+
+  /** Record the handle a staging session produced (#124 outbound). Short TTL —
+   *  it only needs to outlive the in-flight webhook call. */
+  static async recordStagedResult(
+    sessionId: string,
+    handleId: string
+  ): Promise<void> {
+    await getRedisClient().set(
+      stagedResultKey(sessionId),
+      handleId,
+      "PX",
+      WEBHOOK_READ_TOKEN_TTL_MS + GRACE_MS
+    );
+  }
+
+  /** The handle staged under `sessionId`, or null if none — the runtime uses
+   *  this to verify a webhook's returned `{ resultHandle }` is the one it
+   *  actually staged this call. */
+  static async getStagedResult(sessionId: string): Promise<string | null> {
+    return getRedisClient().get(stagedResultKey(sessionId));
+  }
+
+  /** Drop the session→handle mapping when the call settles. */
+  static async clearStagedResult(sessionId: string): Promise<void> {
+    await getRedisClient().del(stagedResultKey(sessionId));
   }
 }

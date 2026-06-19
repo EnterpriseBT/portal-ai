@@ -6,11 +6,13 @@
  * endpoint authenticated to a third party — never the user's JWT.
  *
  *   - `GET  /api/webhook/handle/:handleId` — paged read (inbound pull-on-read).
+ *   - `POST /api/webhook/handle/:sessionId` — stage a large result (outbound),
+ *     write-scoped token; `produceFromRows` → `{ resultHandle }`.
  *
  * Auth: `Authorization: Bearer <token>`, validated fail-closed against the
- * token's `(organizationId, handleId, mode)` scope, with a defense-in-depth
- * cross-check that the token's org matches the handle's staged org. Read-only,
- * single-handle, org-scoped, short-TTL.
+ * token's `(organizationId, handleId|sessionId, mode)` scope, with a
+ * defense-in-depth cross-check that the token's org matches the handle's
+ * staged org. Single-target, org-scoped, short-TTL.
  */
 
 import { Router, Request, Response, NextFunction } from "express";
@@ -129,6 +131,111 @@ webhookHandleRouter.get(
         limit,
       });
       return HttpService.success(res, result);
+    } catch (err) {
+      return next(err);
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/webhook/handle/{sessionId}:
+ *   post:
+ *     tags:
+ *       - Webhook compute scaling
+ *     summary: Stage a large webhook result as a handle (#124 outbound)
+ *     description: >
+ *       A `streaming` webhook tool that produces a result too large for the
+ *       1 MB inline response cap POSTs its rows here (write-scoped token from
+ *       the call's `output` grant), then returns `{ resultHandle }` in its
+ *       tool response. The runtime stages the rows via `produceFromRows` and
+ *       binds the handle to this staging session.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [rows]
+ *             properties:
+ *               rows:
+ *                 type: array
+ *                 items: { type: object }
+ *               schema:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     name: { type: string }
+ *                     type: { type: string }
+ *     responses:
+ *       200:
+ *         description: Result staged
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     resultHandle: { type: string }
+ *                     rowCount: { type: integer }
+ *       401:
+ *         description: Token invalid or expired
+ *       403:
+ *         description: Token scoped to a different session/org or not a write token
+ */
+webhookHandleRouter.post(
+  "/handle/:sessionId",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { sessionId } = req.params;
+      const token = bearerToken(req);
+
+      const grant = await WebhookReadTokenService.validate(token, {
+        handleId: sessionId,
+        mode: "write",
+      });
+
+      const body = (req.body ?? {}) as {
+        rows?: unknown;
+        schema?: Array<{ name: string; type: string }>;
+      };
+      if (!Array.isArray(body.rows)) {
+        throw new ApiError(
+          400,
+          ApiCode.WEBHOOK_RESULT_HANDLE_INVALID,
+          "Staging request requires a `rows` array"
+        );
+      }
+
+      const { envelope } = await PortalSqlHandleService.produceFromRows({
+        rows: body.rows as Array<Record<string, unknown>>,
+        schema: body.schema,
+        stationId: grant.stationId ?? "webhook-staging",
+        organizationId: grant.organizationId,
+      });
+
+      // Bind the produced handle to this session so the runtime can verify the
+      // webhook's returned `{ resultHandle }` is exactly what it staged.
+      await WebhookReadTokenService.recordStagedResult(
+        sessionId,
+        envelope.queryHandle
+      );
+
+      return HttpService.success(res, {
+        resultHandle: envelope.queryHandle,
+        rowCount: envelope.rowCount,
+      });
     } catch (err) {
       return next(err);
     }

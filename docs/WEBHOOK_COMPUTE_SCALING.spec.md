@@ -42,8 +42,8 @@ POST body carries a **source grant** instead of rows:
 - `GET /api/webhook/handle/:handleId?offset&limit` — `Authorization: Bearer <readToken>`. 200 → `{ rows, total, offset, limit }` (a `getSnapshot` page; or a cursor page for a >`HANDLE_ROW_CAP` handle via #129's `streamHandle`, forward-only). 401 `WEBHOOK_READ_TOKEN_INVALID` / `WEBHOOK_READ_TOKEN_EXPIRED`; 403 on org/handle mismatch; `limit` clamped to ≤ 5000.
 
 ### Outbound — staging write + result envelope
-- `POST /api/webhook/handle` — `Authorization: Bearer <writeToken>`, body `{ rows, schema?, done? }` (paged appends; `done:true` finalizes). Finalize → `produceFromRows` → `{ resultHandle }`.
-- The webhook's tool response, when opting into a handle: `{ resultHandle: "qh-…" }` (recognized by the runtime; resolved downstream). Small results: inline as today.
+- `POST /api/webhook/handle/:sessionId` — `Authorization: Bearer <writeToken>` (write-scoped to the staging `sessionId` the runtime minted in the `output` grant), body `{ rows, schema? }` → `produceFromRows` → `{ resultHandle, rowCount }`. The handle is bound to the session. **Single staging POST** (one request body, bounded by `REQUEST_JSON_LIMIT_BYTES` + `HANDLE_ROW_CAP`); a **paged-append** variant (`done`-finalized accumulation) for output exceeding one body is a noted follow-up, not built here.
+- Every `streaming` tool receives an `output: { writeUrl, writeToken }` grant. The webhook opts in by staging + returning `{ resultHandle: "qh-…" }`; the runtime verifies it's the handle staged *this* session (a webhook can't name an arbitrary handle), checks the org, and returns the handle envelope. Small results: inline as today.
 
 ### New error codes (`api-codes.constants.ts`)
 `WEBHOOK_READ_TOKEN_INVALID`, `WEBHOOK_READ_TOKEN_EXPIRED`, `WEBHOOK_HANDLE_SCOPE_MISMATCH`, `WEBHOOK_RESULT_HANDLE_INVALID`.
