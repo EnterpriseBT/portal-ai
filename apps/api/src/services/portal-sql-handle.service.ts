@@ -38,8 +38,10 @@ export interface QueryHandleEnvelope {
   /** #129: the query retained for cursor-tier re-execution past the snapshot.
    *  Streamability is decided at read time (`streamHandle` branches on
    *  `rowCount > HANDLE_ROW_CAP`; the tool declares its order — decision B),
-   *  so the envelope carries no precomputed sort key / cursor flag. */
-  sql: string;
+   *  so the envelope carries no precomputed sort key / cursor flag. **Null**
+   *  for an externally-supplied-rows handle (`produceFromRows`, #124): no query
+   *  to re-execute, so it is always fully staged (≤ cap, snapshot only). */
+  sql: string | null;
 }
 
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -104,8 +106,6 @@ export class PortalSqlHandleService {
     opts: ProduceOptions
   ): Promise<{ envelope: QueryHandleEnvelope }> {
     const handleId = `qh-${randomUUID()}`;
-    const redis = getRedisClient();
-    const channel = streamChannelKey(handleId);
 
     // Run the query through the existing pipeline. The handle path
     // uses a higher row cap; sampling for >SAMPLING_THRESHOLD rows is
@@ -185,16 +185,97 @@ export class PortalSqlHandleService {
       sql: opts.sql,
     };
 
-    // Stage batches in Redis + broadcast. The stored meta carries the
-    // station/org alongside the public envelope (#129): the cursor tier
-    // re-executes `sql` via PortalSqlService, which needs them to rebuild
-    // the entity views. They are internal (omitted from the agent-facing
-    // envelope), under the same handle scope + 24h TTL as the rows.
+    return this.stage(
+      handleId,
+      rowsRaw,
+      envelope,
+      opts.stationId,
+      opts.organizationId
+    );
+  }
+
+  /**
+   * Stage a **caller-supplied** row set under a fresh handle (#124) — the
+   * outbound producer for a webhook that returns a large result. Mirrors
+   * `produce` but the rows come from the caller, not a query, so the handle
+   * has no `sql` (it can't be re-executed) and is therefore always fully
+   * staged: rows past `HANDLE_ROW_CAP` are truncated (the snapshot is all
+   * there is — no cursor tier). Reads back exactly like any other handle.
+   */
+  static async produceFromRows(opts: {
+    rows: Array<Record<string, unknown>>;
+    schema?: Array<{ name: string; type: string }>;
+    stationId: string;
+    organizationId: string;
+  }): Promise<{ envelope: QueryHandleEnvelope }> {
+    const handleId = `qh-${randomUUID()}`;
+    const truncated = opts.rows.length > HANDLE_ROW_CAP;
+    const rowsRaw = truncated ? opts.rows.slice(0, HANDLE_ROW_CAP) : opts.rows;
+    // No query to re-execute beyond the snapshot, so the staged set IS the
+    // total — rowCount always equals what's persisted (keeps getSnapshot exact).
+    const totalCount = rowsRaw.length;
+
+    const sampled = totalCount > SAMPLING_THRESHOLD;
+    const sampleSize = sampled
+      ? Math.min(rowsRaw.length, SAMPLING_THRESHOLD)
+      : undefined;
+
+    const firstRow = rowsRaw[0] as Record<string, unknown> | undefined;
+    const schema =
+      opts.schema ??
+      (firstRow
+        ? Object.keys(firstRow).map((name) => ({
+            name,
+            type: detectPgType(firstRow[name]),
+          }))
+        : []);
+
+    const samplePeek = rowsRaw.slice(0, SAMPLE_PEEK_SIZE) as Array<
+      Record<string, unknown>
+    >;
+
+    const envelope: QueryHandleEnvelope = {
+      queryHandle: handleId,
+      rowCount: totalCount,
+      schema,
+      sampled,
+      ...(sampleSize ? { sampleSize } : {}),
+      truncated,
+      samplePeek,
+      sql: null, // rows supplied externally — no originating query
+    };
+
+    return this.stage(
+      handleId,
+      rowsRaw,
+      envelope,
+      opts.stationId,
+      opts.organizationId
+    );
+  }
+
+  /**
+   * Persist a handle's rows + meta in Redis and broadcast the batch stream.
+   * Shared by `produce` (query rows) and `produceFromRows` (#124, supplied
+   * rows). The stored meta carries the station/org alongside the public
+   * envelope (#129): the cursor tier re-executes `sql` via PortalSqlService,
+   * which needs them to rebuild the entity views. They are internal (omitted
+   * from the agent-facing envelope), under the same handle scope + 24h TTL.
+   */
+  private static async stage(
+    handleId: string,
+    rowsRaw: Array<Record<string, unknown>>,
+    envelope: QueryHandleEnvelope,
+    stationId: string,
+    organizationId: string
+  ): Promise<{ envelope: QueryHandleEnvelope }> {
+    const redis = getRedisClient();
+    const channel = streamChannelKey(handleId);
     const ttlSeconds = Math.ceil(READ_HANDLE_TTL_MS / 1000);
     const storedMeta: StoredHandleMeta = {
       ...envelope,
-      _stationId: opts.stationId,
-      _organizationId: opts.organizationId,
+      _stationId: stationId,
+      _organizationId: organizationId,
     };
     await redis.set(
       metaKey(handleId),
@@ -229,8 +310,8 @@ export class PortalSqlHandleService {
     logger.info(
       {
         handleId,
-        stationId: opts.stationId,
-        rowCount: totalCount,
+        stationId,
+        rowCount: envelope.rowCount,
         batches: Math.ceil(rowsRaw.length / BATCH_SIZE),
       },
       "portal-sql handle produced"
@@ -345,7 +426,16 @@ export class PortalSqlHandleService {
       return;
     }
 
-    // Unbounded: keyset re-execution in (orderBy, id) order.
+    // Unbounded: keyset re-execution in (orderBy, id) order. Requires the
+    // originating query — an externally-supplied-rows handle (`produceFromRows`,
+    // sql null) is always ≤ cap so never reaches here; guard the invariant.
+    if (meta.sql === null) {
+      throw new ApiError(
+        400,
+        ApiCode.READ_HANDLE_EXPIRED,
+        "Handle has no query to re-execute past the snapshot"
+      );
+    }
     let last: { o: unknown; i: unknown } | null = null;
     for (;;) {
       const where = last

@@ -32,8 +32,11 @@ export const QueryHandleEnvelopeSchema = z
      *  Whether a handle streams is decided at read time — `streamHandle`
      *  branches on `rowCount > HANDLE_ROW_CAP` and the streaming tool declares
      *  its order column (decision B) — so the envelope carries no precomputed
-     *  sort key / cursor flag. */
-    sql: z.string(),
+     *  sort key / cursor flag. **Null** when the rows were supplied externally
+     *  rather than by a query (`produceFromRows`, #124): there is no query to
+     *  re-execute, so such a handle is always fully staged (≤ cap, snapshot
+     *  only — never the cursor tier). */
+    sql: z.string().nullable(),
   })
   .superRefine((env, ctx) => {
     if (env.sampled && env.sampleSize === undefined) {
