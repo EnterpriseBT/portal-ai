@@ -136,3 +136,44 @@ describe("mock-toolpack-server verification middleware (phase 6)", () => {
     expect(expected).toMatch(/^[0-9a-f]{64}$/);
   });
 });
+
+describe("mock-toolpack-server — #124 dataset-scaling reference tools", () => {
+  const originalSecret = process.env.MOCK_TOOLPACK_SIGNING_SECRET;
+  afterEach(() => {
+    if (originalSecret === undefined) {
+      delete process.env.MOCK_TOOLPACK_SIGNING_SECRET;
+    } else {
+      process.env.MOCK_TOOLPACK_SIGNING_SECRET = originalSecret;
+    }
+  });
+
+  it("declares the three consumption tiers in /schema", async () => {
+    delete process.env.MOCK_TOOLPACK_SIGNING_SECRET;
+    const res = await request(createMockApp()).get("/schema");
+    expect(res.status).toBe(200);
+    const byName = Object.fromEntries(
+      (res.body.tools as Array<{ name: string; capability?: { consumption?: { mode: string } } }>).map(
+        (t) => [t.name, t]
+      )
+    );
+    expect(byName.sum_records.capability?.consumption?.mode).toBe("bounded");
+    expect(byName.count_via_pull.capability?.consumption?.mode).toBe("streaming");
+    expect(byName.aggregate_to_handle.capability?.consumption?.mode).toBe(
+      "streaming"
+    );
+  });
+
+  it("sum_records (bounded) sums a column over the POSTed records", async () => {
+    delete process.env.MOCK_TOOLPACK_SIGNING_SECRET;
+    const res = await request(createMockApp())
+      .post("/runtime")
+      .set("Content-Type", "application/json")
+      .send({
+        tool: "sum_records",
+        input: { column: "amount" },
+        records: [{ amount: 12.5 }, { amount: 9 }, { amount: 0.5 }],
+      });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ sum: 22, count: 3 });
+  });
+});

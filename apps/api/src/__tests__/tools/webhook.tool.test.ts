@@ -1,4 +1,5 @@
 /* global AbortController */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 import type { Consumption } from "@portalai/core/models";

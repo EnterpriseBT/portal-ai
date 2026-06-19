@@ -8,6 +8,12 @@
  *   GET  /metadata  — optional human-readable descriptions + examples
  *   POST /runtime   — invoke a tool by name (body: { tool, input })
  *
+ * #124 dataset scaling: also the reference impl of the three `consumption`
+ * tiers — `sum_records` (bounded, rows in the body), `count_via_pull`
+ * (streaming, pages the `source` read grant), and `aggregate_to_handle`
+ * (streaming + stages a large result via the `output` write grant and returns
+ * `{ resultHandle }`). See docs/CUSTOM_TOOLPACK_INTEGRATION.md.
+ *
  * Phase 6: also demonstrates the receiving end of the HMAC outbound
  * signing contract. When `MOCK_TOOLPACK_SIGNING_SECRET` is set, the
  * server verifies three headers on every request:
@@ -250,7 +256,124 @@ const tools = [
     description: `${NEO_TOOL_DESC} Same body as fast, but no \`bulkDispatch\` field — covers the §4c BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE rejection path.`,
     parameterSchema: NEO_PARAM_SCHEMA,
   },
+  // ── #124 dataset-scaling reference tools ────────────────────────────
+  // The three consumption tiers a custom tool can declare. See
+  // docs/CUSTOM_TOOLPACK_INTEGRATION.md → "Scaling over large datasets".
+  {
+    name: "sum_records",
+    description:
+      "BOUNDED tier: Portal resolves the dataset and POSTs it as `records`; " +
+      "this sums one numeric column. Returns { sum, count }.",
+    parameterSchema: {
+      type: "object",
+      properties: { column: { type: "string" } },
+      required: ["column"],
+    },
+    capability: {
+      pure: true,
+      reads: [],
+      writes: [],
+      locks: [],
+      consumption: { mode: "bounded", maxRows: 50_000, onOverflow: "error" },
+      computeShape: "reduce",
+      costHint: "free",
+      resultKind: "scalar",
+      alwaysAvailable: false,
+    },
+  },
+  {
+    name: "count_via_pull",
+    description:
+      "STREAMING tier: Portal hands a paged read grant (`source`); this pulls " +
+      "every page itself and counts the rows. Returns { count }.",
+    parameterSchema: { type: "object", properties: {} },
+    capability: {
+      pure: true,
+      reads: [],
+      writes: [],
+      locks: [],
+      consumption: { mode: "streaming" },
+      computeShape: "reduce",
+      costHint: "free",
+      resultKind: "scalar",
+      alwaysAvailable: false,
+    },
+  },
+  {
+    name: "aggregate_to_handle",
+    description:
+      "STREAMING tier with large output: pulls the input via `source`, " +
+      "stages a per-page row-count rollup via the `output` write grant, and " +
+      "returns { resultHandle } — output past the 1 MB inline cap.",
+    parameterSchema: { type: "object", properties: {} },
+    capability: {
+      pure: true,
+      reads: [],
+      writes: [],
+      locks: [],
+      consumption: { mode: "streaming" },
+      computeShape: "reduce",
+      costHint: "free",
+      resultKind: "data-table",
+      alwaysAvailable: false,
+    },
+  },
 ];
+
+// ── #124 pull-on-read + staging helpers (reference implementation) ──────
+
+interface PullGrant {
+  readUrl: string;
+  readToken: string;
+  pageLimit?: number;
+}
+interface WriteGrant {
+  writeUrl: string;
+  writeToken: string;
+}
+
+/** Page a `source` read grant to exhaustion, invoking `onPage` per batch.
+ *  This is the loop a streaming toolpack runs to consume its input. */
+async function pullAllPages(
+  source: PullGrant,
+  onPage: (rows: Array<Record<string, unknown>>) => void
+): Promise<void> {
+  const limit = source.pageLimit ?? 5_000;
+  let offset = 0;
+  for (;;) {
+    const url = `${source.readUrl}?offset=${offset}&limit=${limit}`;
+    const resp = await fetch(url, {
+      headers: { Authorization: `Bearer ${source.readToken}` },
+    });
+    if (!resp.ok) throw new Error(`read page failed: ${resp.status}`);
+    const body = (await resp.json()) as {
+      payload: { rows: Array<Record<string, unknown>>; total: number };
+    };
+    const rows = body.payload.rows;
+    onPage(rows);
+    offset += rows.length;
+    if (rows.length === 0 || offset >= body.payload.total) break;
+  }
+}
+
+/** Stage result rows via the `output` write grant; returns the handle id. */
+async function stageResult(
+  output: WriteGrant,
+  rows: Array<Record<string, unknown>>,
+  schema?: Array<{ name: string; type: string }>
+): Promise<string> {
+  const resp = await fetch(output.writeUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${output.writeToken}`,
+    },
+    body: JSON.stringify({ rows, schema }),
+  });
+  if (!resp.ok) throw new Error(`stage failed: ${resp.status}`);
+  const body = (await resp.json()) as { payload: { resultHandle: string } };
+  return body.payload.resultHandle;
+}
 
 function neoDiameterAvg(input: Record<string, unknown>): number {
   // Tools are pure functions — return the value, not a target-shaped
@@ -629,6 +752,73 @@ export function createMockApp(): Application {
           } catch (err) {
             res.status(400).json({
               error: err instanceof Error ? err.message : "bad_input",
+            });
+          }
+        })();
+        return;
+      }
+      case "sum_records": {
+        // BOUNDED: Portal resolved the dataset into `records`.
+        const records = (req.body?.records ?? []) as Array<
+          Record<string, unknown>
+        >;
+        const column = (input as { column?: unknown })?.column;
+        if (typeof column !== "string") {
+          res.status(400).json({ error: "`input.column` must be a string." });
+          return;
+        }
+        let sum = 0;
+        for (const r of records) sum += Number(r[column]) || 0;
+        res.json({ sum, count: records.length });
+        return;
+      }
+      case "count_via_pull": {
+        // STREAMING: pull every page of the `source` grant and count.
+        (async () => {
+          try {
+            const source = req.body?.source as PullGrant | undefined;
+            if (!source?.readUrl) {
+              res.status(400).json({ error: "missing `source` grant" });
+              return;
+            }
+            let count = 0;
+            await pullAllPages(source, (rows) => {
+              count += rows.length;
+            });
+            res.json({ count });
+          } catch (err) {
+            res
+              .status(502)
+              .json({ error: err instanceof Error ? err.message : "pull_failed" });
+          }
+        })();
+        return;
+      }
+      case "aggregate_to_handle": {
+        // STREAMING + large output: pull input, stage a rollup, return a handle.
+        (async () => {
+          try {
+            const source = req.body?.source as PullGrant | undefined;
+            const output = req.body?.output as WriteGrant | undefined;
+            if (!source?.readUrl || !output?.writeUrl) {
+              res
+                .status(400)
+                .json({ error: "missing `source` or `output` grant" });
+              return;
+            }
+            let pageIndex = 0;
+            const rollup: Array<Record<string, unknown>> = [];
+            await pullAllPages(source, (rows) => {
+              rollup.push({ page: pageIndex++, rows: rows.length });
+            });
+            const resultHandle = await stageResult(output, rollup, [
+              { name: "page", type: "int4" },
+              { name: "rows", type: "int4" },
+            ]);
+            res.json({ resultHandle });
+          } catch (err) {
+            res.status(502).json({
+              error: err instanceof Error ? err.message : "aggregate_failed",
             });
           }
         })();
