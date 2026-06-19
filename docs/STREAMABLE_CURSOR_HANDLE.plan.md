@@ -36,15 +36,17 @@ Each slice: failing tests → red → smallest change → green → full unit (+
 
 **Done when:** the `streaming` mode yields batches; bounded/inline unchanged.
 
-## Slice 4 — Fold the single-pass reduces
-**Per-tool, green each (the bulk of the work).** For `forecast` and `portfolio_metrics`: add an online/fold form to `AnalyticsService` (accumulator across batches — Holt-Winters recurrence; cumulative/streamed covariance); the tool consumes `resolveRecordStream` and folds. `resolveRecordStream` also gains an order guarantee on every path (a fold needs ordered input).
+## Slice 4 — Fold `forecast` (the single reduce that scales)
+**Add the online fold + wire the tool.** `AnalyticsService.forecastFromStream` (Holt-Winters recurrence, O(m) state); `forecast.tool` consumes `resolveRecordStream`, which also gains an order guarantee on every path (a fold needs ordered input).
 
-**`technical_indicator` deferred (refinement during implementation).** It was bucketed here, but it's a **map** — `{ dates, values }`, one output per input row — so folding its input doesn't scale it (the O(N) *output* is the wall, and large raw-series output is explicitly deferred to aggregate-before-render / a `produceFromRows` handle). It stays on the bounded path; its >100k story rides the map/output track (per-record `bulk_transform kind:tool` + F job-escalation). See spec Decision 4.
+**Two of discovery's "three reduces" deferred during implementation (see spec Decision 4):**
+- **`technical_indicator` — a map.** `{ dates, values }`, one output per input row, so the O(N) *output* is the wall (deferred to aggregate-before-render / a `produceFromRows` handle); folding the input would move the wall, not remove it. Rides the map/output track.
+- **`portfolio_metrics` — a reduce with no realistic >100k caller** (a returns series >100k ≈ 400yrs daily) and two blockers: no order column for path-dependent `maxDrawdown`, and a positional two-stream benchmark join. Folding now would be speculative; revisit on a tick/intraday case.
 
-- Edit: `analytics.service.ts` (online forms) + `forecast.tool.ts` / `portfolio-metrics.tool.ts`; `record-source.ts` (order guarantee); `builtin-toolpacks.ts` (`streamingReduce` capability).
-- Tests: spec unit 6 — online form equals the whole-array result on a fixture stream, one tool at a time (forecast proven incl. shuffled-input ordering).
+- Edit: `analytics.service.ts` (`forecastFromStream`) + `forecast.tool.ts`; `record-source.ts` (order guarantee); `builtin-toolpacks.ts` (`streamingReduce` capability).
+- Tests: spec unit 6 — `forecastFromStream` equals the whole-array `forecast` on a fixture stream (incl. shuffled-input ordering end-to-end through the tool).
 
-**Done when:** the reduce folds (`forecast`, `portfolio_metrics`) are exact over a stream; results match today's whole-array output.
+**Done when:** the `forecast` fold is exact over a stream and matches today's whole-array output.
 
 ## Slice 5 — Cap-semantics cleanup + the exactness lock
 **Why last.** Once streaming is wired, demote the wall and prove unbounded exactness.
