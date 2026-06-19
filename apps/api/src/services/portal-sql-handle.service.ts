@@ -35,6 +35,11 @@ export interface QueryHandleEnvelope {
   sampleSize?: number;
   truncated: boolean;
   samplePeek: Array<Record<string, unknown>>;
+  /** #129: the query retained for cursor-tier re-execution past the snapshot.
+   *  Streamability is decided at read time (`streamHandle` branches on
+   *  `rowCount > HANDLE_ROW_CAP`; the tool declares its order — decision B),
+   *  so the envelope carries no precomputed sort key / cursor flag. */
+  sql: string;
 }
 
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -61,6 +66,14 @@ export interface SnapshotResult {
   total: number;
   offset: number;
   limit: number;
+}
+
+/** The Redis meta record: the public envelope plus the station/org the
+ *  cursor tier (#129) needs to re-execute `sql`. The underscore-prefixed
+ *  fields are internal and never returned to the agent. */
+export interface StoredHandleMeta extends QueryHandleEnvelope {
+  _stationId: string;
+  _organizationId: string;
 }
 
 /**
@@ -157,6 +170,10 @@ export class PortalSqlHandleService {
       Record<string, unknown>
     >;
 
+    // #129: retain the query so the cursor tier can re-execute it past the
+    // snapshot. Streamability isn't precomputed here — `streamHandle` branches
+    // on `rowCount > HANDLE_ROW_CAP` and the streaming tool supplies its order
+    // column at read time (decision B).
     const envelope: QueryHandleEnvelope = {
       queryHandle: handleId,
       rowCount: totalCount,
@@ -165,13 +182,23 @@ export class PortalSqlHandleService {
       ...(sampleSize ? { sampleSize } : {}),
       truncated: rowsRaw.length < totalCount,
       samplePeek,
+      sql: opts.sql,
     };
 
-    // Stage batches in Redis + broadcast.
+    // Stage batches in Redis + broadcast. The stored meta carries the
+    // station/org alongside the public envelope (#129): the cursor tier
+    // re-executes `sql` via PortalSqlService, which needs them to rebuild
+    // the entity views. They are internal (omitted from the agent-facing
+    // envelope), under the same handle scope + 24h TTL as the rows.
     const ttlSeconds = Math.ceil(READ_HANDLE_TTL_MS / 1000);
+    const storedMeta: StoredHandleMeta = {
+      ...envelope,
+      _stationId: opts.stationId,
+      _organizationId: opts.organizationId,
+    };
     await redis.set(
       metaKey(handleId),
-      JSON.stringify(envelope),
+      JSON.stringify(storedMeta),
       "EX",
       ttlSeconds
     );
@@ -253,6 +280,149 @@ export class PortalSqlHandleService {
 
     return { rows: out, total: envelope.rowCount, offset, limit };
   }
+
+  /** Read the stored meta (envelope + station/org), or throw
+   *  READ_HANDLE_EXPIRED. Exposed so the streaming consumer can decide
+   *  cursor-vs-bounded before iterating. */
+  static async getMeta(handleId: string): Promise<StoredHandleMeta> {
+    const redis = getRedisClient();
+    const raw = await redis.get(metaKey(handleId));
+    if (!raw) {
+      throw new ApiError(
+        404,
+        ApiCode.READ_HANDLE_EXPIRED,
+        "Query handle has expired or does not exist"
+      );
+    }
+    return JSON.parse(raw) as StoredHandleMeta;
+  }
+
+  /**
+   * Forward-only stream of the handle's full result in `(orderBy, id)`
+   * order — the #129 cursor tier. The streaming tool declares `orderBy`
+   * (its semantic order, e.g. a date column); `id` is the unique tiebreaker
+   * (the `er__` row id). Two paths, both delivering the same order:
+   *  - **≤ HANDLE_ROW_CAP**: read the Redis snapshot, sort by `(orderBy, id)`
+   *    in memory, yield in batches. No re-execution.
+   *  - **> HANDLE_ROW_CAP**: keyset re-execute the retained `sql` —
+   *    `SELECT * FROM (<sql>) _cur WHERE (orderBy, id) > (:lastO, :lastI)
+   *     ORDER BY orderBy, id LIMIT n` — advancing the cursor per page until a
+   *    short page. Keyset stability over re-execution (incl. concurrent
+   *    inserts) is proven by `keyset-cursor-stability.integration.test.ts`.
+   *
+   * Requires the result to project `orderBy` and `id`; the caller
+   * (`resolveRecordStream`) checks resolvability and falls back to the
+   * bounded tier otherwise — this throws if called without them.
+   */
+  static async *streamHandle(
+    handleId: string,
+    orderBy: string
+  ): AsyncGenerator<Array<Record<string, unknown>>> {
+    const meta = await this.getMeta(handleId);
+    const idCol = resolveTiebreaker(meta.schema);
+    const hasOrder = meta.schema.some((c) => c.name === orderBy);
+    if (!idCol || !hasOrder) {
+      throw new ApiError(
+        400,
+        ApiCode.COMPUTE_INPUT_TOO_LARGE,
+        `Streaming requires the result to project '${orderBy}' and a unique key ` +
+          `(\`_record_id\` or \`id\`); project them or pre-aggregate.`
+      );
+    }
+
+    if (meta.rowCount <= HANDLE_ROW_CAP) {
+      // Bounded: read the snapshot, sort to (orderBy, id), yield in batches.
+      const all: Array<Record<string, unknown>> = [];
+      for (let off = 0; off < meta.rowCount; off += 5_000) {
+        const snap = await this.getSnapshot(handleId, { offset: off, limit: 5_000 });
+        if (snap.rows.length === 0) break;
+        all.push(...snap.rows);
+      }
+      all.sort((a, b) => compareByKey(a, b, orderBy, idCol));
+      for (let i = 0; i < all.length; i += BATCH_SIZE) {
+        yield all.slice(i, i + BATCH_SIZE);
+      }
+      return;
+    }
+
+    // Unbounded: keyset re-execution in (orderBy, id) order.
+    let last: { o: unknown; i: unknown } | null = null;
+    for (;;) {
+      const where = last
+        ? `WHERE (${quoteIdent(orderBy)}, ${quoteIdent(idCol)}) > ` +
+          `(${sqlLiteral(last.o)}, ${sqlLiteral(last.i)})`
+        : "";
+      const wrapped =
+        `SELECT * FROM (${meta.sql}) "_cur" ${where} ` +
+        `ORDER BY ${quoteIdent(orderBy)} ASC, ${quoteIdent(idCol)} ASC ` +
+        `LIMIT ${BATCH_SIZE}`;
+      const result = await PortalSqlService.runSqlQuery({
+        sql: wrapped,
+        stationId: meta._stationId,
+        organizationId: meta._organizationId,
+        rowCap: BATCH_SIZE,
+        cellCap: Number.MAX_SAFE_INTEGER,
+        payloadCap: Number.MAX_SAFE_INTEGER,
+      });
+      const rows = "sample" in result ? [] : result.rows;
+      if (rows.length === 0) break;
+      yield rows;
+      const lastRow = rows[rows.length - 1];
+      last = { o: lastRow[orderBy], i: lastRow[idCol] };
+      if (rows.length < BATCH_SIZE) break;
+    }
+  }
+}
+
+// ── Cursor keyset helpers (#129) ────────────────────────────────────
+
+/** Embed a cursor value as a Postgres SQL literal. Values originate from a
+ *  prior page's rows (DB values re-embedded — `runSqlQuery` is string-only,
+ *  no bind params), so strings are single-quote-escaped; dates → ISO. */
+function sqlLiteral(v: unknown): string {
+  if (v === null || v === undefined) return "NULL";
+  if (typeof v === "number") {
+    if (!Number.isFinite(v)) throw new Error("non-finite cursor value");
+    return String(v);
+  }
+  if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
+  if (v instanceof Date) return `'${v.toISOString()}'`;
+  return `'${String(v).replace(/'/g, "''")}'`;
+}
+
+/** Quote a SQL identifier. The column comes from the result schema (a real
+ *  query column, validated by membership before use), but quote defensively. */
+function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+/** The unique keyset tiebreaker in a result: the entity view's synthetic
+ *  `_record_id` (the common case), else a projected `id`. `null` when neither
+ *  is present — then the cursor is unavailable and the bounded tier owns it. */
+export function resolveTiebreaker(
+  schema: Array<{ name: string; type: string }>
+): string | null {
+  const names = new Set(schema.map((c) => c.name));
+  if (names.has("_record_id")) return "_record_id";
+  if (names.has("id")) return "id";
+  return null;
+}
+
+function cmpValue(a: unknown, b: unknown): number {
+  if (a === b) return 0;
+  if (a == null) return -1;
+  if (b == null) return 1;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** Total order by (orderBy, id) for the in-memory ≤cap sort. */
+function compareByKey(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+  orderBy: string,
+  idCol: string
+): number {
+  return cmpValue(a[orderBy], b[orderBy]) || cmpValue(a[idCol], b[idCol]);
 }
 
 /**

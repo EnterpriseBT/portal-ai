@@ -12,6 +12,7 @@ describe("QueryHandleEnvelopeSchema", () => {
       sampled: false,
       truncated: false,
       samplePeek: [],
+      sql: "SELECT acreage, assessed_value FROM parcels",
     });
     expect(parsed.sampled).toBe(false);
     expect(parsed.sampleSize).toBeUndefined();
@@ -26,9 +27,26 @@ describe("QueryHandleEnvelopeSchema", () => {
       sampleSize: 50_000,
       truncated: false,
       samplePeek: [{ x: 1 }, { x: 2 }],
+      sql: "SELECT x FROM huge",
     });
     expect(parsed.sampled).toBe(true);
     expect(parsed.sampleSize).toBe(50_000);
+  });
+
+  // #129: `sql` is retained for cursor-tier re-execution; streamability is
+  // decided at read time (no precomputed sortKey / cursor flag — decision B).
+  it("retains the sql for cursor-tier re-execution", () => {
+    const parsed = QueryHandleEnvelopeSchema.parse({
+      queryHandle: "qh-cur",
+      rowCount: 500_000,
+      schema: [{ name: "_record_id", type: "uuid" }],
+      sampled: true,
+      sampleSize: 50_000,
+      truncated: true,
+      samplePeek: [],
+      sql: "SELECT _record_id, ts FROM big ORDER BY ts",
+    });
+    expect(parsed.sql).toBe("SELECT _record_id, ts FROM big ORDER BY ts");
   });
 
   it("rejects a sampled envelope missing sampleSize", () => {

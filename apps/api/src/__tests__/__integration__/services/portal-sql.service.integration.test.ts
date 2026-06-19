@@ -735,6 +735,42 @@ describe("PortalSqlService integration tests", () => {
       expect(rows.every((r) => Number(r.c_age) > 30)).toBe(true);
     });
 
+    // #129 slice-2 caveat closer: the cursor tier wraps the retained query
+    // as `SELECT * FROM (<sql>) _cur WHERE (orderBy, _record_id) > (…)
+    // ORDER BY orderBy, _record_id LIMIT n` and runs it via runSqlQuery.
+    // This proves (a) validatePortalSql accepts that wrapper, and (b) the
+    // entity views compose INSIDE the subquery — the only thing the
+    // streamHandle unit tests (mocked runSqlQuery) couldn't.
+    it("#129: a wrapped keyset query re-executes against the views, paging by (c_age, _record_id)", async () => {
+      await seedContacts(5, 10); // c_age 10..14, distinct _record_id
+      const inner = `SELECT "_record_id", "c_age" FROM contacts`;
+      const page = async (where: string) => {
+        const res = await portalSql.runSqlQuery({
+          sql:
+            `SELECT * FROM (${inner}) "_cur" ${where} ` +
+            `ORDER BY "c_age" ASC, "_record_id" ASC LIMIT 2`,
+          stationId,
+          organizationId: orgId,
+        });
+        return ("rows" in res ? res.rows : []) as Array<
+          Record<string, unknown>
+        >;
+      };
+
+      const p1 = await page(""); // first page, no cursor
+      expect(p1.map((r) => Number(r.c_age))).toEqual([10, 11]);
+
+      const last = p1[1];
+      const p2 = await page(
+        `WHERE ("c_age", "_record_id") > ` +
+          `(${Number(last.c_age)}, '${String(last._record_id)}')`
+      );
+      expect(p2.map((r) => Number(r.c_age))).toEqual([12, 13]); // keyset continues
+
+      const ids = [...p1, ...p2].map((r) => String(r._record_id));
+      expect(new Set(ids).size).toBe(4); // no overlap across pages
+    });
+
     // Case 44
     it("projects _record_id as a non-null text per row", async () => {
       await seedContacts(2);

@@ -163,6 +163,29 @@ export interface ForecastResult {
   mape: number;
 }
 
+/**
+ * Bounded-memory forecast result (#129 streaming fold). Identical to
+ * {@link ForecastResult} except it omits the full-length `dates` / `observed`
+ * / `fitted` arrays — the online fold never materializes the input series, so
+ * those grow with N and cannot be returned for an unbounded source. The
+ * agent-facing payload (the projected `forecast`, `parameters`, `mape`) is
+ * computed exactly, byte-for-byte equivalent to the whole-array path. The
+ * in-sample fit chart over a large series is a display concern handled by
+ * aggregate-before-render, not by shipping N points back.
+ */
+export interface StreamForecastResult {
+  forecast: {
+    dates: string[];
+    values: number[];
+    lower: number[];
+    upper: number[];
+  };
+  parameters: { alpha: number; beta: number; gamma: number };
+  mape: number;
+  /** Count of valid (numeric) observations folded — the recurrence length. */
+  count: number;
+}
+
 export interface VarCvarResult {
   var: number;
   cvar: number;
@@ -1386,6 +1409,238 @@ export class AnalyticsService {
       forecast: { dates: fcDates, values: fcValues, lower, upper },
       parameters: { alpha, beta, gamma },
       mape,
+    };
+  }
+
+  /**
+   * Streaming Holt-Winters fold (#129) — the bounded-memory equivalent of
+   * {@link forecast} over a record stream already ordered by `dateColumn`
+   * (the cursor's `(orderBy, id)` keyset guarantees this). It maintains O(m)
+   * state: a `2·seasonalPeriod` (or 2, non-seasonal) init buffer, the
+   * `seasonal[]` ring, online residual sum/sum-sq for the prediction-interval
+   * σ, online MAPE accumulators, and a 2-element date buffer for forecast
+   * spacing. It never holds the full series, so it returns a
+   * {@link StreamForecastResult} (no `dates`/`observed`/`fitted` arrays).
+   *
+   * The math mirrors `forecast` step-for-step — same init, same 1-step-ahead
+   * recurrence, same post-warmup residual/MAPE windows, same Gaussian-residual
+   * intervals — so the projected `forecast`, `parameters`, and `mape` match the
+   * whole-array path on any series the in-memory tier could also handle.
+   *
+   * Faithfulness notes vs. `forecast`:
+   *  - `observed` counts only numeric values (mirrors `extractNumericColumn`);
+   *    non-numeric rows are skipped but still advance the date buffer, because
+   *    the whole-array path derives forecast spacing from the last two *records*
+   *    (`dates[len-2..]`), not the last two valid observations.
+   *  - σ uses the one-pass population variance (`E[r²] − E[r]²`); for
+   *    well-conditioned series this equals `ss.standardDeviation` to many
+   *    decimals. (Tied timestamps may order differently than the in-memory
+   *    `Array.sort`, since the cursor breaks ties on `_record_id` — forecasting
+   *    assumes a strictly increasing time index, so this is a non-issue.)
+   */
+  static async forecastFromStream(
+    batches: AsyncIterable<Record<string, unknown>[]>,
+    params: {
+      dateColumn: string;
+      valueColumn: string;
+      horizon: number;
+      seasonalPeriod?: number;
+      seasonality?: "none" | "additive" | "multiplicative";
+      trend?: "none" | "additive";
+      alpha?: number;
+      beta?: number;
+      gamma?: number;
+      confidence?: number;
+    }
+  ): Promise<StreamForecastResult> {
+    const seasonality = params.seasonality ?? "none";
+    const trendType = params.trend ?? "additive";
+    const m = seasonality !== "none" ? params.seasonalPeriod : undefined;
+    const alpha = params.alpha ?? 0.5;
+    const beta = params.beta ?? 0.1;
+    const gamma = params.gamma ?? 0.1;
+
+    if (seasonality !== "none" && (!m || m < 2)) {
+      throw new Error(
+        "seasonalPeriod is required (≥ 2) when seasonality is not 'none'"
+      );
+    }
+
+    const warmup = m ?? 1;
+    const initN = m ? 2 * m : 2; // observations buffered before init can run
+
+    // O(m) state, set once the init buffer fills.
+    let level = 0;
+    let trendComp = 0;
+    let seasonal: number[] = [];
+    let initialized = false;
+    const initBuf: number[] = [];
+
+    let validCount = 0; // numeric observations folded (= recurrence length)
+    // Last two *record* dates (all rows), for forecast-date spacing.
+    let prevDate: string | undefined;
+    let lastDate: string | undefined;
+    // Post-warmup residual + MAPE accumulators.
+    let residSum = 0;
+    let residSumSq = 0;
+    let residCount = 0;
+    let mapeSum = 0;
+    let mapeCount = 0;
+
+    const mean = (a: number[]) => a.reduce((s, v) => s + v, 0) / a.length;
+
+    const initState = () => {
+      level = m ? mean(initBuf.slice(0, m)) : initBuf[0];
+      trendComp = 0;
+      if (trendType === "additive") {
+        trendComp = m
+          ? (mean(initBuf.slice(m, 2 * m)) - mean(initBuf.slice(0, m))) / m
+          : initBuf[1] - initBuf[0];
+      }
+      seasonal =
+        m && seasonality !== "none"
+          ? initBuf
+              .slice(0, m)
+              .map((v) => (seasonality === "additive" ? v - level : v / level))
+          : [];
+    };
+
+    // One 1-step-ahead fit + state update for observation at recurrence
+    // index `t`. Mirrors the body of `forecast`'s in-sample loop exactly.
+    const step = (yt: number, t: number) => {
+      const seasonalIdx = m ? t % m : 0;
+      const sPrev = m
+        ? seasonal[seasonalIdx]
+        : seasonality === "multiplicative"
+          ? 1
+          : 0;
+
+      const fitted =
+        seasonality === "multiplicative"
+          ? (level + (trendType === "additive" ? trendComp : 0)) * sPrev
+          : level + (trendType === "additive" ? trendComp : 0) + sPrev;
+
+      if (t >= warmup) {
+        const r = yt - fitted;
+        residSum += r;
+        residSumSq += r * r;
+        residCount += 1;
+        if (yt !== 0) {
+          mapeSum += Math.abs(r / yt);
+          mapeCount += 1;
+        }
+      }
+
+      const lvlBefore = level;
+      const trendBefore = trendComp;
+      if (seasonality === "additive") {
+        level = alpha * (yt - sPrev) + (1 - alpha) * (lvlBefore + trendBefore);
+      } else if (seasonality === "multiplicative") {
+        level = alpha * (yt / sPrev) + (1 - alpha) * (lvlBefore + trendBefore);
+      } else {
+        level = alpha * yt + (1 - alpha) * (lvlBefore + trendBefore);
+      }
+      if (trendType === "additive") {
+        trendComp = beta * (level - lvlBefore) + (1 - beta) * trendBefore;
+      }
+      if (m && seasonality !== "none") {
+        seasonal[seasonalIdx] =
+          seasonality === "additive"
+            ? gamma * (yt - lvlBefore - trendBefore) + (1 - gamma) * sPrev
+            : gamma * (yt / (lvlBefore + trendBefore)) + (1 - gamma) * sPrev;
+      }
+    };
+
+    for await (const batch of batches) {
+      for (const rec of batch) {
+        // Every record advances the date buffer (matches whole-array `dates`).
+        prevDate = lastDate;
+        lastDate = String(rec[params.dateColumn]);
+
+        // Numeric extraction — identical predicate to extractNumericColumn.
+        const raw = rec[params.valueColumn];
+        const v = Number(raw);
+        if (isNaN(v) || raw === null || raw === undefined) continue;
+        if (seasonality === "multiplicative" && v <= 0) {
+          throw new Error(
+            "multiplicative seasonality requires positive observations"
+          );
+        }
+
+        if (!initialized) {
+          initBuf.push(v);
+          validCount = initBuf.length;
+          if (initBuf.length === initN) {
+            initState();
+            initialized = true;
+            for (let t = 0; t < initBuf.length; t++) step(initBuf[t], t);
+          }
+          continue;
+        }
+        step(v, validCount);
+        validCount += 1;
+      }
+    }
+
+    const n = validCount;
+    if (seasonality !== "none") {
+      if (n < 2 * (m as number)) {
+        throw new Error(
+          `Forecasting with seasonality requires at least 2 full seasons (need ${2 * (m as number)} rows, got ${n})`
+        );
+      }
+    } else if (n < 4) {
+      throw new Error(`Forecasting requires at least 4 observations; got ${n}`);
+    }
+
+    // Project horizon from the final state (identical to `forecast`).
+    const fcValues: number[] = [];
+    for (let h = 1; h <= params.horizon; h++) {
+      const seasonalIdx = m ? (n - 1 + h) % m : 0;
+      const sFwd = m
+        ? seasonal[seasonalIdx]
+        : seasonality === "multiplicative"
+          ? 1
+          : 0;
+      const point =
+        seasonality === "multiplicative"
+          ? (level + (trendType === "additive" ? h * trendComp : 0)) * sFwd
+          : level + (trendType === "additive" ? h * trendComp : 0) + sFwd;
+      fcValues.push(point);
+    }
+
+    // Forecast dates from the last two record dates' spacing.
+    let fcDates: string[] = [];
+    if (n >= 2 && prevDate !== undefined && lastDate !== undefined) {
+      const t0 = new Date(prevDate).getTime();
+      const t1 = new Date(lastDate).getTime();
+      const spacing = t1 - t0;
+      for (let h = 1; h <= params.horizon; h++) {
+        fcDates.push(new Date(t1 + spacing * h).toISOString());
+      }
+    } else {
+      fcDates = Array.from({ length: params.horizon }, (_, i) => `+${i + 1}`);
+    }
+
+    // Prediction intervals — one-pass population σ over post-warmup residuals.
+    let sigmaHat = 0;
+    if (residCount > 1) {
+      const rMean = residSum / residCount;
+      const variance = residSumSq / residCount - rMean * rMean;
+      sigmaHat = Math.sqrt(Math.max(0, variance));
+    }
+    const conf = params.confidence ?? 0.95;
+    const z = this.tInverseCDF(1 - (1 - conf) / 2, 1000);
+    const lower = fcValues.map((val, i) => val - z * sigmaHat * Math.sqrt(i + 1));
+    const upper = fcValues.map((val, i) => val + z * sigmaHat * Math.sqrt(i + 1));
+
+    const mape = mapeCount > 0 ? (100 * mapeSum) / mapeCount : 0;
+
+    return {
+      forecast: { dates: fcDates, values: fcValues, lower, upper },
+      parameters: { alpha, beta, gamma },
+      mape,
+      count: n,
     };
   }
 

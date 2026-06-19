@@ -27,6 +27,13 @@ export const QueryHandleEnvelopeSchema = z
     sampleSize: z.number().int().positive().optional(),
     truncated: z.boolean(),
     samplePeek: z.array(z.record(z.string(), z.unknown())).max(10),
+    /** The query that produced this handle, retained so the cursor tier can
+     *  re-execute it past the ≤HANDLE_ROW_CAP snapshot (#129 mechanism A).
+     *  Whether a handle streams is decided at read time — `streamHandle`
+     *  branches on `rowCount > HANDLE_ROW_CAP` and the streaming tool declares
+     *  its order column (decision B) — so the envelope carries no precomputed
+     *  sort key / cursor flag. */
+    sql: z.string(),
   })
   .superRefine((env, ctx) => {
     if (env.sampled && env.sampleSize === undefined) {

@@ -1184,6 +1184,25 @@ const pureReduce = (
   alwaysAvailable: false,
 });
 
+/** Pure single-pass reduce folded over a record stream (#129) — exact at any
+ *  N, one batch resident. `streaming` consumption: the cursor delivers the
+ *  full ordered set past the in-memory cap, so there is no `onOverflow:error`
+ *  ceiling (a >100k keyed source folds rather than throwing). */
+const streamingReduce = (
+  resultKind: ResultKind,
+  costHint: CostHint = "free"
+): ToolCapability => ({
+  pure: true,
+  reads: [],
+  writes: [],
+  consumption: { mode: "streaming" },
+  computeShape: "reduce",
+  costHint,
+  locks: [],
+  resultKind,
+  alwaysAvailable: false,
+});
+
 /** Reads the engine (a producer / SQL-pushed read or visualize). */
 const engineRead = (
   resultKind: ResultKind,
@@ -1236,7 +1255,8 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   trend: pureReduce("scalar"),
   changepoint: pureReduce("scalar"),
   decompose: pureReduce("scalar"),
-  forecast: pureReduce("scalar"),
+  // forecast folds online over the cursor (#129) — streaming, not bounded.
+  forecast: streamingReduce("scalar"),
   // financial — pure math
   tvm: pureMath(),
   npv: pureMath(),

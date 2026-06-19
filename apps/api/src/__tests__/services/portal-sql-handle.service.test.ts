@@ -71,6 +71,47 @@ describe("PortalSqlHandleService.produce", () => {
     });
   });
 
+  // #129: the envelope retains the query so the cursor tier can re-execute it.
+  // Streamability is decided at read time (streamHandle branches on rowCount;
+  // the tool declares its order — decision B), so the envelope carries no
+  // precomputed sort key / cursor flag.
+  it("retains sql for cursor-tier re-execution", async () => {
+    mockRunSqlQuery.mockResolvedValueOnce({ rows: [{ x: 1 }] });
+    const { envelope } = await PortalSqlHandleService.produce({
+      stationId: "station-1",
+      organizationId: "org-1",
+      sql: "SELECT x FROM t",
+    });
+    expect(envelope.sql).toBe("SELECT x FROM t");
+    expect(envelope).not.toHaveProperty("sortKey");
+    expect(envelope).not.toHaveProperty("cursor");
+  });
+
+  // #129 slice 2: the stored meta carries station/org (internal) so the
+  // cursor tier can re-execute `sql` via PortalSqlService. They are NOT on
+  // the agent-facing envelope.
+  it("stores stationId/organizationId on the meta but not the envelope", async () => {
+    mockRunSqlQuery.mockResolvedValueOnce({ rows: [{ x: 1 }] });
+    const { envelope } = await PortalSqlHandleService.produce({
+      stationId: "station-9",
+      organizationId: "org-9",
+      sql: "SELECT x FROM t",
+    });
+    // not on the public envelope
+    expect(
+      (envelope as unknown as Record<string, unknown>)._stationId
+    ).toBeUndefined();
+    // present on the stored meta JSON
+    const calls = mockRedisSet.mock.calls as unknown as Array<[string, string]>;
+    const metaCall = calls.find(
+      (c) => typeof c[0] === "string" && c[0].endsWith(":meta")
+    );
+    expect(metaCall).toBeDefined();
+    const stored = JSON.parse(metaCall![1]) as Record<string, unknown>;
+    expect(stored._stationId).toBe("station-9");
+    expect(stored._organizationId).toBe("org-9");
+  });
+
   it("marks the envelope sampled when rowCount > SAMPLING_THRESHOLD", async () => {
     const rows = Array.from({ length: 60_000 }, (_, i) => ({ x: i }));
     mockRunSqlQuery.mockResolvedValueOnce({ rows });
@@ -223,5 +264,89 @@ describe("PortalSqlHandleService.getSnapshot", () => {
     });
 
     expect(result.limit).toBe(5_000);
+  });
+});
+
+// #129 slice 2: the cursor stream (streamHandle).
+describe("PortalSqlHandleService.streamHandle", () => {
+  async function collect<T>(gen: AsyncGenerator<T>): Promise<T[]> {
+    const out: T[] = [];
+    for await (const x of gen) out.push(x);
+    return out;
+  }
+
+  const baseMeta = {
+    queryHandle: "qh-s",
+    schema: [
+      { name: "id", type: "integer" },
+      { name: "ts", type: "integer" },
+    ],
+    sampled: false,
+    truncated: false,
+    samplePeek: [],
+    sql: "SELECT id, ts FROM t",
+    _stationId: "st",
+    _organizationId: "org",
+  };
+
+  it("≤cap: yields the snapshot sorted by (orderBy, id), no re-execution", async () => {
+    const meta = { ...baseMeta, rowCount: 4 };
+    const batch = [
+      { id: 3, ts: 2 },
+      { id: 1, ts: 1 },
+      { id: 2, ts: 2 },
+      { id: 0, ts: 0 },
+    ];
+    mockRedisGet.mockImplementation(async (key: string) => {
+      if (key.endsWith(":meta")) return JSON.stringify(meta);
+      if (key.endsWith(":batches:0")) return JSON.stringify(batch);
+      return null;
+    });
+
+    const flat = (
+      await collect(PortalSqlHandleService.streamHandle("qh-s", "ts"))
+    ).flat();
+    expect(flat.map((r) => r.id)).toEqual([0, 1, 2, 3]); // (ts,id) order
+    expect(mockRunSqlQuery).not.toHaveBeenCalled();
+  });
+
+  it(">cap: keyset re-executes, advancing the cursor, terminating on a short page", async () => {
+    const meta = { ...baseMeta, rowCount: 100_001, truncated: true };
+    mockRedisGet.mockImplementation(async (key: string) =>
+      key.endsWith(":meta") ? JSON.stringify(meta) : null
+    );
+    const fullPage = Array.from({ length: 1000 }, (_, i) => ({ id: i, ts: i }));
+    const shortPage = [{ id: 1000, ts: 1000 }];
+    mockRunSqlQuery
+      .mockResolvedValueOnce({ rows: fullPage })
+      .mockResolvedValueOnce({ rows: shortPage });
+
+    const out = await collect(PortalSqlHandleService.streamHandle("qh-s", "ts"));
+    expect(out).toHaveLength(2);
+    expect(out[0]).toHaveLength(1000);
+    expect(out[1]).toHaveLength(1);
+    expect(mockRunSqlQuery).toHaveBeenCalledTimes(2);
+
+    const calls = mockRunSqlQuery.mock.calls as unknown as Array<
+      [{ sql: string }]
+    >;
+    const firstSql = calls[0][0].sql;
+    expect(firstSql).toContain(`SELECT * FROM (SELECT id, ts FROM t) "_cur"`);
+    expect(firstSql).toContain(`ORDER BY "ts" ASC, "id" ASC`);
+    expect(firstSql).toContain("LIMIT 1000");
+    expect(firstSql).not.toContain("WHERE");
+
+    const secondSql = calls[1][0].sql;
+    expect(secondSql).toContain(`WHERE ("ts", "id") > (999, 999)`);
+  });
+
+  it("throws when the result lacks a unique id tiebreaker", async () => {
+    const meta = { ...baseMeta, rowCount: 5, schema: [{ name: "ts", type: "integer" }] };
+    mockRedisGet.mockImplementation(async (key: string) =>
+      key.endsWith(":meta") ? JSON.stringify(meta) : null
+    );
+    await expect(
+      collect(PortalSqlHandleService.streamHandle("qh-s", "ts"))
+    ).rejects.toMatchObject({ code: ApiCode.COMPUTE_INPUT_TOO_LARGE });
   });
 });
