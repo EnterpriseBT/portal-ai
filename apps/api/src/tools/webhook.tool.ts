@@ -1,12 +1,9 @@
-// Unused after phase 1 (custom toolpack registration is dropped in
-// phase 2). The class is kept in place so phase 2 can re-wire it
-// against the new `organization_toolpacks` records without recreating
-// the JSON-Schema → Zod conversion path.
-
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { z } from "zod";
 import { tool } from "ai";
+
+import type { Consumption } from "@portalai/core/models";
 
 import {
   ToolService,
@@ -14,6 +11,7 @@ import {
 } from "../services/tools.service.js";
 import { Tool } from "../types/tools.js";
 import { createLogger } from "../utils/logger.util.js";
+import { resolveRecordSource } from "./record-source.js";
 
 const logger = createLogger({ module: "webhook-tool" });
 
@@ -25,13 +23,15 @@ export class WebhookTool extends Tool {
   private parameterSchema: Record<string, unknown>;
   private implementation: WebhookImplementation;
   private stationId: string;
+  private consumption?: Consumption;
 
   constructor(
     toolName: string,
     description: string,
     parameterSchema: Record<string, unknown>,
     implementation: WebhookImplementation,
-    stationId: string
+    stationId: string,
+    consumption?: Consumption
   ) {
     super();
     this.slug = toolName;
@@ -40,10 +40,33 @@ export class WebhookTool extends Tool {
     this.parameterSchema = parameterSchema;
     this.implementation = implementation;
     this.stationId = stationId;
+    this.consumption = consumption;
+  }
+
+  /** A `bounded` tool reduces/maps over a dataset, so the runtime injects the
+   *  compute-source fields (`queryHandle` / `rows`) into its schema — the
+   *  runtime resolves them server-side and POSTs the rows as `records`. (#124) */
+  private get needsRecordSource(): boolean {
+    return this.consumption?.mode === "bounded";
   }
 
   get schema() {
-    return jsonSchemaToZod(this.parameterSchema);
+    const base = jsonSchemaToZod(this.parameterSchema);
+    if (this.needsRecordSource && base instanceof z.ZodObject) {
+      return base.extend({
+        queryHandle: z
+          .string()
+          .optional()
+          .describe(
+            "A queryHandle from sql_query/display_entity_records whose rows are the dataset this tool computes over. Provide this OR `rows`."
+          ),
+        rows: z
+          .array(z.record(z.string(), z.unknown()))
+          .optional()
+          .describe("Inline rows to compute over (alternative to `queryHandle`)."),
+      });
+    }
+    return base;
   }
 
   build() {
@@ -51,22 +74,35 @@ export class WebhookTool extends Tool {
       description: this.description,
       inputSchema: this.schema as any,
       execute: async (rawInput: Record<string, unknown>) => {
-        const input = this.validate(rawInput) as Record<string, unknown>;
+        const validated = this.validate(rawInput) as Record<string, unknown>;
         logger.info(
           {
             toolName: this.slug,
             stationId: this.stationId,
             url: this.implementation.url,
+            consumption: this.consumption?.mode ?? "none",
           },
           "Calling webhook tool"
         );
-        // Phase 2 wire shape: pack runtime endpoints receive
-        // `{tool, input}` so a single endpoint can dispatch across
-        // every tool the pack advertises.
-        const result = await ToolService.callWebhook(this.implementation, {
-          tool: this.slug,
-          input,
-        });
+
+        // #124: tier the body by the declared consumption.
+        //  - `bounded`: resolve the dataset server-side (≤ maxRows, onOverflow
+        //    honored) and POST `{tool, input, records}` — rows never enter the
+        //    agent's context.
+        //  - `none` (default): inline params, today's `{tool, input}`.
+        let body: Record<string, unknown>;
+        if (this.needsRecordSource) {
+          const { queryHandle, rows, ...input } = validated;
+          const resolved = await resolveRecordSource(
+            { queryHandle: queryHandle as string | undefined, rows: rows as any },
+            this.consumption!
+          );
+          body = { tool: this.slug, input, records: resolved.rows };
+        } else {
+          body = { tool: this.slug, input: validated };
+        }
+
+        const result = await ToolService.callWebhook(this.implementation, body);
 
         // Propagate vega-lite and vega chart results
         if (
