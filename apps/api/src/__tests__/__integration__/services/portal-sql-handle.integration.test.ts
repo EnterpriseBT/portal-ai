@@ -32,6 +32,15 @@ const { PortalSqlHandleService, streamChannelKey } = await import(
   "../../../services/portal-sql-handle.service.js"
 );
 const { getRedisClient } = await import("../../../utils/redis.util.js");
+const { resolveRecordStream } = await import(
+  "../../../tools/record-source.js"
+);
+const { AnalyticsService } = await import(
+  "../../../services/analytics.service.js"
+);
+const { HANDLE_ROW_CAP } = await import(
+  "@portalai/core/constants"
+);
 
 describe("Smoke B — query-handle pipeline (#85 Phase 3)", () => {
   beforeEach(() => {
@@ -121,4 +130,115 @@ describe("Smoke B — query-handle pipeline (#85 Phase 3)", () => {
       })
     ).rejects.toMatchObject({ code: "READ_HANDLE_EXPIRED" });
   });
+});
+
+/**
+ * #129 slice 5 — the exactness lock: forecast folds a > HANDLE_ROW_CAP handle
+ * end-to-end with NO COMPUTE_INPUT_TOO_LARGE, exact to the whole-array result,
+ * streaming one keyset page at a time.
+ *
+ * Coverage split (deliberate — see spec test 7): the REAL keyset SQL against
+ * Postgres is already proven by `portal-sql.service.integration` (the wrapped
+ * `(orderBy, _record_id)` query) and the `keyset-cursor-stability` spike. This
+ * test closes the remaining gap — the produce → streamHandle (rowCount > cap,
+ * so the keyset branch) → resolveRecordStream → forecastFromStream
+ * orchestration — with real Redis and `runSqlQuery` mocked, so it runs fast
+ * (no 100k-row DB seed re-proving the keyset half on every CI run). The page
+ * mock returns the ordered series in BATCH_SIZE chunks, exactly as a correctly
+ * advancing keyset over Postgres would.
+ */
+describe("#129 streaming fold over a > HANDLE_ROW_CAP handle", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("forecast folds a 120k handle exactly, no COMPUTE_INPUT_TOO_LARGE, one batch at a time", async () => {
+    const BATCH = 1_000; // streamHandle's page size
+    const N = HANDLE_ROW_CAP + 20_000; // 120,000 — past the snapshot tier
+    const BASE = Date.UTC(2020, 0, 1);
+
+    // Deterministic series, already in (ts, _record_id) order. The wiggle
+    // (i % 7) gives non-zero residuals so σ / MAPE are exercised, not just 0.
+    const series = Array.from({ length: N }, (_, i) => ({
+      _record_id: `r-${String(i).padStart(7, "0")}`,
+      ts: new Date(BASE + i * 86_400_000).toISOString(),
+      val: 100 + 0.5 * i + (i % 7),
+    }));
+
+    // runSqlQuery: call 1 is produce (shape 2 — stage a small head but report
+    // the full totalCount so rowCount > cap → cursor branch). Calls 2+ are
+    // streamHandle keyset pages, served as successive ordered BATCH slices.
+    let firstCall = true;
+    let pageStart = 0;
+    mockRunSqlQuery.mockImplementation(async () => {
+      if (firstCall) {
+        firstCall = false;
+        return {
+          rows: series.slice(0, BATCH),
+          truncated: true,
+          totalCount: N,
+        };
+      }
+      const page = series.slice(pageStart, pageStart + BATCH);
+      pageStart += BATCH;
+      return { rows: page };
+    });
+
+    const { envelope } = await PortalSqlHandleService.produce({
+      stationId: "station-1",
+      organizationId: "org-1",
+      sql: 'SELECT "_record_id", "ts", "val" FROM series',
+    });
+    expect(envelope.rowCount).toBe(N);
+    // Past the snapshot tier → resolveRecordStream must take the keyset cursor.
+    expect(envelope.rowCount).toBeGreaterThan(HANDLE_ROW_CAP);
+
+    // Fold the stream (this is what forecast.tool does: orderBy = dateColumn).
+    const params = {
+      dateColumn: "ts",
+      valueColumn: "val",
+      horizon: 6,
+      trend: "additive" as const,
+    };
+    const streamed = await AnalyticsService.forecastFromStream(
+      resolveRecordStream(
+        { queryHandle: envelope.queryHandle },
+        { mode: "streaming" },
+        { orderBy: "ts" }
+      ),
+      params
+    );
+
+    // Oracle: the whole-array forecast over the same series.
+    const oracle = AnalyticsService.forecast({ ...params, records: series });
+
+    expect(streamed.count).toBe(N); // every row folded, none dropped
+    streamed.forecast.values.forEach((v, i) =>
+      expect(v).toBeCloseTo(oracle.forecast.values[i], 6)
+    );
+    streamed.forecast.lower.forEach((v, i) =>
+      expect(v).toBeCloseTo(oracle.forecast.lower[i], 6)
+    );
+    streamed.forecast.upper.forEach((v, i) =>
+      expect(v).toBeCloseTo(oracle.forecast.upper[i], 6)
+    );
+    expect(streamed.mape).toBeCloseTo(oracle.mape, 6);
+
+    // Streamed one keyset page at a time: ~N/BATCH page calls (+ produce +
+    // the terminating empty page), each capped at BATCH — never one big read.
+    const calls = mockRunSqlQuery.mock.calls as unknown as Array<
+      [{ sql: string; rowCap?: number }]
+    >;
+    expect(calls.length).toBeGreaterThanOrEqual(N / BATCH);
+    const keysetCalls = calls.filter((c) =>
+      /ORDER BY "ts" ASC, "_record_id" ASC LIMIT 1000/.test(c[0].sql)
+    );
+    expect(keysetCalls.length).toBeGreaterThanOrEqual(N / BATCH);
+    expect(keysetCalls.every((c) => c[0].rowCap === BATCH)).toBe(true);
+
+    // Cleanup the staged head.
+    await getRedisClient().del(
+      `portal-sql:handle:${envelope.queryHandle.slice(3)}:meta`
+    );
+  }, 30_000);
 });

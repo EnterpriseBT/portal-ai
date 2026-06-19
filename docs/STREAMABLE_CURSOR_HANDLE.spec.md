@@ -58,8 +58,9 @@ cursor: boolean;             // true iff sortKey != null && rowCount > HANDLE_RO
 5. `resolveRecordStream` — `streaming` consumption yields batches; small inline/handle still works (ceiling-not-mandate).
 6. The `forecast` fold — given a fixture stream, the online form (`forecastFromStream`) equals the whole-array `forecast` (MAPE/forecast values/intervals to 8 decimals), including shuffled-input ordering via `resolveRecordStream`.
 
-**Integration**
-7. Real `er__` source > 100k rows → `streamHandle` streams every row once, in keyset order, one batch resident (assert peak rows held ≈ pageSize, total = rowCount); a `forecast` over it equals the hand-computed forward fit.
+**Integration** — split across two halves, each proven where it's cheapest:
+7a. *Real keyset SQL* (covered by `portal-sql.service.integration` + the S2 spike): the wrapped `SELECT * FROM (<sql>) WHERE (orderBy, _record_id) > (…) ORDER BY … LIMIT n` returns each row once in keyset order against real Postgres.
+7b. *Orchestration + exactness* (`portal-sql-handle.integration`, "#129 streaming fold over a > HANDLE_ROW_CAP handle"): a handle with `rowCount > HANDLE_ROW_CAP` folds end-to-end — produce → `streamHandle` keyset branch → `resolveRecordStream` → `forecastFromStream` — with **no `COMPUTE_INPUT_TOO_LARGE`**, exact to the whole-array `forecast`, one BATCH_SIZE page at a time (asserted via the page-call count + per-call `rowCap`). Real Redis; `runSqlQuery` mocked to serve ordered pages, so it doesn't re-seed/re-prove the keyset SQL of 7a on every run.
 8. Keyset stability (the S2 spike, promoted to a test): re-execution across pages over a stable-id source returns each row exactly once (no skips/dups) — including with concurrent inserts to the source (the new rows appear at the tail or not at all, never duplicate an emitted key).
 
 ## Acceptance criteria
@@ -69,7 +70,7 @@ cursor: boolean;             // true iff sortKey != null && rowCount > HANDLE_RO
 - [ ] `resolveRecordStream` feeds the `streaming` mode; `resolveRecordSource` (bounded/inline) unchanged.
 - [ ] The `forecast` fold matches the whole-array form over a stream (test 6); `technical_indicator` + `portfolio_metrics` deferred (Decision 4).
 - [ ] `COMPUTE_INPUT_TOO_LARGE` only fires for `bounded` + `onOverflow:error` (a `streaming` tool over >100k keyed source succeeds).
-- [ ] Integration tests 7–8 green; one batch resident; keyset exact.
+- [ ] Integration tests 7a/7b + 8 green; one batch (BATCH_SIZE) per page; keyset exact; >100k handle folds with no `COMPUTE_INPUT_TOO_LARGE`.
 - [ ] `npm run test:unit` + `test:integration` + `lint` + `type-check` green.
 
 ## Risks & rollback
