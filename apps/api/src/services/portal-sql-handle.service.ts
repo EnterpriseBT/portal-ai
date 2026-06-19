@@ -35,15 +35,11 @@ export interface QueryHandleEnvelope {
   sampleSize?: number;
   truncated: boolean;
   samplePeek: Array<Record<string, unknown>>;
-  /** #129: the query retained for cursor-tier re-execution past the
-   *  snapshot. */
+  /** #129: the query retained for cursor-tier re-execution past the snapshot.
+   *  Streamability is decided at read time (`streamHandle` branches on
+   *  `rowCount > HANDLE_ROW_CAP`; the tool declares its order — decision B),
+   *  so the envelope carries no precomputed sort key / cursor flag. */
   sql: string;
-  /** #129: resolved deterministic keyset column, or null when the query has
-   *  no stable unique total order (cursor unavailable; snapshot is all
-   *  there is). Resolution is the slice-2 spike — null until then. */
-  sortKey: string | null;
-  /** #129: true iff a sortKey resolved AND rowCount > HANDLE_ROW_CAP. */
-  cursor: boolean;
 }
 
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -174,13 +170,10 @@ export class PortalSqlHandleService {
       Record<string, unknown>
     >;
 
-    // #129 slice 1: retain the query for the cursor tier. Sort-key
-    // resolution (and thus a live cursor) is the slice-2 spike — until then
-    // `sortKey` is null and `cursor` is false, so behavior is unchanged
-    // (every handle stays the ≤HANDLE_ROW_CAP snapshot it is today).
-    const sortKey: string | null = null;
-    const cursor = sortKey !== null && totalCount > HANDLE_ROW_CAP;
-
+    // #129: retain the query so the cursor tier can re-execute it past the
+    // snapshot. Streamability isn't precomputed here — `streamHandle` branches
+    // on `rowCount > HANDLE_ROW_CAP` and the streaming tool supplies its order
+    // column at read time (decision B).
     const envelope: QueryHandleEnvelope = {
       queryHandle: handleId,
       rowCount: totalCount,
@@ -190,8 +183,6 @@ export class PortalSqlHandleService {
       truncated: rowsRaw.length < totalCount,
       samplePeek,
       sql: opts.sql,
-      sortKey,
-      cursor,
     };
 
     // Stage batches in Redis + broadcast. The stored meta carries the

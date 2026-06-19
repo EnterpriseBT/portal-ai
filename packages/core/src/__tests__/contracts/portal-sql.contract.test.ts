@@ -13,8 +13,6 @@ describe("QueryHandleEnvelopeSchema", () => {
       truncated: false,
       samplePeek: [],
       sql: "SELECT acreage, assessed_value FROM parcels",
-      sortKey: null,
-      cursor: false,
     });
     expect(parsed.sampled).toBe(false);
     expect(parsed.sampleSize).toBeUndefined();
@@ -30,44 +28,25 @@ describe("QueryHandleEnvelopeSchema", () => {
       truncated: false,
       samplePeek: [{ x: 1 }, { x: 2 }],
       sql: "SELECT x FROM huge",
-      sortKey: null,
-      cursor: false,
     });
     expect(parsed.sampled).toBe(true);
     expect(parsed.sampleSize).toBe(50_000);
   });
 
-  // #129: the cursor tier coherence guard.
-  it("accepts a cursor envelope with a sortKey", () => {
+  // #129: `sql` is retained for cursor-tier re-execution; streamability is
+  // decided at read time (no precomputed sortKey / cursor flag — decision B).
+  it("retains the sql for cursor-tier re-execution", () => {
     const parsed = QueryHandleEnvelopeSchema.parse({
       queryHandle: "qh-cur",
       rowCount: 500_000,
-      schema: [{ name: "id", type: "uuid" }],
+      schema: [{ name: "_record_id", type: "uuid" }],
       sampled: true,
       sampleSize: 50_000,
       truncated: true,
       samplePeek: [],
-      sql: "SELECT id, ts FROM big ORDER BY ts, id",
-      sortKey: "id",
-      cursor: true,
+      sql: "SELECT _record_id, ts FROM big ORDER BY ts",
     });
-    expect(parsed.cursor).toBe(true);
-    expect(parsed.sortKey).toBe("id");
-  });
-
-  it("rejects cursor: true with a null sortKey", () => {
-    const result = QueryHandleEnvelopeSchema.safeParse({
-      queryHandle: "qh-bad",
-      rowCount: 500_000,
-      schema: [{ name: "x", type: "numeric" }],
-      sampled: false,
-      truncated: true,
-      samplePeek: [],
-      sql: "SELECT x FROM big",
-      sortKey: null,
-      cursor: true,
-    });
-    expect(result.success).toBe(false);
+    expect(parsed.sql).toBe("SELECT _record_id, ts FROM big ORDER BY ts");
   });
 
   it("rejects a sampled envelope missing sampleSize", () => {

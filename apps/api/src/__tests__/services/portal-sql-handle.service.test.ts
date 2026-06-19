@@ -71,11 +71,11 @@ describe("PortalSqlHandleService.produce", () => {
     });
   });
 
-  // #129 slice 1: the envelope retains the query for the cursor tier.
-  // Sort-key resolution (and a live cursor) is the slice-2 spike — for now
-  // sortKey is null and cursor is false, so every handle stays the
-  // ≤HANDLE_ROW_CAP snapshot it is today.
-  it("retains sql and reports no cursor yet (sortKey null, cursor false)", async () => {
+  // #129: the envelope retains the query so the cursor tier can re-execute it.
+  // Streamability is decided at read time (streamHandle branches on rowCount;
+  // the tool declares its order — decision B), so the envelope carries no
+  // precomputed sort key / cursor flag.
+  it("retains sql for cursor-tier re-execution", async () => {
     mockRunSqlQuery.mockResolvedValueOnce({ rows: [{ x: 1 }] });
     const { envelope } = await PortalSqlHandleService.produce({
       stationId: "station-1",
@@ -83,8 +83,8 @@ describe("PortalSqlHandleService.produce", () => {
       sql: "SELECT x FROM t",
     });
     expect(envelope.sql).toBe("SELECT x FROM t");
-    expect(envelope.sortKey).toBeNull();
-    expect(envelope.cursor).toBe(false);
+    expect(envelope).not.toHaveProperty("sortKey");
+    expect(envelope).not.toHaveProperty("cursor");
   });
 
   // #129 slice 2: the stored meta carries station/org (internal) so the
@@ -285,8 +285,6 @@ describe("PortalSqlHandleService.streamHandle", () => {
     truncated: false,
     samplePeek: [],
     sql: "SELECT id, ts FROM t",
-    sortKey: null,
-    cursor: false,
     _stationId: "st",
     _organizationId: "org",
   };
