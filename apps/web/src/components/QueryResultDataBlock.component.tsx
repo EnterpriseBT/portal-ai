@@ -17,6 +17,9 @@ import { sdk } from "../api/sdk";
 export interface QueryResultDataBlockContent {
   queryHandle: string;
   rowCount: number;
+  /** True when the staged result hit `HANDLE_ROW_CAP` — `rowCount` is then a
+   *  lower bound, so the UI shows it as "N+" (#147). */
+  truncated?: boolean;
   sampled?: boolean;
   samplePeek?: Array<Record<string, unknown>>;
   schema?: Array<{ name: string; type?: string }>;
@@ -29,6 +32,8 @@ export interface QueryResultDataBlockContent {
 
 export interface QueryResultDataBlockUIProps {
   rowCount: number;
+  /** `rowCount` is a lower bound (staging hit the cap) — render it as "N+". */
+  truncated?: boolean;
   rows: Array<Record<string, unknown>>;
   /** Vega-Lite spec when rendering a chart; omit for tabular output. */
   spec?: Record<string, unknown>;
@@ -38,7 +43,9 @@ export interface QueryResultDataBlockUIProps {
 
 export const QueryResultDataBlockUI: React.FC<
   QueryResultDataBlockUIProps
-> = ({ rowCount, rows, spec, loading, error }) => {
+> = ({ rowCount, truncated, rows, spec, loading, error }) => {
+  // "N+" when the true total is only a lower bound (#147).
+  const rowCountLabel = `${rowCount.toLocaleString()}${truncated ? "+" : ""}`;
   if (error) {
     return (
       <Box
@@ -63,7 +70,7 @@ export const QueryResultDataBlockUI: React.FC<
       >
         <CircularProgress size={16} />
         <Typography variant="caption" color="text.secondary">
-          Loading {rowCount.toLocaleString()} rows…
+          Loading {rowCountLabel} rows…
         </Typography>
       </Box>
     );
@@ -135,6 +142,7 @@ export const QueryResultDataBlock: React.FC<QueryResultDataBlockProps> = ({
   return (
     <QueryResultDataBlockUI
       rowCount={content.rowCount}
+      truncated={content.truncated}
       rows={rows}
       spec={content.spec}
       loading={query.isLoading}

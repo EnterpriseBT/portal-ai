@@ -16,6 +16,13 @@ import { z } from "zod";
 export const QueryHandleEnvelopeSchema = z
   .object({
     queryHandle: z.string(),
+    /** Number of rows the handle represents. **Exact when `truncated` is
+     *  false; a LOWER BOUND when `truncated` is true** — staging stops at
+     *  `HANDLE_ROW_CAP` and the producer counts via a `cap+1` probe rather
+     *  than a full `COUNT(*)`, so the true total is `≥ rowCount`. Consumers
+     *  must read `rowCount` together with `truncated` and present it as
+     *  "N+" / "≥N" when truncated (#147). The #129 cursor still folds the
+     *  true full set regardless. */
     rowCount: z.number().int().nonnegative(),
     schema: z.array(
       z.object({
@@ -25,6 +32,8 @@ export const QueryHandleEnvelopeSchema = z
     ),
     sampled: z.boolean(),
     sampleSize: z.number().int().positive().optional(),
+    /** True when the staged result hit `HANDLE_ROW_CAP` — `rowCount` is then
+     *  a lower bound, not the exact total (see `rowCount`). */
     truncated: z.boolean(),
     samplePeek: z.array(z.record(z.string(), z.unknown())).max(10),
     /** The query that produced this handle, retained so the cursor tier can

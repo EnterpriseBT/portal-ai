@@ -89,6 +89,34 @@ describe("QueryResultDataBlockUI", () => {
     expect(capturedBlocks).toHaveLength(0);
   });
 
+  it("renders the loading count as an exact number when not truncated", () => {
+    const { container } = render(
+      <QueryResultDataBlockUI
+        rowCount={500}
+        rows={[]}
+        spec={{ mark: "bar" }}
+        loading={true}
+        error={null}
+      />
+    );
+    expect(container.textContent).toContain("Loading 500 rows…");
+  });
+
+  it("renders the loading count as a lower bound (N+) when truncated (#147)", () => {
+    const { container } = render(
+      <QueryResultDataBlockUI
+        rowCount={100000}
+        truncated={true}
+        rows={[]}
+        spec={{ mark: "bar" }}
+        loading={true}
+        error={null}
+      />
+    );
+    // localized + "+" suffix → "100,000+"
+    expect(container.textContent).toContain("Loading 100,000+ rows…");
+  });
+
   it("renders error state when the snapshot fetch fails", () => {
     const { container } = render(
       <QueryResultDataBlockUI
