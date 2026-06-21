@@ -107,6 +107,31 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
   });
 });
 
+describe("buildSystemPrompt — tool-caller role (#146)", () => {
+  // The agent is a tool-caller, not a chatbot: a general operating principle,
+  // present regardless of which packs are enabled.
+  it.each([
+    ["data_query"],
+    ["statistics"],
+    ["regression"],
+    ["financial"],
+    ["entity_management"],
+  ])("states the route-to-a-tool role when %s is enabled", (pack) => {
+    const prompt = buildSystemPrompt(makeContext({ toolPacks: [pack] }));
+    expect(prompt).toContain("## Your role: route to a tool");
+    expect(prompt).toMatch(/tool-caller/i);
+    // the load-bearing prohibitions
+    expect(prompt).toMatch(/Do the work through a tool, not in your head/i);
+    expect(prompt).toMatch(/Don't fabricate results or attribute methods/i);
+    expect(prompt).toMatch(/If no tool fits, say so/i);
+  });
+
+  it("is present even with a minimal toolpack set", () => {
+    const prompt = buildSystemPrompt(makeContext({ toolPacks: ["data_query"] }));
+    expect(prompt).toContain("## Your role: route to a tool");
+  });
+});
+
 describe("buildSystemPrompt — entity management notes", () => {
   it('includes "Entity Management Notes" section when entity_management in toolPacks', () => {
     const prompt = buildSystemPrompt(
