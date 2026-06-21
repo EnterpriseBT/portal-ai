@@ -9,6 +9,8 @@ Run **§Preflight** once. The rest can be walked top-to-bottom; each section is 
 
 Filing bugs: open an issue against `EnterpriseBT/portal-ai`, type `Bug`, link this file's section (template at the bottom).
 
+> **Walkthrough result (2026-06-21): ✅ all sections green.** Walked live against a running dev env + the mock toolpack server, using a 730-row synthetic daily-sales entity (`date`/`revenue`/`units`/`region`) and the lowered-cap trick (`HANDLE_ROW_CAP=200`) for §1c/§1d. The "one substrate, two localities" design verified end-to-end: `forecast` folds an unbounded cursor in-process (§1c: `count 730` from a handle advertising `rowCount 201` — proof the cursor re-executed the full set, not the 200-row snapshot), and a webhook scales over the same handle remotely in all three tiers (§2–§4), with the trust-boundary endpoints failing closed (§5). Findings filed, none blocking: [#145](https://github.com/EnterpriseBT/portal-ai/issues/145) (chart blank/overflow — pre-existing web), [#146](https://github.com/EnterpriseBT/portal-ai/issues/146) (agent fabricates/mislabels analytics instead of calling the tool), [#147](https://github.com/EnterpriseBT/portal-ai/issues/147) (handle `rowCount` ≈ cap+1 under truncation). Per-section evidence in the Sign-off checklist below.
+
 ---
 
 ## Preflight
@@ -136,14 +138,20 @@ Drive these by hand (curl/HTTP client) against the API; obtain a token by watchi
 
 ## Sign-off checklist
 
-- [ ] §1 (#129 cursor) — forecast over ≤cap and >cap handles; >cap folds (no `COMPUTE_INPUT_TOO_LARGE`); no-keyset errors cleanly; rows never in context.
-- [ ] §2 (bounded) — records-in-body; result correct; over-bound errors.
-- [ ] §3 (streaming) — pull-on-read across the live boundary; token-only (no JWT); revoked on settle.
-- [ ] §4 (outbound) — large result returned as a handle, resolvable downstream.
-- [ ] §5 (fail-closed) — no/bogus/cross-handle/wrong-mode tokens rejected; limit clamped; unstaged resultHandle rejected.
-- [ ] §6 (invariants) — context hygiene, no JWT egress, gate, no writes/locks.
+**Verified live 2026-06-21 (730-row sales entity; lowered cap for §1c/§1d).**
 
-After every box is ticked: report ready-to-merge on PR #143, or file follow-up bugs against any failing case.
+- [x] §1 (#129 cursor) — forecast over ≤cap and >cap handles; >cap folds (no `COMPUTE_INPUT_TOO_LARGE`); no-keyset errors cleanly; rows never in context.
+  - §1a/§1b: `display_entity_records`/`sql_query` → `queryHandle` (rowCount + 10-row samplePeek only) → `forecast` returned the reduced shape `{ forecast, parameters, mape, count }`, `count 730`, MAPE ≈ 2.4%.
+  - **§1c (headline):** raw keyed handle (`_record_id` + `c_date`) advertising `rowCount 201` → `forecast` succeeded with **`count 730`** ⇒ the cursor re-executed the full retained query (keyset), not the 200-row snapshot.
+  - §1d: a narrowed/aggregated handle (no `_record_id`) over the cap → `COMPUTE_INPUT_TOO_LARGE`, clean — no silent mis-order/truncation.
+  - §1e: `GET /api/portal-sql/handle/:id?limit=5000` paged the staged window.
+- [x] §2 (bounded) — `sum_records` POST body carried `records: […730]` (server-resolved, in body, not chat); `{ sum, count: 730 }` correct; HMAC `Signature: VERIFIED`.
+- [x] §3 (streaming) — `count_via_pull` POST body carried a `source` grant (no `records`); the mock pulled `GET /api/webhook/handle/:id` pages with the scoped `readToken` (no user JWT); `count 730`; replayed token after settle → 401 (revoke-on-settle).
+- [x] §4 (outbound) — `aggregate_to_handle` pulled the input, `POST`ed its rollup to the write endpoint with a `writeToken`, returned `{ resultHandle: qh-… }`, resolved into a handle envelope (1 rollup row, page 0 = 730) — output returned as a handle, not inline.
+- [x] §5 (fail-closed) — live: no-token, bogus-token, malformed-Authorization, and POST-no-token all → **401 `WEBHOOK_READ_TOKEN_INVALID`** (read + write endpoints). Scope-mismatch 403s / expired / cross-org / `limit` clamp / unstaged-resultHandle are covered by the 9 adversarial integration tests (`webhook-handle.router.integration.test.ts`, green in CI) — impractical to drive by hand since tokens revoke on settle.
+- [x] §6 (invariants) — context hygiene + no-JWT-egress observed across §1–§4 (handles/scalars only); gate confirmed via registration (the mock pack's `bounded`/`streaming` tools registered, `engine-pushdown` rejected by the registration tests); these tools take no locks/writes.
+
+**Outcome:** ✅ epic verified end-to-end — validates PR #143 (ready for review) and the merged #129. Non-blocking findings filed: #145 (chart blank/overflow), #146 (agent fabricates/mislabels analytics), #147 (handle `rowCount` ≈ cap+1 under truncation).
 
 ---
 
