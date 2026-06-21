@@ -223,6 +223,20 @@ const renderText: BlockRenderer = (block) => (
   </ReactMarkdown>
 );
 
+/**
+ * Bounds a chart to the chat column (#145). `width: "container"` specs need a
+ * determinate-width parent — without one they measure 0 at mount and render
+ * blank until a window resize fires Vega's listener; this `width: 100%` block
+ * is that stable parent. `max-width: 100%` + `overflow-x: auto` clamp the chart
+ * to the column and let an over-wide chart (a fixed-width spec, a long axis)
+ * scroll *within* its own box instead of widening the whole conversation.
+ */
+const CHART_BOUNDS: React.CSSProperties = {
+  width: "100%",
+  maxWidth: "100%",
+  overflowX: "auto",
+};
+
 const renderVegaLite: BlockRenderer = (block) => {
   // Two block-content shapes:
   //   - `{ spec, datasets }` — used by the query-handle path (#109).
@@ -244,9 +258,11 @@ const renderVegaLite: BlockRenderer = (block) => {
     : undefined;
   return (
     <VegaErrorBoundary>
-      <Suspense fallback={null}>
-        <LazyVegaLite spec={spec} {...(datasets ? { data: datasets } : {})} />
-      </Suspense>
+      <div style={CHART_BOUNDS}>
+        <Suspense fallback={null}>
+          <LazyVegaLite spec={spec} {...(datasets ? { data: datasets } : {})} />
+        </Suspense>
+      </div>
     </VegaErrorBoundary>
   );
 };
@@ -255,9 +271,11 @@ const renderVega: BlockRenderer = (block) => {
   const spec = normalizeVegaSpec(block.content as Record<string, unknown>);
   return (
     <VegaErrorBoundary>
-      <Suspense fallback={null}>
-        <LazyVega spec={spec} />
-      </Suspense>
+      <div style={CHART_BOUNDS}>
+        <Suspense fallback={null}>
+          <LazyVega spec={spec} />
+        </Suspense>
+      </div>
     </VegaErrorBoundary>
   );
 };
