@@ -101,6 +101,34 @@ describe("ContentBlockRenderer", () => {
     expect(await screen.findByTestId("vega-chart")).toBeInTheDocument();
   });
 
+  // #145: charts must be bounded to the chat column — a stable-width parent
+  // (fixes `width:"container"` measuring 0 at mount → blank) that clamps width
+  // and scrolls internally instead of widening the conversation.
+  it("wraps vega-lite in a width-bounded, horizontally-scrollable container", async () => {
+    render(
+      <ContentBlockRenderer
+        block={{ type: "vega-lite", content: { mark: "bar" } }}
+      />
+    );
+    const chart = await screen.findByTestId("vega-lite-chart");
+    const wrapper = chart.parentElement as HTMLElement;
+    expect(wrapper.style.maxWidth).toBe("100%");
+    expect(wrapper.style.overflowX).toBe("auto");
+    expect(wrapper.style.width).toBe("100%");
+  });
+
+  it("wraps vega in the same width-bounded container", async () => {
+    render(
+      <ContentBlockRenderer
+        block={{ type: "vega", content: { data: [], marks: [] } }}
+      />
+    );
+    const chart = await screen.findByTestId("vega-chart");
+    const wrapper = chart.parentElement as HTMLElement;
+    expect(wrapper.style.maxWidth).toBe("100%");
+    expect(wrapper.style.overflowX).toBe("auto");
+  });
+
   it("renders data-table block via DataTableBlock", () => {
     render(
       <ContentBlockRenderer
