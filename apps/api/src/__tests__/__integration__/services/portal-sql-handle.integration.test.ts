@@ -242,3 +242,96 @@ describe("#129 streaming fold over a > HANDLE_ROW_CAP handle", () => {
     );
   }, 30_000);
 });
+
+/**
+ * #124 slice 1 — produceFromRows: the outbound producer. A caller-supplied
+ * row set (a webhook's large result) stages into the same envelope/Redis
+ * batches `produce` yields and reads back via `getSnapshot`. No `runSqlQuery`
+ * (no originating query → `sql: null`), so the SQL mock is never touched.
+ */
+describe("#124 produceFromRows — externally-supplied rows", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  async function cleanup(handleId: string, batches: number) {
+    const redis = getRedisClient();
+    await redis.del(`portal-sql:handle:${handleId.slice(3)}:meta`);
+    for (let b = 0; b < batches; b++) {
+      await redis.del(`portal-sql:handle:${handleId.slice(3)}:batches:${b}`);
+    }
+  }
+
+  it("stages supplied rows into a readable handle (sql null), round-trips via getSnapshot", async () => {
+    // 2,500 rows → 3 batches, like the produce() smoke test.
+    const rows = Array.from({ length: 2_500 }, (_, i) => ({
+      label: `row-${i}`,
+      score: i * 2,
+    }));
+
+    const { envelope } = await PortalSqlHandleService.produceFromRows({
+      rows,
+      stationId: "station-1",
+      organizationId: "org-1",
+    });
+
+    expect(envelope.queryHandle).toMatch(/^qh-/);
+    expect(envelope.rowCount).toBe(2_500);
+    expect(envelope.truncated).toBe(false);
+    expect(envelope.sql).toBeNull(); // no originating query
+    // schema derived from the first row's keys + value types.
+    expect(envelope.schema.map((c) => c.name)).toEqual(["label", "score"]);
+    expect(mockRunSqlQuery).not.toHaveBeenCalled();
+
+    const snap = await PortalSqlHandleService.getSnapshot(envelope.queryHandle, {
+      offset: 0,
+      limit: 5_000,
+    });
+    expect(snap.total).toBe(2_500);
+    expect(snap.rows).toHaveLength(2_500);
+    expect(snap.rows[0]).toEqual({ label: "row-0", score: 0 });
+    expect(snap.rows[2_499]).toEqual({ label: "row-2499", score: 4_998 });
+
+    await cleanup(envelope.queryHandle, 3);
+  }, 15_000);
+
+  it("honors a supplied schema and a paged getSnapshot window", async () => {
+    const rows = Array.from({ length: 30 }, (_, i) => ({ v: i }));
+    const { envelope } = await PortalSqlHandleService.produceFromRows({
+      rows,
+      schema: [{ name: "v", type: "int4" }],
+      stationId: "s",
+      organizationId: "o",
+    });
+    expect(envelope.schema).toEqual([{ name: "v", type: "int4" }]);
+
+    const page = await PortalSqlHandleService.getSnapshot(envelope.queryHandle, {
+      offset: 10,
+      limit: 5,
+    });
+    expect(page.rows).toEqual([
+      { v: 10 },
+      { v: 11 },
+      { v: 12 },
+      { v: 13 },
+      { v: 14 },
+    ]);
+    expect(page.total).toBe(30);
+
+    await cleanup(envelope.queryHandle, 1);
+  }, 15_000);
+
+  it("truncates a supplied set past HANDLE_ROW_CAP and flags it", async () => {
+    const rows = Array.from({ length: HANDLE_ROW_CAP + 10 }, (_, i) => ({ i }));
+    const { envelope } = await PortalSqlHandleService.produceFromRows({
+      rows,
+      stationId: "s",
+      organizationId: "o",
+    });
+    // No query to re-execute → fully staged, so rowCount caps at the snapshot.
+    expect(envelope.rowCount).toBe(HANDLE_ROW_CAP);
+    expect(envelope.truncated).toBe(true);
+
+    await cleanup(envelope.queryHandle, Math.ceil(HANDLE_ROW_CAP / 1_000));
+  }, 30_000);
+});

@@ -648,7 +648,12 @@ export class ToolService {
                 undefined,
               signingSecret: pack.signingSecret,
             },
-            stationId
+            stationId,
+            // #124: the declared consumption tiers the runtime's data delivery
+            // (none → inline; bounded → records-in-body; streaming →
+            // pull-on-read). Validated ≤ the widened gate at registration.
+            tool.capability?.consumption,
+            organizationId
           ).build();
         }
       }

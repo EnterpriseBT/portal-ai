@@ -208,14 +208,16 @@ export class ToolpackRegistrationService {
       );
     }
 
-    // #121 child I: a custom tool may declare only the pure-consumer
-    // capability subset. Consumption is gated to what the runtime can feed
-    // today — `none` (inline) — until #124 ships the records-in-body /
-    // pull-on-read transport, which widens the allowed modes.
+    // #121 child I / #124: a custom tool may declare only the pure-consumer
+    // capability subset, and its `consumption` is gated to what the runtime
+    // can actually feed (policy-(b): never a declarable-but-dead mode).
+    // `none` (inline), `bounded` (records-in-body), and `streaming`
+    // (pull-on-read) are wired (#124). `engine-pushdown` stays rejected for
+    // custom — no backend access.
     for (const t of validated.data.tools) {
       if (!t.capability) continue;
       const reason = customToolCapabilityError(t.capability, {
-        allowedConsumptionModes: ["none"],
+        allowedConsumptionModes: ["none", "bounded", "streaming"],
       });
       if (reason) {
         throw new ApiError(

@@ -7,6 +7,7 @@ import { microsoftExcelConnectorPublicRouter } from "./routes/microsoft-excel-co
 import { protectedRouter } from "./routes/protected.router.js";
 import { sseRouter } from "./routes/sse.router.js";
 import { webhookRouter } from "./routes/webhook.router.js";
+import { webhookHandleRouter } from "./routes/webhook-handle.router.js";
 import { swaggerRouter } from "./routes/swagger.router.js";
 import { environment } from "./environment.js";
 import { httpLogger } from "./middleware/logger.middleware.js";
@@ -54,6 +55,10 @@ app.use(
 // SSE routes use query-param auth (sseAuth) — mount before protectedRouter
 // so the router-level jwtCheck does not reject the headerless EventSource request.
 app.use("/api/sse", sseRouter);
+// Third-party webhook handle access (#124): token-authed (scoped, expiring),
+// NOT user-JWT — mount before protectedRouter so jwtCheck doesn't reject the
+// webhook server's callback.
+app.use("/api/webhook", webhookHandleRouter);
 app.use("/api", protectedRouter);
 
 // Catch-all error handler — all ApiErrors passed to next() are handled here

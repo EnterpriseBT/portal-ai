@@ -222,7 +222,7 @@ A tool may declare a `capability` object describing how Portal.ai consumes it. C
 | `reads` / `writes` / `locks` | must be empty (`[]`) |
 | `alwaysAvailable` | must be `false` |
 | `computeShape` | `map` \| `reduce` \| `pure` |
-| `consumption.mode` | `none` only, for now — `bounded` (records-in-body) and `streaming` (pull-on-read) are reserved for a future release and rejected until then |
+| `consumption.mode` | `none` (inline), `bounded` (records-in-body), or `streaming` (pull-on-read) — see [Scaling over large datasets](#scaling-over-large-datasets). `engine-pushdown` is rejected (no backend access) |
 | `resultKind` | `scalar` \| `data-table` \| `vega-lite` \| `vega` \| `d3` \| `geo` (not `mutation-result` / `progress`) |
 | `costHint` | `free` \| `metered` \| `expensive` (drives the cost-acknowledgement gate) |
 
@@ -286,8 +286,84 @@ Return JSON. The shape is opaque to Portal.ai — it's handed straight to the mo
 ```
 
 - 30-second timeout enforced upstream.
-- Response body capped at **1 MB** by default (configurable per environment via `TOOLPACK_RUNTIME_MAX_RESPONSE_BYTES`).
+- Response body capped at **1 MB** by default (configurable per environment via `TOOLPACK_RUNTIME_MAX_RESPONSE_BYTES`). To return more, declare `streaming` consumption and stage your result — see [Scaling over large datasets](#scaling-over-large-datasets).
 - Non-2xx responses surface as runtime errors in the portal.
+- The runtime body carries extra fields when the tool declares a dataset-consuming `consumption` (`records`, `source`, `output`) — see the next section.
+
+---
+
+## Scaling over large datasets
+
+A tool that reduces or maps over a dataset shouldn't force every row through the model's context, and its result shouldn't be capped at 1 MB. Declare a `consumption.mode` and Portal.ai handles the transport — **rows never enter the agent's context**, in either direction. The mode you declare *is* the tier:
+
+### `bounded` — records in the request body
+
+Portal.ai resolves the dataset (a query handle the agent already has, or inline rows) up to your `maxRows` and POSTs them alongside the input. Declare:
+
+```json
+"consumption": { "mode": "bounded", "maxRows": 50000, "onOverflow": "error" }
+```
+
+`onOverflow` (`error` | `sample`) decides what happens when the source exceeds `maxRows`. Your `/runtime` then receives:
+
+```json
+{ "tool": "sum_revenue", "input": { "column": "amount" },
+  "records": [ { "amount": 12.5 }, { "amount": 9.0 } ] }
+```
+
+Compute over `records` and return your result inline (≤ 1 MB).
+
+### `streaming` — pull-on-read (any N)
+
+For datasets past the in-memory limit, declare:
+
+```json
+"consumption": { "mode": "streaming" }
+```
+
+Instead of rows, the body carries a **short-lived, scoped grant** — your server pulls pages itself:
+
+```json
+{ "tool": "count_rows", "input": {},
+  "source": {
+    "readUrl": "https://<portal>/api/webhook/handle/qh-abc123",
+    "readToken": "<opaque>", "rowCount": 2400000,
+    "schema": [ { "name": "id", "type": "uuid" } ], "pageLimit": 5000
+  },
+  "output": { "writeUrl": "https://<portal>/api/webhook/handle/<session>", "writeToken": "<opaque>" } }
+```
+
+**Pull the input** by paging `readUrl` with the read token until you've seen `rowCount` rows:
+
+```
+GET {source.readUrl}?offset=0&limit=5000
+Authorization: Bearer {source.readToken}
+→ { "success": true, "payload": { "rows": [...], "total": 2400000, "offset": 0, "limit": 5000 } }
+```
+
+- The token is **scoped to this one handle, read-only, and expires** with the call (and is revoked when your tool returns). Never the user's credentials.
+- `offset`/`limit` page the result; `limit` is clamped to ≤ 5000.
+
+**Return a large result** (past the 1 MB inline cap) by staging it to `output.writeUrl`, then returning the handle:
+
+```
+POST {output.writeUrl}
+Authorization: Bearer {output.writeToken}
+{ "rows": [ ...your result rows... ], "schema": [ { "name": "bucket", "type": "text" } ] }
+→ { "success": true, "payload": { "resultHandle": "qh-def456", "rowCount": 80000 } }
+```
+
+then your `/runtime` response is simply:
+
+```json
+{ "resultHandle": "qh-def456" }
+```
+
+Portal.ai verifies the handle was the one staged for *this* call and hands the agent a query handle (it reads/charts it like any other). Small results still return inline — staging is opt-in.
+
+> Auth failures on the read/write endpoints are `401` (`WEBHOOK_READ_TOKEN_INVALID` / `_EXPIRED`) or `403` (`WEBHOOK_HANDLE_SCOPE_MISMATCH`). The endpoints fail closed against a token used past its window, for the wrong handle, the wrong org, or the wrong direction.
+
+The reference implementation of all three tiers lives in `apps/api/src/scripts/mock-toolpack-server.ts` (`sum_records`, `count_via_pull`, `aggregate_to_handle`).
 
 ---
 

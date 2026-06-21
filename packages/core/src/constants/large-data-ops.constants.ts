@@ -27,6 +27,11 @@ export const BULK_AGGREGATE_RESULT_LIMIT = 1024 * 1024;
 /** TTL on a Redis-cached query handle. */
 export const READ_HANDLE_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** TTL on a scoped webhook read/write token (#124). Short by design — the
+ *  grant lives only for the duration of one webhook call; it is also revoked
+ *  when the call settles, and bounded above by the handle's remaining TTL. */
+export const WEBHOOK_READ_TOKEN_TTL_MS = 10 * 60 * 1000;
+
 /** Above this row count, reads automatically sample. */
 export const SAMPLING_THRESHOLD = 50_000;
 

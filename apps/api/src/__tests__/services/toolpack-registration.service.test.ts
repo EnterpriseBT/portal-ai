@@ -257,12 +257,51 @@ describe("ToolpackRegistrationService", () => {
       ).rejects.toMatchObject({ code: ApiCode.TOOLPACK_CAPABILITY_INVALID });
     });
 
-    it("rejects a bounded consumption mode until #124 (gated to none)", async () => {
+    it("accepts a bounded consumption mode (#124 slice 3 — records-in-body)", async () => {
       mockFetch.mockResolvedValue(
         fetchOk(
           toolWithCapability({
             ...pureConsumerCapability,
             consumption: { mode: "bounded", maxRows: 1000, onOverflow: "error" },
+          })
+        )
+      );
+      const tools = await ToolpackRegistrationService.fetchSchema(
+        "https://example.com/schema",
+        undefined
+      );
+      expect(tools[0].capability?.consumption).toMatchObject({
+        mode: "bounded",
+        maxRows: 1000,
+      });
+    });
+
+    it("accepts a streaming consumption mode (#124 slice 4 — pull-on-read)", async () => {
+      mockFetch.mockResolvedValue(
+        fetchOk(
+          toolWithCapability({
+            ...pureConsumerCapability,
+            consumption: { mode: "streaming" },
+          })
+        )
+      );
+      const tools = await ToolpackRegistrationService.fetchSchema(
+        "https://example.com/schema",
+        undefined
+      );
+      expect(tools[0].capability?.consumption).toMatchObject({
+        mode: "streaming",
+      });
+    });
+
+    it("still rejects engine-pushdown for custom tools (no backend access)", async () => {
+      mockFetch.mockResolvedValue(
+        fetchOk(
+          toolWithCapability({
+            ...pureConsumerCapability,
+            pure: false,
+            reads: ["entity_records"],
+            consumption: { mode: "engine-pushdown" },
           })
         )
       );
