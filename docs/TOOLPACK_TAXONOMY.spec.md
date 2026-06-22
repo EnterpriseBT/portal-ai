@@ -108,8 +108,8 @@ The cursor (#129) makes a **synchronous** read exact at any N, but a genuinely l
 
 This is the runtime mechanism the `bulk_*` tools collapse into: **`sql_query` at job mode** for a long aggregate read (rehoming `bulk_aggregate`'s 120s off-thread scan), and the **transform op at job mode** for a large write (the renamed `bulk_transform`). Establishing it is **child E's** work (it pairs with making `sql_query` the reduce operation); **child F** then removes the now-redundant `bulk_*` tools.
 
-### Open decision — the escalation trigger (E1; revisit next session)
-*How* the runtime decides "this needs the job tier" is unsettled. The trade is wasted work vs. a cost model:
+### Decided — the escalation trigger: hybrid `EXPLAIN`-predictive + timeout backstop (E1, 2026-06-22)
+*How* the runtime decides "this needs the job tier." The trade is wasted work vs. a cost model:
 
 | Option | Mechanism | Cost |
 |---|---|---|
@@ -118,7 +118,7 @@ This is the runtime mechanism the `bulk_*` tools collapse into: **`sql_query` at
 | **Predictive (`EXPLAIN`)** | `EXPLAIN` the query first (fast, **non-executing** — returns PG's estimated cost + rows); escalate up front when the estimate crosses a threshold. **No wasted sync attempt, no double execution.** | Needs a cost/row threshold; PG estimates can be wrong on skewed stats. |
 | **Hybrid (lean)** | **Predictive `EXPLAIN` as the primary** (skip the sync attempt for clearly-large queries) **+ the 30s timeout as a backstop** (catches under-estimates). | Best of both; a little more wiring. |
 
-**Lean: hybrid (`EXPLAIN`-predictive + timeout backstop)** — reactive-only's wasted 30s + double-execution is the thing to avoid, and **`EXPLAIN` is already in the codebase** (`BulkAggregateService.explainExpression` uses it for the aggregate pre-flight), so the predictive signal is cheap and precedented. The `EXPLAIN` cost/row **threshold** is the one new tunable to pick. **Settle this before building E1's escalation path.** (The `sql_query@job` execution foundation — new JobType + migration + 120s processor staging a handle — is unaffected by which trigger wins, so it can be built first regardless.)
+**Decided: hybrid — `EXPLAIN`-predictive primary + the 30s timeout as backstop.** Reactive-only's wasted 30s + double-execution is the thing to avoid, and **`EXPLAIN` is already in the codebase** (`BulkAggregateService.explainExpression` uses it for the aggregate pre-flight), so the predictive signal is cheap and precedented. Mechanism (E1b): `EXPLAIN` the validated query (non-executing) → if PG's estimated cost/rows **crosses the threshold**, escalate up front (cost-ack reject, no sync attempt); else run sync, and if it nonetheless hits the 30s `statement_timeout`, escalate then (the backstop catches under-estimates). The `EXPLAIN` cost/row **threshold** is the one tunable — pick a default in E1b (a new `*_constants` value), env-overridable; tune against real queries. The `sql_query@job` execution foundation (E1a — JobType + migration + 120s processor staging a handle) is trigger-independent and builds first.
 
 ## Cardinality is a mode, not a tool (D8)
 
