@@ -108,6 +108,18 @@ The cursor (#129) makes a **synchronous** read exact at any N, but a genuinely l
 
 This is the runtime mechanism the `bulk_*` tools collapse into: **`sql_query` at job mode** for a long aggregate read (rehoming `bulk_aggregate`'s 120s off-thread scan), and the **transform op at job mode** for a large write (the renamed `bulk_transform`). Establishing it is **child E's** work (it pairs with making `sql_query` the reduce operation); **child F** then removes the now-redundant `bulk_*` tools.
 
+### Open decision — the escalation trigger (E1; revisit next session)
+*How* the runtime decides "this needs the job tier" is unsettled. The trade is wasted work vs. a cost model:
+
+| Option | Mechanism | Cost |
+|---|---|---|
+| **Reactive (timeout)** | Run sync; on the 30s `statement_timeout`, reject→ack→re-run as the 120s job. | **No cost model, but wastes ≤30s on every escalation, then runs the scan a *second* time.** |
+| **Short probe** | Run sync with a small timeout (~2–3s); time out → escalate. | Same double-execution, but caps the waste at ~3s instead of 30s. |
+| **Predictive (`EXPLAIN`)** | `EXPLAIN` the query first (fast, **non-executing** — returns PG's estimated cost + rows); escalate up front when the estimate crosses a threshold. **No wasted sync attempt, no double execution.** | Needs a cost/row threshold; PG estimates can be wrong on skewed stats. |
+| **Hybrid (lean)** | **Predictive `EXPLAIN` as the primary** (skip the sync attempt for clearly-large queries) **+ the 30s timeout as a backstop** (catches under-estimates). | Best of both; a little more wiring. |
+
+**Lean: hybrid (`EXPLAIN`-predictive + timeout backstop)** — reactive-only's wasted 30s + double-execution is the thing to avoid, and **`EXPLAIN` is already in the codebase** (`BulkAggregateService.explainExpression` uses it for the aggregate pre-flight), so the predictive signal is cheap and precedented. The `EXPLAIN` cost/row **threshold** is the one new tunable to pick. **Settle this before building E1's escalation path.** (The `sql_query@job` execution foundation — new JobType + migration + 120s processor staging a handle — is unaffected by which trigger wins, so it can be built first regardless.)
+
 ## Cardinality is a mode, not a tool (D8)
 
 The agent invokes the **operation**; the runtime picks inline/handle/cursor/job. The `bulk_*` tools dissolve (only `bulk_aggregate_records` + `bulk_transform_entity_records` were ever built; #101/#102/#112 are planning-only):
