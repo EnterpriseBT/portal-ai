@@ -69,7 +69,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "compute, estimate, extrapolate, or answer from your own knowledge or " +
       "arithmetic in place of a tool that exists for the job — not even as " +
       '"a quick approximation."',
-    "- **Don\'t fabricate results or attribute methods you didn\'t run.** Do " +
+    "- **Don't fabricate results or attribute methods you didn't run.** Do " +
       "not present hand-derived numbers as a tool's output, and do not name a " +
       "method or metric (e.g. \"Holt-Winters\", \"MAPE\", \"R²\") unless those " +
       "figures came from a tool call in this turn. Never carry a result over " +
