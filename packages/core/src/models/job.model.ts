@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 import { ApiErrorSchema } from "../contracts/api.contract.js";
+import { QueryHandleEnvelopeSchema } from "../contracts/portal-sql.contract.js";
 import { DEFAULT_BULK_BATCH } from "../constants/large-data-ops.constants.js";
 
 /**
@@ -42,6 +43,7 @@ export const JobTypeEnum = z.enum([
   "layout_plan_commit",
   "bulk_transform",
   "bulk_aggregate",
+  "sql_query",
 ]);
 export type JobType = z.infer<typeof JobTypeEnum>;
 
@@ -434,6 +436,29 @@ export const BulkAggregateResultSchema = z.object({
 });
 export type BulkAggregateResult = z.infer<typeof BulkAggregateResultSchema>;
 
+/**
+ * sql_query (#130 child E1) — the JOB-tier mode of `sql_query`. The runtime
+ * escalates a long/expensive read here (see `TOOLPACK_TAXONOMY.spec.md` D8a):
+ * it runs the validated portal SQL off the request thread at
+ * `SQL_QUERY_JOB_TIMEOUT_MS` and stages the result as a handle, returning the
+ * handle envelope so the awaiting tool hands it back like any `sql_query`
+ * result. This rehomes `bulk_aggregate`'s 120s off-thread scan as the read
+ * operation's job mode.
+ *
+ * Locks: NONE — read-only scan (reads don't lock), so no `JOB_LOCK_KEYS` entry.
+ */
+export const SqlQueryJobMetadataSchema = z.object({
+  /** The validated portal SQL to run off-thread. */
+  sql: z.string(),
+  stationId: z.string(),
+  organizationId: z.string(),
+});
+export type SqlQueryJobMetadata = z.infer<typeof SqlQueryJobMetadataSchema>;
+
+/** The staged handle envelope (same shape `sql_query` returns synchronously). */
+export const SqlQueryJobResultSchema = QueryHandleEnvelopeSchema;
+export type SqlQueryJobResult = z.infer<typeof SqlQueryJobResultSchema>;
+
 // --- Type Map ---
 
 /**
@@ -466,6 +491,10 @@ export interface JobTypeMap {
   bulk_aggregate: {
     metadata: BulkAggregateMetadata;
     result: BulkAggregateResult;
+  };
+  sql_query: {
+    metadata: SqlQueryJobMetadata;
+    result: SqlQueryJobResult;
   };
 }
 
@@ -506,6 +535,10 @@ export const JOB_TYPE_SCHEMAS: {
   bulk_aggregate: {
     metadata: BulkAggregateMetadataSchema,
     result: BulkAggregateResultSchema,
+  },
+  sql_query: {
+    metadata: SqlQueryJobMetadataSchema,
+    result: SqlQueryJobResultSchema,
   },
 };
 

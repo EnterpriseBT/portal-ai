@@ -35,8 +35,16 @@ export const WEBHOOK_READ_TOKEN_TTL_MS = 10 * 60 * 1000;
 /** Above this row count, reads automatically sample. */
 export const SAMPLING_THRESHOLD = 50_000;
 
-/** Per-query wall-clock cap; PG `statement_timeout`. */
+/** Per-query wall-clock cap for a SYNCHRONOUS query; PG `statement_timeout`.
+ *  The job tier (#130 E1) runs past this off-thread — see
+ *  `SQL_QUERY_JOB_TIMEOUT_MS`. */
 export const STATEMENT_TIMEOUT_MS = 30_000;
+
+/** Wall-clock cap for an aggregate/scan run at the JOB tier (#130 E1) —
+ *  off the request thread, so it can run far longer than the synchronous
+ *  `STATEMENT_TIMEOUT_MS`. Matches the prior `bulk_aggregate` 120s budget
+ *  that `sql_query@job` rehomes. */
+export const SQL_QUERY_JOB_TIMEOUT_MS = 120_000;
 
 /** Below this row count, reads still inline rows instead of returning a handle. */
 export const INLINE_ROWS_THRESHOLD = 100;

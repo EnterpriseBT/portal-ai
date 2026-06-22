@@ -37,6 +37,7 @@ import {
   wideTableStatementCache,
   type WideTableStatementCache,
 } from "./wide-table-statement.cache.js";
+import { STATEMENT_TIMEOUT_MS } from "@portalai/core/constants";
 
 import { validatePortalSql } from "./portal-sql-validation.util.js";
 import { applyImplicitLimit } from "./portal-sql-limit.util.js";
@@ -89,6 +90,10 @@ export interface PortalSqlParams {
   cellCap?: number;
   /** Override the default 100 KB payload cap. */
   payloadCap?: number;
+  /** Override the synchronous `statement_timeout` (ms). Used by the job tier
+   *  (#130 E1) to run a long scan off-thread at a higher budget. Defaults to
+   *  `STATEMENT_TIMEOUT_MS` (30s). */
+  statementTimeoutMs?: number;
 }
 
 interface PortalSqlServiceDeps {
@@ -335,6 +340,8 @@ export class PortalSqlServiceImpl {
       cellCap: params.cellCap ?? PORTAL_SQL_DEFAULTS.cellCap,
       payloadCap: params.payloadCap ?? PORTAL_SQL_DEFAULTS.payloadCap,
     };
+    const statementTimeoutMs =
+      params.statementTimeoutMs ?? STATEMENT_TIMEOUT_MS;
 
     // 1. Static validation — throws PORTAL_SQL_FORBIDDEN on violation.
     const { cleaned, needsImplicitLimit } = validatePortalSql(params.sql);
@@ -356,7 +363,9 @@ export class PortalSqlServiceImpl {
     // guard.
     try {
       await db.transaction(async (tx) => {
-        await tx.execute(sql.raw("SET LOCAL statement_timeout = '30s'"));
+        await tx.execute(
+          sql.raw(`SET LOCAL statement_timeout = '${statementTimeoutMs}ms'`)
+        );
 
         const build = await this.buildSessionViews(
           params.stationId,

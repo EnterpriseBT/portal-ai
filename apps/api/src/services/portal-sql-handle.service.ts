@@ -61,6 +61,9 @@ export interface ProduceOptions {
   stationId: string;
   organizationId: string;
   sql: string;
+  /** Override the synchronous `statement_timeout` — set by the job tier
+   *  (#130 E1) so a long scan runs off-thread at `SQL_QUERY_JOB_TIMEOUT_MS`. */
+  statementTimeoutMs?: number;
 }
 
 export interface SnapshotResult {
@@ -126,6 +129,9 @@ export class PortalSqlHandleService {
       rowCap: HANDLE_ROW_CAP,
       cellCap: Number.MAX_SAFE_INTEGER,
       payloadCap: Number.MAX_SAFE_INTEGER,
+      ...(opts.statementTimeoutMs != null
+        ? { statementTimeoutMs: opts.statementTimeoutMs }
+        : {}),
     });
 
     // The three response shapes:
