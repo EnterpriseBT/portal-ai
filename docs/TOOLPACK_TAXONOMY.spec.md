@@ -75,8 +75,11 @@ A uniform **record-source** abstraction (`apps/api/src/tools/record-source.ts`, 
 estimate N (rows the op touches)
 N ≤ INLINE_ROWS_THRESHOLD (100)      → in-memory array
 INLINE < N ≤ HANDLE_ROW_CAP (100k)   → materialized Redis handle snapshot (today's getSnapshot)
-N > HANDLE_ROW_CAP                    → cursor-backed stream / async job
+N > HANDLE_ROW_CAP                    → cursor-backed stream (#129, synchronous) — OR, for a
+                                        long/expensive op, the JOB tier (asynchronous; see below)
 ```
+
+The four tiers — **inline → handle → cursor → job** — are one ladder. The first three are **synchronous and transparent** (the call returns rows/handle within the turn) and selection across them is **automatic, by N** — the established convention (`sql_query` auto-escalates inline→handle at `INLINE_ROWS_THRESHOLD`; #129 engages the cursor past `HANDLE_ROW_CAP`). The **job tier** is the qualitatively different one — *asynchronous*, long-running, cost-bearing — so its escalation is **auto-detected but explicitly gated**, never silent (see "The job tier" below). This is what realizes "arbitrarily large reads and writes are a job," consistent with the operation+cardinality-mode model.
 
 bounded above by `consumption`:
 - **engine-pushdown** — runs set-wise in SQL; exact at any N; no materialization.
@@ -95,9 +98,19 @@ bounded above by `consumption`:
 | **Always-available** | `SYSTEM_TOOL_PACKS = ["station_context"]` constant | `alwaysAvailable: true` on `current_time`/`station_context` |
 | **Write-gate** | pack-level (`entity_management` block gated on station write capability) | per-tool: `writes` non-empty ⇒ gated (finer; a non-write tool in a write pack stays available) |
 
+## The job tier (async escalation — D8a, realigned 2026-06-22)
+
+The cursor (#129) makes a **synchronous** read exact at any N, but a genuinely long or expensive operation — a multi-minute aggregate scan, a large per-record map/write — must run **off the request thread as a job**. The job tier is therefore a first-class rung of the cardinality ladder, not a separate `bulk_*` tool:
+
+- **Auto-detected.** The runtime escalates an operation to the job tier when its estimated cost crosses the synchronous ceiling (N and/or duration past what a `statement_timeout`-bounded synchronous call can serve) — the same auto-by-N spirit as `INLINE_ROWS_THRESHOLD`. The agent names the operation; it does **not** pick a `bulk_` variant.
+- **Explicitly gated, never silent.** Because a job is async + cost-bearing, escalation surfaces through the **existing cost-ack flow** (reject → `acknowledgeCost` → retry), which is **server-enforced** (not a prompt instruction). This is the one tier where automatic detection pairs with an explicit confirm — it cannot run a big expensive job silently, and the agent learns the result is asynchronous.
+- **Async result.** The job returns `resultKind: "progress"`; the enqueued job declares its locked ids from `capability.locks` (gate-4 registry, #142); the terminal payload lets the SSE consumer refresh without a full refetch (per the async-job convention).
+
+This is the runtime mechanism the `bulk_*` tools collapse into: **`sql_query` at job mode** for a long aggregate read (rehoming `bulk_aggregate`'s 120s off-thread scan), and the **transform op at job mode** for a large write (the renamed `bulk_transform`). Establishing it is **child E's** work (it pairs with making `sql_query` the reduce operation); **child F** then removes the now-redundant `bulk_*` tools.
+
 ## Cardinality is a mode, not a tool (D8)
 
-The agent invokes the **operation**; the runtime picks inline/handle/job. The five `bulk_*` tools dissolve:
+The agent invokes the **operation**; the runtime picks inline/handle/cursor/job. The `bulk_*` tools dissolve (only `bulk_aggregate_records` + `bulk_transform_entity_records` were ever built; #101/#102/#112 are planning-only):
 
 | Was | Becomes |
 |---|---|
