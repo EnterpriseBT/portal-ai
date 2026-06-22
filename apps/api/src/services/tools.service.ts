@@ -479,7 +479,15 @@ export class ToolService {
     // Pack: data_query
     // -------------------------------------------------------------------
     if (enabledPacks.has("data_query")) {
-      tools.sql_query = new SqlQueryTool().build(stationId, organizationId);
+      // userId + portalId enable the job-tier escalation (#130 E1b);
+      // both are present for production portal callers, absent for
+      // non-portal callers (tools then run synchronous-only).
+      tools.sql_query = new SqlQueryTool().build(
+        stationId,
+        organizationId,
+        userId,
+        portalId
+      );
       tools.bulk_aggregate_records = new BulkAggregateEntityRecordsTool().build(
         organizationId,
         userId

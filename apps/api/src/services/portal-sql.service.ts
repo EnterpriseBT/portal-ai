@@ -423,6 +423,102 @@ export class PortalSqlServiceImpl {
     /* istanbul ignore next */
     throw new Error("portal sql transaction returned without a result");
   }
+
+  /**
+   * Predictive cost probe for the job-tier escalation trigger (#130 E1b,
+   * spec D8a). Runs `EXPLAIN (FORMAT JSON)` over the validated, implicit-
+   * LIMIT-wrapped query — **non-executing**, so it returns PG's estimated
+   * total plan cost + output rows without scanning the table.
+   *
+   * Built on the same READ ONLY + per-call temp-view pipeline as
+   * `runSqlQuery` (the LLM SQL references the station's entity-key views,
+   * which only exist inside that transaction), then rolls the transaction
+   * back via the shared sentinel so the temp views are dropped.
+   *
+   * The caller (`sql_query`) compares `totalCost` against
+   * `environment.SQL_QUERY_JOB_COST_THRESHOLD` to decide whether to
+   * escalate up front. EXPLAIN failures are the caller's to handle (it
+   * degrades to the synchronous path + 30s backstop on a null/throw),
+   * so this throws on invalid SQL rather than swallowing.
+   */
+  async explainSqlQuery(params: {
+    sql: string;
+    stationId: string;
+    organizationId: string;
+  }): Promise<{ totalCost: number; estimatedRows: number }> {
+    // Mirror runSqlQuery's validation + implicit-LIMIT wrap so the probed
+    // plan matches what the synchronous path would actually run.
+    const { cleaned, needsImplicitLimit } = validatePortalSql(params.sql);
+    const { sql: wrappedSql } = needsImplicitLimit
+      ? applyImplicitLimit(cleaned, PORTAL_SQL_DEFAULTS.rowCap)
+      : { sql: cleaned };
+
+    try {
+      await db.transaction(async (tx) => {
+        await tx.execute(
+          sql.raw(`SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT_MS}ms'`)
+        );
+
+        const build = await this.buildSessionViews(
+          params.stationId,
+          params.organizationId,
+          tx as unknown as DbClient
+        );
+        for (const ddl of build.views) {
+          await tx.execute(sql.raw(ddl));
+        }
+        await tx.execute(sql.raw("SET LOCAL transaction_read_only = on"));
+
+        const res = await tx.execute(
+          sql.raw(`EXPLAIN (FORMAT JSON) ${wrappedSql}`)
+        );
+        const estimate = parseExplainEstimate(res);
+
+        // Roll back so the session-scoped temp views are dropped; the
+        // sentinel carries the estimate out through the catch below.
+        throw new PortalSqlTxResult<{ totalCost: number; estimatedRows: number }>(
+          estimate
+        );
+      });
+    } catch (err) {
+      if (err instanceof PortalSqlTxResult) {
+        return err.value as { totalCost: number; estimatedRows: number };
+      }
+      throw translateExecutionError(err);
+    }
+
+    /* istanbul ignore next */
+    throw new Error("portal sql EXPLAIN transaction returned without a result");
+  }
+}
+
+/**
+ * Pull `Total Cost` + `Plan Rows` from an `EXPLAIN (FORMAT JSON)` result.
+ * PG returns a single row whose `QUERY PLAN` column holds a one-element
+ * array of `{ Plan: { ... } }`. postgres-js may hand the JSON back either
+ * already-parsed (array/object) or as a string, so handle both. Missing
+ * fields fall back to 0 (the caller treats a 0 cost as "do not escalate").
+ */
+function parseExplainEstimate(result: unknown): {
+  totalCost: number;
+  estimatedRows: number;
+} {
+  const rows = Array.isArray(result)
+    ? (result as Array<Record<string, unknown>>)
+    : [];
+  const planColumn = rows[0]?.["QUERY PLAN"];
+  const parsed =
+    typeof planColumn === "string"
+      ? (JSON.parse(planColumn) as unknown)
+      : planColumn;
+  const planNode = Array.isArray(parsed)
+    ? (parsed[0] as { Plan?: Record<string, unknown> } | undefined)
+    : undefined;
+  const plan = planNode?.Plan ?? {};
+  return {
+    totalCost: Number(plan["Total Cost"] ?? 0),
+    estimatedRows: Number(plan["Plan Rows"] ?? 0),
+  };
 }
 
 /**

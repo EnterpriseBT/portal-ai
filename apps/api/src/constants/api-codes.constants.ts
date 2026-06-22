@@ -301,6 +301,20 @@ export enum ApiCode {
   /** Postgres' `statement_timeout` fired on a portal sql_query. */
   PORTAL_SQL_TIMEOUT = "PORTAL_SQL_TIMEOUT",
 
+  // sql_query job-tier escalation (#130 E1b)
+  /** The query is long/expensive (EXPLAIN cost over threshold, or it hit the
+   *  30s synchronous backstop) and must run as an async job; the agent didn't
+   *  set `acknowledgeCost: true`. Mirrors the bulk cost-ack gate. 400. */
+  SQL_QUERY_COST_NOT_ACKNOWLEDGED = "SQL_QUERY_COST_NOT_ACKNOWLEDGED",
+  /** `acknowledgeCost: true` was set but server-side enforcement rejected —
+   *  either no prior escalation exists for this portal+query, or the user
+   *  hasn't replied since (the agent retried in the same turn). 400. */
+  SQL_QUERY_COST_ACKNOWLEDGEMENT_INVALID = "SQL_QUERY_COST_ACKNOWLEDGEMENT_INVALID",
+  /** The escalated sql_query job was cancelled before it finished. 409. */
+  SQL_QUERY_JOB_CANCELLED = "SQL_QUERY_JOB_CANCELLED",
+  /** The escalated sql_query job failed off-thread; see `error`. 400. */
+  SQL_QUERY_JOB_FAILED = "SQL_QUERY_JOB_FAILED",
+
   // REST API Connector (Phase 1)
   /** Network error, DNS failure, timeout, or non-2xx response during a probe / sync fetch. */
   REST_API_FETCH_FAILED = "REST_API_FETCH_FAILED",
@@ -532,6 +546,14 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
     "Reload to refetch the cached snapshot.",
   [ApiCode.PORTAL_SQL_TIMEOUT]:
     "Query exceeded 30s. Try a tighter WHERE filter, a tighter date range, or aggregating the source.",
+  [ApiCode.SQL_QUERY_COST_NOT_ACKNOWLEDGED]:
+    "This query is expensive and must run as an async job. Tell the user it'll run in the background, then retry with `acknowledgeCost: true` AFTER they reply.",
+  [ApiCode.SQL_QUERY_COST_ACKNOWLEDGEMENT_INVALID]:
+    "Server rejected the acknowledgement. Either no prior escalation exists for this exact query (call without `acknowledgeCost` first), or the user hasn't replied since the rejection (wait for their message, then retry).",
+  [ApiCode.SQL_QUERY_JOB_CANCELLED]:
+    "Re-run the query to finish; the scan is read-only and idempotent.",
+  [ApiCode.SQL_QUERY_JOB_FAILED]:
+    "The background scan failed. Fix the SQL or narrow the query, then retry.",
   [ApiCode.BULK_DISPATCH_COST_ACKNOWLEDGEMENT_INVALID]:
     "Server rejected the acknowledgement. Either no prior cost rejection exists for this exact operation (call without `acknowledgeCost` first), or the user hasn't replied since the rejection (wait for their message, then retry).",
   [ApiCode.BULK_DISPATCH_TOOL_NOT_FOUND]:
