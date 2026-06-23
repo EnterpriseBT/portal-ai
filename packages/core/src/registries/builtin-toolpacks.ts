@@ -1067,7 +1067,11 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   // expensive (#130 E2b): the in-memory fit is the heavy reduce-tier op
   // whose exact-unbounded upgrade is the mini-batch streaming variant (E3).
   cluster: pureReduce("scalar", "expensive"),
-  hypothesis_test: pureReduce("scalar"),
+  // hypothesis_test is engine-pushdown (#130 E2c): the t-tests push their
+  // O(N) reduction (avg / var_samp / count) into SQL over the source handle;
+  // the O(1) statistic + p-value run in-tool. mann_whitney (rank-over-union)
+  // and chi_squared (array input) stay on the in-memory path.
+  hypothesis_test: enginePushdownReduce("scalar"),
   // regression — trend / changepoint / decompose removed in #130 E2
   // (expressed directly in sql_query).
   regression: pureReduce("scalar"),

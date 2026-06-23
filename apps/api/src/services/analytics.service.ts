@@ -1455,6 +1455,114 @@ export class AnalyticsService {
     }
   }
 
+  /**
+   * Engine-pushdown hypothesis tests (#130 E2c). The three t-tests reduce to
+   * `avg` / `var_samp` / `stddev_samp` / `count` aggregates pushed into SQL
+   * over the source handle; the O(1) statistic + two-tailed p-value run here,
+   * byte-for-byte the same formulas as {@link hypothesisTest}'s in-memory
+   * path. `mann_whitney` (rank over the combined samples) and `chi_squared`
+   * (array input, no records) are not pushed — they return `null` so the
+   * caller uses the in-memory path. Also returns `null` when the handle
+   * can't be re-executed set-wise (caller falls back).
+   */
+  static async hypothesisTestPushdown(
+    handleId: string,
+    params: {
+      test:
+        | "t_test_one_sample"
+        | "t_test_two_sample"
+        | "t_test_paired"
+        | "mann_whitney"
+        | "chi_squared";
+      columnA?: string;
+      columnB?: string;
+      mu?: number;
+    }
+  ): Promise<{ statistic: number; pValue: number; df?: number } | null> {
+    const a = quoteSqlIdentifier(params.columnA ?? "");
+
+    switch (params.test) {
+      case "t_test_one_sample": {
+        const s = await PortalSqlHandleService.aggregateOverHandle(
+          handleId,
+          `avg(${a}) AS mean, stddev_samp(${a}) AS sd, count(${a}) AS n`
+        );
+        if (s === null) return null;
+        const n = Number(s.n ?? 0);
+        if (n < 2) {
+          throw new Error("t_test_one_sample: at least 2 values required");
+        }
+        const mean = Number(s.mean);
+        const sd = Number(s.sd);
+        const mu = params.mu ?? 0;
+        const t =
+          sd === 0
+            ? mean === mu
+              ? 0
+              : Number.POSITIVE_INFINITY
+            : (mean - mu) / (sd / Math.sqrt(n));
+        const df = n - 1;
+        return { statistic: t, pValue: this.tTwoTailedPValue(t, df), df };
+      }
+      case "t_test_two_sample": {
+        const b = quoteSqlIdentifier(params.columnB ?? "");
+        const s = await PortalSqlHandleService.aggregateOverHandle(
+          handleId,
+          `avg(${a}) AS xmean, var_samp(${a}) AS xvar, count(${a}) AS nx, ` +
+            `avg(${b}) AS ymean, var_samp(${b}) AS yvar, count(${b}) AS ny`
+        );
+        if (s === null) return null;
+        const nx = Number(s.nx ?? 0);
+        const ny = Number(s.ny ?? 0);
+        if (nx < 2 || ny < 2) {
+          throw new Error(
+            "t_test_two_sample: degenerate inputs (each sample needs ≥ 2 values)"
+          );
+        }
+        const xMean = Number(s.xmean);
+        const yMean = Number(s.ymean);
+        const pooledVar =
+          ((nx - 1) * Number(s.xvar) + (ny - 1) * Number(s.yvar)) /
+          (nx + ny - 2);
+        const se = Math.sqrt(pooledVar * (1 / nx + 1 / ny));
+        const t =
+          se === 0
+            ? xMean === yMean
+              ? 0
+              : Number.POSITIVE_INFINITY
+            : (xMean - yMean) / se;
+        const df = nx + ny - 2;
+        return { statistic: t, pValue: this.tTwoTailedPValue(t, df), df };
+      }
+      case "t_test_paired": {
+        const b = quoteSqlIdentifier(params.columnB ?? "");
+        const s = await PortalSqlHandleService.aggregateOverHandle(
+          handleId,
+          `avg(${a} - ${b}) AS mean, stddev_samp(${a} - ${b}) AS sd, ` +
+            `count(*) FILTER (WHERE ${a} IS NOT NULL AND ${b} IS NOT NULL) AS n`
+        );
+        if (s === null) return null;
+        const n = Number(s.n ?? 0);
+        if (n < 2) {
+          throw new Error("t_test_paired: at least 2 pairs required");
+        }
+        const mean = Number(s.mean);
+        const sd = Number(s.sd);
+        const t =
+          sd === 0
+            ? mean === 0
+              ? 0
+              : Number.POSITIVE_INFINITY
+            : mean / (sd / Math.sqrt(n));
+        const df = n - 1;
+        return { statistic: t, pValue: this.tTwoTailedPValue(t, df), df };
+      }
+      default:
+        // mann_whitney / chi_squared — not pushed; in-memory path owns them.
+        return null;
+    }
+  }
+
   // -----------------------------------------------------------------------
   // Pack: financial
   // -----------------------------------------------------------------------
