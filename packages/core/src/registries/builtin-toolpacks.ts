@@ -1043,12 +1043,18 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   resolve_identity: engineRead("scalar", "scan"),
   // statistics — describe_column / correlate / detect_outliers / aggregate
   // removed in #130 E2 (expressed directly in sql_query).
-  cluster: pureReduce("scalar"),
+  //
+  // cluster (k-means) is bounded(100k) + onOverflow:error and costHint
+  // expensive (#130 E2b): the in-memory fit is the heavy reduce-tier op
+  // whose exact-unbounded upgrade is the mini-batch streaming variant (E3).
+  cluster: pureReduce("scalar", "expensive"),
   hypothesis_test: pureReduce("scalar"),
   // regression — trend / changepoint / decompose removed in #130 E2
   // (expressed directly in sql_query).
   regression: pureReduce("scalar"),
-  logistic_regression: pureReduce("scalar"),
+  // logistic_regression (IRLS) is bounded(100k) + onOverflow:error and
+  // costHint expensive (#130 E2b); the SGD streaming variant is E3.
+  logistic_regression: pureReduce("scalar", "expensive"),
   // forecast folds online over the cursor (#129) — streaming, not bounded.
   forecast: streamingReduce("scalar"),
   // financial — pure math
