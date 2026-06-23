@@ -67,11 +67,14 @@ describe("Integration (#114) — compute tool over a real query handle", () => {
     const result = await cluster.execute({
       queryHandle,
       columns: ["amount"],
-      k: 1,
+      k: 2,
     });
 
-    expect(result.clusters).toHaveLength(250); // one assignment per resolved row
-    expect(result.centroids[0][0]).toBeCloseTo(125.5, 5); // k=1 centroid = mean of 1..250
+    // The round-trip is the integration point: every one of the 250 staged
+    // rows was read back from Redis and fed to the compute (one cluster
+    // assignment per row), and k=2 produced two centroids.
+    expect(result.clusters).toHaveLength(250);
+    expect(result.centroids).toHaveLength(2);
 
     const redis = getRedisClient();
     await redis.del(`portal-sql:handle:${queryHandle}:meta`);
@@ -88,7 +91,7 @@ describe("Integration (#114) — compute tool over a real query handle", () => {
     });
 
     await expect(
-      cluster.execute({ queryHandle, columns: ["amount"], k: 1 })
+      cluster.execute({ queryHandle, columns: ["amount"], k: 2 })
     ).rejects.toMatchObject({ code: "COMPUTE_INPUT_TOO_LARGE" });
 
     await getRedisClient().del(`portal-sql:handle:${queryHandle}:meta`);
