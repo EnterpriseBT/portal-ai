@@ -222,7 +222,7 @@ describe("buildAnalyticsTools()", () => {
     // resolve_identity omitted because no entity groups
     expect(tools.resolve_identity).toBeUndefined();
     // Other pack tools should be absent
-    expect(tools.describe_column).toBeUndefined();
+    expect(tools.cluster).toBeUndefined();
     expect(tools.regression).toBeUndefined();
     expect(tools.npv).toBeUndefined();
   });
@@ -237,10 +237,8 @@ describe("buildAnalyticsTools()", () => {
     setupStationMocks(["statistics"]);
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
-    expect(tools.describe_column).toBeDefined();
-    expect(tools.correlate).toBeDefined();
-    expect(tools.detect_outliers).toBeDefined();
     expect(tools.cluster).toBeDefined();
+    expect(tools.hypothesis_test).toBeDefined();
     // data_query tools should be absent
     expect(tools.sql_query).toBeUndefined();
   });
@@ -250,7 +248,7 @@ describe("buildAnalyticsTools()", () => {
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
     expect(tools.regression).toBeDefined();
-    expect(tools.trend).toBeDefined();
+    expect(tools.forecast).toBeDefined();
     // Other tools absent
     expect(tools.sql_query).toBeUndefined();
     expect(tools.npv).toBeUndefined();
@@ -264,9 +262,8 @@ describe("buildAnalyticsTools()", () => {
     expect(tools.npv).toBeDefined();
     expect(tools.irr).toBeDefined();
     expect(tools.amortize).toBeDefined();
-    expect(tools.sharpe_ratio).toBeDefined();
-    expect(tools.max_drawdown).toBeDefined();
-    expect(tools.rolling_returns).toBeDefined();
+    expect(tools.var_cvar).toBeDefined();
+    expect(tools.portfolio_metrics).toBeDefined();
     // Other tools absent
     expect(tools.sql_query).toBeUndefined();
   });
@@ -295,21 +292,18 @@ describe("buildAnalyticsTools()", () => {
     expect(tools.visualize).toBeDefined();
     expect(tools.visualize_tree).toBeDefined();
     // statistics
-    expect(tools.describe_column).toBeDefined();
-    expect(tools.correlate).toBeDefined();
-    expect(tools.detect_outliers).toBeDefined();
     expect(tools.cluster).toBeDefined();
+    expect(tools.hypothesis_test).toBeDefined();
     // regression
     expect(tools.regression).toBeDefined();
-    expect(tools.trend).toBeDefined();
+    expect(tools.forecast).toBeDefined();
     // financial
     expect(tools.technical_indicator).toBeDefined();
     expect(tools.npv).toBeDefined();
     expect(tools.irr).toBeDefined();
     expect(tools.amortize).toBeDefined();
-    expect(tools.sharpe_ratio).toBeDefined();
-    expect(tools.max_drawdown).toBeDefined();
-    expect(tools.rolling_returns).toBeDefined();
+    expect(tools.var_cvar).toBeDefined();
+    expect(tools.portfolio_metrics).toBeDefined();
     // web_search
     expect(tools.web_search).toBeDefined();
   });

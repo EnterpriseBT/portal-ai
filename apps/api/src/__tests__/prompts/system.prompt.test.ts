@@ -260,7 +260,7 @@ describe("buildSystemPrompt — response style", () => {
       "Skip post-ambles",
       "Summary:",
       "Key takeaways:",
-      "describe_column",
+      "hypothesis_test",
       "web_search",
       "resolve_identity",
       "Q3 revenue was $1.24M",

@@ -20,18 +20,11 @@ import { StationContextTool } from "../tools/station-context.tool.js";
 import { VisualizeTool } from "../tools/visualize.tool.js";
 import { VisualizeTreeTool } from "../tools/visualize-tree.tool.js";
 import { ResolveIdentityTool } from "../tools/resolve-identity.tool.js";
-import { DescribeColumnTool } from "../tools/describe-column.tool.js";
-import { CorrelateTool } from "../tools/correlate.tool.js";
-import { DetectOutliersTool } from "../tools/detect-outliers.tool.js";
 import { ClusterTool } from "../tools/cluster.tool.js";
-import { AggregateTool } from "../tools/aggregate.tool.js";
 import { HypothesisTestTool } from "../tools/hypothesis-test.tool.js";
 import { RegressionTool } from "../tools/regression.tool.js";
 import { LogisticRegressionTool } from "../tools/logistic-regression.tool.js";
-import { ChangepointTool } from "../tools/changepoint.tool.js";
-import { DecomposeTool } from "../tools/decompose.tool.js";
 import { ForecastTool } from "../tools/forecast.tool.js";
-import { TrendTool } from "../tools/trend.tool.js";
 import { TechnicalIndicatorTool } from "../tools/technical-indicator.tool.js";
 import { NpvTool } from "../tools/npv.tool.js";
 import { IrrTool } from "../tools/irr.tool.js";
@@ -43,9 +36,6 @@ import { VarCvarTool } from "../tools/var-cvar.tool.js";
 import { PortfolioMetricsTool } from "../tools/portfolio-metrics.tool.js";
 import { BondMathTool } from "../tools/bond-math.tool.js";
 import { AmortizeTool } from "../tools/amortize.tool.js";
-import { SharpeRatioTool } from "../tools/sharpe-ratio.tool.js";
-import { MaxDrawdownTool } from "../tools/max-drawdown.tool.js";
-import { RollingReturnsTool } from "../tools/rolling-returns.tool.js";
 import { WebSearchTool } from "../tools/web-search.tool.js";
 import { WebhookTool } from "../tools/webhook.tool.js";
 import { EntityRecordCreateTool } from "../tools/entity-record-create.tool.js";
@@ -176,18 +166,11 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "visualize",
   "visualize_tree",
   "resolve_identity",
-  "describe_column",
-  "correlate",
-  "detect_outliers",
   "cluster",
-  "aggregate",
   "hypothesis_test",
   "regression",
   "logistic_regression",
-  "changepoint",
-  "decompose",
   "forecast",
-  "trend",
   "technical_indicator",
   "npv",
   "irr",
@@ -199,9 +182,6 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "portfolio_metrics",
   "bond_math",
   "amortize",
-  "sharpe_ratio",
-  "max_drawdown",
-  "rolling_returns",
   "web_search",
   "entity_record_create",
   "entity_record_update",
@@ -516,11 +496,10 @@ export class ToolService {
     if (enabledPacks.has("statistics")) {
       // Pure compute tools (#114): data arrives as input (a sql_query
       // handle or inline rows), so build() takes no station context.
-      tools.describe_column = new DescribeColumnTool().build();
-      tools.correlate = new CorrelateTool().build();
-      tools.detect_outliers = new DetectOutliersTool().build();
+      // descriptive stats / correlation / outliers / group-by are expressed
+      // directly in `sql_query` (Postgres aggregates + window functions) —
+      // removed from the reduce tier in #130 E2.
       tools.cluster = new ClusterTool().build();
-      tools.aggregate = new AggregateTool().build();
       tools.hypothesis_test = new HypothesisTestTool().build();
     }
 
@@ -530,11 +509,11 @@ export class ToolService {
     if (enabledPacks.has("regression")) {
       // Pure compute tools (#114): data arrives as input (a sql_query
       // handle or inline rows), so build() takes no station context.
+      // trend / changepoint / decompose are expressed directly in `sql_query`
+      // (date_trunc + regr_*, CUSUM window frames, moving-average windows) —
+      // removed from the reduce tier in #130 E2.
       tools.regression = new RegressionTool().build();
       tools.logistic_regression = new LogisticRegressionTool().build();
-      tools.trend = new TrendTool().build();
-      tools.changepoint = new ChangepointTool().build();
-      tools.decompose = new DecomposeTool().build();
       tools.forecast = new ForecastTool().build();
     }
 
@@ -546,6 +525,9 @@ export class ToolService {
       // arrives as input (a sql_query handle or inline rows), so build()
       // takes no station context. The pure-math tools (npv, irr, …) never
       // read the backend and already take no args.
+      // sharpe_ratio / max_drawdown / rolling_returns are expressed directly
+      // in `sql_query` (cumulative-product, running-max, and lag() window
+      // functions) — removed from the reduce tier in #130 E2.
       tools.technical_indicator = new TechnicalIndicatorTool().build();
       tools.npv = new NpvTool().build();
       tools.irr = new IrrTool().build();
@@ -554,9 +536,6 @@ export class ToolService {
       tools.xirr = new XirrTool().build();
       tools.depreciation = new DepreciationTool().build();
       tools.amortize = new AmortizeTool().build();
-      tools.sharpe_ratio = new SharpeRatioTool().build();
-      tools.max_drawdown = new MaxDrawdownTool().build();
-      tools.rolling_returns = new RollingReturnsTool().build();
       tools.var_cvar = new VarCvarTool().build();
       tools.portfolio_metrics = new PortfolioMetricsTool().build();
       tools.bond_math = new BondMathTool().build();

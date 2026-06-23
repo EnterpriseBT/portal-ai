@@ -61,7 +61,7 @@ const VALID_SCHEMA_RESPONSE = {
   ],
 };
 
-const BUILTIN_NAMES = new Set(["sql_query", "correlate"]);
+const BUILTIN_NAMES = new Set(["sql_query", "hypothesis_test"]);
 
 // ---------------------------------------------------------------------------
 // Tests

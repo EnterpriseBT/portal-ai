@@ -280,77 +280,9 @@ const STATISTICS_PACK: BuiltinToolpackSpec = {
   slug: "statistics",
   name: "Statistics",
   description:
-    "Descriptive statistics, correlation, outlier detection, k-means clustering, group-by aggregation, and hypothesis testing for numeric columns.",
+    "K-means clustering and hypothesis testing for numeric columns. Descriptive statistics, correlation, outlier detection, and group-by aggregation are expressed directly in sql_query.",
   iconSlug: "BarChart",
   tools: [
-    {
-      name: "describe_column",
-      description:
-        "Compute descriptive statistics (count, mean, median, stddev, variance, mode, min/max, p25/p75, IQR, skewness, kurtosis) for a numeric column. Optionally include arbitrary percentiles.",
-      parameterSchema: objectSchema(
-        {
-          ...computeSourceFields(),
-          column: stringField("Numeric column to describe (a key in the rows)"),
-          percentiles: {
-            type: "array",
-            items: { type: "number", minimum: 0, maximum: 1 },
-            description:
-              "Optional list of percentiles to compute (each in [0, 1]).",
-          },
-        },
-        ["column"]
-      ),
-      examples: [
-        {
-          title: "Describe order amounts",
-          input: { queryHandle: "qh-1a2b", column: "amount" },
-          output: {
-            count: 144,
-            mean: 312.4,
-            median: 250,
-            p25: 110,
-            p75: 480,
-            stddev: 215.7,
-          },
-        },
-      ],
-    },
-    {
-      name: "correlate",
-      description:
-        "Compute the correlation between two numeric columns. Supports Pearson (default), Spearman (rank-based, monotonic), and Kendall τ-b.",
-      parameterSchema: objectSchema(
-        {
-          ...computeSourceFields(),
-          columnA: stringField("First numeric column (a key in the rows)"),
-          columnB: stringField("Second numeric column (a key in the rows)"),
-          method: enumField(
-            ["pearson", "spearman", "kendall"],
-            "Correlation method. Default 'pearson'."
-          ),
-        },
-        ["columnA", "columnB"]
-      ),
-    },
-    {
-      name: "detect_outliers",
-      description:
-        "Detect outliers in a numeric column using IQR, Z-score, or modified Z (MAD).",
-      parameterSchema: objectSchema(
-        {
-          ...computeSourceFields(),
-          column: stringField("Numeric column to scan (a key in the rows)"),
-          method: enumField(
-            ["iqr", "zscore", "mad"],
-            "Detection method: iqr, zscore, or mad (median absolute deviation)"
-          ),
-          threshold: numberField(
-            "Cutoff: IQR multiplier (default 1.5), |z| cutoff (default 3), or |modified z| cutoff (default 3.5)"
-          ),
-        },
-        ["column", "method"]
-      ),
-    },
     {
       name: "cluster",
       description: "Perform k-means clustering on specified numeric columns.",
@@ -369,48 +301,20 @@ const STATISTICS_PACK: BuiltinToolpackSpec = {
         },
         ["columns", "k"]
       ),
-    },
-    {
-      name: "aggregate",
-      description:
-        "Group-by + reduce. Produces one row per group with the requested metrics.",
-      parameterSchema: objectSchema(
+      examples: [
         {
-          ...computeSourceFields(),
-          groupBy: stringArrayField(
-            "Columns to group by (keys in the rows). Pass [] to aggregate over the whole dataset."
-          ),
-          metrics: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                column: stringField(
-                  "Numeric column the operation runs over. Omit when op is 'count'."
-                ),
-                op: enumField(
-                  [
-                    "count",
-                    "sum",
-                    "mean",
-                    "median",
-                    "min",
-                    "max",
-                    "stddev",
-                    "p25",
-                    "p75",
-                  ],
-                  "Aggregation operator"
-                ),
-                as: stringField("Output column name (defaults to op_column)"),
-              },
-              required: ["op"],
-            },
-            description: "List of metrics to compute per group.",
+          title: "Segment customers into 3 clusters by spend and frequency",
+          input: { queryHandle: "qh-9f3c", columns: ["spend", "frequency"], k: 3 },
+          output: {
+            clusters: [0, 2, 1, 0, 2],
+            centroids: [
+              [120.5, 2.1],
+              [880.0, 9.4],
+              [430.2, 5.0],
+            ],
           },
         },
-        ["groupBy", "metrics"]
-      ),
+      ],
     },
     {
       name: "hypothesis_test",
@@ -463,7 +367,7 @@ const REGRESSION_PACK: BuiltinToolpackSpec = {
   slug: "regression",
   name: "Regression",
   description:
-    "Linear, multivariate, polynomial, and logistic regression; trend lines; time-series decomposition, forecasting, and changepoint detection.",
+    "Linear, multivariate, polynomial, and logistic regression, and time-series forecasting. Trend lines, decomposition, and changepoint detection are expressed directly in sql_query.",
   iconSlug: "TrendingUp",
   tools: [
     {
@@ -511,67 +415,6 @@ const REGRESSION_PACK: BuiltinToolpackSpec = {
           maxIterations: integerField("Maximum IRLS iterations (default 100)"),
         },
         ["y"]
-      ),
-    },
-    {
-      name: "trend",
-      description:
-        "Aggregate a time series by interval and compute a linear trend line, over a dataset you provide.",
-      parameterSchema: objectSchema(
-        {
-          ...computeSourceFields(),
-          dateColumn: stringField("Date / timestamp column (a key in the rows)"),
-          valueColumn: stringField("Numeric column to aggregate (a key in the rows)"),
-          interval: enumField(
-            ["day", "week", "month", "quarter", "year"],
-            "Bucket size"
-          ),
-          forecastPeriods: integerField(
-            "Periods past the last bucket to project the linear fit"
-          ),
-        },
-        ["dateColumn", "valueColumn", "interval"]
-      ),
-    },
-    {
-      name: "changepoint",
-      description:
-        "Detect mean-shift changepoints in a numeric series via CUSUM, over a dataset you provide. Returns indices, optional dates, per-segment means, and segment ranges.",
-      parameterSchema: objectSchema(
-        {
-          ...computeSourceFields(),
-          valueColumn: stringField("Numeric column (a key in the rows)"),
-          dateColumn: stringField(
-            "Optional date column to attach to each changepoint"
-          ),
-          threshold: numberField(
-            "CUSUM threshold in stddevs of the standardized series (default 5.0)"
-          ),
-          minSegmentLength: integerField(
-            "Minimum spacing between changepoints (default ⌈n/20⌉, floor 5)"
-          ),
-        },
-        ["valueColumn"]
-      ),
-    },
-    {
-      name: "decompose",
-      description:
-        "Classical seasonal decomposition of a time series into trend, seasonal, and residual components, over a dataset you provide. Additive or multiplicative.",
-      parameterSchema: objectSchema(
-        {
-          ...computeSourceFields(),
-          dateColumn: stringField("Date column (a key in the rows)"),
-          valueColumn: stringField("Numeric column to decompose (a key in the rows)"),
-          seasonalPeriod: integerField(
-            "Seasonal period (e.g. 12 for monthly data with annual seasonality)"
-          ),
-          seasonality: enumField(
-            ["additive", "multiplicative"],
-            "Decomposition type (default additive)"
-          ),
-        },
-        ["dateColumn", "valueColumn", "seasonalPeriod"]
       ),
     },
     {
@@ -735,50 +578,6 @@ const FINANCIAL_PACK: BuiltinToolpackSpec = {
           ),
         },
         ["principal", "annualRate", "periods"]
-      ),
-    },
-    {
-      name: "sharpe_ratio",
-      description:
-        "Compute the Sharpe ratio from a series of values you provide. Optionally annualize via the `periodicity` field (daily, weekly, monthly, quarterly, annual).",
-      parameterSchema: objectSchema(
-        {
-          ...computeSourceFields(),
-          valueColumn: stringField("Value/price column (a key in the rows)"),
-          riskFreeRate: numberField("Per-period risk-free rate (default 0)"),
-          periodicity: enumField(
-            ["daily", "weekly", "monthly", "quarterly", "annual"],
-            "Annualization periodicity"
-          ),
-        },
-        ["valueColumn"]
-      ),
-    },
-    {
-      name: "max_drawdown",
-      description:
-        "Compute maximum drawdown (peak-to-trough decline) from a time series you provide.",
-      parameterSchema: objectSchema(
-        {
-          ...computeSourceFields(),
-          dateColumn: stringField("Date column (a key in the rows)"),
-          valueColumn: stringField("Value/price column (a key in the rows)"),
-        },
-        ["dateColumn", "valueColumn"]
-      ),
-    },
-    {
-      name: "rolling_returns",
-      description:
-        "Compute period-over-period returns within a rolling window over a time series you provide.",
-      parameterSchema: objectSchema(
-        {
-          ...computeSourceFields(),
-          dateColumn: stringField("Date column (a key in the rows)"),
-          valueColumn: stringField("Value/price column (a key in the rows)"),
-          window: integerField("Rolling window size in periods"),
-        },
-        ["dateColumn", "valueColumn", "window"]
       ),
     },
     {
@@ -1242,19 +1041,14 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   // resolve_identity returns a structured match set the agent consumes; not
   // auto-surfaced (scalar = no inline display block — preserves prior behavior).
   resolve_identity: engineRead("scalar", "scan"),
-  // statistics
-  describe_column: pureReduce("scalar"),
-  correlate: pureReduce("scalar"),
-  detect_outliers: pureReduce("scalar"),
+  // statistics — describe_column / correlate / detect_outliers / aggregate
+  // removed in #130 E2 (expressed directly in sql_query).
   cluster: pureReduce("scalar"),
-  aggregate: pureReduce("scalar"),
   hypothesis_test: pureReduce("scalar"),
-  // regression
+  // regression — trend / changepoint / decompose removed in #130 E2
+  // (expressed directly in sql_query).
   regression: pureReduce("scalar"),
   logistic_regression: pureReduce("scalar"),
-  trend: pureReduce("scalar"),
-  changepoint: pureReduce("scalar"),
-  decompose: pureReduce("scalar"),
   // forecast folds online over the cursor (#129) — streaming, not bounded.
   forecast: streamingReduce("scalar"),
   // financial — pure math
@@ -1266,10 +1060,8 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   depreciation: pureMath("scalar"),
   amortize: pureMath("scalar"),
   bond_math: pureMath(),
-  // financial — compute over a dataset
-  sharpe_ratio: pureReduce("scalar"),
-  max_drawdown: pureReduce("scalar"),
-  rolling_returns: pureReduce("scalar"),
+  // financial — compute over a dataset. sharpe_ratio / max_drawdown /
+  // rolling_returns removed in #130 E2 (expressed directly in sql_query).
   var_cvar: pureReduce("scalar"),
   portfolio_metrics: pureReduce("scalar"),
   technical_indicator: pureReduce("scalar"),
