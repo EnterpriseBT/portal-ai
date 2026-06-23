@@ -1002,6 +1002,25 @@ const streamingReduce = (
   alwaysAvailable: false,
 });
 
+/** Pushes its O(N) reduction to the engine — a read — with an O(1) residue
+ *  computed in-tool (#130 E2c). Exact at any N, no materialization. `pure` is
+ *  false because the pushdown is a read (the coherence schema models
+ *  engine-pushdown as reads-bearing, not pure). */
+const enginePushdownReduce = (
+  resultKind: ResultKind = "scalar",
+  costHint: CostHint = "free"
+): ToolCapability => ({
+  pure: false,
+  reads: ["entity_records"],
+  writes: [],
+  consumption: { mode: "engine-pushdown" },
+  computeShape: "reduce",
+  costHint,
+  locks: [],
+  resultKind,
+  alwaysAvailable: false,
+});
+
 /** Reads the engine (a producer / SQL-pushed read or visualize). */
 const engineRead = (
   resultKind: ResultKind,
@@ -1068,7 +1087,12 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   bond_math: pureMath(),
   // financial — compute over a dataset. sharpe_ratio / max_drawdown /
   // rolling_returns removed in #130 E2 (expressed directly in sql_query).
-  var_cvar: pureReduce("scalar"),
+  //
+  // var_cvar is engine-pushdown (#130 E2c): the O(N) reduction
+  // (percentile_cont / avg / stddev) runs in SQL over the source handle;
+  // the O(1) quantile/tail residue runs in-tool. Exact at any N. Falls back
+  // to in-memory bounded for inline rows / non-re-executable handles.
+  var_cvar: enginePushdownReduce("scalar"),
   portfolio_metrics: pureReduce("scalar"),
   technical_indicator: pureReduce("scalar"),
   // web_search — external read, no record input

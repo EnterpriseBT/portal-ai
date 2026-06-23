@@ -368,6 +368,40 @@ export class PortalSqlHandleService {
     return { rows: out, total: envelope.rowCount, offset, limit };
   }
 
+  /**
+   * Run a single set-wise aggregate over the handle's retained query — the
+   * engine-pushdown substrate (#130 E2c). Re-executes the originating `sql`
+   * wrapped as `SELECT <projection> FROM (<sql>) "_src"` (the same
+   * re-execution path `streamHandle` uses, under READ ONLY + the org-scoped
+   * session views) and returns the single aggregate row. The caller supplies
+   * `projection` — its sufficient statistics, e.g.
+   * `avg("r") AS mu, stddev_samp("r") AS sigma, count(*) AS n`.
+   *
+   * Returns `null` when the handle has no query to re-execute (a
+   * `produceFromRows` handle, `sql === null`); the caller then falls back to
+   * the in-memory bounded path. Throws `READ_HANDLE_EXPIRED` if the handle
+   * is gone. SQL errors (bad column, etc.) surface from `runSqlQuery`.
+   */
+  static async aggregateOverHandle(
+    handleId: string,
+    projection: string
+  ): Promise<Record<string, unknown> | null> {
+    const meta = await this.getMeta(handleId);
+    if (meta.sql === null) return null;
+
+    const wrapped = `SELECT ${projection} FROM (${meta.sql}) "_src"`;
+    const result = await PortalSqlService.runSqlQuery({
+      sql: wrapped,
+      stationId: meta._stationId,
+      organizationId: meta._organizationId,
+      rowCap: 1,
+      cellCap: Number.MAX_SAFE_INTEGER,
+      payloadCap: Number.MAX_SAFE_INTEGER,
+    });
+    if ("sample" in result) return {};
+    return (result.rows[0] as Record<string, unknown> | undefined) ?? {};
+  }
+
   /** Read the stored meta (envelope + station/org), or throw
    *  READ_HANDLE_EXPIRED. Exposed so the streaming consumer can decide
    *  cursor-vs-bounded before iterating. */

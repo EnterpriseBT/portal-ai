@@ -39,6 +39,7 @@ import { DbService } from "./db.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { VegaLiteSpecInput } from "../tools/visualize.tool.js";
 import { PortalSqlService } from "./portal-sql.service.js";
+import { PortalSqlHandleService } from "./portal-sql-handle.service.js";
 import type { PortalSqlResponse } from "./portal-sql-response.util.js";
 import { wideTableRepo } from "../db/repositories/wide-table.repository.js";
 import { wideTableStatementCache } from "./wide-table-statement.cache.js";
@@ -238,6 +239,24 @@ async function validateVegaSpec(spec: VegaSpec): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Invalid Vega spec: ${msg}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Engine-pushdown SQL helpers (#130 E2c)
+// ---------------------------------------------------------------------------
+
+/** Quote a column identifier for an engine-pushdown aggregate projection.
+ *  The name is agent-supplied (a column of the source handle's result), so
+ *  double-quote it and escape embedded quotes; the wrapped query also passes
+ *  the portal-sql deny-list as a backstop. */
+function quoteSqlIdentifier(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+/** Embed a finite number as a SQL literal for a pushdown WHERE/FILTER. */
+function sqlNumberLiteral(n: number): string {
+  if (!Number.isFinite(n)) throw new Error("non-finite pushdown literal");
+  return String(n);
 }
 
 // ---------------------------------------------------------------------------
@@ -2207,6 +2226,78 @@ export class AnalyticsService {
     const phi = Math.exp(-(z * z) / 2) / Math.sqrt(2 * Math.PI);
     const cvarVal = -(mu - sigma * (phi / (1 - conf)));
     return { var: varVal, cvar: cvarVal, confidence: conf, method };
+  }
+
+  /**
+   * Engine-pushdown VaR / CVaR (#130 E2c). Pushes the O(N) reduction into
+   * SQL over the source handle's retained query — `percentile_cont` + a
+   * tail `avg` for historical, `avg`/`stddev_samp` for parametric — and
+   * computes the O(1) residue here. Exact at any N, no materialization;
+   * byte-for-byte the same residue math as {@link varCvar}.
+   *
+   * Returns `null` when the handle can't be re-executed set-wise (a
+   * `produceFromRows` handle, `sql === null`) so the caller falls back to
+   * the in-memory bounded path. The historical cutoff uses Postgres
+   * `percentile_cont` (continuous/linear interpolation); the in-memory path
+   * uses `ss.quantile` — both are valid historical-VaR estimators and agree
+   * to interpolation on typical series.
+   */
+  static async varCvarPushdown(
+    handleId: string,
+    params: {
+      returnColumn: string;
+      confidence?: number;
+      method?: "historical" | "parametric";
+    }
+  ): Promise<VarCvarResult | null> {
+    const conf = params.confidence ?? 0.95;
+    const method = params.method ?? "historical";
+    const col = quoteSqlIdentifier(params.returnColumn);
+
+    if (method === "parametric") {
+      const stats = await PortalSqlHandleService.aggregateOverHandle(
+        handleId,
+        `avg(${col}) AS mu, stddev_samp(${col}) AS sigma, count(${col}) AS n`
+      );
+      if (stats === null) return null;
+      if (Number(stats.n ?? 0) < 2) {
+        throw new Error("var_cvar: at least 2 returns required");
+      }
+      const mu = Number(stats.mu);
+      const sigma = Number(stats.sigma);
+      if (sigma === 0) return { var: 0, cvar: 0, confidence: conf, method };
+      const z = this.tInverseCDF(1 - conf, 1000);
+      const varVal = -(mu + z * sigma);
+      const phi = Math.exp(-(z * z) / 2) / Math.sqrt(2 * Math.PI);
+      const cvarVal = -(mu - sigma * (phi / (1 - conf)));
+      return { var: varVal, cvar: cvarVal, confidence: conf, method };
+    }
+
+    // historical: cutoff = percentile_cont(1-conf); CVaR = mean of the tail
+    // at or below the cutoff. Two passes over the source: the tail filter
+    // needs the cutoff value.
+    const tailFrac = 1 - conf;
+    const cut = await PortalSqlHandleService.aggregateOverHandle(
+      handleId,
+      `percentile_cont(${tailFrac}) WITHIN GROUP (ORDER BY ${col}) AS cutoff, ` +
+        `count(${col}) AS n`
+    );
+    if (cut === null) return null;
+    if (Number(cut.n ?? 0) < 2) {
+      throw new Error("var_cvar: at least 2 returns required");
+    }
+    const cutoff = Number(cut.cutoff);
+    const tail = await PortalSqlHandleService.aggregateOverHandle(
+      handleId,
+      `avg(${col}) FILTER (WHERE ${col} <= ${sqlNumberLiteral(cutoff)}) AS tail_mean, ` +
+        `count(${col}) FILTER (WHERE ${col} <= ${sqlNumberLiteral(cutoff)}) AS tail_n`
+    );
+    const tailCount = Number(tail?.tail_n ?? 0);
+    const tailMean =
+      tail?.tail_mean == null ? cutoff : Number(tail.tail_mean);
+    const varVal = -cutoff;
+    const cvarVal = tailCount > 0 ? -tailMean : varVal;
+    return { var: varVal, cvar: cvarVal, confidence: conf, method, tailCount };
   }
 
   /**
