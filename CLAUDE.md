@@ -486,6 +486,16 @@ These are the protection rules `main` should carry. They are settings on the rep
 - **Do not allow bypassing the above settings** — applies to administrators too. Force-push and deletion are off by default once protection is enabled.
 - **Restrict who can push** is not needed if PR-required is on; everyone goes through PRs.
 
+## Keeping Tool Docs & Help in Sync (feature changes)
+
+A tool's behavior is described in **three** places that drift independently. When you add or change a tool — new capability, new input/section, changed semantics — update all that apply, in the same PR:
+
+1. **Tool description (the agent-facing contract).** The `description` field on the `Tool` subclass in `apps/api/src/tools/<tool>.tool.ts`. For tools that belong to a built-in pack, the **hand-authored mirror** in `packages/core/src/registries/builtin-toolpacks.ts` must be kept in sync — the modal + `tools.service.ts` disagree otherwise. System tools (`current_time`, `station_context`) live only in the tool file (they're not in the six packs), so there's nothing to mirror.
+2. **Agent guidance.** When the change affects *how the agent should behave* (which tool to reach for, how to read a result, a workflow ordering), update `apps/api/src/prompts/system.prompt.ts`. Prefer making the tool's **output** unambiguous over relying on prompt text alone (an LLM can misread prose guidance; it can't misread a field it must echo).
+3. **User-facing Help.** When the change affects what an end user sees or understands, update the Help page docs in `apps/web/src/utils/` — `glossary.util.ts` (term definitions) and `faq.util.ts` (Q&A), surfaced in `Help.view.tsx`.
+
+If a change touches a tool's surface but you update none of these, that's a docs-drift bug, not "deferred." Tests that pin descriptions/prompt invariants (`builtin-toolpacks.test.ts`, `system.prompt.test.ts`) will catch some — but not Help-doc or semantic drift.
+
 ## Detailed Documentation
 
 Each package has its own README with deeper documentation:
