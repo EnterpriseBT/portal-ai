@@ -97,7 +97,11 @@ export interface StationData {
 export interface RegressionResult {
   coefficients: number[];
   rSquared: number;
-  residuals: number[];
+  /** Per-row residuals (y − ŷ). Present on the in-memory path; **omitted on
+   *  the engine-pushdown path** (#130 E2c) — an N-length array can't come
+   *  back from a one-row aggregate, and the scalar stats (computed from
+   *  sufficient statistics) are exact at any N regardless. */
+  residuals?: number[];
   standardErrors: number[];
   tStatistics: number[];
   pValues: number[];
@@ -793,6 +797,158 @@ export class AnalyticsService {
       coefficients,
       rSquared,
       residuals,
+      standardErrors,
+      tStatistics,
+      pValues,
+      confidenceIntervals,
+    };
+  }
+
+  /**
+   * Engine-pushdown OLS regression (#130 E2c). Accumulates the sufficient
+   * statistics — the Gram matrix X'X, X'y, y'y, and n — as SQL `sum()`
+   * aggregates over the source handle (one row back), then does the k×k
+   * solve + standard errors + t / p / CIs in-tool. Exact at any N, no
+   * materialization. Identical residue math to the in-memory
+   * {@link regression}, with `ssr = y'y − β'X'y` and `sst = y'y − (Σy)²/n`
+   * (Σy = X'y[0], since feature 0 is the constant 1).
+   *
+   * **Per-row `residuals` are omitted** — an N-length array can't come back
+   * from a one-row aggregate (see {@link RegressionResult.residuals}).
+   *
+   * Rows where any feature base-column or `y` is NULL are excluded (mirrors
+   * the in-memory `extractNumericColumn` aligned-columns requirement).
+   * Returns `null` when the handle can't be re-executed set-wise so the
+   * caller falls back to the in-memory path.
+   */
+  static async regressionPushdown(
+    handleId: string,
+    params: {
+      x?: string;
+      xColumns?: string[];
+      y: string;
+      type: "linear" | "polynomial";
+      degree?: number;
+      confidence?: number;
+    }
+  ): Promise<RegressionResult | null> {
+    const { type } = params;
+    const hasX = params.x !== undefined;
+    const hasXCols = params.xColumns !== undefined;
+    if (hasX && hasXCols) {
+      throw new Error("specify either x or xColumns, not both");
+    }
+    if (type === "polynomial" && hasXCols) {
+      throw new Error("multivariate polynomial regression is not supported");
+    }
+    if (!hasX && !hasXCols) {
+      throw new Error("specify either x or xColumns");
+    }
+
+    const yq = quoteSqlIdentifier(params.y);
+
+    // Feature SQL expressions (feature 0 is the constant 1) + the base
+    // columns to NULL-guard.
+    let featExprs: string[];
+    let baseCols: string[];
+    if (type === "polynomial") {
+      const degree = params.degree ?? 2;
+      const xq = quoteSqlIdentifier(params.x!);
+      const powers = Array.from({ length: degree }, (_, j) => {
+        const p = j + 1;
+        return p === 1 ? xq : `power(${xq}, ${p})`;
+      });
+      featExprs = ["1", ...powers];
+      baseCols = [params.x!];
+    } else if (hasXCols) {
+      featExprs = ["1", ...params.xColumns!.map((c) => quoteSqlIdentifier(c))];
+      baseCols = [...params.xColumns!];
+    } else {
+      featExprs = ["1", quoteSqlIdentifier(params.x!)];
+      baseCols = [params.x!];
+    }
+    const k = featExprs.length;
+
+    // Projection: upper-triangular Gram sums g_i_j (i ≤ j), X'y_i, y'y, n.
+    const projParts: string[] = [];
+    for (let i = 0; i < k; i++) {
+      for (let j = i; j < k; j++) {
+        projParts.push(
+          `sum((${featExprs[i]}) * (${featExprs[j]})) AS g_${i}_${j}`
+        );
+      }
+    }
+    for (let i = 0; i < k; i++) {
+      projParts.push(`sum((${featExprs[i]}) * ${yq}) AS xty_${i}`);
+    }
+    projParts.push(`sum(${yq} * ${yq}) AS yty`);
+    projParts.push(`count(*) AS n`);
+
+    const where = [...baseCols, params.y]
+      .map((c) => `${quoteSqlIdentifier(c)} IS NOT NULL`)
+      .join(" AND ");
+
+    const row = await PortalSqlHandleService.aggregateOverHandle(
+      handleId,
+      projParts.join(", "),
+      { where }
+    );
+    if (row === null) return null;
+
+    const n = Number(row.n ?? 0);
+    const dfResid = n - k;
+    if (dfResid <= 0) {
+      throw new Error(`Need at least ${k + 1} rows for the regression; got ${n}`);
+    }
+
+    // Reassemble the symmetric Gram matrix, X'y, y'y.
+    const xtx: number[][] = Array.from({ length: k }, () =>
+      new Array(k).fill(0)
+    );
+    for (let i = 0; i < k; i++) {
+      for (let j = i; j < k; j++) {
+        const v = Number(row[`g_${i}_${j}`]);
+        xtx[i][j] = v;
+        xtx[j][i] = v;
+      }
+    }
+    const xty = Array.from({ length: k }, (_, i) => Number(row[`xty_${i}`]));
+    const yty = Number(row.yty);
+
+    const { coefficients, xtxInverse } = this.solveNormalEquations(xtx, xty);
+
+    // ssr = y'y − β'X'y (≥ 0; clamp fp noise). sst = y'y − (Σy)²/n.
+    const betaDotXty = coefficients.reduce((s, b, i) => s + b * xty[i], 0);
+    const ssr = Math.max(0, yty - betaDotXty);
+    const sumY = xty[0];
+    const sst = yty - (sumY * sumY) / n;
+    const rSquared = sst === 0 ? 1 : 1 - ssr / sst;
+    const sigmaSquared = ssr / dfResid;
+
+    const standardErrors = coefficients.map((_, i) =>
+      Math.sqrt(Math.max(0, sigmaSquared * xtxInverse[i][i]))
+    );
+    const tStatistics = coefficients.map((c, i) =>
+      standardErrors[i] === 0
+        ? c === 0
+          ? 0
+          : Number.POSITIVE_INFINITY
+        : c / standardErrors[i]
+    );
+    const pValues = tStatistics.map((t) =>
+      Number.isFinite(t) ? this.tTwoTailedPValue(t, dfResid) : 0
+    );
+    const alpha = 1 - (params.confidence ?? 0.95);
+    const tCrit = this.tInverseCDF(1 - alpha / 2, dfResid);
+    const confidenceIntervals = {
+      lower: coefficients.map((c, i) => c - tCrit * standardErrors[i]),
+      upper: coefficients.map((c, i) => c + tCrit * standardErrors[i]),
+    };
+
+    // residuals omitted on the pushdown path.
+    return {
+      coefficients,
+      rSquared,
       standardErrors,
       tStatistics,
       pValues,
@@ -2638,7 +2794,7 @@ export class AnalyticsService {
       );
     }
 
-    // Build X'X and X'y
+    // Build X'X and X'y, then solve the normal equations.
     const xtx: number[][] = Array.from({ length: k }, () =>
       new Array(k).fill(0)
     );
@@ -2652,6 +2808,33 @@ export class AnalyticsService {
         }
       }
     }
+
+    const { coefficients, xtxInverse } = this.solveNormalEquations(xtx, xty);
+
+    // Residuals = y - X β̂
+    const residuals: number[] = new Array(n).fill(0);
+    for (let i = 0; i < n; i++) {
+      let predicted = 0;
+      for (let j = 0; j < k; j++) predicted += X[i][j] * coefficients[j];
+      residuals[i] = y[i] - predicted;
+    }
+
+    return { coefficients, xtxInverse, residuals };
+  }
+
+  /**
+   * Solve the OLS normal equations from the precomputed Gram matrix `xtx`
+   * (X'X, k×k) and `xty` (X'y, k): invert X'X via Gauss-Jordan and form
+   * β̂ = (X'X)⁻¹ X'y. Shared by the in-memory {@link solveOLS} (which builds
+   * X'X/X'y by iterating rows) and the engine-pushdown path (#130 E2c, which
+   * accumulates X'X/X'y as SQL `sum()` aggregates). No per-row data, so it
+   * returns no residuals.
+   */
+  private static solveNormalEquations(
+    xtx: number[][],
+    xty: number[]
+  ): { coefficients: number[]; xtxInverse: number[][] } {
+    const k = xtx.length;
 
     // Gauss-Jordan inversion of X'X via [X'X | I] → [I | (X'X)⁻¹]
     const aug: number[][] = xtx.map((row, i) => [
@@ -2691,15 +2874,7 @@ export class AnalyticsService {
       }
     }
 
-    // Residuals = y - X β̂
-    const residuals: number[] = new Array(n).fill(0);
-    for (let i = 0; i < n; i++) {
-      let predicted = 0;
-      for (let j = 0; j < k; j++) predicted += X[i][j] * coefficients[j];
-      residuals[i] = y[i] - predicted;
-    }
-
-    return { coefficients, xtxInverse, residuals };
+    return { coefficients, xtxInverse };
   }
 
   /**

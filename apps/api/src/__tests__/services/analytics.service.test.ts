@@ -858,7 +858,10 @@ describe("AnalyticsService", () => {
         y: "y",
         type: "linear",
       });
-      const sumResiduals = result.residuals.reduce((s, r) => s + r, 0);
+      // In-memory path always returns residuals (optional only because the
+      // engine-pushdown path omits them, #130 E2c).
+      expect(result.residuals).toBeDefined();
+      const sumResiduals = result.residuals!.reduce((s, r) => s + r, 0);
       expect(Math.abs(sumResiduals)).toBeLessThan(1e-9);
     });
 

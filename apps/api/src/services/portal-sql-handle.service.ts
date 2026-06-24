@@ -384,12 +384,14 @@ export class PortalSqlHandleService {
    */
   static async aggregateOverHandle(
     handleId: string,
-    projection: string
+    projection: string,
+    opts: { where?: string } = {}
   ): Promise<Record<string, unknown> | null> {
     const meta = await this.getMeta(handleId);
     if (meta.sql === null) return null;
 
-    const wrapped = `SELECT ${projection} FROM (${meta.sql}) "_src"`;
+    const whereClause = opts.where ? ` WHERE ${opts.where}` : "";
+    const wrapped = `SELECT ${projection} FROM (${meta.sql}) "_src"${whereClause}`;
     const result = await PortalSqlService.runSqlQuery({
       sql: wrapped,
       stationId: meta._stationId,

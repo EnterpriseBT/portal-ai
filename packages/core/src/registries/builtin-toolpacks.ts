@@ -1073,8 +1073,11 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   // and chi_squared (array input) stay on the in-memory path.
   hypothesis_test: enginePushdownReduce("scalar"),
   // regression — trend / changepoint / decompose removed in #130 E2
-  // (expressed directly in sql_query).
-  regression: pureReduce("scalar"),
+  // (expressed directly in sql_query). regression itself is engine-pushdown
+  // (#130 E2c): X'X / X'y / y'y accumulate as SQL sums over the source
+  // handle, the k×k solve + SE/t/p/CI run in-tool (per-row residuals omitted
+  // on the pushdown path). Inline rows keep the full in-memory result.
+  regression: enginePushdownReduce("scalar"),
   // logistic_regression (IRLS) is bounded(100k) + onOverflow:error and
   // costHint expensive (#130 E2b); the SGD streaming variant is E3.
   logistic_regression: pureReduce("scalar", "expensive"),
