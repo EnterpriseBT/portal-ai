@@ -158,12 +158,12 @@ Runtime wiring: `consumption: bounded` = records-in-body (#122 path); `streaming
 | Disposition | Tools | Capability after |
 |---|---|---|
 | **Removed → `sql_query`** (10) | `describe_column` `correlate` `detect_outliers` `aggregate` `trend` `changepoint` `decompose` `sharpe_ratio` `max_drawdown` `rolling_returns` | n/a (agent expresses in SQL) |
-| **engine-pushdown** (3) | `hypothesis_test` `var_cvar` `regression` | `pure:true`* · `engine-pushdown` · reduce — *reduction is SQL; O(1) scalar residue runs in-tool |
+| **engine-pushdown** (3) | `hypothesis_test` `var_cvar` `regression` | `pure:false`* · `reads:[entity_records]` · `engine-pushdown` · reduce — reduction is SQL; O(1) scalar residue in-tool |
 | **streaming** (3) | `forecast` `technical_indicator` `portfolio_metrics` | `pure:true` · `streaming` · reduce |
 | **bounded** (2) | `cluster` `logistic_regression` | `pure:true` · `bounded(maxRows)` + `onOverflow` · reduce · `costHint:expensive` |
 | **unchanged pure-math** (8) | `npv` `irr` `tvm` `xnpv` `xirr` `depreciation` `amortize` `bond_math` | `pure:true` · `none` · pure |
 
-\* The 3 pushdown tools are pure in compute but issue an engine aggregate for the O(N) step; modeled as `pure:true, consumption.mode:"engine-pushdown"` (the one place a pure tool is allowed pushdown, since the pushdown is read-only).
+\* **Reconciled in E2c (2026-06-24):** the implemented `ToolCapabilitySchema` models a pushdown as a *read*, so the coherence refinement forbids `pure:true` + `engine-pushdown` and requires a non-empty `reads[]`. The 3 pushdown tools are therefore `pure:false, reads:["entity_records"], consumption.mode:"engine-pushdown"` (the `enginePushdownReduce` capability), not the `pure:true*` originally sketched here. They still accept inline `rows` (in-memory fallback); the capability describes the engine-pushdown ceiling. Runtime: each tool issues its sufficient-statistics aggregate over the source handle via `PortalSqlHandleService.aggregateOverHandle` and computes the O(1) residue in-tool; `mann_whitney` / `chi_squared` / per-row `residuals` stay on the in-memory path.
 
 ## Surface (by child — full detail in each child's own spec)
 
