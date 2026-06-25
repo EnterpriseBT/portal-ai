@@ -129,7 +129,7 @@ describe("BUILTIN_TOOLPACKS", () => {
     }
     expect(byName.get("sql_query")).toBe("producer");
     expect(byName.get("entity_record_create")).toBe("transformer");
-    expect(byName.get("describe_column")).toBe("consumer");
+    expect(byName.get("hypothesis_test")).toBe("consumer");
     expect(byName.get("npv")).toBe("none");
   });
 });

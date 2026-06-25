@@ -87,6 +87,35 @@ describe("PortalSqlHandleService.produce", () => {
     expect(envelope).not.toHaveProperty("cursor");
   });
 
+  // #130 E1a: the job tier passes an elevated statement_timeout through to
+  // runSqlQuery so a long scan runs off-thread; the synchronous path omits it.
+  it("threads statementTimeoutMs through to runSqlQuery when supplied", async () => {
+    mockRunSqlQuery.mockResolvedValueOnce({ rows: [{ x: 1 }] });
+    await PortalSqlHandleService.produce({
+      stationId: "station-1",
+      organizationId: "org-1",
+      sql: "SELECT x FROM t",
+      statementTimeoutMs: 120_000,
+    });
+    const call = (mockRunSqlQuery.mock.calls[0] as unknown as [
+      { statementTimeoutMs?: number },
+    ])[0];
+    expect(call.statementTimeoutMs).toBe(120_000);
+  });
+
+  it("omits statementTimeoutMs on the synchronous path (runSqlQuery defaults it)", async () => {
+    mockRunSqlQuery.mockResolvedValueOnce({ rows: [{ x: 1 }] });
+    await PortalSqlHandleService.produce({
+      stationId: "station-1",
+      organizationId: "org-1",
+      sql: "SELECT x FROM t",
+    });
+    const call = (mockRunSqlQuery.mock.calls[0] as unknown as [
+      { statementTimeoutMs?: number },
+    ])[0];
+    expect(call.statementTimeoutMs).toBeUndefined();
+  });
+
   // #129 slice 2: the stored meta carries station/org (internal) so the
   // cursor tier can re-execute `sql` via PortalSqlService. They are NOT on
   // the agent-facing envelope.

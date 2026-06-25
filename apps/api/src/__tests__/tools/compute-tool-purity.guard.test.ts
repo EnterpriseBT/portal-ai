@@ -2,32 +2,26 @@ import { describe, it, expect } from "@jest/globals";
 import { readFileSync } from "node:fs";
 
 /**
- * Invariant guard (#114): the 18 built-in compute tools must stay PURE —
- * they receive data as input (via compute-input.util) and never read the
- * backend. This fails if any of them re-acquires a read coupling
- * (fetchEntityRows, the wide-table repo, or stationData).
+ * Invariant guard (#114): the built-in compute tools must stay PURE — they
+ * receive data as input (via compute-input.util) and never read the backend.
+ * This fails if any of them re-acquires a read coupling (fetchEntityRows, the
+ * wide-table repo, or stationData).
+ *
+ * Reduced to 8 tools in #130 E2: describe_column / correlate / detect_outliers
+ * / aggregate / trend / changepoint / decompose / sharpe_ratio / max_drawdown
+ * / rolling_returns were removed (expressed directly in sql_query).
  */
 
 const COMPUTE_TOOL_FILES = [
   // statistics
-  "describe-column",
-  "correlate",
-  "detect-outliers",
   "cluster",
-  "aggregate",
   "hypothesis-test",
   // regression
   "regression",
   "logistic-regression",
-  "trend",
-  "changepoint",
-  "decompose",
   "forecast",
   // financial (data-dependent)
   "technical-indicator",
-  "sharpe-ratio",
-  "max-drawdown",
-  "rolling-returns",
   "var-cvar",
   "portfolio-metrics",
 ];
@@ -42,8 +36,8 @@ const FORBIDDEN_SYMBOLS = [
 ];
 
 describe("compute-tool purity guard (#114)", () => {
-  it("covers all 18 refactored compute tools", () => {
-    expect(COMPUTE_TOOL_FILES).toHaveLength(18);
+  it("covers all 8 refactored compute tools", () => {
+    expect(COMPUTE_TOOL_FILES).toHaveLength(8);
   });
 
   for (const name of COMPUTE_TOOL_FILES) {

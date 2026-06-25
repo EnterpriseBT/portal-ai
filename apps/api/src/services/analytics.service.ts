@@ -8,7 +8,6 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import * as aq from "arquero";
 import * as ss from "simple-statistics";
 import { kmeans } from "ml-kmeans";
 import {
@@ -40,6 +39,7 @@ import { DbService } from "./db.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { VegaLiteSpecInput } from "../tools/visualize.tool.js";
 import { PortalSqlService } from "./portal-sql.service.js";
+import { PortalSqlHandleService } from "./portal-sql-handle.service.js";
 import type { PortalSqlResponse } from "./portal-sql-response.util.js";
 import { wideTableRepo } from "../db/repositories/wide-table.repository.js";
 import { wideTableStatementCache } from "./wide-table-statement.cache.js";
@@ -134,7 +134,11 @@ export interface RegressionResult {
    *  of the number. (Index 0 is the intercept.) */
   direction: TrendDirection[];
   rSquared: number;
-  residuals: number[];
+  /** Per-row residuals (y − ŷ). Present on the in-memory path; **omitted on
+   *  the engine-pushdown path** (#130 E2c) — an N-length array can't come
+   *  back from a one-row aggregate, and the scalar stats (computed from
+   *  sufficient statistics) are exact at any N regardless. */
+  residuals?: number[];
   standardErrors: number[];
   tStatistics: number[];
   pValues: number[];
@@ -147,21 +151,6 @@ export interface LogisticRegressionResult {
   logLoss: number;
   accuracy: number;
   iterations: number;
-}
-
-export interface ChangepointResult {
-  changepoints: number[];
-  changepointDates?: string[];
-  segmentMeans: number[];
-  segments: { start: number; end: number }[];
-}
-
-export interface DecomposeResult {
-  dates: string[];
-  observed: number[];
-  trend: (number | null)[];
-  seasonal: number[];
-  residual: (number | null)[];
 }
 
 export interface ForecastResult {
@@ -229,13 +218,6 @@ export type BondMathResult =
   | { macaulayDuration: number; modifiedDuration: number }
   | { convexity: number };
 
-export interface TrendResult {
-  dates: string[];
-  values: number[];
-  trendLine: { slope: number; intercept: number };
-  forecast?: { dates: string[]; values: number[] };
-}
-
 export interface TechnicalIndicatorResult {
   dates: string[];
   values: (number | object)[];
@@ -298,6 +280,24 @@ async function validateVegaSpec(spec: VegaSpec): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Invalid Vega spec: ${msg}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Engine-pushdown SQL helpers (#130 E2c)
+// ---------------------------------------------------------------------------
+
+/** Quote a column identifier for an engine-pushdown aggregate projection.
+ *  The name is agent-supplied (a column of the source handle's result), so
+ *  double-quote it and escape embedded quotes; the wrapped query also passes
+ *  the portal-sql deny-list as a backstop. */
+function quoteSqlIdentifier(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+/** Embed a finite number as a SQL literal for a pushdown WHERE/FILTER. */
+function sqlNumberLiteral(n: number): string {
+  if (!Number.isFinite(n)) throw new Error("non-finite pushdown literal");
+  return String(n);
 }
 
 // ---------------------------------------------------------------------------
@@ -653,188 +653,6 @@ export class AnalyticsService {
   // -----------------------------------------------------------------------
 
   /**
-   * Describe a numeric column: count, mean, median, stddev, min, max, p25, p75.
-   */
-  static describeColumn(params: {
-    records: Record<string, unknown>[];
-    column: string;
-    percentiles?: number[];
-  }): DescribeColumnResult {
-    const values = this.extractNumericColumn(params.records, params.column);
-    if (values.length === 0) {
-      return {
-        count: 0,
-        mean: 0,
-        median: 0,
-        stddev: 0,
-        variance: 0,
-        mode: 0,
-        min: 0,
-        max: 0,
-        p25: 0,
-        p75: 0,
-        iqr: 0,
-        skewness: 0,
-        kurtosis: 0,
-      };
-    }
-
-    const p25 = ss.quantile(values, 0.25);
-    const p75 = ss.quantile(values, 0.75);
-    const result: DescribeColumnResult = {
-      count: values.length,
-      mean: ss.mean(values),
-      median: ss.median(values),
-      stddev: ss.standardDeviation(values),
-      variance: ss.sampleVariance(values),
-      mode: ss.mode(values),
-      min: ss.min(values),
-      max: ss.max(values),
-      p25,
-      p75,
-      iqr: p75 - p25,
-      skewness: ss.sampleSkewness(values),
-      kurtosis: ss.sampleKurtosis(values),
-    };
-
-    if (params.percentiles !== undefined) {
-      const map: Record<string, number> = {};
-      for (const p of params.percentiles) {
-        map[String(p)] = ss.quantile(values, p);
-      }
-      result.percentiles = map;
-    }
-
-    return result;
-  }
-
-  /**
-   * Correlation between two numeric columns. Method defaults to Pearson;
-   * Spearman uses averaged ranks; Kendall uses τ-b with tie correction.
-   */
-  static correlate(params: {
-    records: Record<string, unknown>[];
-    columnA: string;
-    columnB: string;
-    method?: "pearson" | "spearman" | "kendall";
-  }): { correlation: number } {
-    const a = this.extractNumericColumn(params.records, params.columnA);
-    const b = this.extractNumericColumn(params.records, params.columnB);
-
-    if (a.length !== b.length || a.length < 2) {
-      throw new Error(
-        "Columns must have the same length and at least 2 values"
-      );
-    }
-
-    const method = params.method ?? "pearson";
-    let correlation: number;
-    switch (method) {
-      case "pearson":
-        correlation = ss.sampleCorrelation(a, b);
-        break;
-      case "spearman":
-        correlation = ss.sampleRankCorrelation(a, b);
-        break;
-      case "kendall":
-        correlation = this.kendallTau(a, b);
-        break;
-    }
-    return { correlation };
-  }
-
-  /**
-   * Kendall's τ-b (with tie correction). Reference: Kendall (1938);
-   * SciPy convention returns 0 when the denominator collapses (fully tied).
-   */
-  private static kendallTau(a: number[], b: number[]): number {
-    const n = a.length;
-    if (n < 2) return 0;
-
-    let concordant = 0;
-    let discordant = 0;
-    let tiesA = 0;
-    let tiesB = 0;
-
-    for (let i = 0; i < n - 1; i++) {
-      for (let j = i + 1; j < n; j++) {
-        const da = Math.sign(a[i] - a[j]);
-        const db = Math.sign(b[i] - b[j]);
-        if (da === 0 && db === 0) {
-          tiesA++;
-          tiesB++;
-        } else if (da === 0) {
-          tiesA++;
-        } else if (db === 0) {
-          tiesB++;
-        } else if (da === db) {
-          concordant++;
-        } else {
-          discordant++;
-        }
-      }
-    }
-
-    const n0 = (n * (n - 1)) / 2;
-    const denom = Math.sqrt((n0 - tiesA) * (n0 - tiesB));
-    if (denom === 0) return 0;
-    return (concordant - discordant) / denom;
-  }
-
-  /**
-   * Detect outliers using IQR, Z-score, or modified Z-score (MAD).
-   * Default thresholds: IQR 1.5, Z-score 3, modified Z (Iglewicz/Hoaglin) 3.5.
-   */
-  static detectOutliers(params: {
-    records: Record<string, unknown>[];
-    column: string;
-    method: "iqr" | "zscore" | "mad";
-    threshold?: number;
-  }): { outliers: Record<string, unknown>[]; indices: number[] } {
-    const values = this.extractNumericColumn(params.records, params.column);
-    const indices: number[] = [];
-    const { method } = params;
-
-    if (method === "iqr") {
-      const t = params.threshold ?? 1.5;
-      const q1 = ss.quantile(values, 0.25);
-      const q3 = ss.quantile(values, 0.75);
-      const iqr = q3 - q1;
-      const lower = q1 - t * iqr;
-      const upper = q3 + t * iqr;
-
-      values.forEach((v, i) => {
-        if (v < lower || v > upper) indices.push(i);
-      });
-    } else if (method === "zscore") {
-      const t = params.threshold ?? 3;
-      const m = ss.mean(values);
-      const std = ss.standardDeviation(values);
-      if (std === 0) return { outliers: [], indices: [] };
-
-      values.forEach((v, i) => {
-        if (Math.abs((v - m) / std) > t) indices.push(i);
-      });
-    } else {
-      // mad — Iglewicz/Hoaglin modified z-score
-      const t = params.threshold ?? 3.5;
-      const median = ss.median(values);
-      const mad = ss.median(values.map((v) => Math.abs(v - median)));
-      if (mad === 0) return { outliers: [], indices: [] };
-
-      values.forEach((v, i) => {
-        const modZ = (0.6745 * (v - median)) / mad;
-        if (Math.abs(modZ) > t) indices.push(i);
-      });
-    }
-
-    return {
-      outliers: indices.map((i) => params.records[i]),
-      indices,
-    };
-  }
-
-  /**
    * K-means clustering via ml-kmeans. Optionally z-score each column before
    * fitting; when `standardize` is true, centroids are returned in original-
    * data units (un-standardized) so consumers can interpret them directly.
@@ -1025,6 +843,159 @@ export class AnalyticsService {
   }
 
   /**
+   * Engine-pushdown OLS regression (#130 E2c). Accumulates the sufficient
+   * statistics — the Gram matrix X'X, X'y, y'y, and n — as SQL `sum()`
+   * aggregates over the source handle (one row back), then does the k×k
+   * solve + standard errors + t / p / CIs in-tool. Exact at any N, no
+   * materialization. Identical residue math to the in-memory
+   * {@link regression}, with `ssr = y'y − β'X'y` and `sst = y'y − (Σy)²/n`
+   * (Σy = X'y[0], since feature 0 is the constant 1).
+   *
+   * **Per-row `residuals` are omitted** — an N-length array can't come back
+   * from a one-row aggregate (see {@link RegressionResult.residuals}).
+   *
+   * Rows where any feature base-column or `y` is NULL are excluded (mirrors
+   * the in-memory `extractNumericColumn` aligned-columns requirement).
+   * Returns `null` when the handle can't be re-executed set-wise so the
+   * caller falls back to the in-memory path.
+   */
+  static async regressionPushdown(
+    handleId: string,
+    params: {
+      x?: string;
+      xColumns?: string[];
+      y: string;
+      type: "linear" | "polynomial";
+      degree?: number;
+      confidence?: number;
+    }
+  ): Promise<RegressionResult | null> {
+    const { type } = params;
+    const hasX = params.x !== undefined;
+    const hasXCols = params.xColumns !== undefined;
+    if (hasX && hasXCols) {
+      throw new Error("specify either x or xColumns, not both");
+    }
+    if (type === "polynomial" && hasXCols) {
+      throw new Error("multivariate polynomial regression is not supported");
+    }
+    if (!hasX && !hasXCols) {
+      throw new Error("specify either x or xColumns");
+    }
+
+    const yq = quoteSqlIdentifier(params.y);
+
+    // Feature SQL expressions (feature 0 is the constant 1) + the base
+    // columns to NULL-guard.
+    let featExprs: string[];
+    let baseCols: string[];
+    if (type === "polynomial") {
+      const degree = params.degree ?? 2;
+      const xq = quoteSqlIdentifier(params.x!);
+      const powers = Array.from({ length: degree }, (_, j) => {
+        const p = j + 1;
+        return p === 1 ? xq : `power(${xq}, ${p})`;
+      });
+      featExprs = ["1", ...powers];
+      baseCols = [params.x!];
+    } else if (hasXCols) {
+      featExprs = ["1", ...params.xColumns!.map((c) => quoteSqlIdentifier(c))];
+      baseCols = [...params.xColumns!];
+    } else {
+      featExprs = ["1", quoteSqlIdentifier(params.x!)];
+      baseCols = [params.x!];
+    }
+    const k = featExprs.length;
+
+    // Projection: upper-triangular Gram sums g_i_j (i ≤ j), X'y_i, y'y, n.
+    const projParts: string[] = [];
+    for (let i = 0; i < k; i++) {
+      for (let j = i; j < k; j++) {
+        projParts.push(
+          `sum((${featExprs[i]}) * (${featExprs[j]})) AS g_${i}_${j}`
+        );
+      }
+    }
+    for (let i = 0; i < k; i++) {
+      projParts.push(`sum((${featExprs[i]}) * ${yq}) AS xty_${i}`);
+    }
+    projParts.push(`sum(${yq} * ${yq}) AS yty`);
+    projParts.push(`count(*) AS n`);
+
+    const where = [...baseCols, params.y]
+      .map((c) => `${quoteSqlIdentifier(c)} IS NOT NULL`)
+      .join(" AND ");
+
+    const row = await PortalSqlHandleService.aggregateOverHandle(
+      handleId,
+      projParts.join(", "),
+      { where }
+    );
+    if (row === null) return null;
+
+    const n = Number(row.n ?? 0);
+    const dfResid = n - k;
+    if (dfResid <= 0) {
+      throw new Error(`Need at least ${k + 1} rows for the regression; got ${n}`);
+    }
+
+    // Reassemble the symmetric Gram matrix, X'y, y'y.
+    const xtx: number[][] = Array.from({ length: k }, () =>
+      new Array(k).fill(0)
+    );
+    for (let i = 0; i < k; i++) {
+      for (let j = i; j < k; j++) {
+        const v = Number(row[`g_${i}_${j}`]);
+        xtx[i][j] = v;
+        xtx[j][i] = v;
+      }
+    }
+    const xty = Array.from({ length: k }, (_, i) => Number(row[`xty_${i}`]));
+    const yty = Number(row.yty);
+
+    const { coefficients, xtxInverse } = this.solveNormalEquations(xtx, xty);
+
+    // ssr = y'y − β'X'y (≥ 0; clamp fp noise). sst = y'y − (Σy)²/n.
+    const betaDotXty = coefficients.reduce((s, b, i) => s + b * xty[i], 0);
+    const ssr = Math.max(0, yty - betaDotXty);
+    const sumY = xty[0];
+    const sst = yty - (sumY * sumY) / n;
+    const rSquared = sst === 0 ? 1 : 1 - ssr / sst;
+    const sigmaSquared = ssr / dfResid;
+
+    const standardErrors = coefficients.map((_, i) =>
+      Math.sqrt(Math.max(0, sigmaSquared * xtxInverse[i][i]))
+    );
+    const tStatistics = coefficients.map((c, i) =>
+      standardErrors[i] === 0
+        ? c === 0
+          ? 0
+          : Number.POSITIVE_INFINITY
+        : c / standardErrors[i]
+    );
+    const pValues = tStatistics.map((t) =>
+      Number.isFinite(t) ? this.tTwoTailedPValue(t, dfResid) : 0
+    );
+    const alpha = 1 - (params.confidence ?? 0.95);
+    const tCrit = this.tInverseCDF(1 - alpha / 2, dfResid);
+    const confidenceIntervals = {
+      lower: coefficients.map((c, i) => c - tCrit * standardErrors[i]),
+      upper: coefficients.map((c, i) => c + tCrit * standardErrors[i]),
+    };
+
+    // residuals omitted on the pushdown path.
+    return {
+      coefficients,
+      direction: coefficients.map(trendDirection),
+      rSquared,
+      standardErrors,
+      tStatistics,
+      pValues,
+      confidenceIntervals,
+    };
+  }
+
+  /**
    * Binary logistic regression via IRLS (iteratively reweighted least
    * squares). Returns coefficients (intercept first), per-row predicted
    * probabilities, log-loss, accuracy at threshold 0.5, and iteration count.
@@ -1150,97 +1121,6 @@ export class AnalyticsService {
       accuracy,
       iterations,
     };
-  }
-
-  /**
-   * Time-series aggregation via Arquero + linear trend line.
-   */
-  static trend(params: {
-    records: Record<string, unknown>[];
-    dateColumn: string;
-    valueColumn: string;
-    interval: "day" | "week" | "month" | "quarter" | "year";
-    forecastPeriods?: number;
-  }): TrendResult {
-    const { records, dateColumn, valueColumn, interval } = params;
-
-    if (records.length === 0) {
-      const result: TrendResult = {
-        dates: [],
-        values: [],
-        trendLine: { slope: 0, intercept: 0 },
-      };
-      if (params.forecastPeriods !== undefined) {
-        result.forecast = { dates: [], values: [] };
-      }
-      return result;
-    }
-
-    // Sort by date
-    const sorted = [...records].sort((a, b) => {
-      const da = new Date(a[dateColumn] as string).getTime();
-      const db = new Date(b[dateColumn] as string).getTime();
-      return da - db;
-    });
-
-    // Build Arquero table
-    const dt = aq.from(sorted);
-
-    // Group by interval
-    const grouped = dt
-      .derive({
-        _period: aq.escape((d: any) => {
-          const date = new Date(d[dateColumn]);
-          switch (interval) {
-            case "day":
-              return date.toISOString().slice(0, 10);
-            case "week": {
-              const start = new Date(date);
-              start.setDate(start.getDate() - start.getDay());
-              return start.toISOString().slice(0, 10);
-            }
-            case "month":
-              return date.toISOString().slice(0, 7);
-            case "quarter": {
-              const q = Math.ceil((date.getMonth() + 1) / 3);
-              return `${date.getFullYear()}-Q${q}`;
-            }
-            case "year":
-              return `${date.getFullYear()}`;
-          }
-        }),
-      })
-      .groupby("_period")
-      .rollup({ _value: aq.op.mean(valueColumn) })
-      .orderby("_period");
-
-    const dates = grouped.array("_period") as string[];
-    const values = grouped.array("_value") as number[];
-
-    // Linear trend line
-    const indices = values.map((_, i) => i);
-    const pairs: [number, number][] = indices.map((i) => [i, values[i]]);
-    const lr = ss.linearRegression(pairs);
-
-    const result: TrendResult = {
-      dates,
-      values,
-      trendLine: { slope: lr.m, intercept: lr.b },
-    };
-
-    if (params.forecastPeriods !== undefined && params.forecastPeriods > 0) {
-      const fcDates: string[] = [];
-      const fcValues: number[] = [];
-      const lastBucket = dates[dates.length - 1];
-      const n = values.length;
-      for (let i = 1; i <= params.forecastPeriods; i++) {
-        fcDates.push(this.stepBucket(lastBucket, interval, i));
-        fcValues.push(lr.b + lr.m * (n + i - 1));
-      }
-      result.forecast = { dates: fcDates, values: fcValues };
-    }
-
-    return result;
   }
 
   /**
@@ -1661,259 +1541,6 @@ export class AnalyticsService {
   }
 
   /**
-   * Classical seasonal decomposition (additive or multiplicative).
-   * Trend via centered moving average; seasonal via per-position averaging
-   * of the detrended series; residual = observed − trend − seasonal
-   * (additive) or observed / (trend × seasonal) (multiplicative).
-   * Edge values of `trend` and `residual` are `null` where the centered
-   * MA cannot be computed.
-   */
-  static decompose(params: {
-    records: Record<string, unknown>[];
-    dateColumn: string;
-    valueColumn: string;
-    seasonalPeriod: number;
-    seasonality?: "additive" | "multiplicative";
-  }): DecomposeResult {
-    const sorted = [...params.records].sort(
-      (a, b) =>
-        new Date(a[params.dateColumn] as string).getTime() -
-        new Date(b[params.dateColumn] as string).getTime()
-    );
-    const dates = sorted.map((r) => String(r[params.dateColumn]));
-    const observed = this.extractNumericColumn(sorted, params.valueColumn);
-    const n = observed.length;
-    const m = params.seasonalPeriod;
-    const seasonality = params.seasonality ?? "additive";
-
-    if (n < 2 * m) {
-      throw new Error(
-        `Decomposition requires at least 2 full seasons (need ${2 * m} rows, got ${n})`
-      );
-    }
-    if (seasonality === "multiplicative" && observed.some((v) => v <= 0)) {
-      throw new Error(
-        "multiplicative decomposition requires positive observations"
-      );
-    }
-
-    // Centered moving average for the trend
-    const trend: (number | null)[] = new Array(n).fill(null);
-    const halfWindow = Math.floor(m / 2);
-    const isEven = m % 2 === 0;
-    if (isEven) {
-      // 2-by-m MA: average of two adjacent m-MAs centered at i-0.5 and i+0.5
-      for (let i = halfWindow; i <= n - halfWindow - 1; i++) {
-        let sum1 = 0;
-        for (let j = i - halfWindow; j < i - halfWindow + m; j++) {
-          sum1 += observed[j];
-        }
-        let sum2 = 0;
-        for (let j = i - halfWindow + 1; j < i - halfWindow + 1 + m; j++) {
-          sum2 += observed[j];
-        }
-        trend[i] = (sum1 / m + sum2 / m) / 2;
-      }
-    } else {
-      for (let i = halfWindow; i < n - halfWindow; i++) {
-        let sum = 0;
-        for (let j = i - halfWindow; j <= i + halfWindow; j++) {
-          sum += observed[j];
-        }
-        trend[i] = sum / m;
-      }
-    }
-
-    // Detrended series → per-position seasonal averages
-    const detrended: (number | null)[] = observed.map((v, i) =>
-      trend[i] === null
-        ? null
-        : seasonality === "additive"
-          ? v - (trend[i] as number)
-          : v / (trend[i] as number)
-    );
-
-    const seasonalAverages = new Array(m).fill(0);
-    const seasonalCounts = new Array(m).fill(0);
-    for (let i = 0; i < n; i++) {
-      if (detrended[i] !== null) {
-        seasonalAverages[i % m] += detrended[i] as number;
-        seasonalCounts[i % m] += 1;
-      }
-    }
-    for (let p = 0; p < m; p++) {
-      if (seasonalCounts[p] > 0) {
-        seasonalAverages[p] /= seasonalCounts[p];
-      }
-    }
-
-    // Center the seasonal component: additive sums to 0; multiplicative
-    // averages to 1.
-    const meanSeasonal =
-      seasonalAverages.reduce((s, v) => s + v, 0) / m;
-    const seasonal: number[] = new Array(n);
-    for (let i = 0; i < n; i++) {
-      seasonal[i] =
-        seasonality === "additive"
-          ? seasonalAverages[i % m] - meanSeasonal
-          : seasonalAverages[i % m] / meanSeasonal;
-    }
-
-    // Residual
-    const residual: (number | null)[] = observed.map((v, i) => {
-      if (trend[i] === null) return null;
-      return seasonality === "additive"
-        ? v - (trend[i] as number) - seasonal[i]
-        : v / ((trend[i] as number) * seasonal[i]);
-    });
-
-    return { dates, observed, trend, seasonal, residual };
-  }
-
-  /**
-   * Mean-shift changepoint detection via CUSUM on the standardized series.
-   * Single-pass, deterministic, returns indices of detected breaks plus
-   * per-segment means.
-   */
-  static changepoint(params: {
-    records: Record<string, unknown>[];
-    dateColumn?: string;
-    valueColumn: string;
-    threshold?: number;
-    minSegmentLength?: number;
-  }): ChangepointResult {
-    const sorted = params.dateColumn
-      ? [...params.records].sort(
-          (a, b) =>
-            new Date(a[params.dateColumn!] as string).getTime() -
-            new Date(b[params.dateColumn!] as string).getTime()
-        )
-      : [...params.records];
-
-    const values = this.extractNumericColumn(sorted, params.valueColumn);
-    const n = values.length;
-    const threshold = params.threshold ?? 5;
-    const minSeg =
-      params.minSegmentLength ?? Math.max(5, Math.ceil(n / 20));
-
-    if (n === 0) {
-      return { changepoints: [], segmentMeans: [], segments: [] };
-    }
-
-    if (n < 2 * minSeg) {
-      return {
-        changepoints: [],
-        segmentMeans: [ss.mean(values)],
-        segments: [{ start: 0, end: n - 1 }],
-      };
-    }
-
-    const sigma = ss.standardDeviation(values);
-    if (sigma === 0) {
-      const result: ChangepointResult = {
-        changepoints: [],
-        segmentMeans: [ss.mean(values)],
-        segments: [{ start: 0, end: n - 1 }],
-      };
-      if (params.dateColumn) result.changepointDates = [];
-      return result;
-    }
-
-    // CUSUM with segment-local baseline. Initialize the baseline to the
-    // first window's mean so the first segment's CUSUM doesn't accumulate
-    // against the global mean (which would falsely flag the start).
-    const k = 0.5;
-    const changepoints: number[] = [];
-    let segmentMean = ss.mean(values.slice(0, Math.min(minSeg, n)));
-    let sPos = 0;
-    let sNeg = 0;
-    let i = 0;
-    while (i < n) {
-      const z = (values[i] - segmentMean) / sigma;
-      sPos = Math.max(0, sPos + z - k);
-      sNeg = Math.min(0, sNeg + z + k);
-      if (sPos > threshold || -sNeg > threshold) {
-        changepoints.push(i);
-        sPos = 0;
-        sNeg = 0;
-        // Re-baseline to the new segment's leading window mean
-        const winEnd = Math.min(i + minSeg, n);
-        segmentMean = ss.mean(values.slice(i, winEnd));
-        i += minSeg;
-      } else {
-        i += 1;
-      }
-    }
-
-    const boundaries = [0, ...changepoints, n];
-    const segments: { start: number; end: number }[] = [];
-    const segmentMeans: number[] = [];
-    for (let s = 0; s < boundaries.length - 1; s++) {
-      const start = boundaries[s];
-      const end = boundaries[s + 1] - 1;
-      segments.push({ start, end });
-      segmentMeans.push(ss.mean(values.slice(start, end + 1)));
-    }
-
-    const result: ChangepointResult = {
-      changepoints,
-      segmentMeans,
-      segments,
-    };
-    if (params.dateColumn) {
-      result.changepointDates = changepoints.map((idx) =>
-        String(sorted[idx][params.dateColumn!])
-      );
-    }
-    return result;
-  }
-
-  /**
-   * Increment a trend bucket label by `n` periods at the given interval.
-   * Mirrors the date-stringification logic in `trend(...)` so forecast
-   * dates render in the same shape as observed bucket labels.
-   */
-  private static stepBucket(
-    last: string,
-    interval: "day" | "week" | "month" | "quarter" | "year",
-    n: number
-  ): string {
-    switch (interval) {
-      case "day": {
-        const d = new Date(`${last}T00:00:00Z`);
-        d.setUTCDate(d.getUTCDate() + n);
-        return d.toISOString().slice(0, 10);
-      }
-      case "week": {
-        const d = new Date(`${last}T00:00:00Z`);
-        d.setUTCDate(d.getUTCDate() + n * 7);
-        return d.toISOString().slice(0, 10);
-      }
-      case "month": {
-        const [yStr, mStr] = last.split("-");
-        const yearStart = parseInt(yStr, 10);
-        const monthStart = parseInt(mStr, 10); // 1-12
-        const total = (yearStart * 12 + (monthStart - 1)) + n;
-        const newYear = Math.floor(total / 12);
-        const newMonth = (total % 12) + 1;
-        return `${newYear}-${String(newMonth).padStart(2, "0")}`;
-      }
-      case "quarter": {
-        const [yStr, qStr] = last.split("-Q");
-        const yearStart = parseInt(yStr, 10);
-        const quarterStart = parseInt(qStr, 10); // 1-4
-        const total = (yearStart * 4 + (quarterStart - 1)) + n;
-        const newYear = Math.floor(total / 4);
-        const newQuarter = (total % 4) + 1;
-        return `${newYear}-Q${newQuarter}`;
-      }
-      case "year": {
-        return String(parseInt(last, 10) + n);
-      }
-    }
-  }
-
-  /**
    * Run a hypothesis test (one-sample / two-sample / paired t-test,
    * Mann-Whitney U, or chi-squared) and return the statistic and a
    * two-tailed p-value.
@@ -2024,74 +1651,111 @@ export class AnalyticsService {
   }
 
   /**
-   * Group-by + reduce backed by Arquero. Generic primitive that sidesteps
-   * the long tail of one-off count_by/sum_by tools.
+   * Engine-pushdown hypothesis tests (#130 E2c). The three t-tests reduce to
+   * `avg` / `var_samp` / `stddev_samp` / `count` aggregates pushed into SQL
+   * over the source handle; the O(1) statistic + two-tailed p-value run here,
+   * byte-for-byte the same formulas as {@link hypothesisTest}'s in-memory
+   * path. `mann_whitney` (rank over the combined samples) and `chi_squared`
+   * (array input, no records) are not pushed — they return `null` so the
+   * caller uses the in-memory path. Also returns `null` when the handle
+   * can't be re-executed set-wise (caller falls back).
    */
-  static aggregate(params: {
-    records: Record<string, unknown>[];
-    groupBy: string[];
-    metrics: {
-      column?: string;
-      op:
-        | "count"
-        | "sum"
-        | "mean"
-        | "median"
-        | "min"
-        | "max"
-        | "stddev"
-        | "p25"
-        | "p75";
-      as?: string;
-    }[];
-  }): { rows: Record<string, unknown>[] } {
-    for (const m of params.metrics) {
-      if (m.op !== "count" && !m.column) {
-        throw new Error(`Aggregation op "${m.op}" requires a column`);
-      }
+  static async hypothesisTestPushdown(
+    handleId: string,
+    params: {
+      test:
+        | "t_test_one_sample"
+        | "t_test_two_sample"
+        | "t_test_paired"
+        | "mann_whitney"
+        | "chi_squared";
+      columnA?: string;
+      columnB?: string;
+      mu?: number;
     }
+  ): Promise<{ statistic: number; pValue: number; df?: number } | null> {
+    const a = quoteSqlIdentifier(params.columnA ?? "");
 
-    const dt = aq.from(params.records);
-    const grouped =
-      params.groupBy.length === 0 ? dt : dt.groupby(...params.groupBy);
-
-    const rollupArgs: Record<string, unknown> = {};
-    for (const m of params.metrics) {
-      const alias = m.as ?? (m.column ? `${m.op}_${m.column}` : "count");
-      const col = m.column!;
-      switch (m.op) {
-        case "count":
-          rollupArgs[alias] = aq.op.count();
-          break;
-        case "sum":
-          rollupArgs[alias] = aq.op.sum(col);
-          break;
-        case "mean":
-          rollupArgs[alias] = aq.op.mean(col);
-          break;
-        case "median":
-          rollupArgs[alias] = aq.op.median(col);
-          break;
-        case "min":
-          rollupArgs[alias] = aq.op.min(col);
-          break;
-        case "max":
-          rollupArgs[alias] = aq.op.max(col);
-          break;
-        case "stddev":
-          rollupArgs[alias] = aq.op.stdev(col);
-          break;
-        case "p25":
-          rollupArgs[alias] = aq.op.quantile(col, 0.25);
-          break;
-        case "p75":
-          rollupArgs[alias] = aq.op.quantile(col, 0.75);
-          break;
+    switch (params.test) {
+      case "t_test_one_sample": {
+        const s = await PortalSqlHandleService.aggregateOverHandle(
+          handleId,
+          `avg(${a}) AS mean, stddev_samp(${a}) AS sd, count(${a}) AS n`
+        );
+        if (s === null) return null;
+        const n = Number(s.n ?? 0);
+        if (n < 2) {
+          throw new Error("t_test_one_sample: at least 2 values required");
+        }
+        const mean = Number(s.mean);
+        const sd = Number(s.sd);
+        const mu = params.mu ?? 0;
+        const t =
+          sd === 0
+            ? mean === mu
+              ? 0
+              : Number.POSITIVE_INFINITY
+            : (mean - mu) / (sd / Math.sqrt(n));
+        const df = n - 1;
+        return { statistic: t, pValue: this.tTwoTailedPValue(t, df), df };
       }
+      case "t_test_two_sample": {
+        const b = quoteSqlIdentifier(params.columnB ?? "");
+        const s = await PortalSqlHandleService.aggregateOverHandle(
+          handleId,
+          `avg(${a}) AS xmean, var_samp(${a}) AS xvar, count(${a}) AS nx, ` +
+            `avg(${b}) AS ymean, var_samp(${b}) AS yvar, count(${b}) AS ny`
+        );
+        if (s === null) return null;
+        const nx = Number(s.nx ?? 0);
+        const ny = Number(s.ny ?? 0);
+        if (nx < 2 || ny < 2) {
+          throw new Error(
+            "t_test_two_sample: degenerate inputs (each sample needs ≥ 2 values)"
+          );
+        }
+        const xMean = Number(s.xmean);
+        const yMean = Number(s.ymean);
+        const pooledVar =
+          ((nx - 1) * Number(s.xvar) + (ny - 1) * Number(s.yvar)) /
+          (nx + ny - 2);
+        const se = Math.sqrt(pooledVar * (1 / nx + 1 / ny));
+        const t =
+          se === 0
+            ? xMean === yMean
+              ? 0
+              : Number.POSITIVE_INFINITY
+            : (xMean - yMean) / se;
+        const df = nx + ny - 2;
+        return { statistic: t, pValue: this.tTwoTailedPValue(t, df), df };
+      }
+      case "t_test_paired": {
+        const b = quoteSqlIdentifier(params.columnB ?? "");
+        const s = await PortalSqlHandleService.aggregateOverHandle(
+          handleId,
+          `avg(${a} - ${b}) AS mean, stddev_samp(${a} - ${b}) AS sd, ` +
+            `count(*) FILTER (WHERE ${a} IS NOT NULL AND ${b} IS NOT NULL) AS n`
+        );
+        if (s === null) return null;
+        const n = Number(s.n ?? 0);
+        if (n < 2) {
+          throw new Error("t_test_paired: at least 2 pairs required");
+        }
+        const mean = Number(s.mean);
+        const sd = Number(s.sd);
+        const t =
+          sd === 0
+            ? mean === 0
+              ? 0
+              : Number.POSITIVE_INFINITY
+            : mean / (sd / Math.sqrt(n));
+        const df = n - 1;
+        return { statistic: t, pValue: this.tTwoTailedPValue(t, df), df };
+      }
+      default:
+        // mann_whitney / chi_squared — not pushed; in-memory path owns them.
+        return null;
     }
-
-    const out = grouped.rollup(rollupArgs as Parameters<typeof grouped.rollup>[0]);
-    return { rows: out.objects() as Record<string, unknown>[] };
   }
 
   // -----------------------------------------------------------------------
@@ -2868,6 +2532,78 @@ export class AnalyticsService {
   }
 
   /**
+   * Engine-pushdown VaR / CVaR (#130 E2c). Pushes the O(N) reduction into
+   * SQL over the source handle's retained query — `percentile_cont` + a
+   * tail `avg` for historical, `avg`/`stddev_samp` for parametric — and
+   * computes the O(1) residue here. Exact at any N, no materialization;
+   * byte-for-byte the same residue math as {@link varCvar}.
+   *
+   * Returns `null` when the handle can't be re-executed set-wise (a
+   * `produceFromRows` handle, `sql === null`) so the caller falls back to
+   * the in-memory bounded path. The historical cutoff uses Postgres
+   * `percentile_cont` (continuous/linear interpolation); the in-memory path
+   * uses `ss.quantile` — both are valid historical-VaR estimators and agree
+   * to interpolation on typical series.
+   */
+  static async varCvarPushdown(
+    handleId: string,
+    params: {
+      returnColumn: string;
+      confidence?: number;
+      method?: "historical" | "parametric";
+    }
+  ): Promise<VarCvarResult | null> {
+    const conf = params.confidence ?? 0.95;
+    const method = params.method ?? "historical";
+    const col = quoteSqlIdentifier(params.returnColumn);
+
+    if (method === "parametric") {
+      const stats = await PortalSqlHandleService.aggregateOverHandle(
+        handleId,
+        `avg(${col}) AS mu, stddev_samp(${col}) AS sigma, count(${col}) AS n`
+      );
+      if (stats === null) return null;
+      if (Number(stats.n ?? 0) < 2) {
+        throw new Error("var_cvar: at least 2 returns required");
+      }
+      const mu = Number(stats.mu);
+      const sigma = Number(stats.sigma);
+      if (sigma === 0) return { var: 0, cvar: 0, confidence: conf, method };
+      const z = this.tInverseCDF(1 - conf, 1000);
+      const varVal = -(mu + z * sigma);
+      const phi = Math.exp(-(z * z) / 2) / Math.sqrt(2 * Math.PI);
+      const cvarVal = -(mu - sigma * (phi / (1 - conf)));
+      return { var: varVal, cvar: cvarVal, confidence: conf, method };
+    }
+
+    // historical: cutoff = percentile_cont(1-conf); CVaR = mean of the tail
+    // at or below the cutoff. Two passes over the source: the tail filter
+    // needs the cutoff value.
+    const tailFrac = 1 - conf;
+    const cut = await PortalSqlHandleService.aggregateOverHandle(
+      handleId,
+      `percentile_cont(${tailFrac}) WITHIN GROUP (ORDER BY ${col}) AS cutoff, ` +
+        `count(${col}) AS n`
+    );
+    if (cut === null) return null;
+    if (Number(cut.n ?? 0) < 2) {
+      throw new Error("var_cvar: at least 2 returns required");
+    }
+    const cutoff = Number(cut.cutoff);
+    const tail = await PortalSqlHandleService.aggregateOverHandle(
+      handleId,
+      `avg(${col}) FILTER (WHERE ${col} <= ${sqlNumberLiteral(cutoff)}) AS tail_mean, ` +
+        `count(${col}) FILTER (WHERE ${col} <= ${sqlNumberLiteral(cutoff)}) AS tail_n`
+    );
+    const tailCount = Number(tail?.tail_n ?? 0);
+    const tailMean =
+      tail?.tail_mean == null ? cutoff : Number(tail.tail_mean);
+    const varVal = -cutoff;
+    const cvarVal = tailCount > 0 ? -tailMean : varVal;
+    return { var: varVal, cvar: cvarVal, confidence: conf, method, tailCount };
+  }
+
+  /**
    * Loan amortization schedule via financial. Compounding selects the
    * periods-per-year (default monthly = 12); extraPayment is added to the
    * scheduled principal each period and may shorten the schedule.
@@ -2920,142 +2656,6 @@ export class AnalyticsService {
     return schedule;
   }
 
-  /**
-   * Sharpe ratio: (mean - riskFreeRate) / stddev. When `periodicity` is
-   * supplied, multiplies the raw ratio by the appropriate annualization
-   * factor (√252 for daily, √52 weekly, √12 monthly, 2 quarterly, 1 annual).
-   */
-  static sharpeRatio(params: {
-    records: Record<string, unknown>[];
-    valueColumn: string;
-    riskFreeRate?: number;
-    periodicity?: "daily" | "weekly" | "monthly" | "quarterly" | "annual";
-  }): { sharpeRatio: number } {
-    const values = this.extractNumericColumn(
-      params.records,
-      params.valueColumn
-    );
-    if (values.length < 2) {
-      throw new Error("At least 2 values required for Sharpe ratio");
-    }
-
-    // Compute returns
-    const returns: number[] = [];
-    for (let i = 1; i < values.length; i++) {
-      returns.push((values[i] - values[i - 1]) / values[i - 1]);
-    }
-
-    const meanReturn = ss.mean(returns);
-    const stdReturn = ss.standardDeviation(returns);
-    const rfr = params.riskFreeRate ?? 0;
-
-    if (stdReturn === 0) {
-      return { sharpeRatio: 0 };
-    }
-
-    const annualizationFactor = {
-      daily: Math.sqrt(252),
-      weekly: Math.sqrt(52),
-      monthly: Math.sqrt(12),
-      quarterly: 2,
-      annual: 1,
-    };
-
-    let ratio = (meanReturn - rfr) / stdReturn;
-    if (params.periodicity) {
-      ratio *= annualizationFactor[params.periodicity];
-    }
-
-    return { sharpeRatio: ratio };
-  }
-
-  /**
-   * Maximum drawdown: rolling peak then (peak - trough) / peak.
-   */
-  static maxDrawdown(params: {
-    records: Record<string, unknown>[];
-    dateColumn: string;
-    valueColumn: string;
-  }): {
-    maxDrawdown: number;
-    peakDate: string | null;
-    troughDate: string | null;
-  } {
-    const { records, dateColumn, valueColumn } = params;
-
-    if (records.length === 0) {
-      return { maxDrawdown: 0, peakDate: null, troughDate: null };
-    }
-
-    // Sort by date
-    const sorted = [...records].sort(
-      (a, b) =>
-        new Date(a[dateColumn] as string).getTime() -
-        new Date(b[dateColumn] as string).getTime()
-    );
-
-    const dates = sorted.map((r) => String(r[dateColumn]));
-    const values = sorted.map((r) => Number(r[valueColumn]));
-
-    let peak = values[0];
-    let peakIdx = 0;
-    let maxDd = 0;
-    let maxDdPeakIdx = 0;
-    let maxDdTroughIdx = 0;
-
-    for (let i = 1; i < values.length; i++) {
-      if (values[i] > peak) {
-        peak = values[i];
-        peakIdx = i;
-      }
-      const dd = (peak - values[i]) / peak;
-      if (dd > maxDd) {
-        maxDd = dd;
-        maxDdPeakIdx = peakIdx;
-        maxDdTroughIdx = i;
-      }
-    }
-
-    return {
-      maxDrawdown: maxDd,
-      peakDate: maxDd > 0 ? dates[maxDdPeakIdx] : null,
-      troughDate: maxDd > 0 ? dates[maxDdTroughIdx] : null,
-    };
-  }
-
-  /**
-   * Rolling returns: period-over-period return series within a rolling window.
-   */
-  static rollingReturns(params: {
-    records: Record<string, unknown>[];
-    dateColumn: string;
-    valueColumn: string;
-    window: number;
-  }): { dates: string[]; returns: number[] } {
-    const { records, dateColumn, valueColumn, window: windowSize } = params;
-
-    // Sort by date
-    const sorted = [...records].sort(
-      (a, b) =>
-        new Date(a[dateColumn] as string).getTime() -
-        new Date(b[dateColumn] as string).getTime()
-    );
-
-    const dates: string[] = [];
-    const returns: number[] = [];
-
-    for (let i = windowSize; i < sorted.length; i++) {
-      const current = Number(sorted[i][valueColumn]);
-      const past = Number(sorted[i - windowSize][valueColumn]);
-      if (past !== 0) {
-        dates.push(String(sorted[i][dateColumn]));
-        returns.push((current - past) / past);
-      }
-    }
-
-    return { dates, returns };
-  }
-
   // -----------------------------------------------------------------------
   // Helpers
   // -----------------------------------------------------------------------
@@ -3073,77 +2673,6 @@ export class AnalyticsService {
       }
     }
     return values;
-  }
-
-  /** R-squared computation. */
-  private static computeRSquared(
-    actual: number[],
-    predicted: number[]
-  ): number {
-    const meanActual = ss.mean(actual);
-    const ssRes = actual.reduce(
-      (sum, y, i) => sum + Math.pow(y - predicted[i], 2),
-      0
-    );
-    const ssTot = actual.reduce(
-      (sum, y) => sum + Math.pow(y - meanActual, 2),
-      0
-    );
-    return ssTot === 0 ? 1 : 1 - ssRes / ssTot;
-  }
-
-  /** Polynomial least-squares fit. Returns coefficients [a0, a1, ..., an]. */
-  private static polynomialFit(
-    x: number[],
-    y: number[],
-    degree: number
-  ): number[] {
-    const size = degree + 1;
-
-    // Build Vandermonde matrix
-    const matrix: number[][] = [];
-    const rhs: number[] = [];
-
-    for (let i = 0; i < size; i++) {
-      matrix[i] = [];
-      for (let j = 0; j < size; j++) {
-        matrix[i][j] = x.reduce((sum, xi) => sum + Math.pow(xi, i + j), 0);
-      }
-      rhs[i] = x.reduce((sum, xi, k) => sum + y[k] * Math.pow(xi, i), 0);
-    }
-
-    // Gaussian elimination
-    for (let col = 0; col < size; col++) {
-      // Partial pivoting
-      let maxRow = col;
-      for (let row = col + 1; row < size; row++) {
-        if (Math.abs(matrix[row][col]) > Math.abs(matrix[maxRow][col])) {
-          maxRow = row;
-        }
-      }
-      [matrix[col], matrix[maxRow]] = [matrix[maxRow], matrix[col]];
-      [rhs[col], rhs[maxRow]] = [rhs[maxRow], rhs[col]];
-
-      for (let row = col + 1; row < size; row++) {
-        const factor = matrix[row][col] / matrix[col][col];
-        for (let j = col; j < size; j++) {
-          matrix[row][j] -= factor * matrix[col][j];
-        }
-        rhs[row] -= factor * rhs[col];
-      }
-    }
-
-    // Back substitution
-    const coeffs = new Array(size).fill(0);
-    for (let i = size - 1; i >= 0; i--) {
-      coeffs[i] = rhs[i];
-      for (let j = i + 1; j < size; j++) {
-        coeffs[i] -= matrix[i][j] * coeffs[j];
-      }
-      coeffs[i] /= matrix[i][i];
-    }
-
-    return coeffs;
   }
 
   /**
@@ -3304,7 +2833,7 @@ export class AnalyticsService {
       );
     }
 
-    // Build X'X and X'y
+    // Build X'X and X'y, then solve the normal equations.
     const xtx: number[][] = Array.from({ length: k }, () =>
       new Array(k).fill(0)
     );
@@ -3318,6 +2847,33 @@ export class AnalyticsService {
         }
       }
     }
+
+    const { coefficients, xtxInverse } = this.solveNormalEquations(xtx, xty);
+
+    // Residuals = y - X β̂
+    const residuals: number[] = new Array(n).fill(0);
+    for (let i = 0; i < n; i++) {
+      let predicted = 0;
+      for (let j = 0; j < k; j++) predicted += X[i][j] * coefficients[j];
+      residuals[i] = y[i] - predicted;
+    }
+
+    return { coefficients, xtxInverse, residuals };
+  }
+
+  /**
+   * Solve the OLS normal equations from the precomputed Gram matrix `xtx`
+   * (X'X, k×k) and `xty` (X'y, k): invert X'X via Gauss-Jordan and form
+   * β̂ = (X'X)⁻¹ X'y. Shared by the in-memory {@link solveOLS} (which builds
+   * X'X/X'y by iterating rows) and the engine-pushdown path (#130 E2c, which
+   * accumulates X'X/X'y as SQL `sum()` aggregates). No per-row data, so it
+   * returns no residuals.
+   */
+  private static solveNormalEquations(
+    xtx: number[][],
+    xty: number[]
+  ): { coefficients: number[]; xtxInverse: number[][] } {
+    const k = xtx.length;
 
     // Gauss-Jordan inversion of X'X via [X'X | I] → [I | (X'X)⁻¹]
     const aug: number[][] = xtx.map((row, i) => [
@@ -3357,15 +2913,7 @@ export class AnalyticsService {
       }
     }
 
-    // Residuals = y - X β̂
-    const residuals: number[] = new Array(n).fill(0);
-    for (let i = 0; i < n; i++) {
-      let predicted = 0;
-      for (let j = 0; j < k; j++) predicted += X[i][j] * coefficients[j];
-      residuals[i] = y[i] - predicted;
-    }
-
-    return { coefficients, xtxInverse, residuals };
+    return { coefficients, xtxInverse };
   }
 
   /**

@@ -442,6 +442,13 @@
       "when": 1781465098396,
       "tag": "0062_add-bulk-aggregate-job-type",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1782145213004,
+      "tag": "0063_add-sql-query-job-type",
+      "breakpoints": true
     }
   ]
 }

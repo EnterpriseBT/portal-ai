@@ -8,10 +8,9 @@
  *       execute → envelope) produce the expected envelope shape
  *       and row counts.
  *
- *   79. 10 fixed-seed math runs (describeColumn, correlate, regression,
- *       forecast, decompose, changepoint, trend, aggregate, plus the
- *       boundary cases for empty datasets) produce results stable to
- *       ±1e-9 against pre-recorded baselines.
+ *   79. fixed-seed math runs (regression, forecast — the others were
+ *       removed in #130 E2 and are expressed in sql_query) produce results
+ *       stable to ±1e-9 against pre-recorded baselines.
  *
  * Manual smoke runbook (case 80 — runbook only, executed by the
  * deployer, not by CI):
@@ -607,86 +606,8 @@ describe("Analytics Postgres-eval regression suite", () => {
         { organizationId: orgId }
       );
     };
-    const fetchAgeAndSegment = async () => {
-      return wideTableRepo.fetchProjectedRows(
-        contactsEntityId,
-        ["age", "segment"],
-        { organizationId: orgId }
-      );
-    };
 
     const cases: NumericExpect[] = [
-      {
-        description: "describeColumn(age) — count/mean/median/min/max",
-        run: async () => AnalyticsService.describeColumn({
-          records: await fetchAges(),
-          column: "age",
-        }),
-        assert: (r) => {
-          // Seeded ages: 20..31 (12 values).
-          expect(r.count).toBe(12);
-          expectClose(r.mean, 25.5);
-          expectClose(r.median, 25.5);
-          expect(r.min).toBe(20);
-          expect(r.max).toBe(31);
-          // The library's exact divisor for stddev / variance is an
-          // internal detail; lock the magnitude to a tight band rather
-          // than re-asserting the formula here. Sum of squared
-          // deviations from the mean is 143, so variance is in
-          // (143/12, 143/11) = (11.92, 13.0). Stddev is √variance.
-          expect(r.variance).toBeGreaterThan(0);
-          expect(r.variance).toBeLessThan(20);
-          expect(r.stddev).toBeGreaterThan(0);
-          expect(r.stddev).toBeLessThan(5);
-          expectClose(r.iqr, r.p75 - r.p25);
-        },
-      },
-      {
-        description: "describeColumn(age) with custom percentiles",
-        run: async () => AnalyticsService.describeColumn({
-          records: await fetchAges(),
-          column: "age",
-          percentiles: [0.1, 0.5, 0.9],
-        }),
-        assert: (r) => {
-          expectClose(r.percentiles["0.1"], 21.1);
-          expectClose(r.percentiles["0.5"], 25.5);
-          expectClose(r.percentiles["0.9"], 29.9);
-        },
-      },
-      {
-        description: "correlate(age, age) — perfect self-correlation",
-        run: async () => {
-          const records = await fetchAges();
-          return AnalyticsService.correlate({
-            records: records.map((r) => ({ x: r.age, y: r.age })),
-            columnA: "x",
-            columnB: "y",
-            method: "pearson",
-          });
-        },
-        assert: (r) => {
-          expectClose(r.correlation, 1);
-        },
-      },
-      {
-        description: "correlate(age, -age) — perfect anti-correlation",
-        run: async () => {
-          const records = await fetchAges();
-          return AnalyticsService.correlate({
-            records: records.map((r) => ({
-              x: r.age,
-              y: -(r.age as number),
-            })),
-            columnA: "x",
-            columnB: "y",
-            method: "pearson",
-          });
-        },
-        assert: (r) => {
-          expectClose(r.correlation, -1);
-        },
-      },
       {
         description: "regression(linear) y = 2x + 1",
         run: async () => {
@@ -706,51 +627,6 @@ describe("Analytics Postgres-eval regression suite", () => {
           expectClose(r.coefficients[0], 1);
           expectClose(r.coefficients[1], 2);
           expectClose(r.rSquared, 1);
-        },
-      },
-      {
-        description: "aggregate(count + mean) on segment",
-        run: async () => AnalyticsService.aggregate({
-          records: await fetchAgeAndSegment(),
-          groupBy: ["segment"],
-          metrics: [
-            { op: "count", as: "n" },
-            { op: "mean", column: "age", as: "avg" },
-          ],
-        }),
-        assert: (r) => {
-          // Segments are "A" for even indices (ages 20,22,24,26,28,30 → mean 25)
-          // and "B" for odd (21,23,25,27,29,31 → mean 26).
-          expect(Array.isArray(r.rows)).toBe(true);
-          const bySeg = Object.fromEntries(
-            r.rows.map((row: Record<string, unknown>) => [row.segment, row])
-          );
-          expect(bySeg.A.n).toBe(6);
-          expect(bySeg.B.n).toBe(6);
-          expectClose(bySeg.A.avg as number, 25);
-          expectClose(bySeg.B.avg as number, 26);
-        },
-      },
-      {
-        description: "trend(day, age) — strictly positive slope on rising series",
-        run: async () => {
-          const base = new Date("2026-01-01").getTime();
-          const ages = await fetchAges();
-          return AnalyticsService.trend({
-            records: ages.map((r, i) => ({
-              day: new Date(base + i * 86_400_000).toISOString(),
-              v: r.age,
-            })),
-            dateColumn: "day",
-            valueColumn: "v",
-            interval: "day",
-          });
-        },
-        assert: (r) => {
-          expect(r.dates).toHaveLength(12);
-          // 12-step linear ramp 20→31; trend slope should be positive
-          // regardless of the date encoding the regressor uses.
-          expect(r.trendLine.slope).toBeGreaterThan(0);
         },
       },
       {
@@ -778,46 +654,13 @@ describe("Analytics Postgres-eval regression suite", () => {
           }
         },
       },
-      {
-        description: "decompose — additive on a flat series",
-        run: async () => {
-          const base = new Date("2026-01-01").getTime();
-          const records = Array.from({ length: 12 }, (_, i) => ({
-            day: new Date(base + i * 86_400_000).toISOString(),
-            v: 100,
-          }));
-          return AnalyticsService.decompose({
-            records,
-            dateColumn: "day",
-            valueColumn: "v",
-            seasonalPeriod: 2,
-            seasonality: "additive",
-          });
-        },
-        assert: (r) => {
-          expect(r.observed).toHaveLength(12);
-          for (const v of r.observed) {
-            expectClose(v, 100);
-          }
-        },
-      },
-      {
-        description: "describeColumn on empty result set",
-        run: async () => AnalyticsService.describeColumn({
-          records: [],
-          column: "age",
-        }),
-        assert: (r) => {
-          expect(r.count).toBe(0);
-          expect(r.mean).toBe(0);
-          expect(r.stddev).toBe(0);
-        },
-      },
     ];
 
-    if (cases.length !== 10) {
+    // describeColumn / correlate / aggregate / trend / decompose removed in
+    // #130 E2 (expressed in sql_query); regression + forecast remain.
+    if (cases.length !== 2) {
       throw new Error(
-        `phase-3 slice 6 expects exactly 10 numeric cases, got ${cases.length}`
+        `expects exactly 2 numeric cases, got ${cases.length}`
       );
     }
 

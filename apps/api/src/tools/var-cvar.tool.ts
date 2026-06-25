@@ -44,6 +44,25 @@ export class VarCvarTool extends Tool<typeof InputSchema> {
       inputSchema: this.schema,
       execute: async (input) => {
         const params = this.validate(input);
+
+        // Engine-pushdown (#130 E2c): when the dataset is a re-executable
+        // query handle, push the O(N) reduction into SQL — exact at any N,
+        // no materialization. `varCvarPushdown` returns null for a
+        // non-re-executable handle (externally-supplied rows), so we fall
+        // through to the in-memory bounded path. Inline `rows` always use
+        // the in-memory path.
+        if (params.queryHandle != null) {
+          const pushed = await AnalyticsService.varCvarPushdown(
+            params.queryHandle,
+            {
+              returnColumn: params.returnColumn,
+              confidence: params.confidence,
+              method: params.method,
+            }
+          );
+          if (pushed !== null) return pushed;
+        }
+
         const records = await resolveComputeRecords(params);
         return AnalyticsService.varCvar({
           records,
