@@ -1,11 +1,11 @@
 import { describe, it, expect } from "@jest/globals";
 
 import { TechnicalIndicatorTool } from "../../tools/technical-indicator.tool.js";
-import { SharpeRatioTool } from "../../tools/sharpe-ratio.tool.js";
-import { MaxDrawdownTool } from "../../tools/max-drawdown.tool.js";
-import { RollingReturnsTool } from "../../tools/rolling-returns.tool.js";
 import { VarCvarTool } from "../../tools/var-cvar.tool.js";
 import { PortfolioMetricsTool } from "../../tools/portfolio-metrics.tool.js";
+
+// sharpe_ratio / max_drawdown / rolling_returns removed in #130 E2 —
+// expressed directly in sql_query (cumulative-product, running-max, lag()).
 
 // Pure-path tests for the data-dependent financial tools: inline `rows`
 // drive the full compute with no SDK / DB / stationData mocks. Exact
@@ -20,48 +20,6 @@ const priceRows = [10, 11, 12, 11, 13, 14, 13, 15].map((v, i) => ({
 const returnRows = [0.01, -0.02, 0.03, -0.01, 0.02, -0.03, 0.01, 0.02].map(
   (r) => ({ r })
 );
-
-describe("SharpeRatioTool", () => {
-  const built = new SharpeRatioTool().build() as unknown as ExecTool;
-
-  it("computes over inline rows", async () => {
-    const result = await built.execute({ rows: returnRows, valueColumn: "r" });
-    expect(result).toBeDefined();
-  });
-
-  it("rejects input with neither queryHandle nor rows", () => {
-    expect(
-      new SharpeRatioTool().schema.safeParse({ valueColumn: "r" }).success
-    ).toBe(false);
-  });
-});
-
-describe("MaxDrawdownTool", () => {
-  const built = new MaxDrawdownTool().build() as unknown as ExecTool;
-
-  it("computes over inline rows", async () => {
-    const result = await built.execute({
-      rows: priceRows,
-      dateColumn: "d",
-      valueColumn: "v",
-    });
-    expect(result).toBeDefined();
-  });
-});
-
-describe("RollingReturnsTool", () => {
-  const built = new RollingReturnsTool().build() as unknown as ExecTool;
-
-  it("computes over inline rows", async () => {
-    const result = await built.execute({
-      rows: priceRows,
-      dateColumn: "d",
-      valueColumn: "v",
-      window: 2,
-    });
-    expect(result).toBeDefined();
-  });
-});
 
 describe("VarCvarTool", () => {
   const built = new VarCvarTool().build() as unknown as ExecTool;

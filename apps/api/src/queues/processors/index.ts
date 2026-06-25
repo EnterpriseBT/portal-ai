@@ -6,6 +6,7 @@ import { fileUploadParseProcessor } from "./file-upload-parse.processor.js";
 import { layoutPlanCommitProcessor } from "./layout-plan-commit.processor.js";
 import { bulkTransformProcessor } from "./bulk-transform.processor.js";
 import { bulkAggregateProcessor } from "./bulk-aggregate.processor.js";
+import { sqlQueryProcessor } from "./sql-query.processor.js";
 
 /**
  * Declarative processor map.
@@ -23,4 +24,5 @@ export const processors: Record<string, JobProcessor> = {
   layout_plan_commit: layoutPlanCommitProcessor,
   bulk_transform: bulkTransformProcessor,
   bulk_aggregate: bulkAggregateProcessor,
+  sql_query: sqlQueryProcessor,
 };

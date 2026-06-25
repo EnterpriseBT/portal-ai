@@ -56,6 +56,26 @@ export function computeJobSignature(inputs: CostAckSignatureInputs): string {
   return crypto.createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }
 
+/**
+ * Stable per-query hash for the `sql_query` job-tier escalation (#130
+ * E1b). Scope is `(stationId, sql)` — the agent changing the SQL is a
+ * different query and needs fresh acknowledgement. Feeds the same
+ * `recordRejection` / `validate` reject→ack→retry flow as the bulk gate,
+ * which is what "generalizes the cost-ack flow into the escalation
+ * mechanism" (spec D8a) means in practice.
+ */
+export function computeSqlQuerySignature(inputs: {
+  sql: string;
+  stationId: string;
+}): string {
+  const canonical = JSON.stringify({ st: inputs.stationId, q: inputs.sql });
+  return crypto
+    .createHash("sha256")
+    .update(canonical)
+    .digest("hex")
+    .slice(0, 32);
+}
+
 function redisKey(portalId: string, signature: string): string {
   return `${REDIS_KEY_PREFIX}${portalId}:${signature}`;
 }

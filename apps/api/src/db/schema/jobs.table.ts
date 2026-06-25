@@ -26,6 +26,7 @@ export const jobTypeEnum = pgEnum("job_type", [
   "layout_plan_commit",
   "bulk_transform",
   "bulk_aggregate",
+  "sql_query",
 ]);
 
 /**

@@ -47,8 +47,14 @@ describe("enablement/enforcement projections reproduce current behavior", () => 
     );
   });
 
-  it("cost-gated == the bulk write job (today's costHint: expensive gate)", () => {
-    expect(costGatedToolNames()).toEqual(["bulk_transform_entity_records"]);
+  it("cost-gated == the bulk write job + the bounded heavy-compute tools", () => {
+    // costHint: expensive on the two bounded reduce-tier tools (#130 E2b)
+    // alongside the bulk write job. namesWhere() returns them sorted.
+    expect(costGatedToolNames()).toEqual([
+      "bulk_transform_entity_records",
+      "cluster",
+      "logistic_regression",
+    ]);
   });
 });
 

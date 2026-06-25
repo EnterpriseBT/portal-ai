@@ -23,7 +23,6 @@ import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { createLogger } from "../utils/logger.util.js";
 import {
   ApiEndpointConfigBaseSchema,
-  ApiEndpointConfigSchema,
   ColumnDefinitionModelFactory,
   FieldMappingModelFactory,
   type ApiEndpointConfig,

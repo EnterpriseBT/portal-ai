@@ -72,6 +72,14 @@ const InputSchema = z.object({
     ),
 });
 
+/** Tests whose O(N) reduction pushes to SQL (#130 E2c). mann_whitney
+ *  (rank-over-union) and chi_squared (array input) stay in-memory. */
+const T_TEST_KINDS = new Set([
+  "t_test_one_sample",
+  "t_test_two_sample",
+  "t_test_paired",
+]);
+
 export class HypothesisTestTool extends Tool<typeof InputSchema> {
   slug = "hypothesis_test";
   name = "Hypothesis Test";
@@ -92,6 +100,20 @@ export class HypothesisTestTool extends Tool<typeof InputSchema> {
       inputSchema: this.schema,
       execute: async (input) => {
         const { queryHandle, rows, ...rest } = this.validate(input);
+
+        // Engine-pushdown (#130 E2c): the t-tests reduce to SQL aggregates
+        // over a re-executable handle — exact at any N, no materialization.
+        // `hypothesisTestPushdown` returns null for mann_whitney / chi_squared
+        // and for non-re-executable handles, so we fall through to the
+        // in-memory path for those.
+        if (queryHandle != null && T_TEST_KINDS.has(rest.test)) {
+          const pushed = await AnalyticsService.hypothesisTestPushdown(
+            queryHandle,
+            rest
+          );
+          if (pushed !== null) return pushed;
+        }
+
         let records: ComputeRecord[] | undefined;
         if (queryHandle != null || rows != null) {
           records = await resolveComputeRecords({ queryHandle, rows });

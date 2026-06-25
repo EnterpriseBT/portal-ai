@@ -143,4 +143,17 @@ export const environment = {
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean),
+  // ── sql_query job-tier escalation trigger (#130 E1b).
+  //    The hybrid trigger (TOOLPACK_TAXONOMY.spec.md D8a) EXPLAINs a
+  //    validated sql_query before running it; when PG's estimated total
+  //    plan cost crosses this threshold the runtime escalates the read to
+  //    the 120s off-thread job tier up front (cost-ack reject), skipping the
+  //    wasted synchronous attempt. The 30s statement_timeout is the backstop
+  //    for under-estimates. PG's cost unit is arbitrary (≈ seq-page reads +
+  //    per-tuple CPU), so this default is a starting point to tune against
+  //    real traffic — env-overridable without a redeploy.
+  SQL_QUERY_JOB_COST_THRESHOLD: parseInt(
+    process.env.SQL_QUERY_JOB_COST_THRESHOLD || String(1_000_000),
+    10
+  ),
 };

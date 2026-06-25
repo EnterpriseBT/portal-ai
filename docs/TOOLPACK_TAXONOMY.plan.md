@@ -21,7 +21,9 @@ A foundation (capability schema + projections + role view)   ← blocks everythi
 └── I custom-pack capability subset + registration validation   [needs A; feeds #124]
 ```
 
-A is the spine. B, C, G, I can start in parallel once A merges. D→E is the unbounded-data spine. F waits on B+C. H waits on G.
+A is the spine. B, C, G, I can start in parallel once A merges. D→E is the unbounded-data spine. H waits on G.
+
+**Sequencing realignment (2026-06-22):** A, B, C, D, G, H, I are merged (+ #124). The remaining two run **E → F, in that order**. E makes `sql_query` the reduce operation **and** introduces the **job cardinality tier** (D8a — auto-detected + cost-ack-gated async escalation; `sql_query@job` rehomes `bulk_aggregate`'s 120s off-thread scan). F then **shrinks** to removing the now-redundant `bulk_*` tools — `bulk_aggregate_records` is already absorbed by E's `sql_query@job`, leaving F = rename `bulk_transform_entity_records` → `transform_entity_records` + capability-driven cost/lock + close #101/#102/#112. So **F now depends on E**, not just B+C.
 
 ## The children
 
@@ -41,14 +43,20 @@ A is the spine. B, C, G, I can start in parallel once A merges. D→E is the unb
 **Ships:** the handle becomes cursor-backed beyond `HANDLE_ROW_CAP` (engine cursor / re-runnable query — spec/spike detail); paged/streamed reads; read/viz/streaming-reduce consumers stream past 100k with no wall. The ≤100k Redis snapshot stays the cheap tier.
 **Done when:** an unbounded read/scan and an unbounded streaming-reduce both complete without `COMPUTE_INPUT_TOO_LARGE`; memory stays bounded (integration test over > 100k rows).
 
-### E — Reduce-tier push *(needs C, ideally D)*
-**Ships:** remove the 10 SQL-pushed tools (with prompt/description guidance pointing at `sql_query`); convert `hypothesis_test`/`var_cvar`/`regression` to `engine-pushdown` (O(N) reduction in SQL, O(1) residue in-tool); declare `streaming` on `forecast`/`technical_indicator`/`portfolio_metrics`, `bounded`+`onOverflow` on `cluster`/`logistic_regression`. §6-style smoke per pack before each removal.
-**Done when:** reduce tier is 8 tools; smoke confirms the agent does the removed work in SQL; pushdown tools exact at any N.
-**E2 (optional, own ticket):** mini-batch k-means + SGD logistic as `streaming` variants — the only two tools that otherwise hit `onOverflow`. Makes 100% of the tier exact-unbounded.
+### E — Reduce-tier push + the job tier *(needs C and D; precedes F)*
+Realigned 2026-06-22 to also own the **job cardinality tier** (D8a), since establishing `sql_query` as the reduce operation is what a job mode attaches to. Suggested sub-slices, each green + smoke-walked on its own:
+- **E1a — `sql_query@job` execution foundation (trigger-agnostic):** new `sql_query` JobType + metadata/result schemas + **migration** (pg enum value, à la `0062`); a processor that runs validated portal SQL off-thread at **120s** (`runSqlQuery` needs a `statement_timeout` override — today hard-wired 30s) and stages the result as a handle; awaited via the existing `JobsService.create` → `awaitJobTerminal` pattern (mirrors `bulk_aggregate`). **Buildable first — independent of which escalation trigger wins.** This is the piece F depends on.
+- **E1b — escalation trigger + cost-ack wiring:** trigger **decided — hybrid `EXPLAIN`-predictive + 30s timeout backstop** (spec D8a "Decided — the escalation trigger"). `EXPLAIN` the validated query (non-executing); if PG's est. cost/rows crosses the threshold, escalate up front; else run sync with the 30s timeout as the under-estimate backstop. `sql_query` gains `acknowledgeCost`; on escalation it `recordRejection`s (cost-ack), and on retry-with-ack enqueues E1a's job + returns the handle envelope. New tunable: the `EXPLAIN` cost/row threshold (a constant, env-overridable). Generalizes the existing cost-ack reject→ack→retry flow into the escalation mechanism.
+- **E2 — reduce-tier push:** remove the 10 SQL-pushed tools (prompt/description guidance → `sql_query`); convert `hypothesis_test`/`var_cvar`/`regression` to `engine-pushdown` (O(N) reduction in SQL, O(1) residue in-tool); confirm the `streaming`/`bounded` declarations from #129 (`forecast` done; `cluster`/`logistic_regression` `bounded`+`onOverflow`). §6-style smoke per pack before each removal.
+- **E3 (optional, own ticket):** mini-batch k-means + SGD logistic as `streaming` variants — the only two that otherwise hit `onOverflow`. Makes 100% of the tier exact-unbounded.
+**Done when:** the job tier escalates a long `sql_query` aggregate to a cost-ack-gated async job; the reduce tier is 8 tools; pushdown tools exact at any N; smoke confirms the agent does the removed work in SQL.
 
-### F — Bulk-collapse → job modes (D8) *(needs B + C)*
-**Ships:** dissolve `bulk_aggregate_records`/`bulk_transform`/`bulk_transform_entity_records` and the planned `bulk_delete`/`bulk_apply`/`bulk_materialize` into the job mode of their operations; cost-ack + lock fire on escalation (from B); job result `resultKind: "progress"`. **Reconciles #101/#102/#112** (see below).
-**Done when:** no `bulk_*` agent-facing tool exists; an operation over > `HANDLE_ROW_CAP` rows escalates to a job with cost-ack + lock; the dispatcher (`bulkDispatch`) is reused as the per-batch map capability.
+### F — Bulk-collapse → job modes (D8) *(needs B + C + E)*
+With E's `sql_query@job` in place, F **shrinks**: `bulk_aggregate_records` is already absorbed (it's `sql_query` at job mode). F's remaining work:
+- **Rename** `bulk_transform_entity_records` → `transform_entity_records` (the transform-over-source op is irreducible; drop the `bulk_` prefix, keep behavior, no compat alias); cost-ack reads `capability.costHint` not the slug; locks already capability-driven (gate-4, #142). `bulkDispatch` retained as the per-batch map capability.
+- **Remove** `bulk_aggregate_records` (+ its now-unused service/processor/JobType, since E rehomed the scan).
+- **Close #101/#102/#112** as reconciled job-modes — no code (delete/apply/materialize job-modes ship only when a concrete caller needs them).
+**Done when:** no `bulk_*` agent-facing tool exists; the transform op + the `sql_query@job` aggregate both run as cost-ack-gated, lock-declaring jobs; #101/#102/#112 closed reconciled. Then close umbrella #121 and re-file E3 if not done.
 
 ### G — Visualization consumer + resultKind routing (D6) *(needs A)*
 **Ships:** `resolveDisplayBlock` keys off `resultKind`, not `ROW_SET_TOOLS`/tool-name; aggregate-before-render for viz consumers. **Fixes #120** properly.

@@ -247,6 +247,36 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "columns you need on wide tables."
     );
     lines.push("");
+    lines.push(
+      "**Do descriptive statistics, correlation, outlier detection, " +
+        "group-by aggregation, and time-series windows directly in " +
+        "`sql_query`** — there are no separate tools for these. PostgreSQL " +
+        "expresses them natively:"
+    );
+    lines.push(
+      "- Descriptive stats → `count()`, `avg()`, `stddev_samp()`, " +
+        "`variance()`, `min()`, `max()`, `percentile_cont(p) WITHIN GROUP " +
+        "(ORDER BY col)` for median / p25 / p75."
+    );
+    lines.push(
+      "- Correlation → `corr(a, b)` (Pearson); rank with " +
+        "`corr(rank() OVER (ORDER BY a), rank() OVER (ORDER BY b))` for " +
+        "Spearman."
+    );
+    lines.push(
+      "- Outliers → compute `avg`/`stddev_samp` (z-score) or " +
+        "`percentile_cont` quartiles (IQR) in a CTE, then filter."
+    );
+    lines.push(
+      "- Group-by → `GROUP BY` with the aggregates above."
+    );
+    lines.push(
+      "- Time-series (trend / moving average / changepoint / drawdown / " +
+        "rolling or period-over-period returns) → `date_trunc()` plus window " +
+        "functions: `avg() OVER (… ROWS BETWEEN …)`, `lag()`, `max() OVER " +
+        "(ORDER BY …)`, `regr_slope(y, x)`."
+    );
+    lines.push("");
     lines.push('Example — user asks "show me all the parcels":');
     lines.push("");
     lines.push("  Good (one call, one widget):");
@@ -413,7 +443,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   lines.push("");
   lines.push(
     "Some tools do need interpretation on top of their output: " +
-      "`describe_column`, `web_search`, and `resolve_identity` return " +
+      "`hypothesis_test`, `web_search`, and `resolve_identity` return " +
       "information the user cannot read off the block alone. For these, a " +
       "short interpretive sentence or two is appropriate."
   );

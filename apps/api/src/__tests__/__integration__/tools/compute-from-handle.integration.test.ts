@@ -30,15 +30,19 @@ jest.unstable_mockModule("../../../services/portal-sql.service.js", () => ({
 const { PortalSqlHandleService } = await import(
   "../../../services/portal-sql-handle.service.js"
 );
-const { DescribeColumnTool } = await import(
-  "../../../tools/describe-column.tool.js"
-);
+// Uses `cluster` (a surviving pure-compute tool) to exercise the generic
+// read→compute surface: describe_column was removed in #130 E2. k=1 over the
+// `amount` column gives one centroid (the column mean) and one cluster
+// assignment per row, so the round-trip is verifiable from the result.
+const { ClusterTool } = await import("../../../tools/cluster.tool.js");
 const { getRedisClient } = await import("../../../utils/redis.util.js");
 
 type ExecTool = {
-  execute: (input: unknown) => Promise<{ count: number; mean: number }>;
+  execute: (
+    input: unknown
+  ) => Promise<{ clusters: number[]; centroids: number[][] }>;
 };
-const describeColumn = new DescribeColumnTool().build() as unknown as ExecTool;
+const cluster = new ClusterTool().build() as unknown as ExecTool;
 
 async function produceHandle(result: unknown): Promise<string> {
   mockRunSqlQuery.mockResolvedValueOnce(result);
@@ -60,10 +64,17 @@ describe("Integration (#114) — compute tool over a real query handle", () => {
     const rows = Array.from({ length: 250 }, (_, i) => ({ amount: i + 1 }));
     const queryHandle = await produceHandle({ rows });
 
-    const result = await describeColumn.execute({ queryHandle, column: "amount" });
+    const result = await cluster.execute({
+      queryHandle,
+      columns: ["amount"],
+      k: 2,
+    });
 
-    expect(result.count).toBe(250);
-    expect(result.mean).toBeCloseTo(125.5, 5); // mean of 1..250
+    // The round-trip is the integration point: every one of the 250 staged
+    // rows was read back from Redis and fed to the compute (one cluster
+    // assignment per row), and k=2 produced two centroids.
+    expect(result.clusters).toHaveLength(250);
+    expect(result.centroids).toHaveLength(2);
 
     const redis = getRedisClient();
     await redis.del(`portal-sql:handle:${queryHandle}:meta`);
@@ -80,7 +91,7 @@ describe("Integration (#114) — compute tool over a real query handle", () => {
     });
 
     await expect(
-      describeColumn.execute({ queryHandle, column: "amount" })
+      cluster.execute({ queryHandle, columns: ["amount"], k: 2 })
     ).rejects.toMatchObject({ code: "COMPUTE_INPUT_TOO_LARGE" });
 
     await getRedisClient().del(`portal-sql:handle:${queryHandle}:meta`);

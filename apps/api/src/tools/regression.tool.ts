@@ -61,6 +61,27 @@ export class RegressionTool extends Tool<typeof InputSchema> {
       inputSchema: this.schema,
       execute: async (input) => {
         const params = this.validate(input);
+
+        // Engine-pushdown (#130 E2c): for a re-executable handle, accumulate
+        // X'X / X'y / y'y as SQL sums and solve in-tool — exact at any N
+        // (per-row residuals omitted). `regressionPushdown` returns null for
+        // a non-re-executable handle, so we fall through to the in-memory
+        // path; inline `rows` always use in-memory (and keep residuals).
+        if (params.queryHandle != null) {
+          const pushed = await AnalyticsService.regressionPushdown(
+            params.queryHandle,
+            {
+              x: params.x,
+              xColumns: params.xColumns,
+              y: params.y,
+              type: params.type,
+              degree: params.degree,
+              confidence: params.confidence,
+            }
+          );
+          if (pushed !== null) return pushed;
+        }
+
         const records = await resolveComputeRecords(params);
         return AnalyticsService.regression({
           records,
