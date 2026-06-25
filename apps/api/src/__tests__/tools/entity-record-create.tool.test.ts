@@ -40,12 +40,17 @@ const mockWideTableUpsertMany = jest
   .fn<(...a: unknown[]) => Promise<void>>()
   .mockResolvedValue(undefined);
 
+const mockCountMappings = jest
+  .fn<(ids: string[]) => Promise<number>>()
+  .mockResolvedValue(1);
+
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       entityRecords: { createMany: mockCreateMany },
       connectorEntities: { findById: mockFindEntityById },
       wideTable: { upsertMany: mockWideTableUpsertMany },
+      fieldMappings: { countByConnectorEntityIds: mockCountMappings },
     },
   },
 }));
@@ -216,6 +221,19 @@ describe("EntityRecordCreateTool", () => {
 
     expect(result.success).toBe(false);
     expect(result.failures).toBeDefined();
+    expect(mockCreateMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses records for an entity with no field mappings (#154)", async () => {
+    mockCountMappings.mockResolvedValueOnce(0);
+
+    const result: any = await exec({
+      items: [{ connectorEntityId: "ce-unmapped", data: { Name: "Ghost" } }],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0].error).toMatch(/no field mappings/i);
     expect(mockCreateMany).not.toHaveBeenCalled();
   });
 
