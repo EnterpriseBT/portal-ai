@@ -52,7 +52,7 @@ export type ToolpackEndpoints = z.infer<typeof ToolpackEndpointsSchema>;
 // Opt-in metadata that allows a tool to be dispatched per-record by
 // the bulk-transform processor (#85 Phase 4). When the schema
 // endpoint declares this on a tool, the tool becomes eligible for
-// `bulk_transform_entity_records` with `expression.kind === "tool"`;
+// `transform_entity_records` with `expression.kind === "tool"`;
 // the dispatcher uses these values to fan out within bounded
 // concurrency / rate / timeout.
 
@@ -73,7 +73,7 @@ export const ToolpackToolDefinitionSchema = z.object({
   description: z.string().min(1),
   parameterSchema: z.record(z.string(), z.unknown()),
   /** Optional bulk-dispatch eligibility — webhook schemas can declare
-   *  this so the tool becomes available to `bulk_transform_entity_records`
+   *  this so the tool becomes available to `transform_entity_records`
    *  with `expression.kind === "tool"`. Absent means the tool is rejected
    *  from the dispatch path (matches the existing builtin contract). */
   bulkDispatch: BulkDispatchMetadataSchema.optional(),

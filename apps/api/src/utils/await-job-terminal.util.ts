@@ -26,7 +26,7 @@ export interface TerminalOutcome {
  * path the write tools use — keeping cancel consistent across job types.
  *
  * Shared by the job-tier tools that await their terminal envelope inline
- * (`bulk_aggregate_records`, and `sql_query` at job mode — #130 E1b).
+ * (`sql_query` at job mode — #130 E1b).
  */
 export function awaitJobTerminal(
   jobId: string,

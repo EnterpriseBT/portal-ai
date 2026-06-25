@@ -42,7 +42,6 @@ export const JobTypeEnum = z.enum([
   "file_upload_parse",
   "layout_plan_commit",
   "bulk_transform",
-  "bulk_aggregate",
   "sql_query",
 ]);
 export type JobType = z.infer<typeof JobTypeEnum>;
@@ -396,47 +395,6 @@ export const BulkTransformResultSchema = z.object({
 export type BulkTransformResult = z.infer<typeof BulkTransformResultSchema>;
 
 /**
- * bulk_aggregate (#100) — reduce N source records to a single value via
- * one SQL aggregate, run as a job for off-request-thread execution +
- * cancel + audit. SQL-only by design (see `docs/BULK_AGGREGATE.discovery.md`,
- * Decision 1): `fold_tool` was rejected on tool-purity grounds, and the
- * tool-pure reducers it would need are just SQL aggregate functions.
- *
- * Locks: NONE. The source is scanned read-only; reads don't lock
- * (Decision 2), so this metadata declares no lock keys.
- */
-export const BulkAggregateMetadataSchema = z.object({
-  /** Source entity to scan; read-only, no lock. */
-  sourceConnectorEntityId: z.string(),
-  organizationId: z.string(),
-  /** SQL aggregate projection, e.g. "SUM(c_area) AS total, AVG(c_age) AS
-   *  avg_age". Validated via EXPLAIN at the tool's pre-flight; runtime is
-   *  bounded by the org-scope guard the processor applies inside a
-   *  READ ONLY transaction. */
-  expression: z.string(),
-  /** Optional source-side WHERE fragment, injected into the scan's
-   *  WHERE clause (same posture as bulk_transform's sourceFilter). */
-  sourceFilter: z
-    .object({
-      whereSqlFragment: z.string(),
-    })
-    .optional(),
-});
-export type BulkAggregateMetadata = z.infer<typeof BulkAggregateMetadataSchema>;
-
-export const BulkAggregateResultSchema = z.object({
-  /** The computed aggregate — any bounded serializable JSON value:
-   *  scalar, object (multi-alias projection), or array (ARRAY_AGG /
-   *  JSON_AGG). Bounded by the processor's result-size cap. */
-  result: z.unknown(),
-  /** Source rows scanned (from the injected COUNT(*)), not the result
-   *  cardinality. */
-  recordsProcessed: z.number().int().nonnegative(),
-  durationMs: z.number().int().nonnegative(),
-});
-export type BulkAggregateResult = z.infer<typeof BulkAggregateResultSchema>;
-
-/**
  * sql_query (#130 child E1) — the JOB-tier mode of `sql_query`. The runtime
  * escalates a long/expensive read here (see `TOOLPACK_TAXONOMY.spec.md` D8a):
  * it runs the validated portal SQL off the request thread at
@@ -488,10 +446,6 @@ export interface JobTypeMap {
     metadata: BulkTransformMetadata;
     result: BulkTransformResult;
   };
-  bulk_aggregate: {
-    metadata: BulkAggregateMetadata;
-    result: BulkAggregateResult;
-  };
   sql_query: {
     metadata: SqlQueryJobMetadata;
     result: SqlQueryJobResult;
@@ -532,10 +486,6 @@ export const JOB_TYPE_SCHEMAS: {
     metadata: BulkTransformMetadataSchema,
     result: BulkTransformResultSchema,
   },
-  bulk_aggregate: {
-    metadata: BulkAggregateMetadataSchema,
-    result: BulkAggregateResultSchema,
-  },
   sql_query: {
     metadata: SqlQueryJobMetadataSchema,
     result: SqlQueryJobResultSchema,
@@ -559,7 +509,7 @@ export const JOB_TYPE_SCHEMAS: {
  *  - `portalId` — a single portal id (equality; locks the chat input).
  *
  * Job types absent here lock nothing (system_check, revalidation,
- * file_upload_parse, bulk_aggregate — read-only or non-locking).
+ * file_upload_parse, sql_query — read-only or non-locking).
  */
 export interface JobLockKeys {
   targetConnectorEntityIds?: string;

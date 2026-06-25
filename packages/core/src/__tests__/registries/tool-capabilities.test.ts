@@ -47,13 +47,13 @@ describe("enablement/enforcement projections reproduce current behavior", () => 
     );
   });
 
-  it("cost-gated == the bulk write job + the bounded heavy-compute tools", () => {
+  it("cost-gated == the transform write job + the bounded heavy-compute tools", () => {
     // costHint: expensive on the two bounded reduce-tier tools (#130 E2b)
-    // alongside the bulk write job. namesWhere() returns them sorted.
+    // alongside the transform write job. namesWhere() returns them sorted.
     expect(costGatedToolNames()).toEqual([
-      "bulk_transform_entity_records",
       "cluster",
       "logistic_regression",
+      "transform_entity_records",
     ]);
   });
 });
@@ -69,7 +69,7 @@ describe("predicate sanity", () => {
   });
 
   it("the bulk write job declares both a lock and the cost gate", () => {
-    const cap = ALL_TOOL_CAPABILITIES.bulk_transform_entity_records;
+    const cap = ALL_TOOL_CAPABILITIES.transform_entity_records;
     expect(isCostGated(cap)).toBe(true);
     expect(entityLockKeys(cap).length).toBeGreaterThan(0);
   });

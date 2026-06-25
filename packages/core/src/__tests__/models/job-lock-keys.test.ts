@@ -37,7 +37,7 @@ describe("JOB_LOCK_KEYS / jobTypesLocking", () => {
   });
 
   it("read-only / non-locking job types declare no lock keys", () => {
-    expect(JOB_LOCK_KEYS.bulk_aggregate).toBeUndefined();
+    expect(JOB_LOCK_KEYS.sql_query).toBeUndefined();
     expect(JOB_LOCK_KEYS.file_upload_parse).toBeUndefined();
     expect(JOB_LOCK_KEYS.system_check).toBeUndefined();
   });

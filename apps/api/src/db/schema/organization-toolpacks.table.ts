@@ -60,7 +60,7 @@ export const organizationToolpacks = pgTable(
           /** Optional bulk-dispatch metadata declared by the schema
            *  endpoint (#85 Phase 4 + webhook bulkDispatch). When
            *  present, the tool is eligible for
-           *  `bulk_transform_entity_records` with
+           *  `transform_entity_records` with
            *  `expression.kind === "tool"`. */
           bulkDispatch?: {
             maxConcurrency: number;

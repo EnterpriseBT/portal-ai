@@ -48,8 +48,7 @@ import { FieldMappingCreateTool } from "../tools/field-mapping-create.tool.js";
 import { FieldMappingUpdateTool } from "../tools/field-mapping-update.tool.js";
 import { FieldMappingDeleteTool } from "../tools/field-mapping-delete.tool.js";
 import { CurrentTimeTool } from "../tools/current-time.tool.js";
-import { BulkTransformEntityRecordsTool } from "../tools/bulk-transform-entity-records.tool.js";
-import { BulkAggregateEntityRecordsTool } from "../tools/bulk-aggregate-entity-records.tool.js";
+import { TransformEntityRecordsTool } from "../tools/transform-entity-records.tool.js";
 import { resolveStationCapabilities } from "../utils/resolve-capabilities.util.js";
 import { signRequest } from "../utils/webhook-signing.util.js";
 import { assertUrlSafeToFetch } from "../utils/url-safety.util.js";
@@ -192,8 +191,7 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "field_mapping_create",
   "field_mapping_update",
   "field_mapping_delete",
-  "bulk_aggregate_records",
-  "bulk_transform_entity_records",
+  "transform_entity_records",
 ]);
 
 export class ToolService {
@@ -393,7 +391,7 @@ export class ToolService {
     /**
      * Portal id whose context owns this tools record. Threaded through
      * to tools that need to bind themselves to the calling portal
-     * session (`bulk_transform_entity_records` is the first such tool;
+     * session (`transform_entity_records` is the first such tool;
      * its terminal hook needs to know which portal to notify on job
      * completion). Optional for back-compat with non-portal callers
      * (tests, scratch scripts); production always supplies it.
@@ -467,10 +465,6 @@ export class ToolService {
         organizationId,
         userId,
         portalId
-      );
-      tools.bulk_aggregate_records = new BulkAggregateEntityRecordsTool().build(
-        organizationId,
-        userId
       );
       tools.display_entity_records = new DisplayEntityRecordsTool().build(
         stationId,
@@ -595,11 +589,11 @@ export class ToolService {
         organizationId,
         userId
       );
-      // bulk_transform_entity_records: only registered when portalId
+      // transform_entity_records: only registered when portalId
       // is known (production callers always supply it).
       if (portalId) {
-        tools.bulk_transform_entity_records =
-          new BulkTransformEntityRecordsTool().build(
+        tools.transform_entity_records =
+          new TransformEntityRecordsTool().build(
             portalId,
             stationId,
             organizationId,

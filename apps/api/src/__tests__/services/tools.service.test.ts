@@ -723,10 +723,9 @@ describe("built-in tool registry consistency (#115)", () => {
       }
     }
 
-    // Sanity: the three tools that previously drifted are present.
+    // Sanity: the tools that previously drifted are present.
     expect(tools.display_entity_records).toBeDefined();
-    expect(tools.bulk_aggregate_records).toBeDefined();
-    expect(tools.bulk_transform_entity_records).toBeDefined();
+    expect(tools.transform_entity_records).toBeDefined();
   });
 
   it("BUILTIN_TOOL_NAMES equals the descriptor tool set plus the system tools", () => {

@@ -198,7 +198,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     // shape; recognize it and act accordingly.
     lines.push(
       "When the user asks to retry failed records from a previous bulk_transform job, " +
-        "call `bulk_transform_entity_records` again with the same source, target, " +
+        "call `transform_entity_records` again with the same source, target, " +
         "expression, and keyField — but add a `sourceFilter.whereSqlFragment` that " +
         "scopes the source-side scan to the failed source keys " +
         "(e.g. `\"c_parcel_id IN ('p-99','p-499','p-999')\"`). Do not re-run the " +
