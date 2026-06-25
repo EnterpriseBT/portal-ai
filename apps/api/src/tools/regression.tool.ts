@@ -48,8 +48,10 @@ export class RegressionTool extends Tool<typeof InputSchema> {
   description =
     "Perform linear, multivariate-linear, or polynomial regression over a dataset you provide. " +
     "Pass a `queryHandle` from sql_query (or inline `rows`) plus the column names. " +
-    "Returns coefficients, R-squared, residuals, standard errors, t-statistics, " +
-    "p-values, and confidence intervals on each coefficient.";
+    "Returns coefficients, a parallel `direction` array (increasing/decreasing/flat per " +
+    "coefficient), R-squared, residuals, standard errors, t-statistics, p-values, and " +
+    "confidence intervals on each coefficient. Report a trend's direction from the " +
+    "`direction` field — do not infer it from the coefficient's sign yourself.";
 
   get schema() {
     return InputSchema;

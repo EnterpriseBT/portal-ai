@@ -1150,6 +1150,28 @@ describe("AnalyticsService", () => {
       expect(result.coefficients).toHaveLength(2); // [intercept, slope]
       expect(result.coefficients[1]).toBeCloseTo(2.0, 0);
       expect(result.rSquared).toBeGreaterThan(0.99);
+      // #155: rising slope's direction reads "increasing", parallel to coefficients
+      expect(result.direction).toHaveLength(result.coefficients.length);
+      expect(result.direction[1]).toBe("increasing");
+    });
+
+    it("labels a declining series 'decreasing' in direction (#155)", () => {
+      // y = -3x + 10 — the exact failure mode: a declining trend the agent
+      // narrated as "growing". `direction` must report the sign, not a guess.
+      const records = Array.from({ length: 10 }, (_, i) => ({
+        x: i,
+        y: -3 * i + 10,
+      }));
+
+      const result = AnalyticsService.regression({
+        records,
+        x: "x",
+        y: "y",
+        type: "linear",
+      });
+
+      expect(result.coefficients[1]).toBeLessThan(0);
+      expect(result.direction[1]).toBe("decreasing");
     });
 
     it("should compute polynomial regression", () => {

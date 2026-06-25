@@ -116,8 +116,23 @@ export interface DescribeColumnResult {
   percentiles?: Record<string, number>;
 }
 
+/** Human-facing direction of a signed quantity (#155). Consumers read this
+ *  off the result instead of reconstructing direction from a number's sign. */
+export type TrendDirection = "increasing" | "decreasing" | "flat";
+
+/** Map a signed value to its direction, with a small dead-zone for "flat". */
+function trendDirection(x: number): TrendDirection {
+  const EPS = 1e-9;
+  return x > EPS ? "increasing" : x < -EPS ? "decreasing" : "flat";
+}
+
 export interface RegressionResult {
   coefficients: number[];
+  /** Per-coefficient direction of effect, parallel to `coefficients` (#155):
+   *  positive → "increasing", negative → "decreasing", ~0 → "flat". Report
+   *  the slope's direction from here rather than inferring it from the sign
+   *  of the number. (Index 0 is the intercept.) */
+  direction: TrendDirection[];
   rSquared: number;
   residuals: number[];
   standardErrors: number[];
@@ -999,6 +1014,7 @@ export class AnalyticsService {
 
     return {
       coefficients,
+      direction: coefficients.map(trendDirection),
       rSquared,
       residuals,
       standardErrors,
