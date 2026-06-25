@@ -185,33 +185,6 @@ const DATA_QUERY_PACK: BuiltinToolpackSpec = {
       ],
     },
     {
-      name: "bulk_aggregate_records",
-      description:
-        "Compute a single aggregate value (or a small grouped object) across ALL matching records of a source entity, asynchronously, without writing anything. Use for 'how many / total / average / min / max' questions over large datasets where an inline sql_query would be too slow. Returns `{ result, recordsProcessed, durationMs }`.",
-      parameterSchema: objectSchema(
-        {
-          sourceConnectorEntityId: stringField(
-            "The source entity whose records are aggregated."
-          ),
-          expression: stringField(
-            "SQL aggregate projection over the source's wide columns (`c_*`), e.g. \"COUNT(*) AS total\" or \"SUM(c_area) AS total, AVG(c_age) AS avg_age\"."
-          ),
-          sourceFilter: {
-            type: "object",
-            description:
-              "Optional filter on the source rows before aggregating.",
-            properties: {
-              whereSqlFragment: stringField(
-                "SQL WHERE fragment scoping which rows are aggregated."
-              ),
-            },
-            required: ["whereSqlFragment"],
-          },
-        },
-        ["sourceConnectorEntityId", "expression"]
-      ),
-    },
-    {
       name: "display_entity_records",
       description:
         "Render every record of an entity as a single live table widget for the user. Use for 'show / display / list' requests regardless of row count; rows stream through a query-handle and the UI renders them in one hydrating table. For analytical work (filters, joins, aggregations) use `sql_query` instead.",
@@ -1053,7 +1026,6 @@ const entityWrite = (writes: string[], locks: string[]): ToolCapability => ({
 const CAPABILITIES: Record<string, ToolCapability> = {
   // data_query
   sql_query: engineRead("data-table", "scan"),
-  bulk_aggregate_records: engineRead("scalar", "reduce"),
   display_entity_records: engineRead("data-table", "scan"),
   visualize: engineRead("vega-lite", "visualize"),
   visualize_tree: engineRead("vega", "visualize"),

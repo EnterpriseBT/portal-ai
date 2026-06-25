@@ -49,7 +49,6 @@ import { FieldMappingUpdateTool } from "../tools/field-mapping-update.tool.js";
 import { FieldMappingDeleteTool } from "../tools/field-mapping-delete.tool.js";
 import { CurrentTimeTool } from "../tools/current-time.tool.js";
 import { TransformEntityRecordsTool } from "../tools/transform-entity-records.tool.js";
-import { BulkAggregateEntityRecordsTool } from "../tools/bulk-aggregate-entity-records.tool.js";
 import { resolveStationCapabilities } from "../utils/resolve-capabilities.util.js";
 import { signRequest } from "../utils/webhook-signing.util.js";
 import { assertUrlSafeToFetch } from "../utils/url-safety.util.js";
@@ -192,7 +191,6 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "field_mapping_create",
   "field_mapping_update",
   "field_mapping_delete",
-  "bulk_aggregate_records",
   "transform_entity_records",
 ]);
 
@@ -467,10 +465,6 @@ export class ToolService {
         organizationId,
         userId,
         portalId
-      );
-      tools.bulk_aggregate_records = new BulkAggregateEntityRecordsTool().build(
-        organizationId,
-        userId
       );
       tools.display_entity_records = new DisplayEntityRecordsTool().build(
         stationId,
