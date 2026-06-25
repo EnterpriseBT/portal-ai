@@ -94,8 +94,45 @@ export interface StationData {
   entityGroups: EntityGroupContext[];
 }
 
+export interface DescribeColumnResult {
+  count: number;
+  mean: number;
+  median: number;
+  stddev: number;
+  /** Sample variance (n-1 divisor). */
+  variance: number;
+  /** Smallest value tied for highest frequency. */
+  mode: number;
+  min: number;
+  max: number;
+  p25: number;
+  p75: number;
+  /** Inter-quartile range: p75 - p25. */
+  iqr: number;
+  skewness: number;
+  /** Excess kurtosis (≈ 0 for normal, < 0 for uniform/platykurtic). */
+  kurtosis: number;
+  /** Optional map of arbitrary percentiles, keyed by the input number stringified. */
+  percentiles?: Record<string, number>;
+}
+
+/** Human-facing direction of a signed quantity (#155). Consumers read this
+ *  off the result instead of reconstructing direction from a number's sign. */
+export type TrendDirection = "increasing" | "decreasing" | "flat";
+
+/** Map a signed value to its direction, with a small dead-zone for "flat". */
+function trendDirection(x: number): TrendDirection {
+  const EPS = 1e-9;
+  return x > EPS ? "increasing" : x < -EPS ? "decreasing" : "flat";
+}
+
 export interface RegressionResult {
   coefficients: number[];
+  /** Per-coefficient direction of effect, parallel to `coefficients` (#155):
+   *  positive → "increasing", negative → "decreasing", ~0 → "flat". Report
+   *  the slope's direction from here rather than inferring it from the sign
+   *  of the number. (Index 0 is the intercept.) */
+  direction: TrendDirection[];
   rSquared: number;
   /** Per-row residuals (y − ŷ). Present on the in-memory path; **omitted on
    *  the engine-pushdown path** (#130 E2c) — an N-length array can't come
@@ -795,6 +832,7 @@ export class AnalyticsService {
 
     return {
       coefficients,
+      direction: coefficients.map(trendDirection),
       rSquared,
       residuals,
       standardErrors,
@@ -948,6 +986,7 @@ export class AnalyticsService {
     // residuals omitted on the pushdown path.
     return {
       coefficients,
+      direction: coefficients.map(trendDirection),
       rSquared,
       standardErrors,
       tStatistics,

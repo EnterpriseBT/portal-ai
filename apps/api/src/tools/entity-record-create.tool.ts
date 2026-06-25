@@ -73,6 +73,29 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
             try {
               await assertStationScope(stationId, connectorEntityId);
               await assertWriteCapability(connectorEntityId);
+
+              // #154: refuse to write to an entity with ZERO field mappings.
+              // Such records can't be projected into the wide table, so
+              // sql_query / display_entity_records never see them (silent
+              // "ghost" rows). Scoped to zero mappings so the legitimate
+              // "mappings exist, wide table not yet reconciled" case still
+              // proceeds (the wide-table mirror below already defers that).
+              const mappingCount =
+                await DbService.repository.fieldMappings.countByConnectorEntityIds(
+                  [connectorEntityId]
+                );
+              if (mappingCount === 0) {
+                for (const item of groups.get(connectorEntityId)!) {
+                  failures.push({
+                    index: items.indexOf(item),
+                    error:
+                      "Entity has no field mappings, so its records would not be " +
+                      "queryable. Create field mappings with field_mapping_create " +
+                      "(pick a columnDefinitionId from station_context.columnDefinitions) " +
+                      "before creating records.",
+                  });
+                }
+              }
             } catch (err: any) {
               const groupItems = groups.get(connectorEntityId)!;
               for (const item of groupItems) {
