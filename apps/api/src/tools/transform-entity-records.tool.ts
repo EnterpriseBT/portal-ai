@@ -20,7 +20,7 @@ import {
 import { createLogger } from "../utils/logger.util.js";
 import { MAX_BULK_RECORDS } from "@portalai/core/constants";
 
-const logger = createLogger({ module: "bulk-transform-entity-records-tool" });
+const logger = createLogger({ module: "transform-entity-records-tool" });
 
 const ValueFromSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("tool_result") }),
@@ -228,9 +228,9 @@ function toEnvelope(err: unknown): Record<string, unknown> {
   };
 }
 
-export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
-  slug = "bulk_transform_entity_records";
-  name = "Bulk Transform Entity Records";
+export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
+  slug = "transform_entity_records";
+  name = "Transform Entity Records";
   description =
     "Run a per-record transform across a source entity and upsert the results into a target entity. " +
     "Use this for high-cardinality writes (≥100 records) where calling `entity_record_create` " +
@@ -246,14 +246,14 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
     "Worked example — user prompts \"Run nasa_diameter_avg_expensive against every NEO\":\n\n" +
     "  Good (two turns, user confirms in between):\n" +
     "    Turn 1 (your turn):\n" +
-    "      [bulk_transform_entity_records — NO acknowledgeCost field at all]\n" +
+    "      [transform_entity_records — NO acknowledgeCost field at all]\n" +
     "      → API returns BULK_DISPATCH_COST_NOT_ACKNOWLEDGED with the cost estimate\n" +
     "      You say: \"This tool is declared expensive. With 10,299 records at 50ms each over\n" +
     "       10 concurrent calls, it'll take ~52 seconds. Should I proceed?\"\n" +
     "      [you stop — no more tool calls this turn]\n\n" +
     "    Turn 2 (user's turn): \"yes, proceed\"\n\n" +
     "    Turn 3 (your turn):\n" +
-    "      [bulk_transform_entity_records with acknowledgeCost: true]\n\n" +
+    "      [transform_entity_records with acknowledgeCost: true]\n\n" +
     "  Bad (skipping the user's turn):\n" +
     "    Turn 1:\n" +
     "      [tool call without acknowledgeCost]\n" +
@@ -747,7 +747,7 @@ export class BulkTransformEntityRecordsTool extends Tool<typeof InputSchema> {
               expectedRecords,
               batchSize,
             },
-            "bulk_transform_entity_records enqueued"
+            "transform_entity_records enqueued"
           );
 
           return {

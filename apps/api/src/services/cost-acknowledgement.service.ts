@@ -2,7 +2,7 @@
  * Server-side enforcement of the bulk_transform expensive-tool
  * confirmation gate (#85 §4b).
  *
- * The agent's `acknowledgeCost: true` on `bulk_transform_entity_records`
+ * The agent's `acknowledgeCost: true` on `transform_entity_records`
  * is meaningless unless the user actually consented. Prompt
  * instructions to the agent — "ask first, wait for their reply, then
  * retry" — are unreliable; the agent has bypassed every version. This

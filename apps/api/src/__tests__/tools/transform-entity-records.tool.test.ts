@@ -121,8 +121,8 @@ jest.unstable_mockModule("../../services/wide-table-statement.cache.js", () => (
   wideTableStatementCache: { get: mockWideTableStatementCacheGet },
 }));
 
-const { BulkTransformEntityRecordsTool } = await import(
-  "../../tools/bulk-transform-entity-records.tool.js"
+const { TransformEntityRecordsTool } = await import(
+  "../../tools/transform-entity-records.tool.js"
 );
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 const { ApiError } = await import("../../services/http.service.js");
@@ -163,7 +163,7 @@ const toolWrite = (column: string) => ({
 });
 
 function buildTool() {
-  return new BulkTransformEntityRecordsTool().build(
+  return new TransformEntityRecordsTool().build(
     PORTAL_ID,
     STATION_ID,
     ORG_ID,
@@ -183,7 +183,7 @@ async function exec(input: Record<string, unknown> = VALID_INPUT) {
 
 // ── Tests ────────────────────────────────────────────────────────────
 
-describe("BulkTransformEntityRecordsTool — pre-flight", () => {
+describe("TransformEntityRecordsTool — pre-flight", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFindEntityById.mockReset();

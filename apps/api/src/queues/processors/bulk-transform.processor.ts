@@ -119,7 +119,7 @@ async function runToolDispatchLoop(
 ): Promise<BulkTransformResult> {
   const startedAt = Date.now();
   // Both ids are persisted into the job metadata by
-  // bulk_transform_entity_records.tool. A missing stationId was a
+  // transform_entity_records.tool. A missing stationId was a
   // silent footgun: the worker would call lookupBulkDispatchable
   // with stationId="" and the org-toolpack scan would find no
   // attached packs → BULK_DISPATCH_TOOL_NOT_FOUND, even though the

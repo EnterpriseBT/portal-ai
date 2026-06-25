@@ -212,7 +212,7 @@ export const BulkFailuresTableBlock: React.FC<BulkFailuresTableBlockProps> = ({
 }) => {
   // Retry is chat-driven (#85 Phase 4 spec § Retry-failed-only): we
   // POST a synthetic user message naming the failed source keys, the
-  // agent reads it + re-dispatches bulk_transform_entity_records with
+  // agent reads it + re-dispatches transform_entity_records with
   // a sourceFilter scoped to those keys. We rely on the route param
   // for portalId — failures table is always mounted inside a portal
   // session view.
@@ -227,7 +227,7 @@ export const BulkFailuresTableBlock: React.FC<BulkFailuresTableBlockProps> = ({
     const message =
       `Retry the failed records from job ${content.jobId}. ` +
       `The failed source keys are: ${failedKeys.join(", ")}. ` +
-      `Call bulk_transform_entity_records again with the same expression ` +
+      `Call transform_entity_records again with the same expression ` +
       `and a sourceFilter.whereSqlFragment that scopes to these keys.`;
     sendMessage.mutate({ message } as never);
   };

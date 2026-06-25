@@ -68,7 +68,7 @@ export interface ToolpackTool {
   parameterSchema: Record<string, unknown>;
   examples?: ToolpackToolExample[];
   /** Opt-in: declares the tool can be bulk-dispatched per-record by
-   *  `bulk_transform_entity_records`. Tools without this field are
+   *  `transform_entity_records`. Tools without this field are
    *  rejected from the tool-kind dispatch route. */
   bulkDispatch?: BulkDispatchMetadata;
   /** Declared capability metadata — the taxonomy substrate (#121).
@@ -899,7 +899,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
       ),
     },
     {
-      name: "bulk_transform_entity_records",
+      name: "transform_entity_records",
       description:
         "Run a per-record transform across a source entity and upsert the results into one or more target entities, asynchronously. Use for high-cardinality writes (≥100 records) where calling `entity_record_create` in a loop would exhaust the agent's context. Returns a jobId and ETA; the run is tracked as a job and the entity is locked until it completes. Expensive tool dispatches require `acknowledgeCost: true`.",
       parameterSchema: objectSchema(
@@ -1135,7 +1135,7 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   field_mapping_update: entityWrite(["field_mappings"], ["connectorEntityId"]),
   field_mapping_delete: entityWrite(["field_mappings"], ["connectorEntityId"]),
   // entity_management — async bulk write job (per-record map dispatch)
-  bulk_transform_entity_records: {
+  transform_entity_records: {
     pure: false,
     reads: ["entity_records"],
     writes: ["entity_records"],

@@ -175,7 +175,7 @@ const NEO_PARAM_SCHEMA = {
 const NEO_TOOL_DESC =
   "Compute the diameter midpoint (km) for one NEO record. Returns " +
   "a single numeric value (the midpoint). The caller decides what to " +
-  "do with it — for bulk_transform_entity_records, supply a `writes` " +
+  "do with it — for transform_entity_records, supply a `writes` " +
   "entry with `valueFrom: { kind: 'tool_result' }` to land the value " +
   "in a wide-column on the target.";
 
@@ -378,7 +378,7 @@ async function stageResult(
 function neoDiameterAvg(input: Record<string, unknown>): number {
   // Tools are pure functions — return the value, not a target-shaped
   // record. The agent decides which wide-column receives it via
-  // `bulk_transform_entity_records`' `targetColumn` parameter.
+  // `transform_entity_records`' `targetColumn` parameter.
   const min = Number(input.c_diameter_km_min);
   const max = Number(input.c_diameter_km_max);
   if (!Number.isFinite(min) || !Number.isFinite(max)) {
