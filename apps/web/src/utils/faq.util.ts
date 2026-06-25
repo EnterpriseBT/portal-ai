@@ -85,6 +85,13 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     ],
   },
   {
+    question: "Why don't records the assistant created show up when I query them?",
+    answer:
+      "A record is only queryable once a field mapping projects its fields into the entity's columns — records written with unmapped fields stay invisible to queries and tables. When you ask the assistant to create data on a new entity, it now reads your organization's column-definition catalog, maps the columns first (creating field mappings), and only then writes records. If a column it needs has no matching definition, it will tell you rather than write data that can't be read back. To fix older invisible records, add the field mappings for their columns, then re-create or re-sync.",
+    category: FAQCategory.Data,
+    relatedGlossaryTerms: ["Field Mapping", "Column Definition", "Entity Record"],
+  },
+  {
     question: "How do I validate my data?",
     answer:
       'Validation is driven by your column definitions: each one can declare a data type and a regex validation pattern. When records are synced or written, those rules run automatically — invalid records are flagged so you can fix them. Use "Re-validate" on an entity to re-run the rules across all records.',

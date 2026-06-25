@@ -6,12 +6,14 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockFindStationById = jest.fn<() => Promise<unknown>>();
 const mockFindOrgById = jest.fn<() => Promise<unknown>>();
+const mockFindColumnDefs = jest.fn<() => Promise<unknown[]>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       stations: { findById: mockFindStationById },
       organizations: { findById: mockFindOrgById },
+      columnDefinitions: { findByOrganizationId: mockFindColumnDefs },
     },
   },
 }));
@@ -158,6 +160,22 @@ describe("StationContextTool", () => {
     mockResolveEntityCapabilities.mockResolvedValue({
       "ent-parcels": { read: true, write: true, push: false },
     });
+    mockFindColumnDefs.mockResolvedValue([
+      {
+        id: "cd-id",
+        key: "id",
+        label: "ID",
+        type: "number",
+        description: "Primary identifier",
+      },
+      {
+        id: "cd-email",
+        key: "email",
+        label: "Email",
+        type: "string",
+        description: null,
+      },
+    ]);
   });
 
   it("returns the station header plus all sections by default", async () => {
@@ -166,6 +184,7 @@ describe("StationContextTool", () => {
       entities: unknown[];
       connectorInstances: unknown[];
       entityGroups: unknown[];
+      columnDefinitions: unknown[];
     };
 
     expect(result.station).toEqual({
@@ -176,6 +195,43 @@ describe("StationContextTool", () => {
     expect(result.entities).toHaveLength(2);
     expect(result.connectorInstances).toHaveLength(1);
     expect(result.entityGroups).toHaveLength(1);
+    expect(result.columnDefinitions).toHaveLength(2);
+  });
+
+  it("returns the org column-definition catalog (#154)", async () => {
+    const result = (await exec({ include: ["columnDefinitions"] })) as {
+      columnDefinitions: Array<{
+        columnDefinitionId: string;
+        key: string;
+        label: string;
+        type: string;
+        description: string | null;
+      }>;
+      entities?: unknown;
+      connectorInstances?: unknown;
+    };
+
+    expect(mockFindColumnDefs).toHaveBeenCalledWith(ORG_ID);
+    // Maps id → columnDefinitionId; carries key/label/type/description.
+    expect(result.columnDefinitions).toEqual([
+      {
+        columnDefinitionId: "cd-id",
+        key: "id",
+        label: "ID",
+        type: "number",
+        description: "Primary identifier",
+      },
+      {
+        columnDefinitionId: "cd-email",
+        key: "email",
+        label: "Email",
+        type: "string",
+        description: null,
+      },
+    ]);
+    // include-scoping: other sections omitted.
+    expect(result.entities).toBeUndefined();
+    expect(result.connectorInstances).toBeUndefined();
   });
 
   it("attaches wideColumnName per column from the wide-table cache", async () => {

@@ -74,7 +74,7 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
   slug = "field_mapping_create";
   name = "Field Mapping Create Tool";
   description =
-    "Creates or updates one or more field mappings between source fields and column definitions. Accepts 1–100 items.";
+    "Creates or updates one or more field mappings between source fields and column definitions. Accepts 1–100 items. Get valid `columnDefinitionId`s from `station_context` (the `columnDefinitions` catalog) — map an entity's columns here before creating records, or those records won't be queryable.";
 
   get schema() {
     return InputSchema;

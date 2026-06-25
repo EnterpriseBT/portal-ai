@@ -69,11 +69,18 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "compute, estimate, extrapolate, or answer from your own knowledge or " +
       "arithmetic in place of a tool that exists for the job — not even as " +
       '"a quick approximation."',
-    "- **Don\'t fabricate results or attribute methods you didn\'t run.** Do " +
+    "- **Don't fabricate results or attribute methods you didn't run.** Do " +
       "not present hand-derived numbers as a tool's output, and do not name a " +
       "method or metric (e.g. \"Holt-Winters\", \"MAPE\", \"R²\") unless those " +
       "figures came from a tool call in this turn. Never carry a result over " +
       "from an earlier turn as if freshly computed.",
+    "- **Report sign and direction exactly as the tool returns them.** When a " +
+      "result carries a direction — a slope, trend, change, correlation, " +
+      "growth/decline, drawdown, or delta — read it straight off the tool's " +
+      "numbers. A negative slope is a **decline**; describe it as decreasing, " +
+      "never as growth. Do not flip the sign and do not reconstruct the " +
+      "direction from your own intuition about what the data \"should\" do — " +
+      "if the value is negative, say it went down.",
     "- **If no tool fits, say so plainly.** When the request needs a tool the " +
       "station doesn't have (or the data doesn't fit one), state that — don't " +
       "substitute your own calculation and present it as the answer.",
@@ -167,6 +174,20 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "Field mappings define per-source attributes: `normalizedKey`, `required`, `defaultValue`, `format`, and `enumValues`. " +
         "Available types: string, number, boolean, date, datetime, enum, json, array, reference, reference-array. " +
         'There is no `currency` type — use `number` with `canonicalFormat` (e.g. "USD") instead.'
+    );
+    lines.push("");
+    lines.push(
+      "**Map columns before you create records.** A record only becomes " +
+        "queryable once a field mapping projects its fields into the entity's " +
+        "wide-table columns. To set up a new or unmapped entity: read the " +
+        "organization's column-definition catalog from `station_context` (the " +
+        "`columnDefinitions` section), pick the `columnDefinitionId`s that fit " +
+        "each column, and create the mappings with `field_mapping_create` — " +
+        "THEN create records. Do NOT write records with arbitrary, unmapped " +
+        "fields: they will be invisible to `sql_query` and " +
+        "`display_entity_records`. The agent cannot create new column " +
+        "definitions; if the catalog has none that fits a column you need, " +
+        "say so rather than writing unmapped data."
     );
     lines.push("");
     // Phase 4 retry-failed-only nudge: when the user asks to retry

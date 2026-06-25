@@ -40,12 +40,15 @@ const InputSchema = z.object({
         "connectorInstances",
         "entityGroups",
         "capabilities",
+        "columnDefinitions",
       ])
     )
     .optional()
     .describe(
       "Which top-level sections to include. Omit to include all. " +
-        "Pass `['entities']` when you only need entity schema and want a smaller response."
+        "Pass `['entities']` when you only need entity schema and want a smaller response. " +
+        "Pass `['columnDefinitions']` to get the organization's column-definition catalog " +
+        "(the `columnDefinitionId`s available to `field_mapping_create`)."
     ),
 });
 
@@ -90,6 +93,21 @@ interface StationContextResponse {
       isPrimary: boolean;
     }>;
   }>;
+  /**
+   * The organization's column-definition catalog — the admin-curated set
+   * of columns the agent maps to. `field_mapping_create` takes a
+   * `columnDefinitionId` from this list; the agent has no
+   * `column_definition_create` tool, so when a needed column isn't here it
+   * surfaces the gap rather than inventing one. Distinct from an entity's
+   * `columns` (which are the definitions already bound to that entity).
+   */
+  columnDefinitions?: Array<{
+    columnDefinitionId: string;
+    key: string;
+    label: string;
+    type: string;
+    description: string | null;
+  }>;
 }
 
 export class StationContextTool extends Tool<typeof InputSchema> {
@@ -100,12 +118,17 @@ export class StationContextTool extends Tool<typeof InputSchema> {
     "current station: entities (with `connectorEntityId`, `[read,write,push]` " +
     "capabilities, and every column's `key` / `wideColumnName` / " +
     "`columnDefinitionId` / `fieldMappingId` / `sourceField`), connector " +
-    "instances (with `connectorInstanceId`), and entity groups. **Call this " +
-    "before any tool that asks for a `connectorEntityId`, " +
-    "`connectorInstanceId`, `columnDefinitionId`, `fieldMappingId`, or " +
-    "wide-column name** — do not invent values, do not ask the user, and " +
-    "do not rely on the static `## Available Data` block for ids. Pass " +
-    "`entityKeys: ['<key>']` when you only need one entity's schema.";
+    "instances (with `connectorInstanceId`), entity groups, and the " +
+    "organization's `columnDefinitions` catalog (the `columnDefinitionId`s " +
+    "available to `field_mapping_create`). **Call this before any tool that " +
+    "asks for a `connectorEntityId`, `connectorInstanceId`, " +
+    "`columnDefinitionId`, `fieldMappingId`, or wide-column name** — do not " +
+    "invent values, do not ask the user, and do not rely on the static " +
+    "`## Available Data` block for ids. To map a new column onto an entity, " +
+    "pick a `columnDefinitionId` from `columnDefinitions` and pass it to " +
+    "`field_mapping_create`; if no definition fits, say so rather than " +
+    "guessing. Pass `entityKeys: ['<key>']` when you only need one entity's " +
+    "schema.";
 
   get schema() {
     return InputSchema;
@@ -123,6 +146,7 @@ export class StationContextTool extends Tool<typeof InputSchema> {
             "connectorInstances",
             "entityGroups",
             "capabilities",
+            "columnDefinitions",
           ]
         );
 
@@ -220,6 +244,25 @@ export class StationContextTool extends Tool<typeof InputSchema> {
 
         if (sections.has("connectorInstances") && instances) {
           response.connectorInstances = instances;
+        }
+
+        if (sections.has("columnDefinitions")) {
+          // The org's curated column-definition catalog — the source of
+          // `columnDefinitionId`s for `field_mapping_create`. The agent maps
+          // to these (it can't create definitions), so surfacing them here
+          // lets it set up an entity's columns instead of writing unmapped
+          // records that no read path can see.
+          const defs =
+            await DbService.repository.columnDefinitions.findByOrganizationId(
+              organizationId
+            );
+          response.columnDefinitions = defs.map((d) => ({
+            columnDefinitionId: d.id,
+            key: d.key,
+            label: d.label,
+            type: d.type,
+            description: d.description ?? null,
+          }));
         }
 
         if (sections.has("entityGroups")) {
