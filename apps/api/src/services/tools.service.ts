@@ -522,7 +522,10 @@ export class ToolService {
       // sharpe_ratio / max_drawdown / rolling_returns are expressed directly
       // in `sql_query` (cumulative-product, running-max, and lag() window
       // functions) — removed from the reduce tier in #130 E2.
-      tools.technical_indicator = new TechnicalIndicatorTool().build();
+      tools.technical_indicator = new TechnicalIndicatorTool().build(
+        stationId,
+        organizationId
+      );
       tools.npv = new NpvTool().build();
       tools.irr = new IrrTool().build();
       tools.tvm = new TvmTool().build();

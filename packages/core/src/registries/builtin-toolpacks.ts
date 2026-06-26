@@ -628,7 +628,7 @@ const FINANCIAL_PACK: BuiltinToolpackSpec = {
     {
       name: "technical_indicator",
       description:
-        "Compute a technical indicator (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, OBV, Stochastic, ADX, VWAP, Williams %R, CCI, ROC, PSAR, Ichimoku Cloud, Donchian Channels) on a time series you provide.",
+        "Compute a technical indicator (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, OBV, Stochastic, ADX, VWAP, Williams %R, CCI, ROC, PSAR, Ichimoku Cloud, Donchian Channels) on a time series you provide. A small input returns the `{ dates, values }` series inline; a large query handle is folded in one ordered pass into a new query handle (a `data-table` you can chart or query further), so it scales to any row count.",
       parameterSchema: objectSchema(
         {
           ...computeSourceFields(),
@@ -1082,15 +1082,15 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   // (returns series → one scalar summary), streaming past 100k.
   portfolio_metrics: streamingReduce("scalar"),
   // technical_indicator is a per-row MAP (N rows → N aligned indicator
-  // values), not a reduce — it emits a {dates, values} series, so its
-  // resultKind is data-table, not scalar. It stays bounded(100k): a
-  // streaming map can't return its O(N) output inline; streaming it into a
-  // query handle is the follow-up (#159). (#152)
+  // values) emitting a {dates, values} series, so resultKind is data-table.
+  // It STREAMS (#159): a small input returns the series inline; a large
+  // query handle is folded in one ordered pass into a cursor-backed
+  // transform handle, so it scales to any N (no onOverflow wall).
   technical_indicator: {
     pure: true,
     reads: [],
     writes: [],
-    consumption: { mode: "bounded", maxRows: 100_000, onOverflow: "error" },
+    consumption: { mode: "streaming" },
     computeShape: "map",
     costHint: "free",
     locks: [],
