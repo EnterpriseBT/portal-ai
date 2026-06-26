@@ -40,7 +40,7 @@ production:
 - `rows` — a row set that may be large: inline ≤ `inlineThreshold` (default `INLINE_ROWS_THRESHOLD` = 100), else `onLarge`. (`sql_query`, `display_entity_records`, `visualize*`, `technical_indicator`.)
 - Refinement (mirrors `consumption`'s): `value` forbids `onLarge`/`inlineThreshold`; `rows` requires `onLarge`.
 
-**Open question (spec):** is `production` *derivable* from `resultKind` + `computeShape` (e.g. `scalar`/`mutation-result` → `value`; `data-table`/`vega*`/`geo` → `rows`), making it a computed projection rather than a new declared field? Leaning **explicit field** — `onLarge` (sample vs error vs handle) is a real per-tool policy choice `resultKind` can't carry — but the redundancy is worth resolving in spec.
+**Decided (explicit field, not derived).** `production` is a declared field, not a projection of `resultKind`/`computeShape`. `onLarge` (handle vs sample vs error) is a real per-tool policy `resultKind` can't carry, and keeping delivery explicitly declared (like `consumption`) is the symmetry the ticket is after — a tool states its output contract rather than having it inferred. `resultKind` stays render-only.
 
 ### 2. `resolveResultSink` — the mirror of `record-source.ts`
 
@@ -66,6 +66,21 @@ Generalize the `sql_query` precedent: any output mode can be produced on the job
 ### 5. Stream-to-client
 
 **Decided: not a real output mode.** Streaming raw rows into an LLM tool-caller's context is the wrong default; "stream to the user" already = "handle + the existing per-handle hydration SSE." `production` has no `stream` kind.
+
+## UI display per cardinality
+
+Delivery (`production`) and render (`resultKind`) are **orthogonal, and the existing display path already bridges them** — so `production` needs *no new UI*. `resolveDisplayBlock` (`portal.service.ts`) turns a tool result into a display block keyed by `resultKind`, and `QueryResultDataBlock` (`apps/web`) already renders inline-rows *and* handle for the same `resultKind`. What each cardinality yields:
+
+| Output | Tool result shape | `resolveDisplayBlock` | What the user sees |
+|---|---|---|---|
+| **`value`** (scalar) | the value (e.g. `{ mape, forecast }`) | `resultKind` `scalar` is **not** rendered → returns `null` (no block) | **No widget.** The agent reads the value and answers in prose. (This is the #120 fix — scalars stopped minting spurious empty data-tables.) |
+| **`rows` inline** (≤ threshold) | `{ rows: [...] }` (or an array) | `data-table` → `{ content: { columns, rows } }` | Table rendered directly from the embedded rows. For a chart `resultKind`, the rows are inlined into the Vega spec's `datasets.primary`. |
+| **`rows` handle** (> threshold) | `{ type:"data-table", queryHandle, rowCount, schema, samplePeek, … }` | `data-table` + `queryHandle` → block content is the envelope (+ `sseResult`) | `QueryResultDataBlock` detects `queryHandle` → hydrates rows via `sdk.portalSql.handleSnapshot` (paged Redis snapshot; SSE for live) → renders table or chart. **Rows never enter the agent's context.** |
+| **job-wrapped** | terminal `result` **is** a handle envelope | same as `rows` handle once terminal | `BulkJobProgressBlock` (live, by job id) while running; on completion the handle renders exactly like the handle row above. |
+
+The load-bearing point for #161: a given `resultKind` (say `data-table`) already renders **either** inline rows **or** a hydrated handle, transparently, by sniffing `queryHandle` on the result. So `resolveResultSink` only has to emit the right *shape*; the render layer is unchanged. The one deliberate non-render is `value` → prose, which is correct (a scalar like "MAPE = 0.04" belongs in the answer, not a widget).
+
+**Spec follow-through:** today the inline-vs-handle *shape* is what's sniffed; with explicit `production` the resolver picks the shape from the declaration, but `resolveDisplayBlock`/`QueryResultDataBlock` keep working as-is (they already accept both). No web change required beyond what `resultKind` routing already does (child G/H).
 
 ## Decisions
 
