@@ -89,9 +89,23 @@ The load-bearing point for #161: a given `resultKind` (say `data-table`) already
 3. **`production` ⟂ `resultKind`** — delivery vs render stay separate (pending the "derivable?" open question).
 4. **Job = wrapper, not mode.** **Stream-to-client = handle + SSE, not a mode.**
 
-## Migration (for the plan)
+## Scope split (decided)
 
-Declare `production` on every built-in tool; refactor the four sinks + `technical_indicator` (#159) onto `resolveResultSink`; add `produceFromStream`; a guard test that no tool open-codes a threshold check. #153's k-means/logistic declare `production` from the start.
+This ticket lands the **surface + documentation**, not the per-tool conversions:
+
+- **In #161:** the `production` declaration (schema + coherence refinements + custom-pack subset rule), `resolveResultSink`, `produceFromStream`, and the **documentation surface** (below). Declared on built-ins where it's free to do so, but the four sinks + `technical_indicator` keep their current working code.
+- **Follow-up ticket:** refactor the four hand-coded sinks + `technical_indicator` (#159) onto `resolveResultSink`, plus a guard test that no tool open-codes a threshold check. Filed when #161 lands.
+- #153's k-means/logistic declare `production` from the start (k-means per-point assignments → `rows`/handle; logistic coefficients → `value`).
+
+## Documentation surface (in #161)
+
+The output contract must be discoverable by both end users and custom-tool authors — the "Keeping Tool Docs & Help in Sync" convention applied to a new metadata field:
+
+- **Custom-tool authors** — `CUSTOM_TOOLPACK_INTEGRATION.md` §`capability` (currently documents `consumption`/`resultKind`) gains a `production` row + example, so a webhook author can declare their tool's output cardinality. The custom-pack subset rule (below) governs which `production` values are allowed.
+- **Registration UI helper text** — `RegisterToolpackDialog` / `ToolpackMetadataModal` (`apps/web`) reference the capability fields; add `production` so the form/modal explains what output metadata a tool declares.
+- **End users** — Help `glossary.util.ts` (a term for "inline vs. handle results" / query handle) + `faq.util.ts` (e.g. "why do some results appear inline and others as a streamed table?"), surfaced in `Help.view.tsx`.
+
+**Custom-pack subset rule for `production`** (spec to finalize): a custom tool may declare `production: value` or `production: rows`, but `onLarge: "handle"` requires the `streaming` transport (#124 pull-on-read) — minting a handle needs a re-readable source. `customToolCapabilityError` validates this alongside the existing subset checks.
 
 ## Acceptance
 
