@@ -309,6 +309,109 @@ describe("#129 streaming fold over a > HANDLE_ROW_CAP handle", () => {
       `portal-sql:handle:${envelope.queryHandle.slice(3)}:meta`
     );
   }, 30_000);
+
+  it("technical_indicator transform handle re-folds a 120k source exactly, one keyset page at a time (#159)", async () => {
+    const BATCH = 1_000;
+    const N = HANDLE_ROW_CAP + 20_000; // 120,000 — past the snapshot tier
+    const BASE = Date.UTC(2020, 0, 1);
+    const series = Array.from({ length: N }, (_, i) => ({
+      _record_id: `r-${String(i).padStart(7, "0")}`,
+      ts: new Date(BASE + i * 86_400_000).toISOString(),
+      val: 100 + 0.5 * i + (i % 7),
+    }));
+
+    // Keyset-aware mock: the source is streamed TWICE (production fold +
+    // re-fold), so a sequential counter won't do — serve pages by the
+    // `_record_id` cursor parsed from the keyset WHERE (ids are zero-padded
+    // so string order == row order). The bare produce() call (no `_cur`
+    // wrapper) returns the head + full totalCount.
+    mockRunSqlQuery.mockImplementation((async (args: { sql: string }) => {
+      const sql = args.sql;
+      if (!sql.includes('"_cur"')) {
+        return { rows: series.slice(0, BATCH), truncated: true, totalCount: N };
+      }
+      const m = sql.match(/> \('[^']*', '([^']*)'\)/);
+      const after = m ? m[1] : null;
+      const start = after
+        ? series.findIndex((r) => r._record_id > after)
+        : 0;
+      const from = start < 0 ? series.length : start;
+      return { rows: series.slice(from, from + BATCH) };
+    }) as never);
+
+    const { envelope: source } = await PortalSqlHandleService.produce({
+      stationId: "station-1",
+      organizationId: "org-1",
+      sql: 'SELECT "_record_id", "ts", "val" FROM series',
+    });
+    expect(source.rowCount).toBe(N);
+
+    const { envelope } = await PortalSqlHandleService.produceFromTransform({
+      transform: {
+        kind: "technical_indicator",
+        sourceHandle: source.queryHandle,
+        dateColumn: "ts",
+        valueColumn: "val",
+        indicator: "SMA",
+        params: { period: 14 },
+      },
+      stationId: "station-1",
+      organizationId: "org-1",
+    });
+
+    // SMA(14) over N points → N-13 outputs; snapshot partial (> cap),
+    // full series recoverable via the cursor re-fold.
+    expect(envelope.rowCount).toBe(N - 13);
+    expect(envelope.rowCount).toBeGreaterThan(HANDLE_ROW_CAP);
+    expect(envelope.truncated).toBe(true);
+    expect(envelope.sql).toBeNull();
+
+    // Re-fold the full series via the cursor and compare to the array oracle.
+    const oracle = AnalyticsService.technicalIndicator({
+      records: series,
+      dateColumn: "ts",
+      valueColumn: "val",
+      indicator: "SMA",
+      params: { period: 14 },
+    });
+    let folded = 0;
+    let lastVal = 0;
+    for await (const batch of PortalSqlHandleService.streamHandle(
+      envelope.queryHandle,
+      "ts"
+    )) {
+      for (const row of batch) {
+        expect(row.value as number).toBeCloseTo(
+          oracle.values[folded] as number,
+          6
+        );
+        lastVal = row.value as number;
+        folded += 1;
+      }
+    }
+    expect(folded).toBe(oracle.values.length);
+    expect(lastVal).toBeCloseTo(
+      oracle.values[oracle.values.length - 1] as number,
+      6
+    );
+
+    // Streamed one keyset page at a time — the source is re-read in BATCH
+    // pages, never one big materialization.
+    const calls = mockRunSqlQuery.mock.calls as unknown as Array<
+      [{ sql: string; rowCap?: number }]
+    >;
+    const keysetCalls = calls.filter((c) =>
+      /ORDER BY "ts" ASC, "_record_id" ASC LIMIT 1000/.test(c[0].sql)
+    );
+    expect(keysetCalls.every((c) => c[0].rowCap === BATCH)).toBe(true);
+
+    await getRedisClient().del(
+      `portal-sql:handle:${source.queryHandle.slice(3)}:meta`
+    );
+    await getRedisClient().del(
+      `portal-sql:handle:${envelope.queryHandle.slice(3)}:meta`
+    );
+  }, 30_000);
 });
 
 /**
