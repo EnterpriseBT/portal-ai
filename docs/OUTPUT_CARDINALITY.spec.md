@@ -95,11 +95,6 @@ The per-tool conversions: refactor the four sinks (`sql_query`, `display_entity_
 - `produceFromStream` stages a snapshot handle from an async row stream without caller-side materialization.
 - A custom tool declaring `rows` + `onLarge: handle` without `streaming` is rejected at registration with a clear reason; the integration guide, registration UI, and Help all document `production`.
 
-## Plan slices (TDD)
+## Plan
 
-1. `ProductionSchema` + the field on `ToolCapability` + coherence refinements + backfill every built-in capability; coherence suite green.
-2. `produceFromStream` on the handle service (unit-tested, Map-backed Redis fake).
-3. `resolveResultSink` resolver (unit-tested across value / rows-inline / rows-handle / transform / onLarge variants).
-4. Custom-pack subset rule in `customToolCapabilityError` + registration validation test.
-5. Docs: integration guide, registration UI helper text, Help glossary/faq (+ their tests).
-6. File the per-tool migration follow-up ticket.
+Phased TDD slices in `docs/OUTPUT_CARDINALITY.plan.md` (declaration+backfill → `produceFromStream` → `resolveResultSink` → custom-pack subset rule → documentation → file the migration follow-up).
