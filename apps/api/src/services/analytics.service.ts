@@ -2481,6 +2481,189 @@ export class AnalyticsService {
   }
 
   /**
+   * Streaming portfolio_metrics (#152) — the single-pass fold equivalent of
+   * {@link portfolioMetrics}, exact at any N over an ordered cursor (#129) so
+   * a long returns series never hits `COMPUTE_INPUT_TOO_LARGE`.
+   *
+   * Every metric reduces to bounded online state:
+   *  - total return / max drawdown: the running wealth product + running peak
+   *    — order-sensitive, so the caller streams in chronological order (the
+   *    tool's `dateColumn`); exact byte-for-byte vs the array path given the
+   *    same order.
+   *  - Sortino: running sum of returns (→ mean) + a downside-square sum.
+   *  - benchmark-relative (beta/alpha/tracking error/information ratio): a
+   *    Welford online co-moment over the position-aligned (return, benchmark)
+   *    pairs — numerically stable, matching the two-pass sample stats.
+   *  - up/down capture: running sums of the paired returns split by the sign
+   *    of the benchmark (mean(upR)/mean(upB) collapses to ΣupR/ΣupB).
+   *
+   * The benchmark is a SECOND ordered stream aligned by valid position — the
+   * k-th numeric return pairs with the k-th numeric benchmark return, exactly
+   * as the array path's index alignment does (lengths must match).
+   */
+  static async portfolioMetricsFromStream(
+    returnBatches: AsyncIterable<Record<string, unknown>[]>,
+    benchmarkBatches: AsyncIterable<Record<string, unknown>[]> | undefined,
+    params: {
+      returnColumn: string;
+      benchmarkReturnColumn?: string;
+      riskFreeRate?: number;
+      periodicity?: "daily" | "weekly" | "monthly" | "quarterly" | "annual";
+    }
+  ): Promise<PortfolioMetricsResult> {
+    // Same valid-number predicate as extractNumericColumn — drops
+    // non-numeric / null / undefined so positions stay dense, matching the
+    // array path's filtered alignment.
+    async function* validNumeric(
+      batches: AsyncIterable<Record<string, unknown>[]>,
+      column: string
+    ): AsyncGenerator<number> {
+      for await (const batch of batches) {
+        for (const rec of batch) {
+          const raw = rec[column];
+          const v = Number(raw);
+          if (!isNaN(v) && raw !== null && raw !== undefined) yield v;
+        }
+      }
+    }
+
+    const rfr = params.riskFreeRate ?? 0;
+    const periodsPerYear = {
+      daily: 252,
+      weekly: 52,
+      monthly: 12,
+      quarterly: 4,
+      annual: 1,
+    }[params.periodicity ?? "annual"];
+    const annualize = params.periodicity !== undefined;
+
+    const hasBenchmark =
+      benchmarkBatches !== undefined && params.benchmarkReturnColumn != null;
+    const benchIt = hasBenchmark
+      ? validNumeric(benchmarkBatches!, params.benchmarkReturnColumn!)
+      : null;
+
+    // ── Returns-side accumulators (order-sensitive) ──
+    let n = 0;
+    let wealth = 1;
+    let peak = 0;
+    let mdd = 0;
+    let sumR = 0;
+    let downsideSqSum = 0;
+
+    // ── Benchmark Welford co-moments (position-aligned pairs) ──
+    let meanR = 0; // running mean of paired returns
+    let meanB = 0; // running mean of benchmark returns
+    let m2B = 0; // Σ(b - meanB)² accumulator → sample var(b)
+    let coMoment = 0; // Σ(r - meanR)(b - meanB) → sample cov(r, b)
+    let meanD = 0; // running mean of (r − b) diffs
+    let m2D = 0; // diff square accumulator → tracking error
+    let sumUpR = 0;
+    let sumUpB = 0;
+    let cntUp = 0;
+    let sumDownR = 0;
+    let sumDownB = 0;
+    let cntDown = 0;
+
+    for await (const ri of validNumeric(returnBatches, params.returnColumn)) {
+      n += 1;
+      wealth *= 1 + ri;
+      if (n === 1) peak = wealth;
+      else if (wealth > peak) peak = wealth;
+      const dd = peak === 0 ? 0 : (peak - wealth) / peak;
+      if (dd > mdd) mdd = dd;
+      sumR += ri;
+      const excess = ri - rfr;
+      if (excess < 0) downsideSqSum += excess * excess;
+
+      if (benchIt) {
+        const next = await benchIt.next();
+        if (next.done) {
+          throw new Error("benchmark length must match portfolio length");
+        }
+        const bi = next.value;
+        // Welford for var(b) + cov(r, b), incrementing on each pair.
+        const dR = ri - meanR;
+        meanR += dR / n;
+        const dB = bi - meanB;
+        meanB += dB / n;
+        m2B += dB * (bi - meanB);
+        coMoment += dR * (bi - meanB);
+        // Welford for var(r − b), the tracking-error base.
+        const di = ri - bi;
+        const dD = di - meanD;
+        meanD += dD / n;
+        m2D += dD * (di - meanD);
+        // Up/down capture split by benchmark sign.
+        if (bi > 0) {
+          sumUpR += ri;
+          sumUpB += bi;
+          cntUp += 1;
+        } else if (bi < 0) {
+          sumDownR += ri;
+          sumDownB += bi;
+          cntDown += 1;
+        }
+      }
+    }
+
+    if (benchIt) {
+      const extra = await benchIt.next();
+      if (!extra.done) {
+        throw new Error("benchmark length must match portfolio length");
+      }
+    }
+
+    if (n < 2) {
+      throw new Error("portfolio_metrics: at least 2 returns required");
+    }
+
+    const totalReturn = wealth - 1;
+    const cagr = annualize
+      ? Math.pow(1 + totalReturn, periodsPerYear / n) - 1
+      : Math.pow(1 + totalReturn, 1 / n) - 1;
+
+    const downsideDev = Math.sqrt(downsideSqSum / n);
+    const meanExcess = sumR / n - rfr;
+    let sortino = downsideDev === 0 ? 0 : meanExcess / downsideDev;
+    if (annualize) sortino *= Math.sqrt(periodsPerYear);
+
+    const calmar = mdd === 0 ? Number.POSITIVE_INFINITY : cagr / mdd;
+
+    const result: PortfolioMetricsResult = {
+      totalReturn,
+      cagr,
+      sortino,
+      calmar,
+      maxDrawdown: mdd,
+    };
+
+    if (benchIt) {
+      // Sample (n−1) variance/covariance from the Welford accumulators.
+      const varB = n > 1 ? m2B / (n - 1) : 0;
+      const beta = varB === 0 ? 0 : coMoment / m2B; // (coMoment/(n−1))/(m2B/(n−1))
+      let alpha = meanR - rfr - beta * (meanB - rfr);
+      if (annualize) alpha = Math.pow(1 + alpha, periodsPerYear) - 1;
+
+      const sdDiff = n > 1 ? Math.sqrt(m2D / (n - 1)) : 0;
+      let trackingError = sdDiff;
+      if (annualize) trackingError *= Math.sqrt(periodsPerYear);
+
+      let informationRatio = sdDiff === 0 ? 0 : meanD / sdDiff;
+      if (annualize) informationRatio *= Math.sqrt(periodsPerYear);
+
+      result.beta = beta;
+      result.alpha = alpha;
+      result.trackingError = trackingError;
+      result.informationRatio = informationRatio;
+      if (cntUp > 0 && sumUpB !== 0) result.upCapture = sumUpR / sumUpB;
+      if (cntDown > 0 && sumDownB !== 0) result.downCapture = sumDownR / sumDownB;
+    }
+
+    return result;
+  }
+
+  /**
    * Historical or parametric Value-at-Risk and Conditional VaR.
    * Returned as positive loss magnitudes — at confidence c, VaR is the
    * loss not exceeded with probability c.

@@ -3,10 +3,8 @@ import { tool } from "ai";
 
 import { AnalyticsService } from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
-import {
-  withComputeInput,
-  resolveComputeRecords,
-} from "./compute-input.util.js";
+import { withComputeInput } from "./compute-input.util.js";
+import { resolveRecordStream } from "./record-source.js";
 
 // `withComputeInput` supplies the PRIMARY data source (queryHandle / rows)
 // for the portfolio's returns. The optional benchmark is a SECOND dataset,
@@ -16,6 +14,18 @@ const InputSchema = withComputeInput({
     .string()
     .describe(
       "Column with per-period returns, decimal — 0.01 = 1% (a key in the rows)."
+    ),
+  dateColumn: z
+    .string()
+    .optional()
+    .describe(
+      "Date/period column the returns are ordered by. Total return and max drawdown are order-sensitive, so supply this to fix the chronological order. Required to stream past 100k rows (the cursor needs a declared order); without it the series is read in its existing order and capped at the in-memory limit."
+    ),
+  benchmarkDateColumn: z
+    .string()
+    .optional()
+    .describe(
+      "Date/period column ordering the benchmark series, aligned by position with the portfolio returns. Required to stream a benchmark past 100k rows."
     ),
   benchmarkQueryHandle: z
     .string()
@@ -65,8 +75,7 @@ export class PortfolioMetricsTool extends Tool<typeof InputSchema> {
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const params = this.validate(input);
-        const records = await resolveComputeRecords(params);
+        const { queryHandle, rows, ...params } = this.validate(input);
 
         const hasBenchmark =
           params.benchmarkQueryHandle != null || params.benchmarkRows != null;
@@ -75,21 +84,38 @@ export class PortfolioMetricsTool extends Tool<typeof InputSchema> {
             "benchmarkReturnColumn is required when a benchmark source is supplied"
           );
         }
-        const benchmarkRecords = hasBenchmark
-          ? await resolveComputeRecords({
-              queryHandle: params.benchmarkQueryHandle,
-              rows: params.benchmarkRows,
-            })
+
+        // Streaming reduce (#152): fold over the returns in `dateColumn`
+        // order. The cursor delivers any N a batch at a time; small
+        // inline/≤cap sources resolve to a single ordered batch — same fold.
+        // Total return and max drawdown are order-sensitive, so the order
+        // matters; the other metrics are order-independent.
+        const returnStream = resolveRecordStream(
+          { queryHandle, rows },
+          { mode: "streaming" },
+          { orderBy: params.dateColumn }
+        );
+        const benchmarkStream = hasBenchmark
+          ? resolveRecordStream(
+              {
+                queryHandle: params.benchmarkQueryHandle,
+                rows: params.benchmarkRows,
+              },
+              { mode: "streaming" },
+              { orderBy: params.benchmarkDateColumn }
+            )
           : undefined;
 
-        return AnalyticsService.portfolioMetrics({
-          records,
-          returnColumn: params.returnColumn,
-          benchmarkRecords,
-          benchmarkReturnColumn: params.benchmarkReturnColumn,
-          riskFreeRate: params.riskFreeRate,
-          periodicity: params.periodicity,
-        });
+        return AnalyticsService.portfolioMetricsFromStream(
+          returnStream,
+          benchmarkStream,
+          {
+            returnColumn: params.returnColumn,
+            benchmarkReturnColumn: params.benchmarkReturnColumn,
+            riskFreeRate: params.riskFreeRate,
+            periodicity: params.periodicity,
+          }
+        );
       },
     });
   }
