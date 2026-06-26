@@ -49,6 +49,10 @@ import { ApiError } from "./http.service.js";
 import { getRedisClient } from "../utils/redis.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import { PortalSqlService } from "./portal-sql.service.js";
+import {
+  applyTransformFold,
+  type TransformDescriptor,
+} from "./transform-fold.js";
 
 const logger = createLogger({ module: "portal-sql-handle" });
 
@@ -79,6 +83,11 @@ export interface SnapshotResult {
 export interface StoredHandleMeta extends QueryHandleEnvelope {
   _stationId: string;
   _organizationId: string;
+  /** #159: a derived "transform handle" — instead of a `sql` to re-run, its
+   *  rows are a deterministic fold over `sourceHandle`. The cursor tier
+   *  re-folds the source (via `applyTransformFold`) past the snapshot, the
+   *  same way a query handle re-runs its `sql`. Absent for plain handles. */
+  _transform?: TransformDescriptor;
 }
 
 /**
@@ -261,6 +270,81 @@ export class PortalSqlHandleService {
   }
 
   /**
+   * Stage a **transform handle** (#159): a handle whose rows are a
+   * deterministic fold over a source handle, not a materialized set. Used by
+   * per-row map tools (`technical_indicator`) whose O(N) output can't be
+   * returned inline and can't fold to a scalar.
+   *
+   * Symmetric with `produce`: one ordered pass over the source stages the
+   * first ≤ `HANDLE_ROW_CAP` output rows as the snapshot (+ SSE) and counts
+   * the full output for the envelope. Past the snapshot the cursor tier
+   * (`streamHandle`) re-folds the source — so the full series is preserved
+   * with **bounded memory** (the fold holds O(period) state; we never
+   * accumulate beyond the cap). Live only while the source handle is (shared
+   * TTL): a >cap re-fold needs the source still re-executable.
+   */
+  static async produceFromTransform(opts: {
+    transform: TransformDescriptor;
+    stationId: string;
+    organizationId: string;
+  }): Promise<{ envelope: QueryHandleEnvelope }> {
+    const handleId = `qh-${randomUUID()}`;
+    const { transform } = opts;
+
+    const sourceStream = this.streamHandle(
+      transform.sourceHandle,
+      transform.dateColumn
+    );
+    const folded = applyTransformFold(transform, sourceStream);
+
+    // Stage the first ≤ cap rows; count the rest without holding them.
+    const head: Array<Record<string, unknown>> = [];
+    let total = 0;
+    for await (const batch of folded) {
+      for (const row of batch) {
+        total += 1;
+        if (head.length < HANDLE_ROW_CAP) head.push(row);
+      }
+    }
+
+    const firstRow = head[0] as Record<string, unknown> | undefined;
+    const schema = firstRow
+      ? Object.keys(firstRow).map((name) => ({
+          name,
+          type: detectPgType(firstRow[name]),
+        }))
+      : [];
+    const sampled = total > SAMPLING_THRESHOLD;
+    const sampleSize = sampled
+      ? Math.min(head.length, SAMPLING_THRESHOLD)
+      : undefined;
+
+    const envelope: QueryHandleEnvelope = {
+      queryHandle: handleId,
+      rowCount: total,
+      schema,
+      sampled,
+      ...(sampleSize ? { sampleSize } : {}),
+      // Snapshot is partial when the full fold exceeds the cap; the rest is
+      // recoverable via the cursor re-fold (not data loss — same as `produce`).
+      truncated: head.length < total,
+      samplePeek: head.slice(0, SAMPLE_PEEK_SIZE) as Array<
+        Record<string, unknown>
+      >,
+      sql: null, // derived by folding the source — no originating query
+    };
+
+    return this.stage(
+      handleId,
+      head,
+      envelope,
+      opts.stationId,
+      opts.organizationId,
+      transform
+    );
+  }
+
+  /**
    * Persist a handle's rows + meta in Redis and broadcast the batch stream.
    * Shared by `produce` (query rows) and `produceFromRows` (#124, supplied
    * rows). The stored meta carries the station/org alongside the public
@@ -273,7 +357,8 @@ export class PortalSqlHandleService {
     rowsRaw: Array<Record<string, unknown>>,
     envelope: QueryHandleEnvelope,
     stationId: string,
-    organizationId: string
+    organizationId: string,
+    transform?: TransformDescriptor
   ): Promise<{ envelope: QueryHandleEnvelope }> {
     const redis = getRedisClient();
     const channel = streamChannelKey(handleId);
@@ -282,6 +367,7 @@ export class PortalSqlHandleService {
       ...envelope,
       _stationId: stationId,
       _organizationId: organizationId,
+      ...(transform ? { _transform: transform } : {}),
     };
     await redis.set(
       metaKey(handleId),
@@ -465,6 +551,18 @@ export class PortalSqlHandleService {
       for (let i = 0; i < all.length; i += BATCH_SIZE) {
         yield all.slice(i, i + BATCH_SIZE);
       }
+      return;
+    }
+
+    // Unbounded transform handle (#159): re-fold the source. The output is
+    // ordered by the transform's date column by construction, so it needs no
+    // keyset/tiebreaker of its own — the source's cursor drives the order.
+    if (meta._transform) {
+      const source = this.streamHandle(
+        meta._transform.sourceHandle,
+        meta._transform.dateColumn
+      );
+      yield* applyTransformFold(meta._transform, source);
       return;
     }
 
