@@ -241,6 +241,74 @@ describe("#129 streaming fold over a > HANDLE_ROW_CAP handle", () => {
       `portal-sql:handle:${envelope.queryHandle.slice(3)}:meta`
     );
   }, 30_000);
+
+  it("portfolio_metrics folds a 120k handle exactly, no COMPUTE_INPUT_TOO_LARGE, one batch at a time (#152)", async () => {
+    const BATCH = 1_000; // streamHandle's page size
+    const N = HANDLE_ROW_CAP + 20_000; // 120,000 — past the snapshot tier
+    const BASE = Date.UTC(2020, 0, 1);
+
+    // Deterministic monthly-ish returns spanning both signs (so drawdown,
+    // Sortino downside, and the sign-dependent paths are all exercised),
+    // already in (ts, _record_id) order.
+    const series = Array.from({ length: N }, (_, i) => ({
+      _record_id: `r-${String(i).padStart(7, "0")}`,
+      ts: new Date(BASE + i * 86_400_000).toISOString(),
+      ret: 0.001 + ((i % 11) - 5) * 0.002,
+    }));
+
+    let firstCall = true;
+    let pageStart = 0;
+    mockRunSqlQuery.mockImplementation(async () => {
+      if (firstCall) {
+        firstCall = false;
+        return { rows: series.slice(0, BATCH), truncated: true, totalCount: N };
+      }
+      const page = series.slice(pageStart, pageStart + BATCH);
+      pageStart += BATCH;
+      return { rows: page };
+    });
+
+    const { envelope } = await PortalSqlHandleService.produce({
+      stationId: "station-1",
+      organizationId: "org-1",
+      sql: 'SELECT "_record_id", "ts", "ret" FROM series',
+    });
+    expect(envelope.rowCount).toBe(N);
+    expect(envelope.rowCount).toBeGreaterThan(HANDLE_ROW_CAP);
+
+    const params = { returnColumn: "ret", periodicity: "daily" as const };
+    const streamed = await AnalyticsService.portfolioMetricsFromStream(
+      resolveRecordStream(
+        { queryHandle: envelope.queryHandle },
+        { mode: "streaming" },
+        { orderBy: "ts" }
+      ),
+      undefined,
+      params
+    );
+
+    // Oracle: the whole-array metrics over the same series.
+    const oracle = AnalyticsService.portfolioMetrics({ ...params, records: series });
+    expect(streamed.totalReturn).toBeCloseTo(oracle.totalReturn, 6);
+    expect(streamed.cagr).toBeCloseTo(oracle.cagr, 6);
+    expect(streamed.sortino).toBeCloseTo(oracle.sortino, 6);
+    expect(streamed.maxDrawdown).toBeCloseTo(oracle.maxDrawdown, 9);
+    expect(streamed.calmar).toBeCloseTo(oracle.calmar, 6);
+
+    // Streamed one keyset page at a time — never one big read.
+    const calls = mockRunSqlQuery.mock.calls as unknown as Array<
+      [{ sql: string; rowCap?: number }]
+    >;
+    const keysetCalls = calls.filter((c) =>
+      /ORDER BY "ts" ASC, "_record_id" ASC LIMIT 1000/.test(c[0].sql)
+    );
+    expect(keysetCalls.length).toBeGreaterThanOrEqual(N / BATCH);
+    expect(keysetCalls.every((c) => c[0].rowCap === BATCH)).toBe(true);
+
+    await getRedisClient().del(
+      `portal-sql:handle:${envelope.queryHandle.slice(3)}:meta`
+    );
+  }, 30_000);
 });
 
 /**

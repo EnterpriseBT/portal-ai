@@ -573,16 +573,22 @@ const FINANCIAL_PACK: BuiltinToolpackSpec = {
     {
       name: "portfolio_metrics",
       description:
-        "Compute portfolio performance metrics over a returns series you provide: total return, CAGR, Sortino, Calmar, max drawdown. With a benchmark source: beta, alpha, information ratio, tracking error, up/down capture.",
+        "Compute portfolio performance metrics over a returns series you provide: total return, CAGR, Sortino, Calmar, max drawdown. With a benchmark source: beta, alpha, information ratio, tracking error, up/down capture. Folds over the source in a single ordered pass, so it scales to an unbounded query handle (any row count) — pass `dateColumn` to fix the chronological order (required to stream past 100k rows).",
       parameterSchema: objectSchema(
         {
           ...computeSourceFields(),
           returnColumn: stringField("Returns column (a key in the rows)"),
+          dateColumn: stringField(
+            "Date/period column ordering the returns (total return + max drawdown are order-sensitive). Required to stream past 100k rows."
+          ),
           benchmarkQueryHandle: stringField(
             "Optional queryHandle for benchmark returns (enables beta/alpha/etc.)"
           ),
           benchmarkReturnColumn: stringField(
             "Return column within the benchmark rows. Required when a benchmark source is supplied."
+          ),
+          benchmarkDateColumn: stringField(
+            "Date/period column ordering the benchmark series (aligned by position with the portfolio). Required to stream a benchmark past 100k rows."
           ),
           riskFreeRate: numberField(
             "Per-period risk-free rate for Sortino / alpha (default 0)"
@@ -1072,8 +1078,25 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   // the O(1) quantile/tail residue runs in-tool. Exact at any N. Falls back
   // to in-memory bounded for inline rows / non-re-executable handles.
   var_cvar: enginePushdownReduce("scalar"),
-  portfolio_metrics: pureReduce("scalar"),
-  technical_indicator: pureReduce("scalar"),
+  // portfolio_metrics folds online over the cursor (#152) — a true reduce
+  // (returns series → one scalar summary), streaming past 100k.
+  portfolio_metrics: streamingReduce("scalar"),
+  // technical_indicator is a per-row MAP (N rows → N aligned indicator
+  // values), not a reduce — it emits a {dates, values} series, so its
+  // resultKind is data-table, not scalar. It stays bounded(100k): a
+  // streaming map can't return its O(N) output inline; streaming it into a
+  // query handle is the follow-up (#159). (#152)
+  technical_indicator: {
+    pure: true,
+    reads: [],
+    writes: [],
+    consumption: { mode: "bounded", maxRows: 100_000, onOverflow: "error" },
+    computeShape: "map",
+    costHint: "free",
+    locks: [],
+    resultKind: "data-table",
+    alwaysAvailable: false,
+  },
   // web_search — external read, no record input
   web_search: {
     pure: false,

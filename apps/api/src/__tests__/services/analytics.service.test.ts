@@ -2745,6 +2745,201 @@ describe("AnalyticsService", () => {
   });
 
   // -----------------------------------------------------------------------
+  // portfolioMetricsFromStream (#152 streaming fold) — must equal
+  // portfolioMetrics()
+  // -----------------------------------------------------------------------
+
+  describe("portfolioMetricsFromStream()", () => {
+    type Rec = Record<string, unknown>;
+
+    async function* asStream(records: Rec[], batchSize: number) {
+      for (let i = 0; i < records.length; i += batchSize) {
+        yield records.slice(i, i + batchSize);
+      }
+    }
+
+    const close = (a: number | undefined, b: number | undefined, d = 9) => {
+      if (b === undefined) {
+        expect(a).toBeUndefined();
+        return;
+      }
+      expect(a).toBeCloseTo(b, d);
+    };
+
+    // The streaming fold must reproduce the whole-array summary field-for-field.
+    const expectMatchesWholeArray = async (
+      records: Rec[],
+      params: Omit<
+        Parameters<typeof AnalyticsService.portfolioMetrics>[0],
+        "records" | "benchmarkRecords"
+      >,
+      benchmark?: { records: Rec[] },
+      batchSize = 7
+    ) => {
+      const whole = AnalyticsService.portfolioMetrics({
+        ...params,
+        records,
+        benchmarkRecords: benchmark?.records,
+      });
+      const streamed = await AnalyticsService.portfolioMetricsFromStream(
+        asStream(records, batchSize),
+        benchmark ? asStream(benchmark.records, batchSize) : undefined,
+        params
+      );
+      close(streamed.totalReturn, whole.totalReturn);
+      close(streamed.cagr, whole.cagr);
+      close(streamed.sortino, whole.sortino);
+      close(streamed.maxDrawdown, whole.maxDrawdown);
+      if (Number.isFinite(whole.calmar)) close(streamed.calmar, whole.calmar);
+      else expect(streamed.calmar).toBe(whole.calmar);
+      close(streamed.beta, whole.beta);
+      close(streamed.alpha, whole.alpha);
+      close(streamed.trackingError, whole.trackingError);
+      close(streamed.informationRatio, whole.informationRatio);
+      close(streamed.upCapture, whole.upCapture);
+      close(streamed.downCapture, whole.downCapture);
+      return streamed;
+    };
+
+    const PORTFOLIO = Array.from({ length: 24 }, (_, i) => ({
+      value: 0.012 + ((i % 5) - 2) * 0.008,
+    }));
+
+    it("matches whole-array metrics — standalone, annualized", async () => {
+      const streamed = await expectMatchesWholeArray(PORTFOLIO, {
+        returnColumn: "value",
+        periodicity: "monthly",
+      });
+      expect("beta" in streamed).toBe(false);
+    });
+
+    it("matches whole-array metrics — with benchmark", async () => {
+      const benchmark = PORTFOLIO.map((r, i) => ({
+        bench: r.value + ((i % 3) - 1) * 0.004,
+      }));
+      const streamed = await expectMatchesWholeArray(
+        PORTFOLIO,
+        {
+          returnColumn: "value",
+          benchmarkReturnColumn: "bench",
+          periodicity: "monthly",
+          riskFreeRate: 0.001,
+        },
+        { records: benchmark }
+      );
+      expect(streamed.beta).toBeDefined();
+    });
+
+    it("identical portfolio + benchmark → beta=1, alpha≈0, te≈0 (streamed)", async () => {
+      const streamed = await AnalyticsService.portfolioMetricsFromStream(
+        asStream(PORTFOLIO, 5),
+        asStream(
+          PORTFOLIO.map((r) => ({ bench: r.value })),
+          5
+        ),
+        { returnColumn: "value", benchmarkReturnColumn: "bench" }
+      );
+      expect(streamed.beta!).toBeCloseTo(1, 9);
+      expect(Math.abs(streamed.alpha!)).toBeLessThan(1e-9);
+      expect(streamed.trackingError!).toBeCloseTo(0, 9);
+    });
+
+    it("up/down capture match the engineered benchmark (streamed)", async () => {
+      const benchmarkValues = Array.from({ length: 20 }, (_, i) =>
+        i % 2 === 0 ? 0.02 : -0.02
+      );
+      const portfolioValues = benchmarkValues.map((b) =>
+        b > 0 ? 1.5 * b : 0.5 * b
+      );
+      const streamed = await AnalyticsService.portfolioMetricsFromStream(
+        asStream(
+          portfolioValues.map((value) => ({ value })),
+          4
+        ),
+        asStream(
+          benchmarkValues.map((bench) => ({ bench })),
+          4
+        ),
+        { returnColumn: "value", benchmarkReturnColumn: "bench" }
+      );
+      expect(streamed.upCapture!).toBeCloseTo(1.5, 6);
+      expect(streamed.downCapture!).toBeCloseTo(0.5, 6);
+    });
+
+    it("maxDrawdown matches the hand-computed value (streamed)", async () => {
+      const records = [0.1, 0.1, -0.3, 0.05, 0.05].map((value) => ({ value }));
+      const streamed = await AnalyticsService.portfolioMetricsFromStream(
+        asStream(records, 2),
+        undefined,
+        { returnColumn: "value" }
+      );
+      expect(streamed.maxDrawdown).toBeCloseTo(0.3, 9);
+    });
+
+    it("is invariant to batch boundaries", async () => {
+      const params = { returnColumn: "value", periodicity: "monthly" as const };
+      const r1 = await AnalyticsService.portfolioMetricsFromStream(
+        asStream(PORTFOLIO, 1),
+        undefined,
+        params
+      );
+      const r5 = await AnalyticsService.portfolioMetricsFromStream(
+        asStream(PORTFOLIO, 5),
+        undefined,
+        params
+      );
+      const rAll = await AnalyticsService.portfolioMetricsFromStream(
+        asStream(PORTFOLIO, PORTFOLIO.length),
+        undefined,
+        params
+      );
+      expect(r1.totalReturn).toBeCloseTo(r5.totalReturn, 12);
+      expect(r5.totalReturn).toBeCloseTo(rAll.totalReturn, 12);
+      expect(r1.maxDrawdown).toBeCloseTo(rAll.maxDrawdown, 12);
+    });
+
+    it("drops non-numeric rows, keeping benchmark alignment by valid position", async () => {
+      // A null in the middle of each series — both filter it out, so the
+      // surviving positions still pair up (matches extractNumericColumn).
+      const port = [{ value: 0.01 }, { value: null }, { value: 0.02 }];
+      const bench = [{ bench: 0.01 }, { bench: null }, { bench: 0.02 }];
+      const streamed = await AnalyticsService.portfolioMetricsFromStream(
+        asStream(port, 1),
+        asStream(bench, 1),
+        { returnColumn: "value", benchmarkReturnColumn: "bench" }
+      );
+      // 2 valid identical pairs → beta = 1.
+      expect(streamed.beta!).toBeCloseTo(1, 9);
+    });
+
+    it("throws when benchmark length mismatches portfolio length (streamed)", async () => {
+      await expect(
+        AnalyticsService.portfolioMetricsFromStream(
+          asStream(
+            Array.from({ length: 24 }, () => ({ value: 0.01 })),
+            5
+          ),
+          asStream(
+            Array.from({ length: 12 }, () => ({ bench: 0.01 })),
+            5
+          ),
+          { returnColumn: "value", benchmarkReturnColumn: "bench" }
+        )
+      ).rejects.toThrow(/benchmark length must match portfolio length/);
+    });
+
+    it("throws with fewer than 2 returns", async () => {
+      await expect(
+        AnalyticsService.portfolioMetricsFromStream(
+          asStream([{ value: 0.01 }], 1),
+          undefined,
+          { returnColumn: "value" }
+        )
+      ).rejects.toThrow(/at least 2 returns required/);
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // varCvar
   // -----------------------------------------------------------------------
 
