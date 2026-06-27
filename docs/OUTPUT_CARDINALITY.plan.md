@@ -21,10 +21,12 @@ One branch (`feat/output-cardinality-surface`), one PR; a commit per slice. Per-
 **Tests:** unit across value, rows-inline, rows-handle (`produceFromStream` called), transform-inline vs transform-handle (`produceFromTransform` called, by peeked source `rowCount`), and each `onLarge`. The resolver is the single inline-vs-handle decision point.
 **Done when:** every (production × N) combination returns the correct inline/handle shape.
 
-## Slice 4 — custom-pack subset rule
-**Ships:** `customToolCapabilityError` (`tool-capability.model.ts`) validates `production`: `value`/`rows` allowed; `rows + onLarge: "handle"` requires `consumption.mode: "streaming"`; rejected combos → `TOOLPACK_CAPABILITY_INVALID` with a named reason. Wire schema already carries `capability` (`ToolpackToolDefinitionSchema`).
-**Tests:** registration-validation unit — a `rows + handle` custom tool without `streaming` is rejected with the reason; a valid pure-consumer `production` registers.
-**Done when:** the subset rule is enforced at registration with clear errors.
+## Slice 4 — custom-pack subset rule + output-grant decoupling
+**Ships:**
+- `customToolCapabilityError` (`tool-capability.model.ts`) validates the `production` shape: `value`/`rows` allowed for any input mode; rejected shapes → `TOOLPACK_CAPABILITY_INVALID` with a named reason. (No input-mode coupling — output handle is allowed regardless of `consumption.mode`.)
+- **Decouple the webhook output write-grant from streaming input** (`webhook.tool.ts`): mint the `output` grant whenever the tool declares `production: { kind: "rows", onLarge: "handle" }`, for *any* input mode — not only in the `streaming` branch. Reuse `buildOutputGrant` / `webhook-read-token.service`; only the gating condition moves.
+**Tests:** registration-validation unit (valid/invalid `production` shapes); a `bounded`/`none`-input + `rows/handle` custom tool now receives an `output` grant in its runtime body (extend the webhook.tool streaming tests); the streaming case still works.
+**Done when:** any (input × output) combination is reachable for a custom tool; the subset rule is enforced at registration with clear errors.
 
 ## Slice 5 — documentation
 **Ships:**

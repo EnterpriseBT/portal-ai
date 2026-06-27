@@ -105,7 +105,7 @@ The output contract must be discoverable by both end users and custom-tool autho
 - **Registration UI helper text** — `RegisterToolpackDialog` / `ToolpackMetadataModal` (`apps/web`) reference the capability fields; add `production` so the form/modal explains what output metadata a tool declares.
 - **End users** — Help `glossary.util.ts` (a term for "inline vs. handle results" / query handle) + `faq.util.ts` (e.g. "why do some results appear inline and others as a streamed table?"), surfaced in `Help.view.tsx`.
 
-**Custom-pack subset rule for `production`** (spec to finalize): a custom tool may declare `production: value` or `production: rows`, but `onLarge: "handle"` requires the `streaming` transport (#124 pull-on-read) — minting a handle needs a re-readable source. `customToolCapabilityError` validates this alongside the existing subset checks.
+**Custom-pack output transport.** A custom tool stages a large output via the `streaming` tier's `output` write-grant (`{ writeUrl, writeToken }` → `{ resultHandle }`, #124). But that grant is currently minted only in the *streaming-input* branch (`webhook.tool.ts:140`), coupling output-handle to streaming *input* — contrary to #161's input ⟂ output premise. Decision: **drive the write-grant from `production`, not `consumption`** — any input mode + `production: rows, onLarge: handle` gets the grant. So a custom tool may declare `value` or `rows` for any input mode; `onLarge: handle` is allowed regardless of input mode, and `customToolCapabilityError` validates the `production` shape itself (not an input-mode coupling).
 
 ## Acceptance
 
