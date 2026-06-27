@@ -37,6 +37,7 @@ export const SYSTEM_TOOL_CAPABILITIES: Record<string, ToolCapability> = {
     costHint: "free",
     locks: [],
     resultKind: "scalar",
+    production: { kind: "value" },
     alwaysAvailable: true,
   },
   station_context: {
@@ -49,6 +50,7 @@ export const SYSTEM_TOOL_CAPABILITIES: Record<string, ToolCapability> = {
     locks: [],
     // on-demand lookup the agent consumes; not auto-surfaced as a table.
     resultKind: "scalar",
+    production: { kind: "value" },
     alwaysAvailable: true,
   },
 };

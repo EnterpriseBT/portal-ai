@@ -496,6 +496,9 @@ export enum ApiCode {
   /** Compute input (rows resolved from a query handle, or inline rows)
    *  exceeded COMPUTE_MAX_ROWS — too many rows for an in-memory compute. 400. */
   COMPUTE_INPUT_TOO_LARGE = "COMPUTE_INPUT_TOO_LARGE",
+  /** A `rows` output declaring `production.onLarge: "error"` exceeded its
+   *  inline threshold (#161) — the output mirror of COMPUTE_INPUT_TOO_LARGE. 400. */
+  COMPUTE_OUTPUT_TOO_LARGE = "COMPUTE_OUTPUT_TOO_LARGE",
 
   // Webhook compute scaling (#124)
   /** The webhook read/write token is unknown or malformed. 401. */
@@ -558,6 +561,8 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
     "Too many ids in one request. Split into multiple calls of ≤ 1000 ids each.",
   [ApiCode.COMPUTE_INPUT_TOO_LARGE]:
     "Too many rows for an in-memory compute. Pre-aggregate or sample in SQL — a `GROUP BY` rollup, `… LIMIT n`, or an aggregate `sql_query` — then pass the smaller result.",
+  [ApiCode.COMPUTE_OUTPUT_TOO_LARGE]:
+    "The tool's output exceeded its inline limit and it is declared to error rather than stage a handle. Narrow the result (aggregate or filter the source) so it fits inline.",
   [ApiCode.WEBHOOK_READ_TOKEN_INVALID]:
     "The read/write token is unknown. Use the `readToken` from the call body's `source` grant, sent as `Authorization: Bearer <token>`.",
   [ApiCode.WEBHOOK_READ_TOKEN_EXPIRED]:

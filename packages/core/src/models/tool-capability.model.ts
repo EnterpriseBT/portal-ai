@@ -98,6 +98,37 @@ export type ComputeShape = z.infer<typeof ComputeShapeSchema>;
 export const CostHintSchema = z.enum(["free", "metered", "expensive"]);
 export type CostHint = z.infer<typeof CostHintSchema>;
 
+// ── Production (output cardinality, #161) ───────────────────────────
+
+/** What happens to a `rows` output once it exceeds the inline threshold —
+ *  the output mirror of `consumption.onOverflow`. */
+export const OnLargeSchema = z.enum([
+  "handle", // stage a query handle (the scaling default for data/charts)
+  "sample", // reservoir-sample to the threshold, flagged in the result
+  "error", // throw COMPUTE_OUTPUT_TOO_LARGE
+]);
+export type OnLarge = z.infer<typeof OnLargeSchema>;
+
+/**
+ * Output cardinality — the declared mirror of `consumption` (#161). The
+ * resolver (`result-sink.ts`) honors it by observed N: a `value` is always
+ * inline; a `rows` output is inline ≤ `inlineThreshold` (default
+ * `INLINE_ROWS_THRESHOLD`) and otherwise follows `onLarge`. Orthogonal to
+ * `resultKind` (delivery vs render): a `rows` output renders per its
+ * `resultKind`; a `value` renders as prose (no display block).
+ */
+export const ProductionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("value") }).strict(),
+  z
+    .object({
+      kind: z.literal("rows"),
+      onLarge: OnLargeSchema,
+      inlineThreshold: z.number().int().positive().optional(),
+    })
+    .strict(),
+]);
+export type Production = z.infer<typeof ProductionSchema>;
+
 // ── Capability ──────────────────────────────────────────────────────
 
 export const ToolCapabilitySchema = z
@@ -115,6 +146,9 @@ export const ToolCapabilitySchema = z
      *  e.g. ["recordIds","connectorInstanceId"] (drives the 409 lock). */
     locks: z.array(z.string()),
     resultKind: ResultKindSchema,
+    /** Output cardinality (#161) — the mirror of `consumption`. Drives the
+     *  result-sink resolver's inline-vs-handle decision. */
+    production: ProductionSchema,
     /** Always attached regardless of station config (replaces
      *  `SYSTEM_TOOL_PACKS`). */
     alwaysAvailable: z.boolean(),
@@ -166,6 +200,35 @@ export const ToolCapabilitySchema = z
         code: "custom",
         message:
           "resultKind 'mutation-result'/'progress' requires a non-empty writes[]",
+      });
+    }
+    // production (delivery) ⟂ resultKind (render), but the two cannot
+    // contradict (#161): a `scalar` render is inherently a single value, and
+    // a mutation ack is a value — both must be value-delivered. Conversely a
+    // `value` output can only render as scalar/mutation-result (there are no
+    // rows to draw as a table/chart).
+    if (cap.resultKind === "scalar" && cap.production.kind !== "value") {
+      ctx.addIssue({
+        code: "custom",
+        message: "resultKind 'scalar' requires production.kind 'value'",
+      });
+    }
+    if (cap.resultKind === "mutation-result" && cap.production.kind !== "value") {
+      ctx.addIssue({
+        code: "custom",
+        message: "resultKind 'mutation-result' requires production.kind 'value'",
+      });
+    }
+    if (
+      cap.production.kind === "value" &&
+      cap.resultKind !== "scalar" &&
+      cap.resultKind !== "mutation-result" &&
+      cap.resultKind !== "progress"
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "production.kind 'value' can only render as resultKind 'scalar'/'mutation-result'/'progress'",
       });
     }
   });

@@ -215,6 +215,7 @@ describe("ToolpackRegistrationService", () => {
       costHint: "free",
       locks: [],
       resultKind: "data-table",
+      production: { kind: "rows", onLarge: "handle" },
       alwaysAvailable: false,
     };
 
