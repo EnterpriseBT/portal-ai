@@ -37,7 +37,7 @@ One branch (`feat/output-cardinality-surface`), one PR; a commit per slice. Per-
 **Done when:** `production` is documented for end users *and* custom-tool authors; doc/Help tests green.
 
 ## Slice 6 — file the migration follow-up
-**Ships:** a follow-up ticket: refactor the four sinks (`sql_query`, `display_entity_records`, `visualize`, `visualize_tree`) + `technical_indicator` (#159) onto `resolveResultSink`, + a guard test that no tool open-codes `> INLINE_ROWS_THRESHOLD → produce()`. Reference it in this PR body. (#153 declares `production` natively — no refactor.)
+**Ships:** the follow-up ticket — **[#164](https://github.com/EnterpriseBT/portal-ai/issues/164)** — refactor the four sinks (`sql_query`, `display_entity_records`, `visualize`, `visualize_tree`) + `technical_indicator` (#159) onto `resolveResultSink`, + a guard test that no tool open-codes `> INLINE_ROWS_THRESHOLD → produce()`. (#153 declares `production` natively — no refactor.) ✅ filed.
 
 ## Sequencing / risks
 - Slices 1–4 are backend + core; 5 spans `apps/web` + docs. 1 blocks 3 (resolver reads `production`); 2 blocks 3 (resolver calls `produceFromStream`); 3 and 4 are independent after 1.
