@@ -288,19 +288,61 @@ export class PortalSqlHandleService {
     stationId: string;
     organizationId: string;
   }): Promise<{ envelope: QueryHandleEnvelope }> {
-    const handleId = `qh-${randomUUID()}`;
     const { transform } = opts;
-
     const sourceStream = this.streamHandle(
       transform.sourceHandle,
       transform.dateColumn
     );
     const folded = applyTransformFold(transform, sourceStream);
+    return this.stageFromStream(`qh-${randomUUID()}`, folded, {
+      stationId: opts.stationId,
+      organizationId: opts.organizationId,
+      transform,
+    });
+  }
 
-    // Stage the first ≤ cap rows; count the rest without holding them.
+  /**
+   * Generic one-shot compute→handle (#161): stage a handle from an async row
+   * stream the caller produces, without holding the whole result in memory
+   * before staging — the streaming-in counterpart to `produceFromRows`.
+   * `sql: null` and **no** `_transform` descriptor, so it's snapshot-only
+   * (capped at `HANDLE_ROW_CAP`, not re-executable). A *re-foldable* output —
+   * a pure function of a source handle — should use `produceFromTransform`
+   * instead (unbounded via re-fold); `result-sink.ts` picks between them.
+   */
+  static async produceFromStream(opts: {
+    rows: AsyncIterable<Record<string, unknown>[]>;
+    schema?: Array<{ name: string; type: string }>;
+    stationId: string;
+    organizationId: string;
+  }): Promise<{ envelope: QueryHandleEnvelope }> {
+    return this.stageFromStream(`qh-${randomUUID()}`, opts.rows, {
+      stationId: opts.stationId,
+      organizationId: opts.organizationId,
+      schema: opts.schema,
+    });
+  }
+
+  /**
+   * Drain an async row stream, staging the first ≤ `HANDLE_ROW_CAP` rows as
+   * the snapshot (+ SSE) and counting the rest without holding them — bounded
+   * memory. Shared by `produceFromStream` (one-shot, `sql: null`) and
+   * `produceFromTransform` (carries a re-foldable `_transform` so the cursor
+   * tier recovers the full set past the snapshot).
+   */
+  private static async stageFromStream(
+    handleId: string,
+    rowStream: AsyncIterable<Record<string, unknown>[]>,
+    ctx: {
+      stationId: string;
+      organizationId: string;
+      schema?: Array<{ name: string; type: string }>;
+      transform?: TransformDescriptor;
+    }
+  ): Promise<{ envelope: QueryHandleEnvelope }> {
     const head: Array<Record<string, unknown>> = [];
     let total = 0;
-    for await (const batch of folded) {
+    for await (const batch of rowStream) {
       for (const row of batch) {
         total += 1;
         if (head.length < HANDLE_ROW_CAP) head.push(row);
@@ -308,12 +350,14 @@ export class PortalSqlHandleService {
     }
 
     const firstRow = head[0] as Record<string, unknown> | undefined;
-    const schema = firstRow
-      ? Object.keys(firstRow).map((name) => ({
-          name,
-          type: detectPgType(firstRow[name]),
-        }))
-      : [];
+    const schema =
+      ctx.schema ??
+      (firstRow
+        ? Object.keys(firstRow).map((name) => ({
+            name,
+            type: detectPgType(firstRow[name]),
+          }))
+        : []);
     const sampled = total > SAMPLING_THRESHOLD;
     const sampleSize = sampled
       ? Math.min(head.length, SAMPLING_THRESHOLD)
@@ -325,22 +369,23 @@ export class PortalSqlHandleService {
       schema,
       sampled,
       ...(sampleSize ? { sampleSize } : {}),
-      // Snapshot is partial when the full fold exceeds the cap; the rest is
-      // recoverable via the cursor re-fold (not data loss — same as `produce`).
+      // Snapshot is partial when the full stream exceeds the cap; for a
+      // transform handle the rest is recoverable via the cursor re-fold (same
+      // posture as `produce`), for a one-shot stream the snapshot IS the cap.
       truncated: head.length < total,
       samplePeek: head.slice(0, SAMPLE_PEEK_SIZE) as Array<
         Record<string, unknown>
       >,
-      sql: null, // derived by folding the source — no originating query
+      sql: null,
     };
 
     return this.stage(
       handleId,
       head,
       envelope,
-      opts.stationId,
-      opts.organizationId,
-      transform
+      ctx.stationId,
+      ctx.organizationId,
+      ctx.transform
     );
   }
 

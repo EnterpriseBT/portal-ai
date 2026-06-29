@@ -491,6 +491,7 @@ const SCHEMA_RESPONSE_EXAMPLE = `{
         "computeShape": "pure",
         "costHint": "free",
         "resultKind": "scalar",
+        "production": { "kind": "value" },
         "alwaysAvailable": false
       }
     }

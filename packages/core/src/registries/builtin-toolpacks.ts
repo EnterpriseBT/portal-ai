@@ -941,6 +941,7 @@ const pureMath = (resultKind: ResultKind = "scalar"): ToolCapability => ({
   costHint: "free",
   locks: [],
   resultKind,
+  production: { kind: "value" },
   alwaysAvailable: false,
 });
 
@@ -959,6 +960,7 @@ const pureReduce = (
   costHint,
   locks: [],
   resultKind,
+  production: { kind: "value" },
   alwaysAvailable: false,
 });
 
@@ -978,6 +980,7 @@ const streamingReduce = (
   costHint,
   locks: [],
   resultKind,
+  production: { kind: "value" },
   alwaysAvailable: false,
 });
 
@@ -997,10 +1000,13 @@ const enginePushdownReduce = (
   costHint,
   locks: [],
   resultKind,
+  production: { kind: "value" },
   alwaysAvailable: false,
 });
 
-/** Reads the engine (a producer / SQL-pushed read or visualize). */
+/** Reads the engine (a producer / SQL-pushed read or visualize). Emits a row
+ *  set / chart → `rows` (inline small, handle past threshold), except a
+ *  `scalar` read (resolve_identity) which is value-delivered. */
 const engineRead = (
   resultKind: ResultKind,
   computeShape: ComputeShape
@@ -1013,6 +1019,10 @@ const engineRead = (
   costHint: "free",
   locks: [],
   resultKind,
+  production:
+    resultKind === "scalar"
+      ? { kind: "value" }
+      : { kind: "rows", onLarge: "handle" },
   alwaysAvailable: false,
 });
 
@@ -1026,6 +1036,7 @@ const entityWrite = (writes: string[], locks: string[]): ToolCapability => ({
   costHint: "free",
   locks,
   resultKind: "mutation-result",
+  production: { kind: "value" },
   alwaysAvailable: false,
 });
 
@@ -1095,6 +1106,8 @@ const CAPABILITIES: Record<string, ToolCapability> = {
     costHint: "free",
     locks: [],
     resultKind: "data-table",
+    // Per-row series: inline small, transform handle past the threshold (#159).
+    production: { kind: "rows", onLarge: "handle" },
     alwaysAvailable: false,
   },
   // web_search — external read, no record input
@@ -1108,6 +1121,7 @@ const CAPABILITIES: Record<string, ToolCapability> = {
     locks: [],
     // not auto-surfaced as a table today (preserves prior behavior).
     resultKind: "scalar",
+    production: { kind: "value" },
     alwaysAvailable: false,
   },
   // entity_management — synchronous writes
@@ -1139,6 +1153,8 @@ const CAPABILITIES: Record<string, ToolCapability> = {
     costHint: "expensive",
     locks: ["targetConnectorEntityIds"],
     resultKind: "progress",
+    // The job's terminal result is a progress/summary value, not inline rows.
+    production: { kind: "value" },
     alwaysAvailable: false,
   },
 };

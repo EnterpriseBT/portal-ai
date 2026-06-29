@@ -160,6 +160,14 @@ export const FAQ_ENTRIES: FAQEntry[] = [
       "Pinned Result",
     ],
   },
+  {
+    question:
+      "Why do some results appear inline and others as a separate streamed table?",
+    answer:
+      "It depends on size, and the assistant doesn't choose — it's automatic. A small result comes back inline inside the message. A larger one returns a query handle: the full rows stream into a table or chart you can scroll, while the assistant keeps only a small preview so a big result never crowds out the conversation. You still see every row either way.",
+    category: FAQCategory.Analytics,
+    relatedGlossaryTerms: ["Query Handle", "Portal Result"],
+  },
 
   // Jobs & Background Tasks
   {

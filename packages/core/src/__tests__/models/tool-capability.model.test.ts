@@ -18,6 +18,7 @@ const pureMath: ToolCapability = {
   costHint: "free",
   locks: [],
   resultKind: "scalar",
+  production: { kind: "value" },
   alwaysAvailable: false,
 };
 
@@ -31,6 +32,7 @@ const reader: ToolCapability = {
   costHint: "free",
   locks: [],
   resultKind: "data-table",
+  production: { kind: "rows", onLarge: "handle" },
   alwaysAvailable: false,
 };
 
@@ -44,6 +46,7 @@ const streamingReduce: ToolCapability = {
   costHint: "metered",
   locks: [],
   resultKind: "data-table",
+  production: { kind: "rows", onLarge: "handle" },
   alwaysAvailable: false,
 };
 
@@ -57,6 +60,7 @@ const boundedReduce: ToolCapability = {
   costHint: "expensive",
   locks: [],
   resultKind: "data-table",
+  production: { kind: "rows", onLarge: "handle" },
   alwaysAvailable: false,
 };
 
@@ -70,6 +74,7 @@ const pushdownReduce: ToolCapability = {
   costHint: "free",
   locks: [],
   resultKind: "scalar",
+  production: { kind: "value" },
   alwaysAvailable: false,
 };
 
@@ -83,6 +88,7 @@ const writer: ToolCapability = {
   costHint: "free",
   locks: ["recordIds"],
   resultKind: "mutation-result",
+  production: { kind: "value" },
   alwaysAvailable: false,
 };
 
@@ -161,6 +167,48 @@ describe("ToolCapabilitySchema — writes", () => {
   });
 });
 
+// ── Production (output cardinality #161) ─────────────────────────────
+
+describe("ToolCapabilitySchema — production contract", () => {
+  it("accepts value+scalar and rows+data-table", () => {
+    expect(ToolCapabilitySchema.safeParse(pureMath).success).toBe(true);
+    expect(ToolCapabilitySchema.safeParse(reader).success).toBe(true);
+  });
+
+  it("rejects a `rows` production without onLarge", () => {
+    const bad = { ...reader, production: { kind: "rows" } };
+    expect(ToolCapabilitySchema.safeParse(bad).success).toBe(false);
+  });
+
+  it("rejects onLarge on a `value` production", () => {
+    const bad = { ...pureMath, production: { kind: "value", onLarge: "handle" } };
+    expect(ToolCapabilitySchema.safeParse(bad).success).toBe(false);
+  });
+
+  it("rejects resultKind 'scalar' with a 'rows' production", () => {
+    const bad = { ...pushdownReduce, production: { kind: "rows", onLarge: "handle" } };
+    expect(ToolCapabilitySchema.safeParse(bad).success).toBe(false);
+  });
+
+  it("rejects resultKind 'mutation-result' with a 'rows' production", () => {
+    const bad = { ...writer, production: { kind: "rows", onLarge: "handle" } };
+    expect(ToolCapabilitySchema.safeParse(bad).success).toBe(false);
+  });
+
+  it("rejects a 'value' production rendering as 'data-table'", () => {
+    const bad = { ...reader, production: { kind: "value" } };
+    expect(ToolCapabilitySchema.safeParse(bad).success).toBe(false);
+  });
+
+  it("honors a custom inlineThreshold on a 'rows' production", () => {
+    const ok = {
+      ...reader,
+      production: { kind: "rows", onLarge: "handle", inlineThreshold: 25 },
+    };
+    expect(ToolCapabilitySchema.safeParse(ok).success).toBe(true);
+  });
+});
+
 // ── Derived role ─────────────────────────────────────────────────────
 
 describe("deriveToolRole", () => {
@@ -188,6 +236,7 @@ describe("customToolCapabilityError", () => {
     costHint: "free",
     locks: [],
     resultKind: "data-table",
+    production: { kind: "rows", onLarge: "handle" },
     alwaysAvailable: false,
   };
   const allowNone = { allowedConsumptionModes: ["none"] as const };
@@ -233,6 +282,21 @@ describe("customToolCapabilityError", () => {
         allowNone
       )
     ).toMatch(/consumption mode 'bounded'/);
+  });
+
+  it("allows rows+handle output for any input mode (no streaming coupling, #161)", () => {
+    // production drives the output write-grant, not consumption — so a
+    // none-input tool may still declare it stages a large row set.
+    expect(
+      customToolCapabilityError(
+        {
+          ...customConsumer,
+          consumption: { mode: "none" },
+          production: { kind: "rows", onLarge: "handle" },
+        },
+        allowNone
+      )
+    ).toBeNull();
   });
 
   it("permits a wider consumption set when allowed (e.g. once #124 ships)", () => {

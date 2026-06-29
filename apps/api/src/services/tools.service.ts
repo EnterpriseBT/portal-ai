@@ -637,7 +637,11 @@ export class ToolService {
             // (none → inline; bounded → records-in-body; streaming →
             // pull-on-read). Validated ≤ the widened gate at registration.
             tool.capability?.consumption,
-            organizationId
+            organizationId,
+            // #161: the declared production drives the output write-grant
+            // (rows + onLarge:handle → the webhook can stage a result handle),
+            // independent of the input consumption tier.
+            tool.capability?.production
           ).build();
         }
       }

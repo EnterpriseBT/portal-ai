@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
-import type { Consumption } from "@portalai/core/models";
+import type { Consumption, Production } from "@portalai/core/models";
 
 // Capture the body passed to callWebhook; mock the dataset resolver + the
 // handle meta + token service the streaming path uses.
@@ -53,7 +53,15 @@ function exec(t: any, input: Record<string, unknown>) {
   });
 }
 
-function buildTool(consumption?: Consumption, organizationId = "org-1") {
+// rows + onLarge:handle → the tool gets an output write-grant (#161),
+// independent of its input consumption tier.
+const HANDLE_PROD: Production = { kind: "rows", onLarge: "handle" };
+
+function buildTool(
+  consumption?: Consumption,
+  organizationId = "org-1",
+  production?: Production
+) {
   return new WebhookTool(
     "summarize",
     "Summarize the records.",
@@ -61,7 +69,8 @@ function buildTool(consumption?: Consumption, organizationId = "org-1") {
     IMPL,
     "station-1",
     consumption,
-    organizationId
+    organizationId,
+    production
   ).build();
 }
 
@@ -171,7 +180,7 @@ describe("WebhookTool — consumption-tiered body (#124)", () => {
         schema: [{ name: "ts", type: "timestamptz" }],
         _organizationId: "org-1",
       });
-      const t = buildTool(streaming);
+      const t = buildTool(streaming, "org-1", HANDLE_PROD);
 
       await exec(t, { factor: 5, queryHandle: "qh-big" });
 
@@ -224,7 +233,7 @@ describe("WebhookTool — consumption-tiered body (#124)", () => {
         _organizationId: "org-1",
       });
       mockCallWebhook.mockRejectedValue(new Error("runtime 500"));
-      const t = buildTool(streaming);
+      const t = buildTool(streaming, "org-1", HANDLE_PROD);
 
       await expect(exec(t, { queryHandle: "qh-x" })).rejects.toThrow("runtime 500");
       expect(mockRevoke).toHaveBeenCalledWith("tok-read");
@@ -237,7 +246,7 @@ describe("WebhookTool — consumption-tiered body (#124)", () => {
         total: 1,
         sampled: false,
       });
-      const t = buildTool(streaming);
+      const t = buildTool(streaming, "org-1", HANDLE_PROD);
 
       await exec(t, { rows: [{ a: 1 }] });
 
@@ -262,7 +271,7 @@ describe("WebhookTool — consumption-tiered body (#124)", () => {
         truncated: false,
         samplePeek: [],
       });
-      const t = buildTool(streaming);
+      const t = buildTool(streaming, "org-1", HANDLE_PROD);
 
       const result = (await exec(t, { rows: [{ a: 1 }] })) as any;
 
@@ -275,11 +284,54 @@ describe("WebhookTool — consumption-tiered body (#124)", () => {
       mockResolveRecordSource.mockResolvedValue({ rows: [], total: 0, sampled: false });
       mockCallWebhook.mockResolvedValue({ resultHandle: "qh-someone-elses" });
       mockGetStaged.mockResolvedValue(null); // nothing staged this session
-      const t = buildTool(streaming);
+      const t = buildTool(streaming, "org-1", HANDLE_PROD);
 
       await expect(exec(t, { rows: [{ a: 1 }] })).rejects.toMatchObject({
         code: "WEBHOOK_RESULT_HANDLE_INVALID",
       });
+    });
+  });
+
+  // ── output grant ⟂ input mode (#161) ──
+  describe("output write-grant driven by production, not consumption", () => {
+    it("none-input + production rows/handle → still gets an output grant", async () => {
+      const t = buildTool(undefined, "org-1", HANDLE_PROD);
+      await exec(t, { factor: 2 });
+      const [, body] = mockCallWebhook.mock.calls[0] as unknown as [unknown, any];
+      expect(body.input).toEqual({ factor: 2 });
+      expect(body.records).toBeUndefined(); // no input dataset
+      expect(body.output.writeToken).toBe("tok-write"); // but it can stage output
+      expect(mockMint).toHaveBeenCalledWith(
+        expect.objectContaining({ mode: "write" })
+      );
+    });
+
+    it("bounded-input + production rows/handle → records-in-body AND an output grant", async () => {
+      mockResolveRecordSource.mockResolvedValue({
+        rows: [{ a: 1 }],
+        total: 1,
+        sampled: false,
+      });
+      const t = buildTool(
+        { mode: "bounded", maxRows: 1000, onOverflow: "error" },
+        "org-1",
+        HANDLE_PROD
+      );
+      await exec(t, { factor: 3, queryHandle: "qh-1" });
+      const [, body] = mockCallWebhook.mock.calls[0] as unknown as [unknown, any];
+      expect(body.records).toEqual([{ a: 1 }]);
+      expect(body.output.writeToken).toBe("tok-write");
+    });
+
+    it("streaming-input + production value → NO output grant (value can't stage)", async () => {
+      mockResolveRecordSource.mockResolvedValue({ rows: [], total: 0, sampled: false });
+      const t = buildTool({ mode: "streaming" }, "org-1", { kind: "value" });
+      await exec(t, { rows: [{ a: 1 }] });
+      const [, body] = mockCallWebhook.mock.calls[0] as unknown as [unknown, any];
+      expect(body.output).toBeUndefined();
+      expect(mockMint).not.toHaveBeenCalledWith(
+        expect.objectContaining({ mode: "write" })
+      );
     });
   });
 });
