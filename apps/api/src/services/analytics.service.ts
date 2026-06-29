@@ -1211,6 +1211,103 @@ export class AnalyticsService {
   }
 
   /**
+   * Streaming logistic regression (#153) — online AdaGrad SGD, the
+   * single-pass bounded-memory variant of {@link logisticRegression} (IRLS).
+   * Bounded state: the coefficient vector + a per-coordinate squared-gradient
+   * accumulator. AdaGrad adapts the per-feature step to scale, so it
+   * converges in **raw** feature space (coefficients directly comparable to
+   * the IRLS fit) without a standardization pre-pass.
+   *
+   * Returns the fitted `coefficients` + **prequential** (test-then-train)
+   * `logLoss`/`accuracy` — each point is scored with the model *before* it
+   * updates it, the standard honest single-pass online estimate. The O(N)
+   * per-row `probabilities` are omitted (a streaming reduce returns the model,
+   * not the per-row map).
+   */
+  static async logisticRegressionFromStream(
+    batches: AsyncIterable<Record<string, unknown>[]>,
+    params: {
+      x?: string;
+      xColumns?: string[];
+      y: string;
+      learningRate?: number;
+    }
+  ): Promise<{
+    coefficients: number[];
+    logLoss: number;
+    accuracy: number;
+    count: number;
+  }> {
+    const hasX = params.x !== undefined;
+    const hasXCols = params.xColumns !== undefined;
+    if (hasX === hasXCols) {
+      throw new Error("specify either x or xColumns, not both");
+    }
+    const featureCols = hasXCols ? params.xColumns! : [params.x!];
+
+    const coerceY = (v: unknown): number => {
+      if (v === true || v === 1) return 1;
+      if (v === false || v === 0) return 0;
+      const num = Number(v);
+      if (num === 0 || num === 1) return num;
+      throw new Error(`y values must be 0 or 1; got ${String(v)}`);
+    };
+    const sigmoid = (z: number): number => 1 / (1 + Math.exp(-z));
+    const clip = (p: number): number => Math.max(1e-15, Math.min(1 - 1e-15, p));
+
+    const k = featureCols.length + 1; // + intercept
+    const beta = new Array(k).fill(0);
+    const g2 = new Array(k).fill(0); // AdaGrad per-coordinate accumulator
+    const lr0 = params.learningRate ?? 0.5;
+    const eps = 1e-8;
+
+    let n = 0;
+    let lossSum = 0;
+    let correct = 0;
+    let sawZero = false;
+    let sawOne = false;
+
+    for await (const batch of batches) {
+      for (const rec of batch) {
+        const yi = coerceY(rec[params.y]);
+        sawZero ||= yi === 0;
+        sawOne ||= yi === 1;
+        const xs = [1, ...featureCols.map((c) => Number(rec[c]))];
+        if (xs.some((v) => isNaN(v))) {
+          throw new Error("Non-numeric feature value");
+        }
+
+        // Predict with the current model (prequential: test then train).
+        const p = sigmoid(xs.reduce((s, xv, i) => s + xv * beta[i], 0));
+        const cp = clip(p);
+        lossSum += yi * Math.log(cp) + (1 - yi) * Math.log(1 - cp);
+        if ((p >= 0.5 ? 1 : 0) === yi) correct += 1;
+        n += 1;
+
+        // AdaGrad step on the logistic gradient (p − y)·x.
+        const err = p - yi;
+        for (let i = 0; i < k; i++) {
+          const grad = err * xs[i];
+          g2[i] += grad * grad;
+          beta[i] -= (lr0 / Math.sqrt(g2[i] + eps)) * grad;
+        }
+      }
+    }
+
+    if (n === 0) throw new Error("logistic_regression: empty input");
+    if (!sawZero || !sawOne) {
+      throw new Error("y must contain at least one of each class");
+    }
+
+    return {
+      coefficients: beta,
+      logLoss: -lossSum / n,
+      accuracy: correct / n,
+      count: n,
+    };
+  }
+
+  /**
    * Holt-Winters exponential smoothing with optional trend and seasonality.
    * Returns in-sample fits, multi-step point forecasts, Gaussian-residual
    * prediction intervals, and MAPE.

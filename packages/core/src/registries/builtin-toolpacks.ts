@@ -1071,7 +1071,9 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   regression: enginePushdownReduce("scalar"),
   // logistic_regression (IRLS) is bounded(100k) + onOverflow:error and
   // costHint expensive (#130 E2b); the SGD streaming variant is E3.
-  logistic_regression: pureReduce("scalar", "expensive"),
+  // logistic_regression: exact IRLS for small N; AdaGrad SGD folds a large
+  // handle online (#153). streaming, still cost-gated.
+  logistic_regression: streamingReduce("scalar", "expensive"),
   // forecast folds online over the cursor (#129) — streaming, not bounded.
   forecast: streamingReduce("scalar"),
   // financial — pure math
