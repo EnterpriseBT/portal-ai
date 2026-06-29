@@ -722,6 +722,93 @@ export class AnalyticsService {
     };
   }
 
+  /**
+   * Streaming mini-batch k-means (#153, Sculley 2010) — the single-pass,
+   * bounded-memory variant of {@link cluster}, exact-within-tolerance at any
+   * N over `resolveRecordStream`. Bounded state: k centroids + k counts (+ a
+   * per-column Welford accumulator when `standardize`). Returns the fitted
+   * model (`centroids`, in raw data units, matching the array path's
+   * un-standardized output) + cluster `sizes`; the O(N) per-row assignments
+   * are omitted (a streaming reduce returns the model, not the per-row map —
+   * same posture as {@link forecastFromStream} omitting the full series).
+   *
+   * `standardize` is honored without a pre-pass by **variance-normalizing the
+   * distance metric** with the running per-column variance (clustering in
+   * z-scored space) while centroids accumulate in raw space — so no point is
+   * ever standardized with immature global stats.
+   */
+  static async clusterFromStream(
+    batches: AsyncIterable<Record<string, unknown>[]>,
+    params: {
+      columns: string[];
+      k: number;
+      standardize?: boolean;
+    }
+  ): Promise<{ centroids: number[][]; sizes: number[]; count: number }> {
+    const d = params.columns.length;
+    const k = params.k;
+    const extract = (rec: Record<string, unknown>): number[] =>
+      params.columns.map((col) => {
+        const v = Number(rec[col]);
+        if (isNaN(v)) throw new Error(`Non-numeric value in column "${col}"`);
+        return v;
+      });
+
+    // Online per-column Welford (for the variance-normalized distance).
+    let n = 0;
+    const mean = new Array(d).fill(0);
+    const m2 = new Array(d).fill(0);
+    const variance = (c: number): number =>
+      n > 1 ? Math.max(m2[c] / (n - 1), 1e-12) : 1;
+
+    const centroids: number[][] = [];
+    const counts: number[] = [];
+
+    const sqDist = (x: number[], cen: number[]): number => {
+      let s = 0;
+      for (let c = 0; c < d; c++) {
+        const diff = x[c] - cen[c];
+        s += params.standardize ? (diff * diff) / variance(c) : diff * diff;
+      }
+      return s;
+    };
+
+    for await (const batch of batches) {
+      for (const rec of batch) {
+        const x = extract(rec);
+        n += 1;
+        for (let c = 0; c < d; c++) {
+          const delta = x[c] - mean[c];
+          mean[c] += delta / n;
+          m2[c] += delta * (x[c] - mean[c]);
+        }
+        // Seed the k centroids from the first k distinct points (raw space).
+        if (centroids.length < k) {
+          centroids.push([...x]);
+          counts.push(1);
+          continue;
+        }
+        let best = 0;
+        let bestDist = Infinity;
+        for (let j = 0; j < k; j++) {
+          const dist = sqDist(x, centroids[j]);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = j;
+          }
+        }
+        counts[best] += 1;
+        const eta = 1 / counts[best];
+        for (let c = 0; c < d; c++) {
+          centroids[best][c] = (1 - eta) * centroids[best][c] + eta * x[c];
+        }
+      }
+    }
+
+    if (n === 0) return { centroids: [], sizes: [], count: 0 };
+    return { centroids, sizes: counts, count: n };
+  }
+
   // -----------------------------------------------------------------------
   // Pack: regression
   // -----------------------------------------------------------------------
