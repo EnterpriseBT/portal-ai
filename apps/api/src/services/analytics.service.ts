@@ -722,6 +722,93 @@ export class AnalyticsService {
     };
   }
 
+  /**
+   * Streaming mini-batch k-means (#153, Sculley 2010) — the single-pass,
+   * bounded-memory variant of {@link cluster}, exact-within-tolerance at any
+   * N over `resolveRecordStream`. Bounded state: k centroids + k counts (+ a
+   * per-column Welford accumulator when `standardize`). Returns the fitted
+   * model (`centroids`, in raw data units, matching the array path's
+   * un-standardized output) + cluster `sizes`; the O(N) per-row assignments
+   * are omitted (a streaming reduce returns the model, not the per-row map —
+   * same posture as {@link forecastFromStream} omitting the full series).
+   *
+   * `standardize` is honored without a pre-pass by **variance-normalizing the
+   * distance metric** with the running per-column variance (clustering in
+   * z-scored space) while centroids accumulate in raw space — so no point is
+   * ever standardized with immature global stats.
+   */
+  static async clusterFromStream(
+    batches: AsyncIterable<Record<string, unknown>[]>,
+    params: {
+      columns: string[];
+      k: number;
+      standardize?: boolean;
+    }
+  ): Promise<{ centroids: number[][]; sizes: number[]; count: number }> {
+    const d = params.columns.length;
+    const k = params.k;
+    const extract = (rec: Record<string, unknown>): number[] =>
+      params.columns.map((col) => {
+        const v = Number(rec[col]);
+        if (isNaN(v)) throw new Error(`Non-numeric value in column "${col}"`);
+        return v;
+      });
+
+    // Online per-column Welford (for the variance-normalized distance).
+    let n = 0;
+    const mean = new Array(d).fill(0);
+    const m2 = new Array(d).fill(0);
+    const variance = (c: number): number =>
+      n > 1 ? Math.max(m2[c] / (n - 1), 1e-12) : 1;
+
+    const centroids: number[][] = [];
+    const counts: number[] = [];
+
+    const sqDist = (x: number[], cen: number[]): number => {
+      let s = 0;
+      for (let c = 0; c < d; c++) {
+        const diff = x[c] - cen[c];
+        s += params.standardize ? (diff * diff) / variance(c) : diff * diff;
+      }
+      return s;
+    };
+
+    for await (const batch of batches) {
+      for (const rec of batch) {
+        const x = extract(rec);
+        n += 1;
+        for (let c = 0; c < d; c++) {
+          const delta = x[c] - mean[c];
+          mean[c] += delta / n;
+          m2[c] += delta * (x[c] - mean[c]);
+        }
+        // Seed the k centroids from the first k distinct points (raw space).
+        if (centroids.length < k) {
+          centroids.push([...x]);
+          counts.push(1);
+          continue;
+        }
+        let best = 0;
+        let bestDist = Infinity;
+        for (let j = 0; j < k; j++) {
+          const dist = sqDist(x, centroids[j]);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = j;
+          }
+        }
+        counts[best] += 1;
+        const eta = 1 / counts[best];
+        for (let c = 0; c < d; c++) {
+          centroids[best][c] = (1 - eta) * centroids[best][c] + eta * x[c];
+        }
+      }
+    }
+
+    if (n === 0) return { centroids: [], sizes: [], count: 0 };
+    return { centroids, sizes: counts, count: n };
+  }
+
   // -----------------------------------------------------------------------
   // Pack: regression
   // -----------------------------------------------------------------------
@@ -1120,6 +1207,103 @@ export class AnalyticsService {
       logLoss,
       accuracy,
       iterations,
+    };
+  }
+
+  /**
+   * Streaming logistic regression (#153) — online AdaGrad SGD, the
+   * single-pass bounded-memory variant of {@link logisticRegression} (IRLS).
+   * Bounded state: the coefficient vector + a per-coordinate squared-gradient
+   * accumulator. AdaGrad adapts the per-feature step to scale, so it
+   * converges in **raw** feature space (coefficients directly comparable to
+   * the IRLS fit) without a standardization pre-pass.
+   *
+   * Returns the fitted `coefficients` + **prequential** (test-then-train)
+   * `logLoss`/`accuracy` — each point is scored with the model *before* it
+   * updates it, the standard honest single-pass online estimate. The O(N)
+   * per-row `probabilities` are omitted (a streaming reduce returns the model,
+   * not the per-row map).
+   */
+  static async logisticRegressionFromStream(
+    batches: AsyncIterable<Record<string, unknown>[]>,
+    params: {
+      x?: string;
+      xColumns?: string[];
+      y: string;
+      learningRate?: number;
+    }
+  ): Promise<{
+    coefficients: number[];
+    logLoss: number;
+    accuracy: number;
+    count: number;
+  }> {
+    const hasX = params.x !== undefined;
+    const hasXCols = params.xColumns !== undefined;
+    if (hasX === hasXCols) {
+      throw new Error("specify either x or xColumns, not both");
+    }
+    const featureCols = hasXCols ? params.xColumns! : [params.x!];
+
+    const coerceY = (v: unknown): number => {
+      if (v === true || v === 1) return 1;
+      if (v === false || v === 0) return 0;
+      const num = Number(v);
+      if (num === 0 || num === 1) return num;
+      throw new Error(`y values must be 0 or 1; got ${String(v)}`);
+    };
+    const sigmoid = (z: number): number => 1 / (1 + Math.exp(-z));
+    const clip = (p: number): number => Math.max(1e-15, Math.min(1 - 1e-15, p));
+
+    const k = featureCols.length + 1; // + intercept
+    const beta = new Array(k).fill(0);
+    const g2 = new Array(k).fill(0); // AdaGrad per-coordinate accumulator
+    const lr0 = params.learningRate ?? 0.5;
+    const eps = 1e-8;
+
+    let n = 0;
+    let lossSum = 0;
+    let correct = 0;
+    let sawZero = false;
+    let sawOne = false;
+
+    for await (const batch of batches) {
+      for (const rec of batch) {
+        const yi = coerceY(rec[params.y]);
+        sawZero ||= yi === 0;
+        sawOne ||= yi === 1;
+        const xs = [1, ...featureCols.map((c) => Number(rec[c]))];
+        if (xs.some((v) => isNaN(v))) {
+          throw new Error("Non-numeric feature value");
+        }
+
+        // Predict with the current model (prequential: test then train).
+        const p = sigmoid(xs.reduce((s, xv, i) => s + xv * beta[i], 0));
+        const cp = clip(p);
+        lossSum += yi * Math.log(cp) + (1 - yi) * Math.log(1 - cp);
+        if ((p >= 0.5 ? 1 : 0) === yi) correct += 1;
+        n += 1;
+
+        // AdaGrad step on the logistic gradient (p − y)·x.
+        const err = p - yi;
+        for (let i = 0; i < k; i++) {
+          const grad = err * xs[i];
+          g2[i] += grad * grad;
+          beta[i] -= (lr0 / Math.sqrt(g2[i] + eps)) * grad;
+        }
+      }
+    }
+
+    if (n === 0) throw new Error("logistic_regression: empty input");
+    if (!sawZero || !sawOne) {
+      throw new Error("y must contain at least one of each class");
+    }
+
+    return {
+      coefficients: beta,
+      logLoss: -lossSum / n,
+      accuracy: correct / n,
+      count: n,
     };
   }
 

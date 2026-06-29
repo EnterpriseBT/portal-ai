@@ -1055,7 +1055,9 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   // cluster (k-means) is bounded(100k) + onOverflow:error and costHint
   // expensive (#130 E2b): the in-memory fit is the heavy reduce-tier op
   // whose exact-unbounded upgrade is the mini-batch streaming variant (E3).
-  cluster: pureReduce("scalar", "expensive"),
+  // cluster: exact in-memory for small N; mini-batch k-means folds a large
+  // handle online (#153). streaming, still cost-gated.
+  cluster: streamingReduce("scalar", "expensive"),
   // hypothesis_test is engine-pushdown (#130 E2c): the t-tests push their
   // O(N) reduction (avg / var_samp / count) into SQL over the source handle;
   // the O(1) statistic + p-value run in-tool. mann_whitney (rank-over-union)
@@ -1069,7 +1071,9 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   regression: enginePushdownReduce("scalar"),
   // logistic_regression (IRLS) is bounded(100k) + onOverflow:error and
   // costHint expensive (#130 E2b); the SGD streaming variant is E3.
-  logistic_regression: pureReduce("scalar", "expensive"),
+  // logistic_regression: exact IRLS for small N; AdaGrad SGD folds a large
+  // handle online (#153). streaming, still cost-gated.
+  logistic_regression: streamingReduce("scalar", "expensive"),
   // forecast folds online over the cursor (#129) — streaming, not bounded.
   forecast: streamingReduce("scalar"),
   // financial — pure math
