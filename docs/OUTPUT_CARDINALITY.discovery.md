@@ -99,7 +99,7 @@ This ticket lands the **surface + documentation**, not the per-tool conversions:
 
 ## Documentation surface (in #161)
 
-The output contract must be discoverable by both end users and custom-tool authors — the "Keeping Tool Docs & Help in Sync" convention applied to a new metadata field:
+The output contract must be discoverable by both end users and custom-tool authors — the "Keeping Documentation in Sync with Capabilities" convention applied to a new metadata field:
 
 - **Custom-tool authors** — `CUSTOM_TOOLPACK_INTEGRATION.md` §`capability` (currently documents `consumption`/`resultKind`) gains a `production` row + example, so a webhook author can declare their tool's output cardinality. The custom-pack subset rule (below) governs which `production` values are allowed.
 - **Registration UI helper text** — `RegisterToolpackDialog` / `ToolpackMetadataModal` (`apps/web`) reference the capability fields; add `production` so the form/modal explains what output metadata a tool declares.
