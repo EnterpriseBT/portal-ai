@@ -2,10 +2,9 @@ import { z } from "zod";
 import { tool } from "ai";
 
 import { AnalyticsService } from "../services/analytics.service.js";
-import { PortalSqlHandleService } from "../services/portal-sql-handle.service.js";
 import { Tool } from "../types/tools.js";
+import { resolveSqlDelivery } from "./result-sink.js";
 import { rewriteForNamedDataset } from "../utils/vega-spec-rewrite.util.js";
-import { INLINE_ROWS_THRESHOLD } from "@portalai/core/constants";
 // ---------------------------------------------------------------------------
 // Vega-Lite spec schema — kept minimal to reduce tool-definition token cost.
 //
@@ -58,17 +57,15 @@ export class VisualizeTool extends Tool<typeof InputSchema> {
       execute: async (input) => {
         const { sql, vegaLiteSpec } = this.validate(input);
 
-        // Inline path first — small datasets still pass straight
-        // through to the visualize service so the chart renders with
-        // its rows baked into the spec.
-        const inlineResponse = await AnalyticsService.sqlQuery({
-          sql,
-          stationId,
-          organizationId,
-        });
+        // The shared inline-vs-handle decision (#164); each branch wraps the
+        // chart differently.
+        const delivery = await resolveSqlDelivery(
+          { sql },
+          { stationId, organizationId }
+        );
 
-        const rowCount = countRows(inlineResponse);
-        if (rowCount <= INLINE_ROWS_THRESHOLD) {
+        // Inline — small datasets render with their rows baked into the spec.
+        if (delivery.kind === "inline") {
           return AnalyticsService.visualize({
             sql,
             vegaLiteSpec,
@@ -77,34 +74,15 @@ export class VisualizeTool extends Tool<typeof InputSchema> {
           });
         }
 
-        // Handle path — produce a handle, rewrite the spec for the
-        // named-dataset / changeset render shape, return the
-        // composite payload so the agent sees the envelope + spec
-        // without the rows.
-        const { envelope } = await PortalSqlHandleService.produce({
-          stationId,
-          organizationId,
-          sql,
-        });
+        // Handle — rewrite the spec for the named-dataset render shape and
+        // return the envelope + spec so the agent never sees the rows.
         const rewrittenSpec = rewriteForNamedDataset(vegaLiteSpec);
         return {
           type: "vega-lite",
-          ...envelope,
+          ...delivery.envelope,
           spec: rewrittenSpec,
         };
       },
     });
   }
-}
-
-function countRows(
-  response: Awaited<ReturnType<typeof AnalyticsService.sqlQuery>>
-): number {
-  if ("sample" in response) {
-    return response.totalCount;
-  }
-  if ("truncated" in response && response.truncated) {
-    return response.totalCount;
-  }
-  return response.rows.length;
 }

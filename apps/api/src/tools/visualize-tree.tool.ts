@@ -2,9 +2,8 @@ import { z } from "zod";
 import { tool } from "ai";
 
 import { AnalyticsService } from "../services/analytics.service.js";
-import { PortalSqlHandleService } from "../services/portal-sql-handle.service.js";
 import { Tool } from "../types/tools.js";
-import { INLINE_ROWS_THRESHOLD } from "@portalai/core/constants";
+import { resolveSqlDelivery } from "./result-sink.js";
 
 // ---------------------------------------------------------------------------
 // Vega spec schema — kept minimal to reduce tool-definition token cost.
@@ -60,14 +59,13 @@ export class VisualizeTreeTool extends Tool<typeof InputSchema> {
       execute: async (input) => {
         const { sql, vegaSpec } = this.validate(input);
 
-        const inlineResponse = await AnalyticsService.sqlQuery({
-          sql,
-          stationId,
-          organizationId,
-        });
+        // Shared inline-vs-handle decision (#164).
+        const delivery = await resolveSqlDelivery(
+          { sql },
+          { stationId, organizationId }
+        );
 
-        const rowCount = countRows(inlineResponse);
-        if (rowCount <= INLINE_ROWS_THRESHOLD) {
+        if (delivery.kind === "inline") {
           return AnalyticsService.visualizeVega({
             sql,
             vegaSpec,
@@ -78,31 +76,13 @@ export class VisualizeTreeTool extends Tool<typeof InputSchema> {
 
         // Handle path: tree specs accumulate the full dataset before
         // rendering — the widget batches arrivals client-side and
-        // debounces re-layout, but the wire shape is the same as
-        // visualize.
-        const { envelope } = await PortalSqlHandleService.produce({
-          stationId,
-          organizationId,
-          sql,
-        });
+        // debounces re-layout, but the wire shape is the same as visualize.
         return {
           type: "vega",
-          ...envelope,
+          ...delivery.envelope,
           spec: vegaSpec,
         };
       },
     });
   }
-}
-
-function countRows(
-  response: Awaited<ReturnType<typeof AnalyticsService.sqlQuery>>
-): number {
-  if ("sample" in response) {
-    return response.totalCount;
-  }
-  if ("truncated" in response && response.truncated) {
-    return response.totalCount;
-  }
-  return response.rows.length;
 }

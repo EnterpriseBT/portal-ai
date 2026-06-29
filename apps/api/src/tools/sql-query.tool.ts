@@ -1,8 +1,6 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import { AnalyticsService } from "../services/analytics.service.js";
-import { PortalSqlHandleService } from "../services/portal-sql-handle.service.js";
 import { PortalSqlService } from "../services/portal-sql.service.js";
 import { JobsService } from "../services/jobs.service.js";
 import { ApiError } from "../services/http.service.js";
@@ -17,7 +15,7 @@ import {
 } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
 import { Tool } from "../types/tools.js";
-import { INLINE_ROWS_THRESHOLD } from "@portalai/core/constants";
+import { resolveResultSink } from "./result-sink.js";
 import { environment } from "../environment.js";
 
 const logger = createLogger({ module: "sql-query-tool" });
@@ -170,31 +168,15 @@ export class SqlQueryTool extends Tool<typeof InputSchema> {
 
         // ── Synchronous path (today's behavior) with the timeout backstop.
         try {
-          // Inline path: run the query with the standard row cap. When
-          // it fits below INLINE_ROWS_THRESHOLD we return the rows
-          // directly (today's behavior + back-compat).
-          const inlineResponse = await AnalyticsService.sqlQuery({
-            sql,
-            stationId,
-            organizationId,
-          });
-
-          const rowCount = countRows(inlineResponse);
-          if (rowCount <= INLINE_ROWS_THRESHOLD) {
-            return inlineResponse;
-          }
-
-          // Handle path: stage the rows in Redis + return the envelope.
-          // The actual data never threads through the agent's context.
-          // Tag with `type: "data-table"` so portal.service.ts routes to
-          // the streaming-table block (the same envelope shape `visualize`
-          // uses, minus the vega-lite spec).
-          const { envelope } = await PortalSqlHandleService.produce({
-            stationId,
-            organizationId,
-            sql,
-          });
-          return { type: "data-table", ...envelope };
+          // Inline-vs-handle is the shared output-sink decision (#164): small
+          // results return inline, larger ones stage a cursor-backed SQL
+          // handle (`{ type: "data-table", ...envelope }`) so the rows never
+          // thread through the agent's context. Either way the user sees all.
+          return await resolveResultSink(
+            { kind: "rows", onLarge: "handle" },
+            { sql },
+            { stationId, organizationId }
+          );
         } catch (err) {
           // Backstop (spec D8a): the predictive EXPLAIN under-estimated and
           // the query hit the 30s synchronous statement_timeout. Escalate
@@ -313,22 +295,4 @@ export class SqlQueryTool extends Tool<typeof InputSchema> {
  *  synchronous ceiling). Used to trigger the job-tier backstop. */
 function isPortalSqlTimeout(err: unknown): boolean {
   return err instanceof ApiError && err.code === ApiCode.PORTAL_SQL_TIMEOUT;
-}
-
-/**
- * Count rows across the three PortalSqlResponse shapes. The "sample"
- * variant (payload-too-large collapse) reports total via `totalCount`;
- * the truncated-rows variant likewise; the normal variant returns its
- * own `rows.length`.
- */
-function countRows(
-  response: Awaited<ReturnType<typeof AnalyticsService.sqlQuery>>
-): number {
-  if ("sample" in response) {
-    return response.totalCount;
-  }
-  if ("truncated" in response && response.truncated) {
-    return response.totalCount;
-  }
-  return response.rows.length;
 }

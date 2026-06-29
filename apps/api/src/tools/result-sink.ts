@@ -18,6 +18,8 @@ import { INLINE_ROWS_THRESHOLD } from "@portalai/core/constants";
 import type { Production } from "@portalai/core/models";
 
 import { PortalSqlHandleService } from "../services/portal-sql-handle.service.js";
+import type { QueryHandleEnvelope } from "../services/portal-sql-handle.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import {
   applyTransformFold,
   type TransformDescriptor,
@@ -31,11 +33,53 @@ type Row = Record<string, unknown>;
 export type ResultSink =
   | { value: unknown }
   | { rows: AsyncIterable<Row[]> }
-  | { transform: TransformDescriptor };
+  | { transform: TransformDescriptor }
+  | { sql: string };
 
 export interface ResultSinkContext {
   stationId: string;
   organizationId: string;
+}
+
+/** Rows in a `sqlQuery` response, across its three shapes. */
+function sqlRowCount(
+  response: Awaited<ReturnType<typeof AnalyticsService.sqlQuery>>
+): number {
+  if ("sample" in response) return response.totalCount;
+  if ("truncated" in response && response.truncated) return response.totalCount;
+  return response.rows.length;
+}
+
+export type SqlDelivery =
+  | { kind: "inline"; result: Awaited<ReturnType<typeof AnalyticsService.sqlQuery>> }
+  | { kind: "handle"; envelope: QueryHandleEnvelope };
+
+/**
+ * The inline-vs-handle decision for a SQL-backed output (#161/#164). Runs the
+ * query inline; ≤ threshold returns the inline result, else stages a
+ * **cursor-backed** SQL handle via `produce(sql)` (re-executable past the
+ * snapshot — not `produceFromStream`). The lower-level half of the resolver:
+ * `resolveResultSink({ sql })` returns the terminal result for pure-data
+ * tools (sql_query), while chart tools call this directly and wrap each
+ * branch (rows-into-spec vs handle + rewritten spec).
+ */
+export async function resolveSqlDelivery(
+  opts: { sql: string; inlineThreshold?: number },
+  ctx: ResultSinkContext
+): Promise<SqlDelivery> {
+  const result = await AnalyticsService.sqlQuery({
+    sql: opts.sql,
+    stationId: ctx.stationId,
+    organizationId: ctx.organizationId,
+  });
+  const threshold = opts.inlineThreshold ?? INLINE_ROWS_THRESHOLD;
+  if (sqlRowCount(result) <= threshold) return { kind: "inline", result };
+  const { envelope } = await PortalSqlHandleService.produce({
+    sql: opts.sql,
+    stationId: ctx.stationId,
+    organizationId: ctx.organizationId,
+  });
+  return { kind: "handle", envelope };
 }
 
 /** A staged handle, tagged so `resolveDisplayBlock` routes it as a data-table. */
@@ -112,6 +156,17 @@ export async function resolveResultSink(
   // value — always inline (cardinality 1).
   if ("value" in sink) {
     return sink.value;
+  }
+
+  // sql — a cursor-backed SQL handle past the threshold (terminal result).
+  if ("sql" in sink) {
+    const delivery = await resolveSqlDelivery(
+      { sql: sink.sql, inlineThreshold: inlineThresholdOf(production) },
+      ctx
+    );
+    return delivery.kind === "inline"
+      ? delivery.result
+      : { type: "data-table", ...delivery.envelope };
   }
 
   const threshold = inlineThresholdOf(production);
