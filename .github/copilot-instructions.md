@@ -72,6 +72,6 @@ TanStack Router, file-based in `src/routes/`. Route tree auto-generates. Use `cr
 Three MUI themes: Brand (default), Light, Dark. Persisted in localStorage via `@portalai/core`.
 
 
-## Tool docs sync (feature changes)
+## Keep documentation in sync with capabilities (feature changes)
 
-When you change a tool's behavior/capabilities, update all that apply in the same PR: the `Tool` subclass `description` in `apps/api/src/tools/*.tool.ts` (and its mirror in `packages/core/src/registries/builtin-toolpacks.ts` for pack tools — system tools live only in the tool file); agent guidance in `apps/api/src/prompts/system.prompt.ts`; and user-facing Help in `apps/web/src/utils/{glossary,faq}.util.ts`. See CLAUDE.md → "Keeping Tool Docs & Help in Sync".
+Every feature/bugfix carries a standing check: is any documentation — user- or developer-facing — now out of sync with what the app actually does? Update every affected surface **in the same PR**; stale docs are a bug here, not a follow-up. Surfaces: user-facing Help (`apps/web/src/utils/{glossary,faq,getting-started}.util.ts`); the tool contract (`apps/api/src/tools/*.tool.ts` description + its `packages/core/src/registries/builtin-toolpacks.ts` mirror for pack tools + `apps/api/src/prompts/system.prompt.ts`); in-workflow examples / `helperText` / sample components / validation messages; and developer docs (`README.md`s, `docs/*.md` for shipped behavior, `CLAUDE.md` + this file for conventions). Tools are one category, not the framing. See CLAUDE.md → "Keeping Documentation in Sync with Capabilities".

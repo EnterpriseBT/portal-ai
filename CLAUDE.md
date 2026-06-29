@@ -486,15 +486,47 @@ These are the protection rules `main` should carry. They are settings on the rep
 - **Do not allow bypassing the above settings** — applies to administrators too. Force-push and deletion are off by default once protection is enabled.
 - **Restrict who can push** is not needed if PR-required is on; everyone goes through PRs.
 
-## Keeping Tool Docs & Help in Sync (feature changes)
+## Keeping Documentation in Sync with Capabilities
 
-A tool's behavior is described in **three** places that drift independently. When you add or change a tool — new capability, new input/section, changed semantics — update all that apply, in the same PR:
+**Every feature or bugfix carries a standing check: is any documentation — user-facing *or* developer-facing — now out of sync with the application's actual capabilities?** A change anywhere (a renamed step, a changed validation rule, a new field, altered example output, a new script, a changed convention) can invalidate docs that describe the old behavior. Update every affected surface **in the same PR**. Stale docs are a **bug in this PR**, not a follow-up — wrong instructions to the *user* (user-facing copy) and wrong instructions to the *next contributor* (developer-facing docs) are equally bugs. Tools/toolpacks are one category below, not the framing.
 
-1. **Tool description (the agent-facing contract).** The `description` field on the `Tool` subclass in `apps/api/src/tools/<tool>.tool.ts`. For tools that belong to a built-in pack, the **hand-authored mirror** in `packages/core/src/registries/builtin-toolpacks.ts` must be kept in sync — the modal + `tools.service.ts` disagree otherwise. System tools (`current_time`, `station_context`) live only in the tool file (they're not in the six packs), so there's nothing to mirror.
-2. **Agent guidance.** When the change affects *how the agent should behave* (which tool to reach for, how to read a result, a workflow ordering), update `apps/api/src/prompts/system.prompt.ts`. Prefer making the tool's **output** unambiguous over relying on prompt text alone (an LLM can misread prose guidance; it can't misread a field it must echo).
-3. **User-facing Help.** When the change affects what an end user sees or understands, update the Help page docs in `apps/web/src/utils/` — `glossary.util.ts` (term definitions) and `faq.util.ts` (Q&A), surfaced in `Help.view.tsx`.
+### Documentation surfaces (the inventory)
 
-If a change touches a tool's surface but you update none of these, that's a docs-drift bug, not "deferred." Tests that pin descriptions/prompt invariants (`builtin-toolpacks.test.ts`, `system.prompt.test.ts`) will catch some — but not Help-doc or semantic drift.
+**Structured user-facing Help** (surfaced in `apps/web/src/views/Help.view.tsx`)
+- `apps/web/src/utils/glossary.util.ts` — term definitions, examples, related terms
+- `apps/web/src/utils/faq.util.ts` — Q&A pairs
+- `apps/web/src/utils/getting-started.util.ts` — onboarding steps + CTAs
+
+**Agent / tool contract** (three places that drift independently)
+- `apps/api/src/tools/<tool>.tool.ts` — the `description` field on the `Tool` subclass (the agent-facing contract). For pack tools, keep the **hand-authored mirror** in `packages/core/src/registries/builtin-toolpacks.ts` in sync (else the modal + `tools.service.ts` disagree); system tools (`current_time`, `station_context`) live only in the tool file — nothing to mirror.
+- `apps/api/src/prompts/system.prompt.ts` — agent guidance (which tool to reach for, how to read a result, workflow ordering). Prefer making a tool's **output** unambiguous over prose alone — an LLM can misread guidance; it can't misread a field it must echo.
+
+**In-workflow examples, helper text & sample references**
+- `apps/web/src/workflows/FileUploadConnector/SampleFiles.component.tsx` — sample CSV/XLSX + descriptions
+- `apps/web/src/workflows/RestApiConnector/TransformEditor.component.tsx` — `EXAMPLE_TRANSFORM`
+- `apps/web/src/components/RegisterToolpackDialog.component.tsx` — webhook code examples (TS/Python/C#) + `AUTH_HEADER_BOILERPLATES`
+- placeholder / `helperText` copy across the RestApi / FileUpload / GoogleSheets / MicrosoftExcel workflows
+- validation messages in `apps/web/src/utils/record-field-serialization.util.ts`
+
+**Developer-facing docs**
+- `README.md` (root), `apps/web/README.md`, `apps/api/README.md`, `packages/core/README.md`, `packages/spreadsheet-parsing/README.md`
+- `docs/*.md` design specs/plans, where they describe **shipped** behavior
+- `docs/CUSTOM_TOOLPACK_INTEGRATION.md` — the custom-tool author contract
+- `CLAUDE.md` itself, when a change alters a documented convention (and its mirror, `.github/copilot-instructions.md`)
+
+### What changed → what to check
+
+| You changed… | Re-check… |
+|---|---|
+| a new/renamed domain concept | `glossary.util.ts` + `faq.util.ts` |
+| a workflow step, its inputs, or its order | that workflow's `helperText`/placeholder copy + `getting-started.util.ts` |
+| an example's output, sample data, or boilerplate | the example/sample components (`SampleFiles`, `TransformEditor` `EXAMPLE_TRANSFORM`, `RegisterToolpackDialog`) |
+| a validation rule or its message | `record-field-serialization.util.ts` (+ the field's `helperText`) |
+| a tool (capability/input/semantics) | the three tool surfaces above (`.tool.ts` + `builtin-toolpacks.ts` mirror + `system.prompt.ts`) |
+| the custom-tool wire/capability contract | `CUSTOM_TOOLPACK_INTEGRATION.md` + `RegisterToolpackDialog` |
+| a convention, script, or setup step | the relevant `README.md` / `docs/*.md` / `CLAUDE.md` (+ `.github/copilot-instructions.md`) |
+
+The pinning tests (`builtin-toolpacks.test.ts`, `system.prompt.test.ts`, `glossary.util.test.ts`, `faq.util.test.ts`) catch some drift — but not semantic drift or the prose surfaces. The check is yours, not the test suite's.
 
 ## Detailed Documentation
 
