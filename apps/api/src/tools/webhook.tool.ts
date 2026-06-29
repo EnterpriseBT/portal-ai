@@ -5,7 +5,7 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { tool } from "ai";
 
-import type { Consumption } from "@portalai/core/models";
+import type { Consumption, Production } from "@portalai/core/models";
 
 import {
   ToolService,
@@ -36,6 +36,7 @@ export class WebhookTool extends Tool {
   private stationId: string;
   private organizationId?: string;
   private consumption?: Consumption;
+  private production?: Production;
 
   constructor(
     toolName: string,
@@ -44,7 +45,8 @@ export class WebhookTool extends Tool {
     implementation: WebhookImplementation,
     stationId: string,
     consumption?: Consumption,
-    organizationId?: string
+    organizationId?: string,
+    production?: Production
   ) {
     super();
     this.slug = toolName;
@@ -55,6 +57,16 @@ export class WebhookTool extends Tool {
     this.stationId = stationId;
     this.consumption = consumption;
     this.organizationId = organizationId;
+    this.production = production;
+  }
+
+  /** #161: a tool gets the output write-grant when it declares it produces
+   *  rows that stage to a handle past the inline threshold — driven by
+   *  `production` (output), independent of the `consumption` (input) tier. */
+  private get wantsOutputGrant(): boolean {
+    return (
+      this.production?.kind === "rows" && this.production.onLarge === "handle"
+    );
   }
 
   /** A `bounded`/`streaming` tool computes over a dataset, so the runtime
@@ -121,31 +133,22 @@ export class WebhookTool extends Tool {
         let writeToken: string | undefined;
         let sessionId: string | undefined;
         try {
+          // ── Input tier (consumption): how the dataset reaches the webhook ──
           if (this.consumption?.mode === "streaming") {
             const { queryHandle, rows, ...input } = validated;
-            // Resolve the input first (the org check in buildPullGrant fails
-            // before we mint anything), then the output write grant.
-            let sourcePart: Record<string, unknown>;
+            // streaming + queryHandle → a pull-on-read grant; streaming +
+            // inline rows (small) → records-in-body (ceiling, not mandate).
             if (typeof queryHandle === "string" && queryHandle.length > 0) {
               const grant = await this.buildPullGrant(queryHandle);
               readToken = grant.readToken;
-              sourcePart = { source: grant };
+              body = { tool: this.slug, input, source: grant };
             } else {
               const resolved = await resolveRecordSource(
                 { rows: rows as any },
                 this.consumption
               );
-              sourcePart = { records: resolved.rows };
+              body = { tool: this.slug, input, records: resolved.rows };
             }
-            const output = await this.buildOutputGrant();
-            sessionId = output.sessionId;
-            writeToken = output.writeToken;
-            body = {
-              tool: this.slug,
-              input,
-              ...sourcePart,
-              output: output.grant,
-            };
           } else if (this.needsRecordSource) {
             const { queryHandle, rows, ...input } = validated;
             const resolved = await resolveRecordSource(
@@ -155,6 +158,16 @@ export class WebhookTool extends Tool {
             body = { tool: this.slug, input, records: resolved.rows };
           } else {
             body = { tool: this.slug, input: validated };
+          }
+
+          // ── Output tier (production, #161): the write-grant is driven by
+          // the OUTPUT declaration, not the input mode — so a `none`/`bounded`
+          // tool that produces a large row set can stage a handle too.
+          if (this.wantsOutputGrant) {
+            const output = await this.buildOutputGrant();
+            sessionId = output.sessionId;
+            writeToken = output.writeToken;
+            body.output = output.grant;
           }
 
           const result = await ToolService.callWebhook(

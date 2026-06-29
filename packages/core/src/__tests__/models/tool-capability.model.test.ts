@@ -284,6 +284,21 @@ describe("customToolCapabilityError", () => {
     ).toMatch(/consumption mode 'bounded'/);
   });
 
+  it("allows rows+handle output for any input mode (no streaming coupling, #161)", () => {
+    // production drives the output write-grant, not consumption — so a
+    // none-input tool may still declare it stages a large row set.
+    expect(
+      customToolCapabilityError(
+        {
+          ...customConsumer,
+          consumption: { mode: "none" },
+          production: { kind: "rows", onLarge: "handle" },
+        },
+        allowNone
+      )
+    ).toBeNull();
+  });
+
   it("permits a wider consumption set when allowed (e.g. once #124 ships)", () => {
     expect(
       customToolCapabilityError(
