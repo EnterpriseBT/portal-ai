@@ -223,8 +223,11 @@ A tool may declare a `capability` object describing how Portal.ai consumes it. C
 | `alwaysAvailable` | must be `false` |
 | `computeShape` | `map` \| `reduce` \| `pure` |
 | `consumption.mode` | `none` (inline), `bounded` (records-in-body), or `streaming` (pull-on-read) — see [Scaling over large datasets](#scaling-over-large-datasets). `engine-pushdown` is rejected (no backend access) |
-| `resultKind` | `scalar` \| `data-table` \| `vega-lite` \| `vega` \| `d3` \| `geo` (not `mutation-result` / `progress`) |
+| `production` | **output cardinality** — `{ "kind": "value" }` (a scalar/summary, always returned inline) or `{ "kind": "rows", "onLarge": "handle" \| "sample" \| "error", "inlineThreshold"?: number }` (a row set: returned inline when small, otherwise handled per `onLarge`). The mirror of `consumption`, for output. |
+| `resultKind` | `scalar` \| `data-table` \| `vega-lite` \| `vega` \| `d3` \| `geo` (not `mutation-result` / `progress`). Must agree with `production`: `scalar` ⇒ `production.kind: "value"`. |
 | `costHint` | `free` \| `metered` \| `expensive` (drives the cost-acknowledgement gate) |
+
+`consumption` (input) and `production` (output) are **independent**: any combination is valid. In particular `production.onLarge: "handle"` works for **any** input mode — declaring it earns your tool an `output` write-grant (see [Scaling over large datasets](#scaling-over-large-datasets)), so even a `consumption: none` tool can stage a large result handle.
 
 ```json
 "capability": {
@@ -233,11 +236,18 @@ A tool may declare a `capability` object describing how Portal.ai consumes it. C
   "computeShape": "pure",
   "costHint": "free",
   "resultKind": "scalar",
+  "production": { "kind": "value" },
   "alwaysAvailable": false
 }
 ```
 
-A tool that omits `capability` is treated as a pure inline tool.
+A row-producing tool that should stage large results past the inline limit instead declares, e.g.:
+
+```json
+"production": { "kind": "rows", "onLarge": "handle" }
+```
+
+A declared `capability` must include `production`. A tool that omits `capability` entirely is treated as a pure inline tool.
 
 ### `GET /metadata` (optional)
 

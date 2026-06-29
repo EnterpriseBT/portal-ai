@@ -289,6 +289,15 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     relatedTerms: ["Portal", "Pinned Result"],
   },
   {
+    term: "Query Handle",
+    category: GlossaryCategory.Analytics,
+    definition:
+      "A lightweight reference to a result set that's too large to show inline. Small results come back in the message directly; larger ones return a handle, and the full rows stream into the table or chart without the assistant having to read them all. Either way you see every row.",
+    example:
+      "Asking for every order returns a query handle — the table loads all rows, while the assistant only keeps a small preview for follow-up questions.",
+    relatedTerms: ["Portal Result"],
+  },
+  {
     term: "Pinned Result",
     category: GlossaryCategory.Analytics,
     definition:
