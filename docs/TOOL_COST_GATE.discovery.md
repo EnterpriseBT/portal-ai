@@ -40,6 +40,14 @@ Declared at `tool-capability.model.ts:98` (built-ins) and `BulkDispatchMetadata.
 
 `ApiCode` enum (`api-codes.constants.ts`) already has `BULK_DISPATCH_COST_NOT_ACKNOWLEDGED:491`, `BULK_DISPATCH_COST_ACKNOWLEDGEMENT_INVALID:489`, `SQL_QUERY_COST_NOT_ACKNOWLEDGED:308`. A tool that **throws** `ApiError` inside `execute` becomes a stream *error* chunk (`portal.service.ts:685`) — which tends to kill the turn rather than let the agent react.
 
+### Built-in vs. custom toolpack tools — one contract, one wrap (confirmed)
+
+Both tool families are constructed identically: a built-in is `new SqlQueryTool().build()` and a custom/webhook tool is `new WebhookTool(...).build()` (`webhook.tool.ts:102`), and **both `.build()` return `ai.tool({ inputSchema, execute })`** assigned into the same `tools` record inside `buildAnalyticsTools` (`tools.service.ts:611-647` for the custom path). Both also declare `costHint` through the **same** `ToolCapabilitySchema` — built-ins via `ALL_TOOL_CAPABILITIES` (`tool-capabilities.ts:62`), custom via `tool.capability?.costHint ?? bulkDispatch.costHint` (`tools.service.ts:309`). So a single build-time wrap meters `web_search` (built-in) and a metered webhook tool through the *identical* code path and the *same* tier numbers — **criterion: custom toolpacks and built-ins share the rate-limit/cost contract by construction**, not by parallel implementations. **One seam differs:** the bulk-dispatch fan-out of a *custom* tool builds a separate executor (`ToolService.callWebhook`) in `lookupBulkDispatchable` (`tools.service.ts:300`) that bypasses the wrapped `execute` (built-ins dispatched in bulk are still covered, because that path resolves the wrapped `ai.tool()` from `buildAnalyticsTools`) — see Open Q7.
+
+### Frontend — Settings → Organization tab (where the tier surfaces)
+
+`apps/web/src/views/Settings.view.tsx` renders a two-tab Settings view (`Profile`, `Organization`); the Organization tab (tab index 1) shows org metadata through a read-only `<MetadataList>` (name, timezone, created, updated). It fetches the org via `sdk.organizations.current()` → `GET /api/organization/current` → `OrganizationGetResponse` (`@portalai/core/contracts`), query key `organizations.current()`. The frontend org object carries exactly the `OrganizationSchema` fields — so a `tier` added to that schema (Decision 3) rides `OrganizationGetResponse` with **no extra api plumbing**, and the tab gains the value by adding one `MetadataList` item (Decision 7).
+
 ## The design space
 
 ### Decision 1 — Where the gate hooks in
@@ -72,7 +80,7 @@ The API runs multiple instances (ECS/CloudFormation), so an in-process bucket me
 | "first-class input, one default tier" fit | **exact** | loose (numbers scattered per org) | over-built for v1 |
 | Monetization path | move mapping to a table later, call sites unchanged | messy migration | already there (but premature) |
 
-**Lean: A.** Add `tier TEXT NOT NULL DEFAULT 'standard'` to `organizations` (dual-schema: Zod model + Drizzle table + type-checks + named migration). The tier **name** is the first-class per-org input; the tier→limits mapping is a code lookup against env-configured defaults (Decision 4). v1 has one tier (`standard`); when monetization adds paid tiers, the mapping graduates to option C with **no gate call-site change** — exactly the "tier is the input shape" decision.
+**Lean: A.** Add `tier TEXT NOT NULL DEFAULT 'standard'` to `organizations` (dual-schema: Zod model + Drizzle table + type-checks + named migration). The tier **name** is the first-class per-org input; the tier→limits mapping is a code lookup against env-configured defaults (Decision 4). v1 has one tier (`standard`); when monetization adds paid tiers, the mapping graduates to option C with **no gate call-site change** — exactly the "tier is the input shape" decision. It also keeps the eventual **payment-provider integration shallow**: a subscription-based portal (Stripe or similar, *out of scope here* — see *What this doesn't decide* / Open Q8) writes a tier **name** into this one column from its subscription webhooks; nothing else in the gate moves, and the column stays provider-agnostic (no `stripe_*` fields in v1).
 
 ### Decision 4 — Tier → limits resolution + default tier
 
@@ -90,13 +98,19 @@ Throwing `ApiError` in `execute` becomes a stream-error chunk that tends to end 
 
 **Lean: return a typed error *result*, not throw.** On deny the gate returns a structured tool result (`{ error: { code: "TOOL_USAGE_QUOTA_EXCEEDED", message, retryAfter? } }`) so the SDK delivers it as a normal tool-result the LLM reads and relays to the user, never a silent skip and never a dead turn. New `ApiCode`s `TOOL_USAGE_RATE_LIMITED` / `TOOL_USAGE_QUOTA_EXCEEDED` name the conditions; the structured result carries the code.
 
+### Decision 7 — Surfacing the current tier to the user
+
+Criterion: the org's current subscription tier must be visible in **Settings → Organization**. v1 has one default tier, but it should still be *shown* (not hidden behind "no UI") so the affordance exists before paid tiers arrive and the user can see what plan they're on.
+
+**Lean: a read-only `MetadataList` row in the Organization tab.** `tier` is already added to `OrganizationSchema` (Decision 3), so it rides `OrganizationGetResponse` automatically; `Settings.view.tsx` adds one `{ label: "Subscription Tier", value: <display(tier)> }` item to the existing `<MetadataList>`. No mutation, no new query, no api change — it reuses the same `sdk.organizations.current()` the tab already calls. A tiny display map turns the stored name (`standard`) into a presentable label (`Standard`). This is the **only** frontend surface in v1; usage counters/history/charts stay out (What this doesn't decide).
+
 ## Tradeoff comparison
 
-| | D1: build-wrap | D2: Redis counters | D3: tier column | D4: env default tier | D5: split ack | D6: error result |
-|---|---|---|---|---|---|---|
-| Spread to spec | gate prelude + guard test | counter keys + windows | migration + model | `resolveTier` + env | gate ⟂ handshake boundary | result shape + codes |
-| New infra | wrap in `buildTools` | 2 Redis counters | 1 column | env vars | none (reuse) | 2 ApiCodes |
-| Reuses | `tools.service` build | cost-ack Redis patterns | dual-schema workflow | `environment.ts` pattern | `CostAcknowledgementService` | `ApiError`/result path |
+| | D1: build-wrap | D2: Redis counters | D3: tier column | D4: env default tier | D5: split ack | D6: error result | D7: tier in Settings |
+|---|---|---|---|---|---|---|---|
+| Spread to spec | gate prelude + guard test | counter keys + windows | migration + model | `resolveTier` + env | gate ⟂ handshake boundary | result shape + codes | 1 `MetadataList` row + display map |
+| New infra | wrap in `buildTools` | 2 Redis counters | 1 column | env vars | none (reuse) | 2 ApiCodes | none (rides `OrganizationGetResponse`) |
+| Reuses | `tools.service` build | cost-ack Redis patterns | dual-schema workflow | `environment.ts` pattern | `CostAcknowledgementService` | `ApiError`/result path | `Settings.view` `MetadataList` + `sdk.organizations.current` |
 
 ## Recommendation
 
@@ -106,7 +120,9 @@ Throwing `ApiError` in `execute` becomes a stream-error chunk that tends to end 
 4. **`resolveTier(org)` maps name → limits per cost class**, sourced from env defaults in v1 (`TOOL_METERED_RATE_PER_MIN`, `TOOL_METERED_QUOTA_PER_DAY`, `EXPENSIVE_*`).
 5. **Gate owns accounting for all classes; the `expensive` ack handshake stays tool-local** — `CostAcknowledgementService` unchanged, just also counted against quota.
 6. **Denials return a typed tool result** (`TOOL_USAGE_RATE_LIMITED` / `TOOL_USAGE_QUOTA_EXCEEDED`), not a thrown stream error, so the agent relays them.
-7. **`web_search` is the first guarded `metered` tool** — proves the gate end-to-end before GIS lands.
+7. **Built-ins and custom toolpacks share one contract by construction.** Both are built through the same `buildAnalyticsTools` → `ai.tool()` wrap and both declare `costHint` via the same `ToolCapabilitySchema`, so the gate meters them through one code path with one set of tier numbers — no per-source special-casing. (Caveat: bulk-dispatch fan-out of a *custom* webhook tool builds a separate executor that bypasses the wrap — Open Q7; out of v1 scope.)
+8. **Surface the current tier read-only in Settings → Organization** — one `MetadataList` row off the `tier` that already rides `OrganizationGetResponse`. The v1 default tier is *shown*, not hidden.
+9. **`web_search` is the first guarded `metered` tool** — proves the gate end-to-end before GIS lands.
 
 ## Open questions
 
@@ -116,15 +132,18 @@ Throwing `ApiError` in `execute` becomes a stream-error chunk that tends to end 
 4. **Where does `acknowledgeCost`-style consent live for a *non-bulk* expensive tool** if one ever appears (no bulk signature to hash)? **Lean: don't solve it now** — v1 has no non-bulk expensive tool; when one appears, generalize the signature to `(toolName, canonicalized-args)` then. Flag it so the spec doesn't over-fit to the bulk shape.
 5. **Counter increment vs. limit check atomicity.** Increment-then-check can let a burst slip 1–2 over. **Lean: `INCR` then compare (accept ±1 slop)** rather than a Lua check-and-incr — the slop is immaterial against a daily quota and keeps the gate a two-liner. Revisit only if exactness matters.
 6. **Failure mode when Redis is down.** Fail-open (allow, unmetered) or fail-closed (deny all metered)? **Lean: fail-open with a logged warning** — a Redis outage shouldn't take down the agent; the metered tools degrade to today's unguarded behavior, which is the current baseline, not a regression.
+7. **Does the gate cover the bulk-dispatch fan-out of a *custom* webhook tool?** `lookupBulkDispatchable` builds a *separate* executor (`ToolService.callWebhook`, `tools.service.ts:300`) for custom tools that bypasses the `buildAnalyticsTools` wrap, so per-row webhook calls aren't individually metered. **Lean: out of scope for v1** — per-call counting (Open Q1) counts the *outer* `transform_entity_records` invocation once (it's a built-in and **is** wrapped), and bulk fan-out is already gated by the ack handshake. If we later meter the fan-out, the second seam is the dispatcher's injected `toolExecutor` (`bulk-transform-tool.dispatcher.ts`), not the build wrap. Built-in tools dispatched in bulk *are* covered (that path resolves the wrapped `ai.tool()` from `buildAnalyticsTools`).
+8. **How does a payment provider set the tier?** When the Stripe-style subscription portal lands, what writes `organizations.tier`? **Lean: don't build it now, keep the column provider-agnostic** — a later provider webhook (subscription created/updated/cancelled) maps the plan → a tier *name* and writes this one column; `resolveTier` already turns the name into limits, so no gate or call-site change. Flag so v1 doesn't model the column as provider-specific (no `stripe_customer_id` / `subscription_id` columns yet).
 
 ## What this doesn't decide
 
-- **Configurable / paid / multiple named tiers, admin UI, billing integration.** v1 is one env default tier; `tier` is just the input shape. The monetization layer is a separate ticket that *consumes* this surface (Decision 3 keeps call sites stable for it).
+- **Configurable / paid / multiple named tiers, admin UI, and the subscription *payment portal*.** v1 is one env default tier; `tier` is just the input shape. The monetization layer — a **subscription-based payment provider (Stripe or similar)** whose webhooks set the org's `tier` name — is a **later, separate ticket** that *consumes* this surface (Decisions 3–4 keep call sites stable; the provider writes a tier name and nothing more). No payment-provider code, SDK, or `subscriptions`/customer-id columns ship in v1 (Open Q8).
 - **Weighted per-tool cost units.** Per-call counting only (Open Q1).
 - **Cross-org / global provider-account rate limiting.** Per-org is the v1 unit; protecting the upstream account as a whole is separate.
-- **Usage analytics / dashboards.** Only the minimal queryable counter ships (issue's "usage observability" line) — no UI.
+- **Usage analytics / dashboards.** Only the minimal queryable counter ships (issue's "usage observability" line) — no usage UI. **Exception:** the org's *current tier* is shown read-only in Settings → Organization (Decision 7); that one field **is** in v1. Usage *counts* / history / charts are not.
+- **Metering the bulk-dispatch fan-out of custom webhook tools.** The outer `transform_entity_records` call is counted once; per-row custom-webhook fan-out is not individually metered in v1 (Open Q7).
 - **The GIS tools themselves (#84).** This is the surface they consume.
 
 ## Next step
 
-Write `docs/TOOL_COST_GATE.spec.md` (contract: the `resolveCostGate` signature + deny-result shape, the counter keys/windows, `resolveTier` + env vars, the `tier` column dual-schema, the new `ApiCode`s, and the `buildTools` wrap + guard test) and `docs/TOOL_COST_GATE.plan.md` (TDD slices). Likely slicing: (1) `tier` column dual-schema + migration + `resolveTier` (no behavior change yet); (2) Redis counter util + `resolveCostGate` resolver, unit-tested against a fake Redis; (3) the `buildTools` wrap + guard test, gating `web_search` as the first `metered` consumer; (4) deny-result wiring + the two `ApiCode`s + agent-relay test; (5) docs (`CUSTOM_TOOLPACK_INTEGRATION.md` "costHint now enforced", README/CLAUDE.md cost-control convention). Each slice green and independent; #84's metered tools unblock after slice 3.
+Write `docs/TOOL_COST_GATE.spec.md` (contract: the `resolveCostGate` signature + deny-result shape, the counter keys/windows, `resolveTier` + env vars, the `tier` column dual-schema, the new `ApiCode`s, and the `buildTools` wrap + guard test) and `docs/TOOL_COST_GATE.plan.md` (TDD slices). Likely slicing: (1) `tier` column dual-schema + migration + `resolveTier` (no behavior change yet; `tier` rides `OrganizationGetResponse`); (2) Redis counter util + `resolveCostGate` resolver, unit-tested against a fake Redis; (3) the `buildTools` wrap + guard test (asserting **every** built-in *and* custom tool is wrapped — the shared-contract guard), gating `web_search` as the first `metered` consumer; (4) deny-result wiring + the two `ApiCode`s + agent-relay test; (5) surface the tier read-only in Settings → Organization (`MetadataList` item + display map + a render test); (6) docs (`CUSTOM_TOOLPACK_INTEGRATION.md` "costHint now enforced — same contract as built-ins", README/CLAUDE.md cost-control convention, and the Help glossary/faq if "tier" becomes a user-facing term). Each slice green and independent; #84's metered tools unblock after slice 3.
