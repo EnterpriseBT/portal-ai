@@ -426,6 +426,20 @@ Notes:
 - **The issue body holds the index.** As each doc commits, edit the issue to append the link. The issue is the canonical entry point for anyone catching up on the work.
 - **Project-board card movement.** `Todo` → `In Progress` when the first commit lands on the branch (whichever phase it is). `Done` is set automatically when the PR with `Closes #N` merges.
 
+### Enterprise-scale considerations in discovery
+
+Portal.ai is an enterprise, multi-tenant, billing-facing product — a discovery doc's **default lens is enterprise-scale**, not prototype-grade. Every discovery (the `/discovery` skill scaffolds this section automatically) carries an **"Enterprise-scale considerations"** pass that weighs the design against these dimensions, each getting a `Lean:` or an explicit `N/A because …`:
+
+- **Concurrency & correctness** — multi-instance/ECS races, atomicity of check-then-act, idempotency keys.
+- **Accuracy & auditability** — a durable record-of-truth (ledger / event log) vs. an ephemeral counter; chargeback / dispute / compliance needs.
+- **Failure modes** — fail-open vs. fail-closed and its *cost/safety* implication; graceful degradation when a dependency (Redis / DB / upstream provider) is down.
+- **Scale & unbounded growth** — fan-out, cardinality ceilings, pagination, backpressure, runaway loops.
+- **Multi-tenancy** — per-org isolation, noisy-neighbor protection, per-tenant limits.
+- **Contract stability** — shaping the input so future paid/enterprise features (tiers, quotas, SSO, RBAC) plug in without re-plumbing call sites.
+- **Data lifecycle** — windows/periods aligned to *business/contract* semantics (e.g. a billing period), retention — not arbitrary technical windows ("calendar UTC day because it's easy").
+
+**This is a lens, not bureaucracy.** Proportionate to the ticket: a localized single-package change marks dimensions `N/A` in a line; a cross-cutting, contract, or billing ticket engages each. Prototype-grade choices (in-process-only state, non-atomic counters, blanket fail-open) are allowed **only** as a *conscious, recorded* downgrade — "prototype-grade acceptable because X" — never as a silent default. The tool cost gate (#169) is the cautionary example: it first defaulted to flat counting, ±1-slop increments, blanket fail-open, and calendar-day windows, and every one was wrong for a per-org billing feature — the correction (units meter, atomic check-and-charge, split fail policy, contract-aligned periods) and the split-out tier contract (#172) is what this lens exists to catch up front.
+
 ### Filing an issue
 
 - File on GitHub (`gh issue create --repo EnterpriseBT/portal-ai`), not in `docs/`. The `docs/` tree is reserved for design specs / plans / smoke checklists.

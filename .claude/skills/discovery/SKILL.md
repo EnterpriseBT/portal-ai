@@ -115,6 +115,17 @@ Follow the house structure exactly:
 
 <Numbered list. Each item is a real ambiguity, not a placeholder. Each ends with "Lean: <answer>." — never leave a question without a lean.>
 
+## Enterprise-scale considerations
+
+<Weigh the design against enterprise / multi-tenant / billing-facing readiness. Each relevant dimension gets a `Lean:` or an explicit `N/A because …`. Be proportionate — a localized single-package ticket marks dimensions N/A in a line; a cross-cutting / contract / billing ticket engages each. Dimensions:
+- **Concurrency & correctness** — multi-instance/ECS races, atomicity of check-then-act, idempotency keys.
+- **Accuracy & auditability** — durable record-of-truth (ledger/event log) vs. ephemeral counter; chargeback / dispute / compliance needs.
+- **Failure modes** — fail-open vs. fail-closed and its *cost/safety* implication; graceful degradation when a dependency (Redis/DB/provider) is down.
+- **Scale & unbounded growth** — fan-out, cardinality ceilings, pagination, backpressure, runaway loops.
+- **Multi-tenancy** — per-org isolation, noisy-neighbor protection, per-tenant limits.
+- **Contract stability** — input shaped so future paid/enterprise features (tiers, quotas, SSO, RBAC) plug in without re-plumbing call sites.
+- **Data lifecycle** — windows/periods aligned to *business/contract* semantics (e.g. a billing period), retention — not arbitrary technical windows.>
+
 ## What this doesn't decide
 
 <Bulleted list of explicit out-of-scope items. Be specific about *why* it's deferred (size / risk / scope creep).>
@@ -129,6 +140,7 @@ Follow the house structure exactly:
 - **No invented file paths or symbols.** Every `path:line` citation comes from the Explore agent's response. If you can't cite, don't claim.
 - **No placeholder questions.** Open questions are real ambiguities surfaced during the survey. If a question has an obvious answer, fold it into the recommendation instead.
 - **Leans are mandatory.** Every open question and every decision in the design space gets a `Lean:` line. The point of discovery is to make calls, not list possibilities.
+- **Enterprise-scale lens is the default, not an add-on.** The "Enterprise-scale considerations" section is mandatory; each dimension gets a `Lean:` or an explicit `N/A because …`. Prototype-grade choices (in-process-only state, non-atomic counters, blanket fail-open, arbitrary technical windows) are allowed **only** as a *conscious, stated* downgrade ("prototype-grade acceptable because X"), never as a silent default. See `CLAUDE.md` → "Enterprise-scale considerations in discovery".
 - **Length: 100–250 lines.** Tighter for narrow tickets; longer only when the design space is genuinely broad.
 
 ### 7. Hand off to the user
