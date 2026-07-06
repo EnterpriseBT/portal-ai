@@ -140,7 +140,7 @@ export type Usage = z.infer<typeof UsageSchema>;
 **File: `apps/api/src/db/schema/tiers.table.ts`** (new)
 
 ```ts
-import { pgTable, text, integer, jsonb, uniqueIndex, check } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, jsonb, unique, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
 
@@ -163,7 +163,12 @@ export const tiers = pgTable(
     perToolCaps: jsonb("per_tool_caps").$type<Record<string, { unitsPerPeriod: number }>>(),
   },
   (t) => [
-    uniqueIndex("tiers_slug_unique").on(t.slug).where(sql`deleted IS NULL`),
+    // FULL unique CONSTRAINT (not a soft-delete-partial index): it is the FK
+    // target of `organizations.tier`, and Postgres requires a non-partial
+    // UNIQUE/PK for a referenced column. A soft-deleted tier's slug therefore
+    // cannot be reused — acceptable: tiers are rarely deleted and never while
+    // an org references one (the FK blocks it).
+    unique("tiers_slug_unique").on(t.slug),
     check("tiers_overage_check", sql`${t.overage} IN ('hard-deny', 'soft-alert')`),
     check("tiers_period_kind_check", sql`${t.periodKind} IN ('monthly')`),
     check("tiers_anchor_day_check", sql`${t.periodAnchorDay} BETWEEN 1 AND 28`),
@@ -393,12 +398,14 @@ Before #169 is live, `used = 0` and available = full allocation — no frontend 
 
 `cd apps/api && npm run db:generate -- --name add_tiers_usage_and_org_tier`, producing one migration that, in order:
 
-1. `CREATE TABLE tiers (...)` with the unique `slug` index + CHECKs.
+1. `CREATE TABLE tiers (...)` with the **UNIQUE constraint** on `slug` + CHECKs.
 2. `CREATE TABLE usage (...)` with the unique `(org, period, class)` index + CHECKs.
-3. `INSERT` the default `standard` tier row (so step 4's FK default is satisfiable) — hand-added to the generated SQL, values matching *Seed* below.
+3. `INSERT` the default `standard` tier row (so step 4's FK is satisfiable) — hand-added to the generated SQL, values matching *Seed* below.
 4. `ALTER TABLE organizations ADD COLUMN tier text NOT NULL DEFAULT 'standard' REFERENCES tiers(slug)`.
 
-Steps 3–4 order matters: the `standard` row must exist before the FK-defaulted column is added, else existing org rows violate the FK. Single Drizzle transaction; hand-edit the generated SQL to insert step 3 (Drizzle authors schema, not the seed row) — the same technique prior data-bearing migrations use. No production data at risk (project memory: no critical production data yet).
+**Existing organizations are seeded with `standard` by this migration**, not left null: the `NOT NULL DEFAULT 'standard'` in step 4 backfills the `tier` value of every existing org row (Postgres applies the column default to pre-existing rows on `ADD COLUMN`), and the FK is satisfied because step 3 created the `standard` row first. So every org — pre-existing or newly created — resolves a valid tier from day one; there is no "org with no tier" state.
+
+**Ordering is load-bearing:** the `standard` row (3) must exist before the FK-defaulted column is added (4), and `slug` must carry a non-partial UNIQUE constraint (1) for the FK to be creatable at all. Single Drizzle transaction; hand-edit the generated SQL to insert step 3 (Drizzle authors schema, not the seed row) — the same technique prior data-bearing migrations use. No production data at risk (project memory: no critical production data yet), but the backfill is correct regardless of row count.
 
 ---
 
@@ -437,8 +444,8 @@ Run via project npm scripts (`feedback_use_npm_test_scripts`): `cd packages/core
 
 ### Layer 2 — Drizzle / repositories / type-checks (integration)
 
-9. `tiers` insert + `findBySlug` round-trip; soft-deleted rows excluded.
-10. Unique `slug` index rejects a second live row with the same slug; permits it after soft-delete.
+9. `tiers` insert + `findBySlug` round-trip; soft-deleted rows excluded from the finder.
+10. **`slug` UNIQUE constraint rejects any duplicate** — a second row with an existing slug throws, **even after the first is soft-deleted** (full, non-partial constraint; confirms slug is globally unique and thus a valid FK target).
 11. `tiers_overage_check` / `tiers_anchor_day_check` / `tiers_charges_nonneg` reject violating direct inserts.
 12. `usage.increment` inserts a new `(org,period,class)` row at `units`; a second call **adds** (not overwrites) — asserts atomic accumulation.
 13. `usage.increment` under simulated concurrency (two awaited inserts on the same key) yields the summed total, not a lost update (ON CONFLICT path).
@@ -473,10 +480,11 @@ Run via project npm scripts (`feedback_use_npm_test_scripts`): `cd packages/core
 
 ### Layer 6 — migration + seed
 
-33. Migration integration probe: after migrate, `tiers` has the `standard` row, `organizations.tier` exists defaulting to `standard`, `usage` exists.
-34. `seedTiers` is idempotent — a second `db:seed` doesn't duplicate `standard`.
+33. Migration integration probe: after migrate, `tiers` has the `standard` row, `organizations.tier` exists, `usage` exists.
+34. **Existing orgs are backfilled to `standard`** — seed an org row **before** running the migration, migrate, then assert that org's `tier === "standard"` (the `NOT NULL DEFAULT` backfill), and that `resolveTier` on it returns the `standard` policy. Guards the "no org without a tier" invariant.
+35. `seedTiers` is idempotent — a second `db:seed` doesn't duplicate `standard` (relies on the `slug` UNIQUE constraint + a skip-if-present check).
 
-**Totals:** ~8 core, ~9 api integration, ~8 service, ~4 route, ~3 web, ~2 migration/seed ≈ **34 cases**.
+**Totals:** ~8 core, ~10 api integration, ~8 service, ~4 route, ~3 web, ~3 migration/seed ≈ **36 cases**.
 
 ---
 
@@ -484,6 +492,8 @@ Run via project npm scripts (`feedback_use_npm_test_scripts`): `cd packages/core
 
 - [ ] All new test cases pass; existing suites green; `npm run lint && npm run type-check` clean at repo root.
 - [ ] `npm run db:migrate` on a fresh DB yields `tiers` (+ seeded `standard`), `usage`, and `organizations.tier` (FK, default `standard`).
+- [ ] **Every existing organization is backfilled to `standard`** by the migration (no null/unresolvable tier on any pre-existing org); `resolveTier` succeeds for all orgs post-migrate.
+- [ ] **`tiers.slug` is globally unique** — a duplicate slug insert is rejected (live or soft-deleted), and the constraint is non-partial so it validly backs the `organizations.tier` FK.
 - [ ] `resolveTier(org)` returns a valid `TierPolicy`; an org with no/unknown tier resolves `standard` without throwing; a second call within 60 s hits the cache.
 - [ ] `UsageService.increment` accumulates atomically under concurrency; `getBalance` computes `available = allocation − used` (null = unlimited, never negative).
 - [ ] `GET /api/organization/usage` returns tier + used/available; `GET /api/organization/current` includes `tier`.
@@ -498,6 +508,8 @@ Run via project npm scripts (`feedback_use_npm_test_scripts`): `cd packages/core
 | Risk | Mitigation |
 |---|---|
 | FK-defaulted `organizations.tier` fails because `standard` doesn't exist yet at column-add time. | Migration inserts the `standard` row (step 3) **before** the `ALTER TABLE` (step 4); integration test 33 asserts the ordering works on a fresh DB. |
+| Implementer follows the repo's usual soft-delete-**partial** unique-index convention on `tiers.slug`, and the FK creation then fails (Postgres won't reference a partial-indexed column). | The table spec calls for a **full `unique()` constraint** on `slug` with an explicit comment; test 10 asserts non-partial behavior (rejects reuse even post-soft-delete). Deviation surfaces at migrate time and in that test. |
+| A pre-existing org ends up with a null/unresolvable tier. | The `NOT NULL DEFAULT 'standard'` backfills every existing row at `ADD COLUMN`; test 34 seeds an org before the migration and asserts it resolves `standard` after. |
 | `resolveTier` throwing would break every tool call once #169 wires it in. | Unknown slug → default fallback + warning (test 20); the only throw is the `TIER_DEFAULT_MISSING` guard, which the seed makes unreachable in practice. |
 | Cache serves a stale allocation after an admin SQL `UPDATE`. | ≤60 s TTL bounds staleness; `invalidate` is the immediate path (used by any in-process write). Documented as acceptable for tier economics that change rarely. |
 | Concurrent charges lose an increment. | `ON CONFLICT DO UPDATE ... SET units_used = units_used + N` is atomic in Postgres; test 13 asserts summed totals under concurrent inserts. |
