@@ -151,5 +151,38 @@ describe("OrganizationModelFactory", () => {
         expect(paths).toContain("timezone");
       }
     });
+
+    it("should default `tier` to 'standard' when not provided (#172)", () => {
+      const model = factory.create("system");
+      model.update({
+        name: "Acme Corp",
+        timezone: "UTC",
+        ownerUserId: "owner-123",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      });
+
+      const parsed = model.parse();
+      expect(parsed.tier).toBe("standard");
+    });
+
+    it("should accept an explicit `tier` slug (#172)", () => {
+      const model = factory.create("system");
+      model.update({
+        name: "Acme Corp",
+        timezone: "UTC",
+        ownerUserId: "owner-123",
+        tier: "enterprise-acme",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      });
+
+      const parsed = model.parse();
+      expect(parsed.tier).toBe("enterprise-acme");
+    });
   });
 });
