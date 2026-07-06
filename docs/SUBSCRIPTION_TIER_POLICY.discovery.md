@@ -131,12 +131,12 @@ With definitions in the DB, `resolveTier(org)` is a **DB read**, not a map looku
 
 ## Open questions
 
-1. **Seed values for the `standard` tier?** **Lean: real, conservative numbers seeded into the row** — the gate (#169) needs a meaningful cap to enforce, and it's trivially tuned later with an `UPDATE`. No placeholder.
-2. **Per-org bespoke allocations (enterprise custom deals)?** **Lean: model a bespoke deal as its own `tiers` row** (e.g. slug `enterprise-acme`) the org points at — not per-org override columns on `organizations`. The tiers table makes arbitrary tiers cheap, so there's one resolution path. Revisit a per-org override table only if bespoke deals proliferate.
-3. **Billing-period anchor: calendar month vs org anniversary?** **Lean: calendar month, `anchorDay: 1` default** for v1 — no payment provider yet to supply a contract anchor; the `period_anchor_day` column exists so the provider later sets a real anchor without a schema change.
+1. **Seed values for the `standard` tier.** **Decided: real, conservative numbers (no placeholder), but the specific figures are deferred to the spec** — the gate (#169) needs a meaningful cap, and values are trivially tuned later with an `UPDATE`. The spec sets the actual `standard` monthly `metered`/`expensive` quotas (and any `ratePerMin`).
+2. **Per-org bespoke allocations (enterprise custom deals)?** **Decided: model a bespoke deal as its own `tiers` row** (e.g. slug `enterprise-acme`) the org points at — not per-org override columns on `organizations`. The tiers table makes arbitrary tiers cheap, so there's one resolution path. Revisit a per-org override table only if bespoke deals proliferate.
+3. **Billing-period anchor: calendar month vs org anniversary?** **Decided: calendar month, `anchorDay = 1`** for v1 — no payment provider yet to supply a contract anchor; the `period_anchor_day` column exists so the provider later sets a real per-org anchor (e.g. subscription start) without a schema change.
 4. **~~Does `resolveTier` need to be async?~~ [RESOLVED — yes, async + cached.]** DB-backed definitions make it a read; a short in-process TTL cache keeps the per-call hot path cheap (Decision 4).
-5. **Usage aggregate: dedicated table vs SUM #169's ledger?** **Lean: dedicated `usage` table (Decision 6C)** — keeps #172's balance read cheap and decoupled from #169's ledger internals; the gate write-through keeps it in sync.
-6. **Should tier/charge *changes* be audited (who edited a charge / moved an org)?** **Lean: `baseColumns` `updated`/`updatedBy` on `tiers` + `organizations` for v1** — editing tier economics is now a DB mutation, so who-can-edit + a full change-history is a real enterprise concern, but a dedicated audit log is a monetization/compliance follow-up.
+5. **~~Usage aggregate: dedicated table vs SUM #169's ledger?~~ [RESOLVED — dedicated `usage` table (Decision 6C).]** Keeps #172's balance read cheap and decoupled from #169's ledger internals; the gate write-through keeps it in sync.
+6. **Should tier/charge *changes* be audited (who edited a charge / moved an org)?** **Decided: `baseColumns` `updated`/`updatedBy` on `tiers` + `organizations` for v1** — editing tier economics is now a DB mutation, so who-can-edit + a full change-history is a real enterprise concern, but a dedicated audit log is a monetization/compliance follow-up.
 
 ## Enterprise-scale considerations
 
