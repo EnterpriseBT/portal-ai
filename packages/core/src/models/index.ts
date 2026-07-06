@@ -67,5 +67,8 @@ export * from "./organization-toolpack.model.js";
 /** Tool capability metadata — the taxonomy substrate (#121 child A) */
 export * from "./tool-capability.model.js";
 
+/** Subscription tier model + policy schema (#172) */
+export * from "./tier.model.js";
+
 /** REST API connector config + credentials schemas */
 export * from "./api-connector.model.js";

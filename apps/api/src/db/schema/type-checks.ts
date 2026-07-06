@@ -35,6 +35,7 @@ import type {
   PortalResult,
   StationToolpack,
   OrganizationToolpack,
+  Tier,
 } from "@portalai/core/models";
 import type {
   UserSelect,
@@ -57,6 +58,7 @@ import type {
   PortalResultSelect,
   StationToolpackSelect,
   OrganizationToolpackSelect,
+  TierSelect,
 } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { EntityRecordHydrated } from "../repositories/entity-records.repository.js";
@@ -83,6 +85,7 @@ import type { organizationToolpacks } from "./organization-toolpacks.table.js";
 import type { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
 import type { wideTableColumns } from "./wide-table-columns.table.js";
 import type { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
+import type { tiers } from "./tiers.table.js";
 import type { InterpretationTrace, LayoutPlan } from "@portalai/core/contracts";
 import type {
   ConnectorInstanceLayoutPlanSelect,
@@ -127,6 +130,21 @@ const _orgModelToDrizzle: _OrgModelToDrizzle = true;
 type _OrgInferredRow = InferSelectModel<typeof organizations>;
 type _OrgInferredToModel = IsAssignable<_OrgInferredRow, Organization>;
 const _orgInferredToModel: _OrgInferredToModel = true;
+
+// ── Tier ─────────────────────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _TierDrizzleToModel = IsAssignable<TierSelect, Tier>;
+const _tierDrizzleToModel: _TierDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _TierModelToDrizzle = IsAssignable<Tier, TierSelect>;
+const _tierModelToDrizzle: _TierModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _TierInferredRow = InferSelectModel<typeof tiers>;
+type _TierInferredToModel = IsAssignable<_TierInferredRow, Tier>;
+const _tierInferredToModel: _TierInferredToModel = true;
 
 // ── OrganizationUser ─────────────────────────────────────────────
 

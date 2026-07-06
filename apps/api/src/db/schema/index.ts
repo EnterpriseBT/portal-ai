@@ -30,6 +30,7 @@ export { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.
 export { fileUploads } from "./file-uploads.table.js";
 export { wideTableColumns } from "./wide-table-columns.table.js";
 export { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
+export { tiers } from "./tiers.table.js";
 
 /** Drizzle-zod derived schemas for runtime validation */
 export * from "./zod.js";
