@@ -111,6 +111,17 @@ With definitions in the DB, `resolveTier(org)` is a **DB read**, not a map looku
 
 **Lean: C.** A `usage` aggregate table (dual-schema): `(organizationId, periodId, costClass, unitsUsed)`, where `periodId` derives from the tier's `period` (same monthly key #169's gate uses). #172 owns the table + the `available = allocation − unitsUsed` read + the Settings display. **#169's gate increments it** as part of its atomic charge (Redis hot counter stays the authoritative *enforcement* state; this table is the durable, queryable balance, kept in sync by the gate's write-through). #169 keeps its per-call **audit ledger** (forensic detail); #172 keeps the **balance** (what a user/billing sees). The increment is a stable service seam the gate calls — the concurrency-safe UPSERT lives here.
 
+### Custom tool registrations
+
+The tier is **tool-source-agnostic** — this is the criterion "custom toolpacks and built-ins share the cost contract" (#169) honored on the allocation side:
+
+- **Allocation is by cost class, not tool identity.** `TierPolicy.allocations` is keyed by `free | metered | expensive`. A custom/webhook tool declares its cost class through the *same* `ToolCapabilitySchema` a built-in uses (`capability.costHint ?? bulkDispatch.costHint`, `tools.service.ts:309`), so a custom `metered` tool draws the same `metered` allocation, `ratePerMin`, and `usage` increment as `web_search`. There is no custom-vs-built-in branch anywhere in the tier.
+- **`perToolCaps` targets any tool by name** — built-in or custom — for an org that wants a finer cap on one registered tool.
+- **The `usage` balance aggregates by cost class**, so custom-tool consumption rolls into the same bucket; per-tool forensic breakdown is #169's per-call ledger, not #172's balance.
+- **Trust seam:** a custom tool's cost class is *author-declared*; #172 trusts it when allocating. Guarding a mis-/under-declared cost class (an author labeling an expensive tool `free` to dodge metering) is #169's enforcement + toolpack-registration concern, not an allocation concern.
+
+**Not in scope — gating custom-tool *registration* as a tier entitlement** (`maxCustomToolpacks` / `customToolsEnabled`). That's "tier as feature-gating," broader than "tier as unit allocation," and is deferred to the monetization layer. The DB-table design makes adding an entitlement column (or a `tier_entitlements` child) cheap when it's wanted.
+
 ## Tradeoff comparison
 
 | | D1: DB `tiers` table | D2: TierPolicy shape | D3: slug FK column | D4: async cached resolveTier | D5/D6: usage + display |
@@ -157,6 +168,7 @@ _(Dogfooding [#173](https://github.com/EnterpriseBT/portal-ai/issues/173) — th
 - **Payment provider integration** (Stripe SDK, subscription webhooks, customer/subscription columns) — a later ticket that *writes* the org's tier slug and manages tier rows.
 - **Admin UI to create/edit tiers** — tiers are rows edited via `db:seed`/SQL for now; an editing UI is later.
 - **Per-org override columns** — a bespoke deal is its own `tiers` row (Open Q2), not per-org allocation columns on `organizations`.
+- **Custom-tool registration entitlement** (`maxCustomToolpacks` / feature-gating by tier) — deferred to monetization. The tier governs the *usage cost* of custom tools (by cost class, like any built-in) but not the *right to register* them; an entitlement axis is a cheap later column/child on `tiers`.
 
 ## Next step
 
