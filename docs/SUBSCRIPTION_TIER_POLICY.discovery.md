@@ -63,18 +63,18 @@ Tier economics are business config that should be *data, not code*: `environment
 | holds variable `perToolCaps` | no | **yes** | yes |
 | dual-schema fit | wide flat table | jsonb typed by Zod | 2–3 tables + repos |
 
-**Decided: hybrid.** Scalar columns for the **fixed cost-class charge grid** (`{free,metered,expensive}` × `{unitsPerPeriod, ratePerMin}` = 6 columns) so "change a charge" is a plain `UPDATE` — honoring the whole reason we went to a table — plus scalars for `slug`, `display_name`, `period_kind`, `period_anchor_day`, `overage`, and a **JSONB `per_tool_caps`** for the one variable-length bit. Rationale: the charge grid is small and *fixed* (the `CostHintSchema` enum — adding a class is already a code-wide change), so scalar columns give the best edit ergonomics, strongest DB integrity (`NOT NULL`, `CHECK ≥ 0`), and trivial queryability, with the "column-add migration" downside barely applying; `perToolCaps` is the only genuinely variable piece, so it goes JSONB. `resolveTier` assembles a `TierPolicy` from the row (a small, well-contained mapping). All-JSONB was rejected: zero-migration flexibility isn't worth losing the clean `SET col = n` that motivated the table.
+**Decided: hybrid.** Scalar columns for the **fixed cost-class charge grid** (`{free,metered,expensive}` × `{unitsPerPeriod, ratePerMin}` = 6 columns) so "change a charge" is a plain `UPDATE` — honoring the whole reason we went to a table — plus scalars for `slug`, `display_name`, `period_kind`, `period_anchor_day`, `overage`, and a **JSONB `per_tool_caps`** for the one variable-length bit. Rationale: the charge grid is small and *fixed* (the `CostHintSchema` enum — adding a class is already a code-wide change), so scalar columns give the best edit ergonomics, strong DB integrity (`CHECK ≥ 0`; nullable, where `NULL` = unlimited per Decision 2b), and trivial queryability, with the "column-add migration" downside barely applying; `perToolCaps` is the only genuinely variable piece, so it goes JSONB. `resolveTier` assembles a `TierPolicy` from the row (a small, well-contained mapping). All-JSONB was rejected: zero-migration flexibility isn't worth losing the clean `SET col = n` that motivated the table.
 
 ### Decision 2 — The `TierPolicy` shape
 
-**Lean:** the contract #169 already designed against:
+**Decided:** the object `resolveTier` assembles from a tier row and hands #169:
 
 ```
 TierPolicy = {
-  tier: string,                            // the name
-  period: { kind: "monthly", anchorDay },  // contract-aligned billing window
-  allocations: {                           // keyed by CostHintSchema
-    free:      { unitsPerPeriod, ratePerMin },   // typically unlimited/no-op
+  tier: string,                                  // the slug that resolved
+  period: { kind: "monthly", anchorDay },        // billing window (Open Q3)
+  allocations: {                                 // keyed by CostHintSchema
+    free:      { unitsPerPeriod, ratePerMin },
     metered:   { unitsPerPeriod, ratePerMin },
     expensive: { unitsPerPeriod, ratePerMin },
   },
@@ -83,7 +83,9 @@ TierPolicy = {
 }
 ```
 
-`free` is present for symmetry (the gate checks all classes) but typically unbounded. `perToolCaps` and `overage` are optional levers #169 honors.
+- **2a — `ratePerMin` stays in the tier.** Two distinct limits ride here: `unitsPerPeriod` (the monthly **quota** — subscription economics) and `ratePerMin` (a **burst rate-limit** — system/upstream protection). Both are per-plan levers #169 reads from one place. Noted: `ratePerMin` is protection riding on the subscription object, not revenue — if rate-limits ever want to be global system config, they drop out of the tier without touching the quota path.
+- **2b — `NULL` means unlimited.** Both `unitsPerPeriod` and `ratePerMin` are nullable; `NULL` = no cap and the gate skips that class's check (how `free` is uncapped, and how an `enterprise` tier can be uncapped on `metered`). Cleaner and more self-documenting than a `-1` sentinel.
+- **2c — `overage` is per-tier for v1.** One setting for the whole tier (`hard-deny` vs `soft-alert`); per-cost-class overage is a later additive migration if needed.
 
 ### Decision 3 — What the `organizations` column holds
 
