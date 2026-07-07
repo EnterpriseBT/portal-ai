@@ -87,7 +87,7 @@ The Settings → Organization "Subscription & Usage" section is **shipped** (#17
 | Guard-testable | weak | **assert `buildTools` wraps all** | n/a |
 | Feasible | yes | yes | **no — SDK exposes none** |
 
-**Lean: B.** `buildTools` decorates each tool's `execute` with a gate prelude (`await resolveCostGate({ organizationId, toolName, costHint, input })` → return a typed deny result on deny, else delegate). The prelude computes units (`resolveCallCost`), atomically checks-and-charges against the org's `TierPolicy`, and writes the ledger row. One wrap site, every tool covered, and a guard test asserts no tool is constructed un-wrapped — the exact mirror of the cardinality follow-up's "no tool open-codes a threshold check."
+**Lean: B.** `buildTools` decorates each tool's `execute` with a gate prelude (`await resolveCostGate({ organizationId, toolName, costHint, input })` → return a typed deny result on deny, else delegate). The prelude computes units (`resolveCallCost`) and atomically checks-and-charges against the org's `TierPolicy` (#172's `usage` balance). One wrap site, every tool covered, and a guard test asserts no tool is constructed un-wrapped — the exact mirror of the cardinality follow-up's "no tool open-codes a threshold check."
 
 ### Decision 2 — Rate-limit + quota mechanism (reconciled to #172's shipped `usage`)
 
