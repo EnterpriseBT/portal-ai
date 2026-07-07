@@ -208,3 +208,27 @@ export const RaisedWithDividers: Story = {
     ],
   },
 };
+
+export const WithIcons: Story = {
+  args: {
+    direction: "vertical",
+    size: "medium",
+    items: [
+      {
+        label: "Subscription Tier",
+        value: "Standard",
+        icon: <span aria-hidden>★</span>,
+      },
+      {
+        label: "Metered usage",
+        value: "30 used · 970 available",
+        icon: <span aria-hidden>◐</span>,
+      },
+      {
+        label: "Free usage",
+        value: "0 used · Unlimited",
+        icon: <span aria-hidden>∞</span>,
+      },
+    ],
+  },
+};

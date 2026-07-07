@@ -7,6 +7,7 @@ import {
   MicrosoftExcelConnectorDefinitionModelFactory,
   RestApiConnectorDefinitionModelFactory,
   SandboxConnectorDefinitionModelFactory,
+  TierModelFactory,
 } from "@portalai/core/models";
 import type { ColumnDataType } from "@portalai/core/models";
 import { DbClient } from "../db/index.js";
@@ -293,6 +294,10 @@ export class SeedService {
   async seed() {
     const { tx, commit, rollback } = await DbService.createTransactionClient();
     try {
+      await this.seedTiers(tx).catch((error) => {
+        console.error("Error seeding tiers:", error);
+        throw error; // Rethrow to trigger rollback
+      });
       await this.seedConnectorDefinitions(tx).catch((error) => {
         console.error("Error seeding connector definitions:", error);
         throw error; // Rethrow to trigger rollback
@@ -302,6 +307,41 @@ export class SeedService {
       console.error("Error during seeding:", error);
       await rollback();
     }
+  }
+
+  /**
+   * Seed the default `standard` subscription tier (#172). Idempotent —
+   * skips if the row already exists (the migration also inserts it, so this
+   * is a no-op on an already-migrated DB). Numbers are the canonical source
+   * of truth; the data-migration's INSERT mirrors them. Tunable later with a
+   * plain SQL `UPDATE`.
+   */
+  async seedTiers(db: DbClient) {
+    const existing = await DbService.repository.tiers.findBySlug(
+      "standard",
+      db
+    );
+    if (existing) return;
+
+    const standard = new TierModelFactory()
+      .create(SystemUtilities.id.system)
+      .update({
+        slug: "standard",
+        displayName: "Standard",
+        periodKind: "monthly",
+        periodAnchorDay: 1,
+        overage: "hard-deny",
+        freeUnitsPerPeriod: null,
+        freeRatePerMin: null,
+        meteredUnitsPerPeriod: 1000,
+        meteredRatePerMin: 20,
+        expensiveUnitsPerPeriod: 100,
+        expensiveRatePerMin: 5,
+        perToolCaps: null,
+      })
+      .parse();
+
+    await DbService.repository.tiers.createMany([standard], db);
   }
 
   async seedConnectorDefinitions(db: DbClient) {

@@ -14,6 +14,9 @@ export const OrganizationSchema = CoreSchema.extend({
   timezone: z.string(),
   ownerUserId: z.string(), // ID of the user who owns this organization
   defaultStationId: z.string().nullable().default(null),
+  /** Subscription tier slug — FK to `tiers.slug` (#172). Defaults to
+   *  `standard`; a payment provider later writes this. */
+  tier: z.string().default("standard"),
 });
 
 export type Organization = z.infer<typeof OrganizationSchema>;

@@ -492,6 +492,11 @@ export enum ApiCode {
   /** rows-by-id request exceeded the per-call id-count cap. */
   BULK_DISPATCH_TOO_MANY_IDS = "BULK_DISPATCH_TOO_MANY_IDS",
 
+  // Subscription tiers (#172)
+  /** The default subscription tier row is not seeded — a 500-class invariant
+   *  violation (`resolveTier` cannot fall back). Should be impossible post-seed. */
+  TIER_DEFAULT_MISSING = "TIER_DEFAULT_MISSING",
+
   // Compute-tool purity (#114)
   /** Compute input (rows resolved from a query handle, or inline rows)
    *  exceeded COMPUTE_MAX_ROWS — too many rows for an in-memory compute. 400. */

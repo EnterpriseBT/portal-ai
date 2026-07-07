@@ -33,6 +33,8 @@ import {
   wideTableColumnsRepo,
   wideTableRepo,
   apiEndpointsRepo,
+  tiersRepo,
+  usageRepo,
 } from "../db/index.js";
 import {
   Repository,
@@ -110,6 +112,8 @@ export class DbService {
       wideTableColumns: wideTableColumnsRepo,
       wideTable: wideTableRepo,
       apiEndpoints: apiEndpointsRepo,
+      tiers: tiersRepo,
+      usage: usageRepo,
     };
   }
 }

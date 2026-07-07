@@ -25,6 +25,7 @@ export const queryKeys = {
   organizations: {
     root: ["organizations"] as const,
     current: () => [...queryKeys.organizations.root, "current"] as const,
+    usage: () => [...queryKeys.organizations.root, "usage"] as const,
   },
   connectorDefinitions: {
     root: ["connectorDefinitions"] as const,

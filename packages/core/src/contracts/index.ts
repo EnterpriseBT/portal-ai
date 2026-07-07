@@ -67,6 +67,9 @@ export * from "./portal.contract.js";
 /** Toolpack contracts — schemas & types */
 export * from "./toolpack.contract.js";
 
+/** Subscription tier contracts — schemas & types (#172) */
+export * from "./tier.contract.js";
+
 /** Spreadsheet parsing contracts — re-exported from @portalai/spreadsheet-parsing */
 export * from "./spreadsheet-parsing.contract.js";
 
