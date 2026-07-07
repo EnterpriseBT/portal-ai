@@ -15,6 +15,8 @@ export interface MetadataItem {
   variant?: "text" | "mono" | "chip";
   /** When true the item is not rendered. Avoids conditional wrapping at the call site. */
   hidden?: boolean;
+  /** Optional leading icon rendered beside the label (in `stacked`/`responsive` layouts). */
+  icon?: React.ReactNode;
 }
 
 export interface MetadataListProps {
@@ -114,12 +116,43 @@ const InlineRow: React.FC<{
   );
 };
 
+/** Label text with an optional leading icon. Icon-less output is identical to
+ *  the original markup, so existing consumers are unaffected. */
+const MetadataLabel: React.FC<{
+  item: MetadataItem;
+  size: "small" | "medium";
+  shrink?: boolean;
+}> = ({ item, size, shrink }) => {
+  const labelVariant = size === "small" ? "caption" : "body2";
+  const label = (
+    <MuiTypography
+      variant={labelVariant}
+      color="text.secondary"
+      sx={{ flexShrink: shrink ? 0 : undefined, fontWeight: 400 }}
+    >
+      {item.label}
+    </MuiTypography>
+  );
+
+  if (!item.icon) return label;
+
+  return (
+    <Stack
+      direction="row"
+      spacing={0.5}
+      alignItems="center"
+      sx={{ flexShrink: shrink ? 0 : undefined, color: "text.secondary" }}
+    >
+      {item.icon}
+      {label}
+    </Stack>
+  );
+};
+
 const ResponsiveRow: React.FC<{
   item: MetadataItem;
   size: "small" | "medium";
 }> = ({ item, size }) => {
-  const labelVariant = size === "small" ? "caption" : "body2";
-
   return (
     <Box
       sx={{
@@ -129,13 +162,7 @@ const ResponsiveRow: React.FC<{
         alignItems: "flex-start",
       }}
     >
-      <MuiTypography
-        variant={labelVariant}
-        color="text.secondary"
-        sx={{ flexShrink: 0, fontWeight: 400 }}
-      >
-        {item.label}
-      </MuiTypography>
+      <MetadataLabel item={item} size={size} shrink />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <MetadataValue item={item} size={size} />
       </Box>
@@ -147,17 +174,9 @@ const StackedRow: React.FC<{
   item: MetadataItem;
   size: "small" | "medium";
 }> = ({ item, size }) => {
-  const labelVariant = size === "small" ? "caption" : "body2";
-
   return (
     <Stack spacing={0.25}>
-      <MuiTypography
-        variant={labelVariant}
-        color="text.secondary"
-        sx={{ fontWeight: 400 }}
-      >
-        {item.label}
-      </MuiTypography>
+      <MetadataLabel item={item} size={size} />
       <MetadataValue item={item} size={size} />
     </Stack>
   );

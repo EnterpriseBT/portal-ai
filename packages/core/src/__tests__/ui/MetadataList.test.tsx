@@ -26,6 +26,23 @@ describe("MetadataList", () => {
       expect(screen.getByTestId("metadata-list")).toBeInTheDocument();
     });
 
+    it("should render an item's leading icon alongside its label", () => {
+      render(
+        <MetadataList
+          items={[
+            {
+              label: "Tier",
+              value: "Standard",
+              icon: <span data-testid="tier-icon">★</span>,
+            },
+          ]}
+        />
+      );
+      expect(screen.getByTestId("tier-icon")).toBeInTheDocument();
+      expect(screen.getByText("Tier")).toBeInTheDocument();
+      expect(screen.getByText("Standard")).toBeInTheDocument();
+    });
+
     it("should render nothing for an empty items array", () => {
       render(<MetadataList items={[]} />);
       const list = screen.getByTestId("metadata-list");
