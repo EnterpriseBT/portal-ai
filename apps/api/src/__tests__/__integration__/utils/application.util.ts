@@ -36,6 +36,7 @@ const {
   portalMessages,
   portals,
   stations,
+  usage,
 } = schema;
 
 type Db = ReturnType<typeof drizzle>;
@@ -174,6 +175,7 @@ export async function teardownOrg(db: Db): Promise<void> {
   await db.delete(connectorInstanceLayoutPlans);
   await db.delete(connectorInstances);
   await db.delete(connectorDefinitions);
+  await db.delete(usage);
   await db.delete(organizationUsers);
   await db.delete(organizations);
   await db.delete(users);
