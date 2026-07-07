@@ -16,10 +16,30 @@ import {
 } from "@portalai/core/ui";
 import { DataResult } from "../components/DataResult.component";
 import { sdk } from "../api/sdk";
+
+/** Present a tier slug as a human label, e.g. "enterprise-acme" → "Enterprise Acme". */
+const formatTierName = (slug: string): string =>
+  slug
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+
+/** Render a per-class usage figure; `available: null` means unlimited. */
+const formatUsageValue = (
+  balance?: { used: number; available: number | null }
+): string => {
+  if (!balance) return "—";
+  return balance.available === null
+    ? `${balance.used} used · Unlimited`
+    : `${balance.used} used · ${balance.available} available`;
+};
+
 export const SettingsView = () => {
   const { tabsProps, getTabProps, getTabPanelProps } = useTabs();
   const profileResult = sdk.auth.profile();
   const organizationResult = sdk.organizations.current();
+  const usageResult = sdk.organizations.usage();
 
   return (
     <Box>
@@ -103,9 +123,10 @@ export const SettingsView = () => {
       </TabPanel>
       <TabPanel {...getTabPanelProps(1)}>
         <PageSection title="Organization" variant="outlined">
-          <DataResult results={{ organizationResult }}>
-            {({ organizationResult }) => {
+          <DataResult results={{ organizationResult, usageResult }}>
+            {({ organizationResult, usageResult }) => {
               const { organization } = organizationResult;
+              const { tier, usage } = usageResult;
               return (
                 <Stack spacing={2}>
                   <Stack
@@ -133,6 +154,22 @@ export const SettingsView = () => {
                   <MetadataList
                     size="medium"
                     items={[
+                      {
+                        label: "Subscription Tier",
+                        value: formatTierName(tier.tier),
+                      },
+                      {
+                        label: "Metered usage",
+                        value: formatUsageValue(usage.byClass.metered),
+                      },
+                      {
+                        label: "Expensive usage",
+                        value: formatUsageValue(usage.byClass.expensive),
+                      },
+                      {
+                        label: "Free usage",
+                        value: formatUsageValue(usage.byClass.free),
+                      },
                       { label: "Timezone", value: organization.timezone },
                       {
                         label: "Created",
