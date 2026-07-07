@@ -4,7 +4,12 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApplicationService } from "../services/application.service.js";
 import { DbService } from "../services/db.service.js";
-import type { OrganizationGetResponse } from "@portalai/core/contracts";
+import { TierService } from "../services/tier.service.js";
+import { UsageService } from "../services/usage.service.js";
+import type {
+  OrganizationGetResponse,
+  OrganizationUsageGetResponse,
+} from "@portalai/core/contracts";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 
 const logger = createLogger({ module: "organization" });
@@ -215,6 +220,101 @@ organizationRouter.get(
               error instanceof Error
                 ? error.message
                 : "Failed to fetch current organization"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/organization/usage:
+ *   get:
+ *     tags:
+ *       - Organization
+ *     summary: Get current organization tier + usage balance
+ *     description: Returns the caller's current organization's resolved subscription tier policy and its current billing-period usage balance (units used and available per cost class). `available` is null for an unlimited class.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Tier + usage balance retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/OrganizationUsageGetResponse'
+ *       404:
+ *         description: User or organization not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+organizationRouter.get(
+  "/usage",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const auth0Id = req.auth?.payload.sub as string;
+
+      const user = await DbService.repository.users.findByAuth0Id(auth0Id);
+      if (!user) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ORGANIZATION_USER_NOT_FOUND,
+            "User not found"
+          )
+        );
+      }
+
+      const result = await ApplicationService.getCurrentOrganization(user.id);
+      if (!result) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ORGANIZATION_NOT_FOUND,
+            "No organization found for user"
+          )
+        );
+      }
+
+      const tier = await TierService.resolveTier(result.organization);
+      const usage = await UsageService.getBalance(
+        result.organization,
+        tier,
+        new Date()
+      );
+
+      return HttpService.success<OrganizationUsageGetResponse>(res, {
+        tier,
+        usage,
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to fetch organization usage"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ORGANIZATION_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch organization usage"
             )
       );
     }

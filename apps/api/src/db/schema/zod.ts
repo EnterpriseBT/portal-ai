@@ -33,6 +33,7 @@ import { fileUploads } from "./file-uploads.table.js";
 import { wideTableColumns } from "./wide-table-columns.table.js";
 import { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
 import { tiers } from "./tiers.table.js";
+import { usage } from "./usage.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -69,6 +70,18 @@ export const TierInsertSchema = createInsertSchema(tiers);
 /** Inferred types */
 export type TierSelect = z.infer<typeof TierSelectSchema>;
 export type TierInsert = z.infer<typeof TierInsertSchema>;
+
+// ── Usage ─────────────────────────────────────────────────────────────
+
+/** Zod schema for a `usage` row returned by SELECT. */
+export const UsageSelectSchema = createSelectSchema(usage);
+
+/** Zod schema for inserting into `usage`. */
+export const UsageInsertSchema = createInsertSchema(usage);
+
+/** Inferred types */
+export type UsageSelect = z.infer<typeof UsageSelectSchema>;
+export type UsageInsert = z.infer<typeof UsageInsertSchema>;
 
 // ── Organization Users ────────────────────────────────────────────────
 

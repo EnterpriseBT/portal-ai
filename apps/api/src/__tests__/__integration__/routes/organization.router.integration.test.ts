@@ -180,4 +180,55 @@ describe("Organization Router", () => {
       expect(res.body.payload.organization.name).toBe("Second Org");
     });
   });
+
+  describe("GET /api/organization/usage (#172 slice 3)", () => {
+    it("returns the tier policy and a zeroed usage balance for a standard org", async () => {
+      const owner = createOwner();
+      await ApplicationService.setupOrganization(owner);
+
+      const res = await request(app)
+        .get("/api/organization/usage")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.payload.tier.tier).toBe("standard");
+      // no usage rows yet → used 0, available = full allocation
+      expect(res.body.payload.usage.byClass.metered.used).toBe(0);
+      expect(res.body.payload.usage.byClass.metered.available).toBe(1000);
+      // free is unlimited on standard
+      expect(res.body.payload.usage.byClass.free.available).toBeNull();
+    });
+
+    it("reflects an incremented usage balance", async () => {
+      const owner = createOwner();
+      const result = await ApplicationService.setupOrganization(owner);
+
+      const { TierService } = await import("../../../services/tier.service.js");
+      const { UsageService } = await import(
+        "../../../services/usage.service.js"
+      );
+
+      // Charge 30 metered units in the same period the endpoint will read.
+      const periodId = TierService.periodIdFor(
+        { kind: "monthly", anchorDay: 1 },
+        new Date()
+      );
+      await UsageService.increment(
+        result.organization.id,
+        "metered",
+        30,
+        periodId,
+        { userId: "SYSTEM_TEST" }
+      );
+
+      const res = await request(app)
+        .get("/api/organization/usage")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.usage.byClass.metered.used).toBe(30);
+      expect(res.body.payload.usage.byClass.metered.available).toBe(970);
+    });
+  });
 });

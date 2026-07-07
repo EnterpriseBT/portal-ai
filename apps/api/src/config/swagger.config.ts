@@ -30,6 +30,7 @@ import {
   TestConnectionRequestBodySchema,
   TestConnectionResultSchema,
   WarningSchema,
+  OrganizationUsageGetResponseSchema,
 } from "@portalai/core/contracts";
 import {
   ApiAuthConfigSchema,
@@ -150,6 +151,17 @@ const restApiConnectorSchemas: Record<string, unknown> = {
   ),
   TestConnectionResult: z.toJSONSchema(
     TestConnectionResultSchema,
+    JSON_SCHEMA_OPTS
+  ),
+};
+
+/**
+ * Subscription tier / usage schemas (#172). Sourced from
+ * `@portalai/core/contracts` so the route JSDoc references one canonical shape.
+ */
+const tierSchemas: Record<string, unknown> = {
+  OrganizationUsageGetResponse: z.toJSONSchema(
+    OrganizationUsageGetResponseSchema,
     JSON_SCHEMA_OPTS
   ),
 };
@@ -1434,6 +1446,7 @@ const options: swaggerJsdoc.Options = {
         },
         ...spreadsheetParsingSchemas,
         ...restApiConnectorSchemas,
+        ...tierSchemas,
       },
     },
     tags: [

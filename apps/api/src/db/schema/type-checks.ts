@@ -36,6 +36,7 @@ import type {
   StationToolpack,
   OrganizationToolpack,
   Tier,
+  Usage,
 } from "@portalai/core/models";
 import type {
   UserSelect,
@@ -59,6 +60,7 @@ import type {
   StationToolpackSelect,
   OrganizationToolpackSelect,
   TierSelect,
+  UsageSelect,
 } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { EntityRecordHydrated } from "../repositories/entity-records.repository.js";
@@ -86,6 +88,7 @@ import type { connectorInstanceLayoutPlans } from "./connector-instance-layout-p
 import type { wideTableColumns } from "./wide-table-columns.table.js";
 import type { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
 import type { tiers } from "./tiers.table.js";
+import type { usage } from "./usage.table.js";
 import type { InterpretationTrace, LayoutPlan } from "@portalai/core/contracts";
 import type {
   ConnectorInstanceLayoutPlanSelect,
@@ -145,6 +148,21 @@ const _tierModelToDrizzle: _TierModelToDrizzle = true;
 type _TierInferredRow = InferSelectModel<typeof tiers>;
 type _TierInferredToModel = IsAssignable<_TierInferredRow, Tier>;
 const _tierInferredToModel: _TierInferredToModel = true;
+
+// ── Usage ────────────────────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _UsageDrizzleToModel = IsAssignable<UsageSelect, Usage>;
+const _usageDrizzleToModel: _UsageDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _UsageModelToDrizzle = IsAssignable<Usage, UsageSelect>;
+const _usageModelToDrizzle: _UsageModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _UsageInferredRow = InferSelectModel<typeof usage>;
+type _UsageInferredToModel = IsAssignable<_UsageInferredRow, Usage>;
+const _usageInferredToModel: _UsageInferredToModel = true;
 
 // ── OrganizationUser ─────────────────────────────────────────────
 

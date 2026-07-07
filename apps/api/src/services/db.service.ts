@@ -34,6 +34,7 @@ import {
   wideTableRepo,
   apiEndpointsRepo,
   tiersRepo,
+  usageRepo,
 } from "../db/index.js";
 import {
   Repository,
@@ -112,6 +113,7 @@ export class DbService {
       wideTable: wideTableRepo,
       apiEndpoints: apiEndpointsRepo,
       tiers: tiersRepo,
+      usage: usageRepo,
     };
   }
 }

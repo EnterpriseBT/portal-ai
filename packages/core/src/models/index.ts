@@ -70,5 +70,8 @@ export * from "./tool-capability.model.js";
 /** Subscription tier model + policy schema (#172) */
 export * from "./tier.model.js";
 
+/** Per-org usage balance model (#172) */
+export * from "./usage.model.js";
+
 /** REST API connector config + credentials schemas */
 export * from "./api-connector.model.js";
