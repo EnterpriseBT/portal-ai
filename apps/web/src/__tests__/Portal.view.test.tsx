@@ -258,5 +258,18 @@ describe("PortalHeaderMeta", () => {
       fireEvent.click(toggle);
       expect(toggle).toHaveAttribute("aria-expanded", "false");
     });
+
+    it("keeps usage visible while the session details stay collapsed", () => {
+      mockStationsGet.mockReturnValue(mockStationResult(stationFixture));
+      mockOrganizationsUsage.mockReturnValue(mockStationResult(usageFixture));
+      render(<PortalHeaderMeta stationId="station-1" />);
+      // Session details are behind the (collapsed) toggle...
+      expect(
+        screen.queryByTestId("portal-header-station-link")
+      ).not.toBeInTheDocument();
+      // ...but usage sits above it and is always visible.
+      expect(screen.getByText("12 used · 88 available")).toBeInTheDocument();
+      expect(screen.getByText("2 used · 8 available")).toBeInTheDocument();
+    });
   });
 });

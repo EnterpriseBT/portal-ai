@@ -204,27 +204,37 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
           variant: "chip",
           hidden: toolPacks.length === 0,
         },
-        {
-          label: "Metered usage",
-          value: formatUsageValue(usage?.metered),
-          icon: <Icon name={IconName.Search} fontSize="small" />,
-          hidden: !usage,
-        },
-        {
-          label: "Expensive usage",
-          value: formatUsageValue(usage?.expensive),
-          icon: <Icon name={IconName.MemoryChip} fontSize="small" />,
-          hidden: !usage,
-        },
       ]}
     />
   );
 
-  if (!isMobile) return metadata;
+  // Usage allocation lives on its own always-visible strip, above (and separate
+  // from) the collapsible session details, so account balance is glanceable
+  // regardless of the mobile toggle state.
+  const usageMeta = usage ? (
+    <MetadataList
+      size="small"
+      spacing={0.75}
+      items={[
+        {
+          label: "Metered usage",
+          value: formatUsageValue(usage.metered),
+          icon: <Icon name={IconName.Search} fontSize="small" />,
+        },
+        {
+          label: "Expensive usage",
+          value: formatUsageValue(usage.expensive),
+          icon: <Icon name={IconName.MemoryChip} fontSize="small" />,
+        },
+      ]}
+    />
+  ) : null;
 
-  // On small screens, tuck the metadata behind a toggle so the session feed
-  // gets the full viewport. The button is kept small and inline.
-  return (
+  // On small screens, tuck the session details behind a toggle so the session
+  // feed gets the full viewport. The button is kept small and inline.
+  const sessionDetails = !isMobile ? (
+    metadata
+  ) : (
     <Box>
       <Button
         size="small"
@@ -246,6 +256,13 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
         </Box>
       </Collapse>
     </Box>
+  );
+
+  return (
+    <Stack spacing={1}>
+      {usageMeta}
+      {sessionDetails}
+    </Stack>
   );
 };
 
