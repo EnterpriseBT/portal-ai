@@ -31,6 +31,7 @@ import { sdk, queryKeys } from "../api/sdk";
 import { toServerError, type ServerError } from "../utils/api.util";
 import { focusFirstInvalidField } from "../utils/form-validation.util";
 import { useLayout } from "../utils/layout.util";
+import { formatUsageValue } from "../utils/usage-format.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 // ── Portal data item component ──────────────────────────────────────
@@ -139,6 +140,10 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
   const { data } = sdk.stations.get(stationId, {
     include: "connectorInstance",
   });
+  // Org-level usage balance (#172) — same query the Settings page reads, so
+  // React Query dedupes it. Surfaced here so users see where their account
+  // stands without leaving the session.
+  const { data: usageData } = sdk.organizations.usage();
   const { isMobile } = useLayout();
   const [expanded, setExpanded] = useState(false);
   const station = data?.station;
@@ -146,6 +151,7 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
 
   const instances = station.instances ?? [];
   const toolPacks = station.enabledToolpacks ?? [];
+  const usage = usageData?.usage.byClass;
 
   const metadata = (
     <MetadataList
@@ -202,11 +208,33 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
     />
   );
 
-  if (!isMobile) return metadata;
+  // Usage allocation lives on its own always-visible strip, above (and separate
+  // from) the collapsible session details, so account balance is glanceable
+  // regardless of the mobile toggle state.
+  const usageMeta = usage ? (
+    <MetadataList
+      size="small"
+      spacing={0.75}
+      items={[
+        {
+          label: "Metered usage",
+          value: formatUsageValue(usage.metered),
+          icon: <Icon name={IconName.Search} fontSize="small" />,
+        },
+        {
+          label: "Expensive usage",
+          value: formatUsageValue(usage.expensive),
+          icon: <Icon name={IconName.MemoryChip} fontSize="small" />,
+        },
+      ]}
+    />
+  ) : null;
 
-  // On small screens, tuck the metadata behind a toggle so the session feed
-  // gets the full viewport. The button is kept small and inline.
-  return (
+  // On small screens, tuck the session details behind a toggle so the session
+  // feed gets the full viewport. The button is kept small and inline.
+  const sessionDetails = !isMobile ? (
+    metadata
+  ) : (
     <Box>
       <Button
         size="small"
@@ -228,6 +256,13 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
         </Box>
       </Collapse>
     </Box>
+  );
+
+  return (
+    <Stack spacing={1}>
+      {usageMeta}
+      {sessionDetails}
+    </Stack>
   );
 };
 
