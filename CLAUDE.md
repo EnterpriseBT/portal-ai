@@ -210,6 +210,15 @@ Long-running work runs on the shared `jobs` queue (`apps/api/src/queues/`) — f
 3. Every entity-detail view that could surface this job adds it to its lock-state query (or extends an existing aggregate query that returns "running jobs for this entity").
 4. The processor's terminal payload (the `result` field) carries enough information for the SSE consumer to refresh its caches without a full refetch loop — same as `file_upload_parse` does today.
 
+## Tool Cost Control (apps/api)
+
+Tool spend is **server-enforced**, never prompt-enforced (a cost gate the agent can't opt out of — per the standing "safety/confirmation gates get server enforcement, not prompt instructions" rule). Every tool call routes through a build-time wrap in `ToolService.buildAnalyticsTools` (`CostGateService.resolveCostGate`), keyed by the tool's declared `costHint` (`free | metered | expensive` on `ToolCapability`) and the org's `TierPolicy` (#172).
+
+- **Who-pays rule.** Units meter *application*-incurred cost only. **Built-in** tools that hit a Portal-paid third party or heavy compute (`web_search`→Tavily, GIS `geocode`) are charged against the org's per-cost-class allocation. **Custom/webhook** tools are org-hosted → **`resolveCallCost` returns 0, never charged**; their `costHint` is surfaced to the agent as *advisory* description text only (there's no Portal cost to enforce). See `docs/CUSTOM_TOOLPACK_INTEGRATION.md`.
+- **`free` is immune** — never charged, never denied, never rate-limited (even under an exhausted quota).
+- **Where state lives.** The durable per-org usage balance + Settings display are #172 (`usage` table, `UsageService`). The gate *charges* it (`UsageService.tryCharge`, an atomic conditional UPSERT — quota) and a Redis fixed-window counter (rate). Denials return a **typed tool result** (`TOOL_USAGE_RATE_LIMITED` / `TOOL_USAGE_QUOTA_EXCEEDED`), never a throw, so the agent relays them. Infra errors **fail open**. See `docs/TOOL_COST_GATE.spec.md` (#169).
+- **A guard test asserts every tool (built-in and custom) is wrapped** — a new tool-construction path that bypasses the gate fails CI.
+
 ## Workflow Module Pattern (apps/web)
 
 Multi-step user workflows (e.g., file upload, data import wizards) live in `apps/web/src/workflows/<WorkflowName>/`. Each workflow is a self-contained module with a strict internal structure:

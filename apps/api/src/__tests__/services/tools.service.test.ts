@@ -2,6 +2,7 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
+import { ApiCode } from "../../constants/api-codes.constants.js";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -115,6 +116,9 @@ jest.unstable_mockModule("../../utils/url-safety.util.js", () => ({
 
 const { ToolService, BUILTIN_TOOL_NAMES } = await import(
   "../../services/tools.service.js"
+);
+const { CostGateService } = await import(
+  "../../services/cost-gate.service.js"
 );
 const buildAnalyticsTools = ToolService.buildAnalyticsTools.bind(ToolService);
 const callWebhook = ToolService.callWebhook.bind(ToolService);
@@ -669,6 +673,183 @@ describe("buildAnalyticsTools()", () => {
 
     expect(tools.entity_record_create).toBeUndefined();
     expect(tools.field_mapping_delete).toBeUndefined();
+  });
+
+  // -----------------------------------------------------------------------
+  // Cost gate wrap (#169) — the guard: EVERY built tool's execute must route
+  // through resolveCostGate. A new tool-construction path that bypasses the
+  // wrap fails here.
+  // -----------------------------------------------------------------------
+
+  it("wraps every built tool's execute with the cost gate", async () => {
+    setupStationMocks([
+      "data_query",
+      "statistics",
+      "regression",
+      "financial",
+      "web_search",
+      "entity_management",
+    ]);
+    mockResolveStationCapabilities.mockResolvedValue([
+      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true } },
+    ]);
+
+    // Gate every call to a deny sentinel so the original executes never run
+    // (no external calls / DB side effects) — we only assert the wrap intercepts.
+    const sentinel = {
+      allowed: false as const,
+      result: {
+        error: { code: ApiCode.TOOL_USAGE_QUOTA_EXCEEDED, message: "guard" },
+      },
+    };
+    const spy = jest
+      .spyOn(CostGateService, "resolveCostGate")
+      .mockResolvedValue(sentinel);
+
+    const tools = await buildAnalyticsTools(
+      ORG_ID,
+      STATION_ID,
+      "user-001",
+      "portal-001"
+    );
+    const names = Object.keys(tools);
+    expect(names.length).toBeGreaterThan(5);
+
+    for (const name of names) {
+      const out = await (tools[name] as any).execute(
+        {},
+        { toolCallId: "t", messages: [], abortSignal: new AbortController().signal }
+      );
+      // Wrapped → returns the gate's deny result; the real tool never ran.
+      expect(out).toBe(sentinel.result);
+    }
+
+    // resolveCostGate was invoked once per tool, tagged with the tool name.
+    expect(spy).toHaveBeenCalledTimes(names.length);
+    for (const name of names) {
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({ toolName: name, organizationId: ORG_ID })
+      );
+    }
+
+    spy.mockRestore();
+  });
+
+  it("tags built-in tools application-paid and custom tools organization-paid", async () => {
+    setupStationMocks(["web_search"]); // web_search is a metered built-in
+    mockFindByStationId_tools.mockResolvedValue([
+      ...makeToolpackRows(["web_search"]),
+      {
+        id: "stp-custom",
+        stationId: STATION_ID,
+        builtinSlug: null,
+        organizationToolpackId: "otp-1",
+        created: Date.now(),
+        createdBy: "user-001",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      },
+    ]);
+    mockFindManyByIds_orgPacks.mockResolvedValue([
+      {
+        id: "otp-1",
+        organizationId: ORG_ID,
+        name: "intel",
+        endpoints: {
+          schema: "https://example.com/schema",
+          runtime: "https://example.com/runtime",
+        },
+        authHeaders: null,
+        tools: [
+          {
+            name: "lookup_company",
+            description: "x",
+            parameterSchema: { type: "object", properties: {} },
+            capability: { costHint: "metered" },
+          },
+        ],
+      },
+    ]);
+
+    // Deny so the real tools never run; we only assert the metadata the wrap
+    // passes to the gate (bearer/costHint).
+    const spy = jest.spyOn(CostGateService, "resolveCostGate").mockResolvedValue({
+      allowed: false,
+      result: {
+        error: { code: ApiCode.TOOL_USAGE_QUOTA_EXCEEDED, message: "x" },
+      },
+    });
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+    await (tools.web_search as any).execute({}, {});
+    await (tools.lookup_company as any).execute({}, {});
+
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: "web_search",
+        costBearer: "application",
+        costHint: "metered",
+      })
+    );
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: "lookup_company",
+        costBearer: "organization",
+      })
+    );
+    spy.mockRestore();
+  });
+
+  it("annotates a metered custom tool's description with an org-cost advisory (not free ones)", async () => {
+    setupStationMocks(["data_query"]);
+    mockFindByStationId_tools.mockResolvedValue([
+      ...makeToolpackRows(["data_query"]),
+      {
+        id: "stp-c",
+        stationId: STATION_ID,
+        builtinSlug: null,
+        organizationToolpackId: "otp-1",
+        created: Date.now(),
+        createdBy: "user-001",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      },
+    ]);
+    mockFindManyByIds_orgPacks.mockResolvedValue([
+      {
+        id: "otp-1",
+        organizationId: ORG_ID,
+        name: "intel",
+        endpoints: {
+          schema: "https://example.com/schema",
+          runtime: "https://example.com/runtime",
+        },
+        authHeaders: null,
+        tools: [
+          {
+            name: "costly_hook",
+            description: "Look up a company.",
+            parameterSchema: { type: "object", properties: {} },
+            capability: { costHint: "metered" },
+          },
+          {
+            name: "free_hook",
+            description: "Cheap lookup.",
+            parameterSchema: { type: "object", properties: {} },
+          },
+        ],
+      },
+    ]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+    expect((tools.costly_hook as any).description).toMatch(
+      /organization-provided tool and may be costly/i
+    );
+    expect((tools.free_hook as any).description).not.toMatch(/costly/i);
   });
 });
 

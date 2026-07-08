@@ -43,6 +43,57 @@ export class UsageRepository extends Repository<
       });
   }
 
+  /**
+   * Atomically charge `row.unitsUsed` to `(organizationId, periodId, costClass)`
+   * **only if** the post-charge total stays within `allocation`. Returns the
+   * new `unitsUsed` on success, or `null` if the charge would exceed the
+   * allocation (denied). `allocation === null` means unlimited → always charges.
+   *
+   * The conditional `UPDATE` is atomic per row (row-level lock), so concurrent
+   * charges serialize and cannot overshoot the allocation; the seed `INSERT` is
+   * idempotent (`DO NOTHING`). No explicit transaction needed — the guarded
+   * `UPDATE` is the arbiter.
+   */
+  async chargeConditional(
+    row: UsageInsert,
+    allocation: number | null,
+    client: DbClient = db
+  ): Promise<number | null> {
+    const units = row.unitsUsed ?? 0;
+
+    // 1. Ensure the (org, period, class) row exists at 0 (idempotent).
+    await (client as typeof db)
+      .insert(usage)
+      .values({ ...row, unitsUsed: 0 })
+      .onConflictDoNothing({
+        target: [usage.organizationId, usage.periodId, usage.costClass],
+        where: isNull(usage.deleted),
+      });
+
+    // 2. Atomic conditional increment.
+    const conditions = [
+      eq(usage.organizationId, row.organizationId),
+      eq(usage.periodId, row.periodId),
+      eq(usage.costClass, row.costClass),
+      isNull(usage.deleted),
+    ];
+    if (allocation !== null) {
+      conditions.push(sql`${usage.unitsUsed} + ${units} <= ${allocation}`);
+    }
+
+    const [updated] = await (client as typeof db)
+      .update(usage)
+      .set({
+        unitsUsed: sql`${usage.unitsUsed} + ${units}`,
+        updated: row.created,
+        updatedBy: row.createdBy,
+      })
+      .where(and(...conditions))
+      .returning({ unitsUsed: usage.unitsUsed });
+
+    return updated ? updated.unitsUsed : null;
+  }
+
   /** All live usage rows for an org in a given billing period. */
   async findForPeriod(
     organizationId: string,

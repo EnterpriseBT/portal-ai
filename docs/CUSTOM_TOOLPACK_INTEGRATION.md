@@ -225,7 +225,9 @@ A tool may declare a `capability` object describing how Portal.ai consumes it. C
 | `consumption.mode` | `none` (inline), `bounded` (records-in-body), or `streaming` (pull-on-read) — see [Scaling over large datasets](#scaling-over-large-datasets). `engine-pushdown` is rejected (no backend access) |
 | `production` | **output cardinality** — `{ "kind": "value" }` (a scalar/summary, always returned inline) or `{ "kind": "rows", "onLarge": "handle" \| "sample" \| "error", "inlineThreshold"?: number }` (a row set: returned inline when small, otherwise handled per `onLarge`). The mirror of `consumption`, for output. |
 | `resultKind` | `scalar` \| `data-table` \| `vega-lite` \| `vega` \| `d3` \| `geo` (not `mutation-result` / `progress`). Must agree with `production`: `scalar` ⇒ `production.kind: "value"`. |
-| `costHint` | `free` \| `metered` \| `expensive` (drives the cost-acknowledgement gate) |
+| `costHint` | `free` \| `metered` \| `expensive`. **Advisory for custom tools** — never billed against the org's Portal allocation (see the note below). |
+
+> **`costHint` is advisory for custom tools (#169).** Portal.ai meters *its own* cost — the paid third-party APIs and heavy compute behind **built-in** tools — against an organization's subscription usage allocation. A custom toolpack runs on **your** endpoint and bills **you**, so a custom tool is **never charged against the org's Portal usage**, whatever its `costHint`. Declaring `metered`/`expensive` does **not** gate or deny the call; it only surfaces advisory context to the agent (it's told the tool "may be costly — call it only when needed") so it uses your endpoint judiciously. (Built-in `metered`/`expensive` tools *are* server-enforced against the allocation; the `expensive` bulk cost-acknowledgement handshake is unchanged.)
 
 `consumption` (input) and `production` (output) are **independent**: any combination is valid. In particular `production.onLarge: "handle"` works for **any** input mode — declaring it earns your tool an `output` write-grant (see [Scaling over large datasets](#scaling-over-large-datasets)), so even a `consumption: none` tool can stage a large result handle.
 

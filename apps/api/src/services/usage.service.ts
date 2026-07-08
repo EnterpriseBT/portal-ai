@@ -20,6 +20,15 @@ export interface UsageBalance {
   byClass: Record<CostHint, { used: number; available: number | null }>;
 }
 
+export interface ChargeResult {
+  /** Whether the charge landed (within allocation). */
+  allowed: boolean;
+  /** Units used after the charge (or the current used, if denied). */
+  used: number;
+  /** Remaining after the charge; `null` = unlimited. */
+  available: number | null;
+}
+
 export class UsageService {
   /**
    * Add `units` to the org's usage for `costClass` in `periodId`. No-op for
@@ -41,6 +50,55 @@ export class UsageService {
       .parse();
 
     await DbService.repository.usage.increment(row, client);
+  }
+
+  /**
+   * Charge `units` of `costClass` against the org's `allocation` for
+   * `periodId`, atomically — the charge lands **only if** it stays within the
+   * allocation (the cost gate #169's quota check). `allocation === null` =
+   * unlimited (always charges). Returns whether it was allowed + the resulting
+   * used/available.
+   */
+  static async tryCharge(
+    organizationId: string,
+    costClass: CostHint,
+    units: number,
+    allocation: number | null,
+    periodId: string,
+    actor: { userId: string },
+    client?: DbClient
+  ): Promise<ChargeResult> {
+    const row = new UsageModelFactory()
+      .create(actor.userId)
+      .update({ organizationId, periodId, costClass, unitsUsed: units })
+      .parse();
+
+    const newUsed = await DbService.repository.usage.chargeConditional(
+      row,
+      allocation,
+      client
+    );
+
+    if (newUsed !== null) {
+      return {
+        allowed: true,
+        used: newUsed,
+        available: allocation === null ? null : allocation - newUsed,
+      };
+    }
+
+    // Denied — report the current (unchanged) balance for the message.
+    const rows = await DbService.repository.usage.findForPeriod(
+      organizationId,
+      periodId,
+      client
+    );
+    const used = rows.find((r) => r.costClass === costClass)?.unitsUsed ?? 0;
+    return {
+      allowed: false,
+      used,
+      available: allocation === null ? null : Math.max(0, allocation - used),
+    };
   }
 
   /**
