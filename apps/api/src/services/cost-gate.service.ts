@@ -176,3 +176,48 @@ export class CostGateService {
     }
   }
 }
+
+/** A tool object whose `execute` the gate wraps (structural — the AI SDK's
+ *  `tool()` return). */
+export type GateableTool = {
+  execute?: (input: unknown, options: unknown) => unknown;
+};
+
+/** Per-tool cost metadata the wrap needs: its cost class and who pays. */
+export interface ToolCostMeta {
+  costHint: CostHint;
+  costBearer: CostBearer;
+}
+
+/**
+ * Decorate every tool's `execute` with the cost gate, **in place**. On each
+ * call the wrap runs `resolveCostGate`; on deny it returns the typed
+ * deny-result (delivered as a tool-result the agent relays), otherwise it
+ * delegates to the original `execute`. `metaFor` supplies each tool's cost
+ * class + bearer (built-in ⇒ application; org toolpack ⇒ organization).
+ *
+ * The `buildAnalyticsTools` guard test asserts no tool is left un-wrapped.
+ */
+export function wrapWithCostGate(
+  tools: Record<string, GateableTool>,
+  ctx: { organizationId: string; userId: string },
+  metaFor: (toolName: string) => ToolCostMeta
+): void {
+  for (const [name, tool] of Object.entries(tools)) {
+    const original = tool.execute;
+    if (!original) continue;
+    const { costHint, costBearer } = metaFor(name);
+    tool.execute = async (input: unknown, options: unknown) => {
+      const gate = await CostGateService.resolveCostGate({
+        organizationId: ctx.organizationId,
+        toolName: name,
+        costHint,
+        costBearer,
+        input,
+        actor: { userId: ctx.userId },
+      });
+      if (!gate.allowed) return gate.result;
+      return original(input, options);
+    };
+  }
+}

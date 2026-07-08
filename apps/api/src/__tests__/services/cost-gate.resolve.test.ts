@@ -25,7 +25,7 @@ jest.unstable_mockModule("../../utils/rate-limit.util.js", () => ({
   incrementRateWindow: mockIncrementRate,
 }));
 
-const { CostGateService, COST_RESOLVERS } = await import(
+const { CostGateService, COST_RESOLVERS, wrapWithCostGate } = await import(
   "../../services/cost-gate.service.js"
 );
 
@@ -152,5 +152,54 @@ describe("CostGateService.resolveCostGate", () => {
       expect(typeof r.result.error.code).toBe("string");
       expect(typeof r.result.error.message).toBe("string");
     }
+  });
+});
+
+describe("wrapWithCostGate", () => {
+  const appMeta = () =>
+    ({ costHint: "metered", costBearer: "application" }) as const;
+
+  it("allowed → delegates to the original execute", async () => {
+    const original = jest.fn(async (_i: unknown, _o: unknown) => "REAL");
+    const tools = { web_search: { execute: original } };
+    wrapWithCostGate(tools, { organizationId: "org-1", userId: "u1" }, appMeta);
+    await expect(tools.web_search.execute({ q: 1 }, {})).resolves.toBe("REAL");
+    expect(original).toHaveBeenCalledWith({ q: 1 }, {});
+  });
+
+  it("denied → returns the deny-result object (no throw), original NOT run", async () => {
+    mockTryCharge.mockResolvedValue({ allowed: false, used: 1000, available: 0 });
+    const original = jest.fn(async (_i: unknown, _o: unknown) => "REAL");
+    const tools = { web_search: { execute: original } };
+    wrapWithCostGate(tools, { organizationId: "org-1", userId: "u1" }, appMeta);
+    const out = (await tools.web_search.execute({}, {})) as unknown as {
+      error: { code: string };
+    };
+    expect(out.error.code).toBe(ApiCode.TOOL_USAGE_QUOTA_EXCEEDED);
+    expect(original).not.toHaveBeenCalled();
+  });
+
+  it("org-paid (custom) → allowed, original runs, never charged", async () => {
+    const original = jest.fn(async (_i: unknown, _o: unknown) => "REAL");
+    const tools = { my_hook: { execute: original } };
+    wrapWithCostGate(tools, { organizationId: "org-1", userId: "u1" }, () => ({
+      costHint: "metered",
+      costBearer: "organization",
+    }));
+    await expect(tools.my_hook.execute({}, {})).resolves.toBe("REAL");
+    expect(mockTryCharge).not.toHaveBeenCalled();
+  });
+
+  it("leaves a tool without an execute untouched", () => {
+    const tools: Record<
+      string,
+      { execute?: (i: unknown, o: unknown) => unknown }
+    > = { noop: {} };
+    expect(() =>
+      wrapWithCostGate(tools, { organizationId: "o", userId: "u" }, () => ({
+        costHint: "free",
+        costBearer: "application",
+      }))
+    ).not.toThrow();
   });
 });

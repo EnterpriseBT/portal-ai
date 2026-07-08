@@ -11,7 +11,12 @@ import { type Tool } from "ai";
 
 import { AnalyticsService } from "./analytics.service.js";
 import { DbService } from "./db.service.js";
+import {
+  wrapWithCostGate,
+  type GateableTool,
+} from "./cost-gate.service.js";
 import { createLogger } from "../utils/logger.util.js";
+import type { CostHint } from "@portalai/core/models";
 
 // Tool classes
 import { SqlQueryTool } from "../tools/sql-query.tool.js";
@@ -429,6 +434,12 @@ export class ToolService {
 
     const tools: Record<string, Tool> = {};
 
+    // #169 cost gate: track org-hosted (custom) tool names + their declared
+    // costHint so the wrap can tag them `costBearer: "organization"` (never
+    // charged — the who-pays rule) while surfacing their advisory cost class.
+    const customToolNames = new Set<string>();
+    const customCostHint: Record<string, CostHint> = {};
+
     // Capability projections (#121): the enablement + enforcement gates
     // below read declared capability instead of slug/name hardcodes.
     const { SYSTEM_TOOL_CAPABILITIES, ALL_TOOL_CAPABILITIES, isWriteGated } =
@@ -643,6 +654,9 @@ export class ToolService {
             // independent of the input consumption tier.
             tool.capability?.production
           ).build();
+          customToolNames.add(tool.name);
+          customCostHint[tool.name] =
+            (tool.capability?.costHint as CostHint | undefined) ?? "free";
         }
       }
     }
@@ -663,6 +677,23 @@ export class ToolService {
         for (const name of writeGated) delete tools[name];
       }
     }
+
+    // #169 cost gate: wrap every tool's execute so each call charges/denies
+    // against the org's tier allocation. `free` + org-hosted (custom) tools
+    // short-circuit inside the gate; the guard test asserts none is un-wrapped.
+    wrapWithCostGate(
+      tools as unknown as Record<string, GateableTool>,
+      { organizationId, userId },
+      (name) => {
+        const isCustom = customToolNames.has(name);
+        return {
+          costBearer: isCustom ? "organization" : "application",
+          costHint: isCustom
+            ? customCostHint[name] ?? "free"
+            : ALL_TOOL_CAPABILITIES[name]?.costHint ?? "free",
+        };
+      }
+    );
 
     logger.info(
       {
