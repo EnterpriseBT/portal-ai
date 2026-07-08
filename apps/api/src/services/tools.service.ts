@@ -695,11 +695,24 @@ export class ToolService {
       { organizationId, userId },
       (name) => {
         const isCustom = customToolNames.has(name);
+        const capability = isCustom ? undefined : ALL_TOOL_CAPABILITIES[name];
+        // #184: an application-paid tool with no capability entry falls through
+        // to costHint "free" and is never charged. The registry + type system
+        // make this unreachable for a declared built-in, so this only fires for
+        // a future app tool wired into buildAnalyticsTools without a capability
+        // — surface it loudly rather than leak the charge. (Custom tools are
+        // org-paid and legitimately have no entry, so they never warn.)
+        if (!isCustom && !capability) {
+          logger.warn(
+            { tool: name },
+            "cost gate: application-paid tool has no capability entry; defaulting costHint=free — verify it is registered in ALL_TOOL_CAPABILITIES"
+          );
+        }
         return {
           costBearer: isCustom ? "organization" : "application",
           costHint: isCustom
             ? customCostHint[name] ?? "free"
-            : ALL_TOOL_CAPABILITIES[name]?.costHint ?? "free",
+            : capability?.costHint ?? "free",
         };
       }
     );

@@ -99,6 +99,22 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   resolveEntityCapabilities: jest.fn(async () => ({})),
 }));
 
+// Mock the logger so the #184 cost-gate capability warn is observable.
+const mockLoggerWarn = jest.fn();
+jest.unstable_mockModule("../../utils/logger.util.js", () => {
+  const stub = {
+    info: jest.fn(),
+    warn: mockLoggerWarn,
+    error: jest.fn(),
+    debug: jest.fn(),
+    trace: jest.fn(),
+    fatal: jest.fn(),
+  };
+  return {
+    createLogger: () => ({ ...stub, child: () => stub }),
+  };
+});
+
 // Mock fetch for webhook tests
 const mockFetch =
   jest.fn<(url: string, options?: Record<string, any>) => Promise<unknown>>();
@@ -733,6 +749,31 @@ describe("buildAnalyticsTools()", () => {
     }
 
     spy.mockRestore();
+  });
+
+  it("does not warn about a missing capability for the real built-in tool set (#184)", async () => {
+    setupStationMocks([
+      "data_query",
+      "statistics",
+      "regression",
+      "financial",
+      "web_search",
+      "entity_management",
+    ]);
+    mockResolveStationCapabilities.mockResolvedValue([
+      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true } },
+    ]);
+
+    await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001", "portal-001");
+
+    // Every built-in resolves its costHint from the registry, so the #184
+    // capability-missing warn must never fire for the real tool set — a live
+    // no-leak assertion (an app-paid tool silently defaulting to free would
+    // trip this).
+    expect(mockLoggerWarn).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining("no capability entry")
+    );
   });
 
   it("tags built-in tools application-paid and custom tools organization-paid", async () => {
