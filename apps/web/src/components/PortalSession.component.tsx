@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useMemo, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
 import { Box, Icon, IconName, StatusMessage } from "@portalai/core/ui";
 import { ContentBlockRenderer } from "@portalai/core";
@@ -9,7 +10,7 @@ import type {
   PortalMessageBlock,
 } from "@portalai/core/contracts";
 
-import { sdk } from "../api/sdk";
+import { sdk, queryKeys } from "../api/sdk";
 import { usePortalStream } from "../utils/portal-stream.util";
 import { ChatWindowUI, type ChatWindowHandle } from "./ChatWindow.component";
 import { usePortalChatLock } from "../utils/portal-chat-lock.util";
@@ -229,17 +230,26 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     portalQuery.refetch();
   }, [portalQuery]);
 
+  const queryClient = useQueryClient();
+
   // Refetch so server-stored blocks (which include tool-call/tool-result
   // metadata) replace the display-only local copies. This ensures pin
   // operations send correct block indices. The hook stores onDone in a ref
   // internally, so this callback can safely close over portalQuery.
+  //
+  // A turn may have made billable tool calls (the #169 cost gate charges the
+  // org's usage mid-stream), so invalidate the usage balance too — that keeps
+  // the always-visible usage strip in the session header live without polling.
   const handleStreamDone = useCallback(
     (clear: () => void) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.organizations.usage(),
+      });
       portalQuery.refetch().then(() => {
         clear();
       });
     },
-    [portalQuery]
+    [portalQuery, queryClient]
   );
 
   const [streamState, streamActions] = usePortalStream(handleStreamDone);
