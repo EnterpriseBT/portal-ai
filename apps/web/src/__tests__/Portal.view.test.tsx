@@ -3,6 +3,14 @@ import { jest } from "@jest/globals";
 // ── Mocks ────────────────────────────────────────────────────────────
 
 const mockStationsGet = jest.fn();
+const mockOrganizationsUsage = jest.fn<
+  () => { data: unknown; isLoading: boolean; isError: boolean; error: null }
+>(() => ({
+  data: undefined,
+  isLoading: false,
+  isError: false,
+  error: null,
+}));
 const mockToolpacksList = jest.fn(() => ({
   data: undefined,
   isLoading: true,
@@ -14,6 +22,7 @@ const mockToolpacksList = jest.fn(() => ({
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     stations: { get: mockStationsGet },
+    organizations: { usage: mockOrganizationsUsage },
     toolpacks: { list: mockToolpacksList },
   },
   queryKeys: {},
@@ -103,11 +112,30 @@ const mockStationResult = (data: unknown) => ({
   error: null,
 });
 
+const usageFixture = {
+  tier: { tier: "standard" },
+  usage: {
+    periodId: "2026-07",
+    byClass: {
+      free: { used: 3, available: null },
+      metered: { used: 12, available: 88 },
+      expensive: { used: 2, available: 8 },
+    },
+  },
+};
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 describe("PortalHeaderMeta", () => {
   beforeEach(() => {
     mockStationsGet.mockReset();
+    mockOrganizationsUsage.mockReset();
+    mockOrganizationsUsage.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
     resetMatchMedia();
   });
 
@@ -173,6 +201,24 @@ describe("PortalHeaderMeta", () => {
       mockStationsGet.mockReturnValue(mockStationResult(bare));
       render(<PortalHeaderMeta stationId="station-1" />);
       expect(screen.queryByText("Tool Packs")).not.toBeInTheDocument();
+    });
+
+    it("shows metered and expensive usage once the balance resolves", () => {
+      mockStationsGet.mockReturnValue(mockStationResult(stationFixture));
+      mockOrganizationsUsage.mockReturnValue(mockStationResult(usageFixture));
+      render(<PortalHeaderMeta stationId="station-1" />);
+      expect(screen.getByText("Metered usage")).toBeInTheDocument();
+      expect(screen.getByText("12 used · 88 available")).toBeInTheDocument();
+      expect(screen.getByText("Expensive usage")).toBeInTheDocument();
+      expect(screen.getByText("2 used · 8 available")).toBeInTheDocument();
+    });
+
+    it("omits the usage rows until the balance has loaded", () => {
+      mockStationsGet.mockReturnValue(mockStationResult(stationFixture));
+      // default mock returns { data: undefined }
+      render(<PortalHeaderMeta stationId="station-1" />);
+      expect(screen.queryByText("Metered usage")).not.toBeInTheDocument();
+      expect(screen.queryByText("Expensive usage")).not.toBeInTheDocument();
     });
   });
 

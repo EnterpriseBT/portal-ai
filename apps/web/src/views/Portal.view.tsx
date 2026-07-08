@@ -31,6 +31,7 @@ import { sdk, queryKeys } from "../api/sdk";
 import { toServerError, type ServerError } from "../utils/api.util";
 import { focusFirstInvalidField } from "../utils/form-validation.util";
 import { useLayout } from "../utils/layout.util";
+import { formatUsageValue } from "../utils/usage-format.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 // ── Portal data item component ──────────────────────────────────────
@@ -139,6 +140,10 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
   const { data } = sdk.stations.get(stationId, {
     include: "connectorInstance",
   });
+  // Org-level usage balance (#172) — same query the Settings page reads, so
+  // React Query dedupes it. Surfaced here so users see where their account
+  // stands without leaving the session.
+  const { data: usageData } = sdk.organizations.usage();
   const { isMobile } = useLayout();
   const [expanded, setExpanded] = useState(false);
   const station = data?.station;
@@ -146,6 +151,7 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
 
   const instances = station.instances ?? [];
   const toolPacks = station.enabledToolpacks ?? [];
+  const usage = usageData?.usage.byClass;
 
   const metadata = (
     <MetadataList
@@ -197,6 +203,18 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
           ),
           variant: "chip",
           hidden: toolPacks.length === 0,
+        },
+        {
+          label: "Metered usage",
+          value: formatUsageValue(usage?.metered),
+          icon: <Icon name={IconName.Search} fontSize="small" />,
+          hidden: !usage,
+        },
+        {
+          label: "Expensive usage",
+          value: formatUsageValue(usage?.expensive),
+          icon: <Icon name={IconName.MemoryChip} fontSize="small" />,
+          hidden: !usage,
         },
       ]}
     />
