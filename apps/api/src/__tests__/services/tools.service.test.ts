@@ -801,6 +801,56 @@ describe("buildAnalyticsTools()", () => {
     );
     spy.mockRestore();
   });
+
+  it("annotates a metered custom tool's description with an org-cost advisory (not free ones)", async () => {
+    setupStationMocks(["data_query"]);
+    mockFindByStationId_tools.mockResolvedValue([
+      ...makeToolpackRows(["data_query"]),
+      {
+        id: "stp-c",
+        stationId: STATION_ID,
+        builtinSlug: null,
+        organizationToolpackId: "otp-1",
+        created: Date.now(),
+        createdBy: "user-001",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      },
+    ]);
+    mockFindManyByIds_orgPacks.mockResolvedValue([
+      {
+        id: "otp-1",
+        organizationId: ORG_ID,
+        name: "intel",
+        endpoints: {
+          schema: "https://example.com/schema",
+          runtime: "https://example.com/runtime",
+        },
+        authHeaders: null,
+        tools: [
+          {
+            name: "costly_hook",
+            description: "Look up a company.",
+            parameterSchema: { type: "object", properties: {} },
+            capability: { costHint: "metered" },
+          },
+          {
+            name: "free_hook",
+            description: "Cheap lookup.",
+            parameterSchema: { type: "object", properties: {} },
+          },
+        ],
+      },
+    ]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+    expect((tools.costly_hook as any).description).toMatch(
+      /organization-provided tool and may be costly/i
+    );
+    expect((tools.free_hook as any).description).not.toMatch(/costly/i);
+  });
 });
 
 // ---------------------------------------------------------------------------

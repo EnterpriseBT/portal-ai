@@ -631,9 +631,19 @@ export class ToolService {
               `Tool "${tool.name}" is provided by more than one enabled toolpack on this station`
             );
           }
+          // #169 who-pays: org-hosted tools are never charged Portal units,
+          // but a metered/expensive one may cost the *organization* per call.
+          // Surface that to the agent as advisory context on the description
+          // (not a server gate — there's no Portal cost to enforce).
+          const declaredCost =
+            (tool.capability?.costHint as CostHint | undefined) ?? "free";
+          const description =
+            declaredCost === "metered" || declaredCost === "expensive"
+              ? `${tool.description}\n\nNote: this is an organization-provided tool and may be costly to run (your organization is billed for its use); call it only when it directly serves the request.`
+              : tool.description;
           tools[tool.name] = new WebhookTool(
             tool.name,
-            tool.description,
+            description,
             tool.parameterSchema as Record<string, unknown>,
             {
               type: "webhook",
@@ -655,8 +665,7 @@ export class ToolService {
             tool.capability?.production
           ).build();
           customToolNames.add(tool.name);
-          customCostHint[tool.name] =
-            (tool.capability?.costHint as CostHint | undefined) ?? "free";
+          customCostHint[tool.name] = declaredCost;
         }
       }
     }
