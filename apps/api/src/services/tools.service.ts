@@ -713,6 +713,9 @@ export class ToolService {
           costHint: isCustom
             ? customCostHint[name] ?? "free"
             : capability?.costHint ?? "free",
+          // #183: sync tools commit in the wrap on success; async-job tools are
+          // wired to defer to their processor in slice 2. Default false here.
+          deferChargeToJob: false,
         };
       }
     );

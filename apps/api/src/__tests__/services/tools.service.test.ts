@@ -719,7 +719,7 @@ describe("buildAnalyticsTools()", () => {
       },
     };
     const spy = jest
-      .spyOn(CostGateService, "resolveCostGate")
+      .spyOn(CostGateService, "checkAdmission")
       .mockResolvedValue(sentinel);
 
     const tools = await buildAnalyticsTools(
@@ -740,7 +740,7 @@ describe("buildAnalyticsTools()", () => {
       expect(out).toBe(sentinel.result);
     }
 
-    // resolveCostGate was invoked once per tool, tagged with the tool name.
+    // checkAdmission was invoked once per tool, tagged with the tool name.
     expect(spy).toHaveBeenCalledTimes(names.length);
     for (const name of names) {
       expect(spy).toHaveBeenCalledWith(
@@ -816,7 +816,7 @@ describe("buildAnalyticsTools()", () => {
 
     // Deny so the real tools never run; we only assert the metadata the wrap
     // passes to the gate (bearer/costHint).
-    const spy = jest.spyOn(CostGateService, "resolveCostGate").mockResolvedValue({
+    const spy = jest.spyOn(CostGateService, "checkAdmission").mockResolvedValue({
       allowed: false,
       result: {
         error: { code: ApiCode.TOOL_USAGE_QUOTA_EXCEEDED, message: "x" },
