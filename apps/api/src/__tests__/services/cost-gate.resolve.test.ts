@@ -1,0 +1,156 @@
+import { jest, describe, it, expect, beforeEach } from "@jest/globals";
+import { ApiCode } from "../../constants/api-codes.constants.js";
+
+// ── Mocks (the gate's collaborators) ─────────────────────────────────
+
+const mockFindById = jest.fn<(id: string) => Promise<unknown>>();
+const mockResolveTier = jest.fn<(org: unknown, now?: number) => Promise<unknown>>();
+const mockPeriodIdFor = jest.fn<() => string>();
+const mockTryCharge =
+  jest.fn<
+    (...a: unknown[]) => Promise<{ allowed: boolean; used: number; available: number | null }>
+  >();
+const mockIncrementRate = jest.fn<() => Promise<number>>();
+
+jest.unstable_mockModule("../../services/db.service.js", () => ({
+  DbService: { repository: { organizations: { findById: mockFindById } } },
+}));
+jest.unstable_mockModule("../../services/tier.service.js", () => ({
+  TierService: { resolveTier: mockResolveTier, periodIdFor: mockPeriodIdFor },
+}));
+jest.unstable_mockModule("../../services/usage.service.js", () => ({
+  UsageService: { tryCharge: mockTryCharge },
+}));
+jest.unstable_mockModule("../../utils/rate-limit.util.js", () => ({
+  incrementRateWindow: mockIncrementRate,
+}));
+
+const { CostGateService, COST_RESOLVERS } = await import(
+  "../../services/cost-gate.service.js"
+);
+
+// ── Fixtures ─────────────────────────────────────────────────────────
+
+const org = { id: "org-1", tier: "standard" };
+const policy = {
+  tier: "standard",
+  period: { kind: "monthly", anchorDay: 1 },
+  allocations: {
+    free: { unitsPerPeriod: null, ratePerMin: null },
+    metered: { unitsPerPeriod: 1000, ratePerMin: 20 },
+    expensive: { unitsPerPeriod: 100, ratePerMin: 5 },
+  },
+  perToolCaps: null,
+  overage: "hard-deny",
+};
+
+const ctx = (over: Record<string, unknown> = {}) => ({
+  organizationId: "org-1",
+  toolName: "web_search",
+  costHint: "metered" as const,
+  costBearer: "application" as const,
+  input: {},
+  actor: { userId: "u1" },
+  now: 1000,
+  ...over,
+});
+
+beforeEach(() => {
+  for (const k of Object.keys(COST_RESOLVERS)) delete COST_RESOLVERS[k];
+  mockFindById.mockReset().mockResolvedValue(org);
+  mockResolveTier.mockReset().mockResolvedValue(policy);
+  mockPeriodIdFor.mockReset().mockReturnValue("2026-07");
+  mockIncrementRate.mockReset().mockResolvedValue(1);
+  mockTryCharge
+    .mockReset()
+    .mockResolvedValue({ allowed: true, used: 1, available: 999 });
+});
+
+// ── Tests ────────────────────────────────────────────────────────────
+
+describe("CostGateService.resolveCostGate", () => {
+  it("case 1 — free tools are allowed with no resolve/charge/rate", async () => {
+    const r = await CostGateService.resolveCostGate(ctx({ costHint: "free" }));
+    expect(r).toEqual({ allowed: true });
+    expect(mockResolveTier).not.toHaveBeenCalled();
+    expect(mockTryCharge).not.toHaveBeenCalled();
+    expect(mockIncrementRate).not.toHaveBeenCalled();
+  });
+
+  it("case 2 — org-paid (custom) tools are allowed, never charged", async () => {
+    const r = await CostGateService.resolveCostGate(
+      ctx({ costBearer: "organization" })
+    );
+    expect(r).toEqual({ allowed: true });
+    expect(mockTryCharge).not.toHaveBeenCalled();
+  });
+
+  it("case 3 — a 0-unit resolver short-circuits to allowed, no charge", async () => {
+    COST_RESOLVERS["web_search"] = () => 0;
+    const r = await CostGateService.resolveCostGate(ctx());
+    expect(r).toEqual({ allowed: true });
+    expect(mockTryCharge).not.toHaveBeenCalled();
+  });
+
+  it("case 4 — within allocation charges the units and allows", async () => {
+    const r = await CostGateService.resolveCostGate(ctx());
+    expect(r).toEqual({ allowed: true });
+    expect(mockTryCharge).toHaveBeenCalledWith(
+      "org-1",
+      "metered",
+      1,
+      1000,
+      "2026-07",
+      { userId: "u1" }
+    );
+  });
+
+  it("case 5 — over the per-minute rate denies (RATE_LIMITED); no quota charge", async () => {
+    mockIncrementRate.mockResolvedValue(21); // > ratePerMin 20
+    const r = await CostGateService.resolveCostGate(ctx());
+    expect(r.allowed).toBe(false);
+    if (!r.allowed) {
+      expect(r.result.error.code).toBe(ApiCode.TOOL_USAGE_RATE_LIMITED);
+      expect(r.result.error.retryAfter).toBe(60);
+    }
+    expect(mockTryCharge).not.toHaveBeenCalled();
+  });
+
+  it("case 6 — exhausted quota denies (QUOTA_EXCEEDED)", async () => {
+    mockTryCharge.mockResolvedValue({ allowed: false, used: 1000, available: 0 });
+    const r = await CostGateService.resolveCostGate(ctx());
+    expect(r.allowed).toBe(false);
+    if (!r.allowed) {
+      expect(r.result.error.code).toBe(ApiCode.TOOL_USAGE_QUOTA_EXCEEDED);
+      expect(r.result.error.message).toMatch(/exhausted/);
+    }
+  });
+
+  it("case 7 — expensive is charged too (against its allocation)", async () => {
+    await CostGateService.resolveCostGate(ctx({ costHint: "expensive" }));
+    expect(mockTryCharge).toHaveBeenCalledWith(
+      "org-1",
+      "expensive",
+      1,
+      100, // expensive.unitsPerPeriod
+      "2026-07",
+      { userId: "u1" }
+    );
+  });
+
+  it("case 8 — infra error fails open (allowed), never throws", async () => {
+    mockResolveTier.mockRejectedValue(new Error("db down"));
+    const r = await CostGateService.resolveCostGate(ctx());
+    expect(r).toEqual({ allowed: true });
+  });
+
+  it("case 9 — deny result shape is { error: { code, message } }, never a throw", async () => {
+    mockTryCharge.mockResolvedValue({ allowed: false, used: 1000, available: 0 });
+    const r = await CostGateService.resolveCostGate(ctx());
+    expect(r.allowed).toBe(false);
+    if (!r.allowed) {
+      expect(typeof r.result.error.code).toBe("string");
+      expect(typeof r.result.error.message).toBe("string");
+    }
+  });
+});

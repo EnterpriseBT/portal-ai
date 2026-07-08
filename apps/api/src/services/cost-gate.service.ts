@@ -6,11 +6,17 @@
  * `TierService.resolveTier`, `UsageService`, the `usage` table).
  *
  * See `docs/TOOL_COST_GATE.spec.md`.
- *
- * Slice 1 (this file, so far): the pure **units** helpers — `resolveCallCost`
- * + the `COST_RESOLVERS` registry + the `CostBearer` type. The
- * `CostGateService` class (resolve → rate → charge → deny) lands in slice 3.
  */
+
+import { ApiCode } from "../constants/api-codes.constants.js";
+import { createLogger } from "../utils/logger.util.js";
+import { DbService } from "./db.service.js";
+import { TierService } from "./tier.service.js";
+import { UsageService } from "./usage.service.js";
+import { incrementRateWindow } from "../utils/rate-limit.util.js";
+import type { CostHint } from "@portalai/core/models";
+
+const logger = createLogger({ module: "cost-gate" });
 
 /**
  * Who bears the third-party cost of a tool call.
@@ -60,4 +66,113 @@ export async function resolveCallCost(
 ): Promise<number> {
   const resolver = COST_RESOLVERS[toolName];
   return resolver ? resolver(input) : 1;
+}
+
+/** Per-tool-call context the gate needs. Assembled by the `buildAnalyticsTools`
+ *  wrap; `costHint`/`costBearer` come from the tool's capability/provenance. */
+export interface CostGateContext {
+  organizationId: string;
+  toolName: string;
+  costHint: CostHint;
+  costBearer: CostBearer;
+  input: unknown;
+  actor: { userId: string };
+  /** Injectable clock (ms) for deterministic tests. */
+  now?: number;
+}
+
+/** A deny carries a typed error the wrap returns *as a tool result* (never a
+ *  throw), so the agent relays it instead of the turn dying. */
+export type GateResult =
+  | { allowed: true }
+  | {
+      allowed: false;
+      result: {
+        error: { code: ApiCode; message: string; retryAfter?: number };
+      };
+    };
+
+function deny(
+  code: ApiCode,
+  message: string,
+  retryAfter?: number
+): GateResult {
+  return {
+    allowed: false,
+    result: {
+      error: { code, message, ...(retryAfter != null ? { retryAfter } : {}) },
+    },
+  };
+}
+
+export class CostGateService {
+  /**
+   * Decide whether a tool call may proceed, charging the org's allocation when
+   * it does. Order: `free` immune → org-paid (custom) immune → resolve units →
+   * per-minute rate (Redis) → per-period quota charge (DB, atomic). Denials
+   * return a typed tool-result; infra errors **fail open** + log (the Postgres
+   * quota still caps spend when Redis is down; a DB outage is total anyway).
+   */
+  static async resolveCostGate(ctx: CostGateContext): Promise<GateResult> {
+    const now = ctx.now ?? Date.now();
+
+    // free tools are immune to all gating — never charged, never denied.
+    if (ctx.costHint === "free") return { allowed: true };
+    // who-pays: org-hosted (custom/webhook) tools are never charged.
+    if (ctx.costBearer === "organization") return { allowed: true };
+
+    const units = await resolveCallCost(ctx.toolName, ctx.input);
+    if (units <= 0) return { allowed: true };
+
+    try {
+      const org = await DbService.repository.organizations.findById(
+        ctx.organizationId
+      );
+      if (!org) return { allowed: true }; // shouldn't happen; fail open
+
+      const policy = await TierService.resolveTier(org, now);
+      const periodId = TierService.periodIdFor(policy.period, new Date(now));
+      const alloc = policy.allocations[ctx.costHint];
+
+      // rate (Redis) — cheap, checked first; a rate denial does not charge.
+      if (alloc.ratePerMin !== null) {
+        const rate = await incrementRateWindow(
+          `${ctx.organizationId}:${ctx.costHint}`,
+          now
+        );
+        if (rate > alloc.ratePerMin) {
+          return deny(
+            ApiCode.TOOL_USAGE_RATE_LIMITED,
+            `Rate limit reached for ${ctx.costHint} tools; retry in a moment.`,
+            60
+          );
+        }
+      }
+
+      // quota (DB, atomic) — charge only if within the allocation.
+      const charge = await UsageService.tryCharge(
+        ctx.organizationId,
+        ctx.costHint,
+        units,
+        alloc.unitsPerPeriod,
+        periodId,
+        ctx.actor
+      );
+      if (!charge.allowed) {
+        return deny(
+          ApiCode.TOOL_USAGE_QUOTA_EXCEEDED,
+          `Your plan's monthly ${ctx.costHint} allocation is exhausted (${charge.used} used). It resets next billing period.`
+        );
+      }
+
+      return { allowed: true };
+    } catch (err) {
+      // D6 — uniform fail-open + log.
+      logger.warn(
+        { err, tool: ctx.toolName, organizationId: ctx.organizationId },
+        "cost gate infra error; failing open"
+      );
+      return { allowed: true };
+    }
+  }
 }
