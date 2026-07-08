@@ -153,6 +153,34 @@ describe("CostGateService.resolveCostGate", () => {
       expect(typeof r.result.error.message).toBe("string");
     }
   });
+
+  it("case 10 — rate limiter (Redis) failure fails open on rate only; quota still charges", async () => {
+    mockIncrementRate.mockRejectedValue(new Error("redis down"));
+    const r = await CostGateService.resolveCostGate(ctx());
+    // The rate check swallows the Redis error, but the quota charge below
+    // still runs — Postgres remains the spend backstop (the split fail policy).
+    expect(mockTryCharge).toHaveBeenCalledWith(
+      "org-1",
+      "metered",
+      1,
+      1000,
+      "2026-07",
+      { userId: "u1" }
+    );
+    expect(r).toEqual({ allowed: true });
+  });
+
+  it("case 11 — Redis down + exhausted quota still denies (quota is the backstop)", async () => {
+    mockIncrementRate.mockRejectedValue(new Error("redis down"));
+    mockTryCharge.mockResolvedValue({ allowed: false, used: 1000, available: 0 });
+    const r = await CostGateService.resolveCostGate(ctx());
+    // Before the split fail policy this would have failed open (allowed);
+    // now the quota still enforces even when the rate limiter is unavailable.
+    expect(r.allowed).toBe(false);
+    if (!r.allowed) {
+      expect(r.result.error.code).toBe(ApiCode.TOOL_USAGE_QUOTA_EXCEEDED);
+    }
+  });
 });
 
 describe("wrapWithCostGate", () => {

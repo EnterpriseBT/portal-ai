@@ -135,16 +135,28 @@ export class CostGateService {
       const alloc = policy.allocations[ctx.costHint];
 
       // rate (Redis) — cheap, checked first; a rate denial does not charge.
+      // Split fail policy: the rate check is isolated in its own try/catch so
+      // a Redis outage fails open on *rate only* and still falls through to the
+      // Postgres quota charge below — the quota remains the spend backstop when
+      // Redis is down (see rate-limit.util.ts). Only a DB failure fails the
+      // whole gate open (outer catch).
       if (alloc.ratePerMin !== null) {
-        const rate = await incrementRateWindow(
-          `${ctx.organizationId}:${ctx.costHint}`,
-          now
-        );
-        if (rate > alloc.ratePerMin) {
-          return deny(
-            ApiCode.TOOL_USAGE_RATE_LIMITED,
-            `Rate limit reached for ${ctx.costHint} tools; retry in a moment.`,
-            60
+        try {
+          const rate = await incrementRateWindow(
+            `${ctx.organizationId}:${ctx.costHint}`,
+            now
+          );
+          if (rate > alloc.ratePerMin) {
+            return deny(
+              ApiCode.TOOL_USAGE_RATE_LIMITED,
+              `Rate limit reached for ${ctx.costHint} tools; retry in a moment.`,
+              60
+            );
+          }
+        } catch (err) {
+          logger.warn(
+            { err, tool: ctx.toolName, organizationId: ctx.organizationId },
+            "rate limiter unavailable; allowing rate check (quota still enforced)"
           );
         }
       }
