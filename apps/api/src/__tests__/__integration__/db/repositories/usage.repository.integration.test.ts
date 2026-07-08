@@ -113,4 +113,66 @@ describe("UsageRepository Integration Tests", () => {
     expect(rows.length).toBe(1);
     expect(rows[0].periodId).toBe("2026-07");
   });
+
+  // ── chargeConditional (#169 slice 2) ────────────────────────────────
+  describe("chargeConditional", () => {
+    it("charges within allocation and returns the new used", async () => {
+      const used = await repo.chargeConditional(
+        usageRow({ unitsUsed: 30 }) as never,
+        100,
+        db
+      );
+      expect(used).toBe(30);
+      const rows = await repo.findForPeriod(orgId, "2026-07", db);
+      expect(rows[0].unitsUsed).toBe(30);
+    });
+
+    it("denies (null) a charge that would exceed the allocation; row unchanged", async () => {
+      await repo.chargeConditional(usageRow({ unitsUsed: 90 }) as never, 100, db);
+      const denied = await repo.chargeConditional(
+        usageRow({ unitsUsed: 20 }) as never,
+        100,
+        db
+      );
+      expect(denied).toBeNull();
+      const rows = await repo.findForPeriod(orgId, "2026-07", db);
+      expect(rows[0].unitsUsed).toBe(90); // unchanged
+    });
+
+    it("never overshoots the allocation under concurrent charges", async () => {
+      // Both 60-unit charges start from 0; only one fits under 100.
+      const results = await Promise.all([
+        repo.chargeConditional(usageRow({ unitsUsed: 60 }) as never, 100, db),
+        repo.chargeConditional(usageRow({ unitsUsed: 60 }) as never, 100, db),
+      ]);
+      expect(results.filter((r) => r !== null).length).toBe(1);
+      const rows = await repo.findForPeriod(orgId, "2026-07", db);
+      expect(rows[0].unitsUsed).toBe(60);
+    });
+
+    it("always charges when allocation is null (unlimited)", async () => {
+      const a = await repo.chargeConditional(
+        usageRow({ unitsUsed: 1_000_000 }) as never,
+        null,
+        db
+      );
+      expect(a).toBe(1_000_000);
+      const b = await repo.chargeConditional(
+        usageRow({ unitsUsed: 5 }) as never,
+        null,
+        db
+      );
+      expect(b).toBe(1_000_005);
+    });
+
+    it("accumulates across charges within allocation", async () => {
+      await repo.chargeConditional(usageRow({ unitsUsed: 10 }) as never, 100, db);
+      const used = await repo.chargeConditional(
+        usageRow({ unitsUsed: 15 }) as never,
+        100,
+        db
+      );
+      expect(used).toBe(25);
+    });
+  });
 });
