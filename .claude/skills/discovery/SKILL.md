@@ -155,6 +155,6 @@ Do **not** stage, commit, push, or open the PR. The user reads the draft, refine
 
 ## What this skill is not
 
-- It is not for **spec + plan** scaffolding. A sibling `/spec` skill will eventually own that; if it doesn't yet, point the user at `CLAUDE.md` and the existing `docs/*.spec.md` files. Either way, spec/plan land on the **same branch** this skill just created — not a new one.
+- It is not for **spec + plan** scaffolding. The sibling `/spec` and `/plan` skills own those phases — run `/spec <N>` then `/plan <N>` after the discovery doc is confirmed. Both land on the **same branch** this skill just created — not a new one.
 - It is not for **trivial PRs**. If the user invokes it on an issue that's a one-line typo fix or a localized bug with a clear fix, tell them discovery isn't proportionate and they should go straight to implementation.
 - It does not run CI, doesn't apply branch protection, doesn't move project-board cards. Those happen elsewhere.
