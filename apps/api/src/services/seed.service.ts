@@ -333,9 +333,9 @@ export class SeedService {
         overage: "hard-deny",
         freeUnitsPerPeriod: null,
         freeRatePerMin: null,
-        meteredUnitsPerPeriod: 1000,
+        meteredUnitsPerPeriod: 2500,
         meteredRatePerMin: 20,
-        expensiveUnitsPerPeriod: 100,
+        expensiveUnitsPerPeriod: 300,
         expensiveRatePerMin: 5,
         perToolCaps: null,
       })
