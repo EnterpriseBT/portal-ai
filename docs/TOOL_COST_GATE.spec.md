@@ -314,7 +314,7 @@ Mock `TierService.resolveTier`, `UsageService.tryCharge`, `incrementRateWindow`.
 | Risk | Mitigation |
 |---|---|
 | The wrap misses a tool-construction path (a tool added outside the decorate loop). | The guard test (16) iterates the actual `buildAnalyticsTools` output and asserts every entry is wrapped — a new un-wrapped path fails CI. |
-| Charging before execute leaks units on a tool that then errors. | Accepted: for a metered external call the upstream cost is already incurred; the charge stands. Documented. (A refund-on-throw is a later refinement, needs the audit ledger #179 to be clean.) |
+| A failed tool call must not be billed. | **Superseded by #183** — the charge moved from admission to *successful completion* (`CostGateService.commitCharge`): a thrown tool call or a failed async job charges nothing, and there are no refunds. See `docs/COST_GATE_CHARGE_TIMING.spec.md`. |
 | `chargeConditional` initial-INSERT path charges over allocation (no WHERE guard on INSERT). | The INSERT seeds `unitsUsed = 0` (`DO NOTHING` on conflict); the **conditional UPDATE** does the guarded `+= units`. The insert never over-charges. Test 12. |
 | Fail-open hides a real over-quota during an infra blip. | Uniform fail-open is deliberate (D6) — a DB/Redis outage is a total outage; the alternative (bricking the agent) is worse. Logged for observability. |
 | Custom tool's `costHint` mis-declared as `free` to dodge the *advisory* note. | No enforcement impact (custom tools charge 0 regardless); the advisory is best-effort context. Real gating is only for app-paid built-ins, whose `costHint` is code-controlled. |
