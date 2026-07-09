@@ -92,7 +92,11 @@ AWS SDK v3 clients with **ambient credentials** (`aws sso login` / `AWS_PROFILE`
 
 ```ts
 export interface Tunnel { localPort: number; close(): Promise<void>; }
-export function openDbTunnel(def, opts?: { localPort?: number }): Promise<Tunnel>;
+export function openDbTunnel(def, opts: {
+  remoteHost: string;      // the DB endpoint the bastion forwards to —
+  remotePort: number;      // required by the port-forward document; the caller
+  localPort?: number;      // (connection.ts) parses them from database-url
+}): Promise<Tunnel>;
 ```
 
 Spawns `aws ssm start-session --target <bastion-instance-id> --document-name AWS-StartPortForwardingSessionToRemoteHost` (bastion instance id resolved via the CloudFormation export `bastionExportName(def)`, as `api-cli.sh:70-71,182-214` does), default local port 15432, readiness-waited, lifecycle-managed (`close()` terminates the process group; process-exit hook prevents orphans). Missing plugin/creds → `EnvNotAuthorizedError`/`EnvInfraError`.

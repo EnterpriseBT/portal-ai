@@ -30,6 +30,7 @@
     "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage"
   },
   "dependencies": {
+    "@aws-sdk/client-cloudformation": "^3.1084.0",
     "@aws-sdk/client-secrets-manager": "^3.1084.0",
     "@aws-sdk/client-ssm": "^3.1084.0",
     "zod": "^4.3.6"

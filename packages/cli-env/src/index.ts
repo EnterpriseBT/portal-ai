@@ -37,3 +37,10 @@ export {
 } from "./guard.js";
 
 export { getSecret, getParam, getDatabaseUrl } from "./aws.js";
+
+export {
+  openDbTunnel,
+  TUNNEL_READY_MARKER,
+  type Tunnel,
+  type OpenDbTunnelOptions,
+} from "./tunnel.js";

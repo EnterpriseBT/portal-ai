@@ -20,6 +20,11 @@ export default [
         clearTimeout: "readonly",
         setInterval: "readonly",
         clearInterval: "readonly",
+        setImmediate: "readonly",
+        clearImmediate: "readonly",
+        Buffer: "readonly",
+        URL: "readonly",
+        NodeJS: "readonly",
       },
     },
     plugins: {
