@@ -86,6 +86,26 @@ describe("PortalMessageUI", () => {
         screen.queryByRole("button", { name: /pin result/i })
       ).not.toBeInTheDocument();
     });
+
+    it("renders a local date+time timestamp from `created` (#180)", () => {
+      const created = new Date("2026-07-08T20:34:00Z").getTime();
+      const message = makeMessage({ role: "user", created });
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
+      const expected = new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(created);
+      expect(screen.getByText(expected)).toBeInTheDocument();
+    });
   });
 
   describe("assistant messages — text block", () => {

@@ -17,16 +17,13 @@
 
 ## Decision — formatting
 
-Two options from the ticket: relative (`"5m ago"`) vs short time-of-day (`HH:mm`, day-aware).
+Two options from the ticket: relative (`"5m ago"`) vs short local time-of-day (day/time).
 
-| | Relative (`DateFactory.relativeTime`) | Short `HH:mm` day-aware |
-|---|---|---|
-| Reuses existing util | **Yes** (`relativeTime`, already in web) | Needs a new `HH:mm`/day-aware formatter |
-| Consistency | Matches `RecentPortalsList` "last opened" | New pattern |
-| Text-thread feel | Feed-style ("5m ago") | iMessage-style (time-of-day) |
-| Staleness | Drifts until re-render (minor for a chat log) | Stable |
+**Decision: absolute local date+time** — `new Intl.DateTimeFormat(undefined, { month, day, hour, minute }).format(created)` → e.g. "Jul 8, 2:34 PM", rendered in the **viewer's browser timezone + locale**, with a full timezone-qualified datetime tooltip on `title`.
 
-**Decision: relative time** — reuse `DateFactory.relativeTime(created)` for the short label, with a **full localized datetime tooltip** (`new Date(created).toLocaleString()`) via the element's `title`. Rationale: zero new deps, consistent with the existing web relative-time usage, matches the ticket's first example, and is the true "quick win." Staleness is acceptable for a conversation log (messages re-render as the thread grows / refetches).
+**Why not relative time (revised after #180 smoke):** the initial pick was `DateFactory.relativeTime` ("5m ago"), reusing the `RecentPortalsList` formatter. Smoke surfaced the problem: `relativeTime` is pure elapsed-ms (`Date.now() - created`), so it's *timezone-independent* — a message sent just after the viewer's local midnight shows "1h ago" (correct by elapsed time) even though it's "yesterday" on the viewer's calendar (reported from MDT). For a **thread**, an absolute local timestamp is both clearer and unambiguous across a local-day boundary. It's also **pure** — depends only on `created` + the (stable) browser locale/tz, never on "now" — which satisfies the `react-hooks/purity` lint (a `Date.now()`/`new Date()` in render is an error) without a now-tick.
+
+Trade-off accepted: no relative "Today/Yesterday" prefix (that needs "now", which is impure in render and would reintroduce drift). Absolute local date+time is unambiguous and standard for a sparse thread.
 
 ## Plan — one slice
 

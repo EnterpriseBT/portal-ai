@@ -27,6 +27,7 @@ import {
   QueryResultDataBlock,
   type QueryResultDataBlockContent,
 } from "./QueryResultDataBlock.component";
+import { MessageTimestamp } from "./MessageTimestamp.component";
 
 /**
  * Render override for block types that the core ContentBlockRenderer
@@ -149,21 +150,23 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
         data-message-id={message.id}
         sx={{ display: "flex", justifyContent: "flex-end", mb: 1 }}
       >
-        <Paper
-          elevation={1}
-          sx={{
-            p: 1.5,
-            maxWidth: "80%",
-            bgcolor: "primary.main",
-            color: "primary.contrastText",
-          }}
-        >
-          {message.blocks.map((block: PortalMessageBlock, i: number) => (
-            <Typography key={i} variant="body2">
-              {String(block.content ?? "")}
-            </Typography>
-          ))}
-        </Paper>
+        <Box sx={{ maxWidth: "80%" }}>
+          <Paper
+            elevation={1}
+            sx={{
+              p: 1.5,
+              bgcolor: "primary.main",
+              color: "primary.contrastText",
+            }}
+          >
+            {message.blocks.map((block: PortalMessageBlock, i: number) => (
+              <Typography key={i} variant="body2">
+                {String(block.content ?? "")}
+              </Typography>
+            ))}
+          </Paper>
+          <MessageTimestamp created={message.created} align="right" />
+        </Box>
       </Box>
     );
   }
@@ -245,6 +248,8 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
           </Box>
         );
       })}
+
+      <MessageTimestamp created={message.created} align="left" />
 
       <Dialog
         open={pinDialogOpen}
