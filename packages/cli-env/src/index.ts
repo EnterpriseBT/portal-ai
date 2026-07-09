@@ -46,3 +46,11 @@ export {
 } from "./tunnel.js";
 
 export { login, logout, getToken, type LoginIo } from "./auth0.js";
+
+export {
+  resolveEnvConnection,
+  type EnvConnection,
+  type DbHandle,
+} from "./connection.js";
+
+export { recordAudit, type AuditEntry } from "./audit.js";
