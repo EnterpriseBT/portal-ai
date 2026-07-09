@@ -4,6 +4,11 @@ import { ApiError } from "../../services/http.service.js";
 import { BulkTransformService } from "../../services/bulk-transform.service.js";
 import { JobEventsService } from "../../services/job-events.service.js";
 import { ToolService } from "../../services/tools.service.js";
+import {
+  CostGateService,
+  resolveCallCost,
+} from "../../services/cost-gate.service.js";
+import { ALL_TOOL_CAPABILITIES } from "@portalai/core/registries";
 import { createLogger } from "../../utils/logger.util.js";
 import { BATCH_ROW_PAYLOAD_LIMIT } from "@portalai/core/constants";
 import { dispatchBatch } from "./bulk-transform-tool.dispatcher.js";
@@ -67,11 +72,12 @@ export const bulkTransformProcessor: TypedJobProcessor<
     "bulk_transform started"
   );
 
+  let result: BulkTransformResult;
   if (expression.kind === "tool") {
     const sourceFilter = (bullJob.data as unknown as {
       sourceFilter?: { whereSqlFragment: string };
     }).sourceFilter;
-    return await runToolDispatchLoop(bullJob, {
+    result = await runToolDispatchLoop(bullJob, {
       jobId,
       sourceConnectorEntityId,
       organizationId,
@@ -83,18 +89,33 @@ export const bulkTransformProcessor: TypedJobProcessor<
       whereSqlFragment: sourceFilter?.whereSqlFragment,
       userId,
     });
+  } else {
+    result = await runSqlBatchLoop(bullJob, {
+      jobId,
+      sourceConnectorEntityId,
+      organizationId,
+      expression: expression.value,
+      writes: expression.writes,
+      keyField,
+      batchSize,
+      userId,
+    });
   }
 
-  return await runSqlBatchLoop(bullJob, {
-    jobId,
-    sourceConnectorEntityId,
+  // #183: charge on JOB success. A failed job throws out of the loop above,
+  // before this line, and is never charged (failed calls are free). The
+  // transform_entity_records tool (resultKind "progress") defers its unit
+  // charge to here — the cost-gate wrap does not commit on enqueue-return;
+  // sync tools charge in the wrap. Cost class + units resolve from the tool's
+  // capability so a registry change stays authoritative.
+  await CostGateService.commitCharge({
     organizationId,
-    expression: expression.value,
-    writes: expression.writes,
-    keyField,
-    batchSize,
-    userId,
+    costClass: ALL_TOOL_CAPABILITIES.transform_entity_records.costHint,
+    units: await resolveCallCost("transform_entity_records", undefined),
+    actor: { userId },
   });
+
+  return result;
 };
 
 // ── Tool-kind branch ─────────────────────────────────────────────────

@@ -81,22 +81,31 @@ export interface CostGateContext {
   now?: number;
 }
 
-/** A deny carries a typed error the wrap returns *as a tool result* (never a
+/** A denial carries a typed error the wrap returns *as a tool result* (never a
  *  throw), so the agent relays it instead of the turn dying. */
-export type GateResult =
-  | { allowed: true }
-  | {
-      allowed: false;
-      result: {
-        error: { code: ApiCode; message: string; retryAfter?: number };
-      };
-    };
+export type Denial = {
+  allowed: false;
+  result: {
+    error: { code: ApiCode; message: string; retryAfter?: number };
+  };
+};
 
-function deny(
-  code: ApiCode,
-  message: string,
-  retryAfter?: number
-): GateResult {
+/** A charge resolved at admission and applied at commit (#183) — carried from
+ *  `checkAdmission` to `commitCharge` so the units aren't recomputed. */
+export interface PendingCharge {
+  organizationId: string;
+  costClass: CostHint;
+  units: number;
+  actor: { userId: string };
+}
+
+/** The pre-flight verdict. `charge` is `null` for immune calls (free /
+ *  org-paid / zero-unit) — nothing to commit on success. */
+export type AdmissionResult =
+  | { allowed: true; charge: PendingCharge | null }
+  | Denial;
+
+function deny(code: ApiCode, message: string, retryAfter?: number): Denial {
   return {
     allowed: false,
     result: {
@@ -107,39 +116,35 @@ function deny(
 
 export class CostGateService {
   /**
-   * Decide whether a tool call may proceed, charging the org's allocation when
-   * it does. Order: `free` immune → org-paid (custom) immune → resolve units →
-   * per-minute rate (Redis) → per-period quota charge (DB, atomic). Denials
-   * return a typed tool-result; infra errors **fail open** + log (the Postgres
-   * quota still caps spend when Redis is down; a DB outage is total anyway).
+   * Pre-flight admission (#183): decide whether a call may proceed, **without
+   * charging**. Order: `free` immune → org-paid immune → estimate units →
+   * per-minute rate (Redis, split-fail) → affordability (estimate ≤ remaining
+   * allocation, the hard cap). Denials return a typed tool-result; infra errors
+   * fail open. The charge lands later in `commitCharge`, only if the call
+   * succeeds — a failed call is never charged.
    */
-  static async resolveCostGate(ctx: CostGateContext): Promise<GateResult> {
+  static async checkAdmission(ctx: CostGateContext): Promise<AdmissionResult> {
     const now = ctx.now ?? Date.now();
 
     // free tools are immune to all gating — never charged, never denied.
-    if (ctx.costHint === "free") return { allowed: true };
+    if (ctx.costHint === "free") return { allowed: true, charge: null };
     // who-pays: org-hosted (custom/webhook) tools are never charged.
-    if (ctx.costBearer === "organization") return { allowed: true };
+    if (ctx.costBearer === "organization") return { allowed: true, charge: null };
 
     const units = await resolveCallCost(ctx.toolName, ctx.input);
-    if (units <= 0) return { allowed: true };
+    if (units <= 0) return { allowed: true, charge: null };
 
     try {
       const org = await DbService.repository.organizations.findById(
         ctx.organizationId
       );
-      if (!org) return { allowed: true }; // shouldn't happen; fail open
+      if (!org) return { allowed: true, charge: null }; // shouldn't happen; fail open
 
       const policy = await TierService.resolveTier(org, now);
-      const periodId = TierService.periodIdFor(policy.period, new Date(now));
       const alloc = policy.allocations[ctx.costHint];
 
-      // rate (Redis) — cheap, checked first; a rate denial does not charge.
-      // Split fail policy: the rate check is isolated in its own try/catch so
-      // a Redis outage fails open on *rate only* and still falls through to the
-      // Postgres quota charge below — the quota remains the spend backstop when
-      // Redis is down (see rate-limit.util.ts). Only a DB failure fails the
-      // whole gate open (outer catch).
+      // rate (Redis) — split fail policy: a Redis outage fails open on the rate
+      // check only; the affordability check below still enforces the quota.
       if (alloc.ratePerMin !== null) {
         try {
           const rate = await incrementRateWindow(
@@ -161,30 +166,78 @@ export class CostGateService {
         }
       }
 
-      // quota (DB, atomic) — charge only if within the allocation.
-      const charge = await UsageService.tryCharge(
-        ctx.organizationId,
-        ctx.costHint,
-        units,
-        alloc.unitsPerPeriod,
-        periodId,
-        ctx.actor
-      );
-      if (!charge.allowed) {
+      // affordability — the estimated units must fit the remaining allocation.
+      // This is the hard cap (denies before the call runs); no charge here.
+      const balance = await UsageService.getBalance(org, policy, new Date(now));
+      const { used, available } = balance.byClass[ctx.costHint];
+      if (available !== null && units > available) {
         return deny(
           ApiCode.TOOL_USAGE_QUOTA_EXCEEDED,
-          `Your plan's monthly ${ctx.costHint} allocation is exhausted (${charge.used} used). It resets next billing period.`
+          `Your plan's monthly ${ctx.costHint} allocation is exhausted (${used} used). It resets next billing period.`
         );
       }
 
-      return { allowed: true };
+      return {
+        allowed: true,
+        charge: {
+          organizationId: ctx.organizationId,
+          costClass: ctx.costHint,
+          units,
+          actor: ctx.actor,
+        },
+      };
     } catch (err) {
-      // D6 — uniform fail-open + log.
+      // Uniform fail-open + log (a DB outage is total anyway).
       logger.warn(
         { err, tool: ctx.toolName, organizationId: ctx.organizationId },
-        "cost gate infra error; failing open"
+        "cost gate admission infra error; failing open"
       );
-      return { allowed: true };
+      return { allowed: true, charge: null };
+    }
+  }
+
+  /**
+   * Commit a pending charge **after** the call succeeded (#183). Recomputes the
+   * policy + period at `now` (so a long async job bills the completion period),
+   * then applies the atomic conditional charge: if it would exceed the
+   * allocation it is simply skipped — a free call, never a failure and never a
+   * refund. No-op for a null charge. Never throws to the caller.
+   */
+  static async commitCharge(
+    charge: PendingCharge | null,
+    now: number = Date.now()
+  ): Promise<void> {
+    if (!charge || charge.units <= 0) return;
+
+    try {
+      const org = await DbService.repository.organizations.findById(
+        charge.organizationId
+      );
+      if (!org) return;
+
+      const policy = await TierService.resolveTier(org, now);
+      const periodId = TierService.periodIdFor(policy.period, new Date(now));
+      const alloc = policy.allocations[charge.costClass];
+
+      // Atomic + conditional: lands only if within allocation, else skipped
+      // (the completed call is free). Never negative, never a reversal.
+      await UsageService.tryCharge(
+        charge.organizationId,
+        charge.costClass,
+        charge.units,
+        alloc.unitsPerPeriod,
+        periodId,
+        charge.actor
+      );
+    } catch (err) {
+      logger.warn(
+        {
+          err,
+          organizationId: charge.organizationId,
+          costClass: charge.costClass,
+        },
+        "cost gate commit infra error; charge skipped"
+      );
     }
   }
 }
@@ -195,18 +248,22 @@ export type GateableTool = {
   execute?: (input: unknown, options: unknown) => unknown;
 };
 
-/** Per-tool cost metadata the wrap needs: its cost class and who pays. */
+/** Per-tool cost metadata the wrap needs. */
 export interface ToolCostMeta {
   costHint: CostHint;
   costBearer: CostBearer;
+  /** true ⇒ an async-job tool (`resultKind: "progress"`) whose charge is
+   *  committed by its job processor on job success — the wrap must NOT commit
+   *  on `execute` return (enqueue-success ≠ work-completion). */
+  deferChargeToJob: boolean;
 }
 
 /**
- * Decorate every tool's `execute` with the cost gate, **in place**. On each
- * call the wrap runs `resolveCostGate`; on deny it returns the typed
- * deny-result (delivered as a tool-result the agent relays), otherwise it
- * delegates to the original `execute`. `metaFor` supplies each tool's cost
- * class + bearer (built-in ⇒ application; org toolpack ⇒ organization).
+ * Decorate every tool's `execute` with the cost gate, **in place** (#183):
+ * pre-flight `checkAdmission` before the call (deny ⇒ typed tool-result the
+ * agent relays); run the original; on **success**, `commitCharge` the resolved
+ * units — unless the tool defers to its job processor. A thrown `original`
+ * skips the commit entirely, so a failed call is never charged.
  *
  * The `buildAnalyticsTools` guard test asserts no tool is left un-wrapped.
  */
@@ -218,9 +275,9 @@ export function wrapWithCostGate(
   for (const [name, tool] of Object.entries(tools)) {
     const original = tool.execute;
     if (!original) continue;
-    const { costHint, costBearer } = metaFor(name);
+    const { costHint, costBearer, deferChargeToJob } = metaFor(name);
     tool.execute = async (input: unknown, options: unknown) => {
-      const gate = await CostGateService.resolveCostGate({
+      const admission = await CostGateService.checkAdmission({
         organizationId: ctx.organizationId,
         toolName: name,
         costHint,
@@ -228,8 +285,12 @@ export function wrapWithCostGate(
         input,
         actor: { userId: ctx.userId },
       });
-      if (!gate.allowed) return gate.result;
-      return original(input, options);
+      if (!admission.allowed) return admission.result;
+      const result = await original(input, options);
+      if (admission.charge && !deferChargeToJob) {
+        await CostGateService.commitCharge(admission.charge);
+      }
+      return result;
     };
   }
 }
