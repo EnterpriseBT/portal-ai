@@ -35,3 +35,5 @@ export {
   envBanner,
   type OperationGuardOptions,
 } from "./guard.js";
+
+export { getSecret, getParam, getDatabaseUrl } from "./aws.js";
