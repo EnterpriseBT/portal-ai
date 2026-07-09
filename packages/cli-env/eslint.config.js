@@ -24,7 +24,13 @@ export default [
         clearImmediate: "readonly",
         Buffer: "readonly",
         URL: "readonly",
+        URLSearchParams: "readonly",
         NodeJS: "readonly",
+        fetch: "readonly",
+        Response: "readonly",
+        Request: "readonly",
+        RequestInit: "readonly",
+        globalThis: "readonly",
       },
     },
     plugins: {

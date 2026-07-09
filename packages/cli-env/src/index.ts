@@ -44,3 +44,5 @@ export {
   type Tunnel,
   type OpenDbTunnelOptions,
 } from "./tunnel.js";
+
+export { login, logout, getToken, type LoginIo } from "./auth0.js";
