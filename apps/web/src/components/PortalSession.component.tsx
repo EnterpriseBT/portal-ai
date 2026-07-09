@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
 import { Box, Icon, IconName, StatusMessage } from "@portalai/core/ui";
@@ -20,6 +20,7 @@ import {
   shouldRenderViaWeb,
 } from "./PortalMessage.component";
 import { TypingIndicator } from "./TypingIndicator.component";
+import { MessageTimestamp } from "./MessageTimestamp.component";
 
 // ── Message List (memoized to avoid re-renders on input changes) ─────
 
@@ -31,6 +32,9 @@ interface MessageListProps {
   streamingBlocks: PortalMessageBlock[] | null;
   streamError: string | null;
   isStreaming: boolean;
+  /** Send time of the in-flight turn (epoch ms), or null when idle — stamps
+   *  the streaming assistant message (#180). */
+  streamStartedAt?: number | null;
 }
 
 const MessageList = React.memo<MessageListProps>(
@@ -42,6 +46,7 @@ const MessageList = React.memo<MessageListProps>(
     streamingBlocks,
     streamError,
     isStreaming,
+    streamStartedAt = null,
   }) => {
     const hasStreamingContent =
       streamingBlocks !== null && streamingBlocks.length > 0;
@@ -85,6 +90,11 @@ const MessageList = React.memo<MessageListProps>(
                 )}
               </Box>
             ))}
+            {/* In-flight assistant message: a sensible "just now" rather than
+             *  a blank until the message persists (#180). */}
+            {streamStartedAt !== null && (
+              <MessageTimestamp created={streamStartedAt} align="left" />
+            )}
           </Box>
         )}
 
@@ -150,6 +160,8 @@ export interface PortalSessionUIProps {
   onCancel: () => void;
   onExit: () => void;
   isStreaming: boolean;
+  /** Send time of the in-flight turn (epoch ms), or null when idle (#180). */
+  streamStartedAt?: number | null;
   /** Locked when a non-terminal bulk job is bound to this portal (#85). */
   chatLocked?: boolean;
 }
@@ -167,6 +179,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
   onCancel,
   onExit,
   isStreaming,
+  streamStartedAt,
   chatLocked,
 }) => (
   <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
@@ -186,6 +199,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
         streamingBlocks={streamingBlocks}
         streamError={streamError}
         isStreaming={isStreaming}
+        streamStartedAt={streamStartedAt}
       />
     </ChatWindowUI>
   </Box>
@@ -232,6 +246,11 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
 
   const queryClient = useQueryClient();
 
+  // #180: send time of the in-flight turn, captured in the submit event
+  // handler (rule-safe: Date.now() outside render) and cleared when the stream
+  // completes — stamps the streaming assistant message.
+  const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
+
   // Refetch so server-stored blocks (which include tool-call/tool-result
   // metadata) replace the display-only local copies. This ensures pin
   // operations send correct block indices. The hook stores onDone in a ref
@@ -245,6 +264,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.organizations.usage(),
       });
+      setStreamStartedAt(null);
       portalQuery.refetch().then(() => {
         clear();
       });
@@ -348,6 +368,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       blocks: [{ type: "text", content: message }],
       created: Date.now(),
     });
+    setStreamStartedAt(Date.now());
 
     try {
       await sendMessage.mutateAsync({ message });
@@ -376,6 +397,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       onCancel={handleCancel}
       onExit={() => router.history.back()}
       isStreaming={streamState.isStreaming}
+      streamStartedAt={streamStartedAt}
       chatLocked={chatLock.locked}
     />
   );
