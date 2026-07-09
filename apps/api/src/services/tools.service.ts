@@ -713,9 +713,12 @@ export class ToolService {
           costHint: isCustom
             ? customCostHint[name] ?? "free"
             : capability?.costHint ?? "free",
-          // #183: sync tools commit in the wrap on success; async-job tools are
-          // wired to defer to their processor in slice 2. Default false here.
-          deferChargeToJob: false,
+          // #183: async-job tools (resultKind "progress", e.g.
+          // transform_entity_records) charge in their job processor on job
+          // success — the wrap must not commit on enqueue-return. Sync tools
+          // (everything else) commit in the wrap after execute resolves.
+          deferChargeToJob:
+            !isCustom && capability?.resultKind === "progress",
         };
       }
     );

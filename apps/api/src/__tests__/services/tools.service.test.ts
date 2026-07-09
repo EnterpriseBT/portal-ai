@@ -776,6 +776,84 @@ describe("buildAnalyticsTools()", () => {
     );
   });
 
+  it("commits the charge in the wrap when a sync tool succeeds (#183)", async () => {
+    setupStationMocks(["web_search"]);
+    mockTavilySearch.mockResolvedValue({ answer: "a", results: [] });
+    const admitSpy = jest
+      .spyOn(CostGateService, "checkAdmission")
+      .mockResolvedValue({
+        allowed: true,
+        charge: {
+          organizationId: ORG_ID,
+          costClass: "metered",
+          units: 1,
+          actor: { userId: "user-001" },
+        },
+      });
+    const commitSpy = jest
+      .spyOn(CostGateService, "commitCharge")
+      .mockResolvedValue();
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+    await (tools.web_search as any).execute(
+      { query: "x" },
+      { toolCallId: "t", messages: [], abortSignal: new AbortController().signal }
+    );
+
+    expect(commitSpy).toHaveBeenCalledTimes(1);
+    admitSpy.mockRestore();
+    commitSpy.mockRestore();
+  });
+
+  it("does NOT commit in the wrap for the async-job tool — it defers to the processor (#183)", async () => {
+    setupStationMocks([
+      "data_query",
+      "statistics",
+      "regression",
+      "financial",
+      "web_search",
+      "entity_management",
+    ]);
+    mockResolveStationCapabilities.mockResolvedValue([
+      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true } },
+    ]);
+    const admitSpy = jest
+      .spyOn(CostGateService, "checkAdmission")
+      .mockResolvedValue({
+        allowed: true,
+        charge: {
+          organizationId: ORG_ID,
+          costClass: "expensive",
+          units: 1,
+          actor: { userId: "user-001" },
+        },
+      });
+    const commitSpy = jest
+      .spyOn(CostGateService, "commitCharge")
+      .mockResolvedValue();
+
+    const tools = await buildAnalyticsTools(
+      ORG_ID,
+      STATION_ID,
+      "user-001",
+      "portal-001"
+    );
+    // transform_entity_records has resultKind "progress" → deferChargeToJob.
+    // Whatever it does internally (validation/enqueue), the wrap must NOT
+    // commit — the bulk-transform processor charges on job success.
+    try {
+      await (tools.transform_entity_records as any).execute(
+        {},
+        { toolCallId: "t", messages: [], abortSignal: new AbortController().signal }
+      );
+    } catch {
+      /* enqueue/validation path irrelevant to the defer assertion */
+    }
+    expect(commitSpy).not.toHaveBeenCalled();
+    admitSpy.mockRestore();
+    commitSpy.mockRestore();
+  });
+
   it("tags built-in tools application-paid and custom tools organization-paid", async () => {
     setupStationMocks(["web_search"]); // web_search is a metered built-in
     mockFindByStationId_tools.mockResolvedValue([

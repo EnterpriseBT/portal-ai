@@ -72,6 +72,17 @@ jest.unstable_mockModule("../../../services/job-events.service.js", () => ({
   JobUpdateEventSchema: {},
 }));
 
+// #183: the processor commits the job's charge on success. Mock the gate so
+// the commit is observable and never touches a real DB.
+const mockCommitCharge =
+  jest.fn<(...a: unknown[]) => Promise<void>>().mockResolvedValue(undefined);
+const mockResolveCallCost =
+  jest.fn<() => Promise<number>>().mockResolvedValue(1);
+jest.unstable_mockModule("../../../services/cost-gate.service.js", () => ({
+  CostGateService: { commitCharge: mockCommitCharge },
+  resolveCallCost: mockResolveCallCost,
+}));
+
 const { bulkTransformProcessor } = await import(
   "../../../queues/processors/bulk-transform.processor.js"
 );
@@ -508,5 +519,55 @@ describe("bulkTransformProcessor — tool path multi-write (Phase 4 / #99 slice 
     expect(result.partialFailures).toHaveLength(100);
     // Tail is summarized as a count.
     expect(result.partialFailuresOmitted).toBe(50);
+  });
+});
+
+// ── #183 — charge the job's units on success, nothing on failure ─────
+
+describe("bulkTransformProcessor — charge on job success (#183)", () => {
+  beforeEach(() => {
+    mockCountSourceRows.mockReset().mockResolvedValue(0);
+    mockPublishCustomEvent.mockReset().mockResolvedValue(undefined);
+    mockLookupBulkDispatchable.mockReset().mockResolvedValue(null);
+    mockCommitCharge.mockReset().mockResolvedValue(undefined);
+    mockResolveCallCost.mockReset().mockResolvedValue(1);
+  });
+
+  it("commits one expensive unit when the job completes successfully", async () => {
+    // SQL path, 0 source rows → the job succeeds trivially and still charges
+    // (the run completed; failed calls are what go free, not empty ones).
+    await bulkTransformProcessor(makeJob({ userId: "user-1" }));
+
+    expect(mockCommitCharge).toHaveBeenCalledTimes(1);
+    expect(mockCommitCharge).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      costClass: "expensive",
+      units: 1,
+      actor: { userId: "user-1" },
+    });
+  });
+
+  it("does NOT commit when the job fails (failed jobs are free)", async () => {
+    // Tool-kind job whose tool isn't bulk-dispatchable → the loop throws
+    // BULK_DISPATCH_TOOL_NOT_FOUND before the commit line.
+    const job = makeJob({
+      userId: "user-1",
+      expression: {
+        kind: "tool",
+        ref: "not_dispatchable",
+        writes: [
+          {
+            targetConnectorEntityId: "ce-target",
+            column: "c_x",
+            valueFrom: { kind: "tool_result" },
+          },
+        ],
+      },
+    });
+
+    await expect(bulkTransformProcessor(job)).rejects.toMatchObject({
+      code: ApiCode.BULK_DISPATCH_TOOL_NOT_FOUND,
+    });
+    expect(mockCommitCharge).not.toHaveBeenCalled();
   });
 });
