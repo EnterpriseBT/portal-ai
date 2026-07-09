@@ -28,9 +28,9 @@ Turborepo + npm workspaces (`package.json:29-31` globs `packages/*`); a new `pac
 
 `db:seed` → `SeedService.seed()` (`seed.service.ts:1-100`) seeds **system definitions only** (tiers, column defs, connector defs) — **no mock orgs** today. The CLI's dev/QA seeding extends this to customer-org fixtures.
 
-### Environment connectivity — owned by the DevOps CLI (#192)
+### Environment access — the shared layer (#194)
 
-"Authorize into an environment" at the infra level (AWS Secrets Manager, DB tunnels via SSM/bastion) is the **DevOps CLI's** job (#192, porting `api-cli.sh`). This CLI *consumes* an env target: an **API base URL** (API path) or a **`DATABASE_URL`** (v1 DB-fallback). It authorizes to **the app**, not to AWS.
+Selecting/authorizing/connecting to a *deployed* environment is **#194** (the foundational driver of the epic), which orchestrates the DevOps CLI's tunnel + secret primitives (#192). This CLI *consumes* #194's `resolveEnvConnection(--env)` to obtain either an **API base URL + admin token** (API path) or a **`DATABASE_URL`** (v1 DB-fallback). It authorizes to **the app**, not to AWS. **v1 of this CLI targets `local`** (no #194 dependency); its deployed capability lands once #194 does.
 
 ## The design space
 
@@ -99,7 +99,7 @@ Target the **HTTP admin API** (app auth; respects invariants; the exact surface 
 
 ## What this doesn't decide
 
-- **Infrastructure / env connectivity** — the DevOps CLI (#192): secrets, tunnels, ECS, param store. This CLI consumes an env target, it doesn't manage infra.
+- **Deployed-environment access & connectivity** — **#194** (the shared env layer) + the DevOps CLI (#192)'s tunnel/secret primitives. This CLI consumes `resolveEnvConnection`, it doesn't own env auth or infra.
 - **Vendor management implementation** (Auth0/Stripe/Tavily subcommands) — follow-up; #176 defines the Stripe surface.
 - **The public customer-facing CLI** — anticipated, not built; no speculative shared-core split.
 - **Prod (`app.portalsai.io`) wiring** — gated on #83.
