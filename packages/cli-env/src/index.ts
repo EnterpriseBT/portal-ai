@@ -36,7 +36,13 @@ export {
   type OperationGuardOptions,
 } from "./guard.js";
 
-export { getSecret, getParam, getDatabaseUrl } from "./aws.js";
+export {
+  getSecret,
+  getParam,
+  getDatabaseUrl,
+  putSecret,
+  putParam,
+} from "./aws.js";
 
 export {
   openDbTunnel,
