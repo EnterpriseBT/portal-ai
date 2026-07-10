@@ -13,10 +13,16 @@
  */
 
 import {
+  CreateSecretCommand,
   GetSecretValueCommand,
+  PutSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
-import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
+import {
+  GetParameterCommand,
+  PutParameterCommand,
+  SSMClient,
+} from "@aws-sdk/client-ssm";
 
 import {
   EnvInfraError,
@@ -96,7 +102,11 @@ export async function getParam(
   const paramName = `${ssmPrefix(def)}/${name}`;
   const client = new SSMClient({ region: aws.region });
   try {
-    const out = await client.send(new GetParameterCommand({ Name: paramName }));
+    // WithDecryption is a no-op for String params and required for
+    // SecureString — parity with the bash's `--with-decryption`.
+    const out = await client.send(
+      new GetParameterCommand({ Name: paramName, WithDecryption: true })
+    );
     const value = out.Parameter?.Value;
     if (value == null) {
       throw new EnvInfraError(`SSM parameter ${paramName} has no value`);
@@ -111,4 +121,62 @@ export async function getParam(
 /** The env's DATABASE_URL secret (the DB path's connection source). */
 export function getDatabaseUrl(def: EnvironmentDefinition): Promise<string> {
   return getSecret(def, "database-url");
+}
+
+/**
+ * Update-or-create a secret (#192 — the write half of the vars catalog).
+ * Returns `{ created: true }` when the secret didn't exist and was created —
+ * the CALLER must warn: a brand-new secret's ARN has to be added to the
+ * deploy workflow / CloudFormation parameters before the next deploy.
+ */
+export async function putSecret(
+  def: EnvironmentDefinition,
+  name: string,
+  value: string
+): Promise<{ created: boolean }> {
+  const aws = requireAws(def);
+  const secretId = `${secretsPrefix(def)}/${name}`;
+  const client = new SecretsManagerClient({ region: aws.region });
+  try {
+    await client.send(
+      new PutSecretValueCommand({ SecretId: secretId, SecretString: value })
+    );
+    return { created: false };
+  } catch (err) {
+    if ((err as Error)?.name !== "ResourceNotFoundException") {
+      classify(err, `secret ${secretId}`);
+    }
+  }
+  try {
+    await client.send(
+      new CreateSecretCommand({ Name: secretId, SecretString: value })
+    );
+    return { created: true };
+  } catch (err) {
+    classify(err, `secret ${secretId}`);
+  }
+}
+
+/** Upsert an SSM parameter (Overwrite: true). Type defaults to String. */
+export async function putParam(
+  def: EnvironmentDefinition,
+  name: string,
+  value: string,
+  type: "String" | "SecureString" = "String"
+): Promise<void> {
+  const aws = requireAws(def);
+  const paramName = `${ssmPrefix(def)}/${name}`;
+  const client = new SSMClient({ region: aws.region });
+  try {
+    await client.send(
+      new PutParameterCommand({
+        Name: paramName,
+        Value: value,
+        Type: type,
+        Overwrite: true,
+      })
+    );
+  } catch (err) {
+    classify(err, `SSM parameter ${paramName}`);
+  }
 }
