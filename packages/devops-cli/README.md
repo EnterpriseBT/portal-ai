@@ -4,6 +4,24 @@ Portal's **infrastructure operator CLI**: DB tunnels/psql/reset/seed and the man
 
 **Agent-operable by design**: non-interactive flags, `--json` everywhere, stable exit codes, library-first (every command is an importable function; the bin is thin wiring). The complete machine-readable reference is [`COMMANDS.md`](./COMMANDS.md).
 
+## Running it
+
+From the **repo root** (the workspace bin resolves via `node_modules/.bin`):
+
+```bash
+npm install && npx turbo run build --filter=@portalai/devops-cli   # one-time; rebuild after pulling CLI changes
+npx portalops --help
+npx portalops vars list --env app-dev
+```
+
+Want it bare? `alias portalops="npx portalops"`, or `npm link` inside `packages/devops-cli` to put `portalops` on your PATH.
+
+For `--env local`, `DATABASE_URL` must be in your **shell env** (the CLI doesn't auto-load `.env` files):
+
+```bash
+DATABASE_URL=$(grep ^DATABASE_URL apps/api/.env | cut -d= -f2-) npx portalops db reset --env local
+```
+
 ## Prerequisites
 
 - **AWS credentials** (deployed envs): `aws login` / SSO — your IAM identity is the per-env authorization (`portalai/<awsEnvName>/*`).

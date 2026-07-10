@@ -321,7 +321,9 @@ npm run db:push        # pushes schema directly (dev convenience)
 Operator tasks against any environment go through **`portalops`** — the TypeScript operator CLI (`packages/devops-cli`, built on `@portalai/cli-env`). It replaces the retired `scripts/api-cli.sh`.
 
 - **Full command reference (agent-oriented):** `packages/devops-cli/COMMANDS.md`
-- **Human guide, quickstarts, troubleshooting:** `packages/devops-cli/README.md`
+- **Human guide, quickstarts, troubleshooting (incl. how to invoke it):** `packages/devops-cli/README.md`
+
+Run it from the repo root as `npx portalops …` (build once with `npx turbo run build --filter=@portalai/devops-cli`; `aws login` first for deployed envs).
 
 Two command groups:
 
