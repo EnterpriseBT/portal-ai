@@ -2,7 +2,7 @@
 
 ## Project
 
-Turborepo monorepo: React 19 frontend (`apps/web/`), Express API (`apps/api/`), shared component/model library (`packages/core/`).
+Turborepo monorepo: React 19 frontend (`apps/web/`), Express API (`apps/api/`), shared component/model library (`packages/core/`), CLI environment-access layer (`packages/cli-env/`, Node-only).
 
 ## File Naming
 

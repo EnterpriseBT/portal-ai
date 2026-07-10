@@ -11,6 +11,7 @@ Portal.ai is a Turborepo monorepo for displaying dynamic UI content from a Model
 | `@portalai/web` | `apps/web/` | Vite + React 19 frontend with Auth0, TanStack Router/Query, MUI |
 | `@portalai/api` | `apps/api/` | Express + TypeScript API with Auth0 JWT, Drizzle ORM, PostgreSQL |
 | `@portalai/core` | `packages/core/` | Shared UI components, MUI themes, Zod domain models, utilities |
+| `@portalai/cli-env` | `packages/cli-env/` | Shared CLI environment-access layer: env registry, AWS-IAM + Auth0 device-flow authorization, `resolveEnvConnection`. Node-only — never imported by web/core |
 
 ## Key Scripts
 
