@@ -135,6 +135,23 @@ describe("login (device authorization grant)", () => {
     expect(readCreds()["app-dev"].accessToken).toBe("at");
   });
 
+  it("a rejected device/code request (missing client grant) → ENV_NOT_AUTHORIZED with Auth0's description, no polling", async () => {
+    fetchMock.mockResolvedValueOnce(
+      json(
+        {
+          error: "invalid_request",
+          error_description:
+            'Client "cli-client-123" is not authorized to access resource server "https://api.local.test".',
+        },
+        403
+      )
+    );
+    const p = login("local", { onUserCode: jest.fn() });
+    await expect(p).rejects.toBeInstanceOf(EnvNotAuthorizedError);
+    await expect(p).rejects.toThrow(/not authorized to access resource server/);
+    expect(fetchMock).toHaveBeenCalledTimes(1); // never polled blind
+  });
+
   it("denied authorization → ENV_NOT_AUTHORIZED", async () => {
     fetchMock
       .mockResolvedValueOnce(

@@ -121,6 +121,18 @@ export async function login(envName: string, io?: LoginIo): Promise<void> {
     audience: config.audience,
     scope: "openid profile email offline_access",
   });
+  if (device.body.error || !device.body.device_code) {
+    // e.g. `invalid_request: Client "…" is not authorized to access resource
+    // server "…"` — a provisioning gap (missing client grant / device-code
+    // grant type). Surface Auth0's own description; never poll blind.
+    throw new EnvNotAuthorizedError(
+      `Device authorization for "${envName}" was rejected by ${config.domain}: ${
+        (device.body.error_description as string) ??
+        (device.body.error as string) ??
+        `HTTP ${device.status}`
+      }`
+    );
+  }
   const deviceCode = device.body.device_code as string;
   const userCode = device.body.user_code as string;
   const verificationUri = device.body.verification_uri_complete as string;
