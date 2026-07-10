@@ -13,10 +13,13 @@ A Turborepo monorepo for displaying dynamic UI content from a Model-Controller-P
 
 ```
 apps/
-  web/          → React frontend (localhost:3000)
-  api/          → Express API server (localhost:3001)
+  web/                  → React frontend (localhost:3000)
+  api/                  → Express API server (localhost:3001)
 packages/
-  core/         → Shared UI components, themes, and Zod domain models
+  core/                 → Shared UI components, themes, and Zod domain models
+  spreadsheet-parsing/  → Workbook layout interpretation + replay
+  cli-env/              → CLI environment-access layer (env registry, AWS/Auth0 auth)
+  devops-cli/           → `portalops` — infrastructure operator CLI
 ```
 
 ## Getting Started
@@ -58,6 +61,21 @@ Copy `.env.example` to `.env` in each app directory:
 | `npm run format` | Format all packages |
 | `npm run type-check` | TypeScript validation |
 | `npm run storybook` | Start Storybook servers |
+
+### Operator CLI (`portalops`)
+
+Infrastructure/ops tasks (DB tunnels, psql, reset/seed, cloud config) go through `portalops` — see `packages/devops-cli/README.md` for the full guide and `COMMANDS.md` for the command reference. Quick start:
+
+```bash
+npm install && npx turbo run build --filter=@portalai/devops-cli   # one-time (builds cli-env + devops-cli)
+aws login                                                          # deployed envs; `local` needs no AWS
+
+npx portalops vars list --env app-dev          # cloud config (secrets masked)
+npx portalops db psql --env app-dev            # psql through the SSM tunnel
+npx portalops db reset --env local             # local DB reset (needs DATABASE_URL in your shell env)
+```
+
+`--env` is always required (no default). Prefer a bare `portalops`? `alias portalops="npx portalops"` or `npm link` inside `packages/devops-cli`.
 
 ## Documentation
 
