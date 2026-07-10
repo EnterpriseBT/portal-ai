@@ -316,81 +316,48 @@ npm run db:push        # pushes schema directly (dev convenience)
 - `npm run db:studio` — Open Drizzle Studio GUI
 - `npm run db:seed` — Seed the database
 
-### Operator CLI (`scripts/api-cli.sh`)
+### Operator CLI (`portalops`)
 
-Operator tasks against a deployed environment go through `scripts/api-cli.sh`, a single bash CLI that bundles two groups of commands:
+Operator tasks against any environment go through **`portalops`** — the TypeScript operator CLI (`packages/devops-cli`, built on `@portalai/cli-env`). It replaces the retired `scripts/api-cli.sh`.
 
-- **`db`** — open an SSM tunnel to RDS through the bastion, run `psql`, truncate tables, run `db:seed:ci` as an ECS one-off task.
+- **Full command reference (agent-oriented):** `packages/devops-cli/COMMANDS.md`
+- **Human guide, quickstarts, troubleshooting:** `packages/devops-cli/README.md`
+
+Two command groups:
+
+- **`db`** — SSM tunnel to RDS through the bastion, `psql` (interactive or one-shot), the infra reset (`er__*` drop + truncate; never production), `db:seed:ci` as an ECS one-off task.
 - **`vars`** — manage every Secrets Manager secret and SSM parameter the API task definition consumes (see `infra/cloudformation/backend.yml`).
 
-```
-./scripts/api-cli.sh --help                  # full reference
-./scripts/api-cli.sh db <command>            # database operations
-./scripts/api-cli.sh vars <command>          # cloud configuration
-```
-
-Common env vars (apply to every group): `ENV` (default `dev`) and `REGION` (default `us-east-1`). The dev container (`/workspace/Dockerfile`) ships with `aws-cli`, `session-manager-plugin`, and `postgresql-client` preinstalled — no local setup required. AWS credentials must have `ssm:StartSession` on the bastion instance for `db` commands and the relevant `secretsmanager:*` / `ssm:*` permissions for `vars` commands. The bastion is created/updated by the `Deploy bastion stack` step in `.github/workflows/deploy-dev.yml`.
+`--env <name>` is **required** on every command (there is no default environment). The dev container (`/workspace/Dockerfile`) ships with `aws-cli`, `session-manager-plugin`, and `postgresql-client` preinstalled. AWS credentials must have `ssm:StartSession` on the bastion instance for `db` commands and the relevant `secretsmanager:*` / `ssm:*` permissions for `vars` commands. The bastion is created/updated by the `Deploy bastion stack` step in `.github/workflows/deploy-dev.yml`.
 
 #### Connecting to the dev database (`db` commands)
 
 The `portalai-dev` RDS instance lives in private subnets and has no public endpoint. Tunnel through the SSM-managed bastion (`infra/cloudformation/bastion.yml`):
 
 ```
-./scripts/api-cli.sh db tunnel       # open tunnel on localhost:15432; Ctrl+C to close
-./scripts/api-cli.sh db psql         # interactive psql through the tunnel
-./scripts/api-cli.sh db reset        # truncate all tables (destructive)
-./scripts/api-cli.sh db seed         # run db:seed:ci as a one-off ECS task
-./scripts/api-cli.sh db reset-seed   # truncate, then seed
+portalops db tunnel --env app-dev                     # tunnel on localhost:15432; Ctrl+C to close
+portalops db psql --env app-dev                       # interactive psql through the tunnel
+portalops db psql --env app-dev -- -tAc "select 1"    # one-shot SQL (script/agent friendly)
+portalops db reset --env app-dev --yes                # infra reset: DROP er__* + TRUNCATE (never prod)
+portalops db seed --env app-dev --yes                 # run db:seed:ci as a one-off ECS task
+portalops db reset-seed --env app-dev --yes           # reset, then seed
 ```
 
-Point SQLTools / Drizzle Studio / any PostgreSQL client at `localhost:15432`. Credentials come from `portalai/<env>/database-url` in Secrets Manager; the tunnel command fetches and prints them on startup.
-
-Tunnel-specific overrides: `LOCAL_PORT` (default `15432`), `CLUSTER` and `SERVICE` (only used by `seed` / `reset-seed`).
+Point SQLTools / Drizzle Studio / any PostgreSQL client at `localhost:15432`; the tunnel prints a ready-to-copy `psql` connection string on startup.
 
 ##### Using SQLTools alongside `db tunnel`
 
-Keep a long-lived tunnel open for your SQLTools session, and run any destructive command (`reset`, `reset-seed`, `psql`) on a different local port so the two don't fight over `15432`.
+Keep a long-lived tunnel open for your SQLTools session, and run any destructive command on a different local port so the two don't fight over `15432`:
 
-1. **Open the persistent tunnel** in a dedicated terminal and leave it running:
+1. **Open the persistent tunnel** in a dedicated terminal: `portalops db tunnel --env app-dev`
+2. **Configure SQLTools** against `localhost:15432` (database `portal_ai`; RDS requires TLS, so enable `ssl` with `rejectUnauthorized: false`; take the password from the connection string the tunnel prints).
+3. **Run destructive commands on a second port** — `portalops db reset-seed --env app-dev --yes --local-port 15433` — then Refresh the SQLTools connection (pooled connections still reference the pre-truncate snapshot).
 
-   ```
-   ./scripts/api-cli.sh db tunnel
-   ```
-
-2. **Configure SQLTools** to point at the tunnel. Add a connection to `.vscode/settings.json` (or use the SQLTools UI):
-
-   ```jsonc
-   {
-     "sqltools.connections": [
-       {
-         "name": "portalai-dev (tunnel)",
-         "driver": "PostgreSQL",
-         "server": "localhost",
-         "port": 15432,
-         "database": "portal_ai",
-         "username": "portalai",
-         "askForPassword": true,
-         "pgOptions": { "ssl": { "rejectUnauthorized": false } }
-       }
-     ]
-   }
-   ```
-
-   RDS requires TLS, so `ssl` must be enabled. Paste the password from the `PGPASSWORD=...` hint the tunnel prints on startup.
-
-3. **Run destructive commands on a second port** so they don't collide with the SQLTools tunnel:
-
-   ```
-   LOCAL_PORT=15433 ./scripts/api-cli.sh db reset-seed
-   ```
-
-   After `reset-seed`, reconnect in SQLTools (the Refresh icon on the connection) — its pooled connections still reference the pre-truncate snapshot.
-
-If a run ever dies uncleanly, check for orphan plugins with `ps -ef | grep session-manager-plugin` and kill any that are no longer a child of an `aws` process.
+Tunnels clean themselves up on dispose and on Ctrl+C/SIGTERM (signal hooks — no orphaned `session-manager-plugin`); only SIGKILL can leave a session behind, and it times out server-side.
 
 #### Managing cloud variables (`vars` commands)
 
-The API task gets its runtime environment from **four** distinct sources. Only the first two are mutable through `api-cli.sh`; the other two require editing infrastructure-as-code.
+The API task gets its runtime environment from **four** distinct sources. Only the first two are mutable through `portalops vars`; the other two require editing infrastructure-as-code.
 
 ##### 1. Secrets Manager — sensitive values, mutable via `vars set`
 
@@ -470,27 +437,27 @@ aws secretsmanager describe-secret --secret-id portalai/dev/<name> --query ARN -
 ##### Commands
 
 ```
-./scripts/api-cli.sh vars describe              # inventory + backing paths
-./scripts/api-cli.sh vars list                  # current values (secrets masked)
-UNMASK=1 ./scripts/api-cli.sh vars list         # reveal secret values
-./scripts/api-cli.sh vars get <KEY>             # print one value, unmasked
-./scripts/api-cli.sh vars set <KEY> <VALUE>     # upsert one value
-./scripts/api-cli.sh vars set <KEY> -           # upsert from stdin
-./scripts/api-cli.sh vars apply <FILE>          # bulk upsert from KEY=VALUE file
-./scripts/api-cli.sh vars template [FILE]       # write a starter file pre-filled
-                                                # with current values
-                                                # (default: ./cloud-vars.<env>.env)
+portalops vars describe --env app-dev             # inventory + backing paths
+portalops vars list --env app-dev                 # current values (secrets masked)
+portalops vars list --env app-dev --unmask        # reveal secret values
+portalops vars get <KEY> --env app-dev            # print one value, unmasked
+portalops vars set <KEY> <VALUE> --env app-dev --yes   # upsert one value
+portalops vars set <KEY> - --env app-dev --yes    # upsert from stdin
+portalops vars apply <FILE> --env app-dev --yes   # bulk upsert from KEY=VALUE file
+portalops vars template [FILE] --env app-dev      # write a starter file (0600) pre-filled
+                                                  # with current values
+                                                  # (default: ./cloud-vars.<env>.env)
 ```
 
 Bulk flow for setting up a new environment or rotating values:
 
 ```
-ENV=dev ./scripts/api-cli.sh vars template
-# edit ./cloud-vars.dev.env (do NOT commit — it contains plaintext secrets)
-ENV=dev ./scripts/api-cli.sh vars apply ./cloud-vars.dev.env
+portalops vars template --env app-dev
+# edit ./cloud-vars.app-dev.env (do NOT commit — it contains plaintext secrets)
+portalops vars apply ./cloud-vars.app-dev.env --env app-dev --yes
 ```
 
-`apply` validates every key against the inventory before any write happens; an unknown key fails the whole batch. Setting a `KEY` that doesn't yet have a Secrets Manager secret will create it — the script then warns you to update the corresponding `SecretArn*` parameter in `infra/cloudformation/backend.yml` and add the matching `<ENV>_SECRET_ARN_<KEY>` GitHub repo secret (see §4) before the next deploy.
+`apply` validates every key against the inventory before any write happens; an unknown key fails the whole batch. Setting a `KEY` that doesn't yet have a Secrets Manager secret will create it — the CLI then warns you to update the corresponding `SecretArn*` parameter in `infra/cloudformation/backend.yml` and add the matching `<ENV>_SECRET_ARN_<KEY>` GitHub repo secret (see §4) before the next deploy.
 
 ## Repositories
 

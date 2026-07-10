@@ -27,8 +27,9 @@ The repo reads live from AWS per call; no `~/.portalai/` config or on-disk token
 | Script (`apps/api`) | Fate | Owner |
 |---|---|---|
 | `cli`, `db:tunnel` (`package.json:37-38`) | **Retired** — pure `api-cli.sh` wrappers | #192 |
-| `db:seed`, `db:seed:ci` | **Superseded** by the admin CLI's seed command (same `SeedService`). `predev` depends on `db:seed` — it must switch to the CLI or keep a thin alias | #190 |
-| `db:reset`, `db:reset:hard` | **Superseded** by the admin CLI's `kind`-gated reset/teardown | #190 |
+| `db:seed`, `db:seed:ci` | **Stay** — `predev` bootstrap and the in-container ECS seed command (`portalops db seed` runs it); app-data seeding remains #190's scope | — |
+| `db:reset` | **Stays for #190** — org-scoped app-data reset (`ResetService`), not an infra op | #190 |
+| `db:reset:hard` | **Removed by #192** — absorbed as `portalops db reset` (partition-aware, #106) | #192 ✅ |
 | `db:generate/migrate/migrate:ci/push/studio` | **Stay** — drizzle schema workflow remains with the API (migrations are CI/deploy's job) | — |
 | `tunnel` (ngrok), `webhook:toolpack` | **Stay** — local webhook/dev-server tooling, unrelated to env access (mock-server fold-in is a someday-candidate only) | — |
 | `scripts:migrate-signing-secrets` | **Stay** — one-off migration | — |

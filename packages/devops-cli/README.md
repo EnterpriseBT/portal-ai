@@ -9,7 +9,7 @@ Portal's **infrastructure operator CLI**: DB tunnels/psql/reset/seed and the man
 - **AWS credentials** (deployed envs): `aws login` / SSO — your IAM identity is the per-env authorization (`portalai/<awsEnvName>/*`).
 - **psql** (PostgreSQL client tools) for `db psql` / `db reset`.
 - **session-manager-plugin** for tunnels ([install](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)).
-- `local` needs none of the above — it reads `apps/api/.env`.
+- `local` needs none of the above — it uses `DATABASE_URL` from the **process env** (prefix the command or `source`/`dotenv` `apps/api/.env` first).
 
 ## Quickstart (before → after)
 
