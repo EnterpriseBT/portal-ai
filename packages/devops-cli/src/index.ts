@@ -17,9 +17,14 @@ export {
   describeVars,
   listVars,
   getVar,
+  setVar,
+  applyVars,
+  templateVars,
   type DescribeResult,
   type DescribeEntry,
   type ListEntry,
+  type SetResult,
+  type MutateOptions,
 } from "./commands/vars.js";
 
 export { EXIT_CODES, exitCodeFor, printBanner, jsonError } from "./output.js";
