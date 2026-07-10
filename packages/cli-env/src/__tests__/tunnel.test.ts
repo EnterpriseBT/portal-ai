@@ -99,6 +99,35 @@ describe("openDbTunnel", () => {
     }
   });
 
+  it("hooks termination signals (SIGTERM et al) and removes the hooks on close()", async () => {
+    // Node does NOT fire "exit" on a default-handled signal death — the #194
+    // smoke caught a SIGTERM'd holder orphaning the tunnel. Pin that signal
+    // hooks are registered while open and fully removed after close().
+    cfnSend.mockResolvedValue(bastionExport("dev-BastionInstanceId", "i-0abc123"));
+    ready();
+    const before = {
+      exit: process.listenerCount("exit"),
+      term: process.listenerCount("SIGTERM"),
+      int: process.listenerCount("SIGINT"),
+      hup: process.listenerCount("SIGHUP"),
+    };
+    const killSpy = jest.spyOn(process, "kill").mockImplementation(() => true);
+    try {
+      const tunnel = await openDbTunnel(appDev, REMOTE);
+      expect(process.listenerCount("exit")).toBe(before.exit + 1);
+      expect(process.listenerCount("SIGTERM")).toBe(before.term + 1);
+      expect(process.listenerCount("SIGINT")).toBe(before.int + 1);
+      expect(process.listenerCount("SIGHUP")).toBe(before.hup + 1);
+      await tunnel.close();
+      expect(process.listenerCount("exit")).toBe(before.exit);
+      expect(process.listenerCount("SIGTERM")).toBe(before.term);
+      expect(process.listenerCount("SIGINT")).toBe(before.int);
+      expect(process.listenerCount("SIGHUP")).toBe(before.hup);
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
   it("rejects with ENV_INFRA_ERROR + install guidance when the aws CLI is missing", async () => {
     cfnSend.mockResolvedValue(bastionExport("dev-BastionInstanceId", "i-0abc123"));
     setImmediate(() => {

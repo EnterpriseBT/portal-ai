@@ -103,25 +103,49 @@ export async function openDbTunnel(
   });
 
   let closed = false;
-  const close = async (): Promise<void> => {
-    if (closed) return;
-    closed = true;
-    process.removeListener("exit", onProcessExit);
+  const killGroup = () => {
     try {
       if (child.pid != null) process.kill(-child.pid, "SIGTERM");
     } catch {
       child.kill("SIGTERM");
     }
   };
+
+  // Orphan protection. Two distinct death paths need covering (verified in
+  // the #194 smoke): normal exits fire "exit", but a default-handled signal
+  // (Ctrl+C / SIGTERM) terminates Node WITHOUT firing it — so we also hook
+  // the termination signals, clean up, then re-raise so the process still
+  // dies with the right status. If the embedding CLI has its own handler for
+  // the signal we don't re-raise (its handler owns the shutdown). SIGKILL is
+  // unprotectable; the SSM session then times out server-side.
   const onProcessExit = () => {
-    // Best-effort synchronous cleanup — no orphaned plugin on CLI death.
-    try {
-      if (!closed && child.pid != null) process.kill(-child.pid, "SIGTERM");
-    } catch {
-      /* already gone */
+    if (!closed) killGroup();
+  };
+  const signalHandlers = new Map<NodeJS.Signals, () => void>();
+  const detachHooks = () => {
+    process.removeListener("exit", onProcessExit);
+    for (const [sig, handler] of signalHandlers) {
+      process.removeListener(sig, handler);
     }
+    signalHandlers.clear();
   };
   process.once("exit", onProcessExit);
+  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as NodeJS.Signals[]) {
+    const handler = () => {
+      if (!closed) killGroup();
+      detachHooks();
+      if (process.listenerCount(sig) === 0) process.kill(process.pid, sig);
+    };
+    signalHandlers.set(sig, handler);
+    process.once(sig, handler);
+  }
+
+  const close = async (): Promise<void> => {
+    if (closed) return;
+    closed = true;
+    detachHooks();
+    killGroup();
+  };
 
   await new Promise<void>((resolve, reject) => {
     let stderrBuf = "";

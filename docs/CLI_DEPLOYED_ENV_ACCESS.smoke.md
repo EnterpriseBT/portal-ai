@@ -20,7 +20,7 @@ import { resolveEnvConnection, login, getToken } from "@portalai/cli-env";
 - [ ] `await conn.db()` opens the SSM tunnel (watch for the session in the AWS console) and returns a `localhost:15432` connection string; `psql "<connectionString>" -c 'select 1'` works.
 - [ ] Second `conn.db()` does **not** open a second session.
 - [ ] `await conn.dispose()` → `ps aux | grep session-manager-plugin` shows **no orphaned plugin**; the SSM session closes in the console.
-- [ ] Kill the CLI process mid-session (Ctrl+C a script holding a tunnel) → no orphaned plugin remains (the exit hook).
+- [ ] Kill the CLI process mid-session (SIGTERM/Ctrl+C a script holding a tunnel) → no orphaned plugin remains (signal + exit hooks; SIGKILL is unprotectable — the SSM session then times out server-side).
 - [ ] With expired AWS SSO (`aws sso logout`): `db()` throws `ENV_NOT_AUTHORIZED` (not a raw SDK error).
 
 ## 3 — app-dev: device-flow login + session
