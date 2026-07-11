@@ -124,6 +124,77 @@ describe("guard classes + audit hygiene", () => {
   });
 });
 
+describe("spawn-backed provisioning commands", () => {
+  const spawnerCalls: Array<{ args: string[]; env: Record<string, string> }> = [];
+  const spawner = jest.fn(
+    async (args: string[], env: Record<string, string>) => {
+      spawnerCalls.push({ args, env });
+      return { code: 0, stdout: '{"organizationId":"o-new","stationId":"st-1"}\n', stderr: "" };
+    }
+  );
+
+  beforeEach(() => {
+    spawnerCalls.length = 0;
+    spawner.mockClear();
+  });
+
+  it("org create spawns the app's db:create-org with DATABASE_URL from the env connection", async () => {
+    const { orgCreate } = await import("../commands/provision.js");
+    const out = await orgCreate(
+      appDev,
+      { name: "Acme", ownerEmail: "ben@portalsai.io" },
+      { yes: true },
+      spawner
+    );
+    expect(out).toEqual({ organizationId: "o-new", stationId: "st-1" });
+    expect(spawnerCalls[0].args).toEqual([
+      "run", "--workspace", "@portalai/api", "db:create-org", "--",
+      "--owner-email", "ben@portalsai.io", "--name", "Acme",
+    ]);
+    expect(spawnerCalls[0].env.DATABASE_URL).toBe(
+      "postgresql://u:p@localhost:15432/db"
+    );
+    expect(mocks.assertOperationAllowed).toHaveBeenCalledWith(appDev, {
+      destructive: false,
+      confirmed: true,
+      prodConfirmed: false,
+    });
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "org create", operator: SUB })
+    );
+  });
+
+  it("seed org is destructive-class and passes --member-email through", async () => {
+    const { seedOrg } = await import("../commands/provision.js");
+    await seedOrg(
+      appDev,
+      { name: "QA Org", memberEmail: "ben@portalsai.io" },
+      { yes: true },
+      spawner
+    );
+    expect(mocks.assertOperationAllowed).toHaveBeenCalledWith(appDev, {
+      destructive: true,
+      confirmed: true,
+      prodConfirmed: false,
+    });
+    expect(spawnerCalls[0].args).toEqual(
+      expect.arrayContaining(["db:seed:org", "--name", "QA Org", "--member-email", "ben@portalsai.io"])
+    );
+  });
+
+  it("org reset guards BEFORE spawning — a blocked destructive op never runs the script", async () => {
+    const { orgReset } = await import("../commands/provision.js");
+    mocks.assertOperationAllowed.mockImplementation(() => {
+      throw new EnvNotAuthorizedError("blocked");
+    });
+    await expect(orgReset(appDev, "o-1", {}, spawner)).rejects.toBeInstanceOf(
+      EnvNotAuthorizedError
+    );
+    expect(spawner).not.toHaveBeenCalled();
+    expect(mocks.resolveEnvConnection).not.toHaveBeenCalled();
+  });
+});
+
 describe("member commands (email-resolved)", () => {
   it("member add resolves the email then adds by user id", async () => {
     mockStore.getUserByEmail.mockResolvedValue({ id: "u-9" });

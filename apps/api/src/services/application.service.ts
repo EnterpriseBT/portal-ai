@@ -5,6 +5,7 @@ import {
   ConnectorInstanceModelFactory,
   StationModelFactory,
   StationInstanceModelFactory,
+  UserModelFactory,
 } from "@portalai/core/models";
 import { eq, desc, and, isNull } from "drizzle-orm";
 import { organizationUsers } from "../db/schema/organization-users.table.js";
@@ -41,11 +42,10 @@ export class ApplicationService {
     return organization ? { organization, organizationUser: orgUser } : null;
   }
 
+  /** Webhook path (Auth0 post-login, new user): create the user, then run
+   *  the full provisioning transaction. Signature unchanged (#190 refactor). */
   static async setupOrganization(owner: User) {
-    const systemId = SystemUtilities.id.system;
-
     return DbService.transaction(async (tx) => {
-      // create new user
       const createdUser = await DbService.repository.users
         .create(owner, tx)
         .catch((err) => {
@@ -53,12 +53,118 @@ export class ApplicationService {
           throw new Error("Database error creating user");
         });
 
-      // create new org, use owner.id as ownerUserId and name organization '{owner}'s Organization'
-      const orgModel = new OrganizationModelFactory().create(systemId).update({
-        name: `My Organization`,
-        timezone: SystemUtilities.timezone,
-        ownerUserId: createdUser.id,
+      const provisioned = await ApplicationService.provisionOrganizationInTx(
+        createdUser.id,
+        tx
+      );
+      return { user: createdUser, ...provisioned };
+    });
+  }
+
+  /** Provision a full organization for an EXISTING user (#190 — the
+   *  portalai CLI's `org create` / `seed org` path). Same transaction body
+   *  the webhook uses: org + owner membership + system column definitions +
+   *  sandbox instance + default station/toolpack/link + defaultStationId. */
+  static async provisionOrganizationFor(
+    userId: string,
+    opts: { name?: string } = {}
+  ) {
+    return DbService.transaction(async (tx) =>
+      ApplicationService.provisionOrganizationInTx(userId, tx, opts)
+    );
+  }
+
+  /** CLI seam (#190): resolve an existing user by email, then provision. */
+  static async createOrganizationForEmail(email: string, name: string) {
+    const user = await DbService.repository.users.findByEmail(email);
+    if (!user) {
+      throw new Error(`User ${email} not found — users originate in Auth0`);
+    }
+    return ApplicationService.provisionOrganizationFor(user.id, { name });
+  }
+
+  /** CLI seam (#190): idempotent-by-name org fixture with a synthetic owner
+   *  (auth0Id "seed|<id>"), optionally adding a real user as a member so the
+   *  org is enterable from the app. */
+  static async seedOrganization(opts: { name: string; memberEmail?: string }) {
+    const systemId = SystemUtilities.id.system;
+
+    const existing = await DbService.repository.organizations.findByName(
+      opts.name
+    );
+    if (existing) {
+      return {
+        organizationId: existing.id,
+        ownerUserId: existing.ownerUserId,
+        existing: true as const,
+      };
+    }
+
+    const member = opts.memberEmail
+      ? await DbService.repository.users.findByEmail(opts.memberEmail)
+      : null;
+    if (opts.memberEmail && !member) {
+      throw new Error(`User ${opts.memberEmail} not found`);
+    }
+
+    return DbService.transaction(async (tx) => {
+      const slug = opts.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      const ownerModel = new UserModelFactory().create(systemId).update({
+        auth0Id: `seed|${SystemUtilities.id.v4.generate()}`,
+        email: `seed+${slug}@portalsai.io`,
+        name: `${opts.name} Owner`,
+        picture: null,
+        lastLogin: null,
       });
+      const owner = await DbService.repository.users.create(
+        ownerModel.parse(),
+        tx
+      );
+
+      const provisioned = await ApplicationService.provisionOrganizationInTx(
+        owner.id,
+        tx,
+        { name: opts.name }
+      );
+
+      let memberUserId: string | undefined;
+      if (member) {
+        const memberModel = new OrganizationUserModelFactory()
+          .create(systemId)
+          .update({
+            organizationId: provisioned.organization.id,
+            userId: member.id,
+            lastLogin: null,
+          });
+        await DbService.repository.organizationUsers.create(
+          memberModel.parse(),
+          tx
+        );
+        memberUserId = member.id;
+      }
+
+      return {
+        organizationId: provisioned.organization.id,
+        ownerUserId: owner.id,
+        memberUserId,
+        existing: false as const,
+      };
+    });
+  }
+
+  /** The provisioning transaction body — shared by the webhook and CLI paths. */
+  private static async provisionOrganizationInTx(
+    userId: string,
+    tx: Parameters<Parameters<typeof DbService.transaction>[0]>[0],
+    opts: { name?: string } = {}
+  ) {
+    const systemId = SystemUtilities.id.system;
+
+    const orgModel = new OrganizationModelFactory().create(systemId).update({
+      name: opts.name ?? `My Organization`,
+      timezone: SystemUtilities.timezone,
+      ownerUserId: userId,
+    });
 
       const createdOrg = await DbService.repository.organizations.create(
         orgModel.parse(),
@@ -70,7 +176,7 @@ export class ApplicationService {
         .create(systemId)
         .update({
           organizationId: createdOrg.id,
-          userId: createdUser.id,
+          userId,
           lastLogin: SystemUtilities.utc.now().getTime(),
         });
 
@@ -96,7 +202,6 @@ export class ApplicationService {
           "Sandbox connector definition not found — skipping auto-provisioning"
         );
         return {
-          user: createdUser,
           organization: createdOrg,
           organizationUser: createdOrgUser,
         };
@@ -166,7 +271,7 @@ export class ApplicationService {
 
       logger.info(
         {
-          userId: createdUser.id,
+          userId,
           organizationId: createdOrg.id,
           connectorInstanceId: createdInstance.id,
           stationId: createdStation.id,
@@ -175,10 +280,8 @@ export class ApplicationService {
       );
 
       return {
-        user: createdUser,
         organization: { ...createdOrg, defaultStationId: createdStation.id },
         organizationUser: createdOrgUser,
       };
-    });
   }
 }

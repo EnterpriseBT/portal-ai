@@ -28,6 +28,7 @@ export { orgList, orgGet, orgUpdate, orgSetTier, orgDelete } from "./commands/or
 export { userList, userGet } from "./commands/user.js";
 export { memberAdd, memberRemove, memberSwitch } from "./commands/member.js";
 export { authLogin, authLogout } from "./commands/auth.js";
+export { orgCreate, orgReset, seedOrg, npmSpawner, type WorkspaceSpawner } from "./commands/provision.js";
 export { withStore, beginMutation, type MutateFlags } from "./commands/common.js";
 
 export { EXIT_CODES, exitCodeFor, printBanner, jsonError } from "./output.js";
