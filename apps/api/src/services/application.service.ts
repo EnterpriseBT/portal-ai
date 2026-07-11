@@ -7,7 +7,7 @@ import {
   StationInstanceModelFactory,
   UserModelFactory,
 } from "@portalai/core/models";
-import { eq, desc, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import { organizationUsers } from "../db/schema/organization-users.table.js";
 import { db } from "../db/client.js";
 import { DbService } from "./db.service.js";
@@ -28,7 +28,11 @@ export class ApplicationService {
           isNull(organizationUsers.deleted)
         )
       )
-      .orderBy(desc(organizationUsers.lastLogin))
+      // NULLS LAST: Postgres sorts NULLS FIRST under DESC, so a membership
+      // with a null lastLogin would otherwise hijack the current-org pick
+      // ahead of a real, stamped one. A null/never-entered membership must
+      // never win. (#200)
+      .orderBy(sql`${organizationUsers.lastLogin} DESC NULLS LAST`)
       .limit(1);
 
     if (!orgUser) {
