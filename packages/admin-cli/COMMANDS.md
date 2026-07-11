@@ -66,7 +66,7 @@ Read. `--org` filters via live membership. `--json`: `{ "users": [User] }`
 Read. `--json`: `{ "user": User }` · unknown/deleted → 8.
 
 ### `portalai member add|remove|switch <orgId> <email> --env <env> --yes [--json]`
-Mutations, email-resolved. `add`: live duplicate → 9; a previously-removed membership is revived; the new membership is created with `lastLogin=0` so it does **not** change which org the user currently lands in. `switch` bumps the membership's `lastLogin` to now — **the app's current-org selector** (`ORDER BY last_login DESC`) — so refresh the app and the user lands in this org. Adding a user to N orgs never silently moves them; only `switch` does.
+Mutations, email-resolved. `add`: live duplicate → 9; a previously-removed membership is revived (and its `lastLogin` reset to 0); the new membership is created with `lastLogin=0` so it does **not** change which org the user currently lands in. `switch` bumps the membership's `lastLogin` to now — **the app's current-org selector** (`ORDER BY last_login DESC`) — so refresh the app and the user lands in this org. Adding a user to N orgs never silently moves them; only `switch` does.
 `--json`: `{ "orgId", "userId", "added"|"removed"|"switched": true }`
 
 ### `portalai seed org --name <name> [--member-email <email>] --env <env> --yes [--json]`
