@@ -200,11 +200,16 @@ export function createAdminStore(
       }
       if (existing) {
         // Revive the soft-deleted membership rather than inserting a twin.
+        // lastLogin is reset to 0 too (see the insert-branch note): `member
+        // add` must NEVER change the user's current org, and a revived row
+        // could otherwise carry a stale high lastLogin (e.g. from a prior
+        // `member switch` into this org) that would hijack the selector.
         await db
           .update(organizationUsers)
           .set({
             deleted: null,
             deletedBy: null,
+            lastLogin: 0,
             updated: Date.now(),
             updatedBy: actor,
           })

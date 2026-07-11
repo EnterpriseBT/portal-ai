@@ -185,6 +185,34 @@ describe("membership", () => {
     expect(afterSwitch.organizationId).toBe("o-1");
   });
 
+  it("reviving a membership resets lastLogin to 0 so re-add never re-hijacks the current org", async () => {
+    await t.db.insert(organizations).values([org("Real", { id: "o-real" }) as never]);
+    await t.db.insert(organizationUsers).values([
+      membership("o-real", "u-a", { id: "m-real", lastLogin: 1000 }) as never,
+    ]);
+    // add → switch INTO o-1 (lastLogin = now) → remove (soft-delete the row).
+    await store.addMember("o-1", "u-a", "actor-1");
+    await store.switchMember("o-1", "u-a", "actor-1");
+    await store.removeMember("o-1", "u-a", "actor-1");
+    // re-add revives the row; it must come back with lastLogin 0, NOT the
+    // switched-to timestamp — otherwise it would silently win the selector.
+    await store.addMember("o-1", "u-a", "actor-2");
+
+    const [revived] = await t.db
+      .select()
+      .from(organizationUsers)
+      .where(eq(organizationUsers.organizationId, "o-1"));
+    expect(revived.lastLogin).toBe(0);
+
+    const [current] = await t.db
+      .select()
+      .from(organizationUsers)
+      .where(eq(organizationUsers.userId, "u-a"))
+      .orderBy(desc(organizationUsers.lastLogin))
+      .limit(1);
+    expect(current.organizationId).toBe("o-real"); // NOT the re-added o-1
+  });
+
   it("removeMember on an absent membership → 8", async () => {
     await expect(store.removeMember("o-1", "u-a", "actor-1")).rejects.toBeInstanceOf(
       AdminNotFoundError
