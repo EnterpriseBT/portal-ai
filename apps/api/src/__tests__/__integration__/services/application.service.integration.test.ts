@@ -440,6 +440,55 @@ describe("ApplicationService Integration Tests", () => {
       expect(result!.organization.id).toBe(secondOrg.id);
     });
 
+    it("should not let a NULL-lastLogin membership hijack the current org (NULLS LAST)", async () => {
+      // The user's real org, stamped at signup.
+      const { user, organization } = await seedUserWithOrg({ lastLogin: 1000 });
+
+      // A second membership with NULL lastLogin (e.g. an operator-added org
+      // from an older code path). Under `ORDER BY last_login DESC` Postgres
+      // sorts NULLS FIRST, so this would wrongly win without NULLS LAST.
+      const orgsRepo = new Repository(organizations);
+      const orgUsersRepo = new Repository(organizationUsers);
+      const now = Date.now();
+
+      const otherOrg = await orgsRepo.create(
+        {
+          id: generateId(),
+          name: "Null-Login Org",
+          timezone: "UTC",
+          ownerUserId: user.id,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never,
+        db
+      );
+
+      await orgUsersRepo.create(
+        {
+          id: generateId(),
+          organizationId: otherOrg.id,
+          userId: user.id,
+          lastLogin: null,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never,
+        db
+      );
+
+      const result = await ApplicationService.getCurrentOrganization(user.id);
+
+      expect(result).not.toBeNull();
+      expect(result!.organization.id).toBe(organization.id); // the real org, not the null one
+    });
+
     it("should ignore soft-deleted organization_users links", async () => {
       const { user } = await seedUserWithOrg();
 
