@@ -1,5 +1,5 @@
 import { createAdminStore } from "../store.js";
-import { organizations, organizationUsers, users } from "../tables.js";
+import { organizations, organizationUsers, tiers, users } from "../tables.js";
 import { AdminNotFoundError } from "../errors.js";
 import { makeTestDb, rowBase, type TestDb } from "./helpers/test-db.js";
 
@@ -78,6 +78,93 @@ describe("listUsers", () => {
 
     const members = await store.listUsers({ orgId: "o-1" });
     expect(members.map((u) => u.id)).toEqual(["u-a"]); // live membership only
+  });
+});
+
+// ── Slice 2 — mutations ──────────────────────────────────────────────
+
+describe("updateOrg", () => {
+  it("patches fields and stamps updated/updatedBy; unknown org → 8", async () => {
+    await t.db.insert(organizations).values([org("Old Name", { id: "o-1" }) as never]);
+    const out = await store.updateOrg("o-1", { name: "New Name" }, "actor-1");
+    expect(out.name).toBe("New Name");
+    expect(out.updatedBy).toBe("actor-1");
+    expect(out.updated).toBeGreaterThan(0);
+    await expect(
+      store.updateOrg("o-none", { name: "x" }, "actor-1")
+    ).rejects.toBeInstanceOf(AdminNotFoundError);
+  });
+});
+
+describe("setTier", () => {
+  it("validates the tier exists live, returns previousTier, updates", async () => {
+    await t.db.insert(tiers).values([rowBase({ id: "t-1", slug: "premium" }) as never]);
+    await t.db.insert(organizations).values([org("Org", { id: "o-1" }) as never]);
+
+    const out = await store.setTier("o-1", "premium", "actor-1");
+    expect(out).toEqual({ id: "o-1", tier: "premium", previousTier: "standard" });
+    await expect(store.getOrg("o-1")).resolves.toMatchObject({ tier: "premium" });
+
+    await expect(store.setTier("o-1", "no-such-tier", "actor-1")).rejects.toMatchObject({
+      code: "ADMIN_NOT_FOUND",
+      message: expect.stringMatching(/tier/i),
+    });
+  });
+});
+
+describe("softDeleteOrg", () => {
+  it("stamps deleted/deletedBy; an already-deleted org → 8", async () => {
+    await t.db.insert(organizations).values([org("Org", { id: "o-1" }) as never]);
+    await store.softDeleteOrg("o-1", "actor-1");
+    await expect(store.getOrg("o-1")).rejects.toBeInstanceOf(AdminNotFoundError);
+    await expect(store.softDeleteOrg("o-1", "actor-1")).rejects.toBeInstanceOf(
+      AdminNotFoundError
+    );
+  });
+});
+
+describe("membership", () => {
+  beforeEach(async () => {
+    await t.db.insert(organizations).values([org("Org", { id: "o-1" }) as never]);
+    await t.db.insert(users).values([user("a@x.io", { id: "u-a" }) as never]);
+  });
+
+  it("addMember creates a factory-valid row; live duplicate → 9; soft-deleted → revive", async () => {
+    await store.addMember("o-1", "u-a", "actor-1");
+    let members = await store.listUsers({ orgId: "o-1" });
+    expect(members.map((u) => u.id)).toEqual(["u-a"]);
+
+    await expect(store.addMember("o-1", "u-a", "actor-1")).rejects.toMatchObject({
+      code: "ADMIN_CONFLICT",
+    });
+
+    await store.removeMember("o-1", "u-a", "actor-1");
+    expect(await store.listUsers({ orgId: "o-1" })).toEqual([]);
+
+    // re-adding revives the soft-deleted row rather than inserting a twin
+    await store.addMember("o-1", "u-a", "actor-2");
+    members = await store.listUsers({ orgId: "o-1" });
+    expect(members.map((u) => u.id)).toEqual(["u-a"]);
+    const rows = await t.db.select().from(organizationUsers);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ deleted: null, updatedBy: "actor-2" });
+  });
+
+  it("removeMember on an absent membership → 8", async () => {
+    await expect(store.removeMember("o-1", "u-a", "actor-1")).rejects.toBeInstanceOf(
+      AdminNotFoundError
+    );
+  });
+
+  it("switchMember bumps the live membership's lastLogin (the app's current-org selector)", async () => {
+    await store.addMember("o-1", "u-a", "actor-1");
+    await store.switchMember("o-1", "u-a", "actor-1");
+    const [row] = await t.db.select().from(organizationUsers);
+    expect(row.lastLogin).toBeGreaterThan(0);
+
+    await expect(store.switchMember("o-1", "u-none", "actor-1")).rejects.toBeInstanceOf(
+      AdminNotFoundError
+    );
   });
 });
 
