@@ -20,6 +20,7 @@ packages/
   spreadsheet-parsing/  → Workbook layout interpretation + replay
   cli-env/              → CLI environment-access layer (env registry, AWS/Auth0 auth)
   devops-cli/           → `portalops` — infrastructure operator CLI
+  admin-cli/            → `portalai` — customer-app-data operator CLI
 ```
 
 ## Getting Started
