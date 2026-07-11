@@ -36,4 +36,18 @@ The epic-closing walkthrough. Prereqs: `aws login` fresh; a device-flow login fo
 
 Sign-off closes the Portal CLIs epic (#191).
 
-Signed off on ____________ by ____________.
+---
+
+## Run log
+
+**Local leg (§1, §2, §4) — PASSED** (2026-07-11, against the local compose DB via `--env local`):
+
+- §1: `--help` ok; missing `--env` → exit 2; `org get <missing>` → exit 8; banner on stderr, `--json` payload alone on stdout. ✓
+- §2: local mutations ran with **no** device-flow session; audit operator = OS username (`root`). ✓
+- §4: `seed org --name "QA Sandbox" --member-email <real user>` created a **fully-provisioned** org (26 column definitions, sandbox connector instance, "My Station", `defaultStationId` set) — indistinguishable from a webhook org; re-run → `existing: true` (idempotent). ✓
+- **Current-org hijack fix verified live:** the `--member-email` user's memberships sorted `[real=<ts>, seeded=0]` → current-org selector returned the **real** org; `member switch` flipped it to the seeded org and back. ✓
+- member remove → re-add revived the row (1 row, not duplicated); duplicate add → exit 9; `org set-tier` returned `previousTier`; `org reset` spawned `db:reset` ok; `org delete` soft-deleted (double-delete → 8). Audit trail carried ids only. ✓
+
+**App-dev leg (§3) — DEFERRED (environment-blocked, not a code defect).** This container's `aws login` is a custom wrapper (`~/.aws/login/cache/`) whose credentials the AWS JS SDK can't read and can't `export-credentials`; cli-env's (#194) SDK-based secret/param reads therefore can't authenticate here (would affect `portalops` identically). The CLI surfaces it correctly as `ENV_NOT_AUTHORIZED`. Run §3 + the §5 live guard spot-check in an environment where the SDK can resolve AWS credentials.
+
+Local leg signed off 2026-07-11 (automated walkthrough). App-dev leg pending a credential-capable environment.
