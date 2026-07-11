@@ -212,9 +212,15 @@ export function createAdminStore(
         return;
       }
 
+      // lastLogin: 0 (NOT null) is deliberate. The app's current-org selector
+      // is `ORDER BY last_login DESC LIMIT 1`, and Postgres sorts NULLS FIRST
+      // under DESC — a null-lastLogin membership would silently hijack the
+      // user's current org on next login. 0 sorts last, so `member add` never
+      // changes which org the user lands in; only `member switch` (which bumps
+      // lastLogin to now) does.
       const row = new OrganizationUserModelFactory()
         .create(actor)
-        .update({ organizationId: orgId, userId, lastLogin: null })
+        .update({ organizationId: orgId, userId, lastLogin: 0 })
         .parse();
       await db.insert(organizationUsers).values(row as never);
     },

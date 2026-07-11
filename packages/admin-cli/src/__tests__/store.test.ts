@@ -1,3 +1,4 @@
+import { desc, eq } from "drizzle-orm";
 import { createAdminStore } from "../store.js";
 import { organizations, organizationUsers, tiers, users } from "../tables.js";
 import { AdminNotFoundError } from "../errors.js";
@@ -134,6 +135,11 @@ describe("membership", () => {
     let members = await store.listUsers({ orgId: "o-1" });
     expect(members.map((u) => u.id)).toEqual(["u-a"]);
 
+    // lastLogin is 0 (not null) so the new membership never hijacks the
+    // user's current-org selector (app orders last_login DESC, NULLS FIRST).
+    const [added] = await t.db.select().from(organizationUsers);
+    expect(added.lastLogin).toBe(0);
+
     await expect(store.addMember("o-1", "u-a", "actor-1")).rejects.toMatchObject({
       code: "ADMIN_CONFLICT",
     });
@@ -148,6 +154,35 @@ describe("membership", () => {
     const rows = await t.db.select().from(organizationUsers);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ deleted: null, updatedBy: "actor-2" });
+  });
+
+  it("a freshly-added membership does NOT hijack the app's current-org selector (last_login DESC, NULLS FIRST)", async () => {
+    // The user already belongs to a real org (stamped at signup).
+    await t.db.insert(organizations).values([org("Real", { id: "o-real" }) as never]);
+    await t.db.insert(organizationUsers).values([
+      membership("o-real", "u-a", { id: "m-real", lastLogin: 1000 }) as never,
+    ]);
+    // Admin adds them to a second org.
+    await store.addMember("o-1", "u-a", "actor-1");
+
+    // Mirror ApplicationService.getCurrentOrganization: ORDER BY last_login DESC.
+    const [current] = await t.db
+      .select()
+      .from(organizationUsers)
+      .where(eq(organizationUsers.userId, "u-a"))
+      .orderBy(desc(organizationUsers.lastLogin))
+      .limit(1);
+    expect(current.organizationId).toBe("o-real"); // NOT the newly-added org
+
+    // …until an explicit switch bumps lastLogin.
+    await store.switchMember("o-1", "u-a", "actor-1");
+    const [afterSwitch] = await t.db
+      .select()
+      .from(organizationUsers)
+      .where(eq(organizationUsers.userId, "u-a"))
+      .orderBy(desc(organizationUsers.lastLogin))
+      .limit(1);
+    expect(afterSwitch.organizationId).toBe("o-1");
   });
 
   it("removeMember on an absent membership → 8", async () => {

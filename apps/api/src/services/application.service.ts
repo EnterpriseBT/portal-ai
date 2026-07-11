@@ -129,12 +129,16 @@ export class ApplicationService {
 
       let memberUserId: string | undefined;
       if (member) {
+        // lastLogin: 0 (not null) so this membership doesn't hijack the
+        // member's current-org selector — the app orders `last_login DESC`
+        // and Postgres sorts NULLS FIRST. The user stays in their real org
+        // until they `portalai member switch` into this seeded one.
         const memberModel = new OrganizationUserModelFactory()
           .create(systemId)
           .update({
             organizationId: provisioned.organization.id,
             userId: member.id,
-            lastLogin: null,
+            lastLogin: 0,
           });
         await DbService.repository.organizationUsers.create(
           memberModel.parse(),
