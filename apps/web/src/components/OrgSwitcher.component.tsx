@@ -64,6 +64,9 @@ export const OrgSwitcherUI: React.FC<OrgSwitcherUIProps> = ({
         value={currentId}
         disabled={isSwitching}
         aria-label="Organization"
+        // Drop the standard-variant underline — the account menu's Divider
+        // below already separates this row, so the underline is redundant.
+        slotProps={{ input: { disableUnderline: true } }}
         options={memberships.map((m) => ({
           value: m.organization.id,
           label: m.organization.name,
