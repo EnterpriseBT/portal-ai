@@ -16,6 +16,9 @@ export * from "./organization.contract.js";
 /** User-Organization contracts — schemas & types */
 export * from "./user-organization.contract.js";
 
+/** User-Membership contracts (org switcher, #201) — schemas & types */
+export * from "./user-membership.contract.js";
+
 /** Webhook contracts — schemas & types */
 export * from "./webhook.contract.js";
 

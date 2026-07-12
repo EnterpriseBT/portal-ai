@@ -9,7 +9,9 @@ import { UsageService } from "../services/usage.service.js";
 import type {
   OrganizationGetResponse,
   OrganizationUsageGetResponse,
+  UserMembershipsGetResponse,
 } from "@portalai/core/contracts";
+import { OrganizationSwitchRequestSchema } from "@portalai/core/contracts";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 
 const logger = createLogger({ module: "organization" });
@@ -220,6 +222,127 @@ organizationRouter.get(
               error instanceof Error
                 ? error.message
                 : "Failed to fetch current organization"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/organization/memberships:
+ *   get:
+ *     tags:
+ *       - Organization
+ *     summary: List the caller's organization memberships
+ *     description: Returns every organization the authenticated user is a live member of, each flagged `isCurrent` if it is the org currently resolved for the user (the org switcher's data source).
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Memberships retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UserMembershipsGetResponse'
+ *       404:
+ *         description: User not found
+ */
+organizationRouter.get(
+  "/memberships",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const auth0Id = req.auth?.payload.sub as string;
+      const user = await DbService.repository.users.findByAuth0Id(auth0Id);
+      if (!user) {
+        return next(
+          new ApiError(404, ApiCode.ORGANIZATION_USER_NOT_FOUND, "User not found")
+        );
+      }
+      const memberships = await ApplicationService.listUserMemberships(user.id);
+      return HttpService.success<UserMembershipsGetResponse>(res, {
+        memberships,
+      });
+    } catch (error) {
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ORGANIZATION_FETCH_FAILED,
+              error instanceof Error ? error.message : "Failed to list memberships"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/organization/switch:
+ *   post:
+ *     tags:
+ *       - Organization
+ *     summary: Switch the caller's current organization
+ *     description: Makes the given organization the authenticated user's current one (by bumping the membership's last-login recency). The user must hold a live membership in the target org, otherwise 403.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/OrganizationSwitchRequest'
+ *     responses:
+ *       200:
+ *         description: Switched; returns the new current organization
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/OrganizationGetResponse'
+ *       403:
+ *         description: The user is not a member of the target organization
+ *       404:
+ *         description: User not found
+ */
+organizationRouter.post(
+  "/switch",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = OrganizationSwitchRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ORGANIZATION_INVALID_PAYLOAD,
+            "organizationId is required"
+          )
+        );
+      }
+
+      const auth0Id = req.auth?.payload.sub as string;
+      const user = await DbService.repository.users.findByAuth0Id(auth0Id);
+      if (!user) {
+        return next(
+          new ApiError(404, ApiCode.ORGANIZATION_USER_NOT_FOUND, "User not found")
+        );
+      }
+
+      const result = await ApplicationService.switchOrganization(
+        user.id,
+        parsed.data.organizationId
+      );
+      return HttpService.success<OrganizationGetResponse>(res, {
+        organization: result.organization,
+      });
+    } catch (error) {
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ORGANIZATION_FETCH_FAILED,
+              error instanceof Error ? error.message : "Failed to switch organization"
             )
       );
     }

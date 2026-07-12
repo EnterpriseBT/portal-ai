@@ -231,4 +231,147 @@ describe("Organization Router", () => {
       expect(res.body.payload.usage.byClass.metered.available).toBe(970);
     });
   });
+
+  // Attach the AUTH0_ID user to a second org (a live membership) so the
+  // switcher endpoints have something to list/switch between.
+  async function addSecondOrg(
+    userId: string,
+    lastLogin: number | null
+  ): Promise<string> {
+    const d = db as ReturnType<typeof drizzle>;
+    const orgId = generateId();
+    await d.insert(organizations).values({
+      id: orgId,
+      name: "Second Org",
+      timezone: "UTC",
+      ownerUserId: userId,
+      tier: "standard",
+      defaultStationId: null,
+      created: Date.now(),
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    await d.insert(organizationUsers).values({
+      id: generateId(),
+      organizationId: orgId,
+      userId,
+      lastLogin,
+      created: Date.now(),
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    return orgId;
+  }
+
+  describe("GET /api/organization/memberships", () => {
+    it("returns 404 when the user does not exist", async () => {
+      const res = await request(app)
+        .get("/api/organization/memberships")
+        .set("Authorization", "Bearer test-token");
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.ORGANIZATION_USER_NOT_FOUND);
+    });
+
+    it("lists the user's live memberships, flagging the current one", async () => {
+      const owner = createOwner();
+      const result = await ApplicationService.setupOrganization(owner);
+      // Second org, never entered (lastLogin=0) → not current.
+      const secondOrgId = await addSecondOrg(result.user.id, 0);
+
+      const res = await request(app)
+        .get("/api/organization/memberships")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      const memberships = res.body.payload.memberships as Array<{
+        organization: { id: string };
+        isCurrent: boolean;
+      }>;
+      expect(memberships).toHaveLength(2);
+      const byId = Object.fromEntries(
+        memberships.map((m) => [m.organization.id, m.isCurrent])
+      );
+      expect(byId[result.organization.id]).toBe(true); // signup org (lastLogin=now)
+      expect(byId[secondOrgId]).toBe(false);
+    });
+  });
+
+  describe("POST /api/organization/switch", () => {
+    it("flips the current org to the target (GET /current reflects it)", async () => {
+      const owner = createOwner();
+      const result = await ApplicationService.setupOrganization(owner);
+      const secondOrgId = await addSecondOrg(result.user.id, 0);
+
+      const switchRes = await request(app)
+        .post("/api/organization/switch")
+        .set("Authorization", "Bearer test-token")
+        .send({ organizationId: secondOrgId });
+      expect(switchRes.status).toBe(200);
+      expect(switchRes.body.payload.organization.id).toBe(secondOrgId);
+
+      const currentRes = await request(app)
+        .get("/api/organization/current")
+        .set("Authorization", "Bearer test-token");
+      expect(currentRes.body.payload.organization.id).toBe(secondOrgId);
+    });
+
+    it("returns 403 MEMBERSHIP_NOT_FOUND for an org the user does not belong to", async () => {
+      const owner = createOwner();
+      await ApplicationService.setupOrganization(owner);
+      const d = db as ReturnType<typeof drizzle>;
+      // An org the user has no membership in.
+      const strangerUserId = generateId();
+      await d.insert(users).values({
+        id: strangerUserId,
+        auth0Id: `auth0|stranger-${strangerUserId}`,
+        email: `stranger-${strangerUserId}@example.com`,
+        name: "Stranger",
+        picture: null,
+        lastLogin: null,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      const foreignOrgId = generateId();
+      await d.insert(organizations).values({
+        id: foreignOrgId,
+        name: "Foreign Org",
+        timezone: "UTC",
+        ownerUserId: strangerUserId,
+        tier: "standard",
+        defaultStationId: null,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+
+      const res = await request(app)
+        .post("/api/organization/switch")
+        .set("Authorization", "Bearer test-token")
+        .send({ organizationId: foreignOrgId });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe(ApiCode.MEMBERSHIP_NOT_FOUND);
+    });
+
+    it("returns 404 when the user does not exist", async () => {
+      const res = await request(app)
+        .post("/api/organization/switch")
+        .set("Authorization", "Bearer test-token")
+        .send({ organizationId: generateId() });
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.ORGANIZATION_USER_NOT_FOUND);
+    });
+  });
 });

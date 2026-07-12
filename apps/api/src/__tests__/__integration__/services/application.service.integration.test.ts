@@ -15,6 +15,7 @@ import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { Repository } from "../../../db/repositories/base.repository.js";
 import { StationToolpacksRepository } from "../../../db/repositories/station-toolpacks.repository.js";
 import { ApplicationService } from "../../../services/application.service.js";
+import { ApiCode } from "../../../constants/api-codes.constants.js";
 import { SeedService } from "../../../services/seed.service.js";
 import { generateId, teardownOrg } from "../utils/application.util.js";
 
@@ -500,6 +501,173 @@ describe("ApplicationService Integration Tests", () => {
       const result = await ApplicationService.getCurrentOrganization(user.id);
 
       expect(result).toBeNull();
+    });
+  });
+
+  // Seed the AUTH0 user with their signup org, overriding the membership's
+  // lastLogin (mirrors the getCurrentOrganization block's seedUserWithOrg,
+  // which is scoped to that describe).
+  async function seedOwnerWithLogin(lastLogin: number) {
+    const result = await ApplicationService.setupOrganization(createOwner());
+    await new Repository(organizationUsers).update(
+      result.organizationUser.id,
+      { lastLogin } as never,
+      db
+    );
+    return result;
+  }
+
+  describe("listUserMemberships", () => {
+    async function addOrg(
+      userId: string,
+      name: string,
+      lastLogin: number | null,
+      opts: { orgDeleted?: boolean; membershipDeleted?: boolean } = {}
+    ): Promise<string> {
+      const orgsRepo = new Repository(organizations);
+      const orgUsersRepo = new Repository(organizationUsers);
+      const now = Date.now();
+      const orgId = generateId();
+      await orgsRepo.create(
+        {
+          id: orgId,
+          name,
+          timezone: "UTC",
+          ownerUserId: userId,
+          tier: "standard",
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: opts.orgDeleted ? now : null,
+          deletedBy: opts.orgDeleted ? "SYSTEM_TEST" : null,
+        } as never,
+        db
+      );
+      await orgUsersRepo.create(
+        {
+          id: generateId(),
+          organizationId: orgId,
+          userId,
+          lastLogin,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: opts.membershipDeleted ? now : null,
+          deletedBy: opts.membershipDeleted ? "SYSTEM_TEST" : null,
+        } as never,
+        db
+      );
+      return orgId;
+    }
+
+    it("returns live memberships flagging the current (max last_login) org, excluding soft-deleted rows", async () => {
+      const { user, organization } = await seedOwnerWithLogin(5000);
+      const second = await addOrg(user.id, "Second", 0);
+      // Low lastLogin on the excluded rows so they can't affect the current pick.
+      await addOrg(user.id, "Deleted Membership", 1, { membershipDeleted: true });
+      await addOrg(user.id, "Deleted Org", 1, { orgDeleted: true });
+
+      const memberships = await ApplicationService.listUserMemberships(user.id);
+
+      const ids = memberships.map((m) => m.organization.id).sort();
+      expect(ids).toEqual([organization.id, second].sort()); // only the 2 live ones
+      const current = memberships.find((m) => m.isCurrent);
+      expect(current!.organization.id).toBe(organization.id); // lastLogin 5000 > 0
+      expect(memberships.filter((m) => m.isCurrent)).toHaveLength(1);
+    });
+  });
+
+  describe("switchOrganization", () => {
+    it("bumps last_login so the target becomes current, and returns it", async () => {
+      const { user, organization } = await seedOwnerWithLogin(5000);
+      const orgsRepo = new Repository(organizations);
+      const orgUsersRepo = new Repository(organizationUsers);
+      const now = Date.now();
+      const target = await orgsRepo.create(
+        {
+          id: generateId(),
+          name: "Target",
+          timezone: "UTC",
+          ownerUserId: user.id,
+          tier: "standard",
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never,
+        db
+      );
+      await orgUsersRepo.create(
+        {
+          id: generateId(),
+          organizationId: target.id,
+          userId: user.id,
+          lastLogin: 0,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never,
+        db
+      );
+
+      const result = await ApplicationService.switchOrganization(user.id, target.id);
+      expect(result.organization.id).toBe(target.id);
+
+      const current = await ApplicationService.getCurrentOrganization(user.id);
+      expect(current!.organization.id).toBe(target.id); // beat the old lastLogin 5000
+      expect(organization.id).not.toBe(target.id);
+    });
+
+    it("throws MEMBERSHIP_NOT_FOUND when the user has no live membership in the target", async () => {
+      const { user } = await seedOwnerWithLogin(5000);
+      const orgsRepo = new Repository(organizations);
+      const usersRepo = new Repository(users);
+      const now = Date.now();
+      // A real stranger user to own the foreign org (owner_user_id FK).
+      const stranger = await usersRepo.create(
+        {
+          id: generateId(),
+          auth0Id: `auth0|stranger-${generateId()}`,
+          email: `stranger-${generateId()}@example.com`,
+          name: "Stranger",
+          picture: null,
+          lastLogin: null,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never,
+        db
+      );
+      const foreign = await orgsRepo.create(
+        {
+          id: generateId(),
+          name: "Foreign",
+          timezone: "UTC",
+          ownerUserId: stranger.id,
+          tier: "standard",
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never,
+        db
+      );
+
+      await expect(
+        ApplicationService.switchOrganization(user.id, foreign.id)
+      ).rejects.toMatchObject({ code: ApiCode.MEMBERSHIP_NOT_FOUND });
     });
   });
 });
