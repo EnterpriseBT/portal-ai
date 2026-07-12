@@ -1,13 +1,6 @@
 import React from "react";
-import {
-  MenuItem,
-  ListItemIcon,
-  ListItemText,
-  Icon,
-  IconName,
-  Typography,
-  Box,
-} from "@portalai/core/ui";
+
+import { Select, Typography, Box } from "@portalai/core/ui";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { sdk } from "../api/sdk";
@@ -20,53 +13,66 @@ export interface OrgSwitcherUIProps {
   isSwitching?: boolean;
 }
 
+const orgNameSx = (theme: { spacing: (...n: number[]) => string }) => ({
+  padding: theme.spacing(1, 2),
+});
+
 /**
- * Pure UI: a labelled section of the account menu listing the user's orgs,
- * the current one checked. Renders NOTHING when the user belongs to fewer
- * than two orgs — no affordance to switch when there's nowhere to go. Drops
- * into the existing account `<Menu>` as children (props-only, no context).
+ * Pure UI: the account menu's organization indicator + switcher.
+ *
+ * - 0 orgs → nothing.
+ * - 1 org  → the org name as a plain label (nothing to switch to).
+ * - 2+ orgs → a compact dropdown whose value is the current org; picking a
+ *   different one switches. No "switch" label — a dropdown showing the current
+ *   org is self-evidently switchable, and it stays one row tall no matter how
+ *   many orgs the user has.
+ *
+ * Wrapped in a click-stopping Box so interacting with the dropdown doesn't
+ * bubble to the parent account `<Menu onClick={close}>` and close it.
  */
 export const OrgSwitcherUI: React.FC<OrgSwitcherUIProps> = ({
   memberships,
   onSwitch,
   isSwitching,
 }) => {
-  if (memberships.length < 2) {
+  if (memberships.length === 0) {
     return null;
   }
 
-  return (
-    <Box>
+  if (memberships.length === 1) {
+    return (
       <Typography
         variant="subtitle2"
         sx={(theme) => ({
           color: theme.palette.text.secondary,
-          padding: theme.spacing(1, 2),
+          ...orgNameSx(theme),
         })}
       >
-        Switch organization
+        {memberships[0].organization.name}
       </Typography>
-      {memberships.map(({ organization, isCurrent }) => {
-        const locked = isSwitching || isCurrent;
-        return (
-        <MenuItem
-          key={organization.id}
-          selected={isCurrent}
-          disabled={locked}
-          // Guard in the handler too — a disabled MUI MenuItem only blocks
-          // clicks via `pointer-events: none` (CSS), so belt-and-braces.
-          onClick={() => {
-            if (!locked) onSwitch(organization.id);
-          }}
-          aria-label={`Switch to ${organization.name}`}
-        >
-          <ListItemIcon>
-            {isCurrent && <Icon name={IconName.Check} fontSize="small" />}
-          </ListItemIcon>
-          <ListItemText>{organization.name}</ListItemText>
-        </MenuItem>
-        );
-      })}
+    );
+  }
+
+  const currentId =
+    memberships.find((m) => m.isCurrent)?.organization.id ?? "";
+
+  return (
+    <Box sx={orgNameSx} onClick={(e) => e.stopPropagation()}>
+      <Select
+        fullWidth
+        variant="standard"
+        value={currentId}
+        disabled={isSwitching}
+        aria-label="Organization"
+        options={memberships.map((m) => ({
+          value: m.organization.id,
+          label: m.organization.name,
+        }))}
+        onChange={(e) => {
+          const id = e.target.value;
+          if (id && id !== currentId) onSwitch(id);
+        }}
+      />
     </Box>
   );
 };
@@ -75,7 +81,7 @@ export const OrgSwitcherUI: React.FC<OrgSwitcherUIProps> = ({
  * Container: reads the user's memberships and wires the switch mutation.
  * On success it invalidates the ENTIRE query cache — after an org change
  * essentially all cached data is stale (every org-scoped query resolves
- * against the request's current org). This is the rare legitimate broad
+ * against the request's current org). The rare legitimate broad
  * invalidation. (#201)
  */
 export const OrgSwitcher: React.FC = () => {

@@ -28,53 +28,45 @@ const org = (id: string, name: string, isCurrent: boolean): UserMembership => ({
 });
 
 describe("OrgSwitcherUI", () => {
-  it("renders nothing when the user belongs to fewer than 2 orgs", () => {
+  it("renders nothing when the user has no orgs", () => {
     const { container } = renderWithTheme(
-      <OrgSwitcherUI memberships={[org("o-1", "Solo", true)]} onSwitch={jest.fn()} />
+      <OrgSwitcherUI memberships={[]} onSwitch={jest.fn()} />
     );
     expect(container).toBeEmptyDOMElement();
-    expect(screen.queryByText("Switch organization")).not.toBeInTheDocument();
   });
 
-  it("lists one item per org with the current one checked", () => {
+  it("shows a single org as a plain label with no dropdown", () => {
+    renderWithTheme(
+      <OrgSwitcherUI memberships={[org("o-1", "Solo Org", true)]} onSwitch={jest.fn()} />
+    );
+    expect(screen.getByText("Solo Org")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  });
+
+  it("shows a dropdown with the current org selected and switches on pick", async () => {
+    const onSwitch = jest.fn();
+    renderWithTheme(
+      <OrgSwitcherUI
+        memberships={[org("o-1", "Acme", true), org("o-2", "Beta", false)]}
+        onSwitch={onSwitch}
+      />
+    );
+    const combo = screen.getByRole("combobox");
+    expect(combo).toHaveTextContent("Acme"); // current org is the value
+
+    fireEvent.mouseDown(combo);
+    fireEvent.click(await screen.findByRole("option", { name: "Beta" }));
+    expect(onSwitch).toHaveBeenCalledWith("o-2");
+  });
+
+  it("disables the dropdown while a switch is in flight", () => {
     renderWithTheme(
       <OrgSwitcherUI
         memberships={[org("o-1", "Acme", true), org("o-2", "Beta", false)]}
         onSwitch={jest.fn()}
-      />
-    );
-    expect(screen.getByText("Switch organization")).toBeInTheDocument();
-    expect(screen.getByText("Acme")).toBeInTheDocument();
-    expect(screen.getByText("Beta")).toBeInTheDocument();
-    // The current org's item is selected (aria-selected) and disabled.
-    const current = screen.getByRole("menuitem", { name: /Switch to Acme/i });
-    expect(current).toHaveAttribute("aria-disabled", "true");
-  });
-
-  it("calls onSwitch with the org id when a non-current org is clicked", () => {
-    const onSwitch = jest.fn();
-    renderWithTheme(
-      <OrgSwitcherUI
-        memberships={[org("o-1", "Acme", true), org("o-2", "Beta", false)]}
-        onSwitch={onSwitch}
-      />
-    );
-    fireEvent.click(screen.getByRole("menuitem", { name: /Switch to Beta/i }));
-    expect(onSwitch).toHaveBeenCalledWith("o-2");
-  });
-
-  it("disables every item while a switch is in flight", () => {
-    const onSwitch = jest.fn();
-    renderWithTheme(
-      <OrgSwitcherUI
-        memberships={[org("o-1", "Acme", true), org("o-2", "Beta", false)]}
-        onSwitch={onSwitch}
         isSwitching
       />
     );
-    const beta = screen.getByRole("menuitem", { name: /Switch to Beta/i });
-    expect(beta).toHaveAttribute("aria-disabled", "true");
-    fireEvent.click(beta);
-    expect(onSwitch).not.toHaveBeenCalled();
+    expect(screen.getByRole("combobox")).toHaveAttribute("aria-disabled", "true");
   });
 });
