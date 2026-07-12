@@ -31,6 +31,9 @@ import {
   TestConnectionResultSchema,
   WarningSchema,
   OrganizationUsageGetResponseSchema,
+  OrganizationGetResponseSchema,
+  UserMembershipsGetResponseSchema,
+  OrganizationSwitchRequestSchema,
 } from "@portalai/core/contracts";
 import {
   ApiAuthConfigSchema,
@@ -162,6 +165,25 @@ const restApiConnectorSchemas: Record<string, unknown> = {
 const tierSchemas: Record<string, unknown> = {
   OrganizationUsageGetResponse: z.toJSONSchema(
     OrganizationUsageGetResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+};
+
+/**
+ * Org switcher schemas (#201). Sourced from `@portalai/core/contracts` so the
+ * memberships/switch route JSDoc references one canonical shape.
+ */
+const orgSwitcherSchemas: Record<string, unknown> = {
+  OrganizationGetResponse: z.toJSONSchema(
+    OrganizationGetResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  UserMembershipsGetResponse: z.toJSONSchema(
+    UserMembershipsGetResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  OrganizationSwitchRequest: z.toJSONSchema(
+    OrganizationSwitchRequestSchema,
     JSON_SCHEMA_OPTS
   ),
 };
@@ -1447,6 +1469,7 @@ const options: swaggerJsdoc.Options = {
         ...spreadsheetParsingSchemas,
         ...restApiConnectorSchemas,
         ...tierSchemas,
+        ...orgSwitcherSchemas,
       },
     },
     tags: [

@@ -13,6 +13,7 @@ import {
 } from "@portalai/core/ui";
 import { sdk } from "../api/sdk";
 import { Link } from "@tanstack/react-router";
+import { OrgSwitcher } from "./OrgSwitcher.component";
 
 export interface HeaderMenuUIProps {
   image?: string;
@@ -86,7 +87,6 @@ export const HeaderMenuUI: React.FC<HeaderMenuUIProps> = ({
 
 export const HeaderMenu: React.FC = () => {
   const { user } = sdk.auth.session();
-  const { data: currentOrganizationPayload } = sdk.organizations.current();
   const { logout } = sdk.auth.logout();
   const handleLogout = () => {
     logout();
@@ -94,15 +94,9 @@ export const HeaderMenu: React.FC = () => {
 
   return (
     <HeaderMenuUI image={user?.picture} label={user?.name}>
-      <Typography
-        variant="subtitle2"
-        sx={(theme) => ({
-          color: theme.palette.text.secondary,
-          padding: theme.spacing(1, 2),
-        })}
-      >
-        {currentOrganizationPayload?.organization.name}
-      </Typography>
+      {/* OrgSwitcher owns the org display: a plain label for one org, a
+          compact dropdown for several. */}
+      <OrgSwitcher />
       <Divider />
       <MenuItem component={Link} to="/settings">
         <ListItemIcon>

@@ -7,9 +7,12 @@ import {
   StationInstanceModelFactory,
   UserModelFactory,
 } from "@portalai/core/models";
-import { eq, and, isNull, sql } from "drizzle-orm";
+import { eq, and, isNull, desc, sql, type SQL } from "drizzle-orm";
 import { organizationUsers } from "../db/schema/organization-users.table.js";
+import { organizations } from "../db/schema/organizations.table.js";
 import { db } from "../db/client.js";
+import { ApiError } from "./http.service.js";
+import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
 import { SeedService } from "./seed.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
@@ -44,6 +47,77 @@ export class ApplicationService {
     );
 
     return organization ? { organization, organizationUser: orgUser } : null;
+  }
+
+  /**
+   * The authenticated user's live memberships, each flagged `isCurrent` if it
+   * is the org `getCurrentOrganization` resolves. Both the membership and the
+   * organization must be live. Ordered created-desc for a stable UI. (#201)
+   */
+  static async listUserMemberships(userId: string) {
+    const rows = await db
+      .select({ organization: organizations })
+      .from(organizationUsers)
+      .innerJoin(
+        organizations,
+        eq(organizationUsers.organizationId, organizations.id)
+      )
+      .where(
+        and(
+          eq(organizationUsers.userId, userId),
+          isNull(organizationUsers.deleted),
+          isNull(organizations.deleted)
+        )
+      )
+      .orderBy(desc(organizations.created));
+
+    // Flag against the exact row getCurrentOrganization would pick — single
+    // source of truth, so the checkmark never disagrees with the served org.
+    const current = await ApplicationService.getCurrentOrganization(userId);
+    const currentId = current?.organization.id;
+
+    return rows.map((r) => ({
+      organization: r.organization,
+      isCurrent: r.organization.id === currentId,
+    }));
+  }
+
+  /**
+   * Make `organizationId` the user's current org by bumping the membership's
+   * `last_login` to now (the same mechanism as `portalai member switch`).
+   * The requester must hold a LIVE membership in the target org — otherwise a
+   * typed 403 (`MEMBERSHIP_NOT_FOUND`), the multi-tenancy authz gate. The
+   * atomic `updateWhere` (soft-delete-filtered) both gates and bumps: an empty
+   * result means no live membership. (#201)
+   */
+  static async switchOrganization(userId: string, organizationId: string) {
+    const updated = await DbService.repository.organizationUsers.updateWhere(
+      and(
+        eq(organizationUsers.userId, userId),
+        eq(organizationUsers.organizationId, organizationId)
+      ) as SQL,
+      { lastLogin: Date.now() }
+    );
+
+    if (updated.length === 0) {
+      throw new ApiError(
+        403,
+        ApiCode.MEMBERSHIP_NOT_FOUND,
+        `User is not a member of organization ${organizationId}`
+      );
+    }
+
+    const organization =
+      await DbService.repository.organizations.findById(organizationId);
+    if (!organization) {
+      throw new ApiError(
+        404,
+        ApiCode.ORGANIZATION_NOT_FOUND,
+        `Organization ${organizationId} not found`
+      );
+    }
+
+    return { organization };
   }
 
   /** Webhook path (Auth0 post-login, new user): create the user, then run
@@ -174,122 +248,122 @@ export class ApplicationService {
       ownerUserId: userId,
     });
 
-      const createdOrg = await DbService.repository.organizations.create(
-        orgModel.parse(),
-        tx
-      );
+    const createdOrg = await DbService.repository.organizations.create(
+      orgModel.parse(),
+      tx
+    );
 
-      // link user to org as owner via organization_users table
-      const orgUserModel = new OrganizationUserModelFactory()
-        .create(systemId)
-        .update({
-          organizationId: createdOrg.id,
-          userId,
-          lastLogin: SystemUtilities.utc.now().getTime(),
-        });
-
-      const createdOrgUser =
-        await DbService.repository.organizationUsers.create(
-          orgUserModel.parse(),
-          tx
-        );
-
-      // ── System column definitions ────────────────────────────────────
-      await new SeedService().seedSystemColumnDefinitions(createdOrg.id, tx);
-
-      // ── Sandbox auto-provisioning ──────────────────────────────────
-      const sandboxDef =
-        await DbService.repository.connectorDefinitions.findBySlug(
-          "sandbox",
-          tx
-        );
-
-      if (!sandboxDef) {
-        logger.warn(
-          { organizationId: createdOrg.id },
-          "Sandbox connector definition not found — skipping auto-provisioning"
-        );
-        return {
-          organization: createdOrg,
-          organizationUser: createdOrgUser,
-        };
-      }
-
-      // Create connector instance — inherits capability flags from the
-      // sandbox definition's ceiling.
-      const instanceModel = new ConnectorInstanceModelFactory()
-        .create(systemId)
-        .update({
-          connectorDefinitionId: sandboxDef.id,
-          organizationId: createdOrg.id,
-          name: "Sandbox",
-          status: "active",
-          config: {},
-          credentials: null,
-          lastSyncAt: null,
-          lastErrorMessage: null,
-          enabledCapabilityFlags: { ...sandboxDef.capabilityFlags },
-        });
-
-      const createdInstance =
-        await DbService.repository.connectorInstances.create(
-          instanceModel.parse(),
-          tx
-        );
-
-      // Create default station
-      const stationModel = new StationModelFactory().create(systemId).update({
+    // link user to org as owner via organization_users table
+    const orgUserModel = new OrganizationUserModelFactory()
+      .create(systemId)
+      .update({
         organizationId: createdOrg.id,
-        name: "My Station",
-        description: "Default organization sandbox station",
+        userId,
+        lastLogin: SystemUtilities.utc.now().getTime(),
       });
 
-      const createdStation = await DbService.repository.stations.create(
-        stationModel.parse(),
+    const createdOrgUser =
+      await DbService.repository.organizationUsers.create(
+        orgUserModel.parse(),
         tx
       );
 
-      // Seed the default toolpack for the new station.
-      await DbService.repository.stationToolpacks.replaceForStation(
-        createdStation.id,
-        { builtinSlugs: ["data_query"] },
-        { userId: systemId },
+    // ── System column definitions ────────────────────────────────────
+    await new SeedService().seedSystemColumnDefinitions(createdOrg.id, tx);
+
+    // ── Sandbox auto-provisioning ──────────────────────────────────
+    const sandboxDef =
+      await DbService.repository.connectorDefinitions.findBySlug(
+        "sandbox",
         tx
       );
 
-      // Link via station_instances
-      const stationInstanceModel = new StationInstanceModelFactory()
-        .create(systemId)
-        .update({
-          stationId: createdStation.id,
-          connectorInstanceId: createdInstance.id,
-        });
-
-      await DbService.repository.stationInstances.create(
-        stationInstanceModel.parse(),
-        tx
+    if (!sandboxDef) {
+      logger.warn(
+        { organizationId: createdOrg.id },
+        "Sandbox connector definition not found — skipping auto-provisioning"
       );
-
-      // Set defaultStationId on organization
-      await DbService.repository.organizations.update(
-        createdOrg.id,
-        { defaultStationId: createdStation.id },
-        tx
-      );
-
-      logger.info(
-        {
-          userId,
-          organizationId: createdOrg.id,
-          connectorInstanceId: createdInstance.id,
-          stationId: createdStation.id,
-        },
-        "Sandbox auto-provisioning complete"
-      );
-
       return {
-        organization: { ...createdOrg, defaultStationId: createdStation.id },
+        organization: createdOrg,
         organizationUser: createdOrgUser,
       };
+    }
+
+    // Create connector instance — inherits capability flags from the
+    // sandbox definition's ceiling.
+    const instanceModel = new ConnectorInstanceModelFactory()
+      .create(systemId)
+      .update({
+        connectorDefinitionId: sandboxDef.id,
+        organizationId: createdOrg.id,
+        name: "Sandbox",
+        status: "active",
+        config: {},
+        credentials: null,
+        lastSyncAt: null,
+        lastErrorMessage: null,
+        enabledCapabilityFlags: { ...sandboxDef.capabilityFlags },
+      });
+
+    const createdInstance =
+      await DbService.repository.connectorInstances.create(
+        instanceModel.parse(),
+        tx
+      );
+
+    // Create default station
+    const stationModel = new StationModelFactory().create(systemId).update({
+      organizationId: createdOrg.id,
+      name: "My Station",
+      description: "Default organization sandbox station",
+    });
+
+    const createdStation = await DbService.repository.stations.create(
+      stationModel.parse(),
+      tx
+    );
+
+    // Seed the default toolpack for the new station.
+    await DbService.repository.stationToolpacks.replaceForStation(
+      createdStation.id,
+      { builtinSlugs: ["data_query"] },
+      { userId: systemId },
+      tx
+    );
+
+    // Link via station_instances
+    const stationInstanceModel = new StationInstanceModelFactory()
+      .create(systemId)
+      .update({
+        stationId: createdStation.id,
+        connectorInstanceId: createdInstance.id,
+      });
+
+    await DbService.repository.stationInstances.create(
+      stationInstanceModel.parse(),
+      tx
+    );
+
+    // Set defaultStationId on organization
+    await DbService.repository.organizations.update(
+      createdOrg.id,
+      { defaultStationId: createdStation.id },
+      tx
+    );
+
+    logger.info(
+      {
+        userId,
+        organizationId: createdOrg.id,
+        connectorInstanceId: createdInstance.id,
+        stationId: createdStation.id,
+      },
+      "Sandbox auto-provisioning complete"
+    );
+
+    return {
+      organization: { ...createdOrg, defaultStationId: createdStation.id },
+      organizationUser: createdOrgUser,
+    };
   }
 }
