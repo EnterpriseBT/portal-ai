@@ -13,6 +13,7 @@ import {
 } from "@portalai/core/ui";
 import { sdk } from "../api/sdk";
 import { Link } from "@tanstack/react-router";
+import { OrgSwitcher } from "./OrgSwitcher.component";
 
 export interface HeaderMenuUIProps {
   image?: string;
@@ -103,6 +104,7 @@ export const HeaderMenu: React.FC = () => {
       >
         {currentOrganizationPayload?.organization.name}
       </Typography>
+      <OrgSwitcher />
       <Divider />
       <MenuItem component={Link} to="/settings">
         <ListItemIcon>
