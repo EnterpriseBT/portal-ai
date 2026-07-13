@@ -98,6 +98,31 @@ export class JobsRepository extends Repository<
   }
 
   /**
+   * Find every non-terminal job for an organization, regardless of
+   * type — unlike the per-entity lock finders this is not filtered to
+   * locking job types, because org deletion (#197) must account for
+   * every job that could still write org data.
+   */
+  async findRunningForOrganization(
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<JobSelect[]> {
+    return (await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(jobs.organizationId, organizationId),
+          inArray(
+            jobs.status,
+            NON_TERMINAL_JOB_STATUSES as unknown as JobSelect["status"][]
+          ),
+          this.notDeleted()
+        )
+      )) as JobSelect[];
+  }
+
+  /**
    * Find every non-terminal job whose metadata declares the given
    * portal id. Used by the portal chat-input lock (#85 Phase 2):
    * while any of these jobs are running, the portal's input is
