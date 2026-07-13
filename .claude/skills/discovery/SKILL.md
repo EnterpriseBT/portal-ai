@@ -1,6 +1,6 @@
 ---
 name: discovery
-description: Phase 2 of the four-phase workflow — scaffold a grounded discovery doc for a GitHub issue. Surveys the relevant code, generates docs/<SLUG>.discovery.md on a new branch, leaves it ready for the user to refine. Invoke as /discovery <issue-number>.
+description: Phase 2 of the Issue → PR workflow — scaffold a grounded discovery doc for a GitHub issue. Surveys the relevant code, generates docs/<SLUG>.discovery.md on a new branch, leaves it ready for the user to refine. For small tickets, condensed mode writes the single combined doc instead. Invoke as /discovery <issue-number> [condensed].
 ---
 
 # /discovery — scaffold a discovery doc for an issue
@@ -9,7 +9,9 @@ You are scaffolding **phase 2** of the four-phase workflow defined in `CLAUDE.md
 
 ## Arguments
 
-The user invokes this as `/discovery <issue-number>`. If they invoked it with no argument, ask them which issue once and stop.
+The user invokes this as `/discovery <issue-number> [condensed]`. If they invoked it with no argument, ask them which issue once and stop.
+
+**Mode selection:** the `condensed` argument switches to the single-doc path (see "Condensed mode" below). If the argument is omitted but the issue body's `## Sizing` section (written by `/ticket`) says `condensed`, condensed is the default — say so in one sentence and proceed. Full mode is the default otherwise.
 
 ## Steps
 
@@ -153,8 +155,46 @@ Stop. Report to the user:
 
 Do **not** stage, commit, push, or open the PR. The user reads the draft, refines it, then commits. A PR may be opened as a draft once the discovery commit lands so spec/plan/implementation commits flow into the same PR — per `CLAUDE.md` → "One feature = one branch = one PR". The PR body uses `Closes #<N>` (since the same PR carries the full work end-to-end).
 
+## Condensed mode (`/discovery <N> condensed`)
+
+For small tickets (single-package, no new pattern, no contract change — the sizing `/ticket` recorded), the four docs collapse into **one** `docs/<SLUG>.md` covering discovery + spec + plan + smoke. Reference exemplar: `docs/PORTAL_MESSAGE_TIMESTAMPS.md`.
+
+Steps 1–3 (fetch issue, derive slug, create branch) are identical to full mode. The survey (step 4) shrinks to **targeted reads** of the files the issue names — reach for an Explore agent only if you genuinely don't know where the change lives. Then write `docs/<SLUG>.md` (not `.discovery.md`):
+
+```markdown
+# <Feature name> — Condensed design (#<N>)
+
+**Issue:** [EnterpriseBT/portal-ai#<N>](…) · <Type> · **small / condensed** (discovery + spec + plan + smoke in one doc).
+
+**Why.** <1 paragraph: problem + intended change. Name the packages touched.>
+
+## Current shape
+
+| Piece | Location | Note |
+|---|---|---|
+| <symbol/behavior> | `<path:line>` | <1-line note> |
+
+## Decision — <name>
+
+<One per genuine decision. Options in 2–4 lines each, then the chosen shape and why — decided, not "leaned". Most condensed tickets have exactly one.>
+
+## Plan — <n> slice(s)
+
+<Per slice: **Files** (new/edit list) and **Tests** (real test file paths; npm scripts, never raw jest). One slice is the norm.>
+
+## Smoke (manual, against your dev stack)
+
+1. <numbered manual walkthrough steps — same rules as a full smoke doc: user's own running servers, externally-observable checks>
+
+## Out of scope
+
+- <explicit deferrals>
+```
+
+**Condensed hard rules:** target ≤ 80 lines; citations still real (no invented paths); decisions are made, not leaned; the Smoke section is the ticket's merge gate (there is no separate `.smoke.md`). Same hand-off as full mode — do **not** commit; report the doc + anything you'd flag. After confirmation, implementation follows the doc's Plan directly — `/spec` and `/plan` are **not** run on a condensed branch (they detect the single doc and defer to it), and `/smoke` refreshes the embedded Smoke section instead of creating a file.
+
 ## What this skill is not
 
-- It is not for **spec + plan** scaffolding. The sibling `/spec` and `/plan` skills own those phases — run `/spec <N>` then `/plan <N>` after the discovery doc is confirmed. Both land on the **same branch** this skill just created — not a new one.
-- It is not for **trivial PRs**. If the user invokes it on an issue that's a one-line typo fix or a localized bug with a clear fix, tell them discovery isn't proportionate and they should go straight to implementation.
+- It is not for **spec + plan** scaffolding. The sibling `/spec` and `/plan` skills own those phases — run `/spec <N>` then `/plan <N>` after the discovery doc is confirmed. Both land on the **same branch** this skill just created — not a new one. (On a condensed branch they aren't run at all — the single doc already carries the contract and plan.)
+- It is not for **trivial PRs**. A one-line typo fix or a localized bug with an obvious fix goes straight to implementation — even condensed docs aren't proportionate. The condensed path is for small-but-real tickets that still deserve a written decision + smoke steps.
 - It does not run CI, doesn't apply branch protection, doesn't move project-board cards. Those happen elsewhere.
