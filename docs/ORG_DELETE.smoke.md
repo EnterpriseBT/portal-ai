@@ -49,7 +49,7 @@ In the app, as the **owner**, inside the target org:
 
 ## §2 — Server-side gates: owner-only + confirmation (slice 3)
 
-- [ ] **Non-owner 403.** Switch into the org you don't own: `npx portalai member switch <smoke-not-mine-orgId> <your-email> --env local --yes`, refresh the app. Settings → Organization → Danger zone → open the dialog, type the **exact** name (`Smoke Not Mine`), confirm. Expected: the dialog stays open and `FormAlert` shows **ORGANIZATION_NOT_OWNER** ("Only the organization's owner can delete it"). The org is fully intact. Switch back to the target afterward (`member switch <target-orgId> …`).
+- [x] **Non-owner 403.** Switch into the org you don't own: `npx portalai member switch <smoke-not-mine-orgId> <your-email> --env local --yes`, refresh the app. Settings → Organization → Danger zone → open the dialog, type the **exact** name (`Smoke Not Mine`), confirm. Expected: the dialog stays open and `FormAlert` shows **ORGANIZATION_NOT_OWNER** ("Only the organization's owner can delete it"). The org is fully intact. Switch back to the target afterward (`member switch <target-orgId> …`).
 - [ ] **Confirmation mismatch 400, bypassing the UI.** Grab your owner bearer token (devtools → any API request → `Authorization` header), then:
   `curl -s -X DELETE http://localhost:3001/api/organization/<orgId> -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d '{"confirmationName":"Wrong Name"}'`
   Expected: `400` with `code: "ORGANIZATION_CONFIRMATION_MISMATCH"`.
