@@ -22,6 +22,12 @@ export enum ApiCode {
   /** The authed user has no live membership in the target org (switch authz). */
   MEMBERSHIP_NOT_FOUND = "MEMBERSHIP_NOT_FOUND",
   ORGANIZATION_INVALID_PAYLOAD = "ORGANIZATION_INVALID_PAYLOAD",
+  /** DELETE authz: the caller is a member but not the org's owner. 403. */
+  ORGANIZATION_NOT_OWNER = "ORGANIZATION_NOT_OWNER",
+  /** DELETE confirmation: `confirmationName` doesn't match the org's name. 400. */
+  ORGANIZATION_CONFIRMATION_MISMATCH = "ORGANIZATION_CONFIRMATION_MISMATCH",
+  /** DELETE cascade failed server-side (transaction rolled back). 500. */
+  ORGANIZATION_DELETE_FAILED = "ORGANIZATION_DELETE_FAILED",
 
   // Webhooks
   WEBHOOK_MISSING_SIGNATURE = "WEBHOOK_MISSING_SIGNATURE",

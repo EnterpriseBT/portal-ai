@@ -8,8 +8,14 @@ const mockUsage = jest.fn();
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
-    auth: { profile: mockProfile },
-    organizations: { current: mockCurrent, usage: mockUsage },
+    auth: { profile: mockProfile, logout: () => ({ logout: jest.fn() }) },
+    organizations: {
+      current: mockCurrent,
+      usage: mockUsage,
+      // Danger zone (#197) — inert stub; behavior is covered by
+      // SettingsDangerZone.test.tsx.
+      delete: () => ({ mutate: jest.fn(), isPending: false, error: null }),
+    },
   },
 }));
 

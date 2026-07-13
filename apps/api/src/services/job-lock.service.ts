@@ -69,6 +69,21 @@ export class JobLockService {
   }
 
   /**
+   * Return every non-terminal job in the organization, regardless of
+   * type. Org deletion (#197) sweeps this list: queued jobs are
+   * cancelled, an `active` one blocks the delete with 409.
+   */
+  static async findRunningForOrganization(
+    organizationId: string
+  ): Promise<RunningJobSummary[]> {
+    const rows =
+      await DbService.repository.jobs.findRunningForOrganization(
+        organizationId
+      );
+    return rows.map(toSummary);
+  }
+
+  /**
    * Throw `409 ENTITY_LOCKED_BY_JOB` if any non-terminal job locks
    * the connector instance. Call this at the head of every route /
    * service entry point that mutates the instance, its plan, its

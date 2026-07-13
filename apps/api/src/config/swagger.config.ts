@@ -34,6 +34,8 @@ import {
   OrganizationGetResponseSchema,
   UserMembershipsGetResponseSchema,
   OrganizationSwitchRequestSchema,
+  OrganizationDeleteRequestSchema,
+  OrganizationDeleteResponseSchema,
 } from "@portalai/core/contracts";
 import {
   ApiAuthConfigSchema,
@@ -184,6 +186,22 @@ const orgSwitcherSchemas: Record<string, unknown> = {
   ),
   OrganizationSwitchRequest: z.toJSONSchema(
     OrganizationSwitchRequestSchema,
+    JSON_SCHEMA_OPTS
+  ),
+};
+
+/**
+ * Organization deletion schemas (#197). Sourced from
+ * `@portalai/core/contracts` so the DELETE route JSDoc references the
+ * canonical request/response shapes.
+ */
+const orgDeleteSchemas: Record<string, unknown> = {
+  OrganizationDeleteRequest: z.toJSONSchema(
+    OrganizationDeleteRequestSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  OrganizationDeleteResponse: z.toJSONSchema(
+    OrganizationDeleteResponseSchema,
     JSON_SCHEMA_OPTS
   ),
 };
@@ -1470,6 +1488,7 @@ const options: swaggerJsdoc.Options = {
         ...restApiConnectorSchemas,
         ...tierSchemas,
         ...orgSwitcherSchemas,
+        ...orgDeleteSchemas,
       },
     },
     tags: [

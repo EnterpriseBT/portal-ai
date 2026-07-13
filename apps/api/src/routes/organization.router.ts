@@ -7,11 +7,16 @@ import { DbService } from "../services/db.service.js";
 import { TierService } from "../services/tier.service.js";
 import { UsageService } from "../services/usage.service.js";
 import type {
+  OrganizationDeleteResponse,
   OrganizationGetResponse,
   OrganizationUsageGetResponse,
   UserMembershipsGetResponse,
 } from "@portalai/core/contracts";
-import { OrganizationSwitchRequestSchema } from "@portalai/core/contracts";
+import {
+  OrganizationDeleteRequestSchema,
+  OrganizationSwitchRequestSchema,
+} from "@portalai/core/contracts";
+import { OrganizationDeleteService } from "../services/organization-delete.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 
 const logger = createLogger({ module: "organization" });
@@ -150,6 +155,171 @@ organizationRouter.patch(
               error instanceof Error
                 ? error.message
                 : "Failed to update organization"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/organization/{id}:
+ *   delete:
+ *     tags:
+ *       - Organization
+ *     summary: Permanently delete the organization (owner only)
+ *     description: >
+ *       Deletes the caller's current organization and all of its data (#197).
+ *       Owner-only, gated by a server-verified type-to-confirm — the body's
+ *       `confirmationName` must match the organization's name (trimmed,
+ *       case-sensitive). All org content is hard-deleted (including dynamic
+ *       wide tables and uploaded S3 objects); the organization row and its
+ *       memberships are soft-deleted as an audit tombstone; usage-ledger rows
+ *       are retained. Queued jobs are auto-cancelled; an active job blocks
+ *       the delete with 409.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/OrganizationDeleteRequest'
+ *     responses:
+ *       200:
+ *         description: Organization deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/OrganizationDeleteResponse'
+ *       400:
+ *         description: Invalid payload, or confirmationName does not match the organization name
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: The caller is not the organization's owner
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: Organization not found (not the caller's current org, or already deleted)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       409:
+ *         description: An active job holds the organization; details.runningJobs lists it
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+organizationRouter.delete(
+  "/:id",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { organizationId, userId } = req.application!.metadata;
+
+      // Current-org guard first (mirrors PATCH /:id): a foreign org id gets
+      // 404 before any owner logic runs, so org existence never leaks.
+      if (id !== organizationId) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ORGANIZATION_NOT_FOUND,
+            "Organization not found"
+          )
+        );
+      }
+
+      const parsed = OrganizationDeleteRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ORGANIZATION_INVALID_PAYLOAD,
+            "confirmationName is required"
+          )
+        );
+      }
+
+      const organization =
+        await DbService.repository.organizations.findById(id);
+      if (!organization) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ORGANIZATION_NOT_FOUND,
+            "Organization not found"
+          )
+        );
+      }
+
+      if (organization.ownerUserId !== userId) {
+        return next(
+          new ApiError(
+            403,
+            ApiCode.ORGANIZATION_NOT_OWNER,
+            "Only the organization's owner can delete it"
+          )
+        );
+      }
+
+      if (parsed.data.confirmationName.trim() !== organization.name.trim()) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ORGANIZATION_CONFIRMATION_MISMATCH,
+            "The confirmation name does not match the organization name"
+          )
+        );
+      }
+
+      logger.info(
+        { organizationId: id, orgName: organization.name, userId },
+        "Organization delete requested"
+      );
+
+      await OrganizationDeleteService.deleteOrganization(id, userId);
+
+      return HttpService.success<OrganizationDeleteResponse>(res, { id });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to delete organization"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ORGANIZATION_DELETE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to delete organization"
             )
       );
     }
