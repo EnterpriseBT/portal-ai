@@ -13,7 +13,7 @@ Run **§Preflight** once. §1–§3 are non-destructive and can be walked in any
 ### Environment
 
 - [ ] `git checkout feat/org-delete && git pull --ff-only`
-- [ ] `npm install` — **no migration on this branch** (no schema change; the cascade uses existing columns).
+- [ ] `npm install && npm run build --workspace=@portalai/core` — this branch adds `OrganizationDeleteRequest/Response` to core's contracts, and the API resolves `@portalai/core` from its built `dist/`; **a stale core dist crashes the API at boot** (`z.toJSONSchema(undefined)` in `swagger.config.ts`) and every `/api/*` call 404s through the Vite proxy. **No migration on this branch** (no schema change; the cascade uses existing columns).
 - [ ] `npm run dev` boots cleanly (API `:3001`, web `:3000`); Auth0 dev login lands on `/dashboard`.
 - [ ] Redis is reachable (the job-lock check reads the `jobs` table, but leftover BullMQ workers log cleanly).
 - [ ] Note whether `UPLOAD_S3_BUCKET` is set in your API env. If it isn't, the post-delete S3 cleanup will log `warn` lines instead of `Deleted S3 object` — that's the expected best-effort behavior, not a failure (§4 has both variants).
