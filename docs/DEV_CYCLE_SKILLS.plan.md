@@ -22,7 +22,7 @@ The phase-1 skill: correctly-typed issue creation with PRD/repro body templates 
 
 1. **Verify (spec test plan, `/ticket` dogfood).** Draft the skill; invoke `/ticket` for one scratch feature and one scratch bug. Assert: body sections match the pinned templates; Issue Type set (`Feature`/`Bug`); board card in `Todo`; sizing line present; epic requests refused with a route to `/epic`.
 2. **Fix** any drift between the scaffold and the spec's pinned sections. Re-run the failing assertion only.
-3. Close scratch issues (`--reason not-planned`); lint + type-check.
+3. Close scratch issues (`--reason "not planned"`); lint + type-check.
 
 **Done when:** both scratch issues matched the pinned templates end-to-end and the skill appears in the skill list.
 
@@ -83,7 +83,7 @@ Epic coordination: parent + sub-issues + the epic-branch deployment gate.
 
 1. **One-time org setup.** Create the `Epic` issue type: `gh api -X POST orgs/EnterpriseBT/issue-types -f name="Epic" …` — **requires `admin:org` scope** (`gh auth refresh -h github.com -s admin:org`, run by the user). Record the returned node id for slice 5's `CLAUDE.md` edit.
 2. **Verify (spec test plan, `/epic` dogfood).** Draft the skill; create a scratch parent + one scratch child. Assert: parent Issue Type is `Epic`; `subIssues.totalCount = 1` via GraphQL; `epic/<slug>` branch pushed; Status/dependency tables present; child body names its branch + dependencies.
-3. **Fix** drift; then clean up — delete the scratch epic branch (local + remote), close both scratch issues `--reason not-planned`.
+3. **Fix** drift; then clean up — delete the scratch epic branch (local + remote), close both scratch issues `--reason "not planned"`.
 4. Lint + type-check.
 
 **Done when:** the scratch epic round-trip passed every assertion and all scratch artifacts are gone.
@@ -127,7 +127,7 @@ After slice 5: the user walks `docs/DEV_CYCLE_SKILLS.smoke.md` (the gate this ti
 
 ## Cross-slice notes
 
-- **Scratch hygiene:** slices 1 and 4 create real GitHub objects — every scratch issue closes `--reason not-planned` and every scratch branch deletes before the slice commits; nothing scratch appears in the PR.
+- **Scratch hygiene:** slices 1 and 4 create real GitHub objects — every scratch issue closes `--reason "not planned"` and every scratch branch deletes before the slice commits; nothing scratch appears in the PR.
 - **`Epic` type id spans slices 4 → 5:** created in 4, documented in 5. If `admin:org` is granted before slice 4, no gap; otherwise slice 5 holds the placeholder until the id exists (never commit an invented id).
 - **Doc-sync is slice 5 by design** (not a per-slice touch): the skills are the capability, `CLAUDE.md` is the doc surface, and they land in the same PR per "Keeping Documentation in Sync".
 - **`docs/DEV_CYCLE_SKILLS.smoke.md` is a deliverable, not scratch** — it stays, and its confirmation is the merge gate.

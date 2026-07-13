@@ -90,7 +90,7 @@ None — no schema change; this PR ships markdown and repo config only.
 
 No jest surface — the deliverables are markdown skills and docs; **automated test cases: 0**. Verification is dogfooding, per slice:
 
-- **`/ticket`:** create a scratch feature issue and a scratch bug issue; assert body sections, Issue Type set, board card in `Todo`, sizing recorded; close both `--reason not-planned`.
+- **`/ticket`:** create a scratch feature issue and a scratch bug issue; assert body sections, Issue Type set, board card in `Todo`, sizing recorded; close both `--reason "not planned"`.
 - **`/epic`:** create a scratch parent + one scratch child; assert `subIssues.totalCount = 1` via GraphQL, epic branch pushed, Status table present; delete branch, close both.
 - **Condensed:** dry-run `/discovery <scratch> condensed` shape against the pinned template (no commit).
 - **`/smoke`:** dogfood on **this ticket** — `/smoke 178` scaffolds `docs/DEV_CYCLE_SKILLS.smoke.md`, which then serves as #178's own pre-merge gate.
