@@ -81,6 +81,31 @@ export default async function globalSetup() {
     const migrationsPath = join(__dirname, "../../../drizzle");
     await migrate(db, { migrationsFolder: migrationsPath });
     console.log("✅ Migrations completed");
+
+    // Re-seed data-bearing migration rows the TRUNCATE above wiped. The
+    // drizzle journal lives in the `drizzle` schema, so on a reused test
+    // container `migrate()` no-ops and never re-runs 0065's `standard`
+    // tier INSERT — without this, every org insert (default tier
+    // 'standard') violates the organizations_tier FK.
+    await db.execute(sql`
+      INSERT INTO "tiers" (
+        "id", "created", "created_by", "slug", "display_name",
+        "period_kind", "period_anchor_day", "overage",
+        "free_units_per_period", "free_rate_per_min",
+        "metered_units_per_period", "metered_rate_per_min",
+        "expensive_units_per_period", "expensive_rate_per_min",
+        "per_tool_caps"
+      ) VALUES (
+        gen_random_uuid()::text, (extract(epoch from now()) * 1000)::bigint, 'SYSTEM', 'standard', 'Standard',
+        'monthly', 1, 'hard-deny',
+        NULL, NULL,
+        1000, 20,
+        100, 5,
+        NULL
+      )
+      ON CONFLICT ON CONSTRAINT "tiers_slug_unique" DO NOTHING
+    `);
+    console.log("✅ Default tier ensured");
   } catch (error) {
     console.error("❌ Setup failed:", error);
     throw error;
