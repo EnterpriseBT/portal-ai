@@ -57,9 +57,8 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
-const { restApiAdapter } = await import(
-  "../../../adapters/rest-api/rest-api.adapter.js"
-);
+const { restApiAdapter } =
+  await import("../../../adapters/rest-api/rest-api.adapter.js");
 
 let connection!: ReturnType<typeof postgres>;
 let db!: ReturnType<typeof drizzle>;
@@ -237,12 +236,7 @@ describe("REST API connector — paginated cursor sync", () => {
 
     // Records in DB.
     const after1 = await activeRecords(entityId);
-    expect(after1.map((r) => r.sourceId).sort()).toEqual([
-      "a",
-      "b",
-      "c",
-      "d",
-    ]);
+    expect(after1.map((r) => r.sourceId).sort()).toEqual(["a", "b", "c", "d"]);
     expect(after1.every((r) => r.origin === "sync")).toBe(true);
 
     // ── Step 5: resync with "c" removed — watermark reap fires once ─

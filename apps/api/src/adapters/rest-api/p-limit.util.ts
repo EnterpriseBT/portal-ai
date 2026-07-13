@@ -6,9 +6,7 @@
  * 30-line utility. The classifier batches LLM calls at this limit so
  * a 50-column endpoint doesn't burst against the model's rate cap.
  */
-export function pLimit(
-  max: number
-): <T>(fn: () => Promise<T>) => Promise<T> {
+export function pLimit(max: number): <T>(fn: () => Promise<T>) => Promise<T> {
   if (max < 1 || !Number.isFinite(max)) {
     throw new Error(`pLimit: max must be a positive finite number, got ${max}`);
   }

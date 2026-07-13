@@ -26,9 +26,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
 }));
 
 const { JobLockService } = await import("../../services/job-lock.service.js");
-const { ApiCode } = await import(
-  "../../constants/api-codes.constants.js"
-);
+const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
 function fakeJob(overrides: Record<string, unknown> = {}) {
   return {

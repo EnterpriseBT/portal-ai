@@ -167,8 +167,7 @@ function mockFetchResponse({ status = 200, body = {} }: MockResponseInit) {
     ok: status >= 200 && status < 300,
     status,
     json: async () => body,
-    text: async () =>
-      typeof body === "string" ? body : JSON.stringify(body),
+    text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
   } as unknown as Response;
 }
 
@@ -359,7 +358,11 @@ describe("MicrosoftAuthService.fetchUserProfile", () => {
       })
     );
 
-    await MicrosoftAuthService.fetchUserProfile("token-x", "tenant-x", fetchMock);
+    await MicrosoftAuthService.fetchUserProfile(
+      "token-x",
+      "tenant-x",
+      fetchMock
+    );
 
     const [calledUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(calledUrl).toBe("https://graph.microsoft.com/v1.0/me");
@@ -413,9 +416,11 @@ describe("MicrosoftAuthService.fetchUserProfile", () => {
   });
 
   it("throws MicrosoftAuthError('userinfo_failed') on a 4xx", async () => {
-    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
-      mockFetchResponse({ status: 401, body: { error: "Unauthorized" } })
-    );
+    const fetchMock = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        mockFetchResponse({ status: 401, body: { error: "Unauthorized" } })
+      );
     try {
       await MicrosoftAuthService.fetchUserProfile("token-x", "t-x", fetchMock);
       throw new Error("expected throw");

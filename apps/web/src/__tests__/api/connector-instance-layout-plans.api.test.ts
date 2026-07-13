@@ -8,9 +8,8 @@ jest.unstable_mockModule("../../utils/api.util", () => ({
   useAuthMutation: mockUseAuthMutation,
 }));
 
-const { connectorInstanceLayoutPlans } = await import(
-  "../../api/connector-instance-layout-plans.api"
-);
+const { connectorInstanceLayoutPlans } =
+  await import("../../api/connector-instance-layout-plans.api");
 const { queryKeys } = await import("../../api/keys");
 
 describe("connectorInstanceLayoutPlans.api", () => {
@@ -117,10 +116,8 @@ describe("queryKeys.connectorInstanceLayoutPlans", () => {
   });
 
   it("derives editContext() from root + id", () => {
-    expect(queryKeys.connectorInstanceLayoutPlans.editContext("ci_123")).toEqual([
-      "connectorInstanceLayoutPlans",
-      "editContext",
-      "ci_123",
-    ]);
+    expect(
+      queryKeys.connectorInstanceLayoutPlans.editContext("ci_123")
+    ).toEqual(["connectorInstanceLayoutPlans", "editContext", "ci_123"]);
   });
 });

@@ -134,7 +134,7 @@ describe("createDefaultJsonataSuggester — error paths", () => {
     });
 
     await expect(
-      suggester.suggest({ sampleResponse: {} }),
+      suggester.suggest({ sampleResponse: {} })
     ).rejects.toMatchObject({
       name: "JsonataSuggestError",
       reason: "malformed-response",
@@ -150,7 +150,7 @@ describe("createDefaultJsonataSuggester — error paths", () => {
     });
 
     await expect(
-      suggester.suggest({ sampleResponse: {} }),
+      suggester.suggest({ sampleResponse: {} })
     ).rejects.toMatchObject({
       name: "JsonataSuggestError",
       reason: "malformed-response",
@@ -169,7 +169,7 @@ describe("createDefaultJsonataSuggester — error paths", () => {
     });
 
     await expect(
-      suggester.suggest({ sampleResponse: {} }),
+      suggester.suggest({ sampleResponse: {} })
     ).rejects.toMatchObject({
       name: "JsonataSuggestError",
       reason: "timeout",
@@ -185,7 +185,7 @@ describe("createDefaultJsonataSuggester — error paths", () => {
     });
 
     await expect(
-      suggester.suggest({ sampleResponse: {} }),
+      suggester.suggest({ sampleResponse: {} })
     ).rejects.toMatchObject({
       name: "JsonataSuggestError",
       reason: "network-error",
@@ -207,7 +207,7 @@ describe("createDefaultJsonataSuggester — error paths", () => {
     } catch (err) {
       expect(err).toBeInstanceOf(JsonataSuggestError);
       expect((err as JsonataSuggestError).message).toContain(
-        "upstream rejected",
+        "upstream rejected"
       );
       expect((err as JsonataSuggestError).cause).toBe(underlying);
     }

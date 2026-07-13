@@ -57,10 +57,9 @@ export const wideTableResyncService = {
 
     for (const inst of instances) {
       try {
-        const def =
-          await DbService.repository.connectorDefinitions.findById(
-            inst.connectorDefinitionId
-          );
+        const def = await DbService.repository.connectorDefinitions.findById(
+          inst.connectorDefinitionId
+        );
         if (!def) {
           failed.push({
             instanceId: inst.id,

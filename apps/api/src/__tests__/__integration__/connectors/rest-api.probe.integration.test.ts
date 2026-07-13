@@ -61,19 +61,13 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
-const {
-  configureRestApiAdapterDeps,
-  __resetRestApiAdapterDepsForTests,
-} = await import("../../../adapters/rest-api/rest-api.adapter.js");
-const { ProbeCache } = await import(
-  "../../../adapters/rest-api/probe-cache.util.js"
-);
-const { createStubClassifier, createThrowingClassifier } = await import(
-  "../../../adapters/rest-api/classifier.stub.js"
-);
-const { SystemUtilities } = await import(
-  "../../../utils/system.util.js"
-);
+const { configureRestApiAdapterDeps, __resetRestApiAdapterDepsForTests } =
+  await import("../../../adapters/rest-api/rest-api.adapter.js");
+const { ProbeCache } =
+  await import("../../../adapters/rest-api/probe-cache.util.js");
+const { createStubClassifier, createThrowingClassifier } =
+  await import("../../../adapters/rest-api/classifier.stub.js");
+const { SystemUtilities } = await import("../../../utils/system.util.js");
 
 let connection!: ReturnType<typeof postgres>;
 let db!: ReturnType<typeof drizzle>;
@@ -99,7 +93,12 @@ beforeEach(async () => {
   // — the test asserts that the catalog *load* runs successfully when
   // the classifier is invoked.
   for (const cd of [
-    { id: generateId(), key: "first_name", label: "First Name", type: "string" },
+    {
+      id: generateId(),
+      key: "first_name",
+      label: "First Name",
+      type: "string",
+    },
     { id: generateId(), key: "email", label: "Email", type: "string" },
     { id: generateId(), key: "age", label: "Age", type: "number" },
   ]) {
@@ -318,7 +317,9 @@ describe("REST API connector — end-to-end probe pipeline", () => {
   it("returns degradation:'llm-failed' when the classifier throws (heuristic columns intact)", async () => {
     globalThis.fetch = jest
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(jsonResponse({ items: buildRecords() })) as unknown as typeof globalThis.fetch;
+      .mockResolvedValueOnce(
+        jsonResponse({ items: buildRecords() })
+      ) as unknown as typeof globalThis.fetch;
     configureRestApiAdapterDeps({
       cache: new ProbeCache(),
       classifier: createThrowingClassifier("network-error", "boom"),
@@ -343,7 +344,9 @@ describe("REST API connector — end-to-end probe pipeline", () => {
   it("returns degradation:'llm-disabled' when no classifier is wired", async () => {
     globalThis.fetch = jest
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(jsonResponse({ items: buildRecords() })) as unknown as typeof globalThis.fetch;
+      .mockResolvedValueOnce(
+        jsonResponse({ items: buildRecords() })
+      ) as unknown as typeof globalThis.fetch;
     configureRestApiAdapterDeps({
       cache: new ProbeCache(),
       classifier: null,
@@ -393,7 +396,9 @@ describe("REST API connector — end-to-end probe pipeline", () => {
     const big = Array.from({ length: 100 }, (_, i) => ({ id: `u${i}` }));
     globalThis.fetch = jest
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(jsonResponse({ items: big })) as unknown as typeof globalThis.fetch;
+      .mockResolvedValueOnce(
+        jsonResponse({ items: big })
+      ) as unknown as typeof globalThis.fetch;
     configureRestApiAdapterDeps({
       cache: new ProbeCache(),
       classifier: null,

@@ -360,8 +360,7 @@ export class BulkTransformService {
       // jsonb / text columns. Primitives (strings) pass through.
       // The per-column cast in the wide-table INSERT handles the
       // final coercion to the target type (numeric / text / jsonb).
-      const serialized =
-        typeof v === "string" ? v : JSON.stringify(v);
+      const serialized = typeof v === "string" ? v : JSON.stringify(v);
       return `'${serialized.replace(/'/g, "''")}'`;
     };
 
@@ -395,10 +394,7 @@ export class BulkTransformService {
       // VALUES CTE as a text literal; PG won't implicitly cast text
       // to numeric/bigint/boolean/timestamp/etc. on INSERT. Falls
       // back to `text` (no-op) when a column's pgType is unknown.
-      ...cols.map(
-        (c, i) =>
-          `ir."v_${i}"::${pgTypeByColumn.get(c) ?? "text"}`
-      ),
+      ...cols.map((c, i) => `ir."v_${i}"::${pgTypeByColumn.get(c) ?? "text"}`),
     ].join(", ");
 
     const setClause = cols

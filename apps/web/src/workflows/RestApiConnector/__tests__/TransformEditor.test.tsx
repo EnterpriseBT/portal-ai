@@ -12,12 +12,8 @@ describe("TransformEditorUI", () => {
     expect(
       screen.getByRole("textbox", { name: /transform expression/i })
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/jsonata expression/i)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/preview button below/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/jsonata expression/i)).toBeInTheDocument();
+    expect(screen.getByText(/preview button below/i)).toBeInTheDocument();
   });
 
   it("renders an example expression as the textarea placeholder", () => {
@@ -27,7 +23,7 @@ describe("TransformEditorUI", () => {
     });
     expect(textarea).toHaveAttribute(
       "placeholder",
-      expect.stringContaining('data.items.{ "id": id'),
+      expect.stringContaining('data.items.{ "id": id')
     );
   });
 
@@ -50,9 +46,7 @@ describe("TransformEditorUI", () => {
   });
 
   it("renders the current value in the textarea", () => {
-    render(
-      <TransformEditorUI value="data.items" onChange={jest.fn()} />
-    );
+    render(<TransformEditorUI value="data.items" onChange={jest.fn()} />);
     expect(
       screen.getByRole("textbox", { name: /transform expression/i })
     ).toHaveValue("data.items");

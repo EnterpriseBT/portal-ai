@@ -28,16 +28,12 @@ interface MockResponseInit {
   bodyCancel?: jest.Mock;
 }
 
-function mockJsonResponse({
-  status = 200,
-  body = {},
-}: MockResponseInit) {
+function mockJsonResponse({ status = 200, body = {} }: MockResponseInit) {
   return {
     ok: status >= 200 && status < 300,
     status,
     json: async () => body,
-    text: async () =>
-      typeof body === "string" ? body : JSON.stringify(body),
+    text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
   } as unknown as Response;
 }
 
@@ -75,7 +71,9 @@ describe("MicrosoftGraphService.searchWorkbooks", () => {
           {
             id: "01DEF",
             name: "Macros.xlsm",
-            file: { mimeType: "application/vnd.ms-excel.sheet.macroEnabled.12" },
+            file: {
+              mimeType: "application/vnd.ms-excel.sheet.macroEnabled.12",
+            },
           },
           {
             id: "01GHI",
@@ -109,9 +107,7 @@ describe("MicrosoftGraphService.searchWorkbooks", () => {
   it("recurses into subfolders up to the depth cap", async () => {
     const fetchMock = mockChildren({
       "/items/root/children": {
-        value: [
-          { id: "FOLDER1", name: "Reports", folder: { childCount: 1 } },
-        ],
+        value: [{ id: "FOLDER1", name: "Reports", folder: { childCount: 1 } }],
       },
       "/items/FOLDER1/children": {
         value: [
@@ -280,9 +276,11 @@ describe("MicrosoftGraphService.headWorkbook", () => {
   });
 
   it("throws MicrosoftGraphError('head_failed') on a 4xx", async () => {
-    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
-      mockJsonResponse({ status: 404, body: { error: "Not Found" } })
-    );
+    const fetchMock = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        mockJsonResponse({ status: 404, body: { error: "Not Found" } })
+      );
     try {
       await MicrosoftGraphService.headWorkbook("token-x", "01ABC", fetchMock);
       throw new Error("expected throw");

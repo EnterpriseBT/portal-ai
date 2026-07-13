@@ -43,7 +43,10 @@ describe("resolveLocatorOptionsFor", () => {
 
   it("returns [] when the region's sheetId can't be matched in the workbook", () => {
     expect(
-      resolveLocatorOptionsFor(makeWorkbook(), makeRegion({ sheetId: "missing" }))
+      resolveLocatorOptionsFor(
+        makeWorkbook(),
+        makeRegion({ sheetId: "missing" })
+      )
     ).toEqual([]);
   });
 

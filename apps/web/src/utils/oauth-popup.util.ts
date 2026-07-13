@@ -28,7 +28,8 @@ import { useCallback, useEffect, useRef } from "react";
 
 import type { PublicAccountInfo } from "@portalai/core/contracts";
 
-const POPUP_FEATURES = "width=520,height=640,menubar=no,toolbar=no,location=yes";
+const POPUP_FEATURES =
+  "width=520,height=640,menubar=no,toolbar=no,location=yes";
 const POPUP_TIMEOUT_MS = 5 * 60 * 1000;
 
 export interface PopupAuthorizeResult {

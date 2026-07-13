@@ -96,9 +96,10 @@ const baseProps = {
   isCommitting: false,
   connectorInstanceId: "ci_1",
   connectorInstanceName: "Test Connector",
-  saveDraftToast: null as
-    | { severity: "success" | "error"; message: string }
-    | null,
+  saveDraftToast: null as {
+    severity: "success" | "error";
+    message: string;
+  } | null,
   onDismissSaveDraftToast: jest.fn(),
   entityOptions: [],
   onCreateEntity: jest.fn(() => ""),
@@ -196,9 +197,7 @@ describe("EditLayoutPlanViewUI", () => {
       },
     });
 
-    render(
-      <EditLayoutPlanViewUI {...baseProps} editContext={editContext} />
-    );
+    render(<EditLayoutPlanViewUI {...baseProps} editContext={editContext} />);
 
     expect(
       screen.getByText(/Source files have been cleaned up/i)

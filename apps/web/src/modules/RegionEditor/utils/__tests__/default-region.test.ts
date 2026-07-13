@@ -1,9 +1,6 @@
 import { describe, it, expect } from "@jest/globals";
 
-import {
-  RegionSchema,
-  type ColumnBinding,
-} from "@portalai/core/contracts";
+import { RegionSchema, type ColumnBinding } from "@portalai/core/contracts";
 
 import { defaultRegionForBounds } from "../default-region.util";
 

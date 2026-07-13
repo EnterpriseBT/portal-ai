@@ -34,9 +34,8 @@ export class CurrentTimeTool extends Tool<typeof InputSchema> {
       description: this.description,
       inputSchema: this.schema,
       execute: async () => {
-        const org = await DbService.repository.organizations.findById(
-          organizationId
-        );
+        const org =
+          await DbService.repository.organizations.findById(organizationId);
         const rawTz = org?.timezone ?? "UTC";
         let timezone: string;
         if (isValidIanaTimezone(rawTz)) {

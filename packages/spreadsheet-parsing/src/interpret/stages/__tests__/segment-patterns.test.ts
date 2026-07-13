@@ -40,19 +40,13 @@ describe("classifyLabel", () => {
     expect(classifyLabel(label)).toBe("year");
   });
 
-  it.each(["2024-01-15", "2026-12-31", "1999-03-07"])(
-    "%s → date",
-    (label) => {
-      expect(classifyLabel(label)).toBe("date");
-    }
-  );
+  it.each(["2024-01-15", "2026-12-31", "1999-03-07"])("%s → date", (label) => {
+    expect(classifyLabel(label)).toBe("date");
+  });
 
-  it.each(["Total", "TOTAL", "total", " Total "])(
-    "%s → skip",
-    (label) => {
-      expect(classifyLabel(label)).toBe("skip");
-    }
-  );
+  it.each(["Total", "TOTAL", "total", " Total "])("%s → skip", (label) => {
+    expect(classifyLabel(label)).toBe("skip");
+  });
 
   it.each(["name", "industry", "Account Owner", "Revenue", "Description"])(
     "%s → field",

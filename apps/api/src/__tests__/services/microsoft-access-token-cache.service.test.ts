@@ -21,17 +21,14 @@ jest.unstable_mockModule("../../utils/redis.util.js", () => ({
   }),
 }));
 
-const refreshAccessTokenMock =
-  jest.fn<
-    (
-      refreshToken: string
-    ) => Promise<{
-      accessToken: string;
-      refreshToken: string;
-      expiresIn: number;
-      scope: string;
-    }>
-  >();
+const refreshAccessTokenMock = jest.fn<
+  (refreshToken: string) => Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+    scope: string;
+  }>
+>();
 const updateInstanceMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const findByIdMock = jest.fn<(id: string) => Promise<unknown>>();
 
@@ -60,12 +57,10 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
-const { MicrosoftAuthError } = await import(
-  "../../services/microsoft-auth.service.js"
-);
-const { MicrosoftAccessTokenCacheService } = await import(
-  "../../services/microsoft-access-token-cache.service.js"
-);
+const { MicrosoftAuthError } =
+  await import("../../services/microsoft-auth.service.js");
+const { MicrosoftAccessTokenCacheService } =
+  await import("../../services/microsoft-access-token-cache.service.js");
 
 const INSTANCE_ID = "ci-msft-1";
 const cacheKey = `connector:access:microsoft-excel:${INSTANCE_ID}`;
@@ -96,7 +91,8 @@ beforeEach(() => {
 describe("MicrosoftAccessTokenCacheService.getOrRefresh", () => {
   it("returns the cached token without calling refreshAccessToken (cache hit)", async () => {
     store.set(cacheKey, "cached-token");
-    const out = await MicrosoftAccessTokenCacheService.getOrRefresh(INSTANCE_ID);
+    const out =
+      await MicrosoftAccessTokenCacheService.getOrRefresh(INSTANCE_ID);
     expect(out).toBe("cached-token");
     expect(refreshAccessTokenMock).not.toHaveBeenCalled();
     expect(updateInstanceMock).not.toHaveBeenCalled();
@@ -109,7 +105,8 @@ describe("MicrosoftAccessTokenCacheService.getOrRefresh", () => {
       expiresIn: 3600,
       scope: "openid offline_access Files.Read.All",
     });
-    const out = await MicrosoftAccessTokenCacheService.getOrRefresh(INSTANCE_ID);
+    const out =
+      await MicrosoftAccessTokenCacheService.getOrRefresh(INSTANCE_ID);
     expect(out).toBe("eyJ.fresh");
     expect(refreshAccessTokenMock).toHaveBeenCalledTimes(1);
     expect(refreshAccessTokenMock).toHaveBeenCalledWith("0.AX-old");
@@ -267,9 +264,8 @@ describe("MicrosoftAccessTokenCacheService.getOrRefresh — rotation-race retry"
         scope: "openid offline_access",
       });
 
-    const out = await MicrosoftAccessTokenCacheService.getOrRefresh(
-      INSTANCE_ID
-    );
+    const out =
+      await MicrosoftAccessTokenCacheService.getOrRefresh(INSTANCE_ID);
 
     expect(out).toBe("eyJ.fresh-after-retry");
     expect(refreshAccessTokenMock).toHaveBeenNthCalledWith(1, "0.AX-OLD");

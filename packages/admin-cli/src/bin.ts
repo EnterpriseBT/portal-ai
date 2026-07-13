@@ -66,27 +66,33 @@ const flags = (o: GlobalOpts) => ({ yes: o.yes, confirmProd: o.confirmProd });
 
 export function buildProgram(): Command {
   const program = new Command("portalai")
-    .description("Portal customer-app-data operator CLI (see packages/admin-cli/COMMANDS.md)")
+    .description(
+      "Portal customer-app-data operator CLI (see packages/admin-cli/COMMANDS.md)"
+    )
     .exitOverride();
 
   // ── auth ───────────────────────────────────────────────────────────
-  common(program.command("login").description("device-flow login for the env (the mutation session)"))
-    .action(async (o: GlobalOpts) =>
-      execute(o, async (def) => {
-        await authLogin(def, {
-          onUserCode: (uri, code) =>
-            process.stderr.write(`Open to approve:\n  ${uri}\nCode: ${code}\n`),
-        });
-        return { env: def.name, loggedIn: true };
-      })
-    );
-  common(program.command("logout").description("clear the env's device-flow session"))
-    .action(async (o: GlobalOpts) =>
-      execute(o, async (def) => {
-        await authLogout(def);
-        return { env: def.name, loggedOut: true };
-      })
-    );
+  common(
+    program
+      .command("login")
+      .description("device-flow login for the env (the mutation session)")
+  ).action(async (o: GlobalOpts) =>
+    execute(o, async (def) => {
+      await authLogin(def, {
+        onUserCode: (uri, code) =>
+          process.stderr.write(`Open to approve:\n  ${uri}\nCode: ${code}\n`),
+      });
+      return { env: def.name, loggedIn: true };
+    })
+  );
+  common(
+    program.command("logout").description("clear the env's device-flow session")
+  ).action(async (o: GlobalOpts) =>
+    execute(o, async (def) => {
+      await authLogout(def);
+      return { env: def.name, loggedOut: true };
+    })
+  );
 
   // ── org ────────────────────────────────────────────────────────────
   const org = program.command("org").description("organization management");
@@ -106,26 +112,43 @@ export function buildProgram(): Command {
           }),
         }),
         (p: { orgs: Array<{ id: string; name: string; tier: string }> }) =>
-          p.orgs.map((x) => `${x.id}  ${x.tier.padEnd(10)} ${x.name}`).join("\n")
+          p.orgs
+            .map((x) => `${x.id}  ${x.tier.padEnd(10)} ${x.name}`)
+            .join("\n")
       )
     );
 
-  common(org.command("get").description("one live org").argument("<id>"))
-    .action(async (id: string, o: GlobalOpts) =>
-      execute(o, async (def) => ({ org: await orgGet(def, id) }))
-    );
+  common(
+    org.command("get").description("one live org").argument("<id>")
+  ).action(async (id: string, o: GlobalOpts) =>
+    execute(o, async (def) => ({ org: await orgGet(def, id) }))
+  );
 
   common(
-    org.command("create").description("FULL app provisioning for an existing owner")
+    org
+      .command("create")
+      .description("FULL app provisioning for an existing owner")
       .requiredOption("--name <name>", "organization name")
-      .requiredOption("--owner-email <email>", "existing user (users originate in Auth0)")
+      .requiredOption(
+        "--owner-email <email>",
+        "existing user (users originate in Auth0)"
+      )
   ).action(async (o: GlobalOpts) =>
     execute(o, (def) =>
-      orgCreate(def, { name: o.name as string, ownerEmail: o.ownerEmail as string }, flags(o))
+      orgCreate(
+        def,
+        { name: o.name as string, ownerEmail: o.ownerEmail as string },
+        flags(o)
+      )
     )
   );
 
-  common(org.command("update").description("patch name/timezone/default station").argument("<id>"))
+  common(
+    org
+      .command("update")
+      .description("patch name/timezone/default station")
+      .argument("<id>")
+  )
     .option("--name <name>")
     .option("--timezone <tz>")
     .option("--default-station-id <id>")
@@ -137,27 +160,42 @@ export function buildProgram(): Command {
           {
             ...(o.name ? { name: o.name as string } : {}),
             ...(o.timezone ? { timezone: o.timezone as string } : {}),
-            ...(o.defaultStationId ? { defaultStationId: o.defaultStationId as string } : {}),
+            ...(o.defaultStationId
+              ? { defaultStationId: o.defaultStationId as string }
+              : {}),
           },
           flags(o)
         ),
       }))
     );
 
-  common(org.command("set-tier").description("assign a subscription tier").argument("<id>").argument("<tierSlug>"))
-    .action(async (id: string, tierSlug: string, o: GlobalOpts) =>
-      execute(o, (def) => orgSetTier(def, id, tierSlug, flags(o)))
-    );
+  common(
+    org
+      .command("set-tier")
+      .description("assign a subscription tier")
+      .argument("<id>")
+      .argument("<tierSlug>")
+  ).action(async (id: string, tierSlug: string, o: GlobalOpts) =>
+    execute(o, (def) => orgSetTier(def, id, tierSlug, flags(o)))
+  );
 
-  common(org.command("delete").description("soft-delete an org (destructive; never prod)").argument("<id>"))
-    .action(async (id: string, o: GlobalOpts) =>
-      execute(o, (def) => orgDelete(def, id, flags(o)))
-    );
+  common(
+    org
+      .command("delete")
+      .description("soft-delete an org (destructive; never prod)")
+      .argument("<id>")
+  ).action(async (id: string, o: GlobalOpts) =>
+    execute(o, (def) => orgDelete(def, id, flags(o)))
+  );
 
-  common(org.command("reset").description("org-scoped app-data reset (destructive; never prod)").argument("<id>"))
-    .action(async (id: string, o: GlobalOpts) =>
-      execute(o, (def) => orgReset(def, id, flags(o)))
-    );
+  common(
+    org
+      .command("reset")
+      .description("org-scoped app-data reset (destructive; never prod)")
+      .argument("<id>")
+  ).action(async (id: string, o: GlobalOpts) =>
+    execute(o, (def) => orgReset(def, id, flags(o)))
+  );
 
   // ── user ───────────────────────────────────────────────────────────
   const user = program.command("user").description("read-only user lookups");
@@ -176,24 +214,32 @@ export function buildProgram(): Command {
       }))
     );
 
-  common(user.command("get").description("one user by email").argument("<email>"))
-    .action(async (email: string, o: GlobalOpts) =>
-      execute(o, async (def) => ({ user: await userGet(def, email) }))
-    );
+  common(
+    user.command("get").description("one user by email").argument("<email>")
+  ).action(async (email: string, o: GlobalOpts) =>
+    execute(o, async (def) => ({ user: await userGet(def, email) }))
+  );
 
   // ── member ─────────────────────────────────────────────────────────
-  const member = program.command("member").description("org membership (by email)");
+  const member = program
+    .command("member")
+    .description("org membership (by email)");
 
-  common(member.command("add").argument("<orgId>").argument("<email>"))
-    .action(async (orgId: string, email: string, o: GlobalOpts) =>
+  common(member.command("add").argument("<orgId>").argument("<email>")).action(
+    async (orgId: string, email: string, o: GlobalOpts) =>
       execute(o, (def) => memberAdd(def, orgId, email, flags(o)))
-    );
-  common(member.command("remove").argument("<orgId>").argument("<email>"))
-    .action(async (orgId: string, email: string, o: GlobalOpts) =>
-      execute(o, (def) => memberRemove(def, orgId, email, flags(o)))
-    );
+  );
   common(
-    member.command("switch").description("make this org the user's current org in the app").argument("<orgId>").argument("<email>")
+    member.command("remove").argument("<orgId>").argument("<email>")
+  ).action(async (orgId: string, email: string, o: GlobalOpts) =>
+    execute(o, (def) => memberRemove(def, orgId, email, flags(o)))
+  );
+  common(
+    member
+      .command("switch")
+      .description("make this org the user's current org in the app")
+      .argument("<orgId>")
+      .argument("<email>")
   ).action(async (orgId: string, email: string, o: GlobalOpts) =>
     execute(o, (def) => memberSwitch(def, orgId, email, flags(o)))
   );
@@ -202,12 +248,24 @@ export function buildProgram(): Command {
   const seed = program.command("seed").description("on-demand fixtures");
 
   common(
-    seed.command("org").description("fully-provisioned org with a synthetic owner (never prod)")
+    seed
+      .command("org")
+      .description("fully-provisioned org with a synthetic owner (never prod)")
       .requiredOption("--name <name>", "organization name (idempotency key)")
-      .option("--member-email <email>", "also add this existing user as a member")
+      .option(
+        "--member-email <email>",
+        "also add this existing user as a member"
+      )
   ).action(async (o: GlobalOpts) =>
     execute(o, (def) =>
-      seedOrg(def, { name: o.name as string, memberEmail: o.memberEmail as string | undefined }, flags(o))
+      seedOrg(
+        def,
+        {
+          name: o.name as string,
+          memberEmail: o.memberEmail as string | undefined,
+        },
+        flags(o)
+      )
     )
   );
 
@@ -227,7 +285,11 @@ export async function runCli(argv: string[]): Promise<number> {
   } catch (err) {
     process.exitCode = prior;
     if (err instanceof CommanderError) {
-      if (err.code === "commander.helpDisplayed" || err.code === "commander.version") return 0;
+      if (
+        err.code === "commander.helpDisplayed" ||
+        err.code === "commander.version"
+      )
+        return 0;
       return 2;
     }
     process.stderr.write(`error: ${(err as Error)?.message}\n`);

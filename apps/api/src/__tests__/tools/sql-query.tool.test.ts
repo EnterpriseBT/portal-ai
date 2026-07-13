@@ -1,11 +1,5 @@
 /* global AbortController */
-import {
-  jest,
-  describe,
-  it,
-  expect,
-  beforeEach,
-} from "@jest/globals";
+import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockAnalyticsSqlQuery = jest.fn<() => Promise<unknown>>();
 const mockProduce = jest.fn<() => Promise<unknown>>();
@@ -84,7 +78,12 @@ async function execSync(sql = "SELECT * FROM things") {
 async function execEsc(
   input: { sql?: string; acknowledgeCost?: boolean } = {}
 ) {
-  const t = new SqlQueryTool().build("station-1", "org-1", "user-1", "portal-1");
+  const t = new SqlQueryTool().build(
+    "station-1",
+    "org-1",
+    "user-1",
+    "portal-1"
+  );
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return await (t as any).execute(
     { sql: "SELECT * FROM things", ...input },
@@ -236,7 +235,10 @@ describe("SqlQueryTool — job-tier escalation (#130 E1b)", () => {
   });
 
   it("escalates via the 30s timeout backstop when the sync run times out", async () => {
-    mockExplainSqlQuery.mockResolvedValueOnce({ totalCost: 10, estimatedRows: 5 });
+    mockExplainSqlQuery.mockResolvedValueOnce({
+      totalCost: 10,
+      estimatedRows: 5,
+    });
     mockAnalyticsSqlQuery.mockRejectedValueOnce(
       new ApiError(400, ApiCode.PORTAL_SQL_TIMEOUT, "query timed out (30s)")
     );
@@ -248,7 +250,10 @@ describe("SqlQueryTool — job-tier escalation (#130 E1b)", () => {
   });
 
   it("rethrows a non-timeout sync error without escalating", async () => {
-    mockExplainSqlQuery.mockResolvedValueOnce({ totalCost: 10, estimatedRows: 5 });
+    mockExplainSqlQuery.mockResolvedValueOnce({
+      totalCost: 10,
+      estimatedRows: 5,
+    });
     mockAnalyticsSqlQuery.mockRejectedValueOnce(
       new ApiError(400, ApiCode.PORTAL_SQL_FORBIDDEN, "nope")
     );
@@ -264,7 +269,14 @@ describe("SqlQueryTool — job-tier escalation (#130 E1b)", () => {
     mockJobsCreate.mockResolvedValueOnce({ id: "job-1" });
     mockAwaitJobTerminal.mockResolvedValueOnce({
       status: "completed",
-      result: { queryHandle: "qh-job", rowCount: 9_000, schema: [], sampled: false, truncated: false, samplePeek: [] },
+      result: {
+        queryHandle: "qh-job",
+        rowCount: 9_000,
+        schema: [],
+        sampled: false,
+        truncated: false,
+        samplePeek: [],
+      },
       error: null,
     });
 

@@ -1420,9 +1420,8 @@ describe("Connector Instance Router", () => {
       // Insert a row directly with already-encrypted credentials, mirroring
       // what the OAuth callback writes. The repository decrypts on read; the
       // serializer projects it to accountInfo.identity = email.
-      const { encryptCredentials } = await import(
-        "../../../utils/crypto.util.js"
-      );
+      const { encryptCredentials } =
+        await import("../../../utils/crypto.util.js");
       const credentialsBlob = encryptCredentials({
         refresh_token: "1//super-secret-refresh-token",
         scopes: ["drive.readonly"],
@@ -1451,7 +1450,9 @@ describe("Connector Instance Router", () => {
       });
       expect(body.credentials).toBeUndefined();
       // Deep-scan: refresh_token must not appear anywhere in the response.
-      expect(JSON.stringify(res.body)).not.toContain("super-secret-refresh-token");
+      expect(JSON.stringify(res.body)).not.toContain(
+        "super-secret-refresh-token"
+      );
     });
   });
 
@@ -1623,29 +1624,27 @@ describe("Connector Instance Router", () => {
 
       // Seed an in-flight job directly so we don't race the queue.
       const inFlightJobId = generateId();
-      await (db as ReturnType<typeof drizzle>)
-        .insert(schema.jobs)
-        .values({
-          id: inFlightJobId,
-          organizationId,
-          type: "connector_sync",
-          status: "active",
-          progress: 50,
-          metadata: { connectorInstanceId: instanceId, organizationId },
-          result: null,
-          error: null,
-          startedAt: now,
-          completedAt: null,
-          bullJobId: null,
-          attempts: 1,
-          maxAttempts: 3,
-          created: now,
-          createdBy: "SYSTEM_TEST",
-          updated: null,
-          updatedBy: null,
-          deleted: null,
-          deletedBy: null,
-        } as never);
+      await (db as ReturnType<typeof drizzle>).insert(schema.jobs).values({
+        id: inFlightJobId,
+        organizationId,
+        type: "connector_sync",
+        status: "active",
+        progress: 50,
+        metadata: { connectorInstanceId: instanceId, organizationId },
+        result: null,
+        error: null,
+        startedAt: now,
+        completedAt: null,
+        bullJobId: null,
+        attempts: 1,
+        maxAttempts: 3,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
 
       const res = await request(app)
         .post(`/api/connector-instances/${instanceId}/sync`)
@@ -1683,29 +1682,27 @@ describe("Connector Instance Router", () => {
         .insert(connectorInstances)
         .values(instance as never);
       const jobId = generateId();
-      await (db as ReturnType<typeof drizzle>)
-        .insert(schema.jobs)
-        .values({
-          id: jobId,
-          organizationId,
-          type: jobType,
-          status: jobStatus,
-          progress: 0,
-          metadata: { connectorInstanceId: instance.id, organizationId },
-          result: null,
-          error: null,
-          startedAt: now,
-          completedAt: null,
-          bullJobId: null,
-          attempts: 0,
-          maxAttempts: 3,
-          created: now,
-          createdBy: "SYSTEM_TEST",
-          updated: null,
-          updatedBy: null,
-          deleted: null,
-          deletedBy: null,
-        } as never);
+      await (db as ReturnType<typeof drizzle>).insert(schema.jobs).values({
+        id: jobId,
+        organizationId,
+        type: jobType,
+        status: jobStatus,
+        progress: 0,
+        metadata: { connectorInstanceId: instance.id, organizationId },
+        result: null,
+        error: null,
+        startedAt: now,
+        completedAt: null,
+        bullJobId: null,
+        attempts: 0,
+        maxAttempts: 3,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
       return { instanceId: instance.id, organizationId, jobId };
     }
 
@@ -1821,9 +1818,7 @@ describe("Connector Instance Router", () => {
         workbookFingerprint: {
           sheetNames: ["Sheet1"],
           dimensions: { Sheet1: { rows: 2, cols: 2 } },
-          anchorCells: [
-            { sheet: "Sheet1", row: 1, col: 1, value: "email" },
-          ],
+          anchorCells: [{ sheet: "Sheet1", row: 1, col: 1, value: "email" }],
         },
         regions: [
           {
@@ -1932,9 +1927,9 @@ describe("Connector Instance Router", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.payload.connectorInstance.syncEligible).toBe(true);
-      expect(
-        res.body.payload.connectorInstance.identityWarnings
-      ).toEqual([{ regionId: "r1" }]);
+      expect(res.body.payload.connectorInstance.identityWarnings).toEqual([
+        { regionId: "r1" },
+      ]);
     });
 
     it("is false when the instance has no committed plan", async () => {
@@ -1981,9 +1976,7 @@ describe("Connector Instance Router", () => {
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);
-      expect(
-        res.body.payload.connectorInstance.syncEligible
-      ).toBeUndefined();
+      expect(res.body.payload.connectorInstance.syncEligible).toBeUndefined();
     });
   });
 });

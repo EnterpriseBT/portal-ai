@@ -29,17 +29,13 @@ const InputSchema = withComputeInput({
     .min(2)
     .max(10)
     .optional()
-    .describe(
-      "Polynomial degree (default 2). Ignored when type is 'linear'."
-    ),
+    .describe("Polynomial degree (default 2). Ignored when type is 'linear'."),
   confidence: z
     .number()
     .gt(0)
     .lt(1)
     .optional()
-    .describe(
-      "Confidence level for the coefficient intervals (default 0.95)."
-    ),
+    .describe("Confidence level for the coefficient intervals (default 0.95)."),
 });
 
 export class RegressionTool extends Tool<typeof InputSchema> {

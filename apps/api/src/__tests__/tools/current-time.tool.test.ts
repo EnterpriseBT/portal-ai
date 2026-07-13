@@ -24,9 +24,7 @@ jest.unstable_mockModule("../../utils/logger.util.js", () => ({
   }),
 }));
 
-const { CurrentTimeTool } = await import(
-  "../../tools/current-time.tool.js"
-);
+const { CurrentTimeTool } = await import("../../tools/current-time.tool.js");
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -76,7 +74,10 @@ describe("CurrentTimeTool", () => {
   });
 
   it("falls back to UTC when the org's timezone is not a valid IANA name", async () => {
-    mockFindById.mockResolvedValueOnce({ id: "org-1", timezone: "Mars/Olympus" });
+    mockFindById.mockResolvedValueOnce({
+      id: "org-1",
+      timezone: "Mars/Olympus",
+    });
     const r = await exec();
     expect(r.timezone).toBe("UTC");
     expect(r.localTime.endsWith("+00:00")).toBe(true);

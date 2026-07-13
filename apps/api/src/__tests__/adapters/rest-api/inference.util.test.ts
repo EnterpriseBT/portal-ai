@@ -40,9 +40,7 @@ describe("inferColumns — single-record + scalar types", () => {
   });
 
   it("infers number, boolean, json from single-record scalars + nested", () => {
-    const result = inferColumns([
-      { age: 30, active: true, meta: { x: 1 } },
-    ]);
+    const result = inferColumns([{ age: 30, active: true, meta: { x: 1 } }]);
     const byKey = Object.fromEntries(result.columns.map((c) => [c.key, c]));
     expect(byKey.age.type).toBe("number");
     expect(byKey.active.type).toBe("boolean");
@@ -99,11 +97,7 @@ describe("inferColumns — nested + array values", () => {
   });
 
   it("collapses scalar+object to json", () => {
-    const records = [
-      { meta: { a: 1 } },
-      { meta: "huh" },
-      { meta: { b: 2 } },
-    ];
+    const records = [{ meta: { a: 1 } }, { meta: "huh" }, { meta: { b: 2 } }];
     const result = inferColumns(records);
     expect(result.columns[0]).toMatchObject({ key: "meta", type: "json" });
   });
@@ -173,11 +167,7 @@ describe("inferColumns — sample collection", () => {
   });
 
   it("excludes nulls from the sample list", () => {
-    const records = [
-      { note: "x" },
-      { note: null },
-      { note: "y" },
-    ];
+    const records = [{ note: "x" }, { note: null }, { note: "y" }];
     const result = inferColumns(records);
     expect(result.samples.note).toEqual(["x", "y"]);
   });

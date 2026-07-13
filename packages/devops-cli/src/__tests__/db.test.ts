@@ -18,7 +18,8 @@ jest.unstable_mockModule("../reset.js", () => ({ runReset: runResetMock }));
 const runSeedTaskMock = jest.fn<() => Promise<unknown>>();
 jest.unstable_mockModule("../ecs.js", () => ({ runSeedTask: runSeedTaskMock }));
 
-const { dbTunnel, dbPsql, dbSeed, dbResetSeed } = await import("../commands/db.js");
+const { dbTunnel, dbPsql, dbSeed, dbResetSeed } =
+  await import("../commands/db.js");
 
 const appDev = BUILTIN_ENVIRONMENTS["app-dev"];
 const prodLike: MockEnvDef = {
@@ -41,7 +42,9 @@ const connection = () => ({
 beforeEach(() => {
   resetCliEnvMocks();
   runResetMock.mockReset().mockResolvedValue({ dropped: [], truncated: [] });
-  runSeedTaskMock.mockReset().mockResolvedValue({ taskArn: "arn", exitCode: 0 });
+  runSeedTaskMock
+    .mockReset()
+    .mockResolvedValue({ taskArn: "arn", exitCode: 0 });
   mocks.resolveEnvConnection.mockResolvedValue(connection());
 });
 
@@ -79,7 +82,9 @@ describe("dbPsql", () => {
   });
 
   it("missing psql binary → ENV_INFRA_ERROR with install guidance", async () => {
-    const enoent = Object.assign(new Error("spawn psql ENOENT"), { code: "ENOENT" });
+    const enoent = Object.assign(new Error("spawn psql ENOENT"), {
+      code: "ENOENT",
+    });
     const spawner = jest.fn(async () => {
       throw enoent;
     });

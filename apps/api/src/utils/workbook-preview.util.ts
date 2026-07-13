@@ -51,9 +51,7 @@ export function sheetId(index: number, name: string): string {
 }
 
 /** Coerce the parser's rich `CellValue` into the preview's JSON-safe union. */
-export function coerceToPreviewCell(
-  value: CellValue
-): string | number | null {
+export function coerceToPreviewCell(value: CellValue): string | number | null {
   if (value === null || value === undefined) return null;
   if (typeof value === "string") return value;
   if (typeof value === "number") return value;
@@ -87,10 +85,11 @@ export function inflateSheetPreview(
   const cells: (string | number | null)[][] = Array.from(
     { length: sheet.dimensions.rows },
     () =>
-      Array.from(
-        { length: sheet.dimensions.cols },
-        () => "" as string
-      ) as (string | number | null)[]
+      Array.from({ length: sheet.dimensions.cols }, () => "" as string) as (
+        | string
+        | number
+        | null
+      )[]
   );
   for (const cell of sheet.cells) {
     const r = cell.row - 1;
@@ -141,22 +140,10 @@ export function sliceWorkbookRectangle(
   sheet: WorkbookData["sheets"][number],
   query: SliceQuery
 ): SliceResult {
-  const rowStart = Math.max(
-    0,
-    Math.min(query.rowStart, sheet.dimensions.rows)
-  );
-  const rowEnd = Math.max(
-    0,
-    Math.min(query.rowEnd, sheet.dimensions.rows)
-  );
-  const colStart = Math.max(
-    0,
-    Math.min(query.colStart, sheet.dimensions.cols)
-  );
-  const colEnd = Math.max(
-    0,
-    Math.min(query.colEnd, sheet.dimensions.cols)
-  );
+  const rowStart = Math.max(0, Math.min(query.rowStart, sheet.dimensions.rows));
+  const rowEnd = Math.max(0, Math.min(query.rowEnd, sheet.dimensions.rows));
+  const colStart = Math.max(0, Math.min(query.colStart, sheet.dimensions.cols));
+  const colEnd = Math.max(0, Math.min(query.colEnd, sheet.dimensions.cols));
 
   if (rowEnd <= rowStart || colEnd <= colStart) {
     return { cells: [], rowStart, colStart };
@@ -175,10 +162,11 @@ export function sliceWorkbookRectangle(
   const cells: (string | number | null)[][] = Array.from(
     { length: rows },
     () =>
-      Array.from(
-        { length: cols },
-        () => "" as string
-      ) as (string | number | null)[]
+      Array.from({ length: cols }, () => "" as string) as (
+        | string
+        | number
+        | null
+      )[]
   );
   for (const cell of sheet.cells) {
     const r = cell.row - 1 - rowStart;
@@ -374,4 +362,3 @@ export async function writeSheetDataToChunks(
   }
   return { rowCount: rows, colCount: cols, merges };
 }
-

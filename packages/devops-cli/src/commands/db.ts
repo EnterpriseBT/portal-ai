@@ -26,7 +26,10 @@ export interface ConnectOptions {
 }
 
 /** Prod connect barrier: connecting to production requires --confirm-prod. */
-function guardProdConnect(def: EnvironmentDefinition, opts: ConnectOptions): void {
+function guardProdConnect(
+  def: EnvironmentDefinition,
+  opts: ConnectOptions
+): void {
   if (def.kind === "production" && !opts.confirmProd) {
     throw new EnvConfirmationRequiredError(
       `Connecting to production environment "${def.name}" requires the production barrier flag (--confirm-prod)`
@@ -50,7 +53,10 @@ export async function dbTunnel(
   guardProdConnect(def, opts);
   const conn = await resolveEnvConnection(def.name);
   const db = await conn.db();
-  return { connectionString: db.connectionString, dispose: () => conn.dispose() };
+  return {
+    connectionString: db.connectionString,
+    dispose: () => conn.dispose(),
+  };
 }
 
 // ── psql ─────────────────────────────────────────────────────────────

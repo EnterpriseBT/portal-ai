@@ -33,7 +33,8 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       fieldMappings: { findById: mockFindById, update: mockUpdate },
     },
   },
-}));jest.unstable_mockModule("../../db/repositories/base.repository.js", () => ({
+}));
+jest.unstable_mockModule("../../db/repositories/base.repository.js", () => ({
   Repository: { transaction: mockTransaction },
 }));
 

@@ -34,7 +34,9 @@ export const npmSpawner: WorkspaceSpawner = (args, env) =>
     child.stdout.on("data", (c: Buffer) => (stdout += c.toString()));
     child.stderr.on("data", (c: Buffer) => (stderr += c.toString()));
     child.on("error", (e) =>
-      reject(new EnvInfraError(`Failed to spawn npm: ${e.message}`, { cause: e }))
+      reject(
+        new EnvInfraError(`Failed to spawn npm: ${e.message}`, { cause: e })
+      )
     );
     child.on("exit", (code) => resolve({ code: code ?? 1, stdout, stderr }));
   });

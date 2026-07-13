@@ -24,11 +24,27 @@ export { organizations, users, organizationUsers, tiers } from "./tables.js";
 
 export { requireMutationOperator, decodeSub } from "./session.js";
 
-export { orgList, orgGet, orgUpdate, orgSetTier, orgDelete } from "./commands/org.js";
+export {
+  orgList,
+  orgGet,
+  orgUpdate,
+  orgSetTier,
+  orgDelete,
+} from "./commands/org.js";
 export { userList, userGet } from "./commands/user.js";
 export { memberAdd, memberRemove, memberSwitch } from "./commands/member.js";
 export { authLogin, authLogout } from "./commands/auth.js";
-export { orgCreate, orgReset, seedOrg, npmSpawner, type WorkspaceSpawner } from "./commands/provision.js";
-export { withStore, beginMutation, type MutateFlags } from "./commands/common.js";
+export {
+  orgCreate,
+  orgReset,
+  seedOrg,
+  npmSpawner,
+  type WorkspaceSpawner,
+} from "./commands/provision.js";
+export {
+  withStore,
+  beginMutation,
+  type MutateFlags,
+} from "./commands/common.js";
 
 export { EXIT_CODES, exitCodeFor, printBanner, jsonError } from "./output.js";

@@ -27,9 +27,8 @@ jest.unstable_mockModule("../../../services/portal-sql.service.js", () => ({
   PortalSqlService: { runSqlQuery: mockRunSqlQuery },
 }));
 
-const { PortalSqlHandleService } = await import(
-  "../../../services/portal-sql-handle.service.js"
-);
+const { PortalSqlHandleService } =
+  await import("../../../services/portal-sql-handle.service.js");
 // Uses `cluster` (a surviving pure-compute tool) to exercise the generic
 // read→compute surface: describe_column was removed in #130 E2. k=1 over the
 // `amount` column gives one centroid (the column mean) and one cluster

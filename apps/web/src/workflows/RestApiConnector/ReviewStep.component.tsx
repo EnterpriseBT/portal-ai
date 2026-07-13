@@ -41,16 +41,29 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
       </Typography>
       {endpoints.map((ep, i) => (
         <Typography key={i} variant="body2">
-          {ep.label} — <code>{ep.method} {ep.path}</code>
-          {ep.recordsPath ? <> · records at <code>{ep.recordsPath}</code></> : null}
-          {ep.idField ? <> · idField <code>{ep.idField}</code></> : null}
+          {ep.label} —{" "}
+          <code>
+            {ep.method} {ep.path}
+          </code>
+          {ep.recordsPath ? (
+            <>
+              {" "}
+              · records at <code>{ep.recordsPath}</code>
+            </>
+          ) : null}
+          {ep.idField ? (
+            <>
+              {" "}
+              · idField <code>{ep.idField}</code>
+            </>
+          ) : null}
         </Typography>
       ))}
     </Stack>
     <Typography variant="caption" color="text.secondary">
       Clicking Commit creates the connector instance and configures every
-      endpoint above. You&rsquo;ll add field mappings + run the first
-      sync from each entity&rsquo;s detail view after commit.
+      endpoint above. You&rsquo;ll add field mappings + run the first sync from
+      each entity&rsquo;s detail view after commit.
     </Typography>
   </Stack>
 );

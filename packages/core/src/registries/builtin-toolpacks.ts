@@ -277,7 +277,11 @@ const STATISTICS_PACK: BuiltinToolpackSpec = {
       examples: [
         {
           title: "Segment customers into 3 clusters by spend and frequency",
-          input: { queryHandle: "qh-9f3c", columns: ["spend", "frequency"], k: 3 },
+          input: {
+            queryHandle: "qh-9f3c",
+            columns: ["spend", "frequency"],
+            k: 3,
+          },
           output: {
             clusters: [0, 2, 1, 0, 2],
             centroids: [
@@ -370,7 +374,12 @@ const REGRESSION_PACK: BuiltinToolpackSpec = {
       examples: [
         {
           title: "Linear fit of price vs. square footage",
-          input: { queryHandle: "qh-9f3c", x: "sqft", y: "price", type: "linear" },
+          input: {
+            queryHandle: "qh-9f3c",
+            x: "sqft",
+            y: "price",
+            type: "linear",
+          },
           output: { coefficients: [25000, 188.4], rSquared: 0.74 },
         },
       ],
@@ -398,14 +407,21 @@ const REGRESSION_PACK: BuiltinToolpackSpec = {
         {
           ...computeSourceFields(),
           dateColumn: stringField("Date column (a key in the rows)"),
-          valueColumn: stringField("Numeric column to forecast (a key in the rows)"),
+          valueColumn: stringField(
+            "Numeric column to forecast (a key in the rows)"
+          ),
           horizon: integerField("Number of future periods to forecast"),
-          seasonalPeriod: integerField("Seasonal period (omit for non-seasonal)"),
+          seasonalPeriod: integerField(
+            "Seasonal period (omit for non-seasonal)"
+          ),
           seasonality: enumField(
             ["none", "additive", "multiplicative"],
             "Seasonal component (default none)"
           ),
-          trend: enumField(["none", "additive"], "Trend component (default additive)"),
+          trend: enumField(
+            ["none", "additive"],
+            "Trend component (default additive)"
+          ),
           alpha: numberField("Level smoothing parameter (default 0.5)"),
           beta: numberField("Trend smoothing parameter (default 0.1)"),
           gamma: numberField("Seasonal smoothing parameter (default 0.1)"),
@@ -546,9 +562,7 @@ const FINANCIAL_PACK: BuiltinToolpackSpec = {
             ["weekly", "biweekly", "monthly", "quarterly", "annual"],
             "Compounding frequency (default monthly)"
           ),
-          extraPayment: numberField(
-            "Additional principal payment per period"
-          ),
+          extraPayment: numberField("Additional principal payment per period"),
         },
         ["principal", "annualRate", "periods"]
       ),
@@ -562,10 +576,7 @@ const FINANCIAL_PACK: BuiltinToolpackSpec = {
           ...computeSourceFields(),
           returnColumn: stringField("Returns column (a key in the rows)"),
           confidence: numberField("Confidence level in (0, 1) (default 0.95)"),
-          method: enumField(
-            ["historical", "parametric"],
-            "Estimation method"
-          ),
+          method: enumField(["historical", "parametric"], "Estimation method"),
         },
         ["returnColumn"]
       ),
@@ -614,9 +625,7 @@ const FINANCIAL_PACK: BuiltinToolpackSpec = {
           face: numberField("Face value"),
           coupon: numberField("Annual coupon rate (e.g. 0.05)"),
           maturity: numberField("Years to maturity"),
-          frequency: integerField(
-            "Coupon payments per year (1, 2, or 4)"
-          ),
+          frequency: integerField("Coupon payments per year (1, 2, or 4)"),
           price: numberField("Clean price (required when solving for ytm)"),
           yield: numberField(
             "Yield (required when solving for price/duration/convexity)"
@@ -678,10 +687,9 @@ const WEB_SEARCH_PACK: BuiltinToolpackSpec = {
       name: "web_search",
       description:
         "Search the web for current information. Use this when the prompt requires real-time or recent data.",
-      parameterSchema: objectSchema(
-        { query: stringField("Search query") },
-        ["query"]
-      ),
+      parameterSchema: objectSchema({ query: stringField("Search query") }, [
+        "query",
+      ]),
       examples: [
         {
           title: "Find recent news",
@@ -762,10 +770,9 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
       name: "entity_record_delete",
       description:
         "Soft-deletes one or more entity records. Accepts 1–100 items.",
-      parameterSchema: objectSchema(
-        { ids: stringArrayField("Record ids") },
-        ["ids"]
-      ),
+      parameterSchema: objectSchema({ ids: stringArrayField("Record ids") }, [
+        "ids",
+      ]),
     },
     {
       name: "connector_entity_create",
@@ -889,11 +896,9 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
           expression: {
             type: "object",
             description:
-              "The per-record derivation. `kind: \"sql\"` carries a SQL projection in `value` whose aliases match target wide-columns; `kind: \"tool\"` carries a tool `ref` (+ optional `args`). Both carry a `writes[]` array mapping each derived value into a target wide-column.",
+              'The per-record derivation. `kind: "sql"` carries a SQL projection in `value` whose aliases match target wide-columns; `kind: "tool"` carries a tool `ref` (+ optional `args`). Both carry a `writes[]` array mapping each derived value into a target wide-column.',
           },
-          keyField: stringField(
-            "Upsert key on the target's `source_id`."
-          ),
+          keyField: stringField("Upsert key on the target's `source_id`."),
           batchSize: integerField(
             "Records per batch (default 1000, max 10000)."
           ),

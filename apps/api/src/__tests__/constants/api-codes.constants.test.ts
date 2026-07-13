@@ -24,13 +24,10 @@ const NEW_CODES_PHASE_1: ApiCode[] = [
 ];
 
 describe("Phase 1 ApiCode additions (#85)", () => {
-  it.each(NEW_CODES_PHASE_1)(
-    "%s is exported on the ApiCode enum",
-    (code) => {
-      expect(typeof code).toBe("string");
-      expect(code.length).toBeGreaterThan(0);
-    }
-  );
+  it.each(NEW_CODES_PHASE_1)("%s is exported on the ApiCode enum", (code) => {
+    expect(typeof code).toBe("string");
+    expect(code.length).toBeGreaterThan(0);
+  });
 
   it.each(NEW_CODES_PHASE_1)(
     "%s has a default recommendation string",

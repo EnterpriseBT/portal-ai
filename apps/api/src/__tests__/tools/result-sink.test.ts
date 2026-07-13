@@ -23,9 +23,8 @@ jest.unstable_mockModule("../../services/portal-sql.service.js", () => ({
 }));
 
 const { resolveResultSink } = await import("../../tools/result-sink.js");
-const { PortalSqlHandleService } = await import(
-  "../../services/portal-sql-handle.service.js"
-);
+const { PortalSqlHandleService } =
+  await import("../../services/portal-sql-handle.service.js");
 
 const CTX = { stationId: "s1", organizationId: "o1" };
 const rowsProd = (onLarge: "handle" | "sample" | "error"): Production => ({
@@ -105,15 +104,14 @@ describe("resolveResultSink (#161)", () => {
     date: new Date(Date.UTC(2021, 0, 1) + i * 86_400_000).toISOString(),
     value: 100 + i,
   }));
-  const smaTransform = (sourceHandle: string) =>
-    ({
-      kind: "technical_indicator" as const,
-      sourceHandle,
-      dateColumn: "date",
-      valueColumn: "value",
-      indicator: "SMA" as const,
-      params: { period: 3 },
-    });
+  const smaTransform = (sourceHandle: string) => ({
+    kind: "technical_indicator" as const,
+    sourceHandle,
+    dateColumn: "date",
+    valueColumn: "value",
+    indicator: "SMA" as const,
+    params: { period: 3 },
+  });
 
   async function source() {
     const { envelope } = await PortalSqlHandleService.produceFromRows({

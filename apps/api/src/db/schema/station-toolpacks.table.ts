@@ -35,9 +35,7 @@ export const stationToolpacks = pgTable(
     // The same built-in slug cannot be attached to a station twice (live rows only).
     uniqueIndex("station_toolpacks_station_slug_unique")
       .on(table.stationId, table.builtinSlug)
-      .where(
-        sql`deleted IS NULL AND ${table.builtinSlug} IS NOT NULL`
-      ),
+      .where(sql`deleted IS NULL AND ${table.builtinSlug} IS NOT NULL`),
     // The same custom toolpack cannot be attached to a station twice (live rows only).
     uniqueIndex("station_toolpacks_station_orgtp_unique")
       .on(table.stationId, table.organizationToolpackId)

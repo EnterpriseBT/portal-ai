@@ -993,9 +993,8 @@ connectorEntityRouter.post(
 
       // Query the wide table by record_id. The drizzle-raw shape uses
       // a parameterized array so we don't have to escape per id.
-      const { wideTableRepo } = await import(
-        "../db/repositories/wide-table.repository.js"
-      );
+      const { wideTableRepo } =
+        await import("../db/repositories/wide-table.repository.js");
       const { sql } = await import("drizzle-orm");
       const tableName = wideTableRepo.tableName(id).replace(/"/g, '""');
       const result = await db.execute(

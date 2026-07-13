@@ -1,9 +1,8 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { ConnectorInstanceSyncFeedbackUI } = await import(
-  "../components/ConnectorInstanceSyncFeedback.component"
-);
+const { ConnectorInstanceSyncFeedbackUI } =
+  await import("../components/ConnectorInstanceSyncFeedback.component");
 
 describe("ConnectorInstanceSyncFeedbackUI", () => {
   const baseProps = {

@@ -13,7 +13,9 @@ import { detectIdentity } from "../detect-identity.js";
 import { detectRegions } from "../detect-regions.js";
 import { detectSegments } from "../detect-segments.js";
 
-async function runUpToDetectIdentity(input: InterpretInput): Promise<InterpretState> {
+async function runUpToDetectIdentity(
+  input: InterpretInput
+): Promise<InterpretState> {
   let state = createInitialState(input);
   state = detectRegions(state);
   state = await detectHeaders(state);

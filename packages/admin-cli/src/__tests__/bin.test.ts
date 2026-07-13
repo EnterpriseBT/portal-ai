@@ -32,11 +32,15 @@ beforeEach(() => {
   mockStore.close.mockReset().mockResolvedValue(undefined);
   out = "";
   err = "";
-  outSpy = jest.spyOn(process.stdout, "write").mockImplementation(((s: string) => {
+  outSpy = jest.spyOn(process.stdout, "write").mockImplementation(((
+    s: string
+  ) => {
     out += s;
     return true;
   }) as never);
-  errSpy = jest.spyOn(process.stderr, "write").mockImplementation(((s: string) => {
+  errSpy = jest.spyOn(process.stderr, "write").mockImplementation(((
+    s: string
+  ) => {
     err += s;
     return true;
   }) as never);
@@ -44,7 +48,10 @@ beforeEach(() => {
     env: "app-dev",
     kind: "staging",
     apiBaseUrl: "x",
-    db: async () => ({ connectionString: "postgresql://u:p@h:1/db", close: async () => {} }),
+    db: async () => ({
+      connectionString: "postgresql://u:p@h:1/db",
+      close: async () => {},
+    }),
     token: async () => "t",
     dispose: async () => {},
   });
@@ -64,7 +71,14 @@ describe("runCli — the agent contract", () => {
     mockStore.getUserByEmail.mockRejectedValue(
       new AdminNotFoundError("User x@y.z not found")
     );
-    const code = await runCli(["user", "get", "x@y.z", "--env", "app-dev", "--json"]);
+    const code = await runCli([
+      "user",
+      "get",
+      "x@y.z",
+      "--env",
+      "app-dev",
+      "--json",
+    ]);
     expect(code).toBe(8);
     expect(JSON.parse(out.trim())).toEqual({
       error: { code: "ADMIN_NOT_FOUND", message: "User x@y.z not found" },
@@ -76,7 +90,9 @@ describe("runCli — the agent contract", () => {
     const code = await runCli(["org", "list", "--env", "app-dev", "--json"]);
     expect(code).toBe(0);
     expect(err).toContain("[env: app-dev (staging)]");
-    expect(JSON.parse(out.trim())).toEqual({ orgs: [{ id: "o-1", name: "Acme" }] });
+    expect(JSON.parse(out.trim())).toEqual({
+      orgs: [{ id: "o-1", name: "Acme" }],
+    });
     expect(out).not.toContain("[env:");
   });
 });

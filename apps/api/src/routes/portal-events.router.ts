@@ -209,9 +209,8 @@ portalEventsRouter.get(
         );
       }
 
-      const { PORTAL_EVENTS_CHANNEL_PREFIX } = await import(
-        "../services/portal.service.js"
-      );
+      const { PORTAL_EVENTS_CHANNEL_PREFIX } =
+        await import("../services/portal.service.js");
       const { getRedisClient } = await import("../utils/redis.util.js");
 
       const channel = `${PORTAL_EVENTS_CHANNEL_PREFIX}${portalId}`;

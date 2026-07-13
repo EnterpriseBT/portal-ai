@@ -240,7 +240,12 @@ export const InferredColumnsTableUI: React.FC<InferredColumnsTableUIProps> = ({
       />
 
       <Stack direction="row">
-        <Button type="button" variant="outlined" size="small" onClick={onAddRow}>
+        <Button
+          type="button"
+          variant="outlined"
+          size="small"
+          onClick={onAddRow}
+        >
           Add column
         </Button>
       </Stack>

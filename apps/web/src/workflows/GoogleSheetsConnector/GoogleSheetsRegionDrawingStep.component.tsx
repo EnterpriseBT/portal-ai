@@ -18,8 +18,7 @@ import type { ServerError } from "../../utils/api.util";
  * If a third workflow surfaces the same shell, promote to a shared
  * `<RegionDrawingStepWithErrorUI>` in the module.
  */
-export interface GoogleSheetsRegionDrawingStepUIProps
-  extends RegionDrawingStepUIProps {
+export interface GoogleSheetsRegionDrawingStepUIProps extends RegionDrawingStepUIProps {
   serverError: ServerError | null;
 }
 

@@ -15,11 +15,13 @@ import { streamFetchRecords } from "../../../adapters/rest-api/stream.util.js";
  * `cancel` callback runs — i.e., when the consumer breaks early and
  * the Node Readable adapter propagates cancellation upstream.
  */
-function makeControlledFetch(opts: {
-  status?: number;
-  headers?: Record<string, string>;
-  cancelSpy?: (reason?: unknown) => void;
-} = {}) {
+function makeControlledFetch(
+  opts: {
+    status?: number;
+    headers?: Record<string, string>;
+    cancelSpy?: (reason?: unknown) => void;
+  } = {}
+) {
   let controller!: ReadableStreamDefaultController<Uint8Array>;
   const stream = new ReadableStream<Uint8Array>({
     start(c) {
@@ -78,12 +80,9 @@ describe("streamFetchRecords — happy path", () => {
   it("case 1: emits records incrementally as bytes arrive", async () => {
     const ctrl = makeControlledFetch();
 
-    const result = await streamFetchRecords(
-      "https://x.test",
-      {},
-      "items",
-      { fetchImpl: ctrl.fetch }
-    );
+    const result = await streamFetchRecords("https://x.test", {}, "items", {
+      fetchImpl: ctrl.fetch,
+    });
 
     const iter = result.recordsStream[Symbol.asyncIterator]();
 
@@ -111,12 +110,9 @@ describe("streamFetchRecords — happy path", () => {
   it("case 2: recordsPath = '' streams the document-root array", async () => {
     const fake = staticFetch('[{"id":1},{"id":2},{"id":3}]');
 
-    const result = await streamFetchRecords(
-      "https://x.test",
-      {},
-      "",
-      { fetchImpl: fake }
-    );
+    const result = await streamFetchRecords("https://x.test", {}, "", {
+      fetchImpl: fake,
+    });
 
     const records = await collect(result.recordsStream);
     expect(records).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
@@ -141,12 +137,9 @@ describe("streamFetchRecords — happy path", () => {
   it("case 4: empty array → empty iteration, no throws", async () => {
     const fake = staticFetch('{"items":[]}');
 
-    const result = await streamFetchRecords(
-      "https://x.test",
-      {},
-      "items",
-      { fetchImpl: fake }
-    );
+    const result = await streamFetchRecords("https://x.test", {}, "items", {
+      fetchImpl: fake,
+    });
 
     const records = await collect(result.recordsStream);
     expect(records).toEqual([]);
@@ -158,12 +151,9 @@ describe("streamFetchRecords — happy path", () => {
       headers: { "x-custom": "v" },
     });
 
-    const result = await streamFetchRecords(
-      "https://x.test",
-      {},
-      "items",
-      { fetchImpl: fake }
-    );
+    const result = await streamFetchRecords("https://x.test", {}, "items", {
+      fetchImpl: fake,
+    });
 
     expect(result.status).toBe(200);
     expect(result.headers["x-custom"]).toBe("v");
@@ -176,12 +166,9 @@ describe("streamFetchRecords — happy path", () => {
     const expected = Buffer.byteLength(body, "utf8");
     const fake = staticFetch(body);
 
-    const result = await streamFetchRecords(
-      "https://x.test",
-      {},
-      "items",
-      { fetchImpl: fake }
-    );
+    const result = await streamFetchRecords("https://x.test", {}, "items", {
+      fetchImpl: fake,
+    });
 
     // Counter starts at 0 — the iterator hasn't pulled any chunks yet.
     expect(result.recordsStream.getBytesObserved()).toBe(0);
@@ -213,8 +200,7 @@ describe("streamFetchRecords — error cases", () => {
       streamFetchRecords("https://x.test", {}, "items", { fetchImpl: fake })
     ).rejects.toMatchObject({
       code: ApiCode.REST_API_FETCH_FAILED,
-      message:
-        'Endpoint returned HTTP 422: required field "symbols" missing',
+      message: 'Endpoint returned HTTP 422: required field "symbols" missing',
       details: expect.objectContaining({
         status: 422,
         responseBody:
@@ -226,12 +212,9 @@ describe("streamFetchRecords — error cases", () => {
   it("case 6: malformed JSON mid-stream throws inside for-await; earlier records observable", async () => {
     const ctrl = makeControlledFetch();
 
-    const result = await streamFetchRecords(
-      "https://x.test",
-      {},
-      "items",
-      { fetchImpl: ctrl.fetch }
-    );
+    const result = await streamFetchRecords("https://x.test", {}, "items", {
+      fetchImpl: ctrl.fetch,
+    });
 
     const iter = result.recordsStream[Symbol.asyncIterator]();
 
@@ -267,12 +250,9 @@ describe("streamFetchRecords — error cases", () => {
   it("case 7b: recordsPath resolves to non-array throws REST_API_RECORDS_PATH_NOT_ARRAY", async () => {
     const fake = staticFetch('{"items":{"not":"an-array"}}');
 
-    const result = await streamFetchRecords(
-      "https://x.test",
-      {},
-      "items",
-      { fetchImpl: fake }
-    );
+    const result = await streamFetchRecords("https://x.test", {}, "items", {
+      fetchImpl: fake,
+    });
 
     await expect(collect(result.recordsStream)).rejects.toMatchObject({
       code: ApiCode.REST_API_RECORDS_PATH_NOT_ARRAY,
@@ -287,12 +267,10 @@ describe("streamFetchRecords — error cases", () => {
     const body = `[${tiny},${huge}]`;
     const fake = staticFetch(body);
 
-    const result = await streamFetchRecords(
-      "https://x.test",
-      {},
-      "",
-      { fetchImpl: fake, maxRecordBytes: 1024 }
-    );
+    const result = await streamFetchRecords("https://x.test", {}, "", {
+      fetchImpl: fake,
+      maxRecordBytes: 1024,
+    });
 
     const iter = result.recordsStream[Symbol.asyncIterator]();
 
@@ -308,12 +286,9 @@ describe("streamFetchRecords — error cases", () => {
   it("case 9: re-iteration throws REST_API_STREAM_ALREADY_CONSUMED", async () => {
     const fake = staticFetch('{"items":[{"id":1}]}');
 
-    const result = await streamFetchRecords(
-      "https://x.test",
-      {},
-      "items",
-      { fetchImpl: fake }
-    );
+    const result = await streamFetchRecords("https://x.test", {}, "items", {
+      fetchImpl: fake,
+    });
 
     await collect(result.recordsStream);
 
@@ -328,12 +303,9 @@ describe("streamFetchRecords — error cases", () => {
     const cancelSpy = jest.fn();
     const ctrl = makeControlledFetch({ cancelSpy });
 
-    const result = await streamFetchRecords(
-      "https://x.test",
-      {},
-      "items",
-      { fetchImpl: ctrl.fetch }
-    );
+    const result = await streamFetchRecords("https://x.test", {}, "items", {
+      fetchImpl: ctrl.fetch,
+    });
 
     ctrl.push('{"items":[{"id":1},{"id":2}');
     // Don't close — the consumer breaks early.
@@ -355,12 +327,9 @@ describe("streamFetchRecords — error cases", () => {
   it("case 11: upstream reader error rejects the in-flight next()", async () => {
     const ctrl = makeControlledFetch();
 
-    const result = await streamFetchRecords(
-      "https://x.test",
-      {},
-      "items",
-      { fetchImpl: ctrl.fetch }
-    );
+    const result = await streamFetchRecords("https://x.test", {}, "items", {
+      fetchImpl: ctrl.fetch,
+    });
 
     const iter = result.recordsStream[Symbol.asyncIterator]();
 

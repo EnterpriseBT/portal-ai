@@ -74,7 +74,10 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
   const nameRef = useDialogAutoFocus(open);
 
   // Load custom toolpacks so the picker can offer them alongside built-ins.
-  const customsResult = sdk.toolpacks.list({ kind: "custom" }, { enabled: open });
+  const customsResult = sdk.toolpacks.list(
+    { kind: "custom" },
+    { enabled: open }
+  );
   const customPacks = (customsResult.data?.toolpacks ?? []).filter(
     (t): t is typeof t & { kind: "custom" } => t.kind === "custom"
   );
@@ -242,10 +245,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
           )}
         />
         {collisions.length > 0 && (
-          <Alert
-            severity="warning"
-            data-testid="toolpack-collision-warning"
-          >
+          <Alert severity="warning" data-testid="toolpack-collision-warning">
             <AlertTitle>Tool-name collisions on this station</AlertTitle>
             <Stack spacing={0.5}>
               {collisions.map((c) => (

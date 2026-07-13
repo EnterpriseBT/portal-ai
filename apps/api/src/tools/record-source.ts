@@ -176,7 +176,10 @@ export async function* resolveRecordStream(
     opts.orderBy != null && meta.schema.some((c) => c.name === opts.orderBy);
 
   if (hasTiebreaker && hasOrder) {
-    yield* PortalSqlHandleService.streamHandle(input.queryHandle, opts.orderBy!);
+    yield* PortalSqlHandleService.streamHandle(
+      input.queryHandle,
+      opts.orderBy!
+    );
     return;
   }
 

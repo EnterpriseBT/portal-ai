@@ -1,8 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
 
-const { isValidIanaTimezone, formatIsoWithOffset } = await import(
-  "../../utils/timezone.util.js"
-);
+const { isValidIanaTimezone, formatIsoWithOffset } =
+  await import("../../utils/timezone.util.js");
 
 describe("isValidIanaTimezone", () => {
   it("accepts a real IANA name (America/Los_Angeles)", () => {
@@ -50,9 +49,9 @@ describe("formatIsoWithOffset", () => {
   });
 
   it("renders UTC as +00:00", () => {
-    expect(
-      formatIsoWithOffset(new Date("2026-06-01T18:47:05Z"), "UTC")
-    ).toBe("2026-06-01T18:47:05+00:00");
+    expect(formatIsoWithOffset(new Date("2026-06-01T18:47:05Z"), "UTC")).toBe(
+      "2026-06-01T18:47:05+00:00"
+    );
   });
 
   it("renders BST offset for Europe/London in June", () => {

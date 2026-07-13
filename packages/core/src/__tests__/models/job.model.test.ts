@@ -396,14 +396,22 @@ describe("BulkTransform schemas (#85, #99)", () => {
     const empty = BulkTransformMetadataSchema.safeParse({
       sourceConnectorEntityId: SOURCE,
       targetConnectorEntityIds: [],
-      expression: { kind: "sql", value: "1 AS x", writes: [writeSqlAlias("c_x", "x")] },
+      expression: {
+        kind: "sql",
+        value: "1 AS x",
+        writes: [writeSqlAlias("c_x", "x")],
+      },
       keyField: "k",
     });
     expect(empty.success).toBe(false);
 
     const missing = BulkTransformMetadataSchema.safeParse({
       sourceConnectorEntityId: SOURCE,
-      expression: { kind: "sql", value: "1 AS x", writes: [writeSqlAlias("c_x", "x")] },
+      expression: {
+        kind: "sql",
+        value: "1 AS x",
+        writes: [writeSqlAlias("c_x", "x")],
+      },
       keyField: "k",
     });
     expect(missing.success).toBe(false);
@@ -526,7 +534,11 @@ describe("BulkTransform schemas (#85, #99)", () => {
     const parsed = BulkTransformMetadataSchema.parse({
       sourceConnectorEntityId: "a",
       targetConnectorEntityIds: ["b"],
-      expression: { kind: "sql", value: "1 AS x", writes: [writeSqlAlias("c_x", "x")] },
+      expression: {
+        kind: "sql",
+        value: "1 AS x",
+        writes: [writeSqlAlias("c_x", "x")],
+      },
       keyField: "k",
     });
     expect(parsed.batchSize).toBe(DEFAULT_BULK_BATCH);
@@ -536,7 +548,11 @@ describe("BulkTransform schemas (#85, #99)", () => {
     const result = BulkTransformMetadataSchema.safeParse({
       sourceConnectorEntityId: "a",
       targetConnectorEntityIds: ["b"],
-      expression: { kind: "sql", value: "1 AS x", writes: [writeSqlAlias("c_x", "x")] },
+      expression: {
+        kind: "sql",
+        value: "1 AS x",
+        writes: [writeSqlAlias("c_x", "x")],
+      },
       keyField: "k",
       batchSize: 50_000,
     });
@@ -553,4 +569,3 @@ describe("BulkTransform schemas (#85, #99)", () => {
     );
   });
 });
-

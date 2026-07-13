@@ -3,10 +3,7 @@ import { useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { sdk, queryKeys } from "../api/sdk";
-import {
-  PopupClosedError,
-  useOAuthPopupAuthorize,
-} from "./oauth-popup.util";
+import { PopupClosedError, useOAuthPopupAuthorize } from "./oauth-popup.util";
 import { apiOrigin } from "./api-origin.util";
 
 export interface ConnectorInstanceReconnectState {

@@ -68,11 +68,7 @@ const SERIAL_EPOCH_MS = Date.UTC(1899, 11, 30);
 const MS_PER_DAY = 86_400_000;
 
 function isDateLikeFormat(type: string | undefined): boolean {
-  return (
-    type === "DATE" ||
-    type === "DATE_TIME" ||
-    type === "TIME"
-  );
+  return type === "DATE" || type === "DATE_TIME" || type === "TIME";
 }
 
 function serialToDate(serial: number): Date {
@@ -141,7 +137,10 @@ function mapSheet(sheet: SheetsSheet): SheetData {
         col: startColumn + c + 1,
         value: coerceCellValue(cell),
       };
-      if (typeof cell.formattedValue === "string" && cell.formattedValue !== "") {
+      if (
+        typeof cell.formattedValue === "string" &&
+        cell.formattedValue !== ""
+      ) {
         out.rawText = cell.formattedValue;
       }
       cells.push(out);

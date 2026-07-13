@@ -181,9 +181,8 @@ export const EndpointTestDialog: React.FC<EndpointTestDialogProps> = ({
   onClose,
   onEditEndpoint,
 }) => {
-  const { mutateAsync, isPending } = sdk.connectorInstances.testConnection(
-    instanceId
-  );
+  const { mutateAsync, isPending } =
+    sdk.connectorInstances.testConnection(instanceId);
   const [result, setResult] = useState<TestConnectionResult | null>(null);
   const [serverError, setServerError] = useState<ServerError | null>(null);
 

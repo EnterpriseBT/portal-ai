@@ -64,7 +64,6 @@ function defaultResolveSheet() {
   };
 }
 
-
 describe("xlsxToCache", () => {
   it("streams each worksheet through the writer with dense rows + meta", async () => {
     const buf = await buildMultiSheetXlsx({

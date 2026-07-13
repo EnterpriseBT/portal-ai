@@ -9,13 +9,7 @@
  * by entity, primary first.
  */
 
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-} from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { sql } from "drizzle-orm";
@@ -147,32 +141,43 @@ describe("AnalyticsService.resolveIdentity (Postgres-direct)", () => {
     const cdCustomerId = generateId();
     const cdName = generateId();
     const cdAmount = generateId();
-    await dbTyped.insert(schema.columnDefinitions).values([
-      mkColumnDef(cdCustomerId, orgId, "customer_id", "Customer ID", "string", now),
-      mkColumnDef(cdName, orgId, "name", "Name", "string", now),
-      mkColumnDef(cdAmount, orgId, "amount", "Amount", "number", now),
-    ] as never);
+    await dbTyped
+      .insert(schema.columnDefinitions)
+      .values([
+        mkColumnDef(
+          cdCustomerId,
+          orgId,
+          "customer_id",
+          "Customer ID",
+          "string",
+          now
+        ),
+        mkColumnDef(cdName, orgId, "name", "Name", "string", now),
+        mkColumnDef(cdAmount, orgId, "amount", "Amount", "number", now),
+      ] as never);
 
-    await dbTyped.insert(schema.fieldMappings).values([
-      mkMapping(
-        orgId,
-        customersEntityId,
-        cdCustomerId,
-        "Customer ID",
-        "customer_id",
-        now
-      ),
-      mkMapping(orgId, customersEntityId, cdName, "Name", "name", now + 1),
-      mkMapping(
-        orgId,
-        ordersEntityId,
-        cdCustomerId,
-        "Customer ID",
-        "customer_id",
-        now
-      ),
-      mkMapping(orgId, ordersEntityId, cdAmount, "Amount", "amount", now + 1),
-    ] as never);
+    await dbTyped
+      .insert(schema.fieldMappings)
+      .values([
+        mkMapping(
+          orgId,
+          customersEntityId,
+          cdCustomerId,
+          "Customer ID",
+          "customer_id",
+          now
+        ),
+        mkMapping(orgId, customersEntityId, cdName, "Name", "name", now + 1),
+        mkMapping(
+          orgId,
+          ordersEntityId,
+          cdCustomerId,
+          "Customer ID",
+          "customer_id",
+          now
+        ),
+        mkMapping(orgId, ordersEntityId, cdAmount, "Amount", "amount", now + 1),
+      ] as never);
 
     await reconciler.reconcileEntity(customersEntityId, db);
     await reconciler.reconcileEntity(ordersEntityId, db);
@@ -221,8 +226,22 @@ describe("AnalyticsService.resolveIdentity (Postgres-direct)", () => {
       deleted: null,
       deletedBy: null,
     } as never);
-    const keys = ["entity_record_id", "organization_id", "synced_at", "is_valid", "source_id", ...Object.keys(extras)];
-    const values: unknown[] = [id, orgId, now, true, sourceId, ...Object.values(extras)];
+    const keys = [
+      "entity_record_id",
+      "organization_id",
+      "synced_at",
+      "is_valid",
+      "source_id",
+      ...Object.keys(extras),
+    ];
+    const values: unknown[] = [
+      id,
+      orgId,
+      now,
+      true,
+      sourceId,
+      ...Object.values(extras),
+    ];
     const colList = keys.map((k) => `"${k}"`).join(", ");
     const placeholders = values.map((_, i) => `$${i + 1}`).join(", ");
     await connection.unsafe(

@@ -177,7 +177,7 @@ const InputSchema = z.object({
     .describe(
       "User-confirmation gate for expensive tools. The server enforces " +
         "the gate: on a first call without this flag against a " +
-        "`costHint: \"expensive\"` tool, the API rejects with " +
+        '`costHint: "expensive"` tool, the API rejects with ' +
         "`BULK_DISPATCH_COST_NOT_ACKNOWLEDGED` and records a pending " +
         "acknowledgement. To retry with `acknowledgeCost: true`, the " +
         "user must send a new message between the rejection and the " +
@@ -214,9 +214,7 @@ function toEnvelope(err: unknown): Record<string, unknown> {
       success: false,
       message: err.message,
       code: err.code,
-      ...(err.recommendation
-        ? { recommendation: err.recommendation }
-        : {}),
+      ...(err.recommendation ? { recommendation: err.recommendation } : {}),
       ...(err.details ? { details: err.details } : {}),
     };
   }
@@ -240,30 +238,30 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
     "Express the per-record derivation as a SQL projection in `expression.value` whose aliases match " +
     "target wide-column names (e.g. `ST_Area(geometry::geography) / 4047 AS c_acreage`).\n\n" +
     "**Expensive-tool confirmation gate.** When `expression.kind === 'tool'` and the tool declared " +
-    "`costHint: \"expensive\"`, the API rejects the first call with " +
+    '`costHint: "expensive"`, the API rejects the first call with ' +
     "`BULK_DISPATCH_COST_NOT_ACKNOWLEDGED`. You MUST ask the user to confirm and WAIT for their next " +
     "message before retrying with `acknowledgeCost: true`.\n\n" +
-    "Worked example — user prompts \"Run nasa_diameter_avg_expensive against every NEO\":\n\n" +
+    'Worked example — user prompts "Run nasa_diameter_avg_expensive against every NEO":\n\n' +
     "  Good (two turns, user confirms in between):\n" +
     "    Turn 1 (your turn):\n" +
     "      [transform_entity_records — NO acknowledgeCost field at all]\n" +
     "      → API returns BULK_DISPATCH_COST_NOT_ACKNOWLEDGED with the cost estimate\n" +
-    "      You say: \"This tool is declared expensive. With 10,299 records at 50ms each over\n" +
+    '      You say: "This tool is declared expensive. With 10,299 records at 50ms each over\n' +
     "       10 concurrent calls, it'll take ~52 seconds. Should I proceed?\"\n" +
     "      [you stop — no more tool calls this turn]\n\n" +
-    "    Turn 2 (user's turn): \"yes, proceed\"\n\n" +
+    '    Turn 2 (user\'s turn): "yes, proceed"\n\n' +
     "    Turn 3 (your turn):\n" +
     "      [transform_entity_records with acknowledgeCost: true]\n\n" +
     "  Bad (skipping the user's turn):\n" +
     "    Turn 1:\n" +
     "      [tool call without acknowledgeCost]\n" +
     "      → rejection\n" +
-    "      You: \"This is expensive but I'll proceed.\"\n" +
+    '      You: "This is expensive but I\'ll proceed."\n' +
     "      [tool call WITH acknowledgeCost: true] ← WRONG. User never consented.\n\n" +
     "  Bad (asking but retrying same turn):\n" +
     "    Turn 1:\n" +
     "      [...rejection...]\n" +
-    "      You: \"Should I proceed?\"\n" +
+    '      You: "Should I proceed?"\n' +
     "      [tool call with acknowledgeCost: true] ← WRONG. Question wasn't answered yet.\n\n" +
     "The user MUST respond between the rejection and the retry. The two tool calls live in " +
     "different turns. If you find yourself about to make the second call in the same turn, stop " +
@@ -303,10 +301,9 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
           const primaryTargetId = writes[0].targetConnectorEntityId;
 
           // Step 1 — source + target exist + org-scoped.
-          const source =
-            await DbService.repository.connectorEntities.findById(
-              parsed.sourceConnectorEntityId
-            );
+          const source = await DbService.repository.connectorEntities.findById(
+            parsed.sourceConnectorEntityId
+          );
           if (!source) {
             throw new ApiError(
               404,
@@ -343,9 +340,7 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
           const sourceStmt = await wideTableStatementCache.get(
             parsed.sourceConnectorEntityId
           );
-          const sourceWideColumns = sourceStmt.columns.map(
-            (c) => c.columnName
-          );
+          const sourceWideColumns = sourceStmt.columns.map((c) => c.columnName);
           if (!sourceWideColumns.includes(parsed.keyField)) {
             throw new ApiError(
               400,
@@ -370,10 +365,7 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
           // source_column existence, sql_alias declared); for SQL kind,
           // reject declared aliases that no write references (catches
           // the agent projecting the keyField under an invented name).
-          const targetColumnMaps = new Map<
-            string,
-            Map<string, string>
-          >();
+          const targetColumnMaps = new Map<string, Map<string, string>>();
           for (const tid of targetConnectorEntityIds) {
             const stmt = await wideTableStatementCache.get(tid);
             const colMap = new Map<string, string>();
@@ -402,7 +394,9 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
                       targetConnectorEntityId: write.targetConnectorEntityId,
                       column: write.column,
                     },
-                    availableTargetColumns: Array.from(targetCols.keys()).sort(),
+                    availableTargetColumns: Array.from(
+                      targetCols.keys()
+                    ).sort(),
                   },
                 }
               );
@@ -429,8 +423,7 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
                       ],
                     details: {
                       write: {
-                        targetConnectorEntityId:
-                          write.targetConnectorEntityId,
+                        targetConnectorEntityId: write.targetConnectorEntityId,
                         column: write.column,
                       },
                       pgType,
@@ -454,13 +447,10 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
                       ],
                     details: {
                       write: {
-                        targetConnectorEntityId:
-                          write.targetConnectorEntityId,
+                        targetConnectorEntityId: write.targetConnectorEntityId,
                         column: write.column,
                       },
-                      availableSourceColumns: sourceWideColumns
-                        .slice()
-                        .sort(),
+                      availableSourceColumns: sourceWideColumns.slice().sort(),
                     },
                   }
                 );
@@ -474,14 +464,13 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
           // projected something the writes[] map doesn't use — often
           // the keyField under an invented name).
           if (parsed.expression.kind === "sql") {
-            const { parseProjections } = await import(
-              "../utils/sql-projection.util.js"
-            );
+            const { parseProjections } =
+              await import("../utils/sql-projection.util.js");
             let declaredAliases: string[];
             try {
-              declaredAliases = parseProjections(
-                parsed.expression.value
-              ).map((p) => p.alias);
+              declaredAliases = parseProjections(parsed.expression.value).map(
+                (p) => p.alias
+              );
             } catch (err) {
               throw new ApiError(
                 400,
@@ -530,7 +519,9 @@ export class TransformEntityRecordsTool extends Tool<typeof InputSchema> {
                 ApiCode.BULK_JOB_EXPRESSION_INVALID,
                 `expression.value declares alias(es) ${unreferenced
                   .map((a) => `'${a}'`)
-                  .join(", ")} that no writes[] entry references. Either drop the alias from the projection or add a writes[] entry with valueFrom.kind === 'sql_alias' that references it.`,
+                  .join(
+                    ", "
+                  )} that no writes[] entry references. Either drop the alias from the projection or add a writes[] entry with valueFrom.kind === 'sql_alias' that references it.`,
                 {
                   recommendation:
                     ApiCodeDefaultRecommendation[

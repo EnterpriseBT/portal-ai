@@ -1,4 +1,11 @@
-import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
 
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 
@@ -31,13 +38,19 @@ const findByInstanceMock =
   jest.fn<(connectorInstanceId: string) => Promise<EndpointFixture[]>>();
 const findByEntityIdMock =
   jest.fn<(connectorEntityId: string) => Promise<EndpointFixture | null>>();
-const findBySourceIdsMock =
-  jest.fn<
-    (
-      connectorEntityId: string,
-      sourceIds: string[]
-    ) => Promise<Array<{ id: string; checksum: string; createdBy: string; created: number }>>
-  >();
+const findBySourceIdsMock = jest.fn<
+  (
+    connectorEntityId: string,
+    sourceIds: string[]
+  ) => Promise<
+    Array<{
+      id: string;
+      checksum: string;
+      createdBy: string;
+      created: number;
+    }>
+  >
+>();
 const upsertBySourceIdMock = jest.fn<(data: unknown) => Promise<unknown>>();
 const bulkUpdateSyncedAtMock =
   jest.fn<(ids: string[], syncedAt: number) => Promise<number>>();
@@ -49,20 +62,18 @@ const softDeleteBeforeWatermarkMock =
       userId: string
     ) => Promise<string[]>
   >();
-const updateInstanceMock =
-  jest.fn<(...args: unknown[]) => Promise<unknown>>();
-const findColumnDefinitionsMock =
-  jest.fn<
-    (orgId: string) => Promise<
-      Array<{
-        id: string;
-        label: string;
-        key: string;
-        description: string | null;
-        type: string;
-      }>
-    >
-  >();
+const updateInstanceMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const findColumnDefinitionsMock = jest.fn<
+  (orgId: string) => Promise<
+    Array<{
+      id: string;
+      label: string;
+      key: string;
+      description: string | null;
+      type: string;
+    }>
+  >
+>();
 
 const findFieldMappingsMock = jest.fn<() => Promise<unknown[]>>();
 const upsertWideManyMock = jest.fn<() => Promise<void>>();
@@ -115,12 +126,10 @@ const {
   configureRestApiAdapterDeps,
   __resetRestApiAdapterDepsForTests,
 } = await import("../../../adapters/rest-api/rest-api.adapter.js");
-const { ProbeCache } = await import(
-  "../../../adapters/rest-api/probe-cache.util.js"
-);
-const { createStubClassifier, createThrowingClassifier } = await import(
-  "../../../adapters/rest-api/classifier.stub.js"
-);
+const { ProbeCache } =
+  await import("../../../adapters/rest-api/probe-cache.util.js");
+const { createStubClassifier, createThrowingClassifier } =
+  await import("../../../adapters/rest-api/classifier.stub.js");
 
 const INSTANCE = {
   id: "ci-rest-1",
@@ -173,9 +182,7 @@ describe("walkRecordsPath", () => {
   });
 
   it("walks nested dotted path", () => {
-    expect(
-      walkRecordsPath({ a: { b: { c: "x" } } }, "a.b.c")
-    ).toBe("x");
+    expect(walkRecordsPath({ a: { b: { c: "x" } } }, "a.b.c")).toBe("x");
   });
 
   it("throws REST_API_RECORDS_PATH_NOT_FOUND when segment is missing", () => {
@@ -230,7 +237,10 @@ describe("buildUrl", () => {
 
   it("appends query params", () => {
     expect(
-      buildUrl("https://api.example.com", "/users", { active: "true", limit: "10" })
+      buildUrl("https://api.example.com", "/users", {
+        active: "true",
+        limit: "10",
+      })
     ).toBe("https://api.example.com/users?active=true&limit=10");
   });
 });
@@ -264,11 +274,23 @@ describe("restApiAdapter.discoverEntities", () => {
     findByInstanceMock.mockResolvedValueOnce([
       {
         entity: { id: "e1", key: "users", label: "Users" },
-        config: { path: "/users", method: "GET", recordsPath: "", idField: "id", ...NONE_PAGINATION },
+        config: {
+          path: "/users",
+          method: "GET",
+          recordsPath: "",
+          idField: "id",
+          ...NONE_PAGINATION,
+        },
       },
       {
         entity: { id: "e2", key: "posts", label: "Posts" },
-        config: { path: "/posts", method: "GET", recordsPath: "data", idField: null, ...NONE_PAGINATION },
+        config: {
+          path: "/posts",
+          method: "GET",
+          recordsPath: "data",
+          idField: null,
+          ...NONE_PAGINATION,
+        },
       },
     ]);
 
@@ -301,7 +323,13 @@ describe("restApiAdapter.assertSyncEligibility", () => {
     findByInstanceMock.mockResolvedValueOnce([
       {
         entity: { id: "e1", key: "users", label: "Users" },
-        config: { path: "/users", method: "GET", recordsPath: "", idField: "id", ...NONE_PAGINATION },
+        config: {
+          path: "/users",
+          method: "GET",
+          recordsPath: "",
+          idField: "id",
+          ...NONE_PAGINATION,
+        },
       },
     ]);
     const result = await restApiAdapter.assertSyncEligibility!(INSTANCE);
@@ -312,7 +340,13 @@ describe("restApiAdapter.assertSyncEligibility", () => {
     findByInstanceMock.mockResolvedValueOnce([
       {
         entity: { id: "e1", key: "users", label: "Users" },
-        config: { path: "/users", method: "GET", recordsPath: "", idField: "id", ...NONE_PAGINATION },
+        config: {
+          path: "/users",
+          method: "GET",
+          recordsPath: "",
+          idField: "id",
+          ...NONE_PAGINATION,
+        },
       },
     ]);
     const result = await restApiAdapter.assertSyncEligibility!({
@@ -331,7 +365,13 @@ describe("restApiAdapter.assertSyncEligibility", () => {
     findByInstanceMock.mockResolvedValueOnce([
       {
         entity: { id: "e1", key: "users", label: "Users" },
-        config: { path: "/users", method: "GET", recordsPath: "", idField: "id", ...NONE_PAGINATION },
+        config: {
+          path: "/users",
+          method: "GET",
+          recordsPath: "",
+          idField: "id",
+          ...NONE_PAGINATION,
+        },
       },
     ]);
     const result = await restApiAdapter.assertSyncEligibility!({
@@ -357,7 +397,13 @@ describe("restApiAdapter.syncInstance — auth", () => {
     findByInstanceMock.mockResolvedValue([
       {
         entity: { id: "e1", key: "users", label: "Users" },
-        config: { path: "/users", method: "GET", recordsPath: "", idField: "id", ...NONE_PAGINATION },
+        config: {
+          path: "/users",
+          method: "GET",
+          recordsPath: "",
+          idField: "id",
+          ...NONE_PAGINATION,
+        },
       },
     ]);
     findBySourceIdsMock.mockResolvedValue([]);
@@ -394,7 +440,9 @@ describe("restApiAdapter.syncInstance — auth", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0]!;
-    expect((init?.headers as Record<string, string>)["X-API-Key"]).toBe("secret");
+    expect((init?.headers as Record<string, string>)["X-API-Key"]).toBe(
+      "secret"
+    );
   });
 
   it("applies apiKey/query auth by appending the param to the url", async () => {
@@ -422,7 +470,10 @@ describe("restApiAdapter.syncInstance — auth", () => {
     await restApiAdapter.syncInstance!(
       {
         ...INSTANCE,
-        config: { baseUrl: "https://api.example.com", auth: { mode: "bearer" } },
+        config: {
+          baseUrl: "https://api.example.com",
+          auth: { mode: "bearer" },
+        },
         credentials: { mode: "bearer", token: "tok" } as never,
       },
       "u1"
@@ -469,7 +520,10 @@ describe("restApiAdapter.syncInstance — auth", () => {
       restApiAdapter.syncInstance!(
         {
           ...INSTANCE,
-          config: { baseUrl: "https://api.example.com", auth: { mode: "bearer" } },
+          config: {
+            baseUrl: "https://api.example.com",
+            auth: { mode: "bearer" },
+          },
           credentials: { mode: "bearer", token: "tok" } as never,
         },
         "u1"
@@ -492,7 +546,10 @@ describe("restApiAdapter.syncInstance — auth", () => {
       restApiAdapter.syncInstance!(
         {
           ...INSTANCE,
-          config: { baseUrl: "https://api.example.com", auth: { mode: "bearer" } },
+          config: {
+            baseUrl: "https://api.example.com",
+            auth: { mode: "bearer" },
+          },
           credentials: { mode: "bearer", token: "tok" } as never,
         },
         "u1"
@@ -515,7 +572,10 @@ describe("restApiAdapter.syncInstance — auth", () => {
       restApiAdapter.syncInstance!(
         {
           ...INSTANCE,
-          config: { baseUrl: "https://api.example.com", auth: { mode: "bearer" } },
+          config: {
+            baseUrl: "https://api.example.com",
+            auth: { mode: "bearer" },
+          },
           credentials: { mode: "bearer", token: "tok" } as never,
         },
         "u1"
@@ -533,7 +593,10 @@ describe("restApiAdapter.syncInstance — auth", () => {
       restApiAdapter.syncInstance!(
         {
           ...INSTANCE,
-          config: { baseUrl: "https://api.example.com", auth: { mode: "bearer" } },
+          config: {
+            baseUrl: "https://api.example.com",
+            auth: { mode: "bearer" },
+          },
           credentials: { mode: "apiKey", value: "x" } as never,
         },
         "u1"
@@ -569,7 +632,10 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
     globalThis.fetch = originalFetch;
   });
 
-  const okResponse = (records: unknown[], headers: Record<string, string> = {}) =>
+  const okResponse = (
+    records: unknown[],
+    headers: Record<string, string> = {}
+  ) =>
     new Response(JSON.stringify(records), {
       status: 200,
       headers: { "content-type": "application/json", ...headers },
@@ -864,9 +930,7 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
           ],
         } as unknown as unknown[])
       )
-      .mockResolvedValueOnce(
-        okResponse({ data: [] } as unknown as unknown[])
-      );
+      .mockResolvedValueOnce(okResponse({ data: [] } as unknown as unknown[]));
 
     await restApiAdapter.syncInstance!(INSTANCE, "u1");
 
@@ -930,7 +994,9 @@ describe("restApiAdapter.testConnection", () => {
     globalThis.fetch = originalFetch;
   });
 
-  const endpointFixture = (overrides: Partial<EndpointFixture> = {}): EndpointFixture => ({
+  const endpointFixture = (
+    overrides: Partial<EndpointFixture> = {}
+  ): EndpointFixture => ({
     entity: {
       id: "ent-users",
       key: "users",
@@ -1003,7 +1069,10 @@ describe("restApiAdapter.testConnection", () => {
     const result = await restApiAdapter.testConnection!(
       {
         ...INSTANCE,
-        config: { baseUrl: "https://api.example.com", auth: { mode: "bearer" } },
+        config: {
+          baseUrl: "https://api.example.com",
+          auth: { mode: "bearer" },
+        },
         credentials: { mode: "bearer", token: "tok" } as never,
       },
       { endpointEntityId: "ent-users" }
@@ -1018,7 +1087,13 @@ describe("restApiAdapter.testConnection", () => {
   it("returns { ok: false, code: REST_API_RECORDS_PATH_NOT_ARRAY } when recordsPath resolves to a non-array", async () => {
     findByEntityIdMock.mockResolvedValueOnce(
       endpointFixture({
-        config: { path: "/users", method: "GET", recordsPath: "data", idField: null, ...NONE_PAGINATION },
+        config: {
+          path: "/users",
+          method: "GET",
+          recordsPath: "data",
+          idField: null,
+          ...NONE_PAGINATION,
+        },
       })
     );
     fetchMock.mockResolvedValueOnce(
@@ -1273,8 +1348,12 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
       "users"
     );
 
-    expect(result.columns.find((c) => c.key === "id")?.suggestion).toBeDefined();
-    expect(result.columns.find((c) => c.key === "email")?.suggestion).toBeUndefined();
+    expect(
+      result.columns.find((c) => c.key === "id")?.suggestion
+    ).toBeDefined();
+    expect(
+      result.columns.find((c) => c.key === "email")?.suggestion
+    ).toBeUndefined();
     // The hallucinated sourceField doesn't appear as a column either.
     expect(result.columns.map((c) => c.key).sort()).toEqual(["email", "id"]);
   });
@@ -1442,7 +1521,12 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
     withTransformEndpoint("data.items");
     fetchMock.mockResolvedValueOnce(
       okResponse({
-        data: { items: [{ id: "a", name: "Alice" }, { id: "b", name: "Bob" }] },
+        data: {
+          items: [
+            { id: "a", name: "Alice" },
+            { id: "b", name: "Bob" },
+          ],
+        },
       })
     );
     configureRestApiAdapterDeps({
@@ -1471,9 +1555,9 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
         ],
       })
     );
-    const classifyMock =
-      jest.fn<(candidates: unknown[], catalog: unknown) => Promise<unknown[]>>()
-        .mockResolvedValue([]);
+    const classifyMock = jest
+      .fn<(candidates: unknown[], catalog: unknown) => Promise<unknown[]>>()
+      .mockResolvedValue([]);
     configureRestApiAdapterDeps({
       cache: new ProbeCache(),
       classifier: { classify: classifyMock as never },
@@ -1503,9 +1587,7 @@ describe("restApiAdapter.discoverColumnsWithSamples", () => {
 
   it("returns degradation 'transform-failed' + transformError on a parse error", async () => {
     withTransformEndpoint("data.{ unclosed");
-    fetchMock.mockResolvedValueOnce(
-      okResponse({ data: [{ id: 1 }] })
-    );
+    fetchMock.mockResolvedValueOnce(okResponse({ data: [{ id: 1 }] }));
     configureRestApiAdapterDeps({
       cache: new ProbeCache(),
       classifier: null,
@@ -1599,7 +1681,10 @@ describe("restApiAdapter.probeEndpointDraft", () => {
 
   it("returns DiscoverColumnsResult from a draft body — no DB lookup", async () => {
     fetchMock.mockResolvedValueOnce(
-      okResponse([{ id: "a", name: "Alice" }, { id: "b", name: "Bob" }])
+      okResponse([
+        { id: "a", name: "Alice" },
+        { id: "b", name: "Bob" },
+      ])
     );
     configureRestApiAdapterDeps({
       cache: new ProbeCache(),
@@ -1792,9 +1877,7 @@ describe("restApiAdapter.previewEndpointPage", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(findByInstanceMock).not.toHaveBeenCalled();
     const url = fetchMock.mock.calls[0]?.[0];
-    expect(typeof url === "string" ? url : url?.toString()).toContain(
-      "/users"
-    );
+    expect(typeof url === "string" ? url : url?.toString()).toContain("/users");
   });
 
   it("propagates upstream auth failures as REST_API_AUTH_FAILED", async () => {
@@ -1831,7 +1914,9 @@ describe("restApiAdapter.previewEndpointPage", () => {
   });
 
   it("returns the raw body even when recordsPath doesn't resolve to an array", async () => {
-    fetchMock.mockResolvedValueOnce(okResponse({ data: { items: "string-not-array" } }));
+    fetchMock.mockResolvedValueOnce(
+      okResponse({ data: { items: "string-not-array" } })
+    );
 
     const result = await restApiAdapter.previewEndpointPage(ORG_ID, {
       ...baseBody,
@@ -2054,4 +2139,3 @@ describe("restApiAdapter.syncInstance — streaming branch", () => {
     expect(result.recordCounts.created).toBe(2);
   });
 });
-

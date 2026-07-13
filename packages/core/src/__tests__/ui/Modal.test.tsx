@@ -176,7 +176,9 @@ describe("Modal Component", () => {
       // Material Icons render an inline SVG with a `data-testid` like
       // `OpenInFullIcon` / `CloseFullscreenIcon`.
       expect(screen.getByTestId("OpenInFullIcon")).toBeInTheDocument();
-      expect(screen.queryByTestId("CloseFullscreenIcon")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("CloseFullscreenIcon")
+      ).not.toBeInTheDocument();
 
       await userEvent.click(screen.getByLabelText("maximize"));
       expect(screen.getByTestId("CloseFullscreenIcon")).toBeInTheDocument();
@@ -194,7 +196,8 @@ describe("Modal Component", () => {
       // Both icons live inside the same header row; document position
       // FOLLOWING means `close` comes after `maximize`.
       expect(
-        maximize.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING
+        maximize.compareDocumentPosition(close) &
+          Node.DOCUMENT_POSITION_FOLLOWING
       ).toBeTruthy();
     });
 

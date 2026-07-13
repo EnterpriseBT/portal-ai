@@ -22,10 +22,10 @@ jest.unstable_mockModule("../../services/portal-sql-handle.service.js", () => ({
   resolveTiebreaker: () => null,
 }));
 
-const { AnalyticsService } = await import("../../services/analytics.service.js");
-const { HypothesisTestTool } = await import(
-  "../../tools/hypothesis-test.tool.js"
-);
+const { AnalyticsService } =
+  await import("../../services/analytics.service.js");
+const { HypothesisTestTool } =
+  await import("../../tools/hypothesis-test.tool.js");
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -90,7 +90,9 @@ describe("AnalyticsService.hypothesisTestPushdown (#130 E2c)", () => {
     const projection = mockAggregate.mock.calls[0][1] as string;
     expect(projection).toContain('avg("a" - "b")');
     expect(projection).toContain('stddev_samp("a" - "b")');
-    expect(projection).toContain('FILTER (WHERE "a" IS NOT NULL AND "b" IS NOT NULL)');
+    expect(projection).toContain(
+      'FILTER (WHERE "a" IS NOT NULL AND "b" IS NOT NULL)'
+    );
 
     expect(res!.statistic).toBeCloseTo(2.0, 10); // 1.5/(3/4)
     expect(res!.df).toBe(15);
@@ -131,7 +133,9 @@ describe("AnalyticsService.hypothesisTestPushdown (#130 E2c)", () => {
 });
 
 describe("HypothesisTestTool routing (#130 E2c)", () => {
-  type ExecTool = { execute: (input: unknown) => Promise<Record<string, unknown>> };
+  type ExecTool = {
+    execute: (input: unknown) => Promise<Record<string, unknown>>;
+  };
 
   it("pushes a t-test down for a queryHandle", async () => {
     mockAggregate.mockResolvedValueOnce({ mean: 5, sd: 2, n: 25 });

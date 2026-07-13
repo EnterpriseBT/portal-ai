@@ -151,8 +151,7 @@ function mockFetchResponse({ status = 200, body = {} }: MockResponseInit) {
     ok: status >= 200 && status < 300,
     status,
     json: async () => body,
-    text: async () =>
-      typeof body === "string" ? body : JSON.stringify(body),
+    text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
   } as unknown as Response;
 }
 
@@ -200,10 +199,7 @@ describe("GoogleAuthService.exchangeCode", () => {
         },
       })
     );
-    const out = await GoogleAuthService.exchangeCode(
-      { code: "c" },
-      fetchMock
-    );
+    const out = await GoogleAuthService.exchangeCode({ code: "c" }, fetchMock);
     expect(out).toEqual({
       accessToken: "ya29.access",
       refreshToken: "1//refresh",

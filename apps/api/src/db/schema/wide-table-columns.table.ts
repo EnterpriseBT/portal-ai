@@ -1,10 +1,4 @@
-import {
-  pgTable,
-  text,
-  bigint,
-  uniqueIndex,
-  index,
-} from "drizzle-orm/pg-core";
+import { pgTable, text, bigint, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";

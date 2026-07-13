@@ -14,7 +14,9 @@ import type {
   ColumnDefinitionCatalogEntry,
 } from "../../types.js";
 
-async function runUpToDetectSegments(input: InterpretInput): Promise<InterpretState> {
+async function runUpToDetectSegments(
+  input: InterpretInput
+): Promise<InterpretState> {
   let state = createInitialState(input);
   state = detectRegions(state);
   state = await detectHeaders(state);
@@ -180,10 +182,7 @@ describe("classifyFieldSegments — filters non-field positions", () => {
     });
     expect(spy).toHaveBeenCalledTimes(1);
     const [candidates] = spy.mock.calls[0]!;
-    expect(candidates.map((c) => c.sourceHeader)).toEqual([
-      "name",
-      "industry",
-    ]);
+    expect(candidates.map((c) => c.sourceHeader)).toEqual(["name", "industry"]);
   });
 
   it("short-circuits the classifier when no field-segment positions exist", async () => {
@@ -555,14 +554,13 @@ describe("classifyFieldSegments — injected classifier override", () => {
         },
       ],
     };
-    const spy: jest.MockedFunction<ClassifierFn> = jest.fn(
-      async (candidates) =>
-        candidates.map((c) => ({
-          sourceHeader: c.sourceHeader,
-          sourceCol: c.sourceCol,
-          columnDefinitionId: null,
-          confidence: 0,
-        }))
+    const spy: jest.MockedFunction<ClassifierFn> = jest.fn(async (candidates) =>
+      candidates.map((c) => ({
+        sourceHeader: c.sourceHeader,
+        sourceCol: c.sourceCol,
+        columnDefinitionId: null,
+        confidence: 0,
+      }))
     );
     const prepared = await runUpToDetectSegments(input);
     const state = await classifyFieldSegments(prepared, {
@@ -632,14 +630,13 @@ describe("classifyFieldSegments — injected classifier override", () => {
         },
       ],
     };
-    const spy: jest.MockedFunction<ClassifierFn> = jest.fn(
-      async (candidates) =>
-        candidates.map((c) => ({
-          sourceHeader: c.sourceHeader,
-          sourceCol: c.sourceCol,
-          columnDefinitionId: null,
-          confidence: 0,
-        }))
+    const spy: jest.MockedFunction<ClassifierFn> = jest.fn(async (candidates) =>
+      candidates.map((c) => ({
+        sourceHeader: c.sourceHeader,
+        sourceCol: c.sourceCol,
+        columnDefinitionId: null,
+        confidence: 0,
+      }))
     );
     const prepared = await runUpToDetectSegments(input);
     await classifyFieldSegments(prepared, {

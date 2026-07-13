@@ -1,9 +1,8 @@
 import { jest } from "@jest/globals";
 
 const { render, screen } = await import("./test-utils");
-const { ToolpackMetadataModalUI } = await import(
-  "../components/ToolpackMetadataModal.component"
-);
+const { ToolpackMetadataModalUI } =
+  await import("../components/ToolpackMetadataModal.component");
 
 const fixturePack = {
   id: "builtin:data_query",
@@ -92,11 +91,7 @@ describe("ToolpackMetadataModalUI", () => {
       ],
     };
     render(
-      <ToolpackMetadataModalUI
-        toolpack={noExamples}
-        open
-        onClose={jest.fn()}
-      />
+      <ToolpackMetadataModalUI toolpack={noExamples} open onClose={jest.fn()} />
     );
 
     expect(screen.getByText("No examples provided.")).toBeInTheDocument();

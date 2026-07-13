@@ -929,9 +929,8 @@ entityGroupRouter.get(
 
       const results: EntityGroupResolveResponsePayload["results"] = [];
 
-      const { wideTableStatementCache } = await import(
-        "../services/wide-table-statement.cache.js"
-      );
+      const { wideTableStatementCache } =
+        await import("../services/wide-table-statement.cache.js");
       const { entityRecords } = await import("../db/schema/index.js");
 
       for (const member of enrichedMembers) {

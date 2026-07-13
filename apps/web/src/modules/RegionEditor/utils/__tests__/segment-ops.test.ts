@@ -272,9 +272,7 @@ describe("splitSegment", () => {
       kind: "untilBlank",
       consecutiveBlanks: 2,
     });
-    expect(() => splitSegment(withDynamic, "row", 0, 1)).toThrow(
-      /dynamic/i
-    );
+    expect(() => splitSegment(withDynamic, "row", 0, 1)).toThrow(/dynamic/i);
   });
 });
 

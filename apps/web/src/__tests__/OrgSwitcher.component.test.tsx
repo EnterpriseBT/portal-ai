@@ -37,7 +37,10 @@ describe("OrgSwitcherUI", () => {
 
   it("shows a single org as a plain label with no dropdown", () => {
     renderWithTheme(
-      <OrgSwitcherUI memberships={[org("o-1", "Solo Org", true)]} onSwitch={jest.fn()} />
+      <OrgSwitcherUI
+        memberships={[org("o-1", "Solo Org", true)]}
+        onSwitch={jest.fn()}
+      />
     );
     expect(screen.getByText("Solo Org")).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
@@ -67,6 +70,9 @@ describe("OrgSwitcherUI", () => {
         isSwitching
       />
     );
-    expect(screen.getByRole("combobox")).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("combobox")).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 });

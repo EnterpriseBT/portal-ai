@@ -32,7 +32,9 @@ export interface ApiKeyCredentialsFormUIProps {
   touched: Record<string, boolean>;
 }
 
-export const ApiKeyCredentialsFormUI: React.FC<ApiKeyCredentialsFormUIProps> = ({
+export const ApiKeyCredentialsFormUI: React.FC<
+  ApiKeyCredentialsFormUIProps
+> = ({
   keyName,
   placement,
   value,
@@ -49,54 +51,54 @@ export const ApiKeyCredentialsFormUI: React.FC<ApiKeyCredentialsFormUIProps> = (
   const keyNameRef = useDialogAutoFocus<HTMLInputElement>(true);
 
   return (
-  <Stack spacing={2}>
-    <TextField
-      inputRef={keyNameRef}
-      label="Header or query name"
-      placeholder="X-API-Key"
-      value={keyName}
-      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-        onKeyNameChange(e.target.value)
-      }
-      onBlur={() => onBlur("keyName")}
-      required
-      fullWidth
-      error={touched.keyName && !!errors.keyName}
-      helperText={touched.keyName && errors.keyName}
-      slotProps={{
-        htmlInput: { "aria-invalid": touched.keyName && !!errors.keyName },
-      }}
-    />
-    <TextField
-      select
-      label="Placement"
-      value={placement}
-      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-        onPlacementChange(e.target.value as ApiKeyPlacement)
-      }
-      onBlur={() => onBlur("placement")}
-      fullWidth
-    >
-      <MenuItem value="header">Header</MenuItem>
-      <MenuItem value="query">Query parameter</MenuItem>
-    </TextField>
-    <TextField
-      label="API key value"
-      type="password"
-      value={value}
-      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-        onValueChange(e.target.value)
-      }
-      onBlur={() => onBlur("value")}
-      required
-      fullWidth
-      autoComplete="off"
-      error={touched.value && !!errors.value}
-      helperText={touched.value && errors.value}
-      slotProps={{
-        htmlInput: { "aria-invalid": touched.value && !!errors.value },
-      }}
-    />
-  </Stack>
+    <Stack spacing={2}>
+      <TextField
+        inputRef={keyNameRef}
+        label="Header or query name"
+        placeholder="X-API-Key"
+        value={keyName}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+          onKeyNameChange(e.target.value)
+        }
+        onBlur={() => onBlur("keyName")}
+        required
+        fullWidth
+        error={touched.keyName && !!errors.keyName}
+        helperText={touched.keyName && errors.keyName}
+        slotProps={{
+          htmlInput: { "aria-invalid": touched.keyName && !!errors.keyName },
+        }}
+      />
+      <TextField
+        select
+        label="Placement"
+        value={placement}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+          onPlacementChange(e.target.value as ApiKeyPlacement)
+        }
+        onBlur={() => onBlur("placement")}
+        fullWidth
+      >
+        <MenuItem value="header">Header</MenuItem>
+        <MenuItem value="query">Query parameter</MenuItem>
+      </TextField>
+      <TextField
+        label="API key value"
+        type="password"
+        value={value}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+          onValueChange(e.target.value)
+        }
+        onBlur={() => onBlur("value")}
+        required
+        fullWidth
+        autoComplete="off"
+        error={touched.value && !!errors.value}
+        helperText={touched.value && errors.value}
+        slotProps={{
+          htmlInput: { "aria-invalid": touched.value && !!errors.value },
+        }}
+      />
+    </Stack>
   );
 };

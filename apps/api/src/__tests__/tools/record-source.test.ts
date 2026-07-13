@@ -21,9 +21,8 @@ jest.unstable_mockModule("../../services/portal-sql-handle.service.js", () => ({
     null,
 }));
 
-const { resolveRecordSource, resolveRecordStream } = await import(
-  "../../tools/record-source.js"
-);
+const { resolveRecordSource, resolveRecordStream } =
+  await import("../../tools/record-source.js");
 
 const rowsOf = (n: number) => Array.from({ length: n }, (_, i) => ({ i }));
 
@@ -45,7 +44,10 @@ describe("resolveRecordSource — consumption as a ceiling", () => {
     ["streaming", { mode: "streaming" }],
     ["engine-pushdown", { mode: "engine-pushdown" }],
     ["none", { mode: "none" }],
-    ["bounded", { mode: "bounded", maxRows: COMPUTE_MAX_ROWS, onOverflow: "error" }],
+    [
+      "bounded",
+      { mode: "bounded", maxRows: COMPUTE_MAX_ROWS, onOverflow: "error" },
+    ],
   ])(
     "delivers small inline data in-memory regardless of mode (%s)",
     async (_label, consumption) => {
@@ -58,7 +60,12 @@ describe("resolveRecordSource — consumption as a ceiling", () => {
 
   it("delivers a ≤cap handle snapshot, no sampling", async () => {
     const rows = rowsOf(3);
-    mockGetSnapshot.mockResolvedValue({ rows, total: 3, offset: 0, limit: 100 });
+    mockGetSnapshot.mockResolvedValue({
+      rows,
+      total: 3,
+      offset: 0,
+      limit: 100,
+    });
     const res = await resolveRecordSource(
       { queryHandle: "qh-1" },
       { mode: "streaming" }
@@ -72,7 +79,9 @@ describe("resolveRecordSource — bounded onOverflow", () => {
     mockGetSnapshot.mockReset();
   });
 
-  const bounded = (onOverflow: "error" | "sample" | "stream" | "decompose"): Consumption => ({
+  const bounded = (
+    onOverflow: "error" | "sample" | "stream" | "decompose"
+  ): Consumption => ({
     mode: "bounded",
     maxRows: 100,
     onOverflow,
@@ -85,7 +94,10 @@ describe("resolveRecordSource — bounded onOverflow", () => {
   });
 
   it("sample: systematically samples inline rows down to the bound, flagged", async () => {
-    const res = await resolveRecordSource({ rows: rowsOf(1000) }, bounded("sample"));
+    const res = await resolveRecordSource(
+      { rows: rowsOf(1000) },
+      bounded("sample")
+    );
     expect(res.sampled).toBe(true);
     expect(res.total).toBe(1000);
     expect(res.rows.length).toBeLessThanOrEqual(100);

@@ -157,7 +157,7 @@ describe("buildJsonataSuggestPrompt", () => {
   it("includes the closing instruction line", () => {
     const prompt = buildJsonataSuggestPrompt({ sampleResponse: sample });
     expect(prompt).toContain(
-      'Return JSON: { "expression": "<jsonata expression string>" }.',
+      'Return JSON: { "expression": "<jsonata expression string>" }.'
     );
   });
 
@@ -165,7 +165,7 @@ describe("buildJsonataSuggestPrompt", () => {
     const inputA = { sampleResponse: sample, promptHint: "hint" };
     const inputB = { sampleResponse: sample, promptHint: "hint" };
     expect(buildJsonataSuggestPrompt(inputA)).toBe(
-      buildJsonataSuggestPrompt(inputB),
+      buildJsonataSuggestPrompt(inputB)
     );
   });
 

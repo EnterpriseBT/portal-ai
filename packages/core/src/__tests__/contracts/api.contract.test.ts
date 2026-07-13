@@ -8,9 +8,7 @@ describe("ApiErrorSchema", () => {
       code: "BULK_JOB_TARGET_LOCKED",
       recommendation: "Wait for the running job to finish.",
     });
-    expect(parsed.recommendation).toBe(
-      "Wait for the running job to finish."
-    );
+    expect(parsed.recommendation).toBe("Wait for the running job to finish.");
   });
 
   it("parses a payload without `recommendation` (back-compat)", () => {

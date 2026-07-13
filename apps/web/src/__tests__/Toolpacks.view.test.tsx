@@ -58,7 +58,9 @@ const PACKS: Toolpack[] = [
   },
 ];
 
-function renderUI(overrides: Partial<React.ComponentProps<typeof ToolpacksUI>> = {}) {
+function renderUI(
+  overrides: Partial<React.ComponentProps<typeof ToolpacksUI>> = {}
+) {
   const defaults: React.ComponentProps<typeof ToolpacksUI> = {
     toolpacks: PACKS,
     selected: null,

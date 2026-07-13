@@ -31,9 +31,7 @@ import { createLogger } from "../../utils/logger.util.js";
 const logger = createLogger({ module: "microsoft-excel-adapter" });
 
 function notImplemented(method: string): never {
-  throw new Error(
-    `microsoftExcelAdapter.${method} is not implemented yet`
-  );
+  throw new Error(`microsoftExcelAdapter.${method} is not implemented yet`);
 }
 
 /**
@@ -123,11 +121,10 @@ export const microsoftExcelAdapter: ConnectorAdapter = {
     // 2. Fetch the workbook fresh from Graph. The cache layer's
     //    refresh-token rotation persistence runs transparently inside
     //    `MicrosoftAccessTokenCacheService.getOrRefresh`.
-    const workbook =
-      await MicrosoftExcelConnectorService.fetchWorkbookForSync(
-        instance.id,
-        instance.organizationId
-      );
+    const workbook = await MicrosoftExcelConnectorService.fetchWorkbookForSync(
+      instance.id,
+      instance.organizationId
+    );
     progress?.(40);
 
     // 3. Run the commit pipeline with sync overrides:

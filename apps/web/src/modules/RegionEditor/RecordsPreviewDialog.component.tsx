@@ -107,8 +107,8 @@ export const RecordsPreviewDialogUI: React.FC<RecordsPreviewDialogUIProps> = ({
 
         <Typography variant="caption" color="text.secondary">
           Placeholder labels (shown dimmed / italic) mark fields that don&apos;t
-          yet have a labelled header — edit the header cells or rename the
-          pivot axis to replace them.
+          yet have a labelled header — edit the header cells or rename the pivot
+          axis to replace them.
         </Typography>
       </Stack>
     </Modal>
@@ -118,9 +118,7 @@ export const RecordsPreviewDialogUI: React.FC<RecordsPreviewDialogUIProps> = ({
 function renderBody(preview: PreviewResult | null): React.ReactElement {
   if (!preview) {
     return (
-      <EmptyPanel
-        message="Add a header axis or draw a region with data to preview records."
-      />
+      <EmptyPanel message="Add a header axis or draw a region with data to preview records." />
     );
   }
   if (preview.columns.length === 0) {
@@ -147,10 +145,7 @@ function renderBody(preview: PreviewResult | null): React.ReactElement {
           {preview.rows.map((row, i) => (
             <TableRow key={i} hover>
               {preview.columns.map((col) => (
-                <PreviewBodyCell
-                  key={col.key}
-                  value={row[col.key] ?? null}
-                />
+                <PreviewBodyCell key={col.key} value={row[col.key] ?? null} />
               ))}
             </TableRow>
           ))}

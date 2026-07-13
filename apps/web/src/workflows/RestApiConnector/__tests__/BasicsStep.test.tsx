@@ -34,9 +34,15 @@ describe("BasicsStepUI — auth dropdown", () => {
     render(<BasicsStepUI {...makeProps()} />);
     const dropdown = screen.getByLabelText(/authentication/i);
     await userEvent.click(dropdown);
-    expect(await screen.findByRole("option", { name: /^none$/i })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /^api key$/i })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /^bearer token$/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("option", { name: /^none$/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /^api key$/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /^bearer token$/i })
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("option", { name: /^basic \(username \+ password\)$/i })
     ).toBeInTheDocument();
@@ -46,7 +52,9 @@ describe("BasicsStepUI — auth dropdown", () => {
     const onAuthModeChange = jest.fn();
     render(<BasicsStepUI {...makeProps({ onAuthModeChange })} />);
     await userEvent.click(screen.getByLabelText(/authentication/i));
-    await userEvent.click(await screen.findByRole("option", { name: /^bearer token$/i }));
+    await userEvent.click(
+      await screen.findByRole("option", { name: /^bearer token$/i })
+    );
     expect(onAuthModeChange).toHaveBeenCalledWith("bearer");
   });
 });
@@ -54,7 +62,9 @@ describe("BasicsStepUI — auth dropdown", () => {
 describe("BasicsStepUI — per-mode sub-form rendering", () => {
   it("renders no credentials sub-form when mode is none", () => {
     render(<BasicsStepUI {...makeProps({ authMode: "none" })} />);
-    expect(screen.queryByLabelText(/header or query name/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/header or query name/i)
+    ).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/bearer token/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/username/i)).not.toBeInTheDocument();
   });

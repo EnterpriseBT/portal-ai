@@ -774,9 +774,8 @@ describe("Entity Group Router", () => {
         ] as never);
 
       // Reconcile both entities so the wide tables grow c_email / c_contact_email.
-      const { wideTableReconcilerService } = await import(
-        "../../../services/wide-table-reconciler.service.js"
-      );
+      const { wideTableReconcilerService } =
+        await import("../../../services/wide-table-reconciler.service.js");
       await wideTableReconcilerService.reconcileEntity(
         entity1.id,
         db as unknown as DbClient
@@ -806,18 +805,12 @@ describe("Entity Group Router", () => {
       // Mirror into the wide tables. The field-mapping normalizedKey
       // matches the column-def `key` in this fixture, so the c_<key>
       // columns line up with the normalizedData keys.
-      const { wideTableRepo } = await import(
-        "../../../db/repositories/wide-table.repository.js"
-      );
-      const { wideTableStatementCache } = await import(
-        "../../../services/wide-table-statement.cache.js"
-      );
-      const {
-        projectToWideRow,
-        buildMappingsForProjection,
-      } = await import(
-        "../../../services/wide-table-projection.util.js"
-      );
+      const { wideTableRepo } =
+        await import("../../../db/repositories/wide-table.repository.js");
+      const { wideTableStatementCache } =
+        await import("../../../services/wide-table-statement.cache.js");
+      const { projectToWideRow, buildMappingsForProjection } =
+        await import("../../../services/wide-table-projection.util.js");
       const stmt1 = await wideTableStatementCache.get(
         entity1.id,
         db as unknown as DbClient

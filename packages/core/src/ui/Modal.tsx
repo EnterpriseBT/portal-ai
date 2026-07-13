@@ -42,9 +42,7 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   ...props
 }) => {
-  const [maximized, setMaximized] = useState(
-    maximizable && defaultMaximized
-  );
+  const [maximized, setMaximized] = useState(maximizable && defaultMaximized);
   const showHeader = !!title || showCloseButton;
   const showMaximizeButton = maximizable && showHeader;
   return (
@@ -70,7 +68,9 @@ export const Modal: React.FC<ModalProps> = ({
         >
           {title}
           {(showCloseButton || showMaximizeButton) && (
-            <Box sx={{ position: "absolute", right: 8, top: 8, display: "flex" }}>
+            <Box
+              sx={{ position: "absolute", right: 8, top: 8, display: "flex" }}
+            >
               {showMaximizeButton && (
                 <IconButton
                   aria-label={maximized ? "restore" : "maximize"}

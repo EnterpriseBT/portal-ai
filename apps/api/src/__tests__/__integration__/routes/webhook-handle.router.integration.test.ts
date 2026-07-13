@@ -9,7 +9,14 @@
  * credential. (spec integration 7 + 8)
  */
 
-import { jest, describe, it, expect, beforeAll, afterEach } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterEach,
+} from "@jest/globals";
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 
@@ -20,12 +27,10 @@ jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
-const { PortalSqlHandleService } = await import(
-  "../../../services/portal-sql-handle.service.js"
-);
-const { WebhookReadTokenService } = await import(
-  "../../../services/webhook-read-token.service.js"
-);
+const { PortalSqlHandleService } =
+  await import("../../../services/portal-sql-handle.service.js");
+const { WebhookReadTokenService } =
+  await import("../../../services/webhook-read-token.service.js");
 const { getRedisClient } = await import("../../../utils/redis.util.js");
 
 const ORG = "org-124-read";
@@ -178,7 +183,11 @@ describe("POST /api/webhook/handle/:sessionId — outbound staging (#124)", () =
     }
   });
 
-  const POST = (sessionId: string, token: string | undefined, body: unknown) => {
+  const POST = (
+    sessionId: string,
+    token: string | undefined,
+    body: unknown
+  ) => {
     const r = request(app).post(`/api/webhook/handle/${sessionId}`);
     return (token ? r.set("Authorization", `Bearer ${token}`) : r).send(
       body as object
@@ -195,7 +204,11 @@ describe("POST /api/webhook/handle/:sessionId — outbound staging (#124)", () =
     });
 
     const res = await POST(sessionId, writeToken, {
-      rows: [{ k: "a", n: 1 }, { k: "b", n: 2 }, { k: "c", n: 3 }],
+      rows: [
+        { k: "a", n: 1 },
+        { k: "b", n: 2 },
+        { k: "c", n: 3 },
+      ],
     });
     expect(res.status).toBe(200);
     expect(res.body.payload.resultHandle).toMatch(/^qh-/);

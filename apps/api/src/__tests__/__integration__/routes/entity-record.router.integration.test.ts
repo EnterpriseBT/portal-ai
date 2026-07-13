@@ -2237,10 +2237,10 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         userId
       );
       await insertEntityRecordsWithWide(
-      db as ReturnType<typeof drizzle>,
-      row.connectorEntityId,
-      [row]
-    );
+        db as ReturnType<typeof drizzle>,
+        row.connectorEntityId,
+        [row]
+      );
 
       const res = await request(app)
         .delete(singleRecordUrl(connectorEntityId, row.id))
@@ -2265,10 +2265,10 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         userId
       );
       await insertEntityRecordsWithWide(
-      db as ReturnType<typeof drizzle>,
-      row.connectorEntityId,
-      [row]
-    );
+        db as ReturnType<typeof drizzle>,
+        row.connectorEntityId,
+        [row]
+      );
 
       const res = await request(app)
         .delete(singleRecordUrl(connectorEntityId, row.id))
@@ -2307,10 +2307,10 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         userId
       );
       await insertEntityRecordsWithWide(
-      db as ReturnType<typeof drizzle>,
-      row.connectorEntityId,
-      [row]
-    );
+        db as ReturnType<typeof drizzle>,
+        row.connectorEntityId,
+        [row]
+      );
 
       const res = await request(app)
         .delete(singleRecordUrl(connectorEntityId, row.id))
@@ -2335,10 +2335,10 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         userId
       );
       await insertEntityRecordsWithWide(
-      db as ReturnType<typeof drizzle>,
-      row.connectorEntityId,
-      [row]
-    );
+        db as ReturnType<typeof drizzle>,
+        row.connectorEntityId,
+        [row]
+      );
 
       // Delete
       await request(app)
@@ -2374,10 +2374,10 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         userId
       );
       await insertEntityRecordsWithWide(
-      db as ReturnType<typeof drizzle>,
-      row.connectorEntityId,
-      [row]
-    );
+        db as ReturnType<typeof drizzle>,
+        row.connectorEntityId,
+        [row]
+      );
 
       const res = await request(app)
         .patch(singleRecordUrl(connectorEntityId, row.id))
@@ -2403,10 +2403,10 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         userId
       );
       await insertEntityRecordsWithWide(
-      db as ReturnType<typeof drizzle>,
-      row.connectorEntityId,
-      [row]
-    );
+        db as ReturnType<typeof drizzle>,
+        row.connectorEntityId,
+        [row]
+      );
 
       const res = await request(app)
         .patch(singleRecordUrl(connectorEntityId, row.id))
@@ -2458,10 +2458,10 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         userId
       );
       await insertEntityRecordsWithWide(
-      db as ReturnType<typeof drizzle>,
-      row.connectorEntityId,
-      [row]
-    );
+        db as ReturnType<typeof drizzle>,
+        row.connectorEntityId,
+        [row]
+      );
 
       const res = await request(app)
         .delete(recordsUrl(connectorEntityId))

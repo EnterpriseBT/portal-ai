@@ -130,7 +130,8 @@ export async function dispatchBatch(
           )) as Record<string, unknown>;
           return { kind: "ok" as const, sourceKey, value };
         } catch (err) {
-          const code = (err as { code?: string }).code ?? "BULK_DISPATCH_CALL_FAILED";
+          const code =
+            (err as { code?: string }).code ?? "BULK_DISPATCH_CALL_FAILED";
           const message = err instanceof Error ? err.message : String(err);
           return {
             kind: "err" as const,

@@ -4,13 +4,11 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockAssertStationScope = jest.fn<any>().mockResolvedValue(undefined);
 const mockAssertWriteCapability = jest.fn<any>().mockResolvedValue(undefined);
-const mockFindColDef = jest
-  .fn<any>()
-  .mockResolvedValue({
-    id: "cd-1",
-    organizationId: "org-1",
-    label: "Column 1",
-  });
+const mockFindColDef = jest.fn<any>().mockResolvedValue({
+  id: "cd-1",
+  organizationId: "org-1",
+  label: "Column 1",
+});
 const mockUpsert = jest.fn<any>().mockResolvedValue({ id: "fm-1" });
 const mockTransaction = jest
   .fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
@@ -27,7 +25,8 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       fieldMappings: { upsertByEntityAndNormalizedKey: mockUpsert },
     },
   },
-}));jest.unstable_mockModule("../../db/repositories/base.repository.js", () => ({
+}));
+jest.unstable_mockModule("../../db/repositories/base.repository.js", () => ({
   Repository: { transaction: mockTransaction },
 }));
 

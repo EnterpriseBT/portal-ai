@@ -98,7 +98,10 @@ export const BoundsInputsUI: React.FC<BoundsInputsUIProps> = ({
     if (parsed === null) {
       // Invalid input — snap the visible value back to the canonical
       // bounds so the user sees the rejection.
-      setDraft((prev) => ({ ...prev, [field]: toDisplay(field, bounds[field]) }));
+      setDraft((prev) => ({
+        ...prev,
+        [field]: toDisplay(field, bounds[field]),
+      }));
       return;
     }
     const next: CellBounds = { ...bounds, [field]: parsed };

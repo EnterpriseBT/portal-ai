@@ -1,26 +1,22 @@
 /* global AbortController */
-import {
-  jest,
-  describe,
-  it,
-  expect,
-  beforeEach,
-} from "@jest/globals";
+import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
-const mockFindEntityById =
-  jest.fn<(...args: unknown[]) => Promise<unknown>>();
-const mockAssertConnectorEntityUnlocked =
-  jest.fn<(...args: unknown[]) => Promise<void>>().mockResolvedValue();
-const mockAssertStationScope =
-  jest.fn<(...args: unknown[]) => Promise<void>>().mockResolvedValue();
-const mockCountSourceRows =
-  jest.fn<() => Promise<number>>().mockResolvedValue(0);
-const mockExplain =
-  jest.fn<() => Promise<void>>().mockResolvedValue();
-const mockCanCastConstant =
-  jest.fn<() => Promise<boolean>>().mockResolvedValue(true);
+const mockFindEntityById = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockAssertConnectorEntityUnlocked = jest
+  .fn<(...args: unknown[]) => Promise<void>>()
+  .mockResolvedValue();
+const mockAssertStationScope = jest
+  .fn<(...args: unknown[]) => Promise<void>>()
+  .mockResolvedValue();
+const mockCountSourceRows = jest
+  .fn<() => Promise<number>>()
+  .mockResolvedValue(0);
+const mockExplain = jest.fn<() => Promise<void>>().mockResolvedValue();
+const mockCanCastConstant = jest
+  .fn<() => Promise<boolean>>()
+  .mockResolvedValue(true);
 type JobsCreateParams = {
   organizationId: string;
   type: string;
@@ -46,9 +42,7 @@ jest.unstable_mockModule("../../services/job-lock.service.js", () => ({
 
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   assertStationScope: mockAssertStationScope,
-  assertWriteCapability: jest
-    .fn<() => Promise<void>>()
-    .mockResolvedValue(),
+  assertWriteCapability: jest.fn<() => Promise<void>>().mockResolvedValue(),
   resolveStationCapabilities: jest
     .fn<() => Promise<unknown[]>>()
     .mockResolvedValue([]),
@@ -81,20 +75,22 @@ jest.unstable_mockModule("../../services/tools.service.js", () => ({
 }));
 
 // Cost-acknowledgement gate (#85 §4b server enforcement).
-const mockRecordRejection =
-  jest.fn<() => Promise<void>>().mockResolvedValue();
+const mockRecordRejection = jest.fn<() => Promise<void>>().mockResolvedValue();
 const mockValidateAck = jest
   .fn<
     () => Promise<{ ok: true } | { ok: false; reason: "missing" | "stale" }>
   >()
   .mockResolvedValue({ ok: true });
-jest.unstable_mockModule("../../services/cost-acknowledgement.service.js", () => ({
-  CostAcknowledgementService: {
-    recordRejection: mockRecordRejection,
-    validate: mockValidateAck,
-  },
-  computeJobSignature: jest.fn(() => "sig-fixed"),
-}));
+jest.unstable_mockModule(
+  "../../services/cost-acknowledgement.service.js",
+  () => ({
+    CostAcknowledgementService: {
+      recordRejection: mockRecordRejection,
+      validate: mockValidateAck,
+    },
+    computeJobSignature: jest.fn(() => "sig-fixed"),
+  })
+);
 
 // Wide-table statement cache — drives the keyField pre-flight (#85).
 // Default mock provides the keyField columns used by VALID_INPUT.
@@ -117,13 +113,15 @@ const mockWideTableStatementCacheGet = jest
       { columnName: "acreage", pgType: "numeric" },
     ],
   });
-jest.unstable_mockModule("../../services/wide-table-statement.cache.js", () => ({
-  wideTableStatementCache: { get: mockWideTableStatementCacheGet },
-}));
-
-const { TransformEntityRecordsTool } = await import(
-  "../../tools/transform-entity-records.tool.js"
+jest.unstable_mockModule(
+  "../../services/wide-table-statement.cache.js",
+  () => ({
+    wideTableStatementCache: { get: mockWideTableStatementCacheGet },
+  })
 );
+
+const { TransformEntityRecordsTool } =
+  await import("../../tools/transform-entity-records.tool.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 const { ApiError } = await import("../../services/http.service.js");
 
@@ -187,9 +185,7 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFindEntityById.mockReset();
-    mockAssertConnectorEntityUnlocked
-      .mockReset()
-      .mockResolvedValue(undefined);
+    mockAssertConnectorEntityUnlocked.mockReset().mockResolvedValue(undefined);
     mockAssertStationScope.mockReset().mockResolvedValue(undefined);
     mockCountSourceRows.mockReset().mockResolvedValue(100);
     mockExplain.mockReset().mockResolvedValue(undefined);
@@ -198,17 +194,15 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     // `.mockResolvedValueOnce` / `.mockImplementation` calls in slice-2
     // tests don't leak forward; restore the broad default that the
     // single-target happy paths rely on.
-    mockWideTableStatementCacheGet
-      .mockReset()
-      .mockResolvedValue({
-        columns: [
-          { columnName: "c_parcel_id", pgType: "text" },
-          { columnName: "c_id", pgType: "text" },
-          { columnName: "c_diameter_km_min", pgType: "numeric" },
-          { columnName: "c_diameter_km_max", pgType: "numeric" },
-          { columnName: "acreage", pgType: "numeric" },
-        ],
-      });
+    mockWideTableStatementCacheGet.mockReset().mockResolvedValue({
+      columns: [
+        { columnName: "c_parcel_id", pgType: "text" },
+        { columnName: "c_id", pgType: "text" },
+        { columnName: "c_diameter_km_min", pgType: "numeric" },
+        { columnName: "c_diameter_km_max", pgType: "numeric" },
+        { columnName: "acreage", pgType: "numeric" },
+      ],
+    });
     mockCanCastConstant.mockReset().mockResolvedValue(true);
     // Default: both entities found
     mockFindEntityById.mockImplementation(async (id) => ({
@@ -267,11 +261,13 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     // bulkDispatch metadata missing.
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_x", writes: [toolWrite("acreage")] },
+      expression: {
+        kind: "tool",
+        ref: "compute_x",
+        writes: [toolWrite("acreage")],
+      },
     })) as { code: string };
-    expect(result.code).toBe(
-      ApiCode.BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE
-    );
+    expect(result.code).toBe(ApiCode.BULK_DISPATCH_TOOL_NOT_BULK_DISPATCHABLE);
     expect(mockJobsCreate).not.toHaveBeenCalled();
   });
 
@@ -290,7 +286,11 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
 
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_distance", writes: [toolWrite("acreage")] },
+      expression: {
+        kind: "tool",
+        ref: "compute_distance",
+        writes: [toolWrite("acreage")],
+      },
     })) as { jobId?: string; estimatedSeconds?: number };
 
     expect(result.jobId).toBe("job-created-1");
@@ -311,12 +311,14 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     });
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_costly", writes: [toolWrite("acreage")] },
+      expression: {
+        kind: "tool",
+        ref: "compute_costly",
+        writes: [toolWrite("acreage")],
+      },
     })) as { code: string };
 
-    expect(result.code).toBe(
-      ApiCode.BULK_DISPATCH_COST_NOT_ACKNOWLEDGED
-    );
+    expect(result.code).toBe(ApiCode.BULK_DISPATCH_COST_NOT_ACKNOWLEDGED);
     // Server stashes the rejection so a future legitimate retry can
     // be validated against it. Without this side effect, the agent
     // could never escape the gate.
@@ -337,7 +339,11 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     mockValidateAck.mockResolvedValueOnce({ ok: true });
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_costly", writes: [toolWrite("acreage")] },
+      expression: {
+        kind: "tool",
+        ref: "compute_costly",
+        writes: [toolWrite("acreage")],
+      },
       acknowledgeCost: true,
     })) as { jobId?: string };
 
@@ -359,7 +365,11 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     mockValidateAck.mockResolvedValueOnce({ ok: false, reason: "missing" });
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_costly", writes: [toolWrite("acreage")] },
+      expression: {
+        kind: "tool",
+        ref: "compute_costly",
+        writes: [toolWrite("acreage")],
+      },
       acknowledgeCost: true,
     })) as { code: string; details?: { reason?: string } };
 
@@ -383,7 +393,11 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
     mockValidateAck.mockResolvedValueOnce({ ok: false, reason: "stale" });
     const result = (await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_costly", writes: [toolWrite("acreage")] },
+      expression: {
+        kind: "tool",
+        ref: "compute_costly",
+        writes: [toolWrite("acreage")],
+      },
       acknowledgeCost: true,
     })) as { code: string; details?: { reason?: string } };
 
@@ -410,7 +424,11 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
 
     await exec({
       ...VALID_INPUT,
-      expression: { kind: "tool", ref: "compute_x", writes: [toolWrite("acreage")] },
+      expression: {
+        kind: "tool",
+        ref: "compute_x",
+        writes: [toolWrite("acreage")],
+      },
       sourceFilter: {
         whereSqlFragment: "c_parcel_id IN ('p-99','p-499','p-999')",
       },
@@ -468,7 +486,10 @@ describe("TransformEntityRecordsTool — pre-flight", () => {
           {
             targetConnectorEntityId: TARGET_ID,
             column: "c_diameter_avg_km",
-            valueFrom: { kind: "sql_alias" as const, alias: "c_diameter_avg_km" },
+            valueFrom: {
+              kind: "sql_alias" as const,
+              alias: "c_diameter_avg_km",
+            },
           },
         ],
       },

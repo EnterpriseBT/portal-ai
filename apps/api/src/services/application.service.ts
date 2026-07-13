@@ -262,21 +262,17 @@ export class ApplicationService {
         lastLogin: SystemUtilities.utc.now().getTime(),
       });
 
-    const createdOrgUser =
-      await DbService.repository.organizationUsers.create(
-        orgUserModel.parse(),
-        tx
-      );
+    const createdOrgUser = await DbService.repository.organizationUsers.create(
+      orgUserModel.parse(),
+      tx
+    );
 
     // ── System column definitions ────────────────────────────────────
     await new SeedService().seedSystemColumnDefinitions(createdOrg.id, tx);
 
     // ── Sandbox auto-provisioning ──────────────────────────────────
     const sandboxDef =
-      await DbService.repository.connectorDefinitions.findBySlug(
-        "sandbox",
-        tx
-      );
+      await DbService.repository.connectorDefinitions.findBySlug("sandbox", tx);
 
     if (!sandboxDef) {
       logger.warn(

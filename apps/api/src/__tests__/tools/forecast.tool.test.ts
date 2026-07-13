@@ -16,9 +16,8 @@ jest.unstable_mockModule("../../services/portal-sql-handle.service.js", () => ({
 }));
 
 const { ForecastTool } = await import("../../tools/forecast.tool.js");
-const { AnalyticsService } = await import(
-  "../../services/analytics.service.js"
-);
+const { AnalyticsService } =
+  await import("../../services/analytics.service.js");
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function exec(input: any) {
@@ -40,9 +39,10 @@ describe("ForecastTool — streaming fold over inline rows (#129)", () => {
       value: 100 + 10 * Math.sin((2 * Math.PI * i) / 12),
     }));
     // a fixed non-trivial permutation
-    return [12, 3, 0, 23, 7, 1, 19, 5, 14, 2, 11, 8, 22, 4, 16, 9, 21, 6, 15, 10, 20, 13, 18, 17].map(
-      (i) => ordered[i]
-    );
+    return [
+      12, 3, 0, 23, 7, 1, 19, 5, 14, 2, 11, 8, 22, 4, 16, 9, 21, 6, 15, 10, 20,
+      13, 18, 17,
+    ].map((i) => ordered[i]);
   })();
 
   const params = {

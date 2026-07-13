@@ -35,12 +35,9 @@ jest.unstable_mockModule("../../services/workbook-cache.service.js", () => ({
   },
 }));
 
-const { RangeNotLoadedError } = await import(
-  "@portalai/spreadsheet-parsing"
-);
-const { makeLazyWorkbookFromCache } = await import(
-  "../../utils/lazy-workbook.util.js"
-);
+const { RangeNotLoadedError } = await import("@portalai/spreadsheet-parsing");
+const { makeLazyWorkbookFromCache } =
+  await import("../../utils/lazy-workbook.util.js");
 
 function makeAsyncIterable<T>(items: T[]): AsyncIterable<T> {
   return {
@@ -243,7 +240,9 @@ describe("makeLazyWorkbookFromCache", () => {
     };
     readRowsMock.mockImplementation((_prefix, sheetId) =>
       makeAsyncIterable<ChunkRow>(
-        sheetId === "sheet-a" ? [["a-1"], ["a-2"], ["a-3"]] : [["b-1"], ["b-2"], ["b-3"]]
+        sheetId === "sheet-a"
+          ? [["a-1"], ["a-2"], ["a-3"]]
+          : [["b-1"], ["b-2"], ["b-3"]]
       )
     );
 

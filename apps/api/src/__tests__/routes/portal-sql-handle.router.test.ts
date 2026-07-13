@@ -1,10 +1,4 @@
-import {
-  jest,
-  describe,
-  it,
-  expect,
-  beforeEach,
-} from "@jest/globals";
+import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import request from "supertest";
 import express, { Request, Response, NextFunction } from "express";
 
@@ -19,7 +13,11 @@ jest.unstable_mockModule("../../services/portal-sql-handle.service.js", () => ({
 }));
 
 jest.unstable_mockModule("../../middleware/metadata.middleware.js", () => ({
-  getApplicationMetadata: (req: Request, _res: Response, next: NextFunction) => {
+  getApplicationMetadata: (
+    req: Request,
+    _res: Response,
+    next: NextFunction
+  ) => {
     req.application = {
       metadata: { organizationId: "org-001", userId: "user-001" },
     } as never;
@@ -27,9 +25,8 @@ jest.unstable_mockModule("../../middleware/metadata.middleware.js", () => ({
   },
 }));
 
-const { portalSqlHandleRouter } = await import(
-  "../../routes/portal-sql-handle.router.js"
-);
+const { portalSqlHandleRouter } =
+  await import("../../routes/portal-sql-handle.router.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
 // ── App setup ────────────────────────────────────────────────────────

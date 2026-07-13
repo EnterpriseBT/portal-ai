@@ -4,19 +4,21 @@ import { ApiCode } from "../../constants/api-codes.constants.js";
 // ── Mocks (the gate's collaborators) ─────────────────────────────────
 
 const mockFindById = jest.fn<(id: string) => Promise<unknown>>();
-const mockResolveTier = jest.fn<(org: unknown, now?: number) => Promise<unknown>>();
+const mockResolveTier =
+  jest.fn<(org: unknown, now?: number) => Promise<unknown>>();
 const mockPeriodIdFor = jest.fn<() => string>();
 const mockTryCharge =
   jest.fn<
-    (...a: unknown[]) => Promise<{ allowed: boolean; used: number; available: number | null }>
+    (
+      ...a: unknown[]
+    ) => Promise<{ allowed: boolean; used: number; available: number | null }>
   >();
-const mockGetBalance =
-  jest.fn<
-    (...a: unknown[]) => Promise<{
-      periodId: string;
-      byClass: Record<string, { used: number; available: number | null }>;
-    }>
-  >();
+const mockGetBalance = jest.fn<
+  (...a: unknown[]) => Promise<{
+    periodId: string;
+    byClass: Record<string, { used: number; available: number | null }>;
+  }>
+>();
 const mockIncrementRate = jest.fn<() => Promise<number>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
@@ -32,9 +34,8 @@ jest.unstable_mockModule("../../utils/rate-limit.util.js", () => ({
   incrementRateWindow: mockIncrementRate,
 }));
 
-const { CostGateService, COST_RESOLVERS, wrapWithCostGate } = await import(
-  "../../services/cost-gate.service.js"
-);
+const { CostGateService, COST_RESOLVERS, wrapWithCostGate } =
+  await import("../../services/cost-gate.service.js");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -155,7 +156,9 @@ describe("CostGateService.checkAdmission", () => {
   });
 
   it("case 7 — expensive admits a charge against its own class", async () => {
-    const r = await CostGateService.checkAdmission(ctx({ costHint: "expensive" }));
+    const r = await CostGateService.checkAdmission(
+      ctx({ costHint: "expensive" })
+    );
     expect(r).toEqual({
       allowed: true,
       charge: {
@@ -246,13 +249,21 @@ describe("CostGateService.commitCharge", () => {
   });
 
   it("an over-allocation charge (tryCharge denies) does not throw — the call was free", async () => {
-    mockTryCharge.mockResolvedValue({ allowed: false, used: 1000, available: 0 });
-    await expect(CostGateService.commitCharge(charge, 1000)).resolves.toBeUndefined();
+    mockTryCharge.mockResolvedValue({
+      allowed: false,
+      used: 1000,
+      available: 0,
+    });
+    await expect(
+      CostGateService.commitCharge(charge, 1000)
+    ).resolves.toBeUndefined();
   });
 
   it("swallows an infra error (never throws to the caller)", async () => {
     mockResolveTier.mockRejectedValue(new Error("db down"));
-    await expect(CostGateService.commitCharge(charge, 1000)).resolves.toBeUndefined();
+    await expect(
+      CostGateService.commitCharge(charge, 1000)
+    ).resolves.toBeUndefined();
     expect(mockTryCharge).not.toHaveBeenCalled();
   });
 });
@@ -283,7 +294,9 @@ describe("wrapWithCostGate", () => {
     });
     const tools = { web_search: { execute: original } };
     wrapWithCostGate(tools, { organizationId: "org-1", userId: "u1" }, appMeta);
-    await expect(tools.web_search.execute({}, {})).rejects.toThrow("tavily down");
+    await expect(tools.web_search.execute({}, {})).rejects.toThrow(
+      "tavily down"
+    );
     expect(original).toHaveBeenCalled();
     expect(mockTryCharge).not.toHaveBeenCalled(); // never charged
   });

@@ -1,13 +1,6 @@
-import {
-  jest,
-  describe,
-  it,
-  expect,
-  beforeEach,
-} from "@jest/globals";
+import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
-const mockPortalsFindById =
-  jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockPortalsFindById = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockPortalMessagesCreate =
   jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockRedisPublish = jest.fn<() => Promise<number>>().mockResolvedValue(1);
@@ -38,9 +31,8 @@ jest.unstable_mockModule("../../utils/system.util.js", () => ({
   },
 }));
 
-const { PortalService, PORTAL_EVENTS_CHANNEL_PREFIX } = await import(
-  "../../services/portal.service.js"
-);
+const { PortalService, PORTAL_EVENTS_CHANNEL_PREFIX } =
+  await import("../../services/portal.service.js");
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -69,7 +61,7 @@ describe("PortalService.notifyJobTerminal", () => {
     expect(persisted.role).toBe("assistant");
     expect(persisted.blocks).toHaveLength(1);
     expect(persisted.blocks[0].type).toBe("text");
-    expect((persisted.blocks[0].content as string)).toMatch(/100 records/);
+    expect(persisted.blocks[0].content as string).toMatch(/100 records/);
   });
 
   it("includes a bulk-failures-table block when partialFailures is non-empty", async () => {

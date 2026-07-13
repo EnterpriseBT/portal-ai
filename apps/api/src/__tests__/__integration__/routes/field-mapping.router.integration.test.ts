@@ -240,9 +240,8 @@ async function seedFullChain(db: ReturnType<typeof drizzle>) {
   await db.insert(columnDefinitions).values(colDef as never);
 
   // Reconcile the wide table so downstream reads find `er__<id>`.
-  const { wideTableReconcilerService } = await import(
-    "../../../services/wide-table-reconciler.service.js"
-  );
+  const { wideTableReconcilerService } =
+    await import("../../../services/wide-table-reconciler.service.js");
   await wideTableReconcilerService.ensureTable(
     entity.id,
     db as unknown as DbClient
@@ -283,9 +282,8 @@ async function seedWithCapabilities(
   const colDef = createColDef(organizationId);
   await db.insert(columnDefinitions).values(colDef as never);
 
-  const { wideTableReconcilerService } = await import(
-    "../../../services/wide-table-reconciler.service.js"
-  );
+  const { wideTableReconcilerService } =
+    await import("../../../services/wide-table-reconciler.service.js");
   await wideTableReconcilerService.ensureTable(
     entity.id,
     db as unknown as DbClient
@@ -557,8 +555,9 @@ describe("Field Mapping Router", () => {
     });
 
     it("should create a field mapping successfully", async () => {
-      const { connectorEntityId, columnDefinitionId } =
-        await seedFullChain(db as ReturnType<typeof drizzle>);
+      const { connectorEntityId, columnDefinitionId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
 
       const res = await request(app)
         .post("/api/field-mappings")
@@ -658,8 +657,9 @@ describe("Field Mapping Router", () => {
     });
 
     it("created field mapping should be retrievable via GET", async () => {
-      const { connectorEntityId, columnDefinitionId } =
-        await seedFullChain(db as ReturnType<typeof drizzle>);
+      const { connectorEntityId, columnDefinitionId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
 
       const createRes = await request(app)
         .post("/api/field-mappings")
@@ -744,7 +744,7 @@ describe("Field Mapping Router", () => {
         `SELECT column_name FROM information_schema.columns WHERE table_name = '${tableName}'` as any
       );
       return new Set(
-        ((result as unknown) as { column_name: string }[]).map(
+        (result as unknown as { column_name: string }[]).map(
           (r) => r.column_name
         )
       );
@@ -752,8 +752,9 @@ describe("Field Mapping Router", () => {
 
     // Case 26 — POST adds a wide-table column.
     it("POST /api/field-mappings adds a `c_<key>` column on the wide table", async () => {
-      const { connectorEntityId, columnDefinitionId } =
-        await seedFullChain(db as ReturnType<typeof drizzle>);
+      const { connectorEntityId, columnDefinitionId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
 
       const res = await request(app)
         .post("/api/field-mappings")
@@ -777,15 +778,18 @@ describe("Field Mapping Router", () => {
       const meta = await (db as ReturnType<typeof drizzle>)
         .select()
         .from(schema.wideTableColumns)
-        .where(eq(schema.wideTableColumns.connectorEntityId, connectorEntityId));
+        .where(
+          eq(schema.wideTableColumns.connectorEntityId, connectorEntityId)
+        );
       expect(meta).toHaveLength(1);
       expect(meta[0]!.columnName).toBe("c_account_name");
     });
 
     // Case 27 — non-schema-changing PATCH does not emit DDL.
     it("non-schema-changing PATCH does not add or change wide-table columns", async () => {
-      const { connectorEntityId, columnDefinitionId } =
-        await seedFullChain(db as ReturnType<typeof drizzle>);
+      const { connectorEntityId, columnDefinitionId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
 
       const createRes = await request(app)
         .post("/api/field-mappings")
@@ -825,8 +829,9 @@ describe("Field Mapping Router", () => {
 
     // Case 28 — DELETE retires the wide-table column.
     it("DELETE retires the wide-table column (Postgres column stays on disk)", async () => {
-      const { connectorEntityId, columnDefinitionId } =
-        await seedFullChain(db as ReturnType<typeof drizzle>);
+      const { connectorEntityId, columnDefinitionId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
 
       const createRes = await request(app)
         .post("/api/field-mappings")
@@ -903,7 +908,9 @@ describe("Field Mapping Router", () => {
         });
 
       expect(patchRes.status).toBe(422);
-      expect(patchRes.body.code).toBe(ApiCode.WIDE_TABLE_TYPE_CHANGE_UNSUPPORTED);
+      expect(patchRes.body.code).toBe(
+        ApiCode.WIDE_TABLE_TYPE_CHANGE_UNSUPPORTED
+      );
     });
   });
 
@@ -1321,9 +1328,8 @@ describe("Field Mapping Router", () => {
 
       // Reconcile both entities so the wide tables grow their c_<key>
       // columns before we seed rows.
-      const { wideTableReconcilerService } = await import(
-        "../../../services/wide-table-reconciler.service.js"
-      );
+      const { wideTableReconcilerService } =
+        await import("../../../services/wide-table-reconciler.service.js");
       await wideTableReconcilerService.reconcileEntity(
         connectorEntityId,
         db as unknown as DbClient
@@ -1372,18 +1378,12 @@ describe("Field Mapping Router", () => {
         ] as never);
 
       // Seed the wide-table sides with the reference-array values.
-      const { wideTableRepo } = await import(
-        "../../../db/repositories/wide-table.repository.js"
-      );
-      const { wideTableStatementCache } = await import(
-        "../../../services/wide-table-statement.cache.js"
-      );
-      const {
-        projectToWideRow,
-        buildMappingsForProjection,
-      } = await import(
-        "../../../services/wide-table-projection.util.js"
-      );
+      const { wideTableRepo } =
+        await import("../../../db/repositories/wide-table.repository.js");
+      const { wideTableStatementCache } =
+        await import("../../../services/wide-table-statement.cache.js");
+      const { projectToWideRow, buildMappingsForProjection } =
+        await import("../../../services/wide-table-projection.util.js");
       const stmtA = await wideTableStatementCache.get(
         connectorEntityId,
         db as unknown as DbClient
@@ -1497,17 +1497,13 @@ describe("Field Mapping Router", () => {
         .values(mappingB as never);
 
       // Reconcile both entities' wide tables before seeding rows.
-      const { wideTableReconcilerService: recSvc2 } = await import(
-        "../../../services/wide-table-reconciler.service.js"
-      );
+      const { wideTableReconcilerService: recSvc2 } =
+        await import("../../../services/wide-table-reconciler.service.js");
       await recSvc2.reconcileEntity(
         connectorEntityId,
         db as unknown as DbClient
       );
-      await recSvc2.reconcileEntity(
-        entityB.id,
-        db as unknown as DbClient
-      );
+      await recSvc2.reconcileEntity(entityB.id, db as unknown as DbClient);
 
       // Inconsistent: A["a1"] → ["b1"] but B["b1"] → [] (missing back-ref)
       const recAId = generateId();
@@ -1547,18 +1543,14 @@ describe("Field Mapping Router", () => {
           },
         ] as never);
 
-      const { wideTableRepo: wtRepo2 } = await import(
-        "../../../db/repositories/wide-table.repository.js"
-      );
-      const { wideTableStatementCache: cache2 } = await import(
-        "../../../services/wide-table-statement.cache.js"
-      );
+      const { wideTableRepo: wtRepo2 } =
+        await import("../../../db/repositories/wide-table.repository.js");
+      const { wideTableStatementCache: cache2 } =
+        await import("../../../services/wide-table-statement.cache.js");
       const {
         projectToWideRow: project2,
         buildMappingsForProjection: buildMap2,
-      } = await import(
-        "../../../services/wide-table-projection.util.js"
-      );
+      } = await import("../../../services/wide-table-projection.util.js");
       const stmtA2 = await cache2.get(
         connectorEntityId,
         db as unknown as DbClient
@@ -1581,10 +1573,7 @@ describe("Field Mapping Router", () => {
         ],
         db as unknown as DbClient
       );
-      const stmtB2 = await cache2.get(
-        entityB.id,
-        db as unknown as DbClient
-      );
+      const stmtB2 = await cache2.get(entityB.id, db as unknown as DbClient);
       const mappingsB2 = buildMap2(stmtB2.columns);
       await wtRepo2.upsertMany(
         entityB.id,

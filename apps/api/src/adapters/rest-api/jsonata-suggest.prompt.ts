@@ -76,7 +76,7 @@ export interface BuildJsonataSuggestPromptInput {
  * empty header).
  */
 export function buildJsonataSuggestPrompt(
-  input: BuildJsonataSuggestPromptInput,
+  input: BuildJsonataSuggestPromptInput
 ): string {
   const { sampleResponse, promptHint, previousAttempt } = input;
 
@@ -85,7 +85,7 @@ export function buildJsonataSuggestPrompt(
     "into an array of flat record objects. The expression must:",
     "- Return an array (each element a plain object, never a primitive).",
     "- Project nested fields into top-level keys so downstream inference can",
-    "  enumerate them — e.g. `data.{ \"id\": id, \"user_name\": user.name }`.",
+    '  enumerate them — e.g. `data.{ "id": id, "user_name": user.name }`.',
     "- Reference docs.jsonata.org syntax only. No JavaScript, no I/O.",
     "",
     "## Sample response",
@@ -103,14 +103,14 @@ export function buildJsonataSuggestPrompt(
       "Use the error message below to correct course.",
       "",
       `Expression: ${previousAttempt.expression}`,
-      `Error: ${previousAttempt.error}`,
+      `Error: ${previousAttempt.error}`
     );
   }
 
   lines.push(
     "",
     'Return JSON: { "expression": "<jsonata expression string>" }.',
-    "Emit exactly one expression. No commentary, no alternatives, no markdown.",
+    "Emit exactly one expression. No commentary, no alternatives, no markdown."
   );
 
   return lines.join("\n");

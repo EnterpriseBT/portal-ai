@@ -16,14 +16,14 @@ describe("TransformSuggesterUI — render shape", () => {
         onSuggest={jest.fn()}
         isSuggesting={false}
         disabled={false}
-      />,
+      />
     );
 
     expect(
-      screen.getByRole("textbox", { name: /suggestion hint/i }),
+      screen.getByRole("textbox", { name: /suggestion hint/i })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /^suggest$/i }),
+      screen.getByRole("button", { name: /^suggest$/i })
     ).toBeInTheDocument();
   });
 
@@ -35,12 +35,12 @@ describe("TransformSuggesterUI — render shape", () => {
         onSuggest={jest.fn()}
         isSuggesting={false}
         disabled={false}
-      />,
+      />
     );
     const textarea = screen.getByRole("textbox", { name: /suggestion hint/i });
     expect(textarea).toHaveAttribute(
       "placeholder",
-      expect.stringContaining("Describe what records you want"),
+      expect.stringContaining("Describe what records you want")
     );
   });
 
@@ -52,10 +52,10 @@ describe("TransformSuggesterUI — render shape", () => {
         onSuggest={jest.fn()}
         isSuggesting={false}
         disabled={false}
-      />,
+      />
     );
     expect(
-      screen.getByRole("textbox", { name: /suggestion hint/i }),
+      screen.getByRole("textbox", { name: /suggestion hint/i })
     ).toHaveValue("just id and email");
   });
 
@@ -68,7 +68,7 @@ describe("TransformSuggesterUI — render shape", () => {
         isSuggesting={false}
         disabled={false}
         serverError={null}
-      />,
+      />
     );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -81,11 +81,12 @@ describe("TransformSuggesterUI — render shape", () => {
         onSuggest={jest.fn()}
         isSuggesting={false}
         disabled={false}
-      />,
+      />
     );
-    expect(
-      screen.getByRole("button", { name: /^suggest$/i }),
-    ).toHaveAttribute("type", "button");
+    expect(screen.getByRole("button", { name: /^suggest$/i })).toHaveAttribute(
+      "type",
+      "button"
+    );
   });
 });
 
@@ -99,14 +100,14 @@ describe("TransformSuggesterUI — interactions", () => {
         onSuggest={jest.fn()}
         isSuggesting={false}
         disabled={false}
-      />,
+      />
     );
     fireEvent.change(
       screen.getByRole("textbox", { name: /suggestion hint/i }),
-      { target: { value: "one row per order line item" } },
+      { target: { value: "one row per order line item" } }
     );
     expect(onPromptHintChange).toHaveBeenCalledWith(
-      "one row per order line item",
+      "one row per order line item"
     );
   });
 
@@ -119,11 +120,9 @@ describe("TransformSuggesterUI — interactions", () => {
         onSuggest={onSuggest}
         isSuggesting={false}
         disabled={false}
-      />,
+      />
     );
-    await userEvent.click(
-      screen.getByRole("button", { name: /^suggest$/i }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: /^suggest$/i }));
     expect(onSuggest).toHaveBeenCalledTimes(1);
   });
 });
@@ -137,7 +136,7 @@ describe("TransformSuggesterUI — pending state", () => {
         onSuggest={jest.fn()}
         isSuggesting={true}
         disabled={false}
-      />,
+      />
     );
     const button = screen.getByRole("button", { name: /suggesting/i });
     expect(button).toBeDisabled();
@@ -154,7 +153,7 @@ describe("TransformSuggesterUI — disabled state", () => {
         isSuggesting={false}
         disabled={true}
         disabledReason="Run Preview first to capture a sample response."
-      />,
+      />
     );
 
     const button = screen.getByRole("button", { name: /^suggest$/i });
@@ -165,9 +164,7 @@ describe("TransformSuggesterUI — disabled state", () => {
     // present in the DOM (Tooltip uses MUI Popper, which renders the
     // tooltip after a hover — `findByRole("tooltip")` waits for it).
     await userEvent.hover(button.parentElement ?? button);
-    expect(
-      await screen.findByText(/run preview first/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/run preview first/i)).toBeInTheDocument();
   });
 });
 
@@ -184,7 +181,7 @@ describe("TransformSuggesterUI — serverError", () => {
           message: "Haiku timed out",
           code: "REST_API_TRANSFORM_SUGGEST_FAILED",
         }}
-      />,
+      />
     );
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent(/haiku timed out/i);

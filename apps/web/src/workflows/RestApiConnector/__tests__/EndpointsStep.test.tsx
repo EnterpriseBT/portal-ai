@@ -127,8 +127,6 @@ describe("EndpointsStepUI — error surface", () => {
         })}
       />
     );
-    expect(
-      screen.getByText(/at least one endpoint/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/at least one endpoint/i)).toBeInTheDocument();
   });
 });

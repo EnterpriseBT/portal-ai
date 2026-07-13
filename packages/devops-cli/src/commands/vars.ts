@@ -19,7 +19,13 @@ import {
   type EnvironmentDefinition,
 } from "@portalai/cli-env";
 
-import { CATALOG, lookupKey, mask, pathFor, type CatalogKind } from "../catalog.js";
+import {
+  CATALOG,
+  lookupKey,
+  mask,
+  pathFor,
+  type CatalogKind,
+} from "../catalog.js";
 
 /** Confirmation flags every mutating command threads to the guard. Guards
  *  live IN the command functions (not just the bin) so library consumers —
@@ -213,7 +219,9 @@ function parseEnvFile(
     try {
       lookupKey(key);
     } catch {
-      throw new Error(`${file}:${lineno}: unknown key '${key}' (run 'portalops vars describe')`);
+      throw new Error(
+        `${file}:${lineno}: unknown key '${key}' (run 'portalops vars describe')`
+      );
     }
     if (!value) {
       throw new Error(`${file}:${lineno}: empty value for '${key}'`);

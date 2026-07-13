@@ -59,10 +59,7 @@ import {
   MAX_RECORDS_SCANNED,
   MAX_SAMPLES_PER_COLUMN,
 } from "./inference.util.js";
-import {
-  resolveIterator,
-  reconstructPagination,
-} from "./pagination/index.js";
+import { resolveIterator, reconstructPagination } from "./pagination/index.js";
 import { ProbeCache } from "./probe-cache.util.js";
 import type { ApiEndpoint } from "../../db/repositories/api-endpoints.repository.js";
 import { SystemUtilities } from "../../utils/system.util.js";
@@ -137,7 +134,8 @@ export function buildUrl(
   const tail = path.startsWith("/") ? path : `/${path}`;
   const url = new URL(`${base}${tail}`);
   if (queryParams) {
-    for (const [k, v] of Object.entries(queryParams)) url.searchParams.set(k, v);
+    for (const [k, v] of Object.entries(queryParams))
+      url.searchParams.set(k, v);
   }
   return url.toString();
 }
@@ -171,7 +169,10 @@ async function discoverEntities(
   const endpoints = await DbService.repository.apiEndpoints.findByInstance(
     instance.id
   );
-  return endpoints.map(({ entity }) => ({ key: entity.key, label: entity.label }));
+  return endpoints.map(({ entity }) => ({
+    key: entity.key,
+    label: entity.label,
+  }));
 }
 
 async function assertSyncEligibility(
@@ -311,7 +312,12 @@ async function syncOneEndpoint(
   // Streaming-eligible endpoints emit one page at stream start and
   // another after the stream drains — enough motion to signal liveness.
   reportPage?: (pagesEmitted: number) => void
-): Promise<{ created: number; updated: number; unchanged: number; deleted: number }> {
+): Promise<{
+  created: number;
+  updated: number;
+  unchanged: number;
+  deleted: number;
+}> {
   const pagination = reconstructPagination(
     endpoint.config.pagination,
     (endpoint.config.paginationConfig as Record<string, unknown> | null) ?? null
@@ -343,11 +349,10 @@ async function syncOneEndpoint(
   let mappingsForNormalize: unknown = [];
   let wideProjection: ReadonlyMap<string, string> | null = null;
   try {
-    mappingsForNormalize =
-      await DbService.repository.fieldMappings.findMany(
-        eq(fieldMappings.connectorEntityId, endpoint.entity.id),
-        { include: ["columnDefinition"] }
-      );
+    mappingsForNormalize = await DbService.repository.fieldMappings.findMany(
+      eq(fieldMappings.connectorEntityId, endpoint.entity.id),
+      { include: ["columnDefinition"] }
+    );
     const wideStmt = await wideTableStatementCache.get(endpoint.entity.id);
     wideProjection =
       wideStmt.columns.length > 0
@@ -380,12 +385,7 @@ async function syncOneEndpoint(
   let pagesEmitted = 0;
   if (isStreamingEligible(endpoint)) {
     const streamStartedAt = Date.now();
-    const page = await streamFetchOnePage(
-      endpoint,
-      baseUrl,
-      auth,
-      credentials
-    );
+    const page = await streamFetchOnePage(endpoint, baseUrl, auth, credentials);
     pagesEmitted++;
     reportPage?.(pagesEmitted);
     try {
@@ -539,11 +539,10 @@ export async function upsertRecord(
   ctx.counts.recordIndex++;
   const checksum = checksumRecord(recordObj);
 
-  const existing =
-    await DbService.repository.entityRecords.findBySourceIds(
-      ctx.endpoint.entity.id,
-      [sourceId]
-    );
+  const existing = await DbService.repository.entityRecords.findBySourceIds(
+    ctx.endpoint.entity.id,
+    [sourceId]
+  );
   const prior = existing[0];
 
   if (prior && prior.checksum === checksum) {
@@ -573,25 +572,24 @@ export async function upsertRecord(
   }
 
   const rowId = prior?.id ?? SystemUtilities.id.v4.generate();
-  const upserted =
-    await DbService.repository.entityRecords.upsertBySourceId({
-      id: rowId,
-      organizationId: ctx.instance.organizationId,
-      connectorEntityId: ctx.endpoint.entity.id,
-      sourceId,
-      data: recordObj as never,
-      checksum,
-      syncedAt: ctx.runStartedAt,
-      origin: "sync",
-      isValid: true,
-      validationErrors: null,
-      created: prior?.created ?? Date.now(),
-      createdBy: prior?.createdBy ?? ctx.userId,
-      updated: Date.now(),
-      updatedBy: ctx.userId,
-      deleted: null,
-      deletedBy: null,
-    } as never);
+  const upserted = await DbService.repository.entityRecords.upsertBySourceId({
+    id: rowId,
+    organizationId: ctx.instance.organizationId,
+    connectorEntityId: ctx.endpoint.entity.id,
+    sourceId,
+    data: recordObj as never,
+    checksum,
+    syncedAt: ctx.runStartedAt,
+    origin: "sync",
+    isValid: true,
+    validationErrors: null,
+    created: prior?.created ?? Date.now(),
+    createdBy: prior?.createdBy ?? ctx.userId,
+    updated: Date.now(),
+    updatedBy: ctx.userId,
+    deleted: null,
+    deletedBy: null,
+  } as never);
 
   // Mirror into the wide table so the entity detail view sees the
   // columns populated. Skip when the entity has no field_mappings
@@ -708,7 +706,10 @@ function stableStringify(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
   const keys = Object.keys(v as Record<string, unknown>).sort();
   return `{${keys
-    .map((k) => `${JSON.stringify(k)}:${stableStringify((v as Record<string, unknown>)[k])}`)
+    .map(
+      (k) =>
+        `${JSON.stringify(k)}:${stableStringify((v as Record<string, unknown>)[k])}`
+    )
     .join(",")}}`;
 }
 
@@ -736,9 +737,8 @@ async function testConnection(
     };
   }
 
-  const endpoint = await DbService.repository.apiEndpoints.findByEntityId(
-    endpointEntityId
-  );
+  const endpoint =
+    await DbService.repository.apiEndpoints.findByEntityId(endpointEntityId);
   if (!endpoint || endpoint.entity.connectorInstanceId !== instance.id) {
     return {
       ok: false,
@@ -753,7 +753,8 @@ async function testConnection(
     const credentials = loadCredentials(instance);
     const pagination = reconstructPagination(
       endpoint.config.pagination,
-      (endpoint.config.paginationConfig as Record<string, unknown> | null) ?? null
+      (endpoint.config.paginationConfig as Record<string, unknown> | null) ??
+        null
     );
 
     // testConnection is page-1-only by design. `fetchFirstPage` drives
@@ -832,9 +833,10 @@ export function __resetRestApiAdapterDepsForTests(): void {
 async function loadColumnDefinitionCatalog(
   organizationId: string
 ): Promise<ColumnDefinitionCatalogEntry[]> {
-  const rows = await DbService.repository.columnDefinitions.findByOrganizationId(
-    organizationId
-  );
+  const rows =
+    await DbService.repository.columnDefinitions.findByOrganizationId(
+      organizationId
+    );
   return rows.map((row) => ({
     id: row.id,
     label: row.label,
@@ -944,7 +946,10 @@ async function runProbePipeline(
       ctx.pagination
     );
   } catch (err) {
-    if (err instanceof ApiError && err.code === ApiCode.REST_API_TRANSFORM_FAILED) {
+    if (
+      err instanceof ApiError &&
+      err.code === ApiCode.REST_API_TRANSFORM_FAILED
+    ) {
       const result: DiscoverColumnsResult = {
         columns: [],
         source: "live",
@@ -994,7 +999,10 @@ async function runProbePipeline(
         })
       );
       const catalog = await loadColumnDefinitionCatalog(ctx.organizationId);
-      const classifications = await columnClassifier.classify(candidates, catalog);
+      const classifications = await columnClassifier.classify(
+        candidates,
+        catalog
+      );
       for (const c of classifications) {
         suggestionsByField.set(c.sourceField, {
           columnDefinitionId: c.columnDefinitionId,
@@ -1167,18 +1175,15 @@ const PREVIEW_TRUNCATED_SENTINEL = "__truncated__";
 function structurallyTruncate(value: unknown): unknown {
   if (value === null || value === undefined) return value;
   if (Array.isArray(value)) {
-    const kept = value
-      .slice(0, PREVIEW_ARRAY_KEEP)
-      .map(structurallyTruncate);
-    if (value.length > PREVIEW_ARRAY_KEEP) kept.push(PREVIEW_TRUNCATED_SENTINEL);
+    const kept = value.slice(0, PREVIEW_ARRAY_KEEP).map(structurallyTruncate);
+    if (value.length > PREVIEW_ARRAY_KEEP)
+      kept.push(PREVIEW_TRUNCATED_SENTINEL);
     return kept;
   }
   if (typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const key of Object.keys(value as Record<string, unknown>)) {
-      out[key] = structurallyTruncate(
-        (value as Record<string, unknown>)[key],
-      );
+      out[key] = structurallyTruncate((value as Record<string, unknown>)[key]);
     }
     return out;
   }
@@ -1243,8 +1248,10 @@ export const restApiAdapter: ConnectorAdapter & {
   probeEndpointDraft: typeof probeEndpointDraft;
   previewEndpointPage: typeof previewEndpointPage;
 } = {
-  queryRows: (instance: ConnectorInstance, query: EntityDataQuery):
-    Promise<EntityDataResult> => importModeQueryRows(instance, query),
+  queryRows: (
+    instance: ConnectorInstance,
+    query: EntityDataQuery
+  ): Promise<EntityDataResult> => importModeQueryRows(instance, query),
   discoverEntities,
   discoverColumns,
   discoverColumnsWithSamples,

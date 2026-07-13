@@ -20,7 +20,10 @@ beforeEach(() => {
     env: "app-dev",
     kind: "staging",
     apiBaseUrl: "x",
-    db: async () => ({ connectionString: "postgresql://u:p@localhost:15432/db", close: async () => {} }),
+    db: async () => ({
+      connectionString: "postgresql://u:p@localhost:15432/db",
+      close: async () => {},
+    }),
     token: async () => "t",
     dispose: async () => {},
   });
@@ -54,9 +57,18 @@ describe("runReset", () => {
       prodConfirmed: false,
     });
     expect(execCalls[0]).toContain("__drizzle_migrations");
-    expect(execCalls.some((s) => s.includes('DROP TABLE "er__ce_1" CASCADE'))).toBe(true);
-    expect(execCalls.some((s) => s.includes('TRUNCATE TABLE "users", "organizations" CASCADE'))).toBe(true);
-    expect(out).toEqual({ dropped: ["er__ce_1"], truncated: ["users", "organizations"] });
+    expect(
+      execCalls.some((s) => s.includes('DROP TABLE "er__ce_1" CASCADE'))
+    ).toBe(true);
+    expect(
+      execCalls.some((s) =>
+        s.includes('TRUNCATE TABLE "users", "organizations" CASCADE')
+      )
+    ).toBe(true);
+    expect(out).toEqual({
+      dropped: ["er__ce_1"],
+      truncated: ["users", "organizations"],
+    });
     expect(mocks.recordAudit).toHaveBeenCalledWith(
       expect.objectContaining({ command: "db reset", env: "app-dev" })
     );

@@ -105,11 +105,7 @@ export async function putToS3(
         reject(new DOMException("PUT aborted", "AbortError"));
         return;
       }
-      signal.addEventListener(
-        "abort",
-        () => xhr.abort(),
-        { once: true }
-      );
+      signal.addEventListener("abort", () => xhr.abort(), { once: true });
     }
 
     xhr.addEventListener("load", () => {

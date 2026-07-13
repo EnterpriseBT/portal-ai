@@ -19,11 +19,7 @@ const InputSchema = z.object({
     .positive()
     .describe("Useful life in periods (typically years)."),
   method: z
-    .enum([
-      "straight_line",
-      "declining_balance",
-      "double_declining_balance",
-    ])
+    .enum(["straight_line", "declining_balance", "double_declining_balance"])
     .describe(
       "straight_line: (cost - salvage) / life per period. " +
         "declining_balance: 1/life rate applied to current book value, never below salvage. " +

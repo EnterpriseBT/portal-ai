@@ -37,7 +37,8 @@ function softWalk(body: unknown, path: string): unknown | typeof PATH_MISSING {
   for (const seg of segments) {
     if (current == null || typeof current !== "object") return PATH_MISSING;
     const next = (current as Record<string, unknown>)[seg];
-    if (next === undefined && !(seg in (current as object))) return PATH_MISSING;
+    if (next === undefined && !(seg in (current as object)))
+      return PATH_MISSING;
     current = next;
   }
   return current;

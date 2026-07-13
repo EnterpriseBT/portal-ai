@@ -20,11 +20,15 @@ beforeEach(() => {
   resetCliEnvMocks();
   out = "";
   err = "";
-  outSpy = jest.spyOn(process.stdout, "write").mockImplementation(((s: string) => {
+  outSpy = jest.spyOn(process.stdout, "write").mockImplementation(((
+    s: string
+  ) => {
     out += s;
     return true;
   }) as never);
-  errSpy = jest.spyOn(process.stderr, "write").mockImplementation(((s: string) => {
+  errSpy = jest.spyOn(process.stderr, "write").mockImplementation(((
+    s: string
+  ) => {
     err += s;
     return true;
   }) as never);
@@ -63,7 +67,13 @@ describe("runCli — the agent contract", () => {
   });
 
   it("banner goes to stderr; --json payload alone on stdout", async () => {
-    const code = await runCli(["vars", "describe", "--env", "app-dev", "--json"]);
+    const code = await runCli([
+      "vars",
+      "describe",
+      "--env",
+      "app-dev",
+      "--json",
+    ]);
     expect(code).toBe(0);
     expect(err).toContain("[env: app-dev (staging)]");
     const parsed = JSON.parse(out.trim());

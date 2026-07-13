@@ -47,16 +47,23 @@ beforeEach(() => {
 const ready = () =>
   // Emit the plugin's readiness line on the next tick, after openDbTunnel
   // has attached its listeners.
-  setImmediate(() => child.stdout.emit("data", Buffer.from(TUNNEL_READY_MARKER)));
+  setImmediate(() =>
+    child.stdout.emit("data", Buffer.from(TUNNEL_READY_MARKER))
+  );
 
 describe("openDbTunnel", () => {
   it("resolves the bastion from the CloudFormation export and spawns the SSM port-forward", async () => {
-    cfnSend.mockResolvedValue(bastionExport("dev-BastionInstanceId", "i-0abc123"));
+    cfnSend.mockResolvedValue(
+      bastionExport("dev-BastionInstanceId", "i-0abc123")
+    );
     ready();
     const tunnel = await openDbTunnel(appDev, { ...REMOTE, localPort: 15999 });
 
     expect(tunnel.localPort).toBe(15999);
-    const [cmd, args] = spawnMock.mock.calls[0] as unknown as [string, string[]];
+    const [cmd, args] = spawnMock.mock.calls[0] as unknown as [
+      string,
+      string[],
+    ];
     expect(cmd).toBe("aws");
     expect(args).toEqual(
       expect.arrayContaining([
@@ -78,18 +85,20 @@ describe("openDbTunnel", () => {
   });
 
   it("defaults the local port to 15432", async () => {
-    cfnSend.mockResolvedValue(bastionExport("dev-BastionInstanceId", "i-0abc123"));
+    cfnSend.mockResolvedValue(
+      bastionExport("dev-BastionInstanceId", "i-0abc123")
+    );
     ready();
     const tunnel = await openDbTunnel(appDev, REMOTE);
     expect(tunnel.localPort).toBe(15432);
   });
 
   it("close() terminates the process group (no orphaned plugin)", async () => {
-    cfnSend.mockResolvedValue(bastionExport("dev-BastionInstanceId", "i-0abc123"));
+    cfnSend.mockResolvedValue(
+      bastionExport("dev-BastionInstanceId", "i-0abc123")
+    );
     ready();
-    const killSpy = jest
-      .spyOn(process, "kill")
-      .mockImplementation(() => true);
+    const killSpy = jest.spyOn(process, "kill").mockImplementation(() => true);
     try {
       const tunnel = await openDbTunnel(appDev, REMOTE);
       await tunnel.close();
@@ -103,7 +112,9 @@ describe("openDbTunnel", () => {
     // Node does NOT fire "exit" on a default-handled signal death — the #194
     // smoke caught a SIGTERM'd holder orphaning the tunnel. Pin that signal
     // hooks are registered while open and fully removed after close().
-    cfnSend.mockResolvedValue(bastionExport("dev-BastionInstanceId", "i-0abc123"));
+    cfnSend.mockResolvedValue(
+      bastionExport("dev-BastionInstanceId", "i-0abc123")
+    );
     ready();
     const before = {
       exit: process.listenerCount("exit"),
@@ -129,7 +140,9 @@ describe("openDbTunnel", () => {
   });
 
   it("rejects with ENV_INFRA_ERROR + install guidance when the aws CLI is missing", async () => {
-    cfnSend.mockResolvedValue(bastionExport("dev-BastionInstanceId", "i-0abc123"));
+    cfnSend.mockResolvedValue(
+      bastionExport("dev-BastionInstanceId", "i-0abc123")
+    );
     setImmediate(() => {
       const err = new Error("spawn aws ENOENT") as Error & { code?: string };
       err.code = "ENOENT";
@@ -141,7 +154,9 @@ describe("openDbTunnel", () => {
   });
 
   it("rejects with ENV_INFRA_ERROR when the session exits before readiness", async () => {
-    cfnSend.mockResolvedValue(bastionExport("dev-BastionInstanceId", "i-0abc123"));
+    cfnSend.mockResolvedValue(
+      bastionExport("dev-BastionInstanceId", "i-0abc123")
+    );
     setImmediate(() => {
       child.stderr.emit("data", Buffer.from("TargetNotConnected"));
       child.emit("exit", 1);

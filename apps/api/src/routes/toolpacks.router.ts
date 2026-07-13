@@ -66,9 +66,7 @@ function toCustomApiRecord(row: OrganizationToolpack): CustomToolpackRecord {
     tools: row.tools,
     endpoints: row.endpoints,
     authHeadersStatus: {
-      has:
-        row.authHeaders !== null &&
-        Object.keys(row.authHeaders).length > 0,
+      has: row.authHeaders !== null && Object.keys(row.authHeaders).length > 0,
     },
     // signingSecret is NOT NULL post-phase-6, so presence is always
     // true; the field exists for forward-compat with future shapes.
@@ -173,10 +171,7 @@ toolpacksRouter.get(
               }
               const row = customRows.find((r) => r.id === t.id);
               return row
-                ? matchesCustomSearch(
-                    q,
-                    row as unknown as OrganizationToolpack
-                  )
+                ? matchesCustomSearch(q, row as unknown as OrganizationToolpack)
                 : false;
             });
           })()
@@ -236,11 +231,7 @@ toolpacksRouter.get(
         const slug = id.slice("builtin:".length);
         if (!isBuiltinToolpackSlug(slug)) {
           return next(
-            new ApiError(
-              404,
-              ApiCode.TOOLPACK_NOT_FOUND,
-              "Toolpack not found"
-            )
+            new ApiError(404, ApiCode.TOOLPACK_NOT_FOUND, "Toolpack not found")
           );
         }
         return HttpService.success<ToolpackGetResponsePayload>(res, {
@@ -371,8 +362,9 @@ toolpacksRouter.post(
         metadataFetchedAt: metadata !== null ? now : null,
       });
 
-      const row =
-        await DbService.repository.organizationToolpacks.create(model.parse() as never);
+      const row = await DbService.repository.organizationToolpacks.create(
+        model.parse() as never
+      );
 
       logger.info({ id: row.id, organizationId }, "Toolpack registered");
 
@@ -485,8 +477,7 @@ toolpacksRouter.patch(
 
       // Re-fetch schema if endpoints changed.
       if (endpoints !== undefined) {
-        const effectiveAuth =
-          authHeaders ?? (existing.authHeaders ?? undefined);
+        const effectiveAuth = authHeaders ?? existing.authHeaders ?? undefined;
         const tools = await ToolpackRegistrationService.fetchSchema(
           endpoints.schema,
           effectiveAuth as Record<string, string> | undefined,
@@ -688,17 +679,14 @@ toolpacksRouter.post(
         : null;
 
       const now = Date.now();
-      const row = await DbService.repository.organizationToolpacks.update(
-        id,
-        {
-          updated: now,
-          updatedBy: userId,
-          tools,
-          metadata,
-          schemaFetchedAt: now,
-          metadataFetchedAt: metadata !== null ? now : null,
-        } as never
-      );
+      const row = await DbService.repository.organizationToolpacks.update(id, {
+        updated: now,
+        updatedBy: userId,
+        tools,
+        metadata,
+        schemaFetchedAt: now,
+        metadataFetchedAt: metadata !== null ? now : null,
+      } as never);
 
       logger.info({ id }, "Toolpack refreshed");
 

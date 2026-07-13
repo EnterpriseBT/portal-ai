@@ -45,7 +45,9 @@ function rewriteToLocalhost(dbUrl: string, localPort: number): string {
   return `${parsed.protocol}//${auth}localhost:${localPort}${parsed.pathname}${parsed.search}`;
 }
 
-export async function resolveEnvConnection(name: string): Promise<EnvConnection> {
+export async function resolveEnvConnection(
+  name: string
+): Promise<EnvConnection> {
   const def = getEnvironment(name); // registry lookup only — no I/O
 
   let dbHandle: DbHandle | null = null;

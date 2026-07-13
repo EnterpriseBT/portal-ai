@@ -10,8 +10,13 @@ import {
 
 jest.unstable_mockModule("@portalai/cli-env", () => cliEnvMockModule());
 
-const ecsSend = jest.fn<(cmd: { constructor: { name: string }; input: unknown }) => Promise<unknown>>();
-const waitMock = jest.fn<() => Promise<unknown>>().mockResolvedValue({ state: "SUCCESS" });
+const ecsSend =
+  jest.fn<
+    (cmd: { constructor: { name: string }; input: unknown }) => Promise<unknown>
+  >();
+const waitMock = jest
+  .fn<() => Promise<unknown>>()
+  .mockResolvedValue({ state: "SUCCESS" });
 jest.unstable_mockModule("@aws-sdk/client-ecs", () => ({
   ECSClient: class {
     send = ecsSend;
@@ -44,7 +49,10 @@ const happyPath = (exitCode: number) => {
       case "DescribeServicesCommand":
         return {
           services: [
-            { networkConfiguration: NETWORK, taskDefinition: "portalai-api:42" },
+            {
+              networkConfiguration: NETWORK,
+              taskDefinition: "portalai-api:42",
+            },
           ],
         };
       case "DescribeTaskDefinitionCommand":

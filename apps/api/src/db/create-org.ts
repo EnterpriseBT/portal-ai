@@ -17,7 +17,9 @@ async function main() {
   const ownerEmail = arg("--owner-email");
   const name = arg("--name");
   if (!ownerEmail || !name) {
-    throw new Error("Usage: db:create-org -- --owner-email <email> --name <name>");
+    throw new Error(
+      "Usage: db:create-org -- --owner-email <email> --name <name>"
+    );
   }
   const result = await ApplicationService.createOrganizationForEmail(
     ownerEmail,

@@ -76,7 +76,9 @@ export function sourceLocatorToNormalizedKey(sourceLocator: string): string {
     return sourceFieldToNormalizedKey(`col_${idx}`);
   }
   if (sourceLocator.startsWith("col:")) {
-    return sourceFieldToNormalizedKey(`col_${sourceLocator.slice("col:".length)}`);
+    return sourceFieldToNormalizedKey(
+      `col_${sourceLocator.slice("col:".length)}`
+    );
   }
   return sourceFieldToNormalizedKey(sourceLocator);
 }

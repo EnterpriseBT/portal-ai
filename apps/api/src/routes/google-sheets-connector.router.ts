@@ -15,7 +15,12 @@
  * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md` §Slices 7-8.
  */
 
-import { Router, type Request, type Response, type NextFunction } from "express";
+import {
+  Router,
+  type Request,
+  type Response,
+  type NextFunction,
+} from "express";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -68,8 +73,7 @@ googleSheetsConnectorRouter.post(
   (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.application?.metadata.userId as string;
-      const organizationId = req.application?.metadata
-        .organizationId as string;
+      const organizationId = req.application?.metadata.organizationId as string;
       // Reconnect flow passes the existing instance id in the body so
       // the callback can target THAT row instead of either minting a
       // new instance or picking one by email. Absent in the
@@ -88,7 +92,11 @@ googleSheetsConnectorRouter.post(
       });
 
       logger.info(
-        { userId, organizationId, connectorInstanceId: connectorInstanceId ?? null },
+        {
+          userId,
+          organizationId,
+          connectorInstanceId: connectorInstanceId ?? null,
+        },
         "Google OAuth authorize URL minted"
       );
       return HttpService.success(res, { url });
@@ -198,9 +206,7 @@ async function resolveOwnedInstance(
   organizationId: string
 ) {
   const instance =
-    await DbService.repository.connectorInstances.findById(
-      connectorInstanceId
-    );
+    await DbService.repository.connectorInstances.findById(connectorInstanceId);
   if (!instance) {
     throw new ApiError(
       404,
@@ -229,27 +235,15 @@ function mapGoogleAuthError(err: unknown): ApiError {
     const message = (err as Error).message;
     switch (kind) {
       case "refresh_failed":
-        return new ApiError(
-          502,
-          ApiCode.GOOGLE_OAUTH_REFRESH_FAILED,
-          message
-        );
+        return new ApiError(502, ApiCode.GOOGLE_OAUTH_REFRESH_FAILED, message);
       case "listSheets_failed":
         return new ApiError(502, ApiCode.GOOGLE_SHEETS_LIST_FAILED, message);
       case "fetchSheet_failed":
         return new ApiError(502, ApiCode.GOOGLE_SHEETS_FETCH_FAILED, message);
       case "userinfo_failed":
-        return new ApiError(
-          502,
-          ApiCode.GOOGLE_OAUTH_USERINFO_FAILED,
-          message
-        );
+        return new ApiError(502, ApiCode.GOOGLE_OAUTH_USERINFO_FAILED, message);
       case "exchange_failed":
-        return new ApiError(
-          502,
-          ApiCode.GOOGLE_OAUTH_EXCHANGE_FAILED,
-          message
-        );
+        return new ApiError(502, ApiCode.GOOGLE_OAUTH_EXCHANGE_FAILED, message);
       default:
         return new ApiError(502, ApiCode.GOOGLE_SHEETS_LIST_FAILED, message);
     }
@@ -297,8 +291,7 @@ googleSheetsConnectorRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const organizationId = req.application?.metadata
-        .organizationId as string;
+      const organizationId = req.application?.metadata.organizationId as string;
       const connectorInstanceId =
         typeof req.query.connectorInstanceId === "string"
           ? req.query.connectorInstanceId
@@ -371,8 +364,7 @@ googleSheetsConnectorRouter.post(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const organizationId = req.application?.metadata
-        .organizationId as string;
+      const organizationId = req.application?.metadata.organizationId as string;
       const userId = req.application?.metadata.userId as string;
       const connectorInstanceId = req.params.id ?? "";
       const spreadsheetId =
@@ -443,8 +435,7 @@ googleSheetsConnectorRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const organizationId = req.application?.metadata
-        .organizationId as string;
+      const organizationId = req.application?.metadata.organizationId as string;
       const connectorInstanceId = req.params.id ?? "";
 
       const sheetIdParam =
@@ -492,4 +483,3 @@ function parseIntStrict(value: unknown): number | undefined {
   if (!/^-?\d+$/.test(value)) return undefined;
   return parseInt(value, 10);
 }
-

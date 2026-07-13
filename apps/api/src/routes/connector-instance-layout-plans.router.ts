@@ -321,11 +321,10 @@ connectorInstanceLayoutPlansRouter.get(
       const { connectorInstanceId } = req.params;
       const { organizationId } = req.application!.metadata;
 
-      const payload =
-        await ConnectorInstanceLayoutPlansService.getEditContext(
-          connectorInstanceId,
-          organizationId
-        );
+      const payload = await ConnectorInstanceLayoutPlansService.getEditContext(
+        connectorInstanceId,
+        organizationId
+      );
 
       return HttpService.success<LayoutPlanEditContextResponsePayload>(
         res,
@@ -584,14 +583,14 @@ connectorInstanceLayoutPlansRouter.post(
       }
 
       const workbookSource = parsed.data.uploadSessionId
-        ? ({
+        ? {
             kind: "uploadSession" as const,
             uploadSessionId: parsed.data.uploadSessionId,
-          })
-        : ({
+          }
+        : {
             kind: "connectorInstance" as const,
             connectorInstanceId: parsed.data.connectorInstanceId!,
-          });
+          };
 
       const prepared = await LayoutPlanDraftService.prepareRecommit(
         organizationId,

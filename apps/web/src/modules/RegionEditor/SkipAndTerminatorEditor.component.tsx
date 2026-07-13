@@ -13,10 +13,7 @@ import type { SelectOption } from "@portalai/core/ui";
 
 import { CellPositionInputUI } from "./CellPositionInput.component";
 import { SectionHelpUI } from "./SectionHelp.component";
-import type {
-  RegionDraft,
-  SkipRuleDraft,
-} from "./utils/region-editor.types";
+import type { RegionDraft, SkipRuleDraft } from "./utils/region-editor.types";
 import type { RegionErrors } from "./utils/region-editor-validation.util";
 import { isDraftCrosstab } from "./utils/region-orientation.util";
 
@@ -46,7 +43,8 @@ export const SkipAndTerminatorEditorUI: React.FC<
   const hasBlankRule = rules.some((r) => r.kind === "blank");
   const isCrosstab = isDraftCrosstab(region);
   const recordAxis = recordAxisLabel(region);
-  const crossAxisLabel: "row" | "column" = recordAxis === "row" ? "column" : "row";
+  const crossAxisLabel: "row" | "column" =
+    recordAxis === "row" ? "column" : "row";
 
   const axisOptions: SelectOption[] = [
     { value: "row", label: "Row" },
@@ -79,15 +77,15 @@ export const SkipAndTerminatorEditorUI: React.FC<
               <br />
               <strong>Crosstabs:</strong> each rule can independently target
               rows <em>or</em> columns via the axis selector. A row-axis rule
-              checks a column position in each row; a column-axis rule
-              checks a row position in each column.
+              checks a column position in each row; a column-axis rule checks a
+              row position in each column.
             </>
           }
         />
       </Stack>
       <Typography variant="caption" color="text.secondary">
-        Records matching a skip rule are omitted from the extracted output.
-        Use ^$ in a cell-match pattern to match empty or null cells.
+        Records matching a skip rule are omitted from the extracted output. Use
+        ^$ in a cell-match pattern to match empty or null cells.
       </Typography>
 
       <Checkbox

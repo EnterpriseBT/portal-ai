@@ -40,10 +40,7 @@ export class FileUploadsRepository extends Repository<
       .select()
       .from(this.table)
       .where(
-        and(
-          eq(fileUploads.uploadSessionId, uploadSessionId),
-          this.notDeleted()
-        )
+        and(eq(fileUploads.uploadSessionId, uploadSessionId), this.notDeleted())
       )
       .orderBy(fileUploads.created);
   }

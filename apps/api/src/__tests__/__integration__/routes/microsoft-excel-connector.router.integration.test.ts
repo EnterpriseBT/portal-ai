@@ -83,40 +83,33 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
   },
 }));
 
-const exchangeCodeMock =
-  jest.fn<
-    (
-      input: { code: string }
-    ) => Promise<{
-      accessToken: string;
-      refreshToken: string;
-      idToken: string;
-      expiresIn: number;
-      scope: string;
-    }>
-  >();
-const fetchUserProfileMock =
-  jest.fn<
-    (
-      accessToken: string,
-      tenantId: string
-    ) => Promise<{
-      upn: string;
-      email: string | null;
-      displayName: string;
-      tenantId: string;
-    }>
-  >();
+const exchangeCodeMock = jest.fn<
+  (input: { code: string }) => Promise<{
+    accessToken: string;
+    refreshToken: string;
+    idToken: string;
+    expiresIn: number;
+    scope: string;
+  }>
+>();
+const fetchUserProfileMock = jest.fn<
+  (
+    accessToken: string,
+    tenantId: string
+  ) => Promise<{
+    upn: string;
+    email: string | null;
+    displayName: string;
+    tenantId: string;
+  }>
+>();
 
-const { MicrosoftAuthService } = await import(
-  "../../../services/microsoft-auth.service.js"
-);
-const originalExchange = MicrosoftAuthService.exchangeCode.bind(
-  MicrosoftAuthService
-);
-const originalFetchProfile = MicrosoftAuthService.fetchUserProfile.bind(
-  MicrosoftAuthService
-);
+const { MicrosoftAuthService } =
+  await import("../../../services/microsoft-auth.service.js");
+const originalExchange =
+  MicrosoftAuthService.exchangeCode.bind(MicrosoftAuthService);
+const originalFetchProfile =
+  MicrosoftAuthService.fetchUserProfile.bind(MicrosoftAuthService);
 MicrosoftAuthService.exchangeCode =
   exchangeCodeMock as unknown as typeof MicrosoftAuthService.exchangeCode;
 MicrosoftAuthService.fetchUserProfile =
@@ -124,34 +117,30 @@ MicrosoftAuthService.fetchUserProfile =
 
 // ── Phase B mocks: access-token cache + Microsoft Graph ──────────────
 
-const { MicrosoftAccessTokenCacheService } = await import(
-  "../../../services/microsoft-access-token-cache.service.js"
-);
+const { MicrosoftAccessTokenCacheService } =
+  await import("../../../services/microsoft-access-token-cache.service.js");
 const getOrRefreshMock = jest.fn<(id: string) => Promise<string>>();
-const originalGetOrRefresh =
-  MicrosoftAccessTokenCacheService.getOrRefresh.bind(
-    MicrosoftAccessTokenCacheService
-  );
+const originalGetOrRefresh = MicrosoftAccessTokenCacheService.getOrRefresh.bind(
+  MicrosoftAccessTokenCacheService
+);
 MicrosoftAccessTokenCacheService.getOrRefresh =
   getOrRefreshMock as unknown as typeof MicrosoftAccessTokenCacheService.getOrRefresh;
 
-const { MicrosoftGraphService } = await import(
-  "../../../services/microsoft-graph.service.js"
-);
-const searchWorkbooksMock =
-  jest.fn<
-    (
-      accessToken: string,
-      query: string
-    ) => Promise<
-      Array<{
-        driveItemId: string;
-        name: string;
-        lastModifiedDateTime: string;
-        lastModifiedBy: string | null;
-      }>
-    >
-  >();
+const { MicrosoftGraphService } =
+  await import("../../../services/microsoft-graph.service.js");
+const searchWorkbooksMock = jest.fn<
+  (
+    accessToken: string,
+    query: string
+  ) => Promise<
+    Array<{
+      driveItemId: string;
+      name: string;
+      lastModifiedDateTime: string;
+      lastModifiedBy: string | null;
+    }>
+  >
+>();
 const headWorkbookMock =
   jest.fn<
     (
@@ -159,16 +148,15 @@ const headWorkbookMock =
       driveItemId: string
     ) => Promise<{ size: number; name: string }>
   >();
-const downloadWorkbookMock =
-  jest.fn<
-    (
-      accessToken: string,
-      driveItemId: string
-    ) => Promise<{
-      stream: ReadableStream<Uint8Array>;
-      contentLength: number;
-    }>
-  >();
+const downloadWorkbookMock = jest.fn<
+  (
+    accessToken: string,
+    driveItemId: string
+  ) => Promise<{
+    stream: ReadableStream<Uint8Array>;
+    contentLength: number;
+  }>
+>();
 const originalSearch = MicrosoftGraphService.searchWorkbooks.bind(
   MicrosoftGraphService
 );
@@ -185,17 +173,15 @@ MicrosoftGraphService.headWorkbook =
 MicrosoftGraphService.downloadWorkbook =
   downloadWorkbookMock as unknown as typeof MicrosoftGraphService.downloadWorkbook;
 // Identity passthrough for Web → Node stream conversion in tests.
-MicrosoftGraphService.toNodeReadable =
-  ((stream: ReadableStream<Uint8Array>) =>
-    stream) as unknown as typeof MicrosoftGraphService.toNodeReadable;
+MicrosoftGraphService.toNodeReadable = ((stream: ReadableStream<Uint8Array>) =>
+  stream) as unknown as typeof MicrosoftGraphService.toNodeReadable;
 
 // Mock the xlsx adapter to avoid needing a real .xlsx fixture in tests.
 // Phase 4 dropped `xlsxToWorkbook` — both the file-upload pipeline and the
 // microsoft-excel connector now stream into the chunked cache via
 // `xlsxToCache(stream, writer, ctx)`. Each test pre-stages the rows the
 // adapter would emit by calling the writer it's handed.
-const xlsxToCacheMock =
-  jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const xlsxToCacheMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 jest.unstable_mockModule(
   "../../../services/workbook-adapters/xlsx.adapter.js",
   () => ({
@@ -368,8 +354,7 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
       refreshToken: "0.AX-rt",
       idToken: makeIdToken({ tid: "tenant-A", oid: "alice-oid" }),
       expiresIn: 3599,
-      scope:
-        "openid profile email offline_access User.Read Files.Read.All",
+      scope: "openid profile email offline_access User.Read Files.Read.All",
     });
     fetchUserProfileMock.mockResolvedValueOnce({
       upn: "alice@contoso.com",
@@ -480,9 +465,7 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
     expect(secondRows[0]!.id).toBe(firstRowId);
     expect(secondRows[0]!.status).toBe("active");
     expect(secondRows[0]!.lastErrorMessage).toBeNull();
-    const decrypted = decryptCredentials(
-      secondRows[0]!.credentials as string
-    );
+    const decrypted = decryptCredentials(secondRows[0]!.credentials as string);
     expect(decrypted.refresh_token).toBe("0.AX-rt-2");
   });
 
@@ -534,8 +517,8 @@ describe("Microsoft Excel Connector Router — GET /callback", () => {
       .from(connectorInstances)
       .where(eq(connectorInstances.organizationId, organizationId));
     expect(rows).toHaveLength(2);
-    const tenants = rows.map((r) =>
-      decryptCredentials(r.credentials as string).tenantId
+    const tenants = rows.map(
+      (r) => decryptCredentials(r.credentials as string).tenantId
     );
     expect(new Set(tenants)).toEqual(new Set(["tenant-A", "tenant-B"]));
   });

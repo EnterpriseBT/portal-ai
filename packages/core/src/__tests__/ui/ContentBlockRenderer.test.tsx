@@ -84,7 +84,9 @@ describe("ContentBlockRenderer", () => {
       data: { values: [{ x: 1 }] },
     };
     render(
-      <ContentBlockRenderer block={{ type: "vega-lite", content: inlineSpec }} />
+      <ContentBlockRenderer
+        block={{ type: "vega-lite", content: inlineSpec }}
+      />
     );
     expect(await screen.findByTestId("vega-lite-chart")).toBeInTheDocument();
     expect(vegaLiteCalls).toHaveLength(1);

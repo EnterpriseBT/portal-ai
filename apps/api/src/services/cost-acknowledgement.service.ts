@@ -53,7 +53,11 @@ export function computeJobSignature(inputs: CostAckSignatureInputs): string {
     k: inputs.keyField,
     b: inputs.batchSize,
   });
-  return crypto.createHash("sha256").update(canonical).digest("hex").slice(0, 32);
+  return crypto
+    .createHash("sha256")
+    .update(canonical)
+    .digest("hex")
+    .slice(0, 32);
 }
 
 /**

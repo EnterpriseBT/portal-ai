@@ -28,12 +28,10 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 const { render, screen } = await import("./test-utils");
-const { CreateStationDialog } = await import(
-  "../components/CreateStationDialog.component"
-);
-const { EditStationDialog } = await import(
-  "../components/EditStationDialog.component"
-);
+const { CreateStationDialog } =
+  await import("../components/CreateStationDialog.component");
+const { EditStationDialog } =
+  await import("../components/EditStationDialog.component");
 
 // ── Helpers ─────────────────────────────────────────────────────────
 

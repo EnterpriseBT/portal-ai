@@ -36,13 +36,7 @@
  *     under AlaSQL preload).
  */
 
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-} from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { sql } from "drizzle-orm";
@@ -434,27 +428,45 @@ describe("Analytics Postgres-eval regression suite", () => {
     const cdSegment = generateId();
     const cdAmount = generateId();
     const cdAccountRef = generateId();
-    await dbTyped.insert(schema.columnDefinitions).values([
-      mkColumnDef(cdEmail, orgId, "email", "Email", "string", now),
-      mkColumnDef(cdAge, orgId, "age", "Age", "number", now),
-      mkColumnDef(cdSegment, orgId, "segment", "Segment", "string", now),
-      mkColumnDef(cdAmount, orgId, "amount", "Amount", "number", now),
-      mkColumnDef(cdAccountRef, orgId, "account_ref", "Account Ref", "string", now),
-    ] as never);
-    await dbTyped.insert(schema.fieldMappings).values([
-      mkMapping(orgId, contactsEntityId, cdEmail, "Email", "email", now),
-      mkMapping(orgId, contactsEntityId, cdAge, "Age", "age", now + 1),
-      mkMapping(orgId, contactsEntityId, cdSegment, "Segment", "segment", now + 2),
-      mkMapping(orgId, dealsEntityId, cdAmount, "Amount", "amount", now),
-      mkMapping(
-        orgId,
-        dealsEntityId,
-        cdAccountRef,
-        "Account Ref",
-        "account_ref",
-        now + 1
-      ),
-    ] as never);
+    await dbTyped
+      .insert(schema.columnDefinitions)
+      .values([
+        mkColumnDef(cdEmail, orgId, "email", "Email", "string", now),
+        mkColumnDef(cdAge, orgId, "age", "Age", "number", now),
+        mkColumnDef(cdSegment, orgId, "segment", "Segment", "string", now),
+        mkColumnDef(cdAmount, orgId, "amount", "Amount", "number", now),
+        mkColumnDef(
+          cdAccountRef,
+          orgId,
+          "account_ref",
+          "Account Ref",
+          "string",
+          now
+        ),
+      ] as never);
+    await dbTyped
+      .insert(schema.fieldMappings)
+      .values([
+        mkMapping(orgId, contactsEntityId, cdEmail, "Email", "email", now),
+        mkMapping(orgId, contactsEntityId, cdAge, "Age", "age", now + 1),
+        mkMapping(
+          orgId,
+          contactsEntityId,
+          cdSegment,
+          "Segment",
+          "segment",
+          now + 2
+        ),
+        mkMapping(orgId, dealsEntityId, cdAmount, "Amount", "amount", now),
+        mkMapping(
+          orgId,
+          dealsEntityId,
+          cdAccountRef,
+          "Account Ref",
+          "account_ref",
+          now + 1
+        ),
+      ] as never);
 
     await reconciler.reconcileEntity(contactsEntityId, db);
     await reconciler.reconcileEntity(dealsEntityId, db);
@@ -600,11 +612,9 @@ describe("Analytics Postgres-eval regression suite", () => {
   describe("case 79 — fixed-seed numeric tolerance", () => {
     // Helper to pull projected rows the same way the math tool wrappers do.
     const fetchAges = async () => {
-      return wideTableRepo.fetchProjectedRows(
-        contactsEntityId,
-        ["age"],
-        { organizationId: orgId }
-      );
+      return wideTableRepo.fetchProjectedRows(contactsEntityId, ["age"], {
+        organizationId: orgId,
+      });
     };
 
     const cases: NumericExpect[] = [
@@ -659,15 +669,17 @@ describe("Analytics Postgres-eval regression suite", () => {
     // describeColumn / correlate / aggregate / trend / decompose removed in
     // #130 E2 (expressed in sql_query); regression + forecast remain.
     if (cases.length !== 2) {
-      throw new Error(
-        `expects exactly 2 numeric cases, got ${cases.length}`
-      );
+      throw new Error(`expects exactly 2 numeric cases, got ${cases.length}`);
     }
 
-    it.each(cases)("$description", async (c) => {
-      const result = await c.run();
-      c.assert(result);
-    }, 30_000);
+    it.each(cases)(
+      "$description",
+      async (c) => {
+        const result = await c.run();
+        c.assert(result);
+      },
+      30_000
+    );
   });
 });
 

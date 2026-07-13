@@ -22,10 +22,9 @@ function regionLabel(region: ReviewStepUIProps["regions"][number]): string {
   return region.proposedLabel?.trim() || region.id;
 }
 
-export const GoogleSheetsReviewStep: React.FC<GoogleSheetsReviewStepUIProps> = ({
-  serverError,
-  ...reviewProps
-}) => {
+export const GoogleSheetsReviewStep: React.FC<
+  GoogleSheetsReviewStepUIProps
+> = ({ serverError, ...reviewProps }) => {
   const rowPositionRegions = useMemo(
     () =>
       reviewProps.regions.filter(
@@ -52,9 +51,9 @@ export const GoogleSheetsReviewStep: React.FC<GoogleSheetsReviewStepUIProps> = (
             : {rowPositionRegions.map((r) => regionLabel(r)).join(", ")}.
           </p>
           <p>
-            Records will be reaped and re-created on every sync. To keep
-            records stable across syncs, <strong>pick an identity field</strong>
-            {" "}(something unique per row — an id, email, slug). You can still
+            Records will be reaped and re-created on every sync. To keep records
+            stable across syncs, <strong>pick an identity field</strong>{" "}
+            (something unique per row — an id, email, slug). You can still
             commit and edit later.
           </p>
         </Alert>

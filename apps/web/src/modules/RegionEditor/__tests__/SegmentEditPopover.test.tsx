@@ -12,7 +12,9 @@ function fieldSegment(): Segment {
   return { kind: "field", positionCount: 3 };
 }
 
-function pivotSegment(overrides: Partial<Extract<Segment, { kind: "pivot" }>> = {}): Segment {
+function pivotSegment(
+  overrides: Partial<Extract<Segment, { kind: "pivot" }>> = {}
+): Segment {
   return {
     kind: "pivot",
     id: "p1",
@@ -31,10 +33,8 @@ function setup(overrides: Partial<SegmentEditPopoverUIProps> = {}) {
   const anchor = document.createElement("button");
   document.body.appendChild(anchor);
   const onChangeAxisName = jest.fn<(value: string) => void>();
-  const onChangeHeaders =
-    jest.fn<(headers: string[] | undefined) => void>();
-  const onChangeSkipped =
-    jest.fn<(skipped: boolean[] | undefined) => void>();
+  const onChangeHeaders = jest.fn<(headers: string[] | undefined) => void>();
+  const onChangeSkipped = jest.fn<(skipped: boolean[] | undefined) => void>();
   const onToggleDynamic = jest.fn<(on: boolean) => void>();
   const onChangeTerminator = jest.fn<(t: Terminator) => void>();
   const onConvert = jest.fn<(kind: Segment["kind"]) => void>();
@@ -116,7 +116,10 @@ describe("SegmentEditPopoverUI — dynamic toggle", () => {
   });
 
   it("toggling the switch fires onToggleDynamic(true/false)", () => {
-    const { onToggleDynamic } = setup({ segment: pivotSegment(), isTail: true });
+    const { onToggleDynamic } = setup({
+      segment: pivotSegment(),
+      isTail: true,
+    });
     const toggle = screen.getByRole("checkbox", {
       name: /can this segment grow/i,
     });
@@ -179,9 +182,7 @@ describe("SegmentEditPopoverUI — convert buttons", () => {
   it("renders convert-to buttons and emits onConvert(toKind)", () => {
     const { onConvert } = setup({ segment: fieldSegment() });
     // "Convert to" group renders Field/Pivot/Skip; current kind is disabled.
-    const group = screen
-      .getByText(/convert to/i)
-      .closest("div") as HTMLElement;
+    const group = screen.getByText(/convert to/i).closest("div") as HTMLElement;
     const pivotBtn = within(group).getByRole("button", { name: /pivot/i });
     fireEvent.click(pivotBtn);
     expect(onConvert).toHaveBeenCalledWith("pivot");
@@ -189,9 +190,7 @@ describe("SegmentEditPopoverUI — convert buttons", () => {
 
   it("disables the convert button for the segment's current kind", () => {
     setup({ segment: skipSegment() });
-    const group = screen
-      .getByText(/convert to/i)
-      .closest("div") as HTMLElement;
+    const group = screen.getByText(/convert to/i).closest("div") as HTMLElement;
     const skipBtn = within(group).getByRole("button", { name: /skip/i });
     expect(skipBtn).toBeDisabled();
   });
@@ -419,9 +418,7 @@ describe("SegmentEditPopoverUI — Enter to dismiss", () => {
 
   it("Enter on a Convert-to button activates it instead of dismissing", () => {
     const { onConvert, onClose } = setup({ segment: fieldSegment() });
-    const group = screen
-      .getByText(/convert to/i)
-      .closest("div") as HTMLElement;
+    const group = screen.getByText(/convert to/i).closest("div") as HTMLElement;
     const pivotBtn = within(group).getByRole("button", { name: /pivot/i });
     // jsdom synthesizes a click for keyboard activation; emulate by
     // clicking through the same handler the browser would call.

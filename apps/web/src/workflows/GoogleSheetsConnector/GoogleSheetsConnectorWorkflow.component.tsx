@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -64,7 +70,6 @@ interface GoogleSheetsConnectorWorkflowProps {
   connectorDefinitionId: string;
 }
 
-
 export const GoogleSheetsConnectorWorkflow: React.FC<
   GoogleSheetsConnectorWorkflowProps
 > = ({ open, onClose, organizationId, connectorDefinitionId }) => {
@@ -125,7 +130,10 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
 
   const loadSheet: GoogleSheetsWorkflowCallbacks["loadSheet"] = useCallback(
     async ({ connectorInstanceId, spreadsheetId }) => {
-      const res = await selectSheetMutate({ connectorInstanceId, spreadsheetId });
+      const res = await selectSheetMutate({
+        connectorInstanceId,
+        spreadsheetId,
+      });
       connectorInstanceIdRef.current = connectorInstanceId;
       // Capture the workbook title so the commit's `name` field shows
       // the user-recognizable spreadsheet name on the connector card
@@ -136,25 +144,26 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
     [selectSheetMutate]
   );
 
-  const runInterpret: GoogleSheetsWorkflowCallbacks["runInterpret"] = useCallback(
-    async (regions) => {
-      const workbook = workbookRef.current;
-      const ciId = connectorInstanceIdRef.current;
-      if (!workbook) throw new Error("Workbook not loaded");
-      if (!ciId) throw new Error("Connector instance missing");
-      const res = await interpretMutate({
-        connectorInstanceId: ciId,
-        regionHints: regionDraftsToHints(workbook, regions),
-      });
-      const plan = preserveUserRegionConfig(res.plan, regions);
-      return {
-        regions: planRegionsToDrafts(plan, workbook),
-        plan,
-        overallConfidence: overallConfidenceFromPlan(plan),
-      };
-    },
-    [interpretMutate]
-  );
+  const runInterpret: GoogleSheetsWorkflowCallbacks["runInterpret"] =
+    useCallback(
+      async (regions) => {
+        const workbook = workbookRef.current;
+        const ciId = connectorInstanceIdRef.current;
+        if (!workbook) throw new Error("Workbook not loaded");
+        if (!ciId) throw new Error("Connector instance missing");
+        const res = await interpretMutate({
+          connectorInstanceId: ciId,
+          regionHints: regionDraftsToHints(workbook, regions),
+        });
+        const plan = preserveUserRegionConfig(res.plan, regions);
+        return {
+          regions: planRegionsToDrafts(plan, workbook),
+          plan,
+          overallConfidence: overallConfidenceFromPlan(plan),
+        };
+      },
+      [interpretMutate]
+    );
 
   const runCommit: GoogleSheetsWorkflowCallbacks["runCommit"] = useCallback(
     async (plan) => {
@@ -411,7 +420,11 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
         return true;
       });
     },
-    [workflow.regions, connectorEntitySearch.labelMap, connectorEntitySearch.metaMap]
+    [
+      workflow.regions,
+      connectorEntitySearch.labelMap,
+      connectorEntitySearch.metaMap,
+    ]
   );
 
   const resolveReferenceFieldOptions = useCallback(
@@ -431,8 +444,8 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
           const key =
             b.normalizedKey ??
             (b.columnDefinitionId
-              ? columnDefinitionsById.get(b.columnDefinitionId)?.label ??
-                b.columnDefinitionId
+              ? (columnDefinitionsById.get(b.columnDefinitionId)?.label ??
+                b.columnDefinitionId)
               : null);
           if (!key || seen.has(key)) continue;
           seen.add(key);

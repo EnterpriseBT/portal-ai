@@ -20,9 +20,7 @@ function baseRegion(overrides: Partial<RegionDraft> = {}): RegionDraft {
   };
 }
 
-function pivotedRowRegion(
-  overrides: Partial<RegionDraft> = {}
-): RegionDraft {
+function pivotedRowRegion(overrides: Partial<RegionDraft> = {}): RegionDraft {
   return baseRegion({
     segmentsByAxis: {
       row: [

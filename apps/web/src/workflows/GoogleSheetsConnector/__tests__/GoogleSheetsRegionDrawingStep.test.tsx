@@ -14,9 +14,8 @@ jest.unstable_mockModule("../../../modules/RegionEditor", () => ({
 }));
 
 const { render, screen } = await import("../../../__tests__/test-utils");
-const { GoogleSheetsRegionDrawingStep } = await import(
-  "../GoogleSheetsRegionDrawingStep.component"
-);
+const { GoogleSheetsRegionDrawingStep } =
+  await import("../GoogleSheetsRegionDrawingStep.component");
 type GoogleSheetsRegionDrawingStepUIProps = React.ComponentProps<
   typeof GoogleSheetsRegionDrawingStep
 >;
@@ -57,7 +56,9 @@ describe("GoogleSheetsRegionDrawingStep", () => {
   });
 
   it("does not render FormAlert when serverError is null", () => {
-    render(<GoogleSheetsRegionDrawingStep {...makeProps({ serverError: null })} />);
+    render(
+      <GoogleSheetsRegionDrawingStep {...makeProps({ serverError: null })} />
+    );
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });

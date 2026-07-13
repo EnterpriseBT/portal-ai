@@ -26,9 +26,7 @@ import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
-import {
-  withEntityLock,
-} from "../db/advisory-lock.util.js";
+import { withEntityLock } from "../db/advisory-lock.util.js";
 import { db } from "../db/client.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
 import {
@@ -172,7 +170,9 @@ export class WideTableReconcilerService {
     client: DbClient = db
   ): Promise<void> {
     await withEntityLock(client, connectorEntityId, async (tx) => {
-      const tableName = quoteIdent(this.wideTableRepo_.tableName(connectorEntityId));
+      const tableName = quoteIdent(
+        this.wideTableRepo_.tableName(connectorEntityId)
+      );
       await (tx as typeof db).execute(
         sql.raw(
           `CREATE TABLE IF NOT EXISTS ${tableName} (` +
@@ -303,18 +303,15 @@ export class WideTableReconcilerService {
     connectorEntityId: string,
     client: DbClient
   ): Promise<DesiredColumn[]> {
-    const mappings =
-      await this.fieldMappingsRepo_.findByConnectorEntityId(
-        connectorEntityId,
-        client
-      );
+    const mappings = await this.fieldMappingsRepo_.findByConnectorEntityId(
+      connectorEntityId,
+      client
+    );
     if (mappings.length === 0) return [];
 
     const colDefIds = [...new Set(mappings.map((m) => m.columnDefinitionId))];
     const colDefs = await Promise.all(
-      colDefIds.map((id) =>
-        this.columnDefinitionsRepo_.findById(id, client)
-      )
+      colDefIds.map((id) => this.columnDefinitionsRepo_.findById(id, client))
     );
     const colDefMap = new Map(
       colDefs

@@ -82,22 +82,18 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 // Hoisted refs the callback tests reuse to seed Google API responses. The
 // exchange + userinfo paths are mocked; the URL builder isn't (slice-7 tests
 // exercise that code path against the real implementation).
-const exchangeCodeMock =
-  jest.fn<
-    (
-      input: { code: string }
-    ) => Promise<{
-      accessToken: string;
-      refreshToken: string;
-      expiresIn: number;
-      scope: string;
-    }>
-  >();
+const exchangeCodeMock = jest.fn<
+  (input: { code: string }) => Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+    scope: string;
+  }>
+>();
 const fetchUserEmailMock = jest.fn<(token: string) => Promise<string>>();
 
-const { GoogleAuthService } = await import(
-  "../../../services/google-auth.service.js"
-);
+const { GoogleAuthService } =
+  await import("../../../services/google-auth.service.js");
 const originalExchange = GoogleAuthService.exchangeCode.bind(GoogleAuthService);
 const originalFetchEmail =
   GoogleAuthService.fetchUserEmail.bind(GoogleAuthService);
@@ -106,9 +102,8 @@ GoogleAuthService.exchangeCode =
 GoogleAuthService.fetchUserEmail =
   fetchUserEmailMock as unknown as typeof GoogleAuthService.fetchUserEmail;
 
-const { GoogleAccessTokenCacheService } = await import(
-  "../../../services/google-access-token-cache.service.js"
-);
+const { GoogleAccessTokenCacheService } =
+  await import("../../../services/google-access-token-cache.service.js");
 const getOrRefreshMock = jest.fn<(id: string) => Promise<string>>();
 const originalGetOrRefresh = GoogleAccessTokenCacheService.getOrRefresh.bind(
   GoogleAccessTokenCacheService
@@ -521,8 +516,7 @@ function mockDriveFetch({
     ok: status >= 200 && status < 300,
     status,
     json: async () => body,
-    text: async () =>
-      typeof body === "string" ? body : JSON.stringify(body),
+    text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
   } as unknown as globalThis.Response;
 }
 
@@ -592,7 +586,9 @@ describe("Google Sheets Connector Router — GET /sheets", () => {
   it("returns 404 CONNECTOR_INSTANCE_NOT_FOUND when the id doesn't exist", async () => {
     await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
     const res = await request(app)
-      .get("/api/connectors/google-sheets/sheets?connectorInstanceId=nonexistent")
+      .get(
+        "/api/connectors/google-sheets/sheets?connectorInstanceId=nonexistent"
+      )
       .set("Authorization", "Bearer test-token");
     expect(res.status).toBe(404);
     expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
@@ -615,9 +611,7 @@ describe("Google Sheets Connector Router — GET /sheets", () => {
     );
     void ourOrg;
     const res = await request(app)
-      .get(
-        `/api/connectors/google-sheets/sheets?connectorInstanceId=${id}`
-      )
+      .get(`/api/connectors/google-sheets/sheets?connectorInstanceId=${id}`)
       .set("Authorization", "Bearer test-token");
     expect(res.status).toBe(403);
   });
@@ -750,7 +744,12 @@ function buildSheetsApiResponse({
   sheets,
 }: {
   title: string;
-  sheets: { name: string; rows: number; cols: number; cell?: { value: string } }[];
+  sheets: {
+    name: string;
+    rows: number;
+    cols: number;
+    cell?: { value: string };
+  }[];
 }) {
   return {
     properties: { title },
@@ -826,9 +825,7 @@ describe("Google Sheets Connector Router — POST /instances/:id/select-sheet", 
   it("returns 404 when the instance doesn't exist", async () => {
     await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
     const res = await request(app)
-      .post(
-        "/api/connectors/google-sheets/instances/missing-id/select-sheet"
-      )
+      .post("/api/connectors/google-sheets/instances/missing-id/select-sheet")
       .set("Authorization", "Bearer test-token")
       .send({ spreadsheetId: "abc" });
     expect(res.status).toBe(404);
@@ -955,9 +952,7 @@ describe("Google Sheets Connector Router — POST /instances/:id/select-sheet", 
         mockDriveFetch({
           body: buildSheetsApiResponse({
             title: "First Workbook",
-            sheets: [
-              { name: "S", rows: 1, cols: 1, cell: { value: "x" } },
-            ],
+            sheets: [{ name: "S", rows: 1, cols: 1, cell: { value: "x" } }],
           }),
         })
       )
@@ -965,9 +960,7 @@ describe("Google Sheets Connector Router — POST /instances/:id/select-sheet", 
         mockDriveFetch({
           body: buildSheetsApiResponse({
             title: "Second Workbook",
-            sheets: [
-              { name: "T", rows: 1, cols: 1, cell: { value: "y" } },
-            ],
+            sheets: [{ name: "T", rows: 1, cols: 1, cell: { value: "y" } }],
           }),
         })
       );
@@ -1023,9 +1016,7 @@ async function selectSmallSheet(
     })
   );
   await request(app)
-    .post(
-      `/api/connectors/google-sheets/instances/${instanceId}/select-sheet`
-    )
+    .post(`/api/connectors/google-sheets/instances/${instanceId}/select-sheet`)
     .set("Authorization", "Bearer test-token")
     .send({ spreadsheetId: "1abcXYZ" });
   return { instanceId };
@@ -1082,9 +1073,7 @@ describe("Google Sheets Connector Router — GET /instances/:id/sheet-slice", ()
     );
 
     const res = await request(app)
-      .get(
-        `/api/connectors/google-sheets/instances/${id}/sheet-slice`
-      )
+      .get(`/api/connectors/google-sheets/instances/${id}/sheet-slice`)
       .set("Authorization", "Bearer test-token")
       .query({
         sheetId: "sheet_0_forecast",
@@ -1108,9 +1097,7 @@ describe("Google Sheets Connector Router — GET /instances/:id/sheet-slice", ()
     );
 
     const res = await request(app)
-      .get(
-        `/api/connectors/google-sheets/instances/${instanceId}/sheet-slice`
-      )
+      .get(`/api/connectors/google-sheets/instances/${instanceId}/sheet-slice`)
       .set("Authorization", "Bearer test-token")
       .query({ sheetId: "sheet_0_forecast" }); // missing row/col
     expect(res.status).toBe(400);
@@ -1131,9 +1118,7 @@ describe("Google Sheets Connector Router — GET /instances/:id/sheet-slice", ()
     );
 
     const res = await request(app)
-      .get(
-        `/api/connectors/google-sheets/instances/${instanceId}/sheet-slice`
-      )
+      .get(`/api/connectors/google-sheets/instances/${instanceId}/sheet-slice`)
       .set("Authorization", "Bearer test-token")
       .query({
         sheetId: "sheet_0_forecast",
@@ -1159,9 +1144,7 @@ describe("Google Sheets Connector Router — GET /instances/:id/sheet-slice", ()
     );
 
     const res = await request(app)
-      .get(
-        `/api/connectors/google-sheets/instances/${instanceId}/sheet-slice`
-      )
+      .get(`/api/connectors/google-sheets/instances/${instanceId}/sheet-slice`)
       .set("Authorization", "Bearer test-token")
       .query({
         sheetId: "sheet_0_forecast",

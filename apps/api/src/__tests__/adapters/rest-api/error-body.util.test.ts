@@ -64,7 +64,9 @@ describe("extractUserMessage", () => {
   });
 
   it("returns null when the body isn't JSON", () => {
-    expect(extractUserMessage("<html>500 Internal Server Error</html>")).toBeNull();
+    expect(
+      extractUserMessage("<html>500 Internal Server Error</html>")
+    ).toBeNull();
   });
 
   it("returns null when JSON has no recognized error field", () => {

@@ -216,7 +216,10 @@ export const EndpointsStep: React.FC<EndpointsStepProps> = ({
       const next = [...endpoints];
       // Preserve the existing entityId on edit so the Test button stays
       // functional for persisted endpoints.
-      next[editingIndex] = { ...draft, entityId: endpoints[editingIndex].entityId };
+      next[editingIndex] = {
+        ...draft,
+        entityId: endpoints[editingIndex].entityId,
+      };
       onChange(next);
     } else {
       onChange([...endpoints, draft]);
@@ -241,9 +244,7 @@ export const EndpointsStep: React.FC<EndpointsStepProps> = ({
       />
       <ApiEndpointForm
         open={formOpen}
-        initial={
-          editingIndex !== null ? endpoints[editingIndex] : undefined
-        }
+        initial={editingIndex !== null ? endpoints[editingIndex] : undefined}
         onSubmit={onSubmitDraft}
         onClose={() => {
           setFormOpen(false);

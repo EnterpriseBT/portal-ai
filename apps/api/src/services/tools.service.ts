@@ -11,10 +11,7 @@ import { type Tool } from "ai";
 
 import { AnalyticsService } from "./analytics.service.js";
 import { DbService } from "./db.service.js";
-import {
-  wrapWithCostGate,
-  type GateableTool,
-} from "./cost-gate.service.js";
+import { wrapWithCostGate, type GateableTool } from "./cost-gate.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import type { CostHint } from "@portalai/core/models";
 
@@ -233,9 +230,7 @@ export class ToolService {
     // 1. Built-in toolpacks — descriptor inspection only; the
     //    executor goes through the per-station tool registration
     //    (handles auth + injects stationId/orgId/userId).
-    const { BUILTIN_TOOLPACKS } = await import(
-      "@portalai/core/registries"
-    );
+    const { BUILTIN_TOOLPACKS } = await import("@portalai/core/registries");
     let builtinDescriptor:
       | import("@portalai/core/registries").ToolpackTool
       | null = null;
@@ -293,9 +288,10 @@ export class ToolService {
       // `Record<string, string> | null` on read. The Select-row
       // type signature still claims the raw shape, so cast at the
       // boundary.
-      const decryptedHeaders = pack.authHeaders as unknown as
-        | Record<string, string>
-        | null;
+      const decryptedHeaders = pack.authHeaders as unknown as Record<
+        string,
+        string
+      > | null;
       const implementation: WebhookImplementation = {
         type: "webhook",
         url: pack.endpoints.runtime,
@@ -606,13 +602,12 @@ export class ToolService {
       // transform_entity_records: only registered when portalId
       // is known (production callers always supply it).
       if (portalId) {
-        tools.transform_entity_records =
-          new TransformEntityRecordsTool().build(
-            portalId,
-            stationId,
-            organizationId,
-            userId
-          );
+        tools.transform_entity_records = new TransformEntityRecordsTool().build(
+          portalId,
+          stationId,
+          organizationId,
+          userId
+        );
       }
     }
 
@@ -620,10 +615,12 @@ export class ToolService {
     // Custom toolpacks
     // -------------------------------------------------------------------
     if (customPackIds.length > 0) {
-      const customPacks =
-        await repo.organizationToolpacks.findManyByIds(customPackIds, {
+      const customPacks = await repo.organizationToolpacks.findManyByIds(
+        customPackIds,
+        {
           organizationId,
-        });
+        }
+      );
       for (const pack of customPacks) {
         for (const tool of pack.tools) {
           if (tool.name in tools) {
@@ -711,14 +708,13 @@ export class ToolService {
         return {
           costBearer: isCustom ? "organization" : "application",
           costHint: isCustom
-            ? customCostHint[name] ?? "free"
-            : capability?.costHint ?? "free",
+            ? (customCostHint[name] ?? "free")
+            : (capability?.costHint ?? "free"),
           // #183: async-job tools (resultKind "progress", e.g.
           // transform_entity_records) charge in their job processor on job
           // success — the wrap must not commit on enqueue-return. Sync tools
           // (everything else) commit in the wrap after execute resolves.
-          deferChargeToJob:
-            !isCustom && capability?.resultKind === "progress",
+          deferChargeToJob: !isCustom && capability?.resultKind === "progress",
         };
       }
     );

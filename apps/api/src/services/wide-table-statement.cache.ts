@@ -338,7 +338,9 @@ export class WideTableStatementCache {
       );
     }
 
-    const searchableCols = cols.filter((c) => SEARCHABLE_PG_TYPES.has(c.pgType));
+    const searchableCols = cols.filter((c) =>
+      SEARCHABLE_PG_TYPES.has(c.pgType)
+    );
     const searchableConcatSql: AliasedExprBuilder = (alias = "w") => {
       if (searchableCols.length === 0) return `''`;
       const frags = searchableCols.map((c) =>

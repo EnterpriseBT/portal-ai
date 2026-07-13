@@ -33,7 +33,9 @@ const InputSchema = z.object({
   rows: z
     .array(z.record(z.string(), z.unknown()))
     .optional()
-    .describe("Inline rows holding the sample columns (alternative to queryHandle)."),
+    .describe(
+      "Inline rows holding the sample columns (alternative to queryHandle)."
+    ),
   columnA: z
     .string()
     .optional()
@@ -49,9 +51,7 @@ const InputSchema = z.object({
   mu: z
     .number()
     .optional()
-    .describe(
-      "Hypothesized population mean for t_test_one_sample. Default 0."
-    ),
+    .describe("Hypothesized population mean for t_test_one_sample. Default 0."),
   observed: z
     .array(z.number().nonnegative())
     .optional()

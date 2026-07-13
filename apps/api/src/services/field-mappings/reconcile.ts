@@ -33,10 +33,7 @@ import type {
   ColumnDefinitionSelect,
   FieldMappingSelect,
 } from "../../db/schema/zod.js";
-import {
-  connectorEntities,
-  fieldMappings,
-} from "../../db/schema/index.js";
+import { connectorEntities, fieldMappings } from "../../db/schema/index.js";
 import type { DbClient } from "../../db/repositories/base.repository.js";
 import { DbService } from "../db.service.js";
 import { SystemUtilities } from "../../utils/system.util.js";
@@ -214,13 +211,13 @@ export async function reconcileFieldMappings(
       binding.refNormalizedKey !== ""
     ) {
       const targetKeys = matchesStaged
-        ? stagedNormalizedKeysByEntityKey?.get(refKey) ?? new Set<string>()
-        : (await lookupDbEntityNormalizedKeys(
+        ? (stagedNormalizedKeysByEntityKey?.get(refKey) ?? new Set<string>())
+        : ((await lookupDbEntityNormalizedKeys(
             client,
             organizationId,
             refKey,
             dbEntityFieldMappingCache
-          )) ?? new Set<string>();
+          )) ?? new Set<string>());
       if (!targetKeys.has(binding.refNormalizedKey)) {
         throw new ApiError(
           400,
@@ -272,7 +269,7 @@ export async function reconcileFieldMappings(
           format:
             binding.format !== undefined
               ? binding.format
-              : catalog?.canonicalFormat ?? null,
+              : (catalog?.canonicalFormat ?? null),
           enumValues: binding.enumValues ?? null,
           refNormalizedKey: binding.refNormalizedKey ?? null,
           refEntityKey: binding.refEntityKey ?? null,

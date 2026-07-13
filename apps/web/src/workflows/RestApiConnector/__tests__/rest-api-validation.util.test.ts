@@ -187,9 +187,9 @@ describe("validatePlaceholders", () => {
   it("accepts known placeholders", () => {
     expect(validatePlaceholders("c={{cursor}}")).toEqual({ ok: true });
     expect(validatePlaceholders("p={{pageNumber}}")).toEqual({ ok: true });
-    expect(
-      validatePlaceholders("p={{pageNumber}}&c={{cursor}}")
-    ).toEqual({ ok: true });
+    expect(validatePlaceholders("p={{pageNumber}}&c={{cursor}}")).toEqual({
+      ok: true,
+    });
   });
 
   it("accepts strings with no placeholders", () => {
@@ -216,9 +216,7 @@ describe("validatePlaceholders", () => {
   });
 
   it("reports the first unknown placeholder when several appear", () => {
-    const result = validatePlaceholders(
-      "{{cursor}}-{{nope}}-{{also}}"
-    );
+    const result = validatePlaceholders("{{cursor}}-{{nope}}-{{also}}");
     expect(result).toMatchObject({ ok: false, name: "nope" });
   });
 });

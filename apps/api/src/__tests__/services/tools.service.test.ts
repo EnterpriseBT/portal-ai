@@ -130,12 +130,9 @@ jest.unstable_mockModule("../../utils/url-safety.util.js", () => ({
   validateToolpackUrl: () => null,
 }));
 
-const { ToolService, BUILTIN_TOOL_NAMES } = await import(
-  "../../services/tools.service.js"
-);
-const { CostGateService } = await import(
-  "../../services/cost-gate.service.js"
-);
+const { ToolService, BUILTIN_TOOL_NAMES } =
+  await import("../../services/tools.service.js");
+const { CostGateService } = await import("../../services/cost-gate.service.js");
 const buildAnalyticsTools = ToolService.buildAnalyticsTools.bind(ToolService);
 const callWebhook = ToolService.callWebhook.bind(ToolService);
 
@@ -707,7 +704,10 @@ describe("buildAnalyticsTools()", () => {
       "entity_management",
     ]);
     mockResolveStationCapabilities.mockResolvedValue([
-      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true } },
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: true },
+      },
     ]);
 
     // Gate every call to a deny sentinel so the original executes never run
@@ -734,7 +734,11 @@ describe("buildAnalyticsTools()", () => {
     for (const name of names) {
       const out = await (tools[name] as any).execute(
         {},
-        { toolCallId: "t", messages: [], abortSignal: new AbortController().signal }
+        {
+          toolCallId: "t",
+          messages: [],
+          abortSignal: new AbortController().signal,
+        }
       );
       // Wrapped → returns the gate's deny result; the real tool never ran.
       expect(out).toBe(sentinel.result);
@@ -761,7 +765,10 @@ describe("buildAnalyticsTools()", () => {
       "entity_management",
     ]);
     mockResolveStationCapabilities.mockResolvedValue([
-      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true } },
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: true },
+      },
     ]);
 
     await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001", "portal-001");
@@ -797,7 +804,11 @@ describe("buildAnalyticsTools()", () => {
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
     await (tools.web_search as any).execute(
       { query: "x" },
-      { toolCallId: "t", messages: [], abortSignal: new AbortController().signal }
+      {
+        toolCallId: "t",
+        messages: [],
+        abortSignal: new AbortController().signal,
+      }
     );
 
     expect(commitSpy).toHaveBeenCalledTimes(1);
@@ -815,7 +826,10 @@ describe("buildAnalyticsTools()", () => {
       "entity_management",
     ]);
     mockResolveStationCapabilities.mockResolvedValue([
-      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true } },
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: true },
+      },
     ]);
     const admitSpy = jest
       .spyOn(CostGateService, "checkAdmission")
@@ -844,7 +858,11 @@ describe("buildAnalyticsTools()", () => {
     try {
       await (tools.transform_entity_records as any).execute(
         {},
-        { toolCallId: "t", messages: [], abortSignal: new AbortController().signal }
+        {
+          toolCallId: "t",
+          messages: [],
+          abortSignal: new AbortController().signal,
+        }
       );
     } catch {
       /* enqueue/validation path irrelevant to the defer assertion */
@@ -894,12 +912,14 @@ describe("buildAnalyticsTools()", () => {
 
     // Deny so the real tools never run; we only assert the metadata the wrap
     // passes to the gate (bearer/costHint).
-    const spy = jest.spyOn(CostGateService, "checkAdmission").mockResolvedValue({
-      allowed: false,
-      result: {
-        error: { code: ApiCode.TOOL_USAGE_QUOTA_EXCEEDED, message: "x" },
-      },
-    });
+    const spy = jest
+      .spyOn(CostGateService, "checkAdmission")
+      .mockResolvedValue({
+        allowed: false,
+        result: {
+          error: { code: ApiCode.TOOL_USAGE_QUOTA_EXCEEDED, message: "x" },
+        },
+      });
 
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
     await (tools.web_search as any).execute({}, {});
@@ -1005,7 +1025,10 @@ describe("built-in tool registry consistency (#115)", () => {
       "entity_management",
     ]);
     mockResolveStationCapabilities.mockResolvedValue([
-      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true } },
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: true },
+      },
     ]);
 
     const tools = await buildAnalyticsTools(
@@ -1086,7 +1109,11 @@ describe("callWebhook()", () => {
 
   it("should throw on non-OK response", async () => {
     mockFetch.mockResolvedValue(
-      fetchResp("", { ok: false, status: 500, statusText: "Internal Server Error" })
+      fetchResp("", {
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+      })
     );
 
     await expect(
@@ -1156,10 +1183,7 @@ describe("callWebhook()", () => {
     mockFetch.mockResolvedValue(fetchResp(huge));
 
     await expect(
-      callWebhook(
-        { type: "webhook", url: "https://api.example.com/hook" },
-        {}
-      )
+      callWebhook({ type: "webhook", url: "https://api.example.com/hook" }, {})
     ).rejects.toThrow(/exceeds.*bytes/i);
   });
 });

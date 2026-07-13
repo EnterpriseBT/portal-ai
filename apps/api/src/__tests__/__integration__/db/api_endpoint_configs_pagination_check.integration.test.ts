@@ -5,18 +5,16 @@
  * rejected at the database layer.
  */
 
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-} from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
-import { generateId, seedUserAndOrg, teardownOrg } from "../utils/application.util.js";
+import {
+  generateId,
+  seedUserAndOrg,
+  teardownOrg,
+} from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|ci-test-pagination-check";
 
@@ -159,7 +157,9 @@ describe("api_endpoint_configs_pagination_check (phase 3)", () => {
         AND contype = 'c'
         AND conname LIKE 'api_endpoint_configs_pagination%'
     `);
-    const names = (rows as unknown as Array<{ conname: string }>).map((r) => r.conname);
+    const names = (rows as unknown as Array<{ conname: string }>).map(
+      (r) => r.conname
+    );
     expect(names).toContain("api_endpoint_configs_pagination_check");
     expect(names).not.toContain("api_endpoint_configs_pagination_phase1_check");
   });

@@ -110,9 +110,7 @@ export interface ApiEndpointFormUIProps {
    *  attempts produced an expression that failed the strict
    *  array-of-objects check. Surfaced via `TransformEditorUI`'s
    *  existing serverError-style Alert. */
-  suggestionWarning:
-    | { kind: "validation-failed"; message: string }
-    | null;
+  suggestionWarning: { kind: "validation-failed"; message: string } | null;
 }
 
 export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
@@ -162,8 +160,7 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
       helperText={touched[name as string] && errors[name as string]}
       slotProps={{
         htmlInput: {
-          "aria-invalid":
-            touched[name as string] && !!errors[name as string],
+          "aria-invalid": touched[name as string] && !!errors[name as string],
         },
       }}
     />
@@ -304,8 +301,7 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
                 helperText={touched.recordsPath && errors.recordsPath}
                 slotProps={{
                   htmlInput: {
-                    "aria-invalid":
-                      touched.recordsPath && !!errors.recordsPath,
+                    "aria-invalid": touched.recordsPath && !!errors.recordsPath,
                   },
                 }}
               />
@@ -320,7 +316,7 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
                         kind: "runtime",
                         message: suggestionWarning.message,
                       }
-                    : lastTransformError ?? null
+                    : (lastTransformError ?? null)
                 }
               />
             )}
@@ -333,11 +329,7 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
                 size="small"
                 variant="outlined"
                 onClick={onPreview}
-                disabled={
-                  previewLoading ||
-                  !draft.path.trim() ||
-                  !draft.method
-                }
+                disabled={previewLoading || !draft.path.trim() || !draft.method}
                 aria-label="Preview endpoint response"
               >
                 {previewLoading ? "Loading…" : "Preview response"}
@@ -346,8 +338,7 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
                 Fetches page 1 of the endpoint so you can verify the
                 {extractionMode === "recordsPath"
                   ? " records path"
-                  : " transform"}
-                {" "}
+                  : " transform"}{" "}
                 resolves to the right records before committing.
               </Typography>
             </Stack>
@@ -463,9 +454,10 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [suggestServerError, setSuggestServerError] =
     useState<ServerError | null>(null);
-  const [suggestionWarning, setSuggestionWarning] = useState<
-    { kind: "validation-failed"; message: string } | null
-  >(null);
+  const [suggestionWarning, setSuggestionWarning] = useState<{
+    kind: "validation-failed";
+    message: string;
+  } | null>(null);
 
   // Mutual exclusion is enforced via the radio choice (decision 10).
   // Initial mode is derived from the draft: if `transform` carries a
@@ -546,7 +538,9 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
       const message = err instanceof Error ? err.message : "Suggest failed";
       const code =
         err && typeof err === "object" && "code" in err
-          ? String((err as { code?: unknown }).code ?? "REST_API_OPERATION_FAILED")
+          ? String(
+              (err as { code?: unknown }).code ?? "REST_API_OPERATION_FAILED"
+            )
           : "REST_API_OPERATION_FAILED";
       setSuggestServerError({ message, code });
     } finally {

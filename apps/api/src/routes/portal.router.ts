@@ -776,11 +776,10 @@ portalRouter.get(
         throw new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found");
       }
 
-      const rows =
-        await DbService.repository.jobs.findRunningByPortalId(
-          id,
-          organizationId
-        );
+      const rows = await DbService.repository.jobs.findRunningByPortalId(
+        id,
+        organizationId
+      );
 
       return HttpService.success(res, {
         jobs: rows.map((j) => ({

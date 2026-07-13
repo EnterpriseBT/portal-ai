@@ -18,10 +18,7 @@ import StreamArray from "stream-json/streamers/stream-array.js";
 
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { ApiError } from "../../services/http.service.js";
-import {
-  extractUserMessage,
-  readErrorBody,
-} from "./error-body.util.js";
+import { extractUserMessage, readErrorBody } from "./error-body.util.js";
 
 export const DEFAULT_MAX_RECORD_BYTES = 50 * 1024 * 1024;
 

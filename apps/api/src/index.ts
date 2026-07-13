@@ -23,10 +23,7 @@ async function start() {
   logger.info("Starting wide-table boot drift check…");
   try {
     const result = await wideTableReconcilerService.reconcileAll();
-    logger.info(
-      { ...result },
-      "Wide-table boot drift check complete"
-    );
+    logger.info({ ...result }, "Wide-table boot drift check complete");
   } catch (err) {
     logger.fatal(
       { err, code: ApiCode.WIDE_TABLE_DRIFT_AT_BOOT },

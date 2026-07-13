@@ -8,12 +8,10 @@
  */
 import { describe, it, expect, afterEach } from "@jest/globals";
 
-const { PortalSqlHandleService } = await import(
-  "../../../services/portal-sql-handle.service.js"
-);
-const { AnalyticsService } = await import(
-  "../../../services/analytics.service.js"
-);
+const { PortalSqlHandleService } =
+  await import("../../../services/portal-sql-handle.service.js");
+const { AnalyticsService } =
+  await import("../../../services/analytics.service.js");
 const { getRedisClient } = await import("../../../utils/redis.util.js");
 
 const ORG_ID = "00000000-0000-0000-0000-0000000c2c11";
@@ -31,10 +29,9 @@ const ROWS = [
   { a: 2.2, b: 2.0 },
   { a: 3.6, b: 3.2 },
 ];
-const HANDLE_SQL =
-  `SELECT a::float8 AS a, b::float8 AS b FROM (VALUES ${ROWS.map(
-    (r) => `(${r.a}, ${r.b})`
-  ).join(", ")}) AS t(a, b)`;
+const HANDLE_SQL = `SELECT a::float8 AS a, b::float8 AS b FROM (VALUES ${ROWS.map(
+  (r) => `(${r.a}, ${r.b})`
+).join(", ")}) AS t(a, b)`;
 
 let producedHandle: string | null = null;
 

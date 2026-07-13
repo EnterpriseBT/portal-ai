@@ -175,9 +175,7 @@ export interface ConnectorAdapter {
    * `{ ok: false, reasonCode, reason, details? }` which the route
    * maps to a 4xx ApiError (typically 409).
    */
-  assertSyncEligibility?(
-    instance: ConnectorInstance
-  ): Promise<SyncEligibility>;
+  assertSyncEligibility?(instance: ConnectorInstance): Promise<SyncEligibility>;
 
   /**
    * Optional adapter-specific connectivity check. Called by the shared

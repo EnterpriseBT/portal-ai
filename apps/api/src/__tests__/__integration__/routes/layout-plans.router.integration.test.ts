@@ -115,12 +115,10 @@ const { app } = await import("../../../app.js");
 // import would resolve before any mocks register, which leaves the
 // service holding a real Redis client (cache misses everything →
 // commit/interpret fall through to the real S3 path).
-const { LayoutPlanDraftService } = await import(
-  "../../../services/layout-plan-draft.service.js"
-);
-const { layoutPlanCommitProcessor } = await import(
-  "../../../queues/processors/layout-plan-commit.processor.js"
-);
+const { LayoutPlanDraftService } =
+  await import("../../../services/layout-plan-draft.service.js");
+const { layoutPlanCommitProcessor } =
+  await import("../../../queues/processors/layout-plan-commit.processor.js");
 
 const {
   connectorInstances,
@@ -353,7 +351,11 @@ function sparseToDenseRows(
       dense[r]![c] = null;
     } else if (v instanceof Date) {
       dense[r]![c] = v.toISOString();
-    } else if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+    } else if (
+      typeof v === "string" ||
+      typeof v === "number" ||
+      typeof v === "boolean"
+    ) {
       dense[r]![c] = v;
     } else {
       dense[r]![c] = String(v);
@@ -395,8 +397,16 @@ describe("Layout Plans Draft Router", () => {
 
   describe("POST /api/layout-plans/interpret", () => {
     it("returns the plan without persisting anything", async () => {
-      const emailId = await seedColumnDefinition(db as Db, organizationId, "email");
-      const nameId = await seedColumnDefinition(db as Db, organizationId, "name");
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
       mockAnalyze.mockResolvedValue(makePlan(emailId, nameId));
 
       const uploadSessionId = await seedUploadSession(
@@ -417,9 +427,12 @@ describe("Layout Plans Draft Router", () => {
 
       // No ConnectorInstance or layout plan row should have been created.
       const instances = await (db as Db).select().from(connectorInstances);
-      expect(instances.filter((i) => i.organizationId === organizationId))
-        .toHaveLength(0);
-      const plans = await (db as Db).select().from(connectorInstanceLayoutPlans);
+      expect(
+        instances.filter((i) => i.organizationId === organizationId)
+      ).toHaveLength(0);
+      const plans = await (db as Db)
+        .select()
+        .from(connectorInstanceLayoutPlans);
       expect(plans).toHaveLength(0);
     });
 
@@ -469,8 +482,16 @@ describe("Layout Plans Draft Router", () => {
 
   describe("POST /api/layout-plans/commit", () => {
     it("returns 202 with { connectorInstanceId, planId, jobId, status: pending } and persists a layout_plan_commit job", async () => {
-      const emailId = await seedColumnDefinition(db as Db, organizationId, "email");
-      const nameId = await seedColumnDefinition(db as Db, organizationId, "name");
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
       const uploadSessionId = await seedUploadSession(
         db as Db,
         organizationId,
@@ -536,8 +557,16 @@ describe("Layout Plans Draft Router", () => {
     });
 
     it("creates the ConnectorInstance + plan row and commits records atomically", async () => {
-      const emailId = await seedColumnDefinition(db as Db, organizationId, "email");
-      const nameId = await seedColumnDefinition(db as Db, organizationId, "name");
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
       const uploadSessionId = await seedUploadSession(
         db as Db,
         organizationId,
@@ -572,7 +601,9 @@ describe("Layout Plans Draft Router", () => {
       const entities = await (db as Db)
         .select()
         .from(connectorEntities)
-        .where(eq(connectorEntities.connectorInstanceId, result.connectorInstanceId));
+        .where(
+          eq(connectorEntities.connectorInstanceId, result.connectorInstanceId)
+        );
       expect(entities.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -680,9 +711,8 @@ describe("Layout Plans Draft Router", () => {
       // `normalizedData` now lives on the wide table. Read via the
       // hydrated repo to verify the source-derived keys line up with
       // the FieldMapping rows.
-      const { entityRecordsRepo } = await import(
-        "../../../db/repositories/entity-records.repository.js"
-      );
+      const { entityRecordsRepo } =
+        await import("../../../db/repositories/entity-records.repository.js");
       const [hydrated] = await entityRecordsRepo.findHydratedMany(entity.id);
       expect(hydrated.normalizedData).toEqual({
         email_address: "alice@example.com",
@@ -691,8 +721,16 @@ describe("Layout Plans Draft Router", () => {
     });
 
     it("rolls back the ConnectorInstance and plan row when commit fails", async () => {
-      const emailId = await seedColumnDefinition(db as Db, organizationId, "email");
-      const nameId = await seedColumnDefinition(db as Db, organizationId, "name");
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
       const planWithBlocker = makePlan(emailId, nameId);
       planWithBlocker.regions[0].warnings = [
         {
@@ -763,10 +801,7 @@ describe("Layout Plans Draft Router", () => {
         const plan = makePlan(emailId, nameId);
         // Duplicate the single region with a new id — both still target
         // "contacts". (The plan schema rejects identical ids.)
-        plan.regions = [
-          plan.regions[0],
-          { ...plan.regions[0], id: "r2" },
-        ];
+        plan.regions = [plan.regions[0], { ...plan.regions[0], id: "r2" }];
 
         await expect(
           runDraftCommitInline({
@@ -892,7 +927,6 @@ describe("Layout Plans Draft Router", () => {
     });
     return instanceId;
   }
-
 
   describe("POST /api/layout-plans/interpret — connectorInstanceId path", () => {
     it("reads the workbook from connector:wb:google-sheets:{id} cache and returns the plan", async () => {

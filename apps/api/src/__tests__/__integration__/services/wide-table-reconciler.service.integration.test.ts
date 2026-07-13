@@ -236,7 +236,7 @@ describe("WideTableReconcilerService integration tests", () => {
     const result = await db.execute<{ column_name: string }>(
       sql`SELECT column_name FROM information_schema.columns WHERE table_name = ${tableName}`
     );
-    const rows = (result as unknown) as { column_name: string }[];
+    const rows = result as unknown as { column_name: string }[];
     return rows.map((r) => r.column_name);
   }
 
@@ -358,9 +358,11 @@ describe("WideTableReconcilerService integration tests", () => {
       .set({ columnDefinitionId: columnDefIdString } as never)
       .where(sql`${schema.fieldMappings.id} = ${fm1}`);
 
-    await expect(reconciler.reconcileEntity(entityId, db)).rejects.toMatchObject(
-      { code: ApiCode.WIDE_TABLE_TYPE_CHANGE_UNSUPPORTED }
-    );
+    await expect(
+      reconciler.reconcileEntity(entityId, db)
+    ).rejects.toMatchObject({
+      code: ApiCode.WIDE_TABLE_TYPE_CHANGE_UNSUPPORTED,
+    });
   });
 
   // ── Case 14 — column-name collision suffix ───────────────────────
@@ -566,9 +568,8 @@ describe("WideTableReconcilerService integration tests", () => {
   // ── Case D — WIDE_TABLE_METADATA_COLUMNS exposes 5 columns ───────
 
   it("WIDE_TABLE_METADATA_COLUMNS includes source_id", async () => {
-    const { WIDE_TABLE_METADATA_COLUMNS } = await import(
-      "../../../services/wide-table-statement.cache.js"
-    );
+    const { WIDE_TABLE_METADATA_COLUMNS } =
+      await import("../../../services/wide-table-statement.cache.js");
     expect(Array.from(WIDE_TABLE_METADATA_COLUMNS)).toEqual([
       "entity_record_id",
       "organization_id",

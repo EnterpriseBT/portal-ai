@@ -1,9 +1,8 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
-const { SigningSecretRevealDialogUI } = await import(
-  "../components/SigningSecretRevealDialog.component"
-);
+const { SigningSecretRevealDialogUI } =
+  await import("../components/SigningSecretRevealDialog.component");
 
 describe("SigningSecretRevealDialogUI (phase 6)", () => {
   beforeEach(() => {
@@ -34,7 +33,9 @@ describe("SigningSecretRevealDialogUI (phase 6)", () => {
         onClose={jest.fn()}
       />
     );
-    expect(screen.queryByTestId("signing-secret-input")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("signing-secret-input")
+    ).not.toBeInTheDocument();
   });
 
   it("does not render when signingSecret is null", () => {
@@ -45,7 +46,9 @@ describe("SigningSecretRevealDialogUI (phase 6)", () => {
         onClose={jest.fn()}
       />
     );
-    expect(screen.queryByTestId("signing-secret-input")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("signing-secret-input")
+    ).not.toBeInTheDocument();
   });
 
   it("invokes onClose when the Done button is clicked", () => {
@@ -62,9 +65,9 @@ describe("SigningSecretRevealDialogUI (phase 6)", () => {
   });
 
   it("copies the secret to the clipboard when the copy button is clicked", async () => {
-    const writeText = jest.fn<(t: string) => Promise<void>>().mockResolvedValue(
-      undefined
-    );
+    const writeText = jest
+      .fn<(t: string) => Promise<void>>()
+      .mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },

@@ -165,7 +165,9 @@ export class PortalSqlHandleService {
     }
     rowsRaw = result.rows;
     totalCount =
-      "totalCount" in result ? result.totalCount ?? rowsRaw.length : rowsRaw.length;
+      "totalCount" in result
+        ? (result.totalCount ?? rowsRaw.length)
+        : rowsRaw.length;
 
     const sampled = totalCount > SAMPLING_THRESHOLD;
     const sampleSize = sampled
@@ -588,7 +590,10 @@ export class PortalSqlHandleService {
       // Bounded: read the snapshot, sort to (orderBy, id), yield in batches.
       const all: Array<Record<string, unknown>> = [];
       for (let off = 0; off < meta.rowCount; off += 5_000) {
-        const snap = await this.getSnapshot(handleId, { offset: off, limit: 5_000 });
+        const snap = await this.getSnapshot(handleId, {
+          offset: off,
+          limit: 5_000,
+        });
         if (snap.rows.length === 0) break;
         all.push(...snap.rows);
       }

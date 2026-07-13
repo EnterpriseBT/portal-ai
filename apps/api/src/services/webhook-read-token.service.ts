@@ -120,7 +120,10 @@ export class WebhookReadTokenService {
         "Webhook read/write token has expired"
       );
     }
-    if (record.handleId !== expected.handleId || record.mode !== expected.mode) {
+    if (
+      record.handleId !== expected.handleId ||
+      record.mode !== expected.mode
+    ) {
       throw new ApiError(
         403,
         ApiCode.WEBHOOK_HANDLE_SCOPE_MISMATCH,

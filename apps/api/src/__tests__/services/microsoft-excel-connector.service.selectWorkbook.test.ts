@@ -36,42 +36,42 @@ const headWorkbookMock =
       driveItemId: string
     ) => Promise<{ size: number; name: string }>
   >();
-const downloadWorkbookMock =
-  jest.fn<
-    (
-      accessToken: string,
-      driveItemId: string
-    ) => Promise<{
-      stream: ReadableStream<Uint8Array>;
-      contentLength: number;
-    }>
-  >();
-const xlsxToCacheMock = jest.fn<
-  (...args: unknown[]) => Promise<unknown>
+const downloadWorkbookMock = jest.fn<
+  (
+    accessToken: string,
+    driveItemId: string
+  ) => Promise<{
+    stream: ReadableStream<Uint8Array>;
+    contentLength: number;
+  }>
 >();
+const xlsxToCacheMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
-const beginSessionMock =
-  jest.fn<(prefix: string) => Promise<SessionWriter>>();
+const beginSessionMock = jest.fn<(prefix: string) => Promise<SessionWriter>>();
 const getSessionMetaMock =
   jest.fn<(prefix: string) => Promise<SessionMeta | null>>();
-const readRowsMock = jest.fn<
-  (
-    prefix: string,
-    sheetId: string,
-    rowStart: number,
-    rowEnd: number
-  ) => AsyncIterable<ChunkRow>
->();
+const readRowsMock =
+  jest.fn<
+    (
+      prefix: string,
+      sheetId: string,
+      rowStart: number,
+      rowEnd: number
+    ) => AsyncIterable<ChunkRow>
+  >();
 const deleteSessionMock = jest.fn(async () => undefined);
 
-const updateInstanceMock =
-  jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const updateInstanceMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
 class MockMicrosoftGraphError extends Error {
   override readonly name = "MicrosoftGraphError" as const;
   readonly kind: string;
   readonly details?: Record<string, unknown>;
-  constructor(kind: string, message?: string, details?: Record<string, unknown>) {
+  constructor(
+    kind: string,
+    message?: string,
+    details?: Record<string, unknown>
+  ) {
     super(message ?? kind);
     this.kind = kind;
     if (details) this.details = details;
@@ -125,9 +125,8 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
-const { MicrosoftExcelConnectorService } = await import(
-  "../../services/microsoft-excel-connector.service.js"
-);
+const { MicrosoftExcelConnectorService } =
+  await import("../../services/microsoft-excel-connector.service.js");
 
 function fakeStream(): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
@@ -182,7 +181,10 @@ describe("MicrosoftExcelConnectorService.selectWorkbook", () => {
   };
 
   it("happy path: streams parse via chunked cache, updates config, returns inline preview", async () => {
-    headWorkbookMock.mockResolvedValue({ size: 1024, name: "Q3 Forecast.xlsx" });
+    headWorkbookMock.mockResolvedValue({
+      size: 1024,
+      name: "Q3 Forecast.xlsx",
+    });
     downloadWorkbookMock.mockResolvedValue({
       stream: fakeStream(),
       contentLength: 1024,
@@ -227,7 +229,9 @@ describe("MicrosoftExcelConnectorService.selectWorkbook", () => {
       driveItemId: "01ABC",
       name: "Q3 Forecast.xlsx",
     });
-    expect((patch.config as { fetchedAt: number }).fetchedAt).toBeGreaterThan(0);
+    expect((patch.config as { fetchedAt: number }).fetchedAt).toBeGreaterThan(
+      0
+    );
     expect(patch.updatedBy).toBe("user-1");
 
     // Title is the workbook name with the .xlsx extension stripped.

@@ -182,15 +182,13 @@ describe("Jobs Router — GET /api/jobs", () => {
       AUTH0_ID
     );
 
-    await (db as ReturnType<typeof drizzle>)
-      .insert(jobs)
-      .values([
-        createJob(organizationId, {
-          type: "system_check",
-          status: "completed",
-        }),
-        createJob(organizationId, { type: "revalidation", status: "pending" }),
-      ] as never);
+    await (db as ReturnType<typeof drizzle>).insert(jobs).values([
+      createJob(organizationId, {
+        type: "system_check",
+        status: "completed",
+      }),
+      createJob(organizationId, { type: "revalidation", status: "pending" }),
+    ] as never);
 
     const res = await request(app)
       .get("/api/jobs?type=system_check,revalidation")
@@ -209,16 +207,14 @@ describe("Jobs Router — GET /api/jobs", () => {
       AUTH0_ID
     );
 
-    await (db as ReturnType<typeof drizzle>)
-      .insert(jobs)
-      .values([
-        createJob(organizationId, {
-          type: "system_check",
-          status: "completed",
-        }),
-        createJob(organizationId, { type: "revalidation", status: "completed" }),
-        createJob(organizationId, { type: "system_check", status: "failed" }),
-      ] as never);
+    await (db as ReturnType<typeof drizzle>).insert(jobs).values([
+      createJob(organizationId, {
+        type: "system_check",
+        status: "completed",
+      }),
+      createJob(organizationId, { type: "revalidation", status: "completed" }),
+      createJob(organizationId, { type: "system_check", status: "failed" }),
+    ] as never);
 
     const res = await request(app)
       .get("/api/jobs?type=system_check&status=completed,failed")

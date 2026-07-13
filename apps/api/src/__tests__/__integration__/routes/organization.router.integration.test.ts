@@ -205,9 +205,8 @@ describe("Organization Router", () => {
       const result = await ApplicationService.setupOrganization(owner);
 
       const { TierService } = await import("../../../services/tier.service.js");
-      const { UsageService } = await import(
-        "../../../services/usage.service.js"
-      );
+      const { UsageService } =
+        await import("../../../services/usage.service.js");
 
       // Charge 30 metered units in the same period the endpoint will read.
       const periodId = TierService.periodIdFor(

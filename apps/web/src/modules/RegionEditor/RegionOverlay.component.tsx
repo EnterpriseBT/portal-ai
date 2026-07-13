@@ -135,7 +135,8 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
   const tailRowDynamic = hasDynamicTailPivot(region, "row");
   const tailColDynamic = hasDynamicTailPivot(region, "column");
   const axisGrows = (axis: "row" | "column"): boolean => {
-    if (axes.length === 2) return axis === "row" ? tailRowDynamic : tailColDynamic;
+    if (axes.length === 2)
+      return axis === "row" ? tailRowDynamic : tailColDynamic;
     if (axes.length === 1) {
       const isRecordAxis =
         (axes[0] === "row" && axis === "column") ||

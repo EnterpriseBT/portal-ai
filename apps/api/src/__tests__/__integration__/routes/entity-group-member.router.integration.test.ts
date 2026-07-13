@@ -665,9 +665,8 @@ describe("Entity Group Member Router", () => {
         } as never);
 
       // Reconcile entity1 and seed records via the wide-table helper.
-      const { wideTableReconcilerService } = await import(
-        "../../../services/wide-table-reconciler.service.js"
-      );
+      const { wideTableReconcilerService } =
+        await import("../../../services/wide-table-reconciler.service.js");
       await wideTableReconcilerService.reconcileEntity(
         seed1.entityId,
         db as unknown as DbClient
@@ -703,18 +702,12 @@ describe("Entity Group Member Router", () => {
         .values([r2a, r2c] as never);
 
       // Mirror into both wide tables.
-      const { wideTableRepo } = await import(
-        "../../../db/repositories/wide-table.repository.js"
-      );
-      const { wideTableStatementCache } = await import(
-        "../../../services/wide-table-statement.cache.js"
-      );
-      const {
-        projectToWideRow,
-        buildMappingsForProjection,
-      } = await import(
-        "../../../services/wide-table-projection.util.js"
-      );
+      const { wideTableRepo } =
+        await import("../../../db/repositories/wide-table.repository.js");
+      const { wideTableStatementCache } =
+        await import("../../../services/wide-table-statement.cache.js");
+      const { projectToWideRow, buildMappingsForProjection } =
+        await import("../../../services/wide-table-projection.util.js");
       const stmt1 = await wideTableStatementCache.get(
         seed1.entityId,
         db as unknown as DbClient

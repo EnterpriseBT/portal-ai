@@ -118,7 +118,9 @@ describe("EndpointColumnReviewUI — Re-probe button", () => {
   it("calls onReprobe when clicked", async () => {
     const onReprobe = jest.fn();
     render(<EndpointColumnReviewUI {...makeProps({ onReprobe })} />);
-    await userEvent.click(screen.getByRole("button", { name: /re-probe users/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /re-probe users/i })
+    );
     expect(onReprobe).toHaveBeenCalled();
   });
 });

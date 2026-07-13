@@ -131,7 +131,9 @@ export function verifyState(
 
   let parsed: SignedPayload;
   try {
-    parsed = JSON.parse(b64urlDecode(encoded).toString("utf8")) as SignedPayload;
+    parsed = JSON.parse(
+      b64urlDecode(encoded).toString("utf8")
+    ) as SignedPayload;
   } catch {
     throw new OAuthStateError("invalid", "payload decode failed");
   }

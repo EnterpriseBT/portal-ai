@@ -106,10 +106,7 @@ export async function assertUrlSafeToFetch(raw: string): Promise<void> {
   try {
     parsed = new URL(raw);
   } catch {
-    throw new SsrfBlockedError(
-      "TOOLPACK_URL_INVALID",
-      "URL is not parseable"
-    );
+    throw new SsrfBlockedError("TOOLPACK_URL_INVALID", "URL is not parseable");
   }
 
   const hostname = stripIPv6Brackets(parsed.hostname);
@@ -224,7 +221,5 @@ function isPrivateHostnameLiteral(host: string, isProd: boolean): boolean {
 
 /** Strip the `[...]` wrapping that URL puts on IPv6 hostnames. */
 function stripIPv6Brackets(host: string): string {
-  return host.startsWith("[") && host.endsWith("]")
-    ? host.slice(1, -1)
-    : host;
+  return host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
 }

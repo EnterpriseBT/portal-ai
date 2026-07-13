@@ -1,19 +1,18 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import type { Job as BullJob } from "bullmq";
 
-const mockRunParseSession =
-  jest.fn<
-    (
-      orgId: string,
-      uploadSessionId: string,
-      uploadIds: string[],
-      onProgress?: (percent: number) => void
-    ) => Promise<{
-      uploadSessionId: string;
-      sheets: unknown[];
-      sliced?: boolean;
-    }>
-  >();
+const mockRunParseSession = jest.fn<
+  (
+    orgId: string,
+    uploadSessionId: string,
+    uploadIds: string[],
+    onProgress?: (percent: number) => void
+  ) => Promise<{
+    uploadSessionId: string;
+    sheets: unknown[];
+    sliced?: boolean;
+  }>
+>();
 
 jest.unstable_mockModule(
   "../../../services/file-upload-session.service.js",
@@ -22,9 +21,8 @@ jest.unstable_mockModule(
   })
 );
 
-const { fileUploadParseProcessor } = await import(
-  "../../../queues/processors/file-upload-parse.processor.js"
-);
+const { fileUploadParseProcessor } =
+  await import("../../../queues/processors/file-upload-parse.processor.js");
 
 function makeBullJob(data: Record<string, unknown>): BullJob {
   return {
@@ -91,7 +89,14 @@ describe("fileUploadParseProcessor", () => {
   it("returns the runParseSession result verbatim — that's what lands as the SSE payload", async () => {
     const result = {
       uploadSessionId: "sess-1",
-      sheets: [{ id: "sheet_0_x", name: "x", dimensions: { rows: 1, cols: 1 }, cells: [["v"]] }],
+      sheets: [
+        {
+          id: "sheet_0_x",
+          name: "x",
+          dimensions: { rows: 1, cols: 1 },
+          cells: [["v"]],
+        },
+      ],
       sliced: false,
     };
     mockRunParseSession.mockResolvedValue(result);

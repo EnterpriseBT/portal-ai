@@ -20,10 +20,7 @@ const InputSchema = z.object({
     .describe(
       "Annual coupon rate as decimal (0.05 for 5%). Use 0 for zero-coupon bonds."
     ),
-  maturity: z
-    .number()
-    .positive()
-    .describe("Years to maturity."),
+  maturity: z.number().positive().describe("Years to maturity."),
   frequency: z
     .number()
     .int()
@@ -42,9 +39,7 @@ const InputSchema = z.object({
     .number()
     .positive()
     .optional()
-    .describe(
-      "Current bond price. Required for op = ytm."
-    ),
+    .describe("Current bond price. Required for op = ytm."),
   guess: z
     .number()
     .optional()

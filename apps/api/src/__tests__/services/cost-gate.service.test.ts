@@ -12,7 +12,9 @@ afterEach(() => {
 
 describe("resolveCallCost", () => {
   it("defaults to 1 unit for an unregistered tool", async () => {
-    await expect(resolveCallCost("web_search", { query: "x" })).resolves.toBe(1);
+    await expect(resolveCallCost("web_search", { query: "x" })).resolves.toBe(
+      1
+    );
   });
 
   it("uses a registered resolver's value", async () => {

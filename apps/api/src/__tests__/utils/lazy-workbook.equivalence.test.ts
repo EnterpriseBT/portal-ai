@@ -19,10 +19,7 @@ import type {
   ChunkRow,
   SheetChunkMeta,
 } from "../../services/workbook-cache.service.js";
-import type {
-  LayoutPlan,
-  WorkbookData,
-} from "@portalai/spreadsheet-parsing";
+import type { LayoutPlan, WorkbookData } from "@portalai/spreadsheet-parsing";
 
 const readRowsMock =
   jest.fn<
@@ -33,7 +30,8 @@ const readRowsMock =
       rowEnd: number
     ) => AsyncIterable<ChunkRow>
   >();
-const getMergesMock = jest.fn<(prefix: string, sheetId: string) => Promise<never[]>>();
+const getMergesMock =
+  jest.fn<(prefix: string, sheetId: string) => Promise<never[]>>();
 
 jest.unstable_mockModule("../../services/workbook-cache.service.js", () => ({
   WorkbookCacheService: {
@@ -44,9 +42,8 @@ jest.unstable_mockModule("../../services/workbook-cache.service.js", () => ({
 
 const { makeWorkbook } = await import("@portalai/spreadsheet-parsing");
 const { replay } = await import("@portalai/spreadsheet-parsing/replay");
-const { makeLazyWorkbookFromCache } = await import(
-  "../../utils/lazy-workbook.util.js"
-);
+const { makeLazyWorkbookFromCache } =
+  await import("../../utils/lazy-workbook.util.js");
 
 function makeAsyncIterable<T>(items: T[]): AsyncIterable<T> {
   return {
@@ -176,11 +173,11 @@ describe("makeLazyWorkbookFromCache — replay equivalence (case 5)", () => {
 
   it("produces the same records as the eager path on a 5k-row contacts sheet", async () => {
     const ROWS = 5_000;
-    const synth = buildSynthetic(
-      ROWS,
-      ["email", "name", "age"],
-      (i) => [`user${i}@x.com`, `user-${i}`, i % 99]
-    );
+    const synth = buildSynthetic(ROWS, ["email", "name", "age"], (i) => [
+      `user${i}@x.com`,
+      `user-${i}`,
+      i % 99,
+    ]);
 
     readRowsMock.mockImplementation((_prefix, _id, rowStart, rowEnd) =>
       makeAsyncIterable(synth.rows.slice(rowStart, rowEnd))
@@ -206,20 +203,18 @@ describe("makeLazyWorkbookFromCache — replay equivalence (case 5)", () => {
   it("matches the eager path on a sparse sheet (drops nulls + empty strings consistently)", async () => {
     // Mixed sparsity: blanks scattered through the body. Both paths
     // must agree on which cells are populated and which are null.
-    const synth = buildSynthetic(
-      50,
-      ["email", "name", "age"],
-      (i) => [
-        i % 7 === 0 ? null : `user${i}@x.com`,
-        i % 5 === 0 ? "" : `user-${i}`,
-        i % 3 === 0 ? null : i,
-      ]
-    );
+    const synth = buildSynthetic(50, ["email", "name", "age"], (i) => [
+      i % 7 === 0 ? null : `user${i}@x.com`,
+      i % 5 === 0 ? "" : `user-${i}`,
+      i % 3 === 0 ? null : i,
+    ]);
     readRowsMock.mockImplementation((_p, _id, rowStart, rowEnd) =>
       makeAsyncIterable(synth.rows.slice(rowStart, rowEnd))
     );
 
-    const lazy = makeLazyWorkbookFromCache("prefix:case5-sparse", [synth.sheetMeta]);
+    const lazy = makeLazyWorkbookFromCache("prefix:case5-sparse", [
+      synth.sheetMeta,
+    ]);
     const eager = makeWorkbook(synth.workbookData);
     const plan = contactsPlan(50);
 

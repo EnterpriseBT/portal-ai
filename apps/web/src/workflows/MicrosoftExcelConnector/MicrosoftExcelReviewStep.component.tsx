@@ -47,9 +47,9 @@ export const MicrosoftExcelReviewStep: React.FC<
             : {rowPositionRegions.map((r) => regionLabel(r)).join(", ")}.
           </p>
           <p>
-            Records will be reaped and re-created on every sync. To keep
-            records stable across syncs, <strong>pick an identity field</strong>
-            {" "}(something unique per row — an id, email, slug). You can still
+            Records will be reaped and re-created on every sync. To keep records
+            stable across syncs, <strong>pick an identity field</strong>{" "}
+            (something unique per row — an id, email, slug). You can still
             commit and edit later.
           </p>
         </Alert>

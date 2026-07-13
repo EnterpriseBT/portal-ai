@@ -198,7 +198,9 @@ describe("SheetCanvasUI", () => {
         onRegionResize={jest.fn()}
       />
     );
-    expect(screen.getAllByLabelText(/resize region/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText(/resize region/i).length).toBeGreaterThan(
+      0
+    );
   });
 
   test("a headerless region (no segments) still renders resize handles", () => {
@@ -219,7 +221,9 @@ describe("SheetCanvasUI", () => {
         onRegionResize={jest.fn()}
       />
     );
-    expect(screen.getAllByLabelText(/resize region/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText(/resize region/i).length).toBeGreaterThan(
+      0
+    );
   });
 
   test("dragging a segment divider fires onSegmentResize with redistributed counts", () => {
@@ -835,7 +839,9 @@ describe("SheetCanvasUI", () => {
         />
       );
       // Column header B (data-col-header="1")
-      const colHdr = document.querySelector('[data-col-header="1"]') as HTMLElement;
+      const colHdr = document.querySelector(
+        '[data-col-header="1"]'
+      ) as HTMLElement;
       expect(colHdr).toBeTruthy();
       fireEvent.pointerDown(colHdr, {
         pointerId: 1,
@@ -871,7 +877,9 @@ describe("SheetCanvasUI", () => {
           onRegionDraft={onDraft}
         />
       );
-      const rowHdr = document.querySelector('[data-row-header="2"]') as HTMLElement;
+      const rowHdr = document.querySelector(
+        '[data-row-header="2"]'
+      ) as HTMLElement;
       expect(rowHdr).toBeTruthy();
       fireEvent.pointerDown(rowHdr, {
         pointerId: 1,
@@ -907,7 +915,9 @@ describe("SheetCanvasUI", () => {
           onRegionDraft={onDraft}
         />
       );
-      const corner = document.querySelector('[data-corner-header]') as HTMLElement;
+      const corner = document.querySelector(
+        "[data-corner-header]"
+      ) as HTMLElement;
       expect(corner).toBeTruthy();
       fireEvent.pointerDown(corner, {
         pointerId: 1,

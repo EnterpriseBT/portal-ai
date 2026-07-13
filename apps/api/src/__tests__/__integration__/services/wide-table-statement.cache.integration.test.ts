@@ -374,7 +374,10 @@ describe("WideTableStatementCache integration tests", () => {
     // Three tuple groups separated by commas.
     const valuesIdx = bulk.indexOf("VALUES ");
     const onConflictIdx = bulk.indexOf(" ON CONFLICT");
-    const valuesClause = bulk.slice(valuesIdx + "VALUES ".length, onConflictIdx);
+    const valuesClause = bulk.slice(
+      valuesIdx + "VALUES ".length,
+      onConflictIdx
+    );
     const tuples = valuesClause.split("), (");
     expect(tuples).toHaveLength(3);
 

@@ -44,9 +44,7 @@ export function renderWebBlock(
 ): React.ReactNode | null {
   if (block.type === "bulk-job-progress") {
     return (
-      <BulkJobProgressBlock
-        content={block.content as BulkJobProgressContent}
-      />
+      <BulkJobProgressBlock content={block.content as BulkJobProgressContent} />
     );
   }
   if (block.type === "bulk-failures-table") {

@@ -1,10 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
 
 import { computeLocatorOptions } from "../utils/identity-locator-options.util";
-import type {
-  RegionDraft,
-  SheetPreview,
-} from "../utils/region-editor.types";
+import type { RegionDraft, SheetPreview } from "../utils/region-editor.types";
 
 function makeSheet(rows: (string | number | null)[][]): SheetPreview {
   return {
@@ -16,9 +13,7 @@ function makeSheet(rows: (string | number | null)[][]): SheetPreview {
   };
 }
 
-function baseRegion(
-  overrides: Partial<RegionDraft> = {}
-): RegionDraft {
+function baseRegion(overrides: Partial<RegionDraft> = {}): RegionDraft {
   return {
     id: "r1",
     sheetId: "s1",
@@ -77,7 +72,9 @@ describe("computeLocatorOptions — records-are-rows (headerAxes: ['row'])", () 
       ["a-2", "bob", 25],
     ]);
     const options = computeLocatorOptions(
-      baseRegion({ bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 2 } }),
+      baseRegion({
+        bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 2 },
+      }),
       sheet
     );
     expect(options.map((o) => o.label)).toEqual(["id", "name", "age"]);
@@ -91,7 +88,9 @@ describe("computeLocatorOptions — records-are-rows (headerAxes: ['row'])", () 
     ]);
     // bounds clip out the "extra" column.
     const options = computeLocatorOptions(
-      baseRegion({ bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 2 } }),
+      baseRegion({
+        bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 2 },
+      }),
       sheet
     );
     expect(options).toHaveLength(3);
@@ -203,11 +202,7 @@ describe("computeLocatorOptions — sliced-sheet uniqueness", () => {
   });
 
   it("still classifies normally when every row in the range is loaded", () => {
-    const sheet = makeSlicedSheet(3, [
-      ["id"],
-      ["a-1"],
-      ["a-2"],
-    ]);
+    const sheet = makeSlicedSheet(3, [["id"], ["a-1"], ["a-2"]]);
     const options = computeLocatorOptions(
       baseRegion({
         bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 0 },

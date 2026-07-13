@@ -21,7 +21,12 @@ import { linkHeaderIterator } from "./link-header.iterator.js";
 import { linkBodyIterator } from "./link-body.iterator.js";
 import { type PageIterator } from "./types.js";
 
-export { MAX_PAGES, type PageContext, type FetchedPage, type PageIterator } from "./types.js";
+export {
+  MAX_PAGES,
+  type PageContext,
+  type FetchedPage,
+  type PageIterator,
+} from "./types.js";
 export { noneIterator } from "./none.iterator.js";
 export { pageOffsetIterator } from "./page-offset.iterator.js";
 export { cursorIterator } from "./cursor.iterator.js";

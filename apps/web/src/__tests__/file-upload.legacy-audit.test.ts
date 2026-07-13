@@ -48,9 +48,7 @@ describe("legacy file-upload surface audit", () => {
     const offenders: string[] = [];
     for (const f of files) {
       const content = readFileSync(f, "utf-8");
-      if (
-        /from\s+["'][^"']*utils\/file-upload\.util(?:["'.])/u.test(content)
-      ) {
+      if (/from\s+["'][^"']*utils\/file-upload\.util(?:["'.])/u.test(content)) {
         offenders.push(path.relative(WEB_SRC, f));
       }
     }

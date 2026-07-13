@@ -71,7 +71,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       '"a quick approximation."',
     "- **Don't fabricate results or attribute methods you didn't run.** Do " +
       "not present hand-derived numbers as a tool's output, and do not name a " +
-      "method or metric (e.g. \"Holt-Winters\", \"MAPE\", \"R²\") unless those " +
+      'method or metric (e.g. "Holt-Winters", "MAPE", "R²") unless those ' +
       "figures came from a tool call in this turn. Never carry a result over " +
       "from an earlier turn as if freshly computed.",
     "- **Report sign and direction exactly as the tool returns them.** When a " +
@@ -79,7 +79,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "growth/decline, drawdown, or delta — read it straight off the tool's " +
       "numbers. A negative slope is a **decline**; describe it as decreasing, " +
       "never as growth. Do not flip the sign and do not reconstruct the " +
-      "direction from your own intuition about what the data \"should\" do — " +
+      'direction from your own intuition about what the data "should" do — ' +
       "if the value is negative, say it went down.",
     "- **If no tool fits, say so plainly.** When the request needs a tool the " +
       "station doesn't have (or the data doesn't fit one), state that — don't " +
@@ -222,9 +222,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         '(`"name"`), not brackets.'
     );
     lines.push("");
-    lines.push(
-      "There are two tools to reach for, depending on intent:"
-    );
+    lines.push("There are two tools to reach for, depending on intent:");
     lines.push("");
     lines.push(
       "- **`display_entity_records`** — when the user asks to **see, " +
@@ -267,9 +265,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "- Outliers → compute `avg`/`stddev_samp` (z-score) or " +
         "`percentile_cont` quartiles (IQR) in a CTE, then filter."
     );
-    lines.push(
-      "- Group-by → `GROUP BY` with the aggregates above."
-    );
+    lines.push("- Group-by → `GROUP BY` with the aggregates above.");
     lines.push(
       "- Time-series (trend / moving average / changepoint / drawdown / " +
         "rolling or period-over-period returns) → `date_trunc()` plus window " +
@@ -280,20 +276,14 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push('Example — user asks "show me all the parcels":');
     lines.push("");
     lines.push("  Good (one call, one widget):");
-    lines.push(
-      '    [display_entity_records: entityKey="parcels"]'
-    );
+    lines.push('    [display_entity_records: entityKey="parcels"]');
     lines.push("    Showing all 5,402 parcels below.");
     lines.push("");
     lines.push(
       "  Bad (using sql_query with defensive LIMIT for a display request):"
     );
-    lines.push(
-      "    [sql_query: SELECT * FROM \"parcels\" LIMIT 100]"
-    );
-    lines.push(
-      "    \"Here's a sample of 100 parcels.\""
-    );
+    lines.push('    [sql_query: SELECT * FROM "parcels" LIMIT 100]');
+    lines.push('    "Here\'s a sample of 100 parcels."');
     lines.push("");
 
     // Schema introspection (#87). The `## Available Data` listing above
@@ -312,13 +302,13 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     );
     lines.push("");
     lines.push(
-      '- `_meta_entities` — every entity available to query in this station. ' +
+      "- `_meta_entities` — every entity available to query in this station. " +
         "Columns: `id`, `key`, `label`. The `key` is the table name to use " +
         "in your SELECT (e.g. `SELECT … FROM _meta_entities` returns the " +
         "list; then `SELECT … FROM <key>` queries that entity)."
     );
     lines.push(
-      '- `_meta_columns` — joined column catalog across every readable entity. ' +
+      "- `_meta_columns` — joined column catalog across every readable entity. " +
         "Columns: `entity_key`, `column_key`, `normalized_key`, " +
         "`wide_column_name`, `label`, `type`, `description`, " +
         "`ref_entity_key`, `ref_normalized_key`. Use `wide_column_name` " +
@@ -326,7 +316,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "entity table, e.g. `c_email`)."
     );
     lines.push(
-      '- `_meta_column_catalog` — the organization\'s curated column-definition ' +
+      "- `_meta_column_catalog` — the organization's curated column-definition " +
         "catalog. Every `column_definition_id` available to bind to a new " +
         "entity via `field_mapping_create`. Columns: `column_definition_id`, " +
         "`column_key`, `label`, `type`, `description`. **Column definitions " +
@@ -437,9 +427,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     "- When a tool call fails or returns no rows, say so in one sentence " +
       "and stop. Do not propose three alternative queries unless the user asks."
   );
-  lines.push(
-    "- Prefer plain sentences over bulleted lists for short answers."
-  );
+  lines.push("- Prefer plain sentences over bulleted lists for short answers.");
   lines.push("");
   lines.push(
     "Some tools do need interpretation on top of their output: " +

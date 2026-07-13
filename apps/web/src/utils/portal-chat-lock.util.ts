@@ -38,7 +38,9 @@ export function usePortalChatLock(portalId: string): PortalChatLockState {
     let cancelled = false;
     let es: EventSource | null = null;
     (async () => {
-      es = await connect(`/api/sse/portals/${encodeURIComponent(portalId)}/events`);
+      es = await connect(
+        `/api/sse/portals/${encodeURIComponent(portalId)}/events`
+      );
       if (cancelled) {
         es.close();
         return;

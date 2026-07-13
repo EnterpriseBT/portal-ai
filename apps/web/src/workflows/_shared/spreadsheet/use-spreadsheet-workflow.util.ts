@@ -78,9 +78,7 @@ export interface SpreadsheetWorkflowCallbacks {
    * the pending one), persists the plan, and writes records in one
    * call. On any failure past the instance insert, both rows roll back.
    */
-  runCommit: (
-    plan: LayoutPlan
-  ) => Promise<{ connectorInstanceId: string }>;
+  runCommit: (plan: LayoutPlan) => Promise<{ connectorInstanceId: string }>;
   onCommitSuccess?: (connectorInstanceId: string) => void;
 }
 
@@ -304,7 +302,9 @@ function patchPivotSegmentBinding<S extends BindingPatchableState>(
     type PlanRegion = LayoutPlan["regions"][number];
     type PlanSegments = NonNullable<PlanRegion["segmentsByAxis"]>;
     type PlanSegment = NonNullable<PlanSegments["row"]>[number];
-    const remapPlan = (segs: PlanSegment[] | undefined): PlanSegment[] | undefined => {
+    const remapPlan = (
+      segs: PlanSegment[] | undefined
+    ): PlanSegment[] | undefined => {
       if (!segs) return segs;
       return segs.map((s) =>
         s.kind === "pivot" && s.id === segmentId
@@ -363,8 +363,7 @@ function patchIntersectionCellValueField<S extends BindingPatchableState>(
       ...prev.plan,
       regions: prev.plan.regions.map((planRegion) => {
         if (planRegion.id !== regionId) return planRegion;
-        const prior =
-          planRegion.intersectionCellValueFields?.[intersectionId];
+        const prior = planRegion.intersectionCellValueFields?.[intersectionId];
         if (!prior) return planRegion;
         return {
           ...planRegion,
@@ -391,7 +390,10 @@ function patchCellValueFieldBinding<S extends BindingPatchableState>(
   const nextRegions = prev.regions.map((r) => {
     if (r.id !== regionId || !r.cellValueField) return r;
     regionTouched = true;
-    return { ...r, cellValueField: applyCellValueFields(r.cellValueField, synthetic) };
+    return {
+      ...r,
+      cellValueField: applyCellValueFields(r.cellValueField, synthetic),
+    };
   });
   if (!regionTouched) return prev;
 

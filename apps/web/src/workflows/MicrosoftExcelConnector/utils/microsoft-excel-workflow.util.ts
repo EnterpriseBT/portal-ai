@@ -61,9 +61,7 @@ export interface MicrosoftExcelWorkflowCallbacks {
     plan: LayoutPlan;
     overallConfidence: number;
   }>;
-  runCommit: (
-    plan: LayoutPlan
-  ) => Promise<{ connectorInstanceId: string }>;
+  runCommit: (plan: LayoutPlan) => Promise<{ connectorInstanceId: string }>;
   onCommitSuccess?: (connectorInstanceId: string) => void;
 }
 

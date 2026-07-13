@@ -435,7 +435,11 @@ describe("proposeBindings", () => {
           headerAxes: ["row", "column"],
           segmentsByAxis: {
             row: [
-              { kind: "field", positionCount: 3, skipped: [true, false, false] },
+              {
+                kind: "field",
+                positionCount: 3,
+                skipped: [true, false, false],
+              },
               {
                 kind: "pivot",
                 id: "pivot-1",
@@ -445,7 +449,11 @@ describe("proposeBindings", () => {
               } as Segment,
             ],
             column: [
-              { kind: "field", positionCount: 3, skipped: [true, false, false] },
+              {
+                kind: "field",
+                positionCount: 3,
+                skipped: [true, false, false],
+              },
               {
                 kind: "pivot",
                 id: "pivot-2",

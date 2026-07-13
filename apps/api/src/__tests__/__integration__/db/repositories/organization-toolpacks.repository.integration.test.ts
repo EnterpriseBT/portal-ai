@@ -343,11 +343,7 @@ describe("OrganizationToolpacksRepository Integration Tests", () => {
     const blobBefore = await readRawSigningSecret(created.id);
     expect(blobBefore).toBeTruthy();
 
-    await repo.update(
-      created.id,
-      { signingSecret: "whsec_new" } as never,
-      db
-    );
+    await repo.update(created.id, { signingSecret: "whsec_new" } as never, db);
 
     const blobAfter = await readRawSigningSecret(created.id);
     expect(blobAfter).not.toBe(blobBefore);

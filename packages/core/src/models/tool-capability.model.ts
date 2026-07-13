@@ -213,10 +213,14 @@ export const ToolCapabilitySchema = z
         message: "resultKind 'scalar' requires production.kind 'value'",
       });
     }
-    if (cap.resultKind === "mutation-result" && cap.production.kind !== "value") {
+    if (
+      cap.resultKind === "mutation-result" &&
+      cap.production.kind !== "value"
+    ) {
       ctx.addIssue({
         code: "custom",
-        message: "resultKind 'mutation-result' requires production.kind 'value'",
+        message:
+          "resultKind 'mutation-result' requires production.kind 'value'",
       });
     }
     if (

@@ -32,9 +32,9 @@ describe("TerminatorFormUI", () => {
 
   it("renders the matchesPattern branch when terminator is matchesPattern", () => {
     setup({ terminator: { kind: "matchesPattern", pattern: "^END$" } });
-    expect(
-      screen.getByRole("textbox", { name: /pattern/i })
-    ).toHaveValue("^END$");
+    expect(screen.getByRole("textbox", { name: /pattern/i })).toHaveValue(
+      "^END$"
+    );
   });
 
   it("rejects a consecutiveBlanks value below 1", () => {

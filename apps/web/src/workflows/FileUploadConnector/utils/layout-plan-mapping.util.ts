@@ -87,7 +87,10 @@ function mergeBindingOverrides(
   prior: ColumnBindingDraft
 ): BackendBinding {
   const merged: BackendBinding = { ...plan };
-  if (prior.columnDefinitionId && prior.columnDefinitionId !== plan.columnDefinitionId) {
+  if (
+    prior.columnDefinitionId &&
+    prior.columnDefinitionId !== plan.columnDefinitionId
+  ) {
     merged.columnDefinitionId = prior.columnDefinitionId;
   }
   if (prior.excluded !== undefined) merged.excluded = prior.excluded;
@@ -136,8 +139,9 @@ function adoptResponseSegmentBindings(
   if (!fromResponse) return prior;
   const responseById = new Map(
     fromResponse
-      .filter((s): s is Extract<BackendSegment, { kind: "pivot" }> =>
-        s.kind === "pivot"
+      .filter(
+        (s): s is Extract<BackendSegment, { kind: "pivot" }> =>
+          s.kind === "pivot"
       )
       .map((s) => [s.id, s])
   );
@@ -226,11 +230,9 @@ export function preserveUserRegionConfig(
         // and pick up the response's columnDefinitionId where the
         // classifier produced one. Entries the user dropped from the
         // prior draft do not reappear in the merged plan.
-        const responseEntries =
-          region.intersectionCellValueFields ?? {};
-        const next: NonNullable<
-          BackendRegion["intersectionCellValueFields"]
-        > = {};
+        const responseEntries = region.intersectionCellValueFields ?? {};
+        const next: NonNullable<BackendRegion["intersectionCellValueFields"]> =
+          {};
         for (const [id, priorField] of Object.entries(
           prior.intersectionCellValueFields
         )) {
@@ -596,7 +598,8 @@ function bindingDraftToBinding(
     rationale: draft.rationale ?? prior?.rationale ?? "",
   };
   if (draft.excluded !== undefined) out.excluded = draft.excluded;
-  if (draft.normalizedKey !== undefined) out.normalizedKey = draft.normalizedKey;
+  if (draft.normalizedKey !== undefined)
+    out.normalizedKey = draft.normalizedKey;
   if (draft.required !== undefined) out.required = draft.required;
   if (draft.defaultValue !== undefined) out.defaultValue = draft.defaultValue;
   if (draft.format !== undefined) out.format = draft.format;
@@ -646,11 +649,11 @@ function resolveIdentityStrategy(
   // forward-path default).
   const priorSource = prior?.identityStrategy?.source;
   const carrySource =
-    draft.identityStrategy.source !== undefined &&
-    draft.identityStrategy.source !== "heuristic" ||
+    (draft.identityStrategy.source !== undefined &&
+      draft.identityStrategy.source !== "heuristic") ||
     priorSource !== undefined;
   const source = carrySource
-    ? draft.identityStrategy.source ?? priorSource
+    ? (draft.identityStrategy.source ?? priorSource)
     : undefined;
 
   if (draft.identityStrategy.kind === "column") {
@@ -757,13 +760,13 @@ export function draftsToRegions(
         )
         .map((rule) =>
           rule.kind === "blank"
-            ? ({ kind: "blank" as const })
-            : ({
+            ? { kind: "blank" as const }
+            : {
                 kind: "cellMatches" as const,
                 crossAxisIndex: rule.crossAxisIndex as number,
                 pattern: rule.pattern,
                 ...(rule.axis ? { axis: rule.axis } : {}),
-              })
+              }
         ),
       // Carry over interpret-emitted metadata that the editor doesn't
       // surface. Fresh-drawn regions (no prior) get minimal defaults.

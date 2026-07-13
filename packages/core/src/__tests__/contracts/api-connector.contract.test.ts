@@ -35,8 +35,8 @@ describe("SuggestTransformRequestBodySchema", () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      const promptHintIssue = result.error.issues.find((i: { path: PropertyKey[] }) =>
-        i.path.includes("promptHint"),
+      const promptHintIssue = result.error.issues.find(
+        (i: { path: PropertyKey[] }) => i.path.includes("promptHint")
       );
       expect(promptHintIssue).toBeDefined();
     }
@@ -57,7 +57,7 @@ describe("SuggestTransformRequestBodySchema", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       const issue = result.error.issues.find((i: { path: PropertyKey[] }) =>
-        i.path.includes("sampleResponse"),
+        i.path.includes("sampleResponse")
       );
       expect(issue).toBeDefined();
     }

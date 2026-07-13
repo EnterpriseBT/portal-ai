@@ -78,4 +78,3 @@ describe("coordInBounds", () => {
     expect(coordInBounds({ row: 2, col: 5 }, bounds)).toBe(false);
   });
 });
-

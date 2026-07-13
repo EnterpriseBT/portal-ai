@@ -23,14 +23,17 @@ jest.unstable_mockModule("../../tools/record-source.js", () => ({
 jest.unstable_mockModule("../../services/portal-sql-handle.service.js", () => ({
   PortalSqlHandleService: { getMeta: mockGetMeta },
 }));
-jest.unstable_mockModule("../../services/webhook-read-token.service.js", () => ({
-  WebhookReadTokenService: {
-    mint: mockMint,
-    revoke: mockRevoke,
-    getStagedResult: mockGetStaged,
-    clearStagedResult: mockClearStaged,
-  },
-}));
+jest.unstable_mockModule(
+  "../../services/webhook-read-token.service.js",
+  () => ({
+    WebhookReadTokenService: {
+      mint: mockMint,
+      revoke: mockRevoke,
+      getStagedResult: mockGetStaged,
+      clearStagedResult: mockClearStaged,
+    },
+  })
+);
 
 const { WebhookTool } = await import("../../tools/webhook.tool.js");
 
@@ -219,9 +222,12 @@ describe("WebhookTool — consumption-tiered body (#124)", () => {
       });
       const t = buildTool(streaming, "org-1");
 
-      await expect(exec(t, { queryHandle: "qh-foreign" })).rejects.toMatchObject(
-        { code: "WEBHOOK_HANDLE_SCOPE_MISMATCH", status: 403 }
-      );
+      await expect(
+        exec(t, { queryHandle: "qh-foreign" })
+      ).rejects.toMatchObject({
+        code: "WEBHOOK_HANDLE_SCOPE_MISMATCH",
+        status: 403,
+      });
       expect(mockMint).not.toHaveBeenCalled(); // org check precedes minting
       expect(mockCallWebhook).not.toHaveBeenCalled();
     });
@@ -235,7 +241,9 @@ describe("WebhookTool — consumption-tiered body (#124)", () => {
       mockCallWebhook.mockRejectedValue(new Error("runtime 500"));
       const t = buildTool(streaming, "org-1", HANDLE_PROD);
 
-      await expect(exec(t, { queryHandle: "qh-x" })).rejects.toThrow("runtime 500");
+      await expect(exec(t, { queryHandle: "qh-x" })).rejects.toThrow(
+        "runtime 500"
+      );
       expect(mockRevoke).toHaveBeenCalledWith("tok-read");
       expect(mockRevoke).toHaveBeenCalledWith("tok-write");
     });
@@ -251,7 +259,10 @@ describe("WebhookTool — consumption-tiered body (#124)", () => {
       await exec(t, { rows: [{ a: 1 }] });
 
       expect(mockGetMeta).not.toHaveBeenCalled(); // no input handle
-      const [, body] = mockCallWebhook.mock.calls[0] as unknown as [unknown, any];
+      const [, body] = mockCallWebhook.mock.calls[0] as unknown as [
+        unknown,
+        any,
+      ];
       expect(body.records).toEqual([{ a: 1 }]);
       expect(body.output.writeToken).toBe("tok-write");
       expect(mockMint).toHaveBeenCalledWith(
@@ -260,7 +271,11 @@ describe("WebhookTool — consumption-tiered body (#124)", () => {
     });
 
     it("resolves a { resultHandle } response staged this session into a handle envelope", async () => {
-      mockResolveRecordSource.mockResolvedValue({ rows: [], total: 0, sampled: false });
+      mockResolveRecordSource.mockResolvedValue({
+        rows: [],
+        total: 0,
+        sampled: false,
+      });
       mockCallWebhook.mockResolvedValue({ resultHandle: "qh-result" });
       mockGetStaged.mockResolvedValue("qh-result"); // matches what we staged
       mockGetMeta.mockResolvedValue({
@@ -281,7 +296,11 @@ describe("WebhookTool — consumption-tiered body (#124)", () => {
     });
 
     it("rejects a { resultHandle } the call did not stage (WEBHOOK_RESULT_HANDLE_INVALID)", async () => {
-      mockResolveRecordSource.mockResolvedValue({ rows: [], total: 0, sampled: false });
+      mockResolveRecordSource.mockResolvedValue({
+        rows: [],
+        total: 0,
+        sampled: false,
+      });
       mockCallWebhook.mockResolvedValue({ resultHandle: "qh-someone-elses" });
       mockGetStaged.mockResolvedValue(null); // nothing staged this session
       const t = buildTool(streaming, "org-1", HANDLE_PROD);
@@ -297,7 +316,10 @@ describe("WebhookTool — consumption-tiered body (#124)", () => {
     it("none-input + production rows/handle → still gets an output grant", async () => {
       const t = buildTool(undefined, "org-1", HANDLE_PROD);
       await exec(t, { factor: 2 });
-      const [, body] = mockCallWebhook.mock.calls[0] as unknown as [unknown, any];
+      const [, body] = mockCallWebhook.mock.calls[0] as unknown as [
+        unknown,
+        any,
+      ];
       expect(body.input).toEqual({ factor: 2 });
       expect(body.records).toBeUndefined(); // no input dataset
       expect(body.output.writeToken).toBe("tok-write"); // but it can stage output
@@ -318,16 +340,26 @@ describe("WebhookTool — consumption-tiered body (#124)", () => {
         HANDLE_PROD
       );
       await exec(t, { factor: 3, queryHandle: "qh-1" });
-      const [, body] = mockCallWebhook.mock.calls[0] as unknown as [unknown, any];
+      const [, body] = mockCallWebhook.mock.calls[0] as unknown as [
+        unknown,
+        any,
+      ];
       expect(body.records).toEqual([{ a: 1 }]);
       expect(body.output.writeToken).toBe("tok-write");
     });
 
     it("streaming-input + production value → NO output grant (value can't stage)", async () => {
-      mockResolveRecordSource.mockResolvedValue({ rows: [], total: 0, sampled: false });
+      mockResolveRecordSource.mockResolvedValue({
+        rows: [],
+        total: 0,
+        sampled: false,
+      });
       const t = buildTool({ mode: "streaming" }, "org-1", { kind: "value" });
       await exec(t, { rows: [{ a: 1 }] });
-      const [, body] = mockCallWebhook.mock.calls[0] as unknown as [unknown, any];
+      const [, body] = mockCallWebhook.mock.calls[0] as unknown as [
+        unknown,
+        any,
+      ];
       expect(body.output).toBeUndefined();
       expect(mockMint).not.toHaveBeenCalledWith(
         expect.objectContaining({ mode: "write" })

@@ -28,17 +28,27 @@ describe("PaginationFieldsUI — strategy dropdown", () => {
   it("renders all four strategy options", async () => {
     render(<PaginationFieldsUI {...makeProps()} />);
     await userEvent.click(screen.getByLabelText(/pagination strategy/i));
-    expect(await screen.findByRole("option", { name: /^none/i })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /page \/ offset/i })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /^cursor$/i })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /^link header/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("option", { name: /^none/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /page \/ offset/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /^cursor$/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /^link header/i })
+    ).toBeInTheDocument();
   });
 
   it("calls onChange with the chosen strategy", async () => {
     const onChange = jest.fn();
     render(<PaginationFieldsUI {...makeProps({ onChange })} />);
     await userEvent.click(screen.getByLabelText(/pagination strategy/i));
-    await userEvent.click(await screen.findByRole("option", { name: /^cursor$/i }));
+    await userEvent.click(
+      await screen.findByRole("option", { name: /^cursor$/i })
+    );
     expect(onChange).toHaveBeenCalledWith("strategy", "cursor");
   });
 });
@@ -47,7 +57,9 @@ describe("PaginationFieldsUI — per-strategy sub-form rendering", () => {
   it("renders no sub-form fields when strategy is none", () => {
     render(<PaginationFieldsUI {...makeProps()} />);
     expect(screen.queryByLabelText(/parameter name/i)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/cursor parameter name/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/cursor parameter name/i)
+    ).not.toBeInTheDocument();
   });
 
   it("renders pageOffset inputs", () => {
@@ -59,9 +71,7 @@ describe("PaginationFieldsUI — per-strategy sub-form rendering", () => {
     // Label depends on `style` (page → "Page parameter name", offset →
     // "Offset parameter name"). EMPTY_PAGINATION_DRAFT defaults to
     // "page".
-    expect(
-      screen.getByLabelText(/^page parameter name/i),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^page parameter name/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^page size/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^start page/i)).toBeInTheDocument();
     expect(
@@ -77,14 +87,14 @@ describe("PaginationFieldsUI — per-strategy sub-form rendering", () => {
     };
     render(<PaginationFieldsUI {...makeProps({ draft })} />);
     expect(
-      screen.getByLabelText(/^offset parameter name/i),
+      screen.getByLabelText(/^offset parameter name/i)
     ).toBeInTheDocument();
     // pageSizeParam loses the "(optional)" suffix in offset mode.
     expect(
-      screen.getByLabelText(/^page-size parameter name$/i),
+      screen.getByLabelText(/^page-size parameter name$/i)
     ).toBeInTheDocument();
     expect(
-      screen.queryByLabelText(/^page-size parameter name \(optional\)/i),
+      screen.queryByLabelText(/^page-size parameter name \(optional\)/i)
     ).not.toBeInTheDocument();
   });
 

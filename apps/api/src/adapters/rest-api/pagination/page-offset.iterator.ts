@@ -1,4 +1,3 @@
-
 /**
  * Pagination strategy `pageOffset` — emit `{{pageNumber}}` per page,
  * incrementing by 1 for page-style (`?page=1, 2, 3, …`) and by

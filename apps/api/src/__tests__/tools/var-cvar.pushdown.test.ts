@@ -24,7 +24,8 @@ jest.unstable_mockModule("../../services/portal-sql-handle.service.js", () => ({
   resolveTiebreaker: () => null,
 }));
 
-const { AnalyticsService } = await import("../../services/analytics.service.js");
+const { AnalyticsService } =
+  await import("../../services/analytics.service.js");
 const { VarCvarTool } = await import("../../tools/var-cvar.tool.js");
 
 beforeEach(() => {
@@ -97,7 +98,9 @@ describe("AnalyticsService.varCvarPushdown (#130 E2c)", () => {
 });
 
 describe("VarCvarTool routing (#130 E2c)", () => {
-  type ExecTool = { execute: (input: unknown) => Promise<Record<string, unknown>> };
+  type ExecTool = {
+    execute: (input: unknown) => Promise<Record<string, unknown>>;
+  };
 
   it("uses pushdown for a queryHandle", async () => {
     mockAggregate.mockResolvedValueOnce({ mu: 0, sigma: 0.02, n: 300 });
@@ -115,7 +118,9 @@ describe("VarCvarTool routing (#130 E2c)", () => {
 
   it("uses in-memory compute for inline rows (no pushdown)", async () => {
     const tool = new VarCvarTool().build() as unknown as ExecTool;
-    const rows = [0.01, -0.02, 0.03, -0.05, 0.0, -0.1, 0.02].map((r) => ({ r }));
+    const rows = [0.01, -0.02, 0.03, -0.05, 0.0, -0.1, 0.02].map((r) => ({
+      r,
+    }));
 
     const res = await tool.execute({
       rows,

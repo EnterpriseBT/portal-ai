@@ -324,7 +324,8 @@ export function computeRegionDecorations(
     if (crosstab) {
       evaluateRows = skipRules.some(
         (r) =>
-          r.kind === "blank" || (r.kind === "cellMatches" && r.axis !== "column")
+          r.kind === "blank" ||
+          (r.kind === "cellMatches" && r.axis !== "column")
       );
       evaluateCols = skipRules.some(
         (r) => r.kind === "cellMatches" && r.axis === "column"
@@ -697,9 +698,7 @@ export function computeSegmentOverlays(region: RegionDraft): SegmentOverlay[] {
         };
       }
       const isPivot = seg.kind === "pivot";
-      const label = isPivot
-        ? seg.axisName.trim() || "(unnamed)"
-        : undefined;
+      const label = isPivot ? seg.axisName.trim() || "(unnamed)" : undefined;
       overlays.push({
         axis,
         segmentIndex: i,

@@ -2,12 +2,11 @@ import { jest } from "@jest/globals";
 
 import "@testing-library/jest-dom";
 
-const { render, screen, fireEvent } = await import("../../../__tests__/test-utils");
+const { render, screen, fireEvent } =
+  await import("../../../__tests__/test-utils");
 const { IdentityPanelUI } = await import("../IdentityPanel.component");
 
-import type {
-  LocatorOption,
-} from "../utils/identity-locator-options.util";
+import type { LocatorOption } from "../utils/identity-locator-options.util";
 import type {
   IdentityChange,
   IdentityPanelUIProps,
@@ -113,14 +112,14 @@ describe("IdentityPanelUI — dropdown", () => {
 
 describe("IdentityPanelUI — selection callback", () => {
   it("fires onIdentityChange with kind:column when a locator option is picked", () => {
-    const onIdentityChange = jest.fn() as IdentityPanelUIProps["onIdentityChange"];
+    const onIdentityChange =
+      jest.fn() as IdentityPanelUIProps["onIdentityChange"];
     render(<IdentityPanelUI {...makeProps({ onIdentityChange })} />);
     fireEvent.mouseDown(screen.getByRole("combobox"));
     fireEvent.click(screen.getByText(/^name\b/));
     expect(onIdentityChange).toHaveBeenCalledTimes(1);
-    const [regionId, change] = (
-      onIdentityChange as unknown as jest.Mock
-    ).mock.calls[0] as [string, IdentityChange];
+    const [regionId, change] = (onIdentityChange as unknown as jest.Mock).mock
+      .calls[0] as [string, IdentityChange];
     expect(regionId).toBe("r1");
     expect(change).toEqual({
       kind: "column",
@@ -129,13 +128,13 @@ describe("IdentityPanelUI — selection callback", () => {
   });
 
   it("fires onIdentityChange with kind:rowPosition when the sentinel is picked", () => {
-    const onIdentityChange = jest.fn() as IdentityPanelUIProps["onIdentityChange"];
+    const onIdentityChange =
+      jest.fn() as IdentityPanelUIProps["onIdentityChange"];
     render(<IdentityPanelUI {...makeProps({ onIdentityChange })} />);
     fireEvent.mouseDown(screen.getByRole("combobox"));
     fireEvent.click(screen.getByText(/use position-based ids/i));
-    const [regionId, change] = (
-      onIdentityChange as unknown as jest.Mock
-    ).mock.calls[0] as [string, IdentityChange];
+    const [regionId, change] = (onIdentityChange as unknown as jest.Mock).mock
+      .calls[0] as [string, IdentityChange];
     expect(regionId).toBe("r1");
     expect(change).toEqual({ kind: "rowPosition" });
   });

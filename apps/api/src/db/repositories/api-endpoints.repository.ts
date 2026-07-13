@@ -12,10 +12,7 @@
 
 import { eq, and, inArray, isNull } from "drizzle-orm";
 
-import {
-  apiEndpointConfigs,
-  connectorEntities,
-} from "../schema/index.js";
+import { apiEndpointConfigs, connectorEntities } from "../schema/index.js";
 import type {
   ApiEndpointConfigSelect,
   ApiEndpointConfigInsert,

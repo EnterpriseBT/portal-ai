@@ -16,18 +16,9 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  Button,
-  Modal,
-  Stack,
-  StepPanel,
-  Stepper,
-} from "@portalai/core/ui";
+import { Button, Modal, Stack, StepPanel, Stepper } from "@portalai/core/ui";
 import type { StepConfig } from "@portalai/core/ui";
-import type {
-  ApiAuthConfig,
-  ApiCredentials,
-} from "@portalai/core/models";
+import type { ApiAuthConfig, ApiCredentials } from "@portalai/core/models";
 import type { DiscoverColumnsResult } from "@portalai/core/contracts";
 import { probeInputHash } from "@portalai/core/utils";
 import { useQueryClient } from "@tanstack/react-query";
@@ -217,54 +208,54 @@ export const RestApiConnectorWorkflowUI: React.FC<
       <Stack spacing={3}>
         <Stepper steps={STEPS} activeStep={step} alternativeLabel>
           <StepPanel index={0} activeStep={step}>
-          <BasicsStep
-            name={name}
-            baseUrl={baseUrl}
-            authMode={authMode}
-            credentials={credentials}
-            onNameChange={onNameChange}
-            onBaseUrlChange={onBaseUrlChange}
-            onAuthModeChange={onAuthModeChange}
-            onCredentialsChange={onCredentialsChange}
-            onBlur={onBasicsBlur}
-            errors={basicsErrors}
-            touched={basicsTouched}
-            serverError={serverError}
-          />
-        </StepPanel>
-        <StepPanel index={1} activeStep={step}>
-          <EndpointsStep
-            endpoints={endpoints}
-            onChange={onEndpointsChange}
-            errors={endpointsErrors}
-            serverError={serverError}
-            onPreview={onPreviewEndpoint}
-            onSuggest={onSuggestTransform}
-          />
-        </StepPanel>
-        <StepPanel index={2} activeStep={step}>
-          <ProbeReviewStep
-            endpoints={endpoints}
-            stateByKey={probeStateByKey}
-            rowsByKey={columnsByEndpoint}
-            errorsByKey={columnErrorsByEndpoint}
-            onRowChange={onColumnRowChange}
-            onAdoptSuggestion={onAdoptSuggestion}
-            onAddRow={onAddColumnRow}
-            onRemoveRow={onRemoveColumnRow}
-            onReprobe={onReprobe}
-            serverError={serverError}
-            columnDefinitionSearch={columnDefinitionSearch}
-          />
-        </StepPanel>
-        <StepPanel index={3} activeStep={step}>
-          <ReviewStep
-            name={name}
-            baseUrl={baseUrl}
-            endpoints={endpoints}
-            serverError={serverError}
-          />
-        </StepPanel>
+            <BasicsStep
+              name={name}
+              baseUrl={baseUrl}
+              authMode={authMode}
+              credentials={credentials}
+              onNameChange={onNameChange}
+              onBaseUrlChange={onBaseUrlChange}
+              onAuthModeChange={onAuthModeChange}
+              onCredentialsChange={onCredentialsChange}
+              onBlur={onBasicsBlur}
+              errors={basicsErrors}
+              touched={basicsTouched}
+              serverError={serverError}
+            />
+          </StepPanel>
+          <StepPanel index={1} activeStep={step}>
+            <EndpointsStep
+              endpoints={endpoints}
+              onChange={onEndpointsChange}
+              errors={endpointsErrors}
+              serverError={serverError}
+              onPreview={onPreviewEndpoint}
+              onSuggest={onSuggestTransform}
+            />
+          </StepPanel>
+          <StepPanel index={2} activeStep={step}>
+            <ProbeReviewStep
+              endpoints={endpoints}
+              stateByKey={probeStateByKey}
+              rowsByKey={columnsByEndpoint}
+              errorsByKey={columnErrorsByEndpoint}
+              onRowChange={onColumnRowChange}
+              onAdoptSuggestion={onAdoptSuggestion}
+              onAddRow={onAddColumnRow}
+              onRemoveRow={onRemoveColumnRow}
+              onReprobe={onReprobe}
+              serverError={serverError}
+              columnDefinitionSearch={columnDefinitionSearch}
+            />
+          </StepPanel>
+          <StepPanel index={3} activeStep={step}>
+            <ReviewStep
+              name={name}
+              baseUrl={baseUrl}
+              endpoints={endpoints}
+              serverError={serverError}
+            />
+          </StepPanel>
         </Stepper>
       </Stack>
     </Modal>
@@ -377,7 +368,10 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
   useEffect(() => {
     let cancelled = false;
     const compute = async () => {
-      const { auth, credentialsPayload } = buildAuthPayload(authMode, credentials);
+      const { auth, credentialsPayload } = buildAuthPayload(
+        authMode,
+        credentials
+      );
       const pairs = await Promise.all(
         endpoints.map(async (ep) => {
           const endpointConfig = projectEndpointForHash(ep);
@@ -423,7 +417,10 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
       [endpoint.key]: { kind: "loading", hash: targetHash },
     }));
 
-    const { auth, credentialsPayload } = buildAuthPayload(authMode, credentials);
+    const { auth, credentialsPayload } = buildAuthPayload(
+      authMode,
+      credentials
+    );
     try {
       const result = await probeMutateRef.current({
         baseUrl,
@@ -440,7 +437,10 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
     } catch (err) {
       const serverError =
         toServerError(err as never) ??
-        ({ code: "REST_API_OPERATION_FAILED", message: "Probe failed" } as ServerError);
+        ({
+          code: "REST_API_OPERATION_FAILED",
+          message: "Probe failed",
+        } as ServerError);
       setProbeStateByKey((m) => ({
         ...m,
         [endpoint.key]: {
@@ -526,7 +526,9 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
         err instanceof Error ? err.message : "Failed to suggest transform";
       const code =
         err && typeof err === "object" && "code" in err
-          ? String((err as { code?: unknown }).code ?? "REST_API_OPERATION_FAILED")
+          ? String(
+              (err as { code?: unknown }).code ?? "REST_API_OPERATION_FAILED"
+            )
           : "REST_API_OPERATION_FAILED";
       throw Object.assign(new Error(message), { code });
     }
@@ -592,7 +594,10 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
     setServerError(null);
     setIsCommitting(true);
     try {
-      const { auth, credentialsPayload } = buildAuthPayload(authMode, credentials);
+      const { auth, credentialsPayload } = buildAuthPayload(
+        authMode,
+        credentials
+      );
       const created = await createInstance.mutateAsync({
         organizationId,
         connectorDefinitionId,
@@ -639,8 +644,7 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
             ...(rows.length > 0
               ? {
                   columns: rows.map((row) => ({
-                    sourceField:
-                      row.sourceField.trim() || row.normalizedKey,
+                    sourceField: row.sourceField.trim() || row.normalizedKey,
                     normalizedKey: row.normalizedKey,
                     type: row.type,
                     required: row.required,

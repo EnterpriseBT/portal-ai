@@ -246,7 +246,7 @@ async function candidatesForRegion(
                 ],
                 joiner: "|",
                 confidence: 0.55,
-                    },
+              },
               score: 0.55,
               rationale: `Columns ${c1}+${c2} together produce unique row keys.`,
             });
@@ -263,12 +263,7 @@ async function candidatesForRegion(
     const headerCol = colHeader?.index ?? bounds.startCol - 1;
 
     for (let r = bounds.startRow; r <= bounds.endRow; r++) {
-      const values = collectDataValuesInRow(
-        sheet,
-        r,
-        headerCol,
-        bounds.endCol
-      );
+      const values = collectDataValuesInRow(sheet, r, headerCol, bounds.endCol);
       if (!isUnique(values)) continue;
       const passes = await validateRowIdentityPastBounds(
         sheet,
@@ -318,7 +313,7 @@ async function candidatesForRegion(
                 ],
                 joiner: "|",
                 confidence: 0.55,
-                    },
+              },
               score: 0.55,
               rationale: `Rows ${r1}+${r2} together produce unique column keys.`,
             });

@@ -209,7 +209,12 @@ function makeDriver(
       };
     }
     case "CCI": {
-      const cci = new CCI({ period: num(p.period, 20), high: [], low: [], close: [] });
+      const cci = new CCI({
+        period: num(p.period, 20),
+        high: [],
+        low: [],
+        close: [],
+      });
       return {
         reads: "hlc",
         next: ({ high, low, close }) => {

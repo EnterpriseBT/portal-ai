@@ -128,9 +128,8 @@ export const ConnectorInstanceView = ({
   // running job and invalidates this query when the terminal event
   // lands. No polling needed — the alert clears the moment the
   // worker finishes.
-  const runningJobsQuery = sdk.connectorInstances.runningJobs(
-    connectorInstanceId
-  );
+  const runningJobsQuery =
+    sdk.connectorInstances.runningJobs(connectorInstanceId);
   // Memoize so the array identity is stable across renders — the
   // lock-SSE effect below lists `runningJobs` in its deps and would
   // otherwise re-subscribe on every render (the `?? []` makes a fresh
@@ -187,8 +186,7 @@ export const ConnectorInstanceView = ({
           // detail view sticks to whatever it was when the page first
           // loaded.
           queryClient.invalidateQueries({
-            queryKey:
-              queryKeys.connectorInstances.get(connectorInstanceId),
+            queryKey: queryKeys.connectorInstances.get(connectorInstanceId),
           });
           queryClient.invalidateQueries({
             queryKey: queryKeys.connectorInstances.root,
@@ -238,8 +236,7 @@ export const ConnectorInstanceView = ({
   useEffect(() => {
     if (syncState.jobStatus !== null) {
       queryClient.invalidateQueries({
-        queryKey:
-          queryKeys.connectorInstances.runningJobs(connectorInstanceId),
+        queryKey: queryKeys.connectorInstances.runningJobs(connectorInstanceId),
       });
     }
   }, [syncState.jobStatus, connectorInstanceId, queryClient]);
@@ -359,10 +356,12 @@ export const ConnectorInstanceView = ({
               // and we don't want the user clicking Sync first only to
               // see another auth error.
               const isInError = ci.status === "error";
-              const isSyncConfigured =
-                ci.enabledCapabilityFlags?.sync === true;
+              const isSyncConfigured = ci.enabledCapabilityFlags?.sync === true;
               const editAction = (
-                <Tooltip title={lockedReason ?? ""} disableHoverListener={!isLocked}>
+                <Tooltip
+                  title={lockedReason ?? ""}
+                  disableHoverListener={!isLocked}
+                >
                   <span>
                     <Button
                       variant="contained"
@@ -411,13 +410,13 @@ export const ConnectorInstanceView = ({
               const secondaryActions = [
                 ...(isInError || isSyncConfigured
                   ? [
-                    {
-                      label: "Edit",
-                      icon: <EditIcon />,
-                      onClick: () => setEditDialogOpen(true),
-                      disabled: isLocked,
-                    },
-                  ]
+                      {
+                        label: "Edit",
+                        icon: <EditIcon />,
+                        onClick: () => setEditDialogOpen(true),
+                        disabled: isLocked,
+                      },
+                    ]
                   : []),
                 ...(canEditLayoutPlan
                   ? [
@@ -519,19 +518,19 @@ export const ConnectorInstanceView = ({
 
                             const makeHandler =
                               (flag: "write" | "sync" | "push") =>
-                                (
-                                  _e: React.ChangeEvent<HTMLInputElement>,
-                                  checked: boolean
-                                ) => {
-                                  handleCapabilityChange({
-                                    name: ci.name,
-                                    enabledCapabilityFlags: {
-                                      ...flags,
-                                      read: true,
-                                      [flag]: checked,
-                                    },
-                                  });
-                                };
+                              (
+                                _e: React.ChangeEvent<HTMLInputElement>,
+                                checked: boolean
+                              ) => {
+                                handleCapabilityChange({
+                                  name: ci.name,
+                                  enabledCapabilityFlags: {
+                                    ...flags,
+                                    read: true,
+                                    [flag]: checked,
+                                  },
+                                });
+                              };
 
                             return (
                               <Stack

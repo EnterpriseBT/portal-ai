@@ -6,10 +6,7 @@
  * established by `connector-entities.api`.
  */
 
-import type {
-  ApiAuthConfig,
-  ApiEndpointConfig,
-} from "@portalai/core/models";
+import type { ApiAuthConfig, ApiEndpointConfig } from "@portalai/core/models";
 import type {
   CreateApiEndpointColumnDraft,
   DiscoverColumnsRequestBody,
@@ -183,10 +180,7 @@ export const apiConnector = {
      * server makes no upstream HTTP call, only invokes the model.
      */
     suggestTransform: () =>
-      useAuthMutation<
-        SuggestTransformResponse,
-        SuggestTransformRequestBody
-      >({
+      useAuthMutation<SuggestTransformResponse, SuggestTransformRequestBody>({
         url: "/api/connector-instances/suggest-transform",
         method: "POST",
       }),

@@ -39,7 +39,7 @@ type GenerateObjectResult = {
   };
 };
 type GenerateObjectFn = (
-  args: GenerateObjectArgs,
+  args: GenerateObjectArgs
 ) => Promise<GenerateObjectResult>;
 
 /**
@@ -94,25 +94,24 @@ export function getJsonataSuggester(): JsonataSuggester {
  *  `null` to drop the override and let the next read build a fresh
  *  default. */
 export function __setJsonataSuggesterForTesting(
-  impl: JsonataSuggester | null,
+  impl: JsonataSuggester | null
 ): void {
   _suggester = impl;
 }
 
 export function createDefaultJsonataSuggester(
-  opts: CreateJsonataSuggesterOptions = {},
+  opts: CreateJsonataSuggesterOptions = {}
 ): JsonataSuggester {
   const anthropic =
     opts.anthropic ??
     (AiService.providers.anthropic as unknown as AnthropicProviderFn);
   const modelId = opts.model ?? DEFAULT_MODEL;
   const gen: GenerateObjectFn = opts.generateObject ?? defaultGenerateObject;
-  const logger =
-    opts.logger ?? createLogger({ module: "jsonata-suggester" });
+  const logger = opts.logger ?? createLogger({ module: "jsonata-suggester" });
 
   return {
     async suggest(
-      input: JsonataSuggesterInput,
+      input: JsonataSuggesterInput
     ): Promise<JsonataSuggesterOutput> {
       const prompt = buildJsonataSuggestPrompt(input);
       const started = Date.now();
@@ -134,7 +133,7 @@ export function createDefaultJsonataSuggester(
             modelId,
             cause: (err as Error).message,
           },
-          "jsonata suggester call failed",
+          "jsonata suggester call failed"
         );
         throw new JsonataSuggestError(reason, (err as Error).message, {
           cause: err,
@@ -150,13 +149,13 @@ export function createDefaultJsonataSuggester(
             modelId,
             issues: parsed.error.issues,
           },
-          "jsonata suggester response failed schema validation",
+          "jsonata suggester response failed schema validation"
         );
         throw new JsonataSuggestError(
           "malformed-response",
           `model response failed SuggesterResponseSchema: ${parsed.error.issues
             .map((i) => i.message)
-            .join("; ")}`,
+            .join("; ")}`
         );
       }
 
@@ -171,7 +170,7 @@ export function createDefaultJsonataSuggester(
           hadHint: !!input.promptHint,
           hadPreviousAttempt: !!input.previousAttempt,
         },
-        "jsonata suggester call completed",
+        "jsonata suggester call completed"
       );
 
       return { expression: parsed.data.expression };

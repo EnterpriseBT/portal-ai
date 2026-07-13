@@ -10,12 +10,10 @@
  */
 import { describe, it, expect, afterEach } from "@jest/globals";
 
-const { PortalSqlHandleService } = await import(
-  "../../../services/portal-sql-handle.service.js"
-);
-const { AnalyticsService } = await import(
-  "../../../services/analytics.service.js"
-);
+const { PortalSqlHandleService } =
+  await import("../../../services/portal-sql-handle.service.js");
+const { AnalyticsService } =
+  await import("../../../services/analytics.service.js");
 const { getRedisClient } = await import("../../../utils/redis.util.js");
 
 const ORG_ID = "00000000-0000-0000-0000-0000000c2c21";
@@ -27,10 +25,9 @@ const ROWS = Array.from({ length: 12 }, (_, i) => ({
   x2: ((i * 7) % 5) - 2,
   y: 2 * (i + 1) + 0.7 * (((i * 7) % 5) - 2) + 1 + (i % 2 === 0 ? 0.15 : -0.2),
 }));
-const HANDLE_SQL =
-  `SELECT x::float8 AS x, x2::float8 AS x2, y::float8 AS y FROM (VALUES ${ROWS.map(
-    (r) => `(${r.x}, ${r.x2}, ${r.y})`
-  ).join(", ")}) AS t(x, x2, y)`;
+const HANDLE_SQL = `SELECT x::float8 AS x, x2::float8 AS x2, y::float8 AS y FROM (VALUES ${ROWS.map(
+  (r) => `(${r.x}, ${r.x2}, ${r.y})`
+).join(", ")}) AS t(x, x2, y)`;
 
 let producedHandle: string | null = null;
 
@@ -57,7 +54,10 @@ describe("Integration (#130 E2c) — regression pushdown over a real handle", ()
   afterEach(cleanup);
 
   const designs = [
-    { label: "linear single-x", params: { x: "x", y: "y", type: "linear" as const } },
+    {
+      label: "linear single-x",
+      params: { x: "x", y: "y", type: "linear" as const },
+    },
     {
       label: "multivariate",
       params: { xColumns: ["x", "x2"], y: "y", type: "linear" as const },

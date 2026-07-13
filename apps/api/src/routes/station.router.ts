@@ -141,7 +141,9 @@ stationRouter.get(
       // Hydrate enabledToolpacks for each station via a single grouped lookup.
       const stationIds = data.map((s) => s.id);
       const toolpackRows =
-        await DbService.repository.stationToolpacks.findByStationIds(stationIds);
+        await DbService.repository.stationToolpacks.findByStationIds(
+          stationIds
+        );
       const toolpacksByStationId = new Map<string, string[]>();
       for (const row of toolpackRows) {
         const ref =
@@ -267,7 +269,9 @@ stationRouter.get(
       const enabled =
         await DbService.repository.stationToolpacks.findByStationId(id);
       const enabledToolpacks = enabled.map((r) =>
-        r.builtinSlug !== null ? r.builtinSlug : `org:${r.organizationToolpackId}`
+        r.builtinSlug !== null
+          ? r.builtinSlug
+          : `org:${r.organizationToolpackId}`
       );
 
       return HttpService.success<StationGetResponsePayload>(res, {
@@ -567,9 +571,8 @@ stationRouter.patch(
       const { name, description, connectorInstanceIds, toolPacks } =
         parsed.data;
 
-      let parsedRefs:
-        | { builtinSlugs: string[]; customIds: string[] }
-        | null = null;
+      let parsedRefs: { builtinSlugs: string[]; customIds: string[] } | null =
+        null;
       if (toolPacks !== undefined) {
         const refs = await parseToolpackRefs(toolPacks, organizationId);
         if (!refs.ok) {
@@ -643,7 +646,9 @@ stationRouter.patch(
       const enabled =
         await DbService.repository.stationToolpacks.findByStationId(id);
       const enabledToolpacks = enabled.map((r) =>
-        r.builtinSlug !== null ? r.builtinSlug : `org:${r.organizationToolpackId}`
+        r.builtinSlug !== null
+          ? r.builtinSlug
+          : `org:${r.organizationToolpackId}`
       );
 
       return HttpService.success<StationUpdateResponsePayload>(res, {

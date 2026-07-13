@@ -40,74 +40,67 @@ import {
 } from "../utils/application.util.js";
 import { connectionOpts, uniqueQueueName } from "./queue.util.js";
 
-jest.unstable_mockModule(
-  "../../../services/bulk-transform.service.js",
-  () => ({
-    BulkTransformService: {
-      countSourceRows: async () => 3,
-      // Three batches × 1 row each so the loop emits 3 SSE events.
-      // Slice 4 (#99): runBatch returns the projection rows with
-      // `__src_key` + `__source_row` framing keys + the projection's
-      // aliases at the top level. The processor's fan-out reads
-      // `__src_key` as the upsert key.
-      runBatch: jest
-        .fn<() => Promise<unknown>>()
-        .mockResolvedValueOnce({
-          rowsCommitted: 1,
-          rows: [
-            {
-              __src_key: "r-1",
-              __source_row: { c_parcel_id: "r-1" },
-              c_doubled: 2,
-            },
-          ],
-        })
-        .mockResolvedValueOnce({
-          rowsCommitted: 1,
-          rows: [
-            {
-              __src_key: "r-2",
-              __source_row: { c_parcel_id: "r-2" },
-              c_doubled: 4,
-            },
-          ],
-        })
-        .mockResolvedValueOnce({
-          rowsCommitted: 1,
-          rows: [
-            {
-              __src_key: "r-3",
-              __source_row: { c_parcel_id: "r-3" },
-              c_doubled: 6,
-            },
-          ],
-        }),
-      // Slice 4 (#99): the fan-out calls upsertSuccesses per target
-      // per batch. Smoke A is single-target so this fires once per
-      // batch.
-      upsertSuccesses: jest
-        .fn<
-          (args: {
-            successes: Array<{ sourceKey: string }>;
-          }) => Promise<{ rowsUpserted: number; droppedKeys: string[] }>
-        >()
-        .mockImplementation(async (args) => ({
-          rowsUpserted: args.successes.length,
-          droppedKeys: [],
-        })),
-    },
-  })
-);
+jest.unstable_mockModule("../../../services/bulk-transform.service.js", () => ({
+  BulkTransformService: {
+    countSourceRows: async () => 3,
+    // Three batches × 1 row each so the loop emits 3 SSE events.
+    // Slice 4 (#99): runBatch returns the projection rows with
+    // `__src_key` + `__source_row` framing keys + the projection's
+    // aliases at the top level. The processor's fan-out reads
+    // `__src_key` as the upsert key.
+    runBatch: jest
+      .fn<() => Promise<unknown>>()
+      .mockResolvedValueOnce({
+        rowsCommitted: 1,
+        rows: [
+          {
+            __src_key: "r-1",
+            __source_row: { c_parcel_id: "r-1" },
+            c_doubled: 2,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rowsCommitted: 1,
+        rows: [
+          {
+            __src_key: "r-2",
+            __source_row: { c_parcel_id: "r-2" },
+            c_doubled: 4,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rowsCommitted: 1,
+        rows: [
+          {
+            __src_key: "r-3",
+            __source_row: { c_parcel_id: "r-3" },
+            c_doubled: 6,
+          },
+        ],
+      }),
+    // Slice 4 (#99): the fan-out calls upsertSuccesses per target
+    // per batch. Smoke A is single-target so this fires once per
+    // batch.
+    upsertSuccesses: jest
+      .fn<
+        (args: {
+          successes: Array<{ sourceKey: string }>;
+        }) => Promise<{ rowsUpserted: number; droppedKeys: string[] }>
+      >()
+      .mockImplementation(async (args) => ({
+        rowsUpserted: args.successes.length,
+        droppedKeys: [],
+      })),
+  },
+}));
 
-const { bulkTransformProcessor } = await import(
-  "../../../queues/processors/bulk-transform.processor.js"
-);
-const { PortalService } = await import(
-  "../../../services/portal.service.js"
-);
-const { JobEventsService } = await import(
-  "../../../services/job-events.service.js"
-);
+const { bulkTransformProcessor } =
+  await import("../../../queues/processors/bulk-transform.processor.js");
+const { PortalService } = await import("../../../services/portal.service.js");
+const { JobEventsService } =
+  await import("../../../services/job-events.service.js");
 
 describe("Smoke A — bulk_transform worker pipeline (#85 Phase 2)", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -230,7 +223,9 @@ describe("Smoke A — bulk_transform worker pipeline (#85 Phase 2)", () => {
       async (bullJob) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data: any = bullJob.data;
-        await JobEventsService.transition(data.jobId, "active", { progress: 0 });
+        await JobEventsService.transition(data.jobId, "active", {
+          progress: 0,
+        });
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const result = await bulkTransformProcessor(bullJob as any);
@@ -334,7 +329,7 @@ describe("Smoke A — bulk_transform worker pipeline (#85 Phase 2)", () => {
       content: unknown;
     }>;
     expect(blocks[0].type).toBe("text");
-    expect((blocks[0].content as string)).toMatch(/3 records/);
+    expect(blocks[0].content as string).toMatch(/3 records/);
 
     await sub.unsubscribe(channel);
     await sub.quit();

@@ -107,12 +107,7 @@ export const WorkbookCacheService = {
       status: "parsing",
       createdAt: Date.now(),
     };
-    await redis.set(
-      metaKey(prefix),
-      JSON.stringify(initialMeta),
-      "EX",
-      TTL()
-    );
+    await redis.set(metaKey(prefix), JSON.stringify(initialMeta), "EX", TTL());
 
     const sheets = new Map<string, SheetState>();
     const finishedSheets: SheetChunkMeta[] = [];
@@ -177,12 +172,7 @@ export const WorkbookCacheService = {
           status,
           createdAt: Date.now(),
         };
-        await redis.set(
-          metaKey(prefix),
-          JSON.stringify(meta),
-          "EX",
-          TTL()
-        );
+        await redis.set(metaKey(prefix), JSON.stringify(meta), "EX", TTL());
         logger.debug(
           {
             prefix,
@@ -200,12 +190,7 @@ export const WorkbookCacheService = {
           error,
           createdAt: Date.now(),
         };
-        await redis.set(
-          metaKey(prefix),
-          JSON.stringify(meta),
-          "EX",
-          TTL()
-        );
+        await redis.set(metaKey(prefix), JSON.stringify(meta), "EX", TTL());
       },
     };
   },
@@ -247,9 +232,10 @@ export const WorkbookCacheService = {
     for (let c = firstChunk; c <= lastChunk; c++) {
       keys.push(rowsKey(prefix, sheetId, c));
     }
-    const payloads = keys.length === 1
-      ? [await redis.get(keys[0]!)]
-      : await redis.mget(...keys);
+    const payloads =
+      keys.length === 1
+        ? [await redis.get(keys[0]!)]
+        : await redis.mget(...keys);
     for (let i = 0; i < payloads.length; i++) {
       const payload = payloads[i];
       if (!payload) continue; // sparse / cache-miss within range — skip silently
@@ -266,10 +252,7 @@ export const WorkbookCacheService = {
   },
 
   /** Read merged-cell metadata for a sheet (XLSX). Empty for CSV. */
-  async getMerges(
-    prefix: string,
-    sheetId: string
-  ): Promise<MergedRange[]> {
+  async getMerges(prefix: string, sheetId: string): Promise<MergedRange[]> {
     const redis = getRedisClient();
     const payload = await redis.get(mergesKey(prefix, sheetId));
     if (!payload) return [];

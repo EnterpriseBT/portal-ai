@@ -618,9 +618,9 @@ describe("preserveUserRegionConfig", () => {
       if (pivot?.kind === "pivot") {
         expect(pivot.columnDefinitionId).toBe("coldef_user_pinned");
       }
-      expect(
-        result.regions[0].cellValueField?.columnDefinitionId
-      ).toBe("coldef_user_pinned_amount");
+      expect(result.regions[0].cellValueField?.columnDefinitionId).toBe(
+        "coldef_user_pinned_amount"
+      );
     });
   });
 
@@ -733,9 +733,9 @@ describe("preserveUserRegionConfig", () => {
       ]);
       const bindings = result.regions[0].columnBindings;
       expect(bindings).toHaveLength(2);
-      expect(
-        bindings.some((b) => "excluded" in b && b.excluded === true)
-      ).toBe(false);
+      expect(bindings.some((b) => "excluded" in b && b.excluded === true)).toBe(
+        false
+      );
     });
 
     it("skips binding merge when the prior draft has no columnBindings", () => {
@@ -1059,7 +1059,9 @@ describe("draftsToRegions", () => {
   it("preserves the column-identity locator via the draft's rawLocator hint", () => {
     const drafts = planRegionsToDrafts(plan, makeWorkbook());
     const regions = draftsToRegions(drafts, makeWorkbook(), plan);
-    expect(regions[0].identityStrategy).toEqual(plan.regions[0].identityStrategy);
+    expect(regions[0].identityStrategy).toEqual(
+      plan.regions[0].identityStrategy
+    );
   });
 
   it("throws when a draft lacks a targetEntityDefinitionId", () => {

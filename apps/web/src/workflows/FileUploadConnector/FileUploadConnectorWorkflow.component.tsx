@@ -249,118 +249,118 @@ export const FileUploadConnectorWorkflowUI: React.FC<
   isCommitting,
   loadSlice,
 }) => {
-    const isUploadDisabled =
-      files.length === 0 ||
-      uploadPhase === "uploading" ||
-      uploadPhase === "parsing";
+  const isUploadDisabled =
+    files.length === 0 ||
+    uploadPhase === "uploading" ||
+    uploadPhase === "parsing";
 
-    const resolvedActiveSheetId = activeSheetId ?? workbook?.sheets[0]?.id ?? "";
+  const resolvedActiveSheetId = activeSheetId ?? workbook?.sheets[0]?.id ?? "";
 
-    return (
-      <Modal
-        open={open}
-        onClose={onClose}
-        title="Upload a spreadsheet"
-        defaultMaximized
-        maximizable
-      >
-        <Stack spacing={2} sx={{ minWidth: 0 }}>
-          <Stepper steps={stepConfigs} activeStep={step}>
-            <StepPanel index={0} activeStep={step}>
-              <UploadStep
-                files={files}
-                onFilesChange={onFilesChange}
-                uploadPhase={uploadPhase}
-                fileProgress={fileProgress}
-                overallUploadPercent={overallUploadPercent}
-                parsePercent={parsePercent}
-                serverError={serverError}
-                errors={uploadErrors}
-              />
-            </StepPanel>
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Upload a spreadsheet"
+      defaultMaximized
+      maximizable
+    >
+      <Stack spacing={2} sx={{ minWidth: 0 }}>
+        <Stepper steps={stepConfigs} activeStep={step}>
+          <StepPanel index={0} activeStep={step}>
+            <UploadStep
+              files={files}
+              onFilesChange={onFilesChange}
+              uploadPhase={uploadPhase}
+              fileProgress={fileProgress}
+              overallUploadPercent={overallUploadPercent}
+              parsePercent={parsePercent}
+              serverError={serverError}
+              errors={uploadErrors}
+            />
+          </StepPanel>
 
-            <StepPanel index={1} activeStep={step}>
-              {workbook ? (
-                <FileUploadRegionDrawingStepUI
-                  workbook={workbook}
-                  regions={regions}
-                  activeSheetId={resolvedActiveSheetId}
-                  onActiveSheetChange={onActiveSheetChange}
-                  selectedRegionId={selectedRegionId}
-                  onSelectRegion={onSelectRegion}
-                  onRegionDraft={onRegionDraft}
-                  onRegionUpdate={onRegionUpdate}
-                  onRegionResize={onRegionResize}
-                  onRegionDelete={onRegionDelete}
-                  entityOptions={entityOptions}
-                  onCreateEntity={onCreateEntity}
-                  validateEntityKey={validateEntityKey}
-                  onInterpret={onInterpret}
-                  onSkipToReview={onSkipToReview}
-                  isInterpreting={isInterpreting}
-                  errors={errors}
-                  serverError={serverError}
-                  loadSlice={loadSlice}
-                />
-              ) : (
-                <Box sx={{ p: 3 }}>
-                  <Typography color="text.secondary">
-                    Preparing your spreadsheet…
-                  </Typography>
-                </Box>
-              )}
-            </StepPanel>
-
-            <StepPanel index={2} activeStep={step}>
-              <FileUploadReviewStepUI
+          <StepPanel index={1} activeStep={step}>
+            {workbook ? (
+              <FileUploadRegionDrawingStepUI
+                workbook={workbook}
                 regions={regions}
-                overallConfidence={overallConfidence}
-                onJumpToRegion={onJumpToRegion}
-                onEditBinding={onEditBinding}
-                onUpdateBinding={onUpdateBinding}
-                onToggleBindingExcluded={onToggleBindingExcluded}
-                columnDefinitionSearch={columnDefinitionSearch}
-                resolveReferenceOptions={resolveReferenceOptions}
-                resolveReferenceFieldOptions={resolveReferenceFieldOptions}
-                resolveColumnDefinitionType={resolveColumnDefinitionType}
-                resolveColumnDefinitionDescription={
-                  resolveColumnDefinitionDescription
-                }
-                resolveColumnLabel={resolveColumnLabel}
-                onCommit={onCommit}
-                onBack={onBack}
-                isCommitting={isCommitting}
+                activeSheetId={resolvedActiveSheetId}
+                onActiveSheetChange={onActiveSheetChange}
+                selectedRegionId={selectedRegionId}
+                onSelectRegion={onSelectRegion}
+                onRegionDraft={onRegionDraft}
+                onRegionUpdate={onRegionUpdate}
+                onRegionResize={onRegionResize}
+                onRegionDelete={onRegionDelete}
+                entityOptions={entityOptions}
+                onCreateEntity={onCreateEntity}
+                validateEntityKey={validateEntityKey}
+                onInterpret={onInterpret}
+                onSkipToReview={onSkipToReview}
+                isInterpreting={isInterpreting}
+                errors={errors}
                 serverError={serverError}
+                loadSlice={loadSlice}
               />
-            </StepPanel>
-          </Stepper>
+            ) : (
+              <Box sx={{ p: 3 }}>
+                <Typography color="text.secondary">
+                  Preparing your spreadsheet…
+                </Typography>
+              </Box>
+            )}
+          </StepPanel>
 
-          {step === 0 && (
-            <Stack direction="row" justifyContent="space-between" sx={{ pt: 1 }}>
-              <Button variant="text" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button
-                variant="contained"
-                onClick={onStartParse}
-                disabled={isUploadDisabled}
-              >
-                Upload
-              </Button>
-            </Stack>
-          )}
+          <StepPanel index={2} activeStep={step}>
+            <FileUploadReviewStepUI
+              regions={regions}
+              overallConfidence={overallConfidence}
+              onJumpToRegion={onJumpToRegion}
+              onEditBinding={onEditBinding}
+              onUpdateBinding={onUpdateBinding}
+              onToggleBindingExcluded={onToggleBindingExcluded}
+              columnDefinitionSearch={columnDefinitionSearch}
+              resolveReferenceOptions={resolveReferenceOptions}
+              resolveReferenceFieldOptions={resolveReferenceFieldOptions}
+              resolveColumnDefinitionType={resolveColumnDefinitionType}
+              resolveColumnDefinitionDescription={
+                resolveColumnDefinitionDescription
+              }
+              resolveColumnLabel={resolveColumnLabel}
+              onCommit={onCommit}
+              onBack={onBack}
+              isCommitting={isCommitting}
+              serverError={serverError}
+            />
+          </StepPanel>
+        </Stepper>
 
-          {step === 1 && (
-            <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
-              <Button variant="text" onClick={onBack}>
-                Back
-              </Button>
-            </Stack>
-          )}
-        </Stack>
-      </Modal>
-    );
-  };
+        {step === 0 && (
+          <Stack direction="row" justifyContent="space-between" sx={{ pt: 1 }}>
+            <Button variant="text" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              onClick={onStartParse}
+              disabled={isUploadDisabled}
+            >
+              Upload
+            </Button>
+          </Stack>
+        )}
+
+        {step === 1 && (
+          <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
+            <Button variant="text" onClick={onBack}>
+              Back
+            </Button>
+          </Stack>
+        )}
+      </Stack>
+    </Modal>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // Container Props
@@ -490,9 +490,7 @@ export const FileUploadConnectorWorkflow: React.FC<
           onProgress: options?.onParseProgress,
         }
       );
-      const parseResult = completion.result as
-        | FileUploadParseJobResult
-        | null;
+      const parseResult = completion.result as FileUploadParseJobResult | null;
       if (!parseResult) {
         throw new Error("Parse job completed without a result payload");
       }
@@ -783,8 +781,8 @@ export const FileUploadConnectorWorkflow: React.FC<
           const key =
             b.normalizedKey ??
             (b.columnDefinitionId
-              ? columnDefinitionsById.get(b.columnDefinitionId)?.label ??
-                b.columnDefinitionId
+              ? (columnDefinitionsById.get(b.columnDefinitionId)?.label ??
+                b.columnDefinitionId)
               : null);
           if (!key || seen.has(key)) continue;
           seen.add(key);

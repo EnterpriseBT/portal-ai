@@ -158,7 +158,8 @@ portalSqlHandleSseRouter.get(
         // producer ({ type: "data" | "complete", ... }).
         try {
           const parsed = JSON.parse(message);
-          const eventName = typeof parsed.type === "string" ? parsed.type : "data";
+          const eventName =
+            typeof parsed.type === "string" ? parsed.type : "data";
           res.write(`event: ${eventName}\n`);
           res.write(`data: ${message}\n\n`);
         } catch {

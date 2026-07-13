@@ -37,10 +37,7 @@ import type {
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
-import {
-  seedUserAndOrg,
-  teardownOrg,
-} from "../utils/application.util.js";
+import { seedUserAndOrg, teardownOrg } from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|ci-test-suggest-transform";
 
@@ -60,12 +57,10 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
-const { __setJsonataSuggesterForTesting } = await import(
-  "../../../adapters/rest-api/jsonata-suggest.haiku.js"
-);
-const { JsonataSuggestError } = await import(
-  "../../../adapters/rest-api/jsonata-suggest.types.js"
-);
+const { __setJsonataSuggesterForTesting } =
+  await import("../../../adapters/rest-api/jsonata-suggest.haiku.js");
+const { JsonataSuggestError } =
+  await import("../../../adapters/rest-api/jsonata-suggest.types.js");
 
 let connection!: ReturnType<typeof postgres>;
 let db!: ReturnType<typeof drizzle>;
@@ -131,7 +126,7 @@ describe("POST /api/connector-instances/suggest-transform — happy paths", () =
       previousAttempt?: { expression: string; error: string };
     };
     expect(secondCallInput.previousAttempt?.expression).toBe(
-      "$count(data.items)",
+      "$count(data.items)"
     );
     expect(secondCallInput.previousAttempt?.error).toBeDefined();
   });
@@ -237,7 +232,7 @@ describe("POST /api/connector-instances/suggest-transform — errors", () => {
     const suggestSpy = jest
       .fn<() => Promise<{ expression: string }>>()
       .mockRejectedValueOnce(
-        new JsonataSuggestError("timeout", "request aborted"),
+        new JsonataSuggestError("timeout", "request aborted")
       );
     __setJsonataSuggesterForTesting({ suggest: suggestSpy } as never);
 
@@ -257,7 +252,7 @@ describe("POST /api/connector-instances/suggest-transform — errors", () => {
       .mockResolvedValueOnce({ expression: "$count(data)" })
       // Retry throws — route maps to 502.
       .mockRejectedValueOnce(
-        new JsonataSuggestError("network-error", "ECONNRESET"),
+        new JsonataSuggestError("network-error", "ECONNRESET")
       );
     __setJsonataSuggesterForTesting({ suggest: suggestSpy } as never);
 

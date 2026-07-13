@@ -1,5 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -168,9 +175,7 @@ describe("Toolpacks Router", () => {
 
     // Case 41
     it("404s for a custom: prefix in phase 1", async () => {
-      const res = await request(app).get(
-        "/api/toolpacks/custom:any-uuid-here"
-      );
+      const res = await request(app).get("/api/toolpacks/custom:any-uuid-here");
       expect(res.status).toBe(404);
       expect(res.body.code).toBe(ApiCode.TOOLPACK_NOT_FOUND);
     });
@@ -188,10 +193,12 @@ describe("Toolpacks Router", () => {
     it("registers a custom pack and redacts auth headers", async () => {
       mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
 
-      const res = await request(app).post("/api/toolpacks").send({
-        ...VALID_REGISTER_BODY,
-        authHeaders: { "X-Api-Key": "secret" },
-      });
+      const res = await request(app)
+        .post("/api/toolpacks")
+        .send({
+          ...VALID_REGISTER_BODY,
+          authHeaders: { "X-Api-Key": "secret" },
+        });
 
       expect(res.status).toBe(201);
       expect(res.body.payload.toolpack.kind).toBe("custom");
@@ -375,20 +382,18 @@ describe("Toolpacks Router", () => {
       // Seed a station + a station_toolpacks row referencing the new pack.
       const stationId = `00000000-0000-0000-0000-${Date.now().toString().padStart(12, "0").slice(-12)}`;
       const now = Date.now();
-      await (db as ReturnType<typeof drizzle>)
-        .insert(schema.stations)
-        .values({
-          id: stationId,
-          organizationId,
-          name: "Test Station",
-          description: null,
-          created: now,
-          createdBy: "SYSTEM_TEST",
-          updated: null,
-          updatedBy: null,
-          deleted: null,
-          deletedBy: null,
-        } as never);
+      await (db as ReturnType<typeof drizzle>).insert(schema.stations).values({
+        id: stationId,
+        organizationId,
+        name: "Test Station",
+        description: null,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
       const stpId = `${stationId}-stp`;
       await (db as ReturnType<typeof drizzle>)
         .insert(schema.stationToolpacks)
@@ -432,7 +437,8 @@ describe("Toolpacks Router", () => {
         .post("/api/toolpacks")
         .send(VALID_REGISTER_BODY);
       const id = reg.body.payload.toolpack.id as string;
-      const initialFetchedAt = reg.body.payload.toolpack.schemaFetchedAt as number;
+      const initialFetchedAt = reg.body.payload.toolpack
+        .schemaFetchedAt as number;
 
       // Wait at least a millisecond so the refresh produces a strictly
       // larger timestamp.

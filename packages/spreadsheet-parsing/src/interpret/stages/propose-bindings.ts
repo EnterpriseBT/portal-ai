@@ -53,8 +53,7 @@ function bindingsFromClassifications(
       // opposite. `sourceCol` is the absolute sheet coord along the
       // header axis of the classifier (which for headerless falls back
       // to row iteration); convert to an axis-relative 1-based index.
-      const axis: AxisMember =
-        region.recordsAxis === "row" ? "column" : "row";
+      const axis: AxisMember = region.recordsAxis === "row" ? "column" : "row";
       const start =
         axis === "row" ? region.bounds.startCol : region.bounds.startRow;
       out.push({

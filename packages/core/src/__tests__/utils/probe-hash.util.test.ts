@@ -28,7 +28,7 @@ const BASE: ProbeHashInput = {
 };
 
 // Helper: typed deep clone for per-test mutation.
-const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 // ── Canonicalization ─────────────────────────────────────────────────
 

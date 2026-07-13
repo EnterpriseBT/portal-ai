@@ -85,10 +85,8 @@ function reducer(state: State, action: Action): State {
         // Only overwrite counters when the terminal payload carries
         // them — `job:*` terminal events from the live stream don't,
         // but the recovery `snapshot` does (via the job's `result`).
-        recordsProcessed:
-          action.recordsProcessed ?? state.recordsProcessed,
-        totalRecords:
-          action.totalRecords ?? state.totalRecords,
+        recordsProcessed: action.recordsProcessed ?? state.recordsProcessed,
+        totalRecords: action.totalRecords ?? state.totalRecords,
         failureCount: action.recordsFailed ?? state.failureCount,
         droppedCount: action.droppedRecords ?? state.droppedCount,
         droppedKeys: action.droppedKeys ?? state.droppedKeys,
@@ -203,8 +201,8 @@ export const BulkJobProgressBlockUI: React.FC<BulkJobProgressBlockUIProps> = ({
           aria-label="Dropped records detail"
         >
           <Typography variant="caption" component="div">
-            <strong>{state.droppedCount.toLocaleString()} records</strong>{" "}
-            were dropped because the tool returned keys that aren&rsquo;t
+            <strong>{state.droppedCount.toLocaleString()} records</strong> were
+            dropped because the tool returned keys that aren&rsquo;t
             wide-columns on the target.
           </Typography>
           {state.droppedKeys.length > 0 && (

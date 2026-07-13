@@ -7,7 +7,9 @@ const appDev = BUILTIN_ENVIRONMENTS["app-dev"];
 describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", () => {
   it("carries the exact managed keys", () => {
     const byKind = (k: string) =>
-      CATALOG.filter((e) => e.kind === k).map((e) => e.key).sort();
+      CATALOG.filter((e) => e.kind === k)
+        .map((e) => e.key)
+        .sort();
     expect(byKind("secret")).toEqual([
       "ANTHROPIC_API_KEY",
       "AUTH0_WEBHOOK_SECRET",

@@ -130,7 +130,10 @@ export const IdentityPanelUI: React.FC<IdentityPanelUIProps> = ({
     });
   };
 
-  const selectedOption = findOption(locatorOptions, currentSelection.selectedKey);
+  const selectedOption = findOption(
+    locatorOptions,
+    currentSelection.selectedKey
+  );
   const showDuplicateWarning =
     currentSelection.kind === "column" &&
     selectedOption?.uniqueness === "non-unique";
@@ -176,7 +179,10 @@ export const IdentityPanelUI: React.FC<IdentityPanelUIProps> = ({
               sx={{ height: 18 }}
             />
           ) : currentSelection.confidence !== undefined ? (
-            <ConfidenceChipUI label="Identity" score={currentSelection.confidence} />
+            <ConfidenceChipUI
+              label="Identity"
+              score={currentSelection.confidence}
+            />
           ) : null}
         </Stack>
 
@@ -216,10 +222,9 @@ export const IdentityPanelUI: React.FC<IdentityPanelUIProps> = ({
           <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
             <Typography variant="caption">
               The preview only loaded part of the sheet, so duplicates in
-              unloaded rows can&apos;t be detected here. Commit will fail
-              with a duplicate-identity error if the full data set has
-              repeats — switch to position-based ids if you&apos;re not
-              sure.
+              unloaded rows can&apos;t be detected here. Commit will fail with a
+              duplicate-identity error if the full data set has repeats — switch
+              to position-based ids if you&apos;re not sure.
             </Typography>
           </Alert>
         )}

@@ -91,7 +91,11 @@ const plan: LayoutPlan = {
         confidence: 0.9,
       },
       columnBindings: HEADERS.map((h) => ({
-        sourceLocator: { kind: "byHeaderName" as const, axis: "row" as const, name: h },
+        sourceLocator: {
+          kind: "byHeaderName" as const,
+          axis: "row" as const,
+          name: h,
+        },
         columnDefinitionId: `col-${h}`,
         confidence: 0.9,
       })),
@@ -113,9 +117,7 @@ const result = await replay(plan, workbook);
 const elapsedMs = Date.now() - start;
 
 if (result.records.length !== ROWS) {
-  console.error(
-    `FAIL: expected ${ROWS} records, got ${result.records.length}`
-  );
+  console.error(`FAIL: expected ${ROWS} records, got ${result.records.length}`);
   process.exit(1);
 }
 

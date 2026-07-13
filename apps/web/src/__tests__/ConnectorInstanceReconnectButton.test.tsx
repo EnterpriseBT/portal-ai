@@ -1,9 +1,8 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { ConnectorInstanceReconnectButtonUI } = await import(
-  "../components/ConnectorInstanceReconnectButton.component"
-);
+const { ConnectorInstanceReconnectButtonUI } =
+  await import("../components/ConnectorInstanceReconnectButton.component");
 
 describe("ConnectorInstanceReconnectButtonUI", () => {
   const baseProps = {
@@ -22,7 +21,9 @@ describe("ConnectorInstanceReconnectButtonUI", () => {
   });
 
   it("renders the Reconnect button when status is 'error'", () => {
-    render(<ConnectorInstanceReconnectButtonUI {...baseProps} status="error" />);
+    render(
+      <ConnectorInstanceReconnectButtonUI {...baseProps} status="error" />
+    );
     const btn = screen.getByRole("button", { name: /reconnect/i });
     expect(btn).toBeInTheDocument();
     expect(btn).not.toBeDisabled();

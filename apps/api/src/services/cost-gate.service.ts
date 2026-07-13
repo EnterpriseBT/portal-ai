@@ -48,7 +48,10 @@ export type CostResolver = (input: unknown) => number | Promise<number>;
 export const COST_RESOLVERS: Record<string, CostResolver> = {};
 
 /** Register (or override) a tool's cost resolver. Idempotent by tool name. */
-export function registerCostResolver(toolName: string, resolver: CostResolver): void {
+export function registerCostResolver(
+  toolName: string,
+  resolver: CostResolver
+): void {
   COST_RESOLVERS[toolName] = resolver;
 }
 
@@ -129,7 +132,8 @@ export class CostGateService {
     // free tools are immune to all gating — never charged, never denied.
     if (ctx.costHint === "free") return { allowed: true, charge: null };
     // who-pays: org-hosted (custom/webhook) tools are never charged.
-    if (ctx.costBearer === "organization") return { allowed: true, charge: null };
+    if (ctx.costBearer === "organization")
+      return { allowed: true, charge: null };
 
     const units = await resolveCallCost(ctx.toolName, ctx.input);
     if (units <= 0) return { allowed: true, charge: null };

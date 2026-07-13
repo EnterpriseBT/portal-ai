@@ -16,26 +16,21 @@ describe("parseProjections", () => {
       )
     ).toEqual([
       {
-        value:
-          '("c_diameter_km_min" + "c_diameter_km_max") / 2.0',
+        value: '("c_diameter_km_min" + "c_diameter_km_max") / 2.0',
         alias: "c_diameter_avg_km",
       },
     ]);
   });
 
   it("does not split on commas inside parens", () => {
-    expect(
-      parseProjections('GREATEST("c_a", "c_b") AS c_max')
-    ).toEqual([
+    expect(parseProjections('GREATEST("c_a", "c_b") AS c_max')).toEqual([
       { value: 'GREATEST("c_a", "c_b")', alias: "c_max" },
     ]);
   });
 
   it("splits multiple top-level projections", () => {
     expect(
-      parseProjections(
-        'UPPER("c_name") AS c_upper, LENGTH("c_name") AS c_len'
-      )
+      parseProjections('UPPER("c_name") AS c_upper, LENGTH("c_name") AS c_len')
     ).toEqual([
       { value: 'UPPER("c_name")', alias: "c_upper" },
       { value: 'LENGTH("c_name")', alias: "c_len" },
@@ -49,9 +44,7 @@ describe("parseProjections", () => {
   });
 
   it("respects string literals when scanning for AS", () => {
-    expect(
-      parseProjections("'a AS b' || \"c_name\" AS c_label")
-    ).toEqual([
+    expect(parseProjections("'a AS b' || \"c_name\" AS c_label")).toEqual([
       { value: "'a AS b' || \"c_name\"", alias: "c_label" },
     ]);
   });

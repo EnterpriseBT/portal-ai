@@ -18,9 +18,7 @@ function makeRegion(
   } as unknown as LayoutPlan["regions"][number];
 }
 
-function makePlan(
-  regions: LayoutPlan["regions"]
-): LayoutPlan {
+function makePlan(regions: LayoutPlan["regions"]): LayoutPlan {
   return { regions } as unknown as LayoutPlan;
 }
 
@@ -58,10 +56,7 @@ describe("assertSyncEligibleIdentity", () => {
 
   it("populates identityWarnings for a single rowPosition region in an otherwise stable plan", () => {
     const out = assertSyncEligibleIdentity(
-      makePlan([
-        makeRegion("r1", "column"),
-        makeRegion("r2", "rowPosition"),
-      ])
+      makePlan([makeRegion("r1", "column"), makeRegion("r2", "rowPosition")])
     );
     expect(out).toEqual({
       ok: true,

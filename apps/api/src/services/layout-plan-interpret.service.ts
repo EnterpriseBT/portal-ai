@@ -4,10 +4,7 @@ import type {
   RegionHint,
 } from "@portalai/core/contracts";
 import { interpret } from "@portalai/spreadsheet-parsing";
-import type {
-  Workbook,
-  WorkbookData,
-} from "@portalai/spreadsheet-parsing";
+import type { Workbook, WorkbookData } from "@portalai/spreadsheet-parsing";
 
 import { DbService } from "./db.service.js";
 import {

@@ -209,9 +209,7 @@ export class StationContextTool extends Tool<typeof InputSchema> {
                 label: e.label,
                 connectorInstanceId: e.connectorInstanceId,
                 connectorInstanceName: null as string | null,
-                ...(caps && caps[e.id]
-                  ? { capabilities: caps[e.id] }
-                  : {}),
+                ...(caps && caps[e.id] ? { capabilities: caps[e.id] } : {}),
                 columns: e.columns.map((col) => ({
                   key: col.key,
                   wideColumnName: wideByKey.get(col.key) ?? null,
@@ -227,10 +225,10 @@ export class StationContextTool extends Tool<typeof InputSchema> {
           response.entities = entitiesOut;
         }
 
-        const instances = sections.has("connectorInstances") ||
-          sections.has("entities")
-          ? await loadConnectorInstanceContexts(stationId)
-          : null;
+        const instances =
+          sections.has("connectorInstances") || sections.has("entities")
+            ? await loadConnectorInstanceContexts(stationId)
+            : null;
 
         // Fill in connectorInstanceName on each entity if we loaded
         // the instances.

@@ -31,17 +31,29 @@
       },
       "columnBindings": [
         {
-          "sourceLocator": { "kind": "byHeaderName", "axis": "row", "name": "name" },
+          "sourceLocator": {
+            "kind": "byHeaderName",
+            "axis": "row",
+            "name": "name"
+          },
           "columnDefinitionId": "col-name",
           "confidence": 0.92
         },
         {
-          "sourceLocator": { "kind": "byHeaderName", "axis": "row", "name": "email" },
+          "sourceLocator": {
+            "kind": "byHeaderName",
+            "axis": "row",
+            "name": "email"
+          },
           "columnDefinitionId": "col-email",
           "confidence": 0.88
         },
         {
-          "sourceLocator": { "kind": "byHeaderName", "axis": "row", "name": "age" },
+          "sourceLocator": {
+            "kind": "byHeaderName",
+            "axis": "row",
+            "name": "age"
+          },
           "columnDefinitionId": "col-age",
           "confidence": 0.8
         }

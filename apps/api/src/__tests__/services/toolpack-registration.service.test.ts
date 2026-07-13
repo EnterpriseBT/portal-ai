@@ -27,9 +27,8 @@ jest.unstable_mockModule("../../utils/url-safety.util.js", () => ({
   validateToolpackUrl: () => null,
 }));
 
-const { ToolpackRegistrationService } = await import(
-  "../../services/toolpack-registration.service.js"
-);
+const { ToolpackRegistrationService } =
+  await import("../../services/toolpack-registration.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
 // ---------------------------------------------------------------------------
@@ -263,7 +262,11 @@ describe("ToolpackRegistrationService", () => {
         fetchOk(
           toolWithCapability({
             ...pureConsumerCapability,
-            consumption: { mode: "bounded", maxRows: 1000, onOverflow: "error" },
+            consumption: {
+              mode: "bounded",
+              maxRows: 1000,
+              onOverflow: "error",
+            },
           })
         )
       );

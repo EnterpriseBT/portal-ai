@@ -8,7 +8,10 @@ describe("googleSheetsToWorkbook", () => {
       properties: { title: "My Workbook" },
       sheets: [
         {
-          properties: { title: "Sheet1", gridProperties: { rowCount: 2, columnCount: 3 } },
+          properties: {
+            title: "Sheet1",
+            gridProperties: { rowCount: 2, columnCount: 3 },
+          },
           data: [
             {
               startRow: 0,
@@ -16,16 +19,34 @@ describe("googleSheetsToWorkbook", () => {
               rowData: [
                 {
                   values: [
-                    { effectiveValue: { stringValue: "name" }, formattedValue: "name" },
-                    { effectiveValue: { stringValue: "age" }, formattedValue: "age" },
-                    { effectiveValue: { stringValue: "active" }, formattedValue: "active" },
+                    {
+                      effectiveValue: { stringValue: "name" },
+                      formattedValue: "name",
+                    },
+                    {
+                      effectiveValue: { stringValue: "age" },
+                      formattedValue: "age",
+                    },
+                    {
+                      effectiveValue: { stringValue: "active" },
+                      formattedValue: "active",
+                    },
                   ],
                 },
                 {
                   values: [
-                    { effectiveValue: { stringValue: "Alice" }, formattedValue: "Alice" },
-                    { effectiveValue: { numberValue: 30 }, formattedValue: "30" },
-                    { effectiveValue: { boolValue: true }, formattedValue: "TRUE" },
+                    {
+                      effectiveValue: { stringValue: "Alice" },
+                      formattedValue: "Alice",
+                    },
+                    {
+                      effectiveValue: { numberValue: 30 },
+                      formattedValue: "30",
+                    },
+                    {
+                      effectiveValue: { boolValue: true },
+                      formattedValue: "TRUE",
+                    },
                   ],
                 },
               ],
@@ -254,8 +275,6 @@ describe("googleSheetsToWorkbook", () => {
 
   it("validates against WorkbookSchema (rejects malformed shapes via throw)", () => {
     // No sheets at all → schema requires .min(1)
-    expect(() =>
-      googleSheetsToWorkbook({ sheets: [] })
-    ).toThrow(/workbook/i);
+    expect(() => googleSheetsToWorkbook({ sheets: [] })).toThrow(/workbook/i);
   });
 });

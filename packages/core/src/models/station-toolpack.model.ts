@@ -25,8 +25,7 @@ export const StationToolpackSchema = CoreSchema.extend({
 }).refine(
   (v) => (v.builtinSlug === null) !== (v.organizationToolpackId === null),
   {
-    message:
-      "Exactly one of builtinSlug or organizationToolpackId must be set",
+    message: "Exactly one of builtinSlug or organizationToolpackId must be set",
   }
 );
 

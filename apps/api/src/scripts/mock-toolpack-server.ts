@@ -382,9 +382,7 @@ function neoDiameterAvg(input: Record<string, unknown>): number {
   const min = Number(input.c_diameter_km_min);
   const max = Number(input.c_diameter_km_max);
   if (!Number.isFinite(min) || !Number.isFinite(max)) {
-    throw new Error(
-      "c_diameter_km_min / c_diameter_km_max must be numeric"
-    );
+    throw new Error("c_diameter_km_min / c_diameter_km_max must be numeric");
   }
   return (min + max) / 2;
 }
@@ -440,11 +438,7 @@ const metadata = {
  * stream, the raw bytes are gone. The `verify` callback fires while
  * the buffer is still in memory, before parsing.
  */
-function captureRawBodyVerify(
-  req: Request,
-  _res: Response,
-  buf: Buffer
-): void {
+function captureRawBodyVerify(req: Request, _res: Response, buf: Buffer): void {
   // Express's req.rawBody is typed as Buffer (see types/express.d.ts).
   req.rawBody = buf;
 }
@@ -570,11 +564,7 @@ function verifySignature(
   res: Response,
   next: NextFunction
 ): void {
-  const logOutcome = (
-    color: string,
-    label: string,
-    detail?: string
-  ): void => {
+  const logOutcome = (color: string, label: string, detail?: string): void => {
     console.log(
       `    ${tone("Signature:", c.bold)} ${tone(label, color)}${
         detail ? ` ${tone(detail, c.dim)}` : ""
@@ -682,9 +672,7 @@ export function createMockApp(): Application {
       case "echo": {
         const message = (input as { message?: unknown })?.message;
         if (typeof message !== "string") {
-          res
-            .status(400)
-            .json({ error: "`input.message` must be a string." });
+          res.status(400).json({ error: "`input.message` must be a string." });
           return;
         }
         res.json({ echoed: message });
@@ -739,9 +727,7 @@ export function createMockApp(): Application {
         (async () => {
           try {
             await sleep(NEO_PER_CALL_LATENCY_MS);
-            const id = Number(
-              (input as Record<string, unknown>)?.c_id
-            );
+            const id = Number((input as Record<string, unknown>)?.c_id);
             if (Number.isFinite(id) && id % NEO_FLAKY_MOD === 0) {
               res.status(500).json({
                 error: `Flaky failure injected for c_id=${id} (every ${NEO_FLAKY_MOD}th).`,
@@ -787,9 +773,9 @@ export function createMockApp(): Application {
             });
             res.json({ count });
           } catch (err) {
-            res
-              .status(502)
-              .json({ error: err instanceof Error ? err.message : "pull_failed" });
+            res.status(502).json({
+              error: err instanceof Error ? err.message : "pull_failed",
+            });
           }
         })();
         return;

@@ -97,9 +97,7 @@ function buildBody(form: FormState): {
     endpoints: {
       schema: form.schemaUrl.trim(),
       runtime: form.runtimeUrl.trim(),
-      ...(form.metadataUrl.trim()
-        ? { metadata: form.metadataUrl.trim() }
-        : {}),
+      ...(form.metadataUrl.trim() ? { metadata: form.metadataUrl.trim() } : {}),
     },
     ...(parsedHeaders ? { authHeaders: parsedHeaders } : {}),
   };
@@ -128,11 +126,11 @@ export const AUTH_HEADER_BOILERPLATES: ReadonlyArray<{
   label: string;
   template: string;
 }> = [
-    { label: "Bearer token", template: "Authorization: Bearer <token>" },
-    { label: "API key", template: "X-Api-Key: <key>" },
-    { label: "Basic auth", template: "Authorization: Basic <base64>" },
-    { label: "Custom header", template: "X-Custom-Header: <value>" },
-  ];
+  { label: "Bearer token", template: "Authorization: Bearer <token>" },
+  { label: "API key", template: "X-Api-Key: <key>" },
+  { label: "Basic auth", template: "Authorization: Basic <base64>" },
+  { label: "Custom header", template: "X-Custom-Header: <value>" },
+];
 
 /**
  * Append a boilerplate line to an existing auth-headers textarea
@@ -224,10 +222,10 @@ export const RegisterToolpackDialogUI: React.FC<
             color="text.secondary"
             sx={{ lineHeight: 1.4, fontWeight: 400 }}
           >
-            Connect your own webhook server so the assistant can call its
-            tools during portal sessions. Portals.ai fetches your tool catalog
-            once at registration, then HMAC-signs every outbound call so your
-            server can verify the request came from us.
+            Connect your own webhook server so the assistant can call its tools
+            during portal sessions. Portals.ai fetches your tool catalog once at
+            registration, then HMAC-signs every outbound call so your server can
+            verify the request came from us.
           </Typography>
         </Stack>
       }
@@ -363,7 +361,11 @@ export const RegisterToolpackDialogUI: React.FC<
             useFlexGap
             data-testid="auth-headers-boilerplates"
           >
-            <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ mr: 0.5 }}
+            >
               Insert:
             </Typography>
             {AUTH_HEADER_BOILERPLATES.map((bp) => (
@@ -768,10 +770,7 @@ const TabbedSnippetAccordion: React.FC<{
                       {b.label}
                     </Typography>
                   )}
-                  <HighlightedCode
-                    code={b.example}
-                    language={b.language}
-                  />
+                  <HighlightedCode code={b.example} language={b.language} />
                 </Box>
               ))}
             </Stack>
@@ -781,4 +780,3 @@ const TabbedSnippetAccordion: React.FC<{
     </Accordion>
   );
 };
-

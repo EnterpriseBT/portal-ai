@@ -3,12 +3,16 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 // ── Mocks ────────────────────────────────────────────────────────────
 
 const mockRedisGet = jest.fn<() => Promise<string | null>>();
-const mockRedisSet =
-  jest
-    .fn<
-      (key: string, value: string, mode: "EX", seconds: number) => Promise<unknown>
-    >()
-    .mockResolvedValue("OK");
+const mockRedisSet = jest
+  .fn<
+    (
+      key: string,
+      value: string,
+      mode: "EX",
+      seconds: number
+    ) => Promise<unknown>
+  >()
+  .mockResolvedValue("OK");
 const mockRedisDel = jest.fn<() => Promise<number>>().mockResolvedValue(1);
 
 jest.unstable_mockModule("../../utils/redis.util.js", () => ({
@@ -30,9 +34,8 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
-const { CostAcknowledgementService, computeJobSignature } = await import(
-  "../../services/cost-acknowledgement.service.js"
-);
+const { CostAcknowledgementService, computeJobSignature } =
+  await import("../../services/cost-acknowledgement.service.js");
 
 const PORTAL_ID = "portal-1";
 
@@ -56,12 +59,10 @@ describe("computeJobSignature", () => {
 
   it("returns a different hash when any input changes", () => {
     const base = computeJobSignature(INPUTS);
-    expect(
-      computeJobSignature({ ...INPUTS, batchSize: 2_000 })
-    ).not.toBe(base);
-    expect(
-      computeJobSignature({ ...INPUTS, keyField: "c_other" })
-    ).not.toBe(base);
+    expect(computeJobSignature({ ...INPUTS, batchSize: 2_000 })).not.toBe(base);
+    expect(computeJobSignature({ ...INPUTS, keyField: "c_other" })).not.toBe(
+      base
+    );
     expect(
       computeJobSignature({
         ...INPUTS,

@@ -13,22 +13,22 @@ describe("JsonataSuggestError", () => {
   it("prefixes the message with reason for network-error", () => {
     const err = new JsonataSuggestError(
       "network-error",
-      "fetch failed: ECONNRESET",
+      "fetch failed: ECONNRESET"
     );
     expect(err.reason).toBe("network-error");
     expect(err.message).toBe(
-      "[jsonata-suggest:network-error] fetch failed: ECONNRESET",
+      "[jsonata-suggest:network-error] fetch failed: ECONNRESET"
     );
   });
 
   it("prefixes the message with reason for malformed-response", () => {
     const err = new JsonataSuggestError(
       "malformed-response",
-      "schema mismatch",
+      "schema mismatch"
     );
     expect(err.reason).toBe("malformed-response");
     expect(err.message).toBe(
-      "[jsonata-suggest:malformed-response] schema mismatch",
+      "[jsonata-suggest:malformed-response] schema mismatch"
     );
   });
 

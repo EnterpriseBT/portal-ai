@@ -44,7 +44,9 @@ export interface ReviewStepUIProps {
    */
   resolveIdentityLocatorOptions?: (
     region: RegionDraft
-  ) => import("./utils/identity-locator-options.util").LocatorOption[] | undefined;
+  ) =>
+    | import("./utils/identity-locator-options.util").LocatorOption[]
+    | undefined;
   /**
    * Fires when the user picks an identity option in the panel. The
    * caller turns the change into a `RegionDraft` patch with
@@ -154,11 +156,13 @@ function parseSyntheticLocator(
 function findPivotSegment(
   region: RegionDraft,
   segmentId: string
-): {
-  axisName: string;
-  columnDefinitionId?: string;
-  excluded?: boolean;
-} | undefined {
+):
+  | {
+      axisName: string;
+      columnDefinitionId?: string;
+      excluded?: boolean;
+    }
+  | undefined {
   for (const axis of ["row", "column"] as const) {
     for (const seg of region.segmentsByAxis?.[axis] ?? []) {
       if (seg.kind === "pivot" && seg.id === segmentId) {
@@ -191,8 +195,7 @@ function syntheticBindingDraft(
     };
   }
   if (parsed.kind === "intersection") {
-    const field =
-      region.intersectionCellValueFields?.[parsed.intersectionId];
+    const field = region.intersectionCellValueFields?.[parsed.intersectionId];
     if (!field) return null;
     return {
       sourceLocator,
@@ -230,8 +233,7 @@ function syntheticDerivedNormalizedKey(
     return seg ? sourceFieldToNormalizedKey(seg.axisName) : undefined;
   }
   if (parsed.kind === "intersection") {
-    const field =
-      region.intersectionCellValueFields?.[parsed.intersectionId];
+    const field = region.intersectionCellValueFields?.[parsed.intersectionId];
     return field ? sourceFieldToNormalizedKey(field.name) : undefined;
   }
   return region.cellValueField
@@ -475,9 +477,10 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
       bindingErrorsByRegion.set(r.id, regionErrors);
     }
   }
-  const bindingErrorCount = Array.from(
-    bindingErrorsByRegion.values()
-  ).reduce((sum, regionErrors) => sum + Object.keys(regionErrors).length, 0);
+  const bindingErrorCount = Array.from(bindingErrorsByRegion.values()).reduce(
+    (sum, regionErrors) => sum + Object.keys(regionErrors).length,
+    0
+  );
   const bindingDisabledReason =
     bindingErrorCount > 0
       ? `${bindingErrorCount} binding${bindingErrorCount === 1 ? "" : "s"} ha${bindingErrorCount === 1 ? "s" : "ve"} validation errors — fix them before committing.`
@@ -645,15 +648,15 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
           columnDefinitionSearch={columnDefinitionSearch}
           referenceEntityOptions={(() => {
             const region = regions.find((r) => r.id === editing.regionId);
-            return region ? resolveReferenceOptions?.(region) ?? [] : [];
+            return region ? (resolveReferenceOptions?.(region) ?? []) : [];
           })()}
           referenceFieldOptions={(() => {
             const region = regions.find((r) => r.id === editing.regionId);
             return region
-              ? resolveReferenceFieldOptions?.(
+              ? (resolveReferenceFieldOptions?.(
                   region,
                   editing.draft.refEntityKey
-                ) ?? []
+                ) ?? [])
               : [];
           })()}
           errors={editing.errors}

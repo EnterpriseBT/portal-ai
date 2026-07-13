@@ -35,18 +35,21 @@ const PLACEHOLDER_PATTERN = /\{\{\s*([a-zA-Z_]\w*)?\s*\}\}/g;
  * substituted.
  */
 export function applyTemplate(input: string, vars: TemplateVariables): string {
-  return input.replace(PLACEHOLDER_PATTERN, (_match, rawName: string | undefined) => {
-    const name = rawName ?? "";
-    if (!KNOWN_VARIABLES.has(name as keyof TemplateVariables)) {
-      throw new ApiError(
-        400,
-        ApiCode.REST_API_TEMPLATE_UNKNOWN_VARIABLE,
-        `Unknown template variable "${name}". Allowed: cursor, pageNumber.`,
-        { name }
-      );
+  return input.replace(
+    PLACEHOLDER_PATTERN,
+    (_match, rawName: string | undefined) => {
+      const name = rawName ?? "";
+      if (!KNOWN_VARIABLES.has(name as keyof TemplateVariables)) {
+        throw new ApiError(
+          400,
+          ApiCode.REST_API_TEMPLATE_UNKNOWN_VARIABLE,
+          `Unknown template variable "${name}". Allowed: cursor, pageNumber.`,
+          { name }
+        );
+      }
+      return String(vars[name as keyof TemplateVariables]);
     }
-    return String(vars[name as keyof TemplateVariables]);
-  });
+  );
 }
 
 /**

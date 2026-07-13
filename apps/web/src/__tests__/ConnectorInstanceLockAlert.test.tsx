@@ -3,9 +3,8 @@ import { jest } from "@jest/globals";
 import type { RunningJobSummary } from "@portalai/core/contracts";
 
 const { render, screen } = await import("./test-utils");
-const { ConnectorInstanceLockAlertUI } = await import(
-  "../components/ConnectorInstanceLockAlert.component"
-);
+const { ConnectorInstanceLockAlertUI } =
+  await import("../components/ConnectorInstanceLockAlert.component");
 
 // Keep the `jest` import live so eslint doesn't trim it — used by the
 // test runner's setup hooks for jest-dom matcher registration.
@@ -34,9 +33,7 @@ describe("ConnectorInstanceLockAlertUI", () => {
     render(<ConnectorInstanceLockAlertUI runningJobs={[job()]} />);
     expect(screen.getByText(/Import is running/i)).toBeInTheDocument();
     // Singular verb form on the body too.
-    expect(
-      screen.getByText(/until this job finishes/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/until this job finishes/i)).toBeInTheDocument();
   });
 
   it("joins multiple running jobs with 'and' and switches to plural", () => {
@@ -51,9 +48,7 @@ describe("ConnectorInstanceLockAlertUI", () => {
     expect(
       screen.getByText(/Import and Sync are running/i)
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/until these jobs finish/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/until these jobs finish/i)).toBeInTheDocument();
   });
 
   it("uses oxford-comma form when three or more jobs are listed", () => {

@@ -94,12 +94,7 @@ export class WideTableColumnsRepository extends Repository<
         updated: Date.now(),
         updatedBy: actor,
       } as never)
-      .where(
-        and(
-          eq(wideTableColumns.id, id),
-          isNull(wideTableColumns.deleted)
-        )
-      )
+      .where(and(eq(wideTableColumns.id, id), isNull(wideTableColumns.deleted)))
       .returning();
     return row as WideTableColumnSelect | undefined;
   }

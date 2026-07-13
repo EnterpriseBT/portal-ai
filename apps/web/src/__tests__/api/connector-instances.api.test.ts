@@ -14,9 +14,8 @@ jest.unstable_mockModule("@portalai/core/ui", () => ({
   useInfiniteFilterOptions: jest.fn(),
 }));
 
-const { connectorInstances } = await import(
-  "../../api/connector-instances.api"
-);
+const { connectorInstances } =
+  await import("../../api/connector-instances.api");
 
 describe("connector-instances.api", () => {
   beforeEach(() => {

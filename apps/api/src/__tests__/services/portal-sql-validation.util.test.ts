@@ -26,9 +26,7 @@ describe("validatePortalSql", () => {
   // ── needsImplicitLimit flag ────────────────────────────────────
 
   it("flags a bare SELECT for implicit-LIMIT wrapping", () => {
-    const { needsImplicitLimit } = validatePortalSql(
-      "SELECT 1"
-    );
+    const { needsImplicitLimit } = validatePortalSql("SELECT 1");
     expect(needsImplicitLimit).toBe(true);
   });
 
@@ -99,10 +97,7 @@ describe("validatePortalSql", () => {
   // ── Multi-statement ────────────────────────────────────────────
 
   it("rejects multi-statement input", () => {
-    expectForbidden(
-      "SELECT 1; DELETE FROM contacts",
-      "multi-statement input"
-    );
+    expectForbidden("SELECT 1; DELETE FROM contacts", "multi-statement input");
   });
 
   // ── Comment handling ───────────────────────────────────────────
@@ -110,16 +105,12 @@ describe("validatePortalSql", () => {
   it("strips line comments before the deny-list scan", () => {
     // The literal `DELETE FROM x` inside a `--` comment must not trip
     // the reserved-verb rule.
-    const result = validatePortalSql(
-      "-- DELETE FROM contacts\nSELECT 1"
-    );
+    const result = validatePortalSql("-- DELETE FROM contacts\nSELECT 1");
     expect(result.needsImplicitLimit).toBe(true);
   });
 
   it("strips block comments before the deny-list scan", () => {
-    const result = validatePortalSql(
-      "/* DELETE FROM contacts */ SELECT 1"
-    );
+    const result = validatePortalSql("/* DELETE FROM contacts */ SELECT 1");
     expect(result.needsImplicitLimit).toBe(true);
   });
 

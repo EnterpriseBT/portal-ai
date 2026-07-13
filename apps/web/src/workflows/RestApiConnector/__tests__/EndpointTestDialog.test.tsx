@@ -8,9 +8,8 @@ import userEvent from "@testing-library/user-event";
 // get a mutateAsync handle and an isPending flag. We mock the SDK with
 // a configurable stub so individual tests can control resolution.
 
-const mutateAsyncMock = jest.fn<
-  (body: { endpointEntityId: string }) => Promise<unknown>
->();
+const mutateAsyncMock =
+  jest.fn<(body: { endpointEntityId: string }) => Promise<unknown>>();
 const useTestConnectionMock = jest.fn(() => ({
   mutateAsync: mutateAsyncMock,
   isPending: false,
@@ -25,11 +24,10 @@ jest.unstable_mockModule("../../../api/sdk", () => ({
   queryKeys: {},
 }));
 
-const { render, screen, waitFor } = await import("../../../__tests__/test-utils");
-const {
-  EndpointTestDialog,
-  EndpointTestDialogUI,
-} = await import("../EndpointTestDialog.component");
+const { render, screen, waitFor } =
+  await import("../../../__tests__/test-utils");
+const { EndpointTestDialog, EndpointTestDialogUI } =
+  await import("../EndpointTestDialog.component");
 
 beforeEach(() => {
   mutateAsyncMock.mockReset();
@@ -97,9 +95,7 @@ describe("EndpointTestDialogUI", () => {
     expect(
       screen.getByText(/REST_API_RECORDS_PATH_NOT_ARRAY/i)
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/expected array/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/expected array/i)).toBeInTheDocument();
     const editButton = screen.getByRole("button", { name: /edit endpoint/i });
     await userEvent.click(editButton);
     expect(onEditEndpoint).toHaveBeenCalled();

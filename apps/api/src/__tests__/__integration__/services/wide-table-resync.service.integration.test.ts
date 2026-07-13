@@ -125,9 +125,7 @@ describe("wideTableResyncService.resyncAllConnectorInstances", () => {
 
     const sandboxAdapter = {
       syncInstance: undefined,
-    } as unknown as Parameters<
-      typeof ConnectorAdapterRegistry.register
-    >[1];
+    } as unknown as Parameters<typeof ConnectorAdapterRegistry.register>[1];
     const syncCapableAdapter = {
       syncInstance: jest.fn(async () => ({
         recordCounts: { created: 0, updated: 0, unchanged: 0 },
@@ -223,7 +221,11 @@ describe("wideTableResyncService.resyncAllConnectorInstances", () => {
     expect(existing).not.toBeNull();
     await (db as ReturnType<typeof drizzle>)
       .update(schema.jobs)
-      .set({ status: "completed", updated: Date.now(), updatedBy: userId } as never)
+      .set({
+        status: "completed",
+        updated: Date.now(),
+        updatedBy: userId,
+      } as never)
       .where(eq(schema.jobs.id, existing!.id));
 
     const second =

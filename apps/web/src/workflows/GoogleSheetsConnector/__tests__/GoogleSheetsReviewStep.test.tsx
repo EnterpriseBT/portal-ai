@@ -13,9 +13,8 @@ jest.unstable_mockModule("../../../modules/RegionEditor", () => ({
 }));
 
 const { render, screen } = await import("../../../__tests__/test-utils");
-const { GoogleSheetsReviewStep } = await import(
-  "../GoogleSheetsReviewStep.component"
-);
+const { GoogleSheetsReviewStep } =
+  await import("../GoogleSheetsReviewStep.component");
 type GoogleSheetsReviewStepUIProps = React.ComponentProps<
   typeof GoogleSheetsReviewStep
 >;

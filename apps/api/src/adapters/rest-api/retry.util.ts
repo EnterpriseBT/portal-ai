@@ -73,10 +73,7 @@ export async function withRetry<T>(
       const delay =
         retryAfterMs !== null
           ? Math.min(retryAfterMs, policy.maxDelayMs * 2)
-          : Math.min(
-              policy.baseDelayMs * 2 ** attempt,
-              policy.maxDelayMs
-            );
+          : Math.min(policy.baseDelayMs * 2 ** attempt, policy.maxDelayMs);
 
       hooks?.onRetry?.(attempt + 1, delay, status);
       await sleep(delay);

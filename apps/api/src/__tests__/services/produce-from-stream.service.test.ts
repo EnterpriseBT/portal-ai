@@ -26,9 +26,8 @@ jest.unstable_mockModule("../../services/portal-sql.service.js", () => ({
   PortalSqlService: { runSqlQuery: mockRunSqlQuery },
 }));
 
-const { PortalSqlHandleService } = await import(
-  "../../services/portal-sql-handle.service.js"
-);
+const { PortalSqlHandleService } =
+  await import("../../services/portal-sql-handle.service.js");
 
 async function* asStream(rows: Record<string, unknown>[], batchSize: number) {
   for (let i = 0; i < rows.length; i += batchSize) {

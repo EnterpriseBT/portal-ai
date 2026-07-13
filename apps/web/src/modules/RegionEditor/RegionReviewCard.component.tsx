@@ -135,7 +135,8 @@ function buildChips(
     const excluded = binding.excluded === true;
     const errors = bindingErrors?.[binding.sourceLocator];
     const invalid = !excluded && errors !== undefined;
-    const errorMessage = invalid && errors ? Object.values(errors)[0] : undefined;
+    const errorMessage =
+      invalid && errors ? Object.values(errors)[0] : undefined;
     const sourceLabel = bindingSourceLabel(binding.sourceLocator, binding);
     chips.push({
       key: `binding:${binding.sourceLocator}`,
@@ -414,135 +415,135 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
               No fields match.
             </Typography>
           ) : (
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            {filteredChips.map((chip) => {
-              const interactive = chip.onClick !== undefined;
-              // Resolve the chip's status — drives the leading icon (the
-              // single visual axis the user scans for problems), the chip's
-              // own background tint for the most-attention case, and the
-              // tooltip copy. "Unbound" is gated strictly on the absence of
-              // a columnDefinitionId so the chip's icon matches the
-              // popover's icon for the same binding (popover uses the same
-              // rule). Confidence-band tinting is informational only and no
-              // longer participates in state classification.
-              const stateName: "bound" | "unbound" | "invalid" | "excluded" =
-                chip.excluded
-                  ? "excluded"
-                  : chip.invalid && chip.columnDefinitionId
-                    ? "invalid"
-                    : !chip.columnDefinitionId
-                      ? "unbound"
-                      : "bound";
-              const iconName =
-                stateName === "excluded"
-                  ? IconName.Block
-                  : stateName === "invalid"
-                    ? IconName.Error
-                    : stateName === "unbound"
-                      ? IconName.Warning
-                      : IconName.CheckCircle;
-              const iconColor =
-                stateName === "excluded"
-                  ? "text.disabled"
-                  : stateName === "invalid"
-                    ? "error.main"
-                    : stateName === "unbound"
-                      ? "warning.main"
-                      : "success.main";
-              const targetLabel =
-                chip.columnDefinitionLabel ?? chip.columnDefinitionId ?? null;
-              const confidencePct =
-                chip.confidence !== undefined
-                  ? Math.round(chip.confidence * 100)
-                  : undefined;
-              const confidenceTooltipSuffix =
-                confidencePct !== undefined
-                  ? ` (${confidencePct}% AI confidence)`
-                  : "";
-              const tooltipCopy =
-                stateName === "excluded"
-                  ? `Excluded — no field mapping will be created for this column.${confidenceTooltipSuffix}`
-                  : stateName === "invalid"
-                    ? `Invalid — ${chip.errorMessage ?? "click to fix the binding."}${confidenceTooltipSuffix}`
-                    : stateName === "unbound"
-                      ? `Unbound — pick a column definition to map this column.${confidenceTooltipSuffix}`
-                      : `Bound${targetLabel ? ` to ${targetLabel}` : ""} — this column is mapped to a column definition.${confidenceTooltipSuffix}`;
-              // Native `<button>` styling resolves text color against
-              // `buttontext` / `Canvas` instead of the document's
-              // `text.primary`, which on the grey.50 card background
-              // renders as a near-invisible pale gray. Lock both the color
-              // and font-family to the document so interactive (button)
-              // chips and display-only (div) chips look identical.
-              const sx = {
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 0.5,
-                px: 1,
-                py: 0.25,
-                borderRadius: 16,
-                border: "1px solid",
-                borderColor: "divider",
-                backgroundColor: chip.invalid
-                  ? "error.light"
-                  : "background.paper",
-                color: "text.primary",
-                fontFamily: "inherit",
-                cursor: interactive ? "pointer" : "default",
-                fontSize: 12,
-                opacity: chip.excluded ? 0.55 : 1,
-                textDecoration: chip.excluded ? "line-through" : "none",
-              } as const;
-              const inner = (
-                <>
-                  <Icon
-                    name={iconName}
-                    sx={{ fontSize: 16, color: iconColor }}
-                    data-testid={`chip-icon-${stateName}`}
-                  />
-                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                    {chip.source}
-                  </Typography>
-                  <span>→</span>
-                  <Typography variant="caption">
-                    {chip.columnDefinitionLabel ??
-                      chip.columnDefinitionId ??
-                      "—"}
-                  </Typography>
-                  {confidencePct !== undefined && (
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      data-testid="chip-confidence"
-                      sx={{ ml: 0.25 }}
-                    >
-                      · {confidencePct}%
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {filteredChips.map((chip) => {
+                const interactive = chip.onClick !== undefined;
+                // Resolve the chip's status — drives the leading icon (the
+                // single visual axis the user scans for problems), the chip's
+                // own background tint for the most-attention case, and the
+                // tooltip copy. "Unbound" is gated strictly on the absence of
+                // a columnDefinitionId so the chip's icon matches the
+                // popover's icon for the same binding (popover uses the same
+                // rule). Confidence-band tinting is informational only and no
+                // longer participates in state classification.
+                const stateName: "bound" | "unbound" | "invalid" | "excluded" =
+                  chip.excluded
+                    ? "excluded"
+                    : chip.invalid && chip.columnDefinitionId
+                      ? "invalid"
+                      : !chip.columnDefinitionId
+                        ? "unbound"
+                        : "bound";
+                const iconName =
+                  stateName === "excluded"
+                    ? IconName.Block
+                    : stateName === "invalid"
+                      ? IconName.Error
+                      : stateName === "unbound"
+                        ? IconName.Warning
+                        : IconName.CheckCircle;
+                const iconColor =
+                  stateName === "excluded"
+                    ? "text.disabled"
+                    : stateName === "invalid"
+                      ? "error.main"
+                      : stateName === "unbound"
+                        ? "warning.main"
+                        : "success.main";
+                const targetLabel =
+                  chip.columnDefinitionLabel ?? chip.columnDefinitionId ?? null;
+                const confidencePct =
+                  chip.confidence !== undefined
+                    ? Math.round(chip.confidence * 100)
+                    : undefined;
+                const confidenceTooltipSuffix =
+                  confidencePct !== undefined
+                    ? ` (${confidencePct}% AI confidence)`
+                    : "";
+                const tooltipCopy =
+                  stateName === "excluded"
+                    ? `Excluded — no field mapping will be created for this column.${confidenceTooltipSuffix}`
+                    : stateName === "invalid"
+                      ? `Invalid — ${chip.errorMessage ?? "click to fix the binding."}${confidenceTooltipSuffix}`
+                      : stateName === "unbound"
+                        ? `Unbound — pick a column definition to map this column.${confidenceTooltipSuffix}`
+                        : `Bound${targetLabel ? ` to ${targetLabel}` : ""} — this column is mapped to a column definition.${confidenceTooltipSuffix}`;
+                // Native `<button>` styling resolves text color against
+                // `buttontext` / `Canvas` instead of the document's
+                // `text.primary`, which on the grey.50 card background
+                // renders as a near-invisible pale gray. Lock both the color
+                // and font-family to the document so interactive (button)
+                // chips and display-only (div) chips look identical.
+                const sx = {
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 0.5,
+                  px: 1,
+                  py: 0.25,
+                  borderRadius: 16,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  backgroundColor: chip.invalid
+                    ? "error.light"
+                    : "background.paper",
+                  color: "text.primary",
+                  fontFamily: "inherit",
+                  cursor: interactive ? "pointer" : "default",
+                  fontSize: 12,
+                  opacity: chip.excluded ? 0.55 : 1,
+                  textDecoration: chip.excluded ? "line-through" : "none",
+                } as const;
+                const inner = (
+                  <>
+                    <Icon
+                      name={iconName}
+                      sx={{ fontSize: 16, color: iconColor }}
+                      data-testid={`chip-icon-${stateName}`}
+                    />
+                    <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                      {chip.source}
                     </Typography>
-                  )}
-                </>
-              );
-              return interactive ? (
-                <Tooltip key={chip.key} title={tooltipCopy} arrow>
-                  <Box
-                    component="button"
-                    type="button"
-                    aria-label={chip.ariaLabel}
-                    onClick={(e) =>
-                      chip.onClick!(e.currentTarget as HTMLElement)
-                    }
-                    sx={sx}
-                  >
-                    {inner}
-                  </Box>
-                </Tooltip>
-              ) : (
-                <Tooltip key={chip.key} title={tooltipCopy} arrow>
-                  <Box role="status" aria-label={chip.ariaLabel} sx={sx}>
-                    {inner}
-                  </Box>
-                </Tooltip>
-              );
-            })}
-          </Stack>
+                    <span>→</span>
+                    <Typography variant="caption">
+                      {chip.columnDefinitionLabel ??
+                        chip.columnDefinitionId ??
+                        "—"}
+                    </Typography>
+                    {confidencePct !== undefined && (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        data-testid="chip-confidence"
+                        sx={{ ml: 0.25 }}
+                      >
+                        · {confidencePct}%
+                      </Typography>
+                    )}
+                  </>
+                );
+                return interactive ? (
+                  <Tooltip key={chip.key} title={tooltipCopy} arrow>
+                    <Box
+                      component="button"
+                      type="button"
+                      aria-label={chip.ariaLabel}
+                      onClick={(e) =>
+                        chip.onClick!(e.currentTarget as HTMLElement)
+                      }
+                      sx={sx}
+                    >
+                      {inner}
+                    </Box>
+                  </Tooltip>
+                ) : (
+                  <Tooltip key={chip.key} title={tooltipCopy} arrow>
+                    <Box role="status" aria-label={chip.ariaLabel} sx={sx}>
+                      {inner}
+                    </Box>
+                  </Tooltip>
+                );
+              })}
+            </Stack>
           )}
         </>
       )}

@@ -87,9 +87,11 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                         items={[
                           {
                             label: "Status",
-                            value: <Box>
-                              <StatusBadge status={status} />
-                            </Box>
+                            value: (
+                              <Box>
+                                <StatusBadge status={status} />
+                              </Box>
+                            ),
                           },
                           { label: "Job ID", value: job.id, variant: "mono" },
                           { label: "Type", value: job.type },
