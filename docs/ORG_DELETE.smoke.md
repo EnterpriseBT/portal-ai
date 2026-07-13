@@ -20,14 +20,14 @@ Run **§Preflight** once. §1–§3 are non-destructive and can be walked in any
 
 ### Fixtures
 
-The walkthrough needs a **disposable, populated target org** (owned by you) and your **regular dev org as the untouched control**.
+The walkthrough needs a **disposable, populated target org you own**, an org where you are **member but not owner** (for the 403), and your **regular dev org as the untouched control**.
 
-- [ ] Seed the target: `npx portalai seed org --name "Smoke Delete Me" --member-email <your-email> --env local --yes`, then `npx portalai member switch <printed orgId> <your-email> --env local --yes` and refresh the app — you're in the target org. Record the printed `<orgId>`.
-- [ ] Populate it so the cascade has something real to destroy:
+- [ ] Target (you = owner): `npx portalai org create --name "Smoke Delete Me" --owner-email <your-email> --env local --yes`. Record the printed `organizationId`. Provisioning bumps your membership's `lastLogin`, so a refresh lands you in it — no switch needed. (Do **not** use `seed org` for the target: it creates a synthetic owner and you'd 403 in §4.)
+- [ ] Non-owner org (you = member only): `npx portalai seed org --name "Smoke Not Mine" --member-email <your-email> --env local --yes` — the synthetic owner makes you a plain member, which is exactly the §2 fixture; no second Auth0 account needed.
+- [ ] Populate the target so the cascade has something real to destroy:
   - [ ] Import a CSV via the **file-upload connector** and commit the layout plan — this creates a connector instance, entity, field mappings, records, an `er__<entityId>` wide table, and a `file_uploads` row. Record the `<entityId>` (visible in the entity URL or `db:studio` → `connector_entities`).
   - [ ] Open a portal and send one message (portal + portal_messages rows).
-- [ ] Add a second (non-owner) member you can log in as: `npx portalai member add <orgId> <second-email> --env local --yes`.
-- [ ] Confirm the org has `usage` rows (Settings → Organization shows non-zero or zero usage; any row counts — if none exist, trigger one metered tool call, e.g. a `web_search` in a portal).
+- [ ] Confirm the target has `usage` rows (any row counts — if none exist, trigger one metered tool call, e.g. a `web_search` in a portal).
 
 ### Reset between runs
 
@@ -49,7 +49,7 @@ In the app, as the **owner**, inside the target org:
 
 ## §2 — Server-side gates: owner-only + confirmation (slice 3)
 
-- [ ] **Non-owner 403.** Log in (separate browser/incognito) as the second member, `member switch` them into the target org if needed. Settings → Organization → Danger zone → open the dialog, type the **exact** name, confirm. Expected: the dialog stays open and `FormAlert` shows **ORGANIZATION_NOT_OWNER** ("Only the organization's owner can delete it"). Refresh — the org is fully intact.
+- [ ] **Non-owner 403.** Switch into the org you don't own: `npx portalai member switch <smoke-not-mine-orgId> <your-email> --env local --yes`, refresh the app. Settings → Organization → Danger zone → open the dialog, type the **exact** name (`Smoke Not Mine`), confirm. Expected: the dialog stays open and `FormAlert` shows **ORGANIZATION_NOT_OWNER** ("Only the organization's owner can delete it"). The org is fully intact. Switch back to the target afterward (`member switch <target-orgId> …`).
 - [ ] **Confirmation mismatch 400, bypassing the UI.** Grab your owner bearer token (devtools → any API request → `Authorization` header), then:
   `curl -s -X DELETE http://localhost:3001/api/organization/<orgId> -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d '{"confirmationName":"Wrong Name"}'`
   Expected: `400` with `code: "ORGANIZATION_CONFIRMATION_MISMATCH"`.
