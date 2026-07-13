@@ -61,7 +61,7 @@ In the app, as the **owner**, inside the target org:
 Stage the job rows in `db:studio` → `jobs` (fastest way to get a stable `active` job):
 
 - [x] Insert a row: `organization_id = <orgId>`, `type = connector_sync`, `status = active`, `metadata = {}`, `progress = 0`, plus base columns (`id` = any uuid, `created` = now-ms, `created_by` = `SMOKE`). As the owner, open the delete dialog, type the exact name, confirm. Expected: dialog stays open; `FormAlert` shows **ENTITY_LOCKED_BY_JOB** ("Organization is locked by an in-flight job"). Verify in `db:studio` that nothing was deleted (org row `deleted` is null, stations/records intact).
-- [ ] Flip that row's `status` to `completed`, and insert a second row identical but `status = pending`. Leave it — §4 will prove the pending job is swept (it's auto-cancelled, then hard-deleted with the org).
+- [x] Flip that row's `status` to `completed`, and insert a second row identical but `status = pending`. Leave it — §4 will prove the pending job is swept (it's auto-cancelled, then hard-deleted with the org).
 
 ## §4 — Full deletion happy path (slices 2–3, destructive)
 
