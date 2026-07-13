@@ -9,6 +9,7 @@ import {
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import type { User } from "@portalai/core/models";
 import * as schema from "../../../db/schema/index.js";
@@ -19,10 +20,15 @@ import { generateId, teardownOrg } from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|org-test-user";
 
-// Mock the auth middleware to populate req.auth with our test sub
+// Mock the auth middleware to populate req.auth with our test sub. A
+// request without an Authorization header gets no req.auth, so routes
+// behind getApplicationMetadata 401 with METADATA_MISSING_AUTH — the
+// closest mockable analogue of the real jwtCheck rejection.
 jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
   jwtCheck: (req: Request, _res: Response, next: NextFunction) => {
-    req.auth = { payload: { sub: AUTH0_ID } } as never;
+    if (req.headers.authorization) {
+      req.auth = { payload: { sub: AUTH0_ID } } as never;
+    }
     next();
   },
 }));
@@ -371,6 +377,194 @@ describe("Organization Router", () => {
         .send({ organizationId: generateId() });
       expect(res.status).toBe(404);
       expect(res.body.code).toBe(ApiCode.ORGANIZATION_USER_NOT_FOUND);
+    });
+  });
+
+  describe("DELETE /api/organization/:id (#197)", () => {
+    it("returns 401 without a token (case 12)", async () => {
+      const res = await request(app)
+        .delete(`/api/organization/${generateId()}`)
+        .send({ confirmationName: "My Organization" });
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe(ApiCode.METADATA_MISSING_AUTH);
+    });
+
+    it("returns 404 when :id is not the caller's current org (case 13)", async () => {
+      const owner = createOwner();
+      await ApplicationService.setupOrganization(owner);
+
+      const res = await request(app)
+        .delete(`/api/organization/${generateId()}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ confirmationName: "My Organization" });
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.ORGANIZATION_NOT_FOUND);
+    });
+
+    it("returns 403 ORGANIZATION_NOT_OWNER for a non-owner member (case 14)", async () => {
+      const d = db as ReturnType<typeof drizzle>;
+      const now = Date.now();
+
+      // A stranger owns the org; the AUTH0_ID caller is only a member.
+      const strangerId = generateId();
+      await d.insert(users).values({
+        id: strangerId,
+        auth0Id: `auth0|stranger-${strangerId}`,
+        email: `stranger-${strangerId}@example.com`,
+        name: "Stranger",
+        picture: null,
+        lastLogin: null,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      const caller = createOwner();
+      await d.insert(users).values({
+        id: caller.id,
+        auth0Id: caller.auth0Id,
+        email: caller.email,
+        name: caller.name,
+        picture: caller.picture,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      const orgId = generateId();
+      await d.insert(organizations).values({
+        id: orgId,
+        name: "Shared Org",
+        timezone: "UTC",
+        ownerUserId: strangerId,
+        tier: "standard",
+        defaultStationId: null,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+      await d.insert(organizationUsers).values({
+        id: generateId(),
+        organizationId: orgId,
+        userId: caller.id,
+        lastLogin: now,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+
+      const res = await request(app)
+        .delete(`/api/organization/${orgId}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ confirmationName: "Shared Org" });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe(ApiCode.ORGANIZATION_NOT_OWNER);
+
+      // Server-side authz means the org survives even a correct name.
+      const [stillLive] = await d
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, orgId));
+      expect(stillLive?.deleted).toBeNull();
+    });
+
+    it("returns 400 for a missing body and a mismatched name (case 15)", async () => {
+      const owner = createOwner();
+      const result = await ApplicationService.setupOrganization(owner);
+
+      const missing = await request(app)
+        .delete(`/api/organization/${result.organization.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({});
+      expect(missing.status).toBe(400);
+      expect(missing.body.code).toBe(ApiCode.ORGANIZATION_INVALID_PAYLOAD);
+
+      // Case-sensitive: a lowercased name is a mismatch.
+      const mismatch = await request(app)
+        .delete(`/api/organization/${result.organization.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ confirmationName: "my organization" });
+      expect(mismatch.status).toBe(400);
+      expect(mismatch.body.code).toBe(
+        ApiCode.ORGANIZATION_CONFIRMATION_MISMATCH
+      );
+    });
+
+    it("deletes on the happy path; repeat and /current 404 (case 16)", async () => {
+      const owner = createOwner();
+      const result = await ApplicationService.setupOrganization(owner);
+
+      // Surrounding whitespace passes via trim (spec D4).
+      const res = await request(app)
+        .delete(`/api/organization/${result.organization.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ confirmationName: "  My Organization  " });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.payload.id).toBe(result.organization.id);
+
+      const current = await request(app)
+        .get("/api/organization/current")
+        .set("Authorization", "Bearer test-token");
+      expect(current.status).toBe(404);
+
+      const repeat = await request(app)
+        .delete(`/api/organization/${result.organization.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ confirmationName: "My Organization" });
+      expect(repeat.status).toBe(404);
+    });
+
+    it("returns 409 with runningJobs when a job is active (case 17)", async () => {
+      const owner = createOwner();
+      const result = await ApplicationService.setupOrganization(owner);
+      const d = db as ReturnType<typeof drizzle>;
+      const jobId = generateId();
+      await d.insert(schema.jobs).values({
+        id: jobId,
+        organizationId: result.organization.id,
+        type: "connector_sync",
+        status: "active",
+        progress: 10,
+        metadata: { connectorInstanceId: generateId() },
+        attempts: 1,
+        maxAttempts: 3,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+
+      const res = await request(app)
+        .delete(`/api/organization/${result.organization.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ confirmationName: "My Organization" });
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
+      const runningJobs = res.body.details?.runningJobs as Array<{
+        id: string;
+      }>;
+      expect(runningJobs).toHaveLength(1);
+      expect(runningJobs[0]!.id).toBe(jobId);
+
+      // Nothing was deleted.
+      const current = await request(app)
+        .get("/api/organization/current")
+        .set("Authorization", "Bearer test-token");
+      expect(current.status).toBe(200);
+      expect(current.body.payload.organization.id).toBe(result.organization.id);
     });
   });
 });
