@@ -40,12 +40,12 @@ The walkthrough needs a **disposable, populated target org you own**, an org whe
 
 In the app, as the **owner**, inside the target org:
 
-- [ ] Settings → **Organization** tab: a **Danger zone** section renders below "Subscription & Usage" with warning copy ("Permanently delete this organization … cannot be undone") and a red-outlined **Delete organization** button.
-- [ ] Click it. A **Delete Organization** dialog opens; the warning names what's destroyed (stations, portals, connectors, records, uploads), says every member loses access and you'll be signed out, and the confirmation `TextField` (label `Type "Smoke Delete Me" to confirm`) is auto-focused.
-- [ ] The red **Delete organization** button is **disabled** while the field is empty.
-- [ ] Type `smoke delete me` (wrong case) — still disabled. Click away (blur): the field shows the error state + helper text "Enter the organization name exactly to confirm".
-- [ ] Type the exact name `Smoke Delete Me` — the button **enables**. Add leading/trailing spaces — still enabled (trim-tolerant).
-- [ ] Press **Cancel**. Reopen the dialog: the input is **cleared** and the button disabled again. Close it (do **not** confirm yet).
+- [x] Settings → **Organization** tab: a **Danger zone** section renders below "Subscription & Usage" with warning copy ("Permanently delete this organization … cannot be undone") and a red-outlined **Delete organization** button.
+- [x] Click it. A **Delete Organization** dialog opens; the warning names what's destroyed (stations, portals, connectors, records, uploads), says every member loses access and you'll be signed out, and the confirmation `TextField` (label `Type "Smoke Delete Me" to confirm`) is auto-focused.
+- [x] The red **Delete organization** button is **disabled** while the field is empty.
+- [x] Type `smoke delete me` (wrong case) — still disabled. Click away (blur): the field shows the error state + helper text "Enter the organization name exactly to confirm".
+- [x] Type the exact name `Smoke Delete Me` — the button **enables**. Add leading/trailing spaces — still enabled (trim-tolerant).
+- [x] Press **Cancel**. Reopen the dialog: the input is **cleared** and the button disabled again. Close it (do **not** confirm yet).
 
 ## §2 — Server-side gates: owner-only + confirmation (slice 3)
 
@@ -60,7 +60,7 @@ In the app, as the **owner**, inside the target org:
 
 Stage the job rows in `db:studio` → `jobs` (fastest way to get a stable `active` job):
 
-- [ ] Insert a row: `organization_id = <orgId>`, `type = connector_sync`, `status = active`, `metadata = {}`, `progress = 0`, plus base columns (`id` = any uuid, `created` = now-ms, `created_by` = `SMOKE`). As the owner, open the delete dialog, type the exact name, confirm. Expected: dialog stays open; `FormAlert` shows **ENTITY_LOCKED_BY_JOB** ("Organization is locked by an in-flight job"). Verify in `db:studio` that nothing was deleted (org row `deleted` is null, stations/records intact).
+- [x] Insert a row: `organization_id = <orgId>`, `type = connector_sync`, `status = active`, `metadata = {}`, `progress = 0`, plus base columns (`id` = any uuid, `created` = now-ms, `created_by` = `SMOKE`). As the owner, open the delete dialog, type the exact name, confirm. Expected: dialog stays open; `FormAlert` shows **ENTITY_LOCKED_BY_JOB** ("Organization is locked by an in-flight job"). Verify in `db:studio` that nothing was deleted (org row `deleted` is null, stations/records intact).
 - [ ] Flip that row's `status` to `completed`, and insert a second row identical but `status = pending`. Leave it — §4 will prove the pending job is swept (it's auto-cancelled, then hard-deleted with the org).
 
 ## §4 — Full deletion happy path (slices 2–3, destructive)
