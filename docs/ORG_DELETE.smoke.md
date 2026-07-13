@@ -67,24 +67,24 @@ Stage the job rows in `db:studio` → `jobs` (fastest way to get a stable `activ
 
 As the **owner**, in the target org:
 
-- [ ] Open the dialog, type `  Smoke Delete Me  ` (with spaces — proves server-side trim), confirm. The button reads **"Deleting..."**, then you are **signed out and land on the login page** (Auth0 session cleared).
-- [ ] API log shows the `organization-delete` module lines: "Deleting organization" → "Organization cascade committed" (with `wideTablesDropped` ≥ 1 and `s3KeysCollected` ≥ 1) → "Organization deleted".
-- [ ] **S3 cleanup:** with `UPLOAD_S3_BUCKET` set, a `Deleted S3 object` debug line per upload (and the object is gone from the bucket); without it, a `warn` "Failed to delete S3 object during organization delete" per key — and the delete still succeeded (best-effort by design).
-- [ ] In `db:studio`, keyed by `<orgId>`:
-  - [ ] `organizations`: the row **exists** with `deleted` set, `deleted_by` = your user id, `default_station_id` null (tombstone).
-  - [ ] `organization_users`: every membership row (owner + second member) has `deleted` set.
-  - [ ] `usage`: rows **survive untouched** (`deleted` null, `units_used` unchanged).
-  - [ ] Zero rows for the org in each content table: `stations`, `portals`, `portal_messages`, `portal_results`, `connector_instances`, `connector_entities`, `field_mappings`, `entity_records`, `column_definitions`, `entity_groups`, `entity_tags`, `file_uploads`, `jobs` (the §3 `pending` row is gone too — swept), `wide_table_columns`, `api_endpoint_configs`, `organization_toolpacks`.
-  - [ ] The wide table is dropped: run `SELECT tablename FROM pg_tables WHERE tablename = 'er__<entityId>'` — zero rows.
-- [ ] Log back in as the owner. If the target was your only org you'll see "organization not found" errors — expected today (the no-org onboarding state is out of scope, per the discovery); if you belong to other orgs, you land in the most recent one.
+- [x] Open the dialog, type `  Smoke Delete Me  ` (with spaces — proves server-side trim), confirm. The button reads **"Deleting..."**, then you are **signed out and land on the login page** (Auth0 session cleared).
+- [x] API log shows the `organization-delete` module lines: "Deleting organization" → "Organization cascade committed" (with `wideTablesDropped` ≥ 1 and `s3KeysCollected` ≥ 1) → "Organization deleted".
+- [x] **S3 cleanup:** with `UPLOAD_S3_BUCKET` set, a `Deleted S3 object` debug line per upload (and the object is gone from the bucket); without it, a `warn` "Failed to delete S3 object during organization delete" per key — and the delete still succeeded (best-effort by design).
+- [x] In `db:studio`, keyed by `<orgId>`:
+  - [x] `organizations`: the row **exists** with `deleted` set, `deleted_by` = your user id, `default_station_id` null (tombstone).
+  - [x] `organization_users`: every membership row (owner + second member) has `deleted` set.
+  - [x] `usage`: rows **survive untouched** (`deleted` null, `units_used` unchanged).
+  - [x] Zero rows for the org in each content table: `stations`, `portals`, `portal_messages`, `portal_results`, `connector_instances`, `connector_entities`, `field_mappings`, `entity_records`, `column_definitions`, `entity_groups`, `entity_tags`, `file_uploads`, `jobs` (the §3 `pending` row is gone too — swept), `wide_table_columns`, `api_endpoint_configs`, `organization_toolpacks`.
+  - [x] The wide table is dropped: run `SELECT tablename FROM pg_tables WHERE tablename = 'er__<entityId>'` — zero rows.
+- [x] Log back in as the owner. If the target was your only org you'll see "organization not found" errors — expected today (the no-org onboarding state is out of scope, per the discovery); if you belong to other orgs, you land in the most recent one.
 
 ## §5 — Multi-tenant isolation (control org)
 
-- [ ] Switch/log in to your **control org**. Dashboard, entities, records, portals, and Settings all load exactly as before §4; its `er__*` tables still exist; its memberships are live.
+- [x] Switch/log in to your **control org**. Dashboard, entities, records, portals, and Settings all load exactly as before §4; its `er__*` tables still exist; its memberships are live.
 
 ## §6 — Help / FAQ (doc-sync)
 
-- [ ] Help view → FAQ → **Organization & Grouping**: "How do I delete my organization?" is present and its answer matches the shipped behavior (owner-only, Danger zone, type-to-confirm, permanent, signed out after, wait for running jobs).
+- [x] Help view → FAQ → **Organization & Grouping**: "How do I delete my organization?" is present and its answer matches the shipped behavior (owner-only, Danger zone, type-to-confirm, permanent, signed out after, wait for running jobs).
 
 ---
 
