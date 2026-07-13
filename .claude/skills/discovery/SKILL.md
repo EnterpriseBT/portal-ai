@@ -5,7 +5,7 @@ description: Phase 2 of the Issue → PR workflow — scaffold a grounded discov
 
 # /discovery — scaffold a discovery doc for an issue
 
-You are scaffolding **phase 2** of the four-phase workflow defined in `CLAUDE.md` → "Issue → PR Workflow". The output is a draft of `docs/<SLUG>.discovery.md` on a fresh branch. You **do not commit, do not push, do not open a PR** — the user reviews and refines first.
+You are scaffolding **phase 2** of the workflow defined in `CLAUDE.md` → "Issue → PR Workflow". The output is a draft of `docs/<SLUG>.discovery.md` on a fresh branch. You **do not commit, do not push, do not open a PR** — the user reviews and refines first.
 
 ## Arguments
 
