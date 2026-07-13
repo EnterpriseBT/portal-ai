@@ -137,6 +137,12 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     category: FAQCategory.Organization,
     relatedGlossaryTerms: ["Entity Tag", "Connector Entity"],
   },
+  {
+    question: "How do I delete my organization?",
+    answer:
+      "Open Settings → Organization and scroll to the Danger zone. Only the organization's owner can delete it, and the action is permanent: all organization data — stations, portals, connectors, records, and uploads — is destroyed, and every member loses access. You'll be asked to type the organization's name exactly to confirm, and you'll be signed out once the deletion completes. If a background job is still running, wait for it to finish (or cancel it) first.",
+    category: FAQCategory.Organization,
+  },
 
   // Analytics & Portals
   {

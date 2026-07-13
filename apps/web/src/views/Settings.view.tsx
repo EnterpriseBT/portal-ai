@@ -1,6 +1,9 @@
+import { useState } from "react";
+
 import {
   Avatar,
   Box,
+  Button,
   Divider,
   MetadataList,
   Typography,
@@ -17,7 +20,9 @@ import {
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { DataResult } from "../components/DataResult.component";
+import { DeleteOrganizationDialog } from "../components/DeleteOrganizationDialog.component";
 import { sdk } from "../api/sdk";
+import { toServerError } from "../utils/api.util";
 import { formatUsageValue } from "../utils/usage-format.util";
 
 /** Present a tier slug as a human label, e.g. "enterprise-acme" → "Enterprise Acme". */
@@ -38,6 +43,16 @@ export const SettingsView = () => {
   const profileResult = sdk.auth.profile();
   const organizationResult = sdk.organizations.current();
   const usageResult = sdk.organizations.usage();
+
+  // Danger zone (#197): delete the org, then end the session — logout is
+  // unconditional on success, even for multi-org users.
+  const { logout } = sdk.auth.logout();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const organizationId = organizationResult.data?.organization.id ?? "";
+  const deleteMutation = sdk.organizations.delete(organizationId);
+
+  const handleDeleteConfirm = (confirmationName: string) =>
+    deleteMutation.mutate({ confirmationName }, { onSuccess: () => logout() });
 
   return (
     <Box>
@@ -209,6 +224,33 @@ export const SettingsView = () => {
                     ]}
                   />
                 </PageSection>
+
+                <PageSection title="Danger zone" variant="outlined">
+                  <Stack spacing={2} alignItems="flex-start">
+                    <Typography variant="body2" color="text.secondary">
+                      Permanently delete this organization and all of its data.
+                      Only the organization owner can do this, and it cannot be
+                      undone.
+                    </Typography>
+                    <Button
+                      type="button"
+                      variant="outlined"
+                      color="error"
+                      onClick={() => setDeleteDialogOpen(true)}
+                    >
+                      Delete organization
+                    </Button>
+                  </Stack>
+                </PageSection>
+
+                <DeleteOrganizationDialog
+                  open={deleteDialogOpen}
+                  onClose={() => setDeleteDialogOpen(false)}
+                  organizationName={organization.name}
+                  onConfirm={handleDeleteConfirm}
+                  isPending={deleteMutation.isPending}
+                  serverError={toServerError(deleteMutation.error)}
+                />
               </Stack>
             );
           }}
