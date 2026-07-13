@@ -25,6 +25,7 @@ git status --short                 # note any uncommitted work
 ls docs/*.discovery.md             # find the discovery doc on this branch
 ```
 
+- **Condensed-path detection.** If the branch carries a condensed single doc — `docs/<SLUG>.md` whose header says **small / condensed** — and no `docs/<SLUG>.discovery.md`, stop: this ticket took the condensed path (`/discovery <N> condensed`), and the contract + plan live in that single doc. Offer to extend the condensed doc instead; do not scaffold a separate spec.
 - **The discovery doc is a prerequisite.** If there is no `docs/<SLUG>.discovery.md` on this branch, stop and tell the user to run `/discovery <N>` first (or point them at an existing discovery doc). Do not invent a spec from the issue alone — the spec's job is to make the discovery's *recommendations* concrete, and its **Open questions must be resolved** first.
 - If you're on `main` (or a branch with no discovery doc), stop and ask which branch/doc to use. **Never create a new branch** — the spec commits to the *same* branch discovery created.
 - Derive `<SLUG>` from the discovery file name. Fetch the issue:

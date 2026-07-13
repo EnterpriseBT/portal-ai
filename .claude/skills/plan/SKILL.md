@@ -24,6 +24,7 @@ git branch --show-current          # must be the feature branch, NOT main
 ls docs/*.spec.md docs/*.discovery.md
 ```
 
+- **Condensed-path detection.** If the branch carries a condensed single doc — `docs/<SLUG>.md` whose header says **small / condensed** — and no `docs/<SLUG>.discovery.md`, stop: this ticket took the condensed path (`/discovery <N> condensed`), and the contract + plan live in that single doc. Offer to extend the condensed doc instead; do not scaffold a separate plan.
 - **The spec doc is a prerequisite.** If there is no `docs/<SLUG>.spec.md` on this branch, stop and tell the user to run `/spec <N>` first. The plan sequences the spec's surface + test plan; without a pinned contract there's nothing to slice.
 - If you're on `main` or a branch with no spec, stop and ask. **Never create a new branch** — the plan commits to the *same* branch discovery/spec used.
 - Derive `<SLUG>` from the spec file name.

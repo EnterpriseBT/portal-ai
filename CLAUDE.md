@@ -27,6 +27,10 @@ npm run test             # Jest tests across monorepo
 npm run storybook        # Storybook (core :7006, web :6007)
 ```
 
+### Formatting enforcement
+
+Prettier is enforced, not advisory: a husky pre-commit hook (installed by `npm install` via the `prepare` script) runs lint-staged, formatting staged files over the same `src/**` globs the per-package `format` scripts cover, and CI runs `format:check` in the unit-test workflow. `apps/web/src/routeTree.gen.ts` is excluded (the TanStack Router generator owns its formatting — never hand-format it), and markdown (`docs/*.md`, skills) is deliberately unformatted. `--no-verify` is the escape hatch for the hook; CI still catches it.
+
 ### API Database Scripts (run from `apps/api/`)
 
 ```bash
@@ -418,25 +422,42 @@ Issues and PRs live on `EnterpriseBT/portal-ai`; use `gh` for all ticket/PR work
 
 ### One feature = one branch = one PR
 
-Every non-trivial change lives on **one branch** with **one PR**. The four artifacts — discovery doc, spec doc, plan doc, implementation — land as separate commits on that branch as the work progresses. The PR is opened early (often as draft) and grows commit-by-commit; reviewers track progress at the commit level, not across multiple PRs.
+Every non-trivial change lives on **one branch** with **one PR**. The five artifacts — discovery doc, spec doc, plan doc, implementation, smoke doc — land as separate commits on that branch as the work progresses. The PR is opened early (often as draft) and grows commit-by-commit; reviewers track progress at the commit level, not across multiple PRs.
 
 | Artifact | What lands | When it's needed |
 |---|---|---|
-| 1. Ticket | GitHub issue with requirements (feature) or repro steps (bug). Issue Type set; project board card in `Todo`. | Always for non-trivial work |
+| 1. Ticket | GitHub issue with a PRD (feature) or repro + impact (bug). Issue Type set; sizing recorded; project board card in `Todo`. | Always for non-trivial work |
 | 2. Discovery | `docs/<SLUG>.discovery.md` — survey + design space + decisions. | Anything that touches more than one package, introduces a new pattern, or changes a contract |
 | 3. Spec + plan | `docs/<SLUG>.spec.md` (contract) and `docs/<SLUG>.plan.md` (phased TDD slices). | Same threshold as discovery — when discovery is warranted, spec + plan follow |
 | 4. Implementation | Code + tests, one commit per testable slice from the plan. | Always |
+| 5. Smoke | `docs/<SLUG>.smoke.md` — manual walkthrough checklist mapped from the spec's acceptance criteria (see "The smoke gate"). | After implementation, before merge. Condensed tickets embed it in the single doc |
+
+Each phase has a skill that executes it deterministically: `/ticket` → `/discovery` → `/spec` → `/plan` → `/smoke`, with `/epic` coordinating multi-ticket parents. **Implementation only starts after discovery/spec/plan are reviewed and confirmed** — the skills draft, the user confirms, then code lands.
 
 Branch naming follows the work, not the artifact: `feat/<slug>` for new functionality, `fix/<slug>` for bug fixes, `chore/<slug>` / `docs/<slug>` / `test/<slug>` for everything else. The discovery/spec/plan commits live on this same branch — there is **no** `docs/<slug>-discovery` or `docs/<slug>-spec` interim branch.
 
 Notes:
 
-- **Skip artifacts when proportionate.** A one-line typo fix or a localized bug with a clear reproduction goes straight to implementation — no discovery, no spec. Anything that touches more than one package, introduces a new pattern, or changes a contract produces all four artifacts.
-- **Phase = commit, not PR.** The four phases exist to (a) break work into single testable units and (b) keep each commit reviewable on its own. They do **not** mean four separate PRs.
+- **Skip or condense artifacts when proportionate.** A one-line typo fix or a localized bug with a clear reproduction goes straight to implementation — no docs at all. A small-but-real ticket takes the **condensed path** (one combined doc — see below). Anything that touches more than one package, introduces a new pattern, or changes a contract produces all five artifacts. The call is made at ticket time (`## Sizing`) and revisited at discovery if it was wrong.
+- **Phase = commit, not PR.** The phases exist to (a) break work into single testable units and (b) keep each commit reviewable on its own. They do **not** mean separate PRs.
 - **When to split a feature across multiple PRs.** Only when context-window management forces it — features so large that a single AI-assisted session can't hold the implementation in context end-to-end. Each split PR ships a complete, testable slice (its own branch off `main`, its own ticket reference, `Closes #N` on the final slice). For human-driven work, "too big" is rarely the reason — prefer one PR.
 - **Doc artifacts live in `docs/`** with the existing suffix convention (`.discovery.md`, `.spec.md`, `.plan.md`). For multi-PR features, the plan doc names the slices and the slice mapping appears in each PR's body.
 - **The issue body holds the index.** As each doc commits, edit the issue to append the link. The issue is the canonical entry point for anyone catching up on the work.
 - **Project-board card movement.** `Todo` → `In Progress` when the first commit lands on the branch (whichever phase it is). `Done` is set automatically when the PR with `Closes #N` merges.
+
+### Ticket kinds & body templates
+
+Every ticket is one of three kinds, each with a codified body shape (`/ticket` scaffolds them; `/epic` owns the third):
+
+- **Feature** — a PRD: `## Why` → `## Deliverables` (checklist) → `## Acceptance criteria` (externally-observable) → `## Out of scope` → `## Sizing` → `## References`.
+- **Bugfix** — a reproduction: `## Repro` (steps, Expected vs Got) → `## Impact` → `## Likely cause / fix direction` → `## Evidence` → `## Sizing` → `## References`.
+- **Epic** — a parent tracking issue (Issue Type `Epic`) grouping feature/bugfix children as native sub-issues, with an overview, a `## Status` table, and a `## Children & dependencies` map. See "Epic branches".
+
+The `## Sizing` section records the doc-path decision at creation time: **`full`** (all five artifacts) or **`condensed`** (one combined doc). Condensed is right only when the change is single-package, introduces no new pattern, and changes no contract.
+
+### Condensed path for small tickets
+
+When sizing chose `condensed`, `/discovery <N> condensed` writes a single `docs/<SLUG>.md` covering discovery + spec + plan + smoke (exemplar: `docs/PORTAL_MESSAGE_TIMESTAMPS.md`): `**Why.**` → `## Current shape` → `## Decision — <name>` → `## Plan — <n> slice(s)` → `## Smoke (manual, against your dev stack)` → `## Out of scope`, ≤ ~80 lines. `/spec` and `/plan` are not run on a condensed branch (they detect the single doc and defer to it); `/smoke` refreshes the embedded Smoke section, which is the ticket's merge gate.
 
 ### Enterprise-scale considerations in discovery
 
@@ -455,11 +476,11 @@ Portal.ai is an enterprise, multi-tenant, billing-facing product — a discovery
 ### Filing an issue
 
 - File on GitHub (`gh issue create --repo EnterpriseBT/portal-ai`), not in `docs/`. The `docs/` tree is reserved for design specs / plans / smoke checklists.
-- Set the **Issue Type** (`Bug` / `Feature` / `Task`) — this is GitHub's structured type field, not a label. There's no `gh issue edit --type` shortcut yet; set it via GraphQL:
+- Set the **Issue Type** (`Bug` / `Feature` / `Task` / `Epic`) — this is GitHub's structured type field, not a label. There's no `gh issue edit --type` shortcut yet; set it via GraphQL:
   ```bash
   gh api graphql -f query='mutation($id:ID!,$typeId:ID!){updateIssue(input:{id:$id,issueTypeId:$typeId}){issue{number}}}' -f id=<issueNodeId> -f typeId=<IT_…>
   ```
-  Fetch the issue node id and the type ids via `repository.issue(number:N){id}` and `repository.issueTypes(first:10){nodes{id name}}`.
+  Fetch the issue node id and the type ids via `repository.issue(number:N){id}` and `repository.issueTypes(first:10){nodes{id name}}`. `Epic` = `IT_kwDODs25Bc4CFje_` (org-level type; parents get it via `/epic`).
 - Optional labels (`documentation`, `question`, `help wanted`, etc.) layer on top of the type.
 - Project board: the **Portal AI** Projects v2 board (project #1) auto-adds new issues to `Todo` and auto-moves them to `Done` when the linked PR merges. Move the card to `In Progress` manually when work starts on it — the snippet below sets that. The token needs `project` scope (`gh auth refresh -s read:project,project`). IDs:
   - Project id: `PVT_kwDODs25Bc4BUMsm`
@@ -474,11 +495,23 @@ Portal.ai is an enterprise, multi-tenant, billing-facing product — a discovery
       --field-id PVTSSF_lADODs25Bc4BUMsmzhBWfpk \
       --single-select-option-id 47fc9ee4
     ```
-- Closing: `gh issue close <N> --reason completed|not-planned`. PRs containing `Closes #N` in the body auto-close the issue with `reason: completed` on merge — no manual close needed.
+- Closing: `gh issue close <N> --reason completed` / `--reason "not planned"` (the reason value contains a space). PRs containing `Closes #N` in the body auto-close the issue with `reason: completed` on merge — no manual close needed. Auto-close only fires on merges to the **default branch** — child PRs merging into an epic branch close nothing (see "Epic branches").
 
 ### Branching
 
 - Branch off `main`. Prefix by intent: `fix/<slug>` for bug fixes, `feat/<slug>` for new functionality; use `chore/`, `docs/`, `test/` for other types.
+- **Exception:** children of an open epic branch off — and PR back into — `epic/<slug>`, not `main`. See "Epic branches".
+
+### Epic branches
+
+`main` auto-deploys to the app-dev environment, so a multi-ticket epic must not land there half-finished as child PRs merge. The epic branch is that **deployment gate** (`/epic` automates all of this):
+
+- The parent issue (Issue Type `Epic`) carries the overview, a `## Status` table (`Todo` → `In progress` → `Merged into epic` → `Closed`), and the dependency map; children are native GitHub sub-issues. The Status table is the record of truth — update it with every child state change.
+- `epic/<slug>` is created from `main` and pushed at epic creation. Children branch from it and PR back into it (base: `epic/<slug>`, squash, review + CI per child — workflows run on all non-`main` pushes).
+- **Keep-pace rule:** before each child PR merges, merge `main` into the epic branch (`git checkout epic/<slug> && git merge main && git push`) so the final integration is never a big bang. Merge commits on the epic branch are fine — they vanish at the final merge.
+- **Child issues stay open at child-merge** (auto-close doesn't fire off-default-branch); their Status row flips to `Merged into epic`.
+- **Close-out:** all children merged + epic CI green + user-confirmed epic smoke → one final PR `epic/<slug>` → `main` whose body carries `Closes #<parent>` and `Closes #<child>` for every child (the single closing event). Merge it **rebase-preferred** (keeps one commit per child on `main`; linear history) with squash as the conflict fallback, and pass `--delete-branch`.
+- Branch protection for `epic/**` (require PRs + checks) is an optional manual settings step, not automated.
 
 ### Commits
 
@@ -489,10 +522,14 @@ Portal.ai is an enterprise, multi-tenant, billing-facing product — a discovery
 
 ### Pull requests
 
-- **Merge style**: squash (matches existing history). The repo allows merge / rebase / squash but squash is the convention.
+- **Merge style**: squash (matches existing history). The repo allows merge / rebase / squash but squash is the convention. Exception: the final epic → `main` PR is rebase-preferred (see "Epic branches").
 - **Title**: short imperative, mirrors the lead commit.
 - **Body**: two sections — `## Summary` (1–3 bullets) and `## Test plan` (checklist of what was / still needs to be verified). Reference the originating issue with `Closes #N` so it auto-closes on merge.
 - `deleteBranchOnMerge` is **off** on the repo — always pass `--delete-branch` to `gh pr merge` so the remote branch is removed.
+
+### The smoke gate
+
+A PR merges only when **both** hold: CI is green, **and** the user has walked the ticket's manual smoke checklist (`docs/<SLUG>.smoke.md`, or the condensed doc's `## Smoke` section) against their own running stack and confirmed it. `/smoke` scaffolds the checklist from the spec's acceptance criteria with every box unchecked; checking boxes is the human's act — the agent never checks one and never merges on the user's behalf. Bugs found during the walk go through the smoke doc's bug-filing template, not ad-hoc fixes.
 
 ### After merge
 
