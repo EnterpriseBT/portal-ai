@@ -122,7 +122,10 @@ describe("extractRecords — 1D headerAxes:['row'] (records-are-rows)", () => {
     );
     const reordered = { ...contactsRegion() };
     reordered.columnBindings = [...reordered.columnBindings].reverse();
-    const swapped = await extractRecords(reordered, contactsWorkbook().sheets[0]);
+    const swapped = await extractRecords(
+      reordered,
+      contactsWorkbook().sheets[0]
+    );
     expect(swapped[0].checksum).toBe(baseline[0].checksum);
   });
 
@@ -147,7 +150,10 @@ describe("extractRecords — 1D headerAxes:['row'] (records-are-rows)", () => {
         },
       ],
     };
-    const records = await extractRecords(headerless, contactsWorkbook().sheets[0]);
+    const records = await extractRecords(
+      headerless,
+      contactsWorkbook().sheets[0]
+    );
     expect(records).toHaveLength(3);
     expect(records[0].fields).toEqual({
       row_1: "a@x.com",

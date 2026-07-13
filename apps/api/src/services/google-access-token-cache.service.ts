@@ -18,10 +18,7 @@
  */
 
 import { DbService } from "./db.service.js";
-import {
-  GoogleAuthError,
-  GoogleAuthService,
-} from "./google-auth.service.js";
+import { GoogleAuthError, GoogleAuthService } from "./google-auth.service.js";
 import { accessTokenCacheKey } from "../utils/connector-cache-keys.util.js";
 import { getRedisClient } from "../utils/redis.util.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -64,13 +61,9 @@ export const GoogleAccessTokenCacheService = {
   },
 };
 
-async function refreshAndStore(
-  connectorInstanceId: string
-): Promise<string> {
+async function refreshAndStore(connectorInstanceId: string): Promise<string> {
   const instance =
-    await DbService.repository.connectorInstances.findById(
-      connectorInstanceId
-    );
+    await DbService.repository.connectorInstances.findById(connectorInstanceId);
   if (!instance) {
     throw new Error(`ConnectorInstance not found: ${connectorInstanceId}`);
   }
@@ -105,8 +98,7 @@ async function refreshAndStore(
           logger.warn(
             {
               connectorInstanceId,
-              err:
-                updateErr instanceof Error ? updateErr.message : updateErr,
+              err: updateErr instanceof Error ? updateErr.message : updateErr,
             },
             "Failed to update connector instance status after refresh failure"
           );
@@ -119,9 +111,17 @@ async function refreshAndStore(
     throw err;
   }
 
-  const ttl = Math.max(refreshed.expiresIn - TTL_SAFETY_MARGIN_SEC, TTL_FLOOR_SEC);
+  const ttl = Math.max(
+    refreshed.expiresIn - TTL_SAFETY_MARGIN_SEC,
+    TTL_FLOOR_SEC
+  );
   const redis = getRedisClient();
-  await redis.set(cacheKey(connectorInstanceId), refreshed.accessToken, "EX", ttl);
+  await redis.set(
+    cacheKey(connectorInstanceId),
+    refreshed.accessToken,
+    "EX",
+    ttl
+  );
   logger.info(
     {
       connectorInstanceId,

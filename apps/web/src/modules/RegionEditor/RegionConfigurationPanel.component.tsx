@@ -41,10 +41,7 @@ import {
   DECORATION_LABEL,
   type DecorationKind,
 } from "./utils/region-editor-decorations.util";
-import type {
-  EntityOption,
-  RegionDraft,
-} from "./utils/region-editor.types";
+import type { EntityOption, RegionDraft } from "./utils/region-editor.types";
 import {
   isDraftCrosstab,
   isDraftPivoted,
@@ -140,7 +137,10 @@ function withPivotSync(
   const projected: RegionDraft = { ...region, ...updates };
   const pivot = hasAnyPivot(projected);
   if (pivot && !projected.cellValueField) {
-    return { ...updates, cellValueField: { name: "value", nameSource: "user" } };
+    return {
+      ...updates,
+      cellValueField: { name: "value", nameSource: "user" },
+    };
   }
   if (!pivot && projected.cellValueField) {
     return { ...updates, cellValueField: undefined };
@@ -178,9 +178,7 @@ function readFieldHeaderCells(
     const cellRow = axis === "row" ? startRow : startRow + offset;
     const cellCol = axis === "row" ? startCol + offset : startCol;
     const raw = sheet.cells[cellRow]?.[cellCol];
-    out.push(
-      raw === null || raw === undefined ? "" : String(raw).trim()
-    );
+    out.push(raw === null || raw === undefined ? "" : String(raw).trim());
   }
   return out;
 }
@@ -208,8 +206,9 @@ export const RegionConfigurationPanelUI: React.FC<
   regionSheet,
 }) => {
   const [newEntityDialogOpen, setNewEntityDialogOpen] = useState(false);
-  const [editingSegment, setEditingSegment] =
-    useState<EditingSegment | null>(null);
+  const [editingSegment, setEditingSegment] = useState<EditingSegment | null>(
+    null
+  );
   const [segmentAnchor, setSegmentAnchor] = useState<HTMLElement | null>(null);
   const [extentOpen, setExtentOpen] = useState(false);
   const [extentAnchor, setExtentAnchor] = useState<HTMLElement | null>(null);
@@ -286,12 +285,12 @@ export const RegionConfigurationPanelUI: React.FC<
   const driftFlagged = Boolean(region.drift?.flagged);
 
   const editingAxis = editingSegment?.axis;
-  const editingSeg: Segment | null =
-    editingSegment
-      ? (axisSegments(region, editingSegment.axis)[editingSegment.index] ?? null)
-      : null;
+  const editingSeg: Segment | null = editingSegment
+    ? (axisSegments(region, editingSegment.axis)[editingSegment.index] ?? null)
+    : null;
   const editingIsTail = editingSegment
-    ? editingSegment.index === axisSegments(region, editingSegment.axis).length - 1
+    ? editingSegment.index ===
+      axisSegments(region, editingSegment.axis).length - 1
     : false;
   const editingCellPlaceholders =
     editingSegment && editingSeg?.kind === "field" && regionSheet
@@ -339,7 +338,9 @@ export const RegionConfigurationPanelUI: React.FC<
     const tailIndex = segments.length - 1;
     const tail = segments[tailIndex];
     const insertAt =
-      tail && tail.kind === "pivot" && tail.dynamic ? tailIndex : segments.length;
+      tail && tail.kind === "pivot" && tail.dynamic
+        ? tailIndex
+        : segments.length;
     const newSegment: Segment =
       kind === "pivot"
         ? {
@@ -476,7 +477,10 @@ export const RegionConfigurationPanelUI: React.FC<
     const seg = segments[index];
     if (seg?.kind !== "pivot") return;
     if (on) {
-      segments[index] = { ...seg, dynamic: { terminator: defaultTerminator() } };
+      segments[index] = {
+        ...seg,
+        dynamic: { terminator: defaultTerminator() },
+      };
     } else {
       const { dynamic: _drop, ...rest } = seg;
       segments[index] = rest;
@@ -883,10 +887,9 @@ export const RegionConfigurationPanelUI: React.FC<
         {headerAxes.length === 0 && (
           <Stack spacing={1}>
             <Typography variant="caption" color="text.secondary">
-              This region has no header axis. Add one to carve it into
-              labelled segments, or leave it headerless — field names will be
-              derived from position and the Review step surfaces per-field
-              overrides.
+              This region has no header axis. Add one to carve it into labelled
+              segments, or leave it headerless — field names will be derived
+              from position and the Review step surfaces per-field overrides.
             </Typography>
             <Stack
               direction="row"
@@ -979,132 +982,132 @@ export const RegionConfigurationPanelUI: React.FC<
           />
         )}
 
-        {crosstab && pivoted && (() => {
-          const rowPivots = (region.segmentsByAxis?.row ?? []).filter(
-            (s): s is Extract<Segment, { kind: "pivot" }> => s.kind === "pivot"
-          );
-          const colPivots = (region.segmentsByAxis?.column ?? []).filter(
-            (s): s is Extract<Segment, { kind: "pivot" }> => s.kind === "pivot"
-          );
-          const fallbackName = region.cellValueField?.name?.trim() ?? "";
-          const writeOverride = (
-            id: string,
-            name: string
-          ) => {
-            const trimmed = name.trim();
-            const map = { ...(region.intersectionCellValueFields ?? {}) };
-            if (trimmed === "") {
-              delete map[id];
-            } else {
-              const prior = map[id];
-              map[id] = {
-                ...(prior ?? {}),
-                name,
-                nameSource: "user",
-              };
-            }
-            onUpdate({
-              intersectionCellValueFields:
-                Object.keys(map).length === 0 ? undefined : map,
-            });
-          };
-          if (rowPivots.length === 0 || colPivots.length === 0) {
-            return (
-              <Box
-                sx={{
-                  p: 1.5,
-                  borderRadius: 1,
-                  backgroundColor: "rgba(217, 119, 6, 0.08)",
-                  border: "1px dashed",
-                  borderColor: "rgba(180, 83, 9, 0.55)",
-                }}
-              >
-                <Typography
-                  variant="caption"
-                  sx={{ ...SECTION_HEADING_SX, mb: 0.5 }}
+        {crosstab &&
+          pivoted &&
+          (() => {
+            const rowPivots = (region.segmentsByAxis?.row ?? []).filter(
+              (s): s is Extract<Segment, { kind: "pivot" }> =>
+                s.kind === "pivot"
+            );
+            const colPivots = (region.segmentsByAxis?.column ?? []).filter(
+              (s): s is Extract<Segment, { kind: "pivot" }> =>
+                s.kind === "pivot"
+            );
+            const fallbackName = region.cellValueField?.name?.trim() ?? "";
+            const writeOverride = (id: string, name: string) => {
+              const trimmed = name.trim();
+              const map = { ...(region.intersectionCellValueFields ?? {}) };
+              if (trimmed === "") {
+                delete map[id];
+              } else {
+                const prior = map[id];
+                map[id] = {
+                  ...(prior ?? {}),
+                  name,
+                  nameSource: "user",
+                };
+              }
+              onUpdate({
+                intersectionCellValueFields:
+                  Object.keys(map).length === 0 ? undefined : map,
+              });
+            };
+            if (rowPivots.length === 0 || colPivots.length === 0) {
+              return (
+                <Box
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 1,
+                    backgroundColor: "rgba(217, 119, 6, 0.08)",
+                    border: "1px dashed",
+                    borderColor: "rgba(180, 83, 9, 0.55)",
+                  }}
                 >
-                  Cell-value fields
+                  <Typography
+                    variant="caption"
+                    sx={{ ...SECTION_HEADING_SX, mb: 0.5 }}
+                  >
+                    Cell-value fields
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{ color: "text.secondary", lineHeight: 1.45 }}
+                  >
+                    Add a pivot segment on each axis to surface per-intersection
+                    cell-value fields.
+                  </Typography>
+                </Box>
+              );
+            }
+            return (
+              <Stack spacing={1}>
+                <Typography variant="caption" sx={SECTION_HEADING_SX}>
+                  Cell-value fields per intersection
                 </Typography>
                 <Typography
                   variant="body2"
                   sx={{ color: "text.secondary", lineHeight: 1.45 }}
                 >
-                  Add a pivot segment on each axis to surface
-                  per-intersection cell-value fields.
+                  Each pivot × pivot intersection emits its own field —
+                  different intersections can hold different value types. Leave
+                  a name blank to inherit the region default
+                  {fallbackName ? ` ("${fallbackName}")` : ""}.
                 </Typography>
-              </Box>
-            );
-          }
-          return (
-            <Stack spacing={1}>
-              <Typography variant="caption" sx={SECTION_HEADING_SX}>
-                Cell-value fields per intersection
-              </Typography>
-              <Typography
-                variant="body2"
-                sx={{ color: "text.secondary", lineHeight: 1.45 }}
-              >
-                Each pivot × pivot intersection emits its own field —
-                different intersections can hold different value types.
-                Leave a name blank to inherit the region default
-                {fallbackName ? ` ("${fallbackName}")` : ""}.
-              </Typography>
-              {rowPivots.map((rp) =>
-                colPivots.map((cp) => {
-                  const id = `${rp.id}__${cp.id}`;
-                  const override =
-                    region.intersectionCellValueFields?.[id];
-                  const overrideName = override?.name?.trim() ?? "";
-                  const rowName = rp.axisName.trim() || "(unnamed)";
-                  const colName = cp.axisName.trim() || "(unnamed)";
-                  return (
-                    <Stack
-                      key={id}
-                      direction="row"
-                      spacing={1}
-                      alignItems="center"
-                      sx={{
-                        p: 1,
-                        borderRadius: 1,
-                        backgroundColor: "rgba(217, 119, 6, 0.06)",
-                        border: "1px dashed",
-                        borderColor: "rgba(180, 83, 9, 0.45)",
-                      }}
-                    >
-                      <MuiChip
-                        size="small"
-                        label={`${rowName} × ${colName}`}
+                {rowPivots.map((rp) =>
+                  colPivots.map((cp) => {
+                    const id = `${rp.id}__${cp.id}`;
+                    const override = region.intersectionCellValueFields?.[id];
+                    const overrideName = override?.name?.trim() ?? "";
+                    const rowName = rp.axisName.trim() || "(unnamed)";
+                    const colName = cp.axisName.trim() || "(unnamed)";
+                    return (
+                      <Stack
+                        key={id}
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
                         sx={{
-                          backgroundColor: "rgba(180, 83, 9, 0.85)",
-                          color: "#fff",
-                          fontWeight: 700,
+                          p: 1,
+                          borderRadius: 1,
+                          backgroundColor: "rgba(217, 119, 6, 0.06)",
+                          border: "1px dashed",
+                          borderColor: "rgba(180, 83, 9, 0.45)",
                         }}
-                      />
-                      <TextInput
-                        size="small"
-                        fullWidth
-                        label="Cell-value field name"
-                        value={overrideName}
-                        placeholder={fallbackName || undefined}
-                        onChange={(e) => writeOverride(id, e.target.value)}
-                        helperText={
-                          overrideName
-                            ? "Override — this block emits a separate field."
-                            : `Inherits "${fallbackName || "value"}" from the region default.`
-                        }
-                        slotProps={{
-                          htmlInput: {
-                            "aria-label": `Cell-value field name for intersection ${rowName} × ${colName}`,
-                          },
-                        }}
-                      />
-                    </Stack>
-                  );
-                })
-              )}
-            </Stack>
-          );
-        })()}
+                      >
+                        <MuiChip
+                          size="small"
+                          label={`${rowName} × ${colName}`}
+                          sx={{
+                            backgroundColor: "rgba(180, 83, 9, 0.85)",
+                            color: "#fff",
+                            fontWeight: 700,
+                          }}
+                        />
+                        <TextInput
+                          size="small"
+                          fullWidth
+                          label="Cell-value field name"
+                          value={overrideName}
+                          placeholder={fallbackName || undefined}
+                          onChange={(e) => writeOverride(id, e.target.value)}
+                          helperText={
+                            overrideName
+                              ? "Override — this block emits a separate field."
+                              : `Inherits "${fallbackName || "value"}" from the region default.`
+                          }
+                          slotProps={{
+                            htmlInput: {
+                              "aria-label": `Cell-value field name for intersection ${rowName} × ${colName}`,
+                            },
+                          }}
+                        />
+                      </Stack>
+                    );
+                  })
+                )}
+              </Stack>
+            );
+          })()}
 
         {pivoted && (
           <Stack spacing={1}>
@@ -1205,8 +1208,8 @@ export const RegionConfigurationPanelUI: React.FC<
                   <>
                     By default the region ends at the drawn bounds. Open the
                     Extent control to let the record axis grow until a
-                    terminator is hit (N blanks in a row, or a cell matching
-                    a pattern). Crosstabs keep fixed bounds (refinement 11).
+                    terminator is hit (N blanks in a row, or a cell matching a
+                    pattern). Crosstabs keep fixed bounds (refinement 11).
                   </>
                 }
               />
@@ -1402,7 +1405,11 @@ function coalesceSegments(segments: Segment[]): Segment[] {
   return out;
 }
 
-function padFieldArray<T>(values: T[] | undefined, count: number, fill: T): T[] {
+function padFieldArray<T>(
+  values: T[] | undefined,
+  count: number,
+  fill: T
+): T[] {
   if (values && values.length === count) return [...values];
   const out = new Array<T>(count).fill(fill);
   if (values) {
@@ -1424,7 +1431,6 @@ function mergeFieldArrays<T>(
     ...padFieldArray(bValues, bCount, fill),
   ];
 }
-
 
 function mintPivotId(region: RegionDraft): string {
   const existing = new Set<string>();

@@ -239,8 +239,9 @@ export class WideTableRepository {
               return sql`ARRAY[]::text[]`;
             }
             const items = sql.join(
-              value.map((item) =>
-                sql`${item instanceof Date ? item.toISOString() : String(item)}`
+              value.map(
+                (item) =>
+                  sql`${item instanceof Date ? item.toISOString() : String(item)}`
               ),
               sql`, `
             );
@@ -317,7 +318,9 @@ export class WideTableRepository {
       const refBuilder = stmt.columnRefByNormalizedKey.get(normalizedKey);
       if (!refBuilder) continue; // unknown key — drop silently
       // Strip the alias when used in SET (column name only, not "w"."col").
-      const cachedCol = stmt.columns.find((c) => c.normalizedKey === normalizedKey);
+      const cachedCol = stmt.columns.find(
+        (c) => c.normalizedKey === normalizedKey
+      );
       if (!cachedCol) continue;
       setFragments.push(
         sql`${sql.raw(`"${cachedCol.columnName}"`)} = ${value as never}`

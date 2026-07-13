@@ -95,7 +95,9 @@ export function loadEnvironments(): Record<string, EnvironmentDefinition> {
     );
   }
 
-  const parsed = z.record(z.string().min(1), OverrideEntrySchema).safeParse(raw);
+  const parsed = z
+    .record(z.string().min(1), OverrideEntrySchema)
+    .safeParse(raw);
   if (!parsed.success) {
     throw new EnvNotConfiguredError(
       `Invalid environment override file ${file}: ${parsed.error.message}`,

@@ -17,7 +17,11 @@
  * based ids` sentinel covers that case.
  */
 
-import type { CellValue, RegionDraft, SheetPreview } from "./region-editor.types";
+import type {
+  CellValue,
+  RegionDraft,
+  SheetPreview,
+} from "./region-editor.types";
 
 /**
  * `"unique"` / `"non-unique"` / `"all-blank"` are conclusive verdicts

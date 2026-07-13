@@ -3,10 +3,7 @@ import { describe, it, expect } from "@jest/globals";
 import type { Region } from "../../../plan/index.js";
 import { makeSheetAccessor } from "../../../workbook/helpers.js";
 import type { SheetData } from "../../../workbook/types.js";
-import {
-  headerLineCoords,
-  readHeaderLineLabels,
-} from "../header-line.util.js";
+import { headerLineCoords, readHeaderLineLabels } from "../header-line.util.js";
 
 function makeRegion(overrides: Partial<Region> = {}): Region {
   return {

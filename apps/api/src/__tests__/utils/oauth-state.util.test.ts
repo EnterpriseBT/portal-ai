@@ -132,24 +132,24 @@ describe("verifyState — wrong secret", () => {
 
 describe("signState — input validation", () => {
   it("rejects empty userId", () => {
-    expect(() =>
-      signState({ userId: "", organizationId: "o1" })
-    ).toThrow(/userId/);
+    expect(() => signState({ userId: "", organizationId: "o1" })).toThrow(
+      /userId/
+    );
   });
 
   it("rejects empty organizationId", () => {
-    expect(() =>
-      signState({ userId: "u1", organizationId: "" })
-    ).toThrow(/organizationId/);
+    expect(() => signState({ userId: "u1", organizationId: "" })).toThrow(
+      /organizationId/
+    );
   });
 
   it("throws when OAUTH_STATE_SECRET is empty", () => {
     const original = environment.OAUTH_STATE_SECRET;
     environment.OAUTH_STATE_SECRET = "";
     try {
-      expect(() =>
-        signState({ userId: "u1", organizationId: "o1" })
-      ).toThrow(/OAUTH_STATE_SECRET/);
+      expect(() => signState({ userId: "u1", organizationId: "o1" })).toThrow(
+        /OAUTH_STATE_SECRET/
+      );
     } finally {
       environment.OAUTH_STATE_SECRET = original;
     }

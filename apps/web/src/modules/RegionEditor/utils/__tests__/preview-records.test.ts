@@ -1,10 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
 
 import { buildPreviewRecords } from "../preview-records.util";
-import type {
-  RegionDraft,
-  SheetPreview,
-} from "../region-editor.types";
+import type { RegionDraft, SheetPreview } from "../region-editor.types";
 
 function sheet(cells: (string | number | null)[][]): SheetPreview {
   return {

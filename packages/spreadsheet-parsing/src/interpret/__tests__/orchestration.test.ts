@@ -101,9 +101,9 @@ describe("interpret() — orchestration", () => {
     const sheet = makeSheetAccessor(input.workbook.sheets[0]);
     const records = await extractRecords(plan.regions[0], sheet);
     expect(records).toHaveLength(3);
-    expect(records.every((r) => r.targetEntityDefinitionId === "contacts")).toBe(
-      true
-    );
+    expect(
+      records.every((r) => r.targetEntityDefinitionId === "contacts")
+    ).toBe(true);
     expect(records.every((r) => r.regionId === plan.regions[0].id)).toBe(true);
     expect(records.map((r) => r.fields["email"])).toEqual([
       "a@x.com",
@@ -197,48 +197,45 @@ describe("interpret() — orchestration", () => {
 });
 
 describe("interpret() — detect-segments wired", () => {
-  it.each([...MATRIX_IDS])(
-    "produces the expected plan for %s",
-    async (id) => {
-      const input = matrixInput(id);
-      const plan = await interpret(input);
-      const region = plan.regions[0]!;
-      const expected = EXPECTATIONS[id];
+  it.each([...MATRIX_IDS])("produces the expected plan for %s", async (id) => {
+    const input = matrixInput(id);
+    const plan = await interpret(input);
+    const region = plan.regions[0]!;
+    const expected = EXPECTATIONS[id];
 
-      expect(region.segmentsByAxis).toEqual(expected.segmentsByAxis);
+    expect(region.segmentsByAxis).toEqual(expected.segmentsByAxis);
 
-      if (expected.cellValueField) {
-        expect(region.cellValueField).toEqual(expected.cellValueField);
-      } else {
-        expect(region.cellValueField).toBeUndefined();
-      }
+    if (expected.cellValueField) {
+      expect(region.cellValueField).toEqual(expected.cellValueField);
+    } else {
+      expect(region.cellValueField).toBeUndefined();
+    }
 
-      const sheet = makeSheetAccessor(input.workbook.sheets[0]);
-      const records = await extractRecords(region, sheet);
-      expect(records).toHaveLength(expected.recordCount);
+    const sheet = makeSheetAccessor(input.workbook.sheets[0]);
+    const records = await extractRecords(region, sheet);
+    expect(records).toHaveLength(expected.recordCount);
 
-      // PR-3 invariants: every pivot segment carries a non-empty axisName
-      // (either the heuristic's pattern default or a recommender suggestion),
-      // the deleted PIVOTED_REGION_MISSING_AXIS_NAME blocker never appears,
-      // and SEGMENT_MISSING_AXIS_NAME fires only for pivots the heuristic
-      // couldn't name (none in these fixtures).
-      for (const axis of ["row", "column"] as const) {
-        for (const seg of region.segmentsByAxis?.[axis] ?? []) {
-          if (seg.kind === "pivot") {
-            expect(seg.axisName).not.toBe("");
-          }
+    // PR-3 invariants: every pivot segment carries a non-empty axisName
+    // (either the heuristic's pattern default or a recommender suggestion),
+    // the deleted PIVOTED_REGION_MISSING_AXIS_NAME blocker never appears,
+    // and SEGMENT_MISSING_AXIS_NAME fires only for pivots the heuristic
+    // couldn't name (none in these fixtures).
+    for (const axis of ["row", "column"] as const) {
+      for (const seg of region.segmentsByAxis?.[axis] ?? []) {
+        if (seg.kind === "pivot") {
+          expect(seg.axisName).not.toBe("");
         }
       }
-      expect(
-        region.warnings.some(
-          (w) => w.code === ("PIVOTED_REGION_MISSING_AXIS_NAME" as string)
-        )
-      ).toBe(false);
-      expect(
-        region.warnings.some((w) => w.code === "SEGMENT_MISSING_AXIS_NAME")
-      ).toBe(false);
     }
-  );
+    expect(
+      region.warnings.some(
+        (w) => w.code === ("PIVOTED_REGION_MISSING_AXIS_NAME" as string)
+      )
+    ).toBe(false);
+    expect(
+      region.warnings.some((w) => w.code === "SEGMENT_MISSING_AXIS_NAME")
+    ).toBe(false);
+  });
 
   it("applies the recommender's axis name to detect-segments pivot segments", async () => {
     // 1e canonical input: two heuristic-detected pivot segments (quarter +

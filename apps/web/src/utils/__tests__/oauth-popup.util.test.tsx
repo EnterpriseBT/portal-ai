@@ -1,10 +1,14 @@
-import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
 import { renderHook, act } from "@testing-library/react";
 
-import {
-  PopupClosedError,
-  useOAuthPopupAuthorize,
-} from "../oauth-popup.util";
+import { PopupClosedError, useOAuthPopupAuthorize } from "../oauth-popup.util";
 
 const ALLOWED_ORIGIN = "http://localhost:3001";
 
@@ -50,7 +54,9 @@ describe("useOAuthPopupAuthorize — slug=google-sheets", () => {
     );
     let promise!: Promise<unknown>;
     act(() => {
-      promise = result.current.start("https://accounts.google.com/o/oauth2/auth");
+      promise = result.current.start(
+        "https://accounts.google.com/o/oauth2/auth"
+      );
     });
     expect(openSpy).toHaveBeenCalledTimes(1);
     expect(openSpy).toHaveBeenCalledWith(

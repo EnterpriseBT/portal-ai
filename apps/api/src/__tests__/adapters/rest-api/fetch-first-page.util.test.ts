@@ -6,10 +6,7 @@ import {
   beforeEach,
   afterEach,
 } from "@jest/globals";
-import type {
-  ApiAuthConfig,
-  PaginationConfig,
-} from "@portalai/core/models";
+import type { ApiAuthConfig, PaginationConfig } from "@portalai/core/models";
 
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import {
@@ -20,15 +17,17 @@ import {
 
 const NONE_AUTH: ApiAuthConfig = { mode: "none" };
 
-function makeEndpoint(overrides: {
-  path?: string;
-  method?: "GET" | "POST";
-  recordsPath?: string;
-  transform?: string | null;
-  bodyTemplate?: string | null;
-  headers?: Record<string, string> | null;
-  queryParams?: Record<string, string> | null;
-} = {}) {
+function makeEndpoint(
+  overrides: {
+    path?: string;
+    method?: "GET" | "POST";
+    recordsPath?: string;
+    transform?: string | null;
+    bodyTemplate?: string | null;
+    headers?: Record<string, string> | null;
+    queryParams?: Record<string, string> | null;
+  } = {}
+) {
   return {
     entity: {
       id: "ent-users",

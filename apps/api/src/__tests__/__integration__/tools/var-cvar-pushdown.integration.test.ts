@@ -14,12 +14,10 @@
  */
 import { describe, it, expect, afterEach } from "@jest/globals";
 
-const { PortalSqlHandleService } = await import(
-  "../../../services/portal-sql-handle.service.js"
-);
-const { AnalyticsService } = await import(
-  "../../../services/analytics.service.js"
-);
+const { PortalSqlHandleService } =
+  await import("../../../services/portal-sql-handle.service.js");
+const { AnalyticsService } =
+  await import("../../../services/analytics.service.js");
 const { getRedisClient } = await import("../../../utils/redis.util.js");
 
 const ORG_ID = "00000000-0000-0000-0000-0000000c2c01";

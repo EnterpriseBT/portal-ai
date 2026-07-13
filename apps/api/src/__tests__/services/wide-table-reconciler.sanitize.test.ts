@@ -29,8 +29,8 @@ describe("sanitizeColumnName", () => {
 
   it("appends `_2`, `_3`, ... on collision", () => {
     expect(sanitizeColumnName("name", new Set(["c_name"]))).toBe("c_name_2");
-    expect(
-      sanitizeColumnName("name", new Set(["c_name", "c_name_2"]))
-    ).toBe("c_name_3");
+    expect(sanitizeColumnName("name", new Set(["c_name", "c_name_2"]))).toBe(
+      "c_name_3"
+    );
   });
 });

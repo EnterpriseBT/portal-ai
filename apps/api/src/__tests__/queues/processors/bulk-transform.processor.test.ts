@@ -1,16 +1,11 @@
-import {
-  jest,
-  describe,
-  it,
-  expect,
-  beforeEach,
-} from "@jest/globals";
+import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import type { Job as BullJob } from "bullmq";
 
 // ── Mocks (must precede the dynamic import) ──────────────────────────
 
-const mockCountSourceRows =
-  jest.fn<() => Promise<number>>().mockResolvedValue(0);
+const mockCountSourceRows = jest
+  .fn<() => Promise<number>>()
+  .mockResolvedValue(0);
 type BatchResult = {
   rowsCommitted: number;
   rows: Array<Record<string, unknown>>;
@@ -38,20 +33,17 @@ const mockUpsertSuccesses = jest
   >()
   .mockResolvedValue({ rowsUpserted: 0, droppedKeys: [] });
 
-jest.unstable_mockModule(
-  "../../../services/bulk-transform.service.js",
-  () => ({
-    BulkTransformService: {
-      countSourceRows: mockCountSourceRows,
-      runBatch: mockRunBatch,
-      // Phase 4 additions — these mocks aren't exercised by the
-      // SQL-path tests in this file, but the imports resolve through
-      // them at module load.
-      fetchSourceBatch: mockFetchSourceBatch,
-      upsertSuccesses: mockUpsertSuccesses,
-    },
-  })
-);
+jest.unstable_mockModule("../../../services/bulk-transform.service.js", () => ({
+  BulkTransformService: {
+    countSourceRows: mockCountSourceRows,
+    runBatch: mockRunBatch,
+    // Phase 4 additions — these mocks aren't exercised by the
+    // SQL-path tests in this file, but the imports resolve through
+    // them at module load.
+    fetchSourceBatch: mockFetchSourceBatch,
+    upsertSuccesses: mockUpsertSuccesses,
+  },
+}));
 
 const mockLookupBulkDispatchable = jest
   .fn<() => Promise<unknown | null>>()
@@ -62,8 +54,9 @@ jest.unstable_mockModule("../../../services/tools.service.js", () => ({
   },
 }));
 
-const mockPublishCustomEvent =
-  jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockPublishCustomEvent = jest
+  .fn<() => Promise<void>>()
+  .mockResolvedValue(undefined);
 
 jest.unstable_mockModule("../../../services/job-events.service.js", () => ({
   JobEventsService: {
@@ -74,21 +67,20 @@ jest.unstable_mockModule("../../../services/job-events.service.js", () => ({
 
 // #183: the processor commits the job's charge on success. Mock the gate so
 // the commit is observable and never touches a real DB.
-const mockCommitCharge =
-  jest.fn<(...a: unknown[]) => Promise<void>>().mockResolvedValue(undefined);
-const mockResolveCallCost =
-  jest.fn<() => Promise<number>>().mockResolvedValue(1);
+const mockCommitCharge = jest
+  .fn<(...a: unknown[]) => Promise<void>>()
+  .mockResolvedValue(undefined);
+const mockResolveCallCost = jest
+  .fn<() => Promise<number>>()
+  .mockResolvedValue(1);
 jest.unstable_mockModule("../../../services/cost-gate.service.js", () => ({
   CostGateService: { commitCharge: mockCommitCharge },
   resolveCallCost: mockResolveCallCost,
 }));
 
-const { bulkTransformProcessor } = await import(
-  "../../../queues/processors/bulk-transform.processor.js"
-);
-const { ApiCode } = await import(
-  "../../../constants/api-codes.constants.js"
-);
+const { bulkTransformProcessor } =
+  await import("../../../queues/processors/bulk-transform.processor.js");
+const { ApiCode } = await import("../../../constants/api-codes.constants.js");
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -118,9 +110,7 @@ function makeJob(
       organizationId: "org-1",
       ...metadata,
     },
-    getState: jest
-      .fn<() => Promise<string>>()
-      .mockResolvedValue(state),
+    getState: jest.fn<() => Promise<string>>().mockResolvedValue(state),
   } as unknown as BullJob;
 }
 
@@ -129,9 +119,7 @@ function makeJob(
 describe("bulkTransformProcessor — SQL path (Phase 2 slice 0)", () => {
   beforeEach(() => {
     mockCountSourceRows.mockReset().mockResolvedValue(0);
-    mockRunBatch
-      .mockReset()
-      .mockResolvedValue({ rowsCommitted: 0, rows: [] });
+    mockRunBatch.mockReset().mockResolvedValue({ rowsCommitted: 0, rows: [] });
     mockPublishCustomEvent.mockReset().mockResolvedValue(undefined);
   });
 
@@ -152,9 +140,8 @@ describe("bulkTransformProcessor — SQL path (Phase 2 slice 0)", () => {
 
     const counters = mockPublishCustomEvent.mock.calls.map(
       (call) =>
-        (
-          (call as unknown as [string, string, { recordsProcessed: number }])[2]
-        ).recordsProcessed
+        (call as unknown as [string, string, { recordsProcessed: number }])[2]
+          .recordsProcessed
     );
     expect(counters).toEqual([1_000, 2_000, 3_000]);
   });
@@ -315,9 +302,7 @@ describe("bulkTransformProcessor — tool path multi-write (Phase 4 / #99 slice 
         stationId: STATION_ID,
         userId: "user-1",
       },
-      getState: jest
-        .fn<() => Promise<string>>()
-        .mockResolvedValue(state),
+      getState: jest.fn<() => Promise<string>>().mockResolvedValue(state),
     } as unknown as BullJob;
   }
 

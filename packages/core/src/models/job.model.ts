@@ -135,9 +135,7 @@ export const FileUploadParseResultSchema = z.object({
   sheets: z.array(z.unknown()),
   sliced: z.boolean().optional(),
 });
-export type FileUploadParseResult = z.infer<
-  typeof FileUploadParseResultSchema
->;
+export type FileUploadParseResult = z.infer<typeof FileUploadParseResultSchema>;
 
 /**
  * layout_plan_commit — runs the layout-plan commit pipeline (replay +
@@ -288,7 +286,9 @@ export const BulkTransformValueFromSchema = z.discriminatedUnion("kind", [
     value: z.unknown(),
   }),
 ]);
-export type BulkTransformValueFrom = z.infer<typeof BulkTransformValueFromSchema>;
+export type BulkTransformValueFrom = z.infer<
+  typeof BulkTransformValueFromSchema
+>;
 
 export const BulkTransformWriteSchema = z.object({
   /** Target entity to write into. The aggregate set is locked while the
@@ -587,4 +587,3 @@ export class JobModelFactory extends ModelFactory<Job, JobModel> {
     return jobModel;
   }
 }
-

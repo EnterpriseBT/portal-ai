@@ -1,4 +1,11 @@
-import { jest, describe, it, expect, beforeEach, beforeAll } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  beforeAll,
+} from "@jest/globals";
 
 import { SQL_QUERY_JOB_TIMEOUT_MS } from "@portalai/core/constants";
 
@@ -6,9 +13,12 @@ import { SQL_QUERY_JOB_TIMEOUT_MS } from "@portalai/core/constants";
 
 const mockProduce = jest.fn<() => Promise<{ envelope: unknown }>>();
 
-jest.unstable_mockModule("../../../services/portal-sql-handle.service.js", () => ({
-  PortalSqlHandleService: { produce: mockProduce },
-}));
+jest.unstable_mockModule(
+  "../../../services/portal-sql-handle.service.js",
+  () => ({
+    PortalSqlHandleService: { produce: mockProduce },
+  })
+);
 
 // ── SUT ──────────────────────────────────────────────────────────────
 

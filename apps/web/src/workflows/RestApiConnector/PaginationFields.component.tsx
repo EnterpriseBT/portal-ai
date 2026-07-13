@@ -62,8 +62,7 @@ export const PaginationFieldsUI: React.FC<PaginationFieldsUIProps> = ({
       helperText={touched[name as string] && errors[name as string]}
       slotProps={{
         htmlInput: {
-          "aria-invalid":
-            touched[name as string] && !!errors[name as string],
+          "aria-invalid": touched[name as string] && !!errors[name as string],
         },
       }}
     />
@@ -158,11 +157,7 @@ export const PaginationFieldsUI: React.FC<PaginationFieldsUIProps> = ({
             <MenuItem value="header">Header</MenuItem>
             <MenuItem value="body">Body (template via {"{{cursor}}"})</MenuItem>
           </TextField>
-          {textField(
-            "cursorResponsePath",
-            "Cursor response path",
-            "meta.next"
-          )}
+          {textField("cursorResponsePath", "Cursor response path", "meta.next")}
         </Stack>
       ) : null}
 
@@ -178,15 +173,11 @@ export const PaginationFieldsUI: React.FC<PaginationFieldsUIProps> = ({
         <Stack spacing={1}>
           <Typography variant="caption" color="text.secondary">
             Reads the next page&apos;s URL from a dotted path in the response
-            body and follows it verbatim. Use when the upstream API returns
-            the next link in the body (e.g. NASA NEO&apos;s{" "}
-            <code>links.next</code>).
+            body and follows it verbatim. Use when the upstream API returns the
+            next link in the body (e.g. NASA NEO&apos;s <code>links.next</code>
+            ).
           </Typography>
-          {textField(
-            "nextUrlPath",
-            "Next-URL response path",
-            "links.next"
-          )}
+          {textField("nextUrlPath", "Next-URL response path", "links.next")}
         </Stack>
       ) : null}
     </Stack>

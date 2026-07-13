@@ -137,10 +137,7 @@ describe("swagger spec — spreadsheet-parsing schema registration", () => {
     ["PatchApiEndpointRequestBody", PatchApiEndpointRequestBodySchema],
     ["DeleteApiEndpointResponse", DeleteApiEndpointResponsePayloadSchema],
     ["ApiColumnSuggestion", ApiColumnSuggestionSchema],
-    [
-      "DiscoveredColumnWithSuggestion",
-      DiscoveredColumnWithSuggestionSchema,
-    ],
+    ["DiscoveredColumnWithSuggestion", DiscoveredColumnWithSuggestionSchema],
     ["DiscoverColumnsResult", DiscoverColumnsResultSchema],
     ["DiscoverColumnsRequestBody", DiscoverColumnsRequestBodySchema],
     ["TestConnectionRequestBody", TestConnectionRequestBodySchema],
@@ -256,10 +253,7 @@ describe("swagger spec — REST API connector endpoints", () => {
       "/api/connector-instances/{instanceId}/api-endpoints/{entityId}/discover-columns",
       ["post"] as const,
     ],
-    [
-      "/api/connector-instances/{id}/test-connection",
-      ["post"] as const,
-    ],
+    ["/api/connector-instances/{id}/test-connection", ["post"] as const],
   ])("registers %s under paths with the expected verbs", (path, verbs) => {
     const entry = paths[path] as Record<string, unknown> | undefined;
     expect(entry).toBeDefined();
@@ -274,7 +268,10 @@ describe("swagger spec — REST API connector endpoints", () => {
     ] as {
       post?: {
         requestBody?: { content: Record<string, { schema: unknown }> };
-        responses?: Record<string, { content?: Record<string, { schema: unknown }> }>;
+        responses?: Record<
+          string,
+          { content?: Record<string, { schema: unknown }> }
+        >;
       };
     };
     expect(entry.post?.requestBody?.content["application/json"].schema).toEqual(
@@ -303,9 +300,7 @@ describe("swagger spec — REST API connector endpoints", () => {
   });
 
   it("POST /test-connection accepts TestConnectionRequestBody and returns TestConnectionResult", () => {
-    const entry = paths[
-      "/api/connector-instances/{id}/test-connection"
-    ] as {
+    const entry = paths["/api/connector-instances/{id}/test-connection"] as {
       post?: {
         requestBody?: { content: Record<string, { schema: unknown }> };
         responses?: Record<string, unknown>;
@@ -323,8 +318,14 @@ describe("swagger spec — REST API connector endpoints", () => {
       ["/api/connector-instances/{instanceId}/api-endpoints", "get"],
       ["/api/connector-instances/{instanceId}/api-endpoints", "post"],
       ["/api/connector-instances/{instanceId}/api-endpoints/{entityId}", "get"],
-      ["/api/connector-instances/{instanceId}/api-endpoints/{entityId}", "patch"],
-      ["/api/connector-instances/{instanceId}/api-endpoints/{entityId}", "delete"],
+      [
+        "/api/connector-instances/{instanceId}/api-endpoints/{entityId}",
+        "patch",
+      ],
+      [
+        "/api/connector-instances/{instanceId}/api-endpoints/{entityId}",
+        "delete",
+      ],
       [
         "/api/connector-instances/{instanceId}/api-endpoints/{entityId}/discover-columns",
         "post",

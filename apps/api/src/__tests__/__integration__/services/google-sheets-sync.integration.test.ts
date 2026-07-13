@@ -74,9 +74,8 @@ const originalFetch = globalThis.fetch;
 const { environment } = await import("../../../environment.js");
 environment.ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;
 
-const { googleSheetsAdapter } = await import(
-  "../../../adapters/google-sheets/google-sheets.adapter.js"
-);
+const { googleSheetsAdapter } =
+  await import("../../../adapters/google-sheets/google-sheets.adapter.js");
 
 const {
   connectorInstances,
@@ -427,9 +426,8 @@ describe("googleSheetsAdapter.syncInstance", () => {
       identityKind: "rowPosition",
     });
 
-    const eligibility = await googleSheetsAdapter.assertSyncEligibility!(
-      instance
-    );
+    const eligibility =
+      await googleSheetsAdapter.assertSyncEligibility!(instance);
     expect(eligibility.ok).toBe(true);
     expect(eligibility.identityWarnings).toEqual([{ regionId: "r1" }]);
   });
@@ -448,9 +446,7 @@ describe("googleSheetsAdapter.syncInstance", () => {
 
     fetchMock.mockResolvedValueOnce(
       mockFetchResponse(
-        mockSheetsApiResponse([
-          { email: "alice@example.com", name: "Alice" },
-        ])
+        mockSheetsApiResponse([{ email: "alice@example.com", name: "Alice" }])
       )
     );
 
@@ -473,9 +469,7 @@ describe("googleSheetsAdapter.syncInstance", () => {
     });
     fetchMock.mockResolvedValueOnce(
       mockFetchResponse(
-        mockSheetsApiResponse([
-          { email: "alice@example.com", name: "Alice" },
-        ])
+        mockSheetsApiResponse([{ email: "alice@example.com", name: "Alice" }])
       )
     );
 

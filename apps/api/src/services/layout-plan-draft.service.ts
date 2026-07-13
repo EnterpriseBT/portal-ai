@@ -144,10 +144,9 @@ export class LayoutPlanDraftService {
     let workbookSource: LayoutPlanCommitWorkbookSource;
 
     if (body.connectorInstanceId) {
-      const existing =
-        await DbService.repository.connectorInstances.findById(
-          body.connectorInstanceId
-        );
+      const existing = await DbService.repository.connectorInstances.findById(
+        body.connectorInstanceId
+      );
       if (!existing) {
         throw new ApiError(
           404,
@@ -628,13 +627,9 @@ async function resolveWorkbookFromBody(
  * Two roundtrips (instance → definition) is fine on this code path —
  * called once per interpret/commit request, not in a tight loop.
  */
-async function loadConnectorSlug(
-  connectorInstanceId: string
-): Promise<string> {
+async function loadConnectorSlug(connectorInstanceId: string): Promise<string> {
   const instance =
-    await DbService.repository.connectorInstances.findById(
-      connectorInstanceId
-    );
+    await DbService.repository.connectorInstances.findById(connectorInstanceId);
   if (!instance) {
     throw new ApiError(
       404,
@@ -642,10 +637,9 @@ async function loadConnectorSlug(
       `Connector instance ${connectorInstanceId} not found`
     );
   }
-  const definition =
-    await DbService.repository.connectorDefinitions.findById(
-      instance.connectorDefinitionId
-    );
+  const definition = await DbService.repository.connectorDefinitions.findById(
+    instance.connectorDefinitionId
+  );
   if (!definition) {
     throw new ApiError(
       500,

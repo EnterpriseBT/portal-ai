@@ -1084,10 +1084,7 @@ describe("AnalyticsService", () => {
       let manual = 0;
       for (let i = 0; i < n; i++) {
         const yi = SEPARABLE_RECORDS[i].y;
-        const p = Math.max(
-          1e-15,
-          Math.min(1 - 1e-15, result.probabilities[i])
-        );
+        const p = Math.max(1e-15, Math.min(1 - 1e-15, result.probabilities[i]));
         manual += yi * Math.log(p) + (1 - yi) * Math.log(1 - p);
       }
       manual = -manual / n;
@@ -1370,7 +1367,8 @@ describe("AnalyticsService", () => {
     const multiplicativeSeasonalSeries = (n: number) =>
       Array.from({ length: n }, (_, i) => ({
         date: `2020-01-01T00:00:${String(i).padStart(2, "0")}.000Z`,
-        value: 100 * (1 + 0.2 * Math.sin((2 * Math.PI * i) / 12)) * (1 + i / 100),
+        value:
+          100 * (1 + 0.2 * Math.sin((2 * Math.PI * i) / 12)) * (1 + i / 100),
       }));
 
     it("matches whole-array forecast for Holt's linear (no seasonality)", async () => {
@@ -2022,11 +2020,7 @@ describe("AnalyticsService", () => {
         indicator: "Donchian",
         params: { period: 3 },
       });
-      expect(result.dates).toEqual([
-        "2024-01-03",
-        "2024-01-04",
-        "2024-01-05",
-      ]);
+      expect(result.dates).toEqual(["2024-01-03", "2024-01-04", "2024-01-05"]);
     });
 
     it("Donchian default period is 20", () => {
@@ -2081,9 +2075,7 @@ describe("AnalyticsService", () => {
         indicator: "ADX",
         params: { period: 5 },
       });
-      expect(adxCustom.values.length).toBeGreaterThan(
-        adxDefault.values.length
-      );
+      expect(adxCustom.values.length).toBeGreaterThan(adxDefault.values.length);
     });
   });
 
@@ -2619,8 +2611,8 @@ describe("AnalyticsService", () => {
       expect(result.totalReturn).toBeGreaterThan(0.2);
       expect(result.totalReturn).toBeLessThan(0.45);
       // CAGR annualized
-      expect(result.cagr).toBeGreaterThan(0.10);
-      expect(result.cagr).toBeLessThan(0.20);
+      expect(result.cagr).toBeGreaterThan(0.1);
+      expect(result.cagr).toBeLessThan(0.2);
       expect(result.sortino).toBeGreaterThan(0);
       expect(Number.isFinite(result.calmar)).toBe(true);
       expect(typeof result.maxDrawdown).toBe("number");
@@ -2704,8 +2696,7 @@ describe("AnalyticsService", () => {
       // Sharpe ratio computed inline — the `sharpe_ratio` tool was removed
       // in #130 E2 (expressed in sql_query). Non-annualized: mean / sample
       // stddev over the return series.
-      const mean =
-        returnsArr.reduce((s, r) => s + r, 0) / returnsArr.length;
+      const mean = returnsArr.reduce((s, r) => s + r, 0) / returnsArr.length;
       const variance =
         returnsArr.reduce((s, r) => s + (r - mean) ** 2, 0) /
         (returnsArr.length - 1);
@@ -2948,7 +2939,7 @@ describe("AnalyticsService", () => {
       // n = 16; 0.05 quantile = 0.75 ⇒ between worst and second-worst.
       const records = [
         -0.05, -0.04, -0.03, -0.02, -0.015, -0.01, -0.005, 0.0, 0.005, 0.01,
-        0.02, 0.03, 0.04, 0.05, 0.07, 0.10,
+        0.02, 0.03, 0.04, 0.05, 0.07, 0.1,
       ].map((value) => ({ value }));
       const result = AnalyticsService.varCvar({
         records,
@@ -2964,7 +2955,7 @@ describe("AnalyticsService", () => {
     it("historical CVaR is at least as large as VaR", () => {
       const records = [
         -0.05, -0.04, -0.03, -0.02, -0.015, -0.01, -0.005, 0.0, 0.005, 0.01,
-        0.02, 0.03, 0.04, 0.05, 0.07, 0.10,
+        0.02, 0.03, 0.04, 0.05, 0.07, 0.1,
       ].map((value) => ({ value }));
       const result = AnalyticsService.varCvar({
         records,
@@ -2977,8 +2968,7 @@ describe("AnalyticsService", () => {
       // Deterministic synthetic returns; compute mu/sigma inline and
       // assert against the Gaussian formula instead of textbook values.
       const records = Array.from({ length: 1000 }, (_, i) => ({
-        value:
-          (Math.sin((i * 13) / 7) + Math.cos((i * 17) / 11)) * 0.01,
+        value: (Math.sin((i * 13) / 7) + Math.cos((i * 17) / 11)) * 0.01,
       }));
       const result = AnalyticsService.varCvar({
         records,
@@ -3000,8 +2990,7 @@ describe("AnalyticsService", () => {
 
     it("parametric CVaR follows the closed-form formula", () => {
       const records = Array.from({ length: 1000 }, (_, i) => ({
-        value:
-          (Math.sin((i * 13) / 7) + Math.cos((i * 17) / 11)) * 0.01,
+        value: (Math.sin((i * 13) / 7) + Math.cos((i * 17) / 11)) * 0.01,
       }));
       const result = AnalyticsService.varCvar({
         records,
@@ -3023,7 +3012,7 @@ describe("AnalyticsService", () => {
     it("tailCount is present for historical and absent for parametric", () => {
       const records = [
         -0.05, -0.04, -0.03, -0.02, -0.015, -0.01, -0.005, 0.0, 0.005, 0.01,
-        0.02, 0.03, 0.04, 0.05, 0.07, 0.10,
+        0.02, 0.03, 0.04, 0.05, 0.07, 0.1,
       ].map((value) => ({ value }));
       const historical = AnalyticsService.varCvar({
         records,
@@ -3142,7 +3131,9 @@ describe("AnalyticsService", () => {
         extraPayment: 500,
       });
       for (const row of result) {
-        expect(Math.abs(row.principal + row.interest - row.payment)).toBeLessThan(0.02);
+        expect(
+          Math.abs(row.principal + row.interest - row.payment)
+        ).toBeLessThan(0.02);
       }
     });
 
@@ -3302,7 +3293,9 @@ describe("AnalyticsService", () => {
     // Case 68
     it("loadStation returns metadata-only — no `records` map field", async () => {
       mockFindByStationId.mockResolvedValue(STATION_INSTANCES);
-      mockFindByConnectorInstanceId.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      mockFindByConnectorInstanceId
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
       mockFindFieldMappingsByEntityIds.mockResolvedValue(new Map());
 
       const result = await AnalyticsService.loadStation(STATION_ID, ORG_ID);
@@ -3321,10 +3314,7 @@ describe("AnalyticsService", () => {
       const url = await import("node:url");
       const here = path.dirname(url.fileURLToPath(import.meta.url));
       const pkg = JSON.parse(
-        await fs.readFile(
-          path.resolve(here, "../../../package.json"),
-          "utf8"
-        )
+        await fs.readFile(path.resolve(here, "../../../package.json"), "utf8")
       ) as { dependencies?: Record<string, string> };
       expect(pkg.dependencies?.alasql).toBeUndefined();
     });

@@ -75,93 +75,93 @@ export const BasicsStepUI: React.FC<BasicsStepUIProps> = ({
   const nameRef = useDialogAutoFocus<HTMLInputElement>(true);
 
   return (
-  <Stack spacing={2}>
-    <FormAlert serverError={serverError} />
-    <TextField
-      inputRef={nameRef}
-      label="Connector name"
-      value={name}
-      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-        onNameChange(e.target.value)
-      }
-      onBlur={() => onBlur("name")}
-      required
-      fullWidth
-      error={touched.name && !!errors.name}
-      helperText={touched.name && errors.name}
-      slotProps={{
-        htmlInput: { "aria-invalid": touched.name && !!errors.name },
-      }}
-    />
-    <TextField
-      label="Base URL"
-      placeholder="https://api.example.com"
-      value={baseUrl}
-      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-        onBaseUrlChange(e.target.value)
-      }
-      onBlur={() => onBlur("baseUrl")}
-      required
-      fullWidth
-      error={touched.baseUrl && !!errors.baseUrl}
-      helperText={touched.baseUrl && errors.baseUrl}
-      slotProps={{
-        htmlInput: { "aria-invalid": touched.baseUrl && !!errors.baseUrl },
-      }}
-    />
-    <TextField
-      select
-      label="Authentication"
-      value={authMode}
-      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-        onAuthModeChange(e.target.value as AuthMode)
-      }
-      fullWidth
-    >
-      <MenuItem value="none">None</MenuItem>
-      <MenuItem value="apiKey">API key</MenuItem>
-      <MenuItem value="bearer">Bearer token</MenuItem>
-      <MenuItem value="basic">Basic (username + password)</MenuItem>
-    </TextField>
-
-    {authMode === "apiKey" ? (
-      <ApiKeyCredentialsFormUI
-        keyName={credentials.keyName}
-        placement={credentials.placement}
-        value={credentials.apiKeyValue}
-        onKeyNameChange={(v) => onCredentialsChange("keyName", v)}
-        onPlacementChange={(v: ApiKeyPlacement) =>
-          onCredentialsChange("placement", v)
+    <Stack spacing={2}>
+      <FormAlert serverError={serverError} />
+      <TextField
+        inputRef={nameRef}
+        label="Connector name"
+        value={name}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+          onNameChange(e.target.value)
         }
-        onValueChange={(v) => onCredentialsChange("apiKeyValue", v)}
-        onBlur={onBlur}
-        errors={errors}
-        touched={touched}
+        onBlur={() => onBlur("name")}
+        required
+        fullWidth
+        error={touched.name && !!errors.name}
+        helperText={touched.name && errors.name}
+        slotProps={{
+          htmlInput: { "aria-invalid": touched.name && !!errors.name },
+        }}
       />
-    ) : null}
+      <TextField
+        label="Base URL"
+        placeholder="https://api.example.com"
+        value={baseUrl}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+          onBaseUrlChange(e.target.value)
+        }
+        onBlur={() => onBlur("baseUrl")}
+        required
+        fullWidth
+        error={touched.baseUrl && !!errors.baseUrl}
+        helperText={touched.baseUrl && errors.baseUrl}
+        slotProps={{
+          htmlInput: { "aria-invalid": touched.baseUrl && !!errors.baseUrl },
+        }}
+      />
+      <TextField
+        select
+        label="Authentication"
+        value={authMode}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+          onAuthModeChange(e.target.value as AuthMode)
+        }
+        fullWidth
+      >
+        <MenuItem value="none">None</MenuItem>
+        <MenuItem value="apiKey">API key</MenuItem>
+        <MenuItem value="bearer">Bearer token</MenuItem>
+        <MenuItem value="basic">Basic (username + password)</MenuItem>
+      </TextField>
 
-    {authMode === "bearer" ? (
-      <BearerCredentialsFormUI
-        token={credentials.bearerToken}
-        onTokenChange={(v) => onCredentialsChange("bearerToken", v)}
-        onBlur={onBlur}
-        errors={errors}
-        touched={touched}
-      />
-    ) : null}
+      {authMode === "apiKey" ? (
+        <ApiKeyCredentialsFormUI
+          keyName={credentials.keyName}
+          placement={credentials.placement}
+          value={credentials.apiKeyValue}
+          onKeyNameChange={(v) => onCredentialsChange("keyName", v)}
+          onPlacementChange={(v: ApiKeyPlacement) =>
+            onCredentialsChange("placement", v)
+          }
+          onValueChange={(v) => onCredentialsChange("apiKeyValue", v)}
+          onBlur={onBlur}
+          errors={errors}
+          touched={touched}
+        />
+      ) : null}
 
-    {authMode === "basic" ? (
-      <BasicCredentialsFormUI
-        username={credentials.basicUsername}
-        password={credentials.basicPassword}
-        onUsernameChange={(v) => onCredentialsChange("basicUsername", v)}
-        onPasswordChange={(v) => onCredentialsChange("basicPassword", v)}
-        onBlur={onBlur}
-        errors={errors}
-        touched={touched}
-      />
-    ) : null}
-  </Stack>
+      {authMode === "bearer" ? (
+        <BearerCredentialsFormUI
+          token={credentials.bearerToken}
+          onTokenChange={(v) => onCredentialsChange("bearerToken", v)}
+          onBlur={onBlur}
+          errors={errors}
+          touched={touched}
+        />
+      ) : null}
+
+      {authMode === "basic" ? (
+        <BasicCredentialsFormUI
+          username={credentials.basicUsername}
+          password={credentials.basicPassword}
+          onUsernameChange={(v) => onCredentialsChange("basicUsername", v)}
+          onPasswordChange={(v) => onCredentialsChange("basicPassword", v)}
+          onBlur={onBlur}
+          errors={errors}
+          touched={touched}
+        />
+      ) : null}
+    </Stack>
   );
 };
 

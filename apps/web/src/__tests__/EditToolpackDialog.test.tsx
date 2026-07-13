@@ -2,9 +2,8 @@ import { jest } from "@jest/globals";
 import type { Toolpack } from "@portalai/core/contracts";
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
-const { EditToolpackDialogUI } = await import(
-  "../components/EditToolpackDialog.component"
-);
+const { EditToolpackDialogUI } =
+  await import("../components/EditToolpackDialog.component");
 
 const customPack: Toolpack = {
   id: "otp-1",
@@ -149,10 +148,7 @@ describe("EditToolpackDialogUI", () => {
   it("invokes onRotateSecret when the Rotate signing secret button is clicked", () => {
     const onRotateSecret = jest.fn();
     render(
-      <EditToolpackDialogUI
-        {...defaultProps}
-        onRotateSecret={onRotateSecret}
-      />
+      <EditToolpackDialogUI {...defaultProps} onRotateSecret={onRotateSecret} />
     );
     fireEvent.click(
       screen.getByRole("button", { name: /Rotate signing secret/ })

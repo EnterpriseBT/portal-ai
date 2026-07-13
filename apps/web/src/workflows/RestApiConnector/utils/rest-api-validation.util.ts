@@ -62,9 +62,7 @@ export const EMPTY_PAGINATION_DRAFT: PaginationDraft = {
 };
 
 /** Project the flat draft into a structured `PaginationConfig`. */
-export function paginationDraftToConfig(
-  d: PaginationDraft
-): PaginationConfig {
+export function paginationDraftToConfig(d: PaginationDraft): PaginationConfig {
   switch (d.strategy) {
     case "none":
       return { strategy: "none" };
@@ -119,13 +117,15 @@ const KNOWN_TEMPLATE_VARIABLES = new Set(["cursor", "pageNumber"]);
  * reject saves with bad placeholders before they reach the backend
  * (the backend would also reject via REST_API_TEMPLATE_UNKNOWN_VARIABLE).
  */
-export function validatePlaceholders(value: string): {
-  ok: true;
-} | {
-  ok: false;
-  name: string;
-  message: string;
-} {
+export function validatePlaceholders(value: string):
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      name: string;
+      message: string;
+    } {
   const pattern = /\{\{\s*([a-zA-Z_]\w*)?\s*\}\}/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(value)) !== null) {
@@ -134,9 +134,10 @@ export function validatePlaceholders(value: string): {
       return {
         ok: false,
         name,
-        message: name === ""
-          ? "Empty template placeholder {{}} is not allowed"
-          : `Unknown template variable "${name}". Allowed: cursor, pageNumber.`,
+        message:
+          name === ""
+            ? "Empty template placeholder {{}} is not allowed"
+            : `Unknown template variable "${name}". Allowed: cursor, pageNumber.`,
       };
     }
   }
@@ -245,7 +246,9 @@ export function validateEndpoint(input: {
 
   // Lint the body template before Zod sees it so we surface a more
   // actionable error than the schema's generic refine.
-  const bodyTemplate = input.bodyTemplate?.trim() ? input.bodyTemplate : undefined;
+  const bodyTemplate = input.bodyTemplate?.trim()
+    ? input.bodyTemplate
+    : undefined;
   if (bodyTemplate !== undefined) {
     const check = validatePlaceholders(bodyTemplate);
     if (!check.ok) errors.bodyTemplate = check.message;

@@ -100,12 +100,18 @@ function appleRegion(): Region {
 
 describe("extractRecords — matrix id 1e (rows × 2 segments + statics)", () => {
   it("emits one record per pivot-label position per entity-unit", async () => {
-    const records = await extractRecords(appleRegion(), appleWorkbook().sheets[0]);
+    const records = await extractRecords(
+      appleRegion(),
+      appleWorkbook().sheets[0]
+    );
     expect(records).toHaveLength(6);
   });
 
   it("attaches statics from field-role positions to every emitted record", async () => {
-    const records = await extractRecords(appleRegion(), appleWorkbook().sheets[0]);
+    const records = await extractRecords(
+      appleRegion(),
+      appleWorkbook().sheets[0]
+    );
     for (const r of records) {
       expect(r.fields["name"]).toBe("Apple");
       expect(r.fields["industry"]).toBe("Tech");
@@ -113,7 +119,10 @@ describe("extractRecords — matrix id 1e (rows × 2 segments + statics)", () =>
   });
 
   it("emits 3 quarter records with the right labels and values", async () => {
-    const records = await extractRecords(appleRegion(), appleWorkbook().sheets[0]);
+    const records = await extractRecords(
+      appleRegion(),
+      appleWorkbook().sheets[0]
+    );
     const quarter = records.filter((r) => "quarter" in r.fields);
     expect(quarter).toHaveLength(3);
     expect(quarter.map((r) => r.fields.quarter)).toEqual(["Q1", "Q2", "Q3"]);
@@ -124,7 +133,10 @@ describe("extractRecords — matrix id 1e (rows × 2 segments + statics)", () =>
   });
 
   it("emits 3 month records with the right labels and values", async () => {
-    const records = await extractRecords(appleRegion(), appleWorkbook().sheets[0]);
+    const records = await extractRecords(
+      appleRegion(),
+      appleWorkbook().sheets[0]
+    );
     const month = records.filter((r) => "month" in r.fields);
     expect(month).toHaveLength(3);
     expect(month.map((r) => r.fields.month)).toEqual(["Jan", "Feb", "Mar"]);
@@ -135,7 +147,10 @@ describe("extractRecords — matrix id 1e (rows × 2 segments + statics)", () =>
   });
 
   it("carries regionId and targetEntityDefinitionId on every record", async () => {
-    const records = await extractRecords(appleRegion(), appleWorkbook().sheets[0]);
+    const records = await extractRecords(
+      appleRegion(),
+      appleWorkbook().sheets[0]
+    );
     for (const r of records) {
       expect(r.regionId).toBe("r-1e");
       expect(r.targetEntityDefinitionId).toBe("companies");
@@ -143,7 +158,10 @@ describe("extractRecords — matrix id 1e (rows × 2 segments + statics)", () =>
   });
 
   it("produces distinct source-ids per (entity-unit, segment, label)", async () => {
-    const records = await extractRecords(appleRegion(), appleWorkbook().sheets[0]);
+    const records = await extractRecords(
+      appleRegion(),
+      appleWorkbook().sheets[0]
+    );
     const ids = new Set(records.map((r) => r.sourceId));
     expect(ids.size).toBe(6);
     for (const r of records) {
@@ -152,7 +170,10 @@ describe("extractRecords — matrix id 1e (rows × 2 segments + statics)", () =>
   });
 
   it("produces a non-empty checksum per record", async () => {
-    const records = await extractRecords(appleRegion(), appleWorkbook().sheets[0]);
+    const records = await extractRecords(
+      appleRegion(),
+      appleWorkbook().sheets[0]
+    );
     for (const r of records) {
       expect(typeof r.checksum).toBe("string");
       expect(r.checksum.length).toBeGreaterThan(0);
@@ -548,7 +569,10 @@ function cols2eRegion(): Region {
 
 describe("extractRecords — matrix id 2e (cols × statics + 2 segments)", () => {
   it("emits 6 records per data column with the right statics", async () => {
-    const records = await extractRecords(cols2eRegion(), cols2eWorkbook().sheets[0]);
+    const records = await extractRecords(
+      cols2eRegion(),
+      cols2eWorkbook().sheets[0]
+    );
     expect(records).toHaveLength(18);
     const byEntity = new Map<string, typeof records>();
     for (const r of records) {
@@ -564,7 +588,10 @@ describe("extractRecords — matrix id 2e (cols × statics + 2 segments)", () =>
   });
 
   it("emits the right quarter and month labels per entity", async () => {
-    const records = await extractRecords(cols2eRegion(), cols2eWorkbook().sheets[0]);
+    const records = await extractRecords(
+      cols2eRegion(),
+      cols2eWorkbook().sheets[0]
+    );
     const apple = records.filter((r) => r.fields["name"] === "Apple");
     expect(
       apple.filter((r) => "quarter" in r.fields).map((r) => r.fields.quarter)
@@ -581,7 +608,10 @@ describe("extractRecords — matrix id 2e (cols × statics + 2 segments)", () =>
   });
 
   it("produces distinct source-ids per (entity-column, segment, label)", async () => {
-    const records = await extractRecords(cols2eRegion(), cols2eWorkbook().sheets[0]);
+    const records = await extractRecords(
+      cols2eRegion(),
+      cols2eWorkbook().sheets[0]
+    );
     const ids = new Set(records.map((r) => r.sourceId));
     expect(ids.size).toBe(records.length);
   });
@@ -912,7 +942,10 @@ describe("extractRecords — matrix id 1a (rows × all-field, round-trip)", () =
   }
 
   it("emits one statics-only record per data row", async () => {
-    const records = await extractRecords(tidyRegion(), tidyWorkbook().sheets[0]);
+    const records = await extractRecords(
+      tidyRegion(),
+      tidyWorkbook().sheets[0]
+    );
     expect(records).toHaveLength(2);
     expect(records[0].fields).toEqual({
       email: "a@x.com",
@@ -1205,7 +1238,7 @@ describe("extractRecords — 2D crosstab (migrated from cells-as-records)", () =
     region.intersectionCellValueFields = {
       // An override targets a NONEXISTENT pair (won't apply); the existing
       // pair (region, quarter) keeps inheriting from `Revenue`.
-      "other__missing": { name: "Headcount", nameSource: "user" },
+      other__missing: { name: "Headcount", nameSource: "user" },
     };
     // The schema rejects unknown ids, but the replay path must be defensive
     // — strip the bad entry before passing through to extract.
@@ -1365,7 +1398,10 @@ describe("extractRecords — 2D crosstab with multiple pivot segments per axis",
       "rp-quarter__cp-company": { name: "revenue", nameSource: "user" },
       "rp-quarter__cp-special": { name: "headcount", nameSource: "user" },
     };
-    const records = await extractRecords(region, multiPivotWorkbook().sheets[0]);
+    const records = await extractRecords(
+      region,
+      multiPivotWorkbook().sheets[0]
+    );
     expect(records).toHaveLength(12);
     const revenueRecords = records.filter(
       (r) => r.fields.revenue !== undefined

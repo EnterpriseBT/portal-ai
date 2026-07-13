@@ -17,11 +17,14 @@ jest.unstable_mockModule("../../utils/redis.util.js", () => ({
   getRedisClient: () => fakeRedis,
 }));
 
-const { WebhookReadTokenService } = await import(
-  "../../services/webhook-read-token.service.js"
-);
+const { WebhookReadTokenService } =
+  await import("../../services/webhook-read-token.service.js");
 
-const SCOPE = { organizationId: "org-1", handleId: "qh-abc", mode: "read" as const };
+const SCOPE = {
+  organizationId: "org-1",
+  handleId: "qh-abc",
+  mode: "read" as const,
+};
 
 describe("WebhookReadTokenService", () => {
   beforeEach(() => store.clear());
@@ -60,7 +63,11 @@ describe("WebhookReadTokenService", () => {
   });
 
   it("rejects a token past its expiry as EXPIRED (401)", async () => {
-    const token = await WebhookReadTokenService.mint({ ...SCOPE, now: 1_000, ttlMs: 5_000 });
+    const token = await WebhookReadTokenService.mint({
+      ...SCOPE,
+      now: 1_000,
+      ttlMs: 5_000,
+    });
     // now (10_000) > exp (6_000)
     await expect(
       WebhookReadTokenService.validate(

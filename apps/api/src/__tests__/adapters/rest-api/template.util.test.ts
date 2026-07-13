@@ -8,15 +8,15 @@ import {
 
 describe("applyTemplate — happy path", () => {
   it("substitutes {{pageNumber}}", () => {
-    expect(applyTemplate("hello {{pageNumber}}", { cursor: "", pageNumber: 1 })).toBe(
-      "hello 1"
-    );
+    expect(
+      applyTemplate("hello {{pageNumber}}", { cursor: "", pageNumber: 1 })
+    ).toBe("hello 1");
   });
 
   it("substitutes {{cursor}}", () => {
-    expect(applyTemplate("c={{cursor}}", { cursor: "abc", pageNumber: 1 })).toBe(
-      "c=abc"
-    );
+    expect(
+      applyTemplate("c={{cursor}}", { cursor: "abc", pageNumber: 1 })
+    ).toBe("c=abc");
   });
 
   it("substitutes multiple placeholders in one string", () => {
@@ -41,9 +41,9 @@ describe("applyTemplate — happy path", () => {
   });
 
   it("trims whitespace inside the placeholder delimiters", () => {
-    expect(applyTemplate("{{ pageNumber }}", { cursor: "", pageNumber: 1 })).toBe(
-      "1"
-    );
+    expect(
+      applyTemplate("{{ pageNumber }}", { cursor: "", pageNumber: 1 })
+    ).toBe("1");
   });
 });
 
@@ -60,9 +60,7 @@ describe("applyTemplate — error paths", () => {
   });
 
   it("throws REST_API_TEMPLATE_UNKNOWN_VARIABLE on empty placeholder name", () => {
-    expect(() =>
-      applyTemplate("{{}}", { cursor: "", pageNumber: 1 })
-    ).toThrow(
+    expect(() => applyTemplate("{{}}", { cursor: "", pageNumber: 1 })).toThrow(
       expect.objectContaining({
         code: ApiCode.REST_API_TEMPLATE_UNKNOWN_VARIABLE,
       })

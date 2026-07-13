@@ -3,10 +3,7 @@ import type { Readable } from "node:stream";
 import chardet from "chardet";
 import { parse } from "csv-parse";
 
-import type {
-  ChunkRow,
-  SessionWriter,
-} from "../workbook-cache.service.js";
+import type { ChunkRow, SessionWriter } from "../workbook-cache.service.js";
 
 const DETECTION_CHUNK_SIZE = 4096;
 const CANDIDATE_DELIMITERS = [",", "\t", ";", "|"];

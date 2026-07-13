@@ -282,10 +282,9 @@ export class ConnectorInstanceLayoutPlansService {
         connectorInstanceId
       );
     // ensureInstanceInOrg already verified the row exists for this org.
-    const definition =
-      await DbService.repository.connectorDefinitions.findById(
-        instance!.connectorDefinitionId
-      );
+    const definition = await DbService.repository.connectorDefinitions.findById(
+      instance!.connectorDefinitionId
+    );
     const slug = definition!.slug;
 
     // Entity-definition catalog for the editor's Target-Entity picker.

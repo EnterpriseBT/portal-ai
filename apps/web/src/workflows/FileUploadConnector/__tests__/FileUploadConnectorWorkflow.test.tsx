@@ -306,9 +306,7 @@ describe("FileUploadConnectorWorkflowUI — pending flags", () => {
     expect(
       screen.getByText(/interpreting your spreadsheet/i)
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /^interpret$/i })
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /^interpret$/i })).toBeNull();
   });
 
   test('step 2 Commit button label flips to "Committing…" when isCommitting is true', () => {

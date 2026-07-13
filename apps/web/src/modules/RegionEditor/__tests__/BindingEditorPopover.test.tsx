@@ -245,7 +245,9 @@ describe("BindingEditorPopoverUI — validation", () => {
     setup({
       serverError: { message: "Reference unresolvable", code: "X_Y_Z" },
     });
-    expect(screen.getByRole("alert")).toHaveTextContent(/reference unresolvable/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /reference unresolvable/i
+    );
   });
 
   test("Apply is disabled while errors are present", () => {
@@ -257,9 +259,7 @@ describe("BindingEditorPopoverUI — validation", () => {
 describe("BindingEditorPopoverUI — header status icon", () => {
   test("renders the bound status icon when the draft has a columnDefinitionId, no errors, and is not excluded", () => {
     setup();
-    expect(
-      screen.getByTestId("binding-state-icon-bound")
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("binding-state-icon-bound")).toBeInTheDocument();
     expect(screen.getByLabelText(/^bound — /i)).toBeInTheDocument();
   });
 

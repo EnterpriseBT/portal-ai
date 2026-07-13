@@ -20,7 +20,13 @@ import {
   applyVars,
   templateVars,
 } from "./commands/vars.js";
-import { dbTunnel, dbPsql, dbReset, dbSeed, dbResetSeed } from "./commands/db.js";
+import {
+  dbTunnel,
+  dbPsql,
+  dbReset,
+  dbSeed,
+  dbResetSeed,
+} from "./commands/db.js";
 import { exitCodeFor, jsonError, printBanner } from "./output.js";
 
 interface GlobalOpts {
@@ -66,65 +72,106 @@ const flags = (o: GlobalOpts) => ({ yes: o.yes, confirmProd: o.confirmProd });
 
 export function buildProgram(): Command {
   const program = new Command("portalops")
-    .description("Portal infrastructure operator CLI (see packages/devops-cli/COMMANDS.md)")
+    .description(
+      "Portal infrastructure operator CLI (see packages/devops-cli/COMMANDS.md)"
+    )
     .exitOverride();
 
   // ── vars ───────────────────────────────────────────────────────────
-  const vars = program.command("vars").description("managed Secrets Manager / SSM config");
+  const vars = program
+    .command("vars")
+    .description("managed Secrets Manager / SSM config");
 
-  common(vars.command("describe").description("the catalog + resolved paths (no values)"))
-    .action(async (o: GlobalOpts) =>
-      execute(o, (def) => describeVars(def), (p: Awaited<ReturnType<typeof describeVars>>) =>
-        p.entries.map((e) => `${e.key.padEnd(32)} ${e.kind.padEnd(8)} ${e.path}`).join("\n")
-      )
-    );
+  common(
+    vars
+      .command("describe")
+      .description("the catalog + resolved paths (no values)")
+  ).action(async (o: GlobalOpts) =>
+    execute(
+      o,
+      (def) => describeVars(def),
+      (p: Awaited<ReturnType<typeof describeVars>>) =>
+        p.entries
+          .map((e) => `${e.key.padEnd(32)} ${e.kind.padEnd(8)} ${e.path}`)
+          .join("\n")
+    )
+  );
 
-  common(vars.command("list").description("every key with its live value (secrets masked)"))
+  common(
+    vars
+      .command("list")
+      .description("every key with its live value (secrets masked)")
+  )
     .option("--unmask", "reveal secret values")
     .action(async (o: GlobalOpts) =>
-      execute(o, (def) => listVars(def, { unmask: o.unmask }), (p: Awaited<ReturnType<typeof listVars>>) =>
-        p.entries.map((e) => `${e.key.padEnd(32)} ${e.kind.padEnd(8)} ${e.value}`).join("\n")
+      execute(
+        o,
+        (def) => listVars(def, { unmask: o.unmask }),
+        (p: Awaited<ReturnType<typeof listVars>>) =>
+          p.entries
+            .map((e) => `${e.key.padEnd(32)} ${e.kind.padEnd(8)} ${e.value}`)
+            .join("\n")
       )
     );
 
-  common(vars.command("get").description("one raw value").argument("<key>"))
-    .action(async (key: string, o: GlobalOpts) =>
-      execute(o, (def) => getVar(def, key), (p: Awaited<ReturnType<typeof getVar>>) => p.value)
-    );
+  common(
+    vars.command("get").description("one raw value").argument("<key>")
+  ).action(async (key: string, o: GlobalOpts) =>
+    execute(
+      o,
+      (def) => getVar(def, key),
+      (p: Awaited<ReturnType<typeof getVar>>) => p.value
+    )
+  );
 
-  common(vars.command("set").description("write one value ('-' reads stdin)")
-    .argument("<key>").argument("<value>"))
-    .action(async (key: string, value: string, o: GlobalOpts) =>
-      execute(o, async (def) => {
-        const res = await setVar(def, key, value, flags(o));
-        if (res.created) {
-          process.stderr.write(
-            "warning: created a NEW secret — add its ARN to the deploy workflow / CloudFormation before deploying\n"
-          );
-        }
-        return res;
-      })
-    );
+  common(
+    vars
+      .command("set")
+      .description("write one value ('-' reads stdin)")
+      .argument("<key>")
+      .argument("<value>")
+  ).action(async (key: string, value: string, o: GlobalOpts) =>
+    execute(o, async (def) => {
+      const res = await setVar(def, key, value, flags(o));
+      if (res.created) {
+        process.stderr.write(
+          "warning: created a NEW secret — add its ARN to the deploy workflow / CloudFormation before deploying\n"
+        );
+      }
+      return res;
+    })
+  );
 
-  common(vars.command("apply").description("batch-apply a KEY=VALUE env file").argument("<file>"))
-    .action(async (file: string, o: GlobalOpts) =>
-      execute(o, (def) => applyVars(def, file, flags(o)))
-    );
+  common(
+    vars
+      .command("apply")
+      .description("batch-apply a KEY=VALUE env file")
+      .argument("<file>")
+  ).action(async (file: string, o: GlobalOpts) =>
+    execute(o, (def) => applyVars(def, file, flags(o)))
+  );
 
-  common(vars.command("template").description("write a pre-filled env file (0600, plaintext!)")
-    .argument("[out]"))
-    .action(async (outPath: string | undefined, o: GlobalOpts) =>
-      execute(o, async (def) => {
-        const res = await templateVars(def, outPath);
-        process.stderr.write(`warning: ${res.warning}\n`);
-        return res;
-      })
-    );
+  common(
+    vars
+      .command("template")
+      .description("write a pre-filled env file (0600, plaintext!)")
+      .argument("[out]")
+  ).action(async (outPath: string | undefined, o: GlobalOpts) =>
+    execute(o, async (def) => {
+      const res = await templateVars(def, outPath);
+      process.stderr.write(`warning: ${res.warning}\n`);
+      return res;
+    })
+  );
 
   // ── db ─────────────────────────────────────────────────────────────
-  const db = program.command("db").description("database operations over the env connection");
+  const db = program
+    .command("db")
+    .description("database operations over the env connection");
 
-  common(db.command("tunnel").description("open the DB tunnel and stay attached"))
+  common(
+    db.command("tunnel").description("open the DB tunnel and stay attached")
+  )
     .option("--local-port <n>", "local port (default 15432)")
     .action(async (o: GlobalOpts) =>
       execute(o, async (def) => {
@@ -132,30 +179,46 @@ export function buildProgram(): Command {
           confirmProd: o.confirmProd,
           localPort: o.localPort ? Number(o.localPort) : undefined,
         });
-        process.stderr.write(`tunnel open — connect with:\n  psql "${t.connectionString}"\nCtrl+C to close\n`);
+        process.stderr.write(
+          `tunnel open — connect with:\n  psql "${t.connectionString}"\nCtrl+C to close\n`
+        );
         await new Promise(() => {}); // hold open; cli-env signal hooks clean up
         return undefined;
       })
     );
 
-  common(db.command("psql").description("psql through the tunnel (args after -- pass through)")
-    .argument("[args...]").allowUnknownOption(true))
-    .action(async (args: string[], o: GlobalOpts) =>
-      execute(o, async (def) => {
-        const { exitCode } = await dbPsql(def, { confirmProd: o.confirmProd, args: args ?? [] });
-        if (exitCode !== 0) process.exitCode = exitCode;
-        return undefined;
-      })
-    );
+  common(
+    db
+      .command("psql")
+      .description("psql through the tunnel (args after -- pass through)")
+      .argument("[args...]")
+      .allowUnknownOption(true)
+  ).action(async (args: string[], o: GlobalOpts) =>
+    execute(o, async (def) => {
+      const { exitCode } = await dbPsql(def, {
+        confirmProd: o.confirmProd,
+        args: args ?? [],
+      });
+      if (exitCode !== 0) process.exitCode = exitCode;
+      return undefined;
+    })
+  );
 
-  common(db.command("reset").description("DROP er__* + TRUNCATE the rest (destructive; never prod)"))
-    .action(async (o: GlobalOpts) => execute(o, (def) => dbReset(def, flags(o))));
+  common(
+    db
+      .command("reset")
+      .description("DROP er__* + TRUNCATE the rest (destructive; never prod)")
+  ).action(async (o: GlobalOpts) =>
+    execute(o, (def) => dbReset(def, flags(o)))
+  );
 
-  common(db.command("seed").description("run db:seed:ci as an ECS one-off task"))
-    .action(async (o: GlobalOpts) => execute(o, (def) => dbSeed(def, flags(o))));
+  common(
+    db.command("seed").description("run db:seed:ci as an ECS one-off task")
+  ).action(async (o: GlobalOpts) => execute(o, (def) => dbSeed(def, flags(o))));
 
-  common(db.command("reset-seed").description("reset, then seed"))
-    .action(async (o: GlobalOpts) => execute(o, (def) => dbResetSeed(def, flags(o))));
+  common(db.command("reset-seed").description("reset, then seed")).action(
+    async (o: GlobalOpts) => execute(o, (def) => dbResetSeed(def, flags(o)))
+  );
 
   return program;
 }
@@ -173,7 +236,11 @@ export async function runCli(argv: string[]): Promise<number> {
   } catch (err) {
     process.exitCode = prior;
     if (err instanceof CommanderError) {
-      if (err.code === "commander.helpDisplayed" || err.code === "commander.version") return 0;
+      if (
+        err.code === "commander.helpDisplayed" ||
+        err.code === "commander.version"
+      )
+        return 0;
       return 2; // usage errors
     }
     process.stderr.write(`error: ${(err as Error)?.message}\n`);
@@ -183,13 +250,15 @@ export async function runCli(argv: string[]): Promise<number> {
 
 // Binary entrypoint (skipped under test, where bin.js is imported).
 // realpath both sides: npm installs bins as symlinks into node_modules/.bin.
-const invokedAs = process.argv[1] ? (() => {
-  try {
-    return fs.realpathSync(process.argv[1]);
-  } catch {
-    return process.argv[1];
-  }
-})() : null;
+const invokedAs = process.argv[1]
+  ? (() => {
+      try {
+        return fs.realpathSync(process.argv[1]);
+      } catch {
+        return process.argv[1];
+      }
+    })()
+  : null;
 if (invokedAs && invokedAs === fileURLToPath(import.meta.url)) {
   runCli(process.argv.slice(2)).then((code) => {
     process.exitCode = code;

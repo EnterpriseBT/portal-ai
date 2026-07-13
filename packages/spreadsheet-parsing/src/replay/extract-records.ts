@@ -162,8 +162,7 @@ async function computeEffective(
 
     // Check for a dynamic tail segment.
     const tail = segs[segs.length - 1];
-    const isDynamicPivot =
-      tail.kind === "pivot" && tail.dynamic !== undefined;
+    const isDynamicPivot = tail.kind === "pivot" && tail.dynamic !== undefined;
 
     if (!isDynamicPivot) {
       result.segmentsByAxis[axis] = segs.slice();
@@ -175,10 +174,8 @@ async function computeEffective(
       .reduce((acc, s) => acc + s.positionCount, 0);
     const headerStart = startCoordAlong(axis, bounds);
     const tailStart = headerStart + fixedCount;
-    const crossStart =
-      axis === "row" ? bounds.startRow : bounds.startCol;
-    const crossEnd =
-      axis === "row" ? bounds.endRow : bounds.endCol;
+    const crossStart = axis === "row" ? bounds.startRow : bounds.startCol;
+    const crossEnd = axis === "row" ? bounds.endRow : bounds.endCol;
     const sheetEdge =
       axis === "row" ? sheet.dimensions.cols : sheet.dimensions.rows;
 
@@ -295,7 +292,10 @@ function ruleMatchesRecord(
     }
     // 1D / headerless: whole line blank.
     const recAxis = recordsAxisOf(region);
-    if (recAxis === "row" || (numAxes === 1 && region.headerAxes[0] === "row")) {
+    if (
+      recAxis === "row" ||
+      (numAxes === 1 && region.headerAxes[0] === "row")
+    ) {
       for (let c = bounds.startCol; c <= bounds.endCol; c++) {
         if (cellText(sheet.cell(recordRow, c)) !== "") return false;
       }
@@ -335,8 +335,7 @@ function extractHeaderless(
   const recordsAxis = region.recordsAxis!;
   const out: ExtractedRecord[] = [];
 
-  const iterStart =
-    recordsAxis === "row" ? bounds.startRow : bounds.startCol;
+  const iterStart = recordsAxis === "row" ? bounds.startRow : bounds.startCol;
   const iterEnd = recordsAxis === "row" ? bounds.endRow : bounds.endCol;
 
   for (let coord = iterStart; coord <= iterEnd; coord++) {
@@ -351,7 +350,12 @@ function extractHeaderless(
     }
     const fields: Record<string, unknown> = {};
     for (const binding of region.columnBindings) {
-      const resolved = resolveBindingCoord(binding.sourceLocator, sheet, bounds, {});
+      const resolved = resolveBindingCoord(
+        binding.sourceLocator,
+        sheet,
+        bounds,
+        {}
+      );
       if (!resolved) continue;
       fields[sourceFieldFromBinding(binding)] = readBindingCell(
         resolved,
@@ -389,7 +393,9 @@ function extract1D(
   // each record = one row excluding the header row.
   const entityAxis = headerAxis;
   const entityStart =
-    entityAxis === "row" ? effective.bounds.startRow : effective.bounds.startCol;
+    entityAxis === "row"
+      ? effective.bounds.startRow
+      : effective.bounds.startCol;
   const entityEnd =
     entityAxis === "row" ? effective.bounds.endRow : effective.bounds.endCol;
   const headerIndex = headers?.index;
@@ -425,7 +431,14 @@ function extract1D(
 
     if (
       region.skipRules.some((rule) =>
-        ruleMatchesRecord(rule, region, sheet, effective.bounds, recordRow, recordCol)
+        ruleMatchesRecord(
+          rule,
+          region,
+          sheet,
+          effective.bounds,
+          recordRow,
+          recordCol
+        )
       )
     ) {
       continue;
@@ -455,7 +468,14 @@ function extract1D(
     if (!hasPivot) {
       // All-field or statics-only region. Emit one record per entity.
       out.push(
-        finalizeRecord(region, recordRow, recordCol, sheet, baseSourceId, statics)
+        finalizeRecord(
+          region,
+          recordRow,
+          recordCol,
+          sheet,
+          baseSourceId,
+          statics
+        )
       );
       continue;
     }
@@ -560,7 +580,14 @@ function extract2D(
 
       if (
         region.skipRules.some((rule) =>
-          ruleMatchesRecord(rule, region, sheet, effective.bounds, cellRow, cellCol)
+          ruleMatchesRecord(
+            rule,
+            region,
+            sheet,
+            effective.bounds,
+            cellRow,
+            cellCol
+          )
         )
       ) {
         continue;
@@ -604,7 +631,9 @@ function extract2D(
         if (overrideName) effectiveCellValueName = overrideName;
       }
       if (effectiveCellValueName) {
-        fields[effectiveCellValueName] = cellValue(sheet.cell(cellRow, cellCol));
+        fields[effectiveCellValueName] = cellValue(
+          sheet.cell(cellRow, cellCol)
+        );
       }
 
       out.push(

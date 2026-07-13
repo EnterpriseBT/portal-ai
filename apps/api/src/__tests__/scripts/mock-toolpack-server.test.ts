@@ -118,7 +118,9 @@ describe("mock-toolpack-server verification middleware (phase 6)", () => {
         .send({ tool: "echo", input: { message: "hi" } });
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ echoed: "hi" });
-      const logged = logSpy.mock.calls.map((args) => String(args[0])).join("\n");
+      const logged = logSpy.mock.calls
+        .map((args) => String(args[0]))
+        .join("\n");
       expect(logged).toMatch(/SKIPPED/);
     } finally {
       logSpy.mockRestore();
@@ -152,12 +154,17 @@ describe("mock-toolpack-server — #124 dataset-scaling reference tools", () => 
     const res = await request(createMockApp()).get("/schema");
     expect(res.status).toBe(200);
     const byName = Object.fromEntries(
-      (res.body.tools as Array<{ name: string; capability?: { consumption?: { mode: string } } }>).map(
-        (t) => [t.name, t]
-      )
+      (
+        res.body.tools as Array<{
+          name: string;
+          capability?: { consumption?: { mode: string } };
+        }>
+      ).map((t) => [t.name, t])
     );
     expect(byName.sum_records.capability?.consumption?.mode).toBe("bounded");
-    expect(byName.count_via_pull.capability?.consumption?.mode).toBe("streaming");
+    expect(byName.count_via_pull.capability?.consumption?.mode).toBe(
+      "streaming"
+    );
     expect(byName.aggregate_to_handle.capability?.consumption?.mode).toBe(
       "streaming"
     );

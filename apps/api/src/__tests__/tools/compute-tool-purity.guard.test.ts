@@ -49,9 +49,11 @@ describe("compute-tool purity guard (#114)", () => {
     describe(`${name}.tool.ts`, () => {
       it("does not read the backend (no fetchEntityRows / wide-table / stationData)", () => {
         for (const symbol of FORBIDDEN_SYMBOLS) {
-          expect({ tool: name, symbol, present: source.includes(symbol) }).toEqual(
-            { tool: name, symbol, present: false }
-          );
+          expect({
+            tool: name,
+            symbol,
+            present: source.includes(symbol),
+          }).toEqual({ tool: name, symbol, present: false });
         }
       });
 

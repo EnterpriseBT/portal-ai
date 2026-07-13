@@ -50,16 +50,12 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
-const {
-  configureRestApiAdapterDeps,
-  __resetRestApiAdapterDepsForTests,
-} = await import("../../../adapters/rest-api/rest-api.adapter.js");
-const { ProbeCache } = await import(
-  "../../../adapters/rest-api/probe-cache.util.js"
-);
-const { createStubClassifier, createThrowingClassifier } = await import(
-  "../../../adapters/rest-api/classifier.stub.js"
-);
+const { configureRestApiAdapterDeps, __resetRestApiAdapterDepsForTests } =
+  await import("../../../adapters/rest-api/rest-api.adapter.js");
+const { ProbeCache } =
+  await import("../../../adapters/rest-api/probe-cache.util.js");
+const { createStubClassifier, createThrowingClassifier } =
+  await import("../../../adapters/rest-api/classifier.stub.js");
 
 let connection!: ReturnType<typeof postgres>;
 let db!: ReturnType<typeof drizzle>;
@@ -162,7 +158,9 @@ async function seedEndpoint(): Promise<string> {
       },
     });
   if (res.status !== 201) {
-    throw new Error(`seedEndpoint failed: ${res.status} ${JSON.stringify(res.body)}`);
+    throw new Error(
+      `seedEndpoint failed: ${res.status} ${JSON.stringify(res.body)}`
+    );
   }
   return res.body.payload.entity.id;
 }
@@ -170,14 +168,12 @@ async function seedEndpoint(): Promise<string> {
 describe("POST .../api-endpoints/:entityId/discover-columns — happy paths", () => {
   it("returns source:live + degradation:'llm-disabled' when no classifier is wired", async () => {
     const entityId = await seedEndpoint();
-    globalThis.fetch = jest
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        jsonResponse([
-          { id: "a", name: "Alice" },
-          { id: "b", name: "Bob" },
-        ])
-      ) as unknown as typeof globalThis.fetch;
+    globalThis.fetch = jest.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse([
+        { id: "a", name: "Alice" },
+        { id: "b", name: "Bob" },
+      ])
+    ) as unknown as typeof globalThis.fetch;
 
     const res = await request(app)
       .post(
@@ -190,7 +186,11 @@ describe("POST .../api-endpoints/:entityId/discover-columns — happy paths", ()
     expect(res.body.payload.degradation).toBe("llm-disabled");
     expect(res.body.payload.recordsScanned).toBe(2);
     expect(res.body.payload.columns).toHaveLength(2);
-    expect(res.body.payload.columns.every((c: { suggestion?: unknown }) => !c.suggestion)).toBe(true);
+    expect(
+      res.body.payload.columns.every(
+        (c: { suggestion?: unknown }) => !c.suggestion
+      )
+    ).toBe(true);
   });
 
   it("returns source:live + per-column suggestions when the classifier is wired", async () => {
@@ -230,7 +230,12 @@ describe("POST .../api-endpoints/:entityId/discover-columns — happy paths", ()
     expect(res.status).toBe(200);
     expect(res.body.payload.degradation).toBeNull();
     const byKey = Object.fromEntries(
-      (res.body.payload.columns as Array<{ key: string; suggestion?: { suggestedNormalizedKey: string } }>).map((c) => [c.key, c])
+      (
+        res.body.payload.columns as Array<{
+          key: string;
+          suggestion?: { suggestedNormalizedKey: string };
+        }>
+      ).map((c) => [c.key, c])
     );
     expect(byKey.id.suggestion?.suggestedNormalizedKey).toBe("user_id");
     expect(byKey.name.suggestion?.suggestedNormalizedKey).toBe("user_name");
@@ -292,7 +297,9 @@ describe("POST .../discover-columns — degradation + error paths", () => {
     });
     globalThis.fetch = jest
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(jsonResponse([{ id: "a" }])) as unknown as typeof globalThis.fetch;
+      .mockResolvedValueOnce(
+        jsonResponse([{ id: "a" }])
+      ) as unknown as typeof globalThis.fetch;
 
     const res = await request(app)
       .post(

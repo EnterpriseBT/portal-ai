@@ -109,7 +109,14 @@ describe("BUILTIN_TOOLPACKS", () => {
     }
     const fin = BUILTIN_TOOLPACK_BY_SLUG.financial;
     const pureMathNames = [
-      "npv", "irr", "tvm", "xnpv", "xirr", "depreciation", "amortize", "bond_math",
+      "npv",
+      "irr",
+      "tvm",
+      "xnpv",
+      "xirr",
+      "depreciation",
+      "amortize",
+      "bond_math",
     ];
     for (const tool of fin.tools) {
       if (pureMathNames.includes(tool.name)) {
@@ -158,9 +165,9 @@ describe("BuiltinToolpackSlugSchema", () => {
     expect(BuiltinToolpackSlugSchema.safeParse("data_query").success).toBe(
       true
     );
-    expect(BuiltinToolpackSlugSchema.safeParse("entity_management").success).toBe(
-      true
-    );
+    expect(
+      BuiltinToolpackSlugSchema.safeParse("entity_management").success
+    ).toBe(true);
   });
 
   it("rejects unknown slugs", () => {

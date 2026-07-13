@@ -48,12 +48,15 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 
 // Mock LayoutPlanInterpretService.analyze so we don't hit the LLM in integration tests.
 const mockAnalyze = jest.fn<(...args: unknown[]) => Promise<LayoutPlan>>();
-jest.unstable_mockModule("../../../services/layout-plan-interpret.service.js", () => ({
-  LayoutPlanInterpretService: {
-    analyze: mockAnalyze,
-    loadCatalog: jest.fn(async () => []),
-  },
-}));
+jest.unstable_mockModule(
+  "../../../services/layout-plan-interpret.service.js",
+  () => ({
+    LayoutPlanInterpretService: {
+      analyze: mockAnalyze,
+      loadCatalog: jest.fn(async () => []),
+    },
+  })
+);
 
 // In-memory Redis shim — keeps the chunked workbook cache exercised by
 // `getEditContext` off a real Redis. Mirrors the implementation that
@@ -922,17 +925,13 @@ describe("Connector Instance Layout Plans Router", () => {
       // Read via the hydrated repo to verify each record's projection.
       const records = await (db as Db).select().from(schema.entityRecords);
       expect(records).toHaveLength(2);
-      const { entityRecordsRepo } = await import(
-        "../../../db/repositories/entity-records.repository.js"
-      );
+      const { entityRecordsRepo } =
+        await import("../../../db/repositories/entity-records.repository.js");
       const entityIdAfter = records[0].connectorEntityId;
-      const hydrated = await entityRecordsRepo.findHydratedMany(
-        entityIdAfter
-      );
+      const hydrated = await entityRecordsRepo.findHydratedMany(entityIdAfter);
       expect(hydrated).toHaveLength(2);
       const claude = hydrated.find(
-        (r) =>
-          (r.normalizedData as Record<string, unknown>).model === "Claude"
+        (r) => (r.normalizedData as Record<string, unknown>).model === "Claude"
       );
       expect(claude).toBeDefined();
       expect(
@@ -1017,7 +1016,11 @@ describe("Connector Instance Layout Plans Router", () => {
             // pivot positions (Jan/Feb/Mar) skip the gate as pivot segments.
             columnBindings: [
               {
-                sourceLocator: { kind: "byHeaderName", axis: "row", name: "id" },
+                sourceLocator: {
+                  kind: "byHeaderName",
+                  axis: "row",
+                  name: "id",
+                },
                 columnDefinitionId: colIdId,
                 confidence: 0.95,
               },
@@ -1079,18 +1082,15 @@ describe("Connector Instance Layout Plans Router", () => {
 
       const records = await (db as Db).select().from(schema.entityRecords);
       expect(records).toHaveLength(6);
-      const { entityRecordsRepo } = await import(
-        "../../../db/repositories/entity-records.repository.js"
-      );
+      const { entityRecordsRepo } =
+        await import("../../../db/repositories/entity-records.repository.js");
       const hydrated = await entityRecordsRepo.findHydratedMany(
         records[0].connectorEntityId
       );
       expect(hydrated[0].normalizedData).toHaveProperty("month");
       expect(hydrated[0].normalizedData).toHaveProperty("revenue");
       const months = new Set(
-        hydrated.map((r) =>
-          (r.normalizedData as Record<string, unknown>).month
-        )
+        hydrated.map((r) => (r.normalizedData as Record<string, unknown>).month)
       );
       expect(months).toEqual(new Set(["Jan", "Feb", "Mar"]));
     });
@@ -1163,7 +1163,11 @@ describe("Connector Instance Layout Plans Router", () => {
             },
             columnBindings: [
               {
-                sourceLocator: { kind: "byHeaderName", axis: "row", name: "id" },
+                sourceLocator: {
+                  kind: "byHeaderName",
+                  axis: "row",
+                  name: "id",
+                },
                 columnDefinitionId: colIdId,
                 confidence: 0.95,
               },
@@ -1246,17 +1250,13 @@ describe("Connector Instance Layout Plans Router", () => {
       };
       const planId = await insertPlanRow(db as Db, plan);
 
-      await expect(
-        commitInline(planId, makeWorkbook())
-      ).rejects.toMatchObject({
+      await expect(commitInline(planId, makeWorkbook())).rejects.toMatchObject({
         status: 400,
         code: ApiCode.LAYOUT_PLAN_DUPLICATE_ENTITY,
       });
 
       // No entity or mapping rows should have been written.
-      const entities = await (db as Db)
-        .select()
-        .from(schema.connectorEntities);
+      const entities = await (db as Db).select().from(schema.connectorEntities);
       expect(entities).toHaveLength(0);
       const mappings = await (db as Db).select().from(schema.fieldMappings);
       expect(mappings).toHaveLength(0);
@@ -1333,9 +1333,7 @@ describe("Connector Instance Layout Plans Router", () => {
       // and the unchanged-path bumps `synced_at` on both sides.
       const entityId = first.connectorEntityIds[0]!;
       const wideRows = (await (db as Db).execute(
-        (await import("drizzle-orm")).sql.raw(
-          `SELECT * FROM "er__${entityId}"`
-        )
+        (await import("drizzle-orm")).sql.raw(`SELECT * FROM "er__${entityId}"`)
       )) as unknown as Record<string, unknown>[];
       expect(wideRows).toHaveLength(2);
     });
@@ -1898,8 +1896,7 @@ describe("Connector Instance Layout Plans Router", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      const payload =
-        res.body.payload as LayoutPlanEditContextResponsePayload;
+      const payload = res.body.payload as LayoutPlanEditContextResponsePayload;
       expect(payload.planId).toBe(planId);
       expect(payload.plan.planVersion).toBe("1.0.0");
       expect(payload.connectorDefinitionSlug).toBe("google-sheets");
@@ -1907,7 +1904,9 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(payload.workbookPreview).not.toBeNull();
       expect(payload.workbookPreview!.sheets).toHaveLength(1);
       expect(payload.workbookPreview!.sheets[0].name).toBe("Sheet1");
-      expect(payload.workbookPreview!.sheets[0].cells.length).toBeGreaterThan(0);
+      expect(payload.workbookPreview!.sheets[0].cells.length).toBeGreaterThan(
+        0
+      );
       expect(payload.reason).toBeUndefined();
       // Cloud connectors' slice endpoints key off the connector-instance
       // id; the upload-session echo is file-upload-only.
@@ -1929,8 +1928,7 @@ describe("Connector Instance Layout Plans Router", () => {
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);
-      const payload =
-        res.body.payload as LayoutPlanEditContextResponsePayload;
+      const payload = res.body.payload as LayoutPlanEditContextResponsePayload;
       expect(payload.connectorDefinitionSlug).toBe("microsoft-excel");
       expect(payload.editable).toBe(true);
       expect(payload.workbookPreview!.sheets).toHaveLength(1);
@@ -1977,8 +1975,7 @@ describe("Connector Instance Layout Plans Router", () => {
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);
-      const payload =
-        res.body.payload as LayoutPlanEditContextResponsePayload;
+      const payload = res.body.payload as LayoutPlanEditContextResponsePayload;
       expect(payload.connectorDefinitionSlug).toBe("file-upload");
       expect(payload.editable).toBe(false);
       expect(payload.workbookPreview).toBeNull();

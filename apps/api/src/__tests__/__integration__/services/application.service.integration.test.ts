@@ -566,7 +566,9 @@ describe("ApplicationService Integration Tests", () => {
       const { user, organization } = await seedOwnerWithLogin(5000);
       const second = await addOrg(user.id, "Second", 0);
       // Low lastLogin on the excluded rows so they can't affect the current pick.
-      await addOrg(user.id, "Deleted Membership", 1, { membershipDeleted: true });
+      await addOrg(user.id, "Deleted Membership", 1, {
+        membershipDeleted: true,
+      });
       await addOrg(user.id, "Deleted Org", 1, { orgDeleted: true });
 
       const memberships = await ApplicationService.listUserMemberships(user.id);
@@ -617,7 +619,10 @@ describe("ApplicationService Integration Tests", () => {
         db
       );
 
-      const result = await ApplicationService.switchOrganization(user.id, target.id);
+      const result = await ApplicationService.switchOrganization(
+        user.id,
+        target.id
+      );
       expect(result.organization.id).toBe(target.id);
 
       const current = await ApplicationService.getCurrentOrganization(user.id);

@@ -38,7 +38,10 @@ export function partitionTables(tableNames: string[]): {
   return { toDrop, toTruncate };
 }
 
-export type SqlExec = (connectionString: string, sql: string) => Promise<string>;
+export type SqlExec = (
+  connectionString: string,
+  sql: string
+) => Promise<string>;
 
 /** Default executor: one-shot psql (tuples-only, unaligned). */
 export const psqlExec: SqlExec = (connectionString, sql) =>

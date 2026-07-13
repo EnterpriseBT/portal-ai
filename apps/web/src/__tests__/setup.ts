@@ -63,10 +63,12 @@ if (typeof window !== "undefined" && !("PointerEvent" in window)) {
       this.isPrimary = init.isPrimary ?? true;
     }
   }
-  (window as unknown as { PointerEvent: typeof PolyfillPointerEvent }).PointerEvent =
-    PolyfillPointerEvent;
-  (global as unknown as { PointerEvent: typeof PolyfillPointerEvent }).PointerEvent =
-    PolyfillPointerEvent;
+  (
+    window as unknown as { PointerEvent: typeof PolyfillPointerEvent }
+  ).PointerEvent = PolyfillPointerEvent;
+  (
+    global as unknown as { PointerEvent: typeof PolyfillPointerEvent }
+  ).PointerEvent = PolyfillPointerEvent;
 }
 
 // setPointerCapture / releasePointerCapture aren't implemented on jsdom

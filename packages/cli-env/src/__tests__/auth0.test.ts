@@ -59,7 +59,8 @@ describe("login (device authorization grant)", () => {
         json({
           device_code: "dev-code",
           user_code: "ABCD-EFGH",
-          verification_uri_complete: "https://dev-tenant.us.auth0.com/activate?user_code=ABCD-EFGH",
+          verification_uri_complete:
+            "https://dev-tenant.us.auth0.com/activate?user_code=ABCD-EFGH",
           interval: 0, // fixture: no wait between polls
           expires_in: 900,
         })
@@ -92,7 +93,10 @@ describe("login (device authorization grant)", () => {
       "ABCD-EFGH"
     );
     // Device-code request went to the env's tenant with the CLI client id.
-    const [deviceUrl, deviceInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [deviceUrl, deviceInit] = fetchMock.mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
     expect(deviceUrl).toBe("https://dev-tenant.us.auth0.com/oauth/device/code");
     expect(String(deviceInit.body)).toContain("cli-client-123");
 
@@ -105,12 +109,13 @@ describe("login (device authorization grant)", () => {
   });
 
   it("resolves AWS envs' Auth0 config from SSM params", async () => {
-    getParamMock.mockImplementation(async (_def, name) =>
-      ({
-        "auth0-domain": "dev-tenant.us.auth0.com",
-        "auth0-audience": "https://api.mcp-ui.dev",
-        "auth0-cli-client-id": "cli-appdev-456",
-      })[name]!
+    getParamMock.mockImplementation(
+      async (_def, name) =>
+        ({
+          "auth0-domain": "dev-tenant.us.auth0.com",
+          "auth0-audience": "https://api.mcp-ui.dev",
+          "auth0-cli-client-id": "cli-appdev-456",
+        })[name]!
     );
     fetchMock
       .mockResolvedValueOnce(
@@ -165,16 +170,20 @@ describe("login (device authorization grant)", () => {
       )
       .mockResolvedValueOnce(json({ error: "access_denied" }, 403));
 
-    await expect(login("local", { onUserCode: jest.fn() })).rejects.toBeInstanceOf(
-      EnvNotAuthorizedError
-    );
+    await expect(
+      login("local", { onUserCode: jest.fn() })
+    ).rejects.toBeInstanceOf(EnvNotAuthorizedError);
   });
 });
 
 describe("getToken", () => {
   it("returns the cached token silently while it's fresh (no network)", async () => {
     writeCreds({
-      local: { accessToken: "at-cached", refreshToken: "rt", expiresAt: Date.now() + 3_600_000 },
+      local: {
+        accessToken: "at-cached",
+        refreshToken: "rt",
+        expiresAt: Date.now() + 3_600_000,
+      },
     });
     await expect(getToken("local")).resolves.toBe("at-cached");
     expect(fetchMock).not.toHaveBeenCalled();
@@ -182,10 +191,18 @@ describe("getToken", () => {
 
   it("transparently refreshes an expired token and rewrites the cache", async () => {
     writeCreds({
-      local: { accessToken: "at-old", refreshToken: "rt-old", expiresAt: Date.now() - 1000 },
+      local: {
+        accessToken: "at-old",
+        refreshToken: "rt-old",
+        expiresAt: Date.now() - 1000,
+      },
     });
     fetchMock.mockResolvedValueOnce(
-      json({ access_token: "at-new", refresh_token: "rt-new", expires_in: 86400 })
+      json({
+        access_token: "at-new",
+        refresh_token: "rt-new",
+        expires_in: 86400,
+      })
     );
 
     await expect(getToken("local")).resolves.toBe("at-new");
@@ -207,18 +224,32 @@ describe("getToken", () => {
 
   it("failed refresh → ENV_NOT_AUTHORIZED (re-login required)", async () => {
     writeCreds({
-      local: { accessToken: "at-old", refreshToken: "rt-dead", expiresAt: Date.now() - 1000 },
+      local: {
+        accessToken: "at-old",
+        refreshToken: "rt-dead",
+        expiresAt: Date.now() - 1000,
+      },
     });
     fetchMock.mockResolvedValueOnce(json({ error: "invalid_grant" }, 403));
-    await expect(getToken("local")).rejects.toBeInstanceOf(EnvNotAuthorizedError);
+    await expect(getToken("local")).rejects.toBeInstanceOf(
+      EnvNotAuthorizedError
+    );
   });
 });
 
 describe("logout", () => {
   it("clears the env's entry, leaving other envs' sessions intact", async () => {
     writeCreds({
-      local: { accessToken: "a", refreshToken: "r", expiresAt: Date.now() + 1000 },
-      "app-dev": { accessToken: "b", refreshToken: "s", expiresAt: Date.now() + 1000 },
+      local: {
+        accessToken: "a",
+        refreshToken: "r",
+        expiresAt: Date.now() + 1000,
+      },
+      "app-dev": {
+        accessToken: "b",
+        refreshToken: "s",
+        expiresAt: Date.now() + 1000,
+      },
     });
     await logout("local");
     const creds = readCreds();

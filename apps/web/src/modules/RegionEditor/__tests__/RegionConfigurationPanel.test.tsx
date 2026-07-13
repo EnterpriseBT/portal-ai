@@ -316,7 +316,9 @@ describe("RegionConfigurationPanelUI", () => {
       );
       // Both axis-promotion buttons appear for a headerless region.
       const addRow = screen.getByRole("button", { name: /\+ add row axis/i });
-      const addCol = screen.getByRole("button", { name: /\+ add column axis/i });
+      const addCol = screen.getByRole("button", {
+        name: /\+ add column axis/i,
+      });
       expect(addRow).toBeInTheDocument();
       expect(addCol).toBeInTheDocument();
       fireEvent.click(addRow);
@@ -373,9 +375,7 @@ describe("RegionConfigurationPanelUI", () => {
             entityOptions={ENTITY_OPTIONS}
             entityOrder={["ent_a"]}
             siblingsInSameEntity={0}
-            onUpdate={(patch) =>
-              setRegion((prev) => ({ ...prev, ...patch }))
-            }
+            onUpdate={(patch) => setRegion((prev) => ({ ...prev, ...patch }))}
             onDelete={jest.fn()}
           />
         );
@@ -432,9 +432,7 @@ describe("RegionConfigurationPanelUI", () => {
             entityOptions={ENTITY_OPTIONS}
             entityOrder={["ent_a"]}
             siblingsInSameEntity={0}
-            onUpdate={(patch) =>
-              setRegion((prev) => ({ ...prev, ...patch }))
-            }
+            onUpdate={(patch) => setRegion((prev) => ({ ...prev, ...patch }))}
             onDelete={jest.fn()}
           />
         );
@@ -473,9 +471,7 @@ describe("RegionConfigurationPanelUI", () => {
             entityOptions={ENTITY_OPTIONS}
             entityOrder={["ent_a"]}
             siblingsInSameEntity={0}
-            onUpdate={(patch) =>
-              setRegion((prev) => ({ ...prev, ...patch }))
-            }
+            onUpdate={(patch) => setRegion((prev) => ({ ...prev, ...patch }))}
             onDelete={jest.fn()}
           />
         );
@@ -487,9 +483,7 @@ describe("RegionConfigurationPanelUI", () => {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 75));
       });
-      const cellValueInput = screen.getByLabelText(
-        /cell-value field name/i
-      );
+      const cellValueInput = screen.getByLabelText(/cell-value field name/i);
       expect(document.activeElement).not.toBe(cellValueInput);
     });
 
@@ -740,9 +734,7 @@ describe("RegionConfigurationPanelUI", () => {
         />
       );
       expect(screen.getByText(/Lead\s+—\s+new/)).toBeInTheDocument();
-      expect(
-        screen.queryByText(/should-not-render/)
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/should-not-render/)).not.toBeInTheDocument();
     });
   });
 

@@ -48,10 +48,7 @@ export function signRequest(
   const timestamp = String(Math.floor((opts?.now ?? Date.now()) / 1000));
   const webhookId = opts?.webhookId ?? crypto.randomUUID();
   const payload = [timestamp, webhookId, body].join(SIGNED_PAYLOAD_SEPARATOR);
-  const hex = crypto
-    .createHmac("sha256", secret)
-    .update(payload)
-    .digest("hex");
+  const hex = crypto.createHmac("sha256", secret).update(payload).digest("hex");
   return {
     "X-Portalai-Timestamp": timestamp,
     "X-Portalai-Webhook-Id": webhookId,

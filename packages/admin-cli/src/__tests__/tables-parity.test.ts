@@ -27,7 +27,11 @@ function assertSubset(cliTable: PgTable, apiTable: PgTable): void {
   for (const col of c.columns) {
     const apiCol = apiCols.get(col.name);
     expect(apiCol).toBeDefined();
-    expect({ name: col.name, dataType: col.dataType, notNull: col.notNull }).toEqual({
+    expect({
+      name: col.name,
+      dataType: col.dataType,
+      notNull: col.notNull,
+    }).toEqual({
       name: apiCol!.name,
       dataType: apiCol!.dataType,
       notNull: apiCol!.notNull,

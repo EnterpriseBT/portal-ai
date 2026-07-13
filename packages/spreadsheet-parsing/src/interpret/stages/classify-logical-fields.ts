@@ -87,7 +87,9 @@ function collectPivotSegmentLabels(
     const coord = coords[offset + i];
     if (coord === undefined) break;
     const cell =
-      axis === "row" ? sheet.cell(headerIndex, coord) : sheet.cell(coord, headerIndex);
+      axis === "row"
+        ? sheet.cell(headerIndex, coord)
+        : sheet.cell(coord, headerIndex);
     if (cell && cell.value !== null && cell.value !== undefined) {
       const v = cell.value;
       const label =
@@ -122,9 +124,7 @@ function collectCellValueSamples(region: Region, sheet: Sheet): string[] {
   return out;
 }
 
-function pivotSegmentsWithOffset(
-  region: Region
-): Array<{
+function pivotSegmentsWithOffset(region: Region): Array<{
   axis: AxisMember;
   segment: Extract<Segment, { kind: "pivot" }>;
   offset: number;
@@ -217,7 +217,8 @@ function applyClassificationsToRegion(
         const t = work.targets[i];
         if (t.kind !== "pivotSegment" || t.segmentId !== s.id) continue;
         const classification = byHeader.get(work.candidates[i].sourceHeader);
-        if (!classification || classification.columnDefinitionId === null) return s;
+        if (!classification || classification.columnDefinitionId === null)
+          return s;
         pivotTouched = true;
         return { ...s, columnDefinitionId: classification.columnDefinitionId };
       }
@@ -262,14 +263,18 @@ function applyClassificationsToRegion(
   // — that's correct: identical names mean identical fields.
   if (region.intersectionCellValueFields) {
     let intersectionTouched = false;
-    const nextIntersections: Record<string, typeof region.intersectionCellValueFields[string]> = {
+    const nextIntersections: Record<
+      string,
+      (typeof region.intersectionCellValueFields)[string]
+    > = {
       ...region.intersectionCellValueFields,
     };
     for (let i = 0; i < work.targets.length; i++) {
       const t = work.targets[i];
       if (t.kind !== "intersectionCellValueField") continue;
       const classification = byHeader.get(work.candidates[i].sourceHeader);
-      if (!classification || classification.columnDefinitionId === null) continue;
+      if (!classification || classification.columnDefinitionId === null)
+        continue;
       const prior = nextIntersections[t.key];
       if (!prior) continue;
       nextIntersections[t.key] = {

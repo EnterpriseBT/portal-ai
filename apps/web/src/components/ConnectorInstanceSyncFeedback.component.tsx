@@ -93,9 +93,9 @@ export const ConnectorInstanceSyncFeedbackUI = ({
         sx={{ minWidth: 320 }}
       >
         <Typography variant="body2">
-          Sync complete: {recordCounts.created} added,{" "}
-          {recordCounts.updated} updated, {recordCounts.unchanged}{" "}
-          unchanged, {recordCounts.deleted} removed
+          Sync complete: {recordCounts.created} added, {recordCounts.updated}{" "}
+          updated, {recordCounts.unchanged} unchanged, {recordCounts.deleted}{" "}
+          removed
         </Typography>
       </Alert>
     );

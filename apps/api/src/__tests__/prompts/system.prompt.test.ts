@@ -127,7 +127,9 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
   });
 
   it("is present even with a minimal toolpack set", () => {
-    const prompt = buildSystemPrompt(makeContext({ toolPacks: ["data_query"] }));
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["data_query"] })
+    );
     expect(prompt).toContain("## Your role: route to a tool");
   });
 });
@@ -242,7 +244,9 @@ describe("buildSystemPrompt — response style", () => {
     );
 
     const responseStyleIdx = prompt.indexOf("## Response Style");
-    expect(responseStyleIdx).toBeGreaterThan(prompt.indexOf("## Available Data"));
+    expect(responseStyleIdx).toBeGreaterThan(
+      prompt.indexOf("## Available Data")
+    );
     expect(responseStyleIdx).toBeGreaterThan(
       prompt.indexOf("## Cross-Entity Relationships")
     );
@@ -429,7 +433,12 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
       makeContext({
         toolPacks: ["data_query", "entity_management"],
         connectorInstances: [
-          { id: "ci-1", name: "Sandbox", display: "REST API", slug: "rest-api" },
+          {
+            id: "ci-1",
+            name: "Sandbox",
+            display: "REST API",
+            slug: "rest-api",
+          },
           {
             id: "ci-2",
             name: "Personal",
@@ -452,7 +461,12 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
       makeContext({
         toolPacks: ["data_query", "entity_management"],
         connectorInstances: [
-          { id: "ci-1", name: "Sandbox", display: "REST API", slug: "rest-api" },
+          {
+            id: "ci-1",
+            name: "Sandbox",
+            display: "REST API",
+            slug: "rest-api",
+          },
         ],
       })
     );
@@ -465,7 +479,12 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
       makeContext({
         toolPacks: ["data_query"],
         connectorInstances: [
-          { id: "ci-1", name: "Sandbox", display: "REST API", slug: "rest-api" },
+          {
+            id: "ci-1",
+            name: "Sandbox",
+            display: "REST API",
+            slug: "rest-api",
+          },
         ],
       })
     );

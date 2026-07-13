@@ -328,12 +328,10 @@ export type PortalResultInsert = z.infer<typeof PortalResultInsertSchema>;
 // ── Station Toolpacks ────────────────────────────────────────────────
 
 /** Zod schema for a `station_toolpacks` row returned by SELECT. */
-export const StationToolpackSelectSchema =
-  createSelectSchema(stationToolpacks);
+export const StationToolpackSelectSchema = createSelectSchema(stationToolpacks);
 
 /** Zod schema for inserting into `station_toolpacks`. */
-export const StationToolpackInsertSchema =
-  createInsertSchema(stationToolpacks);
+export const StationToolpackInsertSchema = createInsertSchema(stationToolpacks);
 
 /** Inferred types */
 export type StationToolpackSelect = z.infer<typeof StationToolpackSelectSchema>;
@@ -342,12 +340,14 @@ export type StationToolpackInsert = z.infer<typeof StationToolpackInsertSchema>;
 // ── Organization Toolpacks ───────────────────────────────────────────
 
 /** Zod schema for an `organization_toolpacks` row returned by SELECT. */
-export const OrganizationToolpackSelectSchema =
-  createSelectSchema(organizationToolpacks);
+export const OrganizationToolpackSelectSchema = createSelectSchema(
+  organizationToolpacks
+);
 
 /** Zod schema for inserting into `organization_toolpacks`. */
-export const OrganizationToolpackInsertSchema =
-  createInsertSchema(organizationToolpacks);
+export const OrganizationToolpackInsertSchema = createInsertSchema(
+  organizationToolpacks
+);
 
 /** Inferred types */
 export type OrganizationToolpackSelect = z.infer<
@@ -404,11 +404,17 @@ export type WideTableColumnInsert = z.infer<typeof WideTableColumnInsertSchema>;
 // ── API Endpoint Configs ──────────────────────────────────────────────
 
 /** Zod schema for an `api_endpoint_configs` row returned by SELECT. */
-export const ApiEndpointConfigSelectSchema = createSelectSchema(apiEndpointConfigs);
+export const ApiEndpointConfigSelectSchema =
+  createSelectSchema(apiEndpointConfigs);
 
 /** Zod schema for inserting into `api_endpoint_configs`. */
-export const ApiEndpointConfigInsertSchema = createInsertSchema(apiEndpointConfigs);
+export const ApiEndpointConfigInsertSchema =
+  createInsertSchema(apiEndpointConfigs);
 
 /** Inferred types */
-export type ApiEndpointConfigSelect = z.infer<typeof ApiEndpointConfigSelectSchema>;
-export type ApiEndpointConfigInsert = z.infer<typeof ApiEndpointConfigInsertSchema>;
+export type ApiEndpointConfigSelect = z.infer<
+  typeof ApiEndpointConfigSelectSchema
+>;
+export type ApiEndpointConfigInsert = z.infer<
+  typeof ApiEndpointConfigInsertSchema
+>;

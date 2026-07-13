@@ -108,7 +108,10 @@ async function postForm(
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(form).toString(),
   });
-  return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+  return {
+    status: res.status,
+    body: (await res.json()) as Record<string, unknown>,
+  };
 }
 
 /** Run the device flow for `envName` and cache the session. */
@@ -224,7 +227,8 @@ export async function getToken(envName: string): Promise<string> {
   next[envName] = {
     accessToken: refreshed.body.access_token as string,
     // Auth0 rotates refresh tokens when rotation is enabled; keep the old one otherwise.
-    refreshToken: (refreshed.body.refresh_token as string) ?? entry.refreshToken,
+    refreshToken:
+      (refreshed.body.refresh_token as string) ?? entry.refreshToken,
     expiresAt: Date.now() + Number(refreshed.body.expires_in ?? 0) * 1000,
   };
   writeCredentials(next);

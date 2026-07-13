@@ -12,14 +12,15 @@ const findByIdMock =
   >();
 const getSessionMetaMock =
   jest.fn<(prefix: string) => Promise<SessionMeta | null>>();
-const readRowsMock = jest.fn<
-  (
-    prefix: string,
-    sheetId: string,
-    rowStart: number,
-    rowEnd: number
-  ) => AsyncIterable<ChunkRow>
->();
+const readRowsMock =
+  jest.fn<
+    (
+      prefix: string,
+      sheetId: string,
+      rowStart: number,
+      rowEnd: number
+    ) => AsyncIterable<ChunkRow>
+  >();
 
 jest.unstable_mockModule("../../services/workbook-cache.service.js", () => ({
   WorkbookCacheService: {
@@ -44,9 +45,8 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
-const { MicrosoftExcelConnectorService } = await import(
-  "../../services/microsoft-excel-connector.service.js"
-);
+const { MicrosoftExcelConnectorService } =
+  await import("../../services/microsoft-excel-connector.service.js");
 
 function meta(sheets: SheetChunkMeta[]): SessionMeta {
   return { sheets, status: "ready", createdAt: 0 };

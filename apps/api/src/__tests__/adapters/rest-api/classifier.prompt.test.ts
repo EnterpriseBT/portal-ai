@@ -6,7 +6,11 @@ describe("buildApiClassifierPrompt", () => {
   it("emits a section per candidate with sourceField + inferredType + samples", () => {
     const prompt = buildApiClassifierPrompt({
       candidates: [
-        { sourceField: "email", inferredType: "string", samples: ["alice@x.test"] },
+        {
+          sourceField: "email",
+          inferredType: "string",
+          samples: ["alice@x.test"],
+        },
         { sourceField: "age", inferredType: "number", samples: [21, 22, 23] },
       ],
       catalog: [],
@@ -17,12 +21,14 @@ describe("buildApiClassifierPrompt", () => {
     expect(prompt).toContain('samples: ["alice@x.test"]');
     expect(prompt).toContain('sourceField: "age"');
     expect(prompt).toContain('inferredType: "number"');
-    expect(prompt).toContain('samples: [21,22,23]');
+    expect(prompt).toContain("samples: [21,22,23]");
   });
 
   it("emits the empty-catalog hint when no catalog entries are supplied", () => {
     const prompt = buildApiClassifierPrompt({
-      candidates: [{ sourceField: "x", inferredType: "string", samples: ["v"] }],
+      candidates: [
+        { sourceField: "x", inferredType: "string", samples: ["v"] },
+      ],
       catalog: [],
     });
     expect(prompt).toContain(
@@ -32,7 +38,9 @@ describe("buildApiClassifierPrompt", () => {
 
   it("renders each catalog entry's id + label + optional normalizedKey/description/type", () => {
     const prompt = buildApiClassifierPrompt({
-      candidates: [{ sourceField: "x", inferredType: "string", samples: ["v"] }],
+      candidates: [
+        { sourceField: "x", inferredType: "string", samples: ["v"] },
+      ],
       catalog: [
         {
           id: "cd-email",
@@ -89,8 +97,8 @@ describe("buildApiClassifierPrompt", () => {
       ],
       catalog: [],
     });
-    expect(prompt).toContain('samples: [1,2,3,4,5]');
-    expect(prompt).not.toContain('samples: [1,2,3,4,5,6');
+    expect(prompt).toContain("samples: [1,2,3,4,5]");
+    expect(prompt).not.toContain("samples: [1,2,3,4,5,6");
   });
 
   it("documents the JSON response shape", () => {

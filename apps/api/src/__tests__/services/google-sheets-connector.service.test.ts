@@ -19,8 +19,7 @@ class MockGoogleAuthError extends Error {
 }
 
 const exchangeCodeMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();
-const fetchUserEmailMock =
-  jest.fn<(...args: unknown[]) => Promise<string>>();
+const fetchUserEmailMock = jest.fn<(...args: unknown[]) => Promise<string>>();
 
 jest.unstable_mockModule("../../services/google-auth.service.js", () => ({
   GoogleAuthService: {
@@ -32,12 +31,13 @@ jest.unstable_mockModule("../../services/google-auth.service.js", () => ({
   GoogleAuthError: MockGoogleAuthError,
 }));
 
-const verifyStateMock =
-  jest.fn<(token: string) => {
+const verifyStateMock = jest.fn<
+  (token: string) => {
     userId: string;
     organizationId: string;
     connectorInstanceId?: string;
-  }>();
+  }
+>();
 
 class MockOAuthStateError extends Error {
   readonly kind: string;
@@ -66,8 +66,7 @@ const updateInstanceMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const createInstanceMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const findByOrgAndDefinitionMock =
   jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
-const findDefinitionBySlugMock =
-  jest.fn<(slug: string) => Promise<unknown>>();
+const findDefinitionBySlugMock = jest.fn<(slug: string) => Promise<unknown>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -93,9 +92,8 @@ jest.unstable_mockModule("../../services/workbook-cache.service.js", () => ({
   },
 }));
 
-const { GoogleSheetsConnectorService } = await import(
-  "../../services/google-sheets-connector.service.js"
-);
+const { GoogleSheetsConnectorService } =
+  await import("../../services/google-sheets-connector.service.js");
 
 interface MockResponseInit {
   status?: number;
@@ -107,8 +105,7 @@ function mockFetchResponse({ status = 200, body = {} }: MockResponseInit) {
     ok: status >= 200 && status < 300,
     status,
     json: async () => body,
-    text: async () =>
-      typeof body === "string" ? body : JSON.stringify(body),
+    text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
   } as unknown as Response;
 }
 
@@ -131,17 +128,12 @@ describe("GoogleSheetsConnectorService.listSheets", () => {
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [calledUrl, init] = fetchMock.mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
+    const [calledUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const url = new URL(calledUrl);
     expect(url.host).toBe("www.googleapis.com");
     expect(url.pathname).toBe("/drive/v3/files");
     const q = url.searchParams.get("q") ?? "";
-    expect(q).toContain(
-      "mimeType='application/vnd.google-apps.spreadsheet'"
-    );
+    expect(q).toContain("mimeType='application/vnd.google-apps.spreadsheet'");
     expect(q).toContain("trashed=false");
     expect(q).not.toContain("name contains");
     expect(url.searchParams.get("pageSize")).toBe("25");
@@ -160,9 +152,7 @@ describe("GoogleSheetsConnectorService.listSheets", () => {
       { connectorInstanceId: "ci-1", search: "Q3 forecast" },
       fetchMock
     );
-    const url = new URL(
-      (fetchMock.mock.calls[0] as [string, RequestInit])[0]
-    );
+    const url = new URL((fetchMock.mock.calls[0] as [string, RequestInit])[0]);
     const q = url.searchParams.get("q") ?? "";
     expect(q).toContain("name contains 'Q3 forecast'");
   });
@@ -175,9 +165,7 @@ describe("GoogleSheetsConnectorService.listSheets", () => {
       { connectorInstanceId: "ci-1", search: "O'Brien" },
       fetchMock
     );
-    const url = new URL(
-      (fetchMock.mock.calls[0] as [string, RequestInit])[0]
-    );
+    const url = new URL((fetchMock.mock.calls[0] as [string, RequestInit])[0]);
     const q = url.searchParams.get("q") ?? "";
     // Drive's `q` syntax escapes single-quote with backslash.
     expect(q).toContain(`name contains 'O\\'Brien'`);
@@ -195,9 +183,7 @@ describe("GoogleSheetsConnectorService.listSheets", () => {
       },
       fetchMock
     );
-    const url = new URL(
-      (fetchMock.mock.calls[0] as [string, RequestInit])[0]
-    );
+    const url = new URL((fetchMock.mock.calls[0] as [string, RequestInit])[0]);
     expect(url.searchParams.get("pageToken")).toBe("next-page-token-abc");
   });
 

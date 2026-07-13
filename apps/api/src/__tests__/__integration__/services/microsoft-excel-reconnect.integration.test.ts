@@ -92,13 +92,11 @@ afterAll(() => {
   environment.MICROSOFT_OAUTH_REDIRECT_URI = originalEnv.msRedirectUri;
 });
 
-const { MicrosoftAuthService, MicrosoftAuthError } = await import(
-  "../../../services/microsoft-auth.service.js"
-);
+const { MicrosoftAuthService, MicrosoftAuthError } =
+  await import("../../../services/microsoft-auth.service.js");
 const refreshAccessTokenMock =
   jest.fn<typeof MicrosoftAuthService.refreshAccessToken>();
-const exchangeCodeMock =
-  jest.fn<typeof MicrosoftAuthService.exchangeCode>();
+const exchangeCodeMock = jest.fn<typeof MicrosoftAuthService.exchangeCode>();
 const fetchUserProfileMock =
   jest.fn<typeof MicrosoftAuthService.fetchUserProfile>();
 MicrosoftAuthService.refreshAccessToken =
@@ -108,12 +106,10 @@ MicrosoftAuthService.exchangeCode =
 MicrosoftAuthService.fetchUserProfile =
   fetchUserProfileMock as unknown as typeof MicrosoftAuthService.fetchUserProfile;
 
-const { MicrosoftAccessTokenCacheService } = await import(
-  "../../../services/microsoft-access-token-cache.service.js"
-);
-const { MicrosoftExcelConnectorService } = await import(
-  "../../../services/microsoft-excel-connector.service.js"
-);
+const { MicrosoftAccessTokenCacheService } =
+  await import("../../../services/microsoft-access-token-cache.service.js");
+const { MicrosoftExcelConnectorService } =
+  await import("../../../services/microsoft-excel-connector.service.js");
 
 const { connectorInstances, connectorDefinitions } = schema;
 type Db = ReturnType<typeof drizzle>;
@@ -249,18 +245,17 @@ describe("microsoft-excel reconnect — end-to-end", () => {
       tenantId,
     });
 
-    const callbackResult =
-      await MicrosoftExcelConnectorService.handleCallback({
-        code: "fresh-code",
-        // Reconnect targets the instance via signed state — the
-        // reconnect button on the connector detail view passes
-        // this. Bare state would mint a new row.
-        state: signState({
-          userId,
-          organizationId,
-          connectorInstanceId: instanceId,
-        }),
-      });
+    const callbackResult = await MicrosoftExcelConnectorService.handleCallback({
+      code: "fresh-code",
+      // Reconnect targets the instance via signed state — the
+      // reconnect button on the connector detail view passes
+      // this. Bare state would mint a new row.
+      state: signState({
+        userId,
+        organizationId,
+        connectorInstanceId: instanceId,
+      }),
+    });
     expect(callbackResult.connectorInstanceId).toBe(instanceId);
 
     // DB row reset to active.

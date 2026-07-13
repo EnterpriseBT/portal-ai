@@ -8,8 +8,7 @@ const findCurrentByConnectorInstanceIdMock =
       connectorInstanceId: string
     ) => Promise<{ id: string; plan: unknown } | undefined>
   >();
-const updateInstanceMock =
-  jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const updateInstanceMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const softDeleteBeforeWatermarkMock =
   jest.fn<
     (
@@ -28,8 +27,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
     repository: {
       connectorInstances: { update: updateInstanceMock },
       connectorInstanceLayoutPlans: {
-        findCurrentByConnectorInstanceId:
-          findCurrentByConnectorInstanceIdMock,
+        findCurrentByConnectorInstanceId: findCurrentByConnectorInstanceIdMock,
       },
       entityRecords: {
         softDeleteBeforeWatermark: softDeleteBeforeWatermarkMock,
@@ -52,20 +50,19 @@ jest.unstable_mockModule(
   })
 );
 
-const commitMock =
-  jest.fn<
-    (
-      ciId: string,
-      planId: string,
-      orgId: string,
-      userId: string,
-      input: unknown,
-      opts: unknown
-    ) => Promise<{
-      recordCounts: { created: number; updated: number; unchanged: number };
-      connectorEntityIds: string[];
-    }>
-  >();
+const commitMock = jest.fn<
+  (
+    ciId: string,
+    planId: string,
+    orgId: string,
+    userId: string,
+    input: unknown,
+    opts: unknown
+  ) => Promise<{
+    recordCounts: { created: number; updated: number; unchanged: number };
+    connectorEntityIds: string[];
+  }>
+>();
 jest.unstable_mockModule(
   "../../services/layout-plan-commit.service.js",
   () => ({
@@ -79,9 +76,8 @@ jest.unstable_mockModule("../../services/sync-eligibility.util.js", () => ({
   assertSyncEligibleIdentity: assertSyncEligibleIdentityMock,
 }));
 
-const { microsoftExcelAdapter } = await import(
-  "../../adapters/microsoft-excel/microsoft-excel.adapter.js"
-);
+const { microsoftExcelAdapter } =
+  await import("../../adapters/microsoft-excel/microsoft-excel.adapter.js");
 
 const INSTANCE = {
   id: "ci-msft-1",
@@ -158,9 +154,7 @@ describe("microsoftExcelAdapter.toPublicAccountInfo", () => {
     });
     expect(out.identity).toBe("bob_outlook.com#EXT#@bob.onmicrosoft.com");
     expect(out.metadata.email).toBeUndefined();
-    expect(out.metadata.tenantId).toBe(
-      "9188040d-6c67-4c5b-b112-36a304b66dad"
-    );
+    expect(out.metadata.tenantId).toBe("9188040d-6c67-4c5b-b112-36a304b66dad");
   });
 });
 
@@ -322,7 +316,13 @@ describe("microsoftExcelAdapter.syncInstance", () => {
       recordCounts: { created: 0, updated: 0, unchanged: 0 },
       connectorEntityIds: ["ce-a", "ce-b", "ce-c"],
     });
-    softDeleteBeforeWatermarkMock.mockResolvedValueOnce(["a1", "a2", "a3", "a4", "a5"]);
+    softDeleteBeforeWatermarkMock.mockResolvedValueOnce([
+      "a1",
+      "a2",
+      "a3",
+      "a4",
+      "a5",
+    ]);
     softDeleteBeforeWatermarkMock.mockResolvedValueOnce(["b1", "b2", "b3"]);
     softDeleteBeforeWatermarkMock.mockResolvedValueOnce(["c1", "c2"]);
 

@@ -173,7 +173,12 @@ const RegionObjectSchema = z.object({
 });
 
 function positionSpan(
-  bounds: { startRow: number; startCol: number; endRow: number; endCol: number },
+  bounds: {
+    startRow: number;
+    startCol: number;
+    endRow: number;
+    endCol: number;
+  },
   axis: AxisMember
 ): number {
   return axis === "row"
@@ -404,7 +409,8 @@ export const RegionSchema = RegionObjectSchema.superRefine((region, ctx) => {
   if (anyPivot && !region.cellValueField) {
     ctx.addIssue({
       code: "custom",
-      message: "cellValueField is required when at least one pivot segment exists",
+      message:
+        "cellValueField is required when at least one pivot segment exists",
       path: ["cellValueField"],
     });
   }

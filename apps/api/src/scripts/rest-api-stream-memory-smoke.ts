@@ -37,9 +37,7 @@ const server = http.createServer((_req, res) => {
   const writeMore = () => {
     while (i < RECORD_COUNT) {
       const prefix = i === 0 ? "" : ",";
-      const ok = res.write(
-        `${prefix}{"id":"r${i}","payload":"${PADDING}"}`
-      );
+      const ok = res.write(`${prefix}{"id":"r${i}","payload":"${PADDING}"}`);
       i++;
       // `write` returns false when the kernel buffer fills — pause
       // until `drain` so the streaming parser has something real to

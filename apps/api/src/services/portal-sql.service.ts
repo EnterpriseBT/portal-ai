@@ -51,7 +51,8 @@ import {
 
 const logger = createLogger({ module: "portal-sql-service" });
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Wide-table columns that never appear in a session view under their
@@ -390,10 +391,11 @@ export class PortalSqlServiceImpl {
         }
 
         // 4. Envelope.
-        const { rows: capped, totalCount, capped: rowCapped } = applyRowCap(
-          rows,
-          caps.rowCap
-        );
+        const {
+          rows: capped,
+          totalCount,
+          capped: rowCapped,
+        } = applyRowCap(rows, caps.rowCap);
         const cellCapped = applyCellCap(capped, caps.cellCap);
         const envelope = buildResponse(
           cellCapped,
@@ -476,9 +478,10 @@ export class PortalSqlServiceImpl {
 
         // Roll back so the session-scoped temp views are dropped; the
         // sentinel carries the estimate out through the catch below.
-        throw new PortalSqlTxResult<{ totalCost: number; estimatedRows: number }>(
-          estimate
-        );
+        throw new PortalSqlTxResult<{
+          totalCost: number;
+          estimatedRows: number;
+        }>(estimate);
       });
     } catch (err) {
       if (err instanceof PortalSqlTxResult) {

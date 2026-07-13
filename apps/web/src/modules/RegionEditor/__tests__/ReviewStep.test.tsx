@@ -5,7 +5,10 @@ import type { SelectOption } from "@portalai/core/ui";
 
 import { ReviewStepUI } from "../ReviewStep.component";
 import type { ReviewStepUIProps } from "../ReviewStep.component";
-import type { RegionDraft, ColumnBindingDraft } from "../utils/region-editor.types";
+import type {
+  RegionDraft,
+  ColumnBindingDraft,
+} from "../utils/region-editor.types";
 import type { SearchResult } from "../../../api/types";
 
 const region: RegionDraft = {
@@ -41,7 +44,8 @@ function makeSearchStub(): SearchResult<SelectOption> {
 }
 
 function setup(overrides: Partial<ReviewStepUIProps> = {}) {
-  const onEditBinding = jest.fn<(regionId: string, sourceLocator: string) => void>();
+  const onEditBinding =
+    jest.fn<(regionId: string, sourceLocator: string) => void>();
   const onUpdateBinding =
     jest.fn<
       (
@@ -51,7 +55,9 @@ function setup(overrides: Partial<ReviewStepUIProps> = {}) {
       ) => void
     >();
   const onToggleBindingExcluded =
-    jest.fn<(regionId: string, sourceLocator: string, excluded: boolean) => void>();
+    jest.fn<
+      (regionId: string, sourceLocator: string, excluded: boolean) => void
+    >();
   const utils = render(
     <ReviewStepUI
       regions={[region]}
@@ -230,16 +236,15 @@ describe("ReviewStepUI — binding editor popover", () => {
         onBack={jest.fn()}
       />
     );
-    expect(
-      screen.getByRole("button", { name: /commit plan/i })
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: /commit plan/i })).toBeDisabled();
     expect(
       screen.getByText(/bindings have validation errors/i)
     ).toBeInTheDocument();
   });
 
   test("falls back to onEditBinding when onUpdateBinding is not provided (legacy)", () => {
-    const onEditBinding = jest.fn<(regionId: string, sourceLocator: string) => void>();
+    const onEditBinding =
+      jest.fn<(regionId: string, sourceLocator: string) => void>();
     render(
       <ReviewStepUI
         regions={[region]}

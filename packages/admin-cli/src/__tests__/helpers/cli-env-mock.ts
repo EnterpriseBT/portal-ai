@@ -69,7 +69,8 @@ export const BUILTIN_ENVIRONMENTS: Record<string, MockEnvDef> = {
 };
 
 const requireAws = (def: MockEnvDef) => {
-  if (!def.aws) throw new EnvNotConfiguredError(`"${def.name}" has no AWS config`);
+  if (!def.aws)
+    throw new EnvNotConfiguredError(`"${def.name}" has no AWS config`);
   return def.aws;
 };
 
@@ -78,12 +79,25 @@ export const mocks = {
   getSecret: jest.fn<(def: MockEnvDef, name: string) => Promise<string>>(),
   getParam: jest.fn<(def: MockEnvDef, name: string) => Promise<string>>(),
   putSecret:
-    jest.fn<(def: MockEnvDef, name: string, v: string) => Promise<{ created: boolean }>>(),
+    jest.fn<
+      (
+        def: MockEnvDef,
+        name: string,
+        v: string
+      ) => Promise<{ created: boolean }>
+    >(),
   putParam:
-    jest.fn<(def: MockEnvDef, name: string, v: string, t?: string) => Promise<void>>(),
+    jest.fn<
+      (def: MockEnvDef, name: string, v: string, t?: string) => Promise<void>
+    >(),
   getDatabaseUrl: jest.fn<(def: MockEnvDef) => Promise<string>>(),
   openDbTunnel:
-    jest.fn<(def: MockEnvDef, opts: unknown) => Promise<{ localPort: number; close: () => Promise<void> }>>(),
+    jest.fn<
+      (
+        def: MockEnvDef,
+        opts: unknown
+      ) => Promise<{ localPort: number; close: () => Promise<void> }>
+    >(),
   resolveEnvConnection: jest.fn<(name: string) => Promise<unknown>>(),
   assertOperationAllowed: jest.fn<(def: MockEnvDef, opts: unknown) => void>(),
   recordAudit: jest.fn<(entry: unknown) => Promise<void>>(),
@@ -111,7 +125,8 @@ export function cliEnvMockModule(): Record<string, unknown> {
     BUILTIN_ENVIRONMENTS,
     getEnvironment: (name: string) => {
       const def = BUILTIN_ENVIRONMENTS[name];
-      if (!def) throw new EnvNotConfiguredError(`Unknown environment "${name}"`);
+      if (!def)
+        throw new EnvNotConfiguredError(`Unknown environment "${name}"`);
       return def;
     },
     loadEnvironments: () => BUILTIN_ENVIRONMENTS,

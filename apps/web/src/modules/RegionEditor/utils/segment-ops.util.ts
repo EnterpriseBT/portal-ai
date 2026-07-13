@@ -179,9 +179,9 @@ export function resizeFieldSegment(
         ? seg.headers.slice(0, nextPositionCount)
         : [
             ...seg.headers,
-            ...new Array<string>(
-              nextPositionCount - seg.headers.length
-            ).fill(""),
+            ...new Array<string>(nextPositionCount - seg.headers.length).fill(
+              ""
+            ),
           ];
     if (next.some((h) => h.trim() !== "")) out.headers = next;
   }
@@ -191,9 +191,9 @@ export function resizeFieldSegment(
         ? seg.skipped.slice(0, nextPositionCount)
         : [
             ...seg.skipped,
-            ...new Array<boolean>(
-              nextPositionCount - seg.skipped.length
-            ).fill(false),
+            ...new Array<boolean>(nextPositionCount - seg.skipped.length).fill(
+              false
+            ),
           ];
     if (next.some((v) => v)) out.skipped = next;
   }
@@ -335,7 +335,8 @@ export function convertSegmentKind(
     // pivot — reuse existing pivot id when converting a pivot → pivot
     // (axis-name rename case); fresh id otherwise.
     const id = seg.kind === "pivot" ? seg.id : uniquePivotId(region);
-    const axisName = init?.axisName ?? (seg.kind === "pivot" ? seg.axisName : "");
+    const axisName =
+      init?.axisName ?? (seg.kind === "pivot" ? seg.axisName : "");
     if (!axisName) {
       throw new Error(
         `convertSegmentKind: axisName is required when converting to a pivot segment`
@@ -439,7 +440,11 @@ export function addFieldSegment(
   const next = [...segments];
   next.splice(clamped, 0, { kind: "field", positionCount });
   const merged = coalesceSegments(next);
-  const grown = withBoundsSpan(region, axis, axisSpan(region, axis) + positionCount);
+  const grown = withBoundsSpan(
+    region,
+    axis,
+    axisSpan(region, axis) + positionCount
+  );
   return setSegments(grown, axis, merged);
 }
 
@@ -464,11 +469,7 @@ export function removeSegment(
   const next = [...segments];
   next.splice(segmentIndex, 1);
   const merged = coalesceSegments(next);
-  const shrunk = withBoundsSpan(
-    region,
-    axis,
-    axisSpan(region, axis) - shrink
-  );
+  const shrunk = withBoundsSpan(region, axis, axisSpan(region, axis) - shrink);
   return syncCellValueField(setSegments(shrunk, axis, merged));
 }
 

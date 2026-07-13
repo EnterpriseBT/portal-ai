@@ -55,9 +55,12 @@ function classify(err: unknown, what: string): never {
       { cause: err }
     );
   }
-  throw new EnvInfraError(`Failed to read ${what}: ${(err as Error)?.message}`, {
-    cause: err,
-  });
+  throw new EnvInfraError(
+    `Failed to read ${what}: ${(err as Error)?.message}`,
+    {
+      cause: err,
+    }
+  );
 }
 
 function requireAws(

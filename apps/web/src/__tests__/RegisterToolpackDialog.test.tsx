@@ -1,10 +1,8 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
-const {
-  RegisterToolpackDialogUI,
-  appendAuthHeaderBoilerplate,
-} = await import("../components/RegisterToolpackDialog.component");
+const { RegisterToolpackDialogUI, appendAuthHeaderBoilerplate } =
+  await import("../components/RegisterToolpackDialog.component");
 
 const defaultProps = {
   open: true,
@@ -94,8 +92,7 @@ describe("RegisterToolpackDialogUI", () => {
   it("seeds the URL fields with example placeholders", () => {
     render(<RegisterToolpackDialogUI {...defaultProps} />);
     expect(
-      (screen.getByLabelText(/Schema endpoint/) as HTMLInputElement)
-        .placeholder
+      (screen.getByLabelText(/Schema endpoint/) as HTMLInputElement).placeholder
     ).toContain("toolpacks/customer_intel/schema");
     expect(
       (screen.getByLabelText(/Runtime endpoint/) as HTMLInputElement)
@@ -157,9 +154,9 @@ describe("RegisterToolpackDialogUI", () => {
     fireEvent.click(screen.getByRole("button", { name: "Register" }));
 
     await waitFor(() => {
-      expect(
-        screen.getByLabelText(/Name/).getAttribute("aria-invalid")
-      ).toBe("true");
+      expect(screen.getByLabelText(/Name/).getAttribute("aria-invalid")).toBe(
+        "true"
+      );
     });
     expect(onSubmit).not.toHaveBeenCalled();
   });
@@ -285,7 +282,9 @@ describe("RegisterToolpackDialogUI", () => {
     ) as HTMLTextAreaElement;
     expect(textarea.value).toBe("");
 
-    fireEvent.click(screen.getByTestId("auth-headers-boilerplate-bearer-token"));
+    fireEvent.click(
+      screen.getByTestId("auth-headers-boilerplate-bearer-token")
+    );
     expect(textarea.value).toBe("Authorization: Bearer <token>");
 
     fireEvent.click(screen.getByTestId("auth-headers-boilerplate-api-key"));

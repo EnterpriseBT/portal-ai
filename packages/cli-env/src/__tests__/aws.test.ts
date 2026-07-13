@@ -66,7 +66,9 @@ describe("getSecret", () => {
   });
 
   it("maps a credential-shaped failure to ENV_NOT_AUTHORIZED", async () => {
-    const err = new Error("The security token included in the request is expired");
+    const err = new Error(
+      "The security token included in the request is expired"
+    );
     err.name = "ExpiredTokenException";
     secretsSend.mockRejectedValue(err);
     await expect(getSecret(appDev, "database-url")).rejects.toBeInstanceOf(
@@ -91,7 +93,9 @@ describe("getSecret", () => {
 
 describe("getParam", () => {
   it("reads exactly /portalai/dev/<name> for app-dev, WITH decryption (parity with the bash)", async () => {
-    ssmSend.mockResolvedValue({ Parameter: { Value: "dev-tenant.us.auth0.com" } });
+    ssmSend.mockResolvedValue({
+      Parameter: { Value: "dev-tenant.us.auth0.com" },
+    });
     await expect(getParam(appDev, "auth0-domain")).resolves.toBe(
       "dev-tenant.us.auth0.com"
     );
@@ -106,9 +110,9 @@ describe("getParam", () => {
 describe("putSecret (#192)", () => {
   it("updates an existing secret via PutSecretValue → { created: false }", async () => {
     secretsSend.mockResolvedValue({});
-    await expect(putSecret(appDev, "tavily-api-key", "tvly-new")).resolves.toEqual(
-      { created: false }
-    );
+    await expect(
+      putSecret(appDev, "tavily-api-key", "tvly-new")
+    ).resolves.toEqual({ created: false });
     const cmd = secretsSend.mock.calls[0][0] as {
       constructor: { name: string };
       input: { SecretId: string; SecretString: string };
@@ -119,7 +123,9 @@ describe("putSecret (#192)", () => {
   });
 
   it("creates on ResourceNotFound → { created: true } (caller warns re: deploy ARNs)", async () => {
-    const notFound = new Error("Secrets Manager can't find the specified secret.");
+    const notFound = new Error(
+      "Secrets Manager can't find the specified secret."
+    );
     notFound.name = "ResourceNotFoundException";
     secretsSend.mockRejectedValueOnce(notFound).mockResolvedValueOnce({});
     await expect(putSecret(appDev, "brand-new-key", "v")).resolves.toEqual({
@@ -137,9 +143,9 @@ describe("putSecret (#192)", () => {
     const err = new Error("denied");
     err.name = "AccessDeniedException";
     secretsSend.mockRejectedValue(err);
-    await expect(putSecret(appDev, "tavily-api-key", "v")).rejects.toBeInstanceOf(
-      EnvNotAuthorizedError
-    );
+    await expect(
+      putSecret(appDev, "tavily-api-key", "v")
+    ).rejects.toBeInstanceOf(EnvNotAuthorizedError);
   });
 });
 

@@ -57,7 +57,9 @@ export async function runSeedTask(
   );
   const containerName = taskDef.taskDefinition?.containerDefinitions?.[0]?.name;
   if (!containerName) {
-    throw new EnvInfraError(`Task definition ${svc.taskDefinition} has no containers`);
+    throw new EnvInfraError(
+      `Task definition ${svc.taskDefinition} has no containers`
+    );
   }
 
   const run = await client.send(

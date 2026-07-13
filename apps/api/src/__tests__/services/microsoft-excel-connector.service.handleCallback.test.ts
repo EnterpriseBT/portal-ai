@@ -1,4 +1,12 @@
-import { jest, describe, it, expect, beforeEach, beforeAll, afterAll } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  beforeAll,
+  afterAll,
+} from "@jest/globals";
 import crypto from "crypto";
 
 import { environment } from "../../environment.js";
@@ -49,30 +57,26 @@ class MockMicrosoftAuthError extends Error {
   }
 }
 
-const exchangeCodeMock =
-  jest.fn<
-    (
-      input: { code: string }
-    ) => Promise<{
-      accessToken: string;
-      refreshToken: string;
-      idToken: string;
-      expiresIn: number;
-      scope: string;
-    }>
-  >();
-const fetchUserProfileMock =
-  jest.fn<
-    (
-      accessToken: string,
-      tenantId: string
-    ) => Promise<{
-      upn: string;
-      email: string | null;
-      displayName: string;
-      tenantId: string;
-    }>
-  >();
+const exchangeCodeMock = jest.fn<
+  (input: { code: string }) => Promise<{
+    accessToken: string;
+    refreshToken: string;
+    idToken: string;
+    expiresIn: number;
+    scope: string;
+  }>
+>();
+const fetchUserProfileMock = jest.fn<
+  (
+    accessToken: string,
+    tenantId: string
+  ) => Promise<{
+    upn: string;
+    email: string | null;
+    displayName: string;
+    tenantId: string;
+  }>
+>();
 
 jest.unstable_mockModule("../../services/microsoft-auth.service.js", () => ({
   MicrosoftAuthService: {
@@ -91,22 +95,29 @@ jest.unstable_mockModule("../../services/microsoft-auth.service.js", () => ({
 }));
 
 const findBySlugMock =
-  jest.fn<(slug: string) => Promise<{ id: string; capabilityFlags: unknown } | undefined>>();
+  jest.fn<
+    (
+      slug: string
+    ) => Promise<{ id: string; capabilityFlags: unknown } | undefined>
+  >();
 const findByOrgAndDefinitionMock =
   jest.fn<
     (
       orgId: string,
       definitionId: string
-    ) => Promise<
-      Array<{ id: string; credentials: unknown }>
-    >
+    ) => Promise<Array<{ id: string; credentials: unknown }>>
   >();
 const findInstanceMock =
   jest.fn<(id: string) => Promise<Record<string, unknown> | undefined>>();
 const createInstanceMock =
   jest.fn<(input: Record<string, unknown>) => Promise<{ id: string }>>();
 const updateInstanceMock =
-  jest.fn<(id: string, patch: Record<string, unknown>) => Promise<{ id: string } | undefined>>();
+  jest.fn<
+    (
+      id: string,
+      patch: Record<string, unknown>
+    ) => Promise<{ id: string } | undefined>
+  >();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -122,9 +133,8 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
-const { MicrosoftExcelConnectorService } = await import(
-  "../../services/microsoft-excel-connector.service.js"
-);
+const { MicrosoftExcelConnectorService } =
+  await import("../../services/microsoft-excel-connector.service.js");
 
 // Decode a JWT-ish id_token. We use a hand-crafted token with a `tid`
 // claim so the service's decoder pulls the tenant id without verifying
@@ -202,7 +212,10 @@ describe("MicrosoftExcelConnectorService.handleCallback", () => {
 
     expect(result.connectorInstanceId).toBe("ci-new");
     expect(createInstanceMock).toHaveBeenCalledTimes(1);
-    const call = createInstanceMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    const call = createInstanceMock.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >;
     expect(call.organizationId).toBe(organizationId);
     expect(call.connectorDefinitionId).toBe("def-msft-1");
     expect(call.status).toBe("pending");

@@ -4,21 +4,17 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockAssertStationScope = jest.fn<any>().mockResolvedValue(undefined);
 const mockAssertWriteCapability = jest.fn<any>().mockResolvedValue(undefined);
-const mockFindById = jest
-  .fn<any>()
-  .mockResolvedValue({
-    id: "fm-1",
-    connectorEntityId: "ce-1",
-    organizationId: "org-1",
-    sourceField: "Name",
-  });
+const mockFindById = jest.fn<any>().mockResolvedValue({
+  id: "fm-1",
+  connectorEntityId: "ce-1",
+  organizationId: "org-1",
+  sourceField: "Name",
+});
 const mockValidateDelete = jest.fn<any>().mockResolvedValue(undefined);
-const mockExecuteDelete = jest
-  .fn<any>()
-  .mockResolvedValue({
-    cascadedEntityGroupMembers: 2,
-    counterpartCleared: true,
-  });
+const mockExecuteDelete = jest.fn<any>().mockResolvedValue({
+  cascadedEntityGroupMembers: 2,
+  counterpartCleared: true,
+});
 
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   assertStationScope: mockAssertStationScope,

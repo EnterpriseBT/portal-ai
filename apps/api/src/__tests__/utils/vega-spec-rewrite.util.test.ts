@@ -52,7 +52,10 @@ describe("rewriteForNamedDataset", () => {
   });
 
   it("passes through specs with a URL-loaded data source", () => {
-    const spec = { mark: "bar", data: { url: "https://example.com/data.json" } };
+    const spec = {
+      mark: "bar",
+      data: { url: "https://example.com/data.json" },
+    };
     expect(rewriteForNamedDataset(spec)).toEqual(spec);
   });
 });

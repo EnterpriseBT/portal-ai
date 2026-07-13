@@ -51,10 +51,7 @@ protectedRouter.use("/portals", portalRouter);
 protectedRouter.use("/portal-results", portalResultsRouter);
 protectedRouter.use("/portal-sql", portalSqlHandleRouter);
 protectedRouter.use("/toolpacks", toolpacksRouter);
-protectedRouter.use(
-  "/connectors/google-sheets",
-  googleSheetsConnectorRouter
-);
+protectedRouter.use("/connectors/google-sheets", googleSheetsConnectorRouter);
 protectedRouter.use(
   "/connectors/microsoft-excel",
   microsoftExcelConnectorRouter

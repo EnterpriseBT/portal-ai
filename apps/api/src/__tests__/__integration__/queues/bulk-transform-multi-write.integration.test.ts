@@ -66,27 +66,26 @@ interface UpsertSuccessesArgs {
 const upsertCalls: UpsertSuccessesArgs[] = [];
 let upsertImpl: (
   opts: UpsertSuccessesArgs
-) => Promise<{ rowsUpserted: number; droppedKeys: string[] }> = async (opts) => ({
+) => Promise<{ rowsUpserted: number; droppedKeys: string[] }> = async (
+  opts
+) => ({
   rowsUpserted: opts.successes.length,
   droppedKeys: [],
 });
 
-jest.unstable_mockModule(
-  "../../../services/bulk-transform.service.js",
-  () => ({
-    BulkTransformService: {
-      countSourceRows: async () => sourceRows.length,
-      fetchSourceBatch: async (opts: { offset: number; batchSize: number }) =>
-        sourceRows.slice(opts.offset, opts.offset + opts.batchSize),
-      upsertSuccesses: async (opts: UpsertSuccessesArgs) => {
-        upsertCalls.push(opts);
-        return upsertImpl(opts);
-      },
-      explainExpression: async () => undefined,
-      runBatch: async () => ({ rowsCommitted: 0, rows: [] }),
+jest.unstable_mockModule("../../../services/bulk-transform.service.js", () => ({
+  BulkTransformService: {
+    countSourceRows: async () => sourceRows.length,
+    fetchSourceBatch: async (opts: { offset: number; batchSize: number }) =>
+      sourceRows.slice(opts.offset, opts.offset + opts.batchSize),
+    upsertSuccesses: async (opts: UpsertSuccessesArgs) => {
+      upsertCalls.push(opts);
+      return upsertImpl(opts);
     },
-  })
-);
+    explainExpression: async () => undefined,
+    runBatch: async () => ({ rowsCommitted: 0, rows: [] }),
+  },
+}));
 
 jest.unstable_mockModule("../../../services/tools.service.js", () => ({
   ToolService: {
@@ -104,15 +103,11 @@ jest.unstable_mockModule("../../../services/tools.service.js", () => ({
   },
 }));
 
-const { bulkTransformProcessor } = await import(
-  "../../../queues/processors/bulk-transform.processor.js"
-);
-const { PortalService } = await import(
-  "../../../services/portal.service.js"
-);
-const { JobEventsService } = await import(
-  "../../../services/job-events.service.js"
-);
+const { bulkTransformProcessor } =
+  await import("../../../queues/processors/bulk-transform.processor.js");
+const { PortalService } = await import("../../../services/portal.service.js");
+const { JobEventsService } =
+  await import("../../../services/job-events.service.js");
 
 const TARGET_A = "ce-target-a";
 const TARGET_B = "ce-target-b";
@@ -260,7 +255,9 @@ describe("Multi-write smoke — bulk_transform fan-out (#99 slice 5)", () => {
       async (bullJob) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data: any = bullJob.data;
-        await JobEventsService.transition(data.jobId, "active", { progress: 0 });
+        await JobEventsService.transition(data.jobId, "active", {
+          progress: 0,
+        });
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const result = await bulkTransformProcessor(bullJob as any);

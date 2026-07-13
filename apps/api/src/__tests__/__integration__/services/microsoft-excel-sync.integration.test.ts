@@ -72,16 +72,15 @@ const headWorkbookMock =
       driveItemId: string
     ) => Promise<{ size: number; name: string }>
   >();
-const downloadWorkbookMock =
-  jest.fn<
-    (
-      accessToken: string,
-      driveItemId: string
-    ) => Promise<{
-      stream: ReadableStream<Uint8Array>;
-      contentLength: number;
-    }>
-  >();
+const downloadWorkbookMock = jest.fn<
+  (
+    accessToken: string,
+    driveItemId: string
+  ) => Promise<{
+    stream: ReadableStream<Uint8Array>;
+    contentLength: number;
+  }>
+>();
 class MockMicrosoftGraphError extends Error {
   override readonly name = "MicrosoftGraphError" as const;
   readonly kind: string;
@@ -96,15 +95,18 @@ class MockMicrosoftGraphError extends Error {
     if (details) this.details = details;
   }
 }
-jest.unstable_mockModule("../../../services/microsoft-graph.service.js", () => ({
-  MicrosoftGraphService: {
-    headWorkbook: headWorkbookMock,
-    downloadWorkbook: downloadWorkbookMock,
-    searchWorkbooks: jest.fn(),
-    toNodeReadable: (stream: ReadableStream<Uint8Array>) => stream,
-  },
-  MicrosoftGraphError: MockMicrosoftGraphError,
-}));
+jest.unstable_mockModule(
+  "../../../services/microsoft-graph.service.js",
+  () => ({
+    MicrosoftGraphService: {
+      headWorkbook: headWorkbookMock,
+      downloadWorkbook: downloadWorkbookMock,
+      searchWorkbooks: jest.fn(),
+      toNodeReadable: (stream: ReadableStream<Uint8Array>) => stream,
+    },
+    MicrosoftGraphError: MockMicrosoftGraphError,
+  })
+);
 
 // Mock the xlsx adapter so we don't need a real .xlsx byte fixture —
 // instead each test seeds the WorkbookData it wants the parse to yield by
@@ -114,9 +116,7 @@ jest.unstable_mockModule("../../../services/microsoft-graph.service.js", () => (
 // shim transcribes the workbook into the writer at call time.
 const xlsxToWorkbookMock =
   jest.fn<(stream: unknown) => Promise<WorkbookData>>();
-const xlsxToCacheMock = jest.fn<
-  (...args: unknown[]) => Promise<unknown>
->();
+const xlsxToCacheMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 xlsxToCacheMock.mockImplementation(async (...args: unknown[]) => {
   // Pull the WorkbookData the test queued up via `xlsxToWorkbookMock`.
   const wb = await xlsxToWorkbookMock(args[0]);
@@ -130,7 +130,12 @@ xlsxToCacheMock.mockImplementation(async (...args: unknown[]) => {
   const ctx = args[2] as {
     resolveSheet: (rawName: string) => { name: string; sheetId: string };
   };
-  const out: { sheetId: string; name: string; rowCount: number; colCount: number }[] = [];
+  const out: {
+    sheetId: string;
+    name: string;
+    rowCount: number;
+    colCount: number;
+  }[] = [];
   for (const sheet of wb.sheets) {
     const { name, sheetId } = ctx.resolveSheet(sheet.name);
     const { rows, cols } = sheet.dimensions;
@@ -147,7 +152,11 @@ xlsxToCacheMock.mockImplementation(async (...args: unknown[]) => {
         dense[r]![c] = null;
       } else if (v instanceof Date) {
         dense[r]![c] = v.toISOString();
-      } else if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      } else if (
+        typeof v === "string" ||
+        typeof v === "number" ||
+        typeof v === "boolean"
+      ) {
         dense[r]![c] = v;
       } else {
         dense[r]![c] = String(v);
@@ -169,9 +178,8 @@ jest.unstable_mockModule(
 const { environment } = await import("../../../environment.js");
 environment.ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;
 
-const { microsoftExcelAdapter } = await import(
-  "../../../adapters/microsoft-excel/microsoft-excel.adapter.js"
-);
+const { microsoftExcelAdapter } =
+  await import("../../../adapters/microsoft-excel/microsoft-excel.adapter.js");
 
 const {
   connectorInstances,
@@ -508,9 +516,7 @@ describe("microsoftExcelAdapter.syncInstance", () => {
     // depending on how the commit pipeline computes the checksum).
     expect(result.recordCounts.created).toBe(1); // dan
     expect(result.recordCounts.deleted).toBe(1); // bob
-    expect(
-      result.recordCounts.updated + result.recordCounts.unchanged
-    ).toBe(1); // alice
+    expect(result.recordCounts.updated + result.recordCounts.unchanged).toBe(1); // alice
 
     expect(headWorkbookMock).toHaveBeenCalled();
     expect(downloadWorkbookMock).toHaveBeenCalled();

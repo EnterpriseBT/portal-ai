@@ -55,30 +55,28 @@ describe("createDefaultClassifier — happy path", () => {
   });
 
   it("clamps confidence values into [0, 1]", async () => {
-    const gen = jest
-      .fn<() => Promise<unknown>>()
-      .mockResolvedValueOnce({
-        object: {
-          classifications: [
-            {
-              sourceField: "field_0",
-              columnDefinitionId: null,
-              suggestedNormalizedKey: "field_0",
-              suggestedSemanticType: "string",
-              confidence: 1.5,
-              rationale: "above 1",
-            },
-            {
-              sourceField: "field_1",
-              columnDefinitionId: null,
-              suggestedNormalizedKey: "field_1",
-              suggestedSemanticType: "string",
-              confidence: -0.2,
-              rationale: "below 0",
-            },
-          ],
-        },
-      });
+    const gen = jest.fn<() => Promise<unknown>>().mockResolvedValueOnce({
+      object: {
+        classifications: [
+          {
+            sourceField: "field_0",
+            columnDefinitionId: null,
+            suggestedNormalizedKey: "field_0",
+            suggestedSemanticType: "string",
+            confidence: 1.5,
+            rationale: "above 1",
+          },
+          {
+            sourceField: "field_1",
+            columnDefinitionId: null,
+            suggestedNormalizedKey: "field_1",
+            suggestedSemanticType: "string",
+            confidence: -0.2,
+            rationale: "below 0",
+          },
+        ],
+      },
+    });
     const classifier = createDefaultClassifier({
       generateObject: gen as never,
     });
@@ -89,30 +87,28 @@ describe("createDefaultClassifier — happy path", () => {
   });
 
   it("drops hallucinated sourceFields not present in the candidate set", async () => {
-    const gen = jest
-      .fn<() => Promise<unknown>>()
-      .mockResolvedValueOnce({
-        object: {
-          classifications: [
-            {
-              sourceField: "field_0",
-              columnDefinitionId: null,
-              suggestedNormalizedKey: "field_0",
-              suggestedSemanticType: "string",
-              confidence: 0.5,
-              rationale: "ok",
-            },
-            {
-              sourceField: "hallucinated",
-              columnDefinitionId: null,
-              suggestedNormalizedKey: "hallucinated",
-              suggestedSemanticType: "string",
-              confidence: 0.9,
-              rationale: "not in input",
-            },
-          ],
-        },
-      });
+    const gen = jest.fn<() => Promise<unknown>>().mockResolvedValueOnce({
+      object: {
+        classifications: [
+          {
+            sourceField: "field_0",
+            columnDefinitionId: null,
+            suggestedNormalizedKey: "field_0",
+            suggestedSemanticType: "string",
+            confidence: 0.5,
+            rationale: "ok",
+          },
+          {
+            sourceField: "hallucinated",
+            columnDefinitionId: null,
+            suggestedNormalizedKey: "hallucinated",
+            suggestedSemanticType: "string",
+            confidence: 0.9,
+            rationale: "not in input",
+          },
+        ],
+      },
+    });
     const classifier = createDefaultClassifier({
       generateObject: gen as never,
     });
@@ -153,9 +149,7 @@ describe("createDefaultClassifier — batching + concurrency", () => {
     const gen = jest
       .fn<() => Promise<unknown>>()
       .mockResolvedValueOnce(
-        makeOkResponse(
-          Array.from({ length: 8 }, (_, i) => `field_${i}`)
-        )
+        makeOkResponse(Array.from({ length: 8 }, (_, i) => `field_${i}`))
       )
       .mockResolvedValueOnce(makeOkResponse(["field_8", "field_9"]));
     const classifier = createDefaultClassifier({

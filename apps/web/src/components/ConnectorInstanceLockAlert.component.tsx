@@ -42,9 +42,9 @@ export const ConnectorInstanceLockAlertUI: React.FC<
         <AlertTitle>
           {phrase} {isPlural ? "are" : "is"} running
         </AlertTitle>
-        Sync, rename, delete, plan edits, and creating new entities are
-        paused until {isPlural ? "these jobs finish" : "this job finishes"}.
-        The view will refresh automatically when{" "}
+        Sync, rename, delete, plan edits, and creating new entities are paused
+        until {isPlural ? "these jobs finish" : "this job finishes"}. The view
+        will refresh automatically when{" "}
         {isPlural ? "they're done" : "it's done"}.
       </Alert>
     </Box>

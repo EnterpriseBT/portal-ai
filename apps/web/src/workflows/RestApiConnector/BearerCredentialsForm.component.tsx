@@ -22,38 +22,34 @@ export interface BearerCredentialsFormUIProps {
   touched: Record<string, boolean>;
 }
 
-export const BearerCredentialsFormUI: React.FC<BearerCredentialsFormUIProps> = ({
-  token,
-  onTokenChange,
-  onBlur,
-  errors,
-  touched,
-}) => {
+export const BearerCredentialsFormUI: React.FC<
+  BearerCredentialsFormUIProps
+> = ({ token, onTokenChange, onBlur, errors, touched }) => {
   // Sub-form mounts when the user picks `bearer` in the auth dropdown.
   // Focus the only field on mount so the user can paste the token
   // without a second click.
   const tokenRef = useDialogAutoFocus<HTMLInputElement>(true);
 
   return (
-  <Stack spacing={2}>
-    <TextField
-      inputRef={tokenRef}
-      label="Bearer token"
-      type="password"
-      value={token}
-      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-        onTokenChange(e.target.value)
-      }
-      onBlur={() => onBlur("token")}
-      required
-      fullWidth
-      autoComplete="off"
-      error={touched.token && !!errors.token}
-      helperText={touched.token && errors.token}
-      slotProps={{
-        htmlInput: { "aria-invalid": touched.token && !!errors.token },
-      }}
-    />
-  </Stack>
+    <Stack spacing={2}>
+      <TextField
+        inputRef={tokenRef}
+        label="Bearer token"
+        type="password"
+        value={token}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+          onTokenChange(e.target.value)
+        }
+        onBlur={() => onBlur("token")}
+        required
+        fullWidth
+        autoComplete="off"
+        error={touched.token && !!errors.token}
+        helperText={touched.token && errors.token}
+        slotProps={{
+          htmlInput: { "aria-invalid": touched.token && !!errors.token },
+        }}
+      />
+    </Stack>
   );
 };

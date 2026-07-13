@@ -428,7 +428,8 @@ export class SeedService {
             push: false,
           },
           version: "1.0.0",
-          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1779930737/microsoft-excel_spvnfl.svg',
+          iconUrl:
+            "https://res.cloudinary.com/dvloutv7e/image/upload/v1779930737/microsoft-excel_spvnfl.svg",
         })
         .parse(),
       new RestApiConnectorDefinitionModelFactory()
@@ -452,7 +453,8 @@ export class SeedService {
             push: false,
           },
           version: "0.1.0",
-          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1779930297/rest-api_bzitc8.svg',
+          iconUrl:
+            "https://res.cloudinary.com/dvloutv7e/image/upload/v1779930297/rest-api_bzitc8.svg",
         })
         .parse(),
     ];

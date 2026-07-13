@@ -349,10 +349,7 @@ const _fieldMapInferredToModel: _FieldMapInferredToModel = true;
 // satisfied end-to-end.
 
 // Drizzle select row + hydrated normalizedData → core Zod model.
-type _EntRecHydratedToModel = IsAssignable<
-  EntityRecordHydrated,
-  EntityRecord
->;
+type _EntRecHydratedToModel = IsAssignable<EntityRecordHydrated, EntityRecord>;
 const _entRecHydratedToModel: _EntRecHydratedToModel = true;
 
 // Core Zod model → hydrated repo shape.
@@ -612,10 +609,16 @@ const _cilpSelectPlanTypeGuard: _CilpSelectPlanTypeGuard = true;
 
 type _WtcInferredRow = InferSelectModel<typeof wideTableColumns>;
 
-type _WtcInferredToSelect = IsAssignable<_WtcInferredRow, WideTableColumnSelect>;
+type _WtcInferredToSelect = IsAssignable<
+  _WtcInferredRow,
+  WideTableColumnSelect
+>;
 const _wtcInferredToSelect: _WtcInferredToSelect = true;
 
-type _WtcSelectToInferred = IsAssignable<WideTableColumnSelect, _WtcInferredRow>;
+type _WtcSelectToInferred = IsAssignable<
+  WideTableColumnSelect,
+  _WtcInferredRow
+>;
 const _wtcSelectToInferred: _WtcSelectToInferred = true;
 
 // ── ApiEndpointConfig ────────────────────────────────────────────────
@@ -626,8 +629,14 @@ const _wtcSelectToInferred: _WtcSelectToInferred = true;
 
 type _AecInferredRow = InferSelectModel<typeof apiEndpointConfigs>;
 
-type _AecInferredToSelect = IsAssignable<_AecInferredRow, ApiEndpointConfigSelect>;
+type _AecInferredToSelect = IsAssignable<
+  _AecInferredRow,
+  ApiEndpointConfigSelect
+>;
 const _aecInferredToSelect: _AecInferredToSelect = true;
 
-type _AecSelectToInferred = IsAssignable<ApiEndpointConfigSelect, _AecInferredRow>;
+type _AecSelectToInferred = IsAssignable<
+  ApiEndpointConfigSelect,
+  _AecInferredRow
+>;
 const _aecSelectToInferred: _AecSelectToInferred = true;

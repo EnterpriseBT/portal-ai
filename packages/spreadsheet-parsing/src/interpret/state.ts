@@ -12,8 +12,10 @@ import type { InterpretState } from "./types.js";
  * the parser without materialising every cell. The non-workbook
  * fields still validate against `InterpretInputSchema`.
  */
-export interface InterpretRuntimeInput
-  extends Omit<InterpretInput, "workbook"> {
+export interface InterpretRuntimeInput extends Omit<
+  InterpretInput,
+  "workbook"
+> {
   workbook: Workbook | WorkbookData;
 }
 

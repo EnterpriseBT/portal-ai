@@ -72,7 +72,11 @@ describe("InferredColumnsTableUI", () => {
         {...makeProps({
           rows: [
             row({ sourceField: "id", normalizedKey: "id" }),
-            row({ sourceField: "name", normalizedKey: "name", samples: ["Alice"] }),
+            row({
+              sourceField: "name",
+              normalizedKey: "name",
+              samples: ["Alice"],
+            }),
           ],
         })}
       />

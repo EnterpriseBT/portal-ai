@@ -255,12 +255,10 @@ async function seedFullStack(db: ReturnType<typeof drizzle>) {
 
   // Reconcile the wide table so reads + writes through the new path
   // find `er__<id>` with the right columns.
-  const { wideTableReconcilerService } = await import(
-    "../../../services/wide-table-reconciler.service.js"
-  );
-  const { wideTableStatementCache } = await import(
-    "../../../services/wide-table-statement.cache.js"
-  );
+  const { wideTableReconcilerService } =
+    await import("../../../services/wide-table-reconciler.service.js");
+  const { wideTableStatementCache } =
+    await import("../../../services/wide-table-statement.cache.js");
   wideTableStatementCache.clear();
   await wideTableReconcilerService.reconcileEntity(
     entity.id,
@@ -503,13 +501,11 @@ describe("Revalidation — Entity Record Mutation Guards", () => {
     const { organizationId, connectorEntityId } = await seedFullStack(
       db as ReturnType<typeof drizzle>
     );
-    await (db as ReturnType<typeof drizzle>)
-      .insert(jobs)
-      .values(
-        createActiveRevalidationJob(organizationId, connectorEntityId, {
-          status: "completed",
-        }) as never
-      );
+    await (db as ReturnType<typeof drizzle>).insert(jobs).values(
+      createActiveRevalidationJob(organizationId, connectorEntityId, {
+        status: "completed",
+      }) as never
+    );
 
     const res = await request(app)
       .post(recordsUrl(connectorEntityId))
@@ -690,15 +686,12 @@ describe("Entity Record Router — isValid Filter", () => {
     // Mirror the rows into the wide table so the list endpoint's JOIN
     // returns them. Project the typed columns from each record's
     // normalizedData.
-    const { wideTableRepo } = await import(
-      "../../../db/repositories/wide-table.repository.js"
-    );
-    const { wideTableStatementCache } = await import(
-      "../../../services/wide-table-statement.cache.js"
-    );
-    const { projectToWideRow, buildMappingsForProjection } = await import(
-      "../../../services/wide-table-projection.util.js"
-    );
+    const { wideTableRepo } =
+      await import("../../../db/repositories/wide-table.repository.js");
+    const { wideTableStatementCache } =
+      await import("../../../services/wide-table-statement.cache.js");
+    const { projectToWideRow, buildMappingsForProjection } =
+      await import("../../../services/wide-table-projection.util.js");
     const dbClient = db as unknown as DbClient;
     const stmt = await wideTableStatementCache.get(
       seed.connectorEntityId,

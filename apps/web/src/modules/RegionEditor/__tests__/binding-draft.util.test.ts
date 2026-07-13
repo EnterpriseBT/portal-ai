@@ -18,7 +18,9 @@ function refBinding(): ColumnBindingDraft {
 describe("applyBindingDraftPatch", () => {
   it("merges non-definition patches without disturbing other fields", () => {
     const draft = refBinding();
-    const next = applyBindingDraftPatch(draft, { normalizedKey: "customer_id" });
+    const next = applyBindingDraftPatch(draft, {
+      normalizedKey: "customer_id",
+    });
     expect(next.normalizedKey).toBe("customer_id");
     expect(next.refEntityKey).toBe("customers");
     expect(next.refNormalizedKey).toBe("id");

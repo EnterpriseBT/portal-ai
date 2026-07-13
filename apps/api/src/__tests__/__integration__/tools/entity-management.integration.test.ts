@@ -247,9 +247,8 @@ async function seed(
 
   // Reconcile the wide table so the tool's downstream
   // `entity_records.findHydratedById` JOIN resolves rows.
-  const { wideTableReconcilerService } = await import(
-    "../../../services/wide-table-reconciler.service.js"
-  );
+  const { wideTableReconcilerService } =
+    await import("../../../services/wide-table-reconciler.service.js");
   await wideTableReconcilerService.reconcileEntity(
     entity.id,
     db as unknown as DbClient
@@ -313,9 +312,8 @@ describe("Entity management tool integration", () => {
         .where(eq(entityRecords.id, recordId));
       expect(rows).toHaveLength(1);
       expect(rows[0].origin).toBe("portal");
-      const { entityRecordsRepo } = await import(
-        "../../../db/repositories/entity-records.repository.js"
-      );
+      const { entityRecordsRepo } =
+        await import("../../../db/repositories/entity-records.repository.js");
       const hydrated = await entityRecordsRepo.findHydratedById(
         recordId,
         rows[0].connectorEntityId
@@ -430,9 +428,8 @@ describe("Entity management tool integration", () => {
         .from(entityRecords)
         .where(eq(entityRecords.id, recordId));
       expect(rows[0].data).toEqual({ Name: "Bob" });
-      const { entityRecordsRepo: erRepoForUpdate } = await import(
-        "../../../db/repositories/entity-records.repository.js"
-      );
+      const { entityRecordsRepo: erRepoForUpdate } =
+        await import("../../../db/repositories/entity-records.repository.js");
       const hydratedAfter = await erRepoForUpdate.findHydratedById(
         recordId,
         rows[0].connectorEntityId
@@ -457,9 +454,8 @@ describe("Entity management tool integration", () => {
       // Re-reconcile so the wide table grows `c_email` alongside
       // `c_name`. Production paths call this from the field-mapping
       // routes; the test goes through Drizzle directly.
-      const { wideTableReconcilerService } = await import(
-        "../../../services/wide-table-reconciler.service.js"
-      );
+      const { wideTableReconcilerService } =
+        await import("../../../services/wide-table-reconciler.service.js");
       await wideTableReconcilerService.reconcileEntity(
         s.connectorEntityId,
         db as unknown as DbClient
@@ -511,9 +507,8 @@ describe("Entity management tool integration", () => {
       // Raw `data` blob must contain both original Email and updated Name
       expect(rows[0].data).toEqual({ Name: "Bob", Email: "alice@example.com" });
       // Normalized data must retain both fields — email must not be null
-      const { entityRecordsRepo: erRepoForMerge } = await import(
-        "../../../db/repositories/entity-records.repository.js"
-      );
+      const { entityRecordsRepo: erRepoForMerge } =
+        await import("../../../db/repositories/entity-records.repository.js");
       const hydratedMerged = await erRepoForMerge.findHydratedById(
         recordId,
         rows[0].connectorEntityId

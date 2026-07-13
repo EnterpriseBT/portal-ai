@@ -118,7 +118,11 @@ describe("ToolCapabilitySchema — consumption contract", () => {
   it("rejects maxRows/onOverflow on a non-bounded mode", () => {
     const bad = {
       ...streamingReduce,
-      consumption: { mode: "streaming" as const, maxRows: 100, onOverflow: "sample" as const },
+      consumption: {
+        mode: "streaming" as const,
+        maxRows: 100,
+        onOverflow: "sample" as const,
+      },
     };
     expect(ToolCapabilitySchema.safeParse(bad).success).toBe(false);
   });
@@ -128,22 +132,35 @@ describe("ToolCapabilitySchema — consumption contract", () => {
 
 describe("ToolCapabilitySchema — purity", () => {
   it("rejects a pure tool that reads", () => {
-    expect(ToolCapabilitySchema.safeParse({ ...pureMath, reads: ["entity_records"] }).success).toBe(false);
+    expect(
+      ToolCapabilitySchema.safeParse({ ...pureMath, reads: ["entity_records"] })
+        .success
+    ).toBe(false);
   });
 
   it("rejects a pure tool that writes", () => {
-    const bad = { ...pureMath, writes: ["entity_records"], computeShape: "mutate" as const, locks: ["recordIds"] };
+    const bad = {
+      ...pureMath,
+      writes: ["entity_records"],
+      computeShape: "mutate" as const,
+      locks: ["recordIds"],
+    };
     expect(ToolCapabilitySchema.safeParse(bad).success).toBe(false);
   });
 
   it("rejects a pure tool with engine-pushdown consumption", () => {
     expect(
-      ToolCapabilitySchema.safeParse({ ...pureMath, consumption: { mode: "engine-pushdown" as const } }).success
+      ToolCapabilitySchema.safeParse({
+        ...pureMath,
+        consumption: { mode: "engine-pushdown" as const },
+      }).success
     ).toBe(false);
   });
 
   it("rejects engine-pushdown with an empty reads[]", () => {
-    expect(ToolCapabilitySchema.safeParse({ ...reader, reads: [] }).success).toBe(false);
+    expect(
+      ToolCapabilitySchema.safeParse({ ...reader, reads: [] }).success
+    ).toBe(false);
   });
 });
 
@@ -151,19 +168,36 @@ describe("ToolCapabilitySchema — purity", () => {
 
 describe("ToolCapabilitySchema — writes", () => {
   it("rejects a writing tool with no locks", () => {
-    expect(ToolCapabilitySchema.safeParse({ ...writer, locks: [] }).success).toBe(false);
+    expect(
+      ToolCapabilitySchema.safeParse({ ...writer, locks: [] }).success
+    ).toBe(false);
   });
 
   it("rejects a writing tool with a non-mutating computeShape", () => {
-    expect(ToolCapabilitySchema.safeParse({ ...writer, computeShape: "reduce" as const }).success).toBe(false);
+    expect(
+      ToolCapabilitySchema.safeParse({
+        ...writer,
+        computeShape: "reduce" as const,
+      }).success
+    ).toBe(false);
   });
 
   it("rejects mutation-result resultKind without writes", () => {
-    expect(ToolCapabilitySchema.safeParse({ ...reader, resultKind: "mutation-result" as const }).success).toBe(false);
+    expect(
+      ToolCapabilitySchema.safeParse({
+        ...reader,
+        resultKind: "mutation-result" as const,
+      }).success
+    ).toBe(false);
   });
 
   it("rejects progress resultKind without writes", () => {
-    expect(ToolCapabilitySchema.safeParse({ ...reader, resultKind: "progress" as const }).success).toBe(false);
+    expect(
+      ToolCapabilitySchema.safeParse({
+        ...reader,
+        resultKind: "progress" as const,
+      }).success
+    ).toBe(false);
   });
 });
 
@@ -181,12 +215,18 @@ describe("ToolCapabilitySchema — production contract", () => {
   });
 
   it("rejects onLarge on a `value` production", () => {
-    const bad = { ...pureMath, production: { kind: "value", onLarge: "handle" } };
+    const bad = {
+      ...pureMath,
+      production: { kind: "value", onLarge: "handle" },
+    };
     expect(ToolCapabilitySchema.safeParse(bad).success).toBe(false);
   });
 
   it("rejects resultKind 'scalar' with a 'rows' production", () => {
-    const bad = { ...pushdownReduce, production: { kind: "rows", onLarge: "handle" } };
+    const bad = {
+      ...pushdownReduce,
+      production: { kind: "rows", onLarge: "handle" },
+    };
     expect(ToolCapabilitySchema.safeParse(bad).success).toBe(false);
   });
 
@@ -256,19 +296,28 @@ describe("customToolCapabilityError", () => {
 
   it("rejects an always-available tool", () => {
     expect(
-      customToolCapabilityError({ ...customConsumer, alwaysAvailable: true }, allowNone)
+      customToolCapabilityError(
+        { ...customConsumer, alwaysAvailable: true },
+        allowNone
+      )
     ).toMatch(/always-available/);
   });
 
   it("rejects a non-map/reduce/pure computeShape", () => {
     expect(
-      customToolCapabilityError({ ...customConsumer, computeShape: "scan" }, allowNone)
+      customToolCapabilityError(
+        { ...customConsumer, computeShape: "scan" },
+        allowNone
+      )
     ).toMatch(/computeShape/);
   });
 
   it("rejects a write-result render kind", () => {
     expect(
-      customToolCapabilityError({ ...customConsumer, resultKind: "progress" }, allowNone)
+      customToolCapabilityError(
+        { ...customConsumer, resultKind: "progress" },
+        allowNone
+      )
     ).toMatch(/resultKind/);
   });
 

@@ -551,8 +551,7 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
     "Inspect the failed records' source ids and retry, or accept the partial.",
   [ApiCode.READ_HANDLE_EXPIRED]:
     "Re-run the original query to refresh the chart's data.",
-  [ApiCode.READ_STREAM_INTERRUPTED]:
-    "Reload to refetch the cached snapshot.",
+  [ApiCode.READ_STREAM_INTERRUPTED]: "Reload to refetch the cached snapshot.",
   [ApiCode.PORTAL_SQL_TIMEOUT]:
     "Query exceeded 30s. Try a tighter WHERE filter, a tighter date range, or aggregating the source.",
   [ApiCode.SQL_QUERY_COST_NOT_ACKNOWLEDGED]:

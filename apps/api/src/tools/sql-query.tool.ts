@@ -221,11 +221,14 @@ export class SqlQueryTool extends Tool<typeof InputSchema> {
       "This query is too long/expensive to run inline; it must run as a background job. Tell the user it'll run in the background, then retry with acknowledgeCost: true AFTER they reply.",
       {
         recommendation:
-          ApiCodeDefaultRecommendation[
-            ApiCode.SQL_QUERY_COST_NOT_ACKNOWLEDGED
-          ],
+          ApiCodeDefaultRecommendation[ApiCode.SQL_QUERY_COST_NOT_ACKNOWLEDGED],
         ...(opts.estimate
-          ? { details: { estimatedCost: opts.estimate.totalCost, estimatedRows: opts.estimate.estimatedRows } }
+          ? {
+              details: {
+                estimatedCost: opts.estimate.totalCost,
+                estimatedRows: opts.estimate.estimatedRows,
+              },
+            }
           : {}),
       }
     );

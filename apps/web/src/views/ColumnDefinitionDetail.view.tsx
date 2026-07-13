@@ -242,13 +242,13 @@ export const ColumnDefinitionDetailView: React.FC<
                       cd.system
                         ? []
                         : [
-                          {
-                            label: "Delete",
-                            icon: <DeleteIcon />,
-                            onClick: () => setDeleteDialogOpen(true),
-                            color: "error",
-                          },
-                        ]
+                            {
+                              label: "Delete",
+                              icon: <DeleteIcon />,
+                              onClick: () => setDeleteDialogOpen(true),
+                              color: "error",
+                            },
+                          ]
                     }
                   >
                     <MetadataList
@@ -363,9 +363,7 @@ export const ColumnDefinitionDetailView: React.FC<
                                 return (
                                   <FieldMappingTable
                                     fieldMappings={mappings.fieldMappings}
-                                    onEdit={(fm) =>
-                                      setEditingFieldMapping(fm)
-                                    }
+                                    onEdit={(fm) => setEditingFieldMapping(fm)}
                                     onDelete={(fm) =>
                                       setDeletingFieldMapping(fm)
                                     }
@@ -398,25 +396,25 @@ export const ColumnDefinitionDetailView: React.FC<
                     fieldMapping={
                       editingFieldMapping
                         ? {
-                          ...editingFieldMapping,
-                          columnDefinitionLabel: cd.label,
-                          connectorEntityLabel:
-                            editingFieldMapping.connectorEntity?.label,
-                        }
+                            ...editingFieldMapping,
+                            columnDefinitionLabel: cd.label,
+                            connectorEntityLabel:
+                              editingFieldMapping.connectorEntity?.label,
+                          }
                         : {
-                          sourceField: "",
-                          normalizedKey: "",
-                          isPrimaryKey: false,
-                          required: false,
-                          defaultValue: null,
-                          format: null,
-                          enumValues: null,
-                          columnDefinitionId: "",
-                          columnDefinitionLabel: "",
-                          connectorEntityLabel: "",
-                          refNormalizedKey: null,
-                          refEntityKey: null,
-                        }
+                            sourceField: "",
+                            normalizedKey: "",
+                            isPrimaryKey: false,
+                            required: false,
+                            defaultValue: null,
+                            format: null,
+                            enumValues: null,
+                            columnDefinitionId: "",
+                            columnDefinitionLabel: "",
+                            connectorEntityLabel: "",
+                            refNormalizedKey: null,
+                            refEntityKey: null,
+                          }
                     }
                     onSubmit={handleFieldMappingUpdate}
                     onSearchConnectorEntitiesForRefKey={
@@ -543,45 +541,45 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
     () =>
       onEdit || onDelete
         ? {
-          key: "actions",
-          label: "Actions",
-          render: (_value: unknown, row: Record<string, unknown>) => {
-            const fm = fieldMappings.find((f) => f.id === row.id);
-            if (!fm) return null;
-            const writeEnabled =
-              fm.connectorEntity?.connectorInstance?.enabledCapabilityFlags
-                ?.write === true;
-            return (
-              <Stack direction="row" spacing={0.5}>
-                {onEdit && writeEnabled && (
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEdit(fm);
-                    }}
-                    aria-label="Edit field mapping"
-                  >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                )}
-                {onDelete && writeEnabled && (
-                  <IconButton
-                    size="small"
-                    color="error"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete(fm);
-                    }}
-                    aria-label="Delete field mapping"
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                )}
-              </Stack>
-            );
-          },
-        }
+            key: "actions",
+            label: "Actions",
+            render: (_value: unknown, row: Record<string, unknown>) => {
+              const fm = fieldMappings.find((f) => f.id === row.id);
+              if (!fm) return null;
+              const writeEnabled =
+                fm.connectorEntity?.connectorInstance?.enabledCapabilityFlags
+                  ?.write === true;
+              return (
+                <Stack direction="row" spacing={0.5}>
+                  {onEdit && writeEnabled && (
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEdit(fm);
+                      }}
+                      aria-label="Edit field mapping"
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                  {onDelete && writeEnabled && (
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(fm);
+                      }}
+                      aria-label="Delete field mapping"
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                </Stack>
+              );
+            },
+          }
         : null,
     [onEdit, onDelete, fieldMappings]
   );

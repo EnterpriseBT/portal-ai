@@ -29,10 +29,7 @@ import type { ApiEndpoint } from "../../db/repositories/api-endpoints.repository
 import { applyAuth } from "./auth.util.js";
 import { fetchJson, type FetchJsonResult } from "./fetch.util.js";
 import { resolveIterator } from "./pagination/index.js";
-import type {
-  FetchedPage,
-  PageContext,
-} from "./pagination/types.js";
+import type { FetchedPage, PageContext } from "./pagination/types.js";
 import { withRetry } from "./retry.util.js";
 import { streamFetchRecords, type StreamFetchResult } from "./stream.util.js";
 import {
@@ -61,9 +58,10 @@ export async function fetchOnePage(
     pageNumber: ctx.pageNumber,
   };
 
-  const paginationParams = ctx.overrideUrl !== undefined
-    ? { query: {}, headers: {} }
-    : paginationRequestParams(pagination, ctx);
+  const paginationParams =
+    ctx.overrideUrl !== undefined
+      ? { query: {}, headers: {} }
+      : paginationRequestParams(pagination, ctx);
 
   let baseRequestUrl: string;
   if (ctx.overrideUrl !== undefined) {
@@ -72,7 +70,10 @@ export async function fetchOnePage(
     baseRequestUrl = ctx.overrideUrl;
   } else {
     const templatedQuery = applyTemplateToConfig(
-      (endpoint.config.queryParams as Record<string, string> | null | undefined) ?? undefined,
+      (endpoint.config.queryParams as
+        | Record<string, string>
+        | null
+        | undefined) ?? undefined,
       vars
     );
     baseRequestUrl = buildUrl(baseUrl, endpoint.config.path, {
@@ -82,7 +83,8 @@ export async function fetchOnePage(
   }
 
   const templatedHeaders = applyTemplateToConfig(
-    (endpoint.config.headers as Record<string, string> | null | undefined) ?? undefined,
+    (endpoint.config.headers as Record<string, string> | null | undefined) ??
+      undefined,
     vars
   );
   const allHeaders = { ...templatedHeaders, ...paginationParams.headers };
@@ -238,8 +240,10 @@ export async function streamFetchOnePage(
   const vars: TemplateVariables = { cursor: "", pageNumber: 1 };
 
   const templatedQuery = applyTemplateToConfig(
-    (endpoint.config.queryParams as Record<string, string> | null | undefined) ??
-      undefined,
+    (endpoint.config.queryParams as
+      | Record<string, string>
+      | null
+      | undefined) ?? undefined,
     vars
   );
   const baseRequestUrl = buildUrl(

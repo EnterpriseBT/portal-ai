@@ -83,8 +83,8 @@ export const SelectWorkbookStep: React.FC<SelectWorkbookStepUIProps> = ({
               Fetching workbook contents…
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Streaming rows into the workbook cache. This usually takes
-              a few seconds — larger workbooks may take longer.
+              Streaming rows into the workbook cache. This usually takes a few
+              seconds — larger workbooks may take longer.
             </Typography>
           </Stack>
         </Box>

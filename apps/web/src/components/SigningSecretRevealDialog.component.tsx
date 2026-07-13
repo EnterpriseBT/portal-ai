@@ -68,8 +68,8 @@ export const SigningSecretRevealDialogUI: React.FC<
           <AlertTitle>Copy this now — it will not be shown again</AlertTitle>
           <Typography variant="body2">
             Configure your toolpack server to verify the{" "}
-            <code>X-Portalai-Signature</code> header using this secret. To
-            see it again, rotate the secret from the edit dialog.
+            <code>X-Portalai-Signature</code> header using this secret. To see
+            it again, rotate the secret from the edit dialog.
           </Typography>
         </Alert>
         <TextField

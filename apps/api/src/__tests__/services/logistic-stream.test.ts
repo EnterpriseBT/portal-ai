@@ -13,7 +13,8 @@ const SEPARABLE: Record<string, unknown>[] = [];
 for (let rep = 0; rep < 200; rep++) SEPARABLE.push(...BASE);
 
 async function* asStream(records: Record<string, unknown>[], batch: number) {
-  for (let i = 0; i < records.length; i += batch) yield records.slice(i, i + batch);
+  for (let i = 0; i < records.length; i += batch)
+    yield records.slice(i, i + batch);
 }
 
 describe("logisticRegressionFromStream (#153 AdaGrad SGD)", () => {
@@ -78,7 +79,13 @@ describe("logisticRegressionFromStream (#153 AdaGrad SGD)", () => {
   it("rejects a single-class stream", async () => {
     await expect(
       AnalyticsService.logisticRegressionFromStream(
-        asStream([{ x: 1, y: 0 }, { x: 2, y: 0 }], 1),
+        asStream(
+          [
+            { x: 1, y: 0 },
+            { x: 2, y: 0 },
+          ],
+          1
+        ),
         { x: "x", y: "y" }
       )
     ).rejects.toThrow(/one of each class/);

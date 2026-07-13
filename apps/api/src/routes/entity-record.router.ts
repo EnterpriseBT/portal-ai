@@ -235,16 +235,13 @@ entityRecordRouter.get(
       }
 
       const [records, total] = await Promise.all([
-        DbService.repository.entityRecords.findHydratedMany(
-          connectorEntityId,
-          {
-            where,
-            limit,
-            offset,
-            orderBy: { column: orderByExpr, direction: sortOrder },
-            normalizedDataProjection,
-          }
-        ),
+        DbService.repository.entityRecords.findHydratedMany(connectorEntityId, {
+          where,
+          limit,
+          offset,
+          orderBy: { column: orderByExpr, direction: sortOrder },
+          normalizedDataProjection,
+        }),
         DbService.repository.entityRecords.countHydrated(
           connectorEntityId,
           where
@@ -344,11 +341,10 @@ entityRecordRouter.get(
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
 
-      const record =
-        await DbService.repository.entityRecords.findHydratedById(
-          recordId,
-          connectorEntityId
-        );
+      const record = await DbService.repository.entityRecords.findHydratedById(
+        recordId,
+        connectorEntityId
+      );
       if (!record) {
         return next(
           new ApiError(
@@ -665,10 +661,7 @@ entityRecordRouter.post(
             toUpsert,
             tx
           );
-          const stmt = await wideTableStatementCache.get(
-            connectorEntityId,
-            tx
-          );
+          const stmt = await wideTableStatementCache.get(connectorEntityId, tx);
           const mappings = buildMappingsForProjection(stmt.columns);
           await DbService.repository.wideTable.upsertMany(
             connectorEntityId,

@@ -37,10 +37,7 @@ export interface ProbeHashInput {
   baseUrl: string;
   auth: ApiAuthConfig;
   credentials: ApiCredentials | null;
-  endpoint: Pick<
-    ApiEndpointConfig,
-    (typeof ENDPOINT_HASH_KEYS)[number]
-  >;
+  endpoint: Pick<ApiEndpointConfig, (typeof ENDPOINT_HASH_KEYS)[number]>;
 }
 
 export async function probeInputHash(input: ProbeHashInput): Promise<string> {

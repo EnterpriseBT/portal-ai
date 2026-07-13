@@ -18,10 +18,7 @@ export class ToolPackUtil {
    * - Custom refs (`"org:<uuid>"`) → looked up via the optional map;
    *   falls back to the raw ref string for unknown values.
    */
-  static getLabel(
-    pack: string,
-    customLabels?: CustomToolpackLabelMap
-  ): string {
+  static getLabel(pack: string, customLabels?: CustomToolpackLabelMap): string {
     if (isBuiltinToolpackSlug(pack)) {
       return BUILTIN_TOOLPACK_BY_SLUG[pack].name;
     }

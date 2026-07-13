@@ -1,9 +1,8 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { ConnectorInstanceSyncButtonUI } = await import(
-  "../components/ConnectorInstanceSyncButton.component"
-);
+const { ConnectorInstanceSyncButtonUI } =
+  await import("../components/ConnectorInstanceSyncButton.component");
 
 describe("ConnectorInstanceSyncButtonUI", () => {
   const baseProps = {
@@ -39,9 +38,7 @@ describe("ConnectorInstanceSyncButtonUI", () => {
   });
 
   it("shows Syncing… and disables the button while the job is active", () => {
-    render(
-      <ConnectorInstanceSyncButtonUI {...baseProps} jobStatus="active" />
-    );
+    render(<ConnectorInstanceSyncButtonUI {...baseProps} jobStatus="active" />);
 
     const btn = screen.getByRole("button");
     expect(btn).toHaveTextContent(/syncing/i);
@@ -102,10 +99,7 @@ describe("ConnectorInstanceSyncButtonUI", () => {
 
   it("does not render the advisory tooltip when identityWarnings is empty", () => {
     render(
-      <ConnectorInstanceSyncButtonUI
-        {...baseProps}
-        identityWarnings={[]}
-      />
+      <ConnectorInstanceSyncButtonUI {...baseProps} identityWarnings={[]} />
     );
     const btn = screen.getByRole("button", { name: /sync now/i });
     fireEvent.mouseOver(btn);

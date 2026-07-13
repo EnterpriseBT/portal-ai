@@ -10,7 +10,12 @@
  * See `docs/MICROSOFT_EXCEL_CONNECTOR.phase-A.plan.md` §Slice 7.
  */
 
-import { Router, type Request, type Response, type NextFunction } from "express";
+import {
+  Router,
+  type Request,
+  type Response,
+  type NextFunction,
+} from "express";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -50,8 +55,7 @@ microsoftExcelConnectorRouter.post(
   (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.application?.metadata.userId as string;
-      const organizationId = req.application?.metadata
-        .organizationId as string;
+      const organizationId = req.application?.metadata.organizationId as string;
       const body = (req.body ?? {}) as { connectorInstanceId?: unknown };
       const connectorInstanceId =
         typeof body.connectorInstanceId === "string" &&
@@ -66,7 +70,11 @@ microsoftExcelConnectorRouter.post(
       });
 
       logger.info(
-        { userId, organizationId, connectorInstanceId: connectorInstanceId ?? null },
+        {
+          userId,
+          organizationId,
+          connectorInstanceId: connectorInstanceId ?? null,
+        },
         "Microsoft OAuth authorize URL minted"
       );
       return HttpService.success(res, { url });
@@ -215,9 +223,7 @@ async function resolveOwnedInstance(
   organizationId: string
 ) {
   const instance =
-    await DbService.repository.connectorInstances.findById(
-      connectorInstanceId
-    );
+    await DbService.repository.connectorInstances.findById(connectorInstanceId);
   if (!instance) {
     throw new ApiError(
       404,
@@ -254,24 +260,12 @@ function mapMicrosoftGraphError(err: unknown): ApiError {
           details
         );
       case "search_failed":
-        return new ApiError(
-          502,
-          ApiCode.MICROSOFT_EXCEL_LIST_FAILED,
-          message
-        );
+        return new ApiError(502, ApiCode.MICROSOFT_EXCEL_LIST_FAILED, message);
       case "head_failed":
       case "download_failed":
-        return new ApiError(
-          502,
-          ApiCode.MICROSOFT_EXCEL_FETCH_FAILED,
-          message
-        );
+        return new ApiError(502, ApiCode.MICROSOFT_EXCEL_FETCH_FAILED, message);
       default:
-        return new ApiError(
-          502,
-          ApiCode.MICROSOFT_EXCEL_FETCH_FAILED,
-          message
-        );
+        return new ApiError(502, ApiCode.MICROSOFT_EXCEL_FETCH_FAILED, message);
     }
   }
   return mapMicrosoftAuthError(err);
@@ -311,8 +305,7 @@ microsoftExcelConnectorRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const organizationId = req.application?.metadata
-        .organizationId as string;
+      const organizationId = req.application?.metadata.organizationId as string;
       const connectorInstanceId =
         typeof req.query.connectorInstanceId === "string"
           ? req.query.connectorInstanceId
@@ -378,14 +371,11 @@ microsoftExcelConnectorRouter.post(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const organizationId = req.application?.metadata
-        .organizationId as string;
+      const organizationId = req.application?.metadata.organizationId as string;
       const userId = req.application?.metadata.userId as string;
       const connectorInstanceId = req.params.id ?? "";
       const driveItemId =
-        typeof req.body?.driveItemId === "string"
-          ? req.body.driveItemId
-          : "";
+        typeof req.body?.driveItemId === "string" ? req.body.driveItemId : "";
       if (!driveItemId) {
         return next(
           new ApiError(
@@ -450,8 +440,7 @@ microsoftExcelConnectorRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const organizationId = req.application?.metadata
-        .organizationId as string;
+      const organizationId = req.application?.metadata.organizationId as string;
       const connectorInstanceId = req.params.id ?? "";
 
       const sheetIdParam =

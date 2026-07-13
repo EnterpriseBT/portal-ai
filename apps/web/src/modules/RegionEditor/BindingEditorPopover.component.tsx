@@ -97,7 +97,10 @@ function parseLocator(
   return null;
 }
 
-function locatorTitle(sourceLocator: string): { primary: string; kind: string } {
+function locatorTitle(sourceLocator: string): {
+  primary: string;
+  kind: string;
+} {
   const parsed = parseLocator(sourceLocator);
   if (!parsed) return { primary: sourceLocator, kind: "Source" };
   if (parsed.kind === "header") {
@@ -136,8 +139,7 @@ function bindingStateMeta(
       meta: {
         iconName: IconName.Block,
         iconColor: "text.disabled",
-        tooltip:
-          "Excluded — no field mapping will be created for this column.",
+        tooltip: "Excluded — no field mapping will be created for this column.",
       },
     };
   }
@@ -298,7 +300,13 @@ export const BindingEditorPopoverUI: React.FC<BindingEditorPopoverUIProps> = ({
 
         {/* Read-only ColumnDefinition metadata */}
         {(columnDefinitionType || columnDefinitionDescription) && (
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Stack
+            direction="row"
+            spacing={1}
+            alignItems="center"
+            flexWrap="wrap"
+            useFlexGap
+          >
             {columnDefinitionType && (
               <MuiChip
                 size="small"
@@ -409,9 +417,7 @@ export const BindingEditorPopoverUI: React.FC<BindingEditorPopoverUIProps> = ({
             <TextInput
               label="Format"
               value={draft.format ?? ""}
-              onChange={(e) =>
-                onChange({ format: e.target.value || null })
-              }
+              onChange={(e) => onChange({ format: e.target.value || null })}
               helperText="How to parse the raw source values (optional)."
               fullWidth
             />

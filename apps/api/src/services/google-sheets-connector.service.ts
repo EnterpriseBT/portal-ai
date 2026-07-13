@@ -20,20 +20,14 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
 import { DbService } from "./db.service.js";
 import { GoogleAccessTokenCacheService } from "./google-access-token-cache.service.js";
-import {
-  GoogleAuthError,
-  GoogleAuthService,
-} from "./google-auth.service.js";
+import { GoogleAuthError, GoogleAuthService } from "./google-auth.service.js";
 import { googleSheetsToWorkbook } from "./google-sheets-workbook.service.js";
 import { WorkbookCacheService } from "./workbook-cache.service.js";
 import { googleSheetsAdapter } from "../adapters/google-sheets/google-sheets.adapter.js";
 import { environment } from "../environment.js";
 import { workbookCacheKey } from "../utils/connector-cache-keys.util.js";
 import { decryptCredentials } from "../utils/crypto.util.js";
-import {
-  OAuthStateError,
-  verifyState,
-} from "../utils/oauth-state.util.js";
+import { OAuthStateError, verifyState } from "../utils/oauth-state.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import {
   findSheetMetaById,
@@ -129,9 +123,10 @@ export class GoogleSheetsConnectorService {
     const tokens = await callExchangeOrApiError(input.code);
     const email = await callFetchEmailOrApiError(tokens.accessToken);
 
-    const definition = await DbService.repository.connectorDefinitions.findBySlug(
-      GOOGLE_SHEETS_SLUG
-    );
+    const definition =
+      await DbService.repository.connectorDefinitions.findBySlug(
+        GOOGLE_SHEETS_SLUG
+      );
     if (!definition) {
       throw new ApiError(
         500,
@@ -154,7 +149,9 @@ export class GoogleSheetsConnectorService {
     let connectorInstanceId: string;
     if (reconnectTargetId) {
       const target =
-        await DbService.repository.connectorInstances.findById(reconnectTargetId);
+        await DbService.repository.connectorInstances.findById(
+          reconnectTargetId
+        );
       if (
         !target ||
         target.organizationId !== organizationId ||
@@ -297,7 +294,10 @@ export class GoogleSheetsConnectorService {
     // resolveWorkbook share one layout across every pipeline (file-upload,
     // google-sheets, microsoft-excel). Sheet ids match what the file-upload
     // pipeline mints so the editor's slice loader is pipeline-agnostic.
-    const prefix = workbookCacheKey(GOOGLE_SHEETS_SLUG, input.connectorInstanceId);
+    const prefix = workbookCacheKey(
+      GOOGLE_SHEETS_SLUG,
+      input.connectorInstanceId
+    );
     // Best-effort cleanup of any prior session under this key before
     // overwriting; the cache TTL would handle this eventually but a fresh
     // selection should not see ghost rows from a previous workbook.
@@ -317,7 +317,9 @@ export class GoogleSheetsConnectorService {
       }
       await writer.finalize("ready");
     } catch (err) {
-      await writer.fail(err instanceof Error ? err.message : "transcribe failed");
+      await writer.fail(
+        err instanceof Error ? err.message : "transcribe failed"
+      );
       void WorkbookCacheService.deleteSession(prefix).catch(() => {});
       throw err;
     }
@@ -431,7 +433,9 @@ export class GoogleSheetsConnectorService {
       }
       await writer.finalize("ready");
     } catch (err) {
-      await writer.fail(err instanceof Error ? err.message : "rehydrate failed");
+      await writer.fail(
+        err instanceof Error ? err.message : "rehydrate failed"
+      );
       void WorkbookCacheService.deleteSession(prefix).catch(() => {});
       throw err;
     }
@@ -486,9 +490,8 @@ export class GoogleSheetsConnectorService {
       );
     }
 
-    const accessToken = await GoogleAccessTokenCacheService.getOrRefresh(
-      connectorInstanceId
-    );
+    const accessToken =
+      await GoogleAccessTokenCacheService.getOrRefresh(connectorInstanceId);
     const { workbook } = await fetchSpreadsheet(
       accessToken,
       spreadsheetId,
@@ -654,7 +657,10 @@ async function callExchangeOrApiError(code: string) {
   try {
     return await GoogleAuthService.exchangeCode({ code });
   } catch (err) {
-    if (err instanceof GoogleAuthError || (err as Error).name === "GoogleAuthError") {
+    if (
+      err instanceof GoogleAuthError ||
+      (err as Error).name === "GoogleAuthError"
+    ) {
       throw new ApiError(
         502,
         ApiCode.GOOGLE_OAUTH_EXCHANGE_FAILED,
@@ -669,7 +675,10 @@ async function callFetchEmailOrApiError(accessToken: string): Promise<string> {
   try {
     return await GoogleAuthService.fetchUserEmail(accessToken);
   } catch (err) {
-    if (err instanceof GoogleAuthError || (err as Error).name === "GoogleAuthError") {
+    if (
+      err instanceof GoogleAuthError ||
+      (err as Error).name === "GoogleAuthError"
+    ) {
       throw new ApiError(
         502,
         ApiCode.GOOGLE_OAUTH_USERINFO_FAILED,

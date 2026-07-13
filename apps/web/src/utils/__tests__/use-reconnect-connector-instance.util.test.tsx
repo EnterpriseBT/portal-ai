@@ -37,10 +37,7 @@ jest.unstable_mockModule("../oauth-popup.util", () => {
   }
   return {
     PopupClosedError: MockPopupClosedError,
-    useOAuthPopupAuthorize: (opts: {
-      slug: string;
-      allowedOrigin: string;
-    }) => {
+    useOAuthPopupAuthorize: (opts: { slug: string; allowedOrigin: string }) => {
       lastPopupOptions = opts;
       return { start: popupStartMock };
     },
@@ -51,17 +48,14 @@ jest.unstable_mockModule("../api-origin.util", () => ({
   apiOrigin: () => "http://localhost:3001",
 }));
 
-const { useReconnectConnectorInstance } = await import(
-  "../use-reconnect-connector-instance.util"
-);
+const { useReconnectConnectorInstance } =
+  await import("../use-reconnect-connector-instance.util");
 
 function wrapper({ children }: { children: React.ReactNode }) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return (
-    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
-  );
+  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
 beforeEach(() => {

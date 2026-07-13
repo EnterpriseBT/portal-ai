@@ -45,9 +45,7 @@ describe("enablement/enforcement projections reproduce current behavior", () => 
 
   it("write-gated == every entity_management tool (today's pack-level gate)", () => {
     const em = BUILTIN_TOOLPACKS.find((p) => p.slug === "entity_management")!;
-    expect(writeGatedToolNames()).toEqual(
-      em.tools.map((t) => t.name).sort()
-    );
+    expect(writeGatedToolNames()).toEqual(em.tools.map((t) => t.name).sort());
   });
 
   it("cost-gated == the transform write job + the bounded heavy-compute tools", () => {

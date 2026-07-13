@@ -79,7 +79,8 @@ describe("TerminatorSchema", () => {
 
   it("rejects matchesPattern with empty pattern", () => {
     expect(
-      TerminatorSchema.safeParse({ kind: "matchesPattern", pattern: "" }).success
+      TerminatorSchema.safeParse({ kind: "matchesPattern", pattern: "" })
+        .success
     ).toBe(false);
   });
 });
@@ -105,9 +106,9 @@ describe("SegmentSchema", () => {
 
   it("rejects positionCount < 1", () => {
     for (const kind of ["field", "skip"] as const) {
-      expect(
-        SegmentSchema.safeParse({ kind, positionCount: 0 }).success
-      ).toBe(false);
+      expect(SegmentSchema.safeParse({ kind, positionCount: 0 }).success).toBe(
+        false
+      );
     }
     expect(
       SegmentSchema.safeParse({
@@ -330,7 +331,12 @@ describe("BindingSourceLocatorSchema", () => {
 });
 
 type TidyRegion = Record<string, unknown> & {
-  bounds: { startRow: number; startCol: number; endRow: number; endCol: number };
+  bounds: {
+    startRow: number;
+    startCol: number;
+    endRow: number;
+    endCol: number;
+  };
   segmentsByAxis: Record<string, unknown>;
   headerStrategyByAxis: Record<string, unknown>;
   columnBindings: Array<Record<string, unknown>>;
@@ -1040,7 +1046,8 @@ describe("ColumnBindingSchema — user overrides", () => {
 
     // nullable-optional enumValues
     expect(
-      ColumnBindingSchema.safeParse({ ...baseBinding, enumValues: null }).success
+      ColumnBindingSchema.safeParse({ ...baseBinding, enumValues: null })
+        .success
     ).toBe(true);
   });
 

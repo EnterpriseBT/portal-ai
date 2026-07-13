@@ -160,7 +160,10 @@ describe("scoreAndWarn", () => {
     // Now flip axisName to "" via the ignored type narrowing (score-and-warn
     // treats empty as missing).
     const segs = badRegion.segmentsByAxis!.row!;
-    segs[1] = { ...(segs[1] as Extract<Segment, { kind: "pivot" }>), axisName: "" } as Segment;
+    segs[1] = {
+      ...(segs[1] as Extract<Segment, { kind: "pivot" }>),
+      axisName: "",
+    } as Segment;
     // Drive scoreAndWarn directly with the mutated region.
     const mutated: InterpretState = {
       ...state,

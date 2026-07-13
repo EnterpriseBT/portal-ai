@@ -193,10 +193,7 @@ export function resolveDisplayBlock(
     // streaming-table block so the frontend hydrates via the Redis
     // snapshot. The envelope is the block content verbatim (web layer
     // detects `queryHandle` + renders QueryResultDataBlock).
-    if (
-      toolResult != null &&
-      typeof toolResult.queryHandle === "string"
-    ) {
+    if (toolResult != null && typeof toolResult.queryHandle === "string") {
       const handleContent = {
         type: "data-table" as const,
         queryHandle: toolResult.queryHandle,
@@ -490,10 +487,7 @@ export class PortalService {
       });
     }
 
-    if (
-      terminal.partialFailures &&
-      terminal.partialFailures.length > 0
-    ) {
+    if (terminal.partialFailures && terminal.partialFailures.length > 0) {
       blocks.push({
         type: "bulk-failures-table",
         content: {

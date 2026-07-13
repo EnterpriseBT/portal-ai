@@ -26,10 +26,7 @@ import type {
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
-import {
-  seedUserAndOrg,
-  teardownOrg,
-} from "../utils/application.util.js";
+import { seedUserAndOrg, teardownOrg } from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|ci-test-probe-endpoint-draft";
 
@@ -49,13 +46,10 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
-const {
-  configureRestApiAdapterDeps,
-  __resetRestApiAdapterDepsForTests,
-} = await import("../../../adapters/rest-api/rest-api.adapter.js");
-const { ProbeCache } = await import(
-  "../../../adapters/rest-api/probe-cache.util.js"
-);
+const { configureRestApiAdapterDeps, __resetRestApiAdapterDepsForTests } =
+  await import("../../../adapters/rest-api/rest-api.adapter.js");
+const { ProbeCache } =
+  await import("../../../adapters/rest-api/probe-cache.util.js");
 
 let connection!: ReturnType<typeof postgres>;
 let db!: ReturnType<typeof drizzle>;
@@ -106,14 +100,12 @@ const validBody = {
 
 describe("POST /api/connector-instances/probe-endpoint-draft — happy paths", () => {
   it("returns source:live + DiscoverColumnsResult on a valid body", async () => {
-    globalThis.fetch = jest
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        jsonResponse([
-          { id: "a", name: "Alice" },
-          { id: "b", name: "Bob" },
-        ])
-      ) as unknown as typeof globalThis.fetch;
+    globalThis.fetch = jest.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse([
+        { id: "a", name: "Alice" },
+        { id: "b", name: "Bob" },
+      ])
+    ) as unknown as typeof globalThis.fetch;
 
     const res = await request(app)
       .post("/api/connector-instances/probe-endpoint-draft")
@@ -122,10 +114,9 @@ describe("POST /api/connector-instances/probe-endpoint-draft — happy paths", (
     expect(res.status).toBe(200);
     expect(res.body.payload.source).toBe("live");
     expect(res.body.payload.recordsScanned).toBe(2);
-    expect(res.body.payload.columns.map((c: { key: string }) => c.key).sort()).toEqual([
-      "id",
-      "name",
-    ]);
+    expect(
+      res.body.payload.columns.map((c: { key: string }) => c.key).sort()
+    ).toEqual(["id", "name"]);
   });
 
   it("returns degradation: transform-failed on a parse-error transform", async () => {

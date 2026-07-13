@@ -95,9 +95,7 @@ export const ConnectorInstanceSyncButtonUI = ({
     return <Tooltip title={SYNC_INELIGIBLE_TOOLTIP}>{button}</Tooltip>;
   }
   if (hasIdentityWarnings) {
-    return (
-      <Tooltip title={ROW_POSITION_ADVISORY_TOOLTIP}>{button}</Tooltip>
-    );
+    return <Tooltip title={ROW_POSITION_ADVISORY_TOOLTIP}>{button}</Tooltip>;
   }
   return button;
 };

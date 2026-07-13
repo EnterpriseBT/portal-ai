@@ -54,11 +54,7 @@ export function validateToolpackUrl(raw: string): UrlValidationError | null {
     };
   }
   const hostname = stripIPv6Brackets(parsed.hostname);
-  if (
-    !isProd &&
-    parsed.protocol === "http:" &&
-    !DEV_HTTP_HOSTS.has(hostname)
-  ) {
+  if (!isProd && parsed.protocol === "http:" && !DEV_HTTP_HOSTS.has(hostname)) {
     return {
       code: "TOOLPACK_URL_NOT_HTTPS",
       message: "http URLs are only allowed for localhost in non-production",
@@ -89,7 +85,5 @@ export function validateToolpackUrl(raw: string): UrlValidationError | null {
 }
 
 function stripIPv6Brackets(host: string): string {
-  return host.startsWith("[") && host.endsWith("]")
-    ? host.slice(1, -1)
-    : host;
+  return host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
 }

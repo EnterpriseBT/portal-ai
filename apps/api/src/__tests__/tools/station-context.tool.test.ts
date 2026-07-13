@@ -53,9 +53,8 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
 // Dynamic import after mocks
 // ---------------------------------------------------------------------------
 
-const { StationContextTool } = await import(
-  "../../tools/station-context.tool.js"
-);
+const { StationContextTool } =
+  await import("../../tools/station-context.tool.js");
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -262,8 +261,9 @@ describe("StationContextTool", () => {
         columns: Array<{ wideColumnName: string | null }>;
       }>;
     };
-    expect(result.entities[0].columns.every((c) => c.wideColumnName === null))
-      .toBe(true);
+    expect(
+      result.entities[0].columns.every((c) => c.wideColumnName === null)
+    ).toBe(true);
   });
 
   it("narrows the entities array when `entityKeys` is supplied", async () => {

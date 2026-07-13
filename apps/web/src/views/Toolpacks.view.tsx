@@ -214,7 +214,15 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
       },
     });
     return base;
-  }, [toolpacks, onSelect, onEdit, onDelete, onRefresh, refreshingId, showActions]);
+  }, [
+    toolpacks,
+    onSelect,
+    onEdit,
+    onDelete,
+    onRefresh,
+    refreshingId,
+    showActions,
+  ]);
 
   const rows: ToolpackRow[] = useMemo(
     () =>
@@ -248,10 +256,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
   // toolbar still drives offset/limit for consistency with other views.
   const pagedRows = useMemo(
     () =>
-      sortedRows.slice(
-        pagination.offset,
-        pagination.offset + pagination.limit
-      ),
+      sortedRows.slice(pagination.offset, pagination.offset + pagination.limit),
     [sortedRows, pagination.offset, pagination.limit]
   );
 
@@ -356,7 +361,7 @@ export const Toolpacks: React.FC = () => {
             onDelete={(t) => setDeleting(t)}
             refreshingId={
               refreshMutation.isPending
-                ? refreshMutation.variables?.id ?? null
+                ? (refreshMutation.variables?.id ?? null)
                 : null
             }
             onRefresh={(t) => {

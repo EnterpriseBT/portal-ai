@@ -34,10 +34,7 @@ import {
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import { db } from "../db/client.js";
-import {
-  connectorInstances,
-  fieldMappings,
-} from "../db/schema/index.js";
+import { connectorInstances, fieldMappings } from "../db/schema/index.js";
 import type {
   ColumnDefinitionSelect,
   EntityRecordInsert,
@@ -694,9 +691,7 @@ export class LayoutPlanCommitService {
         // wrote on the FieldMapping. Catalog-key / raw-field-name remain as
         // last-resort fallbacks for entries no binding covered.
         const key =
-          normalizedKeyByRecordFieldKey.get(k) ??
-          catalogById.get(k)?.key ??
-          k;
+          normalizedKeyByRecordFieldKey.get(k) ?? catalogById.get(k)?.key ?? k;
         normalizedData[key] = v;
       }
 
@@ -774,10 +769,7 @@ export class LayoutPlanCommitService {
       // Resolve the (normalizedKey → columnName) map once per write
       // call. The statement cache joins field_mappings + wide_table_columns
       // so this is cheap (no extra DB hit beyond the cache build).
-      const stmt = await wideTableStatementCache.get(
-        connectorEntityId,
-        locked
-      );
+      const stmt = await wideTableStatementCache.get(connectorEntityId, locked);
       const mappings = buildMappingsForProjection(stmt.columns);
 
       if (toUpsert.length > 0) {

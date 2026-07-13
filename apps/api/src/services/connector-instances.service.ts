@@ -60,16 +60,21 @@ interface RedactInstanceArgs {
 }
 
 export function redactInstance(
-  args: RedactInstanceArgs & { connectorDefinition: ConnectorDefinitionSelect | null }
+  args: RedactInstanceArgs & {
+    connectorDefinition: ConnectorDefinitionSelect | null;
+  }
 ): ConnectorInstanceWithDefinitionApi;
-export function redactInstance(
-  args: RedactInstanceArgs
-): ConnectorInstanceApi;
+export function redactInstance(args: RedactInstanceArgs): ConnectorInstanceApi;
 export function redactInstance(
   args: RedactInstanceArgs
 ): ConnectorInstanceApi | ConnectorInstanceWithDefinitionApi {
-  const { instance, slug, connectorDefinition, syncEligible, identityWarnings } =
-    args;
+  const {
+    instance,
+    slug,
+    connectorDefinition,
+    syncEligible,
+    identityWarnings,
+  } = args;
   const accountInfo = projectAccountInfo(
     instance.credentials ?? null,
     slug,

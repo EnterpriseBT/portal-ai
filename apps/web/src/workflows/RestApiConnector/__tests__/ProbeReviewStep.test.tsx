@@ -9,9 +9,7 @@ import type { EndpointDraft } from "../ApiEndpointForm.component";
 import { EMPTY_PAGINATION_DRAFT } from "../utils/rest-api-validation.util";
 import type { SearchResult } from "../../../api/types";
 
-function endpoint(
-  overrides: Partial<EndpointDraft> = {}
-): EndpointDraft {
+function endpoint(overrides: Partial<EndpointDraft> = {}): EndpointDraft {
   return {
     key: "users",
     label: "Users",

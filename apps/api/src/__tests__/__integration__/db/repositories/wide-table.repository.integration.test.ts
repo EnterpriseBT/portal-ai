@@ -569,9 +569,7 @@ describe("WideTableRepository integration tests", () => {
       },
     ]);
 
-    await db.execute(
-      sql`DELETE FROM entity_records WHERE id = ${r1}`
-    );
+    await db.execute(sql`DELETE FROM entity_records WHERE id = ${r1}`);
 
     const rows = (await repo.selectAll(entityId, db)) as Array<
       Record<string, unknown>
@@ -603,10 +601,7 @@ describe("WideTableRepository integration tests", () => {
       id: jsonEntityId,
       organizationId: orgId,
       connectorInstanceId: (
-        await dbTyped
-          .select()
-          .from(schema.connectorEntities)
-          .limit(1)
+        await dbTyped.select().from(schema.connectorEntities).limit(1)
       )[0]!.connectorInstanceId,
       key: "json_rows",
       label: "JSON Rows",
@@ -725,9 +720,7 @@ describe("WideTableRepository integration tests", () => {
       const rows = (await repo.selectAll(jsonEntityId, db)) as Array<
         Record<string, unknown>
       >;
-      const byId = new Map(
-        rows.map((r) => [r.entity_record_id as string, r])
-      );
+      const byId = new Map(rows.map((r) => [r.entity_record_id as string, r]));
       // postgres-js returns jsonb cells parsed back to JS values.
       expect(byId.get(r1)!.c_tag).toBe("Language");
       expect(byId.get(r2)!.c_tag).toEqual(["Language", "Vision"]);
@@ -800,11 +793,10 @@ describe("WideTableRepository integration tests", () => {
       },
     ]);
 
-    const rows = await repo.fetchProjectedRows(
-      entityId,
-      ["amount"],
-      { organizationId: orgId, limit: 10 }
-    );
+    const rows = await repo.fetchProjectedRows(entityId, ["amount"], {
+      organizationId: orgId,
+      limit: 10,
+    });
     expect(rows).toHaveLength(2);
     // Each row keyed by _record_id + the requested normalizedKeys.
     expect(rows[0]).toHaveProperty("_record_id");
@@ -839,14 +831,10 @@ describe("WideTableRepository integration tests", () => {
       },
     ]);
 
-    const rows = await repo.fetchProjectedRows(
-      entityId,
-      ["amount"],
-      {
-        organizationId: orgId,
-        where: sql`w."c_amount" > 200`,
-      }
-    );
+    const rows = await repo.fetchProjectedRows(entityId, ["amount"], {
+      organizationId: orgId,
+      where: sql`w."c_amount" > 200`,
+    });
     expect(rows).toHaveLength(1);
     expect(String(rows[0]!.amount)).toBe("250");
   });
@@ -866,29 +854,24 @@ describe("WideTableRepository integration tests", () => {
       },
     ]);
     // Soft-delete the entity_records row.
-    const { entityRecords: entityRecordsTable } = await import(
-      "../../../../db/schema/index.js"
-    );
+    const { entityRecords: entityRecordsTable } =
+      await import("../../../../db/schema/index.js");
     const drizzleSql = (await import("drizzle-orm")).sql;
     await db.execute(
       drizzleSql`UPDATE ${entityRecordsTable} SET deleted = ${now}, deleted_by = 'test' WHERE id = ${r1}`
     );
 
-    const rows = await repo.fetchProjectedRows(
-      entityId,
-      ["amount"],
-      { organizationId: orgId }
-    );
+    const rows = await repo.fetchProjectedRows(entityId, ["amount"], {
+      organizationId: orgId,
+    });
     expect(rows).toHaveLength(0);
   });
 
   it("fetchProjectedRows throws on unknown normalizedKey", async () => {
     await expect(
-      repo.fetchProjectedRows(
-        entityId,
-        ["does_not_exist"],
-        { organizationId: orgId }
-      )
+      repo.fetchProjectedRows(entityId, ["does_not_exist"], {
+        organizationId: orgId,
+      })
     ).rejects.toThrow(/unknown columns/);
   });
 });

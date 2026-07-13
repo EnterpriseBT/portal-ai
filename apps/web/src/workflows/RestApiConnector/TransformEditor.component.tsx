@@ -45,9 +45,9 @@ export const TransformEditorUI: React.FC<TransformEditorUIProps> = ({
   return (
     <Stack spacing={1.5} data-testid="transform-editor">
       <Typography variant="caption" color="text.secondary">
-        JSONata expression — evaluates against the raw HTTP response and
-        must return an array of flat records. Use the Preview button below
-        to see the transformed output as you type.{" "}
+        JSONata expression — evaluates against the raw HTTP response and must
+        return an array of flat records. Use the Preview button below to see the
+        transformed output as you type.{" "}
         <Link
           href="https://docs.jsonata.org/"
           target="_blank"

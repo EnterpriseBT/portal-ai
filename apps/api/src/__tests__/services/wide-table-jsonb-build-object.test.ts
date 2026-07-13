@@ -15,10 +15,7 @@ describe("buildJsonbObjectExpr", () => {
   });
 
   it("inlines into a single jsonb_build_object call when at-or-under the chunk size", () => {
-    const pairs = Array.from(
-      { length: 49 },
-      (_, i) => `'k${i}', "w"."c${i}"`
-    );
+    const pairs = Array.from({ length: 49 }, (_, i) => `'k${i}', "w"."c${i}"`);
     const expr = buildJsonbObjectExpr(pairs);
     expect(expr.startsWith("jsonb_build_object(")).toBe(true);
     expect(expr.includes("||")).toBe(false);
@@ -30,10 +27,7 @@ describe("buildJsonbObjectExpr", () => {
     // 59 pairs — the column count that surfaced the bug in slice 6's
     // smoke test (a 59-column CSV upload). 59 × 2 = 118 args, over the
     // 100-arg postgres function cap.
-    const pairs = Array.from(
-      { length: 59 },
-      (_, i) => `'k${i}', "w"."c${i}"`
-    );
+    const pairs = Array.from({ length: 59 }, (_, i) => `'k${i}', "w"."c${i}"`);
     const expr = buildJsonbObjectExpr(pairs);
 
     // Two chunks: 49 + 10.
@@ -55,10 +49,7 @@ describe("buildJsonbObjectExpr", () => {
   });
 
   it("chunks at the documented 49-pair boundary even for very wide tables (200 columns)", () => {
-    const pairs = Array.from(
-      { length: 200 },
-      (_, i) => `'k${i}', "w"."c${i}"`
-    );
+    const pairs = Array.from({ length: 200 }, (_, i) => `'k${i}', "w"."c${i}"`);
     const expr = buildJsonbObjectExpr(pairs);
 
     // 200 / 49 = 4 full chunks of 49, remainder 4 → 5 chunks total.

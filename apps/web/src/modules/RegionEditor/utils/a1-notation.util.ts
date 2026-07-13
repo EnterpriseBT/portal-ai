@@ -45,4 +45,3 @@ export function coordInBounds(coord: CellCoord, bounds: CellBounds): boolean {
     coord.col <= bounds.endCol
   );
 }
-

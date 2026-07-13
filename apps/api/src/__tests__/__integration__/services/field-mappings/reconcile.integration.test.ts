@@ -332,9 +332,7 @@ describe("reconcileFieldMappings — integration", () => {
           connectorEntityId: subjectEntityId,
           organizationId: orgId,
           userId,
-          bindings: [
-            { columnDefinitionId: colStringId, sourceField: "Email" },
-          ],
+          bindings: [{ columnDefinitionId: colStringId, sourceField: "Email" }],
           catalogById,
         },
         db

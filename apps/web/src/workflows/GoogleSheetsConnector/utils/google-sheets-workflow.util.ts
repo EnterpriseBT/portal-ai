@@ -62,9 +62,7 @@ export interface GoogleSheetsWorkflowCallbacks {
     plan: LayoutPlan;
     overallConfidence: number;
   }>;
-  runCommit: (
-    plan: LayoutPlan
-  ) => Promise<{ connectorInstanceId: string }>;
+  runCommit: (plan: LayoutPlan) => Promise<{ connectorInstanceId: string }>;
   onCommitSuccess?: (connectorInstanceId: string) => void;
 }
 
@@ -230,10 +228,7 @@ export function useGoogleSheetsWorkflow(
           spreadsheetId,
         });
         if (token !== core.currentRunToken()) return;
-        const workbook = selectSheetResponseToWorkbook(
-          response,
-          spreadsheetId
-        );
+        const workbook = selectSheetResponseToWorkbook(response, spreadsheetId);
         setStage((prev) => ({ ...prev, isLoadingSheet: false }));
         core.setWorkbook(workbook, ciId);
       } catch (err) {

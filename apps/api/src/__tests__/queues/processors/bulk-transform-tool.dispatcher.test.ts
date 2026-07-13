@@ -15,11 +15,7 @@ describe("dispatchBatch (Phase 4 slice 0)", () => {
         idempotent: true,
       },
       keyField: "sourceKey",
-      batch: [
-        { sourceKey: "a" },
-        { sourceKey: "bb" },
-        { sourceKey: "ccc" },
-      ],
+      batch: [{ sourceKey: "a" }, { sourceKey: "bb" }, { sourceKey: "ccc" }],
       toolExecutor: tool as never,
     });
 
@@ -61,11 +57,7 @@ describe("dispatchBatch (Phase 4 slice 0)", () => {
     const result = await dispatchBatch({
       toolMetadata: { maxConcurrency: 1, timeoutMs: 1_000, idempotent: true },
       keyField: "sourceKey",
-      batch: [
-        { sourceKey: "a" },
-        { sourceKey: "b" },
-        { sourceKey: "c" },
-      ],
+      batch: [{ sourceKey: "a" }, { sourceKey: "b" }, { sourceKey: "c" }],
       toolExecutor: tool as never,
     });
 

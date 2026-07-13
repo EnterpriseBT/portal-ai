@@ -106,8 +106,14 @@ describe("UsageRepository Integration Tests", () => {
 
   // ── case 15 ─────────────────────────────────────────────────────────
   it("findForPeriod scopes to org + period", async () => {
-    await repo.increment(usageRow({ periodId: "2026-07", unitsUsed: 1 }) as never, db);
-    await repo.increment(usageRow({ periodId: "2026-08", unitsUsed: 1 }) as never, db);
+    await repo.increment(
+      usageRow({ periodId: "2026-07", unitsUsed: 1 }) as never,
+      db
+    );
+    await repo.increment(
+      usageRow({ periodId: "2026-08", unitsUsed: 1 }) as never,
+      db
+    );
 
     const rows = await repo.findForPeriod(orgId, "2026-07", db);
     expect(rows.length).toBe(1);
@@ -128,7 +134,11 @@ describe("UsageRepository Integration Tests", () => {
     });
 
     it("denies (null) a charge that would exceed the allocation; row unchanged", async () => {
-      await repo.chargeConditional(usageRow({ unitsUsed: 90 }) as never, 100, db);
+      await repo.chargeConditional(
+        usageRow({ unitsUsed: 90 }) as never,
+        100,
+        db
+      );
       const denied = await repo.chargeConditional(
         usageRow({ unitsUsed: 20 }) as never,
         100,
@@ -166,7 +176,11 @@ describe("UsageRepository Integration Tests", () => {
     });
 
     it("accumulates across charges within allocation", async () => {
-      await repo.chargeConditional(usageRow({ unitsUsed: 10 }) as never, 100, db);
+      await repo.chargeConditional(
+        usageRow({ unitsUsed: 10 }) as never,
+        100,
+        db
+      );
       const used = await repo.chargeConditional(
         usageRow({ unitsUsed: 15 }) as never,
         100,

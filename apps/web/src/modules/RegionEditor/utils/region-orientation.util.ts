@@ -62,19 +62,14 @@ export function orientationFromDraft(draft: RegionDraft): OrientationDraft {
 }
 
 export function isDraftPivoted(draft: RegionDraft): boolean {
-  return (
-    hasPivotOnAxis(draft, "row") || hasPivotOnAxis(draft, "column")
-  );
+  return hasPivotOnAxis(draft, "row") || hasPivotOnAxis(draft, "column");
 }
 
 export function isDraftCrosstab(draft: RegionDraft): boolean {
   return (draft.headerAxes ?? []).length === 2;
 }
 
-function hasPivotOnAxis(
-  draft: RegionDraft,
-  axis: "row" | "column"
-): boolean {
+function hasPivotOnAxis(draft: RegionDraft, axis: "row" | "column"): boolean {
   const segs = draft.segmentsByAxis?.[axis];
   if (!segs) return false;
   return segs.some((s) => s.kind === "pivot");

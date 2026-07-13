@@ -94,7 +94,9 @@ export function inferColumns(records: unknown[]): InferenceResult {
     const seen = new Set<string>();
     for (const r of records) pushDistinctSample(samples, r, seen);
     return {
-      columns: [{ key: "value", label: "Value", type: "json", required: false }],
+      columns: [
+        { key: "value", label: "Value", type: "json", required: false },
+      ],
       samples: { value: samples },
     };
   }

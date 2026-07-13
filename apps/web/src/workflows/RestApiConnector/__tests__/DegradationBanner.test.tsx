@@ -7,9 +7,7 @@ import { DegradationBannerUI } from "../DegradationBanner.component";
 describe("DegradationBannerUI", () => {
   it("renders an info alert when degradation is 'llm-failed'", () => {
     render(<DegradationBannerUI degradation="llm-failed" />);
-    expect(
-      screen.getByText(/AI suggestions unavailable/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/AI suggestions unavailable/i)).toBeInTheDocument();
   });
 
   it("renders nothing when degradation is 'llm-disabled' (silent — spec)", () => {

@@ -1,9 +1,8 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { DeleteToolpackDialogUI } = await import(
-  "../components/DeleteToolpackDialog.component"
-);
+const { DeleteToolpackDialogUI } =
+  await import("../components/DeleteToolpackDialog.component");
 
 const defaultProps = {
   open: true,
@@ -54,9 +53,7 @@ describe("DeleteToolpackDialogUI", () => {
         ]}
       />
     );
-    const items = screen.getAllByTestId(
-      "delete-toolpack-impacted-station"
-    );
+    const items = screen.getAllByTestId("delete-toolpack-impacted-station");
     expect(items).toHaveLength(2);
     expect(items[0].textContent).toContain("Sales Station");
   });

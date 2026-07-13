@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -440,8 +446,8 @@ export const MicrosoftExcelConnectorWorkflow: React.FC<
           const key =
             b.normalizedKey ??
             (b.columnDefinitionId
-              ? columnDefinitionsById.get(b.columnDefinitionId)?.label ??
-                b.columnDefinitionId
+              ? (columnDefinitionsById.get(b.columnDefinitionId)?.label ??
+                b.columnDefinitionId)
               : null);
           if (!key || seen.has(key)) continue;
           seen.add(key);

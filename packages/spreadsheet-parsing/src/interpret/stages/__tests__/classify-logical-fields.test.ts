@@ -183,14 +183,16 @@ describe("classifyLogicalFields — built-in heuristic", () => {
 
 describe("classifyLogicalFields — injected classifier", () => {
   it("routes pivot-axis vs. cellValueField classifications by sourceHeader", async () => {
-    const classifier: jest.MockedFunction<ClassifierFn> = jest.fn(async (cands) =>
-      cands.map<ColumnClassification>((c) => ({
-        sourceHeader: c.sourceHeader,
-        sourceCol: c.sourceCol,
-        columnDefinitionId: c.sourceHeader === "timestamp" ? "custom-ts" : "custom-amt",
-        confidence: 0.99,
-        rationale: "ai",
-      }))
+    const classifier: jest.MockedFunction<ClassifierFn> = jest.fn(
+      async (cands) =>
+        cands.map<ColumnClassification>((c) => ({
+          sourceHeader: c.sourceHeader,
+          sourceCol: c.sourceCol,
+          columnDefinitionId:
+            c.sourceHeader === "timestamp" ? "custom-ts" : "custom-amt",
+          confidence: 0.99,
+          rationale: "ai",
+        }))
     );
     const state = await runThroughProposeBindings(pivotInput());
     const next = await classifyLogicalFields(state, {
@@ -215,7 +217,9 @@ describe("classifyLogicalFields — injected classifier", () => {
   });
 
   it("forwards a sample of header labels for pivot segments and data cells for cellValueField", async () => {
-    const classifier: jest.MockedFunction<ClassifierFn> = jest.fn(async () => []);
+    const classifier: jest.MockedFunction<ClassifierFn> = jest.fn(
+      async () => []
+    );
     const state = await runThroughProposeBindings(pivotInput());
     await classifyLogicalFields(state, {
       classifier,

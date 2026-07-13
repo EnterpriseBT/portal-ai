@@ -536,8 +536,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             const coord = clientToCell(cx, cy);
             if (!coord) return;
             const hit = regions.find(
-              (r) =>
-                r.sheetId === sheet.id && coordInBounds(coord, r.bounds)
+              (r) => r.sheetId === sheet.id && coordInBounds(coord, r.bounds)
             );
             onRegionSelect(hit?.id ?? null);
           },
@@ -591,13 +590,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           current: coord,
         });
       },
-    [
-      readOnly,
-      onRegionResize,
-      onRegionSelect,
-      capturePointerById,
-      clientToCell,
-    ]
+    [readOnly, onRegionResize, onRegionSelect, capturePointerById, clientToCell]
   );
 
   const handleResizeStart = useCallback(
@@ -669,10 +662,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       // panning (cancel timer, browser pans natively) or staying still
       // (timer keeps ticking, gesture commits at expiry). lastPointerRef
       // still updates so the timer's commit can read the latest coords.
-      if (
-        primedRef.current &&
-        primedRef.current.pointerId === e.pointerId
-      ) {
+      if (primedRef.current && primedRef.current.pointerId === e.pointerId) {
         lastPointerRef.current = { x: e.clientX, y: e.clientY };
         const dx = e.clientX - primedRef.current.startX;
         const dy = e.clientY - primedRef.current.startY;
@@ -690,119 +680,126 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       if (coord) applyPointerCoord(coord);
       updateAutoScroll(e.clientX, e.clientY);
     },
-    [activeOp, clientToCell, applyPointerCoord, updateAutoScroll, cancelPrimedPress]
+    [
+      activeOp,
+      clientToCell,
+      applyPointerCoord,
+      updateAutoScroll,
+      cancelPrimedPress,
+    ]
   );
 
-  const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    // A primed press released before the timer fired is a tap. The tap
-    // callback (when present) does the click-equivalent — selecting the
-    // region under the finger, etc. — and we exit before touching activeOp.
-    if (
-      primedRef.current &&
-      primedRef.current.pointerId === e.pointerId
-    ) {
-      const tap = primedRef.current.tap;
-      cancelPrimedPress();
-      tap?.(e.clientX, e.clientY);
-      return;
-    }
-    stopAutoScroll();
-    lastPointerRef.current = null;
-    if (!activeOp) return;
-    // Refresh the op's `current` from the final pointer event so
-    // pointerUp-without-an-intervening-pointerMove (or a stale React
-    // closure) still lands at the right cell.
-    const releaseCoord = clientToCell(e.clientX, e.clientY);
-    if (activeOp.kind === "draw") {
-      const bounds = normalizeBounds(activeOp.start, activeOp.end);
-      const isSingleClick =
-        bounds.startRow === bounds.endRow && bounds.startCol === bounds.endCol;
-      // A touch draw op only exists because the user already crossed the
-      // long-press threshold — i.e. the gesture is intentional. Commit the
-      // single cell instead of falling through to the desktop "click ⇒
-      // select" semantic, which would silently lose the user's hold.
-      if (!isSingleClick || e.pointerType === "touch") {
-        onRegionDraft(bounds);
-      } else {
-        const hit = regions.find(
-          (r) =>
-            r.sheetId === sheet.id && coordInBounds(activeOp.start, r.bounds)
-        );
-        onRegionSelect(hit?.id ?? null);
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      // A primed press released before the timer fired is a tap. The tap
+      // callback (when present) does the click-equivalent — selecting the
+      // region under the finger, etc. — and we exit before touching activeOp.
+      if (primedRef.current && primedRef.current.pointerId === e.pointerId) {
+        const tap = primedRef.current.tap;
+        cancelPrimedPress();
+        tap?.(e.clientX, e.clientY);
+        return;
       }
-    } else if (activeOp.kind === "drawColumns") {
-      const lo = Math.min(activeOp.startCol, activeOp.endCol);
-      const hi = Math.max(activeOp.startCol, activeOp.endCol);
-      onRegionDraft({
-        startRow: 0,
-        endRow: sheet.rowCount - 1,
-        startCol: lo,
-        endCol: hi,
-      });
-    } else if (activeOp.kind === "drawRows") {
-      const lo = Math.min(activeOp.startRow, activeOp.endRow);
-      const hi = Math.max(activeOp.startRow, activeOp.endRow);
-      onRegionDraft({
-        startRow: lo,
-        endRow: hi,
-        startCol: 0,
-        endCol: sheet.colCount - 1,
-      });
-    } else if (activeOp.kind === "resize") {
-      const next = computeResizedBounds(
-        activeOp.handle,
-        activeOp.originalBounds,
-        activeOp.current
-      );
-      onRegionResize?.(activeOp.regionId, next);
-    } else if (activeOp.kind === "move") {
-      const moved =
-        activeOp.current.row !== activeOp.pointerStart.row ||
-        activeOp.current.col !== activeOp.pointerStart.col;
-      if (moved) {
-        const next = computeMovedBounds(
+      stopAutoScroll();
+      lastPointerRef.current = null;
+      if (!activeOp) return;
+      // Refresh the op's `current` from the final pointer event so
+      // pointerUp-without-an-intervening-pointerMove (or a stale React
+      // closure) still lands at the right cell.
+      const releaseCoord = clientToCell(e.clientX, e.clientY);
+      if (activeOp.kind === "draw") {
+        const bounds = normalizeBounds(activeOp.start, activeOp.end);
+        const isSingleClick =
+          bounds.startRow === bounds.endRow &&
+          bounds.startCol === bounds.endCol;
+        // A touch draw op only exists because the user already crossed the
+        // long-press threshold — i.e. the gesture is intentional. Commit the
+        // single cell instead of falling through to the desktop "click ⇒
+        // select" semantic, which would silently lose the user's hold.
+        if (!isSingleClick || e.pointerType === "touch") {
+          onRegionDraft(bounds);
+        } else {
+          const hit = regions.find(
+            (r) =>
+              r.sheetId === sheet.id && coordInBounds(activeOp.start, r.bounds)
+          );
+          onRegionSelect(hit?.id ?? null);
+        }
+      } else if (activeOp.kind === "drawColumns") {
+        const lo = Math.min(activeOp.startCol, activeOp.endCol);
+        const hi = Math.max(activeOp.startCol, activeOp.endCol);
+        onRegionDraft({
+          startRow: 0,
+          endRow: sheet.rowCount - 1,
+          startCol: lo,
+          endCol: hi,
+        });
+      } else if (activeOp.kind === "drawRows") {
+        const lo = Math.min(activeOp.startRow, activeOp.endRow);
+        const hi = Math.max(activeOp.startRow, activeOp.endRow);
+        onRegionDraft({
+          startRow: lo,
+          endRow: hi,
+          startCol: 0,
+          endCol: sheet.colCount - 1,
+        });
+      } else if (activeOp.kind === "resize") {
+        const next = computeResizedBounds(
+          activeOp.handle,
           activeOp.originalBounds,
-          activeOp.pointerStart,
-          activeOp.current,
-          sheet.rowCount,
-          sheet.colCount
+          activeOp.current
         );
         onRegionResize?.(activeOp.regionId, next);
-      }
-    } else if (activeOp.kind === "resizeSegment") {
-      const finalCoord = releaseCoord ?? activeOp.current;
-      const axisIdx =
-        activeOp.axis === "row" ? finalCoord.col : finalCoord.row;
-      const newLeft = Math.max(
-        1,
-        Math.min(activeOp.combined - 1, axisIdx - activeOp.pairStart)
-      );
-      const newRight = activeOp.combined - newLeft;
-      if (newLeft !== activeOp.originalLeft) {
-        onSegmentResize?.(
-          activeOp.regionId,
-          activeOp.axis,
-          activeOp.segmentIndex,
-          newLeft,
-          newRight
+      } else if (activeOp.kind === "move") {
+        const moved =
+          activeOp.current.row !== activeOp.pointerStart.row ||
+          activeOp.current.col !== activeOp.pointerStart.col;
+        if (moved) {
+          const next = computeMovedBounds(
+            activeOp.originalBounds,
+            activeOp.pointerStart,
+            activeOp.current,
+            sheet.rowCount,
+            sheet.colCount
+          );
+          onRegionResize?.(activeOp.regionId, next);
+        }
+      } else if (activeOp.kind === "resizeSegment") {
+        const finalCoord = releaseCoord ?? activeOp.current;
+        const axisIdx =
+          activeOp.axis === "row" ? finalCoord.col : finalCoord.row;
+        const newLeft = Math.max(
+          1,
+          Math.min(activeOp.combined - 1, axisIdx - activeOp.pairStart)
         );
+        const newRight = activeOp.combined - newLeft;
+        if (newLeft !== activeOp.originalLeft) {
+          onSegmentResize?.(
+            activeOp.regionId,
+            activeOp.axis,
+            activeOp.segmentIndex,
+            newLeft,
+            newRight
+          );
+        }
       }
-    }
-    setActiveOp(null);
-  }, [
-    activeOp,
-    clientToCell,
-    onRegionDraft,
-    onRegionResize,
-    onRegionSelect,
-    onSegmentResize,
-    regions,
-    sheet.id,
-    sheet.rowCount,
-    sheet.colCount,
-    stopAutoScroll,
-    cancelPrimedPress,
-  ]);
+      setActiveOp(null);
+    },
+    [
+      activeOp,
+      clientToCell,
+      onRegionDraft,
+      onRegionResize,
+      onRegionSelect,
+      onSegmentResize,
+      regions,
+      sheet.id,
+      sheet.rowCount,
+      sheet.colCount,
+      stopAutoScroll,
+      cancelPrimedPress,
+    ]
+  );
 
   // pointercancel happens when the browser preempts our captured pointer
   // (commits to a scroll, OS interrupt, secondary touch, etc.). Treat it as
@@ -812,10 +809,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   // case for in-flight resize/move ops.
   const handlePointerCancel = useCallback(
     (e: React.PointerEvent) => {
-      if (
-        primedRef.current &&
-        primedRef.current.pointerId === e.pointerId
-      ) {
+      if (primedRef.current && primedRef.current.pointerId === e.pointerId) {
         cancelPrimedPress();
         return;
       }
@@ -1088,7 +1082,9 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       // "Unloaded" = no inline data, no cached data, and a lazy loader
       // exists. Without a loader an unloaded row is just empty, not pending.
       const rowIsUnloaded =
-        inlineRow === undefined && cachedRow === undefined && Boolean(loadSlice);
+        inlineRow === undefined &&
+        cachedRow === undefined &&
+        Boolean(loadSlice);
       const cellEls: React.ReactElement[] = [];
       for (let col = 0; col < sheet.colCount; col++) {
         let display = "";
@@ -1221,10 +1217,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                   : activeOp.current.row;
               const newLeft = Math.max(
                 1,
-                Math.min(
-                  activeOp.combined - 1,
-                  axisIdx - activeOp.pairStart
-                )
+                Math.min(activeOp.combined - 1, axisIdx - activeOp.pairStart)
               );
               const newRight = activeOp.combined - newLeft;
               const segs = [
@@ -1329,8 +1322,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
               );
             });
             const segmentEls = segmentOverlays.map((o) => {
-              const sLeft =
-                ROW_HEADER_WIDTH + o.bounds.startCol * cellWidth;
+              const sLeft = ROW_HEADER_WIDTH + o.bounds.startCol * cellWidth;
               const sTop = COL_HEADER_HEIGHT + o.bounds.startRow * cellHeight;
               const sWidth =
                 (o.bounds.endCol - o.bounds.startCol + 1) * cellWidth;
@@ -1442,11 +1434,9 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             // carry an editable cell-value field name). All four kinds
             // — field-field, field-pivot, pivot-pivot, skip-mixed — are
             // emitted on 2D regions; 1D and headerless return none.
-            const canEditPivotIntersections =
-              !readOnly && !!onRegionUpdate;
+            const canEditPivotIntersections = !readOnly && !!onRegionUpdate;
             const intersectionEls = intersectionOverlays.map((o) => {
-              const iLeft =
-                ROW_HEADER_WIDTH + o.bounds.startCol * cellWidth;
+              const iLeft = ROW_HEADER_WIDTH + o.bounds.startCol * cellWidth;
               const iTop = COL_HEADER_HEIGHT + o.bounds.startRow * cellHeight;
               const iWidth =
                 (o.bounds.endCol - o.bounds.startCol + 1) * cellWidth;
@@ -1525,7 +1515,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                   onKeyDown={
                     isEditable && o.label
                       ? (event) => {
-                          if (event.key !== "Enter" && event.key !== " ") return;
+                          if (event.key !== "Enter" && event.key !== " ")
+                            return;
                           event.preventDefault();
                           const anchor = event.currentTarget;
                           onRegionSelect(previewRegion.id);
@@ -1571,13 +1562,12 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                     // pointerEvents: "none" already, so the value is
                     // moot for them.
                     touchAction: isEditable ? "none" : undefined,
-                    "&:hover, &:focus-visible":
-                      isEditable
-                        ? {
-                            backgroundColor: "rgba(217, 119, 6, 0.32)",
-                            outline: "none",
-                          }
-                        : undefined,
+                    "&:hover, &:focus-visible": isEditable
+                      ? {
+                          backgroundColor: "rgba(217, 119, 6, 0.32)",
+                          outline: "none",
+                        }
+                      : undefined,
                   }}
                 >
                   {o.kind === "pivot-pivot" && o.label && (
@@ -1652,7 +1642,9 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 let tintStyle: React.CSSProperties;
                 if (axis === "row") {
                   hitLeft =
-                    ROW_HEADER_WIDTH + dividerAxisIdx * cellWidth - HIT_SIZE / 2;
+                    ROW_HEADER_WIDTH +
+                    dividerAxisIdx * cellWidth -
+                    HIT_SIZE / 2;
                   hitTop =
                     COL_HEADER_HEIGHT +
                     previewRegion.bounds.startRow * cellHeight;
@@ -1715,9 +1707,10 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                       "& > .divider-tint": {
                         backgroundColor: "rgba(37, 99, 235, 0.28)",
                       },
-                      "&:hover > .divider-tint, &:focus-visible > .divider-tint": {
-                        backgroundColor: "rgba(37, 99, 235, 0.75)",
-                      },
+                      "&:hover > .divider-tint, &:focus-visible > .divider-tint":
+                        {
+                          backgroundColor: "rgba(37, 99, 235, 0.75)",
+                        },
                     }}
                   >
                     <Box
@@ -1824,7 +1817,9 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           const overridden = overrideName !== "";
           const fallbackName = region.cellValueField?.name?.trim() ?? "";
           const close = () => setEditingIntersection(null);
-          const writeOverride = (next: Record<string, CellValueField> | undefined) => {
+          const writeOverride = (
+            next: Record<string, CellValueField> | undefined
+          ) => {
             onRegionUpdate?.(region.id, {
               intersectionCellValueFields: next,
             });

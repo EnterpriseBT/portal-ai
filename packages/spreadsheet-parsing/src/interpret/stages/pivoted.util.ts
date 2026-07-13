@@ -26,7 +26,9 @@ export function fieldNamesAxis(region: Region): "row" | "column" | null {
 
 export type SegmentsByAxis = { row?: Segment[]; column?: Segment[] };
 
-function hintHasUserSourcedPivot(segments: SegmentsByAxis | undefined): boolean {
+function hintHasUserSourcedPivot(
+  segments: SegmentsByAxis | undefined
+): boolean {
   if (!segments) return false;
   for (const axis of ["row", "column"] as const) {
     for (const seg of segments[axis] ?? []) {

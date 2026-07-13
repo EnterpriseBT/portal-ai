@@ -407,7 +407,6 @@ export class AnalyticsService {
   // Postgres' own read-after-write semantics now.
   // -------------------------------------------------------------------------
 
-
   /**
    * Discover entity groups that have ≥2 member entities loaded in this station.
    */
@@ -603,7 +602,9 @@ export class AnalyticsService {
         // filter the wide-table row by value, then ask for every live
         // normalizedKey on that entity so the matched record contains
         // the same field set the LLM was already seeing under AlaSQL.
-        const stmt = await wideTableStatementCache.get(member.connectorEntityId);
+        const stmt = await wideTableStatementCache.get(
+          member.connectorEntityId
+        );
         const cachedCol = stmt.columns.find(
           (c) => c.normalizedKey === member.linkNormalizedKey
         );
@@ -699,7 +700,8 @@ export class AnalyticsService {
 
     const opts: { seed?: number; maxIterations?: number } = {};
     if (params.seed !== undefined) opts.seed = params.seed;
-    if (params.maxIterations !== undefined) opts.maxIterations = params.maxIterations;
+    if (params.maxIterations !== undefined)
+      opts.maxIterations = params.maxIterations;
 
     const result = kmeans(fitData, params.k, opts);
 
@@ -1023,7 +1025,9 @@ export class AnalyticsService {
     const n = Number(row.n ?? 0);
     const dfResid = n - k;
     if (dfResid <= 0) {
-      throw new Error(`Need at least ${k + 1} rows for the regression; got ${n}`);
+      throw new Error(
+        `Need at least ${k + 1} rows for the regression; got ${n}`
+      );
     }
 
     // Reassemble the symmetric Gram matrix, X'y, y'y.
@@ -1158,9 +1162,7 @@ export class AnalyticsService {
 
     for (let iter = 0; iter < maxIter; iter++) {
       iterations = iter + 1;
-      const eta = X.map((row) =>
-        row.reduce((s, xi, i) => s + xi * beta[i], 0)
-      );
+      const eta = X.map((row) => row.reduce((s, xi, i) => s + xi * beta[i], 0));
       const p = eta.map(sigmoid);
       const w = p.map((pi) => pi * (1 - pi));
       // Adjusted-response z_i = η_i + (y_i - p_i) / w_i (clamped)
@@ -1174,9 +1176,7 @@ export class AnalyticsService {
       const yw = z.map((zi, i) => zi * sqrtW[i]);
       const { coefficients: betaNew } = this.solveOLS(Xw, yw);
 
-      const delta = Math.max(
-        ...betaNew.map((b, i) => Math.abs(b - beta[i]))
-      );
+      const delta = Math.max(...betaNew.map((b, i) => Math.abs(b - beta[i])));
       beta = betaNew;
       if (delta < 1e-10) break;
     }
@@ -1190,8 +1190,7 @@ export class AnalyticsService {
     let lossSum = 0;
     for (let i = 0; i < n; i++) {
       lossSum +=
-        y[i] * Math.log(clipped[i]) +
-        (1 - y[i]) * Math.log(1 - clipped[i]);
+        y[i] * Math.log(clipped[i]) + (1 - y[i]) * Math.log(1 - clipped[i]);
     }
     const logLoss = -lossSum / n;
     let correct = 0;
@@ -1357,9 +1356,7 @@ export class AnalyticsService {
         );
       }
     } else if (n < 4) {
-      throw new Error(
-        `Forecasting requires at least 4 observations; got ${n}`
-      );
+      throw new Error(`Forecasting requires at least 4 observations; got ${n}`);
     }
 
     // Initialize level / trend / seasonal
@@ -1369,10 +1366,8 @@ export class AnalyticsService {
     let trendComp = 0;
     if (trendType === "additive") {
       if (m) {
-        const meanA =
-          observed.slice(0, m).reduce((s, v) => s + v, 0) / m;
-        const meanB =
-          observed.slice(m, 2 * m).reduce((s, v) => s + v, 0) / m;
+        const meanA = observed.slice(0, m).reduce((s, v) => s + v, 0) / m;
+        const meanB = observed.slice(m, 2 * m).reduce((s, v) => s + v, 0) / m;
         trendComp = (meanB - meanA) / m;
       } else {
         trendComp = observed[1] - observed[0];
@@ -1380,9 +1375,9 @@ export class AnalyticsService {
     }
     const seasonal: number[] =
       m && seasonality !== "none"
-        ? observed.slice(0, m).map((v) =>
-            seasonality === "additive" ? v - level : v / level
-          )
+        ? observed
+            .slice(0, m)
+            .map((v) => (seasonality === "additive" ? v - level : v / level))
         : [];
 
     // In-sample fit
@@ -1406,11 +1401,9 @@ export class AnalyticsService {
       const lvlBefore = level;
       const trendBefore = trendComp;
       if (seasonality === "additive") {
-        level =
-          alpha * (yt - sPrev) + (1 - alpha) * (lvlBefore + trendBefore);
+        level = alpha * (yt - sPrev) + (1 - alpha) * (lvlBefore + trendBefore);
       } else if (seasonality === "multiplicative") {
-        level =
-          alpha * (yt / sPrev) + (1 - alpha) * (lvlBefore + trendBefore);
+        level = alpha * (yt / sPrev) + (1 - alpha) * (lvlBefore + trendBefore);
       } else {
         level = alpha * yt + (1 - alpha) * (lvlBefore + trendBefore);
       }
@@ -1449,9 +1442,7 @@ export class AnalyticsService {
       const t1 = new Date(dates[dates.length - 1]).getTime();
       const spacing = t1 - t0;
       for (let h = 1; h <= params.horizon; h++) {
-        fcDates.push(
-          new Date(t1 + spacing * h).toISOString()
-        );
+        fcDates.push(new Date(t1 + spacing * h).toISOString());
       }
     } else {
       fcDates = Array.from({ length: params.horizon }, (_, i) => `+${i + 1}`);
@@ -1463,8 +1454,7 @@ export class AnalyticsService {
     for (let t = warmup; t < n; t++) {
       residuals.push(observed[t] - fitted[t]);
     }
-    const sigmaHat =
-      residuals.length > 1 ? ss.standardDeviation(residuals) : 0;
+    const sigmaHat = residuals.length > 1 ? ss.standardDeviation(residuals) : 0;
     const conf = params.confidence ?? 0.95;
     // Use tInverseCDF with large df to approximate the standard-normal quantile
     const z = this.tInverseCDF(1 - (1 - conf) / 2, 1000);
@@ -1711,8 +1701,12 @@ export class AnalyticsService {
     }
     const conf = params.confidence ?? 0.95;
     const z = this.tInverseCDF(1 - (1 - conf) / 2, 1000);
-    const lower = fcValues.map((val, i) => val - z * sigmaHat * Math.sqrt(i + 1));
-    const upper = fcValues.map((val, i) => val + z * sigmaHat * Math.sqrt(i + 1));
+    const lower = fcValues.map(
+      (val, i) => val - z * sigmaHat * Math.sqrt(i + 1)
+    );
+    const upper = fcValues.map(
+      (val, i) => val + z * sigmaHat * Math.sqrt(i + 1)
+    );
 
     const mape = mapeCount > 0 ? (100 * mapeSum) / mapeCount : 0;
 
@@ -1753,9 +1747,7 @@ export class AnalyticsService {
       mann_whitney: ["records", "columnA", "columnB"],
       chi_squared: ["observed", "expected"],
     };
-    const missing = requiredFor[test].filter(
-      (k) => params[k] === undefined
-    );
+    const missing = requiredFor[test].filter((k) => params[k] === undefined);
     if (missing.length > 0) {
       throw new Error(
         `Missing input for test="${test}": ${missing.join(", ")}`
@@ -1766,9 +1758,7 @@ export class AnalyticsService {
       case "t_test_one_sample": {
         const x = this.extractNumericColumn(params.records!, params.columnA!);
         if (x.length < 2) {
-          throw new Error(
-            "t_test_one_sample: at least 2 values required"
-          );
+          throw new Error("t_test_one_sample: at least 2 values required");
         }
         const mu = params.mu ?? 0;
         const t = this.studentT(x, mu);
@@ -1818,9 +1808,7 @@ export class AnalyticsService {
         const observed = params.observed!;
         const expected = params.expected!;
         if (observed.length !== expected.length) {
-          throw new Error(
-            "observed and expected must have the same length"
-          );
+          throw new Error("observed and expected must have the same length");
         }
         let stat = 0;
         for (let i = 0; i < observed.length; i++) {
@@ -2138,8 +2126,7 @@ export class AnalyticsService {
         break;
       }
       case "Ichimoku": {
-        const conversionPeriod =
-          (extraParams.conversionPeriod as number) ?? 9;
+        const conversionPeriod = (extraParams.conversionPeriod as number) ?? 9;
         const basePeriod = (extraParams.basePeriod as number) ?? 26;
         const spanPeriod = (extraParams.spanPeriod as number) ?? 52;
         const displacement = (extraParams.displacement as number) ?? 26;
@@ -2297,10 +2284,7 @@ export class AnalyticsService {
     cost: number;
     salvage: number;
     life: number;
-    method:
-      | "straight_line"
-      | "declining_balance"
-      | "double_declining_balance";
+    method: "straight_line" | "declining_balance" | "double_declining_balance";
     period?: number;
     factor?: number;
   }): DepreciationResult {
@@ -2375,9 +2359,7 @@ export class AnalyticsService {
     };
     const missing = required[op].filter((k) => params[k] === undefined);
     if (missing.length > 0) {
-      throw new Error(
-        `Missing input for op="${op}": ${missing.join(", ")}`
-      );
+      throw new Error(`Missing input for op="${op}": ${missing.join(", ")}`);
     }
 
     switch (op) {
@@ -2544,10 +2526,7 @@ export class AnalyticsService {
     riskFreeRate?: number;
     periodicity?: "daily" | "weekly" | "monthly" | "quarterly" | "annual";
   }): PortfolioMetricsResult {
-    const r = this.extractNumericColumn(
-      params.records,
-      params.returnColumn
-    );
+    const r = this.extractNumericColumn(params.records, params.returnColumn);
     const n = r.length;
     if (n < 2) {
       throw new Error("portfolio_metrics: at least 2 returns required");
@@ -2594,8 +2573,7 @@ export class AnalyticsService {
     let sortino = downsideDev === 0 ? 0 : meanExcess / downsideDev;
     if (annualize) sortino *= Math.sqrt(periodsPerYear);
 
-    const calmar =
-      mdd === 0 ? Number.POSITIVE_INFINITY : cagr / mdd;
+    const calmar = mdd === 0 ? Number.POSITIVE_INFINITY : cagr / mdd;
 
     const result: PortfolioMetricsResult = {
       totalReturn,
@@ -2627,8 +2605,7 @@ export class AnalyticsService {
       if (annualize) trackingError *= Math.sqrt(periodsPerYear);
 
       const meanDiff = ss.mean(diff);
-      const sdDiff =
-        diff.length > 1 ? ss.sampleStandardDeviation(diff) : 0;
+      const sdDiff = diff.length > 1 ? ss.sampleStandardDeviation(diff) : 0;
       let informationRatio = sdDiff === 0 ? 0 : meanDiff / sdDiff;
       if (annualize) informationRatio *= Math.sqrt(periodsPerYear);
 
@@ -2841,7 +2818,8 @@ export class AnalyticsService {
       result.trackingError = trackingError;
       result.informationRatio = informationRatio;
       if (cntUp > 0 && sumUpB !== 0) result.upCapture = sumUpR / sumUpB;
-      if (cntDown > 0 && sumDownB !== 0) result.downCapture = sumDownR / sumDownB;
+      if (cntDown > 0 && sumDownB !== 0)
+        result.downCapture = sumDownR / sumDownB;
     }
 
     return result;
@@ -2963,8 +2941,7 @@ export class AnalyticsService {
         `count(${col}) FILTER (WHERE ${col} <= ${sqlNumberLiteral(cutoff)}) AS tail_n`
     );
     const tailCount = Number(tail?.tail_n ?? 0);
-    const tailMean =
-      tail?.tail_mean == null ? cutoff : Number(tail.tail_mean);
+    const tailMean = tail?.tail_mean == null ? cutoff : Number(tail.tail_mean);
     const varVal = -cutoff;
     const cvarVal = tailCount > 0 ? -tailMean : varVal;
     return { var: varVal, cvar: cvarVal, confidence: conf, method, tailCount };
@@ -3195,9 +3172,7 @@ export class AnalyticsService {
     const n = X.length;
     const k = X[0].length;
     if (n < k) {
-      throw new Error(
-        `Need at least ${k} rows for the regression; got ${n}`
-      );
+      throw new Error(`Need at least ${k} rows for the regression; got ${n}`);
     }
 
     // Build X'X and X'y, then solve the normal equations.

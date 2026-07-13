@@ -40,41 +40,41 @@ export const BasicCredentialsFormUI: React.FC<BasicCredentialsFormUIProps> = ({
   const usernameRef = useDialogAutoFocus<HTMLInputElement>(true);
 
   return (
-  <Stack spacing={2}>
-    <TextField
-      inputRef={usernameRef}
-      label="Username"
-      value={username}
-      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-        onUsernameChange(e.target.value)
-      }
-      onBlur={() => onBlur("username")}
-      required
-      fullWidth
-      autoComplete="username"
-      error={touched.username && !!errors.username}
-      helperText={touched.username && errors.username}
-      slotProps={{
-        htmlInput: { "aria-invalid": touched.username && !!errors.username },
-      }}
-    />
-    <TextField
-      label="Password"
-      type="password"
-      value={password}
-      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-        onPasswordChange(e.target.value)
-      }
-      onBlur={() => onBlur("password")}
-      required
-      fullWidth
-      autoComplete="off"
-      error={touched.password && !!errors.password}
-      helperText={touched.password && errors.password}
-      slotProps={{
-        htmlInput: { "aria-invalid": touched.password && !!errors.password },
-      }}
-    />
-  </Stack>
+    <Stack spacing={2}>
+      <TextField
+        inputRef={usernameRef}
+        label="Username"
+        value={username}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+          onUsernameChange(e.target.value)
+        }
+        onBlur={() => onBlur("username")}
+        required
+        fullWidth
+        autoComplete="username"
+        error={touched.username && !!errors.username}
+        helperText={touched.username && errors.username}
+        slotProps={{
+          htmlInput: { "aria-invalid": touched.username && !!errors.username },
+        }}
+      />
+      <TextField
+        label="Password"
+        type="password"
+        value={password}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+          onPasswordChange(e.target.value)
+        }
+        onBlur={() => onBlur("password")}
+        required
+        fullWidth
+        autoComplete="off"
+        error={touched.password && !!errors.password}
+        helperText={touched.password && errors.password}
+        slotProps={{
+          htmlInput: { "aria-invalid": touched.password && !!errors.password },
+        }}
+      />
+    </Stack>
   );
 };

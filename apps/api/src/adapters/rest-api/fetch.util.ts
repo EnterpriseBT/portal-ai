@@ -16,10 +16,7 @@
 
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { ApiError } from "../../services/http.service.js";
-import {
-  extractUserMessage,
-  readErrorBody,
-} from "./error-body.util.js";
+import { extractUserMessage, readErrorBody } from "./error-body.util.js";
 
 export const MAX_RESPONSE_BYTES = 500 * 1024 * 1024; // 500 MB
 
@@ -136,7 +133,10 @@ export async function fetchJson(
   return { status, body, headers };
 }
 
-async function readBodyWithCap(response: Response, url: string): Promise<string> {
+async function readBodyWithCap(
+  response: Response,
+  url: string
+): Promise<string> {
   // If the runtime exposes a streaming reader, use it so we can abort
   // mid-stream. Falls back to `response.text()` only when the reader
   // isn't available (test fakes that don't expose .body, etc.).
@@ -164,7 +164,11 @@ async function readBodyWithCap(response: Response, url: string): Promise<string>
     if (value) {
       bytes += value.byteLength;
       if (bytes > MAX_RESPONSE_BYTES) {
-        try { await reader.cancel(); } catch { /* best-effort */ }
+        try {
+          await reader.cancel();
+        } catch {
+          /* best-effort */
+        }
         throw new ApiError(
           502,
           ApiCode.REST_API_RESPONSE_TOO_LARGE,

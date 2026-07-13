@@ -51,9 +51,8 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
-const { restApiAdapter } = await import(
-  "../../../adapters/rest-api/rest-api.adapter.js"
-);
+const { restApiAdapter } =
+  await import("../../../adapters/rest-api/rest-api.adapter.js");
 
 let connection!: ReturnType<typeof postgres>;
 let db!: ReturnType<typeof drizzle>;

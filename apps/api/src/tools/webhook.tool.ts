@@ -93,7 +93,9 @@ export class WebhookTool extends Tool {
         rows: z
           .array(z.record(z.string(), z.unknown()))
           .optional()
-          .describe("Inline rows to compute over (alternative to `queryHandle`)."),
+          .describe(
+            "Inline rows to compute over (alternative to `queryHandle`)."
+          ),
       });
     }
     return base;
@@ -152,7 +154,10 @@ export class WebhookTool extends Tool {
           } else if (this.needsRecordSource) {
             const { queryHandle, rows, ...input } = validated;
             const resolved = await resolveRecordSource(
-              { queryHandle: queryHandle as string | undefined, rows: rows as any },
+              {
+                queryHandle: queryHandle as string | undefined,
+                rows: rows as any,
+              },
               this.consumption!
             );
             body = { tool: this.slug, input, records: resolved.rows };
@@ -211,7 +216,8 @@ export class WebhookTool extends Tool {
         } finally {
           // The grants live only for the duration of this call.
           const cleanup: Array<Promise<unknown>> = [];
-          if (readToken) cleanup.push(WebhookReadTokenService.revoke(readToken));
+          if (readToken)
+            cleanup.push(WebhookReadTokenService.revoke(readToken));
           if (writeToken)
             cleanup.push(WebhookReadTokenService.revoke(writeToken));
           if (sessionId)

@@ -18,9 +18,8 @@ jest.unstable_mockModule("@portalai/core", () => ({
 // ── Imports ──────────────────────────────────────────────────────────
 
 const { render } = await import("./test-utils");
-const { QueryResultDataBlockUI } = await import(
-  "../components/QueryResultDataBlock.component"
-);
+const { QueryResultDataBlockUI } =
+  await import("../components/QueryResultDataBlock.component");
 
 // ── Tests ────────────────────────────────────────────────────────────
 

@@ -51,7 +51,10 @@ function sqlRowCount(
 }
 
 export type SqlDelivery =
-  | { kind: "inline"; result: Awaited<ReturnType<typeof AnalyticsService.sqlQuery>> }
+  | {
+      kind: "inline";
+      result: Awaited<ReturnType<typeof AnalyticsService.sqlQuery>>;
+    }
   | { kind: "handle"; envelope: QueryHandleEnvelope };
 
 /**
@@ -192,7 +195,8 @@ export async function resolveResultSink(
       t.dateColumn
     );
     const rows: Row[] = [];
-    for await (const batch of applyTransformFold(t, source)) rows.push(...batch);
+    for await (const batch of applyTransformFold(t, source))
+      rows.push(...batch);
     if (rows.length <= threshold) return { rows };
     if (onLarge === "error") throw tooLargeError(rows.length, threshold);
     // onLarge "sample" over an already-materialized set → systematic slice.

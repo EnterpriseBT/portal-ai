@@ -84,10 +84,7 @@ async function refreshAndStore(connectorInstanceId: string): Promise<string> {
       credentials
     );
   } catch (err) {
-    if (
-      !(err instanceof MicrosoftAuthError) ||
-      err.kind !== "refresh_failed"
-    ) {
+    if (!(err instanceof MicrosoftAuthError) || err.kind !== "refresh_failed") {
       throw err;
     }
 
@@ -143,9 +140,7 @@ async function loadCredentials(
   connectorInstanceId: string
 ): Promise<LoadedCredentials> {
   const instance =
-    await DbService.repository.connectorInstances.findById(
-      connectorInstanceId
-    );
+    await DbService.repository.connectorInstances.findById(connectorInstanceId);
   if (!instance) {
     throw new Error(`ConnectorInstance not found: ${connectorInstanceId}`);
   }
@@ -170,8 +165,7 @@ async function refreshAndPersist(
   refreshToken: string,
   currentCredentials: Record<string, unknown>
 ): Promise<string> {
-  const refreshed =
-    await MicrosoftAuthService.refreshAccessToken(refreshToken);
+  const refreshed = await MicrosoftAuthService.refreshAccessToken(refreshToken);
 
   // Persist the rotated refresh token back to the encrypted credentials
   // column. Spread the existing credentials so we preserve UPN, email,

@@ -1,4 +1,11 @@
-import { pgTable, text, integer, jsonb, unique, check } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  integer,
+  jsonb,
+  unique,
+  check,
+} from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
 
@@ -28,9 +35,10 @@ export const tiers = pgTable(
     meteredRatePerMin: integer("metered_rate_per_min"),
     expensiveUnitsPerPeriod: integer("expensive_units_per_period"),
     expensiveRatePerMin: integer("expensive_rate_per_min"),
-    perToolCaps: jsonb("per_tool_caps").$type<
-      Record<string, { unitsPerPeriod: number }>
-    >(),
+    perToolCaps:
+      jsonb("per_tool_caps").$type<
+        Record<string, { unitsPerPeriod: number }>
+      >(),
   },
   (t) => [
     // FULL unique CONSTRAINT (not a soft-delete-partial index): `slug` is the
@@ -44,10 +52,7 @@ export const tiers = pgTable(
       sql`${t.overage} IN ('hard-deny', 'soft-alert')`
     ),
     check("tiers_period_kind_check", sql`${t.periodKind} IN ('monthly')`),
-    check(
-      "tiers_anchor_day_check",
-      sql`${t.periodAnchorDay} BETWEEN 1 AND 28`
-    ),
+    check("tiers_anchor_day_check", sql`${t.periodAnchorDay} BETWEEN 1 AND 28`),
     check(
       "tiers_charges_nonneg",
       sql`(${t.freeUnitsPerPeriod} IS NULL OR ${t.freeUnitsPerPeriod} >= 0)

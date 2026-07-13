@@ -35,9 +35,7 @@ describe("SelectWorkbookStep", () => {
       { value: "01ABC", label: "Q3 Forecast.xlsx" },
       { value: "01DEF", label: "Headcount.xlsx" },
     ]);
-    render(
-      <SelectWorkbookStep {...makeProps({ onSelect, searchFn })} />
-    );
+    render(<SelectWorkbookStep {...makeProps({ onSelect, searchFn })} />);
     const combobox = await screen.findByRole("combobox");
     await userEvent.click(combobox);
     const option = await screen.findByText(/Q3 Forecast\.xlsx/i);
@@ -50,9 +48,7 @@ describe("SelectWorkbookStep", () => {
     render(<SelectWorkbookStep {...makeProps({ searchFn })} />);
     const combobox = await screen.findByRole("combobox");
     await userEvent.click(combobox);
-    expect(
-      await screen.findByText(/no workbooks found/i)
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/no workbooks found/i)).toBeInTheDocument();
     expect(
       screen.getByText(/right Microsoft account is connected/i)
     ).toBeInTheDocument();

@@ -87,7 +87,9 @@ describe("FileUploadRegionDrawingStepUI — Interpret", () => {
         })}
       />
     );
-    expect(screen.getByText(/interpreting your spreadsheet/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/interpreting your spreadsheet/i)
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^interpret$/i })).toBeNull();
   });
 

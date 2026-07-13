@@ -52,7 +52,10 @@ beforeEach(() => {
     env: "x",
     kind: "staging",
     apiBaseUrl: "x",
-    db: async () => ({ connectionString: "postgresql://u:p@localhost:15432/db", close: async () => {} }),
+    db: async () => ({
+      connectionString: "postgresql://u:p@localhost:15432/db",
+      close: async () => {},
+    }),
     token: async () => "t",
     dispose: disposeMock,
   });
@@ -104,9 +107,17 @@ describe("guard classes + audit hygiene", () => {
   });
 
   it("org set-tier audits old→new, ids only", async () => {
-    mockStore.setTier.mockResolvedValue({ id: "o-1", tier: "premium", previousTier: "standard" });
+    mockStore.setTier.mockResolvedValue({
+      id: "o-1",
+      tier: "premium",
+      previousTier: "standard",
+    });
     const out = await orgSetTier(appDev, "o-1", "premium", { yes: true });
-    expect(out).toEqual({ id: "o-1", tier: "premium", previousTier: "standard" });
+    expect(out).toEqual({
+      id: "o-1",
+      tier: "premium",
+      previousTier: "standard",
+    });
     const audit = mocks.recordAudit.mock.calls[0][0] as { args: unknown };
     expect(audit).toMatchObject({
       command: "org set-tier",
@@ -116,20 +127,25 @@ describe("guard classes + audit hygiene", () => {
 
   it("store and connection are always released, even on store errors", async () => {
     mockStore.updateOrg.mockRejectedValue(new Error("boom"));
-    await expect(orgUpdate(appDev, "o-1", { name: "X" }, { yes: true })).rejects.toThrow(
-      "boom"
-    );
+    await expect(
+      orgUpdate(appDev, "o-1", { name: "X" }, { yes: true })
+    ).rejects.toThrow("boom");
     expect(mockStore.close).toHaveBeenCalled();
     expect(disposeMock).toHaveBeenCalled();
   });
 });
 
 describe("spawn-backed provisioning commands", () => {
-  const spawnerCalls: Array<{ args: string[]; env: Record<string, string> }> = [];
+  const spawnerCalls: Array<{ args: string[]; env: Record<string, string> }> =
+    [];
   const spawner = jest.fn(
     async (args: string[], env: Record<string, string>) => {
       spawnerCalls.push({ args, env });
-      return { code: 0, stdout: '{"organizationId":"o-new","stationId":"st-1"}\n', stderr: "" };
+      return {
+        code: 0,
+        stdout: '{"organizationId":"o-new","stationId":"st-1"}\n',
+        stderr: "",
+      };
     }
   );
 
@@ -148,8 +164,15 @@ describe("spawn-backed provisioning commands", () => {
     );
     expect(out).toEqual({ organizationId: "o-new", stationId: "st-1" });
     expect(spawnerCalls[0].args).toEqual([
-      "run", "--workspace", "@portalai/api", "db:create-org", "--",
-      "--owner-email", "ben@portalsai.io", "--name", "Acme",
+      "run",
+      "--workspace",
+      "@portalai/api",
+      "db:create-org",
+      "--",
+      "--owner-email",
+      "ben@portalsai.io",
+      "--name",
+      "Acme",
     ]);
     expect(spawnerCalls[0].env.DATABASE_URL).toBe(
       "postgresql://u:p@localhost:15432/db"
@@ -178,7 +201,13 @@ describe("spawn-backed provisioning commands", () => {
       prodConfirmed: false,
     });
     expect(spawnerCalls[0].args).toEqual(
-      expect.arrayContaining(["db:seed:org", "--name", "QA Org", "--member-email", "ben@portalsai.io"])
+      expect.arrayContaining([
+        "db:seed:org",
+        "--name",
+        "QA Org",
+        "--member-email",
+        "ben@portalsai.io",
+      ])
     );
   });
 
@@ -199,18 +228,24 @@ describe("member commands (email-resolved)", () => {
   it("member add resolves the email then adds by user id", async () => {
     mockStore.getUserByEmail.mockResolvedValue({ id: "u-9" });
     mockStore.addMember.mockResolvedValue(undefined);
-    const out = await memberAdd(appDev, "o-1", "ben@portalsai.io", { yes: true });
+    const out = await memberAdd(appDev, "o-1", "ben@portalsai.io", {
+      yes: true,
+    });
     expect(out).toEqual({ orgId: "o-1", userId: "u-9", added: true });
     expect(mockStore.addMember).toHaveBeenCalledWith("o-1", "u-9", SUB);
     const audit = mocks.recordAudit.mock.calls[0][0] as { args: unknown };
-    expect(JSON.stringify(audit)).not.toContain("ben@portalsai.io".split("@")[1] + "-row");
+    expect(JSON.stringify(audit)).not.toContain(
+      "ben@portalsai.io".split("@")[1] + "-row"
+    );
     expect(audit).toMatchObject({ args: { orgId: "o-1", userId: "u-9" } });
   });
 
   it("member switch bumps the app's current-org selector", async () => {
     mockStore.getUserByEmail.mockResolvedValue({ id: "u-9" });
     mockStore.switchMember.mockResolvedValue(undefined);
-    const out = await memberSwitch(appDev, "o-1", "ben@portalsai.io", { yes: true });
+    const out = await memberSwitch(appDev, "o-1", "ben@portalsai.io", {
+      yes: true,
+    });
     expect(out).toEqual({ orgId: "o-1", userId: "u-9", switched: true });
     expect(mockStore.switchMember).toHaveBeenCalledWith("o-1", "u-9", SUB);
   });

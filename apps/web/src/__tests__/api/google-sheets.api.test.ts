@@ -47,13 +47,11 @@ describe("googleSheets.api", () => {
       expect(cfg.method).toBe("GET");
       expect(cfg.body?.({ connectorInstanceId: "ci-1" })).toBeUndefined();
 
-      const url = cfg.url as (
-        vars: {
-          connectorInstanceId: string;
-          search?: string;
-          pageToken?: string;
-        }
-      ) => string;
+      const url = cfg.url as (vars: {
+        connectorInstanceId: string;
+        search?: string;
+        pageToken?: string;
+      }) => string;
       const built = url({ connectorInstanceId: "ci-1" });
       expect(built).toContain("/api/connectors/google-sheets/sheets?");
       expect(built).toContain("connectorInstanceId=ci-1");
@@ -68,13 +66,11 @@ describe("googleSheets.api", () => {
         search?: string;
         pageToken?: string;
       }>();
-      const url = cfg.url as (
-        vars: {
-          connectorInstanceId: string;
-          search?: string;
-          pageToken?: string;
-        }
-      ) => string;
+      const url = cfg.url as (vars: {
+        connectorInstanceId: string;
+        search?: string;
+        pageToken?: string;
+      }) => string;
       const built = url({
         connectorInstanceId: "ci-1",
         search: "Q3 forecast",
@@ -82,9 +78,10 @@ describe("googleSheets.api", () => {
       });
       // URLSearchParams encodes spaces as +; either + or %20 is acceptable.
       expect(built).toContain("connectorInstanceId=ci-1");
-      expect(built.includes("search=Q3+forecast") || built.includes("search=Q3%20forecast")).toBe(
-        true
-      );
+      expect(
+        built.includes("search=Q3+forecast") ||
+          built.includes("search=Q3%20forecast")
+      ).toBe(true);
       expect(built).toContain("pageToken=page-2");
     });
 
@@ -94,9 +91,10 @@ describe("googleSheets.api", () => {
         connectorInstanceId: string;
         search?: string;
       }>();
-      const url = cfg.url as (
-        vars: { connectorInstanceId: string; search?: string }
-      ) => string;
+      const url = cfg.url as (vars: {
+        connectorInstanceId: string;
+        search?: string;
+      }) => string;
       const built = url({ connectorInstanceId: "ci-1", search: "" });
       expect(built).not.toContain("search=");
     });
@@ -109,9 +107,10 @@ describe("googleSheets.api", () => {
         connectorInstanceId: string;
         spreadsheetId: string;
       }>();
-      const url = cfg.url as (
-        vars: { connectorInstanceId: string; spreadsheetId: string }
-      ) => string;
+      const url = cfg.url as (vars: {
+        connectorInstanceId: string;
+        spreadsheetId: string;
+      }) => string;
       expect(url({ connectorInstanceId: "ci-1", spreadsheetId: "s1" })).toBe(
         "/api/connectors/google-sheets/instances/ci-1/select-sheet"
       );
@@ -156,16 +155,14 @@ describe("googleSheets.api", () => {
         })
       ).toBeUndefined();
 
-      const url = cfg.url as (
-        vars: {
-          connectorInstanceId: string;
-          sheetId: string;
-          rowStart: number;
-          rowEnd: number;
-          colStart: number;
-          colEnd: number;
-        }
-      ) => string;
+      const url = cfg.url as (vars: {
+        connectorInstanceId: string;
+        sheetId: string;
+        rowStart: number;
+        rowEnd: number;
+        colStart: number;
+        colEnd: number;
+      }) => string;
       const built = url({
         connectorInstanceId: "ci-1",
         sheetId: "sheet_0_forecast",

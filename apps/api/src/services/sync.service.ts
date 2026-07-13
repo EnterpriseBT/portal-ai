@@ -35,7 +35,6 @@ const CONNECTOR_SYNC_JOB_TYPE: JobType = "connector_sync";
 const ACTIVE_SYNC_STATUSES = ["pending", "active"] as const;
 
 export class SyncService {
-
   /**
    * Resolve the adapter for a connector instance. Throws 404 if the
    * instance doesn't exist (or doesn't belong to the requesting org)
@@ -61,10 +60,9 @@ export class SyncService {
         "Connector instance not found"
       );
     }
-    const definition =
-      await DbService.repository.connectorDefinitions.findById(
-        instance.connectorDefinitionId
-      );
+    const definition = await DbService.repository.connectorDefinitions.findById(
+      instance.connectorDefinitionId
+    );
     if (!definition) {
       throw new ApiError(
         500,

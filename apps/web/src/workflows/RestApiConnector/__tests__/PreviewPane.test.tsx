@@ -44,9 +44,7 @@ describe("PreviewPaneUI", () => {
   });
 
   it("renders an error Alert when the preview SDK call failed", () => {
-    render(
-      <PreviewPaneUI {...makeProps({ error: "Network unreachable" })} />
-    );
+    render(<PreviewPaneUI {...makeProps({ error: "Network unreachable" })} />);
     expect(screen.getByRole("alert")).toHaveTextContent(/network unreachable/i);
   });
 
@@ -68,9 +66,7 @@ describe("PreviewPaneUI", () => {
       data: { items: [{ id: 1 }, { id: 2 }, { id: 3 }] },
     };
     render(
-      <PreviewPaneUI
-        {...makeProps({ response, recordsPath: "data.items" })}
-      />
+      <PreviewPaneUI {...makeProps({ response, recordsPath: "data.items" })} />
     );
     expect(screen.getByTestId("preview-extracted")).toHaveTextContent(
       /"id": 1/
@@ -95,9 +91,7 @@ describe("PreviewPaneUI", () => {
   it("warns when the records path resolves to an empty array", () => {
     const response = { data: { items: [] } };
     render(
-      <PreviewPaneUI
-        {...makeProps({ response, recordsPath: "data.items" })}
-      />
+      <PreviewPaneUI {...makeProps({ response, recordsPath: "data.items" })} />
     );
     expect(
       screen.getByText(/records path resolved to an empty value/i)
@@ -107,14 +101,10 @@ describe("PreviewPaneUI", () => {
   it("warns when the records path resolves to a non-array (object)", () => {
     const response = { data: { items: { single: "record" } } };
     render(
-      <PreviewPaneUI
-        {...makeProps({ response, recordsPath: "data.items" })}
-      />
+      <PreviewPaneUI {...makeProps({ response, recordsPath: "data.items" })} />
     );
     expect(
-      screen.getByText(
-        /records path resolved to a object, not an array/i
-      )
+      screen.getByText(/records path resolved to a object, not an array/i)
     ).toBeInTheDocument();
     // The extracted pane still shows what was found so the user can
     // see the shape they're dealing with.
@@ -172,9 +162,7 @@ describe("PreviewPaneUI", () => {
       />
     );
     await waitFor(() => {
-      expect(
-        screen.getByText(/transform parse error/i)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/transform parse error/i)).toBeInTheDocument();
     });
   });
 
@@ -189,9 +177,7 @@ describe("PreviewPaneUI", () => {
       />
     );
     await waitFor(() => {
-      expect(
-        screen.getByText(/transform runtime error/i)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/transform runtime error/i)).toBeInTheDocument();
     });
   });
 

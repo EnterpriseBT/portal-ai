@@ -148,6 +148,7 @@ describe("#129 keyset cursor stability (spike)", () => {
     expect(ids).toContain(50); // after-cursor insert is seen
     expect(ids).not.toContain(99); // before-cursor insert is not
     // every original row exactly once
-    for (let i = 0; i < 12; i++) expect(ids.filter((x) => x === i)).toHaveLength(1);
+    for (let i = 0; i < 12; i++)
+      expect(ids.filter((x) => x === i)).toHaveLength(1);
   });
 });

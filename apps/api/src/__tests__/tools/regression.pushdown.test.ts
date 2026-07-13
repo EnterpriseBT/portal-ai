@@ -25,7 +25,8 @@ jest.unstable_mockModule("../../services/portal-sql-handle.service.js", () => ({
   resolveTiebreaker: () => null,
 }));
 
-const { AnalyticsService } = await import("../../services/analytics.service.js");
+const { AnalyticsService } =
+  await import("../../services/analytics.service.js");
 const { RegressionTool } = await import("../../tools/regression.tool.js");
 
 beforeEach(() => {
@@ -73,9 +74,7 @@ describe("AnalyticsService.regressionPushdown (#130 E2c)", () => {
       { x: 4, y: 7.8 },
       { x: 5, y: 10.1 },
     ];
-    mockAggregate.mockResolvedValueOnce(
-      statsFor(data, (r) => [1, r.x], "y")
-    );
+    mockAggregate.mockResolvedValueOnce(statsFor(data, (r) => [1, r.x], "y"));
 
     const pushed = await AnalyticsService.regressionPushdown("qh-1", {
       x: "x",
@@ -193,7 +192,9 @@ describe("AnalyticsService.regressionPushdown (#130 E2c)", () => {
 });
 
 describe("RegressionTool routing (#130 E2c)", () => {
-  type ExecTool = { execute: (input: unknown) => Promise<Record<string, unknown>> };
+  type ExecTool = {
+    execute: (input: unknown) => Promise<Record<string, unknown>>;
+  };
 
   it("pushes down for a queryHandle (residuals omitted)", async () => {
     const data: Row[] = [

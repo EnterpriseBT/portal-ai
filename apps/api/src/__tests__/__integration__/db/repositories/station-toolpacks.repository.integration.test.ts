@@ -153,10 +153,7 @@ describe("StationToolpacksRepository Integration Tests", () => {
       makeRow({ builtinSlug: "data_query" }) as never,
       db
     );
-    await repo.create(
-      makeRow({ builtinSlug: "statistics" }) as never,
-      db
-    );
+    await repo.create(makeRow({ builtinSlug: "statistics" }) as never, db);
     await repo.softDelete(row1.id, "SYSTEM_TEST", db);
 
     const found = await repo.findByStationId(stationId, db);

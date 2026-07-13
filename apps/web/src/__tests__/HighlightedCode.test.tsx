@@ -1,17 +1,13 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
-const { HighlightedCode } = await import(
-  "../components/HighlightedCode.component"
-);
+const { HighlightedCode } =
+  await import("../components/HighlightedCode.component");
 
 describe("HighlightedCode", () => {
   it("renders plain monospaced code when no language is provided", () => {
     render(
-      <HighlightedCode
-        code='const x = "hello";'
-        data-testid="hc-plain"
-      />
+      <HighlightedCode code='const x = "hello";' data-testid="hc-plain" />
     );
     const block = screen.getByTestId("hc-plain");
     expect(block.textContent).toBe('const x = "hello";');
@@ -64,11 +60,7 @@ describe("HighlightedCode", () => {
     });
 
     render(
-      <HighlightedCode
-        code='{"x":1}'
-        language="json"
-        data-testid="hc-copy"
-      />
+      <HighlightedCode code='{"x":1}' language="json" data-testid="hc-copy" />
     );
     const copyButton = screen.getByTestId("hc-copy-copy");
     expect(copyButton).toBeInTheDocument();

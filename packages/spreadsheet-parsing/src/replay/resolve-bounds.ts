@@ -143,7 +143,8 @@ export async function resolveRegionBounds(
       bounds.endCol,
       sheet.dimensions.rows
     );
-    if (bounds.endRow < region.bounds.endRow) bounds.endRow = region.bounds.endRow;
+    if (bounds.endRow < region.bounds.endRow)
+      bounds.endRow = region.bounds.endRow;
   } else {
     bounds.endCol = await extendAlongAxis(
       region.recordAxisTerminator,
@@ -154,7 +155,8 @@ export async function resolveRegionBounds(
       bounds.endRow,
       sheet.dimensions.cols
     );
-    if (bounds.endCol < region.bounds.endCol) bounds.endCol = region.bounds.endCol;
+    if (bounds.endCol < region.bounds.endCol)
+      bounds.endCol = region.bounds.endCol;
   }
   return bounds;
 }

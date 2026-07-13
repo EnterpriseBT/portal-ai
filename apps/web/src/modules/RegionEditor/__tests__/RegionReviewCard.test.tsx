@@ -6,9 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { RegionReviewCardUI } from "../RegionReviewCard.component";
 import type { RegionDraft } from "../utils/region-editor.types";
 
-const makeRegion = (
-  overrides: Partial<RegionDraft> = {}
-): RegionDraft => ({
+const makeRegion = (overrides: Partial<RegionDraft> = {}): RegionDraft => ({
   id: "region-a",
   sheetId: "sheet_a",
   bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 2 },
@@ -450,18 +448,17 @@ describe("RegionReviewCardUI — invalid chip styling", () => {
 
 describe("RegionReviewCardUI — IdentityPanel", () => {
   test("renders the IdentityPanel when locator options + onIdentityUpdate are provided", () => {
-    const onIdentityUpdate =
-      jest.fn<
-        (
-          regionId: string,
-          change:
-            | {
-                kind: "column";
-                locator: { axis: "row" | "column"; index: number };
-              }
-            | { kind: "rowPosition" }
-        ) => void
-      >();
+    const onIdentityUpdate = jest.fn<
+      (
+        regionId: string,
+        change:
+          | {
+              kind: "column";
+              locator: { axis: "row" | "column"; index: number };
+            }
+          | { kind: "rowPosition" }
+      ) => void
+    >();
     render(
       <RegionReviewCardUI
         region={makeRegion()}
@@ -496,18 +493,17 @@ describe("RegionReviewCardUI — IdentityPanel", () => {
   });
 
   test("propagates onIdentityUpdate calls with the region id from the card", () => {
-    const onIdentityUpdate =
-      jest.fn<
-        (
-          regionId: string,
-          change:
-            | {
-                kind: "column";
-                locator: { axis: "row" | "column"; index: number };
-              }
-            | { kind: "rowPosition" }
-        ) => void
-      >();
+    const onIdentityUpdate = jest.fn<
+      (
+        regionId: string,
+        change:
+          | {
+              kind: "column";
+              locator: { axis: "row" | "column"; index: number };
+            }
+          | { kind: "rowPosition" }
+      ) => void
+    >();
     render(
       <RegionReviewCardUI
         // Seed a column-kind identity so the "Use position-based ids"
@@ -826,9 +822,7 @@ describe("RegionReviewCardUI — chip filter", () => {
 
   test("shows the filter input when chips.length exceeds threshold (9)", () => {
     setup({ columnBindings: manyBindings(9) });
-    expect(
-      screen.getByLabelText(/filter region fields/i)
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/filter region fields/i)).toBeInTheDocument();
   });
 
   test("filters by source substring (case-insensitive)", async () => {

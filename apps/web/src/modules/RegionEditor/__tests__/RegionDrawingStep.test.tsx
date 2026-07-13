@@ -53,9 +53,7 @@ describe("RegionDrawingStepUI — sheet tab selection", () => {
     name: "Sheet 2",
     rowCount: 4,
     colCount: 3,
-    cells: Array.from({ length: 4 }, () =>
-      Array.from({ length: 3 }, () => "")
-    ),
+    cells: Array.from({ length: 4 }, () => Array.from({ length: 3 }, () => "")),
   };
   const TWO_SHEET_WORKBOOK: Workbook = { sheets: [SHEET, SHEET_2] };
 

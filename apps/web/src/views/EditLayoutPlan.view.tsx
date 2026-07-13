@@ -440,9 +440,10 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
   const { mutateAsync: fileUploadSheetSliceMutate } =
     sdk.fileUploads.sheetSlice();
 
-  const [saveDraftToast, setSaveDraftToast] = useState<
-    { severity: "success" | "error"; message: string } | null
-  >(null);
+  const [saveDraftToast, setSaveDraftToast] = useState<{
+    severity: "success" | "error";
+    message: string;
+  } | null>(null);
 
   // Local editor state — initialized from the edit-context plan and the
   // preview workbook on first render after the query resolves.
@@ -877,9 +878,7 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       onIdentityUpdate={
         editContext?.editable && editContext.workbookPreview
           ? buildIdentityUpdater({
-              workbook: previewToEditorWorkbook(
-                editContext.workbookPreview
-              ),
+              workbook: previewToEditorWorkbook(editContext.workbookPreview),
               regions,
               onRegionUpdate: handleRegionUpdate,
             })

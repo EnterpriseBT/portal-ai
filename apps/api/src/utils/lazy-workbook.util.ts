@@ -38,9 +38,7 @@ export function makeLazyWorkbookFromCache(
   sheetMetas: SheetChunkMeta[]
 ): Workbook {
   return {
-    sheets: sheetMetas.map((sheetMeta) =>
-      buildLazySheet(prefix, sheetMeta)
-    ),
+    sheets: sheetMetas.map((sheetMeta) => buildLazySheet(prefix, sheetMeta)),
   };
 }
 

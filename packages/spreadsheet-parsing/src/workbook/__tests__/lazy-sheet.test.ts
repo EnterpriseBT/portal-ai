@@ -14,13 +14,14 @@
 
 import { describe, it, expect, jest } from "@jest/globals";
 
-import {
-  makeLazySheetAccessor,
-  RangeNotLoadedError,
-} from "../index.js";
+import { makeLazySheetAccessor, RangeNotLoadedError } from "../index.js";
 import type { SheetDimensions, WorkbookCell } from "../index.js";
 
-const cell = (row: number, col: number, value: WorkbookCell["value"]): WorkbookCell => ({
+const cell = (
+  row: number,
+  col: number,
+  value: WorkbookCell["value"]
+): WorkbookCell => ({
   row,
   col,
   value,

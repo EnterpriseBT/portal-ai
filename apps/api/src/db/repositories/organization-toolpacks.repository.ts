@@ -57,7 +57,7 @@ const SIGNING_SECRET_SENTINEL = "__pending_phase6_rotation__";
 
 /** Decrypt the `authHeaders` and `signingSecret` columns of a single row. */
 function decryptRow<
-  T extends { authHeaders: string | null; signingSecret: string }
+  T extends { authHeaders: string | null; signingSecret: string },
 >(
   row: T
 ): T & {
@@ -85,7 +85,7 @@ function decryptRow<
 
 /** Decrypt the encrypted columns on an array of rows. */
 function decryptRows<
-  T extends { authHeaders: string | null; signingSecret: string }
+  T extends { authHeaders: string | null; signingSecret: string },
 >(
   rows: T[]
 ): (T & {
@@ -110,7 +110,7 @@ function encryptInsert<
   T extends {
     authHeaders?: Record<string, string> | string | null;
     signingSecret?: string;
-  }
+  },
 >(data: T): T {
   let next: T = data;
   if (next.authHeaders != null && typeof next.authHeaders === "object") {

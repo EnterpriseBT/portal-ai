@@ -27,7 +27,8 @@ for (let rep = 0; rep < 40; rep++) {
 }
 
 async function* asStream(records: Record<string, unknown>[], batch: number) {
-  for (let i = 0; i < records.length; i += batch) yield records.slice(i, i + batch);
+  for (let i = 0; i < records.length; i += batch)
+    yield records.slice(i, i + batch);
 }
 
 // Nearest-centroid distance — for permutation-tolerant matching.
@@ -42,10 +43,11 @@ describe("clusterFromStream (#153 mini-batch k-means)", () => {
   const COLS = ["x", "y"];
 
   it("recovers the true centers within tolerance (matched by nearest)", async () => {
-    const { centroids, sizes, count } = await AnalyticsService.clusterFromStream(
-      asStream(RECORDS, 7),
-      { columns: COLS, k: 3 }
-    );
+    const { centroids, sizes, count } =
+      await AnalyticsService.clusterFromStream(asStream(RECORDS, 7), {
+        columns: COLS,
+        k: 3,
+      });
     expect(centroids).toHaveLength(3);
     expect(count).toBe(RECORDS.length);
     expect(sizes.reduce((a, b) => a + b, 0)).toBe(RECORDS.length);

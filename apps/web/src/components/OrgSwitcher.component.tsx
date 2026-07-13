@@ -53,8 +53,7 @@ export const OrgSwitcherUI: React.FC<OrgSwitcherUIProps> = ({
     );
   }
 
-  const currentId =
-    memberships.find((m) => m.isCurrent)?.organization.id ?? "";
+  const currentId = memberships.find((m) => m.isCurrent)?.organization.id ?? "";
 
   return (
     <Box sx={orgNameSx} onClick={(e) => e.stopPropagation()}>

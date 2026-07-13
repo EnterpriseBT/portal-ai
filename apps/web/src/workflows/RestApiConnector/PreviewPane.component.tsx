@@ -95,7 +95,8 @@ function walkRecordsPath(
   for (const seg of segments) {
     if (current == null || typeof current !== "object") return PATH_MISSING;
     const next = (current as Record<string, unknown>)[seg];
-    if (next === undefined && !(seg in (current as object))) return PATH_MISSING;
+    if (next === undefined && !(seg in (current as object)))
+      return PATH_MISSING;
     current = next;
   }
   return current;
@@ -299,8 +300,7 @@ export const PreviewPaneUI: React.FC<PreviewPaneUIProps> = ({
             <Box sx={{ "& pre": { height: PREVIEW_PANE_HEIGHT } }}>
               <HighlightedCode
                 code={safeStringify(
-                  derived.kind === "extracted" &&
-                    Array.isArray(derived.value)
+                  derived.kind === "extracted" && Array.isArray(derived.value)
                     ? derived.value.slice(0, 10)
                     : derived.value
                 )}

@@ -59,7 +59,8 @@ const s3Bucket = new Map<string, Buffer>();
 jest.unstable_mockModule("../../../services/s3.service.js", () => ({
   S3Service: {
     createPresignedPutUrl: jest.fn(
-      async (s3Key: string) => `https://s3.test.example/${encodeURIComponent(s3Key)}`
+      async (s3Key: string) =>
+        `https://s3.test.example/${encodeURIComponent(s3Key)}`
     ),
     getObjectStream: jest.fn(async (s3Key: string) => {
       const buf = s3Bucket.get(s3Key);
@@ -136,9 +137,8 @@ jest.unstable_mockModule("../../../queues/jobs.queue.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
-const { FileUploadSessionService } = await import(
-  "../../../services/file-upload-session.service.js"
-);
+const { FileUploadSessionService } =
+  await import("../../../services/file-upload-session.service.js");
 
 describe("File uploads streaming router", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -165,7 +165,9 @@ describe("File uploads streaming router", () => {
     await connection.end();
   });
 
-  async function presign(files: Array<{ fileName: string; sizeBytes: number; contentType?: string }>) {
+  async function presign(
+    files: Array<{ fileName: string; sizeBytes: number; contentType?: string }>
+  ) {
     return request(app)
       .post("/api/file-uploads/presign")
       .set("Authorization", "Bearer test-token")
@@ -205,7 +207,11 @@ describe("File uploads streaming router", () => {
 
     it("rejects unsupported extensions", async () => {
       const res = await presign([
-        { fileName: "notes.pdf", sizeBytes: 100, contentType: "application/pdf" },
+        {
+          fileName: "notes.pdf",
+          sizeBytes: 100,
+          contentType: "application/pdf",
+        },
       ]);
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.FILE_UPLOAD_PARSE_UNSUPPORTED);
@@ -353,8 +359,14 @@ describe("File uploads streaming router", () => {
 
     it("merges multi-CSV uploads into one workbook with preview cells inline", async () => {
       const uploadIds = await uploadAndConfirm([
-        { fileName: "contacts.csv", bytes: Buffer.from("Name,Email\nAlice,a@x.com\n") },
-        { fileName: "orders.csv", bytes: Buffer.from("OrderId,Total\no-1,42\n") },
+        {
+          fileName: "contacts.csv",
+          bytes: Buffer.from("Name,Email\nAlice,a@x.com\n"),
+        },
+        {
+          fileName: "orders.csv",
+          bytes: Buffer.from("OrderId,Total\no-1,42\n"),
+        },
       ]);
       const result = await runParseInline(uploadIds);
       expect(result.uploadSessionId).toBeDefined();

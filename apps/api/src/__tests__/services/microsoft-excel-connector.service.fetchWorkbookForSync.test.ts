@@ -36,45 +36,41 @@ const headWorkbookMock =
       driveItemId: string
     ) => Promise<{ size: number; name: string }>
   >();
-const downloadWorkbookMock =
-  jest.fn<
-    (
-      accessToken: string,
-      driveItemId: string
-    ) => Promise<{
-      stream: ReadableStream<Uint8Array>;
-      contentLength: number;
-    }>
-  >();
-const xlsxToCacheMock = jest.fn<
-  (...args: unknown[]) => Promise<unknown>
+const downloadWorkbookMock = jest.fn<
+  (
+    accessToken: string,
+    driveItemId: string
+  ) => Promise<{
+    stream: ReadableStream<Uint8Array>;
+    contentLength: number;
+  }>
 >();
+const xlsxToCacheMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
-const beginSessionMock =
-  jest.fn<(prefix: string) => Promise<SessionWriter>>();
+const beginSessionMock = jest.fn<(prefix: string) => Promise<SessionWriter>>();
 const getSessionMetaMock =
   jest.fn<(prefix: string) => Promise<SessionMeta | null>>();
-const readRowsMock = jest.fn<
-  (
-    prefix: string,
-    sheetId: string,
-    rowStart: number,
-    rowEnd: number
-  ) => AsyncIterable<ChunkRow>
->();
+const readRowsMock =
+  jest.fn<
+    (
+      prefix: string,
+      sheetId: string,
+      rowStart: number,
+      rowEnd: number
+    ) => AsyncIterable<ChunkRow>
+  >();
 const deleteSessionMock = jest.fn(async () => undefined);
 
-const findByIdMock =
-  jest.fn<
-    (id: string) => Promise<
-      | {
-          id: string;
-          organizationId: string;
-          config: { driveItemId?: string } | null;
-        }
-      | undefined
-    >
-  >();
+const findByIdMock = jest.fn<
+  (id: string) => Promise<
+    | {
+        id: string;
+        organizationId: string;
+        config: { driveItemId?: string } | null;
+      }
+    | undefined
+  >
+>();
 
 class MockMicrosoftGraphError extends Error {
   override readonly name = "MicrosoftGraphError" as const;
@@ -138,9 +134,8 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
-const { MicrosoftExcelConnectorService } = await import(
-  "../../services/microsoft-excel-connector.service.js"
-);
+const { MicrosoftExcelConnectorService } =
+  await import("../../services/microsoft-excel-connector.service.js");
 
 function fakeStream(): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({

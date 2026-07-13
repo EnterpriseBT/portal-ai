@@ -21,7 +21,11 @@ export const ENTITY_OPTIONS: EntityOption[] = [
   { value: "ent_ticket", label: "Ticket", source: "db" },
   { value: "ent_account_revenue", label: "Account revenue", source: "db" },
   { value: "ent_company_revenue", label: "Company revenue", source: "db" },
-  { value: "ent_product_quarter_revenue", label: "Product × Quarter revenue", source: "db" },
+  {
+    value: "ent_product_quarter_revenue",
+    label: "Product × Quarter revenue",
+    source: "db",
+  },
   { value: "ent_contact", label: "Contact", source: "db" },
   { value: "ent_deal", label: "Deal", source: "db" },
   { value: "ent_invoice", label: "Invoice", source: "db" },
@@ -133,14 +137,7 @@ function buildSingleAxisDynamicSheet(): SheetPreview {
   cells[0][0] = "Single axis · Row orientation · Dynamic headers";
   cells[1][0] =
     "Headers are value labels (month names); user names the axis (month) and the measure (sales).";
-  write(cells, 2, 0, [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-  ]);
+  write(cells, 2, 0, ["January", "February", "March", "April", "May", "June"]);
   write(cells, 3, 0, [42300, 39800, 51200, 55400, 60100, 58700]);
   write(cells, 4, 0, [53210, 32105, 27463, 19283, 85342, 14387]);
   write(cells, 5, 0, [94325, 75324, 64234, 41532, 63642, 32455]);
@@ -266,8 +263,7 @@ function buildHybridCrosstabSheet(): SheetPreview {
 function buildHybridCrosstabBothAxesSheet(): SheetPreview {
   const cells = blank(11, 7);
 
-  cells[0][0] =
-    "Hybrid Crosstab · Both axes · Static + Dynamic headers";
+  cells[0][0] = "Hybrid Crosstab · Both axes · Static + Dynamic headers";
   cells[1][0] =
     "Row axis: Region, Owner, then Q1–Q4.  Column axis: Audit, Currency, then products.  Inner cells = revenue.";
 

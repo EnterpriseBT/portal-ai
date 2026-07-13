@@ -14,13 +14,7 @@
  * `runSqlQuery` against the live station.
  */
 
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-} from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { sql } from "drizzle-orm";
@@ -249,28 +243,39 @@ describe("PortalSqlService integration tests", () => {
     const cdAccountRef = generateId();
     const cdPayload = generateId();
 
-    await dbTyped.insert(schema.columnDefinitions).values([
-      mkColumnDef(cdEmail, orgId, "email", "Email", "string", now),
-      mkColumnDef(cdAge, orgId, "age", "Age", "number", now),
-      mkColumnDef(cdAmount, orgId, "amount", "Amount", "number", now),
-      mkColumnDef(cdAccountRef, orgId, "account_ref", "Account Ref", "string", now),
-      mkColumnDef(cdPayload, orgId, "payload", "Payload", "string", now),
-    ] as never);
+    await dbTyped
+      .insert(schema.columnDefinitions)
+      .values([
+        mkColumnDef(cdEmail, orgId, "email", "Email", "string", now),
+        mkColumnDef(cdAge, orgId, "age", "Age", "number", now),
+        mkColumnDef(cdAmount, orgId, "amount", "Amount", "number", now),
+        mkColumnDef(
+          cdAccountRef,
+          orgId,
+          "account_ref",
+          "Account Ref",
+          "string",
+          now
+        ),
+        mkColumnDef(cdPayload, orgId, "payload", "Payload", "string", now),
+      ] as never);
 
-    await dbTyped.insert(schema.fieldMappings).values([
-      mkMapping(orgId, contactsEntityId, cdEmail, "Email", "email", now),
-      mkMapping(orgId, contactsEntityId, cdAge, "Age", "age", now + 1),
-      mkMapping(orgId, dealsEntityId, cdAmount, "Amount", "amount", now),
-      mkMapping(
-        orgId,
-        dealsEntityId,
-        cdAccountRef,
-        "Account Ref",
-        "account_ref",
-        now + 1
-      ),
-      mkMapping(orgId, privateEntityId, cdPayload, "Payload", "payload", now),
-    ] as never);
+    await dbTyped
+      .insert(schema.fieldMappings)
+      .values([
+        mkMapping(orgId, contactsEntityId, cdEmail, "Email", "email", now),
+        mkMapping(orgId, contactsEntityId, cdAge, "Age", "age", now + 1),
+        mkMapping(orgId, dealsEntityId, cdAmount, "Amount", "amount", now),
+        mkMapping(
+          orgId,
+          dealsEntityId,
+          cdAccountRef,
+          "Account Ref",
+          "account_ref",
+          now + 1
+        ),
+        mkMapping(orgId, privateEntityId, cdPayload, "Payload", "payload", now),
+      ] as never);
 
     // Reconcile all three entities so the wide tables exist with the
     // expected `c_*` columns.
@@ -409,8 +414,9 @@ describe("PortalSqlService integration tests", () => {
     it("projects _record_id and _connector_entity_id synthetic columns", async () => {
       const r1 = generateId();
       await insertEntityRecord(contactsEntityId, r1, "src-1");
-      await (db as ReturnType<typeof drizzle>)
-        .execute(sql`INSERT INTO ${sql.raw(`"er__${contactsEntityId}"`)} ("entity_record_id", "organization_id", "synced_at", "is_valid", "source_id", "c_email", "c_age") VALUES (${r1}, ${orgId}, ${Date.now()}, true, ${"src-1"}, ${"a@b.co"}, ${25})`);
+      await (db as ReturnType<typeof drizzle>).execute(
+        sql`INSERT INTO ${sql.raw(`"er__${contactsEntityId}"`)} ("entity_record_id", "organization_id", "synced_at", "is_valid", "source_id", "c_email", "c_age") VALUES (${r1}, ${orgId}, ${Date.now()}, true, ${"src-1"}, ${"a@b.co"}, ${25})`
+      );
 
       const { rows } = await probeInsideTx<{
         _record_id: string;
@@ -501,12 +507,23 @@ describe("PortalSqlService integration tests", () => {
       const dbTyped = db as ReturnType<typeof drizzle>;
       const now = Date.now();
       const newCd = generateId();
-      await dbTyped.insert(schema.columnDefinitions).values(
-        mkColumnDef(newCd, orgId, "phone", "Phone", "string", now) as never
-      );
-      await dbTyped.insert(schema.fieldMappings).values(
-        mkMapping(orgId, contactsEntityId, newCd, "Phone", "phone", now) as never
-      );
+      await dbTyped
+        .insert(schema.columnDefinitions)
+        .values(
+          mkColumnDef(newCd, orgId, "phone", "Phone", "string", now) as never
+        );
+      await dbTyped
+        .insert(schema.fieldMappings)
+        .values(
+          mkMapping(
+            orgId,
+            contactsEntityId,
+            newCd,
+            "Phone",
+            "phone",
+            now
+          ) as never
+        );
       await reconciler.reconcileEntity(contactsEntityId, db);
 
       // The new column must now be projected by the rebuilt view.
@@ -533,9 +550,7 @@ describe("PortalSqlService integration tests", () => {
         id: string;
         key: string;
         label: string;
-      }>(
-        `SELECT id, key, label FROM "_meta_entities" ORDER BY key`
-      );
+      }>(`SELECT id, key, label FROM "_meta_entities" ORDER BY key`);
       expect(rows).toEqual([
         { id: contactsEntityId, key: "contacts", label: "Contacts" },
         { id: dealsEntityId, key: "deals", label: "Deals" },
@@ -559,10 +574,30 @@ describe("PortalSqlService integration tests", () => {
         `SELECT entity_key, column_key, label, type FROM "_meta_columns" ORDER BY entity_key, column_key`
       );
       expect(rows).toEqual([
-        { entity_key: "contacts", column_key: "age", label: "Age", type: "number" },
-        { entity_key: "contacts", column_key: "email", label: "Email", type: "string" },
-        { entity_key: "deals", column_key: "account_ref", label: "Account Ref", type: "string" },
-        { entity_key: "deals", column_key: "amount", label: "Amount", type: "number" },
+        {
+          entity_key: "contacts",
+          column_key: "age",
+          label: "Age",
+          type: "number",
+        },
+        {
+          entity_key: "contacts",
+          column_key: "email",
+          label: "Email",
+          type: "string",
+        },
+        {
+          entity_key: "deals",
+          column_key: "account_ref",
+          label: "Account Ref",
+          type: "string",
+        },
+        {
+          entity_key: "deals",
+          column_key: "amount",
+          label: "Amount",
+          type: "number",
+        },
       ]);
     });
 
@@ -584,8 +619,16 @@ describe("PortalSqlService integration tests", () => {
         `SELECT entity_key, column_key, wide_column_name FROM "_meta_columns" WHERE entity_key = 'contacts' ORDER BY column_key`
       );
       expect(rows).toEqual([
-        { entity_key: "contacts", column_key: "age", wide_column_name: "c_age" },
-        { entity_key: "contacts", column_key: "email", wide_column_name: "c_email" },
+        {
+          entity_key: "contacts",
+          column_key: "age",
+          wide_column_name: "c_age",
+        },
+        {
+          entity_key: "contacts",
+          column_key: "email",
+          wide_column_name: "c_email",
+        },
       ]);
     });
 
@@ -640,9 +683,18 @@ describe("PortalSqlService integration tests", () => {
       const newCd = generateId();
       const dbTyped = db as ReturnType<typeof drizzle>;
       const now = Date.now();
-      await dbTyped.insert(schema.columnDefinitions).values(
-        mkColumnDef(newCd, orgId, "unbound_yet", "Unbound Yet", "string", now) as never
-      );
+      await dbTyped
+        .insert(schema.columnDefinitions)
+        .values(
+          mkColumnDef(
+            newCd,
+            orgId,
+            "unbound_yet",
+            "Unbound Yet",
+            "string",
+            now
+          ) as never
+        );
 
       const { rows: catalog } = await probeInsideTx<{ column_key: string }>(
         `SELECT column_key FROM "_meta_column_catalog" WHERE column_key = 'unbound_yet'`
@@ -673,7 +725,6 @@ describe("PortalSqlService integration tests", () => {
       const { ddlByEntity } = await probeInsideTx("SELECT 1");
       expect(ddlByEntity.has("_meta_connector_instances")).toBe(false);
     });
-
   });
 
   // ═════════════════════════════════════════════════════════════════════
@@ -714,7 +765,10 @@ describe("PortalSqlService integration tests", () => {
       });
       expect("rows" in res ? res.rows : []).toHaveLength(1);
       // Postgres returns COUNT(*) as bigint, surfaced as a numeric string.
-      const row0 = ("rows" in res ? res.rows[0] : {}) as Record<string, unknown>;
+      const row0 = ("rows" in res ? res.rows[0] : {}) as Record<
+        string,
+        unknown
+      >;
       expect(String(row0?.n)).toBe("3");
       // Aggregation — no implicit limit wrap.
       expect(

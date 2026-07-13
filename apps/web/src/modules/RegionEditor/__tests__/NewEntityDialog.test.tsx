@@ -109,9 +109,7 @@ describe("NewEntityDialogUI — C2 org-wide key pre-check", () => {
   test("shows an inline error + blocks submit when the chosen key is already owned by another connector", async () => {
     const onSubmit = jest.fn<(key: string, label: string) => void>();
     const validateKey = jest.fn<
-      (key: string) => Promise<
-        { ok: true } | { ok: false; ownedBy?: string }
-      >
+      (key: string) => Promise<{ ok: true } | { ok: false; ownedBy?: string }>
     >(async () => ({ ok: false, ownedBy: "CRM Export" }));
 
     render(
@@ -139,9 +137,7 @@ describe("NewEntityDialogUI — C2 org-wide key pre-check", () => {
   test("submit proceeds when the async check resolves ok", async () => {
     const onSubmit = jest.fn<(key: string, label: string) => void>();
     const validateKey = jest.fn<
-      (key: string) => Promise<
-        { ok: true } | { ok: false; ownedBy?: string }
-      >
+      (key: string) => Promise<{ ok: true } | { ok: false; ownedBy?: string }>
     >(async () => ({ ok: true }));
 
     render(

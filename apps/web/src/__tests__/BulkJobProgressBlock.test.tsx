@@ -1,9 +1,8 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { BulkJobProgressBlockUI } = await import(
-  "../components/BulkJobProgressBlock.component"
-);
+const { BulkJobProgressBlockUI } =
+  await import("../components/BulkJobProgressBlock.component");
 
 type State = {
   status: "running" | "completed" | "failed" | "cancelled";

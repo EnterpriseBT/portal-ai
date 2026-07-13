@@ -28,21 +28,22 @@ const SCRIPT_PATH = path.resolve(
 const SHOULD_RUN = process.env.RUN_SLOW_TESTS === "1";
 const describeOrSkip = SHOULD_RUN ? describe : describe.skip;
 
+// Worst case the worker takes ~5s; allow generous headroom for
+// CI startup noise. Without a per-test override the default
+// unit-test timeout (~5s) would trip on warm-cache.
+const SMOKE_TIMEOUT_MS = 60_000;
+
 describeOrSkip("row-async memory smoke — RUN_SLOW_TESTS gated", () => {
   it(
     "50k-row × 20-col replay completes under --max-old-space-size=512",
     async () => {
-      const child = spawn(
-        "node",
-        ["--import", "tsx/esm", SCRIPT_PATH],
-        {
-          env: {
-            ...process.env,
-            NODE_OPTIONS: "--import tsx/esm --max-old-space-size=512",
-          },
-          stdio: ["ignore", "pipe", "pipe"],
-        }
-      );
+      const child = spawn("node", ["--import", "tsx/esm", SCRIPT_PATH], {
+        env: {
+          ...process.env,
+          NODE_OPTIONS: "--import tsx/esm --max-old-space-size=512",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
 
       let stdout = "";
       let stderr = "";
@@ -57,7 +58,9 @@ describeOrSkip("row-async memory smoke — RUN_SLOW_TESTS gated", () => {
         exitCode: number | null;
         signal: NodeJS.Signals | null;
       }>((resolve) => {
-        child.on("exit", (code, sig) => resolve({ exitCode: code, signal: sig }));
+        child.on("exit", (code, sig) =>
+          resolve({ exitCode: code, signal: sig })
+        );
       });
 
       // Signal-9 indicates the kernel OOM-killed the process; `JavaScript
@@ -69,9 +72,6 @@ describeOrSkip("row-async memory smoke — RUN_SLOW_TESTS gated", () => {
       expect(stdout).toMatch(/OK row-async memory smoke: 50000 records/);
       expect(exitCode).toBe(0);
     },
-    // Worst case the worker takes ~5s; allow generous headroom for
-    // CI startup noise. Without a per-test override the default
-    // unit-test timeout (~5s) would trip on warm-cache.
-    60_000
+    SMOKE_TIMEOUT_MS
   );
 });

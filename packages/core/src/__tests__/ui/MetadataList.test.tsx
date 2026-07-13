@@ -168,9 +168,7 @@ describe("MetadataList", () => {
     });
 
     it("should ignore dividers in wrap direction", () => {
-      const { container } = render(
-        <MetadataList dividers items={baseItems} />
-      );
+      const { container } = render(<MetadataList dividers items={baseItems} />);
       expect(container.querySelectorAll("hr")).toHaveLength(0);
     });
   });

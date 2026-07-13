@@ -16,7 +16,9 @@ const NO_FLAGS = { destructive: true, confirmed: false, prodConfirmed: false };
 
 describe("assertOperationAllowed", () => {
   it("development: everything allowed, no flags needed", () => {
-    expect(() => assertOperationAllowed(env("development"), NO_FLAGS)).not.toThrow();
+    expect(() =>
+      assertOperationAllowed(env("development"), NO_FLAGS)
+    ).not.toThrow();
   });
 
   it("staging: requires the confirm flag", () => {

@@ -18,7 +18,10 @@ import {
   MAX_UPLOAD_FILE_SIZE_BYTES,
   MAX_UPLOAD_FILE_SIZE_LABEL,
 } from "./file-upload-fixtures.util";
-import type { FileUploadWorkflowState, UploadPhase } from "./file-upload-fixtures.util";
+import type {
+  FileUploadWorkflowState,
+  UploadPhase,
+} from "./file-upload-fixtures.util";
 
 /**
  * Per-file upload progress shape rendered by the UploadStep.
@@ -78,9 +81,7 @@ export interface FileUploadWorkflowCallbacks {
     plan: LayoutPlan;
     overallConfidence: number;
   }>;
-  runCommit: (
-    plan: LayoutPlan
-  ) => Promise<{ connectorInstanceId: string }>;
+  runCommit: (plan: LayoutPlan) => Promise<{ connectorInstanceId: string }>;
   onCommitSuccess?: (connectorInstanceId: string) => void;
 }
 
@@ -234,7 +235,11 @@ export function useFileUploadWorkflow(
 
     const handleParsePhaseStart = (): void => {
       if (token !== core.currentRunToken()) return;
-      setStage((prev) => ({ ...prev, uploadPhase: "parsing", parsePercent: 0 }));
+      setStage((prev) => ({
+        ...prev,
+        uploadPhase: "parsing",
+        parsePercent: 0,
+      }));
     };
     const handleParseProgress = (percent: number): void => {
       if (token !== core.currentRunToken()) return;

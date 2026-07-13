@@ -262,4 +262,3 @@ export type DriftReportPreview = {
   fetchedAt: string;
   notes?: string;
 };
-

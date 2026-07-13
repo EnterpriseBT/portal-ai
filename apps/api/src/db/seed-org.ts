@@ -16,7 +16,9 @@ function arg(flag: string): string | undefined {
 async function main() {
   const name = arg("--name");
   if (!name) {
-    throw new Error("Usage: db:seed:org -- --name <name> [--member-email <email>]");
+    throw new Error(
+      "Usage: db:seed:org -- --name <name> [--member-email <email>]"
+    );
   }
   const result = await ApplicationService.seedOrganization({
     name,

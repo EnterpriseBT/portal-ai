@@ -5,12 +5,12 @@ const mockRunCommitDraft =
   jest.fn<
     (metadata: unknown, onProgress?: (p: number) => void) => Promise<unknown>
   >();
-const mockRunRecommit = jest.fn<
-  (metadata: unknown, onProgress?: (p: number) => void) => Promise<unknown>
->();
-const mockRollbackFailedDraftCommit = jest.fn<
-  (metadata: unknown, reason: string) => Promise<void>
->();
+const mockRunRecommit =
+  jest.fn<
+    (metadata: unknown, onProgress?: (p: number) => void) => Promise<unknown>
+  >();
+const mockRollbackFailedDraftCommit =
+  jest.fn<(metadata: unknown, reason: string) => Promise<void>>();
 
 jest.unstable_mockModule(
   "../../../services/layout-plan-draft.service.js",
@@ -23,9 +23,8 @@ jest.unstable_mockModule(
   })
 );
 
-const { layoutPlanCommitProcessor } = await import(
-  "../../../queues/processors/layout-plan-commit.processor.js"
-);
+const { layoutPlanCommitProcessor } =
+  await import("../../../queues/processors/layout-plan-commit.processor.js");
 
 function makeBullJob(
   data: Record<string, unknown>,

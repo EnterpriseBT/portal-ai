@@ -95,13 +95,13 @@ async function fetchWithCap(
 
     // Quick reject on declared content-length.
     const contentLength =
-      typeof (response.headers as { get?: (k: string) => string | null }).get ===
-      "function"
+      typeof (response.headers as { get?: (k: string) => string | null })
+        .get === "function"
         ? (response.headers as { get: (k: string) => string | null }).get(
             "content-length"
           )
-        : (response.headers as Map<string, string>).get("content-length") ??
-          null;
+        : ((response.headers as Map<string, string>).get("content-length") ??
+          null);
     if (contentLength !== null && Number(contentLength) > MAX_RESPONSE_BYTES) {
       throw new ApiError(
         502,
@@ -155,7 +155,9 @@ function describeFirstZodIssue(
   const first = issues[0];
   if (!first) return "validation failed";
   const path =
-    first.path.length > 0 ? first.path.map((p) => String(p)).join(".") : "(root)";
+    first.path.length > 0
+      ? first.path.map((p) => String(p)).join(".")
+      : "(root)";
   return `${path}: ${first.message}`;
 }
 

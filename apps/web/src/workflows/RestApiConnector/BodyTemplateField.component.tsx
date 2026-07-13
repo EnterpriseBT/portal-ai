@@ -49,7 +49,9 @@ export const BodyTemplateFieldUI: React.FC<BodyTemplateFieldUIProps> = ({
     </Stack>
     <TextField
       value={value}
-      onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
+      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+        onChange(e.target.value)
+      }
       onBlur={onBlur}
       multiline
       minRows={3}

@@ -28,19 +28,13 @@ jest.unstable_mockModule("../../../services/portal-sql.service.js", () => ({
   PortalSqlService: { runSqlQuery: mockRunSqlQuery },
 }));
 
-const { PortalSqlHandleService, streamChannelKey } = await import(
-  "../../../services/portal-sql-handle.service.js"
-);
+const { PortalSqlHandleService, streamChannelKey } =
+  await import("../../../services/portal-sql-handle.service.js");
 const { getRedisClient } = await import("../../../utils/redis.util.js");
-const { resolveRecordStream } = await import(
-  "../../../tools/record-source.js"
-);
-const { AnalyticsService } = await import(
-  "../../../services/analytics.service.js"
-);
-const { HANDLE_ROW_CAP } = await import(
-  "@portalai/core/constants"
-);
+const { resolveRecordStream } = await import("../../../tools/record-source.js");
+const { AnalyticsService } =
+  await import("../../../services/analytics.service.js");
+const { HANDLE_ROW_CAP } = await import("@portalai/core/constants");
 
 describe("Smoke B — query-handle pipeline (#85 Phase 3)", () => {
   beforeEach(() => {
@@ -288,7 +282,10 @@ describe("#129 streaming fold over a > HANDLE_ROW_CAP handle", () => {
     );
 
     // Oracle: the whole-array metrics over the same series.
-    const oracle = AnalyticsService.portfolioMetrics({ ...params, records: series });
+    const oracle = AnalyticsService.portfolioMetrics({
+      ...params,
+      records: series,
+    });
     expect(streamed.totalReturn).toBeCloseTo(oracle.totalReturn, 6);
     expect(streamed.cagr).toBeCloseTo(oracle.cagr, 6);
     expect(streamed.sortino).toBeCloseTo(oracle.sortino, 6);
@@ -332,9 +329,7 @@ describe("#129 streaming fold over a > HANDLE_ROW_CAP handle", () => {
       }
       const m = sql.match(/> \('[^']*', '([^']*)'\)/);
       const after = m ? m[1] : null;
-      const start = after
-        ? series.findIndex((r) => r._record_id > after)
-        : 0;
+      const start = after ? series.findIndex((r) => r._record_id > after) : 0;
       const from = start < 0 ? series.length : start;
       return { rows: series.slice(from, from + BATCH) };
     }) as never);
@@ -454,10 +449,13 @@ describe("#124 produceFromRows — externally-supplied rows", () => {
     expect(envelope.schema.map((c) => c.name)).toEqual(["label", "score"]);
     expect(mockRunSqlQuery).not.toHaveBeenCalled();
 
-    const snap = await PortalSqlHandleService.getSnapshot(envelope.queryHandle, {
-      offset: 0,
-      limit: 5_000,
-    });
+    const snap = await PortalSqlHandleService.getSnapshot(
+      envelope.queryHandle,
+      {
+        offset: 0,
+        limit: 5_000,
+      }
+    );
     expect(snap.total).toBe(2_500);
     expect(snap.rows).toHaveLength(2_500);
     expect(snap.rows[0]).toEqual({ label: "row-0", score: 0 });
@@ -476,10 +474,13 @@ describe("#124 produceFromRows — externally-supplied rows", () => {
     });
     expect(envelope.schema).toEqual([{ name: "v", type: "int4" }]);
 
-    const page = await PortalSqlHandleService.getSnapshot(envelope.queryHandle, {
-      offset: 10,
-      limit: 5,
-    });
+    const page = await PortalSqlHandleService.getSnapshot(
+      envelope.queryHandle,
+      {
+        offset: 10,
+        limit: 5,
+      }
+    );
     expect(page.rows).toEqual([
       { v: 10 },
       { v: 11 },

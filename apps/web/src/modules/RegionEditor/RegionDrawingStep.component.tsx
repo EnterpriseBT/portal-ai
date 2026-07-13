@@ -533,9 +533,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
             ) => {
               const region = regions.find((r) => r.id === regionId);
               if (!region) return;
-              const axisSegs = [
-                ...(region.segmentsByAxis?.[axis] ?? []),
-              ];
+              const axisSegs = [...(region.segmentsByAxis?.[axis] ?? [])];
               const left = axisSegs[segmentIndex];
               const right = axisSegs[segmentIndex + 1];
               if (!left || !right) return;

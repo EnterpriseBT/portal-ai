@@ -77,11 +77,7 @@ export const DeleteToolpackDialogUI: React.FC<DeleteToolpackDialogUIProps> = ({
             <Typography variant="caption" color="text.secondary">
               Impacted stations ({impactedStations.length})
             </Typography>
-            <Stack
-              component="ul"
-              spacing={0}
-              sx={{ pl: 2.5, m: 0 }}
-            >
+            <Stack component="ul" spacing={0} sx={{ pl: 2.5, m: 0 }}>
               {impactedStations.map((s) => (
                 <Typography
                   key={s.id}

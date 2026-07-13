@@ -43,7 +43,11 @@ export class GoogleAuthError extends Error {
   override readonly name = "GoogleAuthError" as const;
   readonly kind: GoogleAuthErrorKind;
 
-  constructor(kind: GoogleAuthErrorKind, message?: string, options?: ErrorOptions) {
+  constructor(
+    kind: GoogleAuthErrorKind,
+    message?: string,
+    options?: ErrorOptions
+  ) {
     super(message ?? kind, options);
     this.kind = kind;
   }

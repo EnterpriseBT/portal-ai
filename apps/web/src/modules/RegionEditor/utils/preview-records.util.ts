@@ -10,7 +10,11 @@
 import type { Segment } from "@portalai/core/contracts";
 
 import { colIndexToLetter } from "./a1-notation.util";
-import type { CellValue, RegionDraft, SheetPreview } from "./region-editor.types";
+import type {
+  CellValue,
+  RegionDraft,
+  SheetPreview,
+} from "./region-editor.types";
 
 export type PreviewValue = string | number | null;
 export type PreviewRow = Record<string, PreviewValue>;
@@ -32,11 +36,7 @@ export interface PreviewResult {
 
 const PREVIEW_ROW_LIMIT = 25;
 
-function readCell(
-  sheet: SheetPreview,
-  row: number,
-  col: number
-): PreviewValue {
+function readCell(sheet: SheetPreview, row: number, col: number): PreviewValue {
   const raw = sheet.cells[row]?.[col];
   if (raw === undefined || raw === null || raw === "") return null;
   return raw as CellValue;
@@ -70,7 +70,10 @@ function uniqueKey(base: string, seen: Set<string>): string {
   return key;
 }
 
-function pivotAxisName(seg: Segment, placeholder: string): {
+function pivotAxisName(
+  seg: Segment,
+  placeholder: string
+): {
   label: string;
   placeholder: boolean;
 } {
@@ -306,12 +309,9 @@ function build1D(
     }
     const staticFields: PreviewRow = {};
     for (const fc of fieldColumns) {
-      const cellRow =
-        headerAxis === "row" ? recIdx : startRow + fc.axisOffset;
+      const cellRow = headerAxis === "row" ? recIdx : startRow + fc.axisOffset;
       const cellCol =
-        headerAxis === "row"
-          ? crossAxisStart + fc.axisOffset
-          : recIdx;
+        headerAxis === "row" ? crossAxisStart + fc.axisOffset : recIdx;
       staticFields[fc.key] = readCell(sheet, cellRow, cellCol);
     }
     if (!pivot) {
@@ -324,8 +324,7 @@ function build1D(
         truncated = true;
         return;
       }
-      const cellRow =
-        headerAxis === "row" ? recIdx : startRow + axisOffset;
+      const cellRow = headerAxis === "row" ? recIdx : startRow + axisOffset;
       const cellCol =
         headerAxis === "row" ? crossAxisStart + axisOffset : recIdx;
       const value = readCell(sheet, cellRow, cellCol);
@@ -529,7 +528,11 @@ function buildCrosstab(
     if (seenRowPivots.has(p.segmentId)) continue;
     seenRowPivots.add(p.segmentId);
     const key = uniqueKey(p.axisName, seenKeys);
-    columns.push({ key, label: p.axisName, placeholder: p.axisNamePlaceholder });
+    columns.push({
+      key,
+      label: p.axisName,
+      placeholder: p.axisNamePlaceholder,
+    });
     rowPivotKeyBySegId.set(p.segmentId, key);
   }
   const colPivotKeyBySegId = new Map<string, string>();
@@ -538,7 +541,11 @@ function buildCrosstab(
     if (seenColPivots.has(p.segmentId)) continue;
     seenColPivots.add(p.segmentId);
     const key = uniqueKey(p.axisName, seenKeys);
-    columns.push({ key, label: p.axisName, placeholder: p.axisNamePlaceholder });
+    columns.push({
+      key,
+      label: p.axisName,
+      placeholder: p.axisNamePlaceholder,
+    });
     colPivotKeyBySegId.set(p.segmentId, key);
   }
 

@@ -56,12 +56,10 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
-const { GoogleAuthError } = await import(
-  "../../services/google-auth.service.js"
-);
-const { GoogleAccessTokenCacheService } = await import(
-  "../../services/google-access-token-cache.service.js"
-);
+const { GoogleAuthError } =
+  await import("../../services/google-auth.service.js");
+const { GoogleAccessTokenCacheService } =
+  await import("../../services/google-access-token-cache.service.js");
 
 const INSTANCE_ID = "ci-instance-1";
 const cacheKey = `connector:access:google-sheets:${INSTANCE_ID}`;

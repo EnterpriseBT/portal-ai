@@ -101,10 +101,7 @@ function input1b(): InterpretInput {
         {
           name: "Data",
           dimensions: { rows: 2, cols: 3 },
-          cells: [
-            ...rowOf(1, ["Q1", "Q2", "Q3"]),
-            ...rowOf(2, [10, 20, 30]),
-          ],
+          cells: [...rowOf(1, ["Q1", "Q2", "Q3"]), ...rowOf(2, [10, 20, 30])],
         },
       ],
     },
@@ -613,10 +610,7 @@ export const EXPECTATIONS: Record<MatrixId, Expectation> = {
   },
   "1d": {
     segmentsByAxis: {
-      row: [
-        { kind: "field", positionCount: 2 },
-        pivot("quarter", "row", 3),
-      ],
+      row: [{ kind: "field", positionCount: 2 }, pivot("quarter", "row", 3)],
     },
     cellValueField: AI_VALUE,
     recordCount: 3,
@@ -713,10 +707,7 @@ export const EXPECTATIONS: Record<MatrixId, Expectation> = {
   },
   "crosstab-sales-leads": {
     segmentsByAxis: {
-      row: [
-        { kind: "field", positionCount: 1 },
-        pivot("month", "row", 4),
-      ],
+      row: [{ kind: "field", positionCount: 1 }, pivot("month", "row", 4)],
       column: [
         { kind: "field", positionCount: 1 },
         pivot("quarter", "column", 4),

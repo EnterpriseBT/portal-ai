@@ -29,16 +29,19 @@ export const TOOLPACK_SLUG_REGEX = /^[a-z][a-z0-9_]{0,62}$/;
 
 import { validateToolpackUrl } from "../utils/toolpack-url-safety.util.js";
 
-const ToolpackUrlSchema = z.string().url().superRefine((url, ctx) => {
-  const err = validateToolpackUrl(url);
-  if (err) {
-    ctx.addIssue({
-      code: "custom",
-      message: err.message,
-      params: { code: err.code },
-    });
-  }
-});
+const ToolpackUrlSchema = z
+  .string()
+  .url()
+  .superRefine((url, ctx) => {
+    const err = validateToolpackUrl(url);
+    if (err) {
+      ctx.addIssue({
+        code: "custom",
+        message: err.message,
+        params: { code: err.code },
+      });
+    }
+  });
 
 export const ToolpackEndpointsSchema = z.object({
   schema: ToolpackUrlSchema,

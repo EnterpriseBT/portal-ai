@@ -38,7 +38,8 @@ export const DegradationBannerUI: React.FC<DegradationBannerUIProps> = ({
   if (degradation === "transform-failed") {
     return (
       <Alert severity="warning">
-        Transform {transformError?.kind ?? "runtime"} error: {transformError?.message ?? "JSONata expression failed."}
+        Transform {transformError?.kind ?? "runtime"} error:{" "}
+        {transformError?.message ?? "JSONata expression failed."}
       </Alert>
     );
   }

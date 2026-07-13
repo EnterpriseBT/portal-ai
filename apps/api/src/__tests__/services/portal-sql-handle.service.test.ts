@@ -1,10 +1,4 @@
-import {
-  jest,
-  describe,
-  it,
-  expect,
-  beforeEach,
-} from "@jest/globals";
+import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockRedisSet = jest.fn<() => Promise<unknown>>().mockResolvedValue("OK");
 const mockRedisGet = jest
@@ -20,8 +14,9 @@ jest.unstable_mockModule("../../utils/redis.util.js", () => ({
   }),
 }));
 
-const mockRunSqlQuery =
-  jest.fn<() => Promise<unknown>>().mockResolvedValue({ rows: [] });
+const mockRunSqlQuery = jest
+  .fn<() => Promise<unknown>>()
+  .mockResolvedValue({ rows: [] });
 
 jest.unstable_mockModule("../../services/portal-sql.service.js", () => ({
   PortalSqlService: {
@@ -29,9 +24,8 @@ jest.unstable_mockModule("../../services/portal-sql.service.js", () => ({
   },
 }));
 
-const { PortalSqlHandleService, streamChannelKey } = await import(
-  "../../services/portal-sql-handle.service.js"
-);
+const { PortalSqlHandleService, streamChannelKey } =
+  await import("../../services/portal-sql-handle.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
 beforeEach(() => {
@@ -97,9 +91,11 @@ describe("PortalSqlHandleService.produce", () => {
       sql: "SELECT x FROM t",
       statementTimeoutMs: 120_000,
     });
-    const call = (mockRunSqlQuery.mock.calls[0] as unknown as [
-      { statementTimeoutMs?: number },
-    ])[0];
+    const call = (
+      mockRunSqlQuery.mock.calls[0] as unknown as [
+        { statementTimeoutMs?: number },
+      ]
+    )[0];
     expect(call.statementTimeoutMs).toBe(120_000);
   });
 
@@ -110,9 +106,11 @@ describe("PortalSqlHandleService.produce", () => {
       organizationId: "org-1",
       sql: "SELECT x FROM t",
     });
-    const call = (mockRunSqlQuery.mock.calls[0] as unknown as [
-      { statementTimeoutMs?: number },
-    ])[0];
+    const call = (
+      mockRunSqlQuery.mock.calls[0] as unknown as [
+        { statementTimeoutMs?: number },
+      ]
+    )[0];
     expect(call.statementTimeoutMs).toBeUndefined();
   });
 
@@ -235,7 +233,10 @@ describe("PortalSqlHandleService.getSnapshot", () => {
     mockRedisGet.mockResolvedValueOnce(null);
 
     await expect(
-      PortalSqlHandleService.getSnapshot("qh-missing", { offset: 0, limit: 100 })
+      PortalSqlHandleService.getSnapshot("qh-missing", {
+        offset: 0,
+        limit: 100,
+      })
     ).rejects.toMatchObject({ code: ApiCode.READ_HANDLE_EXPIRED });
   });
 
@@ -350,7 +351,9 @@ describe("PortalSqlHandleService.streamHandle", () => {
       .mockResolvedValueOnce({ rows: fullPage })
       .mockResolvedValueOnce({ rows: shortPage });
 
-    const out = await collect(PortalSqlHandleService.streamHandle("qh-s", "ts"));
+    const out = await collect(
+      PortalSqlHandleService.streamHandle("qh-s", "ts")
+    );
     expect(out).toHaveLength(2);
     expect(out[0]).toHaveLength(1000);
     expect(out[1]).toHaveLength(1);
@@ -370,7 +373,11 @@ describe("PortalSqlHandleService.streamHandle", () => {
   });
 
   it("throws when the result lacks a unique id tiebreaker", async () => {
-    const meta = { ...baseMeta, rowCount: 5, schema: [{ name: "ts", type: "integer" }] };
+    const meta = {
+      ...baseMeta,
+      rowCount: 5,
+      schema: [{ name: "ts", type: "integer" }],
+    };
     mockRedisGet.mockImplementation(async (key: string) =>
       key.endsWith(":meta") ? JSON.stringify(meta) : null
     );

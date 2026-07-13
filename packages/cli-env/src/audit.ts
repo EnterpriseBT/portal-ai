@@ -28,7 +28,9 @@ export async function recordAudit(entry: AuditEntry): Promise<void> {
     const dir = portalaiDir();
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const line = JSON.stringify({ ts: new Date().toISOString(), ...entry });
-    fs.appendFileSync(path.join(dir, "audit.log"), `${line}\n`, { mode: 0o600 });
+    fs.appendFileSync(path.join(dir, "audit.log"), `${line}\n`, {
+      mode: 0o600,
+    });
   } catch (err) {
     console.error(
       `[cli-env] audit append failed (operation proceeds): ${(err as Error)?.message}`

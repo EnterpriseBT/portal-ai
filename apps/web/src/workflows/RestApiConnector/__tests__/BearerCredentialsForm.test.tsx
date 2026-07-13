@@ -54,9 +54,7 @@ describe("BearerCredentialsFormUI", () => {
         })}
       />
     );
-    expect(
-      screen.getByText(/bearer token is required/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/bearer token is required/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/bearer token/i)).toHaveAttribute(
       "aria-invalid",
       "true"

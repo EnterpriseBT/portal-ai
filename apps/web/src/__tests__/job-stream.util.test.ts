@@ -77,9 +77,8 @@ jest.unstable_mockModule("../api/sse.api", () => ({
 // ---------------------------------------------------------------------------
 
 const { renderHook, act, waitFor } = await import("./test-utils");
-const { useJobStream, awaitJobCompletion } = await import(
-  "../utils/job-stream.util"
-);
+const { useJobStream, awaitJobCompletion } =
+  await import("../utils/job-stream.util");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -444,7 +443,10 @@ describe("awaitJobCompletion", () => {
   });
 
   it("resolves with the job result when an update event reports `completed`", async () => {
-    const promise = awaitJobCompletion(mockConnect as unknown as (path: string) => Promise<EventSource>, "job-1");
+    const promise = awaitJobCompletion(
+      mockConnect as unknown as (path: string) => Promise<EventSource>,
+      "job-1"
+    );
     const es = await waitForConnection();
 
     es.__emit("update", {
@@ -461,7 +463,10 @@ describe("awaitJobCompletion", () => {
   });
 
   it("resolves immediately when the snapshot already shows `completed`", async () => {
-    const promise = awaitJobCompletion(mockConnect as unknown as (path: string) => Promise<EventSource>, "job-1");
+    const promise = awaitJobCompletion(
+      mockConnect as unknown as (path: string) => Promise<EventSource>,
+      "job-1"
+    );
     const es = await waitForConnection();
 
     es.__emit("snapshot", {
@@ -480,7 +485,10 @@ describe("awaitJobCompletion", () => {
   });
 
   it("rejects with the job's error string when `failed`", async () => {
-    const promise = awaitJobCompletion(mockConnect as unknown as (path: string) => Promise<EventSource>, "job-2");
+    const promise = awaitJobCompletion(
+      mockConnect as unknown as (path: string) => Promise<EventSource>,
+      "job-2"
+    );
     const es = await waitForConnection();
 
     es.__emit("update", {
@@ -497,7 +505,10 @@ describe("awaitJobCompletion", () => {
   });
 
   it("rejects on `cancelled` status", async () => {
-    const promise = awaitJobCompletion(mockConnect as unknown as (path: string) => Promise<EventSource>, "job-3");
+    const promise = awaitJobCompletion(
+      mockConnect as unknown as (path: string) => Promise<EventSource>,
+      "job-3"
+    );
     const es = await waitForConnection();
 
     es.__emit("update", {
@@ -510,7 +521,10 @@ describe("awaitJobCompletion", () => {
   });
 
   it("ignores progress events while still active", async () => {
-    const promise = awaitJobCompletion(mockConnect as unknown as (path: string) => Promise<EventSource>, "job-4");
+    const promise = awaitJobCompletion(
+      mockConnect as unknown as (path: string) => Promise<EventSource>,
+      "job-4"
+    );
     const es = await waitForConnection();
 
     es.__emit("update", { jobId: "job-4", status: "active", progress: 25 });
@@ -531,9 +545,13 @@ describe("awaitJobCompletion", () => {
 
   it("rejects with AbortError + closes the EventSource when the signal aborts", async () => {
     const ac = new AbortController();
-    const promise = awaitJobCompletion(mockConnect as unknown as (path: string) => Promise<EventSource>, "job-5", {
-      signal: ac.signal,
-    });
+    const promise = awaitJobCompletion(
+      mockConnect as unknown as (path: string) => Promise<EventSource>,
+      "job-5",
+      {
+        signal: ac.signal,
+      }
+    );
     const es = await waitForConnection();
 
     ac.abort();
@@ -543,7 +561,10 @@ describe("awaitJobCompletion", () => {
   });
 
   it("rejects when the SSE connection errors before completion", async () => {
-    const promise = awaitJobCompletion(mockConnect as unknown as (path: string) => Promise<EventSource>, "job-6");
+    const promise = awaitJobCompletion(
+      mockConnect as unknown as (path: string) => Promise<EventSource>,
+      "job-6"
+    );
     const es = await waitForConnection();
 
     es.__emitError();

@@ -1,10 +1,7 @@
 import { z } from "zod";
 
 import type { FormErrors } from "../../../utils/form-validation.util";
-import type {
-  ColumnBindingDraft,
-  RegionDraft,
-} from "./region-editor.types";
+import type { ColumnBindingDraft, RegionDraft } from "./region-editor.types";
 import type { ColumnDataType } from "@portalai/core/models";
 
 /** Per-region flat error map. Keys use dot-notation (e.g. "bounds.endRow"). */

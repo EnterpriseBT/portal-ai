@@ -20,10 +20,7 @@
 import { generateObject as defaultGenerateObject } from "ai";
 import { z } from "zod";
 
-import {
-  ColumnDataTypeEnum,
-  type ColumnDataType,
-} from "@portalai/core/models";
+import { ColumnDataTypeEnum, type ColumnDataType } from "@portalai/core/models";
 
 import { AiService } from "../../services/ai.service.js";
 import { createLogger } from "../../utils/logger.util.js";
@@ -110,7 +107,9 @@ export function createDefaultClassifier(
 
       const batchResults = await Promise.all(
         batches.map((batch) =>
-          limit(() => runOneBatch(batch, catalog, anthropic, modelId, gen, logger))
+          limit(() =>
+            runOneBatch(batch, catalog, anthropic, modelId, gen, logger)
+          )
         )
       );
 
@@ -134,7 +133,9 @@ export function createDefaultClassifier(
 async function runOneBatch(
   batch: ApiClassifierCandidate[],
   catalog: ColumnDefinitionCatalogEntry[],
-  anthropic: ReturnType<typeof AiService.providers.anthropic.toString> extends string
+  anthropic: ReturnType<
+    typeof AiService.providers.anthropic.toString
+  > extends string
     ? typeof AiService.providers.anthropic
     : typeof AiService.providers.anthropic,
   modelId: string,
@@ -151,7 +152,8 @@ async function runOneBatch(
       schema: ClassificationResponseSchema,
     });
   } catch (err) {
-    const reason = (err as Error).name === "AbortError" ? "timeout" : "network-error";
+    const reason =
+      (err as Error).name === "AbortError" ? "timeout" : "network-error";
     logger.warn(
       {
         event: "interpret.llm.error",

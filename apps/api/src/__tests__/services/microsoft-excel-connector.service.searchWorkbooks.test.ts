@@ -1,20 +1,19 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const getOrRefreshMock = jest.fn<(id: string) => Promise<string>>();
-const searchWorkbooksMock =
-  jest.fn<
-    (
-      accessToken: string,
-      query: string
-    ) => Promise<
-      Array<{
-        driveItemId: string;
-        name: string;
-        lastModifiedDateTime: string;
-        lastModifiedBy: string | null;
-      }>
-    >
-  >();
+const searchWorkbooksMock = jest.fn<
+  (
+    accessToken: string,
+    query: string
+  ) => Promise<
+    Array<{
+      driveItemId: string;
+      name: string;
+      lastModifiedDateTime: string;
+      lastModifiedBy: string | null;
+    }>
+  >
+>();
 
 jest.unstable_mockModule(
   "../../services/microsoft-access-token-cache.service.js",
@@ -37,9 +36,8 @@ jest.unstable_mockModule("../../services/microsoft-graph.service.js", () => ({
   MicrosoftGraphError: MockMicrosoftGraphError,
 }));
 
-const { MicrosoftExcelConnectorService } = await import(
-  "../../services/microsoft-excel-connector.service.js"
-);
+const { MicrosoftExcelConnectorService } =
+  await import("../../services/microsoft-excel-connector.service.js");
 
 beforeEach(() => {
   getOrRefreshMock.mockReset();

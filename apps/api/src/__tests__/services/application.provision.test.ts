@@ -3,37 +3,73 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 // ── Mocks (module-load side effects + repositories) ──────────────────
 
 jest.unstable_mockModule("../../db/client.js", () => ({
-  db: { select: () => ({ from: () => ({ where: () => ({ orderBy: () => ({ limit: async () => [] }) }) }) }) },
+  db: {
+    select: () => ({
+      from: () => ({
+        where: () => ({ orderBy: () => ({ limit: async () => [] }) }),
+      }),
+    }),
+  },
   closeDatabase: async () => {},
 }));
 
 const repos = {
   users: {
-    create: jest.fn<(row: { id: string }, tx: unknown) => Promise<{ id: string }>>(),
+    create:
+      jest.fn<(row: { id: string }, tx: unknown) => Promise<{ id: string }>>(),
     findByEmail: jest.fn<(email: string) => Promise<{ id: string } | null>>(),
   },
   organizations: {
-    create: jest.fn<(row: Record<string, unknown>, tx: unknown) => Promise<Record<string, unknown>>>(),
+    create:
+      jest.fn<
+        (
+          row: Record<string, unknown>,
+          tx: unknown
+        ) => Promise<Record<string, unknown>>
+      >(),
     update: jest.fn<() => Promise<unknown>>(),
-    findByName: jest.fn<(name: string) => Promise<{ id: string; ownerUserId: string } | null>>(),
+    findByName:
+      jest.fn<
+        (name: string) => Promise<{ id: string; ownerUserId: string } | null>
+      >(),
   },
   organizationUsers: {
-    create: jest.fn<(row: Record<string, unknown>, tx: unknown) => Promise<Record<string, unknown>>>(),
+    create:
+      jest.fn<
+        (
+          row: Record<string, unknown>,
+          tx: unknown
+        ) => Promise<Record<string, unknown>>
+      >(),
   },
   connectorDefinitions: {
-    findBySlug: jest.fn<() => Promise<{ id: string; capabilityFlags: Record<string, boolean> } | null>>(),
+    findBySlug: jest.fn<
+      () => Promise<{
+        id: string;
+        capabilityFlags: Record<string, boolean>;
+      } | null>
+    >(),
   },
   connectorInstances: {
-    create: jest.fn<(row: Record<string, unknown>, tx: unknown) => Promise<{ id: string }>>(),
+    create:
+      jest.fn<
+        (row: Record<string, unknown>, tx: unknown) => Promise<{ id: string }>
+      >(),
   },
   stations: {
-    create: jest.fn<(row: Record<string, unknown>, tx: unknown) => Promise<{ id: string }>>(),
+    create:
+      jest.fn<
+        (row: Record<string, unknown>, tx: unknown) => Promise<{ id: string }>
+      >(),
   },
   stationToolpacks: {
     replaceForStation: jest.fn<() => Promise<void>>(),
   },
   stationInstances: {
-    create: jest.fn<(row: Record<string, unknown>, tx: unknown) => Promise<unknown>>(),
+    create:
+      jest.fn<
+        (row: Record<string, unknown>, tx: unknown) => Promise<unknown>
+      >(),
   },
 };
 jest.unstable_mockModule("../../services/db.service.js", () => ({
@@ -50,20 +86,29 @@ jest.unstable_mockModule("../../services/seed.service.js", () => ({
   },
 }));
 
-const { ApplicationService } = await import(
-  "../../services/application.service.js"
-);
+const { ApplicationService } =
+  await import("../../services/application.service.js");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
-const SANDBOX = { id: "def-sandbox", capabilityFlags: { read: true, write: true } };
+const SANDBOX = {
+  id: "def-sandbox",
+  capabilityFlags: { read: true, write: true },
+};
 
 const wireHappyPath = () => {
-  repos.users.create.mockImplementation(async (row) => ({ ...row, id: row.id ?? "u-new" }));
+  repos.users.create.mockImplementation(async (row) => ({
+    ...row,
+    id: row.id ?? "u-new",
+  }));
   repos.organizations.create.mockImplementation(async (row) => ({ ...row }));
-  repos.organizationUsers.create.mockImplementation(async (row) => ({ ...row }));
+  repos.organizationUsers.create.mockImplementation(async (row) => ({
+    ...row,
+  }));
   repos.connectorDefinitions.findBySlug.mockResolvedValue(SANDBOX);
-  repos.connectorInstances.create.mockImplementation(async () => ({ id: "ci-1" }));
+  repos.connectorInstances.create.mockImplementation(async () => ({
+    id: "ci-1",
+  }));
   repos.stations.create.mockImplementation(async () => ({ id: "st-1" }));
   repos.stationToolpacks.replaceForStation.mockResolvedValue(undefined);
   repos.stationInstances.create.mockResolvedValue({});
@@ -88,11 +133,18 @@ describe("provisionOrganizationFor (the shared transaction body)", () => {
     });
 
     const org = repos.organizations.create.mock.calls[0][0];
-    expect(org).toMatchObject({ name: "Acme", ownerUserId: "u-77", tier: "standard" });
+    expect(org).toMatchObject({
+      name: "Acme",
+      ownerUserId: "u-77",
+      tier: "standard",
+    });
     expect(org.id).toBeTruthy(); // factory-minted
 
     const membership = repos.organizationUsers.create.mock.calls[0][0];
-    expect(membership).toMatchObject({ organizationId: org.id, userId: "u-77" });
+    expect(membership).toMatchObject({
+      organizationId: org.id,
+      userId: "u-77",
+    });
 
     expect(mockSeedCols).toHaveBeenCalledWith(org.id, "TX");
     expect(repos.connectorInstances.create.mock.calls[0][0]).toMatchObject({
@@ -160,7 +212,10 @@ describe("createOrganizationForEmail", () => {
 
   it("known email → provisions with the given name", async () => {
     repos.users.findByEmail.mockResolvedValue({ id: "u-ben" });
-    await ApplicationService.createOrganizationForEmail("ben@portalsai.io", "Acme");
+    await ApplicationService.createOrganizationForEmail(
+      "ben@portalsai.io",
+      "Acme"
+    );
     expect(repos.organizations.create.mock.calls[0][0]).toMatchObject({
       name: "Acme",
       ownerUserId: "u-ben",
@@ -170,9 +225,16 @@ describe("createOrganizationForEmail", () => {
 
 describe("seedOrganization", () => {
   it("idempotent: a live org with the name short-circuits without creating anything", async () => {
-    repos.organizations.findByName.mockResolvedValue({ id: "o-1", ownerUserId: "u-o" });
+    repos.organizations.findByName.mockResolvedValue({
+      id: "o-1",
+      ownerUserId: "u-o",
+    });
     const out = await ApplicationService.seedOrganization({ name: "QA Org" });
-    expect(out).toEqual({ organizationId: "o-1", ownerUserId: "u-o", existing: true });
+    expect(out).toEqual({
+      organizationId: "o-1",
+      ownerUserId: "u-o",
+      existing: true,
+    });
     expect(repos.users.create).not.toHaveBeenCalled();
     expect(repos.organizations.create).not.toHaveBeenCalled();
   });
@@ -190,9 +252,13 @@ describe("seedOrganization", () => {
     expect(owner.auth0Id).toMatch(/^seed\|/);
     expect(owner.email).toBe("seed+qa-org@portalsai.io");
 
-    expect(repos.organizations.create.mock.calls[0][0]).toMatchObject({ name: "QA Org" });
+    expect(repos.organizations.create.mock.calls[0][0]).toMatchObject({
+      name: "QA Org",
+    });
     // second membership row = the real member (first is the owner's)
-    const memberships = repos.organizationUsers.create.mock.calls.map((c) => c[0]);
+    const memberships = repos.organizationUsers.create.mock.calls.map(
+      (c) => c[0]
+    );
     expect(memberships).toHaveLength(2);
     expect(memberships[1]).toMatchObject({ userId: "u-ben" });
     expect(out.existing).toBe(false);
@@ -205,7 +271,10 @@ describe("seedOrganization", () => {
     repos.organizations.findByName.mockResolvedValue(null);
     repos.users.findByEmail.mockResolvedValue(null);
     await expect(
-      ApplicationService.seedOrganization({ name: "QA", memberEmail: "no@x.io" })
+      ApplicationService.seedOrganization({
+        name: "QA",
+        memberEmail: "no@x.io",
+      })
     ).rejects.toThrow(/not found/);
     expect(repos.users.create).not.toHaveBeenCalled();
   });

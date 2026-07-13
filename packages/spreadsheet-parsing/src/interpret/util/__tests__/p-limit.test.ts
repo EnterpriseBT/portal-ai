@@ -51,9 +51,7 @@ describe("pLimit", () => {
     ]);
     expect(results[0].status).toBe("rejected");
     expect(results[1].status).toBe("fulfilled");
-    expect(
-      (results[1] as PromiseFulfilledResult<string>).value
-    ).toBe("ok");
+    expect((results[1] as PromiseFulfilledResult<string>).value).toBe("ok");
   });
 
   it("preserves result ordering via Promise.all(inputs.map(schedule))", async () => {

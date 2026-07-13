@@ -79,8 +79,7 @@ function baseRegion(overrides: LegacyOverrides = {}): RegionDraft {
 
   if (headerAxis === "none") {
     draft.headerAxes = [];
-    draft.recordsAxis =
-      orientation === "columns-as-records" ? "column" : "row";
+    draft.recordsAxis = orientation === "columns-as-records" ? "column" : "row";
     return draft;
   }
 
@@ -835,7 +834,9 @@ describe("computeSegmentOverlays", () => {
             axisName: "Quarter",
             axisNameSource: "user",
             positionCount: 3,
-            dynamic: { terminator: { kind: "untilBlank", consecutiveBlanks: 2 } },
+            dynamic: {
+              terminator: { kind: "untilBlank", consecutiveBlanks: 2 },
+            },
           },
         ],
       },
@@ -996,9 +997,7 @@ describe("computeIntersectionOverlays", () => {
     expect(overlays).toHaveLength(4);
 
     const byId = new Map(overlays.map((o) => [o.id, o]));
-    expect(byId.get("row-pivot-1__col-pivot-1")?.label).toBe(
-      "Region × Metric"
-    );
+    expect(byId.get("row-pivot-1__col-pivot-1")?.label).toBe("Region × Metric");
     expect(byId.get("row-pivot-1__col-pivot-1")?.bounds).toEqual({
       startRow: 1,
       endRow: 2,

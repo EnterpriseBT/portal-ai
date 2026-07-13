@@ -25,10 +25,10 @@ jest.unstable_mockModule("../../services/portal-sql.service.js", () => ({
   PortalSqlService: { runSqlQuery: mockRunSqlQuery },
 }));
 
-const { PortalSqlHandleService } = await import(
-  "../../services/portal-sql-handle.service.js"
-);
-const { AnalyticsService } = await import("../../services/analytics.service.js");
+const { PortalSqlHandleService } =
+  await import("../../services/portal-sql-handle.service.js");
+const { AnalyticsService } =
+  await import("../../services/analytics.service.js");
 
 const N = 40;
 const OHLCV = Array.from({ length: N }, (_, i) => {

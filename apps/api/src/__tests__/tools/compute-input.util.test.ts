@@ -16,9 +16,8 @@ jest.unstable_mockModule("../../services/portal-sql-handle.service.js", () => ({
     null,
 }));
 
-const { resolveComputeRecords, withComputeInput } = await import(
-  "../../tools/compute-input.util.js"
-);
+const { resolveComputeRecords, withComputeInput } =
+  await import("../../tools/compute-input.util.js");
 
 describe("resolveComputeRecords", () => {
   beforeEach(() => {

@@ -34,9 +34,7 @@ export class ApiError extends Error {
       this.recommendation = opts.recommendation;
       this.details = opts.details;
     } else {
-      this.details = optionsOrDetails as
-        | Record<string, unknown>
-        | undefined;
+      this.details = optionsOrDetails as Record<string, unknown> | undefined;
     }
   }
 }
@@ -60,9 +58,7 @@ export class HttpService {
       success: false,
       message: error.message,
       code: error.code,
-      ...(error.recommendation
-        ? { recommendation: error.recommendation }
-        : {}),
+      ...(error.recommendation ? { recommendation: error.recommendation } : {}),
       ...(error.details ? { details: error.details } : {}),
     } as ApiErrorResponse);
   }

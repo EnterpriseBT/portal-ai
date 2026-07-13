@@ -1,12 +1,6 @@
 import React from "react";
 import MuiPopover from "@mui/material/Popover";
-import {
-  Box,
-  Button,
-  Checkbox,
-  Stack,
-  Typography,
-} from "@portalai/core/ui";
+import { Box, Button, Checkbox, Stack, Typography } from "@portalai/core/ui";
 import type { AxisMember, Terminator } from "@portalai/core/contracts";
 
 import { TerminatorFormUI } from "./TerminatorForm.component";
@@ -60,8 +54,8 @@ export const RecordAxisTerminatorPopoverUI: React.FC<
           Extent · {recordsAxis} axis
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          Let the region grow along the {recordsAxis} axis until a terminator
-          is hit. Leave off to keep the bounds fixed.
+          Let the region grow along the {recordsAxis} axis until a terminator is
+          hit. Leave off to keep the bounds fixed.
         </Typography>
 
         <Checkbox

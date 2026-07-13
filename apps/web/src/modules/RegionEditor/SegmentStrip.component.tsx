@@ -118,7 +118,10 @@ export const SegmentStripUI: React.FC<SegmentStripUIProps> = ({
   const resolveColor = (palette: KindTone["palette"]) => {
     if (palette === "grey") {
       return {
-        bg: theme.palette.mode === "dark" ? theme.palette.grey[800] : theme.palette.grey[200],
+        bg:
+          theme.palette.mode === "dark"
+            ? theme.palette.grey[800]
+            : theme.palette.grey[200],
         fg: theme.palette.text.primary,
         border: theme.palette.divider,
       };
@@ -171,11 +174,11 @@ export const SegmentStripUI: React.FC<SegmentStripUIProps> = ({
           const canDelete = !!onRemoveSegment;
           const handleDelete = canDelete
             ? (e: React.MouseEvent<HTMLElement>) => {
-              // MuiChip already stops the onClick when onDelete fires, but
-              // be explicit so a future refactor doesn't reopen the popover.
-              e.stopPropagation();
-              onRemoveSegment?.(axis, i);
-            }
+                // MuiChip already stops the onClick when onDelete fires, but
+                // be explicit so a future refactor doesn't reopen the popover.
+                e.stopPropagation();
+                onRemoveSegment?.(axis, i);
+              }
             : undefined;
           return (
             <React.Fragment key={`${axis}-seg-${i}`}>
@@ -248,8 +251,9 @@ export const SegmentStripUI: React.FC<SegmentStripUIProps> = ({
                         fontVariantNumeric: "tabular-nums",
                         opacity: 0.85,
                       }}
-                      aria-label={`${seg.positionCount} ${seg.positionCount === 1 ? "position" : "positions"
-                        }`}
+                      aria-label={`${seg.positionCount} ${
+                        seg.positionCount === 1 ? "position" : "positions"
+                      }`}
                     >
                       ×{seg.positionCount}
                     </Box>
@@ -320,11 +324,11 @@ export const SegmentStripUI: React.FC<SegmentStripUIProps> = ({
                   color: tone.filled ? colors.fg : colors.fg,
                   ...(tone.palette === "grey" && !tone.filled
                     ? {
-                      backgroundImage:
-                        "repeating-linear-gradient(45deg, " +
-                        `${alpha(theme.palette.text.primary, 0.18)} 0 4px,` +
-                        " transparent 4px 8px)",
-                    }
+                        backgroundImage:
+                          "repeating-linear-gradient(45deg, " +
+                          `${alpha(theme.palette.text.primary, 0.18)} 0 4px,` +
+                          " transparent 4px 8px)",
+                      }
                     : null),
                   "& .MuiChip-label": {
                     pl: 1,

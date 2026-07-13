@@ -60,7 +60,12 @@ describe("AWS naming helpers (mirror api-cli.sh conventions)", () => {
 
   it("throws ENV_NOT_CONFIGURED for an env without AWS config", () => {
     const local = BUILTIN_ENVIRONMENTS["local"];
-    for (const helper of [secretsPrefix, ssmPrefix, clusterName, bastionExportName]) {
+    for (const helper of [
+      secretsPrefix,
+      ssmPrefix,
+      clusterName,
+      bastionExportName,
+    ]) {
       expect(() => helper(local)).toThrow(EnvNotConfiguredError);
     }
   });

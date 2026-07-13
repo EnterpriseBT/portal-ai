@@ -82,7 +82,10 @@ fileUploadsRouter.post(
         userId,
         parsed.data.files
       );
-      return HttpService.success<FileUploadPresignResponsePayload>(res, payload);
+      return HttpService.success<FileUploadPresignResponsePayload>(
+        res,
+        payload
+      );
     } catch (err) {
       return next(
         err instanceof ApiError
@@ -146,7 +149,10 @@ fileUploadsRouter.post(
         organizationId,
         parsed.data.uploadId
       );
-      return HttpService.success<FileUploadConfirmResponsePayload>(res, payload);
+      return HttpService.success<FileUploadConfirmResponsePayload>(
+        res,
+        payload
+      );
     } catch (err) {
       return next(
         err instanceof ApiError
@@ -190,7 +196,9 @@ fileUploadsRouter.post(
     try {
       const organizationId = req.application?.metadata.organizationId as string;
       const userId = req.application?.metadata.userId as string;
-      const parsed = FileUploadParseSessionRequestBodySchema.safeParse(req.body);
+      const parsed = FileUploadParseSessionRequestBodySchema.safeParse(
+        req.body
+      );
       if (!parsed.success) {
         return next(
           new ApiError(
@@ -269,7 +277,9 @@ fileUploadsRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const organizationId = req.application?.metadata.organizationId as string;
-      const parsed = FileUploadSheetSliceRequestQuerySchema.safeParse(req.query);
+      const parsed = FileUploadSheetSliceRequestQuerySchema.safeParse(
+        req.query
+      );
       if (!parsed.success) {
         return next(
           new ApiError(
@@ -301,4 +311,3 @@ fileUploadsRouter.get(
     }
   }
 );
-

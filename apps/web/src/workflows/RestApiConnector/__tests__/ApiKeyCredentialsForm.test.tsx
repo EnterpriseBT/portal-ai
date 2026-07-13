@@ -35,9 +35,7 @@ describe("ApiKeyCredentialsFormUI", () => {
 
   it("calls onKeyNameChange when the user types into the keyName field", async () => {
     const onKeyNameChange = jest.fn();
-    render(
-      <ApiKeyCredentialsFormUI {...makeProps({ onKeyNameChange })} />
-    );
+    render(<ApiKeyCredentialsFormUI {...makeProps({ onKeyNameChange })} />);
     await userEvent.type(
       screen.getByLabelText(/header or query name/i),
       "X-API-Key"

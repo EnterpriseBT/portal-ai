@@ -8,9 +8,13 @@ jest.unstable_mockModule("../aws.js", () => ({
 }));
 
 const tunnelClose = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
-const openDbTunnelMock = jest.fn<
-  (def: unknown, opts: unknown) => Promise<{ localPort: number; close: () => Promise<void> }>
->();
+const openDbTunnelMock =
+  jest.fn<
+    (
+      def: unknown,
+      opts: unknown
+    ) => Promise<{ localPort: number; close: () => Promise<void> }>
+  >();
 jest.unstable_mockModule("../tunnel.js", () => ({
   openDbTunnel: openDbTunnelMock,
 }));
@@ -46,7 +50,9 @@ describe("resolveEnvConnection", () => {
     process.env.DATABASE_URL = "postgresql://u:p@localhost:5432/portalai";
     const conn = await resolveEnvConnection("local");
     const db = await conn.db();
-    expect(db.connectionString).toBe("postgresql://u:p@localhost:5432/portalai");
+    expect(db.connectionString).toBe(
+      "postgresql://u:p@localhost:5432/portalai"
+    );
     expect(getDatabaseUrlMock).not.toHaveBeenCalled();
     expect(openDbTunnelMock).not.toHaveBeenCalled();
   });
@@ -60,14 +66,20 @@ describe("resolveEnvConnection", () => {
     getDatabaseUrlMock.mockResolvedValue(
       "postgresql://portal:s3cr%40t@db.cluster.internal:5432/portalai?sslmode=require"
     );
-    openDbTunnelMock.mockResolvedValue({ localPort: 15432, close: tunnelClose });
+    openDbTunnelMock.mockResolvedValue({
+      localPort: 15432,
+      close: tunnelClose,
+    });
 
     const conn = await resolveEnvConnection("app-dev");
     const db = await conn.db();
 
     expect(openDbTunnelMock).toHaveBeenCalledWith(
       expect.objectContaining({ name: "app-dev" }),
-      expect.objectContaining({ remoteHost: "db.cluster.internal", remotePort: 5432 })
+      expect.objectContaining({
+        remoteHost: "db.cluster.internal",
+        remotePort: 5432,
+      })
     );
     // Credentials, db name and query survive; the endpoint becomes the tunnel.
     expect(db.connectionString).toBe(
@@ -88,7 +100,10 @@ describe("resolveEnvConnection", () => {
 
   it("dispose() closes the tunnel and is idempotent", async () => {
     getDatabaseUrlMock.mockResolvedValue("postgresql://u:p@h:5432/db");
-    openDbTunnelMock.mockResolvedValue({ localPort: 15432, close: tunnelClose });
+    openDbTunnelMock.mockResolvedValue({
+      localPort: 15432,
+      close: tunnelClose,
+    });
 
     const conn = await resolveEnvConnection("app-dev");
     await conn.db();

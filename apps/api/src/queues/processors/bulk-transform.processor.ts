@@ -53,9 +53,8 @@ export const bulkTransformProcessor: TypedJobProcessor<
   // `organizationId` lives on the Job row metadata; threaded through
   // the BullMQ payload for SQL scoping. (`JobData` widens metadata to
   // a Record, so the field arrives as part of `bullJob.data`.)
-  const organizationId = (
-    bullJob.data as unknown as { organizationId: string }
-  ).organizationId;
+  const organizationId = (bullJob.data as unknown as { organizationId: string })
+    .organizationId;
   // Stamped into the entity_records audit columns on each batch insert.
   // Defaults to "SYSTEM" for back-compat with jobs enqueued before the
   // tool started forwarding userId in metadata.
@@ -74,9 +73,11 @@ export const bulkTransformProcessor: TypedJobProcessor<
 
   let result: BulkTransformResult;
   if (expression.kind === "tool") {
-    const sourceFilter = (bullJob.data as unknown as {
-      sourceFilter?: { whereSqlFragment: string };
-    }).sourceFilter;
+    const sourceFilter = (
+      bullJob.data as unknown as {
+        sourceFilter?: { whereSqlFragment: string };
+      }
+    ).sourceFilter;
     result = await runToolDispatchLoop(bullJob, {
       jobId,
       sourceConnectorEntityId,
@@ -183,9 +184,8 @@ async function runToolDispatchLoop(
 
   let recordsProcessed = 0;
   let offset = 0;
-  const partialFailures: NonNullable<
-    BulkTransformResult["partialFailures"]
-  > = [];
+  const partialFailures: NonNullable<BulkTransformResult["partialFailures"]> =
+    [];
   const droppedAcc = new DroppedAccumulator();
   const maxIterations = Math.ceil(totalRecords / opts.batchSize) + 1;
   let iter = 0;
@@ -242,7 +242,8 @@ async function runToolDispatchLoop(
     });
     droppedAcc.absorb(fanOut.droppedByTarget);
 
-    recordsProcessed += dispatched.successes.length + dispatched.failures.length;
+    recordsProcessed +=
+      dispatched.successes.length + dispatched.failures.length;
     offset += opts.batchSize;
 
     for (const f of dispatched.failures) {
@@ -330,9 +331,8 @@ async function runSqlBatchLoop(
 
   let recordsProcessed = 0;
   let offset = 0;
-  const partialFailures: NonNullable<
-    BulkTransformResult["partialFailures"]
-  > = [];
+  const partialFailures: NonNullable<BulkTransformResult["partialFailures"]> =
+    [];
   const droppedAcc = new DroppedAccumulator();
   const maxIterations = Math.ceil(totalRecords / opts.batchSize) + 1;
   let iter = 0;
@@ -642,9 +642,7 @@ function finalize(args: {
       ? args.partialFailures.slice(0, MAX_PARTIAL_FAILURES)
       : args.partialFailures;
   const partialFailuresOmitted =
-    totalFailed > MAX_PARTIAL_FAILURES
-      ? totalFailed - MAX_PARTIAL_FAILURES
-      : 0;
+    totalFailed > MAX_PARTIAL_FAILURES ? totalFailed - MAX_PARTIAL_FAILURES : 0;
   return {
     recordsProcessed: args.recordsProcessed,
     recordsFailed: totalFailed,

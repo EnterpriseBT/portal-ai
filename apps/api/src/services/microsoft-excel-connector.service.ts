@@ -40,10 +40,7 @@ import { xlsxToCache } from "./workbook-adapters/xlsx.adapter.js";
 import { environment } from "../environment.js";
 import { workbookCacheKey } from "../utils/connector-cache-keys.util.js";
 import { decryptCredentials } from "../utils/crypto.util.js";
-import {
-  OAuthStateError,
-  verifyState,
-} from "../utils/oauth-state.util.js";
+import { OAuthStateError, verifyState } from "../utils/oauth-state.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import {
@@ -117,11 +114,15 @@ export class MicrosoftExcelConnectorService {
 
     const tokens = await callExchangeOrApiError(input.code);
     const tenantId = decodeTenantIdFromIdToken(tokens.idToken);
-    const profile = await callFetchProfileOrApiError(tokens.accessToken, tenantId);
-
-    const definition = await DbService.repository.connectorDefinitions.findBySlug(
-      MICROSOFT_EXCEL_SLUG
+    const profile = await callFetchProfileOrApiError(
+      tokens.accessToken,
+      tenantId
     );
+
+    const definition =
+      await DbService.repository.connectorDefinitions.findBySlug(
+        MICROSOFT_EXCEL_SLUG
+      );
     if (!definition) {
       throw new ApiError(
         500,
@@ -148,7 +149,9 @@ export class MicrosoftExcelConnectorService {
     let connectorInstanceId: string;
     if (reconnectTargetId) {
       const target =
-        await DbService.repository.connectorInstances.findById(reconnectTargetId);
+        await DbService.repository.connectorInstances.findById(
+          reconnectTargetId
+        );
       if (
         !target ||
         target.organizationId !== organizationId ||
@@ -306,7 +309,9 @@ export class MicrosoftExcelConnectorService {
       });
       await writer.finalize("ready");
     } catch (err) {
-      await writer.fail(err instanceof Error ? err.message : "xlsx parse failed");
+      await writer.fail(
+        err instanceof Error ? err.message : "xlsx parse failed"
+      );
       void WorkbookCacheService.deleteSession(prefix).catch(() => {});
       throw err;
     }
@@ -456,10 +461,7 @@ export class MicrosoftExcelConnectorService {
         `Connector instance not found: ${connectorInstanceId}`
       );
     }
-    const cfg = instance.config as
-      | { driveItemId?: string }
-      | null
-      | undefined;
+    const cfg = instance.config as { driveItemId?: string } | null | undefined;
     const driveItemId = cfg?.driveItemId;
     if (!driveItemId) {
       throw new ApiError(
@@ -493,10 +495,7 @@ export class MicrosoftExcelConnectorService {
       throw mapGraphError(err);
     }
     const nodeStream = MicrosoftGraphService.toNodeReadable(download.stream);
-    const prefix = workbookCacheKey(
-      MICROSOFT_EXCEL_SLUG,
-      connectorInstanceId
-    );
+    const prefix = workbookCacheKey(MICROSOFT_EXCEL_SLUG, connectorInstanceId);
     await WorkbookCacheService.deleteSession(prefix);
     const writer = await WorkbookCacheService.beginSession(prefix);
     let nextSheetIdx = 0;
@@ -510,7 +509,9 @@ export class MicrosoftExcelConnectorService {
       });
       await writer.finalize("ready");
     } catch (err) {
-      await writer.fail(err instanceof Error ? err.message : "xlsx parse failed");
+      await writer.fail(
+        err instanceof Error ? err.message : "xlsx parse failed"
+      );
       void WorkbookCacheService.deleteSession(prefix).catch(() => {});
       throw err;
     }
@@ -548,10 +549,7 @@ export class MicrosoftExcelConnectorService {
         "Connector instance belongs to a different organization"
       );
     }
-    const cfg = instance.config as
-      | { driveItemId?: string }
-      | null
-      | undefined;
+    const cfg = instance.config as { driveItemId?: string } | null | undefined;
     const driveItemId = cfg?.driveItemId;
     if (!driveItemId) {
       throw new ApiError(
@@ -561,9 +559,8 @@ export class MicrosoftExcelConnectorService {
       );
     }
 
-    const accessToken = await MicrosoftAccessTokenCacheService.getOrRefresh(
-      connectorInstanceId
-    );
+    const accessToken =
+      await MicrosoftAccessTokenCacheService.getOrRefresh(connectorInstanceId);
 
     const head = await MicrosoftGraphService.headWorkbook(
       accessToken,
@@ -696,24 +693,12 @@ function mapGraphError(err: unknown): ApiError {
           details
         );
       case "search_failed":
-        return new ApiError(
-          502,
-          ApiCode.MICROSOFT_EXCEL_LIST_FAILED,
-          message
-        );
+        return new ApiError(502, ApiCode.MICROSOFT_EXCEL_LIST_FAILED, message);
       case "head_failed":
       case "download_failed":
-        return new ApiError(
-          502,
-          ApiCode.MICROSOFT_EXCEL_FETCH_FAILED,
-          message
-        );
+        return new ApiError(502, ApiCode.MICROSOFT_EXCEL_FETCH_FAILED, message);
       default:
-        return new ApiError(
-          502,
-          ApiCode.MICROSOFT_EXCEL_FETCH_FAILED,
-          message
-        );
+        return new ApiError(502, ApiCode.MICROSOFT_EXCEL_FETCH_FAILED, message);
     }
   }
   return new ApiError(
@@ -723,9 +708,7 @@ function mapGraphError(err: unknown): ApiError {
   );
 }
 
-function readCredentialsObject(
-  value: unknown
-): Record<string, unknown> | null {
+function readCredentialsObject(value: unknown): Record<string, unknown> | null {
   if (typeof value === "object" && value !== null) {
     return value as Record<string, unknown>;
   }
@@ -819,11 +802,7 @@ async function callExchangeOrApiError(code: string): Promise<TokenBundle> {
           message
         );
       }
-      throw new ApiError(
-        502,
-        ApiCode.MICROSOFT_OAUTH_EXCHANGE_FAILED,
-        message
-      );
+      throw new ApiError(502, ApiCode.MICROSOFT_OAUTH_EXCHANGE_FAILED, message);
     }
     throw err;
   }

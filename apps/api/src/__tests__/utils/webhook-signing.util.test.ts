@@ -16,7 +16,9 @@ describe("webhook-signing.util", () => {
 
     const headers = signRequest(secret, body, { now, webhookId });
 
-    expect(headers["X-Portalai-Timestamp"]).toBe(String(Math.floor(now / 1000)));
+    expect(headers["X-Portalai-Timestamp"]).toBe(
+      String(Math.floor(now / 1000))
+    );
     expect(headers["X-Portalai-Webhook-Id"]).toBe(webhookId);
 
     // Recompute the signature independently and assert byte-for-byte match.

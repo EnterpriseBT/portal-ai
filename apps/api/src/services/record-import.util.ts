@@ -146,14 +146,13 @@ export async function importRows(
           toUpsert as any,
           tx
         );
-        const stmt = await wideTableStatementCache.get(
-          connectorEntityId,
-          tx
-        );
+        const stmt = await wideTableStatementCache.get(connectorEntityId, tx);
         const mappingsForProjection = buildMappingsForProjection(stmt.columns);
         await DbService.repository.wideTable.upsertMany(
           connectorEntityId,
-          (toUpsert as any[]).map((r) => projectToWideRow(r, mappingsForProjection)),
+          (toUpsert as any[]).map((r) =>
+            projectToWideRow(r, mappingsForProjection)
+          ),
           tx
         );
       });

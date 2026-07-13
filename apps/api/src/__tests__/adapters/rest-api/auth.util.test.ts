@@ -34,9 +34,9 @@ describe("applyAuth — apiKey, header placement", () => {
     const creds: ApiCredentials = { mode: "apiKey", value: "secret" };
     const result = applyAuth("https://x.test/users", {}, auth, creds);
     expect(result.url).toBe("https://x.test/users");
-    expect(
-      (result.init.headers as Record<string, string>)["X-API-Key"]
-    ).toBe("secret");
+    expect((result.init.headers as Record<string, string>)["X-API-Key"]).toBe(
+      "secret"
+    );
   });
 
   it("preserves caller-supplied headers when adding the auth header", () => {
@@ -114,9 +114,9 @@ describe("applyAuth — bearer", () => {
     const auth: ApiAuthConfig = { mode: "bearer" };
     const creds: ApiCredentials = { mode: "bearer", token: "tok" };
     const result = applyAuth("https://x.test", {}, auth, creds);
-    expect(
-      (result.init.headers as Record<string, string>).Authorization
-    ).toBe("Bearer tok");
+    expect((result.init.headers as Record<string, string>).Authorization).toBe(
+      "Bearer tok"
+    );
   });
 
   it("overwrites a caller-supplied Authorization header", () => {
@@ -126,9 +126,9 @@ describe("applyAuth — bearer", () => {
       headers: { Authorization: "Basic stale" },
     };
     const result = applyAuth("https://x.test", init, auth, creds);
-    expect(
-      (result.init.headers as Record<string, string>).Authorization
-    ).toBe("Bearer tok");
+    expect((result.init.headers as Record<string, string>).Authorization).toBe(
+      "Bearer tok"
+    );
   });
 });
 
@@ -142,9 +142,9 @@ describe("applyAuth — basic", () => {
     };
     const result = applyAuth("https://x.test", {}, auth, creds);
     const expected = "Basic " + Buffer.from("u:p", "utf8").toString("base64");
-    expect(
-      (result.init.headers as Record<string, string>).Authorization
-    ).toBe(expected);
+    expect((result.init.headers as Record<string, string>).Authorization).toBe(
+      expected
+    );
   });
 
   it("produces a single-line base64 with no embedded newlines", () => {
@@ -157,7 +157,8 @@ describe("applyAuth — basic", () => {
       password: "averyverylongpassword".repeat(4),
     };
     const result = applyAuth("https://x.test", {}, auth, creds);
-    const header = (result.init.headers as Record<string, string>).Authorization;
+    const header = (result.init.headers as Record<string, string>)
+      .Authorization;
     expect(header).toMatch(/^Basic [A-Za-z0-9+/=]+$/);
     expect(header).not.toContain("\n");
   });

@@ -41,9 +41,14 @@ export interface QueryResultDataBlockUIProps {
   error: string | null;
 }
 
-export const QueryResultDataBlockUI: React.FC<
-  QueryResultDataBlockUIProps
-> = ({ rowCount, truncated, rows, spec, loading, error }) => {
+export const QueryResultDataBlockUI: React.FC<QueryResultDataBlockUIProps> = ({
+  rowCount,
+  truncated,
+  rows,
+  spec,
+  loading,
+  error,
+}) => {
   // "N+" when the true total is only a lower bound (#147).
   const rowCountLabel = `${rowCount.toLocaleString()}${truncated ? "+" : ""}`;
   if (error) {
@@ -134,9 +139,7 @@ export const QueryResultDataBlock: React.FC<QueryResultDataBlockProps> = ({
     if (code === "READ_HANDLE_EXPIRED") {
       return "The chart's data has expired from cache. Re-run the original query to refresh.";
     }
-    return query.error instanceof Error
-      ? query.error.message
-      : "Unknown error";
+    return query.error instanceof Error ? query.error.message : "Unknown error";
   })();
 
   return (

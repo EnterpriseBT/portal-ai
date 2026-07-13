@@ -2,9 +2,8 @@ import { jest } from "@jest/globals";
 import type { Toolpack } from "@portalai/core/contracts";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { ToolPackChipWithMetadataUI } = await import(
-  "../components/ToolPackChipWithMetadata.component"
-);
+const { ToolPackChipWithMetadataUI } =
+  await import("../components/ToolPackChipWithMetadata.component");
 
 const builtinPack: Toolpack = {
   id: "builtin:data_query",

@@ -231,8 +231,8 @@ connectorInstanceRouter.get(
       );
       const definitions = definitionIds.length
         ? await DbService.repository.connectorDefinitions.findMany(
-          inArray(connectorDefinitions.id, definitionIds)
-        )
+            inArray(connectorDefinitions.id, definitionIds)
+          )
         : [];
       const slugByDefinitionId = new Map(
         definitions.map((d) => [d.id, d.slug])
@@ -261,12 +261,12 @@ connectorInstanceRouter.get(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to list connector instances"
-          )
+              500,
+              ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to list connector instances"
+            )
       );
     }
   }
@@ -353,24 +353,23 @@ connectorInstanceRouter.get(
       // connectors. For sandbox/file-upload (and anything else without
       // `sync` in `capabilityFlags`), the detail view has no sync button
       // so the fields stay `undefined` and we skip the adapter calls.
-      const supportsSync =
-        connectorDefinition?.capabilityFlags?.sync === true;
+      const supportsSync = connectorDefinition?.capabilityFlags?.sync === true;
       const [syncEligible, identityWarnings] =
         supportsSync && connectorDefinition
           ? await Promise.all([
-            computeSyncEligible(
-              connectorInstance as unknown as Parameters<
-                typeof computeSyncEligible
-              >[0],
-              connectorDefinition.slug
-            ),
-            computeIdentityWarnings(
-              connectorInstance as unknown as Parameters<
-                typeof computeIdentityWarnings
-              >[0],
-              connectorDefinition.slug
-            ),
-          ])
+              computeSyncEligible(
+                connectorInstance as unknown as Parameters<
+                  typeof computeSyncEligible
+                >[0],
+                connectorDefinition.slug
+              ),
+              computeIdentityWarnings(
+                connectorInstance as unknown as Parameters<
+                  typeof computeIdentityWarnings
+                >[0],
+                connectorDefinition.slug
+              ),
+            ])
           : [undefined, undefined];
 
       return HttpService.success<ConnectorInstanceGetResponsePayload>(res, {
@@ -393,12 +392,12 @@ connectorInstanceRouter.get(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to fetch connector instance"
-          )
+              500,
+              ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch connector instance"
+            )
       );
     }
   }
@@ -491,12 +490,12 @@ connectorInstanceRouter.get(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to fetch connector instance impact"
-          )
+              500,
+              ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch connector instance impact"
+            )
       );
     }
   }
@@ -561,12 +560,12 @@ connectorInstanceRouter.get(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.JOB_FETCH_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to fetch running jobs"
-          )
+              500,
+              ApiCode.JOB_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch running jobs"
+            )
       );
     }
   }
@@ -772,12 +771,12 @@ connectorInstanceRouter.post(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.CONNECTOR_INSTANCE_CREATE_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to create connector instance"
-          )
+              500,
+              ApiCode.CONNECTOR_INSTANCE_CREATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to create connector instance"
+            )
       );
     }
   }
@@ -862,10 +861,10 @@ connectorInstanceRouter.post(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.REST_API_OPERATION_FAILED,
-            `Failed to probe endpoint draft: ${(error as Error).message}`
-          )
+              500,
+              ApiCode.REST_API_OPERATION_FAILED,
+              `Failed to probe endpoint draft: ${(error as Error).message}`
+            )
       );
     }
   }
@@ -946,10 +945,10 @@ connectorInstanceRouter.post(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.REST_API_OPERATION_FAILED,
-            `Failed to preview endpoint: ${(error as Error).message}`
-          )
+              500,
+              ApiCode.REST_API_OPERATION_FAILED,
+              `Failed to preview endpoint: ${(error as Error).message}`
+            )
       );
     }
   }
@@ -1014,7 +1013,9 @@ connectorInstanceRouter.post(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const parsed = SuggestTransformRequestBodySchema.safeParse(req.body ?? {});
+      const parsed = SuggestTransformRequestBodySchema.safeParse(
+        req.body ?? {}
+      );
       if (!parsed.success) {
         throw new ApiError(
           400,
@@ -1132,18 +1133,16 @@ connectorInstanceRouter.post(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.REST_API_OPERATION_FAILED,
-            `Failed to suggest transform: ${(error as Error).message}`
-          )
+              500,
+              ApiCode.REST_API_OPERATION_FAILED,
+              `Failed to suggest transform: ${(error as Error).message}`
+            )
       );
     }
   }
 );
 
-type SuggestionValidation =
-  | { valid: true }
-  | { valid: false; reason: string };
+type SuggestionValidation = { valid: true } | { valid: false; reason: string };
 
 /**
  * Strict validation for a suggested JSONata expression against the
@@ -1163,7 +1162,7 @@ type SuggestionValidation =
  */
 async function validateSuggestion(
   expression: string,
-  response: unknown,
+  response: unknown
 ): Promise<SuggestionValidation> {
   let compiled: ReturnType<typeof jsonata>;
   try {
@@ -1200,7 +1199,7 @@ async function validateSuggestion(
   }
   if (
     !evaluated.every(
-      (r) => typeof r === "object" && r !== null && !Array.isArray(r),
+      (r) => typeof r === "object" && r !== null && !Array.isArray(r)
     )
   ) {
     return {
@@ -1341,12 +1340,12 @@ connectorInstanceRouter.delete(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.CONNECTOR_INSTANCE_DELETE_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to delete connector instance"
-          )
+              500,
+              ApiCode.CONNECTOR_INSTANCE_DELETE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to delete connector instance"
+            )
       );
     }
   }
@@ -1496,17 +1495,17 @@ connectorInstanceRouter.patch(
       logger.info({ id }, "Connector instance updated");
       const updatedDefinition = updated
         ? await DbService.repository.connectorDefinitions.findById(
-          updated.connectorDefinitionId
-        )
+            updated.connectorDefinitionId
+          )
         : null;
       return HttpService.success(res, {
         connectorInstance: updated
           ? (redactInstance({
-            instance: updated as unknown as Parameters<
-              typeof redactInstance
-            >[0]["instance"],
-            slug: updatedDefinition?.slug ?? "",
-          }) as unknown as ConnectorInstanceApi)
+              instance: updated as unknown as Parameters<
+                typeof redactInstance
+              >[0]["instance"],
+              slug: updatedDefinition?.slug ?? "",
+            }) as unknown as ConnectorInstanceApi)
           : null,
       });
     } catch (error) {
@@ -1518,12 +1517,12 @@ connectorInstanceRouter.patch(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.CONNECTOR_INSTANCE_UPDATE_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to update connector instance"
-          )
+              500,
+              ApiCode.CONNECTOR_INSTANCE_UPDATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to update connector instance"
+            )
       );
     }
   }
@@ -1649,10 +1648,7 @@ connectorInstanceRouter.post(
       }
 
       const params = (req.body ?? {}) as TestConnectionParams;
-      const result = await adapter.testConnection(
-        instance as never,
-        params
-      );
+      const result = await adapter.testConnection(instance as never, params);
 
       return HttpService.success(res, result, 200);
     } catch (error) {
@@ -1664,12 +1660,12 @@ connectorInstanceRouter.post(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to run test-connection"
-          )
+              500,
+              ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to run test-connection"
+            )
       );
     }
   }
@@ -1718,12 +1714,12 @@ connectorInstanceRouter.post(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.JOB_ENQUEUE_FAILED,
-            error instanceof Error
-              ? error.message
-              : "Failed to enqueue sync job"
-          )
+              500,
+              ApiCode.JOB_ENQUEUE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to enqueue sync job"
+            )
       );
     }
   }

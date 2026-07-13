@@ -21,7 +21,10 @@ const RECORDS = Array.from({ length: N }, (_, i) => {
   };
 });
 
-async function* asStream(records: Record<string, unknown>[], batchSize: number) {
+async function* asStream(
+  records: Record<string, unknown>[],
+  batchSize: number
+) {
   for (let i = 0; i < records.length; i += batchSize) {
     yield records.slice(i, i + batchSize);
   }
@@ -101,29 +104,32 @@ const closeEq = (a: number, b: number) => {
 describe("technicalIndicatorStream — equals the array path row-for-row", () => {
   const indicators = Object.keys(EXTRACTORS) as IndicatorName[];
 
-  it.each(indicators)("%s matches AnalyticsService.technicalIndicator", async (indicator) => {
-    const params = PARAMS[indicator] ?? {};
-    const whole = AnalyticsService.technicalIndicator({
-      records: RECORDS,
-      dateColumn: "date",
-      valueColumn: "value",
-      indicator,
-      params,
-    });
-    const streamed = await collect(RECORDS, indicator, 7, params);
+  it.each(indicators)(
+    "%s matches AnalyticsService.technicalIndicator",
+    async (indicator) => {
+      const params = PARAMS[indicator] ?? {};
+      const whole = AnalyticsService.technicalIndicator({
+        records: RECORDS,
+        dateColumn: "date",
+        valueColumn: "value",
+        indicator,
+        params,
+      });
+      const streamed = await collect(RECORDS, indicator, 7, params);
 
-    // Same number of emitted rows, right-edge date alignment preserved.
-    expect(streamed).toHaveLength(whole.values.length);
-    expect(streamed.map((r) => r.date)).toEqual(whole.dates);
+      // Same number of emitted rows, right-edge date alignment preserved.
+      expect(streamed).toHaveLength(whole.values.length);
+      expect(streamed.map((r) => r.date)).toEqual(whole.dates);
 
-    const ex = EXTRACTORS[indicator];
-    whole.values.forEach((v, i) => {
-      const a = ex.arr(v as any);
-      const b = ex.row(streamed[i] as any);
-      expect(b).toHaveLength(a.length);
-      a.forEach((av, j) => closeEq(b[j], av));
-    });
-  });
+      const ex = EXTRACTORS[indicator];
+      whole.values.forEach((v, i) => {
+        const a = ex.arr(v as any);
+        const b = ex.row(streamed[i] as any);
+        expect(b).toHaveLength(a.length);
+        a.forEach((av, j) => closeEq(b[j], av));
+      });
+    }
+  );
 
   it("carries the source _record_id tiebreaker onto output rows", async () => {
     const streamed = await collect(RECORDS, "SMA");

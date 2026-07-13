@@ -63,9 +63,7 @@ export const ConnectorInstanceApiSchema = ConnectorInstanceSchema.omit({
    * (skipped to avoid n+1 plan lookups). See
    * `docs/RECORD_IDENTITY_REVIEW.spec.md`.
    */
-  identityWarnings: z
-    .array(z.object({ regionId: z.string() }))
-    .optional(),
+  identityWarnings: z.array(z.object({ regionId: z.string() })).optional(),
 });
 
 export type ConnectorInstanceApi = z.infer<typeof ConnectorInstanceApiSchema>;

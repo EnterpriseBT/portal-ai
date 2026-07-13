@@ -965,11 +965,7 @@ describe("useFileUploadWorkflow — binding edits", () => {
   test("matches binding by serialized sourceLocator for both byHeaderName and byPositionIndex", async () => {
     const hook = await seedInterpretedState();
     act(() =>
-      hook.result.current.onToggleBindingExcluded(
-        "region-a",
-        "pos:row:3",
-        true
-      )
+      hook.result.current.onToggleBindingExcluded("region-a", "pos:row:3", true)
     );
     const draftBinding = hook.result.current.regions
       .find((r) => r.id === "region-a")
@@ -1029,9 +1025,7 @@ describe("useFileUploadWorkflow — binding edits", () => {
   });
 
   test("is a no-op when no plan has been produced yet", () => {
-    const { result } = renderHook(() =>
-      useFileUploadWorkflow(makeCallbacks())
-    );
+    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks()));
     // No interpret has run; state.plan is null.
     act(() =>
       result.current.onUpdateBinding("region-a", "header:row:Email", {
@@ -1193,11 +1187,9 @@ describe("useFileUploadWorkflow — binding edits", () => {
     test("`cellValueField` patch updates cellValueField.columnDefinitionId on both regions and plan", async () => {
       const hook = await seedPivotState();
       act(() =>
-        hook.result.current.onUpdateBinding(
-          "region-pivot",
-          "cellValueField",
-          { columnDefinitionId: "coldef_amount_user_pinned" }
-        )
+        hook.result.current.onUpdateBinding("region-pivot", "cellValueField", {
+          columnDefinitionId: "coldef_amount_user_pinned",
+        })
       );
       const region = hook.result.current.regions.find(
         (r) => r.id === "region-pivot"
@@ -1308,11 +1300,9 @@ describe("useFileUploadWorkflow — binding edits", () => {
     test("`cellValueField` sourceField patch lands on cellValueField.name + flips nameSource to 'user'", async () => {
       const hook = await seedPivotState();
       act(() =>
-        hook.result.current.onUpdateBinding(
-          "region-pivot",
-          "cellValueField",
-          { sourceField: "value" }
-        )
+        hook.result.current.onUpdateBinding("region-pivot", "cellValueField", {
+          sourceField: "value",
+        })
       );
       const region = hook.result.current.regions.find(
         (r) => r.id === "region-pivot"

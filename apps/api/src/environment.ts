@@ -57,7 +57,8 @@ export const environment = {
   // disable without redeploying: SSRF agent stops resolving+filtering
   // outbound IPs; signing stops appending HMAC headers. The static
   // URL refinement at registration is unaffected by either flag.
-  TOOLPACK_DISABLE_SSRF_FILTER: process.env.TOOLPACK_DISABLE_SSRF_FILTER === "true",
+  TOOLPACK_DISABLE_SSRF_FILTER:
+    process.env.TOOLPACK_DISABLE_SSRF_FILTER === "true",
   TOOLPACK_DISABLE_SIGNING: process.env.TOOLPACK_DISABLE_SIGNING === "true",
   // ── Google OAuth (Phase A: docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md)
   //    Per-env Google OAuth2 client used by the google-sheets connector.
@@ -76,8 +77,7 @@ export const environment = {
   MICROSOFT_OAUTH_CLIENT_ID: process.env.MICROSOFT_OAUTH_CLIENT_ID || "",
   MICROSOFT_OAUTH_CLIENT_SECRET:
     process.env.MICROSOFT_OAUTH_CLIENT_SECRET || "",
-  MICROSOFT_OAUTH_REDIRECT_URI:
-    process.env.MICROSOFT_OAUTH_REDIRECT_URI || "",
+  MICROSOFT_OAUTH_REDIRECT_URI: process.env.MICROSOFT_OAUTH_REDIRECT_URI || "",
   MICROSOFT_OAUTH_TENANT: process.env.MICROSOFT_OAUTH_TENANT || "common",
   // Redis configuration (BullMQ + Pub/Sub)
   REDIS_URL: process.env.REDIS_URL || "redis://localhost:6380",

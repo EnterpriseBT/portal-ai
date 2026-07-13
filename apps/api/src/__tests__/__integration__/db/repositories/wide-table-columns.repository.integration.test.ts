@@ -306,8 +306,10 @@ describe("WideTableColumnsRepository Integration Tests", () => {
     expect(all[0]!.id).toBe(row.id);
 
     // findRetiredByConnectorEntityId returns it specifically.
-    const retiredRows =
-      await repo.findRetiredByConnectorEntityId(connectorEntityId, db);
+    const retiredRows = await repo.findRetiredByConnectorEntityId(
+      connectorEntityId,
+      db
+    );
     expect(retiredRows).toHaveLength(1);
 
     // Inserting a new row with the same column_name still fails because
@@ -336,7 +338,7 @@ describe("WideTableColumnsRepository Integration Tests", () => {
     const colsResult = await db.execute<{ column_name: string }>(
       `SELECT column_name FROM information_schema.columns WHERE table_name = 'wide_table_columns'` as any
     );
-    const cols = ((colsResult as unknown) as { column_name: string }[]) ?? [];
+    const cols = (colsResult as unknown as { column_name: string }[]) ?? [];
     const colNames = new Set(cols.map((c) => c.column_name));
     for (const expected of [
       "id",
@@ -360,8 +362,7 @@ describe("WideTableColumnsRepository Integration Tests", () => {
     const idxResult = await db.execute<{ indexname: string }>(
       `SELECT indexname FROM pg_indexes WHERE tablename = 'wide_table_columns'` as any
     );
-    const idxs =
-      ((idxResult as unknown) as { indexname: string }[]) ?? [];
+    const idxs = (idxResult as unknown as { indexname: string }[]) ?? [];
     const idxNames = new Set(idxs.map((i) => i.indexname));
     expect(idxNames.has("wide_table_columns_entity_column_unique")).toBe(true);
     expect(idxNames.has("wide_table_columns_entity_field_mapping_unique")).toBe(

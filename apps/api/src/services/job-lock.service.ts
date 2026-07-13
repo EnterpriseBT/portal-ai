@@ -158,9 +158,12 @@ export class JobLockService {
     // Enumerate the requested entity ids each locking job blocks.
     const blockedSet = new Set<string>();
     for (const job of entityLockingJobs) {
-      const metadataIds = ((job.metadata as {
-        targetConnectorEntityIds?: string[];
-      })?.targetConnectorEntityIds) ?? [];
+      const metadataIds =
+        (
+          job.metadata as {
+            targetConnectorEntityIds?: string[];
+          }
+        )?.targetConnectorEntityIds ?? [];
       for (const id of metadataIds) {
         if (liveEntityIds.includes(id)) blockedSet.add(id);
       }
@@ -172,19 +175,14 @@ export class JobLockService {
         : `Target entities ${blockedEntities
             .map((e) => `'${e}'`)
             .join(", ")} are locked by in-flight bulk jobs`;
-    throw new ApiError(
-      409,
-      ApiCode.BULK_JOB_TARGET_LOCKED,
-      messageLead,
-      {
-        recommendation:
-          ApiCodeDefaultRecommendation[ApiCode.BULK_JOB_TARGET_LOCKED],
-        details: {
-          lockingJobs: entityLockingJobs.map(toSummary),
-          blockedEntities,
-        },
-      }
-    );
+    throw new ApiError(409, ApiCode.BULK_JOB_TARGET_LOCKED, messageLead, {
+      recommendation:
+        ApiCodeDefaultRecommendation[ApiCode.BULK_JOB_TARGET_LOCKED],
+      details: {
+        lockingJobs: entityLockingJobs.map(toSummary),
+        blockedEntities,
+      },
+    });
   }
 
   /**

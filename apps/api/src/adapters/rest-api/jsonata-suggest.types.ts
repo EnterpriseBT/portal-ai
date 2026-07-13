@@ -60,7 +60,7 @@ export class JsonataSuggestError extends Error {
   constructor(
     reason: JsonataSuggestErrorReason,
     message: string,
-    options?: ErrorOptions,
+    options?: ErrorOptions
   ) {
     super(`[jsonata-suggest:${reason}] ${message}`, options);
     this.reason = reason;

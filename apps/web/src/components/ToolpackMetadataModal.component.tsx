@@ -22,11 +22,9 @@ export interface ToolpackMetadataModalUIProps {
  * full list of tools — including each tool's parameter schema and
  * any registered examples. Renders sparsely if the metadata is sparse.
  */
-export const ToolpackMetadataModalUI: React.FC<ToolpackMetadataModalUIProps> = ({
-  toolpack,
-  open,
-  onClose,
-}) => {
+export const ToolpackMetadataModalUI: React.FC<
+  ToolpackMetadataModalUIProps
+> = ({ toolpack, open, onClose }) => {
   return (
     <Dialog
       open={open && toolpack !== null}
@@ -71,8 +69,7 @@ export const ToolpackMetadataModalUI: React.FC<ToolpackMetadataModalUIProps> = (
               {toolpack.kind === "custom" && (
                 <Box
                   sx={{
-                    border: (theme) =>
-                      `1px solid ${theme.palette.divider}`,
+                    border: (theme) => `1px solid ${theme.palette.divider}`,
                     borderRadius: 1,
                     p: 2,
                   }}
@@ -100,9 +97,7 @@ export const ToolpackMetadataModalUI: React.FC<ToolpackMetadataModalUIProps> = (
                       {toolpack.authHeadersStatus.has ? "set" : "not set"}
                       {" • "}
                       Last refreshed:{" "}
-                      {new Date(
-                        toolpack.schemaFetchedAt
-                      ).toLocaleString()}
+                      {new Date(toolpack.schemaFetchedAt).toLocaleString()}
                     </Typography>
                   </Stack>
                 </Box>

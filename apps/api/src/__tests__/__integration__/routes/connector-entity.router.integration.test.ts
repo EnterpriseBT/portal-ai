@@ -830,9 +830,7 @@ describe("Connector Entity Router", () => {
         `SELECT column_name FROM information_schema.columns WHERE table_name = 'er__${newId}'` as any
       );
       const colNames = new Set(
-        ((cols as unknown) as { column_name: string }[]).map(
-          (r) => r.column_name
-        )
+        (cols as unknown as { column_name: string }[]).map((r) => r.column_name)
       );
       expect(colNames).toEqual(
         new Set([

@@ -10,11 +10,7 @@ import {
   TextInput,
   Typography,
 } from "@portalai/core/ui";
-import type {
-  AxisMember,
-  Segment,
-  Terminator,
-} from "@portalai/core/contracts";
+import type { AxisMember, Segment, Terminator } from "@portalai/core/contracts";
 
 import { TerminatorFormUI } from "./TerminatorForm.component";
 import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
@@ -271,7 +267,10 @@ export const SegmentEditPopoverUI: React.FC<SegmentEditPopoverUIProps> = ({
                           )
                         )
                       }
-                      placeholder={cell || `(unlabeled — ${axis === "row" ? "column" : "row"} ${i + 1})`}
+                      placeholder={
+                        cell ||
+                        `(unlabeled — ${axis === "row" ? "column" : "row"} ${i + 1})`
+                      }
                       helperText={
                         skipped
                           ? "Skipped — column is omitted from records"

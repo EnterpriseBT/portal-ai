@@ -39,7 +39,10 @@ describe("describeVars", () => {
     expect(out.region).toBe("us-east-1");
     expect(out.entries).toHaveLength(CATALOG.length);
     const db = out.entries.find((e) => e.key === "DATABASE_URL")!;
-    expect(db).toMatchObject({ kind: "secret", path: "portalai/dev/database-url" });
+    expect(db).toMatchObject({
+      kind: "secret",
+      path: "portalai/dev/database-url",
+    });
     expect(mockGetSecret).not.toHaveBeenCalled();
     expect(mockGetParam).not.toHaveBeenCalled();
   });
@@ -112,7 +115,11 @@ describe("setVar", () => {
     const out = await setVar(appDev, "TAVILY_API_KEY", "tvly-new-secret", {
       yes: true,
     });
-    expect(out).toEqual({ key: "TAVILY_API_KEY", updated: true, created: false });
+    expect(out).toEqual({
+      key: "TAVILY_API_KEY",
+      updated: true,
+      created: false,
+    });
     expect(mocks.putSecret).toHaveBeenCalledWith(
       appDev,
       "tavily-api-key",
@@ -130,9 +137,14 @@ describe("setVar", () => {
 
   it("writes an SSM param with its catalog type", async () => {
     mocks.putParam.mockResolvedValue(undefined);
-    const out = await setVar(appDev, "CORS_ORIGIN", "https://app-dev.portalsai.io", {
-      yes: true,
-    });
+    const out = await setVar(
+      appDev,
+      "CORS_ORIGIN",
+      "https://app-dev.portalsai.io",
+      {
+        yes: true,
+      }
+    );
     expect(out).toEqual({ key: "CORS_ORIGIN", updated: true, created: false });
     expect(mocks.putParam).toHaveBeenCalledWith(
       appDev,
@@ -157,7 +169,10 @@ describe("setVar", () => {
     mocks.putSecret.mockClear();
     mocks.assertOperationAllowed.mockClear();
     await expect(
-      setVar(appDev, "TAVILY_API_KEY", "-", { yes: true, stdin: async () => "  " })
+      setVar(appDev, "TAVILY_API_KEY", "-", {
+        yes: true,
+        stdin: async () => "  ",
+      })
     ).rejects.toThrow(/empty value/i);
     expect(mocks.assertOperationAllowed).not.toHaveBeenCalled();
     expect(mocks.putSecret).not.toHaveBeenCalled();
@@ -189,8 +204,17 @@ describe("applyVars", () => {
       "NAMESPACE",
       "TAVILY_API_KEY",
     ]);
-    expect(mocks.putSecret).toHaveBeenCalledWith(appDev, "tavily-api-key", "tvly-quoted");
-    expect(mocks.putParam).toHaveBeenCalledWith(appDev, "cors-origin", "https://x", "String");
+    expect(mocks.putSecret).toHaveBeenCalledWith(
+      appDev,
+      "tavily-api-key",
+      "tvly-quoted"
+    );
+    expect(mocks.putParam).toHaveBeenCalledWith(
+      appDev,
+      "cors-origin",
+      "https://x",
+      "String"
+    );
     expect(mocks.recordAudit).toHaveBeenCalledTimes(3);
     expect(mocks.assertOperationAllowed).toHaveBeenCalledTimes(1); // guard once
   });

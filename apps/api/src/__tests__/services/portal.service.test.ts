@@ -445,9 +445,8 @@ describe("PortalService", () => {
   describe("buildStationContext", () => {
     it("populates connectorInstances + entityCapabilities when entity_management is enabled", async () => {
       // Re-import to pick up the freshly-mocked repos.
-      const { buildStationContext } = await import(
-        "../../services/portal.service.js"
-      );
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
 
       mockLoadStation.mockResolvedValueOnce(STATION_DATA);
       mockStationInstancesFindByStationId.mockResolvedValueOnce([
@@ -487,9 +486,8 @@ describe("PortalService", () => {
     });
 
     it("omits connectorInstances + entityCapabilities when entity_management is not enabled", async () => {
-      const { buildStationContext } = await import(
-        "../../services/portal.service.js"
-      );
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
 
       mockLoadStation.mockResolvedValueOnce(STATION_DATA);
 
@@ -507,9 +505,8 @@ describe("PortalService", () => {
     });
 
     it("reflects newly-attached connectors on a second call (no stale caching)", async () => {
-      const { buildStationContext } = await import(
-        "../../services/portal.service.js"
-      );
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
 
       mockLoadStation.mockResolvedValue(STATION_DATA);
       mockResolveEntityCapabilities.mockResolvedValue({});

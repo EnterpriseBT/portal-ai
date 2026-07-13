@@ -37,10 +37,7 @@ function buildCustom(overrides: {
 describe("detectToolpackCollisions", () => {
   // Case 120
   it("returns empty for a non-colliding selection of built-ins", () => {
-    const result = detectToolpackCollisions(
-      ["data_query", "statistics"],
-      []
-    );
+    const result = detectToolpackCollisions(["data_query", "statistics"], []);
     expect(result).toEqual([]);
   });
 
@@ -114,9 +111,6 @@ describe("detectToolpackCollisions", () => {
       ["org:otp-a", "org:otp-b"],
       customs
     );
-    expect(result.map((c) => c.toolName)).toEqual([
-      "apple_tool",
-      "zebra_tool",
-    ]);
+    expect(result.map((c) => c.toolName)).toEqual(["apple_tool", "zebra_tool"]);
   });
 });

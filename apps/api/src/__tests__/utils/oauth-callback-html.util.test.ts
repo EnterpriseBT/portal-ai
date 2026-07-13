@@ -23,7 +23,10 @@ describe("renderOAuthCallbackHtml", () => {
     const html = renderOAuthCallbackHtml({
       slug: "microsoft-excel",
       connectorInstanceId: "ci-2",
-      accountInfo: { identity: "bob@contoso.com", metadata: { tenantId: "t-1" } },
+      accountInfo: {
+        identity: "bob@contoso.com",
+        metadata: { tenantId: "t-1" },
+      },
     });
     expect(html).toContain('"type":"microsoft-excel-authorized"');
     expect(html).not.toContain("google-sheets-authorized");
@@ -35,9 +38,7 @@ describe("renderOAuthCallbackHtml", () => {
       connectorInstanceId: "ci-42",
       accountInfo,
     });
-    expect(html).toMatch(
-      /data-testid="connector-instance-id"[^>]*>ci-42</
-    );
+    expect(html).toMatch(/data-testid="connector-instance-id"[^>]*>ci-42</);
   });
 
   it("refuses an empty slug", () => {

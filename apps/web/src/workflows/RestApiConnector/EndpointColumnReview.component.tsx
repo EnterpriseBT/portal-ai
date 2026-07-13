@@ -30,11 +30,7 @@ export type EndpointReviewState =
   | { kind: "loading" }
   | {
       kind: "success";
-      degradation:
-        | "llm-failed"
-        | "llm-disabled"
-        | "transform-failed"
-        | null;
+      degradation: "llm-failed" | "llm-disabled" | "transform-failed" | null;
       recordsScanned: number;
       transformError?: { kind: "parse" | "runtime"; message: string } | null;
     }
@@ -115,12 +111,7 @@ export const EndpointColumnReviewUI: React.FC<EndpointColumnReviewUIProps> = ({
     </Stack>
 
     {state.kind === "loading" ? (
-      <Stack
-        direction="row"
-        alignItems="center"
-        spacing={1}
-        aria-live="polite"
-      >
+      <Stack direction="row" alignItems="center" spacing={1} aria-live="polite">
         <CircularProgress size={16} />
         <Typography variant="body2" color="text.secondary">
           Probing endpoint…

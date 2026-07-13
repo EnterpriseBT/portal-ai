@@ -170,11 +170,7 @@ async function parseUploadIntoCache(
   } catch (err) {
     if (err instanceof ApiError) throw err;
     if (err instanceof ProcessorError) {
-      throw new ApiError(
-        400,
-        ApiCode.FILE_UPLOAD_PARSE_FAILED,
-        err.message
-      );
+      throw new ApiError(400, ApiCode.FILE_UPLOAD_PARSE_FAILED, err.message);
     }
     throw new ApiError(
       500,
@@ -227,7 +223,8 @@ export const FileUploadSessionService = {
       }
     }
 
-    const expiresAt = Date.now() + environment.UPLOAD_S3_PRESIGN_EXPIRY_SEC * 1000;
+    const expiresAt =
+      Date.now() + environment.UPLOAD_S3_PRESIGN_EXPIRY_SEC * 1000;
     const uploads: FileUploadPresignResponsePayload["uploads"] = [];
 
     for (const file of files) {
@@ -655,17 +652,14 @@ export const FileUploadSessionService = {
         const taken = new Set<string>();
         let offset = 0;
         for (const upload of uploadsForSession) {
-          const out = await parseUploadIntoCache(
-            upload,
-            writer,
-            taken,
-            offset
-          );
+          const out = await parseUploadIntoCache(upload, writer, taken, offset);
           offset += out.length;
         }
         await writer.finalize("ready");
       } catch (err) {
-        await writer.fail(err instanceof Error ? err.message : "re-parse failed");
+        await writer.fail(
+          err instanceof Error ? err.message : "re-parse failed"
+        );
         throw err;
       }
       meta = await WorkbookCacheService.getSessionMeta(prefix);
@@ -701,10 +695,7 @@ export const FileUploadSessionService = {
    * Internal helper: load session meta and verify ownership against the
    * DB rows tied to the session. Throws 404 / 403 instead of returning.
    */
-  async requireSessionMeta(
-    prefix: string,
-    organizationId: string
-  ) {
+  async requireSessionMeta(prefix: string, organizationId: string) {
     const meta = await WorkbookCacheService.getSessionMeta(prefix);
     if (!meta || meta.status !== "ready") {
       throw new ApiError(
@@ -805,7 +796,10 @@ export const FileUploadSessionService = {
     for (const upload of uploads) {
       S3Service.deleteObject(upload.s3Key).catch((err) => {
         logger.warn(
-          { s3Key: upload.s3Key, err: err instanceof Error ? err.message : err },
+          {
+            s3Key: upload.s3Key,
+            err: err instanceof Error ? err.message : err,
+          },
           "Failed to delete S3 object on commit"
         );
       });

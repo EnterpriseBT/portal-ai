@@ -99,8 +99,10 @@ function toWire(pair: ApiEndpoint): {
       recordsPath: pair.config.recordsPath,
       transform: pair.config.transform ?? undefined,
       idField: pair.config.idField ?? null,
-      headers: (pair.config.headers as Record<string, string> | null) ?? undefined,
-      queryParams: (pair.config.queryParams as Record<string, string> | null) ?? undefined,
+      headers:
+        (pair.config.headers as Record<string, string> | null) ?? undefined,
+      queryParams:
+        (pair.config.queryParams as Record<string, string> | null) ?? undefined,
       bodyTemplate: pair.config.bodyTemplate ?? undefined,
       pagination: reconstructPagination(
         pair.config.pagination,
@@ -135,10 +137,9 @@ async function requireRestApiInstance(
       `Connector instance ${instanceId} not found`
     );
   }
-  const definition =
-    await DbService.repository.connectorDefinitions.findById(
-      instance.connectorDefinitionId
-    );
+  const definition = await DbService.repository.connectorDefinitions.findById(
+    instance.connectorDefinitionId
+  );
   if (!definition || definition.slug !== "rest-api") {
     throw new ApiError(
       404,
@@ -387,9 +388,8 @@ apiEndpointsRouter.get(
       const { organizationId } = req.application!.metadata;
       await requireRestApiInstance(instanceId, organizationId);
 
-      const found = await DbService.repository.apiEndpoints.findByEntityId(
-        entityId
-      );
+      const found =
+        await DbService.repository.apiEndpoints.findByEntityId(entityId);
       if (!found) {
         throw new ApiError(
           404,
@@ -529,29 +529,37 @@ apiEndpointsRouter.post(
           },
           userId
         )
-        .catch((err: Error & { code?: string; constraint_name?: string; cause?: unknown }) => {
-          // Drizzle wraps the postgres-driver error inside `err.cause`.
-          // The driver populates `.code` (SQLSTATE) and `.constraint_name`.
-          const cause = err.cause as
-            | { code?: string; constraint_name?: string; message?: string }
-            | undefined;
-          const code = cause?.code ?? err.code;
-          const constraint = cause?.constraint_name ?? err.constraint_name;
-          const message = cause?.message ?? err.message ?? "";
-          const isOrgKeyConflict =
-            code === "23505" &&
-            (constraint === "connector_entities_org_key_unique" ||
-              message.includes("connector_entities_org_key_unique"));
-          if (isOrgKeyConflict) {
-            throw new ApiError(
-              409,
-              ApiCode.CONNECTOR_ENTITY_KEY_CONFLICT,
-              `An entity with key "${body.key}" already exists for this organization`,
-              { key: body.key }
-            );
+        .catch(
+          (
+            err: Error & {
+              code?: string;
+              constraint_name?: string;
+              cause?: unknown;
+            }
+          ) => {
+            // Drizzle wraps the postgres-driver error inside `err.cause`.
+            // The driver populates `.code` (SQLSTATE) and `.constraint_name`.
+            const cause = err.cause as
+              | { code?: string; constraint_name?: string; message?: string }
+              | undefined;
+            const code = cause?.code ?? err.code;
+            const constraint = cause?.constraint_name ?? err.constraint_name;
+            const message = cause?.message ?? err.message ?? "";
+            const isOrgKeyConflict =
+              code === "23505" &&
+              (constraint === "connector_entities_org_key_unique" ||
+                message.includes("connector_entities_org_key_unique"));
+            if (isOrgKeyConflict) {
+              throw new ApiError(
+                409,
+                ApiCode.CONNECTOR_ENTITY_KEY_CONFLICT,
+                `An entity with key "${body.key}" already exists for this organization`,
+                { key: body.key }
+              );
+            }
+            throw err;
           }
-          throw err;
-        });
+        );
 
       // Provision the wide-table partition for the new connector_entity.
       // The reconciler owns DDL on `er__<id>` tables; calling
@@ -729,9 +737,8 @@ apiEndpointsRouter.patch(
         );
       }
 
-      const existing = await DbService.repository.apiEndpoints.findByEntityId(
-        entityId
-      );
+      const existing =
+        await DbService.repository.apiEndpoints.findByEntityId(entityId);
       if (!existing) {
         throw new ApiError(
           404,
@@ -779,9 +786,8 @@ apiEndpointsRouter.patch(
       }
 
       // Label-only change — re-read joined pair.
-      const refreshed = await DbService.repository.apiEndpoints.findByEntityId(
-        entityId
-      );
+      const refreshed =
+        await DbService.repository.apiEndpoints.findByEntityId(entityId);
       return HttpService.success(res, toWire(refreshed!));
     } catch (error) {
       return next(
@@ -868,9 +874,8 @@ apiEndpointsRouter.delete(
       const { organizationId, userId } = req.application!.metadata;
       const instance = await requireRestApiInstance(instanceId, organizationId);
 
-      const existing = await DbService.repository.apiEndpoints.findByEntityId(
-        entityId
-      );
+      const existing =
+        await DbService.repository.apiEndpoints.findByEntityId(entityId);
       if (!existing) {
         throw new ApiError(
           404,
@@ -1042,9 +1047,8 @@ apiEndpointsRouter.post(
         );
       }
 
-      const endpoint = await DbService.repository.apiEndpoints.findByEntityId(
-        entityId
-      );
+      const endpoint =
+        await DbService.repository.apiEndpoints.findByEntityId(entityId);
       if (!endpoint || endpoint.entity.connectorInstanceId !== instanceId) {
         throw new ApiError(
           404,

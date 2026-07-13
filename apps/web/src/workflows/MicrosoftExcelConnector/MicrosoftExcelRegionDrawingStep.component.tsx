@@ -16,8 +16,7 @@ import type { ServerError } from "../../utils/api.util";
  * or `connectorInstanceId` (google-sheets). RegionEditor itself is
  * workbook-shape-agnostic.
  */
-export interface MicrosoftExcelRegionDrawingStepUIProps
-  extends RegionDrawingStepUIProps {
+export interface MicrosoftExcelRegionDrawingStepUIProps extends RegionDrawingStepUIProps {
   serverError: ServerError | null;
 }
 

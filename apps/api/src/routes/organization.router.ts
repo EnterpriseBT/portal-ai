@@ -256,7 +256,11 @@ organizationRouter.get(
       const user = await DbService.repository.users.findByAuth0Id(auth0Id);
       if (!user) {
         return next(
-          new ApiError(404, ApiCode.ORGANIZATION_USER_NOT_FOUND, "User not found")
+          new ApiError(
+            404,
+            ApiCode.ORGANIZATION_USER_NOT_FOUND,
+            "User not found"
+          )
         );
       }
       const memberships = await ApplicationService.listUserMemberships(user.id);
@@ -270,7 +274,9 @@ organizationRouter.get(
           : new ApiError(
               500,
               ApiCode.ORGANIZATION_FETCH_FAILED,
-              error instanceof Error ? error.message : "Failed to list memberships"
+              error instanceof Error
+                ? error.message
+                : "Failed to list memberships"
             )
       );
     }
@@ -324,7 +330,11 @@ organizationRouter.post(
       const user = await DbService.repository.users.findByAuth0Id(auth0Id);
       if (!user) {
         return next(
-          new ApiError(404, ApiCode.ORGANIZATION_USER_NOT_FOUND, "User not found")
+          new ApiError(
+            404,
+            ApiCode.ORGANIZATION_USER_NOT_FOUND,
+            "User not found"
+          )
         );
       }
 
@@ -342,7 +352,9 @@ organizationRouter.post(
           : new ApiError(
               500,
               ApiCode.ORGANIZATION_FETCH_FAILED,
-              error instanceof Error ? error.message : "Failed to switch organization"
+              error instanceof Error
+                ? error.message
+                : "Failed to switch organization"
             )
       );
     }

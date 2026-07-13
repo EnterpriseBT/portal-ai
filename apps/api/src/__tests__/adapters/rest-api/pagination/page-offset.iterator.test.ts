@@ -13,9 +13,7 @@ import {
  * the schema (param has no default but the test always supplies one).
  */
 function fixtureConfig(
-  overrides: Partial<
-    Extract<PaginationPageOffset, { style: "page" }>
-  > = {}
+  overrides: Partial<Extract<PaginationPageOffset, { style: "page" }>> = {}
 ): PaginationPageOffset {
   return {
     strategy: "pageOffset",
@@ -34,9 +32,7 @@ function fixtureConfig(
  * here match a typical ArcGIS-style endpoint.
  */
 function offsetFixtureConfig(
-  overrides: Partial<
-    Extract<PaginationPageOffset, { style: "offset" }>
-  > = {}
+  overrides: Partial<Extract<PaginationPageOffset, { style: "offset" }>> = {}
 ): PaginationPageOffset {
   return {
     strategy: "pageOffset",
@@ -64,8 +60,10 @@ describe("pageOffsetIterator", () => {
     let r = await iter.next();
     while (!r.done) {
       yielded.push(r.value.pageNumber);
-      if (yielded.length === 1) r = await iter.next(page([{ id: "a" }, { id: "b" }]));
-      else if (yielded.length === 2) r = await iter.next(page([{ id: "c" }, { id: "d" }]));
+      if (yielded.length === 1)
+        r = await iter.next(page([{ id: "a" }, { id: "b" }]));
+      else if (yielded.length === 2)
+        r = await iter.next(page([{ id: "c" }, { id: "d" }]));
       else r = await iter.next(page([])); // empty terminates
     }
 
@@ -94,7 +92,8 @@ describe("pageOffsetIterator", () => {
     let r = await iter.next();
     while (!r.done) {
       yielded.push(r.value.pageNumber);
-      if (yielded.length === 1) r = await iter.next(page(new Array(30).fill({})));
+      if (yielded.length === 1)
+        r = await iter.next(page(new Array(30).fill({})));
       else r = await iter.next(page([]));
     }
     expect(yielded).toEqual([1, 2]);

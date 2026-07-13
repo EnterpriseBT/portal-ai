@@ -26,9 +26,7 @@ describe("SelectSheetStep", () => {
       { value: "sheet-1", label: "Q3 Forecast" },
       { value: "sheet-2", label: "Headcount" },
     ]);
-    render(
-      <SelectSheetStep {...makeProps({ searchFn })} />
-    );
+    render(<SelectSheetStep {...makeProps({ searchFn })} />);
     // Initial load happens on mount with empty query.
     await waitFor(() => expect(searchFn).toHaveBeenCalled());
   });
@@ -79,7 +77,10 @@ describe("SelectSheetStep", () => {
     render(
       <SelectSheetStep
         {...makeProps({
-          serverError: { message: "Sheets fetch failed", code: "GOOGLE_SHEETS_FETCH_FAILED" },
+          serverError: {
+            message: "Sheets fetch failed",
+            code: "GOOGLE_SHEETS_FETCH_FAILED",
+          },
         })}
       />
     );

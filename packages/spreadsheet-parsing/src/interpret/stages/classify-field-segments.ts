@@ -14,10 +14,7 @@ import {
   applyDefaultColumnDefinition,
   heuristicMatch,
 } from "./classifier-heuristic.util.js";
-import {
-  headerLineCoords,
-  readHeaderLineLabels,
-} from "./header-line.util.js";
+import { headerLineCoords, readHeaderLineLabels } from "./header-line.util.js";
 import { resolveEffectiveSegments } from "./pivoted.util.js";
 
 const SAMPLE_LIMIT = 10;
@@ -247,10 +244,7 @@ export async function classifyFieldSegments(
     });
     next.set(
       pending[i].regionId,
-      applyDefaultColumnDefinition(
-        annotated,
-        deps.defaultColumnDefinitionId
-      )
+      applyDefaultColumnDefinition(annotated, deps.defaultColumnDefinitionId)
     );
   }
   return { ...state, columnClassifications: next };

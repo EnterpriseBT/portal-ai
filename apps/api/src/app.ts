@@ -48,10 +48,7 @@ app.use("/api/health", healthRouter);
 // mount before protectedRouter so jwtCheck doesn't reject them. The
 // signed `state` query param is the security boundary instead.
 app.use("/api/connectors/google-sheets", googleSheetsConnectorPublicRouter);
-app.use(
-  "/api/connectors/microsoft-excel",
-  microsoftExcelConnectorPublicRouter
-);
+app.use("/api/connectors/microsoft-excel", microsoftExcelConnectorPublicRouter);
 // SSE routes use query-param auth (sseAuth) — mount before protectedRouter
 // so the router-level jwtCheck does not reject the headerless EventSource request.
 app.use("/api/sse", sseRouter);
@@ -83,7 +80,10 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   };
   if (bodyParserErr.type === "entity.too.large") {
     log.warn(
-      { limitBytes: environment.REQUEST_JSON_LIMIT_BYTES, route: req.originalUrl },
+      {
+        limitBytes: environment.REQUEST_JSON_LIMIT_BYTES,
+        route: req.originalUrl,
+      },
       "JSON body exceeded size limit"
     );
     return HttpService.error(

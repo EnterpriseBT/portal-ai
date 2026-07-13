@@ -228,9 +228,7 @@ describe("Wide-table boot drift check", () => {
       sql`SELECT column_name FROM information_schema.columns WHERE table_name = ${tableName}`
     );
     return new Set(
-      ((result as unknown) as { column_name: string }[]).map(
-        (r) => r.column_name
-      )
+      (result as unknown as { column_name: string }[]).map((r) => r.column_name)
     );
   }
 
@@ -255,8 +253,7 @@ describe("Wide-table boot drift check", () => {
 
     // Second run emits no DDL — measured via statement-cache invalidations.
     let invalidations = 0;
-    const realInvalidate =
-      statementCache.invalidate.bind(statementCache);
+    const realInvalidate = statementCache.invalidate.bind(statementCache);
     statementCache.invalidate = (id: string) => {
       invalidations++;
       realInvalidate(id);

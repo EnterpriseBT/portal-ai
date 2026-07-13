@@ -82,15 +82,11 @@ jest.unstable_mockModule("../../../services/tools.service.js", () => ({
   },
 }));
 
-const { bulkTransformProcessor } = await import(
-  "../../../queues/processors/bulk-transform.processor.js"
-);
-const { PortalService } = await import(
-  "../../../services/portal.service.js"
-);
-const { JobEventsService } = await import(
-  "../../../services/job-events.service.js"
-);
+const { bulkTransformProcessor } =
+  await import("../../../queues/processors/bulk-transform.processor.js");
+const { PortalService } = await import("../../../services/portal.service.js");
+const { JobEventsService } =
+  await import("../../../services/job-events.service.js");
 
 describe("Smoke C — tool-dispatch processor pipeline (#85 Phase 4)", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -211,7 +207,9 @@ describe("Smoke C — tool-dispatch processor pipeline (#85 Phase 4)", () => {
       async (bullJob) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data: any = bullJob.data;
-        await JobEventsService.transition(data.jobId, "active", { progress: 0 });
+        await JobEventsService.transition(data.jobId, "active", {
+          progress: 0,
+        });
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const result = await bulkTransformProcessor(bullJob as any);
@@ -312,9 +310,6 @@ describe("Smoke C — tool-dispatch processor pipeline (#85 Phase 4)", () => {
     expect(messages.length).toBe(1);
     const blocks = messages[0].blocks as Array<{ type: string }>;
     // Text summary + failures table.
-    expect(blocks.map((b) => b.type)).toEqual([
-      "text",
-      "bulk-failures-table",
-    ]);
+    expect(blocks.map((b) => b.type)).toEqual(["text", "bulk-failures-table"]);
   }, 30_000);
 });

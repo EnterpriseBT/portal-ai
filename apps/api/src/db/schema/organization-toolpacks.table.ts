@@ -1,10 +1,4 @@
-import {
-  pgTable,
-  text,
-  jsonb,
-  bigint,
-  uniqueIndex,
-} from "drizzle-orm/pg-core";
+import { pgTable, text, jsonb, bigint, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 import type { ToolCapability } from "@portalai/core/models";

@@ -46,9 +46,8 @@ jest.unstable_mockModule("../../utils/redis.util.js", () => ({
   }),
 }));
 
-const { WorkbookCacheService } = await import(
-  "../../services/workbook-cache.service.js"
-);
+const { WorkbookCacheService } =
+  await import("../../services/workbook-cache.service.js");
 
 import type { ChunkRow } from "../../services/workbook-cache.service.js";
 
@@ -71,7 +70,8 @@ describe("WorkbookCacheService — chunked streaming API", () => {
   });
 
   it("writes meta + row chunks + merges and round-trips through readRows", async () => {
-    const writer = await WorkbookCacheService.beginSession("upload-session:abc");
+    const writer =
+      await WorkbookCacheService.beginSession("upload-session:abc");
 
     const rows: ChunkRow[] = [
       ["a", "b", "c"],
@@ -87,7 +87,8 @@ describe("WorkbookCacheService — chunked streaming API", () => {
     });
     await writer.finalize("ready");
 
-    const meta = await WorkbookCacheService.getSessionMeta("upload-session:abc");
+    const meta =
+      await WorkbookCacheService.getSessionMeta("upload-session:abc");
     expect(meta).not.toBeNull();
     expect(meta!.status).toBe("ready");
     expect(meta!.sheets).toHaveLength(1);
@@ -116,7 +117,8 @@ describe("WorkbookCacheService — chunked streaming API", () => {
   it("buffers rows across appendRows calls and only emits a chunk when full", async () => {
     // Default ROWS_PER_CHUNK in the env is 1000; this test spans the boundary
     // by appending 1500 rows in two batches.
-    const writer = await WorkbookCacheService.beginSession("upload-session:big");
+    const writer =
+      await WorkbookCacheService.beginSession("upload-session:big");
     const make = (start: number, count: number): ChunkRow[] =>
       Array.from({ length: count }, (_, i) => [String(start + i)]);
     await writer.appendRows("s", make(0, 700));
@@ -133,13 +135,7 @@ describe("WorkbookCacheService — chunked streaming API", () => {
     const mid = await collect(
       WorkbookCacheService.readRows("upload-session:big", "s", 998, 1003)
     );
-    expect(mid).toEqual([
-      ["998"],
-      ["999"],
-      ["1000"],
-      ["1001"],
-      ["1002"],
-    ]);
+    expect(mid).toEqual([["998"], ["999"], ["1000"], ["1001"], ["1002"]]);
   });
 
   it("readRows pulls only the chunks that intersect the requested range", async () => {
