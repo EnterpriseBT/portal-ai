@@ -91,10 +91,10 @@ Stripe retries webhooks (same event id redelivered) and does **not** guarantee o
 
 The PRD requires billing to be its own tab, not rows in the Organization tab. Today the tier + usage rows from #172 render inside the Organization tab's `MetadataList` (`apps/web/src/views/Settings.view.tsx`).
 
-- **A — new tab, leave #172's rows where they are:** billing actions live apart from the tier/usage they act on; two places tell half the story each.
-- **B — new tab that *absorbs* the tier/usage display:** one "Subscription & Billing" tab shows current tier, allocations, used/available (the #172 rows relocate), the selectable plan list, and the checkout / manage-subscription actions.
+- **A — new tab, leave #172's rows where they are:** the tab holds plan selection + checkout / manage-subscription actions; the Organization tab keeps the tier/allocation/usage display.
+- **B — new tab that *absorbs* the tier/usage display:** one "Subscription & Billing" tab shows everything — current tier, used/available, plan list, actions — and the #172 rows relocate.
 
-**Lean: B.** The tier display and the actions that change the tier belong on one surface; the Organization tab returns to org identity/settings. Pure view-layer move — the data still comes from `sdk.organizations.current()` / `.usage()`. The plan list needs one new read endpoint, `GET /api/billing/tiers` (Decision 6).
+**Decided: A** (user call). Managing billing and changing subscriptions is a different set of *actions* from viewing current organization usage — the Organization tab remains the read-only "what I have and what I've used" surface (#172 untouched), and the new tab owns "change what I have." The tab shows the current plan for context (from the existing `sdk.organizations.current()`), the selectable plan list (`GET /api/billing/tiers`, Decision 6), and the checkout/portal actions.
 
 ### Decision 6 — Standard selectable set vs custom (enterprise) subscriptions
 
@@ -113,7 +113,7 @@ The PRD requires custom subscriptions alongside the standard UI-selectable set. 
 
 | | D1: price id on `tiers` | D2: dedup + converge | D3: state → slug map | D4: hosted checkout/portal | D5: Billing tab | D6: `selectable` flag | D7: lazy customer |
 |---|---|---|---|---|---|---|---|
-| Spread to spec | 1 column + migration | `stripe_events` table + handler shape | one pure function (unit-testable) | 2 endpoints | 1 tab + plan list, rows relocate | 1 column + `GET /api/billing/tiers` | branch in checkout endpoint |
+| Spread to spec | 1 column + migration | `stripe_events` table + handler shape | one pure function (unit-testable) | 2 endpoints | 1 new tab (actions only) | 1 column + `GET /api/billing/tiers` | branch in checkout endpoint |
 | New infra | none | 1 dual-schema table | none | `stripe` SDK dep, 2 env secrets | none (view-layer) | none | none |
 | Reuses | dual-schema workflow | webhook mounting + raw-body precedent | `resolveTier` fallback ethos | SDK/`useAuthMutation` + redirect pattern | Settings tabs + #172 queries | #172 Q2 bespoke-row model + admin CLI | org repository |
 
@@ -126,7 +126,7 @@ The PRD requires custom subscriptions alongside the standard UI-selectable set. 
 5. **Converge-to-source handling:** on any subscription lifecycle event, re-fetch the subscription from Stripe and derive the tier via one pure `subscriptionState → tierSlug` function (Decision 3's status table); write `organizations.tier` and record the event row.
 6. **Add `selectable` boolean to `tiers`** (seeded `true` for `standard`): the checkout plan list is `selectable = true`; a custom/enterprise subscription is a `selectable = false` row driven by a bespoke Stripe price **or** assigned manually via the admin CLI (no subscription → no webhook → never clobbered).
 7. **Owner-only `POST /api/billing/checkout` + `POST /api/billing/portal`** minting hosted-session URLs (lazy customer creation), plus read-only `GET /api/billing/tiers` (the selectable plan list), exposed as `sdk.billing.*`; the webhook is the sole Stripe-driven tier writer.
-8. **A dedicated Settings → "Subscription & Billing" tab** that absorbs #172's tier/allocation/usage rows and adds the plan list + checkout / manage-subscription actions; the Organization tab keeps only org identity/settings.
+8. **A dedicated Settings → "Subscription & Billing" tab** owning the *actions* — current plan for context, the selectable plan list, checkout / manage-subscription; the Organization tab keeps the #172 tier/allocation/usage display unchanged (viewing usage and managing billing are different activities).
 9. **`STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` in `environment.ts` + `.env.example`**; official `stripe` npm package, API-version-pinned.
 10. **No changes** to `resolveTier`, the cost gate, or the `usage` balance.
 
@@ -161,4 +161,4 @@ The PRD requires custom subscriptions alongside the standard UI-selectable set. 
 
 ## Next step
 
-Write `docs/STRIPE_SUBSCRIPTION_BILLING.spec.md` (contract: the four new columns + `stripe_events` table shapes, webhook route + verification + converge handler, the `subscriptionState → tierSlug` function's status table, checkout/portal/tiers endpoint contracts + error codes, env vars, the Billing tab's states) and `.plan.md`. Likely slicing: (1) schema — `stripe_price_id` + `selectable` on `tiers`, org linkage columns, `stripe_events` table, migrations + type-checks; (2) Stripe service + the pure derivation function (unit-tested, SDK mocked); (3) webhook route — mounting, signature verification, dedup, converge handler; (4) billing endpoints (checkout / portal / tiers list) + org-delete cancellation; (5) frontend — `sdk.billing.*`, the Subscription & Billing tab (absorbing #172's rows), plan list + subscribed/unsubscribed states. PR targets `epic/subscription-billing`.
+Write `docs/STRIPE_SUBSCRIPTION_BILLING.spec.md` (contract: the four new columns + `stripe_events` table shapes, webhook route + verification + converge handler, the `subscriptionState → tierSlug` function's status table, checkout/portal/tiers endpoint contracts + error codes, env vars, the Billing tab's states) and `.plan.md`. Likely slicing: (1) schema — `stripe_price_id` + `selectable` on `tiers`, org linkage columns, `stripe_events` table, migrations + type-checks; (2) Stripe service + the pure derivation function (unit-tested, SDK mocked); (3) webhook route — mounting, signature verification, dedup, converge handler; (4) billing endpoints (checkout / portal / tiers list) + org-delete cancellation; (5) frontend — `sdk.billing.*`, the Subscription & Billing tab (actions only; #172's Organization-tab rows untouched), plan list + subscribed/unsubscribed states. PR targets `epic/subscription-billing`.
