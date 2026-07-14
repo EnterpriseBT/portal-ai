@@ -150,13 +150,14 @@ The PRD requires custom subscriptions alongside the standard UI-selectable set. 
 - **Failure modes** — signature verification **fails closed** (4xx, no processing). Handler errors → non-2xx → Stripe retries for ~3 days, and converge-to-source makes every retry safe. Stripe API down: checkout/portal endpoints surface a typed `ApiError` (tier untouched — degraded but safe); webhook converge-fetch failure → non-2xx → retried. Org delete's cancel call is best-effort — delete never blocks on a Stripe outage (failure logged for manual reconciliation). The org's *current* tier keeps working throughout any Stripe outage — `resolveTier` reads our DB, not Stripe.
 - **Scale & unbounded growth** — event volume ∝ subscription changes (tiny); `stripe_events` grows append-only but small (retention policy can come with #179's ledger thinking). No fan-out, no polling.
 - **Multi-tenancy** — customer/subscription ids are unique-indexed per org; an event resolves to exactly one org via `stripe_customer_id`. No cross-tenant path exists.
-- **Contract stability** — the only writes into existing surfaces are `organizations.tier` (the slug #172 built to be written) and two nullable columns; `resolveTier`, the gate, and `usage` are untouched. Metered/usage-based Stripe billing later (#176's out-of-scope) plugs in beside this without rework.
+- **Contract stability** — the only writes into existing surfaces are `organizations.tier` (the slug #172 built to be written) and three nullable columns; `resolveTier`, the gate, and `usage` are untouched. Metered/usage-based Stripe billing later (#176's out-of-scope) plugs in beside this without rework. Tier **entitlements** (#214 — per-tier toolpack availability) ride the same tier row and `resolveTier` seam: nothing in this ticket may assume a tier differs only by allocation numbers, and `GET /api/billing/tiers` / the Billing tab plan list must not preclude showing per-tier entitlements later (an additive response field + list row, not a reshape).
 - **Data lifecycle** — the billing window now matches what the customer paid for: usage periods anchor to the subscription's billing cycle (Q5, per-org override through the shared `periodIdFor` seam), calendar-month only for unsubscribed orgs. Stripe ids survive org tombstoning for reconciliation.
 
 ## What this doesn't decide
 
 - **Usage-based/metered billing to Stripe** — reporting `usage` rows as Stripe usage records is explicitly out of scope (issue); the `usage` balance stays internal.
 - **The audit ledger (#179)** — `stripe_events` audits *tier changes*; the per-call charge ledger remains #179.
+- **Tier toolpack entitlements** — per-tier availability gating (which tools an org may use at all) is sibling ticket #214, riding the same tier row + `resolveTier` seam; this ticket only keeps the contract open for it (PRD-confirmed).
 - **Tier-management/admin UI** — tiers (now with a price id) are still rows edited via seed/SQL.
 - **RBAC for billing actions** — owner-only for now; #198 roles widen it later.
 - **Refunds, invoices UI, tax/VAT configuration** — all live in Stripe's hosted surfaces; nothing to build.
