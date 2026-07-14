@@ -455,6 +455,8 @@ Every ticket is one of three kinds, each with a codified body shape (`/ticket` s
 
 The `## Sizing` section records the doc-path decision at creation time: **`full`** (all five artifacts) or **`condensed`** (one combined doc). Condensed is right only when the change is single-package, introduces no new pattern, and changes no contract.
 
+Feature PRDs are elicited against the **PRD dimension checklist** in `.claude/skills/ticket/SKILL.md` (actors & roles, surfaces & placement, standard vs bespoke paths, lifecycle interactions, states & edge behavior — the single source is that file); `/discovery` gates on the PRD's completeness against the same checklist before surveying, and post-filing requirement changes follow `/ticket`'s amendment procedure — issue body and in-flight branch docs reconciled in one action (#212).
+
 ### Condensed path for small tickets
 
 When sizing chose `condensed`, `/discovery <N> condensed` writes a single `docs/<SLUG>.md` covering discovery + spec + plan + smoke (exemplar: `docs/PORTAL_MESSAGE_TIMESTAMPS.md`): `**Why.**` → `## Current shape` → `## Decision — <name>` → `## Plan — <n> slice(s)` → `## Smoke (manual, against your dev stack)` → `## Out of scope`, ≤ ~80 lines. `/spec` and `/plan` are not run on a condensed branch (they detect the single doc and defer to it); `/smoke` refreshes the embedded Smoke section, which is the ticket's merge gate.

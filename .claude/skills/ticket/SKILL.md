@@ -21,10 +21,22 @@ Invoked as `/ticket <feature|bug> <one-line summary>`. The type argument is opti
 
 The issue body is a contract with the team; **missing requirements are asked for, never invented**. Collect before scaffolding:
 
-- **Feature:** the problem/goal (why now), the concrete deliverables, the externally-observable acceptance criteria, explicit out-of-scope items, references (related issues, file paths, precedents).
-- **Bug:** the exact reproduction (prompt/steps), expected vs got, the impact (why it matters, who hits it), any evidence (transcripts, DB rows, screenshots), fix-direction hypotheses if the user has them.
+- **Feature:** the problem/goal (why now), the concrete deliverables, the externally-observable acceptance criteria, explicit out-of-scope items, references (related issues, file paths, precedents) — **and walk the PRD dimension checklist below.**
+- **Bug:** the exact reproduction (prompt/steps), expected vs got, the impact (why it matters, who hits it), any evidence (transcripts, DB rows, screenshots), fix-direction hypotheses if the user has them. Bugs skip the checklist — the repro template has its own shape.
 
 If the user's request already contains all of this, don't re-ask — confirm gaps only.
+
+#### The PRD dimension checklist (feature tickets)
+
+These are the requirement dimensions that repeatedly surface late when unasked (#212; the cautionary example is #176, where actor tiers and surface placement arrived as PRD amendments *after* discovery was drafted). This checklist is the **single source** for the dimensions — `/discovery`'s completeness gate reads it from this file. For each dimension, one of three things must be true before scaffolding: the conversation already answers it, the user answers a targeted question, or the user explicitly waives it.
+
+1. **Actors & roles** — who uses/operates the capability: self-serve user, org owner, operator/admin (CLI), the portal agent? Any permission boundaries between them?
+2. **Surfaces & placement** — where does it manifest (view/tab/dialog/CLI/API)? A new surface, or extending an existing one?
+3. **Standard vs bespoke paths** — is there an enterprise/custom/manual-operator variant beyond the self-serve default?
+4. **Lifecycle interactions** — how does it behave against adjacent features it touches (delete/tombstone, multi-org, tiers/billing, running jobs)?
+5. **States & edge behavior** — user-visible empty/error/degraded/locked states worth requiring up front?
+
+Ask as **one batched set of targeted questions** covering only the genuinely unanswered dimensions — never five rote questions when the request already answers three. Record an explicit waiver as `N/A — <reason>` in the relevant PRD section: a consciously skipped dimension is not a gap, and `/discovery`'s gate will not re-ask it. Distribute the answers into the template — actors/surfaces/bespoke paths shape `## Deliverables`, lifecycle/states shape `## Acceptance criteria`, waivers land where they apply.
 
 ### 2. Decide the sizing
 
@@ -120,6 +132,15 @@ Report: the issue URL, the type set, the recorded sizing, and the next command �
 - **The sizing is always recorded** in the body — later phases read it; an unrecorded sizing re-opens the debate mid-cycle.
 - **Ask, never invent.** Scaffolding structure is your job; requirements are the user's. An empty section prompts a question, not creative writing.
 - **No branch, no docs, no code.** Phase 2 (`/discovery`) creates the branch.
+
+## PRD amendments (post-filing)
+
+When the user adds or changes a requirement after the ticket is filed ("add a requirement to the PRD: …"), the PRD and its branch move **together, in one action**:
+
+1. **Update the issue body first** — the PRD is the record of truth; the new requirement lands in `## Deliverables` / `## Acceptance criteria`, not just in conversation.
+2. **Run the new requirement through the dimension checklist** — if it raises fresh questions (a new actor? a new surface?), ask them now, not at review.
+3. **Reconcile every in-flight artifact** on the ticket's branch (discovery/spec/plan, or the condensed doc) in the same action — a PRD that contradicts its branch docs is a bug in this change, not a follow-up.
+4. **Commit the reconciliation** referencing the issue (`docs: <what changed> (#<N>)`).
 
 ## What this skill is not
 
