@@ -73,6 +73,9 @@ export * from "./toolpack.contract.js";
 /** Subscription tier contracts — schemas & types (#172) */
 export * from "./tier.contract.js";
 
+/** Billing endpoint contracts — schemas & types (#176) */
+export * from "./billing.contract.js";
+
 /** Spreadsheet parsing contracts — re-exported from @portalai/spreadsheet-parsing */
 export * from "./spreadsheet-parsing.contract.js";
 

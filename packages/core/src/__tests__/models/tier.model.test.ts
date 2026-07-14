@@ -35,6 +35,8 @@ const validRowFields = {
   expensiveUnitsPerPeriod: 100,
   expensiveRatePerMin: 5,
   perToolCaps: null,
+  stripePriceId: null,
+  selectable: true,
 };
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -120,5 +122,33 @@ describe("TierSchema", () => {
     expect(typeof parsed.created).toBe("number");
     expect(parsed.id).toBeTruthy();
     expect(TierSchema.safeParse(parsed).success).toBe(true);
+  });
+
+  // ── Stripe linkage (#176) ───────────────────────────────────────────
+
+  it("round-trips stripePriceId: null (not purchasable) and selectable", () => {
+    const parsed = new TierModelFactory()
+      .create("SYSTEM")
+      .update(validRowFields)
+      .parse();
+
+    expect(parsed.stripePriceId).toBeNull();
+    expect(parsed.selectable).toBe(true);
+  });
+
+  it("accepts a mapped Stripe price id", () => {
+    const parsed = new TierModelFactory()
+      .create("SYSTEM")
+      .update({ ...validRowFields, slug: "pro", stripePriceId: "price_123" })
+      .parse();
+
+    expect(parsed.stripePriceId).toBe("price_123");
+  });
+
+  it("rejects a row missing `selectable`", () => {
+    const { selectable: _selectable, ...rest } = validRowFields;
+    const model = new TierModelFactory().create("SYSTEM").update(rest);
+
+    expect(model.validate().success).toBe(false);
   });
 });

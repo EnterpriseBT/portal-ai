@@ -81,6 +81,12 @@ export const TierSchema = CoreSchema.extend({
   expensiveUnitsPerPeriod: z.number().int().nonnegative().nullable(),
   expensiveRatePerMin: z.number().int().nonnegative().nullable(),
   perToolCaps: PerToolCapsSchema.nullable(),
+  /** Stripe price mapped to this tier (#176). Null = not purchasable
+   *  (standard, bespoke). */
+  stripePriceId: z.string().nullable(),
+  /** Listed in the self-serve plan list (#176). Custom/enterprise rows are
+   *  false. */
+  selectable: z.boolean(),
 });
 export type Tier = z.infer<typeof TierSchema>;
 
