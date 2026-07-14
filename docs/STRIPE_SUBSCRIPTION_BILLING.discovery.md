@@ -1,0 +1,143 @@
+# Stripe subscription billing — Discovery
+
+**Issue:** [EnterpriseBT/portal-ai#176](https://github.com/EnterpriseBT/portal-ai/issues/176) · child of epic [#177](https://github.com/EnterpriseBT/portal-ai/issues/177) · branch `feat/stripe-subscription-billing` → `epic/subscription-billing`
+
+**Consumes:** [#172](https://github.com/EnterpriseBT/portal-ai/issues/172) (the tier surface — `tiers` rows, the `organizations.tier` slug FK, `resolveTier`). **Does not touch:** the cost gate (#169/#183/#184) or the `usage` balance.
+
+**Why this exists.** #172 shipped the tier as a provider-agnostic slug + DB rows precisely so a payment provider could drive it with no re-plumbing: `resolveTier` reads a slug, so a webhook only has to *write* one. Today nothing writes it — every org sits on the seeded `standard` tier forever, and there is no way to buy a bigger allocation. This ticket is that provider: Stripe products/prices map to `tiers.slug`, subscription-lifecycle webhooks write `organizations.tier` (reverting to the default on cancel), and the app exposes hosted Checkout + Billing Portal entry points. This is the monetization layer that turns the tier contract into revenue — the piece that writes what #169 enforces and #172 declares.
+
+## The current shape
+
+### The tier surface (#172 — the write target)
+
+| Touch point | File | Note |
+|---|---|---|
+| `tiers` table | `apps/api/src/db/schema/tiers.table.ts:22-66` | Unique `slug`, scalar charge grid, JSONB `per_tool_caps`. **Gets `stripe_price_id`** (Decision 1). |
+| Org tier column | `apps/api/src/db/schema/organizations.table.ts:20-23` | `text NOT NULL DEFAULT 'standard'` FK → `tiers.slug`. The webhook's write target. |
+| `resolveTier` | `apps/api/src/services/tier.service.ts:61-90` | Async, 60s TTL cache, unknown slug → standard. Unchanged — it just starts seeing real slugs. |
+| `usage` balance | `apps/api/src/db/schema/usage.table.ts:21-44` | #172-owned, gate-incremented. **Not touched.** |
+
+### Organizations dual-schema (where the linkage columns land)
+
+| Touch point | File | Note |
+|---|---|---|
+| Drizzle table | `apps/api/src/db/schema/organizations.table.ts:9-24` | Add `stripe_customer_id`, `stripe_subscription_id` (nullable text, unique). |
+| Zod core model | `packages/core/src/models/organization.model.ts:12-20` | Mirror the two fields; type-checks in `apps/api/src/db/schema/type-checks.ts` force the sync. |
+| drizzle-zod | `apps/api/src/db/schema/zod.ts:50-60` | Auto-inferred from the table. |
+| Org delete (#197) | `apps/api/src/services/organization-delete.service.ts:62-76` | Soft-deletes the org, preserves `usage` rows as billing record. Stripe ids survive the tombstone the same way (reconciliation); delete must also end the subscription (Open Q4). |
+
+### Inbound-webhook precedent (Auth0 sync — the template)
+
+The app already receives one signed inbound webhook. `apps/api/src/app.ts:22-124` mounts the webhook router **before** `express.json()` (line 36); the Auth0 sync route (`apps/api/src/routes/webhook.router.ts:112-166`) uses a `jsonWithRawBody` parser (`app.ts:21-25`) so `req.rawBody` is available for HMAC verification in `apps/api/src/middleware/webhook-auth.middleware.ts:17-76` (`crypto.timingSafeEqual`). The Stripe route follows this exact mounting/raw-body shape but verifies with the official SDK (`stripe.webhooks.constructEvent`) instead — Stripe's `t=…,v1=…` scheme with timestamp tolerance is not our HMAC middleware. Routes opting out of JWT (OAuth callbacks `app.ts:50-51`, SSE line 54) are established precedent for an unauthenticated `/api` path.
+
+### Config & frontend surfaces
+
+- Env: plain `process.env` reads in `apps/api/src/environment.ts:1-159` (`AUTH0_WEBHOOK_SECRET` at line 24 is the pattern for `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`); document in `apps/api/.env.example`.
+- Settings → Organization tab (`apps/web/src/views/Settings.view.tsx`) already renders tier + usage from `sdk.organizations.current()` / `.usage()` (`apps/web/src/api/organizations.api.ts:1-52`); billing buttons land beside them. Redirect precedent: `auth.api.ts:18` uses `window.location.replace(url)` — checkout/portal URLs are backend-minted and the browser is sent to them.
+- No Stripe SDK or code exists anywhere (grep: only two comments referencing Stripe's signature style). Greenfield.
+
+## The design space
+
+### Decision 1 — Where the price ↔ tier mapping lives
+
+- **A — env/config map** (`STRIPE_PRICE_MAP=price_x:pro,…`): mapping is deploy-coupled config; contradicts #172's "tiers are data, not code" call.
+- **B — `stripe_price_id` column on `tiers`** (nullable text, unique where not null): the tier row *is* the mapping. Checkout resolves tier → price; the webhook resolves price → slug. Adding a paid tier = `tiers` INSERT + Stripe price + one UPDATE. No deploy.
+- **C — Stripe-side metadata** (`tier_slug` on the Stripe price): single-sourced in Stripe, but checkout needs the *forward* lookup (tier → price) anyway, so the app ends up listing Stripe prices at runtime or caching the map — which is option B with extra steps.
+
+| | A — env map | B — `tiers` column | C — Stripe metadata |
+|---|---|---|---|
+| Add a paid tier | redeploy | **row UPDATE** | Stripe dashboard only |
+| Forward lookup (checkout) | map | **indexed read** | Stripe API list call |
+| Reverse lookup (webhook) | map | **indexed read** | in-payload |
+| Consistent with #172 ethos | no | **yes** | partly |
+
+**Lean: B.** One nullable `stripe_price_id` column on `tiers`; `NULL` = not purchasable (e.g. `standard`, bespoke enterprise rows). Both lookup directions are indexed DB reads, and the "adding a tier is data ops" property from #172 survives intact.
+
+### Decision 2 — Webhook idempotency & ordering
+
+Stripe retries webhooks (same event id redelivered) and does **not** guarantee ordering across events. Two hazards: double-processing, and a stale `updated` event arriving after a newer one and rolling the tier back.
+
+- **A — trust the payload, no dedup:** tier writes are naturally idempotent per-event, but out-of-order delivery can regress the tier, and there is no record of what was processed.
+- **B — `stripe_events` dedup table:** unique-insert on the Stripe event id (atomic, DB-enforced — safe across ECS instances); duplicate insert → no-op 200. Rows record `(eventId, type, subscriptionId, organizationId, resultingTier, processedAt)`.
+- **C — B + derive-from-source:** handlers never trust the event payload's snapshot for the *decision*; on any subscription-lifecycle event they re-fetch the subscription from the Stripe API and derive the tier from its **current** state. Any event, in any order, converges the org to the truth — ordering ceases to be a correctness concern.
+
+| | A | B | C |
+|---|---|---|---|
+| Duplicate-safe | payload-idempotent | **DB-enforced** | **DB-enforced** |
+| Order-safe | no | mostly (needs `event.created` guard) | **yes (converges)** |
+| Audit trail | none | **yes** | **yes** |
+| Cost per event | — | 1 insert | 1 insert + 1 Stripe API read |
+
+**Lean: C.** The extra API read per lifecycle event is negligible at webhook volumes, and "converge to Stripe's current state" eliminates the whole ordering class of bugs. The `stripe_events` table doubles as the tier-change audit trail — the first real writer #172's Open Q6 anticipated.
+
+### Decision 3 — Tier derivation from subscription state
+
+**Decided (falls out of Decision 2C):** one pure function `subscription state → tier slug`:
+
+- `active` / `trialing` → the tier whose `stripe_price_id` matches the subscription's price; unknown price → log + keep current tier (never guess).
+- `past_due` → **keep the paid tier** — Stripe's dunning/Smart Retries own the grace window; we don't duplicate that policy in app code.
+- `canceled` / `unpaid` / `incomplete_expired` (or subscription deleted) → revert to the default `standard` tier and clear `stripe_subscription_id` (customer id stays).
+
+`invoice.payment_failed` therefore needs no bespoke handler — it manifests as `customer.subscription.updated` with `past_due`/`unpaid` status, which the one converge path already handles.
+
+### Decision 4 — Checkout & portal surface
+
+- **A — Stripe-hosted Checkout Session + hosted Billing Portal:** backend mints session URLs; browser redirects out and back. Zero card data touches Portal.ai (SAQ-A PCI posture); plan switches, payment-method updates, cancellation, and invoices all live in the portal.
+- **B — embedded Stripe Elements / custom plan-management UI:** in-app UX, but PCI surface, far more code, and a custom UI for flows the portal gives us free.
+
+**Lean: A.** Two owner-only JWT-protected endpoints on a new `billing.router.ts` — `POST /api/billing/checkout` (body: target tier slug; creates the customer lazily if absent, returns the session URL) and `POST /api/billing/portal` (returns a portal session URL) — consumed via a new `sdk.billing.*` client and two buttons in Settings → Organization. Success/cancel URLs land back on Settings; the **webhook, not the redirect, is what changes the tier** (the redirect is UX only).
+
+### Decision 5 — Customer creation timing
+
+**Lean: lazily, at first checkout.** Free orgs never touch Stripe — no customer rows to reconcile for orgs that never pay. `POST /api/billing/checkout` creates the customer (org id + name in Stripe metadata), persists `stripe_customer_id`, then creates the session. Eager creation at org signup couples org creation to Stripe availability for zero benefit.
+
+## Tradeoff comparison
+
+| | D1: price id on `tiers` | D2: dedup + converge | D3: state → slug map | D4: hosted checkout/portal | D5: lazy customer |
+|---|---|---|---|---|---|
+| Spread to spec | 1 column + migration | `stripe_events` table + handler shape | one pure function (unit-testable) | 2 endpoints + 2 buttons | branch in checkout endpoint |
+| New infra | none | 1 dual-schema table | none | `stripe` SDK dep, 2 env secrets | none |
+| Reuses | dual-schema workflow | webhook mounting + raw-body precedent | `resolveTier` fallback ethos | SDK/`useAuthMutation` + redirect pattern | org repository |
+
+## Recommendation
+
+1. **Add `stripe_price_id` (nullable text, unique where not null) to `tiers`** — the price ↔ tier mapping is a tier-row attribute; `NULL` = not purchasable.
+2. **Add `stripe_customer_id` / `stripe_subscription_id` (nullable text, unique) to `organizations`**, dual-schema; ids survive the #197 tombstone.
+3. **`POST /api/webhooks/stripe`** mounted before `express.json()` with raw-body capture (Auth0-sync precedent), verified via `stripe.webhooks.constructEvent`, fail-closed on bad signature.
+4. **A `stripe_events` dual-schema table** with a unique Stripe event id: atomic dedup across instances + the tier-change audit trail (#172 Q6's first writer).
+5. **Converge-to-source handling:** on any subscription lifecycle event, re-fetch the subscription from Stripe and derive the tier via one pure `subscriptionState → tierSlug` function (Decision 3's status table); write `organizations.tier` and record the event row.
+6. **Owner-only `POST /api/billing/checkout` + `POST /api/billing/portal`** minting hosted-session URLs (lazy customer creation), exposed as `sdk.billing.*` and two buttons on Settings → Organization; the webhook is the sole tier writer.
+7. **`STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` in `environment.ts` + `.env.example`**; official `stripe` npm package, API-version-pinned.
+8. **No changes** to `resolveTier`, the cost gate, or the `usage` balance.
+
+## Open questions
+
+1. **Checkout for an org already subscribed — upgrade path?** Checkout Sessions create *new* subscriptions; plan *changes* belong to the Billing Portal (proration handled by Stripe). Lean: checkout endpoint 409s (`BILLING_ALREADY_SUBSCRIBED`) when `stripe_subscription_id` is set, and the UI shows "Manage subscription" (portal) instead of "Upgrade" (checkout) — one live subscription per org, enforced.
+2. **Unknown `stripe_customer_id` on an inbound event (e.g. dashboard-created test subscription)?** Lean: log warning + 200-ack — a 4xx would put Stripe into a 3-day retry loop for an event we will never be able to process.
+3. **Who may hit checkout/portal?** Lean: org **owner only** (`ownerUserId`), matching org delete (#197); RBAC roles (#198) can widen this later without contract change.
+4. **What happens to the subscription when the org is deleted (#197)?** Lean: cancel immediately during the delete cascade (no service exists to bill); the tombstoned row keeps both Stripe ids for reconciliation. Needs a small extension to `organization-delete.service.ts`.
+5. **Should the usage `period` align to the Stripe billing-cycle anchor instead of calendar month?** #172 left `period_anchor_day` for "the provider" to set — but it lives on the *tier* row, shared across orgs, while a subscription anchor is per-org, and re-anchoring mid-period moves the gate's counter keys. Lean: **defer** — keep calendar-month periods; file a follow-up ticket for per-org anchor alignment (real scope: usage keys + gate counters + a per-org column).
+6. **Test-mode vs live-mode keys per environment?** Lean: dev/staging run Stripe test mode with their own webhook endpoints + secrets (secrets are per-env already); Stripe CLI (`stripe listen`) for local webhook forwarding — goes in the smoke doc.
+
+## Enterprise-scale considerations
+
+- **Concurrency & correctness** — webhook delivery is at-least-once and multi-instance: dedup is a DB-unique insert on the Stripe event id (atomic check-then-act), and converge-to-source (Decision 2C) makes ordering irrelevant. The tier write is a single-column UPDATE keyed by org id — no read-modify-write race.
+- **Accuracy & auditability** — `stripe_events` is a durable append-only record of every processed lifecycle event and the tier it produced (the #172 Q6 audit writer); Stripe itself is the payment record-of-truth for disputes/chargebacks. No ephemeral state anywhere in the path.
+- **Failure modes** — signature verification **fails closed** (4xx, no processing). Handler errors → non-2xx → Stripe retries for ~3 days, and converge-to-source makes every retry safe. Stripe API down: checkout/portal endpoints surface a typed `ApiError` (tier untouched — degraded but safe); webhook converge-fetch failure → non-2xx → retried. The org's *current* tier keeps working throughout any Stripe outage — `resolveTier` reads our DB, not Stripe.
+- **Scale & unbounded growth** — event volume ∝ subscription changes (tiny); `stripe_events` grows append-only but small (retention policy can come with #179's ledger thinking). No fan-out, no polling.
+- **Multi-tenancy** — customer/subscription ids are unique-indexed per org; an event resolves to exactly one org via `stripe_customer_id`. No cross-tenant path exists.
+- **Contract stability** — the only writes into existing surfaces are `organizations.tier` (the slug #172 built to be written) and two nullable columns; `resolveTier`, the gate, and `usage` are untouched. Metered/usage-based Stripe billing later (#176's out-of-scope) plugs in beside this without rework.
+- **Data lifecycle** — subscription lifecycle drives the tier; the usage-period anchor question is consciously deferred (Open Q5) rather than silently mismatched. Stripe ids survive org tombstoning for reconciliation.
+
+## What this doesn't decide
+
+- **Usage-based/metered billing to Stripe** — reporting `usage` rows as Stripe usage records is explicitly out of scope (issue); the `usage` balance stays internal.
+- **Per-org billing-cycle-aligned usage periods** — deferred to a follow-up (Open Q5); real scope in the gate's counter keys.
+- **The audit ledger (#179)** — `stripe_events` audits *tier changes*; the per-call charge ledger remains #179.
+- **Tier-management/admin UI** — tiers (now with a price id) are still rows edited via seed/SQL.
+- **RBAC for billing actions** — owner-only for now; #198 roles widen it later.
+- **Refunds, invoices UI, tax/VAT configuration** — all live in Stripe's hosted surfaces; nothing to build.
+
+## Next step
+
+Write `docs/STRIPE_SUBSCRIPTION_BILLING.spec.md` (contract: the three new columns + `stripe_events` table shapes, webhook route + verification + converge handler, the `subscriptionState → tierSlug` function's status table, checkout/portal endpoint contracts + error codes, env vars, Settings UI states) and `.plan.md`. Likely slicing: (1) schema — `stripe_price_id` on `tiers`, org linkage columns, `stripe_events` table, migrations + type-checks; (2) Stripe service + the pure derivation function (unit-tested, SDK mocked); (3) webhook route — mounting, signature verification, dedup, converge handler; (4) checkout/portal endpoints + org-delete cancellation; (5) frontend — `sdk.billing.*`, Settings buttons + subscribed/unsubscribed states. PR targets `epic/subscription-billing`.
