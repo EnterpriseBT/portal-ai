@@ -9,6 +9,11 @@
  * See `docs/STRIPE_SUBSCRIPTION_BILLING.spec.md`.
  */
 
+import type Stripe from "stripe";
+import { StripeEventModelFactory } from "@portalai/core/models";
+import { DbService } from "./db.service.js";
+import { StripeService } from "./stripe.service.js";
+import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "billing-service" });
@@ -83,5 +88,147 @@ export class BillingService {
     // past_due (Stripe dunning owns grace) and any unrecognized status:
     // hold the line — keep the current tier and the anchor.
     return { tier: currentTier, subscriptionLive: true, anchorDay };
+  }
+
+  /**
+   * Webhook entry for `customer.subscription.{created,updated,deleted}`.
+   *
+   * Converge-to-source (D2): re-fetches the subscription's CURRENT state
+   * from Stripe (out-of-order delivery can't regress the tier), then in ONE
+   * transaction: the dedup insert (`false` → return `"duplicate"`, no
+   * further work) + the org UPDATE. An unknown customer records
+   * `"unmatched"` and resolves (Q2 — never a retry loop). Throws — → 500 →
+   * Stripe retry — only on DB/Stripe-fetch failure; the rollback removes
+   * the dedup row so the retry processes cleanly.
+   */
+  static async handleSubscriptionEvent(
+    event: Stripe.Event
+  ): Promise<"applied" | "noop" | "unmatched" | "duplicate"> {
+    const snapshot = event.data.object as Stripe.Subscription;
+
+    // Converge read — the decision input is Stripe's current state, never
+    // the event snapshot. A deleted subscription retrieves as `canceled`.
+    const sub = await StripeService.fetchSubscription(snapshot.id);
+    const customerId =
+      typeof sub.customer === "string" ? sub.customer : sub.customer.id;
+
+    const org =
+      await DbService.repository.organizations.findByStripeCustomerId(
+        customerId
+      );
+
+    if (!org) {
+      logger.warn(
+        { eventId: event.id, customerId, subscriptionId: sub.id },
+        "Stripe event for an unknown customer; recording unmatched"
+      );
+      const inserted = await DbService.repository.stripeEvents.insertIfNew(
+        BillingService.eventRow(event, {
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: sub.id,
+          organizationId: null,
+          resultingTier: null,
+          outcome: "unmatched",
+        })
+      );
+      return inserted ? "unmatched" : "duplicate";
+    }
+
+    const priceIndex = await DbService.repository.tiers.priceIndex();
+    const derived = BillingService.deriveTierFromSubscription(
+      {
+        status: sub.status,
+        priceId: sub.items.data[0]?.price?.id ?? null,
+        billingCycleAnchor: sub.billing_cycle_anchor,
+      },
+      priceIndex,
+      org.tier
+    );
+
+    const nextSubscriptionId = derived.subscriptionLive ? sub.id : null;
+    const changed =
+      org.tier !== derived.tier ||
+      org.stripeSubscriptionId !== nextSubscriptionId ||
+      org.billingAnchorDay !== derived.anchorDay;
+
+    // Dedup row + org write commit or roll back together (D2).
+    return DbService.transaction(async (tx) => {
+      const inserted = await DbService.repository.stripeEvents.insertIfNew(
+        BillingService.eventRow(event, {
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: sub.id,
+          organizationId: org.id,
+          resultingTier: changed ? derived.tier : null,
+          outcome: changed ? "applied" : "noop",
+        }),
+        tx
+      );
+      if (!inserted) return "duplicate";
+      if (!changed) return "noop";
+
+      await DbService.repository.organizations.update(
+        org.id,
+        {
+          tier: derived.tier,
+          stripeSubscriptionId: nextSubscriptionId,
+          billingAnchorDay: derived.anchorDay,
+          updated: Date.now(),
+          updatedBy: SystemUtilities.id.system,
+        },
+        tx
+      );
+      logger.info(
+        {
+          eventId: event.id,
+          organizationId: org.id,
+          tier: derived.tier,
+          billingAnchorDay: derived.anchorDay,
+        },
+        "Applied Stripe subscription state to organization"
+      );
+      return "applied";
+    });
+  }
+
+  /**
+   * Record a signature-verified event of a type we don't handle —
+   * dedup'd like everything else, so redeliveries stay one row.
+   */
+  static async recordIgnoredEvent(
+    event: Stripe.Event
+  ): Promise<"ignored" | "duplicate"> {
+    const obj = event.data.object as {
+      customer?: unknown;
+      subscription?: unknown;
+    };
+    const inserted = await DbService.repository.stripeEvents.insertIfNew(
+      BillingService.eventRow(event, {
+        stripeCustomerId:
+          typeof obj.customer === "string" ? obj.customer : null,
+        stripeSubscriptionId:
+          typeof obj.subscription === "string" ? obj.subscription : null,
+        organizationId: null,
+        resultingTier: null,
+        outcome: "ignored",
+      })
+    );
+    return inserted ? "ignored" : "duplicate";
+  }
+
+  /** Assemble a `stripe_events` row (audit fields via the model factory). */
+  private static eventRow(
+    event: Stripe.Event,
+    fields: {
+      stripeCustomerId: string | null;
+      stripeSubscriptionId: string | null;
+      organizationId: string | null;
+      resultingTier: string | null;
+      outcome: "applied" | "noop" | "unmatched" | "ignored";
+    }
+  ) {
+    return new StripeEventModelFactory()
+      .create(SystemUtilities.id.system)
+      .update({ eventId: event.id, type: event.type, ...fields })
+      .parse();
   }
 }
