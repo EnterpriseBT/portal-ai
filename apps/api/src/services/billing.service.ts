@@ -11,12 +11,24 @@
 
 import type Stripe from "stripe";
 import { StripeEventModelFactory } from "@portalai/core/models";
+import type { BillingTier } from "@portalai/core/contracts";
 import { DbService } from "./db.service.js";
 import { StripeService } from "./stripe.service.js";
+import { TierService } from "./tier.service.js";
+import { ApiError } from "./http.service.js";
+import { ApiCode } from "../constants/api-codes.constants.js";
+import { environment } from "../environment.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
+import type { OrganizationSelect } from "../db/schema/zod.js";
 
 const logger = createLogger({ module: "billing-service" });
+
+/** The web app's settings page — Checkout/Portal return target. */
+function settingsUrl(): string {
+  const origin = environment.CORS_ORIGIN[0] ?? "http://localhost:3000";
+  return `${origin}/settings`;
+}
 
 /** Subscription states that revert the org to the free tier (D3). A deleted
  *  subscription (`customer.subscription.deleted`) reports `canceled`. */
@@ -213,6 +225,174 @@ export class BillingService {
       })
     );
     return inserted ? "ignored" : "duplicate";
+  }
+
+  /**
+   * The self-serve plan list (`GET /api/billing/tiers`): `selectable` rows
+   * mapped to whole-tier objects (#214 contract-shaping). `purchasable`
+   * stays truthful under a Stripe outage — only `price` null-degrades (Q7).
+   */
+  static async listBillingTiers(): Promise<BillingTier[]> {
+    const rows = await DbService.repository.tiers.findSelectable();
+    return Promise.all(
+      rows.map(async (row) => ({
+        slug: row.slug,
+        displayName: row.displayName,
+        allocations: TierService.tierPolicyFromRow(row).allocations,
+        purchasable: row.stripePriceId != null,
+        price: row.stripePriceId
+          ? await StripeService.getPrice(row.stripePriceId)
+          : null,
+      }))
+    );
+  }
+
+  /**
+   * Mint a hosted Checkout session for `tierSlug` (owner-only). Guards, in
+   * contract order: configured 503 → owner 403 → not already subscribed
+   * 409 (Q1) → not managed-custom 409 (D5, server-blocked) → tier
+   * exists+selectable 404 → priced 400 → lazy customer (D7) → session.
+   * Stripe API failure → 502.
+   */
+  static async createCheckout(
+    org: OrganizationSelect,
+    callerUserId: string,
+    tierSlug: string
+  ): Promise<{ url: string }> {
+    if (!StripeService.isConfigured()) {
+      throw new ApiError(
+        503,
+        ApiCode.BILLING_NOT_CONFIGURED,
+        "Billing is not configured in this environment"
+      );
+    }
+    if (org.ownerUserId !== callerUserId) {
+      throw new ApiError(
+        403,
+        ApiCode.BILLING_NOT_OWNER,
+        "Only the organization owner can manage billing"
+      );
+    }
+    if (org.stripeSubscriptionId) {
+      throw new ApiError(
+        409,
+        ApiCode.BILLING_ALREADY_SUBSCRIBED,
+        "The organization already has a subscription — manage it in the billing portal"
+      );
+    }
+
+    // Managed custom tier (D5): no subscription drives the org's tier and
+    // the row is unlisted — self-serve checkout would destroy the deal.
+    const currentTierRow = await DbService.repository.tiers.findBySlug(
+      org.tier
+    );
+    if (currentTierRow && !currentTierRow.selectable) {
+      throw new ApiError(
+        409,
+        ApiCode.BILLING_TIER_MANAGED,
+        "This organization's plan is managed — contact us to make changes"
+      );
+    }
+
+    const tier = await DbService.repository.tiers.findBySlug(tierSlug);
+    if (!tier || !tier.selectable) {
+      throw new ApiError(
+        404,
+        ApiCode.BILLING_TIER_NOT_FOUND,
+        `Unknown plan: ${tierSlug}`
+      );
+    }
+    if (!tier.stripePriceId) {
+      throw new ApiError(
+        400,
+        ApiCode.BILLING_TIER_NOT_PURCHASABLE,
+        `The ${tier.displayName} plan cannot be purchased`
+      );
+    }
+
+    try {
+      // Lazy customer creation (D7) — persisted before the session so a
+      // failed checkout never re-creates the customer.
+      let customerId = org.stripeCustomerId;
+      if (!customerId) {
+        const customer = await StripeService.createCustomer({
+          organizationId: org.id,
+          name: org.name,
+        });
+        customerId = customer.id;
+        await DbService.repository.organizations.update(org.id, {
+          stripeCustomerId: customerId,
+          updated: Date.now(),
+          updatedBy: callerUserId,
+        });
+      }
+
+      return await StripeService.createCheckoutSession({
+        customerId,
+        priceId: tier.stripePriceId,
+        successUrl: `${settingsUrl()}?billing=success`,
+        cancelUrl: `${settingsUrl()}?billing=cancelled`,
+        organizationId: org.id,
+      });
+    } catch (err) {
+      logger.error(
+        { err, organizationId: org.id, tierSlug },
+        "Stripe checkout session creation failed"
+      );
+      throw new ApiError(
+        502,
+        ApiCode.BILLING_CHECKOUT_FAILED,
+        "Could not start checkout — please try again"
+      );
+    }
+  }
+
+  /**
+   * Mint a hosted Billing Portal session (owner-only). Requires a Stripe
+   * customer (409 without one); Stripe failure → 502.
+   */
+  static async createPortal(
+    org: OrganizationSelect,
+    callerUserId: string
+  ): Promise<{ url: string }> {
+    if (!StripeService.isConfigured()) {
+      throw new ApiError(
+        503,
+        ApiCode.BILLING_NOT_CONFIGURED,
+        "Billing is not configured in this environment"
+      );
+    }
+    if (org.ownerUserId !== callerUserId) {
+      throw new ApiError(
+        403,
+        ApiCode.BILLING_NOT_OWNER,
+        "Only the organization owner can manage billing"
+      );
+    }
+    if (!org.stripeCustomerId) {
+      throw new ApiError(
+        409,
+        ApiCode.BILLING_NO_SUBSCRIPTION,
+        "The organization has no billing account yet"
+      );
+    }
+
+    try {
+      return await StripeService.createPortalSession({
+        customerId: org.stripeCustomerId,
+        returnUrl: settingsUrl(),
+      });
+    } catch (err) {
+      logger.error(
+        { err, organizationId: org.id },
+        "Stripe portal session creation failed"
+      );
+      throw new ApiError(
+        502,
+        ApiCode.BILLING_PORTAL_FAILED,
+        "Could not open the billing portal — please try again"
+      );
+    }
   }
 
   /** Assemble a `stripe_events` row (audit fields via the model factory). */

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { jwtCheck } from "../middleware/auth.middleware.js";
 import { profileRouter } from "./profile.router.js";
 import { organizationRouter } from "./organization.router.js";
+import { billingRouter } from "./billing.router.js";
 import { connectorDefinitionRouter } from "./connector-definition.router.js";
 import { connectorInstanceRouter } from "./connector-instance.router.js";
 import { jobsRouter } from "./jobs.router.js";
@@ -31,6 +32,7 @@ protectedRouter.use(jwtCheck);
 // Mount routers
 protectedRouter.use("/profile", profileRouter);
 protectedRouter.use("/organization", organizationRouter);
+protectedRouter.use("/billing", billingRouter);
 protectedRouter.use("/connector-definitions", connectorDefinitionRouter);
 protectedRouter.use("/connector-instances", connectorInstanceRouter);
 protectedRouter.use("/connector-instances", connectorInstanceLayoutPlansRouter);
