@@ -23,7 +23,13 @@ gh issue view <N> --repo EnterpriseBT/portal-ai --json number,title,body,labels,
 
 If the issue doesn't exist, or `state` is `CLOSED`, stop and tell the user. If `issueType` is unset, warn but continue — note in the doc that the type should be set before merging the discovery PR.
 
-### 2. Derive the slug and branch prefix
+### 2. PRD completeness gate (feature issues)
+
+Before any branch, survey, or drafting, evaluate the PRD against the **PRD dimension checklist** in `.claude/skills/ticket/SKILL.md` (step 1) — read that file now; it is the single source for the dimensions. For each dimension the body neither answers nor explicitly waives (`N/A — <reason>`), ask the user — **one batched set of targeted questions** — then update the issue body with the answers before proceeding.
+
+The gate is **blocking**: a discovery doc drafted against an incomplete PRD is exactly the failure mode it exists to prevent (#212). It applies in both full and condensed modes. Bug issues skip it — the repro template has its own shape.
+
+### 3. Derive the slug and branch prefix
 
 The slug becomes the file name (`docs/<SLUG>.discovery.md`) and the branch suffix. Derive from the issue title:
 
@@ -38,7 +44,7 @@ The branch prefix follows the issue type, since this is the **single branch** th
 
 Ask the user to confirm the slug if the issue title is ambiguous (more than five words, special characters, etc.). Otherwise pick and tell them in one sentence what you chose.
 
-### 3. Create the branch
+### 4. Create the branch
 
 ```bash
 git checkout main
@@ -48,7 +54,7 @@ git checkout -b <prefix>/<slug>
 
 If a branch by that name already exists locally or remotely, stop and ask the user how to proceed (extend the existing branch vs. pick a new name). The branch is shared with later phases (spec, plan, implementation) — don't create a new branch when those commit.
 
-### 4. Survey the codebase
+### 5. Survey the codebase
 
 Use the **Explore agent** with a structured prompt — do NOT do this serially with Read/Grep yourself, you will waste context. The prompt template:
 
@@ -64,11 +70,11 @@ Use the **Explore agent** with a structured prompt — do NOT do this serially w
 
 **Tailor the topic areas to the issue.** For a new connector → existing connector adapter/registry, sync job, field mappings, auth services, frontend workflow shape. For a frontend feature → relevant views/workflows/modules, SDK endpoints, query keys, related dialogs. For a backend feature → relevant routes/services/repositories/schemas/queues. **Never** use a generic checklist — read the issue and pick what's actually relevant.
 
-### 5. Read one reference discovery doc
+### 6. Read one reference discovery doc
 
 Read **one** existing discovery doc to anchor the style. Default to `docs/SPREADSHEET_PARSER_ROW_ASYNC.discovery.md` — it's compact and shows the full structure. If the issue clearly resembles another existing doc, prefer that one.
 
-### 6. Write `docs/<SLUG>.discovery.md`
+### 7. Write `docs/<SLUG>.discovery.md`
 
 Follow the house structure exactly:
 
@@ -145,7 +151,7 @@ Follow the house structure exactly:
 - **Enterprise-scale lens is the default, not an add-on.** The "Enterprise-scale considerations" section is mandatory; each dimension gets a `Lean:` or an explicit `N/A because …`. Prototype-grade choices (in-process-only state, non-atomic counters, blanket fail-open, arbitrary technical windows) are allowed **only** as a *conscious, stated* downgrade ("prototype-grade acceptable because X"), never as a silent default. See `CLAUDE.md` → "Enterprise-scale considerations in discovery".
 - **Length: 100–250 lines.** Tighter for narrow tickets; longer only when the design space is genuinely broad.
 
-### 7. Hand off to the user
+### 8. Hand off to the user
 
 Stop. Report to the user:
 
@@ -159,7 +165,7 @@ Do **not** stage, commit, push, or open the PR. The user reads the draft, refine
 
 For small tickets (single-package, no new pattern, no contract change — the sizing `/ticket` recorded), the four docs collapse into **one** `docs/<SLUG>.md` covering discovery + spec + plan + smoke. Reference exemplar: `docs/PORTAL_MESSAGE_TIMESTAMPS.md`.
 
-Steps 1–3 (fetch issue, derive slug, create branch) are identical to full mode. The survey (step 4) shrinks to **targeted reads** of the files the issue names — reach for an Explore agent only if you genuinely don't know where the change lives. Then write `docs/<SLUG>.md` (not `.discovery.md`):
+Steps 1–4 (fetch issue, PRD completeness gate, derive slug, create branch) are identical to full mode — the gate applies to condensed features too. The survey (step 5) shrinks to **targeted reads** of the files the issue names — reach for an Explore agent only if you genuinely don't know where the change lives. Then write `docs/<SLUG>.md` (not `.discovery.md`):
 
 ```markdown
 # <Feature name> — Condensed design (#<N>)
