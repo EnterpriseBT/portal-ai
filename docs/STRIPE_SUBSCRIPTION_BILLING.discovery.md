@@ -85,19 +85,37 @@ Stripe retries webhooks (same event id redelivered) and does **not** guarantee o
 - **A — Stripe-hosted Checkout Session + hosted Billing Portal:** backend mints session URLs; browser redirects out and back. Zero card data touches Portal.ai (SAQ-A PCI posture); plan switches, payment-method updates, cancellation, and invoices all live in the portal.
 - **B — embedded Stripe Elements / custom plan-management UI:** in-app UX, but PCI surface, far more code, and a custom UI for flows the portal gives us free.
 
-**Lean: A.** Two owner-only JWT-protected endpoints on a new `billing.router.ts` — `POST /api/billing/checkout` (body: target tier slug; creates the customer lazily if absent, returns the session URL) and `POST /api/billing/portal` (returns a portal session URL) — consumed via a new `sdk.billing.*` client and two buttons in Settings → Organization. Success/cancel URLs land back on Settings; the **webhook, not the redirect, is what changes the tier** (the redirect is UX only).
+**Lean: A.** Two owner-only JWT-protected endpoints on a new `billing.router.ts` — `POST /api/billing/checkout` (body: target tier slug; creates the customer lazily if absent, returns the session URL) and `POST /api/billing/portal` (returns a portal session URL) — consumed via a new `sdk.billing.*` client. Success/cancel URLs land back on Settings; the **webhook, not the redirect, is what changes the tier** (the redirect is UX only).
 
-### Decision 5 — Customer creation timing
+### Decision 5 — A dedicated "Subscription & Billing" Settings tab
+
+The PRD requires billing to be its own tab, not rows in the Organization tab. Today the tier + usage rows from #172 render inside the Organization tab's `MetadataList` (`apps/web/src/views/Settings.view.tsx`).
+
+- **A — new tab, leave #172's rows where they are:** billing actions live apart from the tier/usage they act on; two places tell half the story each.
+- **B — new tab that *absorbs* the tier/usage display:** one "Subscription & Billing" tab shows current tier, allocations, used/available (the #172 rows relocate), the selectable plan list, and the checkout / manage-subscription actions.
+
+**Lean: B.** The tier display and the actions that change the tier belong on one surface; the Organization tab returns to org identity/settings. Pure view-layer move — the data still comes from `sdk.organizations.current()` / `.usage()`. The plan list needs one new read endpoint, `GET /api/billing/tiers` (Decision 6).
+
+### Decision 6 — Standard selectable set vs custom (enterprise) subscriptions
+
+The PRD requires custom subscriptions alongside the standard UI-selectable set. #172 Open Q2 already decided a bespoke deal is **its own `tiers` row** (e.g. `enterprise-acme`) — so the question is only how a row declares "listed in the checkout UI" vs "custom".
+
+- **A — infer from `stripe_price_id`:** priced = selectable. Breaks immediately: a custom enterprise deal can *also* be Stripe-billed via a bespoke price, yet must not appear in the public plan list.
+- **B — explicit `selectable` boolean on `tiers`:** the plan list is `selectable = true` (checkout additionally requires a `stripe_price_id`). A custom tier is a row with `selectable = false`, reached two ways: **(i) Stripe-driven** — a bespoke price on that row; the webhook converge path maps it like any other tier, no special casing; **(ii) manually assigned** — the admin CLI (`portalai`, which already owns org/tier management) writes `organizations.tier` directly; no subscription exists, so no webhook ever fires for that org and the assignment can't be clobbered.
+
+**Lean: B.** One boolean column, seeded `true` for `standard`; both custom paths fall out of machinery this doc already builds — the enterprise case adds a flag, not a mechanism. `GET /api/billing/tiers` returns the selectable rows (slug, display name, allocations, price) for the plan list.
+
+### Decision 7 — Customer creation timing
 
 **Lean: lazily, at first checkout.** Free orgs never touch Stripe — no customer rows to reconcile for orgs that never pay. `POST /api/billing/checkout` creates the customer (org id + name in Stripe metadata), persists `stripe_customer_id`, then creates the session. Eager creation at org signup couples org creation to Stripe availability for zero benefit.
 
 ## Tradeoff comparison
 
-| | D1: price id on `tiers` | D2: dedup + converge | D3: state → slug map | D4: hosted checkout/portal | D5: lazy customer |
-|---|---|---|---|---|---|
-| Spread to spec | 1 column + migration | `stripe_events` table + handler shape | one pure function (unit-testable) | 2 endpoints + 2 buttons | branch in checkout endpoint |
-| New infra | none | 1 dual-schema table | none | `stripe` SDK dep, 2 env secrets | none |
-| Reuses | dual-schema workflow | webhook mounting + raw-body precedent | `resolveTier` fallback ethos | SDK/`useAuthMutation` + redirect pattern | org repository |
+| | D1: price id on `tiers` | D2: dedup + converge | D3: state → slug map | D4: hosted checkout/portal | D5: Billing tab | D6: `selectable` flag | D7: lazy customer |
+|---|---|---|---|---|---|---|---|
+| Spread to spec | 1 column + migration | `stripe_events` table + handler shape | one pure function (unit-testable) | 2 endpoints | 1 tab + plan list, rows relocate | 1 column + `GET /api/billing/tiers` | branch in checkout endpoint |
+| New infra | none | 1 dual-schema table | none | `stripe` SDK dep, 2 env secrets | none (view-layer) | none | none |
+| Reuses | dual-schema workflow | webhook mounting + raw-body precedent | `resolveTier` fallback ethos | SDK/`useAuthMutation` + redirect pattern | Settings tabs + #172 queries | #172 Q2 bespoke-row model + admin CLI | org repository |
 
 ## Recommendation
 
@@ -106,9 +124,11 @@ Stripe retries webhooks (same event id redelivered) and does **not** guarantee o
 3. **`POST /api/webhooks/stripe`** mounted before `express.json()` with raw-body capture (Auth0-sync precedent), verified via `stripe.webhooks.constructEvent`, fail-closed on bad signature.
 4. **A `stripe_events` dual-schema table** with a unique Stripe event id: atomic dedup across instances + the tier-change audit trail (#172 Q6's first writer).
 5. **Converge-to-source handling:** on any subscription lifecycle event, re-fetch the subscription from Stripe and derive the tier via one pure `subscriptionState → tierSlug` function (Decision 3's status table); write `organizations.tier` and record the event row.
-6. **Owner-only `POST /api/billing/checkout` + `POST /api/billing/portal`** minting hosted-session URLs (lazy customer creation), exposed as `sdk.billing.*` and two buttons on Settings → Organization; the webhook is the sole tier writer.
-7. **`STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` in `environment.ts` + `.env.example`**; official `stripe` npm package, API-version-pinned.
-8. **No changes** to `resolveTier`, the cost gate, or the `usage` balance.
+6. **Add `selectable` boolean to `tiers`** (seeded `true` for `standard`): the checkout plan list is `selectable = true`; a custom/enterprise subscription is a `selectable = false` row driven by a bespoke Stripe price **or** assigned manually via the admin CLI (no subscription → no webhook → never clobbered).
+7. **Owner-only `POST /api/billing/checkout` + `POST /api/billing/portal`** minting hosted-session URLs (lazy customer creation), plus read-only `GET /api/billing/tiers` (the selectable plan list), exposed as `sdk.billing.*`; the webhook is the sole Stripe-driven tier writer.
+8. **A dedicated Settings → "Subscription & Billing" tab** that absorbs #172's tier/allocation/usage rows and adds the plan list + checkout / manage-subscription actions; the Organization tab keeps only org identity/settings.
+9. **`STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` in `environment.ts` + `.env.example`**; official `stripe` npm package, API-version-pinned.
+10. **No changes** to `resolveTier`, the cost gate, or the `usage` balance.
 
 ## Open questions
 
@@ -118,6 +138,7 @@ Stripe retries webhooks (same event id redelivered) and does **not** guarantee o
 4. **What happens to the subscription when the org is deleted (#197)?** Lean: cancel immediately during the delete cascade (no service exists to bill); the tombstoned row keeps both Stripe ids for reconciliation. Needs a small extension to `organization-delete.service.ts`.
 5. **Should the usage `period` align to the Stripe billing-cycle anchor instead of calendar month?** #172 left `period_anchor_day` for "the provider" to set — but it lives on the *tier* row, shared across orgs, while a subscription anchor is per-org, and re-anchoring mid-period moves the gate's counter keys. Lean: **defer** — keep calendar-month periods; file a follow-up ticket for per-org anchor alignment (real scope: usage keys + gate counters + a per-org column).
 6. **Test-mode vs live-mode keys per environment?** Lean: dev/staging run Stripe test mode with their own webhook endpoints + secrets (secrets are per-env already); Stripe CLI (`stripe listen`) for local webhook forwarding — goes in the smoke doc.
+7. **Where does the plan list's displayed price come from?** The `tiers` row has the price *id*, not the amount. Lean: `GET /api/billing/tiers` fetches amounts from Stripe server-side by price id with a TTL cache (like `resolveTier`'s 60s) — Stripe stays the single price authority, no duplicated amount column to drift; Stripe outage degrades the display, not checkout correctness.
 
 ## Enterprise-scale considerations
 
@@ -140,4 +161,4 @@ Stripe retries webhooks (same event id redelivered) and does **not** guarantee o
 
 ## Next step
 
-Write `docs/STRIPE_SUBSCRIPTION_BILLING.spec.md` (contract: the three new columns + `stripe_events` table shapes, webhook route + verification + converge handler, the `subscriptionState → tierSlug` function's status table, checkout/portal endpoint contracts + error codes, env vars, Settings UI states) and `.plan.md`. Likely slicing: (1) schema — `stripe_price_id` on `tiers`, org linkage columns, `stripe_events` table, migrations + type-checks; (2) Stripe service + the pure derivation function (unit-tested, SDK mocked); (3) webhook route — mounting, signature verification, dedup, converge handler; (4) checkout/portal endpoints + org-delete cancellation; (5) frontend — `sdk.billing.*`, Settings buttons + subscribed/unsubscribed states. PR targets `epic/subscription-billing`.
+Write `docs/STRIPE_SUBSCRIPTION_BILLING.spec.md` (contract: the four new columns + `stripe_events` table shapes, webhook route + verification + converge handler, the `subscriptionState → tierSlug` function's status table, checkout/portal/tiers endpoint contracts + error codes, env vars, the Billing tab's states) and `.plan.md`. Likely slicing: (1) schema — `stripe_price_id` + `selectable` on `tiers`, org linkage columns, `stripe_events` table, migrations + type-checks; (2) Stripe service + the pure derivation function (unit-tested, SDK mocked); (3) webhook route — mounting, signature verification, dedup, converge handler; (4) billing endpoints (checkout / portal / tiers list) + org-delete cancellation; (5) frontend — `sdk.billing.*`, the Subscription & Billing tab (absorbing #172's rows), plan list + subscribed/unsubscribed states. PR targets `epic/subscription-billing`.
