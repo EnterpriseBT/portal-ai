@@ -72,7 +72,7 @@ Stripe retries webhooks (same event id redelivered) and does **not** guarantee o
 
 ### Decision 3 — Tier derivation from subscription state
 
-**Decided (falls out of Decision 2C):** one pure function `subscription state → tier slug`:
+**Decided (falls out of Decision 2C; the grace behavior is PRD-confirmed):** one pure function `subscription state → tier slug`:
 
 - `active` / `trialing` → the tier whose `stripe_price_id` matches the subscription's price; unknown price → log + keep current tier (never guess).
 - `past_due` → **keep the paid tier** — Stripe's dunning/Smart Retries own the grace window; we don't duplicate that policy in app code.
@@ -95,6 +95,8 @@ The PRD requires billing to be its own tab, not rows in the Organization tab. To
 - **B — new tab that *absorbs* the tier/usage display:** one "Subscription & Billing" tab shows everything — current tier, used/available, plan list, actions — and the #172 rows relocate.
 
 **Decided: A** (user call). Managing billing and changing subscriptions is a different set of *actions* from viewing current organization usage — the Organization tab remains the read-only "what I have and what I've used" surface (#172 untouched), and the new tab owns "change what I have." The tab shows the current plan for context (from the existing `sdk.organizations.current()`), the selectable plan list (`GET /api/billing/tiers`, Decision 6), and the checkout/portal actions.
+
+**Custom-tier state (PRD-confirmed):** for an org on a manually-assigned custom tier (`selectable = false`, no `stripe_subscription_id`), the tab shows the current plan with a "your plan is managed — contact us" notice and hides the plan list, checkout, and portal actions — self-serve must not be able to overwrite an enterprise deal, and there is no Stripe customer to open a portal for.
 
 ### Decision 6 — Standard selectable set vs custom (enterprise) subscriptions
 
@@ -125,8 +127,8 @@ The PRD requires custom subscriptions alongside the standard UI-selectable set. 
 4. **A `stripe_events` dual-schema table** with a unique Stripe event id: atomic dedup across instances + the tier-change audit trail (#172 Q6's first writer).
 5. **Converge-to-source handling:** on any subscription lifecycle event, re-fetch the subscription from Stripe and derive the tier via one pure `subscriptionState → tierSlug` function (Decision 3's status table); write `organizations.tier` and record the event row.
 6. **Add `selectable` boolean to `tiers`** (seeded `true` for `standard`): the checkout plan list is `selectable = true`; a custom/enterprise subscription is a `selectable = false` row driven by a bespoke Stripe price **or** assigned manually via the admin CLI (no subscription → no webhook → never clobbered).
-7. **Owner-only `POST /api/billing/checkout` + `POST /api/billing/portal`** minting hosted-session URLs (lazy customer creation), plus read-only `GET /api/billing/tiers` (the selectable plan list), exposed as `sdk.billing.*`; the webhook is the sole Stripe-driven tier writer.
-8. **A dedicated Settings → "Subscription & Billing" tab** owning the *actions* — current plan for context, the selectable plan list, checkout / manage-subscription; the Organization tab keeps the #172 tier/allocation/usage display unchanged (viewing usage and managing billing are different activities).
+7. **Owner-only `POST /api/billing/checkout` + `POST /api/billing/portal`** minting hosted-session URLs (lazy customer creation), plus read-only `GET /api/billing/tiers` (the selectable plan list), exposed as `sdk.billing.*`; the webhook is the sole Stripe-driven tier writer. Org delete (#197) cancels an active subscription immediately — best-effort, never blocking the delete.
+8. **A dedicated Settings → "Subscription & Billing" tab** owning the *actions* — current plan for context, the selectable plan list, checkout / manage-subscription; the Organization tab keeps the #172 tier/allocation/usage display unchanged (viewing usage and managing billing are different activities). Orgs on a manually-assigned custom tier see a "your plan is managed — contact us" notice with all self-serve actions hidden.
 9. **`STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` in `environment.ts` + `.env.example`**; official `stripe` npm package, API-version-pinned.
 10. **No changes** to `resolveTier`, the cost gate, or the `usage` balance.
 
@@ -134,8 +136,8 @@ The PRD requires custom subscriptions alongside the standard UI-selectable set. 
 
 1. **Checkout for an org already subscribed — upgrade path?** Checkout Sessions create *new* subscriptions; plan *changes* belong to the Billing Portal (proration handled by Stripe). Lean: checkout endpoint 409s (`BILLING_ALREADY_SUBSCRIBED`) when `stripe_subscription_id` is set, and the UI shows "Manage subscription" (portal) instead of "Upgrade" (checkout) — one live subscription per org, enforced.
 2. **Unknown `stripe_customer_id` on an inbound event (e.g. dashboard-created test subscription)?** Lean: log warning + 200-ack — a 4xx would put Stripe into a 3-day retry loop for an event we will never be able to process.
-3. **Who may hit checkout/portal?** Lean: org **owner only** (`ownerUserId`), matching org delete (#197); RBAC roles (#198) can widen this later without contract change.
-4. **What happens to the subscription when the org is deleted (#197)?** Lean: cancel immediately during the delete cascade (no service exists to bill); the tombstoned row keeps both Stripe ids for reconciliation. Needs a small extension to `organization-delete.service.ts`.
+3. **~~Who may hit checkout/portal?~~ [RESOLVED — owner only, PRD-confirmed.]** Org **owner only** (`ownerUserId`), matching org delete (#197); RBAC roles (#198) can widen this later without contract change.
+4. **~~What happens to the subscription when the org is deleted (#197)?~~ [RESOLVED — cancel immediately, PRD-confirmed.]** The delete cascade cancels the subscription immediately (no service exists to bill); delete **never blocks on Stripe** — a failed cancel call is logged for manual reconciliation and the delete proceeds; the tombstoned row keeps both Stripe ids. Extends `organization-delete.service.ts`.
 5. **Should the usage `period` align to the Stripe billing-cycle anchor instead of calendar month?** #172 left `period_anchor_day` for "the provider" to set — but it lives on the *tier* row, shared across orgs, while a subscription anchor is per-org, and re-anchoring mid-period moves the gate's counter keys. Lean: **defer** — keep calendar-month periods; file a follow-up ticket for per-org anchor alignment (real scope: usage keys + gate counters + a per-org column).
 6. **Test-mode vs live-mode keys per environment?** Lean: dev/staging run Stripe test mode with their own webhook endpoints + secrets (secrets are per-env already); Stripe CLI (`stripe listen`) for local webhook forwarding — goes in the smoke doc.
 7. **Where does the plan list's displayed price come from?** The `tiers` row has the price *id*, not the amount. Lean: `GET /api/billing/tiers` fetches amounts from Stripe server-side by price id with a TTL cache (like `resolveTier`'s 60s) — Stripe stays the single price authority, no duplicated amount column to drift; Stripe outage degrades the display, not checkout correctness.
@@ -144,7 +146,7 @@ The PRD requires custom subscriptions alongside the standard UI-selectable set. 
 
 - **Concurrency & correctness** — webhook delivery is at-least-once and multi-instance: dedup is a DB-unique insert on the Stripe event id (atomic check-then-act), and converge-to-source (Decision 2C) makes ordering irrelevant. The tier write is a single-column UPDATE keyed by org id — no read-modify-write race.
 - **Accuracy & auditability** — `stripe_events` is a durable append-only record of every processed lifecycle event and the tier it produced (the #172 Q6 audit writer); Stripe itself is the payment record-of-truth for disputes/chargebacks. No ephemeral state anywhere in the path.
-- **Failure modes** — signature verification **fails closed** (4xx, no processing). Handler errors → non-2xx → Stripe retries for ~3 days, and converge-to-source makes every retry safe. Stripe API down: checkout/portal endpoints surface a typed `ApiError` (tier untouched — degraded but safe); webhook converge-fetch failure → non-2xx → retried. The org's *current* tier keeps working throughout any Stripe outage — `resolveTier` reads our DB, not Stripe.
+- **Failure modes** — signature verification **fails closed** (4xx, no processing). Handler errors → non-2xx → Stripe retries for ~3 days, and converge-to-source makes every retry safe. Stripe API down: checkout/portal endpoints surface a typed `ApiError` (tier untouched — degraded but safe); webhook converge-fetch failure → non-2xx → retried. Org delete's cancel call is best-effort — delete never blocks on a Stripe outage (failure logged for manual reconciliation). The org's *current* tier keeps working throughout any Stripe outage — `resolveTier` reads our DB, not Stripe.
 - **Scale & unbounded growth** — event volume ∝ subscription changes (tiny); `stripe_events` grows append-only but small (retention policy can come with #179's ledger thinking). No fan-out, no polling.
 - **Multi-tenancy** — customer/subscription ids are unique-indexed per org; an event resolves to exactly one org via `stripe_customer_id`. No cross-tenant path exists.
 - **Contract stability** — the only writes into existing surfaces are `organizations.tier` (the slug #172 built to be written) and two nullable columns; `resolveTier`, the gate, and `usage` are untouched. Metered/usage-based Stripe billing later (#176's out-of-scope) plugs in beside this without rework.
