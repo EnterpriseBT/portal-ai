@@ -133,13 +133,13 @@ Report: the issue URL, the type set, the recorded sizing, and the next command �
 - **Ask, never invent.** Scaffolding structure is your job; requirements are the user's. An empty section prompts a question, not creative writing.
 - **No branch, no docs, no code.** Phase 2 (`/discovery`) creates the branch.
 
-## PRD amendments (post-filing)
+## Ticket amendments (post-filing)
 
-When the user adds or changes a requirement after the ticket is filed ("add a requirement to the PRD: …"), the PRD and its branch move **together, in one action**:
+When a ticket's scope shifts after filing — a requirement added to a feature PRD ("add a requirement to the PRD: …"), or a bug's repro/impact changing once the fix branch exists — the issue body and its branch move **together, in one action**:
 
-1. **Update the issue body first** — the PRD is the record of truth; the new requirement lands in `## Deliverables` / `## Acceptance criteria`, not just in conversation.
-2. **Run the new requirement through the dimension checklist** — if it raises fresh questions (a new actor? a new surface?), ask them now, not at review.
-3. **Reconcile every in-flight artifact** on the ticket's branch (discovery/spec/plan, or the condensed doc) in the same action — a PRD that contradicts its branch docs is a bug in this change, not a follow-up.
+1. **Update the issue body first** — the ticket is the record of truth; the change lands in `## Deliverables` / `## Acceptance criteria` (feature) or `## Repro` / `## Impact` (bug), not just in conversation.
+2. **Feature amendments run through the dimension checklist** — if the addition raises fresh questions (a new actor? a new surface?), ask them now, not at review.
+3. **Reconcile every in-flight artifact** on the ticket's branch (discovery/spec/plan, or the condensed doc) in the same action — a ticket that contradicts its branch docs is a bug in this change, not a follow-up.
 4. **Commit the reconciliation** referencing the issue (`docs: <what changed> (#<N>)`).
 
 ## What this skill is not

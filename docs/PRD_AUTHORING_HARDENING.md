@@ -28,7 +28,7 @@
 
 **Gate behavior.** `/discovery` (both modes), feature issues only: after fetching the issue, evaluate the PRD against the checklist. Gaps → ask the user (one batched set of targeted questions), update the issue body, *then* survey/draft. Explicit "not applicable" answers are recorded in the PRD (a dimension consciously skipped ≠ a gap). The gate is blocking — a discovery doc drafted against an incomplete PRD is the failure mode this ticket exists to prevent.
 
-**Amendment procedure** (new `/ticket` section, referenced from `CLAUDE.md`): a requirement added after filing updates the issue body **and**, if a branch exists, reconciles every in-flight artifact (discovery/spec/plan/condensed doc) in the same action, committing the reconciliation with a reference to `#<N>` — codifying what #176 did by hand.
+**Amendment procedure** (new `/ticket` section, referenced from `CLAUDE.md`): any post-filing scope change — a feature requirement added, or a bug's repro/impact shifting — updates the issue body **and**, if a branch exists, reconciles every in-flight artifact (discovery/spec/plan/condensed doc) in the same action, committing the reconciliation with a reference to `#<N>` — codifying what #176 did by hand. Only feature amendments run the dimension checklist; the reconciliation rule is ticket-kind-agnostic.
 
 ## Plan — 1 slice
 
