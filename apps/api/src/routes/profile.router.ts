@@ -123,6 +123,9 @@ profileRouter.get(
       return HttpService.success<Auth0UserProfileGetResponse>(res, {
         profile: validatedProfile.data,
         lastLogin: user?.lastLogin ?? null,
+        // #176: the DB user id — clients compare it to
+        // `organization.ownerUserId` for owner-only billing affordances.
+        userId: user?.id ?? null,
       });
     } catch (error) {
       logger.error(
