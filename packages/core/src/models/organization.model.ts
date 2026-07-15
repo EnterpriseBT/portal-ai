@@ -15,8 +15,13 @@ export const OrganizationSchema = CoreSchema.extend({
   ownerUserId: z.string(), // ID of the user who owns this organization
   defaultStationId: z.string().nullable().default(null),
   /** Subscription tier slug — FK to `tiers.slug` (#172). Defaults to
-   *  `standard`; a payment provider later writes this. */
+   *  `standard`; the Stripe webhook (#176) writes this. */
   tier: z.string().default("standard"),
+  /** Stripe linkage (#176). Null until first checkout / while unsubscribed. */
+  stripeCustomerId: z.string().nullable().default(null),
+  stripeSubscriptionId: z.string().nullable().default(null),
+  /** Billing-cycle anchor day (1–28, webhook-written; null = calendar month). */
+  billingAnchorDay: z.number().int().min(1).max(28).nullable().default(null),
 });
 
 export type Organization = z.infer<typeof OrganizationSchema>;

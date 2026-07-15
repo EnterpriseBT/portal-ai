@@ -49,6 +49,10 @@ export type Auth0UserProfile = z.infer<typeof Auth0UserProfileSchema>;
 export const Auth0UserProfileGetResponseSchema = z.object({
   profile: Auth0UserProfileSchema,
   lastLogin: z.number().nullable(),
+  /** The caller's DB user id (#176) — the client compares it against
+   *  `organization.ownerUserId` for owner-only affordances (billing).
+   *  Null until the user row is first synced. */
+  userId: z.string().nullable(),
 });
 
 export type Auth0UserProfileGetResponse = z.infer<

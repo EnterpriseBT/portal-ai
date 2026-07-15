@@ -184,5 +184,52 @@ describe("OrganizationModelFactory", () => {
       const parsed = model.parse();
       expect(parsed.tier).toBe("enterprise-acme");
     });
+
+    // ── Stripe linkage (#176) ─────────────────────────────────────────
+
+    const validOrgFields = {
+      name: "Acme Corp",
+      timezone: "UTC",
+      ownerUserId: "owner-123",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    };
+
+    it("should default the Stripe linkage fields to null when not provided (#176)", () => {
+      const model = factory.create("system");
+      model.update(validOrgFields);
+
+      const parsed = model.parse();
+      expect(parsed.stripeCustomerId).toBeNull();
+      expect(parsed.stripeSubscriptionId).toBeNull();
+      expect(parsed.billingAnchorDay).toBeNull();
+    });
+
+    it("should accept explicit Stripe linkage values (#176)", () => {
+      const model = factory.create("system");
+      model.update({
+        ...validOrgFields,
+        stripeCustomerId: "cus_abc123",
+        stripeSubscriptionId: "sub_abc123",
+        billingAnchorDay: 15,
+      });
+
+      const parsed = model.parse();
+      expect(parsed.stripeCustomerId).toBe("cus_abc123");
+      expect(parsed.stripeSubscriptionId).toBe("sub_abc123");
+      expect(parsed.billingAnchorDay).toBe(15);
+    });
+
+    it.each([0, 29])(
+      "should reject billingAnchorDay %i — outside 1..28 (#176)",
+      (day) => {
+        const model = factory.create("system");
+        model.update({ ...validOrgFields, billingAnchorDay: day });
+
+        expect(model.validate().success).toBe(false);
+      }
+    );
   });
 });

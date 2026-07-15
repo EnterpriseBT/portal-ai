@@ -220,7 +220,13 @@ export class CostGateService {
       if (!org) return;
 
       const policy = await TierService.resolveTier(org, now);
-      const periodId = TierService.periodIdFor(policy.period, new Date(now));
+      // #176 Q5: same org-anchor override as `UsageService.getBalance`, so
+      // the admission read and the commit write key the same period.
+      const periodId = TierService.periodIdFor(
+        policy.period,
+        new Date(now),
+        org.billingAnchorDay
+      );
       const alloc = policy.allocations[charge.costClass];
 
       // Atomic + conditional: lands only if within allocation, else skipped

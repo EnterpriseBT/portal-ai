@@ -185,6 +185,27 @@ export const FAQ_ENTRIES: FAQEntry[] = [
       "No. Some tools consume usage units from your organization's monthly allocation when they run in a portal session — mainly web search and heavier analytics like clustering. You're charged only when a tool call succeeds: if a call fails (for example, a search provider is briefly unavailable), it costs nothing. Your allocation resets at the start of each billing period, and you can see what's left on the Settings → Organization page and in a portal session's details.",
     category: FAQCategory.Analytics,
   },
+  {
+    question: "How do I upgrade my plan?",
+    answer:
+      "Go to Settings → Subscription & Billing and pick a plan from the list — Subscribe takes you to Stripe's secure checkout. After you pay, your plan updates automatically within a few seconds (Stripe confirms the subscription to us directly). Your usage allocations reset on your new billing cycle from that point on. To change or cancel later, use Manage subscription on the same tab, which opens the Stripe billing portal.",
+    category: FAQCategory.GettingStarted,
+    relatedGlossaryTerms: ["Subscription Plan", "Billing Portal"],
+  },
+  {
+    question: "Who can manage billing?",
+    answer:
+      "Only the organization owner. Every member can see the available plans on Settings → Subscription & Billing, but Subscribe and Manage subscription are enabled only for the owner — the server enforces this too, so it isn't just hidden buttons.",
+    category: FAQCategory.GettingStarted,
+    relatedGlossaryTerms: ["Subscription Plan", "Organization"],
+  },
+  {
+    question: "My plan says it's managed — what does that mean?",
+    answer:
+      "Your organization is on a custom plan arranged with us directly rather than one of the self-serve plans, so the plan list and checkout are hidden. Contact us to make changes to a managed plan.",
+    category: FAQCategory.GettingStarted,
+    relatedGlossaryTerms: ["Subscription Plan"],
+  },
 
   // Jobs & Background Tasks
   {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   Avatar,
@@ -17,11 +17,16 @@ import {
   PageHeader,
   PageSection,
 } from "@portalai/core/ui";
+import Alert from "@mui/material/Alert";
+import Snackbar from "@mui/material/Snackbar";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
+import { useQueryClient } from "@tanstack/react-query";
 import { DataResult } from "../components/DataResult.component";
 import { DeleteOrganizationDialog } from "../components/DeleteOrganizationDialog.component";
+import { SubscriptionBilling } from "../components/SubscriptionBilling.component";
 import { sdk } from "../api/sdk";
+import { queryKeys } from "../api/keys";
 import { toServerError } from "../utils/api.util";
 import { formatUsageValue } from "../utils/usage-format.util";
 
@@ -36,6 +41,53 @@ const formatTierName = (slug: string): string =>
 export const SettingsView = () => {
   const { tabsProps, getTabProps, getTabPanelProps } = useTabs();
   const theme = useTheme();
+  const queryClient = useQueryClient();
+
+  // Checkout return handling (#176): Stripe redirects back to
+  // /settings?billing={success,cancelled}. The webhook is the tier writer —
+  // the redirect only refreshes the org cache and tells the user what
+  // happened, then strips the param so a reload doesn't re-toast. The toast
+  // is derived once from the URL in the initializer (no setState-in-effect).
+  const [billingToast, setBillingToast] = useState<{
+    message: string;
+    severity: "success" | "info";
+  } | null>(() => {
+    const billing = new URLSearchParams(window.location.search).get("billing");
+    if (billing === "success") {
+      return {
+        message:
+          "Subscription confirmed — your plan updates within a few seconds",
+        severity: "success",
+      };
+    }
+    if (billing === "cancelled") {
+      return {
+        message: "Checkout cancelled — your plan is unchanged",
+        severity: "info",
+      };
+    }
+    return null;
+  });
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const billing = params.get("billing");
+    if (!billing) return;
+
+    // The webhook already wrote the tier — just refresh the org cache.
+    if (billing === "success") {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.organizations.root,
+      });
+    }
+
+    params.delete("billing");
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}`
+    );
+  }, [queryClient]);
   // Small screens + tablets stack each field/value pair vertically; desktop
   // (md+) shows them side-by-side. Layout is the view's call, not the list's.
   const stackVertically = useMediaQuery(theme.breakpoints.down("md"));
@@ -61,6 +113,7 @@ export const SettingsView = () => {
       <Tabs {...tabsProps} variant="scrollable">
         <Tab label="Profile" {...getTabProps(0)} />
         <Tab label="Organization" {...getTabProps(1)} />
+        <Tab label="Subscription & Billing" {...getTabProps(2)} />
       </Tabs>
       <TabPanel {...getTabPanelProps(0)}>
         <PageSection title="Profile" variant="outlined">
@@ -256,6 +309,27 @@ export const SettingsView = () => {
           }}
         </DataResult>
       </TabPanel>
+      <TabPanel {...getTabPanelProps(2)}>
+        <PageSection title="Subscription & Billing" variant="outlined">
+          {/* Mounted only while active so the billing queries don't fire
+              behind the other tabs. */}
+          {tabsProps.value === 2 && <SubscriptionBilling />}
+        </PageSection>
+      </TabPanel>
+
+      <Snackbar
+        open={billingToast !== null}
+        autoHideDuration={8000}
+        onClose={() => setBillingToast(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          severity={billingToast?.severity ?? "info"}
+          onClose={() => setBillingToast(null)}
+        >
+          {billingToast?.message ?? ""}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

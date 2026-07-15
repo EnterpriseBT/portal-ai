@@ -106,11 +106,17 @@ export class UsageService {
    * exists; `available` is `null` for an unlimited class and never negative.
    */
   static async getBalance(
-    org: { id: string },
+    org: { id: string; billingAnchorDay?: number | null },
     policy: TierPolicy,
     at: Date
   ): Promise<UsageBalance> {
-    const periodId = TierService.periodIdFor(policy.period, at);
+    // #176 Q5: a subscribed org's period is keyed by its Stripe billing
+    // anchor; unsubscribed orgs (null) stay on the tier's calendar anchor.
+    const periodId = TierService.periodIdFor(
+      policy.period,
+      at,
+      org.billingAnchorDay
+    );
     const rows = await DbService.repository.usage.findForPeriod(
       org.id,
       periodId

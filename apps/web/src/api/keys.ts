@@ -29,6 +29,10 @@ export const queryKeys = {
     memberships: () =>
       [...queryKeys.organizations.root, "memberships"] as const,
   },
+  billing: {
+    root: ["billing"] as const,
+    tiers: () => [...queryKeys.billing.root, "tiers"] as const,
+  },
   connectorDefinitions: {
     root: ["connectorDefinitions"] as const,
     list: (params?: ConnectorDefinitionListRequestQuery) =>
