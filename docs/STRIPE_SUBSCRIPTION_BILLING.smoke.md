@@ -1,6 +1,6 @@
 # stripe-subscription-billing — Smoke Suite
 
-Manual smoke test for [#176](https://github.com/EnterpriseBT/portal-ai/issues/176) — Stripe subscription billing: `organizations.tier` driven by a real Stripe subscription (signature-verified webhook, dedup'd through `stripe_events`), owner-only checkout/portal endpoints, per-org billing-anchor usage periods, and the Settings "Subscription & Billing" tab. **Branch under test:** `feat/stripe-subscription-billing` (PR into `epic/subscription-billing`).
+Manual smoke test for [#176](https://github.com/EnterpriseBT/portal-ai/issues/176) — Stripe subscription billing: `organizations.tier` driven by a real Stripe subscription (signature-verified webhook, dedup'd through `stripe_events`), owner-only checkout/portal endpoints, per-org billing-anchor usage periods, and the Settings "Subscription & Billing" tab. **Branch under test:** `feat/stripe-subscription-billing` (PR [#215](https://github.com/EnterpriseBT/portal-ai/pull/215) into `epic/subscription-billing`).
 
 Run **§Preflight** once. §1–§4 are a continuous story (unsubscribed → checkout → subscribed → cancel) and should be walked in order; §5–§8 are independent after preflight. The "all new tests pass, lint/type-check clean" acceptance criterion is the **CI half of the gate**, not a walkthrough step here.
 
