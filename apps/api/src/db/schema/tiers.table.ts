@@ -2,6 +2,7 @@ import {
   pgTable,
   text,
   integer,
+  boolean,
   jsonb,
   unique,
   check,
@@ -39,6 +40,12 @@ export const tiers = pgTable(
       jsonb("per_tool_caps").$type<
         Record<string, { unitsPerPeriod: number }>
       >(),
+    /** Stripe price mapped to this tier (#176). Null = not purchasable
+     *  (standard, bespoke). */
+    stripePriceId: text("stripe_price_id"),
+    /** Listed in the self-serve plan list (#176). Custom/enterprise rows
+     *  stay false. */
+    selectable: boolean("selectable").notNull().default(false),
   },
   (t) => [
     // FULL unique CONSTRAINT (not a soft-delete-partial index): `slug` is the
@@ -47,6 +54,8 @@ export const tiers = pgTable(
     // cannot be reused — acceptable: tiers are rarely deleted and never while
     // an org references one (the FK blocks it).
     unique("tiers_slug_unique").on(t.slug),
+    // PG UNIQUE ignores NULLs — "unique where not null" (#176 D1).
+    unique("tiers_stripe_price_id_unique").on(t.stripePriceId),
     check(
       "tiers_overage_check",
       sql`${t.overage} IN ('hard-deny', 'soft-alert')`

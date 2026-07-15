@@ -37,6 +37,7 @@ import type {
   OrganizationToolpack,
   Tier,
   Usage,
+  StripeEvent,
 } from "@portalai/core/models";
 import type {
   UserSelect,
@@ -61,6 +62,7 @@ import type {
   OrganizationToolpackSelect,
   TierSelect,
   UsageSelect,
+  StripeEventSelect,
 } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { EntityRecordHydrated } from "../repositories/entity-records.repository.js";
@@ -89,6 +91,7 @@ import type { wideTableColumns } from "./wide-table-columns.table.js";
 import type { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
 import type { tiers } from "./tiers.table.js";
 import type { usage } from "./usage.table.js";
+import type { stripeEvents } from "./stripe-events.table.js";
 import type { InterpretationTrace, LayoutPlan } from "@portalai/core/contracts";
 import type {
   ConnectorInstanceLayoutPlanSelect,
@@ -163,6 +166,24 @@ const _usageModelToDrizzle: _UsageModelToDrizzle = true;
 type _UsageInferredRow = InferSelectModel<typeof usage>;
 type _UsageInferredToModel = IsAssignable<_UsageInferredRow, Usage>;
 const _usageInferredToModel: _UsageInferredToModel = true;
+
+// ── StripeEvent ──────────────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _StripeEvtDrizzleToModel = IsAssignable<StripeEventSelect, StripeEvent>;
+const _stripeEvtDrizzleToModel: _StripeEvtDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _StripeEvtModelToDrizzle = IsAssignable<StripeEvent, StripeEventSelect>;
+const _stripeEvtModelToDrizzle: _StripeEvtModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _StripeEvtInferredRow = InferSelectModel<typeof stripeEvents>;
+type _StripeEvtInferredToModel = IsAssignable<
+  _StripeEvtInferredRow,
+  StripeEvent
+>;
+const _stripeEvtInferredToModel: _StripeEvtInferredToModel = true;
 
 // ── OrganizationUser ─────────────────────────────────────────────
 

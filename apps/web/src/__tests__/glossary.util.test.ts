@@ -88,6 +88,9 @@ describe("GLOSSARY_ENTRIES", () => {
     "Job Status",
     "Organization",
     "Default Station",
+    // Billing (#176)
+    "Subscription Plan",
+    "Billing Portal",
   ];
 
   it("contains an entry for every term named in the audit doc", () => {

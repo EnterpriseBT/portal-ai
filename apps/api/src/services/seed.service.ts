@@ -311,17 +311,33 @@ export class SeedService {
 
   /**
    * Seed the default `standard` subscription tier (#172). Idempotent —
-   * skips if the row already exists (the migration also inserts it, so this
-   * is a no-op on an already-migrated DB). Numbers are the canonical source
-   * of truth; the data-migration's INSERT mirrors them. Tunable later with a
-   * plain SQL `UPDATE`.
+   * inserts when absent; when the row already exists (the migration also
+   * inserts it), converges the #176 billing fields (`selectable: true`,
+   * `stripePriceId: null`) so pre-#176 DBs pick up the plan-list flag.
+   * Numbers are the canonical source of truth; the data-migration's INSERT
+   * mirrors them. Tunable later with a plain SQL `UPDATE`.
    */
   async seedTiers(db: DbClient) {
     const existing = await DbService.repository.tiers.findBySlug(
       "standard",
       db
     );
-    if (existing) return;
+    if (existing) {
+      // Update-if-changed — keeps re-seeding a no-op on converged rows.
+      if (existing.selectable !== true || existing.stripePriceId !== null) {
+        await DbService.repository.tiers.update(
+          existing.id,
+          {
+            selectable: true,
+            stripePriceId: null,
+            updated: Date.now(),
+            updatedBy: SystemUtilities.id.system,
+          },
+          db
+        );
+      }
+      return;
+    }
 
     const standard = new TierModelFactory()
       .create(SystemUtilities.id.system)
@@ -338,6 +354,10 @@ export class SeedService {
         expensiveUnitsPerPeriod: 300,
         expensiveRatePerMin: 5,
         perToolCaps: null,
+        // #176: the free plan is listed in the self-serve plan list but has
+        // no Stripe price (not purchasable).
+        stripePriceId: null,
+        selectable: true,
       })
       .parse();
 

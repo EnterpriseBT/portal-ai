@@ -30,3 +30,4 @@ export * from "./wide-table.repository.js";
 export * from "./api-endpoints.repository.js";
 export * from "./tiers.repository.js";
 export * from "./usage.repository.js";
+export * from "./stripe-events.repository.js";

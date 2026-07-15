@@ -348,6 +348,26 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     relatedTerms: ["Station", "Pinned Result"],
     pageRoute: ApplicationRoute.Stations,
   },
+  {
+    term: "Subscription Plan",
+    category: GlossaryCategory.System,
+    definition:
+      "The plan your organization is on, which sets its monthly usage allocations. The organization owner can upgrade to a paid plan from Settings → Subscription & Billing; payment is handled by Stripe's secure checkout.",
+    example:
+      "Upgrading from Standard to a paid plan raises your monthly metered and expensive usage allocations.",
+    relatedTerms: ["Organization", "Billing Portal"],
+    pageRoute: ApplicationRoute.Settings,
+  },
+  {
+    term: "Billing Portal",
+    category: GlossaryCategory.System,
+    definition:
+      "A secure Stripe-hosted page where the organization owner manages the subscription — changing plans, updating payment methods, viewing invoices, and cancelling. Opened from Settings → Subscription & Billing once subscribed.",
+    example:
+      "To switch plans or update your card, open Manage subscription — everything happens in the billing portal, and your plan here updates automatically.",
+    relatedTerms: ["Subscription Plan", "Organization"],
+    pageRoute: ApplicationRoute.Settings,
+  },
 ];
 
 // ── Filter helper ───────────────────────────────────────────────────

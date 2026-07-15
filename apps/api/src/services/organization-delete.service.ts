@@ -20,6 +20,7 @@ import { DbService } from "./db.service.js";
 import { JobLockService } from "./job-lock.service.js";
 import { JobsService } from "./jobs.service.js";
 import { S3Service } from "./s3.service.js";
+import { StripeService } from "./stripe.service.js";
 import { wideTableReconcilerService } from "./wide-table-reconciler.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -65,12 +66,21 @@ export class OrganizationDeleteService {
   ): Promise<void> {
     logger.info({ organizationId, actorUserId }, "Deleting organization");
 
+    // Read the Stripe linkage before the cascade tombstones the row (#176
+    // Q4) — the post-commit cancel below needs the subscription id.
+    const org =
+      await DbService.repository.organizations.findById(organizationId);
+
     await OrganizationDeleteService.sweepJobs(organizationId);
     const s3Keys = await OrganizationDeleteService.cascade(
       organizationId,
       actorUserId
     );
     await OrganizationDeleteService.cleanupS3(organizationId, s3Keys);
+    await OrganizationDeleteService.cancelStripeSubscription(
+      organizationId,
+      org?.stripeSubscriptionId ?? null
+    );
 
     logger.info({ organizationId, actorUserId }, "Organization deleted");
   }
@@ -266,6 +276,36 @@ export class OrganizationDeleteService {
 
       return uploadRows.map((row) => row.s3Key);
     });
+  }
+
+  /**
+   * Post-commit, best-effort (#176 Q4): cancel the org's live Stripe
+   * subscription immediately so a deleted org stops billing. Like the S3
+   * cleanup, a Stripe outage never blocks deletion — failure logs a warn
+   * with the ids for manual reconciliation. The tombstoned row keeps both
+   * Stripe ids.
+   */
+  private static async cancelStripeSubscription(
+    organizationId: string,
+    stripeSubscriptionId: string | null
+  ): Promise<void> {
+    if (!stripeSubscriptionId) return;
+    try {
+      await StripeService.cancelSubscription(stripeSubscriptionId);
+      logger.info(
+        { organizationId, stripeSubscriptionId },
+        "Cancelled Stripe subscription during organization delete"
+      );
+    } catch (error) {
+      logger.warn(
+        {
+          organizationId,
+          stripeSubscriptionId,
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+        "Failed to cancel Stripe subscription during organization delete — reconcile manually"
+      );
+    }
   }
 
   /**

@@ -31,6 +31,25 @@ export class OrganizationsRepository extends Repository<
       .limit(1);
     return row;
   }
+
+  /** Find the org owning a Stripe customer (#176 webhook match; the column
+   *  is UNIQUE where not null). */
+  async findByStripeCustomerId(
+    stripeCustomerId: string,
+    client: DbClient = db
+  ): Promise<OrganizationSelect | undefined> {
+    const [row] = await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(organizations.stripeCustomerId, stripeCustomerId),
+          this.notDeleted()
+        )
+      )
+      .limit(1);
+    return row;
+  }
 }
 
 /** Singleton instance. */

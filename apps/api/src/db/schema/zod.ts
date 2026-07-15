@@ -34,6 +34,7 @@ import { wideTableColumns } from "./wide-table-columns.table.js";
 import { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
 import { tiers } from "./tiers.table.js";
 import { usage } from "./usage.table.js";
+import { stripeEvents } from "./stripe-events.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -82,6 +83,18 @@ export const UsageInsertSchema = createInsertSchema(usage);
 /** Inferred types */
 export type UsageSelect = z.infer<typeof UsageSelectSchema>;
 export type UsageInsert = z.infer<typeof UsageInsertSchema>;
+
+// ── Stripe Events ─────────────────────────────────────────────────────
+
+/** Zod schema for a `stripe_events` row returned by SELECT. */
+export const StripeEventSelectSchema = createSelectSchema(stripeEvents);
+
+/** Zod schema for inserting into `stripe_events`. */
+export const StripeEventInsertSchema = createInsertSchema(stripeEvents);
+
+/** Inferred types */
+export type StripeEventSelect = z.infer<typeof StripeEventSelectSchema>;
+export type StripeEventInsert = z.infer<typeof StripeEventInsertSchema>;
 
 // ── Organization Users ────────────────────────────────────────────────
 
