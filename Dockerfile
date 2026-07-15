@@ -49,6 +49,20 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Stripe CLI (webhook forwarding for local billing dev: `stripe listen
+# --forward-to localhost:3001/api/webhooks/stripe`, #176). Official apt repo.
+RUN curl -fsSL https://packages.stripe.dev/api/security/keypair/stripe-cli-gpg/public \
+    | gpg --dearmor -o /etc/apt/keyrings/stripe.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/stripe.gpg] https://packages.stripe.dev/stripe-cli-debian-local stable main" \
+    | tee /etc/apt/sources.list.d/stripe.list > /dev/null \
+    && apt-get update && apt-get install -y stripe \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Auth0 CLI (tenant administration from the devcontainer). No apt repo —
+# the official installer drops the arch-appropriate release binary.
+RUN curl -sSfL https://raw.githubusercontent.com/auth0/auth0-cli/main/install.sh \
+    | sh -s -- -b /usr/local/bin
+
 # Install Claude CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"

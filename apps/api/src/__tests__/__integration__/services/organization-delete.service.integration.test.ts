@@ -19,6 +19,7 @@ import {
   beforeAll,
   afterAll,
   beforeEach,
+  afterEach,
   jest,
 } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -28,6 +29,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { OrganizationDeleteService } from "../../../services/organization-delete.service.js";
 import { JobsService } from "../../../services/jobs.service.js";
 import { S3Service } from "../../../services/s3.service.js";
+import { StripeService } from "../../../services/stripe.service.js";
 import { DbService } from "../../../services/db.service.js";
 import { wideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
 import { ApiError } from "../../../services/http.service.js";
@@ -645,6 +647,83 @@ describe("OrganizationDeleteService integration tests", () => {
         .from(schema.fileUploads)
         .where(eq(schema.fileUploads.organizationId, target.orgId));
       expect(uploadRows).toHaveLength(0);
+    });
+  });
+
+  describe("Stripe subscription cancellation (#176 case 18)", () => {
+    let target!: PopulatedOrg;
+    let stripeCancelSpy!: ReturnType<typeof jest.spyOn>;
+
+    beforeEach(async () => {
+      await teardownOrg(db);
+      target = await seedPopulatedOrg(db, "stripe");
+      spyCancelAsDbTransition(db);
+      jest
+        .spyOn(S3Service, "deleteObject")
+        .mockResolvedValue(undefined as never);
+      stripeCancelSpy = jest
+        .spyOn(StripeService, "cancelSubscription")
+        .mockResolvedValue(undefined as never);
+    });
+
+    afterEach(async () => {
+      jest.restoreAllMocks();
+      await teardownOrg(db);
+    });
+
+    async function linkSubscription(id: string) {
+      await db
+        .update(schema.organizations)
+        .set({ stripeCustomerId: `cus_${id}`, stripeSubscriptionId: id })
+        .where(eq(schema.organizations.id, target.orgId));
+    }
+
+    it("cancels a live subscription after the cascade commits", async () => {
+      await linkSubscription("sub_del_1");
+
+      await OrganizationDeleteService.deleteOrganization(
+        target.orgId,
+        target.ownerUserId
+      );
+
+      expect(stripeCancelSpy).toHaveBeenCalledTimes(1);
+      expect(stripeCancelSpy).toHaveBeenCalledWith("sub_del_1");
+      // Cascade committed — the cancel ran post-commit, and the tombstone
+      // keeps both Stripe ids.
+      const [orgRow] = await db
+        .select()
+        .from(schema.organizations)
+        .where(eq(schema.organizations.id, target.orgId));
+      expect(orgRow!.deleted).not.toBeNull();
+      expect(orgRow!.stripeSubscriptionId).toBe("sub_del_1");
+      expect(orgRow!.stripeCustomerId).toBe("cus_sub_del_1");
+    });
+
+    it("a Stripe outage during cancel never blocks the delete (warn only)", async () => {
+      await linkSubscription("sub_del_2");
+      stripeCancelSpy.mockRejectedValue(new Error("stripe down") as never);
+
+      await expect(
+        OrganizationDeleteService.deleteOrganization(
+          target.orgId,
+          target.ownerUserId
+        )
+      ).resolves.toBeUndefined();
+
+      const [orgRow] = await db
+        .select()
+        .from(schema.organizations)
+        .where(eq(schema.organizations.id, target.orgId));
+      expect(orgRow!.deleted).not.toBeNull();
+    });
+
+    it("makes no Stripe call for an unsubscribed org", async () => {
+      await OrganizationDeleteService.deleteOrganization(
+        target.orgId,
+        target.ownerUserId
+      );
+
+      expect(stripeCancelSpy).not.toHaveBeenCalled();
     });
   });
 });

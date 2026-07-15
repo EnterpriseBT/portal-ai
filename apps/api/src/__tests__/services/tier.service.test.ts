@@ -128,4 +128,44 @@ describe("TierService.periodIdFor", () => {
       TierService.periodIdFor(monthlyAnchor15, new Date(Date.UTC(2026, 0, 5)))
     ).toBe("2025-12");
   });
+
+  // ── org-anchor override (#176 Q5) ───────────────────────────────────
+
+  it("null/undefined override falls back to the tier anchor (regression-identical)", () => {
+    const at = new Date(Date.UTC(2026, 6, 10));
+    expect(TierService.periodIdFor(monthlyAnchor15, at, null)).toBe(
+      TierService.periodIdFor(monthlyAnchor15, at)
+    );
+    expect(TierService.periodIdFor(monthlyAnchor15, at, undefined)).toBe(
+      TierService.periodIdFor(monthlyAnchor15, at)
+    );
+    expect(TierService.periodIdFor(monthlyAnchor1, at, null)).toBe("2026-07");
+  });
+
+  it("override 15 straddles the boundary: the 14th is last month's period, the 15th this month's", () => {
+    expect(
+      TierService.periodIdFor(
+        monthlyAnchor1,
+        new Date(Date.UTC(2026, 6, 14)),
+        15
+      )
+    ).toBe("2026-06");
+    expect(
+      TierService.periodIdFor(
+        monthlyAnchor1,
+        new Date(Date.UTC(2026, 6, 15)),
+        15
+      )
+    ).toBe("2026-07");
+  });
+
+  it("override crosses the year boundary like the tier anchor does", () => {
+    expect(
+      TierService.periodIdFor(
+        monthlyAnchor1,
+        new Date(Date.UTC(2026, 0, 5)),
+        15
+      )
+    ).toBe("2025-12");
+  });
 });

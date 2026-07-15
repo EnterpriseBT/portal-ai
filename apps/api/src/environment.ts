@@ -22,6 +22,11 @@ export const environment = {
   DATABASE_URL: process.env.DATABASE_URL || "",
   // Auth0 webhook
   AUTH0_WEBHOOK_SECRET: process.env.AUTH0_WEBHOOK_SECRET,
+  // ── Stripe subscription billing (#176). Per-env keys — test mode
+  //    everywhere except prod. Absent keys ⇒ billing endpoints 503 and the
+  //    webhook 503s (Stripe retries until configured); the app boots fine.
+  STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+  STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
   // System ID for deterministic UUID generation
   SYSTEM_ID: process.env.SYSTEM_ID,
   // Anthropic configuration

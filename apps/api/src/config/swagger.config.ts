@@ -36,6 +36,10 @@ import {
   OrganizationSwitchRequestSchema,
   OrganizationDeleteRequestSchema,
   OrganizationDeleteResponseSchema,
+  BillingTiersGetResponseSchema,
+  BillingCheckoutRequestSchema,
+  BillingCheckoutResponseSchema,
+  BillingPortalResponseSchema,
 } from "@portalai/core/contracts";
 import {
   ApiAuthConfigSchema,
@@ -202,6 +206,29 @@ const orgDeleteSchemas: Record<string, unknown> = {
   ),
   OrganizationDeleteResponse: z.toJSONSchema(
     OrganizationDeleteResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+};
+
+/**
+ * Billing schemas (#176). Sourced from `@portalai/core/contracts` so the
+ * billing routes' JSDoc references the canonical shapes.
+ */
+const billingSchemas: Record<string, unknown> = {
+  BillingTiersGetResponse: z.toJSONSchema(
+    BillingTiersGetResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  BillingCheckoutRequest: z.toJSONSchema(
+    BillingCheckoutRequestSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  BillingCheckoutResponse: z.toJSONSchema(
+    BillingCheckoutResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  BillingPortalResponse: z.toJSONSchema(
+    BillingPortalResponseSchema,
     JSON_SCHEMA_OPTS
   ),
 };
@@ -1489,6 +1516,7 @@ const options: swaggerJsdoc.Options = {
         ...tierSchemas,
         ...orgSwitcherSchemas,
         ...orgDeleteSchemas,
+        ...billingSchemas,
       },
     },
     tags: [

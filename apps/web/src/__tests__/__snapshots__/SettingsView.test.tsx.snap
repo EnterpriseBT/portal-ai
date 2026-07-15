@@ -77,6 +77,17 @@ exports[`SettingsView Component should match snapshot 1`] = `
         >
           Organization
         </button>
+        <button
+          aria-controls="tabpanel-2"
+          aria-selected="false"
+          class="MuiButtonBase-root MuiTab-root MuiTab-textColorPrimary css-5xls38-MuiButtonBase-root-MuiTab-root"
+          id="tab-2"
+          role="tab"
+          tabindex="-1"
+          type="button"
+        >
+          Subscription & Billing
+        </button>
       </div>
       <span
         class="MuiTabs-indicator css-12g1kzl-MuiTabs-indicator"
@@ -185,6 +196,42 @@ exports[`SettingsView Component should match snapshot 1`] = `
         >
           Loading...
         </p>
+      </div>
+    </div>
+  </div>
+  <div
+    aria-labelledby="tab-2"
+    class="MuiBox-root css-0"
+    hidden=""
+    id="tabpanel-2"
+    role="tabpanel"
+  >
+    <div
+      class="MuiBox-root css-19midj6"
+    >
+      <div
+        class="MuiPaper-root MuiPaper-outlined MuiPaper-rounded css-xux67c-MuiPaper-root"
+      >
+        <div
+          class="MuiStack-root css-1sazv7p-MuiStack-root"
+        >
+          <div
+            class="MuiStack-root css-zkdgmh-MuiStack-root"
+          >
+            <div
+              class="MuiStack-root css-kdc3n8-MuiStack-root"
+            >
+              <h2
+                class="MuiTypography-root MuiTypography-h2 css-i2l82-MuiTypography-root"
+              >
+                Subscription & Billing
+              </h2>
+            </div>
+          </div>
+          <div
+            class="MuiBox-root css-0"
+          />
+        </div>
       </div>
     </div>
   </div>

@@ -1,4 +1,5 @@
 import { auth } from "./auth.api";
+import { billing } from "./billing.api";
 import { columnDefinitions } from "./column-definitions.api";
 import { connectorDefinitions } from "./connector-definitions.api";
 import { connectorEntities } from "./connector-entities.api";
@@ -28,6 +29,7 @@ export { queryKeys } from "./keys";
 
 export const sdk = {
   auth,
+  billing,
   columnDefinitions,
   connectorDefinitions,
   connectorEntities,

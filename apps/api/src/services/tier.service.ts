@@ -91,13 +91,24 @@ export class TierService {
 
   /**
    * The `"YYYY-MM"` id of the billing period containing `at`, in UTC. The
-   * period starts on `anchorDay`; a date before the anchor belongs to the
-   * previous month's period.
+   * period starts on the effective anchor day; a date before the anchor
+   * belongs to the previous month's period.
+   *
+   * `anchorDayOverride` is the org's `billingAnchorDay` (#176 Q5) — set by
+   * the Stripe webhook to the subscription's billing-cycle anchor.
+   * Null/undefined falls back to the tier's `period.anchorDay` (the
+   * calendar-month default); the slug-keyed policy cache stays
+   * override-free.
    */
-  static periodIdFor(period: TierPolicy["period"], at: Date): string {
+  static periodIdFor(
+    period: TierPolicy["period"],
+    at: Date,
+    anchorDayOverride?: number | null
+  ): string {
+    const anchorDay = anchorDayOverride ?? period.anchorDay;
     let year = at.getUTCFullYear();
     let month = at.getUTCMonth(); // 0-based
-    if (at.getUTCDate() < period.anchorDay) {
+    if (at.getUTCDate() < anchorDay) {
       month -= 1;
       if (month < 0) {
         month = 11;

@@ -29,6 +29,28 @@ export enum ApiCode {
   /** DELETE cascade failed server-side (transaction rolled back). 500. */
   ORGANIZATION_DELETE_FAILED = "ORGANIZATION_DELETE_FAILED",
 
+  // Billing (#176)
+  /** Stripe env keys absent in this environment. 503. */
+  BILLING_NOT_CONFIGURED = "BILLING_NOT_CONFIGURED",
+  /** Caller is a member but not the org's owner. 403. */
+  BILLING_NOT_OWNER = "BILLING_NOT_OWNER",
+  /** Org already has a live subscription — plan changes go through the portal (Q1). 409. */
+  BILLING_ALREADY_SUBSCRIBED = "BILLING_ALREADY_SUBSCRIBED",
+  /** Org is on a managed custom tier — self-serve checkout is server-blocked (D5). 409. */
+  BILLING_TIER_MANAGED = "BILLING_TIER_MANAGED",
+  /** Malformed checkout body (missing/invalid `tier`). 400. */
+  BILLING_INVALID_PAYLOAD = "BILLING_INVALID_PAYLOAD",
+  /** Requested tier doesn't exist or isn't in the self-serve plan list. 404. */
+  BILLING_TIER_NOT_FOUND = "BILLING_TIER_NOT_FOUND",
+  /** Requested tier is listed but carries no Stripe price. 400. */
+  BILLING_TIER_NOT_PURCHASABLE = "BILLING_TIER_NOT_PURCHASABLE",
+  /** Portal requires a Stripe customer; the org has never checked out. 409. */
+  BILLING_NO_SUBSCRIPTION = "BILLING_NO_SUBSCRIPTION",
+  /** Stripe checkout-session call failed. 502. */
+  BILLING_CHECKOUT_FAILED = "BILLING_CHECKOUT_FAILED",
+  /** Stripe portal-session call failed. 502. */
+  BILLING_PORTAL_FAILED = "BILLING_PORTAL_FAILED",
+
   // Webhooks
   WEBHOOK_MISSING_SIGNATURE = "WEBHOOK_MISSING_SIGNATURE",
   WEBHOOK_INVALID_SIGNATURE = "WEBHOOK_INVALID_SIGNATURE",
