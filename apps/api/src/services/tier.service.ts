@@ -50,6 +50,12 @@ export class TierService {
       perToolCaps: row.perToolCaps ?? null,
       // CHECK-constrained at the DB to the valid set.
       overage: row.overage as TierPolicy["overage"],
+      // #214: toolpack availability — verbatim from the row; the tool
+      // builder intersects the allowlist with the registry at build time.
+      entitlements: {
+        builtinToolpacks: row.builtinToolpacks,
+        customToolpacks: row.customToolpacks,
+      },
     };
   }
 

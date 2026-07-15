@@ -46,6 +46,24 @@ export const PerToolCapsSchema = z.record(
 export type PerToolCaps = z.infer<typeof PerToolCapsSchema>;
 
 /**
+ * Toolpack availability per tier (#214) — the tier contract's second axis
+ * (availability, alongside #172's allocation numbers).
+ *
+ * `builtinToolpacks` is an explicit allowlist of built-in pack slugs: a pack
+ * absent from the list is unavailable on the tier (fail-closed). Entries are
+ * plain strings, not a slug enum — rows are data and may carry slugs for
+ * packs that ship in a later deploy; unknown slugs are ignored (with a warn)
+ * at enforcement time. `customToolpacks` gates registering/using custom
+ * (webhook) toolpacks; existing registrations go inert — never deleted —
+ * when it is false.
+ */
+export const TierEntitlementsSchema = z.object({
+  builtinToolpacks: z.array(z.string()),
+  customToolpacks: z.boolean(),
+});
+export type TierEntitlements = z.infer<typeof TierEntitlementsSchema>;
+
+/**
  * The assembled tier policy handed to consumers. Allocations are keyed by the
  * three cost classes (`free | metered | expensive`, the `CostHintSchema`
  * vocabulary).
@@ -60,6 +78,8 @@ export const TierPolicySchema = z.object({
   }),
   perToolCaps: PerToolCapsSchema.nullable(),
   overage: OverageSchema,
+  /** Toolpack availability (#214). */
+  entitlements: TierEntitlementsSchema,
 });
 export type TierPolicy = z.infer<typeof TierPolicySchema>;
 
@@ -87,6 +107,13 @@ export const TierSchema = CoreSchema.extend({
   /** Listed in the self-serve plan list (#176). Custom/enterprise rows are
    *  false. */
   selectable: z.boolean(),
+  /** Built-in toolpack slugs available on this tier (#214). Explicit
+   *  allowlist — absent = unavailable; intersected with the registry at
+   *  build time. */
+  builtinToolpacks: z.array(z.string()),
+  /** Whether orgs on this tier may register/use custom (webhook)
+   *  toolpacks (#214). */
+  customToolpacks: z.boolean(),
 });
 export type Tier = z.infer<typeof TierSchema>;
 

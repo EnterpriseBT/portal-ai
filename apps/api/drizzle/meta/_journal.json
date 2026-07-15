@@ -484,6 +484,13 @@
       "when": 1784065390930,
       "tag": "0068_add_stripe_billing_columns_and_events",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1784151790116,
+      "tag": "0069_add_tier_toolpack_entitlements",
+      "breakpoints": true
     }
   ]
 }
