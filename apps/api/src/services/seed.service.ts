@@ -10,6 +10,7 @@ import {
   TierModelFactory,
 } from "@portalai/core/models";
 import type { ColumnDataType } from "@portalai/core/models";
+import { BuiltinToolpackSlugSchema } from "@portalai/core/registries";
 import { DbClient } from "../db/index.js";
 import { DbService } from "./db.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
@@ -316,6 +317,16 @@ export class SeedService {
    * `stripePriceId: null`) so pre-#176 DBs pick up the plan-list flag.
    * Numbers are the canonical source of truth; the data-migration's INSERT
    * mirrors them. Tunable later with a plain SQL `UPDATE`.
+   *
+   * TWO CONVERGENCE CLASSES (#214 OQ1 — do not mix them up when adding
+   * columns):
+   * - **Seed-authoritative** (`selectable`, `stripePriceId`): the seed's
+   *   values are canonical; drift is healed on every run.
+   * - **Operator-authoritative** (`builtinToolpacks`, `customToolpacks`):
+   *   set on INSERT only (and by the migration backfill); NEVER converged —
+   *   tightening a tier is a durable data edit, and a re-seed must not
+   *   silently re-permission it. The durable record-of-truth is #218's
+   *   declarative tier catalog.
    */
   async seedTiers(db: DbClient) {
     const existing = await DbService.repository.tiers.findBySlug(
@@ -324,6 +335,7 @@ export class SeedService {
     );
     if (existing) {
       // Update-if-changed — keeps re-seeding a no-op on converged rows.
+      // Seed-authoritative fields ONLY (see convergence classes above).
       if (existing.selectable !== true || existing.stripePriceId !== null) {
         await DbService.repository.tiers.update(
           existing.id,
@@ -336,6 +348,7 @@ export class SeedService {
           db
         );
       }
+      await SeedService.warnOnUnlistedRegistrySlugs(db);
       return;
     }
 
@@ -358,10 +371,38 @@ export class SeedService {
         // no Stripe price (not purchasable).
         stripePriceId: null,
         selectable: true,
+        // #214: standard seeds fully permissive (generous-beta posture,
+        // #177). Tightening at launch is a data UPDATE — operator-
+        // authoritative from here on (see convergence classes above).
+        builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
+        customToolpacks: true,
       })
       .parse();
 
     await DbService.repository.tiers.createMany([standard], db);
+    await SeedService.warnOnUnlistedRegistrySlugs(db);
+  }
+
+  /**
+   * #214 OQ2 (interim until #218): registry slugs that no live tier row
+   * lists. A newly shipped built-in pack is fail-closed invisible until
+   * tier rows allowlist it — this surfaces the forgotten-rollout case at
+   * seed time (i.e. every deploy).
+   */
+  static async findUnlistedRegistrySlugs(db: DbClient): Promise<string[]> {
+    const rows = await DbService.repository.tiers.findMany(undefined, {}, db);
+    const listed = new Set(rows.flatMap((r) => r.builtinToolpacks));
+    return BuiltinToolpackSlugSchema.options.filter((s) => !listed.has(s));
+  }
+
+  private static async warnOnUnlistedRegistrySlugs(db: DbClient) {
+    const unlisted = await SeedService.findUnlistedRegistrySlugs(db);
+    if (unlisted.length > 0) {
+      console.warn(
+        `[seed] Built-in toolpack slug(s) not listed by any tier row: ${unlisted.join(", ")} — ` +
+          "these packs are unavailable to every org until a tier allowlists them (#214)."
+      );
+    }
   }
 
   async seedConnectorDefinitions(db: DbClient) {

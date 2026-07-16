@@ -105,10 +105,17 @@ describe("billing request/response contracts", () => {
   });
 });
 
-describe("TierPolicySchema stays untouched (#214 contract guard)", () => {
-  it("carries exactly the #172 keys — no billing fields leak into the gate contract", () => {
+describe("TierPolicySchema key pin (#214 contract guard)", () => {
+  it("carries exactly the #172 keys + #214's entitlements — no billing fields leak into the gate contract", () => {
     expect(Object.keys(TierPolicySchema.shape).sort()).toEqual(
-      ["allocations", "overage", "perToolCaps", "period", "tier"].sort()
+      [
+        "allocations",
+        "entitlements",
+        "overage",
+        "perToolCaps",
+        "period",
+        "tier",
+      ].sort()
     );
   });
 });

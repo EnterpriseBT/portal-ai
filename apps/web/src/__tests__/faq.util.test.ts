@@ -46,7 +46,7 @@ describe("FAQ_CATEGORY_LABELS", () => {
 
 describe("FAQ_ENTRIES", () => {
   const expectedQuestions = [
-    // Getting Started (7 — billing #176 added 3)
+    // Getting Started (8 — billing #176 added 3, entitlements #214 added 1)
     "What is Portals.ai and what can I do with it?",
     "How do I connect my first data source?",
     "What is a Station and why do I need one?",
@@ -54,6 +54,7 @@ describe("FAQ_ENTRIES", () => {
     "How do I upgrade my plan?",
     "Who can manage billing?",
     "My plan says it's managed — what does that mean?",
+    "Why is a toolpack marked “Inactive on your plan”?",
     // Working with Data (5)
     "What's the difference between a connector and an entity?",
     "What are column definitions and why do they matter?",
@@ -73,8 +74,8 @@ describe("FAQ_ENTRIES", () => {
     "Why did my job fail?",
   ];
 
-  it("includes every question listed in the audit doc (20 total)", () => {
-    expect(expectedQuestions).toHaveLength(20);
+  it("includes every question listed in the audit doc (21 total)", () => {
+    expect(expectedQuestions).toHaveLength(21);
     for (const question of expectedQuestions) {
       const match = FAQ_ENTRIES.find((e) => e.question === question);
       expect(match).toBeDefined();

@@ -2,6 +2,7 @@ import { describe, it, expect } from "@jest/globals";
 import {
   TierSchema,
   TierPolicySchema,
+  TierEntitlementsSchema,
   AllocationSchema,
   TierPeriodSchema,
   OverageSchema,
@@ -20,6 +21,10 @@ const validPolicy = {
   },
   perToolCaps: null,
   overage: "hard-deny",
+  entitlements: {
+    builtinToolpacks: ["data_query", "web_search"],
+    customToolpacks: true,
+  },
 };
 
 const validRowFields = {
@@ -37,6 +42,8 @@ const validRowFields = {
   perToolCaps: null,
   stripePriceId: null,
   selectable: true,
+  builtinToolpacks: ["data_query", "web_search"],
+  customToolpacks: true,
 };
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -150,5 +157,65 @@ describe("TierSchema", () => {
     const model = new TierModelFactory().create("SYSTEM").update(rest);
 
     expect(model.validate().success).toBe(false);
+  });
+
+  // ── Toolpack entitlements (#214) ────────────────────────────────────
+
+  it("round-trips the entitlement fields", () => {
+    const parsed = new TierModelFactory()
+      .create("SYSTEM")
+      .update(validRowFields)
+      .parse();
+
+    expect(parsed.builtinToolpacks).toEqual(["data_query", "web_search"]);
+    expect(parsed.customToolpacks).toBe(true);
+  });
+
+  it.each(["builtinToolpacks", "customToolpacks"] as const)(
+    "rejects a row missing `%s`",
+    (field) => {
+      const { [field]: _omitted, ...rest } = validRowFields;
+      const model = new TierModelFactory().create("SYSTEM").update(rest);
+
+      expect(model.validate().success).toBe(false);
+    }
+  );
+});
+
+describe("TierEntitlementsSchema (#214)", () => {
+  it("accepts the fail-closed shape and a permissive shape", () => {
+    expect(
+      TierEntitlementsSchema.safeParse({
+        builtinToolpacks: [],
+        customToolpacks: false,
+      }).success
+    ).toBe(true);
+    expect(
+      TierEntitlementsSchema.safeParse({
+        builtinToolpacks: ["data_query", "statistics", "web_search"],
+        customToolpacks: true,
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects non-string allowlist entries and missing fields", () => {
+    expect(
+      TierEntitlementsSchema.safeParse({
+        builtinToolpacks: [42],
+        customToolpacks: true,
+      }).success
+    ).toBe(false);
+    expect(
+      TierEntitlementsSchema.safeParse({ builtinToolpacks: [] }).success
+    ).toBe(false);
+  });
+});
+
+describe("TierPolicySchema.entitlements (#214)", () => {
+  it("requires entitlements on the policy", () => {
+    expect(TierPolicySchema.safeParse(validPolicy).success).toBe(true);
+
+    const { entitlements: _entitlements, ...withoutEntitlements } = validPolicy;
+    expect(TierPolicySchema.safeParse(withoutEntitlements).success).toBe(false);
   });
 });

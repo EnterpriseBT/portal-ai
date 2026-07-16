@@ -2,11 +2,13 @@
 
 This guide is for developers building a **toolpack server** — an HTTP service that Portal.ai calls to fetch a tool catalog and execute tool invocations during portal sessions. If you're an org admin enabling an existing toolpack, you don't need this guide.
 
-A reference implementation lives at `apps/api/src/scripts/mock-toolpack-server.ts`. Run it with `npm run mock-toolpack` from `apps/api/` and point a registration at `http://localhost:4100` to see the contract end-to-end.
+A reference implementation lives at `apps/api/src/scripts/mock-toolpack-server.ts`. Run it with `npm run webhook:toolpack` from `apps/api/` and point a registration at `http://localhost:4100` to see the contract end-to-end.
 
 ---
 
 ## Contract overview
+
+**Precondition (#214):** custom toolpacks are a subscription-tier entitlement. Registering one when the organization's plan doesn't include them returns `403 TOOLPACK_NOT_ENTITLED` — nothing is fetched or stored. Existing registrations are never deleted on a plan downgrade: they show as *Inactive on your plan*, their tools stop being offered in portal sessions, management (edit/refresh/delete) stays available, and everything reactivates automatically when the plan allows them again.
 
 Your server exposes three HTTP endpoints. Portal.ai calls them as the registering org admin, signing every request with a per-toolpack HMAC secret your server can verify.
 
@@ -432,7 +434,7 @@ The mock toolpack server (`apps/api/src/scripts/mock-toolpack-server.ts`) is the
 ```bash
 cd apps/api
 export MOCK_TOOLPACK_SIGNING_SECRET=whsec_dev_test
-npm run mock-toolpack
+npm run webhook:toolpack
 ```
 
 It listens on `http://localhost:4100` and verifies the same three headers your server should. Failure modes:

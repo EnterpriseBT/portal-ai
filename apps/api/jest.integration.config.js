@@ -60,6 +60,15 @@ export default {
   // Increase timeout for integration tests
   testTimeout: 60000,
 
+  // #220: under ESM + unstable_mockModule, per-suite module registries are
+  // never fully released, so a single serial process accumulates heap until
+  // the --max-old-space-size ceiling (CI OOM, exit 134). --maxWorkers=1 (in
+  // the npm script, replacing --runInBand) keeps runs serial but in a
+  // worker process, and this limit recycles that worker when its idle heap
+  // passes the threshold — capping accumulation. --runInBand runs in-process
+  // where recycling cannot apply.
+  workerIdleMemoryLimit: "1.5GB",
+
   // Force Jest to exit after all tests complete.
   // Integration tests open module-level handles (postgres connections,
   // Redis/BullMQ connections) that live in per-test VM contexts.

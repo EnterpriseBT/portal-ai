@@ -11,6 +11,7 @@ import { type Tool } from "ai";
 
 import { AnalyticsService } from "./analytics.service.js";
 import { DbService } from "./db.service.js";
+import { TierService } from "./tier.service.js";
 import { wrapWithCostGate, type GateableTool } from "./cost-gate.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import type { CostHint } from "@portalai/core/models";
@@ -417,10 +418,37 @@ export class ToolService {
       throw new Error("Station must have at least one tool pack enabled");
     }
 
-    const toolPacks = builtinSlugs;
-    // Station-enabled packs only. System tools are attached below by their
-    // `alwaysAvailable` capability (#121), not via pack membership.
-    const enabledPacks = new Set<string>(builtinSlugs);
+    // #214 tier entitlements: availability is a projection of the org's
+    // tier row — resolved HERE, inside the builder, so every construction
+    // path is covered by construction (guarded by the entitlement guard
+    // tests). Fail-closed by shape: no resolvable policy ⇒ the builder
+    // fails with the session (a DB outage already does); an org row that
+    // can't be found falls back to the default tier's entitlements.
+    // Note: the "at least one pack" throw above keys off station
+    // *configuration* (pre-filter) — a station whose every configured pack
+    // is unentitled legitimately builds a session with system tools only.
+    const org = await repo.organizations.findById(organizationId);
+    const policy = await TierService.resolveTier(org ?? { tier: "" });
+    const { isBuiltinToolpackSlug } = await import("@portalai/core/registries");
+    const entitledBuiltins = new Set(policy.entitlements.builtinToolpacks);
+    const unknownAllowlisted = policy.entitlements.builtinToolpacks.filter(
+      (s) => !isBuiltinToolpackSlug(s)
+    );
+    if (unknownAllowlisted.length > 0) {
+      logger.warn(
+        { slugs: unknownAllowlisted, tier: policy.tier },
+        "Tier allowlist carries slugs unknown to the toolpack registry; ignoring them"
+      );
+    }
+    const entitledCustomPackIds = policy.entitlements.customToolpacks
+      ? customPackIds
+      : [];
+
+    const toolPacks = builtinSlugs.filter((s) => entitledBuiltins.has(s));
+    // Station-enabled ∩ tier-entitled packs only. System tools are attached
+    // below by their `alwaysAvailable` capability (#121), not via pack
+    // membership — never gated by entitlements.
+    const enabledPacks = new Set<string>(toolPacks);
 
     // Load station data into memory
     const stationData = await AnalyticsService.loadStation(
@@ -612,11 +640,13 @@ export class ToolService {
     }
 
     // -------------------------------------------------------------------
-    // Custom toolpacks
+    // Custom toolpacks (#214: skipped entirely when the tier's
+    // customToolpacks entitlement is false — registrations stay untouched,
+    // their tools simply never construct; they reactivate on upgrade.)
     // -------------------------------------------------------------------
-    if (customPackIds.length > 0) {
+    if (entitledCustomPackIds.length > 0) {
       const customPacks = await repo.organizationToolpacks.findManyByIds(
-        customPackIds,
+        entitledCustomPackIds,
         {
           organizationId,
         }

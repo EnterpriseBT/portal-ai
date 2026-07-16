@@ -19,6 +19,7 @@ const mockFindByConnectorEntityId_members = jest.fn<() => Promise<unknown[]>>();
 const mockFindByEntityGroupId = jest.fn<() => Promise<unknown[]>>();
 const mockFindById_group = jest.fn<() => Promise<unknown>>();
 const mockFindManyByIds_orgPacks = jest.fn<() => Promise<unknown[]>>();
+const mockFindById_org = jest.fn<() => Promise<unknown>>();
 
 // Mock direct db import for _connector_instances metadata query in loadStation
 const _mockSelectChain = {
@@ -54,7 +55,23 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       },
       stationToolpacks: { findByStationId: mockFindByStationId_tools },
       organizationToolpacks: { findManyByIds: mockFindManyByIds_orgPacks },
+      organizations: { findById: mockFindById_org },
     },
+  },
+}));
+
+// #214: the builder resolves the org's tier policy for entitlement
+// filtering. Mocked per-case; the default (set in setupStationMocks) is
+// fully permissive with unlimited allocations so the cost-gate paths the
+// mock also feeds (checkAdmission/commitCharge) stay off Redis/DB.
+const mockResolveTier = jest.fn<() => Promise<unknown>>();
+jest.unstable_mockModule("../../services/tier.service.js", () => ({
+  TierService: {
+    resolveTier: mockResolveTier,
+    invalidate: jest.fn(),
+    periodIdFor: jest.fn(() => "2026-07"),
+    tierPolicyFromRow: jest.fn(),
+    DEFAULT_TIER: "standard",
   },
 }));
 
@@ -202,7 +219,37 @@ const CUSTOMER_RECORDS = [
   { id: "r2", normalizedData: { name: "Bob" } },
 ];
 
+const ALL_PACK_SLUGS = [
+  "data_query",
+  "statistics",
+  "regression",
+  "financial",
+  "web_search",
+  "entity_management",
+];
+
+/** A TierPolicy with the given entitlements. Allocations are unlimited so
+ *  the (module-mock-fed) cost gate never touches Redis/DB in unit tests. */
+function makePolicy(
+  entitlements = { builtinToolpacks: ALL_PACK_SLUGS, customToolpacks: true }
+) {
+  return {
+    tier: "standard",
+    period: { kind: "monthly" as const, anchorDay: 1 },
+    allocations: {
+      free: { unitsPerPeriod: null, ratePerMin: null },
+      metered: { unitsPerPeriod: null, ratePerMin: null },
+      expensive: { unitsPerPeriod: null, ratePerMin: null },
+    },
+    perToolCaps: null,
+    overage: "hard-deny" as const,
+    entitlements,
+  };
+}
+
 function setupStationMocks(toolPacks: string[]) {
+  mockFindById_org.mockResolvedValue({ id: ORG_ID, tier: "standard" });
+  mockResolveTier.mockResolvedValue(makePolicy());
   mockFindById_station.mockResolvedValue(makeStation());
   mockFindByStationId_instances.mockResolvedValue([
     { id: "si-1", stationId: STATION_ID, connectorInstanceId: "ci-1" },
@@ -1185,5 +1232,202 @@ describe("callWebhook()", () => {
     await expect(
       callWebhook({ type: "webhook", url: "https://api.example.com/hook" }, {})
     ).rejects.toThrow(/exceeds.*bytes/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tier toolpack entitlements (#214) — availability is a projection of the
+// org's tier row; the builder is the single enforcement point.
+// ---------------------------------------------------------------------------
+
+describe("buildAnalyticsTools() tier entitlements (#214)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFetch.mockReset();
+  });
+
+  const CUSTOM_STATION_ROW = {
+    id: "stp-custom",
+    stationId: STATION_ID,
+    builtinSlug: null,
+    organizationToolpackId: "otp-1",
+    created: Date.now(),
+    createdBy: "user-001",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  };
+
+  const CUSTOM_PACK = {
+    id: "otp-1",
+    organizationId: ORG_ID,
+    name: "customer_intel",
+    endpoints: {
+      schema: "https://example.com/schema",
+      runtime: "https://example.com/runtime",
+    },
+    authHeaders: null,
+    tools: [
+      {
+        name: "lookup_company",
+        description: "Look up a company.",
+        parameterSchema: { type: "object", properties: {} },
+      },
+    ],
+  };
+
+  // ── case 6: per-pack subtraction ────────────────────────────────────
+
+  it("excludes exactly the packs the allowlist omits", async () => {
+    setupStationMocks(["data_query", "web_search"]);
+    mockResolveTier.mockResolvedValue(
+      makePolicy({ builtinToolpacks: ["data_query"], customToolpacks: true })
+    );
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    expect(tools.web_search).toBeUndefined();
+    expect(tools.sql_query).toBeDefined();
+    expect(tools.visualize).toBeDefined();
+  });
+
+  // ── case 7: custom boolean, non-destructive ─────────────────────────
+
+  it("customToolpacks: false skips the custom loop entirely — reads only, nothing built", async () => {
+    setupStationMocks(["data_query"]);
+    mockFindByStationId_tools.mockResolvedValue([
+      ...makeToolpackRows(["data_query"]),
+      CUSTOM_STATION_ROW,
+    ]);
+    mockFindManyByIds_orgPacks.mockResolvedValue([CUSTOM_PACK]);
+    mockResolveTier.mockResolvedValue(
+      makePolicy({
+        builtinToolpacks: ALL_PACK_SLUGS,
+        customToolpacks: false,
+      })
+    );
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    expect(tools.lookup_company).toBeUndefined();
+    // The pack rows were never even fetched — the boolean short-circuits
+    // before the org-toolpacks read; no write path exists at all.
+    expect(mockFindManyByIds_orgPacks).not.toHaveBeenCalled();
+    expect(tools.sql_query).toBeDefined();
+  });
+
+  it("customToolpacks: true builds the same attached pack (upgrade round-trip)", async () => {
+    setupStationMocks(["data_query"]);
+    mockFindByStationId_tools.mockResolvedValue([
+      ...makeToolpackRows(["data_query"]),
+      CUSTOM_STATION_ROW,
+    ]);
+    mockFindManyByIds_orgPacks.mockResolvedValue([CUSTOM_PACK]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    expect(tools.lookup_company).toBeDefined();
+  });
+
+  // ── case 8: unknown allowlist slug ──────────────────────────────────
+
+  it("ignores allowlist slugs unknown to the registry, with a warn", async () => {
+    setupStationMocks(["data_query"]);
+    mockResolveTier.mockResolvedValue(
+      makePolicy({
+        builtinToolpacks: ["data_query", "future_pack"],
+        customToolpacks: true,
+      })
+    );
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    expect(tools.sql_query).toBeDefined();
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ slugs: ["future_pack"] }),
+      expect.stringMatching(/unknown/i)
+    );
+  });
+
+  // ── case 9: fully-filtered station ──────────────────────────────────
+
+  it("a station whose every configured pack is unentitled builds system tools only — no throw", async () => {
+    setupStationMocks(ALL_PACK_SLUGS);
+    mockResolveTier.mockResolvedValue(
+      makePolicy({ builtinToolpacks: [], customToolpacks: true })
+    );
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    expect(Object.keys(tools).sort()).toEqual(
+      ["current_time", "station_context"].sort()
+    );
+  });
+
+  // ── cases 10–11: the #184-sibling guard ─────────────────────────────
+
+  it("GUARD (restrictive): an empty entitlement set builds nothing but system tools, custom pack attached or not", async () => {
+    setupStationMocks(ALL_PACK_SLUGS);
+    mockFindByStationId_tools.mockResolvedValue([
+      ...makeToolpackRows(ALL_PACK_SLUGS),
+      CUSTOM_STATION_ROW,
+    ]);
+    mockFindManyByIds_orgPacks.mockResolvedValue([CUSTOM_PACK]);
+    mockResolveStationCapabilities.mockResolvedValue([
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: true },
+      },
+    ]);
+    mockResolveTier.mockResolvedValue(
+      makePolicy({ builtinToolpacks: [], customToolpacks: false })
+    );
+
+    const tools = await buildAnalyticsTools(
+      ORG_ID,
+      STATION_ID,
+      "user-001",
+      "portal-001"
+    );
+
+    // Enumeration by construction: any new tool-construction path that
+    // bypasses the entitlement filter surfaces as an unexpected key here.
+    expect(Object.keys(tools).sort()).toEqual(
+      ["current_time", "station_context"].sort()
+    );
+  });
+
+  it("GUARD (permissive): a full entitlement set builds every pack's tools (per-pack representatives present)", async () => {
+    setupStationMocks(ALL_PACK_SLUGS);
+    mockFindByStationId_tools.mockResolvedValue([
+      ...makeToolpackRows(ALL_PACK_SLUGS),
+      CUSTOM_STATION_ROW,
+    ]);
+    mockFindManyByIds_orgPacks.mockResolvedValue([CUSTOM_PACK]);
+    mockResolveStationCapabilities.mockResolvedValue([
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: true },
+      },
+    ]);
+
+    const tools = await buildAnalyticsTools(
+      ORG_ID,
+      STATION_ID,
+      "user-001",
+      "portal-001"
+    );
+    const names = new Set(Object.keys(tools));
+
+    // Every registry pack contributes at least one declared tool (the
+    // per-pack representative), so a filter bug that drops a pack under
+    // the permissive tier fails here.
+    for (const pack of BUILTIN_TOOLPACKS) {
+      const represented = pack.tools.some((t) => names.has(t.name));
+      expect(`${pack.slug}:${represented}`).toBe(`${pack.slug}:true`);
+    }
+    expect(names.has("lookup_company")).toBe(true);
+    expect(names.has("current_time")).toBe(true);
   });
 });
