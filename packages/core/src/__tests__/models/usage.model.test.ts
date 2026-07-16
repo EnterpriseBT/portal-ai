@@ -61,6 +61,10 @@ describe("OrganizationUsageGetResponseSchema", () => {
         },
         perToolCaps: null,
         overage: "hard-deny",
+        entitlements: {
+          builtinToolpacks: ["data_query", "web_search"],
+          customToolpacks: true,
+        },
       },
       usage: {
         periodId: "2026-07",

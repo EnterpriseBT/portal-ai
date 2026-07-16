@@ -37,6 +37,10 @@ const standardRow = {
   expensiveUnitsPerPeriod: 100,
   expensiveRatePerMin: 5,
   perToolCaps: null,
+  stripePriceId: null,
+  selectable: true,
+  builtinToolpacks: ["data_query", "web_search"],
+  customToolpacks: true,
 };
 
 beforeEach(() => {
@@ -61,6 +65,25 @@ describe("TierService.tierPolicyFromRow", () => {
     });
     expect(p.overage).toBe("hard-deny");
   });
+
+  // ── case 4 (#214) ───────────────────────────────────────────────────
+  it("maps the entitlement columns into policy.entitlements verbatim", () => {
+    const p = TierService.tierPolicyFromRow(standardRow as never);
+    expect(p.entitlements).toEqual({
+      builtinToolpacks: ["data_query", "web_search"],
+      customToolpacks: true,
+    });
+
+    const restrictive = TierService.tierPolicyFromRow({
+      ...standardRow,
+      builtinToolpacks: [],
+      customToolpacks: false,
+    } as never);
+    expect(restrictive.entitlements).toEqual({
+      builtinToolpacks: [],
+      customToolpacks: false,
+    });
+  });
 });
 
 describe("TierService.resolveTier", () => {
@@ -76,6 +99,20 @@ describe("TierService.resolveTier", () => {
     await TierService.resolveTier({ tier: "standard" }, 1000);
     await TierService.resolveTier({ tier: "standard" }, 1001);
     expect(mockFindBySlug).toHaveBeenCalledTimes(1);
+  });
+
+  // ── case 5 (#214) ───────────────────────────────────────────────────
+  it("carries entitlements through the cache (two reads, one fetch, same shape)", async () => {
+    mockFindBySlug.mockResolvedValue(standardRow);
+    const first = await TierService.resolveTier({ tier: "standard" }, 1000);
+    const second = await TierService.resolveTier({ tier: "standard" }, 1001);
+
+    expect(mockFindBySlug).toHaveBeenCalledTimes(1);
+    expect(first.entitlements).toEqual({
+      builtinToolpacks: ["data_query", "web_search"],
+      customToolpacks: true,
+    });
+    expect(second.entitlements).toEqual(first.entitlements);
   });
 
   it("falls back to the default tier on an unknown slug and does not throw", async () => {

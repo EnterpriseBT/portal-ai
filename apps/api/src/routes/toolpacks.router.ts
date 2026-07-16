@@ -30,6 +30,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
+import { TierService } from "../services/tier.service.js";
 import { ToolpackRegistrationService } from "../services/toolpack-registration.service.js";
 import { BUILTIN_TOOL_NAMES } from "../services/tools.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -285,6 +286,7 @@ toolpacksRouter.get(
  *     responses:
  *       201: { description: Registered. }
  *       400: { description: Invalid payload. }
+ *       403: { description: The organization's tier does not include custom toolpacks (#214). }
  *       409: { description: Pack name or tool-name conflict. }
  *       502: { description: Schema or metadata fetch / validation failure. }
  */
@@ -305,6 +307,24 @@ toolpacksRouter.post(
       }
       const { organizationId, userId } = req.application!.metadata;
       const { name, description, endpoints, authHeaders } = parsed.data;
+
+      // #214 entitlement gate — register is the only gated toolpack
+      // mutation (OQ3): it CREATES entitlement-bearing capability, and it
+      // triggers outbound schema fetches. Management of existing packs
+      // (PATCH/refresh/DELETE) stays open; their tools are already
+      // excluded from the agent build while unentitled.
+      const org =
+        await DbService.repository.organizations.findById(organizationId);
+      const policy = await TierService.resolveTier(org ?? { tier: "" });
+      if (!policy.entitlements.customToolpacks) {
+        return next(
+          new ApiError(
+            403,
+            ApiCode.TOOLPACK_NOT_ENTITLED,
+            "Your plan does not include custom toolpacks"
+          )
+        );
+      }
 
       // Name uniqueness within org.
       const existing =

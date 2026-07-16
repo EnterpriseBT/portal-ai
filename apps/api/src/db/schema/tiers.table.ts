@@ -46,6 +46,14 @@ export const tiers = pgTable(
     /** Listed in the self-serve plan list (#176). Custom/enterprise rows
      *  stay false. */
     selectable: boolean("selectable").notNull().default(false),
+    /** #214: explicit allowlist of built-in pack slugs. Fail-closed
+     *  default — a row inserted without it grants no built-in packs. */
+    builtinToolpacks: jsonb("builtin_toolpacks")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    /** #214: custom (webhook) toolpack entitlement. Fail-closed default. */
+    customToolpacks: boolean("custom_toolpacks").notNull().default(false),
   },
   (t) => [
     // FULL unique CONSTRAINT (not a soft-delete-partial index): `slug` is the

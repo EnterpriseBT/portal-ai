@@ -94,14 +94,16 @@ export default async function globalSetup() {
         "free_units_per_period", "free_rate_per_min",
         "metered_units_per_period", "metered_rate_per_min",
         "expensive_units_per_period", "expensive_rate_per_min",
-        "per_tool_caps", "stripe_price_id", "selectable"
+        "per_tool_caps", "stripe_price_id", "selectable",
+        "builtin_toolpacks", "custom_toolpacks"
       ) VALUES (
         gen_random_uuid()::text, (extract(epoch from now()) * 1000)::bigint, 'SYSTEM', 'standard', 'Standard',
         'monthly', 1, 'hard-deny',
         NULL, NULL,
         1000, 20,
         100, 5,
-        NULL, NULL, true
+        NULL, NULL, true,
+        '["data_query","statistics","regression","financial","web_search","entity_management"]'::jsonb, true
       )
       ON CONFLICT ON CONSTRAINT "tiers_slug_unique" DO NOTHING
     `);

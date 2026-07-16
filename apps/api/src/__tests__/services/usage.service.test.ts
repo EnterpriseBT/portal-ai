@@ -31,6 +31,7 @@ const policy = {
   },
   perToolCaps: null,
   overage: "hard-deny" as const,
+  entitlements: { builtinToolpacks: ["data_query"], customToolpacks: true },
 };
 
 beforeEach(() => {

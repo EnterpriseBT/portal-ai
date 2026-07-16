@@ -206,6 +206,13 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     category: FAQCategory.GettingStarted,
     relatedGlossaryTerms: ["Subscription Plan"],
   },
+  {
+    question: "Why is a toolpack marked “Inactive on your plan”?",
+    answer:
+      "Your organization's plan determines which toolpacks are available. Custom toolpacks registered while they were included stay saved when a plan stops including them — nothing is deleted — but their tools aren't offered in portal sessions and new registrations are blocked until you're on a plan that includes them again. Built-in toolpacks can also vary by plan. Everything reactivates automatically on upgrade; station setups are preserved exactly as you left them.",
+    category: FAQCategory.GettingStarted,
+    relatedGlossaryTerms: ["Subscription Plan", "Tool Pack"],
+  },
 
   // Jobs & Background Tasks
   {

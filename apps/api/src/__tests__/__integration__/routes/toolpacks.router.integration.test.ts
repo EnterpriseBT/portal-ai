@@ -670,4 +670,147 @@ describe("Toolpacks Router", () => {
       expect(blobAfter).not.toContain(fresh);
     });
   });
+  // -------------------------------------------------------------------
+  // Tier entitlement gate (#214, cases 12–15). Uses a dedicated
+  // restricted tier row + org tier flips — the shared `standard` row is
+  // never mutated, and the slug-keyed resolveTier cache stays clean.
+  // -------------------------------------------------------------------
+
+  describe("POST /api/toolpacks entitlement gate (#214)", () => {
+    const NOENT_SLUG = "test-noent-tier";
+
+    async function seedRestrictedTier() {
+      await (db as any)
+        .insert(schema.tiers)
+        .values({
+          id: `tier-${Date.now()}-noent`,
+          created: Date.now(),
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+          slug: NOENT_SLUG,
+          displayName: "No Custom Toolpacks (test)",
+          periodKind: "monthly",
+          periodAnchorDay: 1,
+          overage: "hard-deny",
+          meteredUnitsPerPeriod: 1000,
+          meteredRatePerMin: 20,
+          expensiveUnitsPerPeriod: 100,
+          expensiveRatePerMin: 5,
+          builtinToolpacks: [
+            "data_query",
+            "statistics",
+            "regression",
+            "financial",
+            "web_search",
+            "entity_management",
+          ],
+          customToolpacks: false,
+        } as never)
+        .onConflictDoNothing();
+    }
+
+    async function setOrgTier(slug: string) {
+      await (db as any)
+        .update(schema.organizations)
+        .set({ tier: slug })
+        .where(eq(schema.organizations.id, organizationId));
+    }
+
+    async function customPackCount(): Promise<number> {
+      const rows = await (db as any)
+        .select()
+        .from(schema.organizationToolpacks)
+        .where(
+          and(
+            eq(schema.organizationToolpacks.organizationId, organizationId),
+            isNull(schema.organizationToolpacks.deleted)
+          )
+        );
+      return rows.length;
+    }
+
+    afterEach(async () => {
+      // The org may still FK-reference the scratch tier — point it back at
+      // standard before deleting the row.
+      await setOrgTier("standard");
+      await (db as any)
+        .delete(schema.tiers)
+        .where(eq(schema.tiers.slug, NOENT_SLUG));
+    });
+
+    // ── case 12 ─────────────────────────────────────────────────────
+    it("403s TOOLPACK_NOT_ENTITLED on an unentitled tier; nothing persisted", async () => {
+      await seedRestrictedTier();
+      await setOrgTier(NOENT_SLUG);
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+
+      const res = await request(app)
+        .post("/api/toolpacks")
+        .send(VALID_REGISTER_BODY);
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe(ApiCode.TOOLPACK_NOT_ENTITLED);
+      expect(await customPackCount()).toBe(0);
+      // The gate fires before any upstream fetch.
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    // ── case 13 (OQ3: management stays open) ────────────────────────
+    it("PATCH and DELETE on a pre-existing pack still succeed for an unentitled org", async () => {
+      // Register while entitled (standard is permissive).
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+      const created = await request(app)
+        .post("/api/toolpacks")
+        .send(VALID_REGISTER_BODY);
+      expect(created.status).toBe(201);
+      const packId = created.body.payload.toolpack.id.replace(/^custom:/, "");
+
+      // Downgrade.
+      await seedRestrictedTier();
+      await setOrgTier(NOENT_SLUG);
+
+      const patched = await request(app)
+        .patch(`/api/toolpacks/${packId}`)
+        .send({ description: "still manageable while inert" });
+      expect(patched.status).toBe(200);
+
+      const deleted = await request(app).delete(`/api/toolpacks/${packId}`);
+      expect([200, 204]).toContain(deleted.status);
+    });
+
+    // ── case 14 (regression) ────────────────────────────────────────
+    it("registers 201 on an entitled tier (standard permissive)", async () => {
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+
+      const res = await request(app)
+        .post("/api/toolpacks")
+        .send(VALID_REGISTER_BODY);
+
+      expect(res.status).toBe(201);
+      expect(await customPackCount()).toBe(1);
+    });
+
+    // ── case 15 (downgrade → 403 → upgrade → 201; no deploy) ────────
+    it("round-trips: downgrade blocks registration, upgrade restores it", async () => {
+      await seedRestrictedTier();
+
+      await setOrgTier(NOENT_SLUG);
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+      const blocked = await request(app)
+        .post("/api/toolpacks")
+        .send(VALID_REGISTER_BODY);
+      expect(blocked.status).toBe(403);
+      expect(blocked.body.code).toBe(ApiCode.TOOLPACK_NOT_ENTITLED);
+
+      await setOrgTier("standard");
+      mockFetch.mockResolvedValue(fetchOk(VALID_SCHEMA_RESPONSE));
+      const allowed = await request(app)
+        .post("/api/toolpacks")
+        .send(VALID_REGISTER_BODY);
+      expect(allowed.status).toBe(201);
+    });
+  });
 });
