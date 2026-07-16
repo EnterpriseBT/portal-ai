@@ -38,6 +38,7 @@ import type {
   Tier,
   Usage,
   StripeEvent,
+  ToolUsageLedgerEntry,
 } from "@portalai/core/models";
 import type {
   UserSelect,
@@ -63,6 +64,7 @@ import type {
   TierSelect,
   UsageSelect,
   StripeEventSelect,
+  ToolUsageLedgerSelect,
 } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { EntityRecordHydrated } from "../repositories/entity-records.repository.js";
@@ -92,6 +94,7 @@ import type { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
 import type { tiers } from "./tiers.table.js";
 import type { usage } from "./usage.table.js";
 import type { stripeEvents } from "./stripe-events.table.js";
+import type { toolUsageLedger } from "./tool-usage-ledger.table.js";
 import type { InterpretationTrace, LayoutPlan } from "@portalai/core/contracts";
 import type {
   ConnectorInstanceLayoutPlanSelect,
@@ -184,6 +187,30 @@ type _StripeEvtInferredToModel = IsAssignable<
   StripeEvent
 >;
 const _stripeEvtInferredToModel: _StripeEvtInferredToModel = true;
+
+// ── ToolUsageLedgerEntry ─────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _LedgerDrizzleToModel = IsAssignable<
+  ToolUsageLedgerSelect,
+  ToolUsageLedgerEntry
+>;
+const _ledgerDrizzleToModel: _LedgerDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _LedgerModelToDrizzle = IsAssignable<
+  ToolUsageLedgerEntry,
+  ToolUsageLedgerSelect
+>;
+const _ledgerModelToDrizzle: _LedgerModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _LedgerInferredRow = InferSelectModel<typeof toolUsageLedger>;
+type _LedgerInferredToModel = IsAssignable<
+  _LedgerInferredRow,
+  ToolUsageLedgerEntry
+>;
+const _ledgerInferredToModel: _LedgerInferredToModel = true;
 
 // ── OrganizationUser ─────────────────────────────────────────────
 

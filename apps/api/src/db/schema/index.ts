@@ -33,6 +33,7 @@ export { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
 export { tiers } from "./tiers.table.js";
 export { usage } from "./usage.table.js";
 export { stripeEvents } from "./stripe-events.table.js";
+export { toolUsageLedger } from "./tool-usage-ledger.table.js";
 
 /** Drizzle-zod derived schemas for runtime validation */
 export * from "./zod.js";

@@ -76,6 +76,9 @@ export * from "./tier.contract.js";
 /** Billing endpoint contracts — schemas & types (#176) */
 export * from "./billing.contract.js";
 
+/** Usage-ledger endpoint contracts — schemas & types (#179) */
+export * from "./usage-ledger.contract.js";
+
 /** Spreadsheet parsing contracts — re-exported from @portalai/spreadsheet-parsing */
 export * from "./spreadsheet-parsing.contract.js";
 
