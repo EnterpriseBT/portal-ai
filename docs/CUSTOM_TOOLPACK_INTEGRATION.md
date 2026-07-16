@@ -8,6 +8,8 @@ A reference implementation lives at `apps/api/src/scripts/mock-toolpack-server.t
 
 ## Contract overview
 
+**Precondition (#214):** custom toolpacks are a subscription-tier entitlement. Registering one when the organization's plan doesn't include them returns `403 TOOLPACK_NOT_ENTITLED` — nothing is fetched or stored. Existing registrations are never deleted on a plan downgrade: they show as *Inactive on your plan*, their tools stop being offered in portal sessions, management (edit/refresh/delete) stays available, and everything reactivates automatically when the plan allows them again.
+
 Your server exposes three HTTP endpoints. Portal.ai calls them as the registering org admin, signing every request with a per-toolpack HMAC secret your server can verify.
 
 | Method | Path | When called | Required |

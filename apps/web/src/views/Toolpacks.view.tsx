@@ -13,6 +13,7 @@ import {
 } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
+import Tooltip from "@mui/material/Tooltip";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import Snackbar from "@mui/material/Snackbar";
@@ -73,7 +74,16 @@ export interface ToolpacksUIProps {
    * spinner in place of the refresh icon while this matches its id.
    */
   refreshingId?: string | null;
+  /**
+   * Whether the org's tier includes custom toolpacks (#214). When false,
+   * custom rows badge "Inactive on your plan" and Register disables with
+   * a tooltip — honesty affordances; the server 403 is the gate.
+   * Defaults to true so existing callers are unchanged.
+   */
+  customToolpacksEntitled?: boolean;
 }
+
+const NOT_ENTITLED_TOOLTIP = "Your plan does not include custom toolpacks";
 
 export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
   toolpacks,
@@ -85,6 +95,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
   onDelete,
   onRefresh,
   refreshingId,
+  customToolpacksEntitled = true,
 }) => {
   const navigate = useNavigate();
 
@@ -128,11 +139,21 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
         label: "Kind",
         sortable: true,
         render: (value) => (
-          <Chip
-            size="small"
-            variant="outlined"
-            label={value === "builtin" ? "Built-in" : "Custom"}
-          />
+          <Stack direction="row" spacing={0.5}>
+            <Chip
+              size="small"
+              variant="outlined"
+              label={value === "builtin" ? "Built-in" : "Custom"}
+            />
+            {value === "custom" && !customToolpacksEntitled && (
+              <Chip
+                size="small"
+                color="warning"
+                variant="outlined"
+                label="Inactive on your plan"
+              />
+            )}
+          </Stack>
         ),
       },
       {
@@ -222,6 +243,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
     onRefresh,
     refreshingId,
     showActions,
+    customToolpacksEntitled,
   ]);
 
   const rows: ToolpackRow[] = useMemo(
@@ -278,13 +300,27 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
           icon={<Icon name={IconName.Extension} />}
           primaryAction={
             onRegister ? (
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={onRegister}
-              >
-                Register toolpack
-              </Button>
+              customToolpacksEntitled ? (
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={onRegister}
+                >
+                  Register toolpack
+                </Button>
+              ) : (
+                <Tooltip title={NOT_ENTITLED_TOOLTIP}>
+                  <span>
+                    <Button
+                      variant="contained"
+                      startIcon={<AddIcon />}
+                      disabled
+                    >
+                      Register toolpack
+                    </Button>
+                  </span>
+                </Tooltip>
+              )
             ) : undefined
           }
         />
@@ -330,6 +366,13 @@ export const Toolpacks: React.FC = () => {
   const [refreshToast, setRefreshToast] = useState<RefreshToast | null>(null);
 
   const listResult = sdk.toolpacks.list();
+  // #214: entitlement affordances derive from the tier policy the usage
+  // endpoint already ships — no new endpoint. Optimistic-true while
+  // loading (the server 403 is the real gate; a brief enabled state never
+  // grants anything).
+  const usageResult = sdk.organizations.usage();
+  const customToolpacksEntitled =
+    usageResult.data?.tier.entitlements.customToolpacks ?? true;
   const registerMutation = sdk.toolpacks.register();
   const updateMutation = sdk.toolpacks.update(editing?.id ?? "");
   const refreshMutation = sdk.toolpacks.refresh();
@@ -357,6 +400,7 @@ export const Toolpacks: React.FC = () => {
             onSelect={setSelected}
             onCloseModal={() => setSelected(null)}
             onRegister={() => setRegisterOpen(true)}
+            customToolpacksEntitled={customToolpacksEntitled}
             onEdit={(t) => setEditing(t)}
             onDelete={(t) => setDeleting(t)}
             refreshingId={

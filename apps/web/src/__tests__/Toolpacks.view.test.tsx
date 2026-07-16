@@ -232,4 +232,93 @@ describe("ToolpacksUI", () => {
       screen.getByTestId(`toolpack-refresh-spinner-${customPack.id}`)
     ).toBeInTheDocument();
   });
+
+  // ── Tier entitlements (#214, cases 20–22) ──────────────────────────
+
+  describe("custom-toolpack entitlement affordances (#214)", () => {
+    const customPack: Toolpack = {
+      id: "otp-42",
+      kind: "custom",
+      slug: "customer_intel",
+      name: "customer_intel",
+      description: "External calls.",
+      iconSlug: "Extension",
+      tools: [
+        {
+          name: "lookup_company",
+          description: "Look up a company.",
+          parameterSchema: { type: "object", properties: {} },
+        },
+      ],
+      endpoints: {
+        schema: "https://example.com/schema",
+        runtime: "https://example.com/runtime",
+      },
+      authHeadersStatus: { has: false },
+      signingSecretStatus: { has: true },
+      schemaFetchedAt: Date.now(),
+      metadataFetchedAt: null,
+    } as never;
+
+    // case 20 — unentitled
+    it("badges custom rows and disables Register with the plan tooltip when unentitled", async () => {
+      renderUI({
+        toolpacks: [...PACKS, customPack],
+        onRegister: jest.fn(),
+        customToolpacksEntitled: false,
+      });
+
+      expect(screen.getByText("Inactive on your plan")).toBeInTheDocument();
+
+      const register = screen.getByRole("button", {
+        name: /register toolpack/i,
+      });
+      expect(register).toBeDisabled();
+
+      fireEvent.mouseOver(register.parentElement as HTMLElement);
+      expect(
+        await screen.findByText(/your plan does not include custom toolpacks/i)
+      ).toBeInTheDocument();
+    });
+
+    it("never badges built-in rows, entitled or not", () => {
+      renderUI({
+        toolpacks: PACKS,
+        onRegister: jest.fn(),
+        customToolpacksEntitled: false,
+      });
+
+      expect(
+        screen.queryByText("Inactive on your plan")
+      ).not.toBeInTheDocument();
+    });
+
+    // case 21 — entitled regression
+    it("renders no badge and an enabled Register when entitled", () => {
+      renderUI({
+        toolpacks: [...PACKS, customPack],
+        onRegister: jest.fn(),
+        customToolpacksEntitled: true,
+      });
+
+      expect(
+        screen.queryByText("Inactive on your plan")
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /register toolpack/i })
+      ).toBeEnabled();
+    });
+
+    // case 22 — prop default keeps the pre-#214 surface
+    it("defaults to entitled when the prop is omitted (existing callers unchanged)", () => {
+      renderUI({ toolpacks: [...PACKS, customPack], onRegister: jest.fn() });
+
+      expect(
+        screen.queryByText("Inactive on your plan")
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /register toolpack/i })
+      ).toBeEnabled();
+    });
+  });
 });
