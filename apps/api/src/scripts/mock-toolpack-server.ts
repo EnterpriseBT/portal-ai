@@ -40,8 +40,8 @@
  *
  * Run from the apps/api directory:
  *
- *   npm run mock-toolpack            # listens on http://localhost:4100
- *   PORT=4500 MOCK_TOOLPACK_SIGNING_SECRET=whsec_xxx npm run mock-toolpack
+ *   npm run webhook:toolpack            # listens on http://localhost:4100
+ *   PORT=4500 MOCK_TOOLPACK_SIGNING_SECRET=whsec_xxx npm run webhook:toolpack
  *
  * Then register a custom toolpack in the UI pointing at:
  *   schema:   http://localhost:4100/schema
@@ -278,6 +278,7 @@ const tools = [
       computeShape: "reduce",
       costHint: "free",
       resultKind: "scalar",
+      production: { kind: "value" },
       alwaysAvailable: false,
     },
   },
@@ -296,6 +297,7 @@ const tools = [
       computeShape: "reduce",
       costHint: "free",
       resultKind: "scalar",
+      production: { kind: "value" },
       alwaysAvailable: false,
     },
   },
@@ -315,6 +317,7 @@ const tools = [
       computeShape: "reduce",
       costHint: "free",
       resultKind: "data-table",
+      production: { kind: "rows", onLarge: "handle" },
       alwaysAvailable: false,
     },
   },
