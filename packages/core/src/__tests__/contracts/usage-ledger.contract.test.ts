@@ -26,6 +26,8 @@ describe("UsageLedgerListRequestQuerySchema", () => {
   it("applies pagination defaults with no filters", () => {
     const parsed = UsageLedgerListRequestQuerySchema.parse({});
     expect(parsed.sortBy).toBe("created");
+    expect(parsed.sortOrder).toBe("desc"); // newest-first default
+
     expect(parsed.periodId).toBeUndefined();
     expect(parsed.toolName).toBeUndefined();
   });

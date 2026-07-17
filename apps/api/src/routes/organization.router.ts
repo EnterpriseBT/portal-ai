@@ -10,12 +10,18 @@ import type {
   OrganizationDeleteResponse,
   OrganizationGetResponse,
   OrganizationUsageGetResponse,
+  UsageLedgerListResponse,
   UserMembershipsGetResponse,
 } from "@portalai/core/contracts";
 import {
   OrganizationDeleteRequestSchema,
   OrganizationSwitchRequestSchema,
+  UsageLedgerListRequestQuerySchema,
 } from "@portalai/core/contracts";
+import {
+  TOOL_USAGE_LEDGER_SORT_KEYS,
+  type ToolUsageLedgerSortBy,
+} from "../db/repositories/tool-usage-ledger.repository.js";
 import { OrganizationDeleteService } from "../services/organization-delete.service.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 
@@ -620,6 +626,140 @@ organizationRouter.get(
               error instanceof Error
                 ? error.message
                 : "Failed to fetch organization usage"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/organization/usage/ledger:
+ *   get:
+ *     tags:
+ *       - Organization
+ *     summary: List the current organization's itemized tool-usage ledger
+ *     description: Paginated, per-call itemization behind the aggregate usage balance (#179). One row per committed charge; newest-first by default. Filterable by billing period and tool name.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - $ref: '#/components/parameters/limitParam'
+ *       - $ref: '#/components/parameters/offsetParam'
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [created, units, toolName]
+ *           default: created
+ *         description: Field to sort by (allow-map; unknown values are a 400)
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Sort direction (defaults newest-first)
+ *       - in: query
+ *         name: periodId
+ *         schema:
+ *           type: string
+ *         description: Billing period to filter by (e.g. 2026-07)
+ *       - in: query
+ *         name: toolName
+ *         schema:
+ *           type: string
+ *         description: Tool name to filter by
+ *     responses:
+ *       200:
+ *         description: One page of ledger entries + the filter-scoped total
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/UsageLedgerListResponse'
+ *       400:
+ *         description: Malformed query (unknown sortBy or bad pagination)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       401:
+ *         description: Missing authentication
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: User or organization not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+organizationRouter.get(
+  "/usage/ledger",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = UsageLedgerListRequestQuerySchema.safeParse(req.query);
+      if (
+        !parsed.success ||
+        !TOOL_USAGE_LEDGER_SORT_KEYS.includes(
+          parsed.data.sortBy as ToolUsageLedgerSortBy
+        )
+      ) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.USAGE_LEDGER_INVALID_QUERY,
+            "Invalid usage-ledger query"
+          )
+        );
+      }
+      const query = parsed.data;
+
+      const { entries, total } =
+        await DbService.repository.toolUsageLedger.findPage(
+          req.application?.metadata.organizationId as string,
+          {
+            periodId: query.periodId,
+            toolName: query.toolName,
+            limit: query.limit,
+            offset: query.offset,
+            sortBy: query.sortBy as ToolUsageLedgerSortBy,
+            sortOrder: query.sortOrder,
+          }
+        );
+
+      return HttpService.success<UsageLedgerListResponse>(res, {
+        entries,
+        total,
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to fetch usage ledger"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.USAGE_LEDGER_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch usage ledger"
             )
       );
     }

@@ -5,6 +5,7 @@ import { jest } from "@jest/globals";
 const mockProfile = jest.fn();
 const mockCurrent = jest.fn();
 const mockUsage = jest.fn();
+const mockUsageLedger = jest.fn();
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
@@ -12,6 +13,9 @@ jest.unstable_mockModule("../api/sdk", () => ({
     organizations: {
       current: mockCurrent,
       usage: mockUsage,
+      // Itemized drill-down (#179) — dialog internals are covered by
+      // UsageLedgerDialog.component.test.tsx.
+      usageLedger: mockUsageLedger,
       // Danger zone (#197) — inert stub; behavior is covered by
       // SettingsDangerZone.test.tsx.
       delete: () => ({ mutate: jest.fn(), isPending: false, error: null }),
@@ -94,6 +98,7 @@ beforeEach(() => {
   mockProfile.mockReturnValue(loaded(profileData));
   mockCurrent.mockReturnValue(loaded(orgData));
   mockUsage.mockReturnValue(loaded(usageData));
+  mockUsageLedger.mockReturnValue(loaded({ entries: [], total: 0 }));
 });
 
 const openOrganizationTab = async () => {
@@ -131,5 +136,25 @@ describe("SettingsView — Organization tier + usage (#172 slice 4)", () => {
     expect(
       screen.getByRole("heading", { name: "Settings" })
     ).toBeInTheDocument();
+  });
+});
+
+// case 20 (#179 slice 3) — the itemized drill-down affordance
+describe("SettingsView — Itemized usage drill-down (#179)", () => {
+  it("shows the affordance and opens the dialog with the current period", async () => {
+    await openOrganizationTab();
+
+    const button = screen.getByRole("button", { name: "Itemized usage" });
+    expect(button).toBeInTheDocument();
+
+    await userEvent.click(button);
+
+    // The container mounts + queries with the usage response's periodId
+    // as the default filter, enabled once open.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(mockUsageLedger).toHaveBeenCalledWith(
+      expect.objectContaining({ periodId: "2026-07" }),
+      expect.objectContaining({ enabled: true })
+    );
   });
 });

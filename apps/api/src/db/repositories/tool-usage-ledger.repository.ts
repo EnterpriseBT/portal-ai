@@ -26,6 +26,11 @@ const SORTABLE_COLUMNS = {
 
 export type ToolUsageLedgerSortBy = keyof typeof SORTABLE_COLUMNS;
 
+/** The allow-map's keys — the route validates `sortBy` against these. */
+export const TOOL_USAGE_LEDGER_SORT_KEYS = Object.keys(
+  SORTABLE_COLUMNS
+) as ToolUsageLedgerSortBy[];
+
 export class ToolUsageLedgerRepository extends Repository<
   typeof toolUsageLedger,
   ToolUsageLedgerSelect,
