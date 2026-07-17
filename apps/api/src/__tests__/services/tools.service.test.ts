@@ -842,6 +842,10 @@ describe("buildAnalyticsTools()", () => {
           costClass: "metered",
           units: 1,
           actor: { userId: "user-001" },
+          toolName: "web_search",
+          toolCallId: "call_test_1",
+          stationId: STATION_ID,
+          portalId: null,
         },
       });
     const commitSpy = jest
@@ -887,6 +891,10 @@ describe("buildAnalyticsTools()", () => {
           costClass: "expensive",
           units: 1,
           actor: { userId: "user-001" },
+          toolName: "cluster",
+          toolCallId: "call_test_2",
+          stationId: STATION_ID,
+          portalId: null,
         },
       });
     const commitSpy = jest

@@ -21,8 +21,19 @@ const mockGetBalance = jest.fn<
 >();
 const mockIncrementRate = jest.fn<() => Promise<number>>();
 
+const mockLedgerInsertIfNew = jest.fn<(...a: unknown[]) => Promise<boolean>>();
+const TX = { __tx: true };
+
 jest.unstable_mockModule("../../services/db.service.js", () => ({
-  DbService: { repository: { organizations: { findById: mockFindById } } },
+  DbService: {
+    repository: {
+      organizations: { findById: mockFindById },
+      toolUsageLedger: { insertIfNew: mockLedgerInsertIfNew },
+    },
+    // #179: commitCharge pairs the aggregate charge + ledger insert in one
+    // transaction; unit tests run the callback with a sentinel client.
+    transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(TX),
+  },
 }));
 jest.unstable_mockModule("../../services/tier.service.js", () => ({
   TierService: { resolveTier: mockResolveTier, periodIdFor: mockPeriodIdFor },
@@ -69,6 +80,7 @@ const ctx = (over: Record<string, unknown> = {}) => ({
   costBearer: "application" as const,
   input: {},
   actor: { userId: "u1" },
+  stationId: "station-1", // #179 ledger context
   now: 1000,
   ...over,
 });
@@ -83,6 +95,7 @@ beforeEach(() => {
   mockTryCharge
     .mockReset()
     .mockResolvedValue({ allowed: true, used: 1, available: 999 });
+  mockLedgerInsertIfNew.mockReset().mockResolvedValue(true);
 });
 
 // ── checkAdmission — pre-flight, NEVER charges ───────────────────────
@@ -120,6 +133,10 @@ describe("CostGateService.checkAdmission", () => {
         costClass: "metered",
         units: 1,
         actor: { userId: "u1" },
+        toolName: "web_search",
+        toolCallId: expect.any(String),
+        stationId: "station-1",
+        portalId: null,
       },
     });
     expect(mockTryCharge).not.toHaveBeenCalled(); // admission never charges
@@ -166,6 +183,10 @@ describe("CostGateService.checkAdmission", () => {
         costClass: "expensive",
         units: 1,
         actor: { userId: "u1" },
+        toolName: "web_search",
+        toolCallId: expect.any(String),
+        stationId: "station-1",
+        portalId: null,
       },
     });
   });
@@ -224,6 +245,11 @@ describe("CostGateService.commitCharge", () => {
     costClass: "metered" as const,
     units: 1,
     actor: { userId: "u1" },
+    // #179 per-call context
+    toolName: "web_search",
+    toolCallId: "call_fixed_1",
+    stationId: "station-1",
+    portalId: "portal-1" as string | null,
   };
 
   it("charges the actual units against the class allocation", async () => {
@@ -234,7 +260,8 @@ describe("CostGateService.commitCharge", () => {
       1,
       1000, // metered.unitsPerPeriod
       "2026-07",
-      { userId: "u1" }
+      { userId: "u1" },
+      TX // #179: inside the shared transaction
     );
   });
 
@@ -268,6 +295,13 @@ describe("CostGateService.commitCharge", () => {
   });
 });
 
+const WRAP_CTX = {
+  organizationId: "org-1",
+  userId: "u1",
+  stationId: "station-1",
+  portalId: "portal-1",
+};
+
 // ── wrapWithCostGate — admit → run → charge-on-success ───────────────
 
 describe("wrapWithCostGate", () => {
@@ -281,7 +315,7 @@ describe("wrapWithCostGate", () => {
   it("admitted → runs the original AND commits the charge after success", async () => {
     const original = jest.fn(async (_i: unknown, _o: unknown) => "REAL");
     const tools = { web_search: { execute: original } };
-    wrapWithCostGate(tools, { organizationId: "org-1", userId: "u1" }, appMeta);
+    wrapWithCostGate(tools, WRAP_CTX, appMeta);
     await expect(tools.web_search.execute({ q: 1 }, {})).resolves.toBe("REAL");
     expect(original).toHaveBeenCalledWith({ q: 1 }, {});
     // commit fired on success → tryCharge called.
@@ -293,7 +327,7 @@ describe("wrapWithCostGate", () => {
       throw new Error("tavily down");
     });
     const tools = { web_search: { execute: original } };
-    wrapWithCostGate(tools, { organizationId: "org-1", userId: "u1" }, appMeta);
+    wrapWithCostGate(tools, WRAP_CTX, appMeta);
     await expect(tools.web_search.execute({}, {})).rejects.toThrow(
       "tavily down"
     );
@@ -312,7 +346,7 @@ describe("wrapWithCostGate", () => {
     });
     const original = jest.fn(async (_i: unknown, _o: unknown) => "REAL");
     const tools = { web_search: { execute: original } };
-    wrapWithCostGate(tools, { organizationId: "org-1", userId: "u1" }, appMeta);
+    wrapWithCostGate(tools, WRAP_CTX, appMeta);
     const out = (await tools.web_search.execute({}, {})) as unknown as {
       error: { code: string };
     };
@@ -324,7 +358,7 @@ describe("wrapWithCostGate", () => {
   it("deferChargeToJob → runs the original but does NOT commit (processor charges)", async () => {
     const original = jest.fn(async (_i: unknown, _o: unknown) => "JOB");
     const tools = { transform_entity_records: { execute: original } };
-    wrapWithCostGate(tools, { organizationId: "org-1", userId: "u1" }, () => ({
+    wrapWithCostGate(tools, WRAP_CTX, () => ({
       costHint: "expensive",
       costBearer: "application",
       deferChargeToJob: true,
@@ -338,7 +372,7 @@ describe("wrapWithCostGate", () => {
   it("org-paid (custom) → runs the original, never charged", async () => {
     const original = jest.fn(async (_i: unknown, _o: unknown) => "REAL");
     const tools = { my_hook: { execute: original } };
-    wrapWithCostGate(tools, { organizationId: "org-1", userId: "u1" }, () => ({
+    wrapWithCostGate(tools, WRAP_CTX, () => ({
       costHint: "metered",
       costBearer: "organization",
       deferChargeToJob: false,
@@ -353,11 +387,155 @@ describe("wrapWithCostGate", () => {
       { execute?: (i: unknown, o: unknown) => unknown }
     > = { noop: {} };
     expect(() =>
-      wrapWithCostGate(tools, { organizationId: "o", userId: "u" }, () => ({
-        costHint: "free",
-        costBearer: "application",
-        deferChargeToJob: false,
-      }))
+      wrapWithCostGate(
+        tools,
+        { ...WRAP_CTX, organizationId: "o", userId: "u" },
+        () => ({
+          costHint: "free",
+          costBearer: "application",
+          deferChargeToJob: false,
+        })
+      )
     ).not.toThrow();
+  });
+});
+
+// ── #179: the ledger write (transactional, idempotent) ───────────────
+
+describe("commitCharge ledger write (#179)", () => {
+  const charge = {
+    organizationId: "org-1",
+    costClass: "metered" as const,
+    units: 2,
+    actor: { userId: "u1" },
+    toolName: "web_search",
+    toolCallId: "call_ledger_1",
+    stationId: "station-1",
+    portalId: "portal-1" as string | null,
+  };
+
+  // case 7 — same-transaction pairing + full row fields
+  it("writes one ledger row with the charge's fields, inside the SAME tx as tryCharge", async () => {
+    await CostGateService.commitCharge(charge, 1000);
+
+    expect(mockTryCharge).toHaveBeenCalledWith(
+      "org-1",
+      "metered",
+      2,
+      1000,
+      "2026-07",
+      { userId: "u1" },
+      TX
+    );
+    expect(mockLedgerInsertIfNew).toHaveBeenCalledTimes(1);
+    expect(mockLedgerInsertIfNew).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "org-1",
+        toolName: "web_search",
+        toolCallId: "call_ledger_1",
+        stationId: "station-1",
+        portalId: "portal-1",
+        costClass: "metered",
+        units: 2,
+        periodId: "2026-07", // the same period the aggregate charged
+        userId: "u1",
+      }),
+      TX
+    );
+  });
+
+  // case 8 — skip writes nothing
+  it("a skipped charge (tryCharge not allowed) writes NO ledger row", async () => {
+    mockTryCharge.mockResolvedValue({
+      allowed: false,
+      used: 1000,
+      available: 0,
+    });
+
+    await CostGateService.commitCharge(charge, 1000);
+
+    expect(mockLedgerInsertIfNew).not.toHaveBeenCalled();
+  });
+
+  // case 9 — insert failure → tx rejects → catch-all → free call
+  it("a ledger insert failure rejects the tx but never throws to the caller", async () => {
+    mockLedgerInsertIfNew.mockRejectedValue(new Error("insert failed"));
+
+    await expect(
+      CostGateService.commitCharge(charge, 1000)
+    ).resolves.toBeUndefined();
+    // The aggregate ran inside the same tx — Postgres rolls both back
+    // together (repo integration covers the real rollback).
+    expect(mockTryCharge).toHaveBeenCalled();
+  });
+
+  // case 10 — duplicate toolCallId is a no-op
+  it("a duplicate toolCallId (insertIfNew false) resolves without error", async () => {
+    mockLedgerInsertIfNew.mockResolvedValue(false);
+
+    await expect(
+      CostGateService.commitCharge(charge, 1000)
+    ).resolves.toBeUndefined();
+  });
+});
+
+// ── #179: admission context → charge context ─────────────────────────
+
+describe("checkAdmission charge context (#179)", () => {
+  it("case 11a — copies toolName/toolCallId/stationId/portalId onto the charge", async () => {
+    const r = await CostGateService.checkAdmission(
+      ctx({
+        stationId: "station-1",
+        portalId: "portal-1",
+        toolCallId: "call_ctx_1",
+      }) as never
+    );
+
+    expect(r.allowed).toBe(true);
+    if (r.allowed) {
+      expect(r.charge).toMatchObject({
+        toolName: "web_search",
+        toolCallId: "call_ctx_1",
+        stationId: "station-1",
+        portalId: "portal-1",
+      });
+    }
+  });
+
+  it("case 11b — synthesizes a UUID toolCallId when the context lacks one", async () => {
+    const r = await CostGateService.checkAdmission(
+      ctx({ stationId: "station-1" }) as never
+    );
+
+    expect(r.allowed).toBe(true);
+    if (r.allowed && r.charge) {
+      expect(r.charge.toolCallId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
+      expect(r.charge.portalId).toBeNull();
+    }
+  });
+
+  // case 12 — the wrap threads execute options + ctx into admission
+  it("case 12 — wrapWithCostGate threads options.toolCallId and ctx station/portal", async () => {
+    const spy = jest.spyOn(CostGateService, "checkAdmission");
+    const original = jest.fn(async (_i: unknown, _o: unknown) => "OK");
+    const tools = { web_search: { execute: original } };
+    wrapWithCostGate(tools, WRAP_CTX, () => ({
+      costHint: "metered" as const,
+      costBearer: "application" as const,
+      deferChargeToJob: false,
+    }));
+
+    await tools.web_search.execute({}, { toolCallId: "call_sdk_9" });
+
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stationId: "station-1",
+        portalId: "portal-1",
+        toolCallId: "call_sdk_9",
+      })
+    );
+    spy.mockRestore();
   });
 });
