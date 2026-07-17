@@ -84,7 +84,10 @@ export const UsageLedgerDialogUI: React.FC<UsageLedgerDialogUIProps> = ({
       </Button>
     }
   >
-    <Stack spacing={2}>
+    {/* pt clears the filter-count badge: it protrudes above the toolbar's
+        buttons, and DialogContent's zeroed top padding (title present)
+        would otherwise clip it at the scroll boundary. */}
+    <Stack spacing={2} sx={{ pt: 1.5 }}>
       <PaginationToolbar {...toolbarProps} />
       {isLoading ? (
         <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
