@@ -218,6 +218,14 @@ describe("GET /api/organization/usage/ledger (#179 slice 3)", () => {
     expect(byBoth.body.payload.entries[0].toolName).toBe("web_search");
     expect(byBoth.body.payload.entries[0].periodId).toBe("2026-07");
 
+    // Search: case-insensitive substring on the tool name.
+    const bySearch = await request(app)
+      .get("/api/organization/usage/ledger?search=GEO")
+      .set("Authorization", "Bearer test-token");
+    expect(bySearch.status).toBe(200);
+    expect(bySearch.body.payload.total).toBe(1);
+    expect(bySearch.body.payload.entries[0].toolName).toBe("geocode");
+
     // sortBy outside the allow-map is a 400, not a silent default.
     const badSort = await request(app)
       .get("/api/organization/usage/ledger?sortBy=portalId")

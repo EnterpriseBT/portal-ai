@@ -196,6 +196,23 @@ describe("ToolUsageLedgerRepository Integration Tests", () => {
     expect(page.total).toBe(3);
     expect(page.entries.length).toBe(1);
     expect(page.entries[0].units).toBe(3); // units asc: 1, 3, 5 → offset 1 = 3
+
+    // Search: case-insensitive substring on toolName, org-scoped
+    const searched = await repo.findPage(
+      orgId,
+      {
+        search: "SEARCH",
+        limit: 10,
+        offset: 0,
+        sortBy: "created",
+        sortOrder: "desc",
+      },
+      db
+    );
+    expect(searched.total).toBe(2); // both web_search rows; other org's excluded
+    expect(searched.entries.every((e) => e.toolName === "web_search")).toBe(
+      true
+    );
   });
 
   // ── case 5: deleteOlderThan ─────────────────────────────────────────

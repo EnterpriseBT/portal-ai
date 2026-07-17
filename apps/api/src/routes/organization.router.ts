@@ -668,7 +668,12 @@ organizationRouter.get(
  *         name: toolName
  *         schema:
  *           type: string
- *         description: Tool name to filter by
+ *         description: Tool name to filter by (exact match)
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Case-insensitive substring search on the tool name
  *     responses:
  *       200:
  *         description: One page of ledger entries + the filter-scoped total
@@ -735,6 +740,7 @@ organizationRouter.get(
           {
             periodId: query.periodId,
             toolName: query.toolName,
+            search: query.search,
             limit: query.limit,
             offset: query.offset,
             sortBy: query.sortBy as ToolUsageLedgerSortBy,

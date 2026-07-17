@@ -1,21 +1,52 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+
+import { Chip, CircularProgress } from "@mui/material";
 
 import {
-  Chip,
-  CircularProgress,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TablePagination,
-  TableRow,
-} from "@mui/material";
-
-import { Box, Button, Modal, Stack, Typography } from "@portalai/core/ui";
+  Box,
+  Button,
+  DataTable,
+  Modal,
+  Stack,
+  type DataTableColumn,
+} from "@portalai/core/ui";
 import type { ToolUsageLedgerEntry } from "@portalai/core/models";
+import type { UsageLedgerListRequestQuery } from "@portalai/core/contracts";
 
 import { sdk } from "../api/sdk";
+import {
+  PaginationToolbar,
+  usePagination,
+  type PaginationToolbarProps,
+} from "./PaginationToolbar.component";
+
+// ── Columns ────────────────────────────────────────────────────────────
+
+const monospace = (value: unknown) => (
+  <span style={{ fontFamily: "monospace", fontSize: "0.8125rem" }}>
+    {String(value ?? "")}
+  </span>
+);
+
+/** Sortable keys mirror the endpoint's allow-map: created | units | toolName. */
+const LEDGER_COLUMNS: DataTableColumn[] = [
+  { key: "toolName", label: "Tool", sortable: true, render: monospace },
+  {
+    key: "costClass",
+    label: "Class",
+    render: (value) => (
+      <Chip size="small" variant="outlined" label={String(value)} />
+    ),
+  },
+  { key: "units", label: "Units", sortable: true },
+  {
+    key: "created",
+    label: "When",
+    sortable: true,
+    format: (value) => new Date(Number(value)).toLocaleString(),
+  },
+  { key: "userId", label: "Who", render: monospace },
+];
 
 // ── UI (pure) ──────────────────────────────────────────────────────────
 
@@ -23,16 +54,11 @@ export interface UsageLedgerDialogUIProps {
   open: boolean;
   onClose: () => void;
   entries: ToolUsageLedgerEntry[];
-  /** Filter-scoped total across all pages. */
-  total: number;
-  page: number;
-  rowsPerPage: number;
-  onPageChange: (page: number) => void;
-  onRowsPerPageChange: (rowsPerPage: number) => void;
-  /** Active billing-period filter; null = all periods. */
-  periodId: string | null;
-  /** Clears the period filter (the chip's delete affordance). */
-  onClearPeriod: () => void;
+  /** Search / filters / sort / page controls — from `usePagination`. */
+  toolbarProps: PaginationToolbarProps;
+  sortBy: string;
+  sortOrder: "asc" | "desc";
+  onSort: (column: string) => void;
   isLoading?: boolean;
 }
 
@@ -40,13 +66,10 @@ export const UsageLedgerDialogUI: React.FC<UsageLedgerDialogUIProps> = ({
   open,
   onClose,
   entries,
-  total,
-  page,
-  rowsPerPage,
-  onPageChange,
-  onRowsPerPageChange,
-  periodId,
-  onClearPeriod,
+  toolbarProps,
+  sortBy,
+  sortOrder,
+  onSort,
   isLoading = false,
 }) => (
   <Modal
@@ -62,87 +85,21 @@ export const UsageLedgerDialogUI: React.FC<UsageLedgerDialogUIProps> = ({
     }
   >
     <Stack spacing={2}>
-      <Stack direction="row" spacing={1} alignItems="center">
-        <Typography variant="body2" color="text.secondary">
-          One row per charged tool call.
-        </Typography>
-        {periodId && (
-          <Chip
-            size="small"
-            label={`Period ${periodId}`}
-            onDelete={onClearPeriod}
-          />
-        )}
-      </Stack>
-
+      <PaginationToolbar {...toolbarProps} />
       {isLoading ? (
         <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
           <CircularProgress aria-label="Loading usage ledger" />
         </Box>
-      ) : entries.length === 0 ? (
-        <Typography variant="body2" color="text.secondary" sx={{ py: 4 }}>
-          No charged tool calls{periodId ? " in this period" : ""} yet.
-        </Typography>
       ) : (
-        <TableContainer>
-          <Table size="small" aria-label="Usage ledger entries">
-            <TableHead>
-              <TableRow>
-                <TableCell>Tool</TableCell>
-                <TableCell>Class</TableCell>
-                <TableCell align="right">Units</TableCell>
-                <TableCell>When</TableCell>
-                <TableCell>Who</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {entries.map((entry) => (
-                <TableRow key={entry.id} hover>
-                  <TableCell>
-                    <Typography
-                      variant="caption"
-                      sx={{ fontFamily: "monospace" }}
-                    >
-                      {entry.toolName}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      size="small"
-                      variant="outlined"
-                      label={entry.costClass}
-                    />
-                  </TableCell>
-                  <TableCell align="right">{entry.units}</TableCell>
-                  <TableCell>
-                    {new Date(entry.created).toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    <Typography
-                      variant="caption"
-                      sx={{ fontFamily: "monospace" }}
-                    >
-                      {entry.userId}
-                    </Typography>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <DataTable
+          columns={LEDGER_COLUMNS}
+          rows={entries as unknown as Record<string, unknown>[]}
+          sortColumn={sortBy}
+          sortDirection={sortOrder}
+          onSort={onSort}
+          emptyMessage="No charged tool calls match the current filters."
+        />
       )}
-
-      <TablePagination
-        component="div"
-        count={total}
-        page={page}
-        onPageChange={(_, p) => onPageChange(p)}
-        rowsPerPage={rowsPerPage}
-        rowsPerPageOptions={[10, 25, 50]}
-        onRowsPerPageChange={(e) =>
-          onRowsPerPageChange(parseInt(e.target.value, 10))
-        }
-      />
     </Stack>
   </Modal>
 );
@@ -161,52 +118,69 @@ export const UsageLedgerDialog: React.FC<UsageLedgerDialogProps> = ({
   onClose,
   defaultPeriodId,
 }) => {
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [periodId, setPeriodId] = useState<string | null>(
-    defaultPeriodId ?? null
-  );
+  const pagination = usePagination({
+    sortFields: [
+      { field: "created", label: "When" },
+      { field: "units", label: "Units" },
+      { field: "toolName", label: "Tool" },
+    ],
+    defaultSortBy: "created",
+    defaultSortOrder: "desc",
+    limit: 10,
+    filters: [
+      {
+        type: "text",
+        field: "periodId",
+        label: "Period",
+        placeholder: "e.g. 2026-07",
+        defaultValue: defaultPeriodId ? [defaultPeriodId] : [],
+      },
+      {
+        type: "text",
+        field: "toolName",
+        label: "Tool",
+        placeholder: "exact tool name",
+      },
+    ],
+  });
 
-  // Reset pagination + filter whenever the dialog reopens — the
+  // Rewind to the first page whenever the dialog reopens — the
   // "adjust state during render" pattern (not an effect).
   const [prevOpen, setPrevOpen] = useState(open);
   if (open !== prevOpen) {
     setPrevOpen(open);
-    if (open) {
-      setPage(0);
-      setPeriodId(defaultPeriodId ?? null);
-    }
+    if (open) pagination.setOffset(0);
   }
 
   const ledgerQuery = sdk.organizations.usageLedger(
-    {
-      limit: rowsPerPage,
-      offset: page * rowsPerPage,
-      sortBy: "created",
-      sortOrder: "desc",
-      ...(periodId ? { periodId } : {}),
-    },
+    pagination.queryParams as UsageLedgerListRequestQuery,
     { enabled: open }
   );
+
+  // Feed the response total back into the toolbar's page controls.
+  const total = ledgerQuery.data?.total;
+  const { setTotal } = pagination;
+  useEffect(() => {
+    if (total !== undefined) setTotal(total);
+  }, [total, setTotal]);
+
+  const handleSort = (column: string) => {
+    if (pagination.sortBy === column) {
+      pagination.toggleSortOrder();
+    } else {
+      pagination.setSortBy(column);
+    }
+  };
 
   return (
     <UsageLedgerDialogUI
       open={open}
       onClose={onClose}
       entries={ledgerQuery.data?.entries ?? []}
-      total={ledgerQuery.data?.total ?? 0}
-      page={page}
-      rowsPerPage={rowsPerPage}
-      onPageChange={setPage}
-      onRowsPerPageChange={(rows) => {
-        setRowsPerPage(rows);
-        setPage(0);
-      }}
-      periodId={periodId}
-      onClearPeriod={() => {
-        setPeriodId(null);
-        setPage(0);
-      }}
+      toolbarProps={pagination.toolbarProps}
+      sortBy={pagination.sortBy}
+      sortOrder={pagination.sortOrder}
+      onSort={handleSort}
       isLoading={ledgerQuery.isLoading}
     />
   );

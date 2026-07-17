@@ -16,6 +16,8 @@ const { render, screen } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { UsageLedgerDialog, UsageLedgerDialogUI } =
   await import("../components/UsageLedgerDialog.component");
+type ToolbarProps =
+  import("../components/PaginationToolbar.component").PaginationToolbarProps;
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -39,17 +41,45 @@ const entry = (over: Partial<Record<string, unknown>> = {}) => ({
   ...over,
 });
 
+const toolbarProps = (over: Partial<ToolbarProps> = {}): ToolbarProps => ({
+  search: "",
+  onSearchChange: jest.fn(),
+  filterConfigs: [],
+  filters: {},
+  onFilterValueChange: jest.fn(),
+  onFilterChange: jest.fn(),
+  activeFilterCount: 0,
+  sortFields: [
+    { field: "created", label: "When" },
+    { field: "units", label: "Units" },
+    { field: "toolName", label: "Tool" },
+  ],
+  sortBy: "created",
+  onSortByChange: jest.fn(),
+  sortOrder: "desc",
+  onSortOrderChange: jest.fn(),
+  offset: 0,
+  limit: 10,
+  limitOptions: [5, 10, 20, 50, 100],
+  onLimitChange: jest.fn(),
+  total: 1,
+  currentPage: 1,
+  totalPages: 1,
+  onFirst: jest.fn(),
+  onPrev: jest.fn(),
+  onNext: jest.fn(),
+  onLast: jest.fn(),
+  ...over,
+});
+
 const uiProps = {
   open: true,
   onClose: jest.fn(),
   entries: [] as ReturnType<typeof entry>[],
-  total: 0,
-  page: 0,
-  rowsPerPage: 10,
-  onPageChange: jest.fn(),
-  onRowsPerPageChange: jest.fn(),
-  periodId: "2026-07" as string | null,
-  onClearPeriod: jest.fn(),
+  toolbarProps: toolbarProps(),
+  sortBy: "created",
+  sortOrder: "desc" as const,
+  onSort: jest.fn(),
   isLoading: false,
 };
 
@@ -66,7 +96,7 @@ beforeEach(() => {
 // ── UI tests (case 19) ───────────────────────────────────────────────
 
 describe("UsageLedgerDialogUI (#179 slice 3)", () => {
-  it("renders rows with tool, class, units, and who", () => {
+  it("renders rows in the DataTable with tool, class, units, and who", () => {
     render(
       <UsageLedgerDialogUI
         {...uiProps}
@@ -74,7 +104,6 @@ describe("UsageLedgerDialogUI (#179 slice 3)", () => {
           entry({ toolName: "web_search", units: 2, userId: "user-9" }),
           entry({ toolName: "geocode", costClass: "expensive" }),
         ]}
-        total={2}
       />
     );
 
@@ -91,46 +120,34 @@ describe("UsageLedgerDialogUI (#179 slice 3)", () => {
     expect(screen.queryByText("Itemized usage")).not.toBeInTheDocument();
   });
 
-  it("shows the empty state when there are no entries", () => {
-    render(<UsageLedgerDialogUI {...uiProps} entries={[]} total={0} />);
+  it("shows the DataTable empty state when there are no entries", () => {
+    render(<UsageLedgerDialogUI {...uiProps} entries={[]} />);
     expect(
-      screen.getByText(/No charged tool calls in this period yet/)
+      screen.getByText("No charged tool calls match the current filters.")
     ).toBeInTheDocument();
   });
 
-  it("pagination reflects total and forwards page changes", async () => {
-    const onPageChange = jest.fn();
+  it("renders the pagination toolbar (page controls from props)", () => {
     render(
       <UsageLedgerDialogUI
         {...uiProps}
         entries={[entry()]}
-        total={25}
-        onPageChange={onPageChange}
+        toolbarProps={toolbarProps({ total: 25, totalPages: 3 })}
       />
     );
-
-    expect(screen.getByText(/1–10 of 25/)).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole("button", { name: /go to next page/i })
-    );
-    expect(onPageChange).toHaveBeenCalledWith(1);
+    expect(
+      screen.getByRole("button", { name: "Next page" })
+    ).toBeInTheDocument();
   });
 
-  it("shows the period filter chip and forwards its clearing", async () => {
-    const onClearPeriod = jest.fn();
+  it("clicking a sortable column header forwards to onSort", async () => {
+    const onSort = jest.fn();
     render(
-      <UsageLedgerDialogUI
-        {...uiProps}
-        entries={[entry()]}
-        total={1}
-        onClearPeriod={onClearPeriod}
-      />
+      <UsageLedgerDialogUI {...uiProps} entries={[entry()]} onSort={onSort} />
     );
 
-    expect(screen.getByText("Period 2026-07")).toBeInTheDocument();
-    const chip = screen.getByText("Period 2026-07").closest(".MuiChip-root");
-    await userEvent.click(chip!.querySelector(".MuiChip-deleteIcon")!);
-    expect(onClearPeriod).toHaveBeenCalled();
+    await userEvent.click(screen.getByText("Tool"));
+    expect(onSort).toHaveBeenCalledWith("toolName");
   });
 
   it("calls onClose from the Close action", async () => {
@@ -144,7 +161,7 @@ describe("UsageLedgerDialogUI (#179 slice 3)", () => {
 // ── Container tests (case 20's dialog half) ──────────────────────────
 
 describe("UsageLedgerDialog container (#179 slice 3)", () => {
-  it("queries the sdk with the default period filter and renders the page", () => {
+  it("queries the sdk with the default period filter + newest-first sort", () => {
     render(
       <UsageLedgerDialog
         open={true}
