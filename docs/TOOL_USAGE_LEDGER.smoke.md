@@ -79,8 +79,8 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, lin
 ## §4 — No-row cases (spec AC 3)
 
 - [ ] **Free call**: prompt something that uses a free tool (e.g. `current_time` via **"What time is it?"**). No new `tool_usage_ledger` row, no `usage` change.
-- [ ] **Failed call**: make a metered tool fail (e.g. temporarily unset the Tavily key and prompt a web search). The agent surfaces the failure; **no** ledger row, **no** charge (bill-on-success).
-- [ ] **Org-paid (custom/webhook) tool**: if you have a custom toolpack registered, call one of its tools — no ledger row, no charge (`resolveCallCost` = 0 for org-hosted).
+- [ ] **Failed call**: make a metered tool fail **at call time** — set `TAVILY_API_KEY` to an invalid value (do NOT unset it: a missing key throws at tool-build time and kills the whole stream, which is pre-existing fail-fast behavior, not a failed call) and prompt a web search. The agent surfaces the failure; **no** ledger row, **no** charge (bill-on-success). Restore the key after.
+- [ ] **Org-paid (custom/webhook) tool**: if you have a custom toolpack registered, call one of its tools — no ledger row, no charge (`resolveCallCost` = 0 for org-hosted). No toolpack handy? Mark this box with a note: the never-charged org-paid path is pinned by the gate's wrap unit suite.
 - [ ] **Quota-exceeded skip**: on a tier with a small metered allocation (or after burning the allocation), a call that would exceed it is denied/skipped — the denial is a typed tool result and **no ledger row appears** (a skipped charge writes nothing).
 
 ## §5 — Retention purge + admin visibility (spec AC 6, 7)
