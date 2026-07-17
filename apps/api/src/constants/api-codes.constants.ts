@@ -541,6 +541,8 @@ export enum ApiCode {
   USAGE_LEDGER_INVALID_QUERY = "USAGE_LEDGER_INVALID_QUERY",
   /** Itemized-usage read failed. 500. */
   USAGE_LEDGER_FETCH_FAILED = "USAGE_LEDGER_FETCH_FAILED",
+  /** Maintenance-queue status read (schedulers + recent runs) failed. 500. */
+  MAINTENANCE_FETCH_FAILED = "MAINTENANCE_FETCH_FAILED",
 
   // Compute-tool purity (#114)
   /** Compute input (rows resolved from a query handle, or inline rows)

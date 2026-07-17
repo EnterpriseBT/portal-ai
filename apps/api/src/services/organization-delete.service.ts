@@ -5,9 +5,10 @@
  *   dynamic `er__*` wide tables and the S3 upload objects).
  * - The `organizations` row and all `organization_users` rows are
  *   soft-deleted (the tombstone — who belonged, who deleted, when).
- * - `usage` rows are retained untouched: they are the billing record of
- *   truth, and their FK to `organizations.id` is satisfied by the
- *   tombstoned org row. Do not "fix" the tombstone into a hard delete.
+ * - `usage` and `tool_usage_ledger` rows are retained untouched: they are
+ *   the billing record of truth (aggregate + per-call itemization, #179),
+ *   and their FK to `organizations.id` is satisfied by the tombstoned org
+ *   row. Do not "fix" the tombstone into a hard delete.
  *
  * The caller (route) owns authorization (current-org guard, owner check)
  * and the confirmation-name gate; this service owns the job sweep and the

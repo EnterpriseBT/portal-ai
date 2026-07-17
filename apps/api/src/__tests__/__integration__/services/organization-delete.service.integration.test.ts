@@ -272,6 +272,21 @@ async function seedPopulatedOrg(
     unitsUsed: 5,
   } as never);
 
+  // #179: the per-call itemization behind the aggregate — retained on
+  // delete exactly like `usage`.
+  await db.insert(schema.toolUsageLedger).values({
+    ...base(now),
+    organizationId: org.id,
+    toolName: "web_search",
+    toolCallId: `call-${suffix}`,
+    stationId: station.id,
+    portalId: null,
+    costClass: "metered",
+    units: 5,
+    periodId: "2026-07",
+    userId: owner.id,
+  } as never);
+
   const pendingJob = {
     ...base(now),
     organizationId: org.id,
@@ -469,6 +484,17 @@ describe("OrganizationDeleteService integration tests", () => {
         .where(eq(schema.usage.organizationId, target.orgId));
       expect(rows).toHaveLength(1);
       expect(rows[0]!.unitsUsed).toBe(5);
+      expect(rows[0]!.deleted).toBeNull();
+    });
+
+    // #179 case 18 — the per-call itemization survives the cascade too.
+    it("retains tool_usage_ledger rows untouched (#179 case 18)", async () => {
+      const rows = await db
+        .select()
+        .from(schema.toolUsageLedger)
+        .where(eq(schema.toolUsageLedger.organizationId, target.orgId));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.units).toBe(5);
       expect(rows[0]!.deleted).toBeNull();
     });
 

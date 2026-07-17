@@ -9,10 +9,13 @@
 
 import { Router, Request, Response, NextFunction } from "express";
 
+import type { MaintenanceStatusResponse } from "@portalai/core/contracts";
+
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { wideTableResyncService } from "../services/wide-table-resync.service.js";
+import { maintenanceQueue } from "../queues/maintenance.queue.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "admin" });
@@ -61,6 +64,88 @@ adminRouter.post(
               error instanceof Error
                 ? error.message
                 : "Failed to run wide-table resync"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/admin/maintenance:
+ *   get:
+ *     tags:
+ *       - Admin
+ *     summary: Maintenance-queue status (schedulers + recent runs)
+ *     description: Operator visibility into the internal maintenance queue (#179) — registered repeatable-job schedulers and the most recent completed/failed runs, read straight from BullMQ state. The ledger retention purge's run summary ({ purged, batches, cutoff }) appears as a run's returnvalue.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Maintenance status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/MaintenanceStatusResponse'
+ *       401:
+ *         description: Missing authentication
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+adminRouter.get(
+  "/maintenance",
+  getApplicationMetadata,
+  async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const [schedulers, recentJobs] = await Promise.all([
+        maintenanceQueue.getJobSchedulers(),
+        // Newest first; bounded so the payload stays small.
+        maintenanceQueue.getJobs(["completed", "failed"], 0, 9, false),
+      ]);
+
+      const payload: MaintenanceStatusResponse = {
+        schedulers: schedulers.map((s) => ({
+          id: s.key,
+          pattern: s.pattern ?? null,
+          next: s.next ?? null,
+        })),
+        recentRuns: recentJobs.map((job) => ({
+          name: job.name,
+          finishedOn: job.finishedOn ?? null,
+          returnvalue: job.returnvalue ?? null,
+          ...(job.failedReason ? { failedReason: job.failedReason } : {}),
+        })),
+      };
+
+      return HttpService.success<MaintenanceStatusResponse>(res, payload);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to read maintenance status"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.MAINTENANCE_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to read maintenance status"
             )
       );
     }

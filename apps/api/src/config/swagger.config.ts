@@ -41,6 +41,7 @@ import {
   BillingCheckoutResponseSchema,
   BillingPortalResponseSchema,
   UsageLedgerListResponseSchema,
+  MaintenanceStatusResponseSchema,
 } from "@portalai/core/contracts";
 import {
   ApiAuthConfigSchema,
@@ -246,6 +247,10 @@ const usageLedgerSchemas: Record<string, unknown> = {
   ),
   UsageLedgerListResponse: z.toJSONSchema(
     UsageLedgerListResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  MaintenanceStatusResponse: z.toJSONSchema(
+    MaintenanceStatusResponseSchema,
     JSON_SCHEMA_OPTS
   ),
 };
