@@ -26,7 +26,7 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, lin
 ### Tool sanity
 
 - [ ] The station under test has a **metered built-in tool** available — `web_search` (Tavily key configured) is the reference; `transform_entity_records` (expensive, job-deferred) is needed for §2.
-- [ ] `http://localhost:3001/api-docs` lists `GET /api/organization/usage/ledger` (with `periodId`/`toolName`/`sortBy` params) and `GET /api/admin/maintenance`.
+- [ ] `http://localhost:3001/api/docs` lists `GET /api/organization/usage/ledger` (with `periodId`/`toolName`/`sortBy` params) and `GET /api/admin/maintenance`.
 
 ### Fixtures
 
@@ -89,7 +89,7 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, lin
 - [ ] Restart the API and call it again — still exactly **one** scheduler entry (upsert-by-id; double-boot doesn't duplicate).
 - [ ] Live purge demo: stop the dev stack, set `LEDGER_RETENTION_MONTHS=0` in `apps/api/.env`, restart. Then trigger a run without waiting for 04:00 UTC — from `apps/api/`:
   ```bash
-  npx tsx --env-file=.env -e "const m = await import('./src/queues/maintenance.queue.ts'); await m.maintenanceQueue.add(m.LEDGER_RETENTION_PURGE_JOB, {}); await m.maintenanceQueue.close();"
+  npx tsx --env-file=.env -e "(async () => { const m = await import('./src/queues/maintenance.queue.ts'); await m.maintenanceQueue.add(m.LEDGER_RETENTION_PURGE_JOB, {}); await m.maintenanceQueue.close(); })()"
   ```
 - [ ] API log shows "Ledger retention purge started/finished"; every `tool_usage_ledger` row older than the (now-zero) window is gone; `usage` rows are untouched.
 - [ ] `GET /api/admin/maintenance` → `recentRuns[0]` is the run with `returnvalue: { purged: <n>, batches: <b>, cutoff: <iso> }` matching what was deleted.
