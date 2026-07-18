@@ -122,37 +122,44 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
     )}
 
     {state === "unsubscribed" && (
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        spacing={2}
-        alignItems="stretch"
-      >
-        {tiers.map((tier) => (
-          <Card key={tier.slug} variant="outlined" sx={{ minWidth: 220 }}>
-            <CardContent>
-              <Stack spacing={1} alignItems="flex-start">
-                <Typography variant="h3" sx={{ fontSize: "1.1rem" }}>
-                  {tier.displayName}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {tier.purchasable ? formatPrice(tier.price) : "Free"}
-                </Typography>
-                {tier.purchasable &&
-                  withOwnerGate(
-                    isOwner,
-                    <Button
-                      type="button"
-                      variant="contained"
-                      disabled={!isOwner || isPending}
-                      onClick={() => onSubscribe(tier.slug)}
-                    >
-                      {isPending ? "Redirecting…" : "Subscribe"}
-                    </Button>
-                  )}
-              </Stack>
-            </CardContent>
-          </Card>
-        ))}
+      <Stack spacing={1}>
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={2}
+          alignItems="stretch"
+        >
+          {tiers.map((tier) => (
+            <Card key={tier.slug} variant="outlined" sx={{ minWidth: 220 }}>
+              <CardContent>
+                <Stack spacing={1} alignItems="flex-start">
+                  <Typography variant="h3" sx={{ fontSize: "1.1rem" }}>
+                    {tier.displayName}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {tier.purchasable ? formatPrice(tier.price) : "Free"}
+                  </Typography>
+                  {tier.purchasable &&
+                    withOwnerGate(
+                      isOwner,
+                      <Button
+                        type="button"
+                        variant="contained"
+                        disabled={!isOwner || isPending}
+                        onClick={() => onSubscribe(tier.slug)}
+                      >
+                        {isPending ? "Redirecting…" : "Subscribe"}
+                      </Button>
+                    )}
+                </Stack>
+              </CardContent>
+            </Card>
+          ))}
+        </Stack>
+        {/* #217: display-only — Stripe Tax computes the actual amount at
+            checkout from the billing address. */}
+        <Typography variant="caption" color="text.secondary">
+          Prices exclude tax, which is calculated at checkout.
+        </Typography>
       </Stack>
     )}
   </Stack>
