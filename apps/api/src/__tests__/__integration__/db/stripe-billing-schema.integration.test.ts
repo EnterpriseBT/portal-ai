@@ -5,8 +5,8 @@
  *   NULLs (PG UNIQUE ignores NULLs).
  * - `organizations` Stripe linkage UNIQUEs + the anchor-day CHECK.
  * - Migration/seed probe: new columns live, existing orgs stay
- *   calendar-month/unsubscribed, `standard` converges to `selectable = true`,
- *   seed is idempotent.
+ *   calendar-month/unsubscribed, seed is bootstrap-only (#218) and
+ *   idempotent.
  *
  * Runs against the real DB harness (migrations applied).
  */
@@ -184,11 +184,9 @@ describe("Stripe billing schema integration (#176 slice 1)", () => {
     expect(row.billingAnchorDay).toBeNull();
   });
 
-  it("seedTiers converges `standard` to selectable = true and stays idempotent", async () => {
+  it("seedTiers no longer converges `selectable` — bootstrap-only since #218", async () => {
     const seedService = new SeedService();
 
-    // Regardless of the row's pre-test state (fresh backfill or a stale
-    // pre-#176 row), the seed must converge it.
     await db
       .update(schema.tiers)
       .set({ selectable: false })
@@ -204,7 +202,53 @@ describe("Stripe billing schema integration (#176 slice 1)", () => {
       .where(eq(schema.tiers.slug, "standard"));
 
     expect(rows.length).toBe(1);
-    expect(rows[0].selectable).toBe(true);
+    // The drift survives: convergence is `portalops tier apply`'s job.
+    expect(rows[0].selectable).toBe(false);
     expect(rows[0].stripePriceId).toBeNull();
+
+    // Restore the shared fixture row's flag for downstream suites.
+    await db
+      .update(schema.tiers)
+      .set({ selectable: true })
+      .where(eq(schema.tiers.slug, "standard"));
+  });
+
+  it("fresh-DB bootstrap INSERTs `standard` from the tier catalog (#218)", async () => {
+    const seedService = new SeedService();
+    const { TIER_CATALOG_BY_SLUG } = await import("@portalai/core/registries");
+    const entry = TIER_CATALOG_BY_SLUG.get("standard")!;
+
+    // The harness's ensured `standard` row (setup.ts fixture values) is
+    // load-bearing for other suites — capture it and restore after.
+    const [original] = await db
+      .select()
+      .from(schema.tiers)
+      .where(eq(schema.tiers.slug, "standard"));
+
+    try {
+      await db.delete(schema.tiers).where(eq(schema.tiers.slug, "standard"));
+      await seedService.seedTiers(db as unknown as DbClient);
+
+      const [standard] = await db
+        .select()
+        .from(schema.tiers)
+        .where(eq(schema.tiers.slug, "standard"));
+
+      expect(standard).toBeDefined();
+      expect(standard.displayName).toBe(entry.displayName);
+      expect(standard.meteredUnitsPerPeriod).toBe(entry.meteredUnitsPerPeriod);
+      expect(standard.expensiveRatePerMin).toBe(entry.expensiveRatePerMin);
+      expect(standard.overage).toBe(entry.overage);
+      expect(standard.selectable).toBe(entry.selectable);
+      expect([...standard.builtinToolpacks].sort()).toEqual(
+        [...entry.builtinToolpacks].sort()
+      );
+      expect(standard.customToolpacks).toBe(entry.customToolpacks);
+      // Only apply writes price ids — the bootstrap always inserts null.
+      expect(standard.stripePriceId).toBeNull();
+    } finally {
+      await db.delete(schema.tiers).where(eq(schema.tiers.slug, "standard"));
+      await db.insert(schema.tiers).values(original as never);
+    }
   });
 });

@@ -47,6 +47,7 @@ export const CATALOG: CatalogEntry[] = [
   secret("GOOGLE_OAUTH_CLIENT_SECRET", "google-oauth-client-secret"),
   secret("MICROSOFT_OAUTH_CLIENT_SECRET", "microsoft-oauth-client-secret"),
   secret("OAUTH_STATE_SECRET", "oauth-state-secret"),
+  secret("STRIPE_SECRET_KEY", "stripe-secret-key"), // #218 tier apply (rk_ recommended)
   // ── SSM Parameter Store (config) ─
   ssm("GOOGLE_OAUTH_CLIENT_ID", "google-oauth-client-id"),
   ssm("MICROSOFT_OAUTH_CLIENT_ID", "microsoft-oauth-client-id"),

@@ -81,3 +81,22 @@ Mutation. Runs `db:seed:ci` as a FARGATE one-off ECS task in the env's cluster (
 ### `portalops db reset-seed --env <env> --yes [--json]`
 **Destructive** (never production). `reset` then `seed`, in that order.
 `--json`: `{ "reset": {…}, "seed": {…} }`
+
+## tier
+
+### `portalops tier apply --env <env> [--dry-run] [--yes] [--confirm-prod] [--json]`
+Mutation (`--dry-run` is read-only — no `--yes` needed). Converges the environment's `tiers` rows to the in-repo declarative catalog (`packages/core/src/registries/tier-catalog.ts`, #218): upserts **declared slugs only**, converging every policy field plus the env-local `stripe_price_id` resolved from each entry's Stripe `lookup_key` (read-only `prices.list` — apply never creates or mutates Stripe objects). Rows the catalog doesn't name (ad-hoc enterprise deals) are never touched; they're listed once as `unmanaged`. Validate-all-then-write: a declared lookup key with no price in the env's Stripe account aborts before any DB write. Audits per changed slug.
+`--json`: `{ "dryRun": bool, "changes": [{ "slug", "action": "insert|update|noop", "fields": { "<field>": { "from", "to" } }, "stripePriceId" }], "unmanaged": [string] }`
+
+**Stripe key:** AWS envs read the `stripe-secret-key` secret (`portalops vars set STRIPE_SECRET_KEY … --env <env>`); `--env local` reads `STRIPE_SECRET_KEY` from the process env. A **restricted key** (`rk_`, Prices read) is recommended — apply never writes to Stripe. A catalog with no non-null lookup keys needs no Stripe key at all.
+
+**Local invocation:**
+```
+DATABASE_URL=postgresql://… STRIPE_SECRET_KEY=rk_test_… portalops tier apply --env local --dry-run
+```
+
+### Price runbook (Stripe-side — pricing never lives in code)
+
+- **New purchasable tier / fresh environment:** create the product + price in the env's Stripe (dashboard, or `stripe prices create -d "product_data[name]=Pro" -d "unit_amount=4900" -d "currency=usd" -d "recurring[interval]=month" -d "lookup_key=pro"`), then `tier apply` — the row adopts the env-local price id. Note: a price created via `product_data` becomes its product's **default price**, and Stripe refuses to archive a default price — to retire it later, archive (or re-default) the product first.
+- **Price change:** Stripe prices are immutable — create the NEW price carrying the lookup key with `-d "transfer_lookup_key=true"`, then `tier apply` to re-point the row. Existing subscriptions stay on the old price (Stripe semantics); new checkouts get the new one. Post-rotation, check in-flight subscriptions on the old price (`stripe subscriptions list --price <old-price-id>`) — the webhook warn-and-keeps orgs whose subscription price is no longer mapped (never a downgrade), so migrate or let them renew per your pricing policy.
+- **Retire a tier from sale:** set `selectable: false` in the catalog + apply. Apply never deletes rows; removing an entry entirely just orphans the row as `unmanaged`.
