@@ -24,6 +24,7 @@ import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
 import { DataResult } from "../components/DataResult.component";
 import { DeleteOrganizationDialog } from "../components/DeleteOrganizationDialog.component";
+import { UsageLedgerDialog } from "../components/UsageLedgerDialog.component";
 import { SubscriptionBilling } from "../components/SubscriptionBilling.component";
 import { sdk } from "../api/sdk";
 import { queryKeys } from "../api/keys";
@@ -100,6 +101,8 @@ export const SettingsView = () => {
   // unconditional on success, even for multi-org users.
   const { logout } = sdk.auth.logout();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  // Itemized usage drill-down (#179).
+  const [ledgerDialogOpen, setLedgerDialogOpen] = useState(false);
   const organizationId = organizationResult.data?.organization.id ?? "";
   const deleteMutation = sdk.organizations.delete(organizationId);
 
@@ -245,38 +248,59 @@ export const SettingsView = () => {
                 </PageSection>
 
                 <PageSection title="Subscription & Usage" variant="outlined">
-                  <MetadataList
-                    size="medium"
-                    layout={metadataLayout}
-                    direction="vertical"
-                    items={[
-                      {
-                        label: "Subscription Tier",
-                        value: formatTierName(tier.tier),
-                        icon: <Icon name={IconName.Star} fontSize="small" />,
-                      },
-                      {
-                        label: "Metered usage",
-                        value: formatUsageValue(usage.byClass.metered),
-                        icon: <Icon name={IconName.Search} fontSize="small" />,
-                      },
-                      {
-                        label: "Expensive usage",
-                        value: formatUsageValue(usage.byClass.expensive),
-                        icon: (
-                          <Icon name={IconName.MemoryChip} fontSize="small" />
-                        ),
-                      },
-                      {
-                        label: "Free usage",
-                        value: formatUsageValue(usage.byClass.free),
-                        icon: (
-                          <Icon name={IconName.CheckCircle} fontSize="small" />
-                        ),
-                      },
-                    ]}
-                  />
+                  <Stack spacing={2} alignItems="flex-start">
+                    <MetadataList
+                      size="medium"
+                      layout={metadataLayout}
+                      direction="vertical"
+                      items={[
+                        {
+                          label: "Subscription Tier",
+                          value: formatTierName(tier.tier),
+                          icon: <Icon name={IconName.Star} fontSize="small" />,
+                        },
+                        {
+                          label: "Metered usage",
+                          value: formatUsageValue(usage.byClass.metered),
+                          icon: (
+                            <Icon name={IconName.Search} fontSize="small" />
+                          ),
+                        },
+                        {
+                          label: "Expensive usage",
+                          value: formatUsageValue(usage.byClass.expensive),
+                          icon: (
+                            <Icon name={IconName.MemoryChip} fontSize="small" />
+                          ),
+                        },
+                        {
+                          label: "Free usage",
+                          value: formatUsageValue(usage.byClass.free),
+                          icon: (
+                            <Icon
+                              name={IconName.CheckCircle}
+                              fontSize="small"
+                            />
+                          ),
+                        },
+                      ]}
+                    />
+                    {/* #179: per-call drill-down behind the aggregate balance. */}
+                    <Button
+                      type="button"
+                      variant="outlined"
+                      onClick={() => setLedgerDialogOpen(true)}
+                    >
+                      Itemized usage
+                    </Button>
+                  </Stack>
                 </PageSection>
+
+                <UsageLedgerDialog
+                  open={ledgerDialogOpen}
+                  onClose={() => setLedgerDialogOpen(false)}
+                  defaultPeriodId={usage.periodId}
+                />
 
                 <PageSection title="Danger zone" variant="outlined">
                   <Stack spacing={2} alignItems="flex-start">

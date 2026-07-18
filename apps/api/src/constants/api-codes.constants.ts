@@ -536,6 +536,14 @@ export enum ApiCode {
   /** The org's billing-period unit allocation for this cost class is exhausted. */
   TOOL_USAGE_QUOTA_EXCEEDED = "TOOL_USAGE_QUOTA_EXCEEDED",
 
+  // Tool usage ledger (#179)
+  /** Malformed itemized-usage query (unknown sortBy / bad pagination). 400. */
+  USAGE_LEDGER_INVALID_QUERY = "USAGE_LEDGER_INVALID_QUERY",
+  /** Itemized-usage read failed. 500. */
+  USAGE_LEDGER_FETCH_FAILED = "USAGE_LEDGER_FETCH_FAILED",
+  /** Maintenance-queue status read (schedulers + recent runs) failed. 500. */
+  MAINTENANCE_FETCH_FAILED = "MAINTENANCE_FETCH_FAILED",
+
   // Compute-tool purity (#114)
   /** Compute input (rows resolved from a query handle, or inline rows)
    *  exceeded COMPUTE_MAX_ROWS — too many rows for an in-memory compute. 400. */

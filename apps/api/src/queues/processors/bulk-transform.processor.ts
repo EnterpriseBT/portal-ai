@@ -114,6 +114,15 @@ export const bulkTransformProcessor: TypedJobProcessor<
     costClass: ALL_TOOL_CAPABILITIES.transform_entity_records.costHint,
     units: await resolveCallCost("transform_entity_records", undefined),
     actor: { userId },
+    // #179 ledger context. `job:<jobId>` is stable across processor
+    // retries, so a retried success can never double-ledger. portalId
+    // already rides the enqueue metadata (transform tool step 6).
+    toolName: "transform_entity_records",
+    toolCallId: `job:${jobId}`,
+    stationId:
+      (bullJob.data as unknown as { stationId?: string }).stationId ?? "",
+    portalId:
+      (bullJob.data as unknown as { portalId?: string }).portalId ?? null,
   });
 
   return result;

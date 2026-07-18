@@ -19,6 +19,14 @@ jest.unstable_mockModule("../api/sdk", () => ({
     organizations: {
       current: mockCurrent,
       usage: mockUsage,
+      // Itemized drill-down (#179) — inert stub; behavior is covered by
+      // UsageLedgerDialog.component.test.tsx.
+      usageLedger: () => ({
+        data: { entries: [], total: 0 },
+        isLoading: false,
+        isError: false,
+        error: null,
+      }),
       delete: mockDelete,
     },
   },

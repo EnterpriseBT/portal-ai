@@ -86,6 +86,13 @@ export const environment = {
   MICROSOFT_OAUTH_TENANT: process.env.MICROSOFT_OAUTH_TENANT || "common",
   // Redis configuration (BullMQ + Pub/Sub)
   REDIS_URL: process.env.REDIS_URL || "redis://localhost:6380",
+  // Retention window for the tool-usage audit ledger (#179 D5): rows older
+  // than this many months are hard-deleted by the daily maintenance purge.
+  // 24 months ≫ any dispute window; widening it is an env change + restart.
+  LEDGER_RETENTION_MONTHS: parseInt(
+    process.env.LEDGER_RETENTION_MONTHS || "24",
+    10
+  ),
   // Size cap for the legacy multipart POST /api/file-uploads/parse path.
   // The streaming pipeline (presigned-URL → S3 → server-side stream) does
   // not consult this; see UPLOAD_MAX_FILE_SIZE_BYTES instead.

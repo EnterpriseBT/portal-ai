@@ -36,6 +36,7 @@ import {
   tiersRepo,
   usageRepo,
   stripeEventsRepo,
+  toolUsageLedgerRepo,
 } from "../db/index.js";
 import {
   Repository,
@@ -116,6 +117,7 @@ export class DbService {
       tiers: tiersRepo,
       usage: usageRepo,
       stripeEvents: stripeEventsRepo,
+      toolUsageLedger: toolUsageLedgerRepo,
     };
   }
 }
