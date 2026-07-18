@@ -64,6 +64,22 @@ describe("BillingService.deriveTierFromSubscription", () => {
     ).toEqual({ tier: "pro", subscriptionLive: true, anchorDay: 15 });
   });
 
+  // #218 rotation pin: after a Stripe-side price rotation
+  // (transfer_lookup_key → tier apply re-points the row), in-flight
+  // subscriptions still carry the OLD price id, which priceIndex no longer
+  // maps. The webhook must degrade gracefully — warn-and-keep, never a
+  // tier flip or a throw.
+  it("post-rotation: an old (rotated-away) price id keeps the org's tier", () => {
+    const postRotationIndex = new Map([["price_pro_v2", "pro"]]); // v1 gone
+    expect(
+      BillingService.deriveTierFromSubscription(
+        sub({ priceId: "price_pro_v1" }),
+        postRotationIndex,
+        "pro"
+      )
+    ).toEqual({ tier: "pro", subscriptionLive: true, anchorDay: 15 });
+  });
+
   it("active + null price → keeps the current tier, live, anchored", () => {
     expect(
       BillingService.deriveTierFromSubscription(

@@ -27,6 +27,7 @@ import {
   dbSeed,
   dbResetSeed,
 } from "./commands/db.js";
+import { tierApply, type TierApplyResult } from "./commands/tier.js";
 import { exitCodeFor, jsonError, printBanner } from "./output.js";
 
 interface GlobalOpts {
@@ -220,7 +221,49 @@ export function buildProgram(): Command {
     async (o: GlobalOpts) => execute(o, (def) => dbResetSeed(def, flags(o)))
   );
 
+  // ── tier (#218) ────────────────────────────────────────────────────
+  const tier = program
+    .command("tier")
+    .description("tier catalog provisioning over Stripe lookup keys");
+
+  common(
+    tier
+      .command("apply")
+      .description("converge declared tier rows to the in-repo catalog")
+  )
+    .option("--dry-run", "compute and print the diff; write nothing")
+    .action(async (o: GlobalOpts & { dryRun?: boolean }) =>
+      execute(
+        o,
+        (def) => tierApply(def, { ...flags(o), dryRun: o.dryRun }),
+        renderTierApply as never
+      )
+    );
+
   return program;
+}
+
+/** Human render for `tier apply` — per-slug field diff + unmanaged note. */
+function renderTierApply(result: TierApplyResult): string {
+  const lines: string[] = [];
+  for (const change of result.changes) {
+    lines.push(`${change.slug}: ${change.action}`);
+    for (const [field, { from, to }] of Object.entries(change.fields)) {
+      lines.push(`  ${field}: ${JSON.stringify(from)} → ${JSON.stringify(to)}`);
+    }
+  }
+  if (result.unmanaged.length > 0) {
+    lines.push(`unmanaged (untouched): ${result.unmanaged.join(", ")}`);
+  }
+  const allNoop = result.changes.every((c) => c.action === "noop");
+  lines.push(
+    result.dryRun
+      ? "dry run — nothing written"
+      : allNoop
+        ? "nothing to apply — already converged"
+        : "applied"
+  );
+  return lines.join("\n");
 }
 
 /** Parse + run; returns the process exit code (the published contract). */

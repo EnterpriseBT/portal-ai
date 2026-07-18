@@ -10,7 +10,10 @@ import {
   TierModelFactory,
 } from "@portalai/core/models";
 import type { ColumnDataType } from "@portalai/core/models";
-import { BuiltinToolpackSlugSchema } from "@portalai/core/registries";
+import {
+  BuiltinToolpackSlugSchema,
+  TIER_CATALOG_BY_SLUG,
+} from "@portalai/core/registries";
 import { DbClient } from "../db/index.js";
 import { DbService } from "./db.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
@@ -311,75 +314,41 @@ export class SeedService {
   }
 
   /**
-   * Seed the default `standard` subscription tier (#172). Idempotent —
-   * inserts when absent; when the row already exists (the migration also
-   * inserts it), converges the #176 billing fields (`selectable: true`,
-   * `stripePriceId: null`) so pre-#176 DBs pick up the plan-list flag.
-   * Numbers are the canonical source of truth; the data-migration's INSERT
-   * mirrors them. Tunable later with a plain SQL `UPDATE`.
+   * Seed the default `standard` subscription tier — **bootstrap-only**
+   * since #218: INSERTs when absent (the FK target `organizations.tier`
+   * needs the row to exist), sourced from the declarative tier catalog
+   * (`@portalai/core/registries` → `TIER_CATALOG`); when the row already
+   * exists, seed writes NOTHING.
    *
-   * TWO CONVERGENCE CLASSES (#214 OQ1 — do not mix them up when adding
-   * columns):
-   * - **Seed-authoritative** (`selectable`, `stripePriceId`): the seed's
-   *   values are canonical; drift is healed on every run.
-   * - **Operator-authoritative** (`builtinToolpacks`, `customToolpacks`):
-   *   set on INSERT only (and by the migration backfill); NEVER converged —
-   *   tightening a tier is a durable data edit, and a re-seed must not
-   *   silently re-permission it. The durable record-of-truth is #218's
-   *   declarative tier catalog.
+   * Tier policy convergence is owned by `portalops tier apply` (#218) —
+   * the catalog is the record of truth for every policy field, and the
+   * env-local `stripe_price_id` is resolved from Stripe lookup keys there;
+   * seed always inserts it null. The former seed-authoritative /
+   * operator-authoritative convergence classes (#176/#214) are superseded.
    */
   async seedTiers(db: DbClient) {
     const existing = await DbService.repository.tiers.findBySlug(
       "standard",
       db
     );
-    if (existing) {
-      // Update-if-changed — keeps re-seeding a no-op on converged rows.
-      // Seed-authoritative fields ONLY (see convergence classes above).
-      if (existing.selectable !== true || existing.stripePriceId !== null) {
-        await DbService.repository.tiers.update(
-          existing.id,
-          {
-            selectable: true,
-            stripePriceId: null,
-            updated: Date.now(),
-            updatedBy: SystemUtilities.id.system,
-          },
-          db
-        );
+    if (!existing) {
+      const entry = TIER_CATALOG_BY_SLUG.get("standard");
+      if (!entry) {
+        // Catalog invariant — the bootstrap tier must be declared.
+        throw new Error("tier catalog is missing the 'standard' entry");
       }
-      await SeedService.warnOnUnlistedRegistrySlugs(db);
-      return;
+      const { stripeLookupKey: _lookupKey, ...policy } = entry;
+      const standard = new TierModelFactory()
+        .create(SystemUtilities.id.system)
+        .update({
+          ...policy,
+          builtinToolpacks: [...entry.builtinToolpacks],
+          // Only apply — which can see this env's Stripe — writes price ids.
+          stripePriceId: null,
+        })
+        .parse();
+      await DbService.repository.tiers.createMany([standard], db);
     }
-
-    const standard = new TierModelFactory()
-      .create(SystemUtilities.id.system)
-      .update({
-        slug: "standard",
-        displayName: "Standard",
-        periodKind: "monthly",
-        periodAnchorDay: 1,
-        overage: "hard-deny",
-        freeUnitsPerPeriod: null,
-        freeRatePerMin: null,
-        meteredUnitsPerPeriod: 2500,
-        meteredRatePerMin: 20,
-        expensiveUnitsPerPeriod: 300,
-        expensiveRatePerMin: 5,
-        perToolCaps: null,
-        // #176: the free plan is listed in the self-serve plan list but has
-        // no Stripe price (not purchasable).
-        stripePriceId: null,
-        selectable: true,
-        // #214: standard seeds fully permissive (generous-beta posture,
-        // #177). Tightening at launch is a data UPDATE — operator-
-        // authoritative from here on (see convergence classes above).
-        builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
-        customToolpacks: true,
-      })
-      .parse();
-
-    await DbService.repository.tiers.createMany([standard], db);
     await SeedService.warnOnUnlistedRegistrySlugs(db);
   }
 

@@ -2,7 +2,7 @@
   "name": "@portalai/devops-cli",
   "version": "0.0.0",
   "type": "module",
-  "description": "portalops — Portal's infrastructure operator CLI (DB tunnels/reset/seed, Secrets Manager + SSM config catalog) over @portalai/cli-env. TypeScript port of apps/api/scripts/api-cli.sh. Node-only.",
+  "description": "portalops \u2014 Portal's infrastructure operator CLI (DB tunnels/reset/seed, Secrets Manager + SSM config catalog) over @portalai/cli-env. TypeScript port of apps/api/scripts/api-cli.sh. Node-only.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
@@ -35,7 +35,11 @@
   "dependencies": {
     "@aws-sdk/client-ecs": "^3.1084.0",
     "@portalai/cli-env": "*",
+    "@portalai/core": "*",
     "commander": "^14.0.0",
+    "drizzle-orm": "0.45.1",
+    "postgres": "^3.4.9",
+    "stripe": "^22.3.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {

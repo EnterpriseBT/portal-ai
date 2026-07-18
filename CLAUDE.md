@@ -12,7 +12,7 @@ Portal.ai is a Turborepo monorepo for displaying dynamic UI content from a Model
 | `@portalai/api` | `apps/api/` | Express + TypeScript API with Auth0 JWT, Drizzle ORM, PostgreSQL |
 | `@portalai/core` | `packages/core/` | Shared UI components, MUI themes, Zod domain models, utilities |
 | `@portalai/cli-env` | `packages/cli-env/` | Shared CLI environment-access layer: env registry, AWS-IAM + Auth0 device-flow authorization, `resolveEnvConnection`. Node-only — never imported by web/core |
-| `@portalai/devops-cli` | `packages/devops-cli/` | `portalops` — infrastructure operator CLI (DB tunnels/psql/reset/seed, Secrets Manager + SSM config catalog) over `cli-env`. Replaces `apps/api/scripts/api-cli.sh` |
+| `@portalai/devops-cli` | `packages/devops-cli/` | `portalops` — infrastructure + business-config operator CLI (DB tunnels/psql/reset/seed, Secrets Manager + SSM config catalog, tier-catalog provisioning via `tier apply`) over `cli-env`. Replaces `apps/api/scripts/api-cli.sh` |
 | `@portalai/admin-cli` | `packages/admin-cli/` | `portalai` — customer-app-data operator CLI (org/user/member/tier management, full org provisioning, fixtures) over `cli-env`. Infra-free |
 
 ## Key Scripts
