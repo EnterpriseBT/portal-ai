@@ -36,12 +36,13 @@ jest.unstable_mockModule("stripe", () => ({
 
 // Mutable env stub — individual tests flip keys off. The logger fields keep
 // `logger.util.ts` (a transitive import) bootable.
-const env: Record<string, string | undefined> = {
+const env: Record<string, string | boolean | undefined> = {
   NODE_ENV: "test",
   LOG_LEVEL: "silent",
   LOG_FORMAT: "json",
   STRIPE_SECRET_KEY: "sk_test_123",
   STRIPE_WEBHOOK_SECRET: "whsec_test_123",
+  STRIPE_AUTOMATIC_TAX: true, // #217 default-on
 };
 jest.unstable_mockModule("../../environment.js", () => ({
   environment: env,
@@ -60,6 +61,7 @@ beforeEach(() => {
   mockPortalSessionsCreate.mockReset();
   env.STRIPE_SECRET_KEY = "sk_test_123";
   env.STRIPE_WEBHOOK_SECRET = "whsec_test_123";
+  env.STRIPE_AUTOMATIC_TAX = true; // #217 default-on
   StripeService.resetForTests();
 });
 
@@ -230,5 +232,57 @@ describe("StripeService client + API passthroughs", () => {
     await expect(StripeService.fetchSubscription("sub_1")).resolves.toBe(
       subscription
     );
+  });
+});
+
+// ── createCheckoutSession tax params (#217) ──────────────────────────
+
+describe("StripeService.createCheckoutSession — Stripe Tax (#217)", () => {
+  const args = {
+    customerId: "cus_1",
+    priceId: "price_1",
+    successUrl: "https://app/settings?billing=success",
+    cancelUrl: "https://app/settings?billing=cancelled",
+    organizationId: "org-1",
+  };
+
+  it("flag on (default): session carries automatic_tax + address collection", async () => {
+    mockCheckoutSessionsCreate.mockResolvedValue({ url: "https://stripe/x" });
+
+    await StripeService.createCheckoutSession(args);
+
+    expect(mockCheckoutSessionsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // pre-existing params unchanged
+        mode: "subscription",
+        customer: "cus_1",
+        line_items: [{ price: "price_1", quantity: 1 }],
+        metadata: { organizationId: "org-1" },
+        // #217 tax params
+        automatic_tax: { enabled: true },
+        billing_address_collection: "required",
+        customer_update: { address: "auto" },
+      })
+    );
+  });
+
+  it("STRIPE_AUTOMATIC_TAX=false: session is byte-compatible with the pre-#217 shape", async () => {
+    env.STRIPE_AUTOMATIC_TAX = false;
+    mockCheckoutSessionsCreate.mockResolvedValue({ url: "https://stripe/x" });
+
+    await StripeService.createCheckoutSession(args);
+
+    const params = mockCheckoutSessionsCreate.mock.calls[0][0] as Record<
+      string,
+      unknown
+    >;
+    expect(params).not.toHaveProperty("automatic_tax");
+    expect(params).not.toHaveProperty("billing_address_collection");
+    expect(params).not.toHaveProperty("customer_update");
+    expect(params).toMatchObject({
+      mode: "subscription",
+      customer: "cus_1",
+      line_items: [{ price: "price_1", quantity: 1 }],
+    });
   });
 });

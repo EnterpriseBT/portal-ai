@@ -119,6 +119,18 @@ export class StripeService {
       success_url: args.successUrl,
       cancel_url: args.cancelUrl,
       metadata: { organizationId: args.organizationId },
+      // #217: Stripe Tax. Safe to enable before registrations exist
+      // (nothing is collected until one activates); the address is
+      // required so Tax can determine jurisdiction, and customer_update
+      // persists it onto the customer for renewals. Off only via an
+      // explicit STRIPE_AUTOMATIC_TAX=false (unconfigured sandboxes).
+      ...(environment.STRIPE_AUTOMATIC_TAX
+        ? {
+            automatic_tax: { enabled: true },
+            billing_address_collection: "required" as const,
+            customer_update: { address: "auto" as const },
+          }
+        : {}),
     });
     if (!session.url) {
       throw new Error("Stripe checkout session returned no URL");

@@ -27,6 +27,11 @@ export const environment = {
   //    webhook 503s (Stripe retries until configured); the app boots fine.
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+  // #217: Stripe Tax on checkout — default ON (go-live posture). An
+  // unconfigured sandbox opts out EXPLICITLY with "false" (a conscious,
+  // visible downgrade); requires the account's origin address + default
+  // tax_behavior in the Dashboard (see .env.example).
+  STRIPE_AUTOMATIC_TAX: process.env.STRIPE_AUTOMATIC_TAX !== "false",
   // System ID for deterministic UUID generation
   SYSTEM_ID: process.env.SYSTEM_ID,
   // Anthropic configuration
