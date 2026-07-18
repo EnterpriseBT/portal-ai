@@ -41,6 +41,9 @@ Options: (a) always-on (breaks checkout 502-style in sandboxes without a Stripe 
 
 ## Smoke (manual, against your dev stack)
 
+**✅ Walked + signed off 2026-07-18 — Ben Turner**, against the local dev stack + Stripe test Dashboard (all 8 steps green; session-verified DB/Stripe/webhook checks). Walk notes: (1) local webhook delivery requires a running `stripe listen --forward-to localhost:3001/api/webhooks/stripe` forwarder — no webhook endpoint is registered in the sandbox, and a dead forwarder is what enabled the double-checkout that surfaced #230 (webhook clobbers the tracked subscription when the customer holds two — pre-existing #176 edge, filed separately); (2) `stripe_events` dedup verified live (a replayed event id was ignored; a fresh `subscription.updated` re-synced); (3) `.env` changes need a full `npm run dev` restart (dotenv injects at start, not on nodemon reload).
+
+
 1. Stripe Dashboard (test mode) → **Settings → Tax**: activate Stripe Tax with a dummy US origin address; set default tax behavior **exclusive**; add a test registration (e.g. CA). One-time per sandbox.
 2. Ensure a purchasable tier exists (per `COMMANDS.md → tier`: create a price with a lookup key, set the catalog's `stripeLookupKey`, `portalops tier apply --env local` — or reuse any tier row with a live `stripe_price_id`).
 3. `npm run dev`; Settings → Subscription & Billing shows the plan list with the footnote "Prices exclude tax, which is calculated at checkout."
