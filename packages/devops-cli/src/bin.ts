@@ -255,7 +255,14 @@ function renderTierApply(result: TierApplyResult): string {
   if (result.unmanaged.length > 0) {
     lines.push(`unmanaged (untouched): ${result.unmanaged.join(", ")}`);
   }
-  lines.push(result.dryRun ? "dry run — nothing written" : "applied");
+  const allNoop = result.changes.every((c) => c.action === "noop");
+  lines.push(
+    result.dryRun
+      ? "dry run — nothing written"
+      : allNoop
+        ? "nothing to apply — already converged"
+        : "applied"
+  );
   return lines.join("\n");
 }
 
