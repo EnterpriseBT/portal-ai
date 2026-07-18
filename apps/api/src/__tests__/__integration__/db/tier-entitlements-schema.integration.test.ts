@@ -5,8 +5,9 @@
  *   nothing).
  * - Migration/backfill probe: pre-existing rows (incl. `standard`) are
  *   fully permissive.
- * - The OQ1 seed pin: `seedTiers` never reverts an operator's entitlement
- *   edit, while `selectable` still heals (two convergence classes).
+ * - The seed pin (#218-updated): `seedTiers` is bootstrap-only — an
+ *   existing row is never written; convergence belongs to
+ *   `portalops tier apply`.
  * - The OQ2 interim warn: `findUnlistedRegistrySlugs` reports registry
  *   slugs no live tier row lists.
  *
@@ -111,11 +112,12 @@ describe("Tier entitlements schema integration (#214 slice 1)", () => {
 
   // ── case 18: the OQ1 pin ────────────────────────────────────────────
 
-  it("seedTiers never reverts an operator's entitlement edit; selectable still heals", async () => {
+  it("seedTiers is bootstrap-only: an existing row is never written (#218)", async () => {
     const seedService = new SeedService();
 
-    // Operator tightens standard by SQL — and knocks selectable so the
-    // seed-authoritative class has something to heal.
+    // Drift EVERY formerly-converged class — policy, entitlements, and the
+    // once seed-authoritative selectable. Nothing may heal: convergence is
+    // `portalops tier apply`'s job now (#218).
     await db
       .update(schema.tiers)
       .set({
@@ -133,11 +135,10 @@ describe("Tier entitlements schema integration (#214 slice 1)", () => {
       .from(schema.tiers)
       .where(eq(schema.tiers.slug, "standard"));
 
-    // Operator-authoritative: survives.
     expect(standard.builtinToolpacks).toEqual(["web_search"]);
     expect(standard.customToolpacks).toBe(false);
-    // Seed-authoritative: heals.
-    expect(standard.selectable).toBe(true);
+    expect(standard.selectable).toBe(false); // no longer healed by seed
+    expect(standard.updated).toBeNull(); // literally no write happened
   });
 
   // ── case 19: the OQ2 interim warn helper ────────────────────────────
