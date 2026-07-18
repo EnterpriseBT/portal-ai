@@ -76,5 +76,8 @@ export * from "./usage.model.js";
 /** Stripe webhook event dedup/audit model (#176) */
 export * from "./stripe-event.model.js";
 
+/** Tool usage audit ledger entry (#179) */
+export * from "./tool-usage-ledger.model.js";
+
 /** REST API connector config + credentials schemas */
 export * from "./api-connector.model.js";

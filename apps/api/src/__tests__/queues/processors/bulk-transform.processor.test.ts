@@ -529,7 +529,34 @@ describe("bulkTransformProcessor — charge on job success (#183)", () => {
       costClass: "expensive",
       units: 1,
       actor: { userId: "user-1" },
+      // #179 ledger context — metadata carries neither stationId nor
+      // portalId here, so the fallbacks apply.
+      toolName: "transform_entity_records",
+      toolCallId: "job:job-bt-001",
+      stationId: "",
+      portalId: null,
     });
+  });
+
+  // case 13 (#179) — the deferred charge threads the enqueue metadata's
+  // station/portal into the ledger row, keyed by the retry-stable job id.
+  it("threads stationId + portalId from job metadata into the commit (#179)", async () => {
+    await bulkTransformProcessor(
+      makeJob({
+        userId: "user-1",
+        stationId: "station-9",
+        portalId: "portal-9",
+      })
+    );
+
+    expect(mockCommitCharge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: "transform_entity_records",
+        toolCallId: "job:job-bt-001",
+        stationId: "station-9",
+        portalId: "portal-9",
+      })
+    );
   });
 
   it("does NOT commit when the job fails (failed jobs are free)", async () => {

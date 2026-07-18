@@ -9,6 +9,7 @@ import type { EntityGroupMemberOverlapRequestQuery } from "@portalai/core/contra
 import type { EntityGroupResolveRequestQuery } from "@portalai/core/contracts";
 import type { EntityTagListRequestQuery } from "@portalai/core/contracts";
 import type { JobListRequestQuery } from "@portalai/core/contracts";
+import type { UsageLedgerListRequestQuery } from "@portalai/core/contracts";
 import type { StationListRequestQuery } from "@portalai/core/contracts";
 import type { PortalListRequestQuery } from "@portalai/core/contracts";
 import type { ToolpackListRequestQuery } from "@portalai/core/contracts";
@@ -26,6 +27,8 @@ export const queryKeys = {
     root: ["organizations"] as const,
     current: () => [...queryKeys.organizations.root, "current"] as const,
     usage: () => [...queryKeys.organizations.root, "usage"] as const,
+    usageLedger: (params?: UsageLedgerListRequestQuery) =>
+      [...queryKeys.organizations.root, "usageLedger", params] as const,
     memberships: () =>
       [...queryKeys.organizations.root, "memberships"] as const,
   },

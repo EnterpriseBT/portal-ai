@@ -35,6 +35,7 @@ import { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
 import { tiers } from "./tiers.table.js";
 import { usage } from "./usage.table.js";
 import { stripeEvents } from "./stripe-events.table.js";
+import { toolUsageLedger } from "./tool-usage-ledger.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -95,6 +96,18 @@ export const StripeEventInsertSchema = createInsertSchema(stripeEvents);
 /** Inferred types */
 export type StripeEventSelect = z.infer<typeof StripeEventSelectSchema>;
 export type StripeEventInsert = z.infer<typeof StripeEventInsertSchema>;
+
+// ── Tool Usage Ledger ─────────────────────────────────────────────────
+
+/** Zod schema for a `tool_usage_ledger` row returned by SELECT. */
+export const ToolUsageLedgerSelectSchema = createSelectSchema(toolUsageLedger);
+
+/** Zod schema for inserting into `tool_usage_ledger`. */
+export const ToolUsageLedgerInsertSchema = createInsertSchema(toolUsageLedger);
+
+/** Inferred types */
+export type ToolUsageLedgerSelect = z.infer<typeof ToolUsageLedgerSelectSchema>;
+export type ToolUsageLedgerInsert = z.infer<typeof ToolUsageLedgerInsertSchema>;
 
 // ── Organization Users ────────────────────────────────────────────────
 

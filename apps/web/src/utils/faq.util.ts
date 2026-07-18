@@ -182,7 +182,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "Do failed tool calls use up my usage allocation?",
     answer:
-      "No. Some tools consume usage units from your organization's monthly allocation when they run in a portal session — mainly web search and heavier analytics like clustering. You're charged only when a tool call succeeds: if a call fails (for example, a search provider is briefly unavailable), it costs nothing. Your allocation resets at the start of each billing period, and you can see what's left on the Settings → Organization page and in a portal session's details.",
+      "No. Some tools consume usage units from your organization's monthly allocation when they run in a portal session — mainly web search and heavier analytics like clustering. You're charged only when a tool call succeeds: if a call fails (for example, a search provider is briefly unavailable), it costs nothing. Your allocation resets at the start of each billing period, and you can see what's left on the Settings → Organization page and in a portal session's details — the Itemized usage button there lists every charged call (which tool, how many units, when, and who ran it).",
     category: FAQCategory.Analytics,
   },
   {

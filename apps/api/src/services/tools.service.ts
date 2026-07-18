@@ -719,7 +719,9 @@ export class ToolService {
     // short-circuit inside the gate; the guard test asserts none is un-wrapped.
     wrapWithCostGate(
       tools as unknown as Record<string, GateableTool>,
-      { organizationId, userId },
+      // #179: station/portal ride the wrap ctx so committed charges carry
+      // their ledger context.
+      { organizationId, userId, stationId, portalId },
       (name) => {
         const isCustom = customToolNames.has(name);
         const capability = isCustom ? undefined : ALL_TOOL_CAPABILITIES[name];

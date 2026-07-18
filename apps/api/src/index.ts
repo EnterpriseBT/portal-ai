@@ -6,12 +6,18 @@ import { closeRedis } from "./utils/redis.util.js";
 import { gracefulShutdown } from "./utils/shutdown.util.js";
 import { jobsQueue } from "./queues/jobs.queue.js";
 import { createJobsWorker } from "./queues/jobs.worker.js";
+import {
+  maintenanceQueue,
+  registerMaintenanceSchedulers,
+} from "./queues/maintenance.queue.js";
+import { createMaintenanceWorker } from "./queues/maintenance.worker.js";
 import { processors } from "./queues/processors/index.js";
 import { FileUploadSessionService } from "./services/file-upload-session.service.js";
 import { wideTableReconcilerService } from "./services/wide-table-reconciler.service.js";
 import { ApiCode } from "./constants/api-codes.constants.js";
 
 const jobsWorker = createJobsWorker(processors);
+const maintenanceWorker = createMaintenanceWorker();
 
 async function start() {
   await connectDatabase();
@@ -42,6 +48,15 @@ async function start() {
     );
   });
 
+  // Maintenance schedulers (#179 D5) — upsert-by-id, so multi-instance
+  // boots are idempotent. A registration failure degrades to "no purge
+  // until next boot", never a refused start.
+  registerMaintenanceSchedulers()
+    .then(() => logger.info("Maintenance schedulers registered"))
+    .catch((err) => {
+      logger.warn({ err }, "Failed to register maintenance schedulers");
+    });
+
   // Fire-and-forget sweep of stale upload rows — the S3 bucket lifecycle
   // rule is the durability guarantee; this is a UI-visible cleanup so
   // admin views stay clean.
@@ -68,8 +83,12 @@ async function shutdown() {
   const server = await serverPromise;
   await gracefulShutdown({
     server: server || undefined,
-    closeWorker: () => jobsWorker.close(),
-    closeQueue: () => jobsQueue.close(),
+    closeWorker: async () => {
+      await Promise.all([jobsWorker.close(), maintenanceWorker.close()]);
+    },
+    closeQueue: async () => {
+      await Promise.all([jobsQueue.close(), maintenanceQueue.close()]);
+    },
     closeRedis,
     closeDatabase,
   });

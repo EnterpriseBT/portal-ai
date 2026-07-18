@@ -1,12 +1,15 @@
 import type {
   OrganizationGetResponse,
   OrganizationUsageGetResponse,
+  UsageLedgerListRequestQuery,
+  UsageLedgerListResponse,
   UserMembershipsGetResponse,
   OrganizationSwitchRequest,
   OrganizationDeleteRequest,
   OrganizationDeleteResponse,
 } from "@portalai/core/contracts";
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
+import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
 
@@ -22,6 +25,18 @@ export const organizations = {
     useAuthQuery<OrganizationUsageGetResponse>(
       queryKeys.organizations.usage(),
       "/api/organization/usage",
+      undefined,
+      options
+    ),
+  /** Itemized tool-usage ledger (#179) — the paginated drill-down behind
+   *  the aggregate usage balance. */
+  usageLedger: (
+    params?: UsageLedgerListRequestQuery,
+    options?: QueryOptions<UsageLedgerListResponse>
+  ) =>
+    useAuthQuery<UsageLedgerListResponse>(
+      queryKeys.organizations.usageLedger(params),
+      buildUrl("/api/organization/usage/ledger", params),
       undefined,
       options
     ),

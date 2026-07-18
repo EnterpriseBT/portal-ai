@@ -40,6 +40,8 @@ import {
   BillingCheckoutRequestSchema,
   BillingCheckoutResponseSchema,
   BillingPortalResponseSchema,
+  UsageLedgerListResponseSchema,
+  MaintenanceStatusResponseSchema,
 } from "@portalai/core/contracts";
 import {
   ApiAuthConfigSchema,
@@ -47,6 +49,7 @@ import {
   ApiEndpointConfigSchema,
   PaginationConfigSchema,
   RestApiInstanceConfigSchema,
+  ToolUsageLedgerEntrySchema,
 } from "@portalai/core/models";
 
 import { environment } from "../environment.js";
@@ -229,6 +232,25 @@ const billingSchemas: Record<string, unknown> = {
   ),
   BillingPortalResponse: z.toJSONSchema(
     BillingPortalResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+};
+
+/**
+ * Tool usage ledger schemas (#179). Sourced from `@portalai/core` so the
+ * itemized-usage route JSDoc references the canonical shapes.
+ */
+const usageLedgerSchemas: Record<string, unknown> = {
+  ToolUsageLedgerEntry: z.toJSONSchema(
+    ToolUsageLedgerEntrySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  UsageLedgerListResponse: z.toJSONSchema(
+    UsageLedgerListResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  MaintenanceStatusResponse: z.toJSONSchema(
+    MaintenanceStatusResponseSchema,
     JSON_SCHEMA_OPTS
   ),
 };
@@ -1517,6 +1539,7 @@ const options: swaggerJsdoc.Options = {
         ...orgSwitcherSchemas,
         ...orgDeleteSchemas,
         ...billingSchemas,
+        ...usageLedgerSchemas,
       },
     },
     tags: [

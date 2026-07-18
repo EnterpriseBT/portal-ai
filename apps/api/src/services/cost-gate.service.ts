@@ -14,6 +14,8 @@ import { DbService } from "./db.service.js";
 import { TierService } from "./tier.service.js";
 import { UsageService } from "./usage.service.js";
 import { incrementRateWindow } from "../utils/rate-limit.util.js";
+import { SystemUtilities } from "../utils/system.util.js";
+import { ToolUsageLedgerEntryModelFactory } from "@portalai/core/models";
 import type { CostHint } from "@portalai/core/models";
 
 const logger = createLogger({ module: "cost-gate" });
@@ -80,6 +82,13 @@ export interface CostGateContext {
   costBearer: CostBearer;
   input: unknown;
   actor: { userId: string };
+  /** #179 ledger context: the station whose session built the tool. */
+  stationId: string;
+  /** #179 ledger context: the portal session, when there is one. */
+  portalId?: string;
+  /** #179 ledger context: the AI SDK's per-call id (stable). Synthesized
+   *  when absent so the ledger's dedup key always exists. */
+  toolCallId?: string;
   /** Injectable clock (ms) for deterministic tests. */
   now?: number;
 }
@@ -100,6 +109,11 @@ export interface PendingCharge {
   costClass: CostHint;
   units: number;
   actor: { userId: string };
+  /** #179: per-call context for the audit ledger row. */
+  toolName: string;
+  toolCallId: string;
+  stationId: string;
+  portalId: string | null;
 }
 
 /** The pre-flight verdict. `charge` is `null` for immune calls (free /
@@ -188,6 +202,14 @@ export class CostGateService {
           costClass: ctx.costHint,
           units,
           actor: ctx.actor,
+          // #179: the ledger row's per-call context rides the charge —
+          // no write-time lookups. A missing SDK toolCallId (non-portal
+          // callers) gets a synthesized UUID so the dedup key always
+          // exists.
+          toolName: ctx.toolName,
+          toolCallId: ctx.toolCallId ?? SystemUtilities.id.v4.generate(),
+          stationId: ctx.stationId,
+          portalId: ctx.portalId ?? null,
         },
       };
     } catch (err) {
@@ -231,14 +253,39 @@ export class CostGateService {
 
       // Atomic + conditional: lands only if within allocation, else skipped
       // (the completed call is free). Never negative, never a reversal.
-      await UsageService.tryCharge(
-        charge.organizationId,
-        charge.costClass,
-        charge.units,
-        alloc.unitsPerPeriod,
-        periodId,
-        charge.actor
-      );
+      // #179: the audit-ledger row commits in the SAME transaction as the
+      // aggregate increment — the itemization provably sums to the billed
+      // balance. A skipped charge writes no row; a ledger failure rolls
+      // the aggregate back too (caught below → the call stays free).
+      await DbService.transaction(async (tx) => {
+        const result = await UsageService.tryCharge(
+          charge.organizationId,
+          charge.costClass,
+          charge.units,
+          alloc.unitsPerPeriod,
+          periodId,
+          charge.actor,
+          tx
+        );
+        if (!result.allowed) return;
+
+        const row = new ToolUsageLedgerEntryModelFactory()
+          .create(charge.actor.userId)
+          .update({
+            organizationId: charge.organizationId,
+            toolName: charge.toolName,
+            toolCallId: charge.toolCallId,
+            stationId: charge.stationId,
+            portalId: charge.portalId,
+            costClass: charge.costClass as "metered" | "expensive",
+            units: charge.units,
+            periodId,
+            userId: charge.actor.userId,
+          })
+          .parse();
+        // insertIfNew: a double-commit (processor retry) is a no-op.
+        await DbService.repository.toolUsageLedger.insertIfNew(row, tx);
+      });
     } catch (err) {
       logger.warn(
         {
@@ -279,7 +326,13 @@ export interface ToolCostMeta {
  */
 export function wrapWithCostGate(
   tools: Record<string, GateableTool>,
-  ctx: { organizationId: string; userId: string },
+  ctx: {
+    organizationId: string;
+    userId: string;
+    /** #179 ledger context. */
+    stationId: string;
+    portalId?: string;
+  },
   metaFor: (toolName: string) => ToolCostMeta
 ): void {
   for (const [name, tool] of Object.entries(tools)) {
@@ -294,6 +347,12 @@ export function wrapWithCostGate(
         costBearer,
         input,
         actor: { userId: ctx.userId },
+        stationId: ctx.stationId,
+        portalId: ctx.portalId,
+        // The AI SDK passes { toolCallId, messages, abortSignal } as the
+        // execute options — the stable per-call id the ledger dedups on.
+        toolCallId: (options as { toolCallId?: string } | undefined)
+          ?.toolCallId,
       });
       if (!admission.allowed) return admission.result;
       const result = await original(input, options);
