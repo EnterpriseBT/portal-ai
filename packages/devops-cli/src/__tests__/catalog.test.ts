@@ -18,6 +18,7 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
       "GOOGLE_OAUTH_CLIENT_SECRET",
       "MICROSOFT_OAUTH_CLIENT_SECRET",
       "OAUTH_STATE_SECRET",
+      "STRIPE_SECRET_KEY", // #218 tier apply
       "TAVILY_API_KEY",
     ]);
     expect(byKind("ssm")).toEqual([
