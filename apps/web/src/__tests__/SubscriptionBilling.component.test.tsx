@@ -87,6 +87,14 @@ describe("SubscriptionBillingUI — unsubscribed", () => {
     expect(subscribeButtons[0]).toBeEnabled();
   });
 
+  // #217: display-only tax footnote under the plan list.
+  it("renders the tax footnote on the plan list", () => {
+    render(<SubscriptionBillingUI {...baseUIProps} />);
+    expect(
+      screen.getByText("Prices exclude tax, which is calculated at checkout.")
+    ).toBeInTheDocument();
+  });
+
   it("shows the formatted price and an em-dash for null-degraded prices", () => {
     const degraded: BillingTier = { ...proTier, price: null };
     const { rerender } = render(<SubscriptionBillingUI {...baseUIProps} />);
