@@ -180,6 +180,94 @@ describe("BillingService.handleSubscriptionEvent", () => {
     );
   });
 
+  // ── Foreign-subscription guard (#230) ──────────────────────────────
+  // Once an org tracks a subscription, only events for THAT subscription
+  // may move its billing state; a second (orphan) subscription's lifecycle
+  // must not clobber it.
+  const trackedOrg = {
+    ...org,
+    tier: "pro",
+    stripeSubscriptionId: "sub_1",
+    billingAnchorDay: 15,
+  };
+
+  it("foreign terminal: org tracks sub_1, a canceled sub_2 arrives — org untouched, outcome foreign", async () => {
+    mockFindByStripeCustomerId.mockResolvedValue({ ...trackedOrg });
+    mockFetchSubscription.mockResolvedValue(
+      convergedSub({ id: "sub_2", status: "canceled" })
+    );
+
+    const outcome = await BillingService.handleSubscriptionEvent(
+      subscriptionEvent({
+        type: "customer.subscription.deleted",
+        data: { object: { id: "sub_2", customer: "cus_1" } },
+      })
+    );
+
+    expect(outcome).toBe("foreign");
+    expect(mockOrgUpdate).not.toHaveBeenCalled();
+    // Skips before deriving — the tier price index is never consulted.
+    expect(mockPriceIndex).not.toHaveBeenCalled();
+    expect(mockInsertIfNew).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: "evt_1",
+        stripeSubscriptionId: "sub_2",
+        organizationId: "org-1",
+        resultingTier: null,
+        outcome: "foreign",
+      })
+    );
+  });
+
+  it("foreign active: org tracks sub_1, an active sub_2 arrives — not adopted, outcome foreign", async () => {
+    mockFindByStripeCustomerId.mockResolvedValue({ ...trackedOrg });
+    mockFetchSubscription.mockResolvedValue(
+      convergedSub({ id: "sub_2", status: "active" })
+    );
+
+    const outcome = await BillingService.handleSubscriptionEvent(
+      subscriptionEvent({
+        data: { object: { id: "sub_2", customer: "cus_1" } },
+      })
+    );
+
+    expect(outcome).toBe("foreign");
+    expect(mockOrgUpdate).not.toHaveBeenCalled();
+  });
+
+  it("foreign redelivery: insertIfNew false → duplicate, still no org write", async () => {
+    mockFindByStripeCustomerId.mockResolvedValue({ ...trackedOrg });
+    mockFetchSubscription.mockResolvedValue(convergedSub({ id: "sub_2" }));
+    mockInsertIfNew.mockResolvedValue(false);
+
+    const outcome = await BillingService.handleSubscriptionEvent(
+      subscriptionEvent({
+        data: { object: { id: "sub_2", customer: "cus_1" } },
+      })
+    );
+
+    expect(outcome).toBe("duplicate");
+    expect(mockOrgUpdate).not.toHaveBeenCalled();
+  });
+
+  it("adopts a differing subscription id when the org tracks none (null → adopt)", async () => {
+    // org.stripeSubscriptionId is null by default — not foreign, still adopts.
+    mockFetchSubscription.mockResolvedValue(convergedSub({ id: "sub_9" }));
+
+    const outcome = await BillingService.handleSubscriptionEvent(
+      subscriptionEvent({
+        data: { object: { id: "sub_9", customer: "cus_1" } },
+      })
+    );
+
+    expect(outcome).toBe("applied");
+    expect(mockOrgUpdate).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ stripeSubscriptionId: "sub_9" }),
+      TX
+    );
+  });
+
   it("unmatched: unknown customer records the outcome, org untouched, resolves (no throw)", async () => {
     mockFindByStripeCustomerId.mockResolvedValue(undefined);
 

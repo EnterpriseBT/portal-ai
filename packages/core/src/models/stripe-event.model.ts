@@ -18,12 +18,15 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
  * - `noop` — converged with no change
  * - `unmatched` — no org for the event's Stripe customer (Q2)
  * - `ignored` — non-subscription event type we verified but don't handle
+ * - `foreign` — event for a subscription the org doesn't track, while it
+ *   tracks a different one (double-checkout orphan, #230); recorded, not applied
  */
 export const StripeEventOutcomeSchema = z.enum([
   "applied",
   "noop",
   "unmatched",
   "ignored",
+  "foreign",
 ]);
 export type StripeEventOutcome = z.infer<typeof StripeEventOutcomeSchema>;
 

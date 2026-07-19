@@ -115,7 +115,7 @@ export class BillingService {
    */
   static async handleSubscriptionEvent(
     event: Stripe.Event
-  ): Promise<"applied" | "noop" | "unmatched" | "duplicate"> {
+  ): Promise<"applied" | "noop" | "unmatched" | "duplicate" | "foreign"> {
     const snapshot = event.data.object as Stripe.Subscription;
 
     // Converge read — the decision input is Stripe's current state, never
@@ -144,6 +144,35 @@ export class BillingService {
         })
       );
       return inserted ? "unmatched" : "duplicate";
+    }
+
+    // Foreign-subscription guard (#230): once an org tracks a subscription,
+    // only events for THAT subscription may move its billing state. A customer
+    // with a second (orphan) subscription — e.g. a double-checkout before the
+    // first webhook lands — must not have the orphan's lifecycle clobber the
+    // tracked subscription (a terminal orphan event would otherwise clear the
+    // live subscription id + anchor and revert the tier). Record + skip. When
+    // nothing is tracked (null), the initial subscribe still adopts below.
+    if (org.stripeSubscriptionId && org.stripeSubscriptionId !== sub.id) {
+      logger.warn(
+        {
+          eventId: event.id,
+          organizationId: org.id,
+          trackedSubscriptionId: org.stripeSubscriptionId,
+          eventSubscriptionId: sub.id,
+        },
+        "Ignoring Stripe event for a foreign subscription (org tracks a different one)"
+      );
+      const inserted = await DbService.repository.stripeEvents.insertIfNew(
+        BillingService.eventRow(event, {
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: sub.id,
+          organizationId: org.id,
+          resultingTier: null,
+          outcome: "foreign",
+        })
+      );
+      return inserted ? "foreign" : "duplicate";
     }
 
     const priceIndex = await DbService.repository.tiers.priceIndex();
@@ -403,7 +432,7 @@ export class BillingService {
       stripeSubscriptionId: string | null;
       organizationId: string | null;
       resultingTier: string | null;
-      outcome: "applied" | "noop" | "unmatched" | "ignored";
+      outcome: "applied" | "noop" | "unmatched" | "ignored" | "foreign";
     }
   ) {
     return new StripeEventModelFactory()

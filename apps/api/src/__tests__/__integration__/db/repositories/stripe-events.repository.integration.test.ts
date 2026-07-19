@@ -115,6 +115,19 @@ describe("StripeEventsRepository Integration Tests", () => {
     ).rejects.toThrow();
   });
 
+  it("outcome CHECK accepts a foreign-subscription row (#230)", async () => {
+    const inserted = await repo.insertIfNew(
+      eventRow({
+        eventId: `evt_${generateId()}`,
+        stripeSubscriptionId: "sub_orphan",
+        resultingTier: null,
+        outcome: "foreign",
+      }) as never,
+      db
+    );
+    expect(inserted).toBe(true);
+  });
+
   it("accepts an unmatched event with null org linkage", async () => {
     const eventId = `evt_${generateId()}`;
     const inserted = await repo.insertIfNew(
