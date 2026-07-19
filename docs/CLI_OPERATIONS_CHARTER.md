@@ -123,7 +123,30 @@ _Auth: `cli-env` — AWS-IAM (infra/DB) + Auth0 device-flow (app API); `--env` r
 
 ## Common workflows
 
-_Cross-surface recipes for tasks that span CLIs — the one piece of substance this charter owns rather than delegating to a guide. Populated in slice 4 (starting with "add a subscription tier")._
+Cross-surface recipes for tasks that span more than one CLI — the one piece of substance this charter owns, since no single per-surface guide can. Each step names its owning CLI + canonical command; the step's detail lives in that surface's guide.
+
+### Add a subscription tier
+
+1. **Stripe** — create the price + a unique lookup key (no amounts in code; the lookup key is the app's handle):
+   `stripe prices create --product <prod-id> --currency usd --unit-amount <cents> --lookup-key <tier-lookup-key>`
+2. **core** — add the tier entry to `packages/core/src/registries/tier-catalog.ts` referencing that `<tier-lookup-key>` (+ its toolpack entitlements). Commit through the normal PR flow.
+3. **portalops** — converge the DB to the catalog (resolves the lookup key → the env's price id):
+   `portalops tier apply --env app-dev --yes`
+
+### Update a tier's price
+
+1. **Stripe** — create the new price and **transfer the existing lookup key** to it (prices are immutable; the lookup key is what moves):
+   `stripe prices create --product <prod-id> --currency usd --unit-amount <new-cents> --lookup-key <tier-lookup-key> --transfer-lookup-key`
+2. **portalops** — re-converge so the DB resolves the lookup key to the new price id:
+   `portalops tier apply --env app-dev --yes`
+
+_(No `TIER_CATALOG` change — the catalog references the lookup key, not the price id.)_
+
+### Provision a new app secret to app-dev
+
+1. **portalops** — set the value in the env's Secrets Manager (exactly what `portalops vars` is for):
+   `portalops vars set <KEY> <value> --env app-dev --yes`
+2. **deploy-infra (one-time)** — add a `ValueFrom` mapping for `<KEY>` to `infra/cloudformation/backend.yml` so the ECS task receives it, then redeploy. This half is **not** a `portalops` op — it is CI/IaC (the ownership line: `portalops` owns the config *value*, deploy/IaC owns wiring it into the task). See finding (a).
 
 ## Overlap decisions
 
@@ -156,4 +179,24 @@ No other non-operable operations. Every inventoried operation carries a disposit
 
 ## Coverage
 
-_The computed `N/D` for maintenance + configuration, the logging sub-figure, and any parity defects, against the coverage bar. Populated in slice 4._
+Computed from the tables above (46 operations total).
+
+**Maintenance + configuration (the bar's denominator):** `D = 40`, of which `N = 39` are operable → **97.5%** (`39/40`) — clears the **≥ 90%** bar.
+
+**Logging (reported separately):** `6 / 6` operable → **100%**.
+
+**Classified:** `46 / 46` operations carry a non-blank disposition → **100% classified**, zero unclassified gaps.
+
+**Parity defects:** none. AWS operations are `app-dev`-only *by nature* (no AWS surface exists for `local`), not parity defects; Auth0 (separate per-env tenants) and native operations are operable across every environment they list.
+
+Per-surface:
+
+| Surface | Ops | Operable | Non-operable | Maint+config operable |
+|---|---:|---:|---:|---:|
+| AWS | 11 | 10 | 1 | 8 / 9 |
+| Auth0 | 12 | 12 | 0 | 10 / 10 |
+| Stripe | 9 | 9 | 0 | 7 / 7 |
+| Native | 14 | 14 | 0 | 14 / 14 |
+| **Total** | **46** | **45** | **1** | **39 / 40 (97.5%)** |
+
+The single non-operable operation — inject a secret into the running ECS task — is a deploy-side wiring step (finding (a)), not a missing CLI command; its config *value* half is operable via `portalops vars set`. See [Gap list & findings](#gap-list--findings).
