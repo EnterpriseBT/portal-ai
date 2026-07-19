@@ -86,21 +86,40 @@ _Auth: `auth0` CLI, authenticated per-tenant (`auth0 login`). **Each environment
 
 ## Stripe
 
-_Auth: `stripe` CLI with a per-env (restricted) key. Full runbook: [#225](https://github.com/EnterpriseBT/portal-ai/issues/225)._
-
-<!-- Table populated in slice 3. -->
+_Auth: `stripe` CLI with a per-env (restricted) key — test-mode for `local`/`app-dev`, live-mode for future `prod` (#83). Prices are the source of truth in Stripe (no amounts in code — the app resolves by **lookup key** only); creating/updating prices is an operator act here, the app never creates them. Full runbook: [#225](https://github.com/EnterpriseBT/portal-ai/issues/225)._
 
 | Operation | Category | Envs | Owning CLI | Command | Operable? | Guide ref | Disposition |
 |---|---|---|---|---|---|---|---|
+| List / inspect recent Stripe events (webhook debugging) | logging | local · app-dev | stripe | `stripe events list --json` | yes | [#225](https://github.com/EnterpriseBT/portal-ai/issues/225) | covered |
+| Retrieve a specific event | maintenance | local · app-dev | stripe | `stripe events retrieve <event-id>` | yes | [#225](https://github.com/EnterpriseBT/portal-ai/issues/225) | covered |
+| Inspect a customer's subscription(s) | maintenance | local · app-dev | stripe | `stripe subscriptions list --customer <cus-id>` | yes | [#225](https://github.com/EnterpriseBT/portal-ai/issues/225) | covered |
+| Look up a customer by email | maintenance | local · app-dev | stripe | `stripe customers list --email user@example.com` | yes | [#225](https://github.com/EnterpriseBT/portal-ai/issues/225) | covered |
+| List products & prices (incl. lookup keys) | configuration | local · app-dev | stripe | `stripe prices list --lookup-keys <key> --json` | yes | [#225](https://github.com/EnterpriseBT/portal-ai/issues/225) | covered |
+| Create a price + lookup key (new / updated tier) | configuration | local · app-dev | stripe | `stripe prices create --product <prod-id> --currency usd --unit-amount <cents> --lookup-key <key>` | yes | [#225](https://github.com/EnterpriseBT/portal-ai/issues/225) | covered |
+| Move a subscription to a new price | configuration | local · app-dev | stripe | `stripe subscriptions update <sub-id> -d "items[0][price]"=<price-id>` | yes | [#225](https://github.com/EnterpriseBT/portal-ai/issues/225) | covered |
+| Forward webhook events to a local endpoint (dev) | logging | local | stripe | `stripe listen --forward-to localhost:3001/api/webhooks/stripe` | yes | [#225](https://github.com/EnterpriseBT/portal-ai/issues/225) | covered |
+| Trigger a test webhook event | maintenance | local · app-dev | stripe | `stripe trigger checkout.session.completed` | yes | [#225](https://github.com/EnterpriseBT/portal-ai/issues/225) | covered |
 
 ## Native (`portalops` / `portalai`)
 
-_Auth: `cli-env` — AWS-IAM (infra/DB) + Auth0 device-flow (app API); `--env` required on every command. Full runbook: [#227](https://github.com/EnterpriseBT/portal-ai/issues/227)._
-
-<!-- Table populated in slice 3. -->
+_Auth: `cli-env` — AWS-IAM (infra/DB) + Auth0 device-flow (app API); `--env` required on every command, `--json` on every command. Guards are keyed on env `kind`: `local` unrestricted, `app-dev` (staging) mutations need `--yes`, `prod` destructive **blocked** + non-destructive needs `--yes --confirm-prod`. Full runbook: [#227](https://github.com/EnterpriseBT/portal-ai/issues/227)._
 
 | Operation | Category | Envs | Owning CLI | Command | Operable? | Guide ref | Disposition |
 |---|---|---|---|---|---|---|---|
+| List env config values (masked) | configuration | local · app-dev | portalops | `portalops vars list --env app-dev --json` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| Get one config value | configuration | local · app-dev | portalops | `portalops vars get <KEY> --env app-dev --json` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| Set a config value / secret | configuration | local · app-dev | portalops | `portalops vars set <KEY> <value> --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| Apply a full config file (validate-then-write) | configuration | local · app-dev | portalops | `portalops vars apply <file> --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| Open a DB tunnel to the env's database | maintenance | app-dev | portalops | `portalops db tunnel --env app-dev` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered (hold-open stream) |
+| Run a one-shot SQL query | maintenance | local · app-dev | portalops | `portalops db psql --env app-dev -- "SELECT 1"` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| Reset the database (destructive) | maintenance | local · app-dev | portalops | `portalops db reset --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered (destructive — blocked in prod) |
+| Seed the database | maintenance | local · app-dev | portalops | `portalops db seed --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| Converge tier catalog to the DB (Stripe price resolution) | configuration | local · app-dev | portalops | `portalops tier apply --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| List / inspect organizations | maintenance | local · app-dev | portalai | `portalai org list --env app-dev --json` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| Create / provision an organization | configuration | local · app-dev | portalai | `portalai org create --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| Set an org's tier | configuration | local · app-dev | portalai | `portalai org set-tier <org-id> <tier> --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| Add / remove an org member | configuration | local · app-dev | portalai | `portalai member add <email> --org <org-id> --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| List / inspect users | maintenance | local · app-dev | portalai | `portalai user list --env app-dev --json` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
 
 ## Common workflows
 
@@ -108,11 +127,32 @@ _Cross-surface recipes for tasks that span CLIs — the one piece of substance t
 
 ## Overlap decisions
 
-_The compose-test rule (above) plus the recorded native-over-vendor precedent cases and the standing rule for any future overlap. Populated in slice 3._
+**Rule (compose-test):** native-over-vendor glue is allowed **only** when the native command *composes* vendor primitives into a Portal-domain operation. A thin passthrough of a vendor CLI (e.g. a hypothetical `portalops aws-logs` that just shells out to `aws logs`) is **rejected** — use the vendor CLI directly, per its guide.
+
+**Recorded precedent** — the three shipped native-over-vendor cases all pass the test and stand as the pattern:
+
+| Native op | Vendor primitive(s) | What it composes into (Portal domain) |
+|---|---|---|
+| `portalops vars *` | Secrets Manager + SSM read/write | a curated env-config catalog with masking + validate-then-write |
+| `portalops db tunnel` / `db psql` | `aws ssm start-session` + bastion | a `resolveEnvConnection`-backed DB session (connection-string rewrite, lifecycle) |
+| `portalops tier apply` | Stripe `prices.list` (read) | tier-catalog → DB convergence in one transaction (lookup-key resolution) |
+
+**Standing rule:** any *new* native-over-vendor command a guide proposes must clear the compose-test **in this document** (add a row above with its Portal-domain justification) or it is rejected and becomes a vendor-CLI runbook entry instead. No wrapping for convenience.
 
 ## Gap list & findings
 
-_Every `Operable? = no` row plus recorded findings, each with a disposition. Populated in slice 3._
+**Non-operable operations** (from the tables above):
+
+| Operation | Surface | Why not operable | Disposition |
+|---|---|---|---|
+| Inject a new secret into the running API task | AWS | No single `aws` CLI command wires a secret into the ECS task definition — it needs a `ValueFrom` mapping in `backend.yml` (CloudFormation/CI). The config *value* is settable via `portalops vars set` (operable); only the deploy-side wiring is missing. | **deploy-infra** — see finding (a) |
+
+**Findings:**
+
+- **(a) `stripe-secret-key` deploy wiring.** The key is in the `portalops vars` catalog and settable via `portalops vars set STRIPE_SECRET_KEY --env app-dev --yes` (operable), but is **not yet provisioned into the CloudFormation backend stack** (`backend.yml` has no Stripe secret `ValueFrom`), so the live `app-dev` app can't resolve it for `tier apply`. **Route:** deploy-infra (add the `ValueFrom`), documented in [#225](https://github.com/EnterpriseBT/portal-ai/issues/225). Illustrates the ownership line — `portalops` owns the config *value*; deploy/IaC owns wiring it into the task.
+- **(b) Audit-log reader — declined (conscious exception).** Every mutating native CLI op appends to `~/.portalai/audit.log` (best-effort, local JSONL), but there is **no query command** to read it. Decision: the log stays **write-only**; a reader is out of scope. AWS-side operation auditing is covered by **CloudTrail** (see the AWS surface / [#224](https://github.com/EnterpriseBT/portal-ai/issues/224)); centralized/server-side audit is a separate concern (#179). **Disposition:** `exception` — not a gap to fill.
+
+No other non-operable operations. Every inventoried operation carries a disposition (100% classified).
 
 ## Coverage
 
