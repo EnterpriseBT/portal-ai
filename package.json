@@ -17,7 +17,7 @@
 		"test:integration": "turbo run test:integration",
 		"test:watch": "turbo run test:watch",
 		"test:coverage": "turbo run test:coverage",
-		"prepare": "husky"
+		"prepare": "node .husky/install.mjs"
 	},
 	"devDependencies": {
 		"@tanstack/router-plugin": "^1.159.5",
