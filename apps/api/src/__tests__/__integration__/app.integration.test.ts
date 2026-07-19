@@ -1,6 +1,11 @@
 import { jest, describe, it, expect, beforeAll, afterAll } from "@jest/globals";
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
+import {
+  UnauthorizedError,
+  InvalidTokenError,
+  InsufficientScopeError,
+} from "express-oauth2-jwt-bearer";
 
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { environment } from "../../environment.js";
@@ -13,9 +18,32 @@ import { environment } from "../../environment.js";
  * validation which is tested separately with mocked auth middleware.
  */
 
-// Mock the auth middleware so the real app can be imported without JWT config
+// Sentinel header values that drive the mocked jwtCheck into specific
+// rejection paths of the real `express-oauth2-jwt-bearer` error hierarchy.
+const INVALID_TOKEN = "Bearer invalid-token";
+const INSUFFICIENT_SCOPE_TOKEN = "Bearer insufficient-scope";
+
+// Mock the auth middleware so the real app can be imported without JWT config.
+// It mirrors the real `express-oauth2-jwt-bearer` behavior of rejecting via
+// next(err) so the app's real error handler is exercised (#216): no
+// Authorization header → UnauthorizedError (401); the invalid-token sentinel →
+// InvalidTokenError (401); the insufficient-scope sentinel →
+// InsufficientScopeError (403); otherwise pass through. Unprotected routes
+// (health, body-parser tests) never invoke this, so they stay green.
 jest.unstable_mockModule("../../middleware/auth.middleware.js", () => ({
-  jwtCheck: (_req: Request, _res: Response, next: NextFunction) => next(),
+  jwtCheck: (req: Request, _res: Response, next: NextFunction) => {
+    const authz = req.headers.authorization;
+    if (authz === INSUFFICIENT_SCOPE_TOKEN) {
+      return next(new InsufficientScopeError());
+    }
+    if (authz === INVALID_TOKEN) {
+      return next(new InvalidTokenError("Invalid or expired token"));
+    }
+    if (!authz) {
+      return next(new UnauthorizedError("Missing or invalid access token"));
+    }
+    next();
+  },
 }));
 
 const { app } = await import("../../app.js");
@@ -42,6 +70,38 @@ describe("App Integration", () => {
       const res = await request(app).get("/nonexistent");
 
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe("Auth middleware error mapping (#216)", () => {
+    it("maps an anonymous request to a protected route to a typed 401, not a 500 UNKNOWN", async () => {
+      const res = await request(app).get("/api/organization/current");
+
+      expect(res.status).toBe(401);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe(ApiCode.AUTH_UNAUTHORIZED);
+      expect(res.body.code).not.toBe("UNKNOWN");
+    });
+
+    it("maps an invalid/expired token (InvalidTokenError subclass) to a typed 401", async () => {
+      const res = await request(app)
+        .get("/api/stations")
+        .set("Authorization", INVALID_TOKEN);
+
+      expect(res.status).toBe(401);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe(ApiCode.AUTH_UNAUTHORIZED);
+      expect(res.body.code).not.toBe("UNKNOWN");
+    });
+
+    it("maps an insufficient-scope rejection to a typed 403", async () => {
+      const res = await request(app)
+        .get("/api/organization/current")
+        .set("Authorization", INSUFFICIENT_SCOPE_TOKEN);
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe(ApiCode.AUTH_FORBIDDEN);
     });
   });
 

@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
+import { UnauthorizedError } from "express-oauth2-jwt-bearer";
 import { ApiCode } from "./constants/api-codes.constants.js";
 import { healthRouter } from "./routes/health.router.js";
 import { googleSheetsConnectorPublicRouter } from "./routes/google-sheets-connector.router.js";
@@ -68,6 +69,26 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
       "ApiError caught by error handler"
     );
     return HttpService.error(res, err);
+  }
+
+  // The JWT middleware (`express-oauth2-jwt-bearer`) rejects anonymous,
+  // malformed, or expired-token requests with an UnauthorizedError (or a
+  // subclass: InvalidTokenError 401, InsufficientScopeError 403,
+  // InvalidRequestError 400) passed to next(). Map it to a typed response
+  // preserving the library's own status — otherwise every protected route
+  // returns a generic 500 UNKNOWN to unauthenticated callers (#216). The
+  // library's WWW-Authenticate header is dropped: the typed JSON body is the
+  // contract clients key off, and auth rejection is expected client behavior,
+  // so it logs at warn (not error) to keep it out of the 500 alerting stream.
+  if (err instanceof UnauthorizedError) {
+    const status = err.status ?? 401;
+    const code =
+      status === 403 ? ApiCode.AUTH_FORBIDDEN : ApiCode.AUTH_UNAUTHORIZED;
+    log.warn(
+      { status, code, route: req.originalUrl },
+      "JWT auth rejected by middleware"
+    );
+    return HttpService.error(res, new ApiError(status, code, err.message));
   }
 
   // Body-parser surfaces structured errors with `type` / `status` set by

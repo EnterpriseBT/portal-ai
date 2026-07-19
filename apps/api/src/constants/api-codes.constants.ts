@@ -7,6 +7,13 @@ export enum ApiCode {
 
   // Auth
   AUTH_UPSTREAM_ERROR = "AUTH_UPSTREAM_ERROR",
+  /** Missing, malformed, or expired bearer token — the JWT middleware rejected
+   *  the request. Maps `express-oauth2-jwt-bearer`'s UnauthorizedError /
+   *  InvalidTokenError / InvalidRequestError. 401 (#216). */
+  AUTH_UNAUTHORIZED = "AUTH_UNAUTHORIZED",
+  /** Token is valid but lacks the required scope/permission — the JWT
+   *  middleware's InsufficientScopeError. 403 (#216). */
+  AUTH_FORBIDDEN = "AUTH_FORBIDDEN",
 
   // Request lifecycle
   REQUEST_PAYLOAD_TOO_LARGE = "REQUEST_PAYLOAD_TOO_LARGE",
