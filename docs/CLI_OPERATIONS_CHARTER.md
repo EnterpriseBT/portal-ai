@@ -49,21 +49,40 @@ The [Coverage](#coverage) section reports `N/D` as a fraction and percent, the l
 
 ## AWS
 
-_Auth: ambient AWS credentials (SSO / `AWS_PROFILE` / CI OIDC); per-env scoping is the ability to act on that env's resources. Full runbook: [#224](https://github.com/EnterpriseBT/portal-ai/issues/224)._
-
-<!-- Table populated in slice 2. -->
+_Auth: ambient AWS credentials (SSO / `AWS_PROFILE` / CI OIDC); per-env scoping is the identity's ability to act on that env's resources. `local` has **no** AWS surface (it runs from `.env` / docker-compose), so these operations apply to `app-dev` (and future `prod`). Region `us-east-1`. Resource names follow `portalai-${env}` (`app-dev` → `dev`); exact identifiers and full flag sets are pinned in [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) — the `Command` here is the canonical starting point._
 
 | Operation | Category | Envs | Owning CLI | Command | Operable? | Guide ref | Disposition |
 |---|---|---|---|---|---|---|---|
+| Tail live API logs for an error | logging | app-dev | aws | `aws logs tail /ecs/portalai-api-dev --follow --format short` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
+| Search API logs over a time window | logging | app-dev | aws | `aws logs filter-log-events --log-group-name /ecs/portalai-api-dev --filter-pattern ERROR --start-time <epoch-ms>` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
+| Check API service health / running task count | maintenance | app-dev | aws | `aws ecs describe-services --cluster portalai-dev --services portalai-api-dev` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
+| Open a shell in a running API task (debug) | maintenance | app-dev | aws | `aws ecs execute-command --cluster portalai-dev --task <task-id> --container <container> --interactive --command "/bin/sh"` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
+| Force a new deployment / restart the API | maintenance | app-dev | aws | `aws ecs update-service --cluster portalai-dev --service portalai-api-dev --force-new-deployment` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
+| Run an ad-hoc one-off task (e.g. migration) | maintenance | app-dev | aws | `aws ecs run-task --cluster portalai-dev --task-definition portalai-api-dev --overrides <json>` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
+| Check the RDS instance status | maintenance | app-dev | aws | `aws rds describe-db-instances --query "DBInstances[?contains(DBInstanceIdentifier,'portalai')]"` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
+| Inspect a CloudFormation stack's status / outputs | maintenance | app-dev | aws | `aws cloudformation describe-stacks --stack-name portalai-backend-dev` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
+| Deploy / update an infra stack (ad-hoc; normal path is CI) | configuration | app-dev | aws | `aws cloudformation deploy --stack-name portalai-backend-dev --template-file infra/cloudformation/backend.yml` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
+| Inspect uploaded files in the S3 upload bucket | maintenance | app-dev | aws | `aws s3 ls s3://<upload-bucket>/` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
+| Inject a new secret into the running API task | configuration | app-dev | aws | `—` | no | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | deploy-infra: needs a `ValueFrom` mapping in `backend.yml` (no single CLI command wires a secret into the task def) — see `stripe-secret-key` finding |
 
 ## Auth0
 
-_Auth: `auth0` CLI, authenticated per-env (tenant). Full runbook: [#226](https://github.com/EnterpriseBT/portal-ai/issues/226)._
-
-<!-- Table populated in slice 2. -->
+_Auth: `auth0` CLI, authenticated per-tenant (`auth0 login`). **Each environment has its own Auth0 tenant — `local` and `app-dev` are separate** (`app-dev` → `portalsai-staging.us.auth0.com`); select the target tenant with `auth0 tenants use <tenant>` before running directory ops, and never assume a change in one tenant reflects in the other. Future `prod` gets its own tenant (#83). The `auth0` CLI is non-interactive with a global `--json` flag; exact subcommand syntax is pinned in [#226](https://github.com/EnterpriseBT/portal-ai/issues/226)._
 
 | Operation | Category | Envs | Owning CLI | Command | Operable? | Guide ref | Disposition |
 |---|---|---|---|---|---|---|---|
+| Tail tenant logs (login / auth troubleshooting) | logging | local · app-dev | auth0 | `auth0 logs tail --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
+| Search tenant logs (e.g. failed logins) | logging | local · app-dev | auth0 | `auth0 logs list --filter "type:f" --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
+| Find a user by email | maintenance | local · app-dev | auth0 | `auth0 users search --query "email:user@example.com" --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
+| Get a user's profile | maintenance | local · app-dev | auth0 | `auth0 users show <user-id> --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
+| Block / unblock or update a user | configuration | local · app-dev | auth0 | `auth0 users update <user-id> --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
+| Delete a user | configuration | local · app-dev | auth0 | `auth0 users delete <user-id> --force` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
+| Assign / remove a user's role | configuration | local · app-dev | auth0 | `auth0 users roles add <user-id> --roles <role-id>` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
+| List roles & their permissions | maintenance | local · app-dev | auth0 | `auth0 roles list --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
+| List / inspect applications | configuration | local · app-dev | auth0 | `auth0 apps list --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
+| Update an application (callbacks, grant types) | configuration | local · app-dev | auth0 | `auth0 apps update <client-id> --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
+| Select the tenant for an environment | configuration | local · app-dev | auth0 | `auth0 tenants use <tenant>` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
+| Inspect APIs / audiences | maintenance | local · app-dev | auth0 | `auth0 apis list --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
 
 ## Stripe
 
