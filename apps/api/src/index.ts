@@ -4,10 +4,10 @@ import { connectDatabase, closeDatabase } from "./db/index.js";
 import { logger } from "./utils/logger.util.js";
 import { closeRedis } from "./utils/redis.util.js";
 import { gracefulShutdown } from "./utils/shutdown.util.js";
-import { jobsQueue } from "./queues/jobs.queue.js";
+import { closeJobsQueue } from "./queues/jobs.queue.js";
 import { createJobsWorker } from "./queues/jobs.worker.js";
 import {
-  maintenanceQueue,
+  closeMaintenanceQueue,
   registerMaintenanceSchedulers,
 } from "./queues/maintenance.queue.js";
 import { createMaintenanceWorker } from "./queues/maintenance.worker.js";
@@ -87,7 +87,7 @@ async function shutdown() {
       await Promise.all([jobsWorker.close(), maintenanceWorker.close()]);
     },
     closeQueue: async () => {
-      await Promise.all([jobsQueue.close(), maintenanceQueue.close()]);
+      await Promise.all([closeJobsQueue(), closeMaintenanceQueue()]);
     },
     closeRedis,
     closeDatabase,
