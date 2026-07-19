@@ -23,7 +23,8 @@ import { generateId } from "../utils/application.util.js";
 import { environment } from "../../../environment.js";
 import { ledgerRetentionPurgeProcessor } from "../../../queues/processors/ledger-retention-purge.processor.js";
 import {
-  maintenanceQueue,
+  getMaintenanceQueue,
+  closeMaintenanceQueue,
   registerMaintenanceSchedulers,
   LEDGER_RETENTION_PURGE_JOB,
 } from "../../../queues/maintenance.queue.js";
@@ -81,7 +82,7 @@ describe("ledgerRetentionPurgeProcessor (#179 case 17)", () => {
   });
 
   afterAll(async () => {
-    await maintenanceQueue.close();
+    await closeMaintenanceQueue();
   });
 
   const seedRow = async (created: number, label: string) => {
@@ -147,7 +148,7 @@ describe("ledgerRetentionPurgeProcessor (#179 case 17)", () => {
     await registerMaintenanceSchedulers();
     await registerMaintenanceSchedulers();
 
-    const schedulers = await maintenanceQueue.getJobSchedulers();
+    const schedulers = await getMaintenanceQueue().getJobSchedulers();
     const purgeSchedulers = schedulers.filter(
       (s) => s.key === LEDGER_RETENTION_PURGE_JOB
     );

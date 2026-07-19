@@ -128,12 +128,14 @@ jest.unstable_mockModule("../../../utils/redis.util.js", () => ({
 // pending job row without touching real Redis. Tests that need the actual
 // parse work to happen drive `FileUploadSessionService.runParseSession`
 // directly — same code path the worker would take.
+const mockJobsQueue = {
+  add: jest.fn(async () => ({ id: "bull-mock" })),
+  getJob: jest.fn(),
+};
 jest.unstable_mockModule("../../../queues/jobs.queue.js", () => ({
   JOBS_QUEUE_NAME: "async-jobs",
-  jobsQueue: {
-    add: jest.fn(async () => ({ id: "bull-mock" })),
-    getJob: jest.fn(),
-  },
+  getJobsQueue: () => mockJobsQueue,
+  closeJobsQueue: jest.fn(),
 }));
 
 const { app } = await import("../../../app.js");

@@ -16,18 +16,40 @@ export const MAINTENANCE_QUEUE_NAME = "maintenance";
  *  and the admin read. */
 export const LEDGER_RETENTION_PURGE_JOB = "ledger-retention-purge";
 
-export const maintenanceQueue = new Queue(MAINTENANCE_QUEUE_NAME, {
-  connection: {
-    url: environment.REDIS_URL,
-    maxRetriesPerRequest: null,
-  },
-  defaultJobOptions: {
-    // Keep enough history for the admin read's "recent runs" without
-    // unbounded Redis growth.
-    removeOnComplete: { count: 30 },
-    removeOnFail: { count: 30 },
-  },
-});
+let _maintenanceQueue: Queue | null = null;
+
+/**
+ * Lazily construct the maintenance queue. Same rationale as the jobs queue:
+ * `new Queue()` eagerly opens an ioredis connection, so constructing at module
+ * load turned an import into a live Redis socket and hung Jest via ioredis's
+ * reconnect timer when no Redis was present (#220). Deferring to first use
+ * keeps imports side-effect-free.
+ */
+export const getMaintenanceQueue = (): Queue => {
+  if (!_maintenanceQueue) {
+    _maintenanceQueue = new Queue(MAINTENANCE_QUEUE_NAME, {
+      connection: {
+        url: environment.REDIS_URL,
+        maxRetriesPerRequest: null,
+      },
+      defaultJobOptions: {
+        // Keep enough history for the admin read's "recent runs" without
+        // unbounded Redis growth.
+        removeOnComplete: { count: 30 },
+        removeOnFail: { count: 30 },
+      },
+    });
+  }
+  return _maintenanceQueue;
+};
+
+/** Close the queue's Redis connection, but only if it was ever constructed. */
+export const closeMaintenanceQueue = async (): Promise<void> => {
+  if (_maintenanceQueue) {
+    await _maintenanceQueue.close();
+    _maintenanceQueue = null;
+  }
+};
 
 /**
  * Register the repeatable maintenance schedulers. `upsertJobScheduler`
@@ -35,7 +57,7 @@ export const maintenanceQueue = new Queue(MAINTENANCE_QUEUE_NAME, {
  * never produce duplicate schedulers.
  */
 export const registerMaintenanceSchedulers = async (): Promise<void> => {
-  await maintenanceQueue.upsertJobScheduler(
+  await getMaintenanceQueue().upsertJobScheduler(
     LEDGER_RETENTION_PURGE_JOB,
     { pattern: "0 4 * * *" }, // daily 04:00 UTC
     { name: LEDGER_RETENTION_PURGE_JOB }

@@ -15,7 +15,7 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { wideTableResyncService } from "../services/wide-table-resync.service.js";
-import { maintenanceQueue } from "../queues/maintenance.queue.js";
+import { getMaintenanceQueue } from "../queues/maintenance.queue.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "admin" });
@@ -111,6 +111,7 @@ adminRouter.get(
   getApplicationMetadata,
   async (_req: Request, res: Response, next: NextFunction) => {
     try {
+      const maintenanceQueue = getMaintenanceQueue();
       const [schedulers, recentJobs] = await Promise.all([
         maintenanceQueue.getJobSchedulers(),
         // Newest first; bounded so the payload stays small.

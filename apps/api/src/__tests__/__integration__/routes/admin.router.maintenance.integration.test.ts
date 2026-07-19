@@ -49,10 +49,11 @@ const mockGetJobs = jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
 jest.unstable_mockModule("../../../queues/maintenance.queue.js", () => ({
   MAINTENANCE_QUEUE_NAME: "maintenance",
   LEDGER_RETENTION_PURGE_JOB: "ledger-retention-purge",
-  maintenanceQueue: {
+  getMaintenanceQueue: () => ({
     getJobSchedulers: mockGetJobSchedulers,
     getJobs: mockGetJobs,
-  },
+  }),
+  closeMaintenanceQueue: jest.fn(),
   registerMaintenanceSchedulers: jest.fn(),
 }));
 

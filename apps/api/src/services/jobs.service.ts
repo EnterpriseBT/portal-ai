@@ -1,7 +1,7 @@
 import { JobModelFactory, TERMINAL_JOB_STATUSES } from "@portalai/core/models";
 import type { JobCreateRequestBody } from "@portalai/core/contracts";
 
-import { jobsQueue } from "../queues/jobs.queue.js";
+import { getJobsQueue } from "../queues/jobs.queue.js";
 import { DbService } from "./db.service.js";
 import { JobEventsService } from "./job-events.service.js";
 import { ApiError } from "./http.service.js";
@@ -63,7 +63,7 @@ export class JobsService {
 
     // 2. Enqueue BullMQ job
     try {
-      const bullJob = await jobsQueue.add(
+      const bullJob = await getJobsQueue().add(
         params.type,
         {
           jobId: job.id,
@@ -127,7 +127,7 @@ export class JobsService {
     // Remove from BullMQ if still queued
     if (job.bullJobId) {
       try {
-        const bullJob = await jobsQueue.getJob(job.bullJobId);
+        const bullJob = await getJobsQueue().getJob(job.bullJobId);
         if (bullJob) await bullJob.remove();
       } catch (err) {
         logger.warn(
