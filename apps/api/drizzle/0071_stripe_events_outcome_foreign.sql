@@ -1,0 +1,2 @@
+ALTER TABLE "stripe_events" DROP CONSTRAINT "stripe_events_outcome_check";--> statement-breakpoint
+ALTER TABLE "stripe_events" ADD CONSTRAINT "stripe_events_outcome_check" CHECK ("stripe_events"."outcome" IN ('applied', 'noop', 'unmatched', 'ignored', 'foreign'));

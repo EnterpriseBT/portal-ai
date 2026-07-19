@@ -31,7 +31,7 @@ export const stripeEvents = pgTable(
     // sync by type-checks.ts; DDL stays plain text — the CHECK below is the
     // DB-level guard).
     outcome: text("outcome", {
-      enum: ["applied", "noop", "unmatched", "ignored"],
+      enum: ["applied", "noop", "unmatched", "ignored", "foreign"],
     }).notNull(),
   },
   (t) => [
@@ -39,7 +39,7 @@ export const stripeEvents = pgTable(
     unique("stripe_events_event_id_unique").on(t.eventId),
     check(
       "stripe_events_outcome_check",
-      sql`${t.outcome} IN ('applied', 'noop', 'unmatched', 'ignored')`
+      sql`${t.outcome} IN ('applied', 'noop', 'unmatched', 'ignored', 'foreign')`
     ),
   ]
 );
