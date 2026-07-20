@@ -70,7 +70,7 @@ Pick representative AWS rows and confirm the canonical `Command` runs non-intera
 **"Add a subscription tier" recipe** (verify each step is runnable; the create is test-mode + reversible):
 
 - [ ] Step 1 read-check: `stripe prices list --json` works, so you could `stripe prices create … --lookup-key <throwaway>` (optionally do it in **test mode** with a throwaway lookup key, then delete/deactivate it after). *(AC7 step 1)*
-- [ ] Step 3 read-check: `npx portalops tier apply --env app-dev --dry-run` (if `--dry-run` exists) or against `local` shows the convergence plan without erroring. *(AC7 step 3)*
+- [ ] Step 3 read-check: `npx portalops tier apply --env app-dev --dry-run` (if `--dry-run` exists) or against `local` shows the convergence plan without erroring. *(AC7 step 3)* — ⚠️ **Known bug [#242](https://github.com/EnterpriseBT/portal-ai/issues/242):** the dry-run prints its plan correctly (`dry run — nothing written`) but then **hangs and never exits** (leaked SSM-tunnel / DB pool / Stripe handle); you must `Ctrl-C` / `timeout` it. The plan output is correct — the defect is process-lifecycle only. `db psql` exits cleanly, so it's `tier apply`-specific.
 
 **Finding (a) — `stripe-secret-key` wiring:**
 
