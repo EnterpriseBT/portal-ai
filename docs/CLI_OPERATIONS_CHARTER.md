@@ -102,14 +102,14 @@ _Auth: `stripe` CLI with a per-env (restricted) key — test-mode for `local`/`a
 
 ## Native (`portalops` / `portalai`)
 
-_Auth: `cli-env` — AWS-IAM (infra/DB) + Auth0 device-flow (app API); `--env` required on every command, `--json` on every command. Guards are keyed on env `kind`: `local` unrestricted, `app-dev` (staging) mutations need `--yes`, `prod` destructive **blocked** + non-destructive needs `--yes --confirm-prod`. Full runbook: [#227](https://github.com/EnterpriseBT/portal-ai/issues/227)._
+_Auth: `cli-env` — AWS-IAM (infra/DB) + Auth0 device-flow (app API); `--env` required on every command, `--json` on every command. Guards are keyed on env `kind`: `local` unrestricted, `app-dev` (staging) mutations need `--yes`, `prod` destructive **blocked** + non-destructive needs `--yes --confirm-prod`. For `--env local`, DB-touching ops (`db *`, `org`/`user`/`member`, `tier apply`) need `DATABASE_URL` in the CLI's shell env (the API server loads its own; a bare `npx` invocation does not). `vars` is **`app-dev`/`prod` only** — `local` config lives in `.env`, not an AWS catalog. Full runbook: [#227](https://github.com/EnterpriseBT/portal-ai/issues/227)._
 
 | Operation | Category | Envs | Owning CLI | Command | Operable? | Guide ref | Disposition |
 |---|---|---|---|---|---|---|---|
-| List env config values (masked) | configuration | local · app-dev | portalops | `portalops vars list --env app-dev --json` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
-| Get one config value | configuration | local · app-dev | portalops | `portalops vars get <KEY> --env app-dev --json` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
-| Set a config value / secret | configuration | local · app-dev | portalops | `portalops vars set <KEY> <value> --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
-| Apply a full config file (validate-then-write) | configuration | local · app-dev | portalops | `portalops vars apply <file> --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| List env config values (masked) | configuration | app-dev | portalops | `portalops vars list --env app-dev --json` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| Get one config value | configuration | app-dev | portalops | `portalops vars get <KEY> --env app-dev --json` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| Set a config value / secret | configuration | app-dev | portalops | `portalops vars set <KEY> <value> --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| Apply a full config file (validate-then-write) | configuration | app-dev | portalops | `portalops vars apply <file> --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
 | Open a DB tunnel to the env's database | maintenance | app-dev | portalops | `portalops db tunnel --env app-dev` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered (hold-open stream) |
 | Run a one-shot SQL query | maintenance | local · app-dev | portalops | `portalops db psql --env app-dev -- "SELECT 1"` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
 | Reset the database (destructive) | maintenance | local · app-dev | portalops | `portalops db reset --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered (destructive — blocked in prod) |
