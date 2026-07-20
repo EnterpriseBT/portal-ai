@@ -35,8 +35,8 @@ Open `docs/CLI_OPERATIONS_CHARTER.md` and confirm:
 
 - [ ] The doc has the sections: **How to read this**, **AWS**, **Auth0**, **Stripe**, **Native**, **Common workflows**, **Overlap decisions**, **Gap list & findings**, **Coverage** — and the "How to read this" block defines the column schema, the CLI-operable predicate, the coverage formula, the guard convention, and the overlap rule (self-contained). *(AC1)*
 - [ ] Every operations row has all **eight** columns filled and **no blank `Disposition`**. *(AC2)*
-- [ ] The **Coverage** section reports maintenance+config `39/40 = 97.5%` (≥90%), logging `6/6`, `46/46` classified, and "no parity defects". Spot-check the per-surface table totals against the surface tables. *(AC3)*
-- [ ] AWS and Auth0 tables are at least as populated as Native, and every row's `Guide ref` links to #224 (AWS) / #225 (Stripe) / #226 (Auth0) / #227 (native). *(AC4)*
+- [ ] The **Coverage** section reports maintenance+config `44/45 = 97.8%` (≥90%), logging `6/6`, `51/51` classified, and "no parity defects". Spot-check the per-surface table totals against the surface tables. *(AC3)*
+- [ ] AWS and Auth0 tables are at least as populated as Native (AWS 14, Auth0 14, Native 14), and every row's `Guide ref` links to #224 (AWS) / #225 (Stripe) / #226 (Auth0) / #227 (native). *(AC4)*
 - [ ] **Overlap decisions** states the compose-test rule + the three precedent rows (`vars`, `db`, `tier apply`) + the standing rule. *(AC5)*
 - [ ] **Gap list & findings** carries the one non-operable row (AWS secret-injection) + finding (a) `stripe-secret-key` wiring + finding (b) audit-log reader declined, each with a disposition. *(AC6)*
 

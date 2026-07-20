@@ -31,7 +31,7 @@ Each surface below carries one operations table. Every row is one operation, wit
 **CLI-operable predicate.** An operation is **operable** iff **all three** hold:
 
 1. **A documented command exists** — native (`portalops`/`portalai`) or vendor-CLI (`aws`/`stripe`/`auth0`).
-2. **Non-interactive or flag-guarded** — runnable without an interactive-only prompt; confirmations are explicit flags (`--yes`, `--confirm-prod`). A REPL/hold-open with a documented one-shot form (e.g. `portalops db psql -- <sql>`) counts as operable via that form.
+2. **Non-interactive or flag-guarded** — runnable without an interactive-only prompt; confirmations are explicit flags (`--yes`, `--confirm-prod`). A REPL/hold-open with a documented one-shot form (e.g. `portalops db psql -- -c <sql>`) counts as operable via that form.
 3. **Machine-readable output** — emits JSON (`--json` / `--output json`) or the guide documents how to parse it.
 
 `Operable? = yes` requires the predicate to hold in **every** environment listed in `Envs`. An operation operable in `local` but not `app-dev` is a **parity defect** — rated `no`, with the disposition naming the missing environment.
@@ -63,6 +63,9 @@ _Auth: ambient AWS credentials (SSO / `AWS_PROFILE` / CI OIDC); per-env scoping 
 | Inspect a CloudFormation stack's status / outputs | maintenance | app-dev | aws | `aws cloudformation describe-stacks --stack-name portalai-backend-dev` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
 | Deploy / update an infra stack (ad-hoc; normal path is CI) | configuration | app-dev | aws | `aws cloudformation deploy --stack-name portalai-backend-dev --template-file infra/cloudformation/backend.yml` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
 | Inspect uploaded files in the S3 upload bucket | maintenance | app-dev | aws | `aws s3 ls s3://<upload-bucket>/` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
+| List the service's running tasks (get a task id) | maintenance | app-dev | aws | `aws ecs list-tasks --cluster portalai-dev --service-name portalai-api-dev` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
+| Inspect the deployed task definition (image / revision) | maintenance | app-dev | aws | `aws ecs describe-task-definition --task-definition portalai-api-dev` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
+| Check ALB target health for the API service | maintenance | app-dev | aws | `aws elbv2 describe-target-health --target-group-arn <api-target-group-arn>` | yes | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | covered |
 | Inject a new secret into the running API task | configuration | app-dev | aws | `—` | no | [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) | deploy-infra: needs a `ValueFrom` mapping in `backend.yml` (no single CLI command wires a secret into the task def) — see `stripe-secret-key` finding |
 
 ## Auth0
@@ -78,10 +81,12 @@ _Auth: `auth0` CLI, authenticated per-tenant (`auth0 login`). **Each environment
 | Block / unblock or update a user | configuration | local · app-dev | auth0 | `auth0 users update <user-id> --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
 | Delete a user | configuration | local · app-dev | auth0 | `auth0 users delete <user-id> --force` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
 | Assign / remove a user's role | configuration | local · app-dev | auth0 | `auth0 users roles add <user-id> --roles <role-id>` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
+| Show a user's assigned roles | maintenance | local · app-dev | auth0 | `auth0 users roles show <user-id> --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
 | List roles & their permissions | maintenance | local · app-dev | auth0 | `auth0 roles list --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
 | List / inspect applications | configuration | local · app-dev | auth0 | `auth0 apps list --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
 | Update an application (callbacks, grant types) | configuration | local · app-dev | auth0 | `auth0 apps update <client-id> --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
 | Select the tenant for an environment | configuration | local · app-dev | auth0 | `auth0 tenants use <tenant>` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
+| List tenants / confirm the active tenant | maintenance | local · app-dev | auth0 | `auth0 tenants list --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
 | Inspect APIs / audiences | maintenance | local · app-dev | auth0 | `auth0 apis list --json` | yes | [#226](https://github.com/EnterpriseBT/portal-ai/issues/226) | covered |
 
 ## Stripe
@@ -111,7 +116,7 @@ _Auth: `cli-env` — AWS-IAM (infra/DB) + Auth0 device-flow (app API); `--env` r
 | Set a config value / secret | configuration | app-dev | portalops | `portalops vars set <KEY> <value> --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
 | Apply a full config file (validate-then-write) | configuration | app-dev | portalops | `portalops vars apply <file> --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
 | Open a DB tunnel to the env's database | maintenance | app-dev | portalops | `portalops db tunnel --env app-dev` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered (hold-open stream) |
-| Run a one-shot SQL query | maintenance | local · app-dev | portalops | `portalops db psql --env app-dev -- "SELECT 1"` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| Run a one-shot SQL query | maintenance | local · app-dev | portalops | `portalops db psql --env app-dev -- -c "SELECT 1"` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
 | Reset the database (destructive) | maintenance | local · app-dev | portalops | `portalops db reset --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered (destructive — blocked in prod) |
 | Seed the database | maintenance | local · app-dev | portalops | `portalops db seed --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
 | Converge tier catalog to the DB (Stripe price resolution) | configuration | local · app-dev | portalops | `portalops tier apply --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
@@ -179,13 +184,13 @@ No other non-operable operations. Every inventoried operation carries a disposit
 
 ## Coverage
 
-Computed from the tables above (46 operations total).
+Computed from the tables above (51 operations total).
 
-**Maintenance + configuration (the bar's denominator):** `D = 40`, of which `N = 39` are operable → **97.5%** (`39/40`) — clears the **≥ 90%** bar.
+**Maintenance + configuration (the bar's denominator):** `D = 45`, of which `N = 44` are operable → **97.8%** (`44/45`) — clears the **≥ 90%** bar.
 
 **Logging (reported separately):** `6 / 6` operable → **100%**.
 
-**Classified:** `46 / 46` operations carry a non-blank disposition → **100% classified**, zero unclassified gaps.
+**Classified:** `51 / 51` operations carry a non-blank disposition → **100% classified**, zero unclassified gaps.
 
 **Parity defects:** none. AWS operations are `app-dev`-only *by nature* (no AWS surface exists for `local`), not parity defects; Auth0 (separate per-env tenants) and native operations are operable across every environment they list.
 
@@ -193,10 +198,10 @@ Per-surface:
 
 | Surface | Ops | Operable | Non-operable | Maint+config operable |
 |---|---:|---:|---:|---:|
-| AWS | 11 | 10 | 1 | 8 / 9 |
-| Auth0 | 12 | 12 | 0 | 10 / 10 |
+| AWS | 14 | 13 | 1 | 11 / 12 |
+| Auth0 | 14 | 14 | 0 | 12 / 12 |
 | Stripe | 9 | 9 | 0 | 7 / 7 |
 | Native | 14 | 14 | 0 | 14 / 14 |
-| **Total** | **46** | **45** | **1** | **39 / 40 (97.5%)** |
+| **Total** | **51** | **50** | **1** | **44 / 45 (97.8%)** |
 
 The single non-operable operation — inject a secret into the running ECS task — is a deploy-side wiring step (finding (a)), not a missing CLI command; its config *value* half is operable via `portalops vars set`. See [Gap list & findings](#gap-list--findings).
