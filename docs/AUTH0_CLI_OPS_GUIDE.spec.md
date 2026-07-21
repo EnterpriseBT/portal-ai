@@ -10,7 +10,7 @@ Resolved in discovery, ratified here:
 
 1. **Two logins, kept distinct** — the guide leads by separating `portalai login` (cli-env device-flow, user token for the app API) from `auth0 login` (the Auth0 CLI against a tenant's Management API).
 2. **Auth: document both** — human device pairing (`auth0 login`) for interactive admin; a **dedicated read-only M2M app** (Management API, read scopes) as the **agent/CI path** (non-interactive + fail-safe). Per-env **separate tenants** (`auth0 tenants use <tenant>` first).
-3. **Read-only allowlist only** — inspection verbs auto-run; mutations **and `tenants use`** (state-changing selection) stay prompt-gated.
+3. **Read-only allowlist = prompt-reduction, not a gate** — inspection verbs auto-run; mutations **and `tenants use`** are not allowlisted. The mutation-safety gate is the **read-only M2M credential** (Auth0 rejects writes server-side with 403), **not** a permission prompt (per `feedback_no_prompt_safety_gates` — prompting is bypassable per session mode).
 4. **`--json` banner strip** — `auth0 … --json` prepends a `=== <tenant> <resource>` banner; the guide documents the strip (the operable predicate's "documents how to parse it").
 5. **RBAC = future note** — a one-liner that Auth0 roles/permissions are CLI-manageable but not enforced by the app today (authz is org-membership; `requireScope`/`requirePermission` are unwired).
 6. **Stale-config cleanup folded in** — fix `.env.example` `AUTH0_AUDIENCE` and remove the stale `AUTH0_ISSUER` from `apps/api/README.md`.
@@ -39,7 +39,7 @@ House COMMANDS style, matching `docs/AWS_CLI_OPS.md` / `docs/STRIPE_CLI_OPS.md`.
 4. **Invariants** — non-interactive `--json`; **strip the banner** (`auth0 … --json` emits a `=== <tenant> <resource>` header + blank line before the JSON — e.g. `| sed '1,/^\[/{/^\[/!d}'`); always select the tenant first.
 5. **Logging operations** — `auth0 logs tail --json`; `auth0 logs list --filter "type:f" --json` (failed logins) with `--number` bound.
 6. **Inspection operations** — find a user (`auth0 users search --query "email:…" --json`); user profile (`auth0 users show <id> --json`); a user's roles (`auth0 users roles show <id> --json`); roles + permissions (`auth0 roles list --json`); applications (`auth0 apps list --json`); APIs/audiences (`auth0 apis list --json`); tenants (`auth0 tenants list --json`).
-7. **Management operations (prompt-gated, operator action)** — `auth0 users update`/`delete`, `auth0 users roles add/rm`, `auth0 apps update`. Flagged not-agent-auto.
+7. **Management operations (require a write credential — not agent-auto)** — `auth0 users update`/`delete`, `auth0 users roles add/rm`, `auth0 apps update`. The read-only M2M cannot run them (403); not allowlisted; the prompt is not the gate.
 8. **RBAC note (future)** — one line: Auth0 roles/permissions are manageable here but the app authorizes via org membership today; enforcing Auth0 RBAC is future.
 9. **Gotchas** — separate tenants per env (a user id in one is meaningless in another); `auth0 login` ≠ `portalai login`; the `--json` banner; `tenants use` silently redirects subsequent commands.
 10. **prod** — own tenant, gated; unexercised until #83.
@@ -60,7 +60,7 @@ Append these read-only matchers (house `Bash(<prefix>:*)` shape):
 "Bash(auth0 tenants list:*)"
 ```
 
-**Excluded (stay prompt-gated):** `auth0 users update`, `auth0 users delete`, `auth0 users roles add`/`rm`, `auth0 apps update`, `auth0 tenants use`, `auth0 login`.
+**Excluded (not allowlisted — safety is the read-only credential, not a prompt):** `auth0 users update`, `auth0 users delete`, `auth0 users roles add`/`rm`, `auth0 apps update`, `auth0 tenants use`, `auth0 login`.
 
 ### C. Stale-config cleanup
 
@@ -86,7 +86,7 @@ Docs + JSON-config ticket; no code to unit-test, no pinning test over `docs/*.md
 
 - [ ] From `docs/AUTH0_CLI_OPS.md` alone, a human or agent authenticates to the `app-dev` Auth0 tenant and reads tenant logs + inspects users/apps without the dashboard.
 - [ ] Runbook commands are non-interactive with parseable output (the `--json` banner-strip is documented).
-- [ ] The 9 read-only `auth0` allow-entries exist; reads run with no prompt; mutations + `tenants use` still prompt.
+- [ ] The 9 read-only `auth0` allow-entries exist and auto-run reads; mutations are **not** allowlisted, and a **read-only M2M session cannot perform them (Auth0 → 403)** — the credential, not a prompt, is the gate.
 - [ ] Every Auth0 op the charter assigned to #226 is documented (or explicitly deferred).
 - [ ] `.env.example` has no `mcp-ui` audience; `apps/api/README.md` has no stale `AUTH0_ISSUER`.
 

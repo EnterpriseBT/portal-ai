@@ -25,11 +25,13 @@ auth0 tenants list --json                          # confirm the active tenant
 Two ways to authenticate the CLI to a tenant's Management API:
 
 - **Humans — device pairing:** `auth0 login` (interactive; opens a browser, carries your admin rights). Fine for the interactive management ops below.
-- **Agents / CI — dedicated read-only M2M app (recommended):** create a Machine-to-Machine app authorized for the **Management API** with **read** scopes — `read:users`, `read:logs`, `read:roles`, `read:role_members`, `read:clients`, `read:connections` — then:
+- **Agents / CI — dedicated read-only M2M app (recommended):** create one **per tenant** — Dashboard → Applications → Create Application → **Machine to Machine** → authorize the **Auth0 Management API** → grant **only** these **read** scopes: `read:users`, `read:logs`, `read:roles`, `read:role_members`, `read:clients`, `read:connections`. Then:
   ```bash
   auth0 login --domain <tenant> --client-id <m2m-client-id> --client-secret <m2m-secret>
   ```
-  Non-interactive, and a read-only key **cannot mutate the tenant** (fail-safe). Store the secret per env (Secrets Manager, like other env secrets). `prod` uses its own tenant + credential (#83), gated.
+  Non-interactive. Store the secret per env (Secrets Manager, like other env secrets). `prod` uses its own tenant + credential (#83), gated.
+
+> **Safety model — the credential is the gate, not the prompt.** A read-only M2M session literally **cannot** mutate the tenant: Auth0 rejects any `users update`/`delete`/`roles add`/`apps update` with a 403 (insufficient scope). That server-side rejection — **not** the `.claude` allowlist and **not** a Claude Code permission prompt — is the mutation-safety boundary. The allowlist only reduces prompts for *reads*, and whether an un-allowlisted command prompts depends on the session's permission mode (it is **not** a guarantee). So: run the agent path with the read-only M2M; the mutating ops below require a **write-capable** credential and deliberate operator intent.
 
 ## Invariants
 
@@ -81,9 +83,9 @@ auth0 apps list --json
 auth0 apis list --json
 ```
 
-## Management operations (prompt-gated, operator action)
+## Management operations (require a write credential — not agent-auto)
 
-These mutate the tenant — a human runs them (device-pairing login); they are **not** in the agent allowlist.
+These mutate the tenant. Per the [safety model](#auth), the gate is the **credential**: the read-only M2M (agent path) can't run them (Auth0 → 403); they require a **write-capable** login (`auth0 login` device pairing as an admin) + deliberate operator intent. They are **not** in the agent allowlist — but do not treat the absence of a prompt as safety.
 
 ```bash
 auth0 users update <user-id> --json          # block/unblock, update profile
