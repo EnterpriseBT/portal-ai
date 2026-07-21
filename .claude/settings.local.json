@@ -46,7 +46,16 @@
       "Read(//tmp/**)",
       "Bash(python3 -)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(stripe events list:*)",
+      "Bash(stripe events retrieve:*)",
+      "Bash(stripe subscriptions list:*)",
+      "Bash(stripe subscriptions retrieve:*)",
+      "Bash(stripe customers list:*)",
+      "Bash(stripe customers retrieve:*)",
+      "Bash(stripe prices list:*)",
+      "Bash(stripe prices retrieve:*)",
+      "Bash(stripe products list:*)"
     ]
   }
 }
