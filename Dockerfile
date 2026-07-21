@@ -67,6 +67,15 @@ RUN curl -sSfL https://raw.githubusercontent.com/auth0/auth0-cli/main/install.sh
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"
 
+# Put the Portal operator CLIs on PATH so developers run `portalops` /
+# `portalai` directly instead of `npx portalops` / `npx portalai`. The two
+# bins are workspace symlinks npm creates under the root node_modules/.bin on
+# `npm i`; the repo is bind-mounted at /workspace at runtime, so these links
+# are dangling at image-build time and resolve once onCreateCommand's install
+# populates node_modules/.bin. /usr/local/bin is already on PATH.
+RUN ln -sf /workspace/node_modules/.bin/portalops /usr/local/bin/portalops \
+    && ln -sf /workspace/node_modules/.bin/portalai /usr/local/bin/portalai
+
 # Enable bash completion (git completion is included automatically)
 RUN printf 'if [ -f /usr/share/bash-completion/bash_completion ]; then\n  . /usr/share/bash-completion/bash_completion\nfi\n' >> ~/.bashrc
 
