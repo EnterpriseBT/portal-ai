@@ -76,7 +76,12 @@
       "Bash(auth0 roles list:*)",
       "Bash(auth0 apps list:*)",
       "Bash(auth0 apis list:*)",
-      "Bash(auth0 tenants list:*)"
+      "Bash(auth0 tenants list:*)",
+      "Bash(portalops vars describe:*)",
+      "Bash(portalai org list:*)",
+      "Bash(portalai org get:*)",
+      "Bash(portalai user list:*)",
+      "Bash(portalai user get:*)"
     ]
   }
 }
