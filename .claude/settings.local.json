@@ -46,7 +46,16 @@
       "Read(//tmp/**)",
       "Bash(python3 -)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(auth0 logs list:*)",
+      "Bash(auth0 logs tail:*)",
+      "Bash(auth0 users search:*)",
+      "Bash(auth0 users show:*)",
+      "Bash(auth0 users roles show:*)",
+      "Bash(auth0 roles list:*)",
+      "Bash(auth0 apps list:*)",
+      "Bash(auth0 apis list:*)",
+      "Bash(auth0 tenants list:*)"
     ]
   }
 }
