@@ -2,7 +2,7 @@
 
 Manual smoke for [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) — the AWS CLI operations runbook (`docs/AWS_CLI_OPS.md`), its read-only `.claude` allowlist, and the charter stack-name fix. **Branch under test:** `feat/aws-cli-ops-guide` (PR [#243](https://github.com/EnterpriseBT/portal-ai/pull/243) → `epic/cli-first-ops`).
 
-The deliverable is documentation + config, so this smoke proves the guide is *true*: pick the guide's commands and confirm they actually run against your `app-dev` AWS account with machine-readable output, that the allowlist runs the reads without a prompt (and still gates mutations), and that the charter fix resolves live. You run these against **your own** AWS account (real creds). Boxes start unchecked; checking them is your confirmation.
+The deliverable is documentation + config, so this smoke proves the guide is *true*: pick the guide's commands and confirm they actually run against your `app-dev` AWS account with machine-readable output, that the allowlist auto-runs the reads (prompt-reduction), that the **read-only IAM identity** is the real mutation gate (a permission prompt is not), and that the charter fix resolves live. You run these against **your own** AWS account (real creds). Boxes start unchecked; checking them is your confirmation.
 
 ## Preflight
 
@@ -39,18 +39,18 @@ Follow **only** what `docs/AWS_CLI_OPS.md` says — the point is that a reader n
 - [ ] **Identifier table is accurate:** spot-check two more from the guide's table — e.g. `aws s3 ls s3://portalai-dev-uploads/` lists objects, and `aws elbv2 describe-target-groups --names portalai-dev-api-tg --output json` returns the target group. Confirm `portalai-dev-uploads` (not `portalai-uploads-dev`) is the one with app uploads.
 - [ ] **Auth section works as written:** you reached this point using only the guide's auth path (ambient or `aws login --remote` + `export-credentials`).
 
-## §3 — Allowlist runs reads without a prompt, still gates mutations *(AC3)*
+## §3 — Allowlist auto-runs reads; the read-only IAM identity gates mutations *(AC3)*
 
-The allowlist loads at **session start**, so this must be checked in a **fresh Claude Code session** on this branch.
+The allowlist loads at **session start**, so check the read behavior in a **fresh Claude Code session** on this branch. **The allowlist is prompt-reduction for reads — it is NOT the mutation gate.** The mutation gate is the **IAM identity** (a read-only identity → AWS denies writes); a permission prompt is *not* a reliable gate (it's bypassable per session mode).
 
-- [ ] In a fresh session, an allowlisted read (e.g. ask the agent to run `aws logs tail /ecs/portalai-api-dev --since 5m`) executes with **no permission prompt**.
-- [ ] A non-allowlisted mutation still prompts: asking the agent to run `aws ecs update-service --cluster portalai-dev --service portalai-api-dev --force-new-deployment` raises a permission prompt (**decline it** — this is just the gate check, not an actual redeploy).
-- [ ] `jq -r '.permissions.allow[] | select(startswith("Bash(aws"))' .claude/settings.local.json | wc -l` returns `12`, and none of `update-service` / `run-task` / `execute-command` / `cloudformation deploy` / `export-credentials` appear.
+- [ ] **Reads auto-run:** in a fresh session, an allowlisted read (`aws logs tail /ecs/portalai-api-dev --since 5m`) executes with **no permission prompt**.
+- [ ] **The credential is the real gate:** assumed a **read-only IAM identity**, `aws ecs update-service --cluster portalai-dev --service portalai-api-dev --force-new-deployment` returns **`AccessDenied`** — the redeploy cannot happen regardless of any prompt. (On an admin identity it *would* run — which is the point: the identity, not the prompt, is the boundary. Don't run this on an admin identity unless you intend the redeploy.)
+- [ ] `jq -r '.permissions.allow[] | select(startswith("Bash(aws"))' .claude/settings.local.json | wc -l` returns `12`, and no mutating verb (`update-service`, `run-task`, `execute-command`, `cloudformation deploy`, `export-credentials`) is allowlisted (defense-in-depth: keeps agents from *auto-running* writes, but the IAM identity is the actual gate).
 
 ## §4 — Scope & coverage *(AC4, AC5)*
 
 - [ ] Every AWS operation in the charter's AWS table (`docs/CLI_OPERATIONS_CHARTER.md`) is present in `docs/AWS_CLI_OPS.md` — either as a runnable command or explicitly deferred (the "inject a secret" row → the `ValueFrom`/CI note). *(AC5)*
-- [ ] Mutating operations (`execute-command`, `run-task`, `update-service`, `cloudformation deploy`) appear **only** under "Operator actions (prompt-gated, not agent-auto)", and the doc's boundary states infra mutation is CI/IaC. *(AC4)*
+- [ ] Mutating operations (`execute-command`, `run-task`, `update-service`, `cloudformation deploy`) appear **only** under "Operator actions (not agent-auto)" with the IAM safety-model note, and the doc's boundary states infra mutation is CI/IaC. *(AC4)*
 
 ## §5 — Gotchas call out real traps
 
@@ -61,7 +61,7 @@ The allowlist loads at **session start**, so this must be checked in a **fresh C
 
 - [ ] §1 charter fix verified (old name gone, new name resolves live)
 - [ ] §2 guide is operable from the doc alone (logging + maintenance reads return JSON)
-- [ ] §3 allowlist runs reads with no prompt; a mutation still prompts (fresh session)
+- [ ] §3 allowlist auto-runs reads (fresh session); a read-only IAM identity denies a mutation (AccessDenied)
 - [ ] §4 scope/coverage holds (all charter ops present; mutations flagged operator-only)
 - [ ] §5 gotchas are real
 - [ ] Any command/identifier corrections noted for the guide

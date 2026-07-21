@@ -2,7 +2,7 @@
 
 The **agent- and human-operable runbook** for AWS **auditing, troubleshooting, and logging** on Portal.ai environments — the runbook the [CLI Operations Charter](./CLI_OPERATIONS_CHARTER.md)'s AWS table points at (#224, epic #222). Every command here is non-interactive and emits machine-readable output.
 
-**Boundary.** The AWS CLI's role here is **read/diagnostic** — logs, service health, resource inspection. **Infrastructure changes (provisioning, config, IaC) are not operated by hand — they run in CI** (see [Operator actions](#operator-actions-prompt-gated-not-agent-auto) for the few mutating commands that exist, documented but never agent-auto). `local` has **no AWS surface** (it runs from `.env` / docker-compose); everything below applies to `app-dev` and, once provisioned (#83), `prod`.
+**Boundary.** The AWS CLI's role here is **read/diagnostic** — logs, service health, resource inspection. **Infrastructure changes (provisioning, config, IaC) are not operated by hand — they run in CI** (see [Operator actions](#operator-actions-not-agent-auto) for the few mutating commands that exist, documented but never agent-auto). `local` has **no AWS surface** (it runs from `.env` / docker-compose); everything below applies to `app-dev` and, once provisioned (#83), `prod`.
 
 ## Auth setup
 
@@ -13,6 +13,8 @@ SSO, `AWS_PROFILE`, or CI OIDC. The IAM identity you assume **is** the per-env p
 ```bash
 aws sts get-caller-identity --output json
 ```
+
+> **Safety model — the IAM identity is the gate, not the prompt.** The mutating ops (`ecs update-service`/`run-task`/`execute-command`, `cloudformation deploy`) are gated by **IAM**: run the agent/inspection path with a **read-only IAM identity** (the AWS-managed `ReadOnlyAccess`, or a scoped read policy — `logs:Get*`/`FilterLogEvents`, `ecs:Describe*`/`List*`, `rds:Describe*`, `cloudformation:Describe*`, `s3:List*`/`Get*`, `elasticloadbalancing:Describe*`) and AWS **rejects** any write. That server-side denial — **not** the `.claude` allowlist and **not** a Claude Code permission prompt — is the mutation-safety boundary. The allowlist only reduces prompts for *reads*, and prompting is bypassable per session mode. Write ops require assuming a separate **write** role + deliberate operator intent.
 
 ### Agent / devcontainer path
 Plain `aws login` here redirects to an ephemeral **localhost** callback the host browser can't reach → a **400 on redirect**. Use the cross-device flow instead:
@@ -107,9 +109,9 @@ aws s3 ls s3://portalai-dev-uploads/
 ```
 Secret **values** are not CLI-readable (Secrets Manager policy blocks `get-secret-value`) — use `portalops vars get <KEY> --env app-dev` for config values. Likewise, **injecting** a secret into the running task is not a single CLI command — it needs a `ValueFrom` mapping in `infra/cloudformation/backend.yml` (CI/IaC), per the charter's finding (a). `portalops vars set` owns the value; deploy/IaC owns wiring it into the task def.
 
-## Operator actions (prompt-gated, not agent-auto)
+## Operator actions (not agent-auto)
 
-These mutate or open an interactive session. They are documented for completeness but are **never** in the agent allowlist — a human runs them, and provisioning proper belongs in CI/IaC.
+These mutate or open an interactive session. Per the [safety model](#auth-setup), the gate is **IAM**: a read-only IAM identity can't run them (AWS denies the write); they require a **write** role + deliberate operator intent, and provisioning proper belongs in CI/IaC. They are **never** in the agent allowlist — but do not treat the absence of a prompt as safety.
 
 ```bash
 # Shell into a running task (debug)

@@ -8,11 +8,13 @@ Pins the contract for #224: a new vendor-CLI runbook (`docs/AWS_CLI_OPS.md`) tha
 
 The discovery's four open questions are resolved here **per their leans** (you said proceed; these are the vetoable calls):
 
-1. **`ecs execute-command` / `run-task` / `update-service` / `cloudformation deploy` are documented but NOT allowlisted** — they're operator/diagnostic actions, kept prompt-gated (never agent-auto). Only pure-read verbs are allowlisted (D3).
+1. **`ecs execute-command` / `run-task` / `update-service` / `cloudformation deploy` are documented but NOT allowlisted** — gated by **IAM** (a read-only identity can't run them; AWS denies the write); the prompt is not the gate. Only pure-read verbs are allowlisted (D3).
 2. **The charter stack-name bug is fixed in this PR** (`portalai-backend-dev` → `portalai-dev-backend`, charter lines 63–64).
 3. **`prod` command forms are documented via the naming formula, marked unexercised** (env pending #83).
 4. **CloudTrail gets a short "auditing AWS operations" pointer section**, not a full runbook.
-5. **`aws configure export-credentials` is documented in the auth section but NOT allowlisted** — it prints credential material, so it stays prompt-gated even though it's read-only. (New call, flagged: it's the one read verb we deliberately exclude.)
+5. **`aws configure export-credentials` is documented in the auth section but NOT allowlisted** — it prints credential material, so it's kept out of the auto-run set even though it's read-only. (The one read verb we deliberately exclude.)
+
+6. **Safety model — the read-only IAM identity is the mutation gate, not the prompt.** The `.claude` allowlist is prompt-reduction for reads; it is **not** a gate on writes (prompting is bypassable per session mode, per `feedback_no_prompt_safety_gates`). Mutation safety = running the agent path under a **read-only IAM identity** (AWS server-side-denies writes) + not assuming a write role for automation.
 
 ## Scope
 
@@ -52,7 +54,7 @@ House COMMANDS style (preamble → invariants → per-operation `###`). Ordered 
 
 5. **Logging operations** (`###` each, canonical command + note): tail live API logs (`aws logs tail /ecs/portalai-api-dev --since 10m --follow`); search a window (`aws logs filter-log-events --log-group-name … --filter-pattern ERROR --start-time <epoch-ms>`).
 6. **Maintenance / diagnostic operations** (`###` each): service health (`ecs describe-services … --query …runningCount`); list tasks / get id (`ecs list-tasks`); inspect task def (`ecs describe-task-definition`); ALB target health (`elbv2 describe-target-health --target-group-arn <arn>`, plus `describe-target-groups` to resolve the arn); RDS status (`rds describe-db-instances --query …`); CFN stack status/outputs (`cloudformation describe-stacks --stack-name portalai-dev-backend`); inspect uploads (`s3 ls s3://portalai-dev-uploads/`).
-7. **Operator actions (prompt-gated, not agent-auto)** — `ecs execute-command` (shell into a task), `ecs run-task` (one-off), `ecs update-service --force-new-deployment`, `cloudformation deploy`. Documented for completeness; explicitly flagged not-allowlisted.
+7. **Operator actions (not agent-auto)** — `ecs execute-command` (shell into a task), `ecs run-task` (one-off), `ecs update-service --force-new-deployment`, `cloudformation deploy`. IAM-gated (a read-only identity can't run them); documented, not allowlisted; the prompt is not the gate.
 8. **Auditing AWS operations** — short CloudTrail pointer: `aws cloudtrail lookup-events --lookup-attributes …` for who-ran-what (the charter's AWS audit path).
 9. **Gotchas** — app-dev tasks log `"env":"production"` (their `NODE_ENV`), so `env`-field log filters don't separate app-dev from prod; secret *values* are not CLI-readable (Secrets Manager policy — use `portalops vars`); the `portalai-dev-uploads` vs `portalai-uploads-dev` trap.
 10. **prod** — forms derive from the naming formula; guard note (read-only is safe; mutations are CI); marked **unexercised until #83**.
@@ -76,7 +78,7 @@ Append these read-only matchers (house `Bash(<prefix>:*)` shape) to the existing
 "Bash(aws sts get-caller-identity:*)"
 ```
 
-**Excluded (stay prompt-gated):** `ecs update-service`, `ecs run-task`, `ecs execute-command`, `cloudformation deploy`, `configure export-credentials` (creds exposure).
+**Excluded (not allowlisted — safety is the read-only IAM identity, not a prompt):** `ecs update-service`, `ecs run-task`, `ecs execute-command`, `cloudformation deploy`, `configure export-credentials` (creds exposure).
 
 ### C. `docs/CLI_OPERATIONS_CHARTER.md` — stack-name fix
 
@@ -100,7 +102,7 @@ This is a docs + JSON-config ticket; there is **no code to unit-test** and no pi
 
 - [ ] From `docs/AWS_CLI_OPS.md` alone, a human or agent can authenticate to `app-dev` (both paths documented) and read CloudWatch/ECS logs without the console.
 - [ ] Every read command in the guide is non-interactive and emits JSON (`--output json` / `--query`).
-- [ ] The 12 read-only `aws` allow-entries exist; running them raises **no** permission prompt, and mutations (`update-service`/`run-task`/`execute-command`/`deploy`) still prompt.
+- [ ] The 12 read-only `aws` allow-entries exist and auto-run; mutations are **not** allowlisted, and a **read-only IAM identity cannot perform them (AWS denies)** — the credential, not a prompt, is the gate.
 - [ ] The guide is scoped to audit/troubleshoot/log; every mutating op is labeled operator-action/CI, not agent-auto.
 - [ ] Every AWS operation the charter (#223) assigned to #224 is documented or explicitly deferred.
 - [ ] The charter's `cloudformation` rows name `portalai-dev-backend`; `describe-stacks --stack-name portalai-dev-backend` resolves live.
