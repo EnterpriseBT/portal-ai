@@ -2,7 +2,7 @@
 
 Portal's **customer-app-data operator CLI**: organization / user / membership / tier management, full org provisioning, and on-demand fixtures — per environment, guarded, audited, and drivable by an AI agent. Built on [`@portalai/cli-env`](../cli-env/README.md); the infrastructure sibling is [`portalops`](../devops-cli/README.md) (#190, epic #191). **Infra-free**: no AWS SDK — this package's domain core is what a future customer-facing CLI extends.
 
-The machine-readable command reference is [`COMMANDS.md`](./COMMANDS.md).
+The machine-readable command reference is [`COMMANDS.md`](./COMMANDS.md); the agent-operability contract (exit codes, server-enforced guards, auth, audit) is in [CLAUDE.md → Operating the Portal CLIs](../../CLAUDE.md).
 
 ## Running it
 
