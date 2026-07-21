@@ -25,7 +25,7 @@ describe("TIER_CATALOG (#218)", () => {
     }
   });
 
-  it("standard matches the seed snapshot verbatim (#172/#214 values)", () => {
+  it("standard is the QA-generous non-purchasable default (#239)", () => {
     const standard = TIER_CATALOG_BY_SLUG.get("standard");
     expect(standard).toBeDefined();
     expect(standard).toMatchObject({
@@ -36,17 +36,43 @@ describe("TIER_CATALOG (#218)", () => {
       overage: "hard-deny",
       freeUnitsPerPeriod: null,
       freeRatePerMin: null,
-      meteredUnitsPerPeriod: 2500,
-      meteredRatePerMin: 20,
-      expensiveUnitsPerPeriod: 300,
-      expensiveRatePerMin: 5,
+      // #239 QA-sandbox posture: metered unlimited (null), expensive finite
+      // to bound web_search→Tavily vendor cost even when quota is generous.
+      meteredUnitsPerPeriod: null,
+      meteredRatePerMin: null,
+      expensiveUnitsPerPeriod: 1_000_000,
+      expensiveRatePerMin: 10_000,
       perToolCaps: null,
       selectable: true,
       // #214 generous-beta posture: fully permissive.
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
       customToolpacks: true,
-      // Not purchasable today — no Stripe price exists for standard.
+      // Still the non-purchasable default — no Stripe price for standard.
       stripeLookupKey: null,
+    });
+  });
+
+  it("pro is a selectable purchasable tier (#239)", () => {
+    const pro = TIER_CATALOG_BY_SLUG.get("pro");
+    expect(pro).toBeDefined();
+    expect(pro).toMatchObject({
+      slug: "pro",
+      displayName: "Pro",
+      periodKind: "monthly",
+      periodAnchorDay: 1,
+      overage: "hard-deny",
+      freeUnitsPerPeriod: null,
+      freeRatePerMin: null,
+      meteredUnitsPerPeriod: null,
+      meteredRatePerMin: null,
+      expensiveUnitsPerPeriod: 1_000_000,
+      expensiveRatePerMin: 10_000,
+      perToolCaps: null,
+      selectable: true,
+      builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
+      customToolpacks: true,
+      // Purchasable: the cross-env lookup key tier apply resolves to a price.
+      stripeLookupKey: "pro_monthly",
     });
   });
 
