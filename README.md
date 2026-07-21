@@ -44,6 +44,8 @@ npm run build
 npm run dev
 ```
 
+For the local inner-loop — Stripe webhook forwarding, the mock toolpack server, and the ngrok tunnel — see [`docs/LOCAL_DEVELOPMENT.md`](docs/LOCAL_DEVELOPMENT.md).
+
 ### Environment Variables
 
 Copy `.env.example` to `.env` in each app directory:
