@@ -46,7 +46,19 @@
       "Read(//tmp/**)",
       "Bash(python3 -)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(aws logs tail:*)",
+      "Bash(aws logs filter-log-events:*)",
+      "Bash(aws ecs describe-services:*)",
+      "Bash(aws ecs describe-task-definition:*)",
+      "Bash(aws ecs list-tasks:*)",
+      "Bash(aws ecs describe-tasks:*)",
+      "Bash(aws rds describe-db-instances:*)",
+      "Bash(aws cloudformation describe-stacks:*)",
+      "Bash(aws s3 ls:*)",
+      "Bash(aws elbv2 describe-target-health:*)",
+      "Bash(aws elbv2 describe-target-groups:*)",
+      "Bash(aws sts get-caller-identity:*)"
     ]
   }
 }
