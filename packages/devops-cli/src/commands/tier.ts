@@ -194,6 +194,36 @@ export function createTierStore(connectionString: string): TierStore {
   };
 }
 
+/**
+ * Default store: open the env connection, its DB path (local: `.env`; AWS:
+ * SSM tunnel), and a drizzle-backed store over the resulting connection
+ * string. The returned `close()` tears down BOTH the postgres client AND the
+ * connection/tunnel — client first, connection in a `finally` so a client
+ * error still frees the tunnel. Without the `dispose()`, the AWS tunnel's
+ * child process keeps the event loop alive and the CLI never exits (#242);
+ * mirrors `db psql`'s dispose-in-finally. Idempotent and a no-op on local.
+ * `resolve` is injectable so the teardown is unit-testable without a tunnel.
+ */
+export async function openEnvTierStore(
+  envName: string,
+  resolve: typeof resolveEnvConnection = resolveEnvConnection
+): Promise<TierStore> {
+  const connection = await resolve(envName);
+  const handle = await connection.db();
+  const store = createTierStore(handle.connectionString);
+  return {
+    readAll: () => store.readAll(),
+    applyChanges: (changes) => store.applyChanges(changes),
+    async close() {
+      try {
+        await store.close();
+      } finally {
+        await connection.dispose();
+      }
+    },
+  };
+}
+
 const guard = (def: EnvironmentDefinition, opts: MutateOptions): void =>
   assertOperationAllowed(def, {
     destructive: false,
@@ -238,13 +268,7 @@ export async function tierApply(
   }
 
   // DB phase.
-  const openStore =
-    deps.store ??
-    (async () => {
-      const connection = await resolveEnvConnection(def.name);
-      const handle = await connection.db();
-      return createTierStore(handle.connectionString);
-    });
+  const openStore = deps.store ?? (() => openEnvTierStore(def.name));
   const store = await openStore();
   try {
     const rows = await store.readAll();
