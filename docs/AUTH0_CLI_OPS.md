@@ -2,7 +2,7 @@
 
 The **agent- and human-operable runbook** for Auth0 **tenant inspection and management** on Portal.ai environments — the runbook the [CLI Operations Charter](./CLI_OPERATIONS_CHARTER.md)'s Auth0 table points at (#226, epic #222). Every inspection command is non-interactive and emits JSON.
 
-**Boundary.** This operates the Auth0 **tenants** (users, roles, applications, connections, logs). It is **not** the app's JWT runtime middleware, and **not** the `portalai` device-flow login (see below). `local`, `app-dev`, and future `prod` each have their **own Auth0 tenant** — never assume a user/role/app id from one exists in another.
+**Boundary.** This operates the Auth0 **tenants** (users, roles, applications, connections, logs). It is **not** the app's JWT runtime middleware, and **not** the `portalai` device-flow login (see below). `local`, `app-dev`, and future `prod` each have their **own Auth0 tenant** — tenant-scoped ids (application `client_id`s, role/connection ids, DB `auth0|…` user ids) do not cross tenants (see [Gotchas](#gotchas) for the social-id nuance).
 
 ## Two different logins (don't conflate them)
 
@@ -98,7 +98,7 @@ Auth0 **roles/permissions are manageable here**, but the app does **not** enforc
 
 ## Gotchas
 
-- **Separate tenants per env** — a `user_id` / `client_id` from `local` is meaningless in `app-dev`. Always `auth0 tenants use` the right tenant first.
+- **Separate tenants per env, with a social-id nuance** — **tenant-scoped** ids are per-tenant and do not cross: application `client_id`s, role ids, connection ids, and **DB-connection** user ids (`auth0|…`). **But social-connection user ids** (`google-oauth2|…`, etc.) are the *provider's* account id — the **same string in every tenant** that person has logged into (verified: the same `google-oauth2|…` id resolves in both app-dev and local). So a social `user_id` is **not** a reliable "which tenant" signal; always `auth0 tenants use` the right tenant first and scope by the tenant, not the id.
 - **`auth0 login` ≠ `portalai login`** — different apps/tokens (see the callout above).
 - **`--json` has a banner** — strip the header line before parsing.
 - **`tenants use` is sticky** — it silently redirects *all* subsequent commands to that tenant; re-confirm with `auth0 tenants list` if unsure.

@@ -56,7 +56,8 @@ The allowlist loads at **session start** — check in a **fresh Claude Code sess
 
 ## §5 — Gotchas are real
 
-- [ ] **Separate tenants:** a `user_id` found in app-dev is **not** found in the local tenant — `auth0 tenants use dev-ow7j1wh6zixlfcp1.us.auth0.com` then `auth0 users show <app-dev-user-id>` errors / not found, confirming the guide's "ids don't cross tenants" warning. (Switch back with `auth0 tenants use portalsai-staging.us.auth0.com`.)
+- [ ] **Separate tenants (tenant-scoped ids):** application `client_id`s differ per tenant — `auth0 apps list --json` (banner-stripped) in `portalsai-staging` vs `dev-ow7j1wh6zixlfcp1` shows **different** client_ids for the same app names (e.g. "Portal CLI"). (Switch back with `auth0 tenants use portalsai-staging.us.auth0.com`.)
+- [ ] **Social-id nuance (verified during authoring):** a `google-oauth2|…` **user** id is the *provider's* account id and resolves in **both** tenants (the same person logged into each) — so a social `user_id` is not a "which tenant" signal. Confirms the guide's corrected gotcha.
 - [ ] **`tenants use` is sticky:** after switching, a subsequent `auth0 users search …` runs against the *new* active tenant — confirming why it's kept out of the allowlist.
 
 ## Sign-off
