@@ -16,11 +16,28 @@ import {
 
 jest.unstable_mockModule("@portalai/cli-env", () => cliEnvMockModule());
 
+// Mock the drizzle/postgres layer so `createTierStore` (and thus
+// `openEnvTierStore`) builds without a live database. Only the teardown
+// tests exercise this path — every other case injects the store seam. The
+// postgres client's `end()` is the spy the teardown tests assert against.
+const pgEnd = jest.fn<() => Promise<void>>();
+jest.unstable_mockModule("postgres", () => ({
+  default: jest.fn(() => ({ end: pgEnd })),
+}));
+jest.unstable_mockModule("drizzle-orm/postgres-js", () => ({
+  drizzle: jest.fn(() => ({})),
+}));
+
 const { resolveStripeKey, TierApplyMissingPricesError } =
   await import("../stripe.js");
 const { lookupKey } = await import("../catalog.js");
-const { tierApply, computeTierChanges, insertValuesFor, updateSetsFor } =
-  await import("../commands/tier.js");
+const {
+  tierApply,
+  computeTierChanges,
+  insertValuesFor,
+  updateSetsFor,
+  openEnvTierStore,
+} = await import("../commands/tier.js");
 const { TIER_CATALOG, TIER_CATALOG_BY_SLUG } =
   await import("@portalai/core/registries");
 
@@ -370,5 +387,61 @@ describe("insertValuesFor / updateSetsFor (#218)", () => {
     expect(typeof sets.updated).toBe("number");
     expect(sets).not.toHaveProperty("displayName"); // unchanged
     expect(sets).not.toHaveProperty("createdBy");
+  });
+});
+
+// ── #242 — the default store disposes the tunnel on close ─────────────
+
+describe("openEnvTierStore teardown (#242)", () => {
+  /** A fake EnvConnection whose db()/dispose() are spies; `dispose` is the
+   *  tunnel teardown the leak omitted. */
+  const fakeConnection = () => {
+    const dispose = jest.fn(async () => {});
+    const handleClose = jest.fn(async () => {});
+    const db = jest.fn(async () => ({
+      connectionString: "postgres://u:p@localhost:5999/db",
+      close: handleClose,
+    }));
+    const resolve = jest.fn(async (_name: string) => ({
+      env: "app-dev",
+      kind: "staging",
+      apiBaseUrl: "",
+      db,
+      token: jest.fn(async () => ""),
+      dispose,
+    }));
+    return { resolve, db, dispose };
+  };
+
+  beforeEach(() => pgEnd.mockReset().mockResolvedValue(undefined));
+
+  it("close() ends the postgres client AND disposes the connection/tunnel", async () => {
+    const order: string[] = [];
+    pgEnd.mockImplementation(async () => {
+      order.push("client.end");
+    });
+    const { resolve, dispose } = fakeConnection();
+    dispose.mockImplementation(async () => {
+      order.push("connection.dispose");
+    });
+
+    const store = await openEnvTierStore("app-dev", resolve as never);
+    await store.close();
+
+    expect(resolve).toHaveBeenCalledWith("app-dev");
+    expect(pgEnd).toHaveBeenCalledTimes(1);
+    expect(dispose).toHaveBeenCalledTimes(1);
+    // client closed first, tunnel freed after.
+    expect(order).toEqual(["client.end", "connection.dispose"]);
+  });
+
+  it("disposes the connection even when the client close rejects (finally)", async () => {
+    pgEnd.mockRejectedValue(new Error("pool already ended"));
+    const { resolve, dispose } = fakeConnection();
+
+    const store = await openEnvTierStore("app-dev", resolve as never);
+    await expect(store.close()).rejects.toThrow("pool already ended");
+
+    expect(dispose).toHaveBeenCalledTimes(1); // tunnel freed regardless
   });
 });
