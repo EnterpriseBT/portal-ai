@@ -1,6 +1,6 @@
 # portalai — command reference
 
-Machine-oriented reference. Invariants: `--env <name>` **required** everywhere (no default); banner `[env: <name> (<kind>)]` on **stderr**; payload (or the `--json` envelope `{"error":{"code","message"}}`) alone on **stdout**.
+Machine-oriented reference. Agent-operability contract (exit codes, server-enforced guards, auth, audit): [CLAUDE.md → Operating the Portal CLIs](../../CLAUDE.md). Invariants: `--env <name>` **required** everywhere (no default); banner `[env: <name> (<kind>)]` on **stderr**; payload (or the `--json` envelope `{"error":{"code","message"}}`) alone on **stdout**.
 
 ## Exit codes
 

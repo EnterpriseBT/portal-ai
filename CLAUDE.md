@@ -398,6 +398,19 @@ Two themes via `@portalai/core`: Brand (default, light) and Brand Dark. Persiste
 | Core Storybook | http://localhost:7006 |
 | Web Storybook | http://localhost:6007 |
 
+## Operating the Portal CLIs (`portalops` / `portalai`)
+
+The native operator CLIs are **agent-operable by contract**. Full command runbooks live in [`packages/devops-cli/COMMANDS.md`](packages/devops-cli/COMMANDS.md) (`portalops` — infra/DB/config/tiers) and [`packages/admin-cli/COMMANDS.md`](packages/admin-cli/COMMANDS.md) (`portalai` — org/user/member/tier app-data); this section is the contract an agent needs before reaching for them.
+
+- **`--env <name>` is required on every command** (no default) — `local` · `app-dev` · future `prod`. `--json` on every command for machine-readable output; the human banner goes to **stderr**, the payload/`{"error":{code,message}}` envelope to **stdout** (parse stdout only).
+- **Exit codes are the contract** (`packages/cli-env/src/errors.ts`): `0` success · `2` usage · `3` env-not-configured · `4` env-not-authorized · `5` confirmation-required · `6` destructive-blocked · `7` infra-error · (`portalai` adds `8` not-found · `9` conflict). Branch on the code, not on stderr text.
+- **Guards are server-enforced, not prompted** (`packages/cli-env/src/guard.ts`, keyed on env `kind`): `local` unrestricted; `app-dev` (staging) mutations require **`--yes`**; `prod` destructive ops are **blocked outright** and non-destructive mutations require **`--yes --confirm-prod`**. This is real enforcement in the CLI — distinct from the vendor CLIs (`aws`/`stripe`/`auth0`), whose mutation safety rests on a read-scoped credential (see `docs/CLI_OPERATIONS_CHARTER.md` → guard convention).
+- **Auth:** `cli-env` — AWS-IAM for infra/DB, Auth0 **device-flow** for the app API (`portalai login`; token cached `~/.portalai/credentials.json`, transparent refresh). For `--env local`, DB-touching ops need `DATABASE_URL` in the shell.
+- **Audit:** every *mutating* op appends a best-effort JSONL line to `~/.portalai/audit.log` (`{ts,env,operator,command,args}`). The log is **write-only** by design — there is no query command (centralized audit is #179; AWS-side is CloudTrail).
+- **`.claude` allowlist** covers only **read** invocations (e.g. `portalai org list`, `portalops vars describe`); mutations stay prompt-gated *and* `--yes`-guarded. Reads that can expose secrets (`vars get`, `vars list --unmask`) or run arbitrary SQL (`db psql`) are deliberately **not** allowlisted.
+
+The full op→CLI index, coverage, and overlap rules are in [`docs/CLI_OPERATIONS_CHARTER.md`](docs/CLI_OPERATIONS_CHARTER.md).
+
 ## Dialog & Form Test Checklist (apps/web)
 
 Every new dialog must have tests covering:

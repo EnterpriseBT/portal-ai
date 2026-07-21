@@ -2,7 +2,7 @@
 
 Portal's **infrastructure operator CLI**: DB tunnels/psql/reset/seed and the managed Secrets Manager + SSM config catalog, per environment. The TypeScript port of the retired `apps/api/scripts/api-cli.sh`, built on [`@portalai/cli-env`](../cli-env/README.md) (#192, epic #191). Infra only — customer application data (orgs, users, app seeding) is the App-admin CLI's domain (#190).
 
-**Agent-operable by design**: non-interactive flags, `--json` everywhere, stable exit codes, library-first (every command is an importable function; the bin is thin wiring). The complete machine-readable reference is [`COMMANDS.md`](./COMMANDS.md).
+**Agent-operable by design**: non-interactive flags, `--json` everywhere, stable exit codes, library-first (every command is an importable function; the bin is thin wiring). The complete machine-readable reference is [`COMMANDS.md`](./COMMANDS.md); the agent-operability contract (exit codes, server-enforced guards, auth, audit) is in [CLAUDE.md → Operating the Portal CLIs](../../CLAUDE.md).
 
 ## Running it
 
