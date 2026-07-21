@@ -11,7 +11,7 @@ Resolved in discovery, ratified here:
 1. **Read-only restricted key for CLI inspection** — a dedicated `rk_test_…` scoped **read-only** (Events, Subscriptions, Customers, Prices, Products, Invoices, Webhook Endpoints), distinct from the app's write-scoped key. Test-mode default; live key only for prod, gated.
 2. **`local` and `app-dev` are separate Stripe accounts** — per-env auth; a price id never crosses envs, only the **lookup key** does.
 3. **`stripe listen` / `stripe trigger` are out of scope** — moved to #244 (`docs/LOCAL_DEVELOPMENT.md`). #225 repoints the charter's two rows (lines 105–106) `#225 → #244`.
-4. **Read-only allowlist only** — inspection verbs auto-run; `prices create` / `subscriptions update` stay prompt-gated. Fail-safe: a read-only key cannot mutate.
+4. **Read-only allowlist = prompt-reduction, not a gate** — inspection verbs auto-run; `prices create` / `subscriptions update` are not allowlisted. The mutation-safety gate is the **read-only restricted key** (Stripe rejects writes server-side with a permissions error), **not** a permission prompt (per `feedback_no_prompt_safety_gates` — prompting is bypassable per session mode).
 5. **Inspection correlates to the server-side ledger** — the guide shows how CLI `events` map to the `stripe_events.outcome` enum (`applied|noop|unmatched|ignored|foreign`) and how to scope to one org via `metadata.organizationId`.
 
 ## Scope
@@ -39,7 +39,7 @@ House COMMANDS style, matching `docs/AWS_CLI_OPS.md`. Ordered sections:
 3. **Invariants** — `--json` (or `-d`/`--data`) on reads; a price id is env-local (never reuse across envs); the **lookup key** is the stable cross-env handle; scope to one tenant via `metadata.organizationId`.
 4. **Inspection operations** (`###` each, canonical command + note): list/retrieve **events** (`stripe events list --json`, `stripe events retrieve <id>`); inspect a customer's **subscriptions** (`stripe subscriptions list --customer <cus-id>`); look up a **customer** by email (`stripe customers list --email …`); list **prices** incl. lookup keys (`stripe prices list --lookup-keys <key> --json`); list **products**. Each notes the JSON shape.
 5. **Correlating events to server-side outcomes** — map CLI `events` to the `stripe_events` ledger (`outcome` enum) and the `POST /api/webhooks/stripe` handler; how to tell "delivered but noop/unmatched/foreign".
-6. **Price + lookup-key config (prompt-gated, operator action)** — `stripe prices create --product <id> --currency usd --unit-amount <cents> --lookup-key <key>` (new tier) and `--transfer-lookup-key` (price change); `stripe subscriptions update <sub-id> -d "items[0][price]"=<price-id>`. Flagged not-agent-auto.
+6. **Price + lookup-key config (require a write key — not agent-auto)** — `stripe prices create --product <id> --currency usd --unit-amount <cents> --lookup-key <key>` (new tier) and `--transfer-lookup-key` (price change); `stripe subscriptions update <sub-id> -d "items[0][price]"=<price-id>`. The read-only key can't run them; not allowlisted; the prompt is not the gate.
 7. **Tier price-identity flow (#218)** — end-to-end: operator creates/transfers a lookup key here → `portalops tier apply --env <env> --yes` resolves `lookup_key → env-local price_id`. Cross-link the charter's "Add/Update a tier" recipe. "Resolve, never create from code."
 8. **Gotchas** — separate accounts per env (no cross-env price ids); the app's write key ≠ this read key; test-mode data disposable, prod real.
 9. **prod** — live-mode key, gated; unexercised until #83.
@@ -60,7 +60,7 @@ Append these read-only matchers (house `Bash(<prefix>:*)` shape):
 "Bash(stripe products list:*)"
 ```
 
-**Excluded (stay prompt-gated):** `stripe prices create`, `stripe subscriptions update`, `stripe trigger`, `stripe listen`, `stripe login`.
+**Excluded (not allowlisted — safety is the read-only key, not a prompt):** `stripe prices create`, `stripe subscriptions update`, `stripe trigger`, `stripe listen`, `stripe login`.
 
 ### C. `docs/CLI_OPERATIONS_CHARTER.md` — repoint local-webhook rows
 
@@ -87,7 +87,7 @@ Docs + JSON-config ticket; no code to unit-test and no pinning test covers `docs
 - [ ] Every inspection command is non-interactive and emits parseable JSON.
 - [ ] The tier price-identity flow (lookup key → env price id) is documented as a CLI-operable procedure alongside #218.
 - [ ] Every Stripe op the charter assigned to #225 is documented (the 7 non-webhook ops) or relocated (the 2 webhook rows → #244 via repoint).
-- [ ] The 9 read-only `stripe` allow-entries exist; reads run with no prompt; `prices create`/`subscriptions update`/`trigger`/`listen` still prompt.
+- [ ] The 9 read-only `stripe` allow-entries exist and auto-run reads; mutations are **not** allowlisted, and a **read-only restricted key cannot perform them (Stripe permissions error)** — the credential, not a prompt, is the gate.
 - [ ] The charter's `stripe listen`/`trigger` rows link `#244`, not `#225`.
 
 ## Risks & rollback

@@ -8,10 +8,12 @@ The **agent- and human-operable runbook** for Stripe **inspection and price/look
 
 Stripe's axis is **test-mode (default) vs live-mode (`--live`)**, and **each Portal env is a separate Stripe account** — never assume an id from one env exists in another. Test-mode everywhere except `prod`.
 
-Use a **dedicated read-only restricted key** for inspection (distinct from the app's write-scoped `stripe-secret-key`): create an `rk_test_…` scoped **read** on Events, Subscriptions, Customers, Prices, Products, Invoices, Webhook Endpoints.
+Use a **dedicated read-only restricted key** for inspection (distinct from the app's write-scoped `stripe-secret-key`). Create it per account: Dashboard → **Developers → API keys → Create restricted key** → name `Portal CLI (read-only)` → all resources **None** except **Read** on Events, Subscriptions, Customers, Prices, Products, Invoices, Webhook Endpoints.
 
 - **Humans:** `stripe login` (interactive device pairing). For per-env accounts, add named profiles: `stripe login --project-name app-dev`, then pass `--project-name app-dev` on commands.
 - **Agents / CI:** pass the key explicitly — `--api-key rk_test_…` or `export STRIPE_API_KEY=rk_test_…` (no interactive login, no callback).
+
+> **Safety model — the credential is the gate, not the prompt.** A read-only restricted key **cannot** create prices or update subscriptions: Stripe rejects the write with a permissions error. That server-side rejection — **not** the `.claude` allowlist and **not** a Claude Code permission prompt — is the mutation-safety boundary. The allowlist only reduces prompts for *reads*, and whether an un-allowlisted command prompts depends on the session's mode (it is **not** a guarantee). Run the agent path with the read-only key; the config verbs below require a **write-capable** key and deliberate operator intent.
 
 **Per-env key source:** `local` reads `STRIPE_SECRET_KEY` from `.env`; AWS envs read the `stripe-secret-key` Secrets Manager entry (cross-ref charter finding (a): not yet wired into `backend.yml` for app-dev — set it via `portalops vars set STRIPE_SECRET_KEY … --env app-dev --yes`). `prod` uses a live-mode key with `--live`, gated.
 
@@ -51,9 +53,9 @@ stripe products list --limit 10
 
 The app records every webhook at `POST /api/webhooks/stripe` (`apps/api/src/routes/webhook.router.ts`) into the **`stripe_events`** table, one row per `event_id`, with an `outcome` of `applied | noop | unmatched | ignored | foreign`. To debug "Stripe says delivered, nothing changed": find the event via `stripe events retrieve <id>`, then check the ledger row's `outcome` (e.g. `foreign` = a subscription owned by another env/account; `unmatched` = no org for that customer). The Stripe dashboard's webhook-endpoint delivery log is the vendor-side record of delivery attempts.
 
-## Price + lookup-key config (operator action, prompt-gated)
+## Price + lookup-key config (require a write key — not agent-auto)
 
-These mutate Stripe — a human runs them; they are **not** in the agent allowlist. Pricing lives in Stripe (resolve, never create from code).
+These mutate Stripe. Per the [safety model](#auth), the gate is the **key**: a read-only restricted key can't run them (Stripe → permissions error); they require a **write-capable** key + deliberate operator intent, and are **not** in the agent allowlist. Do not treat the absence of a prompt as safety. Pricing lives in Stripe (resolve, never create from code).
 
 ```bash
 # New tier price + lookup key
