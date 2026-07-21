@@ -1,6 +1,6 @@
 # portalops — command reference
 
-Machine-oriented reference: enough to operate the CLI without trial and error. Human docs: [README.md](./README.md). Invariants: `--env <name>` **required** on every command (no default); banner `[env: <name> (<kind>)]` on **stderr**; payload (or the `--json` envelope) alone on **stdout**.
+Machine-oriented reference: enough to operate the CLI without trial and error. Human docs: [README.md](./README.md). Agent-operability contract (exit codes, server-enforced guards, auth, audit): [CLAUDE.md → Operating the Portal CLIs](../../CLAUDE.md). Invariants: `--env <name>` **required** on every command (no default); banner `[env: <name> (<kind>)]` on **stderr**; payload (or the `--json` envelope) alone on **stdout**.
 
 ## Exit codes
 
