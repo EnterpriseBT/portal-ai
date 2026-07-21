@@ -45,6 +45,8 @@ The [Coverage](#coverage) section reports `N/D` as a fraction and percent, the l
 
 **Guard convention.** Per-environment guard expectations are not a separate column — they live inline in the `Command` as the flags the task actually needs: `--yes` for `app-dev` (staging) mutations; `--yes --confirm-prod` for the future prod non-destructive case; destructive `prod` operations are shown as blocked, not as a runnable command. There is no actor/role tagging — authentication is configured per-env and the human drives the session, so every operable row is assumed unattended-operable.
 
+**Vendor mutation safety is the credential, not a prompt.** For the vendor CLIs (`aws`/`stripe`/`auth0`), the safety boundary on a mutating row is a **read-scoped credential** — a read-only IAM identity, a restricted read key, or a read-only M2M — that makes the write **server-side-impossible**. It is **not** a Claude Code permission prompt (bypassable per session mode) and **not** the `.claude` allowlist (which only reduces prompts for reads). Run agents/inspection under the read-scoped credential; mutations require an operator with a write-capable credential. Native CLIs (`portalops`/`portalai`) additionally carry the server-enforced `--yes`/`--confirm-prod` guards above. Per the standing rule, safety gates are enforced, not prompted.
+
 **Overlap rule (compose-test).** Native-over-vendor glue is allowed **only** when the native command *composes* vendor primitives into a Portal-domain operation; a thin passthrough of a vendor CLI is rejected (use the vendor CLI directly, per its guide). See [Overlap decisions](#overlap-decisions).
 
 ## AWS
