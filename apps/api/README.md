@@ -26,7 +26,7 @@ Create a `.env` file in the API directory with the following variables:
 PORT=3000
 CORS_ORIGIN=http://localhost:5173
 AUTH0_AUDIENCE=your-auth0-audience
-AUTH0_ISSUER=https://your-domain.auth0.com/
+AUTH0_DOMAIN=your-domain.us.auth0.com
 ```
 
 #### Custom toolpack outbound webhook hardening (phase 6)
