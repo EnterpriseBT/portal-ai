@@ -67,7 +67,16 @@
       "Bash(stripe customers retrieve:*)",
       "Bash(stripe prices list:*)",
       "Bash(stripe prices retrieve:*)",
-      "Bash(stripe products list:*)"
+      "Bash(stripe products list:*)",
+      "Bash(auth0 logs list:*)",
+      "Bash(auth0 logs tail:*)",
+      "Bash(auth0 users search:*)",
+      "Bash(auth0 users show:*)",
+      "Bash(auth0 users roles show:*)",
+      "Bash(auth0 roles list:*)",
+      "Bash(auth0 apps list:*)",
+      "Bash(auth0 apis list:*)",
+      "Bash(auth0 tenants list:*)"
     ]
   }
 }
