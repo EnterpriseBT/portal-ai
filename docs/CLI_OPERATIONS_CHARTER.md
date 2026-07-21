@@ -102,8 +102,8 @@ _Auth: `stripe` CLI with a per-env (restricted) key — test-mode for `local`/`a
 | List products & prices (incl. lookup keys) | configuration | local · app-dev | stripe | `stripe prices list --lookup-keys <key> --json` | yes | [#225](https://github.com/EnterpriseBT/portal-ai/issues/225) | covered |
 | Create a price + lookup key (new / updated tier) | configuration | local · app-dev | stripe | `stripe prices create --product <prod-id> --currency usd --unit-amount <cents> --lookup-key <key>` | yes | [#225](https://github.com/EnterpriseBT/portal-ai/issues/225) | covered |
 | Move a subscription to a new price | configuration | local · app-dev | stripe | `stripe subscriptions update <sub-id> -d "items[0][price]"=<price-id>` | yes | [#225](https://github.com/EnterpriseBT/portal-ai/issues/225) | covered |
-| Forward webhook events to a local endpoint (dev) | logging | local | stripe | `stripe listen --forward-to localhost:3001/api/webhooks/stripe` | yes | [#225](https://github.com/EnterpriseBT/portal-ai/issues/225) | covered |
-| Trigger a test webhook event | maintenance | local · app-dev | stripe | `stripe trigger checkout.session.completed` | yes | [#225](https://github.com/EnterpriseBT/portal-ai/issues/225) | covered |
+| Forward webhook events to a local endpoint (dev) | logging | local | stripe | `stripe listen --forward-to localhost:3001/api/webhooks/stripe` | yes | [#244](https://github.com/EnterpriseBT/portal-ai/issues/244) | covered |
+| Trigger a test webhook event | maintenance | local · app-dev | stripe | `stripe trigger checkout.session.completed` | yes | [#244](https://github.com/EnterpriseBT/portal-ai/issues/244) | covered |
 
 ## Native (`portalops` / `portalai`)
 
