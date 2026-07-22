@@ -160,7 +160,7 @@ describe("tierApply --dry-run (#218 case 3)", () => {
     const result = await tierApply(
       local as never,
       { dryRun: true },
-      { store: factory as never }
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
     );
 
     expect(result.dryRun).toBe(true);
@@ -250,7 +250,7 @@ describe("tierApply convergence (#218 case 5)", () => {
     const result = await tierApply(
       local as never,
       { dryRun: true },
-      { store: factory as never }
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
     );
 
     const standard = result.changes.find((c) => c.slug === "standard")!;
@@ -266,7 +266,7 @@ describe("tierApply convergence (#218 case 5)", () => {
     const result = await tierApply(
       local as never,
       { dryRun: true },
-      { store: factory as never }
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
     );
 
     const standard = result.changes.find((c) => c.slug === "standard")!;
@@ -296,7 +296,7 @@ describe("tierApply converge-declared-only (#218 case 6)", () => {
     const result = await tierApply(
       local as never,
       { yes: true },
-      { store: factory as never }
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
     );
 
     expect(result.unmanaged).toEqual(["enterprise-acme"]);
@@ -316,7 +316,7 @@ describe("tierApply real run (#218 case 7)", () => {
     const result = await tierApply(
       local as never,
       { yes: true },
-      { store: factory as never }
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
     );
 
     expect(result.dryRun).toBe(false);
@@ -347,7 +347,7 @@ describe("tierApply real run (#218 case 7)", () => {
     const result = await tierApply(
       local as never,
       {},
-      { store: factory as never }
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
     );
 
     expect(result.changes[0].action).toBe("noop");

@@ -48,10 +48,15 @@ export const TierCatalogEntrySchema = z.object({
 export type TierCatalogEntry = z.infer<typeof TierCatalogEntrySchema>;
 
 /**
- * The catalog. Initial content is a faithful snapshot of the seeded
- * `standard` row (#172 allocations, #214 generous-beta entitlements).
- * Product/policy changes land here as reviewed PRs, then reach an
- * environment via `portalops tier apply --env <e>`.
+ * The catalog. app-dev is a QA sandbox (#239), so allocation magnitudes are
+ * QA-generous rather than production-graded: `metered` is unlimited (null) so
+ * no metered denial interrupts manual testing, while `expensive` stays finite
+ * to bound the one Portal-billed class (`web_search`→Tavily) even under a
+ * generous quota. `standard` (the non-purchasable default) and `pro` (the
+ * purchasable tier) carry the same policy here — `pro` differs only by having
+ * a `stripeLookupKey`. Meaningful per-tier differentiation is a production
+ * concern; Enterprise/Custom plan is #241. Product/policy changes land here as
+ * reviewed PRs, then reach an environment via `portalops tier apply --env <e>`.
  */
 export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
   z.array(TierCatalogEntrySchema).parse([
@@ -63,15 +68,33 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       overage: "hard-deny",
       freeUnitsPerPeriod: null,
       freeRatePerMin: null,
-      meteredUnitsPerPeriod: 2500,
-      meteredRatePerMin: 20,
-      expensiveUnitsPerPeriod: 300,
-      expensiveRatePerMin: 5,
+      meteredUnitsPerPeriod: null,
+      meteredRatePerMin: null,
+      expensiveUnitsPerPeriod: 1_000_000,
+      expensiveRatePerMin: 10_000,
       perToolCaps: null,
       selectable: true,
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
       customToolpacks: true,
       stripeLookupKey: null,
+    },
+    {
+      slug: "pro",
+      displayName: "Pro",
+      periodKind: "monthly",
+      periodAnchorDay: 1,
+      overage: "hard-deny",
+      freeUnitsPerPeriod: null,
+      freeRatePerMin: null,
+      meteredUnitsPerPeriod: null,
+      meteredRatePerMin: null,
+      expensiveUnitsPerPeriod: 1_000_000,
+      expensiveRatePerMin: 10_000,
+      perToolCaps: null,
+      selectable: true,
+      builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
+      customToolpacks: true,
+      stripeLookupKey: "pro_monthly",
     },
   ])
 );

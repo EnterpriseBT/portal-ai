@@ -19,6 +19,7 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
       "MICROSOFT_OAUTH_CLIENT_SECRET",
       "OAUTH_STATE_SECRET",
       "STRIPE_SECRET_KEY", // #218 tier apply
+      "STRIPE_WEBHOOK_SECRET", // #239 webhook signature verification
       "TAVILY_API_KEY",
     ]);
     expect(byKind("ssm")).toEqual([
@@ -57,6 +58,16 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
     );
     expect(pathFor(appDev, lookupKey("AUTH0_DOMAIN"))).toBe(
       "/portalai/dev/auth0-domain"
+    );
+  });
+
+  it("STRIPE_WEBHOOK_SECRET is a Secrets Manager entry (#239)", () => {
+    expect(lookupKey("STRIPE_WEBHOOK_SECRET")).toMatchObject({
+      kind: "secret",
+      name: "stripe-webhook-secret",
+    });
+    expect(pathFor(appDev, lookupKey("STRIPE_WEBHOOK_SECRET"))).toBe(
+      "portalai/dev/stripe-webhook-secret"
     );
   });
 });

@@ -48,6 +48,7 @@ export const CATALOG: CatalogEntry[] = [
   secret("MICROSOFT_OAUTH_CLIENT_SECRET", "microsoft-oauth-client-secret"),
   secret("OAUTH_STATE_SECRET", "oauth-state-secret"),
   secret("STRIPE_SECRET_KEY", "stripe-secret-key"), // #218 tier apply (rk_ recommended)
+  secret("STRIPE_WEBHOOK_SECRET", "stripe-webhook-secret"), // #239 webhook signature verification
   // ── SSM Parameter Store (config) ─
   ssm("GOOGLE_OAUTH_CLIENT_ID", "google-oauth-client-id"),
   ssm("MICROSOFT_OAUTH_CLIENT_ID", "microsoft-oauth-client-id"),

@@ -68,6 +68,12 @@ Parameters:
   SecretArnOauthStateSecret:
     Type: String
     Description: Full ARN of portalai/{env}/oauth-state-secret secret
+  SecretArnStripeSecretKey:
+    Type: String
+    Description: Full ARN of portalai/{env}/stripe-secret-key secret
+  SecretArnStripeWebhookSecret:
+    Type: String
+    Description: Full ARN of portalai/{env}/stripe-webhook-secret secret
 
 Resources:
   # ── ECR Repository ───────────────────────────────────────
@@ -227,6 +233,8 @@ Resources:
               - !Ref SecretArnGoogleOauthClientSecret
               - !Ref SecretArnMicrosoftOauthClientSecret
               - !Ref SecretArnOauthStateSecret
+              - !Ref SecretArnStripeSecretKey
+              - !Ref SecretArnStripeWebhookSecret
               - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!*"
           - Effect: Allow
             Action:
@@ -486,6 +494,10 @@ Resources:
               ValueFrom: !Ref SecretArnMicrosoftOauthClientSecret
             - Name: OAUTH_STATE_SECRET
               ValueFrom: !Ref SecretArnOauthStateSecret
+            - Name: STRIPE_SECRET_KEY
+              ValueFrom: !Ref SecretArnStripeSecretKey
+            - Name: STRIPE_WEBHOOK_SECRET
+              ValueFrom: !Ref SecretArnStripeWebhookSecret
             - Name: GOOGLE_OAUTH_CLIENT_ID
               ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/google-oauth-client-id"
             - Name: MICROSOFT_OAUTH_CLIENT_ID
