@@ -13,6 +13,9 @@ export const EXIT_CODES: Record<string, number> = {
   ENV_CONFIRMATION_REQUIRED: 5,
   ENV_DESTRUCTIVE_BLOCKED: 6,
   ENV_INFRA_ERROR: 7,
+  // Not-found family (mirrors admin-cli's 8): a declared tier's Stripe
+  // lookup key resolves to no price in the env's account (#254).
+  TIER_APPLY_MISSING_PRICES: 8,
 };
 
 export function exitCodeFor(err: unknown): number {

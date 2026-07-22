@@ -30,6 +30,7 @@ jest.unstable_mockModule("drizzle-orm/postgres-js", () => ({
 
 const { resolveStripeKey, TierApplyMissingPricesError } =
   await import("../stripe.js");
+const { exitCodeFor, jsonError } = await import("../output.js");
 const { lookupKey } = await import("../catalog.js");
 const {
   tierApply,
@@ -145,6 +146,15 @@ describe("TierApplyMissingPricesError (#218)", () => {
     expect(err.message).toContain("pro");
     expect(err.message).toContain("scale");
     expect(err.message).toMatch(/create the price/i);
+  });
+
+  it("carries a typed code → exit 8 + non-UNKNOWN --json envelope (#254)", () => {
+    const err = new TierApplyMissingPricesError(["pro"]);
+    expect(err.code).toBe("TIER_APPLY_MISSING_PRICES");
+    expect(exitCodeFor(err)).toBe(8);
+    const env = JSON.parse(jsonError(err));
+    expect(env.error.code).toBe("TIER_APPLY_MISSING_PRICES");
+    expect(env.error.code).not.toBe("UNKNOWN");
   });
 });
 
