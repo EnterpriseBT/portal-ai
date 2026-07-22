@@ -14,6 +14,7 @@ Machine-oriented reference: enough to operate the CLI without trial and error. H
 | 5 | `ENV_CONFIRMATION_REQUIRED` — missing `--yes` and/or `--confirm-prod` |
 | 6 | `ENV_DESTRUCTIVE_BLOCKED` — destructive op against production (no override exists) |
 | 7 | `ENV_INFRA_ERROR` — AWS / tunnel / psql / ECS failure (message carries the cause) |
+| 8 | `TIER_APPLY_MISSING_PRICES` — a declared tier's Stripe lookup key resolves to no price in the env's account; `tier apply` fails closed before any DB write (not-found family, mirrors admin-cli's 8) |
 
 `--json` errors: `{"error":{"code":"<CODE>","message":"<human text>"}}` on stdout, exit code as above.
 

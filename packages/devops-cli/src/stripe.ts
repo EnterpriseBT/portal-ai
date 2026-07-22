@@ -17,8 +17,12 @@ import {
 export const STRIPE_API_VERSION = "2026-06-24.dahlia";
 
 /** A declared `stripeLookupKey` with no price in the env's account —
- *  apply fails closed before any DB write. */
+ *  apply fails closed before any DB write. Carries a stable `code` so the
+ *  CLI surfaces a typed `--json` envelope + exit code (8, not-found family)
+ *  rather than the generic UNKNOWN/1 (#254). */
 export class TierApplyMissingPricesError extends Error {
+  readonly code = "TIER_APPLY_MISSING_PRICES" as const;
+
   constructor(public readonly missingLookupKeys: string[]) {
     super(
       `No Stripe price found for lookup key(s): ${missingLookupKeys.join(", ")}. ` +
