@@ -75,9 +75,15 @@ Requires the deployed template (path A or B). Perform as the org owner in the ap
 
 ## Sign-off
 
-- [ ] Every section above verified (note path A vs B for §4)
+- [ ] Every section above verified (path **B** chosen — §4 confirmed on the merge auto-deploy)
 - [ ] CI green on PR #253 (`unit-test` + `integration-test`)
 - [ ] __________ (date + name) — confirmed against app-dev + the Stripe sandbox
+
+### Results recorded (evidence — the boxes above remain the operator's to check)
+
+- **CI — green (2026-07-22).** On `fb4be44f`: `Unit Tests` ✅ (run 29944191160) + `Integration Tests` ✅ (run 29944191353). Unit Tests were red on the two prior commits (`952ac692`, `1d6f8a12`) because the #239 catalog change (widened `standard` + added purchasable `pro`) made the default `TIER_CATALOG` carry a `stripeLookupKey`, so six `tierApply` unit cases began hitting the real Stripe resolver with a fixture key — fixed in `fb4be44f` by scoping those cases to a standard-only injected catalog (`test(devops-cli)`). Filed follow-up [#254](https://github.com/EnterpriseBT/portal-ai/issues/254) for the missing-price `code:"UNKNOWN"`/exit-1 nit surfaced by §6 box 1 (behavior correct; typed-code granularity only).
+- **Local §4 — bonus pre-verification (2026-07-22), NOT the app-dev gate.** Full checkout→webhook→convergence loop passed against the **local test-mode** Stripe account (`acct_1TtUZIBIP9e8yBAe`, product `Pro (Local)`, `$9`): `customer.subscription.created` → **`200`** (signature verified), and org `My Organization` converged to `pro` (`sub_1Tw428BIP9e8yBAefSfqDCXv`, fresh `cus_UvvtD0ceicqtxZ`). This exercises the same handler logic AC-1/AC-2 rely on; **app-dev §4 is still to be confirmed on the merge deploy (path B).**
+- **App-dev §1–§3, §5, §6 box 1 — verified pre-merge (2026-07-22)** against the app-dev Stripe **sandbox** (`acct_1TtUgoLKUJkEyCTp`): Pro price `price_1Tw2PeLKUJkEyCTpOG2b2ezg`, secrets + GitHub ARNs delivered in order, `tier apply` converged (`pro`/`standard` rows as specified), fail-closed confirmed.
 
 **Gate:** PR #253 merges only when CI is green **and** this walkthrough is confirmed. Enterprise/Custom plan (#241) is out of scope.
 
