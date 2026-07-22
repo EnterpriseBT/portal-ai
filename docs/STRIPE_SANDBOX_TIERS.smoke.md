@@ -13,8 +13,8 @@ Manual smoke test for [#239](https://github.com/EnterpriseBT/portal-ai/issues/23
 ### Environment
 
 - [ ] `git checkout feat/stripe-sandbox-tiers && git pull --ff-only`
-- [ ] `npm install`; **rebuild the CLI** — `npm run build -w @portalai/devops-cli` (⚠️ `npx portalops` runs `dist/`, not `src/`; the new `STRIPE_WEBHOOK_SECRET` key won't resolve until you rebuild).
-- [ ] **AWS creds for app-dev** reach the JS SDK. In this devcontainer: `aws login --remote` in a real terminal, then `eval "$(aws configure export-credentials --format env)"`. Verify: `npx portalops vars describe --env app-dev` prints the catalog (now **18** keys, `STRIPE_WEBHOOK_SECRET` present).
+- [ ] `npm install`; **rebuild the CLI _and_ core** — `npm run build -w @portalai/core -w @portalai/devops-cli` (or just `npm run build`). ⚠️ `npx portalops` runs `dist/`, not `src/`, for **both** packages: the new `STRIPE_WEBHOOK_SECRET` key won't resolve until `devops-cli` is rebuilt, and `tier apply` reads the widened `standard` + new `pro` rows from `TIER_CATALOG` in `@portalai/core` — a stale `core/dist` makes the dry-run show old allocations and omit `pro`.
+- [ ] **AWS creds for app-dev** reach the JS SDK. In this devcontainer: `aws login --remote` in a real terminal, then `eval "$(aws configure export-credentials --format env)"`. Verify: `npx portalops vars describe --env app-dev` prints the catalog (now **19** keys — 10 secrets + 9 SSM — `STRIPE_WEBHOOK_SECRET` present at `portalai/dev/stripe-webhook-secret`).
 - [ ] **Stripe sandbox access** — `stripe` CLI logged into the *sandbox* account (`stripe config --list` shows the sandbox, or use `--api-key sk_test_…`), and dashboard access to the same sandbox. Confirm it is a sandbox, not live.
 - [ ] No migration; no schema change (spec §Migration).
 
