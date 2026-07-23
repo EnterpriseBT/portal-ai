@@ -2,6 +2,7 @@ import React from "react";
 
 import Chip from "@mui/material/Chip";
 import Link from "@mui/material/Link";
+import WorkspacePremium from "@mui/icons-material/WorkspacePremium";
 import {
   Box,
   Button,
@@ -126,7 +127,21 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
           width: "100%",
         }}
       >
-        <Stack spacing={1} alignItems="flex-start">
+        <Stack
+          spacing={1}
+          alignItems={isContactTeaser ? "center" : "flex-start"}
+        >
+          {/* Decorative flourish for the Enterprise teaser — makes the
+              highest-value plan read as premium rather than empty. */}
+          {isContactTeaser && (
+            <WorkspacePremium
+              color="primary"
+              aria-hidden
+              data-testid="enterprise-teaser-icon"
+              sx={{ fontSize: 48, mt: 1 }}
+            />
+          )}
+
           <Stack direction="row" spacing={1} alignItems="center">
             <Typography variant="h3" sx={{ fontSize: "1.1rem" }}>
               {title}
@@ -139,6 +154,13 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
           <Typography variant="body2" color="text.secondary">
             {priceLine}
           </Typography>
+
+          {isContactTeaser && (
+            <Typography variant="body2" color="text.secondary" align="center">
+              Allocations, toolpack entitlements, and support tailored to your
+              organization — not a fixed self-serve plan.
+            </Typography>
+          )}
 
           {tier.description && !isContactTeaser && (
             <Typography variant="body2">{tier.description}</Typography>
@@ -193,11 +215,26 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
             )}
 
           {cta === "contact" && (
-            <Link href={SUPPORT_MAILTO} variant="body2">
-              {isCurrentPlan
-                ? "Contact support to manage/update your plan"
-                : "Contact support"}
-            </Link>
+            <Stack
+              spacing={0.5}
+              alignItems={isContactTeaser ? "center" : "flex-start"}
+            >
+              <Link href={SUPPORT_MAILTO} variant="body2">
+                {isCurrentPlan
+                  ? "Contact support to manage/update your plan"
+                  : "Contact support"}
+              </Link>
+              {isContactTeaser && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  align="center"
+                >
+                  Reach out to our team to scope a plan for your volume and
+                  needs.
+                </Typography>
+              )}
+            </Stack>
           )}
         </Box>
       </CardContent>
