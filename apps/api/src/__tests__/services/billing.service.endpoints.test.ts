@@ -30,7 +30,8 @@ jest.unstable_mockModule("../../services/stripe.service.js", () => ({
 
 const mockFindBySlug =
   jest.fn<(slug: string) => Promise<Record<string, unknown> | undefined>>();
-const mockFindSelectable = jest.fn<() => Promise<Record<string, unknown>[]>>();
+const mockFindSelectableForOrg =
+  jest.fn<(orgId: string) => Promise<Record<string, unknown>[]>>();
 const mockOrgUpdate =
   jest.fn<(...args: unknown[]) => Promise<Record<string, unknown>>>();
 
@@ -40,7 +41,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       organizations: { update: mockOrgUpdate },
       tiers: {
         findBySlug: mockFindBySlug,
-        findSelectable: mockFindSelectable,
+        findSelectableForOrg: mockFindSelectableForOrg,
       },
     },
     transaction: (fn: (tx: unknown) => Promise<unknown>) => fn({}),
@@ -96,6 +97,11 @@ function tierRow(slug: string, overrides: Record<string, unknown> = {}) {
     perToolCaps: null,
     stripePriceId: null,
     selectable: false,
+    builtinToolpacks: ["data_query"],
+    customToolpacks: true,
+    cta: "none",
+    description: null,
+    visibleToOrganizationId: null,
     ...overrides,
   };
 }
@@ -104,6 +110,8 @@ const standardTier = tierRow("standard", { selectable: true });
 const proTier = tierRow("pro", {
   selectable: true,
   stripePriceId: "price_pro",
+  cta: "subscribe",
+  description: "Everything in Standard, plus more.",
 });
 
 beforeEach(() => {
@@ -125,7 +133,9 @@ beforeEach(() => {
     if (slug === "pro") return proTier;
     return undefined;
   });
-  mockFindSelectable.mockReset().mockResolvedValue([standardTier, proTier]);
+  mockFindSelectableForOrg
+    .mockReset()
+    .mockResolvedValue([standardTier, proTier]);
   mockOrgUpdate.mockReset().mockResolvedValue({});
 });
 
@@ -317,34 +327,49 @@ describe("BillingService.createPortal", () => {
 
 // ── plan list mapping ────────────────────────────────────────────────
 
-describe("BillingService.listBillingTiers", () => {
-  it("maps selectable rows: purchasable iff priced; price null-degrades", async () => {
-    const tiers = await BillingService.listBillingTiers();
+describe("BillingService.listBillingTiers (#241)", () => {
+  // ── case 11: full policy + blurb + cta projection ───────────────────
+  it("projects the full policy, blurb, and cta; only the subscribe tier hits Stripe", async () => {
+    const tiers = await BillingService.listBillingTiers("org-1");
+
+    // Org-scoped finder is the source (isolation lives in the query).
+    expect(mockFindSelectableForOrg).toHaveBeenCalledWith("org-1");
 
     expect(tiers).toEqual([
       expect.objectContaining({
         slug: "standard",
-        purchasable: false,
+        cta: "none",
+        description: null,
         price: null,
+        policy: expect.objectContaining({
+          allocations: expect.objectContaining({
+            metered: { unitsPerPeriod: 1000, ratePerMin: 20 },
+          }),
+          entitlements: {
+            builtinToolpacks: ["data_query"],
+            customToolpacks: true,
+          },
+          overage: "hard-deny",
+          period: { kind: "monthly", anchorDay: 1 },
+        }),
       }),
       expect.objectContaining({
         slug: "pro",
-        purchasable: true,
+        cta: "subscribe",
+        description: "Everything in Standard, plus more.",
         price: { unitAmount: 4900, currency: "usd", interval: "month" },
-        allocations: expect.objectContaining({
-          metered: { unitsPerPeriod: 1000, ratePerMin: 20 },
-        }),
       }),
     ]);
-    // Only the priced tier hits Stripe.
+    // Only the priced (subscribe) tier hits Stripe.
     expect(mockGetPrice).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps purchasable true when the price display degrades (Stripe outage)", async () => {
+  // ── case 13: price degrades, cta stays truthful ─────────────────────
+  it("null-degrades the price on a Stripe outage without changing cta", async () => {
     mockGetPrice.mockResolvedValue(null);
 
-    const tiers = await BillingService.listBillingTiers();
+    const tiers = await BillingService.listBillingTiers("org-1");
     const pro = tiers.find((t) => t.slug === "pro");
-    expect(pro).toMatchObject({ purchasable: true, price: null });
+    expect(pro).toMatchObject({ cta: "subscribe", price: null });
   });
 });

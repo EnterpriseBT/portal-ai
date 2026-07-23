@@ -136,9 +136,11 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
                     {tier.displayName}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {tier.purchasable ? formatPrice(tier.price) : "Free"}
+                    {tier.cta === "subscribe"
+                      ? formatPrice(tier.price)
+                      : "Free"}
                   </Typography>
-                  {tier.purchasable &&
+                  {tier.cta === "subscribe" &&
                     withOwnerGate(
                       isOwner,
                       <Button

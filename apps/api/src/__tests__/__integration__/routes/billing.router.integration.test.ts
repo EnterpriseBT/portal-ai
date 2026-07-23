@@ -1,7 +1,9 @@
 /**
- * Integration tests for the billing router (#176 slice 4, cases 26–27):
- * the plan list through the real app mounting, and the member/owner authz
- * split. Stripe price reads are stubbed via `jest.spyOn` (no network).
+ * Integration tests for the billing router: the enriched, org-scoped plan
+ * list (#241, cases 14–15) through the real app mounting — full policy per
+ * tier, `cta`, blurb, multi-tenant isolation (another org's private custom
+ * tier is excluded) — plus the member/owner authz split. Stripe price reads
+ * are stubbed via `jest.spyOn` (no network).
  */
 
 import {
@@ -56,6 +58,11 @@ const OWNER_AUTH0 = `auth0|billing-owner-${generateId().slice(0, 8)}`;
 const MEMBER_AUTH0 = `auth0|billing-member-${generateId().slice(0, 8)}`;
 const PRO_SLUG = "test-billing-pro";
 const CUSTOM_SLUG = "test-billing-custom";
+// #241: a custom tier scoped to the caller's org (appears) and one scoped to
+// a different org (must NOT appear — multi-tenant isolation).
+const SCOPED_SLUG = "test-billing-scoped-mine";
+const OTHER_SCOPED_SLUG = "test-billing-scoped-other";
+const ALL_TEST_SLUGS = [PRO_SLUG, CUSTOM_SLUG, SCOPED_SLUG, OTHER_SCOPED_SLUG];
 
 function testTier(slug: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -96,32 +103,48 @@ describe("Billing router", () => {
     connection = postgres(process.env.DATABASE_URL, { max: 1 });
     db = drizzle(connection, { schema });
 
-    await teardownOrg(db);
-    for (const slug of [PRO_SLUG, CUSTOM_SLUG]) {
+    // Tiers first (their FK → organizations blocks the org teardown otherwise).
+    for (const slug of ALL_TEST_SLUGS) {
       await db.delete(schema.tiers).where(eq(schema.tiers.slug, slug));
     }
-
-    // Plan-list fixtures: a priced selectable tier + an unlisted custom one.
-    await db.insert(schema.tiers).values(
-      testTier(PRO_SLUG, {
-        selectable: true,
-        stripePriceId: "price_billing_pro",
-      }) as never
-    );
-    await db.insert(schema.tiers).values(testTier(CUSTOM_SLUG) as never);
+    await teardownOrg(db);
 
     const owner = createUser(OWNER_AUTH0);
     const member = createUser(MEMBER_AUTH0);
     await db.insert(schema.users).values(owner as never);
     await db.insert(schema.users).values(member as never);
     const org = createOrganization(owner.id);
-    await db.insert(schema.organizations).values(org as never);
+    const otherOrg = createOrganization(owner.id);
+    await db.insert(schema.organizations).values([org, otherOrg] as never);
     await db
       .insert(schema.organizationUsers)
       .values(createOrganizationUser(org.id, owner.id) as never);
     await db
       .insert(schema.organizationUsers)
       .values(createOrganizationUser(org.id, member.id) as never);
+
+    // Plan-list fixtures: a public priced `subscribe` tier, an unlisted custom
+    // one, a custom tier scoped to the caller's org, and one scoped to another.
+    await db.insert(schema.tiers).values([
+      testTier(PRO_SLUG, {
+        selectable: true,
+        stripePriceId: "price_billing_pro",
+        cta: "subscribe",
+        description: "Everything in Standard, plus more.",
+      }),
+      testTier(CUSTOM_SLUG),
+      testTier(SCOPED_SLUG, {
+        selectable: true,
+        cta: "contact",
+        description: "Tailored to your org.",
+        visibleToOrganizationId: org.id,
+      }),
+      testTier(OTHER_SCOPED_SLUG, {
+        selectable: true,
+        cta: "contact",
+        visibleToOrganizationId: otherOrg.id,
+      }),
+    ] as never);
 
     currentAuth0Id = OWNER_AUTH0;
     priceSpy = jest.spyOn(StripeService, "getPrice").mockResolvedValue({
@@ -133,60 +156,70 @@ describe("Billing router", () => {
 
   afterEach(async () => {
     priceSpy.mockRestore();
-    await teardownOrg(db);
-    for (const slug of [PRO_SLUG, CUSTOM_SLUG]) {
+    // Tiers before orgs — the visible_to_organization_id FK blocks otherwise.
+    for (const slug of ALL_TEST_SLUGS) {
       await db.delete(schema.tiers).where(eq(schema.tiers.slug, slug));
     }
+    await teardownOrg(db);
     await connection.end();
   });
 
   // ── case 26 ─────────────────────────────────────────────────────────
 
   describe("GET /api/billing/tiers", () => {
-    it("returns only selectable tiers; standard unpurchasable; live price on the priced one", async () => {
+    type WireTier = {
+      slug: string;
+      cta: string;
+      description: string | null;
+      price: unknown;
+      policy: { allocations: Record<string, unknown> };
+    };
+
+    // ── case 14: enriched, org-scoped payload ─────────────────────────
+    it("returns the enriched policy per tier, scoped to the caller's org", async () => {
       const res = await request(app).get("/api/billing/tiers");
 
       expect(res.status).toBe(200);
-      const tiers = res.body.payload.tiers as Array<{
-        slug: string;
-        purchasable: boolean;
-        price: unknown;
-        allocations: Record<string, unknown>;
-      }>;
-
+      const tiers = res.body.payload.tiers as WireTier[];
       const slugs = tiers.map((t) => t.slug);
+
+      // Public + the caller's own custom tier are listed; the unlisted custom
+      // tier and ANOTHER org's private tier are not (multi-tenant isolation).
       expect(slugs).toContain("standard");
       expect(slugs).toContain(PRO_SLUG);
+      expect(slugs).toContain(SCOPED_SLUG);
       expect(slugs).not.toContain(CUSTOM_SLUG);
+      expect(slugs).not.toContain(OTHER_SCOPED_SLUG);
 
       const standard = tiers.find((t) => t.slug === "standard")!;
-      expect(standard.purchasable).toBe(false);
+      expect(standard.cta).toBe("none");
       expect(standard.price).toBeNull();
 
       const pro = tiers.find((t) => t.slug === PRO_SLUG)!;
-      expect(pro.purchasable).toBe(true);
+      expect(pro.cta).toBe("subscribe");
+      expect(pro.description).toBe("Everything in Standard, plus more.");
       expect(pro.price).toEqual({
         unitAmount: 4900,
         currency: "usd",
         interval: "month",
       });
-      expect(pro.allocations).toHaveProperty("metered");
+      expect(pro.policy.allocations).toHaveProperty("metered");
+
+      const scoped = tiers.find((t) => t.slug === SCOPED_SLUG)!;
+      expect(scoped.cta).toBe("contact");
+      expect(scoped.price).toBeNull();
     });
 
-    it("null-degrades the price (purchasable stays true) when the Stripe read fails", async () => {
+    it("null-degrades the price (cta stays subscribe) when the Stripe read fails", async () => {
       priceSpy.mockResolvedValue(null as never);
 
       const res = await request(app).get("/api/billing/tiers");
 
       expect(res.status).toBe(200);
-      const pro = (
-        res.body.payload.tiers as Array<{
-          slug: string;
-          purchasable: boolean;
-          price: unknown;
-        }>
-      ).find((t) => t.slug === PRO_SLUG)!;
-      expect(pro.purchasable).toBe(true);
+      const pro = (res.body.payload.tiers as WireTier[]).find(
+        (t) => t.slug === PRO_SLUG
+      )!;
+      expect(pro.cta).toBe("subscribe");
       expect(pro.price).toBeNull();
     });
   });

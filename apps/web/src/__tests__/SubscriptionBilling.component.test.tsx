@@ -35,25 +35,34 @@ const { SubscriptionBilling, SubscriptionBillingUI } =
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
-const allocations = {
-  free: { unitsPerPeriod: null, ratePerMin: null },
-  metered: { unitsPerPeriod: 2500, ratePerMin: 20 },
-  expensive: { unitsPerPeriod: 300, ratePerMin: 5 },
-};
+const policy = (tier: string) => ({
+  tier,
+  period: { kind: "monthly" as const, anchorDay: 1 },
+  allocations: {
+    free: { unitsPerPeriod: null, ratePerMin: null },
+    metered: { unitsPerPeriod: 2500, ratePerMin: 20 },
+    expensive: { unitsPerPeriod: 300, ratePerMin: 5 },
+  },
+  perToolCaps: null,
+  overage: "hard-deny" as const,
+  entitlements: { builtinToolpacks: ["data_query"], customToolpacks: true },
+});
 
 const standardTier: BillingTier = {
   slug: "standard",
   displayName: "Standard",
-  allocations,
-  purchasable: false,
+  policy: policy("standard"),
+  description: null,
+  cta: "none",
   price: null,
 };
 
 const proTier: BillingTier = {
   slug: "pro",
   displayName: "Pro",
-  allocations,
-  purchasable: true,
+  policy: policy("pro"),
+  description: null,
+  cta: "subscribe",
   price: { unitAmount: 4900, currency: "usd", interval: "month" },
 };
 
