@@ -25,6 +25,7 @@ import {
   GETTING_STARTED_STEPS,
   type GettingStartedStep,
 } from "../utils/getting-started.util";
+import { SUPPORT_MAILTO } from "../utils/tier-format.util";
 import {
   GLOSSARY_CATEGORY_LABELS,
   GLOSSARY_ENTRIES,
@@ -129,7 +130,7 @@ export const HelpViewUI: React.FC<HelpViewUIProps> = ({
         <PageHeader title="Help" icon={<Icon name={IconName.HelpOutline} />}>
           <Typography variant="caption" color="text.secondary">
             For any issues or questions, email{" "}
-            <Link href="mailto:ben.turner@btdev.io">ben.turner@btdev.io</Link>.
+            <Link href={SUPPORT_MAILTO}>ben.turner@btdev.io</Link>.
           </Typography>
         </PageHeader>
 

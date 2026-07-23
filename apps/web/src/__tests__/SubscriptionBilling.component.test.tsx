@@ -66,10 +66,20 @@ const proTier: BillingTier = {
   price: { unitAmount: 4900, currency: "usd", interval: "month" },
 };
 
+const contactTier: BillingTier = {
+  slug: "acme_enterprise",
+  displayName: "Acme Enterprise",
+  policy: { ...policy("acme_enterprise") },
+  description: "Tailored to Acme.",
+  cta: "contact",
+  price: null,
+};
+
 const baseUIProps = {
   state: "unsubscribed" as const,
   isOwner: true,
   currentTierName: "Standard",
+  currentTierSlug: "standard",
   tiers: [standardTier, proTier],
   onSubscribe: jest.fn(),
   onManage: jest.fn(),
@@ -126,6 +136,22 @@ describe("SubscriptionBillingUI — unsubscribed", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /subscribe/i }));
     expect(onSubscribe).toHaveBeenCalledWith("pro");
+  });
+
+  // #241: a contact (custom) tier in the list renders a Contact-support card.
+  it("renders a contact tier's Contact support CTA and flags the current plan", () => {
+    render(
+      <SubscriptionBillingUI
+        {...baseUIProps}
+        tiers={[standardTier, proTier, contactTier]}
+      />
+    );
+
+    expect(
+      screen.getByRole("link", { name: /^contact support$/i })
+    ).toHaveAttribute("href", "mailto:ben.turner@btdev.io");
+    // The current plan (standard) is chip-flagged.
+    expect(screen.getByText("Current plan")).toBeInTheDocument();
   });
 });
 

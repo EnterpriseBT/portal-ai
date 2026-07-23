@@ -1,19 +1,12 @@
 import React from "react";
 
 import Alert from "@mui/material/Alert";
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Stack,
-  Tooltip,
-  Typography,
-} from "@portalai/core/ui";
+import { Box, Button, Stack, Tooltip, Typography } from "@portalai/core/ui";
 
 import { sdk } from "../api/sdk";
 import { DataResult } from "./DataResult.component";
 import { FormAlert } from "./FormAlert.component";
+import { TierCardUI } from "./TierCard.component";
 import { toServerError, type ServerError } from "../utils/api.util";
 
 import type { BillingTier } from "@portalai/core/contracts";
@@ -27,17 +20,6 @@ const formatTierSlug = (slug: string): string =>
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
-
-/** "$49 / month" from a live price; "—" when display-degraded. */
-const formatPrice = (price: BillingTier["price"]): string => {
-  if (!price) return "—";
-  const amount = new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: price.currency.toUpperCase(),
-    minimumFractionDigits: price.unitAmount % 100 === 0 ? 0 : 2,
-  }).format(price.unitAmount / 100);
-  return `${amount} / ${price.interval}`;
-};
 
 const OWNER_ONLY_TOOLTIP = "Only the organization owner can manage billing";
 
@@ -69,6 +51,8 @@ export interface SubscriptionBillingUIProps {
   isOwner: boolean;
   /** Human label of the org's current plan. */
   currentTierName: string;
+  /** The org's current plan slug — flags the matching card. */
+  currentTierSlug: string;
   /** The self-serve plan list (rendered only when unsubscribed). */
   tiers: BillingTier[];
   onSubscribe: (tierSlug: string) => void;
@@ -82,6 +66,7 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
   state,
   isOwner,
   currentTierName,
+  currentTierSlug,
   tiers,
   onSubscribe,
   onManage,
@@ -129,32 +114,14 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
           alignItems="stretch"
         >
           {tiers.map((tier) => (
-            <Card key={tier.slug} variant="outlined" sx={{ minWidth: 220 }}>
-              <CardContent>
-                <Stack spacing={1} alignItems="flex-start">
-                  <Typography variant="h3" sx={{ fontSize: "1.1rem" }}>
-                    {tier.displayName}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {tier.cta === "subscribe"
-                      ? formatPrice(tier.price)
-                      : "Free"}
-                  </Typography>
-                  {tier.cta === "subscribe" &&
-                    withOwnerGate(
-                      isOwner,
-                      <Button
-                        type="button"
-                        variant="contained"
-                        disabled={!isOwner || isPending}
-                        onClick={() => onSubscribe(tier.slug)}
-                      >
-                        {isPending ? "Redirecting…" : "Subscribe"}
-                      </Button>
-                    )}
-                </Stack>
-              </CardContent>
-            </Card>
+            <TierCardUI
+              key={tier.slug}
+              tier={tier}
+              isCurrentPlan={tier.slug === currentTierSlug}
+              isOwner={isOwner}
+              isPending={isPending}
+              onSubscribe={onSubscribe}
+            />
           ))}
         </Stack>
         {/* #217: display-only — Stripe Tax computes the actual amount at
@@ -198,8 +165,10 @@ export const SubscriptionBilling: React.FC = () => {
         const { organization } = organizationResult;
         const { tiers } = tiersResult;
 
-        // State derivation (spec D5): a live subscription wins; otherwise a
-        // tier outside the selectable list means a managed custom plan.
+        // State derivation (spec D5/#241 D6): a live subscription wins;
+        // otherwise a current tier absent from the org-scoped list is a
+        // managed custom plan (the fallback banner). A listed custom tier the
+        // org is on renders as its own current-plan card, not "managed".
         const subscribed = organization.stripeSubscriptionId != null;
         const managed =
           !subscribed && !tiers.some((t) => t.slug === organization.tier);
@@ -221,6 +190,7 @@ export const SubscriptionBilling: React.FC = () => {
               profileResult.userId === organization.ownerUserId
             }
             currentTierName={currentTierName}
+            currentTierSlug={organization.tier}
             tiers={tiers}
             onSubscribe={handleSubscribe}
             onManage={handleManage}
