@@ -103,6 +103,20 @@ describe("BillingTiersGetResponseSchema", () => {
   });
 });
 
+describe("BillingPortalRequestSchema (#260)", () => {
+  it("accepts a target tier, an empty body (Manage), and rejects a non-string tier", async () => {
+    const { BillingPortalRequestSchema } =
+      await import("../../contracts/billing.contract.js");
+    expect(BillingPortalRequestSchema.safeParse({ tier: "pro" }).success).toBe(
+      true
+    );
+    expect(BillingPortalRequestSchema.safeParse({}).success).toBe(true);
+    expect(BillingPortalRequestSchema.safeParse({ tier: 1 }).success).toBe(
+      false
+    );
+  });
+});
+
 describe("billing request/response contracts", () => {
   it("BillingCheckoutRequestSchema parses a tier slug", () => {
     expect(

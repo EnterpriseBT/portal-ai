@@ -50,6 +50,14 @@ export type BillingCheckoutRequest = z.infer<
   typeof BillingCheckoutRequestSchema
 >;
 
+/** Request body for `POST /api/billing/portal` (#260). No `tier` → Manage
+ *  (portal home). A `tier` → open the subscription-update flow to that tier's
+ *  price (in-app upgrade/downgrade). */
+export const BillingPortalRequestSchema = z.object({
+  tier: z.string().optional(),
+});
+export type BillingPortalRequest = z.infer<typeof BillingPortalRequestSchema>;
+
 /** Response payload for `POST /api/billing/checkout` — hosted session URL. */
 export const BillingCheckoutResponseSchema = z.object({ url: z.string() });
 export type BillingCheckoutResponse = z.infer<

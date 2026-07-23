@@ -39,6 +39,7 @@ import {
   BillingTiersGetResponseSchema,
   BillingCheckoutRequestSchema,
   BillingCheckoutResponseSchema,
+  BillingPortalRequestSchema,
   BillingPortalResponseSchema,
   UsageLedgerListResponseSchema,
   MaintenanceStatusResponseSchema,
@@ -228,6 +229,10 @@ const billingSchemas: Record<string, unknown> = {
   ),
   BillingCheckoutResponse: z.toJSONSchema(
     BillingCheckoutResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  BillingPortalRequest: z.toJSONSchema(
+    BillingPortalRequestSchema,
     JSON_SCHEMA_OPTS
   ),
   BillingPortalResponse: z.toJSONSchema(

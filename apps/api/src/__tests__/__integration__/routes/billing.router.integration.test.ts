@@ -95,6 +95,7 @@ describe("Billing router", () => {
   let connection!: ReturnType<typeof postgres>;
   let db!: ReturnType<typeof drizzle>;
   let priceSpy!: ReturnType<typeof jest.spyOn>;
+  let orgId!: string;
 
   beforeEach(async () => {
     if (!process.env.DATABASE_URL) {
@@ -114,6 +115,7 @@ describe("Billing router", () => {
     await db.insert(schema.users).values(owner as never);
     await db.insert(schema.users).values(member as never);
     const org = createOrganization(owner.id);
+    orgId = org.id;
     const otherOrg = createOrganization(owner.id);
     await db.insert(schema.organizations).values([org, otherOrg] as never);
     await db
@@ -265,6 +267,66 @@ describe("Billing router", () => {
 
     it("400s a malformed checkout body before resolving anything", async () => {
       const res = await request(app).post("/api/billing/checkout").send({});
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.BILLING_INVALID_PAYLOAD);
+    });
+  });
+
+  // ── #260: in-app plan switch via the portal ─────────────────────────
+  describe("POST /api/billing/portal — switch flow", () => {
+    let portalSpy!: ReturnType<typeof jest.spyOn>;
+    let subSpy!: ReturnType<typeof jest.spyOn>;
+
+    beforeEach(async () => {
+      // Give the caller's org a live customer + subscription so a switch is valid.
+      await db
+        .update(schema.organizations)
+        .set({
+          stripeCustomerId: "cus_switch",
+          stripeSubscriptionId: "sub_switch",
+        })
+        .where(eq(schema.organizations.id, orgId));
+      portalSpy = jest
+        .spyOn(StripeService, "createPortalSession")
+        .mockResolvedValue({
+          url: "https://billing.stripe.com/p/switch",
+        } as never);
+      subSpy = jest
+        .spyOn(StripeService, "fetchSubscription")
+        .mockResolvedValue({ items: { data: [{ id: "si_switch" }] } } as never);
+    });
+
+    afterEach(() => {
+      portalSpy.mockRestore();
+      subSpy.mockRestore();
+    });
+
+    // ── case 7 ────────────────────────────────────────────────────────
+    it("opens the subscription-update flow for a target tier; bodyless = Manage", async () => {
+      const res = await request(app)
+        .post("/api/billing/portal")
+        .send({ tier: PRO_SLUG });
+      expect(res.status).toBe(200);
+      expect(res.body.payload.url).toBe("https://billing.stripe.com/p/switch");
+      expect(portalSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subscriptionUpdate: expect.objectContaining({
+            subscriptionId: "sub_switch",
+            itemId: "si_switch",
+            priceId: "price_billing_pro",
+          }),
+        })
+      );
+
+      const manage = await request(app).post("/api/billing/portal");
+      expect(manage.status).toBe(200);
+    });
+
+    // ── case 8 ────────────────────────────────────────────────────────
+    it("400s a malformed body (non-string tier)", async () => {
+      const res = await request(app)
+        .post("/api/billing/portal")
+        .send({ tier: 5 });
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.BILLING_INVALID_PAYLOAD);
     });
