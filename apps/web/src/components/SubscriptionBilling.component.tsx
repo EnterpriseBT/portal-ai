@@ -3,14 +3,6 @@ import React from "react";
 import Alert from "@mui/material/Alert";
 import { Box, Button, Stack, Tooltip, Typography } from "@portalai/core/ui";
 
-/** Column counts by breakpoint — fills the container, capped at 4 (#241). */
-const CARD_GRID_COLUMNS = {
-  xs: "1fr",
-  sm: "repeat(2, minmax(0, 1fr))",
-  md: "repeat(3, minmax(0, 1fr))",
-  lg: "repeat(4, minmax(0, 1fr))",
-} as const;
-
 import { sdk } from "../api/sdk";
 import { DataResult } from "./DataResult.component";
 import { FormAlert } from "./FormAlert.component";
@@ -20,6 +12,14 @@ import { toServerError, type ServerError } from "../utils/api.util";
 import type { BillingTier } from "@portalai/core/contracts";
 
 // ── Helpers ──────────────────────────────────────────────────────────
+
+/** Column counts by breakpoint — fills the container, capped at 4 (#241). */
+const CARD_GRID_COLUMNS = {
+  xs: "1fr",
+  sm: "repeat(2, minmax(0, 1fr))",
+  md: "repeat(3, minmax(0, 1fr))",
+  lg: "repeat(4, minmax(0, 1fr))",
+} as const;
 
 /** Present a tier slug as a human label, e.g. "enterprise-acme" → "Enterprise Acme". */
 const formatTierSlug = (slug: string): string =>
