@@ -111,6 +111,8 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
         <Stack
           direction={{ xs: "column", sm: "row" }}
           spacing={2}
+          useFlexGap
+          flexWrap="wrap"
           alignItems="stretch"
         >
           {tiers.map((tier) => (
