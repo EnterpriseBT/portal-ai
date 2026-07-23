@@ -50,7 +50,7 @@ Log in and open **Settings → Subscription & Billing**.
 - [ ] The current plan (Standard) card carries a **"Current plan"** chip, and the header line reads **Current plan: Standard**.
 - [ ] (If `pro` converged) the **Pro** card shows a live price (e.g. **"$49 / month"**) and an enabled **Subscribe** button; its full policy grid renders too.
 - [ ] Give a tier a blurb (see §5) and reload — the blurb paragraph appears under the price. A tier with **no** blurb renders cleanly (no empty paragraph).
-- [ ] **Responsiveness:** with 3+ cards in a narrow Settings section, the cards **wrap** onto the next line — they do not force a horizontal scroll outside the page section. (Fixed during the smoke walk: `SubscriptionBillingUI`'s card row uses `flexWrap: "wrap"` + `useFlexGap`.)
+- [ ] **Responsiveness:** the cards fill the container as a responsive grid — **1 col (xs) → 2 (sm) → 3 (md) → 4 (lg+, capped)** — equal height, no horizontal scroll and no ragged trailing gap. (Fixed during the smoke walk: `SubscriptionBillingUI` uses a CSS grid with `1fr` columns; `TierCardUI` no longer sets a `minWidth`, so the grid cell owns width.)
 
 ## §3 — Custom tier is org-scoped data + Contact-support teaser (AC: custom appears only to its org, no Subscribe)
 

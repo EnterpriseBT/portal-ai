@@ -3,6 +3,14 @@ import React from "react";
 import Alert from "@mui/material/Alert";
 import { Box, Button, Stack, Tooltip, Typography } from "@portalai/core/ui";
 
+/** Column counts by breakpoint — fills the container, capped at 4 (#241). */
+const CARD_GRID_COLUMNS = {
+  xs: "1fr",
+  sm: "repeat(2, minmax(0, 1fr))",
+  md: "repeat(3, minmax(0, 1fr))",
+  lg: "repeat(4, minmax(0, 1fr))",
+} as const;
+
 import { sdk } from "../api/sdk";
 import { DataResult } from "./DataResult.component";
 import { FormAlert } from "./FormAlert.component";
@@ -108,12 +116,13 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
 
     {state === "unsubscribed" && (
       <Stack spacing={1}>
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          spacing={2}
-          useFlexGap
-          flexWrap="wrap"
-          alignItems="stretch"
+        <Box
+          sx={{
+            display: "grid",
+            gap: 2,
+            gridTemplateColumns: CARD_GRID_COLUMNS,
+            alignItems: "stretch",
+          }}
         >
           {tiers.map((tier) => (
             <TierCardUI
@@ -125,7 +134,7 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
               onSubscribe={onSubscribe}
             />
           ))}
-        </Stack>
+        </Box>
         {/* #217: display-only — Stripe Tax computes the actual amount at
             checkout from the billing address. */}
         <Typography variant="caption" color="text.secondary">

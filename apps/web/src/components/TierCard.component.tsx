@@ -98,7 +98,7 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
   const packNames = entitlementPackNames(policy.entitlements.builtinToolpacks);
 
   return (
-    <Card variant="outlined" sx={{ minWidth: 240 }}>
+    <Card variant="outlined" sx={{ height: "100%" }}>
       <CardContent>
         <Stack spacing={1} alignItems="flex-start">
           <Stack direction="row" spacing={1} alignItems="center">
