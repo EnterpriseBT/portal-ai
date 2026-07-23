@@ -64,7 +64,7 @@ Create a custom tier scoped to **your** org, and one scoped to another org:
 ## §4 — On the custom plan: full grid + manage CTA (AC / D6)
 
 - [ ] Switch your org onto the custom tier: `DATABASE_URL=… npx portalai org set-tier <myOrg> test_acme_ent --env local` → exits `0`.
-- [ ] Reload Settings. The card now shows the operator's **specific name "Acme Enterprise"** (not the generic "Enterprise"), is the **current plan** (chip present), and shows the **blurb + full policy grid** (all three allocation rows, period, overage, toolpacks) **plus** the CTA reading **"Contact support to manage/update your plan"** (not the bare "Contact support").
+- [ ] Reload Settings. **Only the custom card is shown** — Standard and Pro are **not** displayed (a custom-plan org doesn't self-serve to other tiers). The card shows the operator's **specific name "Acme Enterprise"** (not the generic "Enterprise"), is the **current plan** (chip present), and shows the **blurb + full policy grid** (all three allocation rows, period, overage, toolpacks) **plus** the CTA reading **"Contact support to manage/update your plan"** (not the bare "Contact support").
 - [ ] Switch back so later runs are clean: `DATABASE_URL=… npx portalai org set-tier <myOrg> standard --env local`.
 
 ## §5 — Operator blurb: set / clear, excluded from `tier apply` (AC: description edit persists across apply)

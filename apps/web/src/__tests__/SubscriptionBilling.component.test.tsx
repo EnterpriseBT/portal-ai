@@ -153,6 +153,31 @@ describe("SubscriptionBillingUI — unsubscribed", () => {
     // The current plan (standard) is chip-flagged.
     expect(screen.getByText("Current plan")).toBeInTheDocument();
   });
+
+  // #241: on a custom plan, show ONLY that card (no self-serve upgrade list).
+  it("shows only the custom card when the org is on a custom plan", () => {
+    render(
+      <SubscriptionBillingUI
+        {...baseUIProps}
+        tiers={[standardTier, proTier, contactTier]}
+        currentTierName="Acme Enterprise"
+        currentTierSlug="acme_enterprise"
+      />
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Acme Enterprise" })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Standard" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Pro" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /subscribe/i })
+    ).not.toBeInTheDocument();
+  });
 });
 
 // ── case 29: subscribed ──────────────────────────────────────────────

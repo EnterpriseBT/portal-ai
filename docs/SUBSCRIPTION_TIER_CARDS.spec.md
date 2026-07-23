@@ -11,7 +11,7 @@ This spec pins the contract for turning Settings → Subscription & Billing from
 3. **`description` excluded from convergence** (D5) — nullable `text`, never in `CONVERGED_POLICY_FIELDS`, so `tier apply` never clobbers operator copy.
 4. **Contract embeds the whole policy** (D4) — `BillingTierSchema` gains `policy: TierPolicySchema`, `description`, `cta`; today's top-level `allocations` folds into `policy.allocations` (clean cut, no alias).
 5. **CLI split** (D3) — `tier create`/`tier update`/`tier description` are new **portalops** commands (tier-row business config); **switch = existing `portalai org set-tier`** (no new command). Create/update adopt the shared cli-env **not-found (8)/conflict (9)** exit codes.
-6. **Custom-card rendering** (D6) — a `cta === "contact"` card as an upgrade teaser presents **generically**: the label **"Enterprise"** (not the operator's specific `displayName`), no client-specific blurb, no policy grid, and a **"Contact support"** link. When it is the org's **current plan** it shows the operator's specific `displayName` + blurb + the full policy grid + **"Contact support to manage/update your plan"**. Public tiers always show the grid + their `displayName`. A subscribe tier offers **Subscribe only when it is not the current plan**.
+6. **Custom-card rendering** (D6) — a `cta === "contact"` card as an upgrade teaser presents **generically**: the label **"Enterprise"** (not the operator's specific `displayName`), no client-specific blurb, no policy grid, and a **"Contact support"** link. When it is the org's **current plan** it shows the operator's specific `displayName` + blurb + the full policy grid + **"Contact support to manage/update your plan"**. Public tiers always show the grid + their `displayName`. A subscribe tier offers **Subscribe only when it is not the current plan**. **When the org's current plan is a custom (`contact`) tier, only that card is shown** (a custom-plan customer doesn't self-serve to the other tiers); otherwise the full org-scoped list is shown to encourage upgrades.
 
 ## Scope
 
@@ -221,7 +221,7 @@ Rendering rules (D6):
 
 `SubscriptionBillingUI` maps `tiers` → `<TierCardUI>` (passing `isCurrentPlan = tier.slug === organization.tier`), drops the inline price/Subscribe logic (moved into `TierCardUI`). The container derivation changes:
 - `subscribed` (live `stripeSubscriptionId`) → the existing Manage button (unchanged).
-- else if the org's current tier **is** in the returned list → render the cards (current one flagged; a custom current plan renders full grid + manage-CTA per D6).
+- else if the org's current tier **is** in the returned list → render the cards (current one flagged; a custom current plan renders full grid + manage-CTA per D6). **If the current tier is a `contact` tier, `displayTiers` collapses to just that card**; otherwise the full list renders.
 - else (current tier absent from the org-scoped list — an unlisted bespoke slug) → the existing **`managed`** banner (preserved as the fallback).
 
 `billing.api.ts` (`sdk.billing.tiers`) is unchanged — same endpoint, richer payload. Owner-gating (`withOwnerGate`) is preserved and moves alongside `TierCardUI`.

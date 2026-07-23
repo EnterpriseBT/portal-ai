@@ -80,70 +80,78 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
   onManage,
   isPending,
   serverError,
-}) => (
-  <Stack spacing={2}>
-    <FormAlert serverError={serverError} />
+}) => {
+  // On a custom plan (a `contact` tier is the org's current plan), show ONLY
+  // that card — a custom-plan customer doesn't self-serve to the other tiers.
+  // Otherwise show the full list to encourage upgrades (#241).
+  const currentTier = tiers.find((t) => t.slug === currentTierSlug);
+  const displayTiers = currentTier?.cta === "contact" ? [currentTier] : tiers;
 
-    <Typography variant="body1">
-      Current plan: <strong>{currentTierName}</strong>
-    </Typography>
+  return (
+    <Stack spacing={2}>
+      <FormAlert serverError={serverError} />
 
-    {state === "managed" && (
-      <Alert severity="info">
-        Your plan is managed — contact us to make changes.
-      </Alert>
-    )}
+      <Typography variant="body1">
+        Current plan: <strong>{currentTierName}</strong>
+      </Typography>
 
-    {state === "subscribed" && (
-      <Box>
-        {withOwnerGate(
-          isOwner,
-          <Button
-            type="button"
-            variant="contained"
-            disabled={!isOwner || isPending}
-            onClick={onManage}
-          >
-            {isPending ? "Opening…" : "Manage subscription"}
-          </Button>
-        )}
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          Plan changes, payment methods, invoices, and cancellation are handled
-          in the secure Stripe billing portal.
-        </Typography>
-      </Box>
-    )}
+      {state === "managed" && (
+        <Alert severity="info">
+          Your plan is managed — contact us to make changes.
+        </Alert>
+      )}
 
-    {state === "unsubscribed" && (
-      <Stack spacing={1}>
-        <Box
-          sx={{
-            display: "grid",
-            gap: 2,
-            gridTemplateColumns: CARD_GRID_COLUMNS,
-            alignItems: "stretch",
-          }}
-        >
-          {tiers.map((tier) => (
-            <TierCardUI
-              key={tier.slug}
-              tier={tier}
-              isCurrentPlan={tier.slug === currentTierSlug}
-              isOwner={isOwner}
-              isPending={isPending}
-              onSubscribe={onSubscribe}
-            />
-          ))}
+      {state === "subscribed" && (
+        <Box>
+          {withOwnerGate(
+            isOwner,
+            <Button
+              type="button"
+              variant="contained"
+              disabled={!isOwner || isPending}
+              onClick={onManage}
+            >
+              {isPending ? "Opening…" : "Manage subscription"}
+            </Button>
+          )}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Plan changes, payment methods, invoices, and cancellation are
+            handled in the secure Stripe billing portal.
+          </Typography>
         </Box>
-        {/* #217: display-only — Stripe Tax computes the actual amount at
+      )}
+
+      {state === "unsubscribed" && (
+        <Stack spacing={1}>
+          <Box
+            sx={{
+              display: "grid",
+              gap: 2,
+              gridTemplateColumns: CARD_GRID_COLUMNS,
+              alignItems: "stretch",
+            }}
+          >
+            {displayTiers.map((tier) => (
+              <TierCardUI
+                key={tier.slug}
+                tier={tier}
+                isCurrentPlan={tier.slug === currentTierSlug}
+                isOwner={isOwner}
+                isPending={isPending}
+                onSubscribe={onSubscribe}
+              />
+            ))}
+          </Box>
+          {/* #217: display-only — Stripe Tax computes the actual amount at
             checkout from the billing address. */}
-        <Typography variant="caption" color="text.secondary">
-          Prices exclude tax, which is calculated at checkout.
-        </Typography>
-      </Stack>
-    )}
-  </Stack>
-);
+          <Typography variant="caption" color="text.secondary">
+            Prices exclude tax, which is calculated at checkout.
+          </Typography>
+        </Stack>
+      )}
+    </Stack>
+  );
+};
 
 // ── Container ────────────────────────────────────────────────────────
 
