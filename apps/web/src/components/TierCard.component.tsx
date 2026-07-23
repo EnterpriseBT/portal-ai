@@ -143,6 +143,7 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
           )}
 
           {cta === "subscribe" &&
+            !isCurrentPlan &&
             withOwnerGate(
               isOwner,
               <Button

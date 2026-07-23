@@ -102,6 +102,15 @@ describe("TierCardUI — subscribe", () => {
     await userEvent.click(screen.getByRole("button", { name: /subscribe/i }));
     expect(onSubscribe).toHaveBeenCalledWith("pro");
   });
+
+  it("does NOT offer Subscribe on the current plan (only the chip)", () => {
+    render(<TierCardUI {...base} tier={subscribeTier} isCurrentPlan />);
+
+    expect(screen.getByText("Current plan")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /subscribe/i })
+    ).not.toBeInTheDocument();
+  });
 });
 
 // ── case 24: contact tier as an upgrade teaser (not current) ─────────
