@@ -8,6 +8,7 @@ import { DataResult } from "./DataResult.component";
 import { FormAlert } from "./FormAlert.component";
 import { TierCardUI } from "./TierCard.component";
 import { toServerError, type ServerError } from "../utils/api.util";
+import { sortTiersForDisplay } from "../utils/tier-format.util";
 
 import type {
   BillingTier,
@@ -110,8 +111,11 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
   // On a custom plan (a `contact` tier is the org's current plan), show ONLY
   // that card — a custom-plan customer doesn't self-serve to the other tiers.
   // Otherwise show the full list to encourage upgrades (#241).
+  // Sorted for display (#260): free → priced-ascending → contact, so the grid
+  // reads Standard → Plus → Pro → Enterprise regardless of DB creation order.
   const currentTier = tiers.find((t) => t.slug === currentTierSlug);
-  const displayTiers = currentTier?.cta === "contact" ? [currentTier] : tiers;
+  const displayTiers =
+    currentTier?.cta === "contact" ? [currentTier] : sortTiersForDisplay(tiers);
 
   return (
     <Stack spacing={2}>

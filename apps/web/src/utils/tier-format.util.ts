@@ -55,6 +55,24 @@ export const formatPerToolCaps = (caps: TierPolicy["perToolCaps"]): string[] =>
       )
     : [];
 
+/** Display order for the plan grid (#260): free first, then priced tiers by
+ *  ascending price, then contact/custom last — i.e. Standard → Plus → Pro →
+ *  Enterprise. Pure; returns a new array. */
+const CTA_ORDER: Record<BillingTier["cta"], number> = {
+  none: 0,
+  subscribe: 1,
+  contact: 2,
+};
+export const sortTiersForDisplay = (tiers: BillingTier[]): BillingTier[] =>
+  [...tiers].sort((a, b) => {
+    const byCta = (CTA_ORDER[a.cta] ?? 1) - (CTA_ORDER[b.cta] ?? 1);
+    if (byCta !== 0) return byCta;
+    return (
+      (a.price?.unitAmount ?? Number.MAX_SAFE_INTEGER) -
+      (b.price?.unitAmount ?? Number.MAX_SAFE_INTEGER)
+    );
+  });
+
 /** Built-in toolpack entitlement slugs → human pack display names. An unknown
  *  slug (a pack shipping in a later deploy) falls through to the raw slug. */
 export const entitlementPackNames = (slugs: string[]): string[] => {
