@@ -12,9 +12,10 @@
 | store `setTier` | `packages/admin-cli/src/store.ts:150` | loads `current = getOrg(id)` for `previousTier`, then updates `tier` |
 | `set-tier` wiring | `packages/admin-cli/src/bin.ts` (`org.command("set-tier")`) | args `<id> <tierSlug>`; `flags(o)` → `{yes, confirmProd}` |
 | `MutateFlags` | `packages/admin-cli/src/commands/common.ts:17` | `{ yes?, confirmProd? }` — the flag bag to extend |
-| Org model has the field | `packages/core/src/models/organization.model.ts:22` (`stripeSubscriptionId`) | `getOrg` already returns it |
+| Org model has the field | `packages/core/src/models/organization.model.ts:22` (`stripeSubscriptionId`) | present on the core model… |
+| **admin-cli org mirror** | `packages/admin-cli/src/tables.ts` (`organizations`) | …but the CLI's own minimal drizzle mirror **omitted the stripe columns**, so `getOrg`'s `select()` never returned them. The subset parity test (`tables-parity.test.ts`) allows omission, so it didn't flag it. **Fix must add `stripe_customer_id` + `stripe_subscription_id` to the mirror** (+ the PGlite test DDL). *(Caught by the #259 smoke — the command unit test mocked `getOrg` and masked the gap.)* |
 | Conflict error + exit | `packages/admin-cli/src/errors.ts` (`AdminConflictError`) → `output.ts` `ADMIN_CONFLICT = 9` | reused for the refusal — no new code |
-| `org get` output | `bin.ts` (`org.command("get")`) | already dumps the full org JSON incl. `stripeSubscriptionId` — linkage is already visible |
+| `org get` output | `bin.ts` (`org.command("get")`) | dumps the full org JSON — surfaces `stripeSubscriptionId` **once the mirror projects it** (above) |
 
 ## Decision — refuse on a live subscription, explicit override to bypass
 
@@ -29,14 +30,16 @@ In `orgSetTier`, after `beginMutation`, fetch the org and if `stripeSubscription
 ## Plan — 1 slice
 
 **Files**
+- Edit: `packages/admin-cli/src/tables.ts` — add `stripe_customer_id` + `stripe_subscription_id` to the `organizations` mirror so `getOrg` projects them (**the load-bearing fix** — the guard is inert without it).
 - Edit: `packages/admin-cli/src/commands/common.ts` — `MutateFlags` gains `allowStripeDesync?: boolean`.
 - Edit: `packages/admin-cli/src/commands/org.ts` — `orgSetTier` fetches the org and refuses (`AdminConflictError`) when `stripeSubscriptionId != null && !flags.allowStripeDesync`.
-- Edit: `packages/admin-cli/src/bin.ts` — add `--allow-stripe-desync` to `org set-tier`; include it in the flags passed (extend `flags(o)` or pass explicitly).
+- Edit: `packages/admin-cli/src/bin.ts` — add `--allow-stripe-desync` to `org set-tier`; pass it alongside `flags(o)`.
+- Edit: `packages/admin-cli/src/__tests__/helpers/test-db.ts` — add the two columns to the PGlite `organizations` DDL.
 - Edit: `packages/admin-cli/COMMANDS.md` — document the guard + override on `org set-tier`; note exit 9.
 
 **Tests** (`cd packages/admin-cli && npm run test:unit`)
-- `src/__tests__/commands.test.ts`: `orgSetTier` on an org with `stripeSubscriptionId` set → throws `AdminConflictError` (code `ADMIN_CONFLICT`), **no** `setTier` write, **no** audit; with `--allow-stripe-desync` → proceeds (writes + audits); on an org with `stripeSubscriptionId = null` → proceeds unchanged. (Store `getOrg`/`setTier` mocked or via the PGlite test store per the file's existing pattern.)
-- Confirm `exitCodeFor(AdminConflictError)` is 9 (existing `output.ts` behavior — spot-assert if convenient).
+- `src/__tests__/store.test.ts`: `getOrg` returns the Stripe linkage fields — the regression pin the subset parity test can't provide (a dropped mirror column would silently re-break the guard).
+- `src/__tests__/commands.test.ts`: `orgSetTier` on an org with `stripeSubscriptionId` set → throws `AdminConflictError` (`ADMIN_CONFLICT`), **no** `setTier` write, **no** audit, store still released; with `--allow-stripe-desync` → proceeds (writes + audits); `stripeSubscriptionId = null` → proceeds unchanged.
 
 ## Smoke (manual, against your dev stack)
 
