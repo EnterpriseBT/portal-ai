@@ -38,6 +38,16 @@ export type TierPeriod = z.infer<typeof TierPeriodSchema>;
 export const OverageSchema = z.enum(["hard-deny", "soft-alert"]);
 export type Overage = z.infer<typeof OverageSchema>;
 
+/**
+ * The card call-to-action (#241) — the single source of truth for what a
+ * tier's Settings card offers. `subscribe` ⇒ self-serve Stripe checkout
+ * (requires a price); `contact` ⇒ a "Contact support" path (custom/enterprise
+ * tiers); `none` ⇒ the free default (no CTA). Narrowed here for the billing
+ * contract; the flat DB row stores it as `cta: string` (a `text` column),
+ * exactly as `overage`/`periodKind` do. */
+export const TierCtaSchema = z.enum(["subscribe", "contact", "none"]);
+export type TierCta = z.infer<typeof TierCtaSchema>;
+
 /** Optional finer caps on individual tools (built-in or custom), by tool name. */
 export const PerToolCapsSchema = z.record(
   z.string(),
@@ -114,6 +124,17 @@ export const TierSchema = CoreSchema.extend({
   /** Whether orgs on this tier may register/use custom (webhook)
    *  toolpacks (#214). */
   customToolpacks: z.boolean(),
+  /** Card call-to-action (#241). `text` column, CHECK-constrained to the
+   *  {@link TierCtaSchema} set; narrowed to the enum on the billing contract
+   *  (kept `string` here so the dual-schema `IsAssignable` guard holds — the
+   *  DB column is `text`, like `overage`/`periodKind`). */
+  cta: z.string(),
+  /** Operator-authored plan blurb (#241). Null = no blurb. Deliberately
+   *  excluded from `tier apply` convergence so an apply never clobbers copy. */
+  description: z.string().nullable(),
+  /** Per-client custom-tier scoping (#241): the org this tier is visible to.
+   *  Null = public (all orgs). Set = private to that one org. */
+  visibleToOrganizationId: z.string().nullable(),
 });
 export type Tier = z.infer<typeof TierSchema>;
 

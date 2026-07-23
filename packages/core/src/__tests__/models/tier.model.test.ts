@@ -3,6 +3,7 @@ import {
   TierSchema,
   TierPolicySchema,
   TierEntitlementsSchema,
+  TierCtaSchema,
   AllocationSchema,
   TierPeriodSchema,
   OverageSchema,
@@ -44,6 +45,9 @@ const validRowFields = {
   selectable: true,
   builtinToolpacks: ["data_query", "web_search"],
   customToolpacks: true,
+  cta: "none",
+  description: null,
+  visibleToOrganizationId: null,
 };
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -94,6 +98,15 @@ describe("OverageSchema", () => {
     expect(OverageSchema.safeParse("hard-deny").success).toBe(true);
     expect(OverageSchema.safeParse("soft-alert").success).toBe(true);
     expect(OverageSchema.safeParse("explode").success).toBe(false);
+  });
+});
+
+describe("TierCtaSchema (#241)", () => {
+  it("accepts the three card actions and rejects others", () => {
+    expect(TierCtaSchema.safeParse("subscribe").success).toBe(true);
+    expect(TierCtaSchema.safeParse("contact").success).toBe(true);
+    expect(TierCtaSchema.safeParse("none").success).toBe(true);
+    expect(TierCtaSchema.safeParse("buy-now").success).toBe(false);
   });
 });
 
@@ -172,6 +185,46 @@ describe("TierSchema", () => {
   });
 
   it.each(["builtinToolpacks", "customToolpacks"] as const)(
+    "rejects a row missing `%s`",
+    (field) => {
+      const { [field]: _omitted, ...rest } = validRowFields;
+      const model = new TierModelFactory().create("SYSTEM").update(rest);
+
+      expect(model.validate().success).toBe(false);
+    }
+  );
+
+  // ── Card fields (#241) ──────────────────────────────────────────────
+
+  it("round-trips cta + null description + null visibleToOrganizationId", () => {
+    const parsed = new TierModelFactory()
+      .create("SYSTEM")
+      .update(validRowFields)
+      .parse();
+
+    expect(parsed.cta).toBe("none");
+    expect(parsed.description).toBeNull();
+    expect(parsed.visibleToOrganizationId).toBeNull();
+  });
+
+  it("round-trips a populated description + org-scoped custom tier", () => {
+    const parsed = new TierModelFactory()
+      .create("SYSTEM")
+      .update({
+        ...validRowFields,
+        slug: "acme_enterprise",
+        cta: "contact",
+        description: "Tailored to Acme.",
+        visibleToOrganizationId: "org_acme",
+      })
+      .parse();
+
+    expect(parsed.cta).toBe("contact");
+    expect(parsed.description).toBe("Tailored to Acme.");
+    expect(parsed.visibleToOrganizationId).toBe("org_acme");
+  });
+
+  it.each(["cta", "description", "visibleToOrganizationId"] as const)(
     "rejects a row missing `%s`",
     (field) => {
       const { [field]: _omitted, ...rest } = validRowFields;

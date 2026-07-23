@@ -5,7 +5,7 @@
  * finder `TierService.resolveTier` needs.
  */
 
-import { eq, and, isNotNull } from "drizzle-orm";
+import { eq, and, or, isNull, isNotNull } from "drizzle-orm";
 import { tiers } from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient } from "./base.repository.js";
@@ -39,6 +39,30 @@ export class TiersRepository extends Repository<
       .select()
       .from(this.table)
       .where(and(eq(tiers.selectable, true), this.notDeleted()))
+      .orderBy(tiers.created);
+  }
+
+  /** Live selectable tiers visible to `organizationId` (#241): public rows
+   *  (`visible_to_organization_id IS NULL`) plus rows scoped to this org. The
+   *  org filter lives HERE, in the query — never in app code after a global
+   *  fetch — so no path can leak another org's private (custom) tier. */
+  async findSelectableForOrg(
+    organizationId: string,
+    client: DbClient = db
+  ): Promise<TierSelect[]> {
+    return (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(tiers.selectable, true),
+          this.notDeleted(),
+          or(
+            isNull(tiers.visibleToOrganizationId),
+            eq(tiers.visibleToOrganizationId, organizationId)
+          )
+        )
+      )
       .orderBy(tiers.created);
   }
 

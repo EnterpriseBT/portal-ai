@@ -345,6 +345,13 @@ export class SeedService {
           builtinToolpacks: [...entry.builtinToolpacks],
           // Only apply — which can see this env's Stripe — writes price ids.
           stripePriceId: null,
+          // #241 card fields — not catalog policy on a fresh DB. `standard`
+          // has no CTA and no blurb; `tier apply` converges `cta` from the
+          // catalog thereafter. `description`/`visibleToOrganizationId` are
+          // operator/per-client state, always seeded null (like stripePriceId).
+          cta: "none",
+          description: null,
+          visibleToOrganizationId: null,
         })
         .parse();
       await DbService.repository.tiers.createMany([standard], db);
