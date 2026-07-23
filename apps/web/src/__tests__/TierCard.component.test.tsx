@@ -179,6 +179,18 @@ describe("TierCardUI — contact (upgrade teaser)", () => {
       screen.queryByRole("button", { name: /subscribe/i })
     ).not.toBeInTheDocument();
   });
+
+  it("flesh-out (#265): centered icon, custom-pricing explanation, and a supporting line under the link", () => {
+    render(<TierCardUI {...base} tier={contactTier} />);
+
+    expect(screen.getByTestId("enterprise-teaser-icon")).toBeInTheDocument();
+    expect(
+      screen.getByText(/tailored to your\s+organization/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/scope a plan for your volume/i)
+    ).toBeInTheDocument();
+  });
 });
 
 // ── case 25: contact tier as the current plan ────────────────────────
@@ -199,6 +211,14 @@ describe("TierCardUI — contact (current plan)", () => {
         name: /contact support to manage\/update your plan/i,
       })
     ).toBeInTheDocument();
+
+    // #265: the teaser flourish/copy is upsell-only — never on the on-plan card.
+    expect(
+      screen.queryByTestId("enterprise-teaser-icon")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/scope a plan for your volume/i)
+    ).not.toBeInTheDocument();
   });
 });
 
