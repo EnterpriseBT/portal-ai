@@ -14,8 +14,13 @@ export const EXIT_CODES: Record<string, number> = {
   ENV_DESTRUCTIVE_BLOCKED: 6,
   ENV_INFRA_ERROR: 7,
   // Not-found family (mirrors admin-cli's 8): a declared tier's Stripe
-  // lookup key resolves to no price in the env's account (#254).
+  // lookup key resolves to no price in the env's account (#254); or a
+  // `tier update`/`tier description` targets a slug that doesn't exist (#241).
   TIER_APPLY_MISSING_PRICES: 8,
+  TIER_NOT_FOUND: 8,
+  // Conflict family (mirrors admin-cli's 9): `tier create` targets a slug
+  // that already exists (#241).
+  TIER_ALREADY_EXISTS: 9,
 };
 
 export function exitCodeFor(err: unknown): number {

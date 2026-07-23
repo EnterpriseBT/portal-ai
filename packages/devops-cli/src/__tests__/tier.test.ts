@@ -12,6 +12,7 @@ import {
   mocks,
   BUILTIN_ENVIRONMENTS,
   EnvNotConfiguredError,
+  EnvConfirmationRequiredError,
 } from "./helpers/cli-env-mock.js";
 
 jest.unstable_mockModule("@portalai/cli-env", () => cliEnvMockModule());
@@ -34,10 +35,18 @@ const { exitCodeFor, jsonError } = await import("../output.js");
 const { lookupKey } = await import("../catalog.js");
 const {
   tierApply,
+  tierCreate,
+  tierUpdate,
+  tierDescription,
+  buildTierCreateValues,
+  buildTierUpdateSets,
   computeTierChanges,
   insertValuesFor,
   updateSetsFor,
   openEnvTierStore,
+  CONVERGED_POLICY_FIELDS,
+  TierAlreadyExistsError,
+  TierNotFoundError,
 } = await import("../commands/tier.js");
 const { TIER_CATALOG, TIER_CATALOG_BY_SLUG } =
   await import("@portalai/core/registries");
@@ -68,6 +77,9 @@ const standardRow = (over: Record<string, unknown> = {}) => ({
   selectable: CATALOG_STANDARD.selectable,
   builtinToolpacks: [...CATALOG_STANDARD.builtinToolpacks],
   customToolpacks: CATALOG_STANDARD.customToolpacks,
+  cta: CATALOG_STANDARD.cta,
+  description: null,
+  visibleToOrganizationId: null,
   ...over,
 });
 
@@ -453,5 +465,236 @@ describe("openEnvTierStore teardown (#242)", () => {
     await expect(store.close()).rejects.toThrow("pool already ended");
 
     expect(dispose).toHaveBeenCalledTimes(1); // tunnel freed regardless
+  });
+});
+
+// ── #241 — tier create / update / description commands ────────────────
+
+/** In-memory write store: records create/update/description calls. */
+const fakeWriteStore = (rows: ReturnType<typeof standardRow>[]) => {
+  const store = {
+    readAll: jest.fn(async () => rows as never),
+    applyChanges: jest.fn(async () => {}),
+    createTier: jest.fn(async (_v: Record<string, unknown>) => {}),
+    updateTier: jest.fn(
+      async (_slug: string, _sets: Record<string, unknown>) => {}
+    ),
+    setDescription: jest.fn(async (_slug: string, _value: string | null) => {}),
+    close: jest.fn(async () => {}),
+  };
+  return { store, factory: jest.fn(async () => store as never) };
+};
+
+// ── spec case 16 — create builds correct values, writes once, audits ──
+
+describe("tierCreate (#241 case 16)", () => {
+  it("builds enterprise defaults, writes once, audits", async () => {
+    const { store, factory } = fakeWriteStore([]);
+
+    const res = await tierCreate(
+      local as never,
+      {
+        slug: "acme_enterprise",
+        displayName: "Acme Enterprise",
+        visibleToOrganizationId: "org_acme",
+        description: "Tailored.",
+      },
+      { yes: true },
+      { store: factory as never }
+    );
+
+    expect(res).toEqual({ slug: "acme_enterprise", action: "insert" });
+    expect(store.createTier).toHaveBeenCalledTimes(1);
+    const values = store.createTier.mock.calls[0][0] as Record<string, unknown>;
+    expect(values).toMatchObject({
+      slug: "acme_enterprise",
+      displayName: "Acme Enterprise",
+      cta: "contact", // default
+      overage: "hard-deny", // default
+      selectable: true,
+      customToolpacks: true,
+      meteredUnitsPerPeriod: null, // unlimited default
+      visibleToOrganizationId: "org_acme",
+      description: "Tailored.",
+      createdBy: "portalops",
+    });
+    expect(values.builtinToolpacks).toEqual(
+      expect.arrayContaining(["data_query"])
+    );
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "tier create" })
+    );
+  });
+
+  // ── spec case 17 — create on an existing slug → conflict (exit 9) ────
+  it("throws TierAlreadyExistsError (code TIER_ALREADY_EXISTS) on a duplicate slug; no write", async () => {
+    const { store, factory } = fakeWriteStore([standardRow()]);
+
+    const err = await tierCreate(
+      local as never,
+      { slug: "standard", displayName: "Dup" },
+      { yes: true },
+      { store: factory as never }
+    ).catch((e) => e);
+
+    expect(err).toBeInstanceOf(TierAlreadyExistsError);
+    expect(err.code).toBe("TIER_ALREADY_EXISTS");
+    expect(store.createTier).not.toHaveBeenCalled();
+    expect(store.close).toHaveBeenCalled();
+  });
+});
+
+// ── spec case 18 — update changes only provided fields; 404 on miss ───
+
+describe("tierUpdate (#241 case 18)", () => {
+  it("updates only the provided fields + audit stamps", async () => {
+    const { store, factory } = fakeWriteStore([
+      standardRow({ slug: "acme_enterprise" }),
+    ]);
+
+    const res = await tierUpdate(
+      local as never,
+      { slug: "acme_enterprise", description: "New copy." },
+      { yes: true },
+      { store: factory as never }
+    );
+
+    expect(res.fields).toEqual(["description"]);
+    const [slug, sets] = store.updateTier.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(slug).toBe("acme_enterprise");
+    expect(sets).toMatchObject({
+      description: "New copy.",
+      updatedBy: "portalops",
+    });
+    expect(sets).not.toHaveProperty("displayName");
+  });
+
+  it("throws TierNotFoundError (exit 8) for a missing slug", async () => {
+    const { store, factory } = fakeWriteStore([]);
+
+    const err = await tierUpdate(
+      local as never,
+      { slug: "ghost", cta: "contact" },
+      { yes: true },
+      { store: factory as never }
+    ).catch((e) => e);
+
+    expect(err).toBeInstanceOf(TierNotFoundError);
+    expect(err.code).toBe("TIER_NOT_FOUND");
+    expect(store.updateTier).not.toHaveBeenCalled();
+  });
+});
+
+// ── spec case 19 — description set / clear; 404 on miss ───────────────
+
+describe("tierDescription (#241 case 19)", () => {
+  it("sets the blurb", async () => {
+    const { store, factory } = fakeWriteStore([
+      standardRow({ slug: "acme_enterprise" }),
+    ]);
+
+    await tierDescription(
+      local as never,
+      "acme_enterprise",
+      "A tailored plan.",
+      { yes: true },
+      { store: factory as never }
+    );
+
+    expect(store.setDescription).toHaveBeenCalledWith(
+      "acme_enterprise",
+      "A tailored plan."
+    );
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "tier description",
+        args: expect.objectContaining({ cleared: false }),
+      })
+    );
+  });
+
+  it("clears the blurb (null)", async () => {
+    const { store, factory } = fakeWriteStore([
+      standardRow({ slug: "acme_enterprise" }),
+    ]);
+
+    await tierDescription(
+      local as never,
+      "acme_enterprise",
+      null,
+      { yes: true },
+      { store: factory as never }
+    );
+
+    expect(store.setDescription).toHaveBeenCalledWith("acme_enterprise", null);
+  });
+
+  it("throws TierNotFoundError for a missing slug", async () => {
+    const { store, factory } = fakeWriteStore([]);
+
+    await expect(
+      tierDescription(
+        local as never,
+        "ghost",
+        "x",
+        { yes: true },
+        { store: factory as never }
+      )
+    ).rejects.toBeInstanceOf(TierNotFoundError);
+    expect(store.setDescription).not.toHaveBeenCalled();
+  });
+});
+
+// ── spec case 20 — the mutation guard fires before any write ──────────
+
+describe("tier write guard (#241 case 20)", () => {
+  it("guards the mutation and aborts before writing when the guard throws", async () => {
+    mocks.assertOperationAllowed.mockImplementation(() => {
+      throw new EnvConfirmationRequiredError("--yes required on app-dev");
+    });
+    const { store, factory } = fakeWriteStore([]);
+
+    await expect(
+      tierCreate(
+        appDev as never,
+        { slug: "acme_enterprise", displayName: "Acme" },
+        {}, // no --yes
+        { store: factory as never }
+      )
+    ).rejects.toBeInstanceOf(EnvConfirmationRequiredError);
+
+    expect(mocks.assertOperationAllowed).toHaveBeenCalledWith(
+      appDev,
+      expect.objectContaining({ destructive: false, confirmed: false })
+    );
+    expect(store.createTier).not.toHaveBeenCalled();
+    expect(store.close).toHaveBeenCalled(); // finally still runs
+  });
+});
+
+// ── spec case 21 — convergence set pins ───────────────────────────────
+
+describe("CONVERGED_POLICY_FIELDS (#241 case 21)", () => {
+  it("includes cta (catalog-owned) and excludes description/visibility", () => {
+    expect(CONVERGED_POLICY_FIELDS).toContain("cta");
+    expect(CONVERGED_POLICY_FIELDS).not.toContain("description");
+    expect(CONVERGED_POLICY_FIELDS).not.toContain("visibleToOrganizationId");
+  });
+
+  it("buildTierUpdateSets omits unprovided fields", () => {
+    const sets = buildTierUpdateSets({ slug: "x", cta: "contact" });
+    expect(sets).toMatchObject({ cta: "contact", updatedBy: "portalops" });
+    expect(sets).not.toHaveProperty("description");
+    expect(sets).not.toHaveProperty("displayName");
+  });
+
+  it("buildTierCreateValues stamps a fresh id + created", () => {
+    const v = buildTierCreateValues({ slug: "x", displayName: "X" });
+    expect(typeof v.id).toBe("string");
+    expect(typeof v.created).toBe("number");
+    expect(v.cta).toBe("contact");
   });
 });

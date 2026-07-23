@@ -49,4 +49,9 @@ export const tiers = pgTable("tiers", {
   selectable: boolean("selectable").notNull(),
   builtinToolpacks: jsonb("builtin_toolpacks").$type<string[]>().notNull(),
   customToolpacks: boolean("custom_toolpacks").notNull(),
+  // #241: cta is converged from the catalog; description + visibility are
+  // operator/per-client state the tier create/update commands write directly.
+  cta: text("cta").notNull(),
+  description: text("description"),
+  visibleToOrganizationId: text("visible_to_organization_id"),
 });

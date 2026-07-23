@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { BuiltinToolpackSlugSchema } from "./builtin-toolpacks.js";
-import { PerToolCapsSchema } from "../models/tier.model.js";
+import { PerToolCapsSchema, TierCtaSchema } from "../models/tier.model.js";
 
 /**
  * The declarative tier catalog (#218) — the versioned, env-agnostic record
@@ -41,6 +41,9 @@ export const TierCatalogEntrySchema = z.object({
   builtinToolpacks: z.array(BuiltinToolpackSlugSchema),
   /** Whether orgs on this tier may register/use custom toolpacks (#214). */
   customToolpacks: z.boolean(),
+  /** Card call-to-action (#241) — converged from the catalog. `subscribe`
+   *  requires a resolvable `stripeLookupKey`; `none` is the free default. */
+  cta: TierCtaSchema,
   /** Stripe `lookup_key` — the cross-env price identity. null = not
    *  purchasable (no checkout path). */
   stripeLookupKey: z.string().min(1).nullable(),
@@ -76,6 +79,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       selectable: true,
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
       customToolpacks: true,
+      cta: "none",
       stripeLookupKey: null,
     },
     {
@@ -94,6 +98,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       selectable: true,
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
       customToolpacks: true,
+      cta: "subscribe",
       stripeLookupKey: "pro_monthly",
     },
   ])

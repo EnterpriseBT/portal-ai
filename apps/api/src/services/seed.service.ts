@@ -345,11 +345,9 @@ export class SeedService {
           builtinToolpacks: [...entry.builtinToolpacks],
           // Only apply — which can see this env's Stripe — writes price ids.
           stripePriceId: null,
-          // #241 card fields — not catalog policy on a fresh DB. `standard`
-          // has no CTA and no blurb; `tier apply` converges `cta` from the
-          // catalog thereafter. `description`/`visibleToOrganizationId` are
-          // operator/per-client state, always seeded null (like stripePriceId).
-          cta: "none",
+          // #241: `cta` rides in via `...policy` (a catalog field now).
+          // `description`/`visibleToOrganizationId` are operator/per-client
+          // state, never catalog — always seeded null (like stripePriceId).
           description: null,
           visibleToOrganizationId: null,
         })
