@@ -86,6 +86,8 @@ export interface SubscriptionBillingUIProps {
    *  managed states (#257). Null while unresolved → card omitted (degrade). */
   currentPlanTier: BillingTier | null;
   onSubscribe: (tierSlug: string) => void;
+  /** #260: switch an existing subscription to `tierSlug` (subscribed state). */
+  onSwitch: (tierSlug: string) => void;
   onManage: () => void;
   /** True while a checkout/portal session is being minted. */
   isPending: boolean;
@@ -100,6 +102,7 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
   tiers,
   currentPlanTier,
   onSubscribe,
+  onSwitch,
   onManage,
   isPending,
   serverError,
@@ -124,9 +127,10 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
         </Alert>
       )}
 
-      {/* #257: the current plan's policy, read-only, in both non-list states.
-          Above Manage (subscribed) / below the banner (managed). */}
-      {(state === "subscribed" || state === "managed") && currentPlanTier && (
+      {/* #257: the current plan's policy, read-only, below the managed banner
+          (a managed org's tier is unlisted, so it isn't in the grid). In the
+          subscribed state the current plan is flagged within the grid below. */}
+      {state === "managed" && currentPlanTier && (
         <Box sx={{ maxWidth: 360 }}>
           <TierCardUI
             tier={currentPlanTier}
@@ -138,27 +142,9 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
         </Box>
       )}
 
-      {state === "subscribed" && (
-        <Box>
-          {withOwnerGate(
-            isOwner,
-            <Button
-              type="button"
-              variant="contained"
-              disabled={!isOwner || isPending}
-              onClick={onManage}
-            >
-              {isPending ? "Opening…" : "Manage subscription"}
-            </Button>
-          )}
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Plan changes, payment methods, invoices, and cancellation are
-            handled in the secure Stripe billing portal.
-          </Typography>
-        </Box>
-      )}
-
-      {state === "unsubscribed" && (
+      {/* The plan grid — unsubscribed (Subscribe) and subscribed (Switch).
+          The #241 custom-only collapse still applies. */}
+      {(state === "unsubscribed" || state === "subscribed") && (
         <Stack spacing={1}>
           <Box
             sx={{
@@ -176,15 +162,37 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
                 isOwner={isOwner}
                 isPending={isPending}
                 onSubscribe={onSubscribe}
+                isSubscribed={state === "subscribed"}
+                onSwitch={onSwitch}
               />
             ))}
           </Box>
           {/* #217: display-only — Stripe Tax computes the actual amount at
-            checkout from the billing address. */}
+            confirm/checkout from the billing address. */}
           <Typography variant="caption" color="text.secondary">
             Prices exclude tax, which is calculated at checkout.
           </Typography>
         </Stack>
+      )}
+
+      {state === "subscribed" && (
+        <Box>
+          {withOwnerGate(
+            isOwner,
+            <Button
+              type="button"
+              variant="contained"
+              disabled={!isOwner || isPending}
+              onClick={onManage}
+            >
+              {isPending ? "Opening…" : "Manage subscription"}
+            </Button>
+          )}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Payment methods, invoices, and cancellation are handled in the
+            secure Stripe billing portal.
+          </Typography>
+        </Box>
       )}
     </Stack>
   );
@@ -212,9 +220,17 @@ export const SubscriptionBilling: React.FC = () => {
       .then(({ url }) => window.location.replace(url))
       .catch(() => undefined);
   };
+  // #260: switch an existing subscription — the portal's subscription-update
+  // flow, deep-linked to the target tier. Same redirect + swallow as above.
+  const handleSwitch = (tierSlug: string) => {
+    portalMutation
+      .mutateAsync({ tier: tierSlug })
+      .then(({ url }) => window.location.replace(url))
+      .catch(() => undefined);
+  };
   const handleManage = () => {
     portalMutation
-      .mutateAsync()
+      .mutateAsync({})
       .then(({ url }) => window.location.replace(url))
       .catch(() => undefined);
   };
@@ -265,6 +281,7 @@ export const SubscriptionBilling: React.FC = () => {
             tiers={tiers}
             currentPlanTier={currentPlanTier}
             onSubscribe={handleSubscribe}
+            onSwitch={handleSwitch}
             onManage={handleManage}
             isPending={checkoutMutation.isPending || portalMutation.isPending}
             serverError={toServerError(

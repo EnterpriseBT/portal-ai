@@ -67,6 +67,16 @@ const proTier: BillingTier = {
   price: { unitAmount: 4900, currency: "usd", interval: "month" },
 };
 
+// A second priced tier, so a subscribed org (on pro) has a switch target.
+const scaleTier: BillingTier = {
+  slug: "scale",
+  displayName: "Scale",
+  policy: policy("scale"),
+  description: null,
+  cta: "subscribe",
+  price: { unitAmount: 9900, currency: "usd", interval: "month" },
+};
+
 const contactTier: BillingTier = {
   slug: "acme_enterprise",
   displayName: "Acme Enterprise",
@@ -94,6 +104,7 @@ const baseUIProps = {
   tiers: [standardTier, proTier],
   currentPlanTier: null,
   onSubscribe: jest.fn(),
+  onSwitch: jest.fn(),
   onManage: jest.fn(),
   isPending: false,
   serverError: null,
@@ -194,69 +205,58 @@ describe("SubscriptionBillingUI — unsubscribed", () => {
 
 // ── case 29: subscribed ──────────────────────────────────────────────
 
-describe("SubscriptionBillingUI — subscribed", () => {
-  it("shows the current plan and Manage subscription; hides the plan list", async () => {
+describe("SubscriptionBillingUI — subscribed (#260)", () => {
+  const subscribedProps = {
+    ...baseUIProps,
+    state: "subscribed" as const,
+    currentTierName: "Pro",
+    currentTierSlug: "pro",
+    tiers: [standardTier, proTier, scaleTier],
+  };
+
+  // case 11: the full grid renders (current flagged) + Manage; a non-current
+  // priced tier offers "Switch to this plan" (not "Subscribe"); no Subscribe.
+  it("renders the grid with Switch on other paid tiers + Manage, current flagged", () => {
+    render(<SubscriptionBillingUI {...subscribedProps} />);
+
+    // Grid is shown (Pro current + Scale switchable), not just a single card.
+    expect(screen.getByRole("heading", { name: "Pro" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Scale" })).toBeInTheDocument();
+    expect(screen.getByText("Current plan")).toBeInTheDocument();
+
+    const switchBtn = screen.getByRole("button", {
+      name: /switch to this plan/i,
+    });
+    expect(switchBtn).toBeEnabled();
+    // No "Subscribe" (that's the unsubscribed flow); Manage present.
+    expect(
+      screen.queryByRole("button", { name: /^subscribe$/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /manage subscription/i })
+    ).toBeInTheDocument();
+  });
+
+  it("clicking Switch calls onSwitch with the tier slug; Manage calls onManage", async () => {
+    const onSwitch = jest.fn();
     const onManage = jest.fn();
     render(
       <SubscriptionBillingUI
-        {...baseUIProps}
-        state="subscribed"
-        currentTierName="Pro"
+        {...subscribedProps}
+        onSwitch={onSwitch}
         onManage={onManage}
       />
     );
 
-    expect(screen.getByText(/pro/i)).toBeInTheDocument();
-    const manage = screen.getByRole("button", {
-      name: /manage subscription/i,
-    });
-    expect(manage).toBeEnabled();
-    expect(
-      screen.queryByRole("button", { name: /subscribe$/i })
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("Standard")).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: /switch to this plan/i })
+    );
+    expect(onSwitch).toHaveBeenCalledWith("scale");
 
-    await userEvent.click(manage);
+    await userEvent.click(
+      screen.getByRole("button", { name: /manage subscription/i })
+    );
     expect(onManage).toHaveBeenCalled();
-  });
-
-  // #257: the current plan's policy renders read-only next to Manage.
-  it("renders a read-only current-plan card (grid, chip, no Subscribe) with Manage", () => {
-    render(
-      <SubscriptionBillingUI
-        {...baseUIProps}
-        state="subscribed"
-        currentTierName="Pro"
-        currentTierSlug="pro"
-        currentPlanTier={proTier}
-      />
-    );
-
-    expect(screen.getByRole("heading", { name: "Pro" })).toBeInTheDocument();
-    expect(screen.getByText("Current plan")).toBeInTheDocument();
-    expect(screen.getByText(/Metered tools:/)).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /manage subscription/i })
-    ).toBeInTheDocument();
-    // Read-only: the current plan offers no Subscribe.
-    expect(
-      screen.queryByRole("button", { name: /subscribe/i })
-    ).not.toBeInTheDocument();
-  });
-
-  // #257 degrade: no resolved current tier → Manage only, no card.
-  it("omits the current-plan card when currentPlanTier is null", () => {
-    render(
-      <SubscriptionBillingUI
-        {...baseUIProps}
-        state="subscribed"
-        currentPlanTier={null}
-      />
-    );
-    expect(
-      screen.getByRole("button", { name: /manage subscription/i })
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/Metered tools:/)).not.toBeInTheDocument();
   });
 });
 
@@ -484,5 +484,47 @@ describe("SubscriptionBilling container", () => {
     // Slug-derived name (usage carries no displayName) + the policy grid.
     expect(screen.getByRole("heading", { name: "Ent X" })).toBeInTheDocument();
     expect(screen.getByText(/Metered tools:/)).toBeInTheDocument();
+  });
+
+  // #260 case 12: a subscribed org switches plans via the portal mutation.
+  it("switch: opens the portal with the target tier and redirects", async () => {
+    mockTiers.mockReturnValue(
+      loaded({ tiers: [standardTier, proTier, scaleTier] })
+    );
+    mockCurrent.mockReturnValue(
+      loaded({
+        organization: {
+          ...orgData.organization,
+          tier: "pro",
+          stripeCustomerId: "cus_1",
+          stripeSubscriptionId: "sub_1",
+        },
+      })
+    );
+    mockCheckout.mockReturnValue({
+      mutateAsync: jest.fn(),
+      isPending: false,
+      error: null,
+    });
+    const portalMutate = jest
+      .fn<() => Promise<{ url: string }>>()
+      .mockResolvedValue({ url: "https://billing.stripe.com/p/switch" });
+    mockPortal.mockReturnValue({
+      mutateAsync: portalMutate,
+      isPending: false,
+      error: null,
+    });
+
+    render(<SubscriptionBilling />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /switch to this plan/i })
+    );
+    await waitFor(() =>
+      expect(replaceSpy).toHaveBeenCalledWith(
+        "https://billing.stripe.com/p/switch"
+      )
+    );
+    expect(portalMutate).toHaveBeenCalledWith({ tier: "scale" });
   });
 });

@@ -54,8 +54,13 @@ export interface TierCardUIProps {
   isOwner: boolean;
   /** True while a checkout session is being minted. */
   isPending: boolean;
-  /** Invoked with the tier slug for a `subscribe` tier. */
+  /** Invoked with the tier slug for a `subscribe` tier (new subscription). */
   onSubscribe: (tierSlug: string) => void;
+  /** #260: whether the org already has a subscription — flips the CTA on a
+   *  non-current priced tier from "Subscribe" to "Switch to this plan". */
+  isSubscribed?: boolean;
+  /** #260: invoked with the tier slug to switch an existing subscription. */
+  onSwitch?: (tierSlug: string) => void;
 }
 
 /**
@@ -70,6 +75,8 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
   isOwner,
   isPending,
   onSubscribe,
+  isSubscribed = false,
+  onSwitch,
 }) => {
   const { policy, cta } = tier;
   // An upgrade teaser for a custom tier presents generically: no specific
@@ -158,9 +165,15 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
                 type="button"
                 variant="contained"
                 disabled={!isOwner || isPending}
-                onClick={() => onSubscribe(tier.slug)}
+                onClick={() =>
+                  isSubscribed ? onSwitch?.(tier.slug) : onSubscribe(tier.slug)
+                }
               >
-                {isPending ? "Redirecting…" : "Subscribe"}
+                {isPending
+                  ? "Redirecting…"
+                  : isSubscribed
+                    ? "Switch to this plan"
+                    : "Subscribe"}
               </Button>
             )}
 
