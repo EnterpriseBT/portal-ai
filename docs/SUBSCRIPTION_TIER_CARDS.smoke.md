@@ -58,13 +58,13 @@ Create a custom tier scoped to **your** org, and one scoped to another org:
 
 - [ ] `DATABASE_URL=… npx portalops tier create --env local --slug test_acme_ent --display-name "Acme Enterprise" --visible-to-org <myOrg> --description "Tailored to your org — unlimited usage, priority support."` → exits `0`, prints the created row.
 - [ ] `DATABASE_URL=… npx portalops tier create --env local --slug test_other_ent --display-name "Other Co Enterprise" --visible-to-org <otherOrg>` → exits `0`.
-- [ ] Reload Settings → Subscription & Billing. The **Acme Enterprise** card appears with a **"Contact support"** link (a `mailto:` — hover/inspect: `mailto:ben.turner@btdev.io`) and **no Subscribe button**. As an *upgrade teaser* (you're not on it), it shows **only** title + blurb + the link — **no policy grid** (no "Metered tools:" row).
+- [ ] Reload Settings → Subscription & Billing. A card labeled **"Enterprise"** appears (the **generic** teaser label — **not** the operator's specific "Acme Enterprise" name, and **no** client-specific blurb, since you're not on it) with a **"Contact support"** link (a `mailto:` — hover/inspect: `mailto:ben.turner@btdev.io`), **no Subscribe button**, and **no policy grid** (no "Metered tools:" row).
 - [ ] The **Other Co Enterprise** card does **not** appear (it's scoped to `<otherOrg>` — multi-tenant isolation).
 
 ## §4 — On the custom plan: full grid + manage CTA (AC / D6)
 
 - [ ] Switch your org onto the custom tier: `DATABASE_URL=… npx portalai org set-tier <myOrg> test_acme_ent --env local` → exits `0`.
-- [ ] Reload Settings. The **Acme Enterprise** card is now the **current plan** (chip present) and shows the **full policy grid** (all three allocation rows, period, overage, toolpacks) **plus** the CTA reading **"Contact support to manage/update your plan"** (not the bare "Contact support").
+- [ ] Reload Settings. The card now shows the operator's **specific name "Acme Enterprise"** (not the generic "Enterprise"), is the **current plan** (chip present), and shows the **blurb + full policy grid** (all three allocation rows, period, overage, toolpacks) **plus** the CTA reading **"Contact support to manage/update your plan"** (not the bare "Contact support").
 - [ ] Switch back so later runs are clean: `DATABASE_URL=… npx portalai org set-tier <myOrg> standard --env local`.
 
 ## §5 — Operator blurb: set / clear, excluded from `tier apply` (AC: description edit persists across apply)

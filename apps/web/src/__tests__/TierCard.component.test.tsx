@@ -116,13 +116,16 @@ describe("TierCardUI — subscribe", () => {
 // ── case 24: contact tier as an upgrade teaser (not current) ─────────
 
 describe("TierCardUI — contact (upgrade teaser)", () => {
-  it("shows title + blurb + Contact support, and HIDES the policy grid", () => {
+  it("presents generically: 'Enterprise' label, no specific name/blurb, no grid", () => {
     render(<TierCardUI {...base} tier={contactTier} />);
 
+    // Generic label — NOT the operator's specific plan name.
     expect(
-      screen.getByRole("heading", { name: "Acme Enterprise" })
+      screen.getByRole("heading", { name: "Enterprise" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Tailored to Acme.")).toBeInTheDocument();
+    expect(screen.queryByText("Acme Enterprise")).not.toBeInTheDocument();
+    // Client-specific blurb is hidden in the teaser.
+    expect(screen.queryByText("Tailored to Acme.")).not.toBeInTheDocument();
 
     const link = screen.getByRole("link", { name: /^contact support$/i });
     expect(link).toHaveAttribute("href", "mailto:ben.turner@btdev.io");
@@ -138,9 +141,14 @@ describe("TierCardUI — contact (upgrade teaser)", () => {
 // ── case 25: contact tier as the current plan ────────────────────────
 
 describe("TierCardUI — contact (current plan)", () => {
-  it("shows the full grid and the manage/update CTA", () => {
+  it("shows the specific plan name, blurb, full grid, and the manage/update CTA", () => {
     render(<TierCardUI {...base} tier={contactTier} isCurrentPlan />);
 
+    // The operator's specific name + blurb appear only when on the plan.
+    expect(
+      screen.getByRole("heading", { name: "Acme Enterprise" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Tailored to Acme.")).toBeInTheDocument();
     expect(screen.getByText("Current plan")).toBeInTheDocument();
     expect(screen.getByText(/Metered tools:/)).toBeInTheDocument();
     expect(

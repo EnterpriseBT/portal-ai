@@ -26,6 +26,11 @@ import type { BillingTier } from "@portalai/core/contracts";
 
 const OWNER_ONLY_TOOLTIP = "Only the organization owner can manage billing";
 
+/** A `contact` tier shown as an upgrade teaser (not the org's current plan)
+ *  presents generically — the operator's specific plan name + blurb are shown
+ *  only once the org is actually on it (#241). */
+const GENERIC_CONTACT_TIER_LABEL = "Enterprise";
+
 /** Wrap a disabled action in the owner-only tooltip (the `span` keeps the
  *  tooltip firing on a disabled MUI button). Plain function, not a component. */
 const withOwnerGate = (
@@ -67,8 +72,11 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
   onSubscribe,
 }) => {
   const { policy, cta } = tier;
-  // A custom card hides its (negotiated) policy until the org is on it.
-  const showGrid = cta !== "contact" || isCurrentPlan;
+  // An upgrade teaser for a custom tier presents generically: no specific
+  // name, no negotiated policy, no client-specific blurb until the org is on it.
+  const isContactTeaser = cta === "contact" && !isCurrentPlan;
+  const showGrid = !isContactTeaser;
+  const title = isContactTeaser ? GENERIC_CONTACT_TIER_LABEL : tier.displayName;
 
   const priceLine =
     cta === "subscribe"
@@ -103,7 +111,7 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
         <Stack spacing={1} alignItems="flex-start">
           <Stack direction="row" spacing={1} alignItems="center">
             <Typography variant="h3" sx={{ fontSize: "1.1rem" }}>
-              {tier.displayName}
+              {title}
             </Typography>
             {isCurrentPlan && (
               <Chip label="Current plan" size="small" color="primary" />
@@ -114,7 +122,7 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
             {priceLine}
           </Typography>
 
-          {tier.description && (
+          {tier.description && !isContactTeaser && (
             <Typography variant="body2">{tier.description}</Typography>
           )}
 

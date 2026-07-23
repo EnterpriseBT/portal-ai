@@ -11,7 +11,7 @@ This spec pins the contract for turning Settings → Subscription & Billing from
 3. **`description` excluded from convergence** (D5) — nullable `text`, never in `CONVERGED_POLICY_FIELDS`, so `tier apply` never clobbers operator copy.
 4. **Contract embeds the whole policy** (D4) — `BillingTierSchema` gains `policy: TierPolicySchema`, `description`, `cta`; today's top-level `allocations` folds into `policy.allocations` (clean cut, no alias).
 5. **CLI split** (D3) — `tier create`/`tier update`/`tier description` are new **portalops** commands (tier-row business config); **switch = existing `portalai org set-tier`** (no new command). Create/update adopt the shared cli-env **not-found (8)/conflict (9)** exit codes.
-6. **Custom-card rendering** (D6) — a `cta === "contact"` card shows **title + blurb + "Contact support"** as an upgrade teaser and **the full policy grid + "Contact support to manage/update your plan"** when it is the org's current plan; public tiers always show the grid.
+6. **Custom-card rendering** (D6) — a `cta === "contact"` card as an upgrade teaser presents **generically**: the label **"Enterprise"** (not the operator's specific `displayName`), no client-specific blurb, no policy grid, and a **"Contact support"** link. When it is the org's **current plan** it shows the operator's specific `displayName` + blurb + the full policy grid + **"Contact support to manage/update your plan"**. Public tiers always show the grid + their `displayName`. A subscribe tier offers **Subscribe only when it is not the current plan**.
 
 ## Scope
 
@@ -212,8 +212,10 @@ export interface TierCardUIProps {
 Rendering rules (D6):
 - Header: `displayName`, `formatPrice`/"Free"/(nothing for contact), a "Current plan" chip when `isCurrentPlan`.
 - Blurb: `description` when non-null.
+- **Title**: the operator `displayName`, except a contact **upgrade teaser** (`cta === "contact" && !isCurrentPlan`) shows the generic **"Enterprise"** label.
+- **Blurb**: shown for public tiers and the current plan; **hidden** on a contact upgrade teaser (client-specific copy isn't shown until the org is on the plan).
 - **Policy grid** (allocations for all three classes with both dimensions, perToolCaps, overage, period, entitlement names): shown when `cta !== "contact" || isCurrentPlan`; hidden for a contact **upgrade teaser**.
-- **CTA**: `subscribe` → owner-gated Subscribe button; `contact` → a "Contact support" link (`SUPPORT_MAILTO`) reading **"Contact support"** as a teaser or **"Contact support to manage/update your plan"** when `isCurrentPlan`; `none` → no CTA.
+- **CTA**: `subscribe` → owner-gated Subscribe button **only when `!isCurrentPlan`** (the current plan offers no re-subscribe); `contact` → a "Contact support" link (`SUPPORT_MAILTO`) reading **"Contact support"** as a teaser or **"Contact support to manage/update your plan"** when `isCurrentPlan`; `none` → no CTA.
 
 ### Web — `apps/web/src/components/SubscriptionBilling.component.tsx`
 
