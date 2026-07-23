@@ -25,7 +25,7 @@ describe("TIER_CATALOG (#218)", () => {
     }
   });
 
-  it("standard is the QA-generous non-purchasable default (#239)", () => {
+  it("standard is the free entry default (#263)", () => {
     const standard = TIER_CATALOG_BY_SLUG.get("standard");
     expect(standard).toBeDefined();
     expect(standard).toMatchObject({
@@ -36,25 +36,60 @@ describe("TIER_CATALOG (#218)", () => {
       overage: "hard-deny",
       freeUnitsPerPeriod: null,
       freeRatePerMin: null,
-      // #239 QA-sandbox posture: metered unlimited (null), expensive finite
-      // to bound web_search→Tavily vendor cost even when quota is generous.
-      meteredUnitsPerPeriod: null,
-      meteredRatePerMin: null,
-      expensiveUnitsPerPeriod: 1_000_000,
-      expensiveRatePerMin: 10_000,
+      // #263: modest entry allocations (ascending lineup).
+      meteredUnitsPerPeriod: 500,
+      meteredRatePerMin: 10,
+      expensiveUnitsPerPeriod: 20,
+      expensiveRatePerMin: 2,
       perToolCaps: null,
       selectable: true,
-      // #214 generous-beta posture: fully permissive.
-      builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
-      customToolpacks: true,
+      builtinToolpacks: ["data_query", "web_search"],
+      customToolpacks: false,
       // #241: the free default has no card CTA.
       cta: "none",
-      // Still the non-purchasable default — no Stripe price for standard.
       stripeLookupKey: null,
     });
   });
 
-  it("pro is a selectable purchasable tier (#239)", () => {
+  it("plus is a selectable paid mid tier (#263)", () => {
+    const plus = TIER_CATALOG_BY_SLUG.get("plus");
+    expect(plus).toMatchObject({
+      slug: "plus",
+      displayName: "Plus",
+      meteredUnitsPerPeriod: 5_000,
+      expensiveUnitsPerPeriod: 200,
+      selectable: true,
+      builtinToolpacks: [
+        "data_query",
+        "statistics",
+        "web_search",
+        "entity_management",
+      ],
+      customToolpacks: false,
+      cta: "subscribe",
+      stripeLookupKey: "plus_monthly",
+    });
+  });
+
+  it("enterprise is the public contact-sales tier (#263)", () => {
+    const ent = TIER_CATALOG_BY_SLUG.get("enterprise");
+    expect(ent).toMatchObject({
+      slug: "enterprise",
+      displayName: "Enterprise",
+      // Negotiated → unlimited across the board.
+      meteredUnitsPerPeriod: null,
+      expensiveUnitsPerPeriod: null,
+      selectable: true,
+      customToolpacks: true,
+      cta: "contact",
+      stripeLookupKey: null,
+    });
+    expect(ent?.builtinToolpacks).toEqual([
+      ...BuiltinToolpackSlugSchema.options,
+    ]);
+  });
+
+  it("pro is a selectable purchasable tier — everything + generous (#263)", () => {
     const pro = TIER_CATALOG_BY_SLUG.get("pro");
     expect(pro).toBeDefined();
     expect(pro).toMatchObject({

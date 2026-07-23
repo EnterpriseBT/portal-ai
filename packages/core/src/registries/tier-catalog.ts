@@ -51,19 +51,23 @@ export const TierCatalogEntrySchema = z.object({
 export type TierCatalogEntry = z.infer<typeof TierCatalogEntrySchema>;
 
 /**
- * The catalog. app-dev is a QA sandbox (#239), so allocation magnitudes are
- * QA-generous rather than production-graded: `metered` is unlimited (null) so
- * no metered denial interrupts manual testing, while `expensive` stays finite
- * to bound the one Portal-billed class (`web_search`→Tavily) even under a
- * generous quota. `standard` (the non-purchasable default) and `pro` (the
- * purchasable tier) carry the same policy here — `pro` differs only by having
- * a `stripeLookupKey`. Meaningful per-tier differentiation is a production
- * concern; Enterprise/Custom plan is #241. Product/policy changes land here as
- * reviewed PRs, then reach an environment via `portalops tier apply --env <e>`.
+ * The catalog — four self-serve tiers, ascending (#263): `standard` (free
+ * default) < `plus` (paid) < `pro` (paid; everything allowed + generous) <
+ * `enterprise` (public `contact`/contact-sales, no price). These are
+ * **test-grade** magnitudes, not production-graded — `pro`'s `metered` is
+ * unlimited (null) so no denial interrupts manual testing, while its
+ * `expensive` stays finite-but-huge to bound the one Portal-billed class
+ * (`web_search`→Tavily) even under a generous quota. `enterprise` here is the
+ * generic public contact card; the per-client custom tiers of #241 are
+ * org-scoped and created out-of-band. Product/policy + real pricing are refined
+ * later; changes land as reviewed PRs, then reach an environment via
+ * `portalops tier apply --env <e>` (paid tiers need their Stripe price created
+ * first — apply fails closed on a missing lookup key).
  */
 export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
   z.array(TierCatalogEntrySchema).parse([
     {
+      // Free entry tier (the default). Modest allocations, basic toolpacks.
       slug: "standard",
       displayName: "Standard",
       periodKind: "monthly",
@@ -71,18 +75,45 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       overage: "hard-deny",
       freeUnitsPerPeriod: null,
       freeRatePerMin: null,
-      meteredUnitsPerPeriod: null,
-      meteredRatePerMin: null,
-      expensiveUnitsPerPeriod: 1_000_000,
-      expensiveRatePerMin: 10_000,
+      meteredUnitsPerPeriod: 500,
+      meteredRatePerMin: 10,
+      expensiveUnitsPerPeriod: 20,
+      expensiveRatePerMin: 2,
       perToolCaps: null,
       selectable: true,
-      builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
-      customToolpacks: true,
+      builtinToolpacks: ["data_query", "web_search"],
+      customToolpacks: false,
       cta: "none",
       stripeLookupKey: null,
     },
     {
+      // Paid mid tier.
+      slug: "plus",
+      displayName: "Plus",
+      periodKind: "monthly",
+      periodAnchorDay: 1,
+      overage: "hard-deny",
+      freeUnitsPerPeriod: null,
+      freeRatePerMin: null,
+      meteredUnitsPerPeriod: 5_000,
+      meteredRatePerMin: 60,
+      expensiveUnitsPerPeriod: 200,
+      expensiveRatePerMin: 10,
+      perToolCaps: null,
+      selectable: true,
+      builtinToolpacks: [
+        "data_query",
+        "statistics",
+        "web_search",
+        "entity_management",
+      ],
+      customToolpacks: false,
+      cta: "subscribe",
+      stripeLookupKey: "plus_monthly",
+    },
+    {
+      // Top self-serve tier: everything allowed + generous (metered unlimited);
+      // `expensive` stays finite-but-huge to bound Tavily/web_search cost.
       slug: "pro",
       displayName: "Pro",
       periodKind: "monthly",
@@ -100,6 +131,28 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       customToolpacks: true,
       cta: "subscribe",
       stripeLookupKey: "pro_monthly",
+    },
+    {
+      // Public "contact sales" tier (cta contact, no price). Distinct from the
+      // per-client custom tiers of #241, which are org-scoped; this is the
+      // generic Enterprise upgrade card everyone sees. Negotiated → unlimited.
+      slug: "enterprise",
+      displayName: "Enterprise",
+      periodKind: "monthly",
+      periodAnchorDay: 1,
+      overage: "hard-deny",
+      freeUnitsPerPeriod: null,
+      freeRatePerMin: null,
+      meteredUnitsPerPeriod: null,
+      meteredRatePerMin: null,
+      expensiveUnitsPerPeriod: null,
+      expensiveRatePerMin: null,
+      perToolCaps: null,
+      selectable: true,
+      builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
+      customToolpacks: true,
+      cta: "contact",
+      stripeLookupKey: null,
     },
   ])
 );
