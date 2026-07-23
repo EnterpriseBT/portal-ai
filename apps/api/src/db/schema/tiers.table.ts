@@ -6,9 +6,11 @@ import {
   jsonb,
   unique,
   check,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
+import { organizations } from "./organizations.table.js";
 
 /**
  * Subscription tiers — the per-org unit-allocation definitions (#172).
@@ -54,6 +56,23 @@ export const tiers = pgTable(
       .default([]),
     /** #214: custom (webhook) toolpack entitlement. Fail-closed default. */
     customToolpacks: boolean("custom_toolpacks").notNull().default(false),
+    /** #241: the single source of truth for the Settings card's action —
+     *  `subscribe | contact | none` (CHECK-constrained below). Default `none`
+     *  is the fail-closed baseline (no CTA); `tier apply` converges it from the
+     *  catalog. */
+    cta: text("cta").notNull().default("none"),
+    /** #241: operator-authored plan blurb. Nullable; excluded from `tier apply`
+     *  convergence so operator copy is never clobbered. */
+    description: text("description"),
+    /** #241: per-client custom-tier scoping. NULL = public (all orgs); set =
+     *  private to that one org. Nullable FK → organizations.id (closes a cyclic
+     *  FK with organizations.tier → tiers.slug; both nullable/defaulted). */
+    visibleToOrganizationId: text("visible_to_organization_id").references(
+      // `AnyPgColumn` return annotation breaks the type-level recursion of the
+      // cyclic FK (organizations.tier → tiers.slug and back); without it TS
+      // degrades `organizations`'s inferred row type to `Record<string, any>`.
+      (): AnyPgColumn => organizations.id
+    ),
   },
   (t) => [
     // FULL unique CONSTRAINT (not a soft-delete-partial index): `slug` is the
@@ -70,6 +89,14 @@ export const tiers = pgTable(
     ),
     check("tiers_period_kind_check", sql`${t.periodKind} IN ('monthly')`),
     check("tiers_anchor_day_check", sql`${t.periodAnchorDay} BETWEEN 1 AND 28`),
+    // #241: the card CTA vocabulary.
+    check("tiers_cta_check", sql`${t.cta} IN ('subscribe', 'contact', 'none')`),
+    // #241: a `subscribe` card must resolve a price — the invariant `tier
+    // apply` enforces (fail-closed) made durable at the DB.
+    check(
+      "tiers_cta_price_check",
+      sql`${t.cta} <> 'subscribe' OR ${t.stripePriceId} IS NOT NULL`
+    ),
     check(
       "tiers_charges_nonneg",
       sql`(${t.freeUnitsPerPeriod} IS NULL OR ${t.freeUnitsPerPeriod} >= 0)

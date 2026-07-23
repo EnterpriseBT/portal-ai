@@ -27,7 +27,13 @@ import {
   dbSeed,
   dbResetSeed,
 } from "./commands/db.js";
-import { tierApply, type TierApplyResult } from "./commands/tier.js";
+import {
+  tierApply,
+  tierCreate,
+  tierUpdate,
+  tierDescription,
+  type TierApplyResult,
+} from "./commands/tier.js";
 import { exitCodeFor, jsonError, printBanner } from "./output.js";
 
 interface GlobalOpts {
@@ -239,6 +245,87 @@ export function buildProgram(): Command {
         renderTierApply as never
       )
     );
+
+  // #241: per-client custom tier lifecycle (create/update/describe). Switching
+  // an org ONTO a tier stays in `portalai org set-tier` (customer app data).
+  type TierWriteFlags = GlobalOpts & {
+    slug?: string;
+    displayName?: string;
+    cta?: string;
+    overage?: string;
+    stripePriceId?: string;
+    visibleToOrg?: string;
+    description?: string;
+  };
+  const writeInput = (o: TierWriteFlags) => ({
+    slug: o.slug as string,
+    displayName: o.displayName,
+    cta: o.cta,
+    overage: o.overage,
+    stripePriceId: o.stripePriceId,
+    visibleToOrganizationId: o.visibleToOrg,
+    description: o.description,
+  });
+
+  common(
+    tier
+      .command("create")
+      .description(
+        "create a custom tier row (defaults: contact CTA, unlimited)"
+      )
+      .requiredOption(
+        "--slug <slug>",
+        "unique tier slug (e.g. acme_enterprise)"
+      )
+      .requiredOption("--display-name <name>", "human display name")
+      .option("--cta <kind>", "subscribe | contact | none (default: contact)")
+      .option("--visible-to-org <orgId>", "scope to one org (omit = public)")
+      .option("--description <text>", "operator blurb")
+      .option("--overage <mode>", "hard-deny | soft-alert (default: hard-deny)")
+      .option("--stripe-price-id <id>", "for a subscribe custom tier")
+  ).action(async (o: TierWriteFlags) =>
+    execute(o, (def) => tierCreate(def, writeInput(o), flags(o)))
+  );
+
+  common(
+    tier
+      .command("update")
+      .description("update a custom tier's fields (only those provided)")
+      .requiredOption("--slug <slug>", "the tier to update")
+      .option("--display-name <name>", "human display name")
+      .option("--cta <kind>", "subscribe | contact | none")
+      .option("--visible-to-org <orgId>", "scope to one org")
+      .option("--description <text>", "operator blurb")
+      .option("--overage <mode>", "hard-deny | soft-alert")
+      .option("--stripe-price-id <id>", "Stripe price id")
+  ).action(async (o: TierWriteFlags) =>
+    execute(o, (def) => tierUpdate(def, writeInput(o), flags(o)))
+  );
+
+  common(
+    tier
+      .command("description")
+      .description("set or clear a tier's blurb (excluded from tier apply)")
+      .requiredOption("--slug <slug>", "the tier to edit")
+      .option("--set <text>", "the blurb text")
+      .option("--clear", "clear the blurb (set to null)")
+  ).action(
+    async (o: GlobalOpts & { slug?: string; set?: string; clear?: boolean }) =>
+      execute(o, (def) => {
+        if (o.clear && o.set !== undefined) {
+          throw new Error("pass either --set or --clear, not both");
+        }
+        if (!o.clear && o.set === undefined) {
+          throw new Error("pass --set <text> or --clear");
+        }
+        return tierDescription(
+          def,
+          o.slug as string,
+          o.clear ? null : (o.set as string),
+          flags(o)
+        );
+      })
+  );
 
   return program;
 }

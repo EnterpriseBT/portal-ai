@@ -258,17 +258,23 @@ export class BillingService {
 
   /**
    * The self-serve plan list (`GET /api/billing/tiers`): `selectable` rows
-   * mapped to whole-tier objects (#214 contract-shaping). `purchasable`
-   * stays truthful under a Stripe outage — only `price` null-degrades (Q7).
+   * **visible to `organizationId`** (public rows + this org's private custom
+   * tiers, #241) mapped to whole-tier objects. Each carries the full assembled
+   * policy (#241), the operator blurb, and the single-source-of-truth `cta`.
+   * `cta` stays truthful under a Stripe outage — only `price` null-degrades.
    */
-  static async listBillingTiers(): Promise<BillingTier[]> {
-    const rows = await DbService.repository.tiers.findSelectable();
+  static async listBillingTiers(
+    organizationId: string
+  ): Promise<BillingTier[]> {
+    const rows =
+      await DbService.repository.tiers.findSelectableForOrg(organizationId);
     return Promise.all(
       rows.map(async (row) => ({
         slug: row.slug,
         displayName: row.displayName,
-        allocations: TierService.tierPolicyFromRow(row).allocations,
-        purchasable: row.stripePriceId != null,
+        policy: TierService.tierPolicyFromRow(row),
+        description: row.description,
+        cta: row.cta as BillingTier["cta"],
         price: row.stripePriceId
           ? await StripeService.getPrice(row.stripePriceId)
           : null,

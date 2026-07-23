@@ -1,24 +1,25 @@
 import React from "react";
 
 import Alert from "@mui/material/Alert";
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Stack,
-  Tooltip,
-  Typography,
-} from "@portalai/core/ui";
+import { Box, Button, Stack, Tooltip, Typography } from "@portalai/core/ui";
 
 import { sdk } from "../api/sdk";
 import { DataResult } from "./DataResult.component";
 import { FormAlert } from "./FormAlert.component";
+import { TierCardUI } from "./TierCard.component";
 import { toServerError, type ServerError } from "../utils/api.util";
 
 import type { BillingTier } from "@portalai/core/contracts";
 
 // ── Helpers ──────────────────────────────────────────────────────────
+
+/** Column counts by breakpoint — fills the container, capped at 4 (#241). */
+const CARD_GRID_COLUMNS = {
+  xs: "1fr",
+  sm: "repeat(2, minmax(0, 1fr))",
+  md: "repeat(3, minmax(0, 1fr))",
+  lg: "repeat(4, minmax(0, 1fr))",
+} as const;
 
 /** Present a tier slug as a human label, e.g. "enterprise-acme" → "Enterprise Acme". */
 const formatTierSlug = (slug: string): string =>
@@ -27,17 +28,6 @@ const formatTierSlug = (slug: string): string =>
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
-
-/** "$49 / month" from a live price; "—" when display-degraded. */
-const formatPrice = (price: BillingTier["price"]): string => {
-  if (!price) return "—";
-  const amount = new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: price.currency.toUpperCase(),
-    minimumFractionDigits: price.unitAmount % 100 === 0 ? 0 : 2,
-  }).format(price.unitAmount / 100);
-  return `${amount} / ${price.interval}`;
-};
 
 const OWNER_ONLY_TOOLTIP = "Only the organization owner can manage billing";
 
@@ -69,6 +59,8 @@ export interface SubscriptionBillingUIProps {
   isOwner: boolean;
   /** Human label of the org's current plan. */
   currentTierName: string;
+  /** The org's current plan slug — flags the matching card. */
+  currentTierSlug: string;
   /** The self-serve plan list (rendered only when unsubscribed). */
   tiers: BillingTier[];
   onSubscribe: (tierSlug: string) => void;
@@ -82,88 +74,84 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
   state,
   isOwner,
   currentTierName,
+  currentTierSlug,
   tiers,
   onSubscribe,
   onManage,
   isPending,
   serverError,
-}) => (
-  <Stack spacing={2}>
-    <FormAlert serverError={serverError} />
+}) => {
+  // On a custom plan (a `contact` tier is the org's current plan), show ONLY
+  // that card — a custom-plan customer doesn't self-serve to the other tiers.
+  // Otherwise show the full list to encourage upgrades (#241).
+  const currentTier = tiers.find((t) => t.slug === currentTierSlug);
+  const displayTiers = currentTier?.cta === "contact" ? [currentTier] : tiers;
 
-    <Typography variant="body1">
-      Current plan: <strong>{currentTierName}</strong>
-    </Typography>
+  return (
+    <Stack spacing={2}>
+      <FormAlert serverError={serverError} />
 
-    {state === "managed" && (
-      <Alert severity="info">
-        Your plan is managed — contact us to make changes.
-      </Alert>
-    )}
+      <Typography variant="body1">
+        Current plan: <strong>{currentTierName}</strong>
+      </Typography>
 
-    {state === "subscribed" && (
-      <Box>
-        {withOwnerGate(
-          isOwner,
-          <Button
-            type="button"
-            variant="contained"
-            disabled={!isOwner || isPending}
-            onClick={onManage}
+      {state === "managed" && (
+        <Alert severity="info">
+          Your plan is managed — contact us to make changes.
+        </Alert>
+      )}
+
+      {state === "subscribed" && (
+        <Box>
+          {withOwnerGate(
+            isOwner,
+            <Button
+              type="button"
+              variant="contained"
+              disabled={!isOwner || isPending}
+              onClick={onManage}
+            >
+              {isPending ? "Opening…" : "Manage subscription"}
+            </Button>
+          )}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Plan changes, payment methods, invoices, and cancellation are
+            handled in the secure Stripe billing portal.
+          </Typography>
+        </Box>
+      )}
+
+      {state === "unsubscribed" && (
+        <Stack spacing={1}>
+          <Box
+            sx={{
+              display: "grid",
+              gap: 2,
+              gridTemplateColumns: CARD_GRID_COLUMNS,
+              alignItems: "stretch",
+            }}
           >
-            {isPending ? "Opening…" : "Manage subscription"}
-          </Button>
-        )}
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          Plan changes, payment methods, invoices, and cancellation are handled
-          in the secure Stripe billing portal.
-        </Typography>
-      </Box>
-    )}
-
-    {state === "unsubscribed" && (
-      <Stack spacing={1}>
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          spacing={2}
-          alignItems="stretch"
-        >
-          {tiers.map((tier) => (
-            <Card key={tier.slug} variant="outlined" sx={{ minWidth: 220 }}>
-              <CardContent>
-                <Stack spacing={1} alignItems="flex-start">
-                  <Typography variant="h3" sx={{ fontSize: "1.1rem" }}>
-                    {tier.displayName}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {tier.purchasable ? formatPrice(tier.price) : "Free"}
-                  </Typography>
-                  {tier.purchasable &&
-                    withOwnerGate(
-                      isOwner,
-                      <Button
-                        type="button"
-                        variant="contained"
-                        disabled={!isOwner || isPending}
-                        onClick={() => onSubscribe(tier.slug)}
-                      >
-                        {isPending ? "Redirecting…" : "Subscribe"}
-                      </Button>
-                    )}
-                </Stack>
-              </CardContent>
-            </Card>
-          ))}
-        </Stack>
-        {/* #217: display-only — Stripe Tax computes the actual amount at
+            {displayTiers.map((tier) => (
+              <TierCardUI
+                key={tier.slug}
+                tier={tier}
+                isCurrentPlan={tier.slug === currentTierSlug}
+                isOwner={isOwner}
+                isPending={isPending}
+                onSubscribe={onSubscribe}
+              />
+            ))}
+          </Box>
+          {/* #217: display-only — Stripe Tax computes the actual amount at
             checkout from the billing address. */}
-        <Typography variant="caption" color="text.secondary">
-          Prices exclude tax, which is calculated at checkout.
-        </Typography>
-      </Stack>
-    )}
-  </Stack>
-);
+          <Typography variant="caption" color="text.secondary">
+            Prices exclude tax, which is calculated at checkout.
+          </Typography>
+        </Stack>
+      )}
+    </Stack>
+  );
+};
 
 // ── Container ────────────────────────────────────────────────────────
 
@@ -196,8 +184,10 @@ export const SubscriptionBilling: React.FC = () => {
         const { organization } = organizationResult;
         const { tiers } = tiersResult;
 
-        // State derivation (spec D5): a live subscription wins; otherwise a
-        // tier outside the selectable list means a managed custom plan.
+        // State derivation (spec D5/#241 D6): a live subscription wins;
+        // otherwise a current tier absent from the org-scoped list is a
+        // managed custom plan (the fallback banner). A listed custom tier the
+        // org is on renders as its own current-plan card, not "managed".
         const subscribed = organization.stripeSubscriptionId != null;
         const managed =
           !subscribed && !tiers.some((t) => t.slug === organization.tier);
@@ -219,6 +209,7 @@ export const SubscriptionBilling: React.FC = () => {
               profileResult.userId === organization.ownerUserId
             }
             currentTierName={currentTierName}
+            currentTierSlug={organization.tier}
             tiers={tiers}
             onSubscribe={handleSubscribe}
             onManage={handleManage}

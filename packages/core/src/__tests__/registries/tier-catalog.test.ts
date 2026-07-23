@@ -47,6 +47,8 @@ describe("TIER_CATALOG (#218)", () => {
       // #214 generous-beta posture: fully permissive.
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
       customToolpacks: true,
+      // #241: the free default has no card CTA.
+      cta: "none",
       // Still the non-purchasable default — no Stripe price for standard.
       stripeLookupKey: null,
     });
@@ -71,6 +73,8 @@ describe("TIER_CATALOG (#218)", () => {
       selectable: true,
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
       customToolpacks: true,
+      // #241: a purchasable tier's card offers self-serve checkout.
+      cta: "subscribe",
       // Purchasable: the cross-env lookup key tier apply resolves to a price.
       stripeLookupKey: "pro_monthly",
     });

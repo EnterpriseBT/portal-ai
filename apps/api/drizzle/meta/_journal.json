@@ -505,6 +505,13 @@
       "when": 1784429712384,
       "tag": "0071_stripe_events_outcome_foreign",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1784764989931,
+      "tag": "0072_add_tier_cta_description_visibility",
+      "breakpoints": true
     }
   ]
 }

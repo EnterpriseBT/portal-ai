@@ -35,32 +35,51 @@ const { SubscriptionBilling, SubscriptionBillingUI } =
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
-const allocations = {
-  free: { unitsPerPeriod: null, ratePerMin: null },
-  metered: { unitsPerPeriod: 2500, ratePerMin: 20 },
-  expensive: { unitsPerPeriod: 300, ratePerMin: 5 },
-};
+const policy = (tier: string) => ({
+  tier,
+  period: { kind: "monthly" as const, anchorDay: 1 },
+  allocations: {
+    free: { unitsPerPeriod: null, ratePerMin: null },
+    metered: { unitsPerPeriod: 2500, ratePerMin: 20 },
+    expensive: { unitsPerPeriod: 300, ratePerMin: 5 },
+  },
+  perToolCaps: null,
+  overage: "hard-deny" as const,
+  entitlements: { builtinToolpacks: ["data_query"], customToolpacks: true },
+});
 
 const standardTier: BillingTier = {
   slug: "standard",
   displayName: "Standard",
-  allocations,
-  purchasable: false,
+  policy: policy("standard"),
+  description: null,
+  cta: "none",
   price: null,
 };
 
 const proTier: BillingTier = {
   slug: "pro",
   displayName: "Pro",
-  allocations,
-  purchasable: true,
+  policy: policy("pro"),
+  description: null,
+  cta: "subscribe",
   price: { unitAmount: 4900, currency: "usd", interval: "month" },
+};
+
+const contactTier: BillingTier = {
+  slug: "acme_enterprise",
+  displayName: "Acme Enterprise",
+  policy: { ...policy("acme_enterprise") },
+  description: "Tailored to Acme.",
+  cta: "contact",
+  price: null,
 };
 
 const baseUIProps = {
   state: "unsubscribed" as const,
   isOwner: true,
   currentTierName: "Standard",
+  currentTierSlug: "standard",
   tiers: [standardTier, proTier],
   onSubscribe: jest.fn(),
   onManage: jest.fn(),
@@ -117,6 +136,47 @@ describe("SubscriptionBillingUI — unsubscribed", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /subscribe/i }));
     expect(onSubscribe).toHaveBeenCalledWith("pro");
+  });
+
+  // #241: a contact (custom) tier in the list renders a Contact-support card.
+  it("renders a contact tier's Contact support CTA and flags the current plan", () => {
+    render(
+      <SubscriptionBillingUI
+        {...baseUIProps}
+        tiers={[standardTier, proTier, contactTier]}
+      />
+    );
+
+    expect(
+      screen.getByRole("link", { name: /^contact support$/i })
+    ).toHaveAttribute("href", "mailto:ben.turner@btdev.io");
+    // The current plan (standard) is chip-flagged.
+    expect(screen.getByText("Current plan")).toBeInTheDocument();
+  });
+
+  // #241: on a custom plan, show ONLY that card (no self-serve upgrade list).
+  it("shows only the custom card when the org is on a custom plan", () => {
+    render(
+      <SubscriptionBillingUI
+        {...baseUIProps}
+        tiers={[standardTier, proTier, contactTier]}
+        currentTierName="Acme Enterprise"
+        currentTierSlug="acme_enterprise"
+      />
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Acme Enterprise" })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Standard" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Pro" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /subscribe/i })
+    ).not.toBeInTheDocument();
   });
 });
 

@@ -58,10 +58,14 @@ async function resolveCallerOrg(
  *       - Billing
  *     summary: List the self-serve subscription plans
  *     description: >
- *       Every `selectable` tier as a whole-tier object — display name,
- *       allocations, whether it is purchasable, and its live Stripe price
- *       (null when not purchasable or when the price lookup is degraded by a
- *       Stripe outage). Accessible to any member of the organization.
+ *       Every `selectable` tier visible to the caller's organization (public
+ *       tiers plus that org's private custom tiers) as a whole-tier object —
+ *       display name, the full tier policy (per-cost-class allocations with
+ *       per-minute rates, per-tool caps, overage, billing period, toolpack
+ *       entitlements), an operator-authored blurb, a `cta`
+ *       (`subscribe | contact | none`), and its live Stripe price (null for a
+ *       non-`subscribe` tier or when the price lookup is degraded by a Stripe
+ *       outage). Accessible to any member of the organization.
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -80,8 +84,8 @@ billingRouter.get(
   "/tiers",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      await resolveCallerOrg(req); // membership check only
-      const tiers = await BillingService.listBillingTiers();
+      const { organization } = await resolveCallerOrg(req); // membership check
+      const tiers = await BillingService.listBillingTiers(organization.id);
       return HttpService.success<BillingTiersGetResponse>(res, { tiers });
     } catch (error) {
       logger.error(

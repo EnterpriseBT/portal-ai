@@ -102,8 +102,16 @@ const tiersData = {
     {
       slug: "standard",
       displayName: "Standard",
-      allocations: usageData.tier.allocations,
-      purchasable: false,
+      policy: {
+        tier: "standard",
+        period: { kind: "monthly", anchorDay: 1 },
+        allocations: usageData.tier.allocations,
+        perToolCaps: null,
+        overage: "hard-deny",
+        entitlements: { builtinToolpacks: [], customToolpacks: true },
+      },
+      description: null,
+      cta: "none",
       price: null,
     },
   ],
