@@ -16,6 +16,7 @@ const mockCreateCheckoutSession =
 const mockCreatePortalSession =
   jest.fn<(args: unknown) => Promise<{ url: string }>>();
 const mockGetPrice = jest.fn<(id: string) => Promise<unknown>>();
+const mockFetchSubscription = jest.fn<(id: string) => Promise<unknown>>();
 
 jest.unstable_mockModule("../../services/stripe.service.js", () => ({
   StripeService: {
@@ -24,7 +25,7 @@ jest.unstable_mockModule("../../services/stripe.service.js", () => ({
     createCheckoutSession: mockCreateCheckoutSession,
     createPortalSession: mockCreatePortalSession,
     getPrice: mockGetPrice,
-    fetchSubscription: jest.fn(),
+    fetchSubscription: mockFetchSubscription,
   },
 }));
 
@@ -137,6 +138,9 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue([standardTier, proTier]);
   mockOrgUpdate.mockReset().mockResolvedValue({});
+  mockFetchSubscription
+    .mockReset()
+    .mockResolvedValue({ items: { data: [{ id: "si_1" }] } });
 });
 
 // ── case 15: checkout guard ladder, in spec order ────────────────────
@@ -322,6 +326,62 @@ describe("BillingService.createPortal", () => {
         OWNER
       )
     ).rejects.toMatchObject({ status: 502, code: "BILLING_PORTAL_FAILED" });
+  });
+
+  // ── #260: switch flow (createPortal with a target tier) ──────────────
+  const subbed = () =>
+    orgFixture({ stripeCustomerId: "cus_1", stripeSubscriptionId: "sub_1" });
+
+  // case 3: builds the subscription-update descriptor from the resolved price
+  it("switch: resolves the price + current item and passes subscriptionUpdate", async () => {
+    await expect(
+      BillingService.createPortal(subbed(), OWNER, "pro")
+    ).resolves.toEqual({ url: "https://billing.stripe.com/p/session" });
+    expect(mockFetchSubscription).toHaveBeenCalledWith("sub_1");
+    expect(mockCreatePortalSession).toHaveBeenCalledWith({
+      customerId: "cus_1",
+      returnUrl: "http://app.test/settings",
+      subscriptionUpdate: {
+        subscriptionId: "sub_1",
+        itemId: "si_1",
+        priceId: "price_pro",
+      },
+    });
+  });
+
+  // case 4: switching without a live subscription
+  it("switch: 409 BILLING_NO_SUBSCRIPTION when the org has no subscription", async () => {
+    await expect(
+      BillingService.createPortal(
+        orgFixture({ stripeCustomerId: "cus_1" }), // no stripeSubscriptionId
+        OWNER,
+        "pro"
+      )
+    ).rejects.toMatchObject({ status: 409, code: "BILLING_NO_SUBSCRIPTION" });
+    expect(mockCreatePortalSession).not.toHaveBeenCalled();
+  });
+
+  // case 5: unknown / unpriced target tier
+  it("switch: 404 for an unknown tier, 400 for an unpriced one", async () => {
+    await expect(
+      BillingService.createPortal(subbed(), OWNER, "nope")
+    ).rejects.toMatchObject({ status: 404, code: "BILLING_TIER_NOT_FOUND" });
+    await expect(
+      BillingService.createPortal(subbed(), OWNER, "standard") // selectable, no price
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "BILLING_TIER_NOT_PURCHASABLE",
+    });
+  });
+
+  // case 2: no tier → Manage (no subscriptionUpdate key)
+  it("no tier → Manage session (no subscriptionUpdate)", async () => {
+    await BillingService.createPortal(subbed(), OWNER);
+    expect(mockCreatePortalSession).toHaveBeenCalledWith({
+      customerId: "cus_1",
+      returnUrl: "http://app.test/settings",
+    });
+    expect(mockFetchSubscription).not.toHaveBeenCalled();
   });
 });
 

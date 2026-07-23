@@ -111,6 +111,49 @@ describe("TierCardUI — subscribe", () => {
       screen.queryByRole("button", { name: /subscribe/i })
     ).not.toBeInTheDocument();
   });
+
+  // #260: on a subscribed org, a non-current priced tier switches, not subscribes.
+  it("renders 'Switch to this plan' (not Subscribe) when isSubscribed", async () => {
+    const onSwitch = jest.fn();
+    const onSubscribe = jest.fn();
+    render(
+      <TierCardUI
+        {...base}
+        tier={subscribeTier}
+        isSubscribed
+        onSwitch={onSwitch}
+        onSubscribe={onSubscribe}
+      />
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /^subscribe$/i })
+    ).not.toBeInTheDocument();
+    const sw = screen.getByRole("button", { name: /switch to this plan/i });
+    await userEvent.click(sw);
+    expect(onSwitch).toHaveBeenCalledWith("pro");
+    expect(onSubscribe).not.toHaveBeenCalled();
+  });
+
+  it("disables Switch for a non-owner with the owner-only tooltip", async () => {
+    render(
+      <TierCardUI
+        {...base}
+        tier={subscribeTier}
+        isSubscribed
+        isOwner={false}
+        onSwitch={jest.fn()}
+      />
+    );
+    const sw = screen.getByRole("button", { name: /switch to this plan/i });
+    expect(sw).toBeDisabled();
+    await userEvent.hover(sw.parentElement as HTMLElement);
+    await waitFor(() =>
+      expect(
+        screen.getByText(/only the organization owner can manage billing/i)
+      ).toBeInTheDocument()
+    );
+  });
 });
 
 // ── case 24: contact tier as an upgrade teaser (not current) ─────────

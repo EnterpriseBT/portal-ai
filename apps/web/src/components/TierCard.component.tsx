@@ -3,6 +3,7 @@ import React from "react";
 import Chip from "@mui/material/Chip";
 import Link from "@mui/material/Link";
 import {
+  Box,
   Button,
   Card,
   CardContent,
@@ -54,8 +55,13 @@ export interface TierCardUIProps {
   isOwner: boolean;
   /** True while a checkout session is being minted. */
   isPending: boolean;
-  /** Invoked with the tier slug for a `subscribe` tier. */
+  /** Invoked with the tier slug for a `subscribe` tier (new subscription). */
   onSubscribe: (tierSlug: string) => void;
+  /** #260: whether the org already has a subscription — flips the CTA on a
+   *  non-current priced tier from "Subscribe" to "Switch to this plan". */
+  isSubscribed?: boolean;
+  /** #260: invoked with the tier slug to switch an existing subscription. */
+  onSwitch?: (tierSlug: string) => void;
 }
 
 /**
@@ -70,6 +76,8 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
   isOwner,
   isPending,
   onSubscribe,
+  isSubscribed = false,
+  onSwitch,
 }) => {
   const { policy, cta } = tier;
   // An upgrade teaser for a custom tier presents generically: no specific
@@ -106,8 +114,18 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
   const packNames = entitlementPackNames(policy.entitlements.builtinToolpacks);
 
   return (
-    <Card variant="outlined" sx={{ height: "100%" }}>
-      <CardContent>
+    <Card
+      variant="outlined"
+      sx={{ height: "100%", display: "flex", flexDirection: "column" }}
+    >
+      <CardContent
+        sx={{
+          flexGrow: 1,
+          display: "flex",
+          flexDirection: "column",
+          width: "100%",
+        }}
+      >
         <Stack spacing={1} alignItems="flex-start">
           <Stack direction="row" spacing={1} alignItems="center">
             <Typography variant="h3" sx={{ fontSize: "1.1rem" }}>
@@ -149,7 +167,11 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
               )}
             </>
           )}
+        </Stack>
 
+        {/* CTA pinned to the bottom so it aligns across cards of varying
+            content height (the card is a full-height flex column). */}
+        <Box sx={{ mt: "auto", pt: 2, width: "100%" }}>
           {cta === "subscribe" &&
             !isCurrentPlan &&
             withOwnerGate(
@@ -158,9 +180,15 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
                 type="button"
                 variant="contained"
                 disabled={!isOwner || isPending}
-                onClick={() => onSubscribe(tier.slug)}
+                onClick={() =>
+                  isSubscribed ? onSwitch?.(tier.slug) : onSubscribe(tier.slug)
+                }
               >
-                {isPending ? "Redirecting…" : "Subscribe"}
+                {isPending
+                  ? "Redirecting…"
+                  : isSubscribed
+                    ? "Switch to this plan"
+                    : "Subscribe"}
               </Button>
             )}
 
@@ -171,7 +199,7 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
                 : "Contact support"}
             </Link>
           )}
-        </Stack>
+        </Box>
       </CardContent>
     </Card>
   );

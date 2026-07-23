@@ -15,6 +15,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
 import {
   BillingCheckoutRequestSchema,
+  BillingPortalRequestSchema,
   type BillingTiersGetResponse,
   type BillingCheckoutResponse,
   type BillingPortalResponse,
@@ -196,11 +197,20 @@ billingRouter.post(
  *       - Billing
  *     summary: Open the Stripe Billing Portal (owner only)
  *     description: >
- *       Mints a Stripe-hosted Billing Portal session URL — plan changes,
- *       payment methods, invoices, and cancellation are all Stripe-hosted.
- *       Requires the org to have a Stripe customer (409 otherwise).
+ *       Mints a Stripe-hosted Billing Portal session URL. With no body it opens
+ *       the portal home (payment methods, invoices, cancellation). With a
+ *       `{ tier }` body (#260) it opens the subscription-update flow deep-linked
+ *       to that tier's price (in-app upgrade/downgrade); the webhook reconciles
+ *       the tier on confirm. Requires a Stripe customer (409), and for a switch
+ *       a live subscription (409) + a selectable, priced target tier (404/400).
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/BillingPortalRequest'
  *     responses:
  *       200:
  *         description: Hosted portal session created
@@ -208,14 +218,16 @@ billingRouter.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/BillingPortalResponse'
+ *       400:
+ *         description: Invalid body, or the target tier is not switchable
  *       401:
  *         description: Unauthenticated
  *       403:
  *         description: Caller is not the organization owner
  *       404:
- *         description: User or organization not found
+ *         description: User, organization, or target tier not found
  *       409:
- *         description: The organization has no billing account yet
+ *         description: No billing account, or no active subscription to change
  *       502:
  *         description: Stripe portal call failed
  *       503:
@@ -225,8 +237,24 @@ billingRouter.post(
   "/portal",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      // #260: optional body — no `tier` = Manage; a `tier` opens the
+      // subscription-update flow. Bodyless (undefined) parses as `{}`.
+      const parsed = BillingPortalRequestSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.BILLING_INVALID_PAYLOAD,
+            "Invalid portal payload — expected { tier?: string }"
+          )
+        );
+      }
       const { user, organization } = await resolveCallerOrg(req);
-      const result = await BillingService.createPortal(organization, user.id);
+      const result = await BillingService.createPortal(
+        organization,
+        user.id,
+        parsed.data.tier
+      );
       return HttpService.success<BillingPortalResponse>(res, result);
     } catch (error) {
       logger.error(

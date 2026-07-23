@@ -143,10 +143,33 @@ export class StripeService {
   static async createPortalSession(args: {
     customerId: string;
     returnUrl: string;
+    /** #260: when present, deep-link the portal's subscription-update flow to
+     *  a target price (in-app plan switch). Omit for a plain Manage session. */
+    subscriptionUpdate?: {
+      subscriptionId: string;
+      itemId: string;
+      priceId: string;
+    };
   }): Promise<{ url: string }> {
     const session = await StripeService.client().billingPortal.sessions.create({
       customer: args.customerId,
       return_url: args.returnUrl,
+      ...(args.subscriptionUpdate
+        ? {
+            flow_data: {
+              type: "subscription_update_confirm" as const,
+              subscription_update_confirm: {
+                subscription: args.subscriptionUpdate.subscriptionId,
+                items: [
+                  {
+                    id: args.subscriptionUpdate.itemId,
+                    price: args.subscriptionUpdate.priceId,
+                  },
+                ],
+              },
+            },
+          }
+        : {}),
     });
     return { url: session.url };
   }

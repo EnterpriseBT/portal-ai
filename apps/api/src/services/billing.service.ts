@@ -388,7 +388,8 @@ export class BillingService {
    */
   static async createPortal(
     org: OrganizationSelect,
-    callerUserId: string
+    callerUserId: string,
+    tierSlug?: string
   ): Promise<{ url: string }> {
     if (!StripeService.isConfigured()) {
       throw new ApiError(
@@ -412,10 +413,58 @@ export class BillingService {
       );
     }
 
+    // #260: a target tier opens the portal's subscription-update flow —
+    // requires a live subscription + a selectable, priced target tier (the
+    // same guards as checkout). The webhook reconciles the tier on confirm.
+    let subscriptionUpdate:
+      | { subscriptionId: string; itemId: string; priceId: string }
+      | undefined;
+    if (tierSlug) {
+      if (!org.stripeSubscriptionId) {
+        throw new ApiError(
+          409,
+          ApiCode.BILLING_NO_SUBSCRIPTION,
+          "The organization has no active subscription to change"
+        );
+      }
+      const tier = await DbService.repository.tiers.findBySlug(tierSlug);
+      if (!tier || !tier.selectable) {
+        throw new ApiError(
+          404,
+          ApiCode.BILLING_TIER_NOT_FOUND,
+          `Unknown plan: ${tierSlug}`
+        );
+      }
+      if (!tier.stripePriceId) {
+        throw new ApiError(
+          400,
+          ApiCode.BILLING_TIER_NOT_PURCHASABLE,
+          `The ${tier.displayName} plan cannot be switched to`
+        );
+      }
+      const sub = await StripeService.fetchSubscription(
+        org.stripeSubscriptionId
+      );
+      const itemId = sub.items.data[0]?.id;
+      if (!itemId) {
+        throw new ApiError(
+          502,
+          ApiCode.BILLING_PORTAL_FAILED,
+          "Could not resolve the current subscription item"
+        );
+      }
+      subscriptionUpdate = {
+        subscriptionId: org.stripeSubscriptionId,
+        itemId,
+        priceId: tier.stripePriceId,
+      };
+    }
+
     try {
       return await StripeService.createPortalSession({
         customerId: org.stripeCustomerId,
         returnUrl: settingsUrl(),
+        ...(subscriptionUpdate ? { subscriptionUpdate } : {}),
       });
     } catch (err) {
       logger.error(

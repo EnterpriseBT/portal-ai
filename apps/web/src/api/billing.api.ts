@@ -2,6 +2,7 @@ import type {
   BillingTiersGetResponse,
   BillingCheckoutRequest,
   BillingCheckoutResponse,
+  BillingPortalRequest,
   BillingPortalResponse,
 } from "@portalai/core/contracts";
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
@@ -27,12 +28,13 @@ export const billing = {
       url: "/api/billing/checkout",
       method: "POST",
     }),
-  /** Owner-only: mint a hosted Billing Portal session (no body);
-   *  consumers `window.location.replace` the returned URL. */
+  /** Owner-only: mint a hosted Billing Portal session. The variables ARE the
+   *  body — `{}` opens Manage, `{ tier }` opens the subscription-update flow
+   *  for that plan (#260). Consumers `window.location.replace` the URL; the
+   *  webhook — never the redirect — writes the tier. */
   portal: () =>
-    useAuthMutation<BillingPortalResponse, void>({
+    useAuthMutation<BillingPortalResponse, BillingPortalRequest>({
       url: "/api/billing/portal",
       method: "POST",
-      body: () => undefined,
     }),
 };
