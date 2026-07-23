@@ -9,7 +9,10 @@ import { FormAlert } from "./FormAlert.component";
 import { TierCardUI } from "./TierCard.component";
 import { toServerError, type ServerError } from "../utils/api.util";
 
-import type { BillingTier } from "@portalai/core/contracts";
+import type {
+  BillingTier,
+  OrganizationUsageGetResponse,
+} from "@portalai/core/contracts";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -28,6 +31,22 @@ const formatTierSlug = (slug: string): string =>
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
+
+/** A read-only current-plan card for a tier that isn't in the billing list
+ *  (a managed, unlisted bespoke tier): synthesize a `BillingTier` from the
+ *  org's resolved `TierPolicy` (#257). A `TierPolicy` carries no price/blurb,
+ *  and `cta: "none"` means the card renders no action (Manage owns changes). */
+const synthesizeCurrentPlanTier = (
+  policy: OrganizationUsageGetResponse["tier"],
+  displayName: string
+): BillingTier => ({
+  slug: policy.tier,
+  displayName,
+  policy,
+  description: null,
+  cta: "none",
+  price: null,
+});
 
 const OWNER_ONLY_TOOLTIP = "Only the organization owner can manage billing";
 
@@ -63,6 +82,9 @@ export interface SubscriptionBillingUIProps {
   currentTierSlug: string;
   /** The self-serve plan list (rendered only when unsubscribed). */
   tiers: BillingTier[];
+  /** The org's current plan as a card, shown read-only in the subscribed +
+   *  managed states (#257). Null while unresolved → card omitted (degrade). */
+  currentPlanTier: BillingTier | null;
   onSubscribe: (tierSlug: string) => void;
   onManage: () => void;
   /** True while a checkout/portal session is being minted. */
@@ -76,6 +98,7 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
   currentTierName,
   currentTierSlug,
   tiers,
+  currentPlanTier,
   onSubscribe,
   onManage,
   isPending,
@@ -99,6 +122,20 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
         <Alert severity="info">
           Your plan is managed — contact us to make changes.
         </Alert>
+      )}
+
+      {/* #257: the current plan's policy, read-only, in both non-list states.
+          Above Manage (subscribed) / below the banner (managed). */}
+      {(state === "subscribed" || state === "managed") && currentPlanTier && (
+        <Box sx={{ maxWidth: 360 }}>
+          <TierCardUI
+            tier={currentPlanTier}
+            isCurrentPlan
+            isOwner={isOwner}
+            isPending={isPending}
+            onSubscribe={onSubscribe}
+          />
+        </Box>
       )}
 
       {state === "subscribed" && (
@@ -159,6 +196,10 @@ export const SubscriptionBilling: React.FC = () => {
   const organizationResult = sdk.organizations.current();
   const profileResult = sdk.auth.profile();
   const tiersResult = sdk.billing.tiers();
+  // #257: source the current tier's policy. Deliberately NOT in the DataResult
+  // below — a usage hiccup must not blank the whole tab; the current-plan card
+  // just degrades to omitted.
+  const usageResult = sdk.organizations.usage();
 
   const checkoutMutation = sdk.billing.checkout();
   const portalMutation = sdk.billing.portal();
@@ -201,6 +242,17 @@ export const SubscriptionBilling: React.FC = () => {
           tiers.find((t) => t.slug === organization.tier)?.displayName ??
           formatTierSlug(organization.tier);
 
+        // #257: the current plan as a card — the listed BillingTier when it's
+        // selectable (subscribed), else synthesized from the resolved
+        // TierPolicy on usage() (managed/unlisted). Null while usage is
+        // unresolved → the card is omitted.
+        const currentPolicy = usageResult.data?.tier;
+        const currentPlanTier: BillingTier | null =
+          tiers.find((t) => t.slug === organization.tier) ??
+          (currentPolicy
+            ? synthesizeCurrentPlanTier(currentPolicy, currentTierName)
+            : null);
+
         return (
           <SubscriptionBillingUI
             state={state}
@@ -211,6 +263,7 @@ export const SubscriptionBilling: React.FC = () => {
             currentTierName={currentTierName}
             currentTierSlug={organization.tier}
             tiers={tiers}
+            currentPlanTier={currentPlanTier}
             onSubscribe={handleSubscribe}
             onManage={handleManage}
             isPending={checkoutMutation.isPending || portalMutation.isPending}

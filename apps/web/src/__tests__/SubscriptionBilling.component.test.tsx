@@ -12,6 +12,7 @@ import type { BillingTier } from "@portalai/core/contracts";
 
 const mockTiers = jest.fn();
 const mockCurrent = jest.fn();
+const mockUsage = jest.fn();
 const mockProfile = jest.fn();
 const mockCheckout = jest.fn();
 const mockPortal = jest.fn();
@@ -19,7 +20,7 @@ const mockPortal = jest.fn();
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     auth: { profile: mockProfile },
-    organizations: { current: mockCurrent },
+    organizations: { current: mockCurrent, usage: mockUsage },
     billing: {
       tiers: mockTiers,
       checkout: mockCheckout,
@@ -75,12 +76,23 @@ const contactTier: BillingTier = {
   price: null,
 };
 
+// A managed (unlisted) tier synthesized from usage() — cta "none", no price.
+const managedTier: BillingTier = {
+  slug: "ent_x",
+  displayName: "X Enterprise",
+  policy: policy("ent_x"),
+  description: null,
+  cta: "none",
+  price: null,
+};
+
 const baseUIProps = {
   state: "unsubscribed" as const,
   isOwner: true,
   currentTierName: "Standard",
   currentTierSlug: "standard",
   tiers: [standardTier, proTier],
+  currentPlanTier: null,
   onSubscribe: jest.fn(),
   onManage: jest.fn(),
   isPending: false,
@@ -207,6 +219,45 @@ describe("SubscriptionBillingUI — subscribed", () => {
     await userEvent.click(manage);
     expect(onManage).toHaveBeenCalled();
   });
+
+  // #257: the current plan's policy renders read-only next to Manage.
+  it("renders a read-only current-plan card (grid, chip, no Subscribe) with Manage", () => {
+    render(
+      <SubscriptionBillingUI
+        {...baseUIProps}
+        state="subscribed"
+        currentTierName="Pro"
+        currentTierSlug="pro"
+        currentPlanTier={proTier}
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: "Pro" })).toBeInTheDocument();
+    expect(screen.getByText("Current plan")).toBeInTheDocument();
+    expect(screen.getByText(/Metered tools:/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /manage subscription/i })
+    ).toBeInTheDocument();
+    // Read-only: the current plan offers no Subscribe.
+    expect(
+      screen.queryByRole("button", { name: /subscribe/i })
+    ).not.toBeInTheDocument();
+  });
+
+  // #257 degrade: no resolved current tier → Manage only, no card.
+  it("omits the current-plan card when currentPlanTier is null", () => {
+    render(
+      <SubscriptionBillingUI
+        {...baseUIProps}
+        state="subscribed"
+        currentPlanTier={null}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: /manage subscription/i })
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Metered tools:/)).not.toBeInTheDocument();
+  });
 });
 
 // ── case 30: managed ─────────────────────────────────────────────────
@@ -223,6 +274,28 @@ describe("SubscriptionBillingUI — managed", () => {
 
     expect(screen.getByText(/managed/i)).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  // #257: a managed (unlisted) tier's policy renders read-only under the banner.
+  it("renders the current-plan policy card (from usage) below the managed banner", () => {
+    render(
+      <SubscriptionBillingUI
+        {...baseUIProps}
+        state="managed"
+        currentTierName="X Enterprise"
+        currentTierSlug="ent_x"
+        currentPlanTier={managedTier}
+      />
+    );
+
+    expect(screen.getByText(/managed/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "X Enterprise" })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Metered tools:/)).toBeInTheDocument();
+    // A synthesized `none`-cta card offers no action.
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 });
 
@@ -319,6 +392,13 @@ describe("SubscriptionBilling container", () => {
     mockTiers.mockReturnValue(loaded({ tiers: [standardTier, proTier] }));
     mockCurrent.mockReturnValue(loaded(orgData));
     mockProfile.mockReturnValue(loaded(profileData));
+    // #257: usage() feeds the current-plan card; not gating the tab.
+    mockUsage.mockReturnValue(
+      loaded({
+        tier: policy("standard"),
+        usage: { periodId: "2026-07", byClass: {} },
+      })
+    );
     mockPortal.mockReturnValue({
       mutateAsync: jest.fn(),
       isPending: false,
@@ -377,5 +457,32 @@ describe("SubscriptionBilling container", () => {
       )
     );
     expect(replaceSpy).not.toHaveBeenCalled();
+  });
+
+  // #257: a managed org (tier absent from the billing list) renders a
+  // current-plan card synthesized from usage()'s TierPolicy.
+  it("renders the managed current-plan card from usage() when the tier is unlisted", () => {
+    mockCheckout.mockReturnValue({
+      mutateAsync: jest.fn(),
+      isPending: false,
+      error: null,
+    });
+    // org.tier "ent_x" is NOT in [standard, pro] → managed state.
+    mockCurrent.mockReturnValue(
+      loaded({ organization: { ...orgData.organization, tier: "ent_x" } })
+    );
+    mockUsage.mockReturnValue(
+      loaded({
+        tier: policy("ent_x"),
+        usage: { periodId: "2026-07", byClass: {} },
+      })
+    );
+
+    render(<SubscriptionBilling />);
+
+    expect(screen.getByText(/managed/i)).toBeInTheDocument();
+    // Slug-derived name (usage carries no displayName) + the policy grid.
+    expect(screen.getByRole("heading", { name: "Ent X" })).toBeInTheDocument();
+    expect(screen.getByText(/Metered tools:/)).toBeInTheDocument();
   });
 });
