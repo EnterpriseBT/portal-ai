@@ -85,6 +85,24 @@ describe("getOrg", () => {
       code: "ADMIN_NOT_FOUND",
     });
   });
+
+  // #259: the org set-tier guard reads these; the mirror must project them
+  // (the subset parity test does NOT catch an omitted column).
+  it("returns the Stripe linkage fields (customer + subscription)", async () => {
+    await t.db.insert(organizations).values(
+      org("Subbed", {
+        id: "o-sub",
+        stripeCustomerId: "cus_1",
+        stripeSubscriptionId: "sub_live_1",
+      }) as never
+    );
+
+    await expect(store.getOrg("o-sub")).resolves.toMatchObject({
+      id: "o-sub",
+      stripeCustomerId: "cus_1",
+      stripeSubscriptionId: "sub_live_1",
+    });
+  });
 });
 
 describe("listUsers", () => {

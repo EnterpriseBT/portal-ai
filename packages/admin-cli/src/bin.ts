@@ -175,8 +175,17 @@ export function buildProgram(): Command {
       .description("assign a subscription tier")
       .argument("<id>")
       .argument("<tierSlug>")
+      .option(
+        "--allow-stripe-desync",
+        "override the guard when the org has a live Stripe subscription (#259)"
+      )
   ).action(async (id: string, tierSlug: string, o: GlobalOpts) =>
-    execute(o, (def) => orgSetTier(def, id, tierSlug, flags(o)))
+    execute(o, (def) =>
+      orgSetTier(def, id, tierSlug, {
+        ...flags(o),
+        allowStripeDesync: !!o.allowStripeDesync,
+      })
+    )
   );
 
   common(

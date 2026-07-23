@@ -29,6 +29,10 @@ export const organizations = pgTable("organizations", {
   ownerUserId: text("owner_user_id").notNull(),
   defaultStationId: text("default_station_id"),
   tier: text("tier").notNull().default("standard"),
+  // #259: needed by the org set-tier Stripe-desync guard (and surfaced by
+  // `org get`). A live subscription drives the tier, so set-tier must see it.
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
 });
 
 export const users = pgTable("users", {

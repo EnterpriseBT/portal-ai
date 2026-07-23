@@ -15,7 +15,7 @@ Machine-oriented reference. Agent-operability contract (exit codes, server-enfor
 | 6 | `ENV_DESTRUCTIVE_BLOCKED` — destructive op vs production (no override) |
 | 7 | `ENV_INFRA_ERROR` — tunnel / spawn / infra failure |
 | 8 | `ADMIN_NOT_FOUND` — org / user / tier / membership absent or soft-deleted |
-| 9 | `ADMIN_CONFLICT` — duplicate membership, org-name collision |
+| 9 | `ADMIN_CONFLICT` — duplicate membership, org-name collision, or `set-tier` on an org with a live Stripe subscription (#259) |
 
 ## Guard + session matrix
 
@@ -47,8 +47,9 @@ Mutation. **Full app provisioning** via `db:create-org` (org + owner membership 
 ### `portalai org update <id> [--name] [--timezone] [--default-station-id] --env <env> --yes [--json]`
 Mutation. `--json`: `{ "org": Organization }`
 
-### `portalai org set-tier <id> <tierSlug> --env <env> --yes [--json]`
+### `portalai org set-tier <id> <tierSlug> --env <env> --yes [--allow-stripe-desync] [--json]`
 Mutation. Tier slug must exist live → else 8. Audits old→new; the app sees it within ≤60s (tier cache).
+**Stripe guard (#259):** if the org has a **live Stripe subscription** (`stripe_subscription_id` set), the subscription drives the tier (webhook-authoritative), so a manual set-tier would desync the DB from Stripe — the command **refuses with `ADMIN_CONFLICT` (exit 9)** and names the subscription. Change/cancel the plan in Stripe or the billing portal instead, or pass **`--allow-stripe-desync`** to override consciously. (Inspect the linkage with `org get <id> --json`.)
 `--json`: `{ "id", "tier", "previousTier" }`
 
 ### `portalai org delete <id> --env <env> --yes [--json]`

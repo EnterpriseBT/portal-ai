@@ -31,6 +31,7 @@ jest.unstable_mockModule("../store.js", () => ({
 }));
 
 const { orgUpdate, orgSetTier, orgDelete } = await import("../commands/org.js");
+const { AdminConflictError } = await import("../errors.js");
 const { memberAdd, memberSwitch } = await import("../commands/member.js");
 
 const appDev = BUILTIN_ENVIRONMENTS["app-dev"]; // kind: staging
@@ -107,6 +108,10 @@ describe("guard classes + audit hygiene", () => {
   });
 
   it("org set-tier audits old→new, ids only", async () => {
+    mockStore.getOrg.mockResolvedValue({
+      id: "o-1",
+      stripeSubscriptionId: null,
+    });
     mockStore.setTier.mockResolvedValue({
       id: "o-1",
       tier: "premium",
@@ -123,6 +128,42 @@ describe("guard classes + audit hygiene", () => {
       command: "org set-tier",
       args: { orgId: "o-1", tier: "premium", previousTier: "standard" },
     });
+  });
+
+  // #259: refuse set-tier on an org with a live Stripe subscription.
+  it("org set-tier refuses (ADMIN_CONFLICT) when the org has a live Stripe subscription", async () => {
+    mockStore.getOrg.mockResolvedValue({
+      id: "o-1",
+      stripeSubscriptionId: "sub_live_123",
+    });
+    const p = orgSetTier(appDev, "o-1", "standard", { yes: true });
+    await expect(p).rejects.toBeInstanceOf(AdminConflictError);
+    await expect(p).rejects.toHaveProperty("code", "ADMIN_CONFLICT");
+    await expect(p).rejects.toThrow(/allow-stripe-desync/);
+    expect(mockStore.setTier).not.toHaveBeenCalled();
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
+    expect(mockStore.close).toHaveBeenCalled(); // store still released
+  });
+
+  it("org set-tier proceeds with --allow-stripe-desync despite a live subscription", async () => {
+    mockStore.getOrg.mockResolvedValue({
+      id: "o-1",
+      stripeSubscriptionId: "sub_live_123",
+    });
+    mockStore.setTier.mockResolvedValue({
+      id: "o-1",
+      tier: "standard",
+      previousTier: "pro",
+    });
+    const out = await orgSetTier(appDev, "o-1", "standard", {
+      yes: true,
+      allowStripeDesync: true,
+    });
+    expect(out.tier).toBe("standard");
+    expect(mockStore.setTier).toHaveBeenCalled();
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "org set-tier" })
+    );
   });
 
   it("store and connection are always released, even on store errors", async () => {

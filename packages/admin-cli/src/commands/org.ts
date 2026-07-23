@@ -8,6 +8,7 @@ import type { EnvironmentDefinition } from "@portalai/cli-env";
 import type { Organization } from "@portalai/core/models";
 
 import type { ListOrgsOptions, OrgPatch } from "../store.js";
+import { AdminConflictError } from "../errors.js";
 import { audit, beginMutation, withStore, type MutateFlags } from "./common.js";
 
 export function orgList(
@@ -46,7 +47,19 @@ export async function orgSetTier(
   flags: MutateFlags
 ): Promise<{ id: string; tier: string; previousTier: string }> {
   const operator = await beginMutation(def, flags, false);
-  const result = await withStore(def, (s) => s.setTier(id, tierSlug, operator));
+  const result = await withStore(def, async (s) => {
+    // #259: a live Stripe subscription drives the tier (webhook-authoritative);
+    // setting it here would silently desync the DB from Stripe. Refuse unless
+    // the operator explicitly overrides.
+    const org = await s.getOrg(id);
+    if (org.stripeSubscriptionId != null && !flags.allowStripeDesync) {
+      throw new AdminConflictError(
+        `Org ${id} has an active Stripe subscription (${org.stripeSubscriptionId}) that drives its tier — ` +
+          `change or cancel it in Stripe or the billing portal, or pass --allow-stripe-desync to override.`
+      );
+    }
+    return s.setTier(id, tierSlug, operator);
+  });
   await audit(def, operator, "org set-tier", {
     orgId: id,
     tier: result.tier,
