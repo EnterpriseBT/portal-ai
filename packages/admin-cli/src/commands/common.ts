@@ -17,6 +17,9 @@ import { requireMutationOperator } from "../session.js";
 export interface MutateFlags {
   yes?: boolean;
   confirmProd?: boolean;
+  /** #259: override the guard that refuses `org set-tier` on an org with a
+   *  live Stripe subscription (which would desync the DB tier from Stripe). */
+  allowStripeDesync?: boolean;
 }
 
 /** Open the env's DB path, hand the store to `fn`, always release both. */
