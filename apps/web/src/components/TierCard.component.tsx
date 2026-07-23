@@ -3,6 +3,7 @@ import React from "react";
 import Chip from "@mui/material/Chip";
 import Link from "@mui/material/Link";
 import {
+  Box,
   Button,
   Card,
   CardContent,
@@ -113,8 +114,18 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
   const packNames = entitlementPackNames(policy.entitlements.builtinToolpacks);
 
   return (
-    <Card variant="outlined" sx={{ height: "100%" }}>
-      <CardContent>
+    <Card
+      variant="outlined"
+      sx={{ height: "100%", display: "flex", flexDirection: "column" }}
+    >
+      <CardContent
+        sx={{
+          flexGrow: 1,
+          display: "flex",
+          flexDirection: "column",
+          width: "100%",
+        }}
+      >
         <Stack spacing={1} alignItems="flex-start">
           <Stack direction="row" spacing={1} alignItems="center">
             <Typography variant="h3" sx={{ fontSize: "1.1rem" }}>
@@ -156,7 +167,11 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
               )}
             </>
           )}
+        </Stack>
 
+        {/* CTA pinned to the bottom so it aligns across cards of varying
+            content height (the card is a full-height flex column). */}
+        <Box sx={{ mt: "auto", pt: 2, width: "100%" }}>
           {cta === "subscribe" &&
             !isCurrentPlan &&
             withOwnerGate(
@@ -184,7 +199,7 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
                 : "Contact support"}
             </Link>
           )}
-        </Stack>
+        </Box>
       </CardContent>
     </Card>
   );
