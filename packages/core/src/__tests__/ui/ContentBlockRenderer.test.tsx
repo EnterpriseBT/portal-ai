@@ -186,6 +186,25 @@ describe("registerBlockRenderer", () => {
     expect(hasBlockRenderer("never-registered-xyz")).toBe(false);
   });
 
+  // #268: the d3 block type dispatches through the same open registry —
+  // the web app registers the real sandbox renderer at bootstrap; core
+  // needs no central-switch edit (and ships no d3 renderer of its own).
+  it("dispatches a registered d3 renderer for d3 blocks", () => {
+    expect(hasBlockRenderer("d3")).toBe(false);
+    registerBlockRenderer("d3", (b) => (
+      <div data-testid="d3-stub">
+        {String((b.content as { program: string }).program)}
+      </div>
+    ));
+    expect(hasBlockRenderer("d3")).toBe(true);
+    render(
+      <ContentBlockRenderer
+        block={{ type: "d3", content: { program: "api.d3;", rows: [] } }}
+      />
+    );
+    expect(screen.getByTestId("d3-stub")).toHaveTextContent("api.d3;");
+  });
+
   it("a later registration overrides an earlier one for the same type", () => {
     registerBlockRenderer("override-test", () => <div data-testid="v1" />);
     registerBlockRenderer("override-test", () => <div data-testid="v2" />);

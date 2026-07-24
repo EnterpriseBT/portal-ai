@@ -158,6 +158,8 @@ export type PinResultBody = z.infer<typeof PinResultBodySchema>;
  * - `data-table` — row-set result from sql_query, detect_outliers, cluster
  * - `tool-call`  — CoreMessage tool-call part (persisted for multi-turn)
  * - `tool-result`— CoreMessage tool-result part (persisted for multi-turn)
+ * - `d3`         — sandboxed D3 render program (#268; content contract in
+ *                  `d3-widget.contract.ts`)
  */
 export const PortalBlockTypeSchema = z.enum([
   "text",
@@ -167,6 +169,7 @@ export const PortalBlockTypeSchema = z.enum([
   "mutation-result",
   "tool-call",
   "tool-result",
+  "d3",
 ]);
 
 export type PortalBlockType = z.infer<typeof PortalBlockTypeSchema>;

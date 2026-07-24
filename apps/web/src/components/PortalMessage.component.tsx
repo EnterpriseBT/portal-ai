@@ -13,7 +13,7 @@ import {
 } from "@mui/material";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
-import { ContentBlockRenderer } from "@portalai/core";
+import { ContentBlockRenderer, hasBlockRenderer } from "@portalai/core";
 
 import {
   BulkJobProgressBlock,
@@ -81,13 +81,28 @@ import { useQueryClient } from "@tanstack/react-query";
 import { sdk, queryKeys } from "../api/sdk";
 import { useAuthFetch } from "../utils/api.util";
 
-function hasPinnableContent(block: PortalMessageBlock): boolean {
-  if (!PINNABLE_BLOCK_TYPES.has(block.type as PortalResultType)) return false;
+function hasRenderableContent(block: PortalMessageBlock): boolean {
   if (block.content == null) return false;
   if (typeof block.content === "string") return block.content.trim().length > 0;
   if (typeof block.content === "object")
     return Object.keys(block.content as object).length > 0;
   return false;
+}
+
+function hasPinnableContent(block: PortalMessageBlock): boolean {
+  if (!PINNABLE_BLOCK_TYPES.has(block.type as PortalResultType)) return false;
+  return hasRenderableContent(block);
+}
+
+/**
+ * Display and pinnability are separate properties (#268): a block shows
+ * when a renderer is registered for its type and it has content —
+ * `d3` widgets and mutation results display but never pin; `tool-call` /
+ * `tool-result` have no renderer and stay hidden. Pinnability only
+ * controls the pin affordance.
+ */
+function isDisplayableBlock(block: PortalMessageBlock): boolean {
+  return hasBlockRenderer(block.type) && hasRenderableContent(block);
 }
 
 /** Block types that the web layer renders directly (bypass pin path). */
@@ -186,8 +201,8 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
           );
         }
 
+        if (!isDisplayableBlock(block)) return null;
         const pinnable = hasPinnableContent(block);
-        if (!pinnable) return null;
         const pinKey = `${message.id}:${i}`;
         const portalResultId = pinnedBlocks.get(pinKey);
         const isPinned = portalResultId != null;
@@ -214,7 +229,7 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
             <Box sx={{ flex: 1, minWidth: 0, overflow: "auto" }}>
               <ContentBlockRenderer block={block} />
             </Box>
-            {isPinned ? (
+            {!pinnable ? null : isPinned ? (
               <Tooltip title="Unpin result">
                 <IconButton
                   size="small"

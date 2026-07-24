@@ -35,6 +35,7 @@ jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 // ── Imports ──────────────────────────────────────────────────────────
 
 const { render, screen, fireEvent } = await import("./test-utils");
+const { registerBlockRenderer } = await import("@portalai/core");
 const { PortalMessageUI } =
   await import("../components/PortalMessage.component");
 
@@ -278,6 +279,58 @@ describe("PortalMessageUI", () => {
       );
       const pinButtons = screen.getAllByRole("button", { name: /pin result/i });
       expect(pinButtons).toHaveLength(2);
+    });
+  });
+
+  // #268: display and pinnability are separate properties. A block with a
+  // registered renderer displays even when it is not pinnable (d3 widgets);
+  // pinnability only controls the pin affordance. Pre-fix, PortalMessage
+  // used pinnability as its display filter and d3 blocks vanished.
+  describe("registered non-pinnable blocks (d3)", () => {
+    it("renders a registered d3 block without a pin affordance", () => {
+      registerBlockRenderer("d3", (b) => (
+        <div data-testid="d3-widget-stub">
+          {String((b.content as { program: string }).program)}
+        </div>
+      ));
+      const message = makeMessage({
+        role: "assistant",
+        blocks: [
+          { type: "text", content: "Here is your chart:" },
+          { type: "d3", content: { program: "api.d3;", rows: [{ x: 1 }] } },
+        ],
+      });
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
+      // The d3 block displays…
+      expect(screen.getByTestId("d3-widget-stub")).toHaveTextContent("api.d3;");
+      // …but only the text block offers a pin.
+      expect(
+        screen.getAllByRole("button", { name: /pin result/i })
+      ).toHaveLength(1);
+    });
+
+    it("still hides registered blocks with empty content", () => {
+      registerBlockRenderer("d3", () => <div data-testid="d3-widget-stub" />);
+      const message = makeMessage({
+        role: "assistant",
+        blocks: [{ type: "d3", content: {} }],
+      });
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
+      expect(screen.queryByTestId("d3-widget-stub")).not.toBeInTheDocument();
     });
   });
 
