@@ -1,7 +1,7 @@
 /**
  * Built-in toolpack registry.
  *
- * Source of truth for the six built-in tool packs and the tools they
+ * Source of truth for the built-in tool packs and the tools they
  * contain. Imported by both API and web — the API hydrates its
  * `GET /api/toolpacks` response from this list and the web app uses
  * the same records to render the metadata modal and label the
@@ -36,6 +36,7 @@ export const BuiltinToolpackSlugSchema = z.enum([
   "financial",
   "web_search",
   "entity_management",
+  "visualize",
 ]);
 
 export type BuiltinToolpackSlug = z.infer<typeof BuiltinToolpackSlugSchema>;
@@ -245,6 +246,42 @@ const DATA_QUERY_PACK: BuiltinToolpackSpec = {
         },
         ["entityGroupName", "linkValue"]
       ),
+    },
+  ],
+};
+
+const VISUALIZE_PACK: BuiltinToolpackSpec = {
+  slug: "visualize",
+  name: "Visualize",
+  description:
+    "Render expressive, interactive D3 visualizations from SQL query results.",
+  iconSlug: "InsertChart",
+  tools: [
+    {
+      name: "visualize_d3",
+      description:
+        "Render an interactive D3 visualization from a SQL query. Describe the chart you want in `instruction` (type, encodings, emphasis) — the render program is generated for you. Do not add a LIMIT; result size is handled automatically (rows stream to the widget via a handle when large).",
+      parameterSchema: objectSchema(
+        {
+          sql: stringField("The SQL query whose rows feed the visualization"),
+          instruction: stringField(
+            "A natural-language description of the visualization to render: chart type, which columns (from the `sql` results) map to which encodings, and any emphasis."
+          ),
+          title: stringField("Optional display title for the widget"),
+        },
+        ["sql", "instruction"]
+      ),
+      examples: [
+        {
+          title: "Revenue by month as a bar chart",
+          input: {
+            sql: "SELECT month, SUM(revenue) AS revenue FROM sales GROUP BY month ORDER BY month",
+            instruction:
+              "Vertical bar chart: month on the x-axis, total revenue on the y-axis.",
+          },
+          output: { type: "d3" },
+        },
+      ],
     },
   ],
 };
@@ -1051,6 +1088,21 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   display_entity_records: engineRead("data-table", "scan"),
   visualize: engineRead("vega-lite", "visualize"),
   visualize_tree: engineRead("vega", "visualize"),
+  // visualize (#269) — an engine read like the above, but each call makes a
+  // dedicated claude-opus-4-8 codegen sub-call to synthesize the D3 program,
+  // so it is application-metered `expensive` (not `free` like engineRead).
+  visualize_d3: {
+    pure: false,
+    reads: ["entity_records"],
+    writes: [],
+    consumption: { mode: "engine-pushdown" },
+    computeShape: "visualize",
+    costHint: "expensive",
+    locks: [],
+    resultKind: "d3",
+    production: { kind: "rows", onLarge: "handle" },
+    alwaysAvailable: false,
+  },
   // resolve_identity returns a structured match set the agent consumes; not
   // auto-surfaced (scalar = no inline display block — preserves prior behavior).
   resolve_identity: engineRead("scalar", "scan"),
@@ -1190,6 +1242,7 @@ function attachCapabilities(spec: BuiltinToolpackSpec): BuiltinToolpack {
 export const BUILTIN_TOOLPACKS: ReadonlyArray<BuiltinToolpack> = Object.freeze(
   [
     DATA_QUERY_PACK,
+    VISUALIZE_PACK,
     STATISTICS_PACK,
     REGRESSION_PACK,
     FINANCIAL_PACK,

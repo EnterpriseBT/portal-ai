@@ -28,13 +28,39 @@ export interface PortalStreamActions {
   clearLocalMessages: () => void;
 }
 
+/**
+ * Map a `tool_result` SSE payload to the display block to render, or `null`
+ * when the result has no display shape. Charts route by the result's `type`
+ * (the server tags it): `d3` for a visualize_d3 success, `data-table` for its
+ * codegen fallback — so the fallback (which shares the toolName) renders as a
+ * table, not an empty d3 widget. `visualize` / `visualize_tree` keep their
+ * toolName fallback for the legacy Vega path (#268/#269).
+ */
+export function streamingBlockFor(
+  toolName: string,
+  result: Record<string, unknown> | null
+): PortalMessageBlock | null {
+  if (result == null || typeof result !== "object") return null;
+  const type = result["type"];
+
+  if (type === "d3") return { type: "d3", content: result };
+  if (toolName === "visualize" || type === "vega-lite")
+    return { type: "vega-lite", content: result };
+  if (toolName === "visualize_tree" || type === "vega")
+    return { type: "vega", content: result };
+  if (type === "data-table") return { type: "data-table", content: result };
+  if (type === "mutation-result")
+    return { type: "mutation-result", content: result };
+  return null;
+}
+
 // --- Hook ---
 
 /**
  * Manages the SSE stream for a portal session.
  *
  * - Opens a stream to receive assistant responses after a message is sent.
- * - Accumulates streaming blocks (text, vega-lite, vega, data-table, mutation-result).
+ * - Accumulates streaming blocks (text, vega-lite, vega, d3, data-table, mutation-result).
  * - Finalises the assistant message into `localMessages` on `done`.
  * - Handles `stream_error` and connection loss.
  * - Cleans up EventSource on cancel or unmount.
@@ -128,35 +154,7 @@ export const usePortalStream = (
         const data = JSON.parse(e.data) as ToolResultEvent;
         const result = data.result as Record<string, unknown> | null;
 
-        let block: PortalMessageBlock | null = null;
-
-        const isVegaLite =
-          result != null &&
-          typeof result === "object" &&
-          (data.toolName === "visualize" || result["type"] === "vega-lite");
-
-        const isVega =
-          result != null &&
-          typeof result === "object" &&
-          (data.toolName === "visualize_tree" || result["type"] === "vega");
-
-        if (isVegaLite) {
-          block = { type: "vega-lite", content: result };
-        } else if (isVega) {
-          block = { type: "vega", content: result };
-        } else if (
-          result &&
-          typeof result === "object" &&
-          result["type"] === "data-table"
-        ) {
-          block = { type: "data-table", content: result };
-        } else if (
-          result &&
-          typeof result === "object" &&
-          result["type"] === "mutation-result"
-        ) {
-          block = { type: "mutation-result", content: result };
-        }
+        const block = streamingBlockFor(data.toolName, result);
 
         if (block) {
           setStreamingBlocks((prev) => {

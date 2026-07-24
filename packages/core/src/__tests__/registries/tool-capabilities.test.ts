@@ -55,6 +55,7 @@ describe("enablement/enforcement projections reproduce current behavior", () => 
       "cluster",
       "logistic_regression",
       "transform_entity_records",
+      "visualize_d3",
     ]);
   });
 });
@@ -91,6 +92,8 @@ describe("costHint pin (#184)", () => {
     cluster: "expensive",
     logistic_regression: "expensive",
     transform_entity_records: "expensive",
+    // expensive — per-call Opus codegen sub-call synthesizes the D3 program (#269).
+    visualize_d3: "expensive",
     // free — local/engine compute, pure math, entity writes, system tools.
     amortize: "free",
     bond_math: "free",

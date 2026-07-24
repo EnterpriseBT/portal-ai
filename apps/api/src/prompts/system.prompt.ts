@@ -214,7 +214,12 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // that streams to the UI without entering the agent's context — the
   // bullets below teach the agent to lean into that path instead of
   // refusing on row count.
-  if (stationContext.toolPacks.includes("data_query")) {
+  // visualize_d3 (#269) also needs SQL authoring, so the guidance applies
+  // when either data_query or the visualize pack is enabled.
+  if (
+    stationContext.toolPacks.includes("data_query") ||
+    stationContext.toolPacks.includes("visualize")
+  ) {
     lines.push("## SQL Guidance");
     lines.push("");
     lines.push(
@@ -285,6 +290,32 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push('    [sql_query: SELECT * FROM "parcels" LIMIT 100]');
     lines.push('    "Here\'s a sample of 100 parcels."');
     lines.push("");
+
+    // Charting (#269) — only when the visualize pack is enabled.
+    if (stationContext.toolPacks.includes("visualize")) {
+      lines.push("## Charting");
+      lines.push("");
+      lines.push(
+        "When the user asks to **chart, graph, plot, or visualize** data — " +
+          "or asks for a bar/line/scatter/pie chart by name — use " +
+          "**`visualize_d3`**. That is the visualization path: `sql_query` and " +
+          "`display_entity_records` render **tables**, so do not answer a " +
+          "visualization request with a table. `visualize_d3` is also " +
+          "preferred over the older `visualize` / `visualize_tree` (Vega) " +
+          "tools, which are being retired — reach for `visualize_d3` for new " +
+          "charts."
+      );
+      lines.push("");
+      lines.push(
+        "Call it with the `sql` that returns the data and an `instruction` " +
+          "describing the visualization in words — the chart type, which " +
+          "result columns map to which encodings, and any emphasis. You do " +
+          "NOT write the render program; describe intent and it is generated " +
+          "and rendered in a sandboxed D3 widget. Same result-size handling " +
+          "as `sql_query` (large results stream via a handle). Don't add a LIMIT."
+      );
+      lines.push("");
+    }
 
     // Schema introspection (#87). The `## Available Data` listing above
     // is a snapshot at session start — it does NOT include entities or

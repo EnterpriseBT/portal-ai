@@ -22,6 +22,7 @@ import { DisplayEntityRecordsTool } from "../tools/display-entity-records.tool.j
 import { StationContextTool } from "../tools/station-context.tool.js";
 import { VisualizeTool } from "../tools/visualize.tool.js";
 import { VisualizeTreeTool } from "../tools/visualize-tree.tool.js";
+import { VisualizeD3Tool } from "../tools/visualize-d3.tool.js";
 import { ResolveIdentityTool } from "../tools/resolve-identity.tool.js";
 import { ClusterTool } from "../tools/cluster.tool.js";
 import { HypothesisTestTool } from "../tools/hypothesis-test.tool.js";
@@ -167,6 +168,7 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "display_entity_records",
   "visualize",
   "visualize_tree",
+  "visualize_d3",
   "resolve_identity",
   "cluster",
   "hypothesis_test",
@@ -517,6 +519,18 @@ export class ToolService {
           stationData.entityGroups
         );
       }
+    }
+
+    // -------------------------------------------------------------------
+    // Pack: visualize (#269) — D3 visualization via a dedicated Opus
+    // codegen sub-call. Its own pack so it can be tier-gated / priced
+    // independently of data_query.
+    // -------------------------------------------------------------------
+    if (enabledPacks.has("visualize")) {
+      tools.visualize_d3 = new VisualizeD3Tool().build(
+        stationId,
+        organizationId
+      );
     }
 
     // -------------------------------------------------------------------
