@@ -54,14 +54,14 @@ The pure machinery the tool will call: a task-scoped model call, the codegen sys
 
 **Files**
 
-- Edit: `apps/api/src/services/ai.service.ts` — add `CODEGEN_MODEL = "claude-opus-4-8"` and `static async generateCode({ model?, effort?, system, prompt })` (default model `CODEGEN_MODEL`, default effort `xhigh`) over the AI SDK `generateText` + Anthropic provider.
+- Edit: `apps/api/src/services/ai.service.ts` — add `CODEGEN_MODEL = "claude-opus-4-8"` and `static async generateCode({ model?, effort?, system, prompt, generateText? })` (default model `CODEGEN_MODEL`, default effort `high` — the pinned `@ai-sdk/anthropic@3.0.58` ceiling; `xhigh` deferred to a v4 upgrade) over the AI SDK `generateText` + Anthropic provider, with an injectable `generateText` test seam (mirrors `spreadsheet-parsing-llm.service`).
 - New: `apps/api/src/prompts/visualize-d3.prompt.ts` — `VISUALIZE_D3_CODEGEN_SYSTEM` (runtime `api` contract, idempotence rule, "function body only", one worked bar-chart example) + a `buildCodegenPrompt(instruction, schema, samplePeek, lastError?)` helper.
 - New: `apps/api/src/tools/visualize-d3.validate.ts` (or a util) — `validateProgram(src) → { ok } | { ok:false, error }` via `new Function("api", src)` construction in try/catch (never called).
 - New: tests `apps/api/src/__tests__/services/ai.service.test.ts`, `tools/visualize-d3.validate.test.ts`, `prompts/visualize-d3.prompt.test.ts`.
 
 **Steps**
 
-1. **Tests (spec cases 6–8).** `generateCode` calls the provider with the given/default model + default effort `xhigh`, returns the text (provider mocked via `jest.unstable_mockModule` on the AI SDK) (6); `validateProgram` accepts a good body, rejects a syntax error with the `SyntaxError` message, and returns `ok:true` for a body containing `fetch(...)`/`throw` — construction-only, never executes (7); `VISUALIZE_D3_CODEGEN_SYSTEM` contains the markers `new Function`, `api.data`, idempotence wording, "function body", and a worked example (8). Run; fail.
+1. **Tests (spec cases 6–8).** `generateCode` calls the injected generate fn with the given/default model + default effort `high` (asserting it reaches `providerOptions.anthropic.effort`), returns the text (6); `validateProgram` accepts a good body, rejects a syntax error with the `SyntaxError` message, and returns `ok:true` for a body containing `fetch(...)`/`throw` — construction-only, never executes (7); `VISUALIZE_D3_CODEGEN_SYSTEM` contains the markers `new Function`, `api.data`, idempotence wording, "function body", and a worked example (8). Run; fail.
 2. **Implement** the seam, the prompt constant + builder, and the validator. Green.
 3. Lint + type-check.
 
@@ -131,7 +131,7 @@ Total ≈ **20 cases**, no migration, no new dependency. Commits on `feat/visual
 ## Cross-slice notes
 
 - **`resultKind` is not the sole router** — the data-table fallback (slice 3) returns `type:"data-table"` under a `d3`-capability tool, so the slice-4 mint arms route on `toolResult.type === "d3"` first (matching how custom/webhook tools already route by `result.type`). Test 16 pins it; getting this wrong sends the fallback to the d3 renderer, which would try to run an absent program.
-- **Codegen effort `xhigh` on `claude-opus-4-8`** is the default in the seam (slice 2); it's a per-call parameter so a future tuning-down needs no signature change. The `expensive` cost class (slice 1) is the billing consequence.
+- **Codegen effort defaults to `high` on `claude-opus-4-8`** (slice 2) — the pinned `@ai-sdk/anthropic@3.0.58`'s `effort` enum ceiling; the API's `xhigh` isn't in this SDK version. The seam's `effort` param already accepts `xhigh`, so lifting the default is a one-line change once `@ai-sdk/anthropic` is bumped to v4 (a breaking major that also drives the main agent loop — a scoped follow-up, out of #269). The `expensive` cost class (slice 1) is the billing consequence regardless of effort.
 - **The `d3` block contract is #268's** (`D3BlockContentSchema`, handle branch first) — the tool's mint shapes must satisfy it; slice 3 builds against that shipped schema (no core change here).
 - **Doc-sync is in-PR (slice 4), not deferred** — `system.prompt.ts`, the `builtin-toolpacks.ts` mirror, and `glossary.util.ts` all move with the code; the pinning tests (`builtin-toolpacks.test.ts`, `system.prompt.test.ts` if it asserts the guidance) catch a mirror slip. Vega-copy removal is #272's sweep, not this PR.
 - **CLAUDE.md compliance:** tool/prompt/service file suffixes, server-enforced cost gate (the `expensive` class, not prompt text — `feedback_no_prompt_safety_gates`), SDK-helper rules N/A (api-only), npm-scripts-only testing.

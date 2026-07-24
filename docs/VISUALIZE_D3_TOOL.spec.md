@@ -93,13 +93,13 @@ static readonly CODEGEN_MODEL = "claude-opus-4-8";
  */
 static async generateCode(params: {
   model?: string;          // defaults to CODEGEN_MODEL
-  effort?: "low" | "medium" | "high" | "xhigh" | "max"; // defaults to "xhigh"
+  effort?: "low" | "medium" | "high" | "xhigh" | "max"; // defaults to "high" (SDK 3.0.58 ceiling; xhigh deferred to the v4 upgrade)
   system: string;
   prompt: string;
 }): Promise<string>;
 ```
 
-Effort is passed through the provider's Anthropic options (adaptive thinking + `effort`), defaulting to **`xhigh`** — D3 program synthesis is the correctness-sensitive coding subtask this tier exists for, and it runs once per `expensive` call. The return is the raw model text (the D3 program body). No streaming (the sub-call is internal to one tool `execute`).
+Effort is passed through the provider's Anthropic options (adaptive thinking + `effort`), defaulting to **`high`** — the ceiling the pinned `@ai-sdk/anthropic@3.0.58` exposes (its typed `effort` enum is `low|medium|high|max`; `xhigh` exists at the API but not in this SDK version). Lifting the default to `xhigh` is a recorded follow-up gated on a deliberate `@ai-sdk/anthropic` v4 upgrade (a breaking major that also drives the main agent loop — out of #269's scope). The seam's `effort` param still accepts `xhigh` so the follow-up is a one-line default change. The return is the raw model text (the D3 program body). No streaming (the sub-call is internal to one tool `execute`).
 
 ### Codegen system prompt — `apps/api/src/prompts/visualize-d3.prompt.ts` (new)
 
@@ -182,7 +182,7 @@ Run via npm scripts: `cd packages/core && npm run test:unit`; `cd apps/api && np
 5. `visualize_d3` tool name is globally unique across packs.
 
 ### Layer 2 — codegen seam + validation (`apps/api/src/__tests__/services/ai.service.test.ts`, `tools/visualize-d3.validate.test.ts`)
-6. `AiService.generateCode` calls the provider with the given model (defaults `CODEGEN_MODEL`) + effort (defaults `high`) and returns the text (provider mocked).
+6. `AiService.generateCode` calls the injected generate fn with the given model (defaults `CODEGEN_MODEL`) + effort (defaults `high`, reaching `providerOptions.anthropic.effort`) and returns the text.
 7. `validateProgram` accepts a well-formed function body; rejects a syntax error with the `SyntaxError` message; **never executes** (a body containing `fetch(...)` or a `throw` still validates `ok:true` — construction-only). Uses `new Function("api", src)` construction, matching the sandbox bootstrap exactly.
 8. `VISUALIZE_D3_CODEGEN_SYSTEM` contains the load-bearing contract markers: `new Function`, `api.data`, idempotence wording, "function body only", and a worked example.
 

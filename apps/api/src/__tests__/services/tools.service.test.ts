@@ -221,6 +221,7 @@ const CUSTOMER_RECORDS = [
 
 const ALL_PACK_SLUGS = [
   "data_query",
+  "visualize",
   "statistics",
   "regression",
   "financial",
