@@ -296,13 +296,23 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       lines.push("## Charting");
       lines.push("");
       lines.push(
-        "For any chart, graph, or plot, reach for **`visualize_d3`**. Pass " +
-          "the `sql` that returns the data, and an `instruction` describing " +
-          "the visualization in words — the chart type, which result columns " +
-          "map to which encodings, and any emphasis. You do NOT write the " +
-          "render program; describe intent and it is generated and rendered " +
-          "in a sandboxed D3 widget. Same result-size handling as `sql_query` " +
-          "(large results stream via a handle). Don't add a LIMIT."
+        "When the user asks to **chart, graph, plot, or visualize** data — " +
+          "or asks for a bar/line/scatter/pie chart by name — use " +
+          "**`visualize_d3`**. That is the visualization path: `sql_query` and " +
+          "`display_entity_records` render **tables**, so do not answer a " +
+          "visualization request with a table. `visualize_d3` is also " +
+          "preferred over the older `visualize` / `visualize_tree` (Vega) " +
+          "tools, which are being retired — reach for `visualize_d3` for new " +
+          "charts."
+      );
+      lines.push("");
+      lines.push(
+        "Call it with the `sql` that returns the data and an `instruction` " +
+          "describing the visualization in words — the chart type, which " +
+          "result columns map to which encodings, and any emphasis. You do " +
+          "NOT write the render program; describe intent and it is generated " +
+          "and rendered in a sandboxed D3 widget. Same result-size handling " +
+          "as `sql_query` (large results stream via a handle). Don't add a LIMIT."
       );
       lines.push("");
     }
