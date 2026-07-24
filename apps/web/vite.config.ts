@@ -72,6 +72,22 @@ export default defineConfig({
     }) as PluginOption,
     react() as PluginOption,
   ],
+  resolve: {
+    alias: [
+      // d3's package `exports` map exposes no subpaths (only the root,
+      // with a `umd` condition), so the deep `?raw` import of the UMD
+      // bundle — inlined into the D3 sandbox srcdoc (#268) — cannot
+      // resolve through it. Alias the specifier straight to the hoisted
+      // file, preserving the `?raw` query via the capture group.
+      {
+        find: /^d3\/dist\/d3\.min\.js(\?.*)?$/,
+        replacement: `${path.resolve(
+          __dirname,
+          "../../node_modules/d3/dist/d3.min.js"
+        )}$1`,
+      },
+    ],
+  },
   server: {
     port: 3000,
     host: true,

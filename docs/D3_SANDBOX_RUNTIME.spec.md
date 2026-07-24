@@ -271,7 +271,7 @@ No query-key addition (mutations aren't keyed); no cache invalidation (read-only
 
 - `apps/web/package.json`: `d3` pinned **exact** (`"d3": "7.9.0"` — latest v7 at implementation time, no `^`). No `@types/d3` (parent code never calls d3; it only inlines the source text).
 - `apps/web/jest.config.js`: `moduleNameMapper` entry `"\\?raw$": "<rootDir>/src/__tests__/raw-stub.js"` (stub exports an empty string). Real srcdoc composition is tested through `buildSandboxSrcdoc` with fixture sources (that's why it's injectable).
-- `apps/web/vite.config.ts`: no change (`?raw` is built-in).
+- `apps/web/vite.config.ts`: a scoped `resolve.alias` for `d3/dist/d3.min.js(?raw)` — d3's package `exports` map exposes no subpaths, so the deep import cannot resolve through it; the alias targets the hoisted file directly, preserving the query. (`?raw` handling itself is built-in.)
 
 ## Migration / Seed
 
@@ -346,7 +346,7 @@ Run via npm scripts only: `cd packages/core && npm run test:unit`; `cd apps/web 
 
 **`packages/core`** — edit: `contracts/portal.contract.ts` (+`"d3"`), `contracts/portal-sql.contract.ts` (fields split), `contracts/index.ts` (+2 barrel lines), `models/tool-capability.model.ts` (comment only); new: `contracts/d3-widget.contract.ts`; tests: new `__tests__/contracts/d3-widget.contract.test.ts`, edits to portal-sql/portal contract + `ContentBlockRenderer` tests.
 
-**`apps/web`** — new: `modules/D3Widget/` (barrel, 2 component files, 6 utils, tests, stories), `src/__tests__/raw-stub.js`; edit: `api/portal-sql.api.ts` (+`handleSnapshotPage`), `main.tsx` (registration), `jest.config.js` (`?raw` mapper), `package.json` (+`d3` exact).
+**`apps/web`** — new: `modules/D3Widget/` (barrel, 2 component files, 6 utils, tests, stories), `src/__tests__/raw-stub.js`; edit: `api/portal-sql.api.ts` (+`handleSnapshotPage`), `main.tsx` (registration), `jest.config.js` (`?raw` mapper), `vite.config.ts` (d3 UMD alias), `package.json` (+`d3` exact).
 
 **No changes** to `apps/api`, DB, infra, or env vars.
 
