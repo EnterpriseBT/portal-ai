@@ -24,26 +24,6 @@ const mockFindByOrganizationId_colDefs = jest
   .fn<() => Promise<unknown[]>>()
   .mockResolvedValue([]);
 
-// Mock vega/vega-lite so data-injection tests don't require valid specs.
-// Dedicated validation tests use the real modules.
-const mockVegaParse = jest.fn<() => unknown>().mockReturnValue({});
-const mockViewRunAsync = jest
-  .fn<() => Promise<void>>()
-  .mockResolvedValue(undefined);
-const mockViewFinalize = jest.fn<() => void>();
-
-jest.unstable_mockModule("vega", () => ({
-  parse: mockVegaParse,
-  View: class {
-    runAsync = mockViewRunAsync;
-    finalize = mockViewFinalize;
-  },
-}));
-
-jest.unstable_mockModule("vega-lite", () => ({
-  compile: jest.fn<() => unknown>().mockReturnValue({ spec: {} }),
-}));
-
 // Mock direct db import for _connector_instances metadata query in loadStation
 const _mockSelectChain = {
   from: () => _mockSelectChain,
@@ -469,40 +449,7 @@ describe("AnalyticsService", () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // visualize / visualizeVega
-  //
-  // Phase 3 slice 2: both helpers now route through the Postgres-direct
-  // `sqlQuery` (no AlaSQL fixture path), so the AlaSQL-coupled spec
-  // injection + Vega-validation tests below are out of scope until the
-  // Postgres-direct path is fully wired in slice 5. The injection logic
-  // itself (data array shaping, source-reference handling) is unchanged
-  // and continues to be exercised end-to-end via portal-session tests.
-  // -----------------------------------------------------------------------
-
-  describe.skip("visualize() — AlaSQL-coupled, retired in slice 2", () => {
-    it("placeholder", () => {
-      expect(true).toBe(true);
-    });
-  });
-
-  describe.skip("visualizeVega() — AlaSQL-coupled, retired in slice 2", () => {
-    it("placeholder", () => {
-      expect(true).toBe(true);
-    });
-  });
-
-  describe.skip("visualize() validation — AlaSQL-coupled, retired in slice 2", () => {
-    it("placeholder", () => {
-      expect(true).toBe(true);
-    });
-  });
-
-  describe.skip("visualizeVega() validation — AlaSQL-coupled, retired in slice 2", () => {
-    it("placeholder", () => {
-      expect(true).toBe(true);
-    });
-  });
+  // visualize / visualizeVega + Vega validators removed in #272 (Vega tools retired).
 
   // -----------------------------------------------------------------------
   // resolveIdentity

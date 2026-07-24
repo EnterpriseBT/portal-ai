@@ -207,13 +207,12 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("");
   }
 
-  // SQL guidance — applies whenever the LLM can reach `sql_query` /
-  // `visualize` / `visualize_tree`. The new session-view surface is
-  // PostgreSQL-compatible and uses double-quoted identifiers (not
-  // AlaSQL's `[…]`). Large result sets return a queryHandle envelope
-  // that streams to the UI without entering the agent's context — the
-  // bullets below teach the agent to lean into that path instead of
-  // refusing on row count.
+  // SQL guidance — applies whenever the LLM can reach `sql_query`. The
+  // session-view surface is PostgreSQL-compatible and uses double-quoted
+  // identifiers (not AlaSQL's `[…]`). Large result sets return a
+  // queryHandle envelope that streams to the UI without entering the
+  // agent's context — the bullets below teach the agent to lean into that
+  // path instead of refusing on row count.
   // visualize_d3 (#269) also needs SQL authoring, so the guidance applies
   // when either data_query or the visualize pack is enabled.
   if (
@@ -300,10 +299,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
           "or asks for a bar/line/scatter/pie chart by name — use " +
           "**`visualize_d3`**. That is the visualization path: `sql_query` and " +
           "`display_entity_records` render **tables**, so do not answer a " +
-          "visualization request with a table. `visualize_d3` is also " +
-          "preferred over the older `visualize` / `visualize_tree` (Vega) " +
-          "tools, which are being retired — reach for `visualize_d3` for new " +
-          "charts."
+          "visualization request with a table."
       );
       lines.push("");
       lines.push(

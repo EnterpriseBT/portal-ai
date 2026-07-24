@@ -75,18 +75,6 @@ jest.unstable_mockModule("../../services/tier.service.js", () => ({
   },
 }));
 
-// Mock vega/vega-lite (pulled in transitively via AnalyticsService)
-jest.unstable_mockModule("vega", () => ({
-  parse: jest.fn().mockReturnValue({}),
-  View: class {
-    runAsync = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
-    finalize = jest.fn();
-  },
-}));
-jest.unstable_mockModule("vega-lite", () => ({
-  compile: jest.fn().mockReturnValue({ spec: {} }),
-}));
-
 // Mock tavily + environment for web_search
 const mockTavilySearch = jest.fn<() => Promise<unknown>>();
 jest.unstable_mockModule("@tavily/core", () => ({
@@ -282,20 +270,12 @@ describe("buildAnalyticsTools()", () => {
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
     expect(tools.sql_query).toBeDefined();
-    expect(tools.visualize).toBeDefined();
-    expect(tools.visualize_tree).toBeDefined();
     // resolve_identity omitted because no entity groups
     expect(tools.resolve_identity).toBeUndefined();
     // Other pack tools should be absent
     expect(tools.cluster).toBeUndefined();
     expect(tools.regression).toBeUndefined();
     expect(tools.npv).toBeUndefined();
-  });
-
-  it("should NOT register visualize_tree when data_query pack is not selected", async () => {
-    setupStationMocks(["statistics"]);
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
-    expect(tools.visualize_tree).toBeUndefined();
   });
 
   it("should register statistics tools when statistics pack is selected", async () => {
@@ -354,8 +334,6 @@ describe("buildAnalyticsTools()", () => {
 
     // data_query
     expect(tools.sql_query).toBeDefined();
-    expect(tools.visualize).toBeDefined();
-    expect(tools.visualize_tree).toBeDefined();
     // statistics
     expect(tools.cluster).toBeDefined();
     expect(tools.hypothesis_test).toBeDefined();
@@ -1299,7 +1277,7 @@ describe("buildAnalyticsTools() tier entitlements (#214)", () => {
 
     expect(tools.web_search).toBeUndefined();
     expect(tools.sql_query).toBeDefined();
-    expect(tools.visualize).toBeDefined();
+    expect(tools.display_entity_records).toBeDefined();
   });
 
   // ── case 7: custom boolean, non-destructive ─────────────────────────

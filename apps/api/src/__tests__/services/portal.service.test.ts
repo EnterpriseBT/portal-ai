@@ -775,35 +775,6 @@ describe("PortalService", () => {
       });
     });
 
-    it("sends tool_result SSE event for visualize tool", async () => {
-      const vegaResult = { rows: [], spec: { mark: "bar" } };
-      const chunks = [
-        {
-          type: "tool-result",
-          toolName: "visualize",
-          output: vegaResult,
-        },
-        { type: "finish" },
-      ];
-      mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
-
-      const sse = makeSse();
-      await PortalService.streamResponse({
-        portalId: PORTAL_ID,
-        messages: [],
-        stationContext,
-        organizationId: ORG_ID,
-        userId: "user-001",
-        sse: sse as any,
-      });
-
-      expect(sse.send).toHaveBeenCalledWith("tool_result", {
-        type: "tool_result",
-        toolName: "visualize",
-        result: vegaResult,
-      });
-    });
-
     it("sends tool_result SSE event for webhook tool returning vega-lite", async () => {
       const vegaResult = { type: "vega-lite", spec: { mark: "line" } };
       const chunks = [
@@ -829,35 +800,6 @@ describe("PortalService", () => {
       expect(sse.send).toHaveBeenCalledWith("tool_result", {
         type: "tool_result",
         toolName: "my_webhook_tool",
-        result: vegaResult,
-      });
-    });
-
-    it("sends tool_result SSE event for visualize_tree tool", async () => {
-      const vegaResult = { data: [{ values: [] }], marks: [{ type: "rect" }] };
-      const chunks = [
-        {
-          type: "tool-result",
-          toolName: "visualize_tree",
-          output: vegaResult,
-        },
-        { type: "finish" },
-      ];
-      mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
-
-      const sse = makeSse();
-      await PortalService.streamResponse({
-        portalId: PORTAL_ID,
-        messages: [],
-        stationContext,
-        organizationId: ORG_ID,
-        userId: "user-001",
-        sse: sse as any,
-      });
-
-      expect(sse.send).toHaveBeenCalledWith("tool_result", {
-        type: "tool_result",
-        toolName: "visualize_tree",
         result: vegaResult,
       });
     });
@@ -889,44 +831,6 @@ describe("PortalService", () => {
         toolName: "my_webhook_tool",
         result: vegaResult,
       });
-    });
-
-    it("persists vega display block in assistant message", async () => {
-      const vegaResult = { data: [{ values: [] }], marks: [] };
-      const chunks = [
-        {
-          type: "tool-call",
-          toolCallId: "tc-v",
-          toolName: "visualize_tree",
-          input: {},
-        },
-        {
-          type: "tool-result",
-          toolCallId: "tc-v",
-          toolName: "visualize_tree",
-          output: vegaResult,
-        },
-        { type: "finish" },
-      ];
-      mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
-
-      const sse = makeSse();
-      await PortalService.streamResponse({
-        portalId: PORTAL_ID,
-        messages: [],
-        stationContext,
-        organizationId: ORG_ID,
-        userId: "user-001",
-        sse: sse as any,
-      });
-
-      expect(mockCreate_message).toHaveBeenCalledWith(
-        expect.objectContaining({
-          blocks: expect.arrayContaining([
-            { type: "vega", content: vegaResult },
-          ]),
-        })
-      );
     });
 
     it("sends data-table SSE event for sql_query tool results", async () => {
@@ -1031,19 +935,20 @@ describe("PortalService", () => {
     });
 
     it("persists assistant message with tool-call, tool-result, and display blocks", async () => {
+      const d3Result = { type: "d3", program: "/* d3 */", data: [] };
       const chunks = [
         { type: "text-delta", text: "Analysis: " },
         {
           type: "tool-call",
           toolCallId: "tc-1",
-          toolName: "visualize",
-          input: { type: "bar" },
+          toolName: "visualize_d3",
+          input: { instruction: "bar chart" },
         },
         {
           type: "tool-result",
           toolCallId: "tc-1",
-          toolName: "visualize",
-          output: { chart: true },
+          toolName: "visualize_d3",
+          output: d3Result,
         },
         { type: "text-delta", text: "done" },
         { type: "finish" },
@@ -1068,16 +973,16 @@ describe("PortalService", () => {
             {
               type: "tool-call",
               toolCallId: "tc-1",
-              toolName: "visualize",
-              input: { type: "bar" },
+              toolName: "visualize_d3",
+              input: { instruction: "bar chart" },
             },
             {
               type: "tool-result",
               toolCallId: "tc-1",
-              toolName: "visualize",
-              content: { chart: true },
+              toolName: "visualize_d3",
+              content: d3Result,
             },
-            { type: "vega-lite", content: { chart: true } },
+            { type: "d3", content: d3Result },
             { type: "text", content: "done" },
           ],
         })
