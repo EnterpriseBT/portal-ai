@@ -154,6 +154,11 @@ describe("PortalBlockTypeSchema", () => {
     const result = PortalBlockTypeSchema.safeParse("vega");
     expect(result.success).toBe(true);
   });
+
+  // #268: sandboxed D3 render programs are a first-class block type.
+  it('should accept "d3" as a valid block type', () => {
+    expect(PortalBlockTypeSchema.safeParse("d3").success).toBe(true);
+  });
 });
 
 // ── PINNABLE_BLOCK_TYPES ────────────────────────────────────────────
@@ -161,6 +166,12 @@ describe("PortalBlockTypeSchema", () => {
 describe("PINNABLE_BLOCK_TYPES", () => {
   it('should contain "vega"', () => {
     expect(PINNABLE_BLOCK_TYPES.has("vega")).toBe(true);
+  });
+
+  // #268: d3 widgets are NOT pinnable — snapshot-pinning of live widgets
+  // is exactly what the dashboards epic replaces (#273 gates the rest).
+  it('should not contain "d3"', () => {
+    expect(PINNABLE_BLOCK_TYPES.has("d3" as never)).toBe(false);
   });
 });
 

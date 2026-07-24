@@ -60,6 +60,17 @@ export default [
       "react-hooks/rules-of-hooks": "off",
     },
   },
+  // The D3 sandbox bootstrap runs inside the sandboxed iframe (#268):
+  // a standalone browser script loaded via `?raw`, not a module.
+  {
+    files: ["src/modules/D3Widget/utils/sandbox-bootstrap.js"],
+    languageOptions: {
+      sourceType: "script",
+      globals: {
+        ...globals.browser,
+      },
+    },
+  },
   // Test files configuration
   {
     files: [

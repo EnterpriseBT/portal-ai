@@ -30,6 +30,13 @@ export default {
 
   // Module name mapper for path aliases and static assets
   moduleNameMapper: {
+    // Vite `?raw` source imports (D3 sandbox srcdoc, #268) — stubbed. Jest's
+    // ESM resolver strips the `?raw` query before mapping, so the bare paths
+    // of raw-imported sources are mapped explicitly (and must precede the
+    // relative-.js mapper); the `\\?raw$` rule is the generic backstop.
+    "^d3/dist/d3\\.min\\.js$": "<rootDir>/src/__tests__/__mocks__/rawMock.js",
+    "sandbox-bootstrap\\.js$": "<rootDir>/src/__tests__/__mocks__/rawMock.js",
+    "\\?raw$": "<rootDir>/src/__tests__/__mocks__/rawMock.js",
     "^(\\.{1,2}/.*)\\.js$": "$1",
     "\\.svg$": "<rootDir>/src/__tests__/__mocks__/svgMock.tsx",
     "\\.css$": "<rootDir>/src/__tests__/__mocks__/styleMock.js",

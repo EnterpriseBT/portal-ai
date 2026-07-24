@@ -67,6 +67,12 @@ export * from "./station.contract.js";
 /** Portal contracts — schemas & types */
 export * from "./portal.contract.js";
 
+/** Portal-SQL query-handle contracts — schemas & types (#85; barreled in #268) */
+export * from "./portal-sql.contract.js";
+
+/** D3 widget block contracts — schemas & types (#268) */
+export * from "./d3-widget.contract.js";
+
 /** Toolpack contracts — schemas & types */
 export * from "./toolpack.contract.js";
 

@@ -1,4 +1,7 @@
-import { QueryHandleEnvelopeSchema } from "../../contracts/portal-sql.contract.js";
+import {
+  QueryHandleEnvelopeFieldsSchema,
+  QueryHandleEnvelopeSchema,
+} from "../../contracts/portal-sql.contract.js";
 
 describe("QueryHandleEnvelopeSchema", () => {
   it("accepts a non-sampled envelope", () => {
@@ -72,5 +75,24 @@ describe("QueryHandleEnvelopeSchema", () => {
       samplePeek: elevenRows,
     });
     expect(result.success).toBe(false);
+  });
+});
+
+// #268: the bare field object is exported separately so other contracts
+// (D3 handle blocks) can compose it via .extend() — .superRefine() makes
+// the refined export non-extendable. The split must not change the
+// refined schema's behavior (the cases above are the regression).
+describe("QueryHandleEnvelopeFieldsSchema", () => {
+  it("accepts the raw fields without the sampled⇒sampleSize refinement", () => {
+    const result = QueryHandleEnvelopeFieldsSchema.safeParse({
+      queryHandle: "qh-xyz",
+      rowCount: 1_000_000,
+      schema: [{ name: "x", type: "numeric" }],
+      sampled: true, // no sampleSize — the FIELDS schema doesn't refine
+      truncated: false,
+      samplePeek: [],
+      sql: null,
+    });
+    expect(result.success).toBe(true);
   });
 });

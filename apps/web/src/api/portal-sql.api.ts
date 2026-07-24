@@ -1,4 +1,4 @@
-import { useAuthQuery } from "../utils/api.util";
+import { useAuthMutation, useAuthQuery } from "../utils/api.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
 
@@ -36,4 +36,23 @@ export const portalSql = {
       undefined,
       options
     ),
+
+  /**
+   * Imperative paged snapshot read (#268) — drives the D3 widget's
+   * progressive fetch loop (`useProgressiveHandleRows`), which issues
+   * one call per page as the loop advances. A per-invocation GET, so
+   * it rides `useAuthMutation` rather than a keyed declarative query.
+   */
+  handleSnapshotPage: () =>
+    useAuthMutation<
+      HandleSnapshotPayload,
+      { handleId: string; offset: number; limit: number }
+    >({
+      url: (vars) =>
+        `/api/portal-sql/handle/${encodeURIComponent(vars.handleId)}?offset=${
+          vars.offset
+        }&limit=${vars.limit}`,
+      method: "GET",
+      body: () => undefined,
+    }),
 };
