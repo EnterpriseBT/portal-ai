@@ -1,3 +1,4 @@
+import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { defineConfig, PluginOption } from "vite";
@@ -52,11 +53,45 @@ function versionJson(): PluginOption {
   };
 }
 
+/**
+ * Serves d3's UMD bundle as raw text for the D3 sandbox srcdoc (#268).
+ * The deep import `d3/dist/d3.min.js?raw` can't resolve normally: d3's
+ * package `exports` map exposes no subpaths, and aliasing to the file
+ * under node_modules feeds Vite's dep optimizer a `?raw` asset, which
+ * crashes it and poisons the deps cache. A `\0`-virtual module is
+ * resolved before both — and is never optimized — in dev, build, and
+ * Storybook alike.
+ */
+function rawD3Umd(): PluginOption {
+  const SPECIFIER = "d3/dist/d3.min.js?raw";
+  const VIRTUAL_ID = "\0raw-d3-umd";
+  const bundlePath = path.resolve(
+    __dirname,
+    "../../node_modules/d3/dist/d3.min.js"
+  );
+
+  return {
+    name: "raw-d3-umd",
+    enforce: "pre",
+    resolveId(source) {
+      if (source === SPECIFIER) return VIRTUAL_ID;
+    },
+    load(id) {
+      if (id === VIRTUAL_ID) {
+        return `export default ${JSON.stringify(
+          fs.readFileSync(bundlePath, "utf8")
+        )};`;
+      }
+    },
+  };
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     versionJson(),
     serveCatalogs(),
+    rawD3Umd(),
     svgr({
       svgrOptions: {
         exportType: "default",
@@ -72,22 +107,6 @@ export default defineConfig({
     }) as PluginOption,
     react() as PluginOption,
   ],
-  resolve: {
-    alias: [
-      // d3's package `exports` map exposes no subpaths (only the root,
-      // with a `umd` condition), so the deep `?raw` import of the UMD
-      // bundle — inlined into the D3 sandbox srcdoc (#268) — cannot
-      // resolve through it. Alias the specifier straight to the hoisted
-      // file, preserving the `?raw` query via the capture group.
-      {
-        find: /^d3\/dist\/d3\.min\.js(\?.*)?$/,
-        replacement: `${path.resolve(
-          __dirname,
-          "../../node_modules/d3/dist/d3.min.js"
-        )}$1`,
-      },
-    ],
-  },
   server: {
     port: 3000,
     host: true,
