@@ -11,8 +11,8 @@ import {
 
 describe("BUILTIN_TOOLPACKS", () => {
   // Case 1
-  it("registers exactly six packs", () => {
-    expect(BUILTIN_TOOLPACKS.length).toBe(6);
+  it("registers exactly seven packs", () => {
+    expect(BUILTIN_TOOLPACKS.length).toBe(7);
   });
 
   // Case 2
@@ -24,6 +24,7 @@ describe("BUILTIN_TOOLPACKS", () => {
       "financial",
       "web_search",
       "entity_management",
+      "visualize",
     ];
     const actual = BUILTIN_TOOLPACKS.map((p) => p.slug).sort();
     expect(actual).toEqual([...expected].sort());
@@ -141,6 +142,36 @@ describe("BUILTIN_TOOLPACKS", () => {
   });
 });
 
+// #269 — the visualize pack + visualize_d3 tool contract.
+describe("visualize pack (#269)", () => {
+  const pack = BUILTIN_TOOLPACKS.find((p) => p.slug === "visualize");
+  const tool = pack?.tools.find((t) => t.name === "visualize_d3");
+
+  it("exists with exactly the visualize_d3 tool", () => {
+    expect(pack).toBeDefined();
+    expect(pack!.tools).toHaveLength(1);
+    expect(pack!.tools[0].name).toBe("visualize_d3");
+  });
+
+  it("visualize_d3 takes intent (sql + instruction + optional title), not a program", () => {
+    const schema = tool!.parameterSchema;
+    const props = schema.properties as Record<string, unknown>;
+    expect(Object.keys(props).sort()).toEqual(["instruction", "sql", "title"]);
+    expect(schema.required).toEqual(["sql", "instruction"]);
+    // The agent supplies intent — never a program or a Vega spec.
+    expect(props.d3Program).toBeUndefined();
+    expect(props.spec).toBeUndefined();
+  });
+
+  it("visualize_d3 capability: d3 result, expensive (Opus codegen), handle-on-large", () => {
+    const cap = tool!.capability;
+    expect(cap.resultKind).toBe("d3");
+    expect(cap.costHint).toBe("expensive");
+    expect(cap.production).toEqual({ kind: "rows", onLarge: "handle" });
+    expect(ToolCapabilitySchema.safeParse(cap).success).toBe(true);
+  });
+});
+
 describe("isBuiltinToolpackSlug", () => {
   // Case 9
   it("returns true for every registered slug", () => {
@@ -150,6 +181,7 @@ describe("isBuiltinToolpackSlug", () => {
     expect(isBuiltinToolpackSlug("financial")).toBe(true);
     expect(isBuiltinToolpackSlug("web_search")).toBe(true);
     expect(isBuiltinToolpackSlug("entity_management")).toBe(true);
+    expect(isBuiltinToolpackSlug("visualize")).toBe(true);
   });
 
   it("returns false for unknown values", () => {
@@ -161,13 +193,14 @@ describe("isBuiltinToolpackSlug", () => {
 });
 
 describe("BuiltinToolpackSlugSchema", () => {
-  it("accepts all six slugs", () => {
+  it("accepts all registered slugs", () => {
     expect(BuiltinToolpackSlugSchema.safeParse("data_query").success).toBe(
       true
     );
     expect(
       BuiltinToolpackSlugSchema.safeParse("entity_management").success
     ).toBe(true);
+    expect(BuiltinToolpackSlugSchema.safeParse("visualize").success).toBe(true);
   });
 
   it("rejects unknown slugs", () => {

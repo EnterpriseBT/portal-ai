@@ -339,6 +339,16 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
     expect(prompt).not.toContain("## SQL Guidance");
   });
 
+  // #269 — visualize_d3 needs SQL, so the guidance also applies when the
+  // `visualize` pack is enabled even without `data_query`.
+  it("includes SQL guidance + visualize_d3 charting guidance when only visualize is enabled", () => {
+    const prompt = buildSystemPrompt(makeContext({ toolPacks: ["visualize"] }));
+    expect(prompt).toContain("## SQL Guidance");
+    expect(prompt).toContain("visualize_d3");
+    // The agent supplies an instruction (intent), not a program.
+    expect(prompt).toMatch(/instruction/i);
+  });
+
   it("drops the AlaSQL `[bracket]` example query in favour of a double-quoted one", () => {
     const prompt = buildSystemPrompt(
       makeContext({ toolPacks: ["data_query", "entity_management"] })

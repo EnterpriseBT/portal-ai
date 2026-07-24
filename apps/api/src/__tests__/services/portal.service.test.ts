@@ -1235,6 +1235,49 @@ describe("PortalService", () => {
 });
 
 // ---------------------------------------------------------------------------
+// resolveDisplayBlock — d3 (#269)
+// ---------------------------------------------------------------------------
+
+describe("resolveDisplayBlock → d3 (#269)", () => {
+  const PROGRAM = "api.d3.select(api.container);";
+
+  it("routes a visualize_d3 success (type:d3) to a d3 block", () => {
+    const result = resolveDisplayBlock("visualize_d3", {
+      type: "d3",
+      program: PROGRAM,
+      rows: [{ x: 1 }],
+    });
+    expect(result?.block.type).toBe("d3");
+    expect(result?.block.content).toMatchObject({ program: PROGRAM });
+  });
+
+  it("routes a handle-shaped d3 result through the block (queryHandle preserved, sseResult set)", () => {
+    const result = resolveDisplayBlock("visualize_d3", {
+      type: "d3",
+      program: PROGRAM,
+      queryHandle: "qh-1",
+      rowCount: 5000,
+      schema: [{ name: "x", type: "numeric" }],
+      samplePeek: [],
+      sampled: false,
+    });
+    expect(result?.block.type).toBe("d3");
+    expect(
+      (result?.block.content as { queryHandle?: string }).queryHandle
+    ).toBe("qh-1");
+    expect(result?.sseResult).toBeDefined();
+  });
+
+  it("routes the visualize_d3 data-table FALLBACK (type:data-table) to a data-table block, not d3", () => {
+    const result = resolveDisplayBlock("visualize_d3", {
+      type: "data-table",
+      rows: [{ x: 1 }, { x: 2 }],
+      message: "codegen failed; showing table",
+    });
+    expect(result?.block.type).toBe("data-table");
+  });
+});
+
 // resolveDisplayBlock — mutation-result variants
 // ---------------------------------------------------------------------------
 
