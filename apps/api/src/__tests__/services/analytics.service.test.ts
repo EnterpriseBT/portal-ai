@@ -449,7 +449,7 @@ describe("AnalyticsService", () => {
     });
   });
 
-  // visualize / visualizeVega + Vega validators removed in #272 (Vega tools retired).
+  // The chart-spec compute + validators were removed in #272.
 
   // -----------------------------------------------------------------------
   // resolveIdentity

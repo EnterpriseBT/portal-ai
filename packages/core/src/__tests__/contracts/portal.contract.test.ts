@@ -150,9 +150,10 @@ describe("PortalMessageResponseSchema", () => {
 // ── PortalBlockTypeSchema ────────────────────────────────────────────
 
 describe("PortalBlockTypeSchema", () => {
-  it('should accept "vega" as a valid block type', () => {
-    const result = PortalBlockTypeSchema.safeParse("vega");
-    expect(result.success).toBe(true);
+  // #272: the Vega block types are removed.
+  it('should reject the retired "vega" / "vega-lite" block types', () => {
+    expect(PortalBlockTypeSchema.safeParse("vega").success).toBe(false);
+    expect(PortalBlockTypeSchema.safeParse("vega-lite").success).toBe(false);
   });
 
   // #268: sandboxed D3 render programs are a first-class block type.
@@ -164,14 +165,17 @@ describe("PortalBlockTypeSchema", () => {
 // ── PINNABLE_BLOCK_TYPES ────────────────────────────────────────────
 
 describe("PINNABLE_BLOCK_TYPES", () => {
-  it('should contain "vega"', () => {
-    expect(PINNABLE_BLOCK_TYPES.has("vega")).toBe(true);
+  // #272: with Vega removed, no visualization type is pinnable — the
+  // pinnable set is `text` | `data-table` only.
+  it("contains no visualization type", () => {
+    expect(PINNABLE_BLOCK_TYPES.has("vega" as never)).toBe(false);
+    expect(PINNABLE_BLOCK_TYPES.has("vega-lite" as never)).toBe(false);
+    expect(PINNABLE_BLOCK_TYPES.has("d3" as never)).toBe(false);
   });
 
-  // #268: d3 widgets are NOT pinnable — snapshot-pinning of live widgets
-  // is exactly what the dashboards epic replaces (#273 gates the rest).
-  it('should not contain "d3"', () => {
-    expect(PINNABLE_BLOCK_TYPES.has("d3" as never)).toBe(false);
+  it("contains text and data-table", () => {
+    expect(PINNABLE_BLOCK_TYPES.has("text")).toBe(true);
+    expect(PINNABLE_BLOCK_TYPES.has("data-table")).toBe(true);
   });
 });
 

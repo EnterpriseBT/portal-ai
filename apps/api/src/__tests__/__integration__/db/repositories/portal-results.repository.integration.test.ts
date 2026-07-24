@@ -96,22 +96,21 @@ describe("PortalResultsRepository Integration Tests", () => {
 
   describe("create", () => {
     it("should insert and return the full row", async () => {
-      const vegaContent = {
-        $schema: "https://vega.github.io/schema/vega-lite/v5.json",
-        mark: "bar",
-        encoding: { x: { field: "a" }, y: { field: "b" } },
+      const tableContent = {
+        columns: ["a", "b"],
+        rows: [{ a: 1, b: 2 }],
       };
       const data = makeResult({
-        name: "Sales Chart",
-        type: "vega-lite",
-        content: vegaContent,
+        name: "Sales Table",
+        type: "data-table",
+        content: tableContent,
       });
       const created = await repo.create(data, db);
 
       expect(created.id).toBe(data.id);
-      expect(created.name).toBe("Sales Chart");
-      expect(created.type).toBe("vega-lite");
-      expect(created.content).toEqual(vegaContent);
+      expect(created.name).toBe("Sales Table");
+      expect(created.type).toBe("data-table");
+      expect(created.content).toEqual(tableContent);
       expect(created.organizationId).toBe(orgId);
       expect(created.stationId).toBe(stationId);
     });

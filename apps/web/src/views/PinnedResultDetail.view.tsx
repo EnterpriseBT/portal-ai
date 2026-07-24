@@ -153,7 +153,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
             items={[
               {
                 label: "Type",
-                value: result.type === "vega-lite" ? "Chart" : "Text",
+                value: result.type === "data-table" ? "Table" : "Text",
                 variant: "chip",
               },
               {

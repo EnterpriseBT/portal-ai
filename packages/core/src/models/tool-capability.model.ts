@@ -73,8 +73,6 @@ export type Consumption = z.infer<typeof ConsumptionSchema>;
 export const ResultKindSchema = z.enum([
   "data-table",
   "scalar",
-  "vega-lite", // high-level Vega-Lite spec (the `visualize` tool)
-  "vega", // full Vega spec — trees/networks (the `visualize_tree` tool)
   "d3", // sandboxed D3 render program (#268)
   "geo", // GIS map (#84, child H)
   "mutation-result",

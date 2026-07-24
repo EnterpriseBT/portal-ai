@@ -35,7 +35,7 @@ export type D3InlineContent = z.infer<typeof D3InlineContentSchema>;
 
 /**
  * Handle binding — the full query-handle envelope rides the content,
- * matching the vega-lite handle-block shape (`content.queryHandle`
+ * matching the data-table handle-block shape (`content.queryHandle`
  * sniffing); the web runtime pages the snapshot endpoint progressively.
  */
 export const D3HandleContentSchema = D3BaseContentSchema.extend(
