@@ -6,12 +6,14 @@ import bootstrapSource from "./sandbox-bootstrap.js?raw";
  * The sandbox iframe's Content-Security-Policy (#268, spec Key decision 1).
  * `default-src 'none'` closes every network channel (fetch/XHR/WebSocket,
  * img/font/media beacons, remote import()); only the two inline scripts
- * (D3 + bootstrap) and inline styles may run. Combined with
- * `sandbox="allow-scripts"` (opaque origin — no cookies, storage, or
- * app-origin reach), this is the containment for agent-authored programs.
+ * (D3 + bootstrap) and inline styles may run. `'unsafe-eval'` is required
+ * because the bootstrap compiles the agent program via `new Function()` —
+ * it grants no network channel; containment is the opaque origin
+ * (`sandbox="allow-scripts"` — no cookies, storage, or app-origin reach)
+ * plus the closed `default-src`.
  */
 export const SANDBOX_CSP =
-  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'";
+  "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'";
 
 /**
  * `</script>` inside an embedded source would terminate the inline

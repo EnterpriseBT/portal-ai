@@ -11,8 +11,12 @@ const FIXTURE = {
 
 describe("SANDBOX_CSP", () => {
   it("pins the no-egress policy exactly (spec Key decision 1)", () => {
+    // 'unsafe-eval' is required: the bootstrap compiles the agent program
+    // via new Function(). Egress stays closed — eval permission does not
+    // open any network channel; containment is the opaque origin +
+    // default-src 'none'.
     expect(SANDBOX_CSP).toBe(
-      "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'"
+      "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'"
     );
   });
 });

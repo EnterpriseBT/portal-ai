@@ -6,7 +6,7 @@ Pins the contract for executing agent-authored D3 render programs in a fully san
 
 ## Key decisions (flag for review)
 
-1. **Containment = `srcdoc` iframe, `sandbox="allow-scripts"` (nothing else) + in-document CSP `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'`.** Opaque origin (no cookies/storage/app-origin), no network egress of any kind. (Discovery D1, resolved.)
+1. **Containment = `srcdoc` iframe, `sandbox="allow-scripts"` (nothing else) + in-document CSP `default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'`.** Opaque origin (no cookies/storage/app-origin), no network egress of any kind. `'unsafe-eval'` is required by the `new Function()` program-compilation contract (Decision 3) and grants no network channel — found in the smoke walk; the original spec omitted it. (Discovery D1, resolved.)
 2. **Full `d3` v7 bundle, pinned exact, inlined into the srcdoc via Vite `?raw`.** No CDN, no served asset, CSP stays `'none'`. (D2 + Q1.)
 3. **Program contract: function-body source, `new Function("api", program)` in the frame; `api = { d3, container, data, params, theme, width, height }`.** (D3.)
 4. **Progressive rendering is bootstrap-owned**: batches accumulate frame-side; the pure program is re-invoked with the full accumulated array, rAF-coalesced, container cleared per invoke. The agent never sees a streaming API. (D6 + PRD amendment.)
@@ -119,7 +119,7 @@ modules/D3Widget/
 
 ```ts
 export const SANDBOX_CSP =
-  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'";
+  "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'";
 
 /** Pure — injectable sources so tests pass fixtures; prod passes ?raw imports. */
 export function buildSandboxSrcdoc(parts: { d3Source: string; bootstrapSource: string }): string;
