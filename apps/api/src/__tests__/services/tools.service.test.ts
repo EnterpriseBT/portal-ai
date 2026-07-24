@@ -745,6 +745,7 @@ describe("buildAnalyticsTools()", () => {
   it("wraps every built tool's execute with the cost gate", async () => {
     setupStationMocks([
       "data_query",
+      "visualize",
       "statistics",
       "regression",
       "financial",

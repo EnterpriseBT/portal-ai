@@ -187,7 +187,22 @@ export function resolveDisplayBlock(
     return { block: { type: "vega", content: toolResult } };
   }
 
-  if (resultKind === "data-table") {
+  // D3 (#269). visualize_d3 is `resultKind: "d3"`, but on codegen failure it
+  // falls back to a `type: "data-table"` result — so the d3 block only mints
+  // when the result is actually tagged `d3`; the fallback falls through to the
+  // data-table arm below (which also matches on `toolResult.type`).
+  if (
+    (resultKind === "d3" ||
+      (resultKind === undefined && toolResult?.type === "d3")) &&
+    toolResult?.type === "d3"
+  ) {
+    return {
+      block: { type: "d3", content: toolResult },
+      sseResult: toolResult ?? undefined,
+    };
+  }
+
+  if (resultKind === "data-table" || toolResult?.type === "data-table") {
     // Handle path (#85 Phase 1): the tool returned a queryHandle
     // envelope instead of inline rows. Route it through the
     // streaming-table block so the frontend hydrates via the Redis

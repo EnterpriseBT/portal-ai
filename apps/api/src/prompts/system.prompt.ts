@@ -214,7 +214,12 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // that streams to the UI without entering the agent's context — the
   // bullets below teach the agent to lean into that path instead of
   // refusing on row count.
-  if (stationContext.toolPacks.includes("data_query")) {
+  // visualize_d3 (#269) also needs SQL authoring, so the guidance applies
+  // when either data_query or the visualize pack is enabled.
+  if (
+    stationContext.toolPacks.includes("data_query") ||
+    stationContext.toolPacks.includes("visualize")
+  ) {
     lines.push("## SQL Guidance");
     lines.push("");
     lines.push(
@@ -285,6 +290,22 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push('    [sql_query: SELECT * FROM "parcels" LIMIT 100]');
     lines.push('    "Here\'s a sample of 100 parcels."');
     lines.push("");
+
+    // Charting (#269) — only when the visualize pack is enabled.
+    if (stationContext.toolPacks.includes("visualize")) {
+      lines.push("## Charting");
+      lines.push("");
+      lines.push(
+        "For any chart, graph, or plot, reach for **`visualize_d3`**. Pass " +
+          "the `sql` that returns the data, and an `instruction` describing " +
+          "the visualization in words — the chart type, which result columns " +
+          "map to which encodings, and any emphasis. You do NOT write the " +
+          "render program; describe intent and it is generated and rendered " +
+          "in a sandboxed D3 widget. Same result-size handling as `sql_query` " +
+          "(large results stream via a handle). Don't add a LIMIT."
+      );
+      lines.push("");
+    }
 
     // Schema introspection (#87). The `## Available Data` listing above
     // is a snapshot at session start — it does NOT include entities or

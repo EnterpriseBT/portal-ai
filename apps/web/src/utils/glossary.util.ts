@@ -228,7 +228,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     definition:
       "A single function the assistant can call during a portal session — for example, `correlate`, `regression`, or a custom `lookup_company`. Tools come grouped into toolpacks; a station decides which toolpacks are enabled, which determines the set of tools the model can choose from on each turn. Tools shine for analytical work over the station's data: statistical tests, regressions, time-series decomposition, financial math. Use connectors for data storage and lookup; reach for tools when the answer requires computation, not retrieval.",
     example:
-      "Inside a portal session, the assistant calls the `correlate` tool to compute the Pearson correlation between two columns of an entity, then `visualize` to render the result as a chart.",
+      "Inside a portal session, the assistant calls the `correlate` tool to compute the Pearson correlation between two columns of an entity, then `visualize_d3` to render the result as an interactive chart.",
     relatedTerms: ["Tool Pack", "Custom Toolpack", "Connector Instance"],
   },
   {
