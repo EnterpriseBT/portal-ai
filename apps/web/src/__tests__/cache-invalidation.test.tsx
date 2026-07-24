@@ -108,13 +108,9 @@ jest.unstable_mockModule("../utils/use-dialog-autofocus.util", () => ({
   useDialogAutoFocus: () => ({ current: null }),
 }));
 
-// Mock react-markdown and react-vega so jsdom doesn't choke on them.
+// Mock react-markdown so jsdom doesn't choke on it.
 jest.unstable_mockModule("react-markdown", () => ({
   default: ({ children }: { children: string }) => <span>{children}</span>,
-}));
-
-jest.unstable_mockModule("react-vega", () => ({
-  VegaLite: () => <div data-testid="vega-lite-chart" />,
 }));
 
 jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));

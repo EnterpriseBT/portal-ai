@@ -775,64 +775,6 @@ describe("PortalService", () => {
       });
     });
 
-    it("sends tool_result SSE event for webhook tool returning vega-lite", async () => {
-      const vegaResult = { type: "vega-lite", spec: { mark: "line" } };
-      const chunks = [
-        {
-          type: "tool-result",
-          toolName: "my_webhook_tool",
-          output: vegaResult,
-        },
-        { type: "finish" },
-      ];
-      mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
-
-      const sse = makeSse();
-      await PortalService.streamResponse({
-        portalId: PORTAL_ID,
-        messages: [],
-        stationContext,
-        organizationId: ORG_ID,
-        userId: "user-001",
-        sse: sse as any,
-      });
-
-      expect(sse.send).toHaveBeenCalledWith("tool_result", {
-        type: "tool_result",
-        toolName: "my_webhook_tool",
-        result: vegaResult,
-      });
-    });
-
-    it("sends tool_result SSE event for webhook tool returning vega type", async () => {
-      const vegaResult = { type: "vega", data: [{ values: [] }] };
-      const chunks = [
-        {
-          type: "tool-result",
-          toolName: "my_webhook_tool",
-          output: vegaResult,
-        },
-        { type: "finish" },
-      ];
-      mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
-
-      const sse = makeSse();
-      await PortalService.streamResponse({
-        portalId: PORTAL_ID,
-        messages: [],
-        stationContext,
-        organizationId: ORG_ID,
-        userId: "user-001",
-        sse: sse as any,
-      });
-
-      expect(sse.send).toHaveBeenCalledWith("tool_result", {
-        type: "tool_result",
-        toolName: "my_webhook_tool",
-        result: vegaResult,
-      });
-    });
-
     it("sends data-table SSE event for sql_query tool results", async () => {
       const queryResult = { rows: [{ id: 1, name: "Alice" }] };
       const chunks = [

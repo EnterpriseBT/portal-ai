@@ -117,11 +117,12 @@ The type vocabulary is deleted from Zod and the DB together (dual-schema), via t
 | Slice | Lands | Spec cases | Tests |
 |---|---|---|---|
 | 1 | tools + compute + webhook + registry + api deps + prompt/custom-doc | 1,2,6,7 | core + api unit |
-| 2 | core Vega renderers + core deps | 5 | core unit |
-| 3 | api+web Vega routing + web deps | 8,10,11,12 | api + web unit |
+| 2+3 | core Vega renderers + api/web routing + core/web deps (merged — see note) | 5,8,10,11,12 | core + api + web unit |
 | 4 | Vega types + pg enum + migration + swagger | 3,4,9,13,14 | core + api unit + **integration** |
 
 Total ≈ **14 cases** (mostly deletions), one net-new migration + probe. Commits on `chore/remove-vega-tools`; PR opened after these docs confirm.
+
+> **Slices 2 and 3 were merged during implementation.** The plan assumed removing core's Vega renderers (slice 2) would leave a green tree with routing intact (slice 3). It didn't: `ContentBlockRenderer` is shared, so the moment core stops rendering `vega-lite`/`vega`, the web tests that assert those blocks render (`PortalMessage`, `PortalSession`, `QueryResultDataBlock`, `cache-invalidation`) go red. Keeping every slice green (a hard rule) forced core renderers + api/web routing + both dep drops into one commit — the same cross-package coupling the #269 lesson flags. Slice 4 (types + pg enum + migration) stays separate.
 
 ## Cross-slice notes
 

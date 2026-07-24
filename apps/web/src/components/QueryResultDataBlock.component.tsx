@@ -9,10 +9,9 @@ import { sdk } from "../api/sdk";
 // ── Types ──────────────────────────────────────────────────────────────
 
 /**
- * Streaming render envelope used by both `visualize` (chart) and
- * `sql_query` (data table) when the row count exceeds the inline
- * threshold. `spec` is present for chart envelopes and omitted for
- * tabular envelopes; the UI branches on its presence.
+ * Streaming render envelope used by `sql_query` (data table) when the row
+ * count exceeds the inline threshold. The handle is fetched and the rows are
+ * rendered through the core data-table block.
  */
 export interface QueryResultDataBlockContent {
   queryHandle: string;
@@ -23,9 +22,6 @@ export interface QueryResultDataBlockContent {
   sampled?: boolean;
   samplePeek?: Array<Record<string, unknown>>;
   schema?: Array<{ name: string; type?: string }>;
-  /** Present for chart envelopes (`visualize`); absent for tabular
-   *  envelopes (`sql_query`). */
-  spec?: Record<string, unknown>;
 }
 
 // ── UI (pure) ──────────────────────────────────────────────────────────
@@ -35,8 +31,6 @@ export interface QueryResultDataBlockUIProps {
   /** `rowCount` is a lower bound (staging hit the cap) — render it as "N+". */
   truncated?: boolean;
   rows: Array<Record<string, unknown>>;
-  /** Vega-Lite spec when rendering a chart; omit for tabular output. */
-  spec?: Record<string, unknown>;
   loading: boolean;
   error: string | null;
 }
@@ -45,7 +39,6 @@ export const QueryResultDataBlockUI: React.FC<QueryResultDataBlockUIProps> = ({
   rowCount,
   truncated,
   rows,
-  spec,
   loading,
   error,
 }) => {
@@ -81,36 +74,13 @@ export const QueryResultDataBlockUI: React.FC<QueryResultDataBlockUIProps> = ({
     );
   }
 
-  // Tabular path (sql_query handle): no Vega spec; render the rows
-  // through the core data-table block so the user gets the same look
-  // as inline results.
-  if (!spec) {
-    const columns =
-      rows.length > 0 ? Object.keys(rows[0] as Record<string, unknown>) : [];
-    const block: PortalMessageBlock = {
-      type: "data-table",
-      content: { columns, rows },
-    };
-    return <ContentBlockRenderer block={block} />;
-  }
-
-  // Chart path (visualize handle): the visualize tool's
-  // `rewriteForNamedDataset` already produced a spec with
-  // `data: { name: "primary" }`. Pass the fetched rows alongside the
-  // spec via react-vega's `data` prop (its documented injection
-  // point for named datasets) so the binding is correct AND the
-  // streaming-ready shape is preserved — when SSE-driven incremental
-  // updates land, the same `data` prop accepts `vega.changeset()`
-  // payloads. The earlier `spec.datasets.primary` pattern (#109)
-  // produced a spec react-vega's VegaLite didn't reliably resolve:
-  // axes rendered but marks did not.
-  //
-  // The block carries `{ spec, datasets }` — ContentBlockRenderer
-  // unwraps both and forwards the datasets to react-vega's `data`
-  // prop.
+  // Tabular path (sql_query handle): render the rows through the core
+  // data-table block so the user gets the same look as inline results.
+  const columns =
+    rows.length > 0 ? Object.keys(rows[0] as Record<string, unknown>) : [];
   const block: PortalMessageBlock = {
-    type: "vega-lite",
-    content: { spec, datasets: { primary: rows } },
+    type: "data-table",
+    content: { columns, rows },
   };
   return <ContentBlockRenderer block={block} />;
 };
@@ -147,7 +117,6 @@ export const QueryResultDataBlock: React.FC<QueryResultDataBlockProps> = ({
       rowCount={content.rowCount}
       truncated={content.truncated}
       rows={rows}
-      spec={content.spec}
       loading={query.isLoading}
       error={error}
     />
