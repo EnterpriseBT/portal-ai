@@ -105,13 +105,18 @@ describe("POST /api/portal-sql/widget-refresh", () => {
       role: "assistant",
       blocks: [
         { type: "text", content: "here's your chart" },
+        // Wrapped `{ type, content }` exactly as resolveDisplayBlock persists a
+        // d3 display block — the pipeline rides under `content`.
         {
           type: "d3",
-          program: "api.d3.select(api.container);",
-          pipeline: {
-            sql: PIPELINE_SQL,
-            stationId: station.id,
-            organizationId: orgId,
+          content: {
+            type: "d3",
+            program: "api.d3.select(api.container);",
+            pipeline: {
+              sql: PIPELINE_SQL,
+              stationId: station.id,
+              organizationId: orgId,
+            },
           },
         },
       ],

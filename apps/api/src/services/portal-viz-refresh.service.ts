@@ -61,7 +61,12 @@ export class PortalVizRefreshService {
     const block = blocks[params.blockIndex];
     if (!block || block.type !== "d3") throw notFound();
 
-    const parsed = D3PipelineSchema.safeParse(block.pipeline);
+    // Persisted display blocks are wrapped `{ type, content }` by
+    // `resolveDisplayBlock` — the d3 tool result (program, pipeline, rows /
+    // envelope) rides under `content`, which is exactly what the web renderer
+    // reads. Read the pipeline from there, not the wrapper's top level.
+    const inner = (block.content ?? block) as Record<string, unknown>;
+    const parsed = D3PipelineSchema.safeParse(inner.pipeline);
     if (!parsed.success) {
       throw new ApiError(
         422,

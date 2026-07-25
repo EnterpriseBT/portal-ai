@@ -15,6 +15,8 @@ const PIPELINE = {
   organizationId: "org-1",
 };
 
+// Persisted display blocks are wrapped `{ type, content }` — the d3 tool
+// result (program, pipeline, …) rides under `content` (resolveDisplayBlock).
 function d3Message(overrides: Record<string, unknown> = {}) {
   return {
     id: "msg-1",
@@ -23,7 +25,10 @@ function d3Message(overrides: Record<string, unknown> = {}) {
     role: "assistant",
     blocks: [
       { type: "text", content: "here" },
-      { type: "d3", program: "api.d3;", pipeline: PIPELINE },
+      {
+        type: "d3",
+        content: { type: "d3", program: "api.d3;", pipeline: PIPELINE },
+      },
     ],
     ...overrides,
   } as never;
@@ -136,7 +141,7 @@ describe("PortalVizRefreshService.refresh (#270)", () => {
 
   it("d3 block without a pipeline → VIZ_WIDGET_NOT_REFRESHABLE (422)", async () => {
     const noPipeline = d3Message({
-      blocks: [{ type: "d3", program: "api.d3;" }], // pre-#270 block
+      blocks: [{ type: "d3", content: { type: "d3", program: "api.d3;" } }], // pre-#270 block
     });
     await expectApiCode(
       PortalVizRefreshService.refresh(
