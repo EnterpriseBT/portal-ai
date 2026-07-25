@@ -158,7 +158,7 @@ describe("visualize pack (#269)", () => {
     const props = schema.properties as Record<string, unknown>;
     expect(Object.keys(props).sort()).toEqual(["instruction", "sql", "title"]);
     expect(schema.required).toEqual(["sql", "instruction"]);
-    // The agent supplies intent — never a program or a Vega spec.
+    // The agent supplies intent — never a program or a chart spec.
     expect(props.d3Program).toBeUndefined();
     expect(props.spec).toBeUndefined();
   });

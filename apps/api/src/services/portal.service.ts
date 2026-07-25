@@ -171,22 +171,6 @@ export function resolveDisplayBlock(
     };
   }
 
-  // Charts. Built-ins route by declared `resultKind`; custom (webhook)
-  // tools carry no capability yet (#134) and are detected by their
-  // result's `type` field.
-  if (
-    resultKind === "vega-lite" ||
-    (resultKind === undefined && toolResult?.type === "vega-lite")
-  ) {
-    return { block: { type: "vega-lite", content: toolResult } };
-  }
-  if (
-    resultKind === "vega" ||
-    (resultKind === undefined && toolResult?.type === "vega")
-  ) {
-    return { block: { type: "vega", content: toolResult } };
-  }
-
   // D3 (#269). visualize_d3 is `resultKind: "d3"`, but on codegen failure it
   // falls back to a `type: "data-table"` result — so the d3 block only mints
   // when the result is actually tagged `d3`; the fallback falls through to the
@@ -610,7 +594,7 @@ export class PortalService {
    *
    * Events emitted:
    *  - `delta`       — text chunk from the model
-   *  - `tool_result` — vega-lite chart, data-table, or structured result
+   *  - `tool_result` — d3 chart, data-table, or structured result
    *  - `done`        — stream finished; carries the persisted messageId
    *
    * Persistence:
@@ -976,7 +960,7 @@ function reconstructModelMessages(
           output,
         });
       }
-      // Display-only blocks (vega-lite, vega, data-table) are skipped —
+      // Display-only blocks (d3, data-table) are skipped —
       // they duplicate tool-result data.
     }
 

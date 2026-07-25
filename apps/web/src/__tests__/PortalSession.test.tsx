@@ -86,11 +86,6 @@ jest.unstable_mockModule("react-markdown", () => ({
   default: ({ children }: { children: string }) => <span>{children}</span>,
 }));
 
-jest.unstable_mockModule("react-vega", () => ({
-  VegaLite: () => <div data-testid="vega-lite-chart" />,
-  Vega: () => <div data-testid="vega-chart" />,
-}));
-
 jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
 // ── Imports ──────────────────────────────────────────────────────────
@@ -245,47 +240,10 @@ describe("PortalSessionUI", () => {
     expect(screen.getByText("42")).toBeInTheDocument();
   });
 
-  it("renders vega streaming blocks inline", async () => {
-    const vegaBlock = {
-      type: "vega",
-      content: { data: [{ values: [] }], marks: [] },
-    };
-    render(<PortalSessionUI {...defaultProps} streamingBlocks={[vegaBlock]} />);
-    expect(await screen.findByTestId("vega-chart")).toBeInTheDocument();
-  });
-
-  // #109: streaming chart blocks carrying a queryHandle were rendered
-  // via raw `ContentBlockRenderer`, which doesn't know about the
-  // snapshot-fetch path — so the chart drew axes only during the
-  // stream and then re-rendered filled once the message persisted,
-  // briefly showing both. The streaming path now goes through the
-  // same web/core dispatch (`renderWebBlock`) as persisted messages,
-  // so the streaming block fetches the snapshot too.
-  it("routes a streaming vega-lite handle block through QueryResultDataBlock", async () => {
-    const streamingHandleBlock = {
-      type: "vega-lite" as const,
-      content: {
-        queryHandle: "qh-test-streaming",
-        rowCount: 2,
-        spec: { mark: "circle", data: { name: "primary" } },
-      },
-    };
-    render(
-      <PortalSessionUI
-        {...defaultProps}
-        streamingBlocks={[streamingHandleBlock]}
-      />
-    );
-    // The QRDB UI renders a vega chart with rows from the snapshot
-    // mock — if streaming bypassed the QRDB routing (raw
-    // ContentBlockRenderer), the chart would render against a spec
-    // referencing a named dataset that no one populated.
-    expect(await screen.findByTestId("vega-lite-chart")).toBeInTheDocument();
-  });
-
-  // Same logic for the tabular envelope shape (`sql_query` handle
-  // path). Streaming should resolve the rows from the snapshot, not
-  // render an empty table.
+  // #109 / #85: streaming blocks carrying a queryHandle route through the
+  // same web/core dispatch (`renderWebBlock`) as persisted messages, so the
+  // streaming block fetches the Redis snapshot rather than rendering an
+  // empty table. (`sql_query` handle path.)
   it("routes a streaming data-table handle block through QueryResultDataBlock", async () => {
     const streamingHandleBlock = {
       type: "data-table" as const,

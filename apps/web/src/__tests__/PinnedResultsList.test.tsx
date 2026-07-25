@@ -29,8 +29,8 @@ const makePinnedResult = (
 const result1 = makePinnedResult();
 const result2 = makePinnedResult({
   id: "result-2",
-  name: "Sales Chart",
-  type: "vega-lite",
+  name: "Sales Table",
+  type: "data-table",
   created: Date.now() - 86400000, // 1 day ago
 });
 
@@ -138,7 +138,7 @@ describe("PinnedResultsListUI", () => {
   it("should render multiple pinned result cards", () => {
     render(<PinnedResultsListUI {...defaultListProps} />);
     expect(screen.getByText("Revenue Summary")).toBeInTheDocument();
-    expect(screen.getByText("Sales Chart")).toBeInTheDocument();
+    expect(screen.getByText("Sales Table")).toBeInTheDocument();
   });
 
   it("should render empty-state placeholder when results is empty", () => {

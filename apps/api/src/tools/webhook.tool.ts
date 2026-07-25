@@ -195,23 +195,6 @@ export class WebhookTool extends Tool {
             );
           }
 
-          // Propagate vega-lite and vega chart results
-          if (
-            result &&
-            typeof result === "object" &&
-            (result as any).type === "vega-lite" &&
-            (result as any).spec
-          ) {
-            return { type: "vega-lite", spec: (result as any).spec };
-          }
-          if (
-            result &&
-            typeof result === "object" &&
-            (result as any).type === "vega"
-          ) {
-            return result;
-          }
-
           return result;
         } finally {
           // The grants live only for the duration of this call.

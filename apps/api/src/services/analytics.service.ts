@@ -28,16 +28,11 @@ import {
   IchimokuCloud,
 } from "technicalindicators";
 import * as financial from "financial";
-import { parse as vegaParse, View as VegaView } from "vega";
-import type { Spec as VegaSpec, Data, ValuesData } from "vega";
-import { compile as vegaLiteCompile } from "vega-lite";
-import type { TopLevelSpec as VegaLiteSpec } from "vega-lite";
 
 import { sql as drizzleSql } from "drizzle-orm";
 
 import { DbService } from "./db.service.js";
 import { createLogger } from "../utils/logger.util.js";
-import { VegaLiteSpecInput } from "../tools/visualize.tool.js";
 import { PortalSqlService } from "./portal-sql.service.js";
 import { PortalSqlHandleService } from "./portal-sql-handle.service.js";
 import type { PortalSqlResponse } from "./portal-sql-response.util.js";
@@ -250,36 +245,6 @@ export interface ResolveIdentityResult {
     isPrimary: boolean;
     records: Record<string, unknown>[];
   }[];
-}
-
-// ---------------------------------------------------------------------------
-// Vega / Vega-Lite Spec Validation
-// ---------------------------------------------------------------------------
-
-/**
- * Validate a Vega spec by parsing and running a headless view.
- * Catches structural errors (bad mark types, invalid transforms, missing
- * data references, etc.) that `vega.parse` alone does not surface.
- */
-function validateVegaLiteSpec(spec: VegaLiteSpec): void {
-  try {
-    vegaLiteCompile(spec);
-  } catch (err: any) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`Invalid Vega-Lite spec: ${msg}`);
-  }
-}
-
-async function validateVegaSpec(spec: VegaSpec): Promise<void> {
-  try {
-    const runtime = vegaParse(spec as any);
-    const view = new VegaView(runtime, { renderer: "none" });
-    await view.runAsync();
-    view.finalize();
-  } catch (err: any) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`Invalid Vega spec: ${msg}`);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -505,76 +470,6 @@ export class AnalyticsService {
       "Executing portal sql_query against Postgres"
     );
     return PortalSqlService.runSqlQuery(params);
-  }
-
-  /**
-   * Run SQL then inject rows into a Vega-Lite spec. Pulls rows from
-   * the Postgres-direct `sqlQuery` envelope; payload-cap collapses
-   * (no `rows` field) result in an empty `values` array, which the
-   * visualize layer then renders as an empty chart.
-   */
-  static async visualize(params: {
-    sql: string;
-    vegaLiteSpec: VegaLiteSpecInput;
-    stationId: string;
-    organizationId: string;
-  }): Promise<VegaLiteSpec> {
-    const { sql, vegaLiteSpec, stationId, organizationId } = params;
-    const response = await this.sqlQuery({ sql, stationId, organizationId });
-    const rows = "rows" in response ? response.rows : [];
-    const spec = {
-      ...vegaLiteSpec,
-      data: { values: rows },
-    } as VegaLiteSpec;
-    validateVegaLiteSpec(spec);
-    return spec;
-  }
-
-  /**
-   * Run SQL then inject rows into a full Vega spec.
-   *
-   * When `data[0]` derives from a named `source` dataset (e.g. "table") that
-   * doesn't exist in the spec, we create that base dataset with the query
-   * results so downstream datasets can reference it. Otherwise we fall back to
-   * setting `data[0].values` directly.
-   */
-  static async visualizeVega(params: {
-    sql: string;
-    vegaSpec: Record<string, unknown>;
-    stationId: string;
-    organizationId: string;
-  }): Promise<VegaSpec> {
-    const { sql, vegaSpec, stationId, organizationId } = params;
-    const response = await this.sqlQuery({ sql, stationId, organizationId });
-    const rows = "rows" in response ? response.rows : [];
-    const specData = vegaSpec.data;
-    const data: Data[] = Array.isArray(specData)
-      ? ([...specData] as Data[])
-      : [];
-
-    const first = data[0] as Data | undefined;
-    const firstSource =
-      first && "source" in first && typeof first.source === "string"
-        ? first.source
-        : null;
-
-    if (firstSource) {
-      const sourceExists = data.some((d) => d.name === firstSource);
-      if (!sourceExists) {
-        // Create the missing base dataset that other datasets derive from
-        const base: ValuesData = { name: firstSource, values: rows };
-        data.unshift(base);
-      } else {
-        const idx = data.findIndex((d) => d.name === firstSource);
-        data[idx] = { ...data[idx], values: rows } as ValuesData;
-      }
-    } else {
-      data[0] = { ...data[0], values: rows } as ValuesData;
-    }
-
-    const spec = { ...vegaSpec, data } as VegaSpec;
-    await validateVegaSpec(spec);
-    return spec;
   }
 
   /**

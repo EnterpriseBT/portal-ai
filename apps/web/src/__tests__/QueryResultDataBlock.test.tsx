@@ -4,8 +4,8 @@ import type { PortalMessageBlock } from "@portalai/core/contracts";
 // ── Mocks ────────────────────────────────────────────────────────────
 
 // Capture what block ContentBlockRenderer was handed; the test asserts
-// against this rather than the rendered output (react-vega is heavy +
-// async; the block shape is the load-bearing contract).
+// against this rather than the rendered output (the block shape is the
+// load-bearing contract).
 const capturedBlocks: PortalMessageBlock[] = [];
 
 jest.unstable_mockModule("@portalai/core", () => ({
@@ -28,56 +28,11 @@ describe("QueryResultDataBlockUI", () => {
     capturedBlocks.length = 0;
   });
 
-  // Regression for #109: pre-fix, QRDB injected rows into
-  // `spec.datasets.primary` — a shape react-vega's VegaLite component
-  // doesn't reliably resolve (axes drew, marks did not). Post-fix the
-  // block carries `{ spec, datasets }` and ContentBlockRenderer
-  // forwards `datasets` to react-vega's `data` prop. This keeps the
-  // streaming-ready named-dataset binding intact (for future
-  // `vega.changeset` SSE increments) while making the snapshot path
-  // actually render.
-  it("forwards fetched rows via the block's `datasets` wrapper for the chart path", () => {
-    const spec = {
-      mark: "bar",
-      encoding: {
-        x: { field: "category", type: "nominal" },
-        y: { field: "value", type: "quantitative" },
-      },
-      // Produced by the visualize tool's `rewriteForNamedDataset`.
-      data: { name: "primary" },
-    };
-    const rows = [
-      { category: "a", value: 1 },
-      { category: "b", value: 2 },
-    ];
-
-    render(
-      <QueryResultDataBlockUI
-        rowCount={2}
-        rows={rows}
-        spec={spec}
-        loading={false}
-        error={null}
-      />
-    );
-
-    expect(capturedBlocks).toHaveLength(1);
-    const block = capturedBlocks[0];
-    expect(block.type).toBe("vega-lite");
-    const content = block.content as Record<string, unknown>;
-    // Wrapper shape: spec is left untouched (named-dataset reference
-    // preserved); rows arrive in a sibling `datasets` map keyed by
-    // dataset name.
-    expect(content.spec).toEqual(spec);
-    expect(content.datasets).toEqual({ primary: rows });
-  });
-
   it("renders loading state while the snapshot fetch is in flight", () => {
     const { container } = render(
       <QueryResultDataBlockUI
         rowCount={500}
         rows={[]}
-        spec={{ mark: "bar" }}
         loading={true}
         error={null}
       />
@@ -93,7 +48,6 @@ describe("QueryResultDataBlockUI", () => {
       <QueryResultDataBlockUI
         rowCount={500}
         rows={[]}
-        spec={{ mark: "bar" }}
         loading={true}
         error={null}
       />
@@ -107,7 +61,6 @@ describe("QueryResultDataBlockUI", () => {
         rowCount={100000}
         truncated={true}
         rows={[]}
-        spec={{ mark: "bar" }}
         loading={true}
         error={null}
       />
@@ -121,9 +74,8 @@ describe("QueryResultDataBlockUI", () => {
       <QueryResultDataBlockUI
         rowCount={500}
         rows={[]}
-        spec={{ mark: "bar" }}
         loading={false}
-        error="The chart's data has expired from cache."
+        error="The data has expired from cache."
       />
     );
     expect(
@@ -132,13 +84,12 @@ describe("QueryResultDataBlockUI", () => {
     expect(capturedBlocks).toHaveLength(0);
   });
 
-  it("routes to data-table block when spec is absent (tabular envelope)", () => {
+  it("routes fetched rows to a data-table block (tabular envelope)", () => {
     const rows = [{ id: "p-1", name: "Alice" }];
     render(
       <QueryResultDataBlockUI
         rowCount={1}
         rows={rows}
-        spec={undefined}
         loading={false}
         error={null}
       />

@@ -8,17 +8,6 @@ jest.unstable_mockModule("react-markdown", () => ({
   ),
 }));
 
-// Capture the props handed to VegaLite so the wrapper-shape tests
-// can assert the spec + data prop forwarding.
-const vegaLiteCalls: Array<{ spec: unknown; data: unknown }> = [];
-jest.unstable_mockModule("react-vega", () => ({
-  VegaLite: (props: { spec: unknown; data?: unknown }) => {
-    vegaLiteCalls.push({ spec: props.spec, data: props.data });
-    return <div data-testid="vega-lite-chart" />;
-  },
-  Vega: () => <div data-testid="vega-chart" />,
-}));
-
 jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
 const { ContentBlockRenderer, registerBlockRenderer, hasBlockRenderer } =
@@ -44,91 +33,27 @@ describe("ContentBlockRenderer", () => {
     expect(screen.getByTestId("markdown")).toHaveTextContent("");
   });
 
-  it("renders vega-lite block via VegaLite", async () => {
-    vegaLiteCalls.length = 0;
-    render(
+  // #272: Vega is removed. `vega-lite`/`vega` are no longer registered
+  // block types — an unregistered type falls through to the central
+  // dispatch's `null` (no crash, no renderer), same as any unknown type.
+  it("renders nothing for a vega-lite block (renderer removed)", () => {
+    const { container } = render(
       <ContentBlockRenderer
         block={{ type: "vega-lite", content: { mark: "bar" } }}
       />
     );
-    expect(await screen.findByTestId("vega-lite-chart")).toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
+    expect(hasBlockRenderer("vega-lite")).toBe(false);
   });
 
-  // #109: vega-lite block content can carry `{ spec, datasets }` —
-  // the spec keeps a `data: { name: "primary" }` reference while the
-  // datasets sidecar holds the actual rows. The renderer must hand
-  // the spec to VegaLite and forward the datasets via its `data`
-  // prop so react-vega's named-dataset binding fires.
-  it("forwards spec + datasets via react-vega's data prop for wrapped vega-lite blocks", async () => {
-    vegaLiteCalls.length = 0;
-    const spec = { mark: "circle", data: { name: "primary" } };
-    const datasets = { primary: [{ x: 1 }, { x: 2 }] };
-    render(
-      <ContentBlockRenderer
-        block={{ type: "vega-lite", content: { spec, datasets } }}
-      />
-    );
-    expect(await screen.findByTestId("vega-lite-chart")).toBeInTheDocument();
-    expect(vegaLiteCalls).toHaveLength(1);
-    expect(vegaLiteCalls[0].spec).toEqual(spec);
-    expect(vegaLiteCalls[0].data).toEqual(datasets);
-  });
-
-  // Bare-spec content (the inline ≤100-row path) hands the entire
-  // content to VegaLite as the spec — no `data` prop because the
-  // rows are already baked into `spec.data.values`.
-  it("renders bare vega-lite content as the spec with no data prop", async () => {
-    vegaLiteCalls.length = 0;
-    const inlineSpec = {
-      mark: "bar",
-      data: { values: [{ x: 1 }] },
-    };
-    render(
-      <ContentBlockRenderer
-        block={{ type: "vega-lite", content: inlineSpec }}
-      />
-    );
-    expect(await screen.findByTestId("vega-lite-chart")).toBeInTheDocument();
-    expect(vegaLiteCalls).toHaveLength(1);
-    expect(vegaLiteCalls[0].spec).toEqual(inlineSpec);
-    expect(vegaLiteCalls[0].data).toBeUndefined();
-  });
-
-  it("renders vega block via Vega", async () => {
-    render(
+  it("renders nothing for a vega block (renderer removed)", () => {
+    const { container } = render(
       <ContentBlockRenderer
         block={{ type: "vega", content: { data: [], marks: [] } }}
       />
     );
-    expect(await screen.findByTestId("vega-chart")).toBeInTheDocument();
-  });
-
-  // #145: charts must be bounded to the chat column — a stable-width parent
-  // (fixes `width:"container"` measuring 0 at mount → blank) that clamps width
-  // and scrolls internally instead of widening the conversation.
-  it("wraps vega-lite in a width-bounded, horizontally-scrollable container", async () => {
-    render(
-      <ContentBlockRenderer
-        block={{ type: "vega-lite", content: { mark: "bar" } }}
-      />
-    );
-    const chart = await screen.findByTestId("vega-lite-chart");
-    const wrapper = chart.parentElement as HTMLElement;
-    expect(wrapper.style.maxWidth).toBe("100%");
-    expect(wrapper.style.overflowX).toBe("auto");
-    expect(wrapper.style.width).toBe("100%");
-  });
-
-  it("wraps vega in the same width-bounded container", async () => {
-    render(
-      <ContentBlockRenderer
-        block={{ type: "vega", content: { data: [], marks: [] } }}
-      />
-    );
-    const chart = await screen.findByTestId("vega-chart");
-    const wrapper = chart.parentElement as HTMLElement;
-    expect(wrapper.style.maxWidth).toBe("100%");
-    expect(wrapper.style.overflowX).toBe("auto");
+    expect(container).toBeEmptyDOMElement();
+    expect(hasBlockRenderer("vega")).toBe(false);
   });
 
   it("renders data-table block via DataTableBlock", () => {
