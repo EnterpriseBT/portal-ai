@@ -226,7 +226,10 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
             }}
           >
             <Box sx={{ flex: 1, minWidth: 0, overflow: "auto" }}>
-              <ContentBlockRenderer block={block} />
+              <ContentBlockRenderer
+                block={block}
+                blockRef={{ messageId: message.id, blockIndex: i }}
+              />
             </Box>
             {!pinnable ? null : isPinned ? (
               <Tooltip title="Unpin result">
