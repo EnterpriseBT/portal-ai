@@ -21,13 +21,9 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-// Mock react-markdown and react-vega so jsdom doesn't choke on them.
+// Mock react-markdown so jsdom doesn't choke on it.
 jest.unstable_mockModule("react-markdown", () => ({
   default: ({ children }: { children: string }) => <span>{children}</span>,
-}));
-
-jest.unstable_mockModule("react-vega", () => ({
-  VegaLite: () => <div data-testid="vega-lite-chart" />,
 }));
 
 jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
@@ -147,11 +143,16 @@ describe("PortalMessageUI", () => {
     });
   });
 
-  describe("assistant messages — vega-lite block", () => {
-    it("renders vega-lite block via ContentBlockRenderer", async () => {
+  describe("assistant messages — data-table block", () => {
+    it("renders data-table block via ContentBlockRenderer", async () => {
       const message = makeMessage({
         role: "assistant",
-        blocks: [{ type: "vega-lite", content: { mark: "bar" } }],
+        blocks: [
+          {
+            type: "data-table",
+            content: { columns: ["name"], rows: [{ name: "Alice" }] },
+          },
+        ],
       });
       render(
         <PortalMessageUI
@@ -161,13 +162,18 @@ describe("PortalMessageUI", () => {
           onUnpin={jest.fn()}
         />
       );
-      expect(await screen.findByTestId("vega-lite-chart")).toBeInTheDocument();
+      expect(await screen.findByText("Alice")).toBeInTheDocument();
     });
 
-    it("shows a pin button for vega-lite blocks with content", () => {
+    it("shows a pin button for data-table blocks with content", () => {
       const message = makeMessage({
         role: "assistant",
-        blocks: [{ type: "vega-lite", content: { mark: "point" } }],
+        blocks: [
+          {
+            type: "data-table",
+            content: { columns: ["name"], rows: [{ name: "Bob" }] },
+          },
+        ],
       });
       render(
         <PortalMessageUI
@@ -187,7 +193,7 @@ describe("PortalMessageUI", () => {
     it("does not render blocks with empty object content", () => {
       const message = makeMessage({
         role: "assistant",
-        blocks: [{ type: "vega-lite", content: {} }],
+        blocks: [{ type: "data-table", content: {} }],
       });
       render(
         <PortalMessageUI
@@ -266,7 +272,10 @@ describe("PortalMessageUI", () => {
           { type: "text", content: "Visible" },
           { type: "tool-call", content: { name: "query" } },
           { type: "text", content: "" },
-          { type: "vega-lite", content: { mark: "bar" } },
+          {
+            type: "data-table",
+            content: { columns: ["x"], rows: [{ x: 1 }] },
+          },
         ],
       });
       render(

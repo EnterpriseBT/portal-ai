@@ -20,8 +20,6 @@ import type { CostHint } from "@portalai/core/models";
 import { SqlQueryTool } from "../tools/sql-query.tool.js";
 import { DisplayEntityRecordsTool } from "../tools/display-entity-records.tool.js";
 import { StationContextTool } from "../tools/station-context.tool.js";
-import { VisualizeTool } from "../tools/visualize.tool.js";
-import { VisualizeTreeTool } from "../tools/visualize-tree.tool.js";
 import { VisualizeD3Tool } from "../tools/visualize-d3.tool.js";
 import { ResolveIdentityTool } from "../tools/resolve-identity.tool.js";
 import { ClusterTool } from "../tools/cluster.tool.js";
@@ -166,8 +164,6 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "station_context",
   "sql_query",
   "display_entity_records",
-  "visualize",
-  "visualize_tree",
   "visualize_d3",
   "resolve_identity",
   "cluster",
@@ -507,12 +503,6 @@ export class ToolService {
         stationId,
         organizationId
       );
-      tools.visualize = new VisualizeTool().build(stationId, organizationId);
-      tools.visualize_tree = new VisualizeTreeTool().build(
-        stationId,
-        organizationId
-      );
-
       if (stationData.entityGroups.length > 0) {
         tools.resolve_identity = new ResolveIdentityTool().build(
           organizationId,

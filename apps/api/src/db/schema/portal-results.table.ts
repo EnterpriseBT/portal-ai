@@ -9,8 +9,6 @@ import { portals } from "./portals.table.js";
  */
 export const portalResultTypeEnum = pgEnum("portal_result_type", [
   "text",
-  "vega-lite",
-  "vega",
   "data-table",
 ]);
 

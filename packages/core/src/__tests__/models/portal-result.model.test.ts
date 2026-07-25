@@ -2,6 +2,7 @@ import {
   PortalResultModel,
   PortalResultModelFactory,
   PortalResultSchema,
+  PortalResultTypeSchema,
 } from "../../models/portal-result.model.js";
 import {
   UUID_REGEX,
@@ -17,9 +18,9 @@ const validPortalResultFields = {
   portalId: "portal-1",
   messageId: null,
   blockIndex: null,
-  name: "Q4 Revenue Chart",
-  type: "vega-lite" as const,
-  content: { spec: { mark: "bar" } },
+  name: "Q4 Revenue Table",
+  type: "data-table" as const,
+  content: { columns: ["quarter", "revenue"], rows: [] },
   updated: null,
   updatedBy: null,
   deleted: null,
@@ -43,9 +44,9 @@ describe("PortalResultSchema", () => {
       portalId: "portal-1",
       messageId: null,
       blockIndex: null,
-      name: "Q4 Revenue Chart",
-      type: "vega-lite",
-      content: { spec: { mark: "bar" } },
+      name: "Q4 Revenue Table",
+      type: "data-table",
+      content: { columns: ["quarter", "revenue"], rows: [] },
     };
     const result = PortalResultSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -135,7 +136,7 @@ describe("PortalResultSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it('should accept type "vega-lite"', () => {
+  it('should accept type "data-table"', () => {
     const data = {
       id: "pr-1",
       created: Date.now(),
@@ -149,34 +150,24 @@ describe("PortalResultSchema", () => {
       portalId: "portal-1",
       messageId: null,
       blockIndex: null,
-      name: "Chart Result",
-      type: "vega-lite",
-      content: { spec: { mark: "line" } },
+      name: "Table Result",
+      type: "data-table",
+      content: { columns: ["a"], rows: [{ a: 1 }] },
     };
     const result = PortalResultSchema.safeParse(data);
     expect(result.success).toBe(true);
   });
 
-  it('should accept type "vega"', () => {
-    const data = {
-      id: "pr-1",
-      created: Date.now(),
-      createdBy: "user-1",
-      updated: null,
-      updatedBy: null,
-      deleted: null,
-      deletedBy: null,
-      organizationId: "org-1",
-      stationId: "station-1",
-      portalId: "portal-1",
-      messageId: null,
-      blockIndex: null,
-      name: "Tree Diagram",
-      type: "vega",
-      content: { data: [{ values: [] }], marks: [] },
-    };
-    const result = PortalResultSchema.safeParse(data);
-    expect(result.success).toBe(true);
+  // #272: the Vega tools and their result types are removed — the
+  // portal-result vocabulary is `text` | `data-table` only.
+  it('should reject the retired type "vega-lite"', () => {
+    const result = PortalResultTypeSchema.safeParse("vega-lite");
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject the retired type "vega"', () => {
+    const result = PortalResultTypeSchema.safeParse("vega");
+    expect(result.success).toBe(false);
   });
 });
 
@@ -280,9 +271,12 @@ describe("PortalResultModelFactory", () => {
       expect(json.organizationId).toBe("org-1");
       expect(json.stationId).toBe("station-1");
       expect(json.portalId).toBe("portal-1");
-      expect(json.name).toBe("Q4 Revenue Chart");
-      expect(json.type).toBe("vega-lite");
-      expect(json.content).toEqual({ spec: { mark: "bar" } });
+      expect(json.name).toBe("Q4 Revenue Table");
+      expect(json.type).toBe("data-table");
+      expect(json.content).toEqual({
+        columns: ["quarter", "revenue"],
+        rows: [],
+      });
       expect(json.id).toBe("test-id-1");
       expect(json.createdBy).toBe("user-1");
     });

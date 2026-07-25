@@ -159,7 +159,7 @@ const DATA_QUERY_PACK: BuiltinToolpackSpec = {
   slug: "data_query",
   name: "Data Query",
   description:
-    "Run SQL queries against entity data, render Vega-Lite or Vega charts from query results, and resolve identities across an Entity Group.",
+    "Run SQL queries against entity data and resolve identities across an Entity Group.",
   iconSlug: "Storage",
   tools: [
     {
@@ -199,38 +199,6 @@ const DATA_QUERY_PACK: BuiltinToolpackSpec = {
           ),
         },
         ["entityKey"]
-      ),
-    },
-    {
-      name: "visualize",
-      description:
-        "Run a SQL query and inject the results into a Vega-Lite specification for charting.",
-      parameterSchema: objectSchema(
-        {
-          sql: stringField("The SQL query whose rows feed the chart"),
-          spec: {
-            type: "object",
-            description:
-              "A Vega-Lite v5 spec. Do NOT include a `data` field — it is populated from the SQL query results.",
-          },
-        },
-        ["sql", "spec"]
-      ),
-    },
-    {
-      name: "visualize_tree",
-      description:
-        "Build a full Vega spec for hierarchical or network visualizations (trees, treemaps, sunbursts, force-directed graphs).",
-      parameterSchema: objectSchema(
-        {
-          sql: stringField("The SQL query whose rows feed the chart"),
-          spec: {
-            type: "object",
-            description:
-              "A Vega v5 spec. Must include a `data` array; data[0].values is overwritten with SQL results.",
-          },
-        },
-        ["sql", "spec"]
       ),
     },
     {
@@ -1086,8 +1054,6 @@ const CAPABILITIES: Record<string, ToolCapability> = {
   // data_query
   sql_query: engineRead("data-table", "scan"),
   display_entity_records: engineRead("data-table", "scan"),
-  visualize: engineRead("vega-lite", "visualize"),
-  visualize_tree: engineRead("vega", "visualize"),
   // visualize (#269) — an engine read like the above, but each call makes a
   // dedicated claude-opus-4-8 codegen sub-call to synthesize the D3 program,
   // so it is application-metered `expensive` (not `free` like engineRead).

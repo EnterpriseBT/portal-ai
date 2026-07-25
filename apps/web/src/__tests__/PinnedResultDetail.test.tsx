@@ -48,19 +48,17 @@ describe("PinnedResultDetailUI", () => {
     expect(screen.getByText("Text")).toBeInTheDocument();
   });
 
-  it("should render Chart chip for vega-lite type", () => {
+  it("should render Table chip for data-table type", () => {
     render(
       <PinnedResultDetailUI
         {...defaultProps}
         result={makePinnedResult({
-          type: "vega-lite",
-          content: {
-            $schema: "https://vega.github.io/schema/vega-lite/v5.json",
-          },
+          type: "data-table",
+          content: { columns: ["a"], rows: [{ a: 1 }] },
         })}
       />
     );
-    expect(screen.getByText("Chart")).toBeInTheDocument();
+    expect(screen.getByText("Table")).toBeInTheDocument();
   });
 
   it("should render relative created timestamp", () => {

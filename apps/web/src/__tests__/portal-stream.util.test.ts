@@ -36,13 +36,16 @@ describe("streamingBlockFor (#269)", () => {
     expect(block?.type).toBe("data-table");
   });
 
-  it("still maps the legacy chart arms (visualize→vega-lite, visualize_tree→vega)", () => {
-    expect(streamingBlockFor("visualize", { spec: {} })?.type).toBe(
-      "vega-lite"
-    );
-    expect(streamingBlockFor("visualize_tree", { spec: {} })?.type).toBe(
-      "vega"
-    );
+  // #272: the Vega tools are gone — a `vega-lite`/`vega`-typed result no
+  // longer maps to any display block (routing is keyed on `type`, and
+  // those types are unknown to the mapper now).
+  it("maps a vega-lite / vega result to no block (Vega removed)", () => {
+    expect(
+      streamingBlockFor("visualize", { type: "vega-lite", spec: {} })
+    ).toBeNull();
+    expect(
+      streamingBlockFor("visualize_tree", { type: "vega", spec: {} })
+    ).toBeNull();
   });
 
   it("returns null for a result with no recognizable display shape", () => {

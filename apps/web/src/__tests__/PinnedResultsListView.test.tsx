@@ -93,8 +93,8 @@ describe("PinnedResultsListView", () => {
     const result1 = makePinnedResult({ id: "r-1", name: "Revenue Summary" });
     const result2 = makePinnedResult({
       id: "r-2",
-      name: "Sales Chart",
-      type: "vega-lite",
+      name: "Sales Table",
+      type: "data-table",
     });
 
     currentListQuery = {
@@ -111,7 +111,7 @@ describe("PinnedResultsListView", () => {
 
     render(<PinnedResultsListView />);
     expect(screen.getByText("Revenue Summary")).toBeInTheDocument();
-    expect(screen.getByText("Sales Chart")).toBeInTheDocument();
+    expect(screen.getByText("Sales Table")).toBeInTheDocument();
   });
 
   it("should show loading state", () => {

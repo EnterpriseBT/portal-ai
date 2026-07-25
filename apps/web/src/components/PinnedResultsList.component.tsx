@@ -5,7 +5,6 @@ import { Box, DetailCard, Stack, Typography } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import TextSnippetOutlinedIcon from "@mui/icons-material/TextSnippetOutlined";
-import BarChartIcon from "@mui/icons-material/BarChart";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
 import PushPinIcon from "@mui/icons-material/PushPin";
 
@@ -16,9 +15,6 @@ import type { PortalResultsListPayload } from "../api/portal-results.api";
 // ── Result type icon ────────────────────────────────────────────────
 
 function ResultTypeIcon({ type }: { type: string }) {
-  if (type === "vega-lite") {
-    return <BarChartIcon fontSize="small" color="action" />;
-  }
   if (type === "data-table") {
     return <TableChartOutlinedIcon fontSize="small" color="action" />;
   }

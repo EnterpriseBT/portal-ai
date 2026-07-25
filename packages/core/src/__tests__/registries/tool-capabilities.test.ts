@@ -121,8 +121,6 @@ describe("costHint pin (#184)", () => {
     technical_indicator: "free",
     tvm: "free",
     var_cvar: "free",
-    visualize: "free",
-    visualize_tree: "free",
     xirr: "free",
     xnpv: "free",
   };

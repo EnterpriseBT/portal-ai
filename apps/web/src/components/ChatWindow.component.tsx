@@ -50,7 +50,7 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
     const [showJumpTop, setShowJumpTop] = useState(false);
     const [showJumpBottom, setShowJumpBottom] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
-    // Track the active "stick-to-bottom" window so async content (Vega, markdown)
+    // Track the active "stick-to-bottom" window so async content (charts, markdown)
     // that grows the container after the initial scroll still lands us at the
     // true bottom. Cleared when the window expires or the user scrolls manually.
     const stickToBottomRef = useRef(false);
