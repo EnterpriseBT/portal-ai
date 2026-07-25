@@ -17,11 +17,33 @@ import { QueryHandleEnvelopeFieldsSchema } from "./portal-sql.contract.js";
 export const D3ProgramParamsSchema = z.record(z.string(), z.unknown());
 export type D3ProgramParams = z.infer<typeof D3ProgramParamsSchema>;
 
+/**
+ * The durable, re-executable data pipeline of a `d3` widget (#270). Present on
+ * every block minted by `visualize_d3` from #270 on, so a widget can re-run its
+ * SQL for live data long after the ephemeral Redis handle expires. Optional so
+ * pre-#270 blocks and mid-stream (unpersisted) blocks still parse and render
+ * (fail-safe); refresh treats its absence as `VIZ_WIDGET_NOT_REFRESHABLE`.
+ */
+export const D3PipelineSchema = z.object({
+  /** The originating SELECT — the authoritative durable copy (the handle
+   *  envelope's own nullable `sql` serves the cursor tier separately). */
+  sql: z.string().min(1),
+  stationId: z.string().min(1),
+  organizationId: z.string().min(1),
+  /** Forward-looking (#270 Q4): mirrors the api `TransformDescriptor` for
+   *  aggregate-backed widgets. `visualize_d3` never sets it today. Opaque at
+   *  the core layer. */
+  transform: z.record(z.string(), z.unknown()).optional(),
+});
+export type D3Pipeline = z.infer<typeof D3PipelineSchema>;
+
 const D3BaseContentSchema = z.object({
   /** Function-body source (see module doc above). Never empty. */
   program: z.string().min(1),
   title: z.string().optional(),
   params: D3ProgramParamsSchema.optional(),
+  /** Durable re-executable pipeline (#270). Optional — see `D3PipelineSchema`. */
+  pipeline: D3PipelineSchema.optional(),
 });
 
 /**

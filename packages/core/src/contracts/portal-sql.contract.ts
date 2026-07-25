@@ -66,3 +66,18 @@ export const QueryHandleEnvelopeSchema =
   });
 
 export type QueryHandleEnvelope = z.infer<typeof QueryHandleEnvelopeSchema>;
+
+/**
+ * Response shape of the widget-refresh endpoint (#270). Mirrors the server's
+ * `SqlDelivery`: inline rows when the re-executed result is small, or a fresh
+ * query-handle envelope when it's large (same thresholds as the original mint).
+ * The web widget swaps this into its existing inline-vs-handle render branch.
+ */
+export const WidgetRefreshResponseSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("inline"),
+    rows: z.array(z.record(z.string(), z.unknown())),
+  }),
+  QueryHandleEnvelopeFieldsSchema.extend({ kind: z.literal("handle") }),
+]);
+export type WidgetRefreshResponse = z.infer<typeof WidgetRefreshResponseSchema>;

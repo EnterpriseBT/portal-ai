@@ -149,3 +149,51 @@ describe("VisualizeD3Tool.execute (#269)", () => {
     expect(generateCode).not.toHaveBeenCalled();
   });
 });
+
+// #270 — the mint embeds the durable pipeline on the d3 block.
+describe("VisualizeD3Tool.execute — durable pipeline (#270)", () => {
+  it("inline d3 block carries pipeline { sql, stationId, organizationId }", async () => {
+    const exec = buildTool({
+      generateCode: (async () => PROGRAM) as never,
+      resolveSqlDelivery: (async () => inlineDelivery) as never,
+    });
+    const out = await exec({
+      sql: "SELECT month, revenue FROM sales",
+      instruction: "bar chart",
+    });
+    expect(out.type).toBe("d3");
+    expect(out.pipeline).toEqual({
+      sql: "SELECT month, revenue FROM sales",
+      stationId: "station-1",
+      organizationId: "org-1",
+    });
+  });
+
+  it("handle d3 block carries the same pipeline alongside the envelope", async () => {
+    const exec = buildTool({
+      generateCode: (async () => PROGRAM) as never,
+      resolveSqlDelivery: (async () => handleDelivery) as never,
+    });
+    const out = await exec({
+      sql: "SELECT month, revenue FROM sales",
+      instruction: "bar chart",
+    });
+    expect(out.type).toBe("d3");
+    expect(out.queryHandle).toBe("qh-abc");
+    expect(out.pipeline).toEqual({
+      sql: "SELECT month, revenue FROM sales",
+      stationId: "station-1",
+      organizationId: "org-1",
+    });
+  });
+
+  it("the data-table fallback carries no pipeline (no widget to refresh)", async () => {
+    const exec = buildTool({
+      generateCode: (async () => "still )( broken") as never,
+      resolveSqlDelivery: (async () => inlineDelivery) as never,
+    });
+    const out = await exec({ sql: "s", instruction: "i" });
+    expect(out.type).toBe("data-table");
+    expect(out.pipeline).toBeUndefined();
+  });
+});

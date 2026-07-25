@@ -132,15 +132,25 @@ export class VisualizeD3Tool extends Tool<typeof InputSchema> {
 
           const validation = validateProgram(program);
           if (validation.ok) {
+            // #270: embed the durable, re-executable pipeline so the widget
+            // can re-run its SQL for live data after the Redis handle expires.
+            const pipeline = { sql, stationId, organizationId };
             if (delivery.kind === "handle") {
               return {
                 type: "d3",
                 program,
                 ...titleField,
+                pipeline,
                 ...delivery.envelope,
               };
             }
-            return { type: "d3", program, ...titleField, rows: rows ?? [] };
+            return {
+              type: "d3",
+              program,
+              ...titleField,
+              pipeline,
+              rows: rows ?? [],
+            };
           }
           lastError = validation.error;
         }

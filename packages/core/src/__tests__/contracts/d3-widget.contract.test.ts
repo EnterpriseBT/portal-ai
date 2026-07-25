@@ -2,6 +2,7 @@ import {
   D3BlockContentSchema,
   D3HandleContentSchema,
   D3InlineContentSchema,
+  D3PipelineSchema,
 } from "../../contracts/d3-widget.contract.js";
 import {
   D3BlockContentSchema as BarrelD3BlockContentSchema,
@@ -34,6 +35,12 @@ const envelopeFields = {
 };
 
 const handleContent = { program: PROGRAM, ...envelopeFields };
+
+const pipeline = {
+  sql: "SELECT month, total FROM sales",
+  stationId: "st-1",
+  organizationId: "org-1",
+};
 
 // ── D3InlineContentSchema ────────────────────────────────────────────
 
@@ -111,6 +118,54 @@ describe("D3BlockContentSchema", () => {
     expect(
       D3BlockContentSchema.safeParse({ program: PROGRAM, title: "x" }).success
     ).toBe(false);
+  });
+});
+
+// ── D3PipelineSchema + durable pipeline field (#270) ─────────────────
+
+describe("D3PipelineSchema (#270)", () => {
+  it("parses a full pipeline", () => {
+    const parsed = D3PipelineSchema.parse(pipeline);
+    expect(parsed.sql).toBe("SELECT month, total FROM sales");
+    expect(parsed.stationId).toBe("st-1");
+    expect(parsed.organizationId).toBe("org-1");
+  });
+
+  it("accepts an optional transform descriptor", () => {
+    const parsed = D3PipelineSchema.parse({
+      ...pipeline,
+      transform: { op: "aggregate", by: "month" },
+    });
+    expect(parsed.transform).toEqual({ op: "aggregate", by: "month" });
+  });
+
+  it("rejects an empty sql / stationId / organizationId", () => {
+    expect(D3PipelineSchema.safeParse({ ...pipeline, sql: "" }).success).toBe(
+      false
+    );
+    expect(
+      D3PipelineSchema.safeParse({ ...pipeline, stationId: "" }).success
+    ).toBe(false);
+    expect(
+      D3PipelineSchema.safeParse({ ...pipeline, organizationId: "" }).success
+    ).toBe(false);
+  });
+});
+
+describe("pipeline field on d3 block content (#270)", () => {
+  it("is optional — a block without it still parses (fail-safe for pre-#270 / streaming blocks)", () => {
+    expect(D3BlockContentSchema.safeParse(inlineContent).success).toBe(true);
+    expect(D3BlockContentSchema.safeParse(handleContent).success).toBe(true);
+  });
+
+  it("rides the inline variant", () => {
+    const parsed = D3InlineContentSchema.parse({ ...inlineContent, pipeline });
+    expect(parsed.pipeline).toEqual(pipeline);
+  });
+
+  it("rides the handle variant", () => {
+    const parsed = D3HandleContentSchema.parse({ ...handleContent, pipeline });
+    expect(parsed.pipeline).toEqual(pipeline);
   });
 });
 
