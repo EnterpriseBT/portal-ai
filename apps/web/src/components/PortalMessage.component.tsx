@@ -229,6 +229,7 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
               <ContentBlockRenderer
                 block={block}
                 blockRef={{ messageId: message.id, blockIndex: i }}
+                dataUpdatedAt={message.created}
               />
             </Box>
             {!pinnable ? null : isPinned ? (

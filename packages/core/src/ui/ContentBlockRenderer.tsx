@@ -25,6 +25,10 @@ import { MutationResultBlock } from "./MutationResultBlock.js";
  */
 export interface BlockRenderContext {
   blockRef?: { messageId: string; blockIndex: number };
+  /** Epoch ms the block's data was produced/persisted (the message's
+   *  `created`). A renderer uses it to seed a freshness clock (#270) so a
+   *  just-minted widget isn't auto-refreshed while a reopened one is. */
+  dataUpdatedAt?: number;
 }
 
 /** Renders one display block. Returns null when there's nothing to show. */
@@ -83,13 +87,16 @@ export interface ContentBlockRendererProps {
   /** Threaded to the renderer as `ctx.blockRef` (#270) — set by the message
    *  view for persisted blocks so a widget can refresh itself. */
   blockRef?: BlockRenderContext["blockRef"];
+  /** Threaded as `ctx.dataUpdatedAt` (#270) — the block's data timestamp. */
+  dataUpdatedAt?: number;
 }
 
 export const ContentBlockRenderer: React.FC<ContentBlockRendererProps> = ({
   block,
   blockRef,
+  dataUpdatedAt,
 }) => {
   const renderer = blockRenderers.get(block.type);
   if (!renderer) return null;
-  return <>{renderer(block, { blockRef })}</>;
+  return <>{renderer(block, { blockRef, dataUpdatedAt })}</>;
 };
