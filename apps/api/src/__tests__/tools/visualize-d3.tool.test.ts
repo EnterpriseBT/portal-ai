@@ -187,6 +187,19 @@ describe("VisualizeD3Tool.execute — durable pipeline (#270)", () => {
     });
   });
 
+  it("strips a markdown-fenced codegen response and mints a clean d3 block (#281)", async () => {
+    const fenced = "```javascript\n" + PROGRAM + "\n```";
+    const exec = buildTool({
+      generateCode: (async () => fenced) as never,
+      resolveSqlDelivery: (async () => inlineDelivery) as never,
+    });
+    const out = await exec({ sql: "s", instruction: "bar chart" });
+    // Not the data-table fallback — the stripped program validates and mints.
+    expect(out.type).toBe("d3");
+    expect(out.program).toBe(PROGRAM);
+    expect(String(out.program)).not.toContain("```");
+  });
+
   it("the data-table fallback carries no pipeline (no widget to refresh)", async () => {
     const exec = buildTool({
       generateCode: (async () => "still )( broken") as never,
