@@ -47,10 +47,14 @@ export function useWidgetRefresh(
   const messageId = blockRef?.messageId;
   const blockIndex = blockRef?.blockIndex;
 
-  const { mutateAsync, isPending } = sdk.portalSql.widgetRefresh();
+  const { mutateAsync } = sdk.portalSql.widgetRefresh();
   const [fresh, setFresh] = useState<WidgetRefreshResponse | null>(null);
   const [error, setError] = useState<ServerError | null>(null);
   const [notRefreshable, setNotRefreshable] = useState(false);
+  // Own the in-flight flag rather than react-query's `isPending`, which did
+  // not reliably clear here (the button spun forever after a resolved
+  // refresh). A `try/finally` guarantees the spinner ends when refresh() does.
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(() =>
     messageId != null && blockIndex != null
       ? (lastHydratedAt.get(keyOf(messageId, blockIndex)) ??
@@ -61,8 +65,7 @@ export function useWidgetRefresh(
 
   const refresh = useCallback(async () => {
     if (messageId == null || blockIndex == null) return;
-    // No synchronous setState here — the first state update lands only after
-    // the await, so auto-refresh from the mount effect doesn't cascade renders.
+    setIsRefreshing(true);
     try {
       const res = await mutateAsync({ messageId, blockIndex });
       const now = Date.now();
@@ -77,6 +80,8 @@ export function useWidgetRefresh(
       } else {
         setError(se);
       }
+    } finally {
+      setIsRefreshing(false);
     }
   }, [messageId, blockIndex, mutateAsync]);
 
@@ -89,16 +94,15 @@ export function useWidgetRefresh(
       lastHydratedAt.get(keyOf(messageId, blockIndex)) ?? dataUpdatedAt ?? 0;
     if (Date.now() - seededAt > VIZ_REFRESH_FRESHNESS_MS) {
       autoFired.current = true;
-      // Mount-triggered async fetch: refresh() sets state only after its await,
-      // so this doesn't cascade renders — the static rule can't see the defer.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // Mount-triggered async fetch (fires once per stale mount). #271 owns the
+      // viewport-driven trigger for many widgets.
       void refresh();
     }
   }, [messageId, blockIndex, dataUpdatedAt, refresh]);
 
   return {
     fresh,
-    isRefreshing: isPending,
+    isRefreshing,
     error,
     notRefreshable,
     lastUpdatedAt,
