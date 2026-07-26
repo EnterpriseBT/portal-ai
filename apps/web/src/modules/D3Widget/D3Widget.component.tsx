@@ -1,11 +1,23 @@
 import React, { useMemo, useState } from "react";
-import { Box, CircularProgress, Typography } from "@mui/material";
+import {
+  Box,
+  CircularProgress,
+  IconButton,
+  Tooltip,
+  Typography,
+} from "@mui/material";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { useTheme } from "@mui/material/styles";
 
 import { D3BlockContentSchema } from "@portalai/core/contracts";
+import { DateFactory } from "@portalai/core/utils";
 
 import { D3SandboxFrameUI } from "./D3SandboxFrame.component";
 import { useProgressiveHandleRows } from "./utils/progressive-rows.util";
+import {
+  useWidgetRefresh,
+  type WidgetRef,
+} from "./utils/use-widget-refresh.util";
 import { buildSandboxTheme } from "./utils/sandbox-theme.util";
 
 import type { D3BlockContent } from "@portalai/core/contracts";
@@ -38,6 +50,15 @@ export interface D3WidgetUIProps {
   /** Fetch or sandbox error — replaces the chart area. */
   error: string | null;
   onFrameError: (event: { message: string }) => void;
+  // ── refresh affordance (#270) ──
+  /** Show the always-present manual refresh control (persisted widgets). */
+  canRefresh?: boolean;
+  isRefreshing?: boolean;
+  onRefresh?: () => void;
+  /** Epoch ms of the last hydration — drives the "Updated ⟨time⟩ ago" cue. */
+  lastUpdatedAt?: number | null;
+  /** The widget predates durable pipelines — show a re-run note, no button. */
+  notRefreshable?: boolean;
 }
 
 export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
@@ -53,11 +74,71 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
   loading,
   error,
   onFrameError,
+  canRefresh = false,
+  isRefreshing = false,
+  onRefresh,
+  lastUpdatedAt = null,
+  notRefreshable = false,
 }) => {
   const totalLabel = `${totalRows.toLocaleString()}${truncated ? "+" : ""}`;
 
+  const header =
+    title || canRefresh || lastUpdatedAt != null ? (
+      <Box
+        sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}
+        data-testid="d3-widget-header"
+      >
+        {title ? (
+          <Typography variant="subtitle2" sx={{ flex: 1, minWidth: 0 }}>
+            {title}
+          </Typography>
+        ) : (
+          <Box sx={{ flex: 1, minWidth: 0 }} />
+        )}
+        {lastUpdatedAt != null ? (
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            data-testid="d3-widget-updated"
+          >
+            Updated {DateFactory.relativeTime(lastUpdatedAt)}
+          </Typography>
+        ) : null}
+        {canRefresh ? (
+          <Tooltip title="Refresh chart">
+            <span>
+              <IconButton
+                size="small"
+                aria-label="Refresh chart"
+                disabled={isRefreshing}
+                onClick={onRefresh}
+                sx={{ flexShrink: 0 }}
+              >
+                {isRefreshing ? (
+                  <CircularProgress size={14} />
+                ) : (
+                  <RefreshIcon fontSize="small" />
+                )}
+              </IconButton>
+            </span>
+          </Tooltip>
+        ) : null}
+      </Box>
+    ) : null;
+
+  const note = notRefreshable ? (
+    <Typography
+      variant="caption"
+      color="text.secondary"
+      data-testid="d3-widget-not-refreshable"
+    >
+      This chart can&rsquo;t auto-refresh — re-run the prompt for live data.
+    </Typography>
+  ) : null;
+
+  let body: React.ReactNode;
   if (error) {
-    return (
+    body = (
       <Box
         data-testid="d3-widget-error"
         sx={{ p: 2, color: "error.main", fontFamily: "monospace" }}
@@ -67,10 +148,8 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
         </Typography>
       </Box>
     );
-  }
-
-  if (loading) {
-    return (
+  } else if (loading) {
+    body = (
       <Box
         data-testid="d3-widget-loading"
         sx={{ p: 2, display: "flex", alignItems: "center", gap: 1 }}
@@ -81,29 +160,32 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
         </Typography>
       </Box>
     );
+  } else {
+    body = (
+      <>
+        <div style={CHART_BOUNDS}>
+          <D3SandboxFrameUI
+            program={program}
+            params={params}
+            theme={theme}
+            batches={batches}
+            onError={onFrameError}
+          />
+        </div>
+        {!complete ? (
+          <Typography variant="caption" color="text.secondary">
+            Rendering {receivedRows.toLocaleString()} of {totalLabel} rows…
+          </Typography>
+        ) : null}
+      </>
+    );
   }
 
   return (
     <Box data-testid="d3-widget">
-      {title ? (
-        <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-          {title}
-        </Typography>
-      ) : null}
-      <div style={CHART_BOUNDS}>
-        <D3SandboxFrameUI
-          program={program}
-          params={params}
-          theme={theme}
-          batches={batches}
-          onError={onFrameError}
-        />
-      </div>
-      {!complete ? (
-        <Typography variant="caption" color="text.secondary">
-          Rendering {receivedRows.toLocaleString()} of {totalLabel} rows…
-        </Typography>
-      ) : null}
+      {header}
+      {note}
+      {body}
     </Box>
   );
 };
@@ -113,9 +195,19 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
 export interface D3WidgetProps {
   /** A `d3` block's content — validated against `D3BlockContentSchema`. */
   content: D3BlockContent | unknown;
+  /** Persisted-block reference (#270) — enables refresh. Absent for
+   *  streaming/unpersisted blocks. */
+  blockRef?: WidgetRef;
+  /** Epoch ms the block's data was persisted (the message's `created`) —
+   *  seeds the freshness clock so a just-minted widget isn't auto-refreshed. */
+  dataUpdatedAt?: number;
 }
 
-export const D3Widget: React.FC<D3WidgetProps> = ({ content }) => {
+export const D3Widget: React.FC<D3WidgetProps> = ({
+  content,
+  blockRef,
+  dataUpdatedAt,
+}) => {
   const muiTheme = useTheme();
   const sandboxTheme = useMemo(() => buildSandboxTheme(muiTheme), [muiTheme]);
   const [frameError, setFrameError] = useState<string | null>(null);
@@ -125,19 +217,38 @@ export const D3Widget: React.FC<D3WidgetProps> = ({ content }) => {
     [content]
   );
   const parsedContent = parsed.success ? parsed.data : null;
-  const handleContent =
+
+  const {
+    fresh,
+    isRefreshing,
+    error: refreshError,
+    notRefreshable,
+    lastUpdatedAt,
+    refresh,
+  } = useWidgetRefresh(blockRef, dataUpdatedAt);
+
+  // A successful refresh's delivery overrides the persisted data binding;
+  // program/title/params always come from the block itself.
+  const freshHandle = fresh?.kind === "handle" ? fresh : null;
+  const freshInlineRows = fresh?.kind === "inline" ? fresh.rows : null;
+
+  const baseHandle =
     parsedContent && "queryHandle" in parsedContent ? parsedContent : null;
-  const inlineContent =
-    parsedContent && "rows" in parsedContent ? parsedContent : null;
+  const baseInlineRows =
+    parsedContent && "rows" in parsedContent ? parsedContent.rows : null;
 
-  const progressive = useProgressiveHandleRows(
-    handleContent?.queryHandle ?? null
-  );
+  const effectiveHandle = freshHandle
+    ? freshHandle.queryHandle
+    : freshInlineRows
+      ? null
+      : (baseHandle?.queryHandle ?? null);
 
+  const progressive = useProgressiveHandleRows(effectiveHandle);
+
+  const inlineRows = freshInlineRows ?? (fresh ? null : baseInlineRows);
   const inlineBatches = useMemo<ProgressiveBatch[]>(
-    () =>
-      inlineContent ? [{ rows: inlineContent.rows, seq: 0, done: true }] : [],
-    [inlineContent]
+    () => (inlineRows ? [{ rows: inlineRows, seq: 0, done: true }] : []),
+    [inlineRows]
   );
 
   if (!parsedContent) {
@@ -156,9 +267,33 @@ export const D3Widget: React.FC<D3WidgetProps> = ({ content }) => {
     );
   }
 
-  const isHandle = handleContent !== null;
+  const isHandle = effectiveHandle !== null;
   const batches = isHandle ? progressive.batches : inlineBatches;
   const fetchError = isHandle ? progressive.error : null;
+  const hasData = batches.length > 0;
+
+  const totalRows = freshHandle
+    ? freshHandle.rowCount
+    : freshInlineRows
+      ? freshInlineRows.length
+      : baseHandle
+        ? baseHandle.rowCount
+        : (baseInlineRows?.length ?? 0);
+  const truncated = freshHandle
+    ? freshHandle.truncated
+    : fresh
+      ? false
+      : (baseHandle?.truncated ?? false);
+
+  // While a refresh is in flight with nothing rendered yet, show loading (not
+  // the possibly-expired original handle's error) — the fresh handle swaps in
+  // when it arrives. A prior render is kept until the swap succeeds.
+  const loading = !hasData && (isRefreshing || (!fetchError && !frameError));
+  const error = hasData
+    ? frameError
+    : isRefreshing
+      ? null
+      : (refreshError?.message ?? fetchError ?? frameError);
 
   return (
     <D3WidgetUI
@@ -167,17 +302,20 @@ export const D3Widget: React.FC<D3WidgetProps> = ({ content }) => {
       params={parsedContent.params}
       theme={sandboxTheme}
       batches={batches}
-      totalRows={
-        isHandle ? handleContent.rowCount : inlineBatches[0].rows.length
-      }
-      truncated={isHandle ? handleContent.truncated : false}
+      totalRows={totalRows}
+      truncated={truncated}
       receivedRows={
-        isHandle ? progressive.receivedRows : inlineBatches[0].rows.length
+        isHandle ? progressive.receivedRows : (batches[0]?.rows.length ?? 0)
       }
       complete={isHandle ? progressive.complete : true}
-      loading={batches.length === 0 && !fetchError && !frameError}
-      error={fetchError ?? frameError}
+      loading={loading}
+      error={error}
       onFrameError={(event) => setFrameError(event.message)}
+      canRefresh={blockRef != null && !notRefreshable}
+      isRefreshing={isRefreshing}
+      onRefresh={refresh}
+      lastUpdatedAt={lastUpdatedAt}
+      notRefreshable={notRefreshable}
     />
   );
 };

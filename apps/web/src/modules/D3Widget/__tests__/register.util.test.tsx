@@ -4,10 +4,12 @@ import { render, screen } from "@testing-library/react";
 // D3Widget reaches the SDK through the progressive hook; the registry
 // test only exercises the inline path, so a call-asserting stub suffices.
 const mutateAsync = jest.fn();
+const refreshMutate = jest.fn();
 jest.unstable_mockModule("../../../api/sdk", () => ({
   sdk: {
     portalSql: {
       handleSnapshotPage: () => ({ mutateAsync }),
+      widgetRefresh: () => ({ mutateAsync: refreshMutate, isPending: false }),
     },
   },
 }));

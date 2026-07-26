@@ -9,5 +9,11 @@ import { D3Widget } from "../D3Widget.component";
  * re-registers the same renderer).
  */
 export function registerD3BlockRenderer(): void {
-  registerBlockRenderer("d3", (block) => <D3Widget content={block.content} />);
+  registerBlockRenderer("d3", (block, ctx) => (
+    <D3Widget
+      content={block.content}
+      blockRef={ctx?.blockRef}
+      dataUpdatedAt={ctx?.dataUpdatedAt}
+    />
+  ));
 }

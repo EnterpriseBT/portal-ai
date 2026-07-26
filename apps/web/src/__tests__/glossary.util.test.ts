@@ -195,6 +195,7 @@ describe("filterGlossary", () => {
         "Station",
         "Tool",
         "Tool Pack",
+        "Visualization Widget",
       ].sort()
     );
   });

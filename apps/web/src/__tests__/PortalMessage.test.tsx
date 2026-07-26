@@ -325,6 +325,36 @@ describe("PortalMessageUI", () => {
       ).toHaveLength(1);
     });
 
+    // #270: a persisted d3 block is rendered with its blockRef so the widget
+    // can refresh itself against { messageId, blockIndex }.
+    it("threads blockRef { messageId, blockIndex } to a persisted d3 block", () => {
+      registerBlockRenderer("d3", (_b, ctx) => (
+        <div data-testid="d3-blockref-stub">
+          {`${ctx?.blockRef?.messageId}:${ctx?.blockRef?.blockIndex}`}
+        </div>
+      ));
+      const message = makeMessage({
+        id: "msg-42",
+        role: "assistant",
+        blocks: [
+          { type: "text", content: "Here is your chart:" },
+          { type: "d3", content: { program: "api.d3;", rows: [{ x: 1 }] } },
+        ],
+      });
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
+      // The d3 block is at index 1 of the message.
+      expect(screen.getByTestId("d3-blockref-stub")).toHaveTextContent(
+        "msg-42:1"
+      );
+    });
+
     it("still hides registered blocks with empty content", () => {
       registerBlockRenderer("d3", () => <div data-testid="d3-widget-stub" />);
       const message = makeMessage({

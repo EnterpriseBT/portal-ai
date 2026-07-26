@@ -47,6 +47,16 @@ export const INLINE_ROWS_THRESHOLD = 100;
  *  (the handle's `truncated` flag is set and only this many rows are cached). */
 export const HANDLE_ROW_CAP = 100_000;
 
+/** A `d3` widget auto-refreshes when its data is older than this (#270). Short
+ *  enough to read as "live", long enough that re-viewing/scrolling past a widget
+ *  costs no SQL. Tunable; kept in the 2–5 min band. */
+export const VIZ_REFRESH_FRESHNESS_MS = 3 * 60 * 1000;
+
+/** Per-org ceiling on widget refreshes per minute (#270) — an abuse backstop on
+ *  the free, unmetered refresh endpoint. The freshness gate is the primary
+ *  volume control; this is the hard cap. */
+export const VIZ_REFRESH_RATE_PER_MIN = 120;
+
 /** The in-memory *materialization* threshold for a pure compute tool (#114),
  *  not a processing ceiling (#129). Equal to HANDLE_ROW_CAP — the read
  *  primitive stages at most that many rows in Redis, so this is the
