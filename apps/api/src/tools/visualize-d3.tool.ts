@@ -4,7 +4,7 @@ import { tool } from "ai";
 import { Tool } from "../types/tools.js";
 import { resolveSqlDelivery as defaultResolveSqlDelivery } from "./result-sink.js";
 import { AiService } from "../services/ai.service.js";
-import { validateProgram } from "./visualize-d3.validate.js";
+import { validateProgram, stripProgramFence } from "./visualize-d3.validate.js";
 import {
   VISUALIZE_D3_CODEGEN_SYSTEM,
   buildCodegenPrompt,
@@ -109,7 +109,7 @@ export class VisualizeD3Tool extends Tool<typeof InputSchema> {
         for (let attempt = 0; attempt <= MAX_CODEGEN_RETRIES; attempt++) {
           let program: string;
           try {
-            program = await generateCode({
+            const raw = await generateCode({
               system: VISUALIZE_D3_CODEGEN_SYSTEM,
               prompt: buildCodegenPrompt({
                 instruction,
@@ -118,6 +118,9 @@ export class VisualizeD3Tool extends Tool<typeof InputSchema> {
                 lastError,
               }),
             });
+            // #281: the model sometimes fences its output in ```…```; strip it
+            // before validation/minting or the sandbox throws at runtime.
+            program = stripProgramFence(raw);
           } catch (err) {
             // Provider/infra error — retrying won't help; relay a typed
             // result the agent surfaces (never throw out of execute).

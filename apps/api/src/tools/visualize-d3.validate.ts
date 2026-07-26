@@ -11,6 +11,29 @@
  */
 export type ValidateResult = { ok: true } | { ok: false; error: string };
 
+/**
+ * Strip a Markdown code fence the codegen model sometimes wraps the program in
+ * (#281). ```` ```javascript … ``` ```` parses as an *empty-string tagged
+ * template* — syntactically valid, so `validateProgram` accepts it — then
+ * throws `"" is not a function` at runtime in the sandbox. Removing the fence
+ * before validation/minting yields the raw program the sandbox can run.
+ * A body with no leading fence is returned unchanged.
+ */
+export function stripProgramFence(src: string): string {
+  const trimmed = src.trim();
+  if (!trimmed.startsWith("```")) return src;
+  // Drop the opening fence line (``` + optional language tag) and the trailing
+  // closing fence. Repeat once to tolerate a doubled/empty fence line.
+  let out = trimmed.replace(/^```[^\n]*\n?/, "").replace(/\n?```$/, "");
+  if (out.trim().startsWith("```")) {
+    out = out
+      .trim()
+      .replace(/^```[^\n]*\n?/, "")
+      .replace(/\n?```$/, "");
+  }
+  return out;
+}
+
 export function validateProgram(src: string): ValidateResult {
   try {
     // Construction parses the body without running it.
