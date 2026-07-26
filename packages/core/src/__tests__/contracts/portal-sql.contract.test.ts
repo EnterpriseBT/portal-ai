@@ -1,6 +1,7 @@
 import {
   QueryHandleEnvelopeFieldsSchema,
   QueryHandleEnvelopeSchema,
+  WidgetRefreshResponseSchema,
 } from "../../contracts/portal-sql.contract.js";
 
 describe("QueryHandleEnvelopeSchema", () => {
@@ -94,5 +95,40 @@ describe("QueryHandleEnvelopeFieldsSchema", () => {
       sql: null,
     });
     expect(result.success).toBe(true);
+  });
+});
+
+// ── WidgetRefreshResponseSchema (#270) ───────────────────────────────
+
+describe("WidgetRefreshResponseSchema (#270)", () => {
+  it("accepts the inline variant", () => {
+    const result = WidgetRefreshResponseSchema.safeParse({
+      kind: "inline",
+      rows: [{ month: "Jan", total: 12 }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts the handle variant (envelope fields + kind)", () => {
+    const result = WidgetRefreshResponseSchema.safeParse({
+      kind: "handle",
+      queryHandle: "qh-refresh-1",
+      rowCount: 5_000,
+      schema: [{ name: "month", type: "text" }],
+      sampled: false,
+      truncated: false,
+      samplePeek: [],
+      sql: "SELECT month, total FROM sales",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a kind-less / mixed shape", () => {
+    expect(WidgetRefreshResponseSchema.safeParse({ rows: [] }).success).toBe(
+      false
+    );
+    expect(
+      WidgetRefreshResponseSchema.safeParse({ kind: "bogus", rows: [] }).success
+    ).toBe(false);
   });
 });

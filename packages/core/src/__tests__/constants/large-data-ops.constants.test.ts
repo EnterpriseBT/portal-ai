@@ -9,6 +9,8 @@ import {
   INLINE_ROWS_THRESHOLD,
   HANDLE_ROW_CAP,
   COMPUTE_MAX_ROWS,
+  VIZ_REFRESH_FRESHNESS_MS,
+  VIZ_REFRESH_RATE_PER_MIN,
 } from "../../constants/large-data-ops.constants.js";
 
 // Anchor test that locks the documented values from
@@ -27,5 +29,12 @@ describe("large-data-ops constants", () => {
     expect(INLINE_ROWS_THRESHOLD).toBe(100);
     expect(HANDLE_ROW_CAP).toBe(100_000);
     expect(COMPUTE_MAX_ROWS).toBe(HANDLE_ROW_CAP);
+  });
+
+  it("exports the #270 widget-refresh constants (freshness in the 2–5 min band)", () => {
+    expect(VIZ_REFRESH_FRESHNESS_MS).toBe(3 * 60 * 1000);
+    expect(VIZ_REFRESH_FRESHNESS_MS).toBeGreaterThanOrEqual(2 * 60 * 1000);
+    expect(VIZ_REFRESH_FRESHNESS_MS).toBeLessThanOrEqual(5 * 60 * 1000);
+    expect(VIZ_REFRESH_RATE_PER_MIN).toBe(120);
   });
 });

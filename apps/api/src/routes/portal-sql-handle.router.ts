@@ -21,7 +21,10 @@ import {
   PortalSqlHandleService,
   streamChannelKey,
 } from "../services/portal-sql-handle.service.js";
+import { PortalVizRefreshService } from "../services/portal-viz-refresh.service.js";
 import { getRedisClient } from "../utils/redis.util.js";
+import { incrementRateWindow } from "../utils/rate-limit.util.js";
+import { VIZ_REFRESH_RATE_PER_MIN } from "@portalai/core/constants";
 import { createLogger } from "../utils/logger.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { sseAuth } from "../middleware/sse-auth.middleware.js";
@@ -99,6 +102,114 @@ portalSqlHandleRouter.get(
       });
 
       return HttpService.success(res, result);
+    } catch (err) {
+      return next(err);
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/portal-sql/widget-refresh:
+ *   post:
+ *     tags:
+ *       - Portal SQL
+ *     summary: Re-execute a d3 widget's durable pipeline for fresh data
+ *     description: >
+ *       Reference-based, org-scoped re-execution of a persisted `d3` widget's
+ *       pipeline (#270). The client sends only `{ messageId, blockIndex }`; the
+ *       server loads the persisted SQL from the block and re-runs it read-only
+ *       under the caller's organization — the client never supplies SQL.
+ *       Returns a fresh delivery (inline rows or a new query-handle envelope) by
+ *       the same size thresholds as the original mint. Free and unmetered;
+ *       guarded by a per-org rate limit.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/WidgetRefreshRequest'
+ *     responses:
+ *       200:
+ *         description: A fresh delivery for the widget
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 payload:
+ *                   $ref: '#/components/schemas/WidgetRefreshResponse'
+ *       404:
+ *         description: No refreshable widget for this reference (or cross-org)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       422:
+ *         description: The widget has no durable pipeline (pre-#270)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       429:
+ *         description: Per-org rate limit exceeded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+portalSqlHandleRouter.post(
+  "/widget-refresh",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const organizationId = req.application!.metadata.organizationId;
+
+      const { messageId, blockIndex } = req.body ?? {};
+      if (
+        typeof messageId !== "string" ||
+        messageId.length === 0 ||
+        typeof blockIndex !== "number" ||
+        !Number.isInteger(blockIndex) ||
+        blockIndex < 0
+      ) {
+        throw new ApiError(
+          400,
+          ApiCode.PORTAL_SQL_FORBIDDEN,
+          "widget-refresh requires { messageId: string, blockIndex: integer ≥ 0 }"
+        );
+      }
+
+      // Per-org rate limit (abuse backstop). Fail-open on a Redis blip — the
+      // re-execution is already bounded (read-only + statement_timeout + LIMIT).
+      try {
+        const count = await incrementRateWindow(
+          `viz-refresh:${organizationId}`
+        );
+        if (count > VIZ_REFRESH_RATE_PER_MIN) {
+          throw new ApiError(
+            429,
+            ApiCode.VIZ_REFRESH_RATE_LIMITED,
+            "Too many widget refreshes this minute."
+          );
+        }
+      } catch (err) {
+        if (err instanceof ApiError) throw err; // the 429 propagates
+        logger.warn(
+          { err },
+          "viz-refresh rate limiter unavailable; failing open"
+        );
+      }
+
+      const payload = await PortalVizRefreshService.refresh({
+        messageId,
+        blockIndex,
+        organizationId,
+      });
+      return HttpService.success(res, payload);
     } catch (err) {
       return next(err);
     }

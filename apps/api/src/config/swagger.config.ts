@@ -1517,6 +1517,51 @@ const options: swaggerJsdoc.Options = {
             },
           ],
         },
+        WidgetRefreshRequest: {
+          type: "object",
+          required: ["messageId", "blockIndex"],
+          properties: {
+            messageId: { type: "string" },
+            blockIndex: { type: "integer", minimum: 0 },
+          },
+          description:
+            "Reference to the persisted d3 widget to refresh. No SQL — the server re-executes the block's own pipeline.",
+        },
+        WidgetRefreshResponse: {
+          oneOf: [
+            {
+              type: "object",
+              required: ["kind", "rows"],
+              properties: {
+                kind: { type: "string", enum: ["inline"] },
+                rows: {
+                  type: "array",
+                  items: { type: "object", additionalProperties: true },
+                },
+              },
+            },
+            {
+              type: "object",
+              required: ["kind", "queryHandle", "rowCount", "schema"],
+              properties: {
+                kind: { type: "string", enum: ["handle"] },
+                queryHandle: { type: "string" },
+                rowCount: { type: "integer" },
+                schema: {
+                  type: "array",
+                  items: { type: "object", additionalProperties: true },
+                },
+                sampled: { type: "boolean" },
+                truncated: { type: "boolean" },
+                samplePeek: {
+                  type: "array",
+                  items: { type: "object", additionalProperties: true },
+                },
+                sql: { type: "string", nullable: true },
+              },
+            },
+          ],
+        },
         RowsByIdRequestBody: {
           type: "object",
           required: ["ids"],

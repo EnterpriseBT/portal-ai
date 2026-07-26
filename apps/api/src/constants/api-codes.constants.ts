@@ -515,6 +515,17 @@ export enum ApiCode {
   READ_HANDLE_EXPIRED = "READ_HANDLE_EXPIRED",
   /** SSE channel dropped mid-stream. Client should fetch the snapshot. */
   READ_STREAM_INTERRUPTED = "READ_STREAM_INTERRUPTED",
+
+  // Visualization widget refresh (#270)
+  /** No refreshable `d3` widget at `{messageId, blockIndex}` visible to the
+   *  caller — covers a missing message, an out-of-range or non-`d3` block, and
+   *  a cross-org caller (one code, so cross-org existence never leaks). */
+  VIZ_WIDGET_NOT_FOUND = "VIZ_WIDGET_NOT_FOUND",
+  /** The `d3` block exists but carries no durable pipeline (pre-#270 mint);
+   *  it can't auto-refresh — the user re-runs the prompt for live data. */
+  VIZ_WIDGET_NOT_REFRESHABLE = "VIZ_WIDGET_NOT_REFRESHABLE",
+  /** The per-org widget-refresh rate limit tripped (#270 abuse backstop). */
+  VIZ_REFRESH_RATE_LIMITED = "VIZ_REFRESH_RATE_LIMITED",
   // PORTAL_SQL_TIMEOUT already declared above (portal SQL surface); reused
   // by the reads track without re-declaration.
 
@@ -597,6 +608,12 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
   [ApiCode.READ_HANDLE_EXPIRED]:
     "Re-run the original query to refresh the chart's data.",
   [ApiCode.READ_STREAM_INTERRUPTED]: "Reload to refetch the cached snapshot.",
+  [ApiCode.VIZ_WIDGET_NOT_FOUND]:
+    "That visualization widget wasn't found, or isn't available to your organization.",
+  [ApiCode.VIZ_WIDGET_NOT_REFRESHABLE]:
+    "This chart predates live refresh — re-run the prompt to regenerate it with current data.",
+  [ApiCode.VIZ_REFRESH_RATE_LIMITED]:
+    "Too many refreshes in a short window. Wait a moment and try again.",
   [ApiCode.PORTAL_SQL_TIMEOUT]:
     "Query exceeded 30s. Try a tighter WHERE filter, a tighter date range, or aggregating the source.",
   [ApiCode.SQL_QUERY_COST_NOT_ACKNOWLEDGED]:

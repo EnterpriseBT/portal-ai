@@ -139,4 +139,37 @@ describe("registerBlockRenderer", () => {
     expect(screen.getByTestId("v2")).toBeInTheDocument();
     expect(screen.queryByTestId("v1")).not.toBeInTheDocument();
   });
+
+  // #270: the dispatch threads an optional blockRef to the renderer as
+  // ctx.blockRef, so a persisted-block renderer (the d3 widget) can refresh
+  // itself. Existing renderers ignore the arg.
+  it("forwards blockRef to the renderer as ctx.blockRef", () => {
+    let seen: unknown = "unset";
+    registerBlockRenderer("blockref-test", (_b, ctx) => {
+      seen = ctx?.blockRef;
+      return <div data-testid="blockref-stub" />;
+    });
+    render(
+      <ContentBlockRenderer
+        block={{ type: "blockref-test", content: null }}
+        blockRef={{ messageId: "msg-9", blockIndex: 3 }}
+      />
+    );
+    expect(seen).toEqual({ messageId: "msg-9", blockIndex: 3 });
+  });
+
+  it("omitting blockRef is a no-op — ctx.blockRef is undefined, render unaffected", () => {
+    let seen: unknown = "unset";
+    registerBlockRenderer("blockref-none-test", (_b, ctx) => {
+      seen = ctx?.blockRef;
+      return <div data-testid="blockref-none-stub" />;
+    });
+    render(
+      <ContentBlockRenderer
+        block={{ type: "blockref-none-test", content: null }}
+      />
+    );
+    expect(seen).toBeUndefined();
+    expect(screen.getByTestId("blockref-none-stub")).toBeInTheDocument();
+  });
 });

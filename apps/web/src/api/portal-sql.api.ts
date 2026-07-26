@@ -1,6 +1,7 @@
 import { useAuthMutation, useAuthQuery } from "../utils/api.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
+import type { WidgetRefreshResponse } from "@portalai/core/contracts";
 
 /**
  * Frontend SDK for the portal-sql query-handle endpoints (#85 Phase 3).
@@ -54,5 +55,22 @@ export const portalSql = {
         }&limit=${vars.limit}`,
       method: "GET",
       body: () => undefined,
+    }),
+
+  /**
+   * Re-execute a persisted `d3` widget's durable pipeline for fresh data
+   * (#270). Reference-based — the server holds the SQL; the client sends only
+   * `{ messageId, blockIndex }`. Returns a fresh delivery (inline rows or a new
+   * handle envelope) the widget swaps into its render branch. Imperative, so it
+   * rides `useAuthMutation` (fired on mount/visibility or the manual button).
+   */
+  widgetRefresh: () =>
+    useAuthMutation<
+      WidgetRefreshResponse,
+      { messageId: string; blockIndex: number }
+    >({
+      url: () => `/api/portal-sql/widget-refresh`,
+      method: "POST",
+      body: (vars) => vars,
     }),
 };
