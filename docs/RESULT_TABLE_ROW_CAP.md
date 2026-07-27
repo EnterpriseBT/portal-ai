@@ -113,3 +113,10 @@ The tool descriptions are covered transitively — they read `TABLE_DISPLAY_ROW_
 - **Raising or lowering `HANDLE_ROW_CAP`.**
 - **CSV / full-result export** — the honest answer for "I genuinely need all 10,254 rows", and the natural companion to a capped view. Worth its own ticket rather than smuggling in here.
 - **`DataTableBlock`'s rows-per-page options** (currently max 100, so 5,000 rows is 50 pages). Tuning them is a separate, purely cosmetic change.
+
+## Sign-off
+
+- [x] All 10 smoke steps verified against a running dev stack
+- [x] **Ben Turner, 2026-07-27** — confirmed
+
+Walked in two passes. The first pass verified the widget's notice, the no-notice cases, the loading label and the top-N-trap demonstration. It also found a fourth inaccurate surface the design had missed entirely: the agent's own closing sentence ("Showing all 10,254 asteroids below.") — prescribed verbatim in the tool descriptions and the system prompt, so wrong on both the count and the widget's position. That was fixed as slice 2 and re-walked on a restarted stack. Boxes transcribed by the assistant from that confirmation; the walk and the judgement were the author's.
