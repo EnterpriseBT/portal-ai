@@ -320,10 +320,10 @@ describe("D3SandboxFrameUI — responsive reflow", () => {
     expect(iframe.style.width).toBe("1600px");
 
     // The growth itself triggers the observer again (as it would in a
-    // browser). The wrapper's width is unchanged, so the program is told the
-    // same available width and the frame settles instead of ratcheting.
+    // browser). The wrapper's width is unchanged, so NOTHING is sent — the
+    // program is never re-invoked on its own growth, and the frame settles.
     fireResize();
-    expect(bridge.sendResize).toHaveBeenCalledWith({ width: 800, height: 360 });
+    expect(bridge.sendResize).not.toHaveBeenCalled();
 
     act(() => {
       callbacks().onRendered({ height: 400, rowCount: 10, width: 1_600 });
@@ -371,6 +371,21 @@ describe("D3SandboxFrameUI — responsive reflow", () => {
     fireResize();
 
     expect(iframe.style.width).toBe("600px");
+  });
+
+  // The wrapper's height grows with the frame, so it re-fires this observer.
+  // Since only width is ever sent, a height-only change must send nothing —
+  // otherwise the frame re-renders on its own growth (grow → resize →
+  // re-render → grow), the loop seen in the #278 smoke walk.
+  it("ignores an observer tick when the container width is unchanged", () => {
+    const { host } = withContainer(800);
+    render(<D3SandboxFrameUI {...baseProps} />, { container: host });
+
+    act(() => {
+      callbacks().onRendered({ height: 1_200, rowCount: 10, width: 700 });
+    });
+    fireResize();
+    expect(bridge.sendResize).not.toHaveBeenCalled();
   });
 
   it("disconnects the observer on unmount", () => {

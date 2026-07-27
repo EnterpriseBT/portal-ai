@@ -144,7 +144,14 @@ export const D3SandboxFrameUI: React.FC<D3SandboxFrameUIProps> = ({
     const observer =
       wrapper && typeof ResizeObserver === "function"
         ? new ResizeObserver(() => {
-            sendAvailableWidth(wrapper.clientWidth || FALLBACK_FRAME_WIDTH);
+            const width = wrapper.clientWidth || FALLBACK_FRAME_WIDTH;
+            // Width-only: the wrapper's HEIGHT grows with the frame, so it
+            // re-fires this observer on the frame's own growth. Since only
+            // width is ever sent, reacting to that would re-render the
+            // program for no new information — grow → resize → re-render →
+            // grow, the loop found in the #278 smoke walk.
+            if (width === containerWidthRef.current) return;
+            sendAvailableWidth(width);
           })
         : null;
     observer?.observe(wrapper as Element);

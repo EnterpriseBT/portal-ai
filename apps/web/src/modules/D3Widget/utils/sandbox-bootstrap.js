@@ -38,6 +38,16 @@
   /** Last size reported to the parent — guards the applyExtent→observer loop. */
   var lastPostedWidth = 0;
   var lastPostedHeight = 0;
+  /**
+   * The shift currently applied by applyExtent. Measurement compensates for
+   * it so that measure→apply is IDEMPOTENT: child rects and
+   * scrollWidth/scrollHeight all include the applied padding, so without this
+   * each measurement is inflated by the previous shift and the widget
+   * oscillates — grow, re-render, collapse, grow — hammering the parent with
+   * resizes (and, downstream, the refresh endpoint).
+   */
+  var appliedOffsetX = 0;
+  var appliedOffsetY = 0;
 
   function post(type, payload) {
     var msg = { v: VERSION, nonce: nonce, type: type };
@@ -100,6 +110,8 @@
     if (root.style.paddingTop !== py) root.style.paddingTop = py;
     if (root.style.minWidth !== w) root.style.minWidth = w;
     if (root.style.minHeight !== h) root.style.minHeight = h;
+    appliedOffsetX = size.offsetX;
+    appliedOffsetY = size.offsetY;
   }
 
   /** Drop the applied extent so a re-render can measure — and shrink — freely. */
@@ -108,12 +120,15 @@
     root.style.minHeight = "";
     root.style.paddingLeft = "";
     root.style.paddingTop = "";
+    appliedOffsetX = 0;
+    appliedOffsetY = 0;
   }
 
   function measureContent() {
+    // Compensated: scroll* includes any shift already applied.
     var fallback = {
-      width: root.scrollWidth,
-      height: root.scrollHeight,
+      width: root.scrollWidth - appliedOffsetX,
+      height: root.scrollHeight - appliedOffsetY,
       offsetX: 0,
       offsetY: 0,
     };
@@ -130,11 +145,12 @@
         var el = children[i];
         var rect = el.getBoundingClientRect();
         // The element's own layout box — an SVG sized larger than its
-        // content still counts for that much.
-        maxX = Math.max(maxX, rect.right - rootRect.left);
-        maxY = Math.max(maxY, rect.bottom - rootRect.top);
-        minX = Math.min(minX, rect.left - rootRect.left);
-        minY = Math.min(minY, rect.top - rootRect.top);
+        // content still counts for that much. Positions are relative to
+        // #root's border box, so the applied shift is subtracted back out.
+        maxX = Math.max(maxX, rect.right - rootRect.left - appliedOffsetX);
+        maxY = Math.max(maxY, rect.bottom - rootRect.top - appliedOffsetY);
+        minX = Math.min(minX, rect.left - rootRect.left - appliedOffsetX);
+        minY = Math.min(minY, rect.top - rootRect.top - appliedOffsetY);
 
         if (typeof el.getBBox !== "function") continue;
 

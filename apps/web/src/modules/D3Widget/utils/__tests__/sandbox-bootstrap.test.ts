@@ -90,5 +90,19 @@ describe("sandbox-bootstrap.js source contract", () => {
       // ResizeObserver: without this guard the frame would ping-pong.
       expect(source).toMatch(/lastPosted|lastWidth|lastHeight/);
     });
+
+    // Measure→apply MUST be idempotent. Child rects and scrollWidth/Height all
+    // include the shift applyExtent just set, so an uncompensated measurement
+    // is inflated by the previous one and the widget oscillates: grow,
+    // re-render, collapse, grow — which also storms the refresh endpoint.
+    it("compensates for the already-applied shift when measuring", () => {
+      expect(source).toMatch(/appliedOffsetX/);
+      expect(source).toMatch(/appliedOffsetY/);
+      // Both the scroll fallback and the rect path subtract it back out.
+      expect(source).toMatch(/scrollWidth\s*-\s*appliedOffsetX/);
+      expect(source).toMatch(/scrollHeight\s*-\s*appliedOffsetY/);
+      expect(source).toMatch(/rect\.right[^;]*-\s*appliedOffsetX/);
+      expect(source).toMatch(/rect\.bottom[^;]*-\s*appliedOffsetY/);
+    });
   });
 });
