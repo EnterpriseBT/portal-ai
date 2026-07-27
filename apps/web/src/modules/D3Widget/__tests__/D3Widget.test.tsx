@@ -203,6 +203,38 @@ describe("D3Widget", () => {
   });
 });
 
+// ── D3WidgetUI frame + status chip (#271, pure) ──────────────────────
+
+describe("D3WidgetUI frame + status (#271)", () => {
+  const done = {
+    ...uiBase,
+    loading: false,
+    batches: [{ rows: [{ x: 1 }], seq: 0, done: true }],
+    complete: true,
+  };
+
+  it("renders inside an outlined Paper frame", () => {
+    render(<D3WidgetUI {...done} />);
+    expect(screen.getByTestId("d3-widget").className).toMatch(/MuiPaper/);
+  });
+
+  it.each([
+    ["loading", "Loading"],
+    ["rendering", "Rendering"],
+    ["refreshing", "Refreshing"],
+    ["stale", "Stale"],
+    ["error", "Error"],
+  ] as const)("shows the %s status chip", (status, label) => {
+    render(<D3WidgetUI {...done} status={status} />);
+    expect(screen.getByTestId("d3-widget-status")).toHaveTextContent(label);
+  });
+
+  it("shows no status chip when ready", () => {
+    render(<D3WidgetUI {...done} status="ready" />);
+    expect(screen.queryByTestId("d3-widget-status")).not.toBeInTheDocument();
+  });
+});
+
 // ── D3WidgetUI refresh affordance (#270, pure) ───────────────────────
 
 describe("D3WidgetUI refresh affordance (#270)", () => {

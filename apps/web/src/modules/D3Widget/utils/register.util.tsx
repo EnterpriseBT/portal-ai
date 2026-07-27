@@ -1,6 +1,6 @@
 import { registerBlockRenderer } from "@portalai/core";
 
-import { D3Widget } from "../D3Widget.component";
+import { D3WidgetGate } from "../D3WidgetGate.component";
 
 /**
  * Registers the sandboxed D3 renderer for `d3` blocks in core's open
@@ -10,7 +10,7 @@ import { D3Widget } from "../D3Widget.component";
  */
 export function registerD3BlockRenderer(): void {
   registerBlockRenderer("d3", (block, ctx) => (
-    <D3Widget
+    <D3WidgetGate
       content={block.content}
       blockRef={ctx?.blockRef}
       dataUpdatedAt={ctx?.dataUpdatedAt}
