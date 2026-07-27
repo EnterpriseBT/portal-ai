@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from "react";
 import {
   Box,
+  Chip,
   CircularProgress,
   IconButton,
+  Paper,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -50,6 +52,9 @@ export interface D3WidgetUIProps {
   /** Fetch or sandbox error — replaces the chart area. */
   error: string | null;
   onFrameError: (event: { message: string }) => void;
+  /** Last rendered content height, forwarded from the sandbox frame (#271) —
+   *  the gate reuses it to size a torn-down widget's placeholder. */
+  onHeight?: (height: number) => void;
   // ── refresh affordance (#270) ──
   /** Show the always-present manual refresh control (persisted widgets). */
   canRefresh?: boolean;
@@ -59,7 +64,22 @@ export interface D3WidgetUIProps {
   lastUpdatedAt?: number | null;
   /** The widget predates durable pipelines — show a re-run note, no button. */
   notRefreshable?: boolean;
+  /** Render/data status shown as a chip in the frame (#271). `ready` shows no
+   *  chip (the chart speaks for itself); the rest surface attention states. */
+  status?: "loading" | "rendering" | "ready" | "error" | "refreshing" | "stale";
 }
+
+/** Status chip label + MUI color. `ready` → no chip. */
+const STATUS_CHIP: Record<
+  Exclude<NonNullable<D3WidgetUIProps["status"]>, "ready">,
+  { label: string; color: "default" | "info" | "warning" | "error" }
+> = {
+  loading: { label: "Loading", color: "default" },
+  rendering: { label: "Rendering", color: "info" },
+  refreshing: { label: "Refreshing", color: "info" },
+  stale: { label: "Stale", color: "warning" },
+  error: { label: "Error", color: "error" },
+};
 
 export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
   program,
@@ -74,16 +94,19 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
   loading,
   error,
   onFrameError,
+  onHeight,
   canRefresh = false,
   isRefreshing = false,
   onRefresh,
   lastUpdatedAt = null,
   notRefreshable = false,
+  status = "ready",
 }) => {
   const totalLabel = `${totalRows.toLocaleString()}${truncated ? "+" : ""}`;
+  const chip = status !== "ready" ? STATUS_CHIP[status] : null;
 
   const header =
-    title || canRefresh || lastUpdatedAt != null ? (
+    title || canRefresh || lastUpdatedAt != null || chip ? (
       <Box
         sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}
         data-testid="d3-widget-header"
@@ -95,6 +118,15 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
         ) : (
           <Box sx={{ flex: 1, minWidth: 0 }} />
         )}
+        {chip ? (
+          <Chip
+            size="small"
+            variant="outlined"
+            color={chip.color}
+            label={chip.label}
+            data-testid="d3-widget-status"
+          />
+        ) : null}
         {lastUpdatedAt != null ? (
           <Typography
             variant="caption"
@@ -169,6 +201,7 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
             params={params}
             theme={theme}
             batches={batches}
+            onRendered={(event) => onHeight?.(event.height)}
             onError={onFrameError}
           />
         </div>
@@ -182,11 +215,11 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
   }
 
   return (
-    <Box data-testid="d3-widget">
+    <Paper variant="outlined" data-testid="d3-widget" sx={{ p: 1.5 }}>
       {header}
       {note}
       {body}
-    </Box>
+    </Paper>
   );
 };
 
@@ -201,12 +234,16 @@ export interface D3WidgetProps {
   /** Epoch ms the block's data was persisted (the message's `created`) —
    *  seeds the freshness clock so a just-minted widget isn't auto-refreshed. */
   dataUpdatedAt?: number;
+  /** Forwarded rendered height (#271) — the gate reuses it to size the
+   *  placeholder when the widget is torn down offscreen. */
+  onHeight?: (height: number) => void;
 }
 
 export const D3Widget: React.FC<D3WidgetProps> = ({
   content,
   blockRef,
   dataUpdatedAt,
+  onHeight,
 }) => {
   const muiTheme = useTheme();
   const sandboxTheme = useMemo(() => buildSandboxTheme(muiTheme), [muiTheme]);
@@ -294,6 +331,19 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
     : isRefreshing
       ? null
       : (refreshError?.message ?? fetchError ?? frameError);
+  const complete = isHandle ? progressive.complete : true;
+
+  // Frame status (#271): refresh in flight > error > pre-first-batch load >
+  // still-streaming rows > ready.
+  const status: NonNullable<D3WidgetUIProps["status"]> = isRefreshing
+    ? "refreshing"
+    : error
+      ? "error"
+      : loading
+        ? "loading"
+        : !complete
+          ? "rendering"
+          : "ready";
 
   return (
     <D3WidgetUI
@@ -307,15 +357,17 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
       receivedRows={
         isHandle ? progressive.receivedRows : (batches[0]?.rows.length ?? 0)
       }
-      complete={isHandle ? progressive.complete : true}
+      complete={complete}
       loading={loading}
       error={error}
       onFrameError={(event) => setFrameError(event.message)}
+      onHeight={onHeight}
       canRefresh={blockRef != null && !notRefreshable}
       isRefreshing={isRefreshing}
       onRefresh={refresh}
       lastUpdatedAt={lastUpdatedAt}
       notRefreshable={notRefreshable}
+      status={status}
     />
   );
 };

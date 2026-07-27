@@ -23,11 +23,23 @@ Object.defineProperty(window, "matchMedia", {
   }),
 });
 
-// Mock IntersectionObserver if needed by components
-global.IntersectionObserver = class IntersectionObserver {
-  constructor() {}
+// Mock IntersectionObserver. Default: report the target as intersecting on
+// observe(), so viewport-gated content (#271 lazy-mounted viz widgets) mounts
+// by default in tests — matching the pre-lazy-mount always-rendered behavior.
+// Tests that need to drive intersect/leave install their own controllable
+// observer (see use-in-view.util.test.ts).
+global.IntersectionObserver = class {
+  cb: IntersectionObserverCallback;
+  constructor(cb: IntersectionObserverCallback) {
+    this.cb = cb;
+  }
   disconnect() {}
-  observe() {}
+  observe(target: Element) {
+    this.cb(
+      [{ isIntersecting: true, target } as IntersectionObserverEntry],
+      this as unknown as IntersectionObserver
+    );
+  }
   takeRecords() {
     return [];
   }

@@ -12,6 +12,12 @@
 export { D3Widget, D3WidgetUI } from "./D3Widget.component";
 export type { D3WidgetProps, D3WidgetUIProps } from "./D3Widget.component";
 
+export { D3WidgetGate, D3WidgetPlaceholderUI } from "./D3WidgetGate.component";
+export type {
+  D3WidgetGateProps,
+  D3WidgetPlaceholderUIProps,
+} from "./D3WidgetGate.component";
+
 export { D3SandboxFrameUI } from "./D3SandboxFrame.component";
 export type { D3SandboxFrameUIProps } from "./D3SandboxFrame.component";
 
