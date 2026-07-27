@@ -131,6 +131,24 @@ describe("createSandboxBridge — outbound sends", () => {
     expect(types).toEqual(["init", "data"]);
     bridge.dispose();
   });
+
+  // #278: the host drives this on container resize; it was implemented in
+  // #268 and never called from production code until now.
+  it("posts the new available size on sendResize", () => {
+    const { iframe, posted } = makeIframe();
+    const bridge = createSandboxBridge(iframe, INIT, makeCallbacks());
+
+    bridge.sendResize({ width: 480, height: 360 });
+    expect(posted()).toHaveLength(0);
+
+    frameMessage(iframe, READY);
+    const nonce = posted()[0].nonce;
+
+    expect(posted().filter((m) => m.type === "resize")).toEqual([
+      { v: 1, nonce, type: "resize", size: { width: 480, height: 360 } },
+    ]);
+    bridge.dispose();
+  });
 });
 
 describe("createSandboxBridge — inbound dispatch", () => {
@@ -170,6 +188,67 @@ describe("createSandboxBridge — inbound dispatch", () => {
       message: "boom",
       stack: "at x",
     });
+    bridge.dispose();
+  });
+
+  // #278: `width` is an additive optional field under protocol v1 — the
+  // painted content width, which the host uses to size the frame.
+  it("forwards the reported content width on rendered / resize", () => {
+    const { iframe, posted } = makeIframe();
+    const callbacks = makeCallbacks();
+    const bridge = createSandboxBridge(iframe, INIT, callbacks);
+    const nonce = settle(iframe, posted);
+
+    frameMessage(iframe, {
+      v: 1,
+      nonce,
+      type: "rendered",
+      height: 240,
+      rowCount: 12,
+      width: 900,
+    });
+    frameMessage(iframe, {
+      v: 1,
+      nonce,
+      type: "resize",
+      height: 300,
+      width: 1200,
+    });
+
+    expect(callbacks.onRendered).toHaveBeenCalledWith({
+      height: 240,
+      rowCount: 12,
+      width: 900,
+    });
+    expect(callbacks.onResize).toHaveBeenCalledWith({
+      height: 300,
+      width: 1200,
+    });
+    bridge.dispose();
+  });
+
+  it("accepts rendered / resize without a width and omits the key", () => {
+    const { iframe, posted } = makeIframe();
+    const callbacks = makeCallbacks();
+    const bridge = createSandboxBridge(iframe, INIT, callbacks);
+    const nonce = settle(iframe, posted);
+
+    frameMessage(iframe, {
+      v: 1,
+      nonce,
+      type: "rendered",
+      height: 240,
+      rowCount: 12,
+    });
+    frameMessage(iframe, { v: 1, nonce, type: "resize", height: 300 });
+
+    // Absent ⇒ no `width` key at all, so the host falls back to container
+    // width rather than reading `undefined` as a measurement.
+    expect(callbacks.onRendered).toHaveBeenCalledWith({
+      height: 240,
+      rowCount: 12,
+    });
+    expect(callbacks.onResize).toHaveBeenCalledWith({ height: 300 });
     bridge.dispose();
   });
 

@@ -35,6 +35,15 @@ describe("buildSandboxSrcdoc", () => {
     expect(bootstrapAt).toBeGreaterThan(d3At);
   });
 
+  // #278: the widget must never clip its own marks, and must never present
+  // its own scrollbars — horizontal scrolling belongs to the host wrapper,
+  // vertical scrolling exists nowhere.
+  it("lets SVG content paint outside its viewport and hides frame scrollbars", () => {
+    const doc = buildSandboxSrcdoc(FIXTURE);
+    expect(doc).toContain("#root svg{overflow:visible}");
+    expect(doc).toMatch(/html,body\{[^}]*overflow:hidden/);
+  });
+
   it("references no external URL (no http:// or https:// anywhere)", () => {
     const doc = buildSandboxSrcdoc(FIXTURE);
     expect(doc).not.toContain("http://");

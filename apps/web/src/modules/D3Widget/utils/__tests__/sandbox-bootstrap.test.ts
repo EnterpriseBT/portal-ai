@@ -30,4 +30,26 @@ describe("sandbox-bootstrap.js source contract", () => {
     expect(source).toContain('"use strict"');
     expect(source).not.toMatch(/^\s*(import|export)\b/m);
   });
+
+  // #278: height/width must reflect the PAINTED extent, not the DOM box.
+  // scrollHeight misses marks drawn outside a declared SVG viewport, which
+  // is what silently cropped the beeswarm; getBBox catches them, and
+  // getScreenCTM converts user units to CSS px.
+  describe("painted-extent measurement", () => {
+    it("measures SVG content via getBBox scaled through getScreenCTM", () => {
+      expect(source).toContain("getBBox");
+      expect(source).toContain("getScreenCTM");
+    });
+
+    it("falls back to the DOM box when measurement is unavailable", () => {
+      expect(source).toContain("scrollWidth");
+      expect(source).toContain("scrollHeight");
+    });
+
+    it("reports a width alongside height on rendered and resize", () => {
+      // Both report sites carry the measured size.
+      expect(source).toMatch(/post\(\s*"rendered"[\s\S]{0,160}width/);
+      expect(source).toMatch(/post\(\s*"resize"[\s\S]{0,120}width/);
+    });
+  });
 });
