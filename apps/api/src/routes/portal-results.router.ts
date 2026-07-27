@@ -68,7 +68,11 @@ export const portalResultsRouter = Router();
  *                     portalResult:
  *                       $ref: '#/components/schemas/PortalResult'
  *       400:
- *         description: Invalid payload or block index out of range
+ *         description: >
+ *           Invalid payload (`PORTAL_RESULT_NOT_FOUND`), block index outside
+ *           the target message (`PORTAL_RESULT_BLOCK_INDEX_INVALID`), or a
+ *           block whose type is not pinnable — visualization blocks such as
+ *           `d3` display but never pin (`PORTAL_RESULT_TYPE_NOT_PINNABLE`).
  *         content:
  *           application/json:
  *             schema:
@@ -144,7 +148,7 @@ portalResultsRouter.post(
         return next(
           new ApiError(
             400,
-            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            ApiCode.PORTAL_RESULT_BLOCK_INDEX_INVALID,
             "Block index out of range"
           )
         );
@@ -152,11 +156,14 @@ portalResultsRouter.post(
 
       const block = blocks[blockIndex] as Record<string, unknown>;
       const blockType = block.type as string;
+      // #273: the pinnable set is derived from `PortalResultTypeSchema`, so
+      // visualization blocks (`d3`) are rejected here and not merely hidden
+      // in the UI — pinning a widget needs the durable dashboards model.
       if (!PINNABLE_BLOCK_TYPES.has(blockType as PortalResultType)) {
         return next(
           new ApiError(
             400,
-            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            ApiCode.PORTAL_RESULT_TYPE_NOT_PINNABLE,
             `Block type "${String(block.type)}" cannot be pinned`
           )
         );

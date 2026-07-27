@@ -209,6 +209,14 @@ export enum ApiCode {
   // Portals
   PORTAL_NOT_FOUND = "PORTAL_NOT_FOUND",
   PORTAL_RESULT_NOT_FOUND = "PORTAL_RESULT_NOT_FOUND",
+  /**
+   * #273: the addressed block's type is outside `PINNABLE_BLOCK_TYPES` —
+   * visualization blocks (`d3`) display but never pin, until the dashboards
+   * epic gives a pinned widget a durable re-executable home.
+   */
+  PORTAL_RESULT_TYPE_NOT_PINNABLE = "PORTAL_RESULT_TYPE_NOT_PINNABLE",
+  /** The requested `blockIndex` is outside the target message's blocks. */
+  PORTAL_RESULT_BLOCK_INDEX_INVALID = "PORTAL_RESULT_BLOCK_INDEX_INVALID",
   PORTAL_INVALID_STATION = "PORTAL_INVALID_STATION",
   PORTAL_STATION_NO_TOOLS = "PORTAL_STATION_NO_TOOLS",
   PORTAL_STREAM_FAILED = "PORTAL_STREAM_FAILED",
