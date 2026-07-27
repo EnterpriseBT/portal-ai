@@ -131,7 +131,14 @@ Per element child of `#root`:
 
 Then `width = max(all extents.x, root.scrollWidth)`, `height = max(all extents.y, root.scrollHeight)`, each `Math.ceil`'d. The whole body is wrapped in `try/catch`; on throw, or if a result is non-finite or `<= 0`, it returns `{ width: root.scrollWidth, height: root.scrollHeight }` — today's behavior.
 
-**Extents are measured from `#root`'s origin, so content painted at negative offsets is not recoverable by growing the frame** (only a translate would move it into view). Recorded under Risks; not addressed here.
+**Negative extents are measured too, and shifted into view** (amended during the smoke walk — see below). `measureContent` also tracks `minX`/`minY` (only negatives matter) and returns `offsetX`/`offsetY` = the overshoot before `#root`'s origin; `width`/`height` include the shift.
+
+`applyExtent(size)` then **grows `#root` to the measurement and pads it by the offsets**: `minWidth`/`minHeight` from `width`/`height`, `paddingLeft`/`paddingTop` from `offsetX`/`offsetY`. Both are required, and neither is optional:
+
+- **Growing `#root`** is what makes escaped marks visible at all. Measuring alone is not enough: marks that escape the SVG viewport also escape the *body* box — whose height is only the SVG's declared layout height — and the srcdoc's `overflow:hidden` clips them there. The frame grows to the right size and the content stays invisible.
+- **Padding `#root`** brings negative-coordinate content into view. Growing cannot reach it (it lies before the origin); shifting the content right/down by the overshoot can. The standard d3 rotated-tick-label idiom (`rotate(-45)` + `text-anchor: end`) hangs labels down-**left** and lands exactly there, so this is the common case, not an edge case.
+
+`releaseExtent()` clears all four properties before each re-measure, so `scrollWidth`/`scrollHeight` can't read back the applied values (which would let a widget only ever grow, never shrink). Resize posts are guarded on a real change, since applying the extent resizes `#root` and re-fires the in-frame `ResizeObserver`.
 
 Report sites:
 
@@ -270,7 +277,8 @@ Run via `npm run test:unit` (web + api). Never invoke jest/npx directly — the 
 ## Risks & rollback
 
 - **Visual churn** (discovery OQ 4): `overflow: visible` means previously-hidden marks now paint, so some existing charts will look different. Accepted — a drawn mark was meant to be seen — with a smoke step comparing several chart forms before/after.
-- **Negative-offset content stays clipped.** Extents are measured from `#root`'s origin, so a mark painted at a negative coordinate is still unreachable. Detected by the smoke walk; a translate-based fix is out of scope and would be a follow-up ticket.
+- **Negative-offset content — resolved during the smoke walk, not deferred.** This spec originally recorded it as a known limitation and a follow-up ticket. The walk showed it is the *common* case rather than an edge one (rotated tick labels hang down-left, so the leftmost label always lands at negative x), and clipped tick labels are the headline symptom #278 reports — so deferring would have shipped the reported bug half-fixed. `#root` is now padded by the overshoot. The residual risk is cosmetic: a chart with negative-offset content shifts right/down rather than staying put, which is the correct trade against being unreachable.
+- **Two clipping layers, not one.** The smoke walk found that measuring correctly is insufficient — the body box clips what escapes the SVG. Anything that changes the srcdoc CSS or `#root`'s box model must keep both layers in mind: the SVG may overflow, and the document box must contain the result.
 - **Feedback loop / ratchet** — the failure mode of this design. Guarded three ways: the observer measures the wrapper (never the iframe), the suggested height sent on resize is constant, and test 16 pins the fixed point.
 - **Measurement cost per render pass.** Bounded to top-level children by Key decision 4; progressive batches already coalesce through `requestAnimationFrame`. If a pathological chart regresses, the fallback path (`scrollWidth`/`scrollHeight`) is a one-line revert of `measureContent`'s body.
 - **Fail-open by design**, and the safe direction here: a sizing failure degrades to today's cropping rather than to a blank widget. There is no cost or safety dimension — nothing is metered, billed, or persisted.

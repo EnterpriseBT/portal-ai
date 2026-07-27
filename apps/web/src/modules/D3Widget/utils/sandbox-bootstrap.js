@@ -90,6 +90,14 @@
   function applyExtent(size) {
     var w = size.width + "px";
     var h = size.height + "px";
+    // Shift content painted at negative coordinates into view. Growing the
+    // frame cannot reveal it (it lies before #root's origin), so #root is
+    // padded by the overshoot and the box grown to match — the standard
+    // rotated-tick-label idiom hangs labels down-LEFT and lands there.
+    var px = size.offsetX + "px";
+    var py = size.offsetY + "px";
+    if (root.style.paddingLeft !== px) root.style.paddingLeft = px;
+    if (root.style.paddingTop !== py) root.style.paddingTop = py;
     if (root.style.minWidth !== w) root.style.minWidth = w;
     if (root.style.minHeight !== h) root.style.minHeight = h;
   }
@@ -98,13 +106,23 @@
   function releaseExtent() {
     root.style.minWidth = "";
     root.style.minHeight = "";
+    root.style.paddingLeft = "";
+    root.style.paddingTop = "";
   }
 
   function measureContent() {
-    var fallback = { width: root.scrollWidth, height: root.scrollHeight };
+    var fallback = {
+      width: root.scrollWidth,
+      height: root.scrollHeight,
+      offsetX: 0,
+      offsetY: 0,
+    };
     try {
       var maxX = 0;
       var maxY = 0;
+      // Only negative values matter — content before #root's origin.
+      var minX = 0;
+      var minY = 0;
       var rootRect = root.getBoundingClientRect();
       var children = root.children;
 
@@ -115,6 +133,8 @@
         // content still counts for that much.
         maxX = Math.max(maxX, rect.right - rootRect.left);
         maxY = Math.max(maxY, rect.bottom - rootRect.top);
+        minX = Math.min(minX, rect.left - rootRect.left);
+        minY = Math.min(minY, rect.top - rootRect.top);
 
         if (typeof el.getBBox !== "function") continue;
 
@@ -124,14 +144,24 @@
         var scaleY = ctm && ctm.d ? ctm.d : 1;
         maxX = Math.max(maxX, (box.x + box.width) * scaleX);
         maxY = Math.max(maxY, (box.y + box.height) * scaleY);
+        minX = Math.min(minX, box.x * scaleX);
+        minY = Math.min(minY, box.y * scaleY);
       }
 
-      var width = Math.ceil(Math.max(maxX, fallback.width));
-      var height = Math.ceil(Math.max(maxY, fallback.height));
+      var offsetX = Math.ceil(Math.max(0, -minX));
+      var offsetY = Math.ceil(Math.max(0, -minY));
+      // The box must hold the shift as well as the content.
+      var width = Math.ceil(Math.max(maxX, fallback.width)) + offsetX;
+      var height = Math.ceil(Math.max(maxY, fallback.height)) + offsetY;
       if (!isFinite(width) || !isFinite(height) || width <= 0 || height <= 0) {
         return fallback;
       }
-      return { width: width, height: height };
+      return {
+        width: width,
+        height: height,
+        offsetX: offsetX,
+        offsetY: offsetY,
+      };
     } catch (err) {
       // Never let a measurement failure blank a chart that would render:
       // fall back to the DOM box (today's behavior) and stay silent — an

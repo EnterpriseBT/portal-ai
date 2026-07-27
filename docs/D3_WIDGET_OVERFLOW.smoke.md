@@ -116,7 +116,7 @@ Checks the prompt change is having its intended effect on *newly generated* prog
 ## §9 — Error, edge, and known-limitation cases
 
 - [ ] **Measurement fail-open:** no chart should ever render *blank* because of sizing. If one does, that's the highest-severity finding here — the fallback is meant to degrade to the old (possibly cropped) behavior, never to nothing
-- [ ] **Negative-coordinate content (known limitation, not a bug to fix here):** if a chart paints marks at negative coordinates (a legend or label placed left of / above the origin), growing the frame cannot reveal it and it stays clipped. If you hit a real instance, note it — it's a **follow-up ticket**, out of scope for #278
+- [ ] **Negative-coordinate content is shifted into view** (was a documented limitation until the first smoke walk found it in the standard rotated-tick-label idiom): a chart painting marks left of / above the origin has its content shifted right/down so nothing is clipped. The chart's position moves; that's expected and is the trade against being unreachable
 - [ ] **No `ResizeObserver`:** in devtools console run `Object.defineProperty(window, 'ResizeObserver', { value: undefined })`, hard-reload is **not** needed for already-mounted widgets — instead run it, then prompt a new chart. It renders at mount width (degraded: no reflow on resize) and does **not** throw or blank
 - [ ] Very small window (e.g. 400px wide): charts still render and scroll rather than collapsing to zero width
 - [ ] Rapid-fire: prompt two charts in quick succession — both size correctly and independently

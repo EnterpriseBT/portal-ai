@@ -69,6 +69,22 @@ describe("sandbox-bootstrap.js source contract", () => {
       expect(source).toMatch(/style\.minWidth\s*=\s*""/);
     });
 
+    // #278 smoke, case 4: the standard d3 rotated-tick-label idiom
+    // (rotate(-45) + text-anchor:end) hangs labels DOWN-LEFT, so the leftmost
+    // label lands at negative x. Growing the frame can't reveal that — the
+    // content has to be shifted into view.
+    it("measures negative extents and shifts content into view", () => {
+      expect(source).toMatch(/minX/);
+      expect(source).toMatch(/minY/);
+      expect(source).toMatch(/style\.paddingLeft\s*=/);
+      expect(source).toMatch(/style\.paddingTop\s*=/);
+    });
+
+    it("releases the shift before re-measuring", () => {
+      expect(source).toMatch(/style\.paddingLeft\s*=\s*""/);
+      expect(source).toMatch(/style\.paddingTop\s*=\s*""/);
+    });
+
     it("only re-posts a resize when the measured size actually changed", () => {
       // Applying the min-size resizes #root, which fires the in-frame
       // ResizeObserver: without this guard the frame would ping-pong.
