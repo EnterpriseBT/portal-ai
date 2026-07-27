@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 
 import { createSandboxBridge } from "./utils/bridge.util";
+import { rafCoalesce } from "./utils/raf-coalesce.util";
 import { SANDBOX_SRCDOC } from "./utils/sandbox-srcdoc.util";
 import {
   FALLBACK_FRAME_WIDTH,
@@ -62,6 +63,9 @@ export const D3SandboxFrameUI: React.FC<D3SandboxFrameUIProps> = ({
    */
   const containerWidthRef = useRef(FALLBACK_FRAME_WIDTH);
 
+  /** Last painted extent reported by the frame, re-used on container resize. */
+  const extentRef = useRef<{ width?: number; height?: number }>({});
+
   // Callbacks/theme are read through refs so the bridge is created once
   // per mount and prop-identity churn can't re-init the frame.
   const callbacksRef = useRef({ onRendered, onError });
@@ -76,15 +80,20 @@ export const D3SandboxFrameUI: React.FC<D3SandboxFrameUIProps> = ({
       iframe.parentElement?.clientWidth || FALLBACK_FRAME_WIDTH;
 
     /** Painted extent in, frame box out — the shared sizing rule. */
-    const applySize = (event: { height: number; width?: number }): void => {
+    const resize = (): void => {
       setFrameSize(
         resolveFrameSize({
-          contentWidth: event.width,
-          contentHeight: event.height,
+          contentWidth: extentRef.current.width,
+          contentHeight: extentRef.current.height,
           containerWidth: containerWidthRef.current,
           fallbackHeight: INITIAL_FRAME_HEIGHT,
         })
       );
+    };
+
+    const applySize = (event: { height: number; width?: number }): void => {
+      extentRef.current = { width: event.width, height: event.height };
+      resize();
     };
 
     const bridge = createSandboxBridge(
@@ -112,8 +121,38 @@ export const D3SandboxFrameUI: React.FC<D3SandboxFrameUIProps> = ({
     bridgeRef.current = bridge;
     forwardedRef.current = 0;
 
+    /**
+     * Keep the program's available width live for the life of the mount
+     * (#278). Coalesced to one send per frame because reflow is bursty.
+     *
+     * The suggested height stays `INITIAL_FRAME_HEIGHT` forever, never the
+     * painted height: echoing the painted height back would make the program
+     * size to it, paint slightly past it, and grow again — a ratchet.
+     */
+    const sendAvailableWidth = rafCoalesce<number>((width) => {
+      containerWidthRef.current = width;
+      resize();
+      bridgeRef.current?.sendResize({
+        width,
+        height: INITIAL_FRAME_HEIGHT,
+      });
+    });
+
+    // The WRAPPER is observed, never the iframe: the iframe is inside it and
+    // so cannot widen it, which is what closes the growth feedback loop.
+    const wrapper = iframe.parentElement;
+    const observer =
+      wrapper && typeof ResizeObserver === "function"
+        ? new ResizeObserver(() => {
+            sendAvailableWidth(wrapper.clientWidth || FALLBACK_FRAME_WIDTH);
+          })
+        : null;
+    observer?.observe(wrapper as Element);
+
     return () => {
       bridgeRef.current = null;
+      sendAvailableWidth.cancel();
+      observer?.disconnect();
       bridge.dispose();
     };
     // program/params are fixed per mount by contract (see JSDoc).

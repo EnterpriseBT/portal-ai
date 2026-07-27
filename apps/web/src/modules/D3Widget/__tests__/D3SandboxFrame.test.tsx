@@ -203,3 +203,199 @@ describe("D3SandboxFrameUI — frame sizing", () => {
     expect(iframe.style.height).toBe("400px");
   });
 });
+
+// ── Responsive available width (#278, spec cases 15–18) ───────────────
+
+describe("D3SandboxFrameUI — responsive reflow", () => {
+  interface FakeRO {
+    cb: ResizeObserverCallback;
+    target?: Element;
+    disconnect: jest.Mock;
+  }
+  let observers: FakeRO[] = [];
+  const originalRO = global.ResizeObserver;
+  const originalRaf = global.requestAnimationFrame;
+  let frameQueue: FrameRequestCallback[] = [];
+
+  class MockResizeObserver {
+    cb: ResizeObserverCallback;
+    target?: Element;
+    observe = jest.fn((target: Element) => {
+      this.target = target;
+    });
+    unobserve = jest.fn();
+    disconnect = jest.fn();
+    constructor(cb: ResizeObserverCallback) {
+      this.cb = cb;
+      observers.push(this as unknown as FakeRO);
+    }
+  }
+
+  /** The wrapper the host renders around the frame, with a settable width. */
+  const withContainer = (width: number) => {
+    const host = document.createElement("div");
+    let current = width;
+    Object.defineProperty(host, "clientWidth", {
+      configurable: true,
+      get: () => current,
+    });
+    document.body.appendChild(host);
+    return {
+      host,
+      setWidth: (next: number) => {
+        current = next;
+      },
+    };
+  };
+
+  const callbacks = (): SandboxBridgeCallbacks =>
+    createSandboxBridge.mock.calls[0][2];
+
+  /** Fire the observer, then run the frame it scheduled. */
+  const fireResize = () => {
+    act(() => {
+      observers[observers.length - 1]?.cb([], {} as ResizeObserver);
+    });
+    act(() => {
+      for (const cb of frameQueue.splice(0)) cb(0);
+    });
+  };
+
+  beforeEach(() => {
+    observers = [];
+    frameQueue = [];
+    global.ResizeObserver =
+      MockResizeObserver as unknown as typeof ResizeObserver;
+    global.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      frameQueue.push(cb);
+      return frameQueue.length;
+    }) as typeof global.requestAnimationFrame;
+  });
+
+  afterEach(() => {
+    global.ResizeObserver = originalRO;
+    global.requestAnimationFrame = originalRaf;
+  });
+
+  it("observes the wrapper, not the iframe — the iframe cannot widen its own container", () => {
+    const { host } = withContainer(800);
+    const { container: mounted } = render(<D3SandboxFrameUI {...baseProps} />, {
+      container: host,
+    });
+    const iframe = mounted.querySelector("iframe") as HTMLIFrameElement;
+
+    expect(observers).toHaveLength(1);
+    expect(observers[0].target).toBe(host);
+    expect(observers[0].target).not.toBe(iframe);
+  });
+
+  it("sends the container width and a CONSTANT suggested height on resize", () => {
+    const { host, setWidth } = withContainer(800);
+    render(<D3SandboxFrameUI {...baseProps} />, { container: host });
+
+    // A tall render happens first, so a naive implementation would echo the
+    // painted height back as the new suggestion and ratchet.
+    act(() => {
+      callbacks().onRendered({ height: 2_000, rowCount: 10, width: 900 });
+    });
+
+    setWidth(500);
+    fireResize();
+
+    expect(bridge.sendResize).toHaveBeenCalledTimes(1);
+    expect(bridge.sendResize).toHaveBeenCalledWith({ width: 500, height: 360 });
+  });
+
+  it("reaches a fixed point: a grown frame never feeds a wider width back", () => {
+    const { host } = withContainer(800);
+    const { container: mounted } = render(<D3SandboxFrameUI {...baseProps} />, {
+      container: host,
+    });
+    const iframe = mounted.querySelector("iframe") as HTMLIFrameElement;
+
+    // Content is twice the column: the frame grows past its wrapper.
+    act(() => {
+      callbacks().onRendered({ height: 400, rowCount: 10, width: 1_600 });
+    });
+    expect(iframe.style.width).toBe("1600px");
+
+    // The growth itself triggers the observer again (as it would in a
+    // browser). The wrapper's width is unchanged, so the program is told the
+    // same available width and the frame settles instead of ratcheting.
+    fireResize();
+    expect(bridge.sendResize).toHaveBeenCalledWith({ width: 800, height: 360 });
+
+    act(() => {
+      callbacks().onRendered({ height: 400, rowCount: 10, width: 1_600 });
+    });
+    expect(iframe.style.width).toBe("1600px");
+  });
+
+  it("coalesces a burst of observer ticks into a single send", () => {
+    const { host, setWidth } = withContainer(800);
+    render(<D3SandboxFrameUI {...baseProps} />, { container: host });
+
+    // Several ticks before any frame runs — a window-edge drag.
+    act(() => {
+      const observer = observers[observers.length - 1];
+      setWidth(700);
+      observer.cb([], {} as ResizeObserver);
+      setWidth(600);
+      observer.cb([], {} as ResizeObserver);
+      setWidth(520);
+      observer.cb([], {} as ResizeObserver);
+    });
+    expect(bridge.sendResize).not.toHaveBeenCalled();
+
+    act(() => {
+      for (const cb of frameQueue.splice(0)) cb(0);
+    });
+
+    expect(bridge.sendResize).toHaveBeenCalledTimes(1);
+    expect(bridge.sendResize).toHaveBeenCalledWith({ width: 520, height: 360 });
+  });
+
+  it("narrows the frame back when the column shrinks", () => {
+    const { host, setWidth } = withContainer(1_000);
+    const { container: mounted } = render(<D3SandboxFrameUI {...baseProps} />, {
+      container: host,
+    });
+    const iframe = mounted.querySelector("iframe") as HTMLIFrameElement;
+
+    act(() => {
+      callbacks().onRendered({ height: 400, rowCount: 10, width: 300 });
+    });
+    expect(iframe.style.width).toBe("1000px");
+
+    setWidth(600);
+    fireResize();
+
+    expect(iframe.style.width).toBe("600px");
+  });
+
+  it("disconnects the observer on unmount", () => {
+    const { host } = withContainer(800);
+    const { unmount } = render(<D3SandboxFrameUI {...baseProps} />, {
+      container: host,
+    });
+    unmount();
+    expect(observers[0].disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("mounts and renders when ResizeObserver is unavailable (fail-open)", () => {
+    // @ts-expect-error — deliberately removing the API.
+    delete global.ResizeObserver;
+    const { host } = withContainer(480);
+
+    expect(() =>
+      render(<D3SandboxFrameUI {...baseProps} />, { container: host })
+    ).not.toThrow();
+
+    // Still initialized at the real container width — degraded, not broken.
+    expect(createSandboxBridge.mock.calls[0][1].size).toEqual({
+      width: 480,
+      height: 360,
+    });
+    expect(bridge.sendResize).not.toHaveBeenCalled();
+  });
+});
