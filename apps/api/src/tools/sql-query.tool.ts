@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { tool } from "ai";
+import { TABLE_DISPLAY_ROW_LIMIT } from "@portalai/core/constants";
 
 import { PortalSqlService } from "../services/portal-sql.service.js";
 import { JobsService } from "../services/jobs.service.js";
@@ -42,7 +43,9 @@ export class SqlQueryTool extends Tool<typeof InputSchema> {
   slug = "sql_query";
   name = "SQL Query Tool";
   description =
-    "Executes a SQL query and returns the results to the user. Result-set size is handled automatically: small results come back inline, larger results return a handle envelope `{queryHandle, rowCount, schema, samplePeek}` and the full rows stream to the UI without entering your context. Either way the user sees every row. **Do not add a LIMIT clause to optimize for inline delivery** — pass the user's query through unbounded. `samplePeek` is a small slice for your own follow-up reasoning, NOT a 'sample for the user'. Use aggregations (COUNT, AVG, GROUP BY) only when the user explicitly asked a summary question.\n\nA genuinely long or expensive query (a multi-minute aggregate scan) is escalated automatically to a background job, gated on user confirmation: the first call is rejected with `SQL_QUERY_COST_NOT_ACKNOWLEDGED`, you tell the user it'll run in the background, and after they reply you retry with `acknowledgeCost: true`. The result comes back as the same handle envelope, just asynchronously.";
+    "Executes a SQL query and returns the results to the user. Result-set size is handled automatically: small results come back inline, larger results return a handle envelope `{queryHandle, rowCount, schema, samplePeek}` and the full rows stream to the UI without entering your context. Every row is staged and available to aggregates and analysis, but the table **lists** at most " +
+    TABLE_DISPLAY_ROW_LIMIT.toLocaleString("en-US") +
+    " of them and says so itself — so never tell the user they can see every row, and never state a total as if it were the number listed. Do not place the widget in your reply either ('below', 'above'): it renders before your sentence. **Do not add a LIMIT clause to optimize for inline delivery** — pass the user's query through unbounded. `samplePeek` is a small slice for your own follow-up reasoning, NOT a 'sample for the user'. Use aggregations (COUNT, AVG, GROUP BY) only when the user explicitly asked a summary question.\n\nA genuinely long or expensive query (a multi-minute aggregate scan) is escalated automatically to a background job, gated on user confirmation: the first call is rejected with `SQL_QUERY_COST_NOT_ACKNOWLEDGED`, you tell the user it'll run in the background, and after they reply you retry with `acknowledgeCost: true`. The result comes back as the same handle envelope, just asynchronously.";
 
   get schema() {
     return InputSchema;

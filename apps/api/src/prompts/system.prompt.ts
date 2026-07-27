@@ -1,3 +1,5 @@
+import { TABLE_DISPLAY_ROW_LIMIT } from "@portalai/core/constants";
+
 import type {
   EntitySchema,
   EntityGroupContext,
@@ -281,13 +283,39 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("");
     lines.push("  Good (one call, one widget):");
     lines.push('    [display_entity_records: entityKey="parcels"]');
-    lines.push("    Showing all 5,402 parcels below.");
+    lines.push("    Found 5,402 parcels.");
     lines.push("");
     lines.push(
       "  Bad (using sql_query with defensive LIMIT for a display request):"
     );
     lines.push('    [sql_query: SELECT * FROM "parcels" LIMIT 100]');
     lines.push('    "Here\'s a sample of 100 parcels."');
+    lines.push("");
+    // #277: the table lists at most TABLE_DISPLAY_ROW_LIMIT rows and states
+    // that itself. Claiming the user can see every row, or reading a total as
+    // the number listed, is the failure this guidance exists to prevent.
+    lines.push(
+      `A result over ${TABLE_DISPLAY_ROW_LIMIT.toLocaleString("en-US")} rows ` +
+        "is still fully analysed, but the table **lists** only the first " +
+        `${TABLE_DISPLAY_ROW_LIMIT.toLocaleString("en-US")} and says so ` +
+        "itself. Report the true total and let the widget speak for the " +
+        "listing:"
+    );
+    lines.push("");
+    lines.push("  Good:");
+    lines.push('    [display_entity_records: entityKey="asteroids"]');
+    lines.push(
+      `    Found 10,254 asteroids; the table lists the first ${TABLE_DISPLAY_ROW_LIMIT.toLocaleString("en-US")}.`
+    );
+    lines.push("");
+    lines.push("  Bad (claims a listing the widget does not show):");
+    lines.push('    "Showing all 10,254 asteroids."');
+    lines.push("");
+    lines.push(
+      "Never place a widget in your reply — no 'below', 'above', or " +
+        "'here'. Tool widgets render BEFORE your closing sentence, so " +
+        "positional language is wrong as often as it is right."
+    );
     lines.push("");
 
     // Charting (#269) — only when the visualize pack is enabled.

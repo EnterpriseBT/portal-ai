@@ -194,6 +194,32 @@ describe("buildSystemPrompt — entity management notes", () => {
 });
 
 describe("buildSystemPrompt — response style", () => {
+  // #277: the display cap made the worked example factually wrong — it
+  // taught the agent to say "Showing all 5,402 parcels below.", which claims
+  // a row count the table does not list and a position the block does not
+  // occupy (the widget renders before the closing text).
+  it("does not teach the agent to claim every row is shown", () => {
+    const prompt = buildSystemPrompt(makeContext());
+    expect(prompt).not.toMatch(/Showing all [\d,]+ \w+ below/i);
+    expect(prompt).not.toMatch(/user sees every row/i);
+  });
+
+  it("does not use spatial references for rendered widgets", () => {
+    // Block order is not the agent's to assume: the tool's widget is minted
+    // before the assistant's closing sentence, so "below" is wrong.
+    const prompt = buildSystemPrompt(makeContext());
+    expect(prompt).not.toMatch(
+      /\b(widget|table|chart|results?) (is |are )?below\b/i
+    );
+  });
+
+  it("teaches the agent to acknowledge the display cap for large results", () => {
+    const prompt = buildSystemPrompt(makeContext());
+    expect(prompt).toMatch(/first 5,000|5,000 rows/);
+    // And that the cap is on the listing, not the analysis.
+    expect(prompt).toMatch(/analys/i);
+  });
+
   it("includes ## Response Style for every toolPack composition", () => {
     const compositions: StationContext["toolPacks"][] = [
       [],
