@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, CircularProgress, Typography } from "@mui/material";
+import { Alert, Box, CircularProgress, Typography } from "@mui/material";
 
 import { ContentBlockRenderer } from "@portalai/core";
 import type { PortalMessageBlock } from "@portalai/core/contracts";
@@ -35,6 +35,13 @@ export interface QueryResultDataBlockUIProps {
   error: string | null;
 }
 
+/**
+ * Rows the table lists at most (#277). The display is capped by design — a
+ * listing of 10,000+ rows is unusable for a human, and the useful response to
+ * an oversized result is to narrow the query.
+ */
+export const TABLE_DISPLAY_ROW_LIMIT = 5_000;
+
 export const QueryResultDataBlockUI: React.FC<QueryResultDataBlockUIProps> = ({
   rowCount,
   truncated,
@@ -44,6 +51,16 @@ export const QueryResultDataBlockUI: React.FC<QueryResultDataBlockUIProps> = ({
 }) => {
   // "N+" when the true total is only a lower bound (#147).
   const rowCountLabel = `${rowCount.toLocaleString()}${truncated ? "+" : ""}`;
+  /**
+   * Capped when fewer rows arrived than were staged. Derived from the rows
+   * ACTUALLY received rather than compared against `TABLE_DISPLAY_ROW_LIMIT`:
+   * the limit is also enforced server-side (`portal-sql-handle.service.ts`
+   * clamps every snapshot request), and a message computed from an assumed
+   * constant would silently become wrong if either side changed.
+   */
+  const shownCount = rows.length;
+  const isCapped = shownCount > 0 && shownCount < rowCount;
+  const willCap = rowCount > TABLE_DISPLAY_ROW_LIMIT;
   if (error) {
     return (
       <Box
@@ -68,7 +85,11 @@ export const QueryResultDataBlockUI: React.FC<QueryResultDataBlockUIProps> = ({
       >
         <CircularProgress size={16} />
         <Typography variant="caption" color="text.secondary">
-          Loading {rowCountLabel} rows…
+          {/* Name what will actually render — this promised the full total and
+              then listed a capped subset (#277). */}
+          {willCap
+            ? `Loading the first ${TABLE_DISPLAY_ROW_LIMIT.toLocaleString()} of ${rowCountLabel} rows…`
+            : `Loading ${rowCountLabel} rows…`}
         </Typography>
       </Box>
     );
@@ -82,7 +103,32 @@ export const QueryResultDataBlockUI: React.FC<QueryResultDataBlockUIProps> = ({
     type: "data-table",
     content: { columns, rows },
   };
-  return <ContentBlockRenderer block={block} />;
+  return (
+    <>
+      {isCapped ? (
+        <Alert
+          severity="info"
+          data-testid="query-result-row-cap-notice"
+          sx={{ mb: 1 }}
+        >
+          {/* Three load-bearing clauses (#277): the analysis was NOT capped;
+              the table's own sort/search ARE (the top-N trap — ranking a
+              truncated set yields a confidently wrong answer); and what to
+              do instead. Each is asserted by its own test. */}
+          <strong>
+            Showing the first {shownCount.toLocaleString()} of {rowCountLabel}{" "}
+            rows.
+          </strong>{" "}
+          All {rowCountLabel} were analysed — but this table&apos;s sort and
+          search only cover the {shownCount.toLocaleString()} shown, so they
+          won&apos;t find or rank rows beyond them. To rank or filter across
+          everything, ask for it in the query (e.g. &ldquo;top 20 by
+          diameter&rdquo; or &ldquo;asteroids over 1&nbsp;km&rdquo;).
+        </Alert>
+      ) : null}
+      <ContentBlockRenderer block={block} />
+    </>
+  );
 };
 
 // ── Container ──────────────────────────────────────────────────────────
