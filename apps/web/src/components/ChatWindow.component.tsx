@@ -18,6 +18,7 @@ import { IconButton as MuiIconButton, TextField, Tooltip } from "@mui/material";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import { useLayout } from "../utils/layout.util";
+import { ScrollRootContext } from "../utils/scroll-root.context";
 
 // Px threshold within which the feed is treated as already "at the top/bottom";
 // jump buttons hide inside this window to avoid nagging the user.
@@ -50,6 +51,15 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
     const [showJumpTop, setShowJumpTop] = useState(false);
     const [showJumpBottom, setShowJumpBottom] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
+    // #271: expose the scroll container to descendants (viz widgets use it as
+    // their IntersectionObserver root). State-backed so the context updates
+    // once the node attaches; keeps `scrollRef.current` in sync for the
+    // existing scroll/ResizeObserver logic.
+    const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+    const setScrollNode = useCallback((node: HTMLDivElement | null) => {
+      scrollRef.current = node;
+      setScrollEl(node);
+    }, []);
     // Track the active "stick-to-bottom" window so async content (charts, markdown)
     // that grows the container after the initial scroll still lands us at the
     // true bottom. Cleared when the window expires or the user scrolls manually.
@@ -170,13 +180,15 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
       <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
         <Box sx={{ position: "relative", flex: 1, minHeight: 0, minWidth: 0 }}>
           <Box
-            ref={scrollRef}
+            ref={setScrollNode}
             onScroll={updateJumpButtons}
             onWheel={handleWheel}
             onTouchMove={handleWheel}
             sx={{ height: "100%", overflow: "auto", p: 4 }}
           >
-            {children}
+            <ScrollRootContext.Provider value={scrollEl}>
+              {children}
+            </ScrollRootContext.Provider>
           </Box>
           {showJumpTop && (
             <Tooltip title="Jump to top">

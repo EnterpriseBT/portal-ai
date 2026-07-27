@@ -1,9 +1,10 @@
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent } from "./test-utils";
+import { render, screen, fireEvent, waitFor } from "./test-utils";
 import {
   ChatWindowUI,
   CHAT_INPUT_PLACEHOLDER,
 } from "../components/ChatWindow.component";
+import { useScrollRoot } from "../utils/scroll-root.context";
 
 const mockBreakpoint = (breakpoint: "mobile" | "desktop") => {
   Object.defineProperty(window, "matchMedia", {
@@ -53,9 +54,33 @@ const createProps = (overrides = {}) => ({
   ...overrides,
 });
 
+function ScrollRootProbe() {
+  const root = useScrollRoot();
+  return (
+    <div data-testid="scroll-root-probe">{root ? root.tagName : "none"}</div>
+  );
+}
+
 describe("ChatWindowUI", () => {
   beforeEach(() => {
     mockBreakpoint("desktop");
+  });
+
+  // #271: the scroll container is exposed to descendants via ScrollRootContext
+  // so a lazy-mounting viz widget can use it as its IntersectionObserver root.
+  describe("scroll-root provider (#271)", () => {
+    it("provides its scroll container element to descendants once mounted", async () => {
+      render(
+        <ChatWindowUI {...createProps()}>
+          <ScrollRootProbe />
+        </ChatWindowUI>
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("scroll-root-probe")).not.toHaveTextContent(
+          "none"
+        )
+      );
+    });
   });
 
   afterEach(() => {
