@@ -210,10 +210,64 @@ describe("Portal Results Router", () => {
         .insert(portalMessages)
         .values(assistantMsg as never);
 
-      await request(app)
+      const res = await request(app)
         .post("/api/portal-results")
         .send({ portalId: portal.id, blockIndex: 99, name: "X" })
         .expect(400);
+
+      expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_BLOCK_INDEX_INVALID);
+    });
+
+    // #273: visualization blocks are not pinnable — the gate is server-side,
+    // not just a hidden affordance, and it reports a typed code.
+    it("returns 400 PORTAL_RESULT_TYPE_NOT_PINNABLE for a d3 block", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const assistantMsg = createPortalMessage(
+        organizationId,
+        portal.id,
+        "assistant",
+        [
+          { type: "text", content: "Here is the chart." },
+          {
+            type: "d3",
+            content: {
+              program: "api.svg.append('g');",
+              rowCount: 3,
+              title: "Asteroids by hazard class",
+            },
+          },
+        ]
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalMessages)
+        .values(assistantMsg as never);
+
+      const res = await request(app)
+        .post("/api/portal-results")
+        .send({ portalId: portal.id, blockIndex: 1, name: "My Chart" })
+        .expect(400);
+
+      expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_TYPE_NOT_PINNABLE);
+
+      // The text block in the same message still pins.
+      await request(app)
+        .post("/api/portal-results")
+        .send({ portalId: portal.id, blockIndex: 0, name: "The narrative" })
+        .expect(201);
     });
   });
 

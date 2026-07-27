@@ -17,6 +17,7 @@
 | OpenAPI 400 | `apps/api/src/routes/portal-results.router.ts:70-71` | "Invalid payload or block index out of range" — silent on non-pinnable types |
 | Legacy rows | `apps/api/drizzle/0073_remove_vega_portal_result_types.sql:9` | #272 **deleted** pinned `vega`/`vega-lite` rows before recreating the enum |
 | Contract test | `packages/core/src/__tests__/contracts/portal.contract.test.ts:167-180` | already asserts no viz type is pinnable |
+| Web pin test | `apps/web/src/__tests__/PortalMessage.test.tsx:299-326` | #268 already asserts a `d3` block renders with no pin affordance |
 | Route tests | `apps/api/src/__tests__/__integration__/routes/portal-results.router.integration.test.ts:139-221` | pin happy path, unknown portal, out-of-range index — no non-pinnable-type case |
 
 ## Decision — type the rejection, lock the gate; drop deliverable 3
@@ -37,9 +38,9 @@ The alternative — a bare regression-test-only ticket, leaving the untyped code
   - `apps/api/src/constants/api-codes.constants.ts` — add `PORTAL_RESULT_TYPE_NOT_PINNABLE`, `PORTAL_RESULT_BLOCK_INDEX_INVALID`.
   - `apps/api/src/routes/portal-results.router.ts` — use the two new codes at `:147` and `:159`; widen the `@openapi` 400 description (`:71`) to name the non-pinnable-type case.
 - **Tests (test-first):**
-  - `apps/api/src/__tests__/__integration__/routes/portal-results.router.integration.test.ts` — pinning a `d3` block returns 400 with `code: "PORTAL_RESULT_TYPE_NOT_PINNABLE"`; out-of-range index returns `PORTAL_RESULT_BLOCK_INDEX_INVALID`; the existing `text` happy path still 201s.
-  - `apps/web/src/__tests__/PortalMessage.test.tsx` — `PortalMessageUI` with a `d3` block renders the widget but **no** pin/unpin button (`queryByLabelText`), while a `text` block in the same message still renders one.
-- **Run:** `npm run test:unit`, the api integration suite, `npm run lint`, `npm run type-check`, `npm run format:check`.
+  - `apps/api/src/__tests__/__integration__/routes/portal-results.router.integration.test.ts` — pinning a `d3` block returns 400 with `code: "PORTAL_RESULT_TYPE_NOT_PINNABLE"` and the `text` block in the same message still 201s; the existing out-of-range case asserts `PORTAL_RESULT_BLOCK_INDEX_INVALID`.
+  - Web side needs no new test: `apps/web/src/__tests__/PortalMessage.test.tsx:299-326` (from #268) already renders a message with `text` + `d3` blocks and asserts exactly one pin affordance. Adding a second would be redundant.
+- **Run:** `npm run test:unit`, `npm run test:integration` (api), `npm run lint`, `npm run type-check`, `npm run format:check`.
 
 ## Smoke (manual, against your dev stack)
 
