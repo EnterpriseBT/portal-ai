@@ -143,3 +143,41 @@ export const ThrowingProgram: Story = {
     batches: [{ rows: MONTHLY_ROWS, seq: 0, done: true }],
   },
 };
+
+// ── #271 frame + status ───────────────────────────────────────────────
+
+/** Framed with title, refresh control, freshness cue, and a "ready" state
+ *  (no status chip — the chart speaks for itself). */
+export const Framed: Story = {
+  args: {
+    title: "Monthly totals",
+    batches: [{ rows: MONTHLY_ROWS, seq: 0, done: true }],
+    complete: true,
+    canRefresh: true,
+    onRefresh: fn(),
+    lastUpdatedAt: Date.now() - 90_000,
+    status: "ready",
+  },
+};
+
+/** Stale: data is past its freshness window, refresh offered inline. */
+export const Stale: Story = {
+  args: {
+    ...Framed.args,
+    status: "stale",
+    lastUpdatedAt: Date.now() - 20 * 60_000,
+  },
+};
+
+/** Streaming (no blockRef): framed with an in-progress status, no refresh. */
+export const StreamingInProgress: Story = {
+  args: {
+    title: "Live result",
+    batches: [{ rows: MONTHLY_ROWS, seq: 0, done: false }],
+    totalRows: 13_427,
+    receivedRows: 6_000,
+    complete: false,
+    canRefresh: false,
+    status: "rendering",
+  },
+};
