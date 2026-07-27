@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 
 import type { D3SandboxTheme } from "../utils/sandbox-theme.util";
 import type {
@@ -103,5 +103,103 @@ describe("D3SandboxFrameUI", () => {
     const { unmount } = render(<D3SandboxFrameUI {...baseProps} />);
     unmount();
     expect(bridge.dispose).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Sizing from the reported painted extent (#278, spec cases 12–14) ──
+
+describe("D3SandboxFrameUI — frame sizing", () => {
+  /** Drive the bridge callbacks the way the real frame would. */
+  const callbacks = (): SandboxBridgeCallbacks =>
+    createSandboxBridge.mock.calls[0][2];
+
+  /** The chart-area wrapper the real host renders around the frame. */
+  const withContainer = (width: number) => {
+    const host = document.createElement("div");
+    Object.defineProperty(host, "clientWidth", {
+      configurable: true,
+      value: width,
+    });
+    document.body.appendChild(host);
+    return host;
+  };
+
+  it("grows to the painted width when the content is wider than its container", () => {
+    const container = withContainer(800);
+    const { container: mounted } = render(<D3SandboxFrameUI {...baseProps} />, {
+      container,
+    });
+    const iframe = mounted.querySelector("iframe") as HTMLIFrameElement;
+
+    act(() => {
+      callbacks().onRendered({ height: 400, rowCount: 10, width: 1_600 });
+    });
+
+    expect(iframe.style.width).toBe("1600px");
+    // …but never narrower than the column it sits in.
+    expect(iframe.style.minWidth).toBe("100%");
+  });
+
+  it("stays at container width when the painted content is narrower", () => {
+    const container = withContainer(800);
+    const { container: mounted } = render(<D3SandboxFrameUI {...baseProps} />, {
+      container,
+    });
+    const iframe = mounted.querySelector("iframe") as HTMLIFrameElement;
+
+    act(() => {
+      callbacks().onRendered({ height: 400, rowCount: 10, width: 300 });
+    });
+
+    expect(iframe.style.width).toBe("800px");
+  });
+
+  it("takes the painted height with no vertical limit and no vertical scroller", () => {
+    const container = withContainer(800);
+    const { container: mounted } = render(<D3SandboxFrameUI {...baseProps} />, {
+      container,
+    });
+    const iframe = mounted.querySelector("iframe") as HTMLIFrameElement;
+
+    act(() => {
+      callbacks().onRendered({ height: 2_400, rowCount: 10, width: 700 });
+    });
+
+    expect(iframe.style.height).toBe("2400px");
+    expect(iframe.style.maxHeight).toBe("");
+    expect(iframe.style.overflowY).toBe("");
+  });
+
+  it("applies a later resize report the same way", () => {
+    const container = withContainer(800);
+    const { container: mounted } = render(<D3SandboxFrameUI {...baseProps} />, {
+      container,
+    });
+    const iframe = mounted.querySelector("iframe") as HTMLIFrameElement;
+
+    act(() => {
+      callbacks().onRendered({ height: 400, rowCount: 10, width: 700 });
+    });
+    act(() => {
+      callbacks().onResize({ height: 900, width: 1_200 });
+    });
+
+    expect(iframe.style.height).toBe("900px");
+    expect(iframe.style.width).toBe("1200px");
+  });
+
+  it("falls back to container width when the frame reports no width", () => {
+    const container = withContainer(500);
+    const { container: mounted } = render(<D3SandboxFrameUI {...baseProps} />, {
+      container,
+    });
+    const iframe = mounted.querySelector("iframe") as HTMLIFrameElement;
+
+    act(() => {
+      callbacks().onRendered({ height: 400, rowCount: 10 });
+    });
+
+    expect(iframe.style.width).toBe("500px");
+    expect(iframe.style.height).toBe("400px");
   });
 });

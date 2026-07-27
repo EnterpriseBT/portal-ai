@@ -2,14 +2,18 @@ import React, { useEffect, useRef, useState } from "react";
 
 import { createSandboxBridge } from "./utils/bridge.util";
 import { SANDBOX_SRCDOC } from "./utils/sandbox-srcdoc.util";
+import {
+  FALLBACK_FRAME_WIDTH,
+  resolveFrameSize,
+} from "./utils/widget-sizing.util";
 
 import type { SandboxBridge } from "./utils/bridge.util";
 import type { ProgressiveBatch } from "./utils/progressive-rows.util";
 import type { D3SandboxTheme } from "./utils/sandbox-theme.util";
+import type { FrameSize } from "./utils/widget-sizing.util";
 
 /** Height before the frame reports its rendered content height. */
 const INITIAL_FRAME_HEIGHT = 360;
-const FALLBACK_FRAME_WIDTH = 640;
 
 export interface D3SandboxFrameUIProps {
   /** Function-body render program (see d3-widget.contract.ts). */
@@ -18,7 +22,12 @@ export interface D3SandboxFrameUIProps {
   theme: D3SandboxTheme;
   /** Ordered batches; new entries are forwarded to the frame as they land. */
   batches: ProgressiveBatch[];
-  onRendered?: (event: { height: number; rowCount: number }) => void;
+  /** `width` is the painted content width when the frame measured one (#278). */
+  onRendered?: (event: {
+    height: number;
+    rowCount: number;
+    width?: number;
+  }) => void;
   onError: (event: { message: string }) => void;
 }
 
@@ -40,7 +49,18 @@ export const D3SandboxFrameUI: React.FC<D3SandboxFrameUIProps> = ({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const bridgeRef = useRef<SandboxBridge | null>(null);
   const forwardedRef = useRef(0);
-  const [frameHeight, setFrameHeight] = useState(INITIAL_FRAME_HEIGHT);
+  const [frameSize, setFrameSize] = useState<FrameSize>({
+    width: 0,
+    height: INITIAL_FRAME_HEIGHT,
+  });
+
+  /**
+   * The host's available width, read from the wrapper — never from the
+   * iframe (#278). The iframe sits *inside* the wrapper and so cannot widen
+   * it, which is what stops a grown frame from feeding back into a wider
+   * available width and ratcheting.
+   */
+  const containerWidthRef = useRef(FALLBACK_FRAME_WIDTH);
 
   // Callbacks/theme are read through refs so the bridge is created once
   // per mount and prop-identity churn can't re-init the frame.
@@ -52,6 +72,21 @@ export const D3SandboxFrameUI: React.FC<D3SandboxFrameUIProps> = ({
     const iframe = iframeRef.current;
     if (!iframe) return;
 
+    containerWidthRef.current =
+      iframe.parentElement?.clientWidth || FALLBACK_FRAME_WIDTH;
+
+    /** Painted extent in, frame box out — the shared sizing rule. */
+    const applySize = (event: { height: number; width?: number }): void => {
+      setFrameSize(
+        resolveFrameSize({
+          contentWidth: event.width,
+          contentHeight: event.height,
+          containerWidth: containerWidthRef.current,
+          fallbackHeight: INITIAL_FRAME_HEIGHT,
+        })
+      );
+    };
+
     const bridge = createSandboxBridge(
       iframe,
       {
@@ -59,18 +94,16 @@ export const D3SandboxFrameUI: React.FC<D3SandboxFrameUIProps> = ({
         params,
         theme: themeRef.current,
         size: {
-          width: iframe.parentElement?.clientWidth || FALLBACK_FRAME_WIDTH,
+          width: containerWidthRef.current,
           height: INITIAL_FRAME_HEIGHT,
         },
       },
       {
         onRendered: (event) => {
-          setFrameHeight(event.height || INITIAL_FRAME_HEIGHT);
+          applySize(event);
           callbacksRef.current.onRendered?.(event);
         },
-        onResize: (event) => {
-          setFrameHeight(event.height || INITIAL_FRAME_HEIGHT);
-        },
+        onResize: applySize,
         onError: (event) => {
           callbacksRef.current.onError({ message: event.message });
         },
@@ -113,10 +146,15 @@ export const D3SandboxFrameUI: React.FC<D3SandboxFrameUIProps> = ({
       srcDoc={SANDBOX_SRCDOC}
       title="D3 visualization"
       style={{
-        width: "100%",
+        // Painted width when the content is wider than the column (making the
+        // host's overflowX wrapper a real scroller), never narrower than it.
+        // No maxHeight and no overflow: the frame fits its visualization and
+        // never scrolls (#278).
+        width: frameSize.width || "100%",
+        minWidth: "100%",
         border: 0,
         display: "block",
-        height: frameHeight,
+        height: frameSize.height,
       }}
     />
   );

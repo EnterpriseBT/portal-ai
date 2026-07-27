@@ -140,6 +140,25 @@ describe("D3WidgetUI", () => {
     expect(screen.getByText(/Program threw: boom/)).toBeInTheDocument();
     expect(container.querySelector("iframe")).toBeNull();
   });
+
+  // #278: horizontal scrolling is the ONLY overflow affordance — the widget
+  // always fits its visualization vertically and never scrolls vertically.
+  it("bounds the chart area horizontally only — no vertical scroller, no height cap", () => {
+    const { container } = render(
+      <D3WidgetUI
+        {...uiBase}
+        loading={false}
+        batches={[{ rows: [{ x: 1 }], seq: 0, done: true }]}
+        complete
+      />
+    );
+    const iframe = container.querySelector("iframe") as HTMLIFrameElement;
+    const chartArea = iframe.parentElement as HTMLElement;
+
+    expect(chartArea.style.overflowX).toBe("auto");
+    expect(chartArea.style.overflowY).toBe("visible");
+    expect(chartArea.style.maxHeight).toBe("");
+  });
 });
 
 // ── D3Widget container (spec cases 23–24) ────────────────────────────
