@@ -60,11 +60,11 @@ Build a long session so widgets scroll well past one viewport apart.
 
 ## Sign-off
 
-- [ ] §1 verified (frame + status chip + refresh)
-- [ ] §2 verified (bounded live iframes, teardown → placeholder, scroll-stable, re-mount on scroll-back, no bridge leak)
-- [ ] §3 verified (non-viz blocks unchanged)
-- [ ] §4 verified (error, streaming, fail-open)
-- [ ] ⟨date⟩ ⟨name⟩ — confirmed against my own running stack
+- [x] §1 verified (frame + status chip + refresh)
+- [x] §2 verified (bounded live iframes, teardown → placeholder, scroll-stable, re-mount on scroll-back, no bridge leak)
+- [x] §3 verified (non-viz blocks unchanged)
+- [x] §4 verified (error, streaming, fail-open)
+- [x] 2026-07-27 Ben Turner — confirmed against my own running stack
 
 ## Bug-filing template
 
