@@ -143,7 +143,7 @@ describe("D3WidgetUI", () => {
 
   // #278: horizontal scrolling is the ONLY overflow affordance — the widget
   // always fits its visualization vertically and never scrolls vertically.
-  it("bounds the chart area horizontally only — no vertical scroller, no height cap", () => {
+  it("bounds the chart area horizontally only — no height cap", () => {
     const { container } = render(
       <D3WidgetUI
         {...uiBase}
@@ -156,8 +156,31 @@ describe("D3WidgetUI", () => {
     const chartArea = iframe.parentElement as HTMLElement;
 
     expect(chartArea.style.overflowX).toBe("auto");
-    expect(chartArea.style.overflowY).toBe("visible");
     expect(chartArea.style.maxHeight).toBe("");
+    expect(chartArea.style.height).toBe("");
+  });
+
+  // #278 follow-up: `overflowY: "visible"` was a lie — CSS computes `visible`
+  // to `auto` when the other axis is `auto`, so declaring it read back as a
+  // vertical scroll container. The invariant has to be asserted as the real
+  // absence of vertical overflow (the frame fits its content, so the wrapper
+  // has nothing to scroll), never as an inline style that cannot hold.
+  it("declares no overflowY it cannot honor", () => {
+    const { container } = render(
+      <D3WidgetUI
+        {...uiBase}
+        loading={false}
+        batches={[{ rows: [{ x: 1 }], seq: 0, done: true }]}
+        complete
+      />
+    );
+    const chartArea = (container.querySelector("iframe") as HTMLIFrameElement)
+      .parentElement as HTMLElement;
+
+    // Unset, so it computes from overflowX rather than claiming `visible`.
+    expect(chartArea.style.overflowY).toBe("");
+    // Height is content-driven, so there is never vertical overflow to scroll.
+    expect(chartArea.scrollHeight).toBe(chartArea.clientHeight);
   });
 });
 

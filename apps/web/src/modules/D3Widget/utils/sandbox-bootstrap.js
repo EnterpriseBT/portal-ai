@@ -35,6 +35,9 @@
   var height = 0;
   var rows = [];
   var rafId = null;
+  /** Last size reported to the parent — guards the applyExtent→observer loop. */
+  var lastPostedWidth = 0;
+  var lastPostedHeight = 0;
 
   function post(type, payload) {
     var msg = { v: VERSION, nonce: nonce, type: type };
@@ -74,6 +77,29 @@
    * coordinates is not recoverable by growing the frame (that would need a
    * translate) and is a known limitation, not an oversight.
    */
+  /**
+   * Grow #root to the painted extent (#278).
+   *
+   * Measuring is not sufficient on its own: marks that escape the SVG
+   * viewport also escape the BODY box, whose height is only the SVG's
+   * declared layout height — and the srcdoc's `overflow:hidden` clips them
+   * there. The frame would grow and the content would still be invisible.
+   * Sizing #root to the measurement makes the document box contain what was
+   * painted, so nothing clips and no scrollbar can appear in either axis.
+   */
+  function applyExtent(size) {
+    var w = size.width + "px";
+    var h = size.height + "px";
+    if (root.style.minWidth !== w) root.style.minWidth = w;
+    if (root.style.minHeight !== h) root.style.minHeight = h;
+  }
+
+  /** Drop the applied extent so a re-render can measure — and shrink — freely. */
+  function releaseExtent() {
+    root.style.minWidth = "";
+    root.style.minHeight = "";
+  }
+
   function measureContent() {
     var fallback = { width: root.scrollWidth, height: root.scrollHeight };
     try {
@@ -121,6 +147,9 @@
     if (!render) return;
     try {
       root.innerHTML = "";
+      // Release before measuring: otherwise scrollWidth/scrollHeight read
+      // back the previously applied extent and a widget could only ever grow.
+      releaseExtent();
       render({
         d3: window.d3,
         container: root,
@@ -131,6 +160,9 @@
         height: height,
       });
       var size = measureContent();
+      applyExtent(size);
+      lastPostedWidth = size.width;
+      lastPostedHeight = size.height;
       post("rendered", {
         height: size.height,
         width: size.width,
@@ -186,10 +218,20 @@
 
   if (typeof window.ResizeObserver === "function") {
     new window.ResizeObserver(function () {
-      if (nonce !== null) {
-        var size = measureContent();
-        post("resize", { height: size.height, width: size.width });
+      if (nonce === null) return;
+      var size = measureContent();
+      applyExtent(size);
+      // applyExtent resizes #root, which re-fires this observer — post only on
+      // a real change so the frame settles instead of ping-ponging.
+      if (
+        size.width === lastPostedWidth &&
+        size.height === lastPostedHeight
+      ) {
+        return;
       }
+      lastPostedWidth = size.width;
+      lastPostedHeight = size.height;
+      post("resize", { height: size.height, width: size.width });
     }).observe(root);
   }
 

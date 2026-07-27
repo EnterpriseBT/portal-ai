@@ -51,5 +51,28 @@ describe("sandbox-bootstrap.js source contract", () => {
       expect(source).toMatch(/post\(\s*"rendered"[\s\S]{0,160}width/);
       expect(source).toMatch(/post\(\s*"resize"[\s\S]{0,120}width/);
     });
+
+    // #278 follow-up: measuring the painted extent is not enough. Marks that
+    // escape the SVG viewport also escape the BODY box, where the srcdoc's
+    // `overflow:hidden` clips them — the frame grows and the content is still
+    // invisible. Growing #root to the measured extent makes the document box
+    // contain what was painted, so nothing clips and no scrollbar can appear.
+    it("grows #root to the measured extent so the body box contains it", () => {
+      expect(source).toMatch(/style\.minHeight\s*=/);
+      expect(source).toMatch(/style\.minWidth\s*=/);
+    });
+
+    it("resets the applied extent before re-measuring, so a widget can shrink", () => {
+      // Without the reset, scrollWidth/scrollHeight read back the previously
+      // applied min-size and the frame could only ever grow.
+      expect(source).toMatch(/style\.minHeight\s*=\s*""/);
+      expect(source).toMatch(/style\.minWidth\s*=\s*""/);
+    });
+
+    it("only re-posts a resize when the measured size actually changed", () => {
+      // Applying the min-size resizes #root, which fires the in-frame
+      // ResizeObserver: without this guard the frame would ping-pong.
+      expect(source).toMatch(/lastPosted|lastWidth|lastHeight/);
+    });
   });
 });
