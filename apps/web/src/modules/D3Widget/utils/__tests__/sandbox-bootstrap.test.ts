@@ -30,4 +30,79 @@ describe("sandbox-bootstrap.js source contract", () => {
     expect(source).toContain('"use strict"');
     expect(source).not.toMatch(/^\s*(import|export)\b/m);
   });
+
+  // #278: height/width must reflect the PAINTED extent, not the DOM box.
+  // scrollHeight misses marks drawn outside a declared SVG viewport, which
+  // is what silently cropped the beeswarm; getBBox catches them, and
+  // getScreenCTM converts user units to CSS px.
+  describe("painted-extent measurement", () => {
+    it("measures SVG content via getBBox scaled through getScreenCTM", () => {
+      expect(source).toContain("getBBox");
+      expect(source).toContain("getScreenCTM");
+    });
+
+    it("falls back to the DOM box when measurement is unavailable", () => {
+      expect(source).toContain("scrollWidth");
+      expect(source).toContain("scrollHeight");
+    });
+
+    it("reports a width alongside height on rendered and resize", () => {
+      // Both report sites carry the measured size.
+      expect(source).toMatch(/post\(\s*"rendered"[\s\S]{0,160}width/);
+      expect(source).toMatch(/post\(\s*"resize"[\s\S]{0,120}width/);
+    });
+
+    // #278 follow-up: measuring the painted extent is not enough. Marks that
+    // escape the SVG viewport also escape the BODY box, where the srcdoc's
+    // `overflow:hidden` clips them — the frame grows and the content is still
+    // invisible. Growing #root to the measured extent makes the document box
+    // contain what was painted, so nothing clips and no scrollbar can appear.
+    it("grows #root to the measured extent so the body box contains it", () => {
+      expect(source).toMatch(/style\.minHeight\s*=/);
+      expect(source).toMatch(/style\.minWidth\s*=/);
+    });
+
+    it("resets the applied extent before re-measuring, so a widget can shrink", () => {
+      // Without the reset, scrollWidth/scrollHeight read back the previously
+      // applied min-size and the frame could only ever grow.
+      expect(source).toMatch(/style\.minHeight\s*=\s*""/);
+      expect(source).toMatch(/style\.minWidth\s*=\s*""/);
+    });
+
+    // #278 smoke, case 4: the standard d3 rotated-tick-label idiom
+    // (rotate(-45) + text-anchor:end) hangs labels DOWN-LEFT, so the leftmost
+    // label lands at negative x. Growing the frame can't reveal that — the
+    // content has to be shifted into view.
+    it("measures negative extents and shifts content into view", () => {
+      expect(source).toMatch(/minX/);
+      expect(source).toMatch(/minY/);
+      expect(source).toMatch(/style\.paddingLeft\s*=/);
+      expect(source).toMatch(/style\.paddingTop\s*=/);
+    });
+
+    it("releases the shift before re-measuring", () => {
+      expect(source).toMatch(/style\.paddingLeft\s*=\s*""/);
+      expect(source).toMatch(/style\.paddingTop\s*=\s*""/);
+    });
+
+    it("only re-posts a resize when the measured size actually changed", () => {
+      // Applying the min-size resizes #root, which fires the in-frame
+      // ResizeObserver: without this guard the frame would ping-pong.
+      expect(source).toMatch(/lastPosted|lastWidth|lastHeight/);
+    });
+
+    // Measure→apply MUST be idempotent. Child rects and scrollWidth/Height all
+    // include the shift applyExtent just set, so an uncompensated measurement
+    // is inflated by the previous one and the widget oscillates: grow,
+    // re-render, collapse, grow — which also storms the refresh endpoint.
+    it("compensates for the already-applied shift when measuring", () => {
+      expect(source).toMatch(/appliedOffsetX/);
+      expect(source).toMatch(/appliedOffsetY/);
+      // Both the scroll fallback and the rect path subtract it back out.
+      expect(source).toMatch(/scrollWidth\s*-\s*appliedOffsetX/);
+      expect(source).toMatch(/scrollHeight\s*-\s*appliedOffsetY/);
+      expect(source).toMatch(/rect\.right[^;]*-\s*appliedOffsetX/);
+      expect(source).toMatch(/rect\.bottom[^;]*-\s*appliedOffsetY/);
+    });
+  });
 });

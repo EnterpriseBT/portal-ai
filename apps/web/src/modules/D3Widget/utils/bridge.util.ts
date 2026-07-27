@@ -42,11 +42,18 @@ const RenderedMessageSchema = versioned.extend({
   type: z.literal("rendered"),
   height: z.number(),
   rowCount: z.number(),
+  /**
+   * Painted content width in px (#278) — additive under `v: 1`. Optional:
+   * absent ⇒ the host uses its own container width.
+   */
+  width: z.number().optional(),
 });
 
 const ResizeMessageSchema = versioned.extend({
   type: z.literal("resize"),
   height: z.number(),
+  /** Painted content width in px (#278) — see `rendered`. */
+  width: z.number().optional(),
 });
 
 const ErrorMessageSchema = versioned.extend({
@@ -73,8 +80,9 @@ export interface SandboxBridgeInit {
 }
 
 export interface SandboxBridgeCallbacks {
-  onRendered(event: { height: number; rowCount: number }): void;
-  onResize(event: { height: number }): void;
+  /** `width` is the painted content width when the frame measured one (#278). */
+  onRendered(event: { height: number; rowCount: number; width?: number }): void;
+  onResize(event: { height: number; width?: number }): void;
   onError(event: { message: string; stack?: string }): void;
 }
 
@@ -164,10 +172,14 @@ export function createSandboxBridge(
         callbacks.onRendered({
           height: message.height,
           rowCount: message.rowCount,
+          ...(message.width !== undefined ? { width: message.width } : {}),
         });
         break;
       case "resize":
-        callbacks.onResize({ height: message.height });
+        callbacks.onResize({
+          height: message.height,
+          ...(message.width !== undefined ? { width: message.width } : {}),
+        });
         break;
       case "error":
         settled = true;

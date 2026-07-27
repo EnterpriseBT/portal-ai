@@ -1,15 +1,20 @@
 import React, { useEffect, useRef, useState } from "react";
 
 import { createSandboxBridge } from "./utils/bridge.util";
+import { rafCoalesce } from "./utils/raf-coalesce.util";
 import { SANDBOX_SRCDOC } from "./utils/sandbox-srcdoc.util";
+import {
+  FALLBACK_FRAME_WIDTH,
+  resolveFrameSize,
+} from "./utils/widget-sizing.util";
 
 import type { SandboxBridge } from "./utils/bridge.util";
 import type { ProgressiveBatch } from "./utils/progressive-rows.util";
 import type { D3SandboxTheme } from "./utils/sandbox-theme.util";
+import type { FrameSize } from "./utils/widget-sizing.util";
 
 /** Height before the frame reports its rendered content height. */
 const INITIAL_FRAME_HEIGHT = 360;
-const FALLBACK_FRAME_WIDTH = 640;
 
 export interface D3SandboxFrameUIProps {
   /** Function-body render program (see d3-widget.contract.ts). */
@@ -18,7 +23,12 @@ export interface D3SandboxFrameUIProps {
   theme: D3SandboxTheme;
   /** Ordered batches; new entries are forwarded to the frame as they land. */
   batches: ProgressiveBatch[];
-  onRendered?: (event: { height: number; rowCount: number }) => void;
+  /** `width` is the painted content width when the frame measured one (#278). */
+  onRendered?: (event: {
+    height: number;
+    rowCount: number;
+    width?: number;
+  }) => void;
   onError: (event: { message: string }) => void;
 }
 
@@ -40,7 +50,21 @@ export const D3SandboxFrameUI: React.FC<D3SandboxFrameUIProps> = ({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const bridgeRef = useRef<SandboxBridge | null>(null);
   const forwardedRef = useRef(0);
-  const [frameHeight, setFrameHeight] = useState(INITIAL_FRAME_HEIGHT);
+  const [frameSize, setFrameSize] = useState<FrameSize>({
+    width: 0,
+    height: INITIAL_FRAME_HEIGHT,
+  });
+
+  /**
+   * The host's available width, read from the wrapper — never from the
+   * iframe (#278). The iframe sits *inside* the wrapper and so cannot widen
+   * it, which is what stops a grown frame from feeding back into a wider
+   * available width and ratcheting.
+   */
+  const containerWidthRef = useRef(FALLBACK_FRAME_WIDTH);
+
+  /** Last painted extent reported by the frame, re-used on container resize. */
+  const extentRef = useRef<{ width?: number; height?: number }>({});
 
   // Callbacks/theme are read through refs so the bridge is created once
   // per mount and prop-identity churn can't re-init the frame.
@@ -52,6 +76,26 @@ export const D3SandboxFrameUI: React.FC<D3SandboxFrameUIProps> = ({
     const iframe = iframeRef.current;
     if (!iframe) return;
 
+    containerWidthRef.current =
+      iframe.parentElement?.clientWidth || FALLBACK_FRAME_WIDTH;
+
+    /** Painted extent in, frame box out — the shared sizing rule. */
+    const resize = (): void => {
+      setFrameSize(
+        resolveFrameSize({
+          contentWidth: extentRef.current.width,
+          contentHeight: extentRef.current.height,
+          containerWidth: containerWidthRef.current,
+          fallbackHeight: INITIAL_FRAME_HEIGHT,
+        })
+      );
+    };
+
+    const applySize = (event: { height: number; width?: number }): void => {
+      extentRef.current = { width: event.width, height: event.height };
+      resize();
+    };
+
     const bridge = createSandboxBridge(
       iframe,
       {
@@ -59,18 +103,16 @@ export const D3SandboxFrameUI: React.FC<D3SandboxFrameUIProps> = ({
         params,
         theme: themeRef.current,
         size: {
-          width: iframe.parentElement?.clientWidth || FALLBACK_FRAME_WIDTH,
+          width: containerWidthRef.current,
           height: INITIAL_FRAME_HEIGHT,
         },
       },
       {
         onRendered: (event) => {
-          setFrameHeight(event.height || INITIAL_FRAME_HEIGHT);
+          applySize(event);
           callbacksRef.current.onRendered?.(event);
         },
-        onResize: (event) => {
-          setFrameHeight(event.height || INITIAL_FRAME_HEIGHT);
-        },
+        onResize: applySize,
         onError: (event) => {
           callbacksRef.current.onError({ message: event.message });
         },
@@ -79,8 +121,45 @@ export const D3SandboxFrameUI: React.FC<D3SandboxFrameUIProps> = ({
     bridgeRef.current = bridge;
     forwardedRef.current = 0;
 
+    /**
+     * Keep the program's available width live for the life of the mount
+     * (#278). Coalesced to one send per frame because reflow is bursty.
+     *
+     * The suggested height stays `INITIAL_FRAME_HEIGHT` forever, never the
+     * painted height: echoing the painted height back would make the program
+     * size to it, paint slightly past it, and grow again — a ratchet.
+     */
+    const sendAvailableWidth = rafCoalesce<number>((width) => {
+      containerWidthRef.current = width;
+      resize();
+      bridgeRef.current?.sendResize({
+        width,
+        height: INITIAL_FRAME_HEIGHT,
+      });
+    });
+
+    // The WRAPPER is observed, never the iframe: the iframe is inside it and
+    // so cannot widen it, which is what closes the growth feedback loop.
+    const wrapper = iframe.parentElement;
+    const observer =
+      wrapper && typeof ResizeObserver === "function"
+        ? new ResizeObserver(() => {
+            const width = wrapper.clientWidth || FALLBACK_FRAME_WIDTH;
+            // Width-only: the wrapper's HEIGHT grows with the frame, so it
+            // re-fires this observer on the frame's own growth. Since only
+            // width is ever sent, reacting to that would re-render the
+            // program for no new information — grow → resize → re-render →
+            // grow, the loop found in the #278 smoke walk.
+            if (width === containerWidthRef.current) return;
+            sendAvailableWidth(width);
+          })
+        : null;
+    observer?.observe(wrapper as Element);
+
     return () => {
       bridgeRef.current = null;
+      sendAvailableWidth.cancel();
+      observer?.disconnect();
       bridge.dispose();
     };
     // program/params are fixed per mount by contract (see JSDoc).
@@ -113,10 +192,15 @@ export const D3SandboxFrameUI: React.FC<D3SandboxFrameUIProps> = ({
       srcDoc={SANDBOX_SRCDOC}
       title="D3 visualization"
       style={{
-        width: "100%",
+        // Painted width when the content is wider than the column (making the
+        // host's overflowX wrapper a real scroller), never narrower than it.
+        // No maxHeight and no overflow: the frame fits its visualization and
+        // never scrolls (#278).
+        width: frameSize.width || "100%",
+        minWidth: "100%",
         border: 0,
         display: "block",
-        height: frameHeight,
+        height: frameSize.height,
       }}
     />
   );

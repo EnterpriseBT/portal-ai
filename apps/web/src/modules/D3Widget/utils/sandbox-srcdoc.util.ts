@@ -36,7 +36,16 @@ export function buildSandboxSrcdoc(parts: {
     "<!doctype html>",
     "<html><head>",
     `<meta http-equiv="Content-Security-Policy" content="${SANDBOX_CSP}">`,
-    "<style>html,body{margin:0;padding:0}#root{width:100%}</style>",
+    // #278: `#root svg{overflow:visible}` lets marks a program draws outside
+    // its declared viewport actually paint, once the bootstrap has grown #root
+    // to the measured extent (nothing clips, because the document box contains
+    // what was painted). `overflow:hidden` on html/body means the frame never
+    // shows scrollbars of its own — horizontal scrolling belongs to the host's
+    // wrapper, and vertical scrolling exists nowhere (the widget always fits
+    // its visualization). `box-sizing:border-box` on #root lets the bootstrap
+    // pad it — shifting negative-coordinate content into view — without
+    // `width:100%` overflowing.
+    "<style>html,body{margin:0;padding:0;overflow:hidden}#root{width:100%;box-sizing:border-box}#root svg{overflow:visible}</style>",
     "</head><body>",
     '<div id="root"></div>',
     `<script>${escapeInlineScript(parts.d3Source)}</script>`,

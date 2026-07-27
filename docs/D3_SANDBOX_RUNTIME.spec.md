@@ -132,6 +132,8 @@ export const SANDBOX_SRCDOC: string;
 
 Document shape: `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${SANDBOX_CSP}"><style>…container reset…</style></head><body><div id="root"></div><script>${d3Source}</script><script>${bootstrapSource}</script></body></html>`.
 
+The container reset carries two sizing rules from #278: `#root svg{overflow:visible}` so marks painted outside a declared viewport are visible once the host grows the frame to the reported extent, and `overflow:hidden` on `html,body` so the frame never presents scrollbars of its own.
+
 #### `sandbox-bootstrap.js` (runs inside the frame)
 
 Plain JS, no imports. Behavior contract:
@@ -139,9 +141,9 @@ Plain JS, no imports. Behavior contract:
 1. On load: `parent.postMessage({ v: 1, nonce: null, type: "ready" }, "*")` — nonce is learned from `init`.
 2. On `init { nonce, program, params, theme, size }`: store nonce (all later in/out messages must carry it), compile `new Function("api", program)` inside try/catch (compile error → `error` message), store api inputs.
 3. On `data { rows, seq, done }`: append rows to the accumulator; schedule a render via `requestAnimationFrame` (multiple batches per frame coalesce into one invoke).
-4. Render pass: clear `#root`, invoke the program with `api = { d3, container: root, data: accumulatedRows, params, theme, width, height }` in try/catch; success → `rendered { height, rowCount }`; throw → `error { message, stack }`.
+4. Render pass: clear `#root`, invoke the program with `api = { d3, container: root, data: accumulatedRows, params, theme, width, height }` in try/catch; success → `rendered { height, width, rowCount }`; throw → `error { message, stack }`. **Amended by #278:** the reported size is the *painted extent* (`measureContent`), not `root.scrollHeight` — per top-level child of `#root`, `getBBox()` scaled through `getScreenCTM()` for SVG and `getBoundingClientRect()` otherwise, so marks drawn outside a declared viewport are measured, including negative extents. The frame then **grows `#root` to that measurement and pads it by any negative overshoot** (`applyExtent`), because measuring alone doesn't stop the clipping: content escaping the SVG viewport also escapes the body box, where `overflow:hidden` clips it. Released before each re-measure so a widget can shrink; falls back to `scrollWidth`/`scrollHeight` on any failure.
 5. On `theme` / `resize`: update stored values, schedule a render pass.
-6. `ResizeObserver` on `#root` → `resize { height }` messages.
+6. `ResizeObserver` on `#root` → `resize { height, width }` messages (`width` added by #278).
 7. Message hygiene: ignore any message whose `nonce` doesn't match (post-init) or that fails shape checks. `postMessage` targets `"*"` (opaque origin has no addressable origin); authenticity is source+nonce, validated parent-side.
 
 #### `bridge.util.ts`
@@ -156,8 +158,9 @@ export const SandboxInMessageSchema  = /* union: init | data | theme | resize */
 export const SandboxOutMessageSchema = /* union: ready | rendered | resize | error */;
 
 export interface SandboxBridgeCallbacks {
-  onRendered(e: { height: number; rowCount: number }): void;
-  onResize(e: { height: number }): void;
+  // `width` is the painted content width, additive under v1 (#278).
+  onRendered(e: { height: number; rowCount: number; width?: number }): void;
+  onResize(e: { height: number; width?: number }): void;
   onError(e: { message: string; stack?: string }): void;
 }
 
@@ -213,12 +216,20 @@ export interface D3SandboxFrameUIProps {
   params?: Record<string, unknown>;
   theme: D3SandboxTheme;
   batches: ProgressiveRowsState["batches"]; // inline binding = one batch { seq: 0, done: true }
-  onRendered?: (e: { height: number; rowCount: number }) => void;
+  onRendered?: (e: { height: number; rowCount: number; width?: number }) => void;
   onError: (e: { message: string }) => void;
 }
 ```
 
-Renders `<iframe sandbox="allow-scripts" srcDoc={SANDBOX_SRCDOC} title="D3 visualization" style={{ width: "100%", border: 0, height }} />`; owns the bridge lifecycle (create on mount, dispose on unmount, forward new batches/theme/size); tracks reported height. The `sandbox` attribute is exactly `allow-scripts` — asserted by test.
+Renders `<iframe sandbox="allow-scripts" srcDoc={SANDBOX_SRCDOC} title="D3 visualization" style={{ width, minWidth: "100%", border: 0, height }} />`; owns the bridge lifecycle (create on mount, dispose on unmount, forward new batches/theme/size); tracks the reported extent. The `sandbox` attribute is exactly `allow-scripts` — asserted by test.
+
+**Sizing contract (#278).** Deliberately host-agnostic: **available width in, painted extent out, vertical fit invariant.**
+
+- The **host** supplies the width it has; a `ResizeObserver` on the chart-area wrapper keeps it live via `bridge.sendResize`, rAF-coalesced (`utils/raf-coalesce.util.ts`). The wrapper is observed, never the iframe — the iframe is inside it and so cannot widen it, which is what stops frame growth from ratcheting. The suggested height sent is always `INITIAL_FRAME_HEIGHT`, never the painted height, for the same reason.
+- The **frame** reports what it painted; `resolveFrameSize` (`utils/widget-sizing.util.ts`) reconciles: `width = max(paintedWidth, containerWidth)` so the wrapper's `overflowX: "auto"` becomes a real horizontal scroller, and `height` is always the painted extent, unbounded.
+- **The widget always fits its whole visualization vertically and never scrolls vertically** — an invariant in every host, not a chat-column policy. Horizontal scrolling is the only overflow affordance. A second host (a custom dashboard tile) supplies a width and nothing else.
+
+See `docs/D3_WIDGET_OVERFLOW.spec.md`.
 
 #### `D3Widget.component.tsx` — `D3WidgetUI` (pure) + `D3Widget` (container)
 

@@ -28,6 +28,17 @@ import type { D3SandboxTheme } from "./utils/sandbox-theme.util";
 
 // Chart area bounded to the chat column, matching the core renderers'
 // CHART_BOUNDS convention (#145).
+//
+// Horizontal scrolling is the ONLY overflow affordance (#278): the frame
+// grows past this width when a visualization is intrinsically wider, and
+// this scrolls to reach it.
+//
+// `overflowY` is deliberately NOT declared. CSS computes `visible` to `auto`
+// whenever the other axis is `auto`, so declaring `overflowY: "visible"` here
+// read back as a vertical scroll container — a claim this element cannot
+// honor. The vertical invariant is upheld by construction instead: the frame
+// is sized to its painted extent and this wrapper's height is content-driven,
+// so there is never vertical overflow to scroll and no height to cap.
 const CHART_BOUNDS: React.CSSProperties = {
   width: "100%",
   maxWidth: "100%",
