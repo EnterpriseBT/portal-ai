@@ -52,6 +52,9 @@ export interface D3WidgetUIProps {
   /** Fetch or sandbox error — replaces the chart area. */
   error: string | null;
   onFrameError: (event: { message: string }) => void;
+  /** Last rendered content height, forwarded from the sandbox frame (#271) —
+   *  the gate reuses it to size a torn-down widget's placeholder. */
+  onHeight?: (height: number) => void;
   // ── refresh affordance (#270) ──
   /** Show the always-present manual refresh control (persisted widgets). */
   canRefresh?: boolean;
@@ -91,6 +94,7 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
   loading,
   error,
   onFrameError,
+  onHeight,
   canRefresh = false,
   isRefreshing = false,
   onRefresh,
@@ -197,6 +201,7 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
             params={params}
             theme={theme}
             batches={batches}
+            onRendered={(event) => onHeight?.(event.height)}
             onError={onFrameError}
           />
         </div>
@@ -229,12 +234,16 @@ export interface D3WidgetProps {
   /** Epoch ms the block's data was persisted (the message's `created`) —
    *  seeds the freshness clock so a just-minted widget isn't auto-refreshed. */
   dataUpdatedAt?: number;
+  /** Forwarded rendered height (#271) — the gate reuses it to size the
+   *  placeholder when the widget is torn down offscreen. */
+  onHeight?: (height: number) => void;
 }
 
 export const D3Widget: React.FC<D3WidgetProps> = ({
   content,
   blockRef,
   dataUpdatedAt,
+  onHeight,
 }) => {
   const muiTheme = useTheme();
   const sandboxTheme = useMemo(() => buildSandboxTheme(muiTheme), [muiTheme]);
@@ -352,6 +361,7 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
       loading={loading}
       error={error}
       onFrameError={(event) => setFrameError(event.message)}
+      onHeight={onHeight}
       canRefresh={blockRef != null && !notRefreshable}
       isRefreshing={isRefreshing}
       onRefresh={refresh}
