@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { tool } from "ai";
+import { TABLE_DISPLAY_ROW_LIMIT } from "@portalai/core/constants";
 
 import { PortalSqlHandleService } from "../services/portal-sql-handle.service.js";
 import { Tool } from "../types/tools.js";
@@ -42,9 +43,14 @@ export class DisplayEntityRecordsTool extends Tool<typeof InputSchema> {
     "Use this tool whenever the user asks to 'show', 'display', 'list', or 'see' an entity " +
     "(e.g. 'show me the parcels', 'list all contacts', 'display the orders'), regardless of " +
     "the entity's row count. The tool internally stages every row through a query-handle and " +
-    "the UI renders them in a single hydrating table — you do not need to paginate, sample, " +
-    "or optimize. Returns `{queryHandle, rowCount, schema, samplePeek}`; acknowledge the row " +
-    "count in one short sentence ('Showing all 5,402 parcels below.') and stop. " +
+    "the UI renders a single hydrating table — you do not need to paginate, sample, " +
+    `or optimize. The table LISTS at most ${TABLE_DISPLAY_ROW_LIMIT.toLocaleString("en-US")} rows and says so itself; ` +
+    "every staged row is still available to aggregates and analysis, so never claim the user " +
+    "can see them all, and never state a total as if it were the number listed. " +
+    "Returns `{queryHandle, rowCount, schema, samplePeek}`; acknowledge the row count in one " +
+    `short sentence — e.g. 'Found 5,402 parcels.' when under the limit, or 'Found 10,254 asteroids; the table lists the first ${TABLE_DISPLAY_ROW_LIMIT.toLocaleString("en-US")}.' when over it — then stop. ` +
+    "Do not say 'below', 'above' or otherwise place the widget: it is rendered before your " +
+    "sentence, and its position is not yours to assert. " +
     "For analytical work (filters, joins, aggregations, derived columns) use `sql_query` instead.";
 
   get schema() {

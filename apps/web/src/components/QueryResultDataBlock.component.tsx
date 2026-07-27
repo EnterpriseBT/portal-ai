@@ -2,6 +2,7 @@ import React from "react";
 import { Alert, Box, CircularProgress, Typography } from "@mui/material";
 
 import { ContentBlockRenderer } from "@portalai/core";
+import { TABLE_DISPLAY_ROW_LIMIT } from "@portalai/core/constants";
 import type { PortalMessageBlock } from "@portalai/core/contracts";
 
 import { sdk } from "../api/sdk";
@@ -34,13 +35,6 @@ export interface QueryResultDataBlockUIProps {
   loading: boolean;
   error: string | null;
 }
-
-/**
- * Rows the table lists at most (#277). The display is capped by design — a
- * listing of 10,000+ rows is unusable for a human, and the useful response to
- * an oversized result is to narrow the query.
- */
-export const TABLE_DISPLAY_ROW_LIMIT = 5_000;
 
 export const QueryResultDataBlockUI: React.FC<QueryResultDataBlockUIProps> = ({
   rowCount,

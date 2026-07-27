@@ -47,6 +47,20 @@ export const INLINE_ROWS_THRESHOLD = 100;
  *  (the handle's `truncated` flag is set and only this many rows are cached). */
 export const HANDLE_ROW_CAP = 100_000;
 
+/**
+ * Max rows a result **table lists** (#277). A deliberate display cap, not a
+ * data limit: every staged row is still analysed server-side by aggregates and
+ * the analytics tools — a listing of 10,000+ rows is simply unusable, and the
+ * useful response to an oversized result is to narrow the query.
+ *
+ * Shared because four surfaces must agree on it: the table's fetch, its
+ * "showing the first N of M" notice, and the two agent-facing tool
+ * descriptions that tell the agent how to narrate a capped result. The
+ * snapshot endpoint's own per-request clamp is a separate payload guard and is
+ * the effective ceiling if it is ever set lower than this.
+ */
+export const TABLE_DISPLAY_ROW_LIMIT = 5_000;
+
 /** A `d3` widget auto-refreshes when its data is older than this (#270). Short
  *  enough to read as "live", long enough that re-viewing/scrolling past a widget
  *  costs no SQL. Tunable; kept in the 2–5 min band. */
