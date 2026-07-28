@@ -17,8 +17,6 @@ import {
   PageHeader,
   PageSection,
 } from "@portalai/core/ui";
-import Alert from "@mui/material/Alert";
-import Snackbar from "@mui/material/Snackbar";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -27,6 +25,7 @@ import { DeleteOrganizationDialog } from "../components/DeleteOrganizationDialog
 import { UsageLedgerDialog } from "../components/UsageLedgerDialog.component";
 import { SubscriptionBilling } from "../components/SubscriptionBilling.component";
 import { sdk } from "../api/sdk";
+import { useToast } from "../utils/toast.context";
 import { queryKeys } from "../api/keys";
 import { toServerError } from "../utils/api.util";
 import { formatUsageValue } from "../utils/usage-format.util";
@@ -44,41 +43,34 @@ export const SettingsView = () => {
   const theme = useTheme();
   const queryClient = useQueryClient();
 
+  const toast = useToast();
+
   // Checkout return handling (#176): Stripe redirects back to
   // /settings?billing={success,cancelled}. The webhook is the tier writer —
   // the redirect only refreshes the org cache and tells the user what
-  // happened, then strips the param so a reload doesn't re-toast. The toast
-  // is derived once from the URL in the initializer (no setState-in-effect).
-  const [billingToast, setBillingToast] = useState<{
-    message: string;
-    severity: "success" | "info";
-  } | null>(() => {
-    const billing = new URLSearchParams(window.location.search).get("billing");
-    if (billing === "success") {
-      return {
-        message:
-          "Subscription confirmed — your plan updates within a few seconds",
-        severity: "success",
-      };
-    }
-    if (billing === "cancelled") {
-      return {
-        message: "Checkout cancelled — your plan is unchanged",
-        severity: "info",
-      };
-    }
-    return null;
-  });
+  // happened, then strips the param so a reload doesn't re-toast.
+  //
+  // #293: the message used to be derived in a useState initializer to avoid
+  // setState-in-effect. Raising a toast is imperative, so it moves into the
+  // effect that already reads the param — one effect, no local state. Under
+  // StrictMode's double-invoked effects the toast provider's dedupe (identical
+  // message + severity while visible) collapses the second raise.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const billing = params.get("billing");
     if (!billing) return;
 
-    // The webhook already wrote the tier — just refresh the org cache.
     if (billing === "success") {
+      // The webhook already wrote the tier — just refresh the org cache.
       queryClient.invalidateQueries({
         queryKey: queryKeys.organizations.root,
       });
+      toast.success(
+        "Subscription confirmed — your plan updates within a few seconds"
+      );
+    }
+    if (billing === "cancelled") {
+      toast.info("Checkout cancelled — your plan is unchanged");
     }
 
     params.delete("billing");
@@ -88,7 +80,7 @@ export const SettingsView = () => {
       "",
       `${window.location.pathname}${query ? `?${query}` : ""}`
     );
-  }, [queryClient]);
+  }, [queryClient, toast]);
   // Small screens + tablets stack each field/value pair vertically; desktop
   // (md+) shows them side-by-side. Layout is the view's call, not the list's.
   const stackVertically = useMediaQuery(theme.breakpoints.down("md"));
@@ -340,20 +332,6 @@ export const SettingsView = () => {
           {tabsProps.value === 2 && <SubscriptionBilling />}
         </PageSection>
       </TabPanel>
-
-      <Snackbar
-        open={billingToast !== null}
-        autoHideDuration={8000}
-        onClose={() => setBillingToast(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      >
-        <Alert
-          severity={billingToast?.severity ?? "info"}
-          onClose={() => setBillingToast(null)}
-        >
-          {billingToast?.message ?? ""}
-        </Alert>
-      </Snackbar>
     </Box>
   );
 };

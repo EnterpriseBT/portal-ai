@@ -14,7 +14,6 @@ import {
 } from "@portalai/core/ui";
 import type { StepConfig } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
-import Snackbar from "@mui/material/Snackbar";
 
 import type {
   LayoutPlanEditContextResponsePayload,
@@ -22,6 +21,7 @@ import type {
 } from "@portalai/core/contracts";
 
 import { sdk, queryKeys } from "../api/sdk";
+import { useToast } from "../utils/toast.context";
 import { toServerError } from "../utils/api.util";
 import { FormAlert } from "../components/FormAlert.component";
 import { RegionEditorUI } from "../modules/RegionEditor";
@@ -97,8 +97,6 @@ export interface EditLayoutPlanViewUIProps {
    * toast still exists because PATCH failures need to surface
    * somewhere before the commit-job error path can take over.
    */
-  saveDraftToast: { severity: "success" | "error"; message: string } | null;
-  onDismissSaveDraftToast: () => void;
 
   /**
    * Slice 3c — entity-picker catalog. Sheet-derived options merged
@@ -181,8 +179,6 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
   isCommitting,
   connectorInstanceId,
   connectorInstanceName,
-  saveDraftToast,
-  onDismissSaveDraftToast,
   entityOptions,
   onCreateEntity,
   loadSlice,
@@ -230,37 +226,6 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
     />
   );
 
-  // Toast renders identically across every branch — `loadError` and
-  // `editable: false` branches surface their own messages, but a
-  // successful Save Draft on a previously-edited plan can still race
-  // a subsequent navigation and we want the user to see the
-  // confirmation either way.
-  const toast = (
-    <Snackbar
-      open={saveDraftToast !== null}
-      autoHideDuration={saveDraftToast?.severity === "success" ? 4000 : null}
-      onClose={(_evt, reason) => {
-        if (reason === "clickaway" && saveDraftToast?.severity === "error") {
-          return;
-        }
-        onDismissSaveDraftToast();
-      }}
-      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-    >
-      {saveDraftToast ? (
-        <Alert
-          severity={saveDraftToast.severity}
-          variant="filled"
-          onClose={onDismissSaveDraftToast}
-          sx={{ minWidth: 320 }}
-          data-testid={`save-draft-toast-${saveDraftToast.severity}`}
-        >
-          {saveDraftToast.message}
-        </Alert>
-      ) : undefined}
-    </Snackbar>
-  );
-
   if (loading) {
     return (
       <Box>
@@ -268,7 +233,6 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
           {header}
           <Typography>Loading layout plan…</Typography>
         </Stack>
-        {toast}
       </Box>
     );
   }
@@ -284,7 +248,6 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
             </Button>
           </Box>
         </Stack>
-        {toast}
       </Box>
     );
   }
@@ -319,7 +282,6 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
             </Stack>
           </Box>
         </Stack>
-        {toast}
       </Box>
     );
   }
@@ -371,7 +333,6 @@ export const EditLayoutPlanViewUI: React.FC<EditLayoutPlanViewUIProps> = ({
           onIdentityUpdate={onIdentityUpdate}
         />
       </Stack>
-      {toast}
     </Box>
   );
 };
@@ -440,10 +401,7 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
   const { mutateAsync: fileUploadSheetSliceMutate } =
     sdk.fileUploads.sheetSlice();
 
-  const [saveDraftToast, setSaveDraftToast] = useState<{
-    severity: "success" | "error";
-    message: string;
-  } | null>(null);
+  const toast = useToast();
 
   // Local editor state — initialized from the edit-context plan and the
   // preview workbook on first render after the query resolves.
@@ -651,12 +609,9 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       // Surface as the same Save-Draft snackbar channel — it's the
       // only inline-error path the editor has today.
       const apiErr = err as { message?: string } | null;
-      setSaveDraftToast({
-        severity: "error",
-        message: apiErr?.message ?? "Interpret failed.",
-      });
+      toast.error(apiErr?.message ?? "Interpret failed.");
     }
-  }, [editContext, regions, connectorInstanceId, interpretMutate]);
+  }, [editContext, regions, connectorInstanceId, interpretMutate, toast]);
 
   const handleCommit = useCallback(async () => {
     if (!editContext?.editable || !editContext.workbookPreview) return;
@@ -692,23 +647,18 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     try {
       nextRegions = draftsToRegions(regions, workbook, editContext.plan);
     } catch (err) {
-      setSaveDraftToast({
-        severity: "error",
-        message:
-          err instanceof Error
-            ? `Couldn't save plan before commit: ${err.message}`
-            : "Couldn't save plan before commit.",
-      });
+      toast.error(
+        err instanceof Error
+          ? `Couldn't save plan before commit: ${err.message}`
+          : "Couldn't save plan before commit."
+      );
       return;
     }
     try {
       await patchPlanMutate({ regions: nextRegions });
     } catch (err) {
       const apiErr = err as { message?: string } | null;
-      setSaveDraftToast({
-        severity: "error",
-        message: apiErr?.message ?? "Couldn't save plan before commit.",
-      });
+      toast.error(apiErr?.message ?? "Couldn't save plan before commit.");
       return;
     }
     try {
@@ -732,6 +682,7 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
     queryClient,
     navigate,
     connectorInstanceId,
+    toast,
   ]);
 
   // The ReviewStep's "Back to regions" button is the only consumer
@@ -840,8 +791,6 @@ export const EditLayoutPlanView: React.FC<EditLayoutPlanViewProps> = ({
       isCommitting={isCommitting}
       connectorInstanceId={connectorInstanceId}
       connectorInstanceName={connectorInstanceName}
-      saveDraftToast={saveDraftToast}
-      onDismissSaveDraftToast={() => setSaveDraftToast(null)}
       entityOptions={entityOptions}
       onCreateEntity={handleCreateEntity}
       loadSlice={loadSlice}

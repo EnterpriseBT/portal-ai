@@ -6,6 +6,16 @@ import Snackbar from "@mui/material/Snackbar";
 
 import { useAppVersion } from "../utils/app-version.util";
 
+/**
+ * NOT a toast, deliberately (#293). This reports a *polled condition* — a new
+ * bundle exists — rather than the outcome of an action the user took, and it
+ * must persist until acted on. It also stays anchored bottom-CENTER, clear of
+ * the toast host's bottom-right, so the two never contend for the same space.
+ *
+ * A recorded exception, not a precedent: any new "an action finished" feedback
+ * uses `useToast()`. See CLAUDE.md → "Toast Pattern (apps/web)".
+ */
+
 // ── Pure UI ──────────────────────────────────────────────────────────
 
 export interface UpdateBannerUIProps {
