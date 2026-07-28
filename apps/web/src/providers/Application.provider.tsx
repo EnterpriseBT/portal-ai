@@ -7,6 +7,7 @@ import "@portalai/core/styles";
 import { queryClient } from "../client";
 import { useStorage, registerAuthLogout } from "../utils";
 import { LayoutProvider } from "./Layout.provider";
+import { ToastProvider } from "./Toast.provider";
 
 const AuthErrorHandler: React.FC = () => {
   const { logout } = useAuth0();
@@ -51,7 +52,11 @@ export const ApplicationProvider: React.FC<ApplicationProviderProps> = ({
         <ThemeProvider defaultTheme={theme}>
           <LayoutProvider>
             <QueryClientProvider client={queryClient}>
-              {children}
+              {/* Inside ThemeProvider so toasts are themed, and outside the
+                  RouterProvider that `Application.tsx` mounts within this
+                  chain — so a toast raised just before a navigation survives
+                  the route change (#293). */}
+              <ToastProvider>{children}</ToastProvider>
             </QueryClientProvider>
           </LayoutProvider>
         </ThemeProvider>
