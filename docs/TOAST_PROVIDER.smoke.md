@@ -1,6 +1,6 @@
 # toast-provider — Smoke Suite
 
-Manual smoke test for [#293](https://github.com/EnterpriseBT/portal-ai/issues/293) — a shared toast provider (`useToast()`) replacing five ad-hoc `Snackbar`s, with a bounded stack, per-severity timing, and a "+N more" row carrying **Dismiss all**. **Branch under test:** `feat/toast-provider` (PR: not yet opened).
+Manual smoke test for [#293](https://github.com/EnterpriseBT/portal-ai/issues/293) — a shared toast provider (`useToast()`) replacing five ad-hoc `Snackbar`s, with a bounded stack, per-severity timing, and a "+N more" row carrying **Dismiss all**. **Branch under test:** `feat/toast-provider` (PR [#294](https://github.com/EnterpriseBT/portal-ai/pull/294)).
 
 **Read this first — two things cannot be walked in a default dev dataset**, and pretending otherwise would produce a false pass:
 
