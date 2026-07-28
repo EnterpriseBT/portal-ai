@@ -10,7 +10,10 @@ const mockRenamePortal = jest.fn();
 const mockDeleteStation = jest.fn();
 const mockUpdateStation = jest.fn();
 const mockCreatePortal = jest.fn();
-const mockPinResult = jest.fn();
+// #285: the pin path now uses `mutateAsync` — the dialog closes on the
+// resolved promise and stays open on rejection, so invalidation happens
+// after the await rather than in an `onSuccess` callback.
+const mockPinResult = jest.fn<() => Promise<unknown>>();
 
 const queryKeyValues = {
   connectorInstances: { root: ["connectorInstances"] },
@@ -79,8 +82,9 @@ jest.unstable_mockModule("../api/sdk", () => ({
     portalResults: {
       pin: () =>
         ({
-          mutate: mockPinResult,
+          mutateAsync: mockPinResult,
           isPending: false,
+          error: null,
         }) as Partial<UseMutationResult>,
     },
   },
@@ -101,7 +105,11 @@ jest.unstable_mockModule("../utils/api.util", () => ({
 
 jest.unstable_mockModule("../utils/form-validation.util", () => ({
   focusFirstInvalidField: jest.fn(),
-  validateWithSchema: jest.fn(),
+  // Must return the real shape: the pin dialog branches on `.success` (#285).
+  validateWithSchema: jest.fn((_schema: unknown, data: unknown) => ({
+    success: true,
+    data,
+  })),
 }));
 
 jest.unstable_mockModule("../utils/use-dialog-autofocus.util", () => ({
@@ -119,18 +127,9 @@ jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
 import { QueryClient } from "@tanstack/react-query";
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor } = await import("./test-utils");
 
 // ── Helpers ───────────────────────────────────────────────────────────
-
-/** Extracts the onSuccess callback from a mock's first call and invokes it */
-function callOnSuccess(mockFn: jest.Mock, successData: unknown = {}) {
-  const [, options] = mockFn.mock.calls[0] as [
-    unknown,
-    { onSuccess?: (data: unknown) => void },
-  ];
-  options.onSuccess?.(successData);
-}
 
 // ── Tests: Connector Instance deletion ────────────────────────────────
 
@@ -178,6 +177,7 @@ describe("Cache invalidation — PortalMessage pin/unpin", () => {
     const queryClient = new QueryClient();
     const spy = jest.spyOn(queryClient, "invalidateQueries");
     const onPinChange = jest.fn();
+    mockPinResult.mockResolvedValue({});
 
     render(
       <PortalMessage
@@ -206,13 +206,12 @@ describe("Cache invalidation — PortalMessage pin/unpin", () => {
     // Verify mutation was called
     expect(mockPinResult).toHaveBeenCalled();
 
-    // Simulate onSuccess
-    callOnSuccess(mockPinResult);
-
-    // Verify portalResults.root was invalidated
-    expect(spy).toHaveBeenCalledWith({
-      queryKey: queryKeyValues.portalResults.root,
-    });
+    // Invalidation now follows the awaited mutation, not a manual onSuccess.
+    await waitFor(() =>
+      expect(spy).toHaveBeenCalledWith({
+        queryKey: queryKeyValues.portalResults.root,
+      })
+    );
 
     // Verify onPinChange was also called
     expect(onPinChange).toHaveBeenCalled();
@@ -227,6 +226,7 @@ describe("Cache invalidation — PortalMessage pin/unpin", () => {
     const queryClient = new QueryClient();
     const spy = jest.spyOn(queryClient, "invalidateQueries");
     const onPinChange = jest.fn();
+    mockPinResult.mockResolvedValue({});
 
     render(
       <PortalMessage

@@ -1,16 +1,6 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import { Box, Paper } from "@portalai/core/ui";
-import {
-  Typography,
-  IconButton,
-  Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
-} from "@mui/material";
+import { Typography, IconButton, Tooltip } from "@mui/material";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
 import { ContentBlockRenderer, hasBlockRenderer } from "@portalai/core";
@@ -28,6 +18,7 @@ import {
   type QueryResultDataBlockContent,
 } from "./QueryResultDataBlock.component";
 import { MessageTimestamp } from "./MessageTimestamp.component";
+import { PinResultDialog } from "./PinResultDialog.component";
 
 /**
  * Render override for block types that the core ContentBlockRenderer
@@ -78,7 +69,8 @@ import type { PortalResultType } from "@portalai/core/models";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch } from "../utils/api.util";
+import { useAuthFetch, toServerError } from "../utils/api.util";
+import type { ServerError } from "../utils/api.util";
 
 function hasRenderableContent(block: PortalMessageBlock): boolean {
   if (block.content == null) return false;
@@ -126,9 +118,16 @@ export function shouldRenderViaWeb(block: PortalMessageBlock): boolean {
 export interface PortalMessageUIProps {
   message: PortalMessageResponse;
   pinnedBlocks: Map<string, string>;
-  onPin: (messageId: string, blockIndex: number, name: string) => void;
+  /**
+   * Resolves when the pin is saved and rejects when it fails (#285). The
+   * outcome drives the dialog: it closes only on resolve, so a failure keeps
+   * it open with the typed name and `pinServerError` on screen.
+   */
+  onPin: (messageId: string, blockIndex: number, name: string) => Promise<void>;
   onUnpin: (portalResultId: string) => void;
   isPinPending?: boolean;
+  /** The last pin failure, rendered inside the dialog (#285). */
+  pinServerError?: ServerError | null;
 }
 
 export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
@@ -137,23 +136,29 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
   onPin,
   onUnpin,
   isPinPending,
+  pinServerError = null,
 }) => {
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [pinBlockIndex, setPinBlockIndex] = useState<number | null>(null);
-  const [pinName, setPinName] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const handlePinClick = (blockIndex: number) => {
     setPinBlockIndex(blockIndex);
-    setPinName("");
     setPinDialogOpen(true);
   };
 
-  const handleConfirm = () => {
-    if (pinBlockIndex !== null && pinName.trim()) {
-      onPin(message.id, pinBlockIndex, pinName.trim());
-      setPinDialogOpen(false);
-    }
+  /**
+   * Hand the validated name up and leave the dialog open (#285): the
+   * container closes it from the mutation's `onSuccess`, so a failure keeps
+   * the dialog — and the typed name — in place with the error visible.
+   */
+  const handleConfirm = (name: string) => {
+    if (pinBlockIndex === null) return;
+    // Close only on success. The rejection is already surfaced through
+    // `pinServerError`, so it is swallowed here rather than left unhandled.
+    void onPin(message.id, pinBlockIndex, name).then(
+      () => setPinDialogOpen(false),
+      () => undefined
+    );
   };
 
   if (message.role === "user") {
@@ -267,35 +272,13 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
 
       <MessageTimestamp created={message.created} align="left" />
 
-      <Dialog
+      <PinResultDialog
         open={pinDialogOpen}
         onClose={() => setPinDialogOpen(false)}
-        TransitionProps={{
-          onEntered: () => inputRef.current?.focus(),
-        }}
-      >
-        <DialogTitle>Name this result</DialogTitle>
-        <DialogContent>
-          <TextField
-            inputRef={inputRef}
-            fullWidth
-            label="Name"
-            value={pinName}
-            onChange={(e) => setPinName(e.target.value)}
-            sx={{ mt: 1 }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPinDialogOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={handleConfirm}
-            disabled={!pinName.trim() || isPinPending}
-          >
-            Pin
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onSubmit={handleConfirm}
+        isPending={!!isPinPending}
+        serverError={pinServerError}
+      />
     </Box>
   );
 };
@@ -319,18 +302,22 @@ export const PortalMessage: React.FC<PortalMessageProps> = ({
   const pin = sdk.portalResults.pin();
   const { fetchWithAuth } = useAuthFetch();
 
-  const handlePin = (messageId: string, blockIndex: number, name: string) => {
-    pin.mutate(
-      { portalId, messageId, blockIndex, name },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.portalResults.root,
-          });
-          onPinChange();
-        },
-      }
-    );
+  /**
+   * `mutateAsync` rather than `mutate` (#285): the dialog closes on the
+   * resolved promise and stays open on rejection, so a failed pin surfaces
+   * instead of closing as though it had worked. The rejection is re-thrown
+   * for the dialog to see; `pin.error` renders it as the in-dialog alert.
+   */
+  const handlePin = async (
+    messageId: string,
+    blockIndex: number,
+    name: string
+  ): Promise<void> => {
+    await pin.mutateAsync({ portalId, messageId, blockIndex, name });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.portalResults.root,
+    });
+    onPinChange();
   };
 
   const handleUnpin = async (portalResultId: string) => {
@@ -349,6 +336,7 @@ export const PortalMessage: React.FC<PortalMessageProps> = ({
       onPin={handlePin}
       onUnpin={handleUnpin}
       isPinPending={pin.isPending}
+      pinServerError={toServerError(pin.error)}
     />
   );
 };
