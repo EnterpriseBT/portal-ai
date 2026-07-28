@@ -80,3 +80,10 @@ Plus the two that encode this bug specifically:
 - **A shared app-wide toast/snackbar.** Only justified once a second non-dialog surface needs it; #286 is where that argument gets made.
 - **The pin affordance's placement or visibility rules** (#273 settled which blocks can pin).
 - **Auditing other dialogs** against the checklist. This one was found failing; a sweep is its own ticket.
+
+## Sign-off
+
+- [x] All 7 smoke steps verified against a running dev stack
+- [x] **Ben Turner, 2026-07-28** — confirmed
+
+Confirmed the two that carry the ticket: Enter now submits (it did nothing before, the dialog was not a form), and a forced failure keeps the dialog open with the alert and the typed name intact, retryable in place. Boxes transcribed by the assistant from that confirmation; the walk and the judgement were the author's.
