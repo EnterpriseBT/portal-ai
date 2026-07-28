@@ -9,6 +9,7 @@ import {
   RouterContextProvider,
 } from "@tanstack/react-router";
 import { LayoutProvider } from "../providers/Layout.provider";
+import { ToastProvider } from "../providers/Toast.provider";
 
 const createTestRouter = () => {
   const rootRoute = createRootRoute();
@@ -34,9 +35,14 @@ function renderWithProviders(
       <ThemeProvider defaultTheme="brand">
         <QueryClientProvider client={queryClient}>
           <LayoutProvider>
-            <RouterContextProvider router={testRouter}>
-              {children}
-            </RouterContextProvider>
+            {/* Mirrors Application.provider's chain (#293): inside the theme,
+                outside the router. Without it, any component under test that
+                raises a toast would silently hit the no-op fallback. */}
+            <ToastProvider>
+              <RouterContextProvider router={testRouter}>
+                {children}
+              </RouterContextProvider>
+            </ToastProvider>
           </LayoutProvider>
         </QueryClientProvider>
       </ThemeProvider>

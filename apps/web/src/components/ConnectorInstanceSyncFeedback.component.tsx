@@ -39,6 +39,11 @@ export interface ConnectorInstanceSyncFeedbackUIProps {
 
 /**
  * Closeable toast for the post-trigger feedback of the connector-instance
+ * NOT a toast, deliberately (#293): this is *progress through phases*, a
+ * status display that happens to be rendered in a Snackbar, not the outcome of
+ * a single action. A recorded exception, not a precedent — see CLAUDE.md →
+ * "Toast Pattern (apps/web)".
+ *
  * sync flow. Renders three phases inside a single MUI `Snackbar` anchored
  * bottom-right:
  *   - while a job is active: a progress bar with the live percent

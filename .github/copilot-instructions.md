@@ -30,6 +30,8 @@ Turborepo monorepo: React 19 frontend (`apps/web/`), Express API (`apps/api/`), 
 
 Props interface → `React.FC` component → hooks → handlers → JSX return.
 
+User feedback (apps/web): failures **inside a dialog** render `<FormAlert serverError={…} />` and keep the dialog open; failures **anywhere else** raise `useToast().error(…)`. Never a local `Snackbar` or per-component toast state — `UpdateBanner` and `ConnectorInstanceSyncFeedback` are recorded exceptions (polling and progress are not toast surfaces), not precedents.
+
 ## API Pattern
 
 - Services: classes with static methods (not loose functions)

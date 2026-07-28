@@ -11,12 +11,10 @@ import {
   Stack,
   type DataTableColumn,
 } from "@portalai/core/ui";
-import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
 import Tooltip from "@mui/material/Tooltip";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
-import Snackbar from "@mui/material/Snackbar";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -36,6 +34,7 @@ import { DeleteToolpackDialogUI } from "../components/DeleteToolpackDialog.compo
 import { SigningSecretRevealDialogUI } from "../components/SigningSecretRevealDialog.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
+import { useToast } from "../utils/toast.context";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -352,18 +351,13 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
 
 // ── Container ───────────────────────────────────────────────────────
 
-interface RefreshToast {
-  severity: "success" | "error";
-  message: string;
-}
-
 export const Toolpacks: React.FC = () => {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Toolpack | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [editing, setEditing] = useState<Toolpack | null>(null);
   const [deleting, setDeleting] = useState<Toolpack | null>(null);
-  const [refreshToast, setRefreshToast] = useState<RefreshToast | null>(null);
+  const toast = useToast();
 
   const listResult = sdk.toolpacks.list();
   // #214: entitlement affordances derive from the tier policy the usage
@@ -414,16 +408,12 @@ export const Toolpacks: React.FC = () => {
                 {
                   onSuccess: () => {
                     invalidate();
-                    setRefreshToast({
-                      severity: "success",
-                      message: `Refreshed "${t.name}".`,
-                    });
+                    toast.success(`Refreshed "${t.name}".`);
                   },
                   onError: (err) => {
-                    setRefreshToast({
-                      severity: "error",
-                      message: `Failed to refresh "${t.name}": ${err.message}`,
-                    });
+                    toast.error(
+                      `Failed to refresh "${t.name}": ${err.message}`
+                    );
                   },
                 }
               );
@@ -478,16 +468,12 @@ export const Toolpacks: React.FC = () => {
             {
               onSuccess: () => {
                 invalidate();
-                setRefreshToast({
-                  severity: "success",
-                  message: `Refreshed "${target.name}".`,
-                });
+                toast.success(`Refreshed "${target.name}".`);
               },
               onError: (err) => {
-                setRefreshToast({
-                  severity: "error",
-                  message: `Failed to refresh "${target.name}": ${err.message}`,
-                });
+                toast.error(
+                  `Failed to refresh "${target.name}": ${err.message}`
+                );
               },
             }
           );
@@ -535,34 +521,6 @@ export const Toolpacks: React.FC = () => {
         isPending={deleteMutation.isPending}
         serverError={toServerError(deleteMutation.error)}
       />
-
-      <Snackbar
-        open={refreshToast !== null}
-        autoHideDuration={refreshToast?.severity === "success" ? 4000 : null}
-        onClose={(_evt, reason) => {
-          // Don't dismiss errors via clickaway — only the explicit
-          // close button — so users have time to read the message.
-          if (reason === "clickaway" && refreshToast?.severity === "error") {
-            return;
-          }
-          setRefreshToast(null);
-        }}
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-      >
-        {refreshToast ? (
-          <Alert
-            severity={refreshToast.severity}
-            variant="filled"
-            onClose={() => setRefreshToast(null)}
-            sx={{ minWidth: 320 }}
-            data-testid={`toolpack-refresh-toast-${refreshToast.severity}`}
-          >
-            {refreshToast.message}
-          </Alert>
-        ) : (
-          <span />
-        )}
-      </Snackbar>
     </>
   );
 };

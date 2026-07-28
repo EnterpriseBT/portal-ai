@@ -96,11 +96,6 @@ const baseProps = {
   isCommitting: false,
   connectorInstanceId: "ci_1",
   connectorInstanceName: "Test Connector",
-  saveDraftToast: null as {
-    severity: "success" | "error";
-    message: string;
-  } | null,
-  onDismissSaveDraftToast: jest.fn(),
   entityOptions: [],
   onCreateEntity: jest.fn(() => ""),
   regions: [] as RegionDraft[],
@@ -143,26 +138,12 @@ describe("EditLayoutPlanViewUI", () => {
     expect(screen.getAllByText(/Review/i).length).toBeGreaterThan(0);
   });
 
-  // ── Case 11 ────────────────────────────────────────────────────────────
-  // The standalone "Save draft" button was removed in favor of auto-saving
-  // inside the Commit flow. The toast that surfaced its feedback stays
-  // because the auto-PATCH still uses it for PATCH-phase errors.
-  it("case 11 — saveDraftToast renders a Snackbar with the success message", () => {
-    const editContext = makeEditableContext();
-    const regions = makeEditableDraftsFromContext(editContext);
-
-    render(
-      <EditLayoutPlanViewUI
-        {...baseProps}
-        editContext={editContext}
-        regions={regions}
-        saveDraftToast={{ severity: "success", message: "Plan saved." }}
-      />
-    );
-
-    expect(screen.getByTestId("save-draft-toast-success")).toBeInTheDocument();
-    expect(screen.getByText("Plan saved.")).toBeInTheDocument();
-  });
+  // ── Case 11 — removed by #293 ──────────────────────────────────────────
+  // The UI no longer owns a toast. `saveDraftToast` / `onDismissSaveDraftToast`
+  // were props on this component and rendered a local Snackbar; PATCH-phase
+  // errors now raise through `useToast()` in the container, and the rendering
+  // itself is covered by ToastHost.test.tsx + Toast.provider.test.tsx. There is
+  // nothing left to assert at this level.
 
   // ── Case 12 ────────────────────────────────────────────────────────────
   it("case 12 — clicking Commit on the review step invokes the onCommit prop", () => {

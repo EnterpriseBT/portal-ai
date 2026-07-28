@@ -163,6 +163,25 @@ Every form with user input must:
 | `FormErrors` | `utils/form-validation.util.ts` | `Record<string, string>` type for field-level errors |
 | `useDialogAutoFocus()` | `utils/use-dialog-autofocus.util.ts` | Returns a ref that auto-focuses after dialog open |
 
+## Toast Pattern (apps/web)
+
+Feedback that has **no form to attach to** raises a toast. This is the counterpart to the Form & Dialog Pattern above, and the split is the rule:
+
+- **Inside a dialog** — render `<FormAlert serverError={…} />`. The dialog stays open so the user can retry (#285).
+- **Anywhere else** — `const toast = useToast()` from `utils/toast.context.tsx`, then `toast.error(msg, { action })` / `toast.success(msg)` / `.info` / `.warning`. No component holds its own `Snackbar` or open/close state.
+
+The provider (`providers/Toast.provider.tsx`) is mounted once in `Application.provider.tsx`, inside `ThemeProvider` and outside the router, so toasts are themed and survive navigation. Policy, all deliberate:
+
+| Rule | Behavior |
+|---|---|
+| Timing | `error` **persists until dismissed**; `success` 4s, `info`/`warning` 6s. Each visible toast runs its own timer. |
+| Stacking | Up to 3 visible, bottom-right. Beyond that a `+N more` row appears carrying **Dismiss all**. |
+| Dedupe | A raise matching a **currently visible** `(message, severity)` is dropped. |
+| Never | The **system** never auto-dismisses an error to make room. Only the user may discard an unread one. |
+| No provider | `useToast()` returns no-ops rather than throwing — a missing notification must never break the feature that raised it. |
+
+**Polling and progress are not toast surfaces.** A toast reports the outcome of an action the user just took. `UpdateBanner.component.tsx` (a polled condition, no action behind it) and `ConnectorInstanceSyncFeedback.component.tsx` (progress through phases) keep their own `Snackbar` and say so in-file. They are **recorded exceptions, not precedents** — a new local `Snackbar` is a bug, not a style choice.
+
 ## Accessibility Requirements (apps/web)
 
 - All `<TextField>` with validation must include `error={touched[field] && !!errors[field]}` and `helperText={touched[field] && errors[field]}` — MUI auto-links `aria-describedby` when `helperText` is set
