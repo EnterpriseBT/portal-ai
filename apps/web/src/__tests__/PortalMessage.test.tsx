@@ -30,7 +30,7 @@ jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
 // ── Imports ──────────────────────────────────────────────────────────
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor } = await import("./test-utils");
 const { registerBlockRenderer } = await import("@portalai/core");
 const { PortalMessageUI } =
   await import("../components/PortalMessage.component");
@@ -62,7 +62,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -75,7 +75,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -91,7 +91,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -115,7 +115,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -134,7 +134,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -158,7 +158,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -179,7 +179,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -199,7 +199,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -217,7 +217,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -235,7 +235,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -256,7 +256,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -282,7 +282,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -313,7 +313,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -345,7 +345,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -365,7 +365,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -380,7 +380,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -389,7 +389,7 @@ describe("PortalMessageUI", () => {
     });
 
     it("calls onPin with messageId, blockIndex, and name when confirmed", () => {
-      const onPin = jest.fn();
+      const onPin = jest.fn(async () => {});
       const message = makeMessage();
       render(
         <PortalMessageUI
@@ -407,18 +407,74 @@ describe("PortalMessageUI", () => {
       expect(onPin).toHaveBeenCalledWith("msg-1", 0, "My result");
     });
 
-    it("disables the confirm button when name is empty", () => {
+    // #285: the confirm button used to be disabled on an empty name, which
+    // gave no reason why. The house Form & Dialog Pattern submits and
+    // explains instead — the button stays enabled and the field shows the
+    // error. Behavior change, deliberate.
+    it("blocks submission and explains when the name is empty", () => {
+      const onPin = jest.fn(async () => {});
       const message = makeMessage();
       render(
         <PortalMessageUI
           message={message}
           pinnedBlocks={new Map()}
-          onPin={jest.fn()}
+          onPin={onPin}
           onUnpin={jest.fn()}
         />
       );
       fireEvent.click(screen.getByRole("button", { name: /pin result/i }));
-      expect(screen.getByRole("button", { name: /^pin$/i })).toBeDisabled();
+      const confirm = screen.getByRole("button", { name: /^pin$/i });
+      expect(confirm).toBeEnabled();
+
+      fireEvent.click(confirm);
+      expect(onPin).not.toHaveBeenCalled();
+      expect(screen.getByText(/name is required/i)).toBeInTheDocument();
+    });
+
+    it("keeps the dialog open when the pin fails (#285)", async () => {
+      const onPin = jest.fn(async () => {
+        throw new Error("nope");
+      });
+      const message = makeMessage();
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={onPin}
+          onUnpin={jest.fn()}
+        />
+      );
+      fireEvent.click(screen.getByRole("button", { name: /pin result/i }));
+      fireEvent.change(screen.getByRole("textbox", { name: /name/i }), {
+        target: { value: "Will fail" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^pin$/i }));
+
+      await waitFor(() => expect(onPin).toHaveBeenCalled());
+      // Previously the dialog closed regardless of the outcome.
+      expect(screen.getByText("Name this result")).toBeInTheDocument();
+    });
+
+    it("closes the dialog when the pin succeeds", async () => {
+      const onPin = jest.fn(async () => {});
+      const message = makeMessage();
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={onPin}
+          onUnpin={jest.fn()}
+        />
+      );
+      fireEvent.click(screen.getByRole("button", { name: /pin result/i }));
+      fireEvent.change(screen.getByRole("textbox", { name: /name/i }), {
+        target: { value: "Will succeed" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^pin$/i }));
+
+      await waitFor(() =>
+        expect(screen.queryByText("Name this result")).not.toBeInTheDocument()
+      );
     });
   });
 
@@ -432,7 +488,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={pinnedBlocks}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
@@ -454,7 +510,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={pinnedBlocks}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={onUnpin}
         />
       );
@@ -474,7 +530,7 @@ describe("PortalMessageUI", () => {
         <PortalMessageUI
           message={message}
           pinnedBlocks={pinnedBlocks}
-          onPin={jest.fn()}
+          onPin={jest.fn(async () => {})}
           onUnpin={jest.fn()}
         />
       );
