@@ -99,6 +99,111 @@ describe("MultiSearchableSelect", () => {
     expect(screen.getByText("Banana")).toBeInTheDocument();
     expect(screen.queryByText("Cherry")).not.toBeInTheDocument();
   });
+
+  // ── Per-option disabling (#284) ───────────────────────────────────────────
+  //
+  // `SelectOption.disabled` has been in the type since the component shipped
+  // but was never threaded to MUI — a declared-and-ignored prop. #284 needs it
+  // for unentitled toolpacks (visible, unselectable, with a reason), so it
+  // becomes real here for every consumer.
+
+  const WITH_DISABLED: SelectOption[] = [
+    { value: "apple", label: "Apple" },
+    {
+      value: "banana",
+      label: "Banana",
+      disabled: true,
+      disabledReason: "Not included in your plan",
+    },
+  ];
+
+  it("marks a disabled option aria-disabled and refuses to select it", async () => {
+    const handleChange = jest.fn();
+    render(
+      <MultiSearchableSelect
+        label="Fruits"
+        options={WITH_DISABLED}
+        value={[]}
+        onChange={handleChange}
+      />
+    );
+
+    const input = screen.getByRole("combobox");
+    await userEvent.click(input);
+
+    const option = screen.getByText("Banana").closest("li")!;
+    expect(option).toHaveAttribute("aria-disabled", "true");
+
+    // Pointer: MUI drops pointer events on a disabled option, so a real click
+    // cannot reach it at all — user-event refuses the interaction the same way
+    // a browser would.
+    await expect(userEvent.click(option)).rejects.toThrow(/pointer-events/);
+
+    // Keyboard: narrow to the disabled option only, then try to commit it.
+    // MUI's highlight skips disabled options and Enter bails on them.
+    await userEvent.type(input, "Banana");
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    expect(handleChange).not.toHaveBeenCalled();
+  });
+
+  it("renders disabledReason under the label of a disabled option", async () => {
+    render(
+      <MultiSearchableSelect
+        label="Fruits"
+        options={WITH_DISABLED}
+        value={[]}
+        onChange={() => {}}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("combobox"));
+
+    expect(screen.getByText("Not included in your plan")).toBeInTheDocument();
+    // The enabled option carries no reason line.
+    const appleOption = screen.getByText("Apple").closest("li")!;
+    expect(appleOption).not.toHaveAttribute("aria-disabled", "true");
+    expect(appleOption.textContent).toBe("Apple");
+  });
+
+  it("ignores disabledReason on an enabled option", async () => {
+    render(
+      <MultiSearchableSelect
+        label="Fruits"
+        options={[
+          { value: "apple", label: "Apple", disabledReason: "should not show" },
+        ]}
+        value={[]}
+        onChange={() => {}}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("combobox"));
+
+    expect(screen.queryByText("should not show")).not.toBeInTheDocument();
+  });
+
+  it("keeps an already-selected value whose option is now disabled, and lets it be removed", async () => {
+    // The downgrade case: a station already carries a pack the plan no longer
+    // includes. The selection must not vanish, and the user must still be able
+    // to drop it — disabling governs ADDING, never removing.
+    const handleChange = jest.fn();
+    render(
+      <MultiSearchableSelect
+        label="Fruits"
+        options={WITH_DISABLED}
+        value={["banana"]}
+        onChange={handleChange}
+      />
+    );
+
+    const chip = screen.getByText("Banana").closest(".MuiChip-root")!;
+    expect(chip).toBeInTheDocument();
+
+    const deleteBtn = chip.querySelector("[data-testid='CancelIcon']")!;
+    await userEvent.click(deleteBtn);
+
+    expect(handleChange).toHaveBeenCalledWith([]);
+  });
 });
 
 // ── MultiAsyncSearchableSelect ───────────────────────────────────────────────

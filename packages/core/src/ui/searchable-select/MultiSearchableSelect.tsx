@@ -3,6 +3,7 @@ import MuiAutocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 
 import type { SelectOption, SelectBaseProps } from "./types.js";
 
@@ -40,12 +41,18 @@ export const MultiSearchableSelect: React.FC<MultiSearchableSelectProps> = ({
       }
       isOptionEqualToValue={(option, val) => option.value === val.value}
       getOptionLabel={(option) => option.label}
+      getOptionDisabled={(option) => option.disabled === true}
       disabled={disabled}
       size={size}
       fullWidth={fullWidth}
       renderOption={(props, option) => {
         const { key, ...optionProps } =
           props as React.HTMLAttributes<HTMLLIElement> & { key?: React.Key };
+        // A disabled option stays visible and states why — the alternative
+        // (filtering it out) is a silent absence the user can't act on.
+        // `renderTags` is deliberately untouched: an already-selected value
+        // whose option is now disabled must remain removable.
+        const showReason = option.disabled === true && !!option.disabledReason;
         return (
           <Box
             component="li"
@@ -54,7 +61,16 @@ export const MultiSearchableSelect: React.FC<MultiSearchableSelectProps> = ({
             sx={{ display: "flex", alignItems: "center", gap: 1 }}
           >
             {option.icon}
-            <span>{option.label}</span>
+            {showReason ? (
+              <Box sx={{ display: "flex", flexDirection: "column" }}>
+                <span>{option.label}</span>
+                <Typography variant="caption" color="text.secondary">
+                  {option.disabledReason}
+                </Typography>
+              </Box>
+            ) : (
+              <span>{option.label}</span>
+            )}
           </Box>
         );
       }}

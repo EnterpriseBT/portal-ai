@@ -29,6 +29,7 @@ import { useToast } from "../utils/toast.context";
 import { queryKeys } from "../api/keys";
 import { toServerError } from "../utils/api.util";
 import { formatUsageValue } from "../utils/usage-format.util";
+import { settingsTabIndexFromSearch } from "../utils/routes.util";
 
 /** Present a tier slug as a human label, e.g. "enterprise-acme" → "Enterprise Acme". */
 const formatTierName = (slug: string): string =>
@@ -39,7 +40,12 @@ const formatTierName = (slug: string): string =>
     .join(" ");
 
 export const SettingsView = () => {
-  const { tabsProps, getTabProps, getTabPanelProps } = useTabs();
+  // #284: unentitled-toolpack affordances link to /settings?tab=billing, so
+  // the tab is seeded from the param at mount. Read the same way as the
+  // ?billing= checkout return below; clicking a tab does not rewrite it.
+  const { tabsProps, getTabProps, getTabPanelProps } = useTabs(
+    settingsTabIndexFromSearch(window.location.search)
+  );
   const theme = useTheme();
   const queryClient = useQueryClient();
 
