@@ -58,6 +58,10 @@ Re-running rather than sparing rows from the deletes also makes reset **self-hea
 
 ## Smoke (manual, against your dev stack)
 
+> **Walked 2026-07-29 against the local dev stack — complete, steps 1–8 passed.** Both defects reproduced-then-fixed against real data: `reset-seed --env local` returned `via: "local"` and re-seeded (`standard` tier + 5 connector definitions, schema and 74 migrations intact); `portalai org reset` cleared a genuinely populated org (3 instances incl. file-upload + REST, 24 mappings, 36 records, 24 wide columns, 1 endpoint config, 1 layout plan, 2 `er__*` tables) with no FK error and both wide tables dropped, then rebuilt the scaffolding (new default station, `Sandbox`, `data_query`, 26 system column definitions) — idempotent on re-run, no duplication. Decisions 3's two findings came out of this walk.
+>
+> **Step 9 (app-dev) was deliberately not walked.** The ECS seed path is unchanged code — the dispatch only wraps it — but `reset-seed --env app-dev` has not been run end-to-end against the new code, and the confirmation-guard check needs AWS credentials in the dev container. Covered by unit tests only.
+
 Rebuild first — `npx portalops` runs `dist/`, not `src/`: `npm run build --workspace @portalai/devops-cli`.
 
 Prefix each command with `npx dotenv -e apps/api/.env --` so the CLI gets `DATABASE_URL` (it reads the process env, not `.env`) without exporting the secret into your shell.
