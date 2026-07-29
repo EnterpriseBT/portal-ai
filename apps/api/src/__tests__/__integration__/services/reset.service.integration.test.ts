@@ -39,6 +39,34 @@ import {
 
 type Db = ReturnType<typeof drizzle>;
 
+/**
+ * Reset re-runs `ApplicationService.provisionOrganizationWorkspace`, which
+ * needs the `sandbox` connector definition to build the default station.
+ * Without this row provisioning warns and skips, and the scaffolding
+ * assertions below would pass vacuously.
+ */
+async function seedSandboxDefinition(db: Db): Promise<void> {
+  const now = Date.now();
+  await db.insert(schema.connectorDefinitions).values({
+    id: `sandbox-def-${now}`,
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+    slug: "sandbox",
+    display: "Sandbox",
+    category: "sandbox",
+    authType: "none",
+    configSchema: {},
+    capabilityFlags: { sync: true },
+    isActive: true,
+    version: "1.0.0",
+    iconUrl: null,
+  } as never);
+}
+
 describe("ResetService integration tests (#295)", () => {
   let connection!: ReturnType<typeof postgres>;
   let db!: Db;
@@ -61,6 +89,7 @@ describe("ResetService integration tests (#295)", () => {
   describe("resetting a fully-populated org", () => {
     beforeAll(async () => {
       await teardownOrg(db);
+      await seedSandboxDefinition(db);
       target = await seedPopulatedOrg(db, "reset-target");
       control = await seedPopulatedOrg(db, "reset-control");
       await ResetService.resetOrganization(target.orgId);
@@ -119,22 +148,54 @@ describe("ResetService integration tests (#295)", () => {
           .where(eq(schema.connectorEntities.organizationId, target.orgId)),
         db
           .select()
-          .from(schema.connectorInstances)
-          .where(eq(schema.connectorInstances.organizationId, target.orgId)),
-        db
-          .select()
-          .from(schema.stations)
-          .where(eq(schema.stations.organizationId, target.orgId)),
-        db
-          .select()
           .from(schema.portals)
           .where(eq(schema.portals.organizationId, target.orgId)),
         db
           .select()
           .from(schema.jobs)
           .where(eq(schema.jobs.organizationId, target.orgId)),
+        db
+          .select()
+          .from(schema.entityGroups)
+          .where(eq(schema.entityGroups.organizationId, target.orgId)),
+        db
+          .select()
+          .from(schema.entityTags)
+          .where(eq(schema.entityTags.organizationId, target.orgId)),
       ]);
       for (const rows of counts) expect(rows).toHaveLength(0);
+    });
+
+    it("re-provisions the default station and Sandbox instance (case 4b)", async () => {
+      // The org's three seeded instances and one station are gone; what
+      // remains is what org creation would have built.
+      const stations = await db
+        .select()
+        .from(schema.stations)
+        .where(eq(schema.stations.organizationId, target.orgId));
+      expect(stations).toHaveLength(1);
+      expect(stations[0].name).toBe("My Station");
+      expect(stations[0].id).not.toBe(target.stationId);
+
+      const instances = await db
+        .select()
+        .from(schema.connectorInstances)
+        .where(eq(schema.connectorInstances.organizationId, target.orgId));
+      expect(instances).toHaveLength(1);
+      expect(instances[0].name).toBe("Sandbox");
+
+      const links = await db
+        .select()
+        .from(schema.stationInstances)
+        .where(eq(schema.stationInstances.stationId, stations[0].id));
+      expect(links).toHaveLength(1);
+      expect(links[0].connectorInstanceId).toBe(instances[0].id);
+
+      const toolpacks = await db
+        .select()
+        .from(schema.stationToolpacks)
+        .where(eq(schema.stationToolpacks.stationId, stations[0].id));
+      expect(toolpacks.map((t) => t.builtinSlug)).toEqual(["data_query"]);
     });
 
     it("hands back an org that still has its system column definitions (case 5)", async () => {
@@ -166,14 +227,25 @@ describe("ResetService integration tests (#295)", () => {
       expect(colDefs).toHaveLength(0);
     });
 
-    it("keeps the org row and nulls its default station (case 6)", async () => {
+    it("keeps the org row and points it at the new station (case 6)", async () => {
       const [org] = await db
         .select()
         .from(schema.organizations)
         .where(eq(schema.organizations.id, target.orgId));
       expect(org).toBeDefined();
       expect(org.deleted).toBeNull();
-      expect(org.defaultStationId).toBeNull();
+
+      // Nulled mid-cascade to break the org ↔ station cycle, then set to
+      // the re-provisioned station — not left null, which is what the
+      // smoke walk caught.
+      expect(org.defaultStationId).not.toBeNull();
+      expect(org.defaultStationId).not.toBe(target.stationId);
+
+      const [station] = await db
+        .select()
+        .from(schema.stations)
+        .where(eq(schema.stations.id, org.defaultStationId as string));
+      expect(station.organizationId).toBe(target.orgId);
     });
 
     it("keeps the owner's membership and drops the rest (case 7)", async () => {
@@ -241,6 +313,7 @@ describe("ResetService integration tests (#295)", () => {
   describe("resetFirst", () => {
     beforeEach(async () => {
       await teardownOrg(db);
+      await seedSandboxDefinition(db);
     });
 
     it("throws when there are no organizations", async () => {
@@ -265,6 +338,7 @@ describe("ResetService integration tests (#295)", () => {
   describe("an org whose entities were already soft-deleted", () => {
     it("still clears their catalog rows (case 9)", async () => {
       await teardownOrg(db);
+      await seedSandboxDefinition(db);
       const org = await seedPopulatedOrg(db, "reset-soft-deleted");
       await db
         .update(schema.connectorEntities)

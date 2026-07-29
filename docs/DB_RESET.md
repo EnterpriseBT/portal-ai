@@ -30,9 +30,13 @@ No migration step is needed: TRUNCATE preserves the schema and `__drizzle_migrat
 
 ## Decision 3 — a reset org must equal a freshly-provisioned one (found in the smoke walk)
 
-Reset deleted **every** `column_definition` for the org, including the `system: true` rows `ApplicationService` seeds at provisioning time (`application.service.ts:271` → `SeedService.seedSystemColumnDefinitions`). The org it handed back was therefore missing scaffolding a fresh org has — a state the app never otherwise produces. Pre-existing (that delete is one of the original 17), surfaced by walking the smoke against a real org: 26 system definitions went to 0.
+Reset cleared the org's *scaffolding* along with its content. `provisionOrganizationInTx` gives every new org six things — system column definitions, a Sandbox connector instance, a default station, that station's `data_query` toolpack, the station↔instance link, and `organizations.defaultStationId` — and reset deleted all six. The org it handed back could not be produced by any other path in the app: no station to open, no sandbox, no system columns to map against. Pre-existing (those deletes are among the original 17); surfaced only by walking the smoke against a real org and then trying to *use* it.
 
-**Re-seed them inside the transaction after the cascade**, rather than sparing them with a `system = false` predicate. The upsert is keyed and idempotent, so reset also *repairs* orgs an earlier reset already stripped — including the one this smoke walk broke, which a single `portalai org reset` restored to its full 26.
+**Re-run the provisioning path after the cascade, inside the same transaction.** The scaffolding block is extracted from `provisionOrganizationInTx` into `ApplicationService.provisionOrganizationWorkspace(organizationId, tx)`, called by both org creation and reset. Extracted rather than copied — unlike the delete order (Decision 1), there is exactly one definition of "what a new org has", and reset needs *that* definition, not a second copy of it that drifts.
+
+Re-running rather than sparing rows from the deletes also makes reset **self-healing**: it repairs orgs an earlier reset already stripped. Confirmed on the org this smoke walk broke — one `portalai org reset` brought back all 26 system definitions, `My Station` as default, the `Sandbox` instance, the `data_query` toolpack and the link.
+
+`defaultStationId` is still nulled mid-cascade (it has to be, to break the org ↔ station FK cycle before the stations go) — it is then set to the new station rather than left null.
 
 ## Plan — 4 slices
 
@@ -48,9 +52,9 @@ Reset deleted **every** `column_definition` for the org, including the `system: 
 **Files:** `packages/devops-cli/src/ecs.ts` — keep `runSeedTask` as the AWS path; `packages/devops-cli/src/commands/db.ts` — `dbSeed` dispatches: `def.aws` → `runSeedTask`, else → `runApiScript(def, "db:seed", [])`; its audit line records which path ran. `dbResetSeed` unchanged (it composes the two).
 **Tests:** `packages/devops-cli/src/__tests__/` — `dbSeed` on a local def calls the spawner and never the ECS client; on an app-dev def calls the ECS path; `dbResetSeed --env app-dev` without `--yes` throws the confirmation error **before** any wipe. `npm run test:unit`.
 
-**Slice 4 — restore the system column definitions (`apps/api`).** Added after the smoke walk surfaced Decision 3.
-**Files:** `apps/api/src/services/reset.service.ts` — `new SeedService().seedSystemColumnDefinitions(organizationId, tx)` after the `columnDefinitions` delete, inside the same transaction.
-**Tests:** two cases in the reset integration suite — after a reset the org has `system: true` definitions and *only* those; the control org's own non-system definition is untouched (the re-seed is org-scoped).
+**Slice 4 — re-provision the org's scaffolding (`apps/api`).** Added after the smoke walk surfaced Decision 3.
+**Files:** `apps/api/src/services/application.service.ts` — extract the scaffolding block of `provisionOrganizationInTx` into `static provisionOrganizationWorkspace(organizationId, tx)` returning `{ stationId }`; org creation calls it. `apps/api/src/services/reset.service.ts` — call it after the cascade, inside the same transaction.
+**Tests:** four cases in the reset integration suite — the org keeps `system: true` column definitions and *only* those; the station, Sandbox instance, `data_query` toolpack and station↔instance link are rebuilt (with ids distinct from the pre-reset ones); `defaultStationId` points at the new station rather than staying null; the control org is untouched. The suite seeds a `sandbox` connector definition, without which provisioning warns, skips, and the assertions pass vacuously. `application.service` / `webhook` / `organization-delete` / `seed.service` integration suites are the guard on the extraction.
 
 ## Smoke (manual, against your dev stack)
 
@@ -65,9 +69,9 @@ Prefix each command with `npx dotenv -e apps/api/.env --` so the CLI gets `DATAB
 3. Re-run step 1 on the now-empty DB — completes cleanly, same counts (idempotent).
 4. **Re-provision.** Log in at http://localhost:3000 — the Auth0 post-login webhook recreates your user + org. (`portalai org create` can't do this from empty: it provisions for an *existing* user.)
 5. **Build the trigger state.** A file-upload connector committed through the region editor (→ records, `wide_table_columns`, an `er__*` table, a layout plan) and a REST connector with an endpoint configured (→ `api_endpoint_configs`). Confirm all four are non-zero before resetting — an org missing any of them can't reproduce the bug.
-6. **Org reset (the FK bug).** `npx portalai org reset --env local <orgId>` → exit 0, no `violates foreign key constraint`. Then: `wide_table_columns` / `api_endpoint_configs` / `connector_instance_layout_plans` all 0, **both `er__*` tables gone** (not merely emptied), the org row alive with `default_station_id` nulled, you still the sole member, and `connector_definitions` untouched.
-7. `select count(*) filter (where system) from column_definitions` → non-zero and equal to the system set (26 today); `count(*) filter (where not system)` → 0. This is Decision 3 — before it the answer was 0 and the org was silently missing its scaffolding.
-8. Run step 6 a second time against the now-empty org — clean, no leftovers.
+6. **Org reset (the FK bug).** `npx portalai org reset --env local <orgId>` → exit 0, no `violates foreign key constraint`. Then: `wide_table_columns` / `api_endpoint_configs` / `connector_instance_layout_plans` all 0, **both `er__*` tables gone** (not merely emptied), the org row alive, you still the sole member, and `connector_definitions` untouched.
+7. **The org is still usable** (Decision 3 — before it, each of these was empty or null). One station named `My Station` with `organizations.default_station_id` pointing at it; one `Sandbox` connector instance linked to it through `station_instances`; that station's toolpack is `data_query`; `count(*) filter (where system)` on `column_definitions` equals the system set (26 today) and `count(*) filter (where not system)` is 0. Then **open the app** — the org should land on its station, not an empty shell.
+8. Run step 6 a second time against the now-reset org — clean, no leftovers, and the scaffolding is rebuilt again rather than duplicated (still exactly one station, one instance).
 9. **App-dev hard reset.** `npx portalops db reset-seed --env app-dev` **without** `--yes` → exits 5 (confirmation required) and changes nothing. Then with `--yes` → exit 0; app-dev loads with an empty workspace and re-provisions your user on next login.
 
 **Expect after a hard reset:** only the `standard` tier comes back. Seed has been bootstrap-only since #218 — tier policy belongs to `portalops tier apply --env local`, so an org that was on `pro` re-provisions on `standard` until you re-apply the catalog. Any Stripe customer/subscription ids the truncate removed are orphaned in the Stripe account, not deleted.

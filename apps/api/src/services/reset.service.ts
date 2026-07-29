@@ -1,7 +1,7 @@
 import { eq, and, ne, inArray, isNull } from "drizzle-orm";
 
+import { ApplicationService } from "./application.service.js";
 import { DbService } from "./db.service.js";
-import { SeedService } from "./seed.service.js";
 import { wideTableReconcilerService } from "./wide-table-reconciler.service.js";
 import {
   apiEndpointConfigs,
@@ -42,9 +42,10 @@ const logger = createLogger({ module: "reset" });
  * reconciler recreates them on demand, and leaving them behind orphans
  * tables full of stale rows once their `connector_entities` row is gone.
  *
- * The org it hands back is equivalent to a freshly-provisioned one: the
- * system column definitions `ApplicationService` seeds at provisioning
- * time are re-seeded after the cascade.
+ * The org it hands back is equivalent to a freshly-provisioned one: after
+ * the cascade it re-runs `ApplicationService.provisionOrganizationWorkspace`,
+ * so the system column definitions, Sandbox instance, default station and
+ * its toolpack are all back exactly as org creation would have made them.
  */
 export class ResetService {
   /**
@@ -245,16 +246,24 @@ export class ResetService {
         `Deleted ${deletedColumnDefinitions.length} column definitions`
       );
 
-      // Put the system column definitions back. `ApplicationService` seeds
-      // them at org-provisioning time, so an org that keeps its row must
-      // keep them too — otherwise reset hands back an org the app can
-      // never otherwise produce, missing scaffolding a fresh org has.
+      // Re-provision the scaffolding every organization is created with —
+      // system column definitions, the Sandbox instance, the default
+      // station and its toolpack, and `defaultStationId`. The cascade
+      // above deletes all of it, and an org handed back without it is one
+      // the app can never otherwise produce: no station to open, no
+      // sandbox to explore, no system columns to map against.
       //
-      // Re-seeded rather than spared by a `system = false` predicate: the
-      // upsert is keyed and idempotent, so this also repairs orgs that an
-      // earlier reset already stripped.
-      await new SeedService().seedSystemColumnDefinitions(organizationId, tx);
-      logger.info("Re-seeded system column definitions");
+      // Re-run rather than spared from the deletes: the work is idempotent
+      // (column definitions upsert by key; the station/instance rows were
+      // just deleted), so this also repairs orgs an earlier reset left in
+      // that state. Sharing the provisioning path rather than copying it
+      // is what keeps the two definitions of "a new org" from drifting.
+      const { stationId } =
+        await ApplicationService.provisionOrganizationWorkspace(
+          organizationId,
+          tx
+        );
+      logger.info({ stationId }, "Re-provisioned organization workspace");
 
       const deletedJobs = await tx
         .delete(jobs)
