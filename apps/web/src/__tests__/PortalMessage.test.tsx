@@ -5,6 +5,7 @@ import type { PortalMessageResponse } from "@portalai/core/contracts";
 // ── Mocks ────────────────────────────────────────────────────────────
 
 const mockPin = jest.fn();
+const mockRemove = jest.fn<(vars: { id: string }) => Promise<unknown>>();
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
@@ -14,12 +15,37 @@ jest.unstable_mockModule("../api/sdk", () => ({
           mutate: mockPin,
           isPending: false,
         }) as Partial<UseMutationResult>,
+      remove: () =>
+        ({
+          mutateAsync: mockRemove,
+          isPending: false,
+        }) as Partial<UseMutationResult>,
     },
   },
   queryKeys: {
     portalResults: { root: ["portalResults"] },
   },
 }));
+
+// #286: unpin failures raise a toast (no dialog to attach a FormAlert to).
+// Injected through the real ToastContext rather than by mocking the module —
+// test-utils' render already mounts a ToastProvider, and an inner provider
+// wins, so this exercises the real `useToast` lookup.
+const mockToast = {
+  success: jest.fn(),
+  info: jest.fn(),
+  warning: jest.fn(),
+  error:
+    jest.fn<
+      (
+        msg: string,
+        opts?: { action?: { label: string; onClick: () => void } }
+      ) => void
+    >(),
+  show: jest.fn(),
+  dismiss: jest.fn(),
+  dismissAll: jest.fn(),
+};
 
 // Mock react-markdown so jsdom doesn't choke on it.
 jest.unstable_mockModule("react-markdown", () => ({
@@ -31,8 +57,10 @@ jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 // ── Imports ──────────────────────────────────────────────────────────
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { QueryClient } = await import("@tanstack/react-query");
+const { ToastContext } = await import("../utils/toast.context");
 const { registerBlockRenderer } = await import("@portalai/core");
-const { PortalMessageUI } =
+const { PortalMessageUI, PortalMessage } =
   await import("../components/PortalMessage.component");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
@@ -541,5 +569,86 @@ describe("PortalMessageUI", () => {
         screen.getByRole("button", { name: /unpin result/i })
       ).toBeInTheDocument();
     });
+  });
+});
+
+// ── Container wiring (#286) ───────────────────────────────────────────
+//
+// The container is where the SDK swap lives, so it needs container-level
+// coverage: unpin used to hand-roll `fetchWithAuth` here, which meant no
+// mutation state and a rejection that went nowhere.
+
+describe("PortalMessage container — unpin", () => {
+  const renderContainer = (onPinChange = jest.fn()) => {
+    const queryClient = new QueryClient();
+    const invalidateSpy = jest.spyOn(queryClient, "invalidateQueries");
+    const message = makeMessage({
+      blocks: [{ type: "text", content: "Pinned block" }],
+    });
+    const utils = render(
+      <ToastContext.Provider value={mockToast}>
+        <PortalMessage
+          message={message}
+          portalId="portal-1"
+          pinnedBlocks={new Map([["msg-1:0", "result-9"]])}
+          onPinChange={onPinChange}
+        />
+      </ToastContext.Provider>,
+      { queryClient }
+    );
+    return { ...utils, invalidateSpy, onPinChange };
+  };
+
+  beforeEach(() => {
+    mockRemove.mockReset().mockResolvedValue(undefined);
+    mockToast.error.mockReset();
+  });
+
+  it("routes unpin through the SDK mutation with the pinned result id", async () => {
+    renderContainer();
+
+    fireEvent.click(screen.getByRole("button", { name: /unpin result/i }));
+
+    await waitFor(() => expect(mockRemove).toHaveBeenCalledTimes(1));
+    expect(mockRemove).toHaveBeenCalledWith({ id: "result-9" });
+  });
+
+  it("invalidates the portal-results root and notifies the parent", async () => {
+    const { invalidateSpy, onPinChange } = renderContainer();
+
+    fireEvent.click(screen.getByRole("button", { name: /unpin result/i }));
+
+    await waitFor(() => expect(onPinChange).toHaveBeenCalledTimes(1));
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["portalResults"],
+    });
+  });
+
+  it("raises an error toast when the unpin fails", async () => {
+    mockRemove.mockRejectedValue(new Error("boom"));
+    const { invalidateSpy, onPinChange } = renderContainer();
+
+    fireEvent.click(screen.getByRole("button", { name: /unpin result/i }));
+
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledTimes(1));
+    expect(mockToast.error.mock.calls[0][0]).toMatch(/could not unpin/i);
+    // A failure must not look like a success.
+    expect(onPinChange).not.toHaveBeenCalled();
+    expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+
+  it("offers Retry on the failure toast, which re-issues the mutation", async () => {
+    mockRemove.mockRejectedValue(new Error("boom"));
+    renderContainer();
+
+    fireEvent.click(screen.getByRole("button", { name: /unpin result/i }));
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalled());
+
+    const action = mockToast.error.mock.calls[0][1]?.action;
+    expect(action?.label).toBe("Retry");
+
+    mockRemove.mockResolvedValue(undefined);
+    action?.onClick();
+    await waitFor(() => expect(mockRemove).toHaveBeenCalledTimes(2));
   });
 });

@@ -28,7 +28,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch } from "../utils/api.util";
+import { useToast } from "../utils/toast.context";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import type { PortalResultPayload } from "../api/portal-results.api";
 
@@ -237,9 +237,10 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
 }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { fetchWithAuth } = useAuthFetch();
+  const toast = useToast();
 
   const renameMutation = sdk.portalResults.rename(portalResultId);
+  const removeMutation = sdk.portalResults.remove();
 
   const handleRename = useCallback(
     (name: string) => {
@@ -257,27 +258,33 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
     [renameMutation, queryClient]
   );
 
-  const handleDelete = useCallback(async () => {
-    await fetchWithAuth(
-      `/api/portal-results/${encodeURIComponent(portalResultId)}`,
-      { method: "DELETE" }
-    );
-    queryClient.invalidateQueries({
-      queryKey: queryKeys.portalResults.root,
-    });
-    navigate({ to: "/portal-results" });
-  }, [fetchWithAuth, portalResultId, queryClient, navigate]);
-
-  const handleUnpin = useCallback(async () => {
-    await fetchWithAuth(
-      `/api/portal-results/${encodeURIComponent(portalResultId)}`,
-      { method: "DELETE" }
-    );
-    queryClient.invalidateQueries({
-      queryKey: queryKeys.portalResults.root,
-    });
-    navigate({ to: "/portal-results" });
-  }, [fetchWithAuth, portalResultId, queryClient, navigate]);
+  /**
+   * One handler behind both affordances. "Unpin" and "Delete" (the latter
+   * behind a confirm dialog) are the same operation on this view — they were
+   * two byte-identical hand-rolled fetches before #286. The two props stay:
+   * they are distinct affordances, they just no longer duplicate the request.
+   */
+  const handleRemove = useCallback(
+    // Named so the Retry action can re-invoke it — referring to
+    // `handleRemove` here would be a use-before-declaration.
+    async function attempt(): Promise<void> {
+      try {
+        await removeMutation.mutateAsync({ id: portalResultId });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.portalResults.root,
+        });
+        navigate({ to: "/portal-results" });
+      } catch {
+        // Nothing to attach a FormAlert to once the confirm dialog closes, so
+        // the failure raises a toast (CLAUDE.md → Toast Pattern). Staying on
+        // the view is deliberate: the result still exists.
+        toast.error("Could not remove this pinned result. Please try again.", {
+          action: { label: "Retry", onClick: () => void attempt() },
+        });
+      }
+    },
+    [removeMutation, portalResultId, queryClient, navigate, toast]
+  );
 
   const handleOpenPortal = useCallback(
     (portalId: string, messageId: string | null) => {
@@ -308,8 +315,8 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
               <PinnedResultDetailUI
                 result={portalResult}
                 onRename={handleRename}
-                onDelete={handleDelete}
-                onUnpin={handleUnpin}
+                onDelete={handleRemove}
+                onUnpin={handleRemove}
                 onOpenPortal={handleOpenPortal}
                 onNavigate={handleNavigate}
                 renamePending={renameMutation.isPending}
