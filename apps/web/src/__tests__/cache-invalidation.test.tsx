@@ -14,6 +14,8 @@ const mockCreatePortal = jest.fn();
 // resolved promise and stays open on rejection, so invalidation happens
 // after the await rather than in an `onSuccess` callback.
 const mockPinResult = jest.fn<() => Promise<unknown>>();
+// #286: unpin routes through the SDK now, not a hand-rolled fetchWithAuth.
+const mockRemoveResult = jest.fn<() => Promise<unknown>>();
 
 const queryKeyValues = {
   connectorInstances: { root: ["connectorInstances"] },
@@ -83,6 +85,12 @@ jest.unstable_mockModule("../api/sdk", () => ({
       pin: () =>
         ({
           mutateAsync: mockPinResult,
+          isPending: false,
+          error: null,
+        }) as Partial<UseMutationResult>,
+      remove: () =>
+        ({
+          mutateAsync: mockRemoveResult,
           isPending: false,
           error: null,
         }) as Partial<UseMutationResult>,
@@ -226,7 +234,7 @@ describe("Cache invalidation — PortalMessage pin/unpin", () => {
     const queryClient = new QueryClient();
     const spy = jest.spyOn(queryClient, "invalidateQueries");
     const onPinChange = jest.fn();
-    mockPinResult.mockResolvedValue({});
+    mockRemoveResult.mockResolvedValue(undefined);
 
     render(
       <PortalMessage
