@@ -64,6 +64,10 @@ So the ticket's third deliverable ships here after all: a failed unpin raises `t
 
 ## Smoke (manual, against your dev stack)
 
+> **Walked 2026-07-29 against the local dev stack — successful.** Steps 1, 3–7 passed: session unpin, detail-view Unpin, and the Delete confirm dialog each removed exactly one result with **one** `DELETE` request (the pre-#286 duplicate handlers were the double-request risk), the offline case raised a persistent error toast with the block left pinned, and **Retry** completed the unpin once the network returned. Seven results were pinned across the walk and exactly one — the untouched control — survived.
+>
+> **Step 2 (data-table block) was deliberately skipped.** The workspace had no entity records after the #295 smoke reset, and unpin is block-type agnostic — the handler only ever sees a `portalResultId` — so the data-table variant exercises no distinct code path. Rebuilding a connector for it was judged disproportionate.
+
 1. `npm run dev`; in a portal session, pin a text block, then click the pin icon again to unpin — the pin state clears and the result disappears from the station's pinned list.
 2. Repeat with a data-table block.
 3. Open a pinned result's detail view, click **Unpin** — it deletes and navigates back to the pinned-results list.
