@@ -101,6 +101,13 @@ export const mocks = {
   resolveEnvConnection: jest.fn<(name: string) => Promise<unknown>>(),
   assertOperationAllowed: jest.fn<(def: MockEnvDef, opts: unknown) => void>(),
   recordAudit: jest.fn<(entry: unknown) => Promise<void>>(),
+  npmSpawner:
+    jest.fn<
+      (
+        args: string[],
+        env: Record<string, string>
+      ) => Promise<{ code: number; stdout: string; stderr: string }>
+    >(),
   getToken: jest.fn<(env: string) => Promise<string>>(),
 };
 
@@ -134,6 +141,44 @@ export function cliEnvMockModule(): Record<string, unknown> {
     bastionExportName: (def: MockEnvDef) =>
       `${requireAws(def).envName}-BastionInstanceId`,
     envBanner: (def: MockEnvDef) => `[env: ${def.name} (${def.kind})]`,
+    // Spawn surface (#295) — mirrored rather than seamed: the CLIs' tests
+    // assert the args + DATABASE_URL this builds, so a jest.fn() here would
+    // make those assertions vacuous. cli-env's own spawn suite covers the
+    // real one.
+    npmSpawner: mocks.npmSpawner,
+    runApiScript: async (
+      def: MockEnvDef,
+      script: string,
+      scriptArgs: string[],
+      spawner: (
+        args: string[],
+        env: Record<string, string>
+      ) => Promise<{
+        code: number;
+        stdout: string;
+        stderr: string;
+      }> = mocks.npmSpawner
+    ) => {
+      const conn = (await mocks.resolveEnvConnection(def.name)) as {
+        db: () => Promise<{ connectionString: string }>;
+        dispose: () => Promise<void>;
+      };
+      try {
+        const db = await conn.db();
+        const result = await spawner(
+          ["run", "--workspace", "@portalai/api", script, "--", ...scriptArgs],
+          { DATABASE_URL: db.connectionString }
+        );
+        if (result.code !== 0) {
+          throw new EnvInfraError(
+            `${script} failed (exit ${result.code}): ${result.stderr.trim() || result.stdout.trim()}`
+          );
+        }
+        return result.stdout;
+      } finally {
+        await conn.dispose();
+      }
+    },
     // I/O seams
     ...mocks,
   };
