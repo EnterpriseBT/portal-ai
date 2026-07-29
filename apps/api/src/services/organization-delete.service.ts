@@ -129,6 +129,11 @@ export class OrganizationDeleteService {
    * The cascade transaction — `ResetService.resetOrganization`'s child →
    * parent order extended to full coverage, ending in the tombstone
    * soft-deletes. Returns the S3 keys collected for post-commit cleanup.
+   *
+   * The shared prefix is mirrored, not extracted (#295): a dev/QA data
+   * reset should not depend on the customer-facing delete path and its
+   * billing tombstones, S3 cleanup and Stripe cancellation. Keep the two
+   * in step — a table added to either side's order is likely due here.
    */
   private static async cascade(
     organizationId: string,
