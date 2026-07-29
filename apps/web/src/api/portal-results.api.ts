@@ -60,9 +60,17 @@ export const portalResults = {
       method: "PATCH",
     }),
 
-  remove: (id: string) =>
-    useAuthMutation<{ id: string }, void>({
-      url: `/api/portal-results/${encodeURIComponent(id)}`,
+  /**
+   * Unpin (delete) a portal result. The id travels in the mutation
+   * variables rather than being bound at hook-creation time: `PortalMessage`
+   * renders many blocks whose pinned ids differ, so the id is only known at
+   * click time. `rename` keeps the bound-id shape — its caller has a single
+   * known id.
+   */
+  remove: () =>
+    useAuthMutation<{ id: string }, { id: string }>({
+      url: ({ id }) => `/api/portal-results/${encodeURIComponent(id)}`,
       method: "DELETE",
+      body: () => undefined,
     }),
 };

@@ -69,7 +69,8 @@ import type { PortalResultType } from "@portalai/core/models";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch, toServerError } from "../utils/api.util";
+import { toServerError } from "../utils/api.util";
+import { useToast } from "../utils/toast.context";
 import type { ServerError } from "../utils/api.util";
 
 function hasRenderableContent(block: PortalMessageBlock): boolean {
@@ -300,7 +301,8 @@ export const PortalMessage: React.FC<PortalMessageProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const pin = sdk.portalResults.pin();
-  const { fetchWithAuth } = useAuthFetch();
+  const unpin = sdk.portalResults.remove();
+  const toast = useToast();
 
   /**
    * `mutateAsync` rather than `mutate` (#285): the dialog closes on the
@@ -321,12 +323,21 @@ export const PortalMessage: React.FC<PortalMessageProps> = ({
   };
 
   const handleUnpin = async (portalResultId: string) => {
-    await fetchWithAuth(
-      `/api/portal-results/${encodeURIComponent(portalResultId)}`,
-      { method: "DELETE" }
-    );
-    queryClient.invalidateQueries({ queryKey: queryKeys.portalResults.root });
-    onPinChange();
+    try {
+      await unpin.mutateAsync({ id: portalResultId });
+      queryClient.invalidateQueries({ queryKey: queryKeys.portalResults.root });
+      onPinChange();
+    } catch {
+      // No dialog to attach a FormAlert to, so the failure raises a toast
+      // (CLAUDE.md → Toast Pattern). Error toasts persist until dismissed,
+      // so an unpin that silently failed can no longer scroll past unseen.
+      toast.error("Could not unpin this result. Please try again.", {
+        action: {
+          label: "Retry",
+          onClick: () => void handleUnpin(portalResultId),
+        },
+      });
+    }
   };
 
   return (

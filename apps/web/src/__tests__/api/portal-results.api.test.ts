@@ -60,12 +60,34 @@ describe("portal-results.api", () => {
   });
 
   describe("remove", () => {
-    it("sends DELETE to /api/portal-results/:id", () => {
-      portalResults.remove("result-123");
-      expect(mockUseAuthMutation).toHaveBeenCalledWith({
-        url: "/api/portal-results/result-123",
-        method: "DELETE",
-      });
+    it("sends DELETE and takes the id from the mutation variables (#286)", () => {
+      portalResults.remove();
+
+      const calls = mockUseAuthMutation.mock.calls;
+      const config = calls[calls.length - 1][0] as {
+        url: (vars: { id: string }) => string;
+        method: string;
+        body: (vars: { id: string }) => unknown;
+      };
+
+      expect(config.method).toBe("DELETE");
+      // Bound at call time, not hook-creation time: PortalMessage renders
+      // many blocks whose pinned ids differ.
+      expect(config.url({ id: "result-123" })).toBe(
+        "/api/portal-results/result-123"
+      );
+      expect(config.body({ id: "result-123" })).toBeUndefined();
+    });
+
+    it("url-encodes the id", () => {
+      portalResults.remove();
+
+      const calls = mockUseAuthMutation.mock.calls;
+      const config = calls[calls.length - 1][0] as {
+        url: (vars: { id: string }) => string;
+      };
+
+      expect(config.url({ id: "a b/c" })).toBe("/api/portal-results/a%20b%2Fc");
     });
   });
 });

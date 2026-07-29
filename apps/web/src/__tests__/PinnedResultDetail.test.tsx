@@ -1,8 +1,54 @@
 import { jest } from "@jest/globals";
 import type { PortalResult } from "@portalai/core/models";
+import type { UseMutationResult } from "@tanstack/react-query";
 
-const { render, screen, fireEvent } = await import("./test-utils");
-const { PinnedResultDetailUI } =
+// ── Mocks (container tests, #286) ────────────────────────────────────
+
+const mockRemove = jest.fn<(vars: { id: string }) => Promise<unknown>>();
+const mockRename = jest.fn();
+let currentGetQuery: Record<string, unknown> = {};
+
+jest.unstable_mockModule("../api/sdk", () => ({
+  sdk: {
+    portalResults: {
+      get: () => currentGetQuery,
+      rename: () =>
+        ({
+          mutate: mockRename,
+          isPending: false,
+        }) as Partial<UseMutationResult>,
+      remove: () =>
+        ({
+          mutateAsync: mockRemove,
+          isPending: false,
+        }) as Partial<UseMutationResult>,
+    },
+  },
+  queryKeys: {
+    portalResults: { root: ["portalResults"], get: (id: string) => ["pr", id] },
+  },
+}));
+
+const mockToast = {
+  success: jest.fn(),
+  info: jest.fn(),
+  warning: jest.fn(),
+  error:
+    jest.fn<
+      (
+        msg: string,
+        opts?: { action?: { label: string; onClick: () => void } }
+      ) => void
+    >(),
+  show: jest.fn(),
+  dismiss: jest.fn(),
+  dismissAll: jest.fn(),
+};
+
+const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { QueryClient } = await import("@tanstack/react-query");
+const { ToastContext } = await import("../utils/toast.context");
+const { PinnedResultDetailUI, PinnedResultDetailView } =
   await import("../views/PinnedResultDetail.view");
 
 const makePinnedResult = (
@@ -161,5 +207,96 @@ describe("PinnedResultDetailUI", () => {
       />
     );
     expect(screen.queryByTestId("open-portal-btn")).not.toBeInTheDocument();
+  });
+});
+
+// ── Container wiring (#286) ───────────────────────────────────────────
+//
+// "Unpin" and the confirm-dialog "Delete" were two byte-identical
+// hand-rolled `fetchWithAuth` calls. Both now route through one handler on
+// the SDK mutation, so both paths need container-level coverage.
+
+describe("PinnedResultDetailView container — remove", () => {
+  const renderContainer = () => {
+    const queryClient = new QueryClient();
+    const invalidateSpy = jest.spyOn(queryClient, "invalidateQueries");
+    const utils = render(
+      <ToastContext.Provider value={mockToast}>
+        <PinnedResultDetailView portalResultId="result-1" />
+      </ToastContext.Provider>,
+      { queryClient }
+    );
+    return { ...utils, invalidateSpy };
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRemove.mockReset().mockResolvedValue(undefined);
+    currentGetQuery = {
+      data: { portalResult: makePinnedResult() },
+      isLoading: false,
+      error: null,
+    };
+  });
+
+  it("routes Unpin through the SDK mutation", async () => {
+    renderContainer();
+
+    fireEvent.click(screen.getByTestId("unpin-btn"));
+
+    await waitFor(() => expect(mockRemove).toHaveBeenCalledTimes(1));
+    expect(mockRemove).toHaveBeenCalledWith({ id: "result-1" });
+  });
+
+  it("routes the Delete confirmation through the same mutation", async () => {
+    renderContainer();
+
+    // Delete lives behind the actions menu, then a confirm dialog.
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Delete/i }));
+    fireEvent.click(screen.getByTestId("delete-confirm"));
+
+    await waitFor(() => expect(mockRemove).toHaveBeenCalledTimes(1));
+    expect(mockRemove).toHaveBeenCalledWith({ id: "result-1" });
+  });
+
+  it("invalidates the portal-results root on success", async () => {
+    const { invalidateSpy } = renderContainer();
+
+    fireEvent.click(screen.getByTestId("unpin-btn"));
+
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["portalResults"],
+      })
+    );
+  });
+
+  it("raises an error toast and stays put when the remove fails", async () => {
+    mockRemove.mockRejectedValue(new Error("boom"));
+    const { invalidateSpy } = renderContainer();
+
+    fireEvent.click(screen.getByTestId("unpin-btn"));
+
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledTimes(1));
+    expect(mockToast.error.mock.calls[0][0]).toMatch(/could not remove/i);
+    // The result still exists, so no cache churn and no navigation away.
+    expect(invalidateSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("unpin-btn")).toBeInTheDocument();
+  });
+
+  it("offers Retry on the failure toast", async () => {
+    mockRemove.mockRejectedValue(new Error("boom"));
+    renderContainer();
+
+    fireEvent.click(screen.getByTestId("unpin-btn"));
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalled());
+
+    const action = mockToast.error.mock.calls[0][1]?.action;
+    expect(action?.label).toBe("Retry");
+
+    mockRemove.mockResolvedValue(undefined);
+    action?.onClick();
+    await waitFor(() => expect(mockRemove).toHaveBeenCalledTimes(2));
   });
 });
