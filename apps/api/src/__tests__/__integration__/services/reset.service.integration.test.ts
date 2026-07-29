@@ -12,7 +12,8 @@
  * Seeds through the same fully-populated fixture the org-delete cascade
  * uses (an org simple enough to dodge those three FKs is an org that
  * proves nothing), then asserts reset completes AND stops where it is
- * supposed to: org row, owner membership and a control org all survive.
+ * supposed to: org row, owner membership, the system column definitions
+ * and a control org all survive.
  */
 
 import {
@@ -136,7 +137,36 @@ describe("ResetService integration tests (#295)", () => {
       for (const rows of counts) expect(rows).toHaveLength(0);
     });
 
-    it("keeps the org row and nulls its default station (case 5)", async () => {
+    it("hands back an org that still has its system column definitions (case 5)", async () => {
+      // Found in the #295 smoke walk: reset deleted every
+      // column_definition, including the `system: true` rows
+      // ApplicationService seeds at provisioning
+      // (application.service.ts:271) — so a reset org was missing
+      // scaffolding a fresh org has, a state the app never otherwise
+      // produces.
+      const colDefs = await db
+        .select()
+        .from(schema.columnDefinitions)
+        .where(eq(schema.columnDefinitions.organizationId, target.orgId));
+
+      expect(colDefs.length).toBeGreaterThan(0);
+      expect(colDefs.every((c) => c.system)).toBe(true);
+    });
+
+    it("leaves no org-authored column definitions behind (case 5b)", async () => {
+      const colDefs = await db
+        .select()
+        .from(schema.columnDefinitions)
+        .where(
+          and(
+            eq(schema.columnDefinitions.organizationId, target.orgId),
+            eq(schema.columnDefinitions.system, false)
+          )
+        );
+      expect(colDefs).toHaveLength(0);
+    });
+
+    it("keeps the org row and nulls its default station (case 6)", async () => {
       const [org] = await db
         .select()
         .from(schema.organizations)
@@ -146,7 +176,7 @@ describe("ResetService integration tests (#295)", () => {
       expect(org.defaultStationId).toBeNull();
     });
 
-    it("keeps the owner's membership and drops the rest (case 6)", async () => {
+    it("keeps the owner's membership and drops the rest (case 7)", async () => {
       const members = await db
         .select()
         .from(schema.organizationUsers)
@@ -159,7 +189,7 @@ describe("ResetService integration tests (#295)", () => {
       expect(members.map((m) => m.userId)).toEqual([target.ownerUserId]);
     });
 
-    it("leaves the control org fully intact (case 7)", async () => {
+    it("leaves the control org fully intact (case 8)", async () => {
       const [org] = await db
         .select()
         .from(schema.organizations)
@@ -190,6 +220,15 @@ describe("ResetService integration tests (#295)", () => {
       expect(layoutPlans).toHaveLength(1);
 
       expect(await wideTableExists(db, control.connectorEntityId)).toBe(true);
+
+      // The re-seed is org-scoped: the control org's own (non-system)
+      // column definition is untouched.
+      const colDefs = await db
+        .select()
+        .from(schema.columnDefinitions)
+        .where(eq(schema.columnDefinitions.organizationId, control.orgId));
+      expect(colDefs).toHaveLength(1);
+      expect(colDefs[0].system).toBe(false);
 
       const members = await db
         .select()
@@ -224,7 +263,7 @@ describe("ResetService integration tests (#295)", () => {
   });
 
   describe("an org whose entities were already soft-deleted", () => {
-    it("still clears their catalog rows (case 8)", async () => {
+    it("still clears their catalog rows (case 9)", async () => {
       await teardownOrg(db);
       const org = await seedPopulatedOrg(db, "reset-soft-deleted");
       await db
