@@ -77,11 +77,11 @@ Exits with psql's own exit code. Missing psql binary → exit 7 with install gui
 `--json`: `{ "dropped": [string], "truncated": [string] }`
 
 ### `portalops db seed --env <env> --yes [--confirm-prod] [--json]`
-Mutation. Runs `db:seed:ci` as a FARGATE one-off ECS task in the env's cluster (live service network config + task definition; waits for completion; non-zero container exit → exit 7 naming CloudWatch). **AWS envs only** — `--env local` exits 3 pointing at `npm run db:seed` (apps/api).
-`--json`: `{ "taskArn", "exitCode": 0 }`
+Mutation. Restores the system rows a reset removes — the `standard` tier row the `organizations.tier` FK needs, plus the connector definitions. **Dispatches on the env's shape** (#295): a deployed env runs `db:seed:ci` as a FARGATE one-off ECS task in its cluster (live service network config + task definition; waits for completion; non-zero container exit → exit 7 naming CloudWatch); an env with no ECS (`--env local`) spawns the app's own `db:seed` script with `DATABASE_URL` injected from the env connection — the same route `portalai org create` / `org reset` take.
+`--json`: `{ "via": "ecs", "taskArn", "exitCode": 0 }` or `{ "via": "local", "script": "db:seed" }`
 
 ### `portalops db reset-seed --env <env> --yes [--json]`
-**Destructive** (never production). `reset` then `seed`, in that order.
+**Destructive** (never production). `reset` then `seed`, in that order — a total truncate and re-seed, meaning the same thing for every env. The schema and `__drizzle_migrations` survive the truncate, so no migration step is involved.
 `--json`: `{ "reset": {…}, "seed": {…} }`
 
 ## tier

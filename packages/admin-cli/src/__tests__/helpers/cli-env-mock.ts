@@ -147,7 +147,6 @@ export function cliEnvMockModule(): Record<string, unknown> {
     // assert the args + DATABASE_URL this builds, so a jest.fn() here would
     // make those assertions vacuous. cli-env's own spawn suite covers the
     // real one.
-    npmSpawner: mocks.npmSpawner,
     runApiScript: async (
       def: MockEnvDef,
       script: string,
