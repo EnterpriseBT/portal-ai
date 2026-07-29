@@ -21,7 +21,14 @@ jest.unstable_mockModule("../ecs.js", () => ({ runSeedTask: runSeedTaskMock }));
 const { dbTunnel, dbPsql, dbSeed, dbResetSeed } =
   await import("../commands/db.js");
 
+type RunApiScript = (
+  def: MockEnvDef,
+  script: string,
+  args: string[]
+) => Promise<string>;
+
 const appDev = BUILTIN_ENVIRONMENTS["app-dev"];
+const local = BUILTIN_ENVIRONMENTS["local"]; // aws: null — no ECS to seed on
 const prodLike: MockEnvDef = {
   name: "prod-like",
   kind: "production",
@@ -97,7 +104,7 @@ describe("dbPsql", () => {
 describe("dbSeed", () => {
   it("guards as a mutation, audits, delegates to runSeedTask", async () => {
     const out = await dbSeed(appDev, { yes: true });
-    expect(out).toEqual({ taskArn: "arn", exitCode: 0 });
+    expect(out).toEqual({ via: "ecs", taskArn: "arn", exitCode: 0 });
     expect(mocks.assertOperationAllowed).toHaveBeenCalledWith(appDev, {
       destructive: false,
       confirmed: true,
@@ -106,6 +113,49 @@ describe("dbSeed", () => {
     expect(mocks.recordAudit).toHaveBeenCalledWith(
       expect.objectContaining({ command: "db seed" })
     );
+  });
+
+  // #295: local has no ECS to run a task on. Before the split, `db seed
+  // --env local` threw ENV_NOT_CONFIGURED and `db reset-seed --env local`
+  // threw it AFTER the wipe.
+  it("runs the app's own db:seed script for an env with no ECS", async () => {
+    const runScript = jest.fn<RunApiScript>().mockResolvedValue("");
+    const out = await dbSeed(local, {}, runScript);
+
+    expect(out).toEqual({ via: "local", script: "db:seed" });
+    expect(runScript).toHaveBeenCalledWith(local, "db:seed", []);
+    expect(runSeedTaskMock).not.toHaveBeenCalled();
+  });
+
+  it("never spawns a local script for a deployed env", async () => {
+    const runScript = jest.fn<RunApiScript>().mockResolvedValue("");
+    await dbSeed(appDev, { yes: true }, runScript);
+
+    expect(runScript).not.toHaveBeenCalled();
+    expect(runSeedTaskMock).toHaveBeenCalled();
+  });
+
+  it("records which path ran in the audit line", async () => {
+    const runScript = jest.fn<RunApiScript>().mockResolvedValue("");
+    await dbSeed(local, {}, runScript);
+
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "db seed",
+        args: { via: "local", script: "db:seed" },
+      })
+    );
+  });
+
+  it("surfaces a failing local seed instead of reporting success", async () => {
+    const runScript = jest
+      .fn<RunApiScript>()
+      .mockRejectedValue(new EnvInfraError("db:seed failed (exit 1): boom"));
+
+    await expect(dbSeed(local, {}, runScript)).rejects.toBeInstanceOf(
+      EnvInfraError
+    );
+    expect(mocks.recordAudit).not.toHaveBeenCalled();
   });
 });
 
@@ -122,5 +172,38 @@ describe("dbResetSeed", () => {
     });
     await dbResetSeed(appDev, { yes: true });
     expect(order).toEqual(["reset", "seed"]);
+  });
+
+  // The whole point of #295's second defect: local used to wipe, then die.
+  it("completes end-to-end for local, seeding through the app's script", async () => {
+    const order: string[] = [];
+    runResetMock.mockImplementation(async () => {
+      order.push("reset");
+      return { dropped: ["er__1"], truncated: ["users"] };
+    });
+    const runScript = jest.fn<RunApiScript>().mockImplementation(async () => {
+      order.push("seed");
+      return "";
+    });
+
+    const out = await dbResetSeed(local, {}, runScript);
+
+    expect(order).toEqual(["reset", "seed"]);
+    expect(out.reset).toEqual({ dropped: ["er__1"], truncated: ["users"] });
+    expect(out.seed).toEqual({ via: "local", script: "db:seed" });
+    expect(runSeedTaskMock).not.toHaveBeenCalled();
+  });
+
+  it("a blocked reset never reaches the seed half", async () => {
+    runResetMock.mockRejectedValue(
+      new EnvConfirmationRequiredError("needs --yes")
+    );
+    const runScript = jest.fn<RunApiScript>().mockResolvedValue("");
+
+    await expect(dbResetSeed(appDev, {}, runScript)).rejects.toBeInstanceOf(
+      EnvConfirmationRequiredError
+    );
+    expect(runSeedTaskMock).not.toHaveBeenCalled();
+    expect(runScript).not.toHaveBeenCalled();
   });
 });

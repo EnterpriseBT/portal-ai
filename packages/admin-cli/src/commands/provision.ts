@@ -4,67 +4,26 @@
  * with DATABASE_URL injected from the env connection — the app owns its
  * provisioning/reset/fixture semantics; the CLI owns env resolution, guards,
  * session, audit, UX. No cross-package runtime import.
+ *
+ * The spawner itself lives in `@portalai/cli-env` (#295) — `portalops db
+ * seed --env local` runs the app's seed script the same way.
  */
 
-import { spawn } from "node:child_process";
-
-import { resolveEnvConnection, EnvInfraError } from "@portalai/cli-env";
+import {
+  npmSpawner,
+  runApiScript,
+  EnvInfraError,
+  type WorkspaceSpawner,
+} from "@portalai/cli-env";
 import type { EnvironmentDefinition } from "@portalai/cli-env";
 
 import { audit, beginMutation, type MutateFlags } from "./common.js";
 
-export interface SpawnResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-export type WorkspaceSpawner = (
-  args: string[],
-  env: Record<string, string>
-) => Promise<SpawnResult>;
-
-export const npmSpawner: WorkspaceSpawner = (args, env) =>
-  new Promise((resolve, reject) => {
-    const child = spawn("npm", args, {
-      env: { ...process.env, ...env },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (c: Buffer) => (stdout += c.toString()));
-    child.stderr.on("data", (c: Buffer) => (stderr += c.toString()));
-    child.on("error", (e) =>
-      reject(
-        new EnvInfraError(`Failed to spawn npm: ${e.message}`, { cause: e })
-      )
-    );
-    child.on("exit", (code) => resolve({ code: code ?? 1, stdout, stderr }));
-  });
-
-/** Run an apps/api workspace script against the env's DB; returns stdout. */
-async function runApiScript(
-  def: EnvironmentDefinition,
-  script: string,
-  scriptArgs: string[],
-  spawner: WorkspaceSpawner
-): Promise<string> {
-  const conn = await resolveEnvConnection(def.name);
-  try {
-    const db = await conn.db();
-    const result = await spawner(
-      ["run", "--workspace", "@portalai/api", script, "--", ...scriptArgs],
-      { DATABASE_URL: db.connectionString }
-    );
-    if (result.code !== 0) {
-      throw new EnvInfraError(
-        `${script} failed (exit ${result.code}): ${result.stderr.trim() || result.stdout.trim()}`
-      );
-    }
-    return result.stdout;
-  } finally {
-    await conn.dispose();
-  }
-}
+export {
+  npmSpawner,
+  type SpawnResult,
+  type WorkspaceSpawner,
+} from "@portalai/cli-env";
 
 /** The script's JSON result is its last parseable stdout line. */
 function lastJsonLine(stdout: string): Record<string, unknown> {

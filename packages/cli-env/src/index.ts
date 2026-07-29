@@ -60,3 +60,10 @@ export {
 } from "./connection.js";
 
 export { recordAudit, type AuditEntry } from "./audit.js";
+
+export {
+  npmSpawner,
+  runApiScript,
+  type SpawnResult,
+  type WorkspaceSpawner,
+} from "./spawn.js";

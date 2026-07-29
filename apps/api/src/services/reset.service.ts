@@ -1,12 +1,16 @@
-import { eq, and, ne, inArray } from "drizzle-orm";
+import { eq, and, ne, inArray, isNull } from "drizzle-orm";
 
+import { ApplicationService } from "./application.service.js";
 import { DbService } from "./db.service.js";
+import { wideTableReconcilerService } from "./wide-table-reconciler.service.js";
 import {
+  apiEndpointConfigs,
   entityGroupMembers,
   entityTagAssignments,
   entityRecords,
   fieldMappings,
   connectorEntities,
+  connectorInstanceLayoutPlans,
   connectorInstances,
   entityGroups,
   entityTags,
@@ -20,6 +24,7 @@ import {
   stationToolpacks,
   stationInstances,
   stations,
+  wideTableColumns,
 } from "../db/schema/index.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -32,6 +37,15 @@ const logger = createLogger({ module: "reset" });
  * - The organization itself
  * - The owner user
  * - The owner's organization_users join record
+ *
+ * Also drops each connector entity's dynamic `er__<id>` wide table — the
+ * reconciler recreates them on demand, and leaving them behind orphans
+ * tables full of stale rows once their `connector_entities` row is gone.
+ *
+ * The org it hands back is equivalent to a freshly-provisioned one: after
+ * the cascade it re-runs `ApplicationService.provisionOrganizationWorkspace`,
+ * so the system column definitions, Sandbox instance, default station and
+ * its toolpack are all back exactly as org creation would have made them.
  */
 export class ResetService {
   /**
@@ -51,7 +65,41 @@ export class ResetService {
     );
 
     await DbService.transaction(async (tx) => {
-      // Delete in child → parent order to respect FK constraints
+      // Delete in child → parent order to respect FK constraints.
+      //
+      // This order is mirrored — deliberately, not shared — by
+      // `OrganizationDeleteService.cascade`, which extends it to full
+      // coverage plus the tombstones. Keep the two in step: anything
+      // added here that a delete must also cover belongs there too.
+
+      // Wide tables first: `wide_table_columns` FKs field_mappings,
+      // connector_entities AND column_definitions, so its rows must go
+      // before all three. `dropTable` drops the physical `er__<id>`
+      // table (created by the reconciler, not by a migration — leaving
+      // it behind orphans it once its entity row goes) and clears the
+      // entity's catalog rows; the org-wide sweep after catches rows
+      // belonging to already-soft-deleted entities.
+      const liveEntityRows = await tx
+        .select({ id: connectorEntities.id })
+        .from(connectorEntities)
+        .where(
+          and(
+            eq(connectorEntities.organizationId, organizationId),
+            isNull(connectorEntities.deleted)
+          )
+        );
+      for (const { id } of liveEntityRows) {
+        await wideTableReconcilerService.dropTable(id, tx);
+      }
+      logger.info(`Dropped ${liveEntityRows.length} er__ wide tables`);
+
+      const deletedWideTableColumns = await tx
+        .delete(wideTableColumns)
+        .where(eq(wideTableColumns.organizationId, organizationId))
+        .returning({ id: wideTableColumns.id });
+      logger.info(
+        `Deleted ${deletedWideTableColumns.length} wide table columns`
+      );
 
       const deletedEntityGroupMembers = await tx
         .delete(entityGroupMembers)
@@ -134,6 +182,34 @@ export class ResetService {
         .returning({ id: stations.id });
       logger.info(`Deleted ${deletedStations.length} stations`);
 
+      // Indirectly scoped: layout plans hang off the org's instances and
+      // carry no organizationId of their own.
+      const orgInstanceIds = tx
+        .select({ id: connectorInstances.id })
+        .from(connectorInstances)
+        .where(eq(connectorInstances.organizationId, organizationId));
+
+      const deletedLayoutPlans = await tx
+        .delete(connectorInstanceLayoutPlans)
+        .where(
+          inArray(
+            connectorInstanceLayoutPlans.connectorInstanceId,
+            orgInstanceIds
+          )
+        )
+        .returning({ id: connectorInstanceLayoutPlans.id });
+      logger.info(
+        `Deleted ${deletedLayoutPlans.length} connector instance layout plans`
+      );
+
+      const deletedApiEndpointConfigs = await tx
+        .delete(apiEndpointConfigs)
+        .where(eq(apiEndpointConfigs.organizationId, organizationId))
+        .returning({ id: apiEndpointConfigs.id });
+      logger.info(
+        `Deleted ${deletedApiEndpointConfigs.length} API endpoint configs`
+      );
+
       const deletedConnectorEntities = await tx
         .delete(connectorEntities)
         .where(eq(connectorEntities.organizationId, organizationId))
@@ -169,6 +245,25 @@ export class ResetService {
       logger.info(
         `Deleted ${deletedColumnDefinitions.length} column definitions`
       );
+
+      // Re-provision the scaffolding every organization is created with —
+      // system column definitions, the Sandbox instance, the default
+      // station and its toolpack, and `defaultStationId`. The cascade
+      // above deletes all of it, and an org handed back without it is one
+      // the app can never otherwise produce: no station to open, no
+      // sandbox to explore, no system columns to map against.
+      //
+      // Re-run rather than spared from the deletes: the work is idempotent
+      // (column definitions upsert by key; the station/instance rows were
+      // just deleted), so this also repairs orgs an earlier reset left in
+      // that state. Sharing the provisioning path rather than copying it
+      // is what keeps the two definitions of "a new org" from drifting.
+      const { stationId } =
+        await ApplicationService.provisionOrganizationWorkspace(
+          organizationId,
+          tx
+        );
+      logger.info({ stationId }, "Re-provisioned organization workspace");
 
       const deletedJobs = await tx
         .delete(jobs)

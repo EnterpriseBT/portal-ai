@@ -220,11 +220,19 @@ export function buildProgram(): Command {
   );
 
   common(
-    db.command("seed").description("run db:seed:ci as an ECS one-off task")
+    db
+      .command("seed")
+      .description(
+        "restore system rows (tier + connector defs): ECS one-off task, or the app's db:seed script for local"
+      )
   ).action(async (o: GlobalOpts) => execute(o, (def) => dbSeed(def, flags(o))));
 
-  common(db.command("reset-seed").description("reset, then seed")).action(
-    async (o: GlobalOpts) => execute(o, (def) => dbResetSeed(def, flags(o)))
+  common(
+    db
+      .command("reset-seed")
+      .description("total truncate + re-seed (destructive; never prod)")
+  ).action(async (o: GlobalOpts) =>
+    execute(o, (def) => dbResetSeed(def, flags(o)))
   );
 
   // ── tier (#218) ────────────────────────────────────────────────────

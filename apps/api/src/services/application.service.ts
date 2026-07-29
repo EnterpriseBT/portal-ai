@@ -267,8 +267,40 @@ export class ApplicationService {
       tx
     );
 
+    const { stationId } =
+      await ApplicationService.provisionOrganizationWorkspace(
+        createdOrg.id,
+        tx
+      );
+
+    return {
+      organization: { ...createdOrg, defaultStationId: stationId },
+      organizationUser: createdOrgUser,
+    };
+  }
+
+  /**
+   * The scaffolding every organization gets: system column definitions, a
+   * Sandbox connector instance, a default station wired to it, and the
+   * station's default toolpack.
+   *
+   * Extracted from provisioning (#295) because `ResetService` re-runs it
+   * after its cascade — a reset org must be indistinguishable from a fresh
+   * one, and hand-copying these steps into reset is how they drift. Safe to
+   * re-run: `seedSystemColumnDefinitions` upserts by key, and reset has
+   * already deleted the station/instance rows this recreates.
+   *
+   * Returns the new station id, or null when the `sandbox` connector
+   * definition is missing (an unseeded database — warn and carry on).
+   */
+  static async provisionOrganizationWorkspace(
+    organizationId: string,
+    tx: Parameters<Parameters<typeof DbService.transaction>[0]>[0]
+  ): Promise<{ stationId: string | null }> {
+    const systemId = SystemUtilities.id.system;
+
     // ── System column definitions ────────────────────────────────────
-    await new SeedService().seedSystemColumnDefinitions(createdOrg.id, tx);
+    await new SeedService().seedSystemColumnDefinitions(organizationId, tx);
 
     // ── Sandbox auto-provisioning ──────────────────────────────────
     const sandboxDef =
@@ -276,13 +308,10 @@ export class ApplicationService {
 
     if (!sandboxDef) {
       logger.warn(
-        { organizationId: createdOrg.id },
+        { organizationId },
         "Sandbox connector definition not found — skipping auto-provisioning"
       );
-      return {
-        organization: createdOrg,
-        organizationUser: createdOrgUser,
-      };
+      return { stationId: null };
     }
 
     // Create connector instance — inherits capability flags from the
@@ -291,7 +320,7 @@ export class ApplicationService {
       .create(systemId)
       .update({
         connectorDefinitionId: sandboxDef.id,
-        organizationId: createdOrg.id,
+        organizationId,
         name: "Sandbox",
         status: "active",
         config: {},
@@ -309,7 +338,7 @@ export class ApplicationService {
 
     // Create default station
     const stationModel = new StationModelFactory().create(systemId).update({
-      organizationId: createdOrg.id,
+      organizationId,
       name: "My Station",
       description: "Default organization sandbox station",
     });
@@ -342,24 +371,20 @@ export class ApplicationService {
 
     // Set defaultStationId on organization
     await DbService.repository.organizations.update(
-      createdOrg.id,
+      organizationId,
       { defaultStationId: createdStation.id },
       tx
     );
 
     logger.info(
       {
-        userId,
-        organizationId: createdOrg.id,
+        organizationId,
         connectorInstanceId: createdInstance.id,
         stationId: createdStation.id,
       },
       "Sandbox auto-provisioning complete"
     );
 
-    return {
-      organization: { ...createdOrg, defaultStationId: createdStation.id },
-      organizationUser: createdOrgUser,
-    };
+    return { stationId: createdStation.id };
   }
 }

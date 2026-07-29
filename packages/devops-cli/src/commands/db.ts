@@ -11,6 +11,7 @@ import {
   assertOperationAllowed,
   recordAudit,
   resolveEnvConnection,
+  runApiScript,
   EnvConfirmationRequiredError,
   EnvInfraError,
   type EnvironmentDefinition,
@@ -118,31 +119,66 @@ export function dbReset(
   return runReset(def, opts); // destructive guard + audit live in runReset
 }
 
-/** ECS one-off seed — a mutation (idempotent system-def upserts). */
+/** Which way the seed ran — the env's shape decides, not a flag. */
+export type SeedResult =
+  | ({ via: "ecs" } & SeedTaskResult)
+  | { via: "local"; script: string };
+
+/**
+ * Seed — a mutation (idempotent system-def upserts), dispatched on whether
+ * the env has a deployed service (#295).
+ *
+ * Deployed envs run `db:seed:ci` as an ECS one-off inside the container.
+ * Local has no ECS to run anything on, so it spawns the app's own
+ * `db:seed` script against the env's database — the same route
+ * `portalai org create` / `org reset` take. Before this split the ECS path
+ * was the only one, so `db seed --env local` threw and, worse,
+ * `db reset-seed --env local` threw *after* wiping the database.
+ */
 export async function dbSeed(
   def: EnvironmentDefinition,
-  opts: MutateOptions
-): Promise<SeedTaskResult> {
+  opts: MutateOptions,
+  runScript: typeof runApiScript = runApiScript
+): Promise<SeedResult> {
   assertOperationAllowed(def, {
     destructive: false,
     confirmed: !!opts.yes,
     prodConfirmed: !!opts.confirmProd,
   });
-  const result = await runSeedTask(def);
+
+  let result: SeedResult;
+  if (def.aws) {
+    result = { via: "ecs", ...(await runSeedTask(def)) };
+  } else {
+    await runScript(def, "db:seed", []);
+    result = { via: "local", script: "db:seed" };
+  }
+
   await recordAudit({
     env: def.name,
     operator: "portalops",
     command: "db seed",
-    args: { taskArn: result.taskArn },
+    args:
+      result.via === "ecs"
+        ? { via: result.via, taskArn: result.taskArn }
+        : { via: result.via, script: result.script },
   });
   return result;
 }
 
+/**
+ * Total wipe + re-seed, identical in meaning for every env: TRUNCATE
+ * everything (dropping the dynamic `er__*` tables outright), then restore
+ * the system rows a truncate removes — the `standard` tier row the
+ * `organizations.tier` FK needs, and the connector definitions. The schema
+ * and `__drizzle_migrations` survive, so no migration step is involved.
+ */
 export async function dbResetSeed(
   def: EnvironmentDefinition,
-  opts: MutateOptions
-): Promise<{ reset: ResetResult; seed: SeedTaskResult }> {
+  opts: MutateOptions,
+  runScript: typeof runApiScript = runApiScript
+): Promise<{ reset: ResetResult; seed: SeedResult }> {
   const reset = await runReset(def, opts);
-  const seed = await dbSeed(def, opts);
+  const seed = await dbSeed(def, opts, runScript);
   return { reset, seed };
 }
