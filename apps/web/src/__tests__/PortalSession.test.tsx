@@ -37,6 +37,15 @@ jest.unstable_mockModule("../api/sdk", () => ({
         mutate: mockPinPortalResult,
         isPending: false,
       }),
+      // #286: PortalMessage's unpin calls this on every render of the
+      // container, so the mock must provide it even though no test here
+      // exercises unpinning.
+      remove: () => ({
+        mutateAsync: jest
+          .fn<() => Promise<unknown>>()
+          .mockResolvedValue(undefined),
+        isPending: false,
+      }),
     },
     // Used by QueryResultDataBlock when a streaming or persisted
     // chart/table block carries a queryHandle. Tests that exercise
