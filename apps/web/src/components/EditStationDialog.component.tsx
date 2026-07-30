@@ -26,6 +26,11 @@ import {
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { ToolPackIconUtil } from "../utils/tool-pack-icons.util";
+import {
+  ALL_BUILTIN_SLUGS,
+  isBuiltinPackEntitled,
+  UNENTITLED_PACK_REASON,
+} from "../utils/tool-packs.util";
 import { detectToolpackCollisions } from "../utils/toolpack-collisions.util";
 import { sdk } from "../api/sdk";
 
@@ -39,6 +44,22 @@ const BUILTIN_TOOL_PACK_OPTIONS: SelectOption[] = BUILTIN_TOOLPACKS.map(
     };
   }
 );
+
+/**
+ * Mark the built-in options the org's plan doesn't include (#284).
+ * `MultiSearchableSelect` honors `disabled` + `disabledReason`, so the pack
+ * stays listed and states why it can't be picked.
+ */
+function withEntitlements(
+  options: SelectOption[],
+  entitledSlugs: ReadonlySet<string>
+): SelectOption[] {
+  return options.map((option) =>
+    isBuiltinPackEntitled(String(option.value), entitledSlugs)
+      ? option
+      : { ...option, disabled: true, disabledReason: UNENTITLED_PACK_REASON }
+  );
+}
 
 interface FormState {
   name: string;
@@ -70,6 +91,14 @@ export interface EditStationDialogProps {
   onSubmit: (body: UpdateStationBody) => void;
   isPending: boolean;
   serverError: ServerError | null;
+  /**
+   * Built-in pack slugs the org's tier includes (#284). Packs outside the
+   * set render visible but unselectable with the reason named. A pack the
+   * station *already* carries stays selected and removable — disabling
+   * governs adding, so a downgrade never makes a station un-editable.
+   * Defaults to every built-in (fail open); the server 403 is the gate.
+   */
+  entitledBuiltinSlugs?: ReadonlySet<string>;
 }
 
 export const EditStationDialog: React.FC<EditStationDialogProps> = ({
@@ -79,6 +108,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
   onSubmit,
   isPending,
   serverError,
+  entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
 }) => {
   const initialInstanceIds = (station.instances ?? []).map(
     (i) => i.connectorInstanceId
@@ -106,7 +136,14 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
       label: p.name,
       icon: <CustomIcon fontSize="small" />,
     }));
-  const allOptions = [...BUILTIN_TOOL_PACK_OPTIONS, ...customOptions];
+  const allOptions = useMemo(
+    () => [
+      ...withEntitlements(BUILTIN_TOOL_PACK_OPTIONS, entitledBuiltinSlugs),
+      ...customOptions,
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entitledBuiltinSlugs, customsResult.data]
+  );
 
   const collisions = useMemo(
     () =>

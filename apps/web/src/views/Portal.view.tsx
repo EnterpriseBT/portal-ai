@@ -28,6 +28,7 @@ import { FormAlert } from "../components/FormAlert.component";
 import { PortalSession } from "../components/PortalSession.component";
 import { ToolPackChipWithMetadata } from "../components/ToolPackChipWithMetadata.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { toServerError, type ServerError } from "../utils/api.util";
 import { focusFirstInvalidField } from "../utils/form-validation.util";
 import { useLayout } from "../utils/layout.util";
@@ -144,6 +145,8 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
   // React Query dedupes it. Surfaced here so users see where their account
   // stands without leaving the session.
   const { data: usageData } = sdk.organizations.usage();
+  // #284: same cached query, entitlement axis.
+  const { isEntitled } = useBuiltinEntitlements();
   const { isMobile } = useLayout();
   const [expanded, setExpanded] = useState(false);
   const station = data?.station;
@@ -197,7 +200,11 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
           value: (
             <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
               {toolPacks.map((pack) => (
-                <ToolPackChipWithMetadata key={pack} pack={pack} />
+                <ToolPackChipWithMetadata
+                  key={pack}
+                  pack={pack}
+                  entitled={isEntitled(pack)}
+                />
               ))}
             </Stack>
           ),

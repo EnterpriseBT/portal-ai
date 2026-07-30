@@ -97,6 +97,56 @@ describe("ToolpackMetadataModalUI", () => {
     expect(screen.getByText("No examples provided.")).toBeInTheDocument();
   });
 
+  // ── Unentitled notice (#284) ──────────────────────────────────────
+  //
+  // A badged row must not dead-end in a modal that reads as fully
+  // available: the modal states the limit and offers the upgrade path.
+  // The tool list still renders — it documents what the pack does.
+
+  it("states the plan limit and offers the upgrade path when entitled is false", () => {
+    render(
+      <ToolpackMetadataModalUI
+        toolpack={fixturePack}
+        open
+        onClose={jest.fn()}
+        entitled={false}
+      />
+    );
+    expect(screen.getByText(/isn't included in your plan/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View plans" })).toHaveAttribute(
+      "href",
+      "/settings?tab=billing"
+    );
+    // Still documents the pack's tools.
+    expect(screen.getByText("sql_query")).toBeInTheDocument();
+  });
+
+  it("renders no plan notice when entitled is omitted or true", () => {
+    const { unmount } = render(
+      <ToolpackMetadataModalUI
+        toolpack={fixturePack}
+        open
+        onClose={jest.fn()}
+      />
+    );
+    expect(
+      screen.queryByText(/isn't included in your plan/)
+    ).not.toBeInTheDocument();
+    unmount();
+
+    render(
+      <ToolpackMetadataModalUI
+        toolpack={fixturePack}
+        open
+        onClose={jest.fn()}
+        entitled
+      />
+    );
+    expect(
+      screen.queryByText(/isn't included in your plan/)
+    ).not.toBeInTheDocument();
+  });
+
   it("does not render content when toolpack is null", () => {
     render(
       <ToolpackMetadataModalUI

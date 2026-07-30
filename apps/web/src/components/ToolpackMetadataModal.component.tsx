@@ -4,6 +4,9 @@ import type { Toolpack, ToolpackTool } from "@portalai/core/contracts";
 import { Box, Stack, Typography } from "@portalai/core/ui";
 
 import { HighlightedCode } from "./HighlightedCode.component";
+import { UpgradeLink } from "./UpgradeLink.component";
+import { UNENTITLED_PACK_TOOLTIP } from "../utils/tool-packs.util";
+import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
@@ -15,6 +18,13 @@ export interface ToolpackMetadataModalUIProps {
   toolpack: Toolpack | null;
   open: boolean;
   onClose: () => void;
+  /**
+   * Whether the org's plan includes this pack (#284). `false` renders a
+   * notice naming the limit plus the upgrade path, so a badged row does not
+   * dead-end in a modal that reads as fully available. The tool list still
+   * renders — the modal documents what the pack *does*. Defaults to `true`.
+   */
+  entitled?: boolean;
 }
 
 /**
@@ -24,7 +34,7 @@ export interface ToolpackMetadataModalUIProps {
  */
 export const ToolpackMetadataModalUI: React.FC<
   ToolpackMetadataModalUIProps
-> = ({ toolpack, open, onClose }) => {
+> = ({ toolpack, open, onClose, entitled = true }) => {
   return (
     <Dialog
       open={open && toolpack !== null}
@@ -60,6 +70,19 @@ export const ToolpackMetadataModalUI: React.FC<
           </DialogTitle>
           <DialogContent dividers>
             <Stack spacing={3}>
+              {!entitled && (
+                <Alert severity="info" data-testid="toolpack-plan-notice">
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="baseline"
+                    sx={{ flexWrap: "wrap" }}
+                  >
+                    <span>{UNENTITLED_PACK_TOOLTIP}</span>
+                    <UpgradeLink />
+                  </Stack>
+                </Alert>
+              )}
               {toolpack.description && (
                 <Typography variant="body2" color="text.secondary">
                   {toolpack.description}

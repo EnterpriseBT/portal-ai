@@ -34,6 +34,12 @@ import { DeleteToolpackDialogUI } from "../components/DeleteToolpackDialog.compo
 import { SigningSecretRevealDialogUI } from "../components/SigningSecretRevealDialog.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
+import {
+  ALL_BUILTIN_SLUGS,
+  isBuiltinPackEntitled,
+  UNENTITLED_PACK_BADGE,
+} from "../utils/tool-packs.util";
+import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { useToast } from "../utils/toast.context";
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -47,6 +53,8 @@ interface ToolpackRow {
   id: string;
   name: string;
   kind: "builtin" | "custom";
+  /** Needed by the kind column to resolve a built-in row's entitlement (#284). */
+  slug: string;
   description: string;
   toolCount: number;
   lastRefreshed: string;
@@ -80,6 +88,13 @@ export interface ToolpacksUIProps {
    * Defaults to true so existing callers are unchanged.
    */
   customToolpacksEntitled?: boolean;
+  /**
+   * Built-in pack slugs the org's tier includes (#284) — the built-in
+   * counterpart to `customToolpacksEntitled`. Rows whose slug falls outside
+   * the set carry the same "Inactive on your plan" badge, and their metadata
+   * modal states the limit. Defaults to every built-in (fail open).
+   */
+  entitledBuiltinSlugs?: ReadonlySet<string>;
 }
 
 const NOT_ENTITLED_TOOLTIP = "Your plan does not include custom toolpacks";
@@ -95,6 +110,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
   onRefresh,
   refreshingId,
   customToolpacksEntitled = true,
+  entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
 }) => {
   const navigate = useNavigate();
 
@@ -137,23 +153,34 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
         key: "kind",
         label: "Kind",
         sortable: true,
-        render: (value) => (
-          <Stack direction="row" spacing={0.5}>
-            <Chip
-              size="small"
-              variant="outlined"
-              label={value === "builtin" ? "Built-in" : "Custom"}
-            />
-            {value === "custom" && !customToolpacksEntitled && (
+        render: (value, row) => {
+          // Two axes, one badge: custom packs read #214's boolean, built-ins
+          // read #284's allowlist. A row is inactive on either count.
+          const inactive =
+            value === "custom"
+              ? !customToolpacksEntitled
+              : !isBuiltinPackEntitled(
+                  String((row as unknown as ToolpackRow).slug),
+                  entitledBuiltinSlugs
+                );
+          return (
+            <Stack direction="row" spacing={0.5}>
               <Chip
                 size="small"
-                color="warning"
                 variant="outlined"
-                label="Inactive on your plan"
+                label={value === "builtin" ? "Built-in" : "Custom"}
               />
-            )}
-          </Stack>
-        ),
+              {inactive && (
+                <Chip
+                  size="small"
+                  color="warning"
+                  variant="outlined"
+                  label={UNENTITLED_PACK_BADGE}
+                />
+              )}
+            </Stack>
+          );
+        },
       },
       {
         key: "description",
@@ -243,6 +270,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
     refreshingId,
     showActions,
     customToolpacksEntitled,
+    entitledBuiltinSlugs,
   ]);
 
   const rows: ToolpackRow[] = useMemo(
@@ -252,6 +280,7 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
           id: t.id,
           name: t.name,
           kind: t.kind,
+          slug: t.slug,
           description: t.description ?? "",
           toolCount: t.tools.length,
           lastRefreshed: formatLastRefreshed(t),
@@ -344,6 +373,12 @@ export const ToolpacksUI: React.FC<ToolpacksUIProps> = ({
         toolpack={selected}
         open={selected !== null}
         onClose={onCloseModal}
+        entitled={
+          selected === null ||
+          (selected.kind === "custom"
+            ? customToolpacksEntitled
+            : isBuiltinPackEntitled(selected.slug, entitledBuiltinSlugs))
+        }
       />
     </Box>
   );
@@ -367,6 +402,8 @@ export const Toolpacks: React.FC = () => {
   const usageResult = sdk.organizations.usage();
   const customToolpacksEntitled =
     usageResult.data?.tier.entitlements.customToolpacks ?? true;
+  // #284: same query, other axis.
+  const { entitledSlugs: entitledBuiltinSlugs } = useBuiltinEntitlements();
   const registerMutation = sdk.toolpacks.register();
   const updateMutation = sdk.toolpacks.update(editing?.id ?? "");
   const refreshMutation = sdk.toolpacks.refresh();
@@ -395,6 +432,7 @@ export const Toolpacks: React.FC = () => {
             onCloseModal={() => setSelected(null)}
             onRegister={() => setRegisterOpen(true)}
             customToolpacksEntitled={customToolpacksEntitled}
+            entitledBuiltinSlugs={entitledBuiltinSlugs}
             onEdit={(t) => setEditing(t)}
             onDelete={(t) => setDeleting(t)}
             refreshingId={

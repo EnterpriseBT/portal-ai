@@ -26,6 +26,7 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { toServerError } from "../utils/api.util";
 
 // ── Stations list view (pure UI) ────────────────────────────────────
@@ -116,6 +117,8 @@ export const StationsView: React.FC = () => {
   // We need the org data to call setDefault — fetch it eagerly
   const orgResult = sdk.organizations.current();
   const orgId = orgResult.data?.organization.id ?? "";
+  // #284: the create picker offers unentitled built-ins as disabled.
+  const { entitledSlugs: entitledBuiltinSlugs } = useBuiltinEntitlements();
   const setDefaultMutation = sdk.stations.setDefault(orgId);
 
   const invalidate = useCallback(() => {
@@ -210,6 +213,7 @@ export const StationsView: React.FC = () => {
       />
 
       <CreateStationDialog
+        entitledBuiltinSlugs={entitledBuiltinSlugs}
         open={createOpen}
         onClose={handleCreateClose}
         onSubmit={handleCreateSubmit}

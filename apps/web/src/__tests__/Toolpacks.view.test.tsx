@@ -281,7 +281,9 @@ describe("ToolpacksUI", () => {
       ).toBeInTheDocument();
     });
 
-    it("never badges built-in rows, entitled or not", () => {
+    // Scope narrowed by #284: built-in rows badge on their OWN axis
+    // (entitledBuiltinSlugs, covered below) — never on the custom one.
+    it("never badges built-in rows off the custom axis", () => {
       renderUI({
         toolpacks: PACKS,
         onRegister: jest.fn(),
@@ -319,6 +321,49 @@ describe("ToolpacksUI", () => {
       expect(
         screen.getByRole("button", { name: /register toolpack/i })
       ).toBeEnabled();
+    });
+  });
+
+  // ── Built-in entitlement affordances (#284) ────────────────────────
+  //
+  // The same badge, driven off the built-in axis. #214 shipped the badge
+  // for custom packs only; a `standard`-tier org listing `entity_management`
+  // as an ordinary built-in is the silent state this removes.
+
+  describe("built-in toolpack entitlement affordances (#284)", () => {
+    it("badges built-in rows whose slug is unentitled", () => {
+      renderUI({
+        toolpacks: PACKS,
+        entitledBuiltinSlugs: new Set(["data_query"]),
+      });
+
+      // `statistics` and `financial` are outside the set; `data_query` is in.
+      expect(screen.getAllByText("Inactive on your plan")).toHaveLength(2);
+    });
+
+    it("leaves entitled built-in rows unbadged", () => {
+      renderUI({
+        toolpacks: PACKS,
+        entitledBuiltinSlugs: new Set([
+          "data_query",
+          "statistics",
+          "financial",
+        ]),
+      });
+
+      expect(
+        screen.queryByText("Inactive on your plan")
+      ).not.toBeInTheDocument();
+    });
+
+    it("passes the row's entitlement into the metadata modal", () => {
+      renderUI({
+        toolpacks: PACKS,
+        selected: PACKS[1], // statistics — outside the set below
+        entitledBuiltinSlugs: new Set(["data_query"]),
+      });
+
+      expect(screen.getByTestId("toolpack-plan-notice")).toBeInTheDocument();
     });
   });
 });

@@ -40,6 +40,19 @@ describe("DefaultStationCardUI", () => {
     expect(screen.getByText("Sales data analysis station")).toBeInTheDocument();
   });
 
+  // #284: a pack the plan no longer includes stays listed but reads as inert.
+  it("should render an unentitled tool pack as an inert chip", () => {
+    render(
+      <DefaultStationCardUI
+        {...defaultProps}
+        entitledBuiltinSlugs={new Set(["data_query"])}
+      />
+    );
+    const inert = document.querySelectorAll('[data-entitled="false"]');
+    expect(inert.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Data Query")).toBeInTheDocument();
+  });
+
   it("should render tool packs as chips", () => {
     render(<DefaultStationCardUI {...defaultProps} />);
     expect(screen.getByText("Data Query")).toBeInTheDocument();

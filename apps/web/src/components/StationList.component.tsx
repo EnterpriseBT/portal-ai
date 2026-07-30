@@ -24,6 +24,11 @@ import StarOutlineIcon from "@mui/icons-material/StarOutline";
 import DataResult from "./DataResult.component";
 import { SyncTotal } from "./SyncTotal.component";
 import { ToolPackChip } from "./ToolPackChip.component";
+import {
+  ALL_BUILTIN_SLUGS,
+  isBuiltinPackEntitled,
+} from "../utils/tool-packs.util";
+import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { sdk } from "../api/sdk";
 
 // ── Data list component ─────────────────────────────────────────────
@@ -62,6 +67,13 @@ export interface StationCardUIProps {
   onSetDefault: (station: Station) => void;
   onOpen: (station: Station) => void;
   onDelete: (station: Station) => void;
+  /**
+   * Built-in pack slugs the org's tier includes (#284). Chips for packs
+   * outside the set render inert with the reason named — the pack stays
+   * visible, since a downgrade legitimately leaves it attached. Defaults to
+   * every built-in (fail open).
+   */
+  entitledBuiltinSlugs?: ReadonlySet<string>;
 }
 
 export const StationCardUI: React.FC<StationCardUIProps> = ({
@@ -70,6 +82,7 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
   onSetDefault,
   onOpen,
   onDelete,
+  entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
 }) => {
   const actions: ActionSuiteItem[] = [
     ...(!isDefault
@@ -122,7 +135,11 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
             value: (
               <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
                 {(station.enabledToolpacks ?? []).map((pack) => (
-                  <ToolPackChip key={pack} pack={pack} />
+                  <ToolPackChip
+                    key={pack}
+                    pack={pack}
+                    entitled={isBuiltinPackEntitled(pack, entitledBuiltinSlugs)}
+                  />
                 ))}
               </Stack>
             ),
@@ -145,6 +162,13 @@ export interface StationListUIProps {
   onDelete: (station: Station) => void;
   /** When true, shows a "no results" message instead of the full empty state. */
   hasActiveFilters?: boolean;
+  /**
+   * Built-in pack slugs the org's tier includes (#284). Chips for packs
+   * outside the set render inert with the reason named — the pack stays
+   * visible, since a downgrade legitimately leaves it attached. Defaults to
+   * every built-in (fail open).
+   */
+  entitledBuiltinSlugs?: ReadonlySet<string>;
 }
 
 export const StationListUI: React.FC<StationListUIProps> = ({
@@ -154,6 +178,7 @@ export const StationListUI: React.FC<StationListUIProps> = ({
   onOpen,
   onDelete,
   hasActiveFilters,
+  entitledBuiltinSlugs,
 }) => {
   if (stations.length === 0) {
     return hasActiveFilters ? (
@@ -177,6 +202,7 @@ export const StationListUI: React.FC<StationListUIProps> = ({
           onSetDefault={onSetDefault}
           onOpen={onOpen}
           onDelete={onDelete}
+          entitledBuiltinSlugs={entitledBuiltinSlugs}
         />
       ))}
     </Stack>
@@ -201,31 +227,37 @@ export const StationListConnected: React.FC<StationListConnectedProps> = ({
   onOpen,
   onDelete,
   hasActiveFilters,
-}) => (
-  <OrgData>
-    {(orgResult) => (
-      <StationDataList query={query}>
-        {(listResult) => (
-          <SyncTotal total={listResult.data?.total} setTotal={setTotal}>
-            <DataResult results={{ list: listResult, org: orgResult }}>
-              {(data) => {
-                const list = data.list as unknown as StationListResponsePayload;
-                const org = data.org as unknown as OrganizationGetResponse;
-                return (
-                  <StationListUI
-                    stations={list.stations}
-                    defaultStationId={org.organization.defaultStationId}
-                    onSetDefault={onSetDefault}
-                    onOpen={onOpen}
-                    onDelete={onDelete}
-                    hasActiveFilters={hasActiveFilters}
-                  />
-                );
-              }}
-            </DataResult>
-          </SyncTotal>
-        )}
-      </StationDataList>
-    )}
-  </OrgData>
-);
+}) => {
+  // #284: one shared usage-query read for every card's chips.
+  const { entitledSlugs: entitledBuiltinSlugs } = useBuiltinEntitlements();
+  return (
+    <OrgData>
+      {(orgResult) => (
+        <StationDataList query={query}>
+          {(listResult) => (
+            <SyncTotal total={listResult.data?.total} setTotal={setTotal}>
+              <DataResult results={{ list: listResult, org: orgResult }}>
+                {(data) => {
+                  const list =
+                    data.list as unknown as StationListResponsePayload;
+                  const org = data.org as unknown as OrganizationGetResponse;
+                  return (
+                    <StationListUI
+                      stations={list.stations}
+                      defaultStationId={org.organization.defaultStationId}
+                      onSetDefault={onSetDefault}
+                      onOpen={onOpen}
+                      onDelete={onDelete}
+                      hasActiveFilters={hasActiveFilters}
+                      entitledBuiltinSlugs={entitledBuiltinSlugs}
+                    />
+                  );
+                }}
+              </DataResult>
+            </SyncTotal>
+          )}
+        </StationDataList>
+      )}
+    </OrgData>
+  );
+};

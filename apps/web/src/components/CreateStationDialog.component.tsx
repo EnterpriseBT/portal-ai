@@ -3,7 +3,7 @@ import React, { useMemo, useState } from "react";
 import { z } from "zod";
 import type { CreateStationBody, Toolpack } from "@portalai/core/contracts";
 import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
-import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
+import { Box, Button, Modal, Stack, Typography } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 import Autocomplete from "@mui/material/Autocomplete";
 import Alert from "@mui/material/Alert";
@@ -19,7 +19,12 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
-import { ToolPackUtil } from "../utils/tool-packs.util";
+import {
+  ALL_BUILTIN_SLUGS,
+  isBuiltinPackEntitled,
+  ToolPackUtil,
+  UNENTITLED_PACK_REASON,
+} from "../utils/tool-packs.util";
 import { detectToolpackCollisions } from "../utils/toolpack-collisions.util";
 import { sdk } from "../api/sdk";
 
@@ -59,6 +64,14 @@ export interface CreateStationDialogProps {
   onSubmit: (body: CreateStationBody) => void;
   isPending: boolean;
   serverError: ServerError | null;
+  /**
+   * Built-in pack slugs the org's tier includes (#284). Packs outside the
+   * set render visible but unselectable with the reason named — never
+   * filtered out, which is the silent behavior this replaces. Defaults to
+   * every built-in so a caller without the entitlement query in scope
+   * fails open; the server 403 is the real gate.
+   */
+  entitledBuiltinSlugs?: ReadonlySet<string>;
 }
 
 export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
@@ -67,6 +80,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
   onSubmit,
   isPending,
   serverError,
+  entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
 }) => {
   const [form, setForm] = useState<StationFormState>(INITIAL_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
@@ -205,6 +219,31 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
           options={allOptions}
           getOptionLabel={(o) => ToolPackUtil.getLabel(o, customLabels)}
           groupBy={(o) => (o.startsWith("org:") ? "Custom" : "Built-in")}
+          getOptionDisabled={(o) =>
+            !isBuiltinPackEntitled(o, entitledBuiltinSlugs)
+          }
+          renderOption={(props, option) => {
+            const { key, ...optionProps } =
+              props as React.HTMLAttributes<HTMLLIElement> & {
+                key?: React.Key;
+              };
+            const unentitled = !isBuiltinPackEntitled(
+              option,
+              entitledBuiltinSlugs
+            );
+            return (
+              <Box component="li" key={key} {...optionProps}>
+                <Stack spacing={0}>
+                  <span>{ToolPackUtil.getLabel(option, customLabels)}</span>
+                  {unentitled && (
+                    <Typography variant="caption" color="text.secondary">
+                      {UNENTITLED_PACK_REASON}
+                    </Typography>
+                  )}
+                </Stack>
+              </Box>
+            );
+          }}
           value={form.toolPacks}
           onChange={(_, newValue) => handleChange("toolPacks", newValue)}
           onBlur={() => handleBlur("toolPacks")}

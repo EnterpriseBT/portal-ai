@@ -34,7 +34,12 @@ export interface BuiltinEntitlements {
  */
 export function useBuiltinEntitlements(): BuiltinEntitlements {
   const usageResult = sdk.organizations.usage();
-  const builtinToolpacks = usageResult.data?.tier.entitlements.builtinToolpacks;
+  // Guard every level, not just `data`: a payload carrying a `tier` without
+  // `entitlements` must fail open like any other missing data. Chaining only
+  // on `data` turns a partial response into a crash in whatever view mounted
+  // the hook — the opposite of the fail-open contract above.
+  const builtinToolpacks =
+    usageResult.data?.tier?.entitlements?.builtinToolpacks;
 
   return useMemo(() => {
     const entitledSlugs: ReadonlySet<string> = builtinToolpacks

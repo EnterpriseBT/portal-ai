@@ -157,4 +157,68 @@ describe("EditStationDialog", () => {
     const nameInput = screen.getByLabelText(/Name/);
     expect(nameInput).toBeRequired();
   });
+
+  // ── Unentitled built-in packs (#284) ───────────────────────────────
+
+  describe("entitlements", () => {
+    const entitled = new Set(["data_query", "web_search"]);
+
+    const openPicker = () => {
+      // mouseDown alone opens the listbox — a following click would toggle
+      // it shut again. Query by placeholder: once open, MUI renders a second
+      // /Tool Packs/ match (the floating label).
+      fireEvent.mouseDown(screen.getByPlaceholderText("Select tool packs..."));
+    };
+
+    it("offers an unentitled built-in as visible, disabled, and reasoned", async () => {
+      render(
+        <EditStationDialog {...defaultProps} entitledBuiltinSlugs={entitled} />
+      );
+      openPicker();
+
+      await waitFor(() => {
+        expect(screen.getByText("Entity Management")).toBeInTheDocument();
+      });
+      const option = screen.getByText("Entity Management").closest("li")!;
+      expect(option).toHaveAttribute("aria-disabled", "true");
+      expect(
+        screen.getAllByText("Not included in your plan").length
+      ).toBeGreaterThanOrEqual(1);
+    });
+
+    it("leaves entitled built-ins selectable", async () => {
+      render(
+        <EditStationDialog {...defaultProps} entitledBuiltinSlugs={entitled} />
+      );
+      openPicker();
+
+      await waitFor(() => {
+        expect(screen.getByText("Web Search")).toBeInTheDocument();
+      });
+      const option = screen.getByText("Web Search").closest("li")!;
+      expect(option).not.toHaveAttribute("aria-disabled", "true");
+    });
+
+    it("keeps an already-attached unentitled pack selected and removable", async () => {
+      // The downgrade case: `statistics` is on the station but no longer in
+      // the plan. Disabling governs adding, never keeping or removing — a
+      // downgrade must not make the station un-editable.
+      const onSubmit = jest.fn();
+      render(
+        <EditStationDialog
+          {...defaultProps}
+          onSubmit={onSubmit}
+          entitledBuiltinSlugs={entitled}
+        />
+      );
+
+      const chip = screen.getByText("Statistics").closest(".MuiChip-root")!;
+      expect(chip).toBeInTheDocument();
+
+      fireEvent.click(chip.querySelector("[data-testid='CancelIcon']")!);
+      await waitFor(() => {
+        expect(screen.queryByText("Statistics")).not.toBeInTheDocument();
+      });
+    });
+  });
 });

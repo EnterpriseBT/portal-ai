@@ -2,12 +2,25 @@ import React from "react";
 
 import Chip from "@mui/material/Chip";
 import type { ChipProps } from "@mui/material/Chip";
+import Tooltip from "@mui/material/Tooltip";
 
 import { ToolPackIconUtil } from "../utils/tool-pack-icons.util";
-import { ToolPackUtil } from "../utils/tool-packs.util";
+import {
+  ToolPackUtil,
+  UNENTITLED_PACK_REASON,
+  UNENTITLED_PACK_TOOLTIP,
+} from "../utils/tool-packs.util";
 
 export interface ToolPackChipProps extends Omit<ChipProps, "icon"> {
   pack: string;
+  /**
+   * Whether the org's plan includes this pack (#284). `false` renders the
+   * chip muted with a tooltip and an `aria-label` naming the limit — the
+   * pack stays named and visible, because a station can legitimately carry
+   * a pack a later downgrade excluded. Defaults to `true`, so every
+   * existing call site is unchanged.
+   */
+  entitled?: boolean;
 }
 
 /**
@@ -23,16 +36,33 @@ export const ToolPackChip: React.FC<ToolPackChipProps> = ({
   size = "small",
   variant = "outlined",
   label,
+  entitled = true,
   ...rest
 }) => {
   const IconComponent = ToolPackIconUtil.getIcon(pack);
-  return (
+  const resolvedLabel = label ?? ToolPackUtil.getLabel(pack);
+  const chip = (
     <Chip
       icon={React.createElement(IconComponent, { fontSize: "small" })}
-      label={label ?? ToolPackUtil.getLabel(pack)}
+      label={resolvedLabel}
       size={size}
       variant={variant}
+      {...(entitled
+        ? {}
+        : {
+            "data-entitled": "false",
+            "aria-label": `${resolvedLabel} — ${UNENTITLED_PACK_REASON}`,
+            sx: { opacity: 0.6, borderStyle: "dashed" },
+          })}
       {...rest}
     />
+  );
+
+  // The tooltip is the reason's visual home; the aria-label above carries it
+  // for assistive tech, since a Chip is not focusable on its own.
+  return entitled ? (
+    chip
+  ) : (
+    <Tooltip title={UNENTITLED_PACK_TOOLTIP}>{chip}</Tooltip>
   );
 };

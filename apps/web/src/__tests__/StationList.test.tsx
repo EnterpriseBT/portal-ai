@@ -52,6 +52,25 @@ describe("StationCardUI", () => {
     expect(screen.getByText("Statistics")).toBeInTheDocument();
   });
 
+  // #284: a pack the plan no longer includes stays listed but reads as inert.
+  it("should render an unentitled tool pack as an inert chip", () => {
+    render(
+      <StationCardUI
+        {...defaultCardProps}
+        entitledBuiltinSlugs={new Set(["data_query"])}
+      />
+    );
+    // Both packs still named; only the unentitled one is marked.
+    expect(screen.getByText("Data Query")).toBeInTheDocument();
+    expect(screen.getByText("Statistics")).toBeInTheDocument();
+    const inert = document.querySelectorAll('[data-entitled="false"]');
+    expect(inert).toHaveLength(1);
+    expect(inert[0]).toHaveAttribute(
+      "aria-label",
+      "Statistics — Not included in your plan"
+    );
+  });
+
   it("should show Default badge when isDefault is true", () => {
     render(<StationCardUI {...defaultCardProps} isDefault={true} />);
     expect(screen.getByTestId("default-badge")).toBeInTheDocument();

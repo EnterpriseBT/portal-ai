@@ -40,6 +40,40 @@ describe("ToolPackChip", () => {
     expect(screen.getByTestId("ExtensionOutlinedIcon")).toBeInTheDocument();
   });
 
+  // ── Unentitled variant (#284) ─────────────────────────────────────
+  //
+  // An attached pack the plan no longer includes must read as inert
+  // wherever it renders, without disappearing — the chip still names the
+  // pack, and the reason is reachable by tooltip and by screen reader.
+
+  describe("entitled", () => {
+    it("renders exactly as before when the prop is omitted", () => {
+      render(<ToolPackChip pack="entity_management" />);
+      expect(screen.getByText("Entity Management")).toBeInTheDocument();
+      expect(screen.getByTestId("HubOutlinedIcon")).toBeInTheDocument();
+      expect(
+        document.querySelector('[data-entitled="false"]')
+      ).not.toBeInTheDocument();
+    });
+
+    it("marks the chip inert and names the limit when entitled is false", () => {
+      render(<ToolPackChip pack="entity_management" entitled={false} />);
+      const chip = document.querySelector('[data-entitled="false"]');
+      expect(chip).toBeInTheDocument();
+      expect(chip).toHaveAttribute(
+        "aria-label",
+        "Entity Management — Not included in your plan"
+      );
+    });
+
+    it("keeps the pack label and icon when unentitled", () => {
+      render(<ToolPackChip pack="entity_management" entitled={false} />);
+      // The pack is still named — inert, not hidden.
+      expect(screen.getByText("Entity Management")).toBeInTheDocument();
+      expect(screen.getByTestId("HubOutlinedIcon")).toBeInTheDocument();
+    });
+  });
+
   it("forwards Chip props such as onDelete for use as an Autocomplete tag", () => {
     const onDelete = jest.fn();
     render(<ToolPackChip pack="statistics" onDelete={onDelete} />);

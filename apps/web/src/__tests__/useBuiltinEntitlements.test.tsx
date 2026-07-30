@@ -95,6 +95,19 @@ describe("useBuiltinEntitlements (#284)", () => {
     expect(screen.getByTestId("entity-mgmt").textContent).toBe("true");
   });
 
+  it("fails open on a payload whose tier carries no entitlements", () => {
+    // A partial usage payload (older response shape, partially hydrated
+    // cache) must degrade to fail-open, not throw inside the mounting view.
+    mockUsage.mockReturnValue(loaded({ tier: { tier: "standard" } }));
+
+    render(<Probe />);
+
+    expect(screen.getByTestId("slugs").textContent).toBe(
+      [...ALL_BUILTIN_SLUGS].sort().join(",")
+    );
+    expect(screen.getByTestId("entity-mgmt").textContent).toBe("true");
+  });
+
   it("fails open when the query errors — a failed side query never forbids work", () => {
     mockUsage.mockReturnValue(errored());
 

@@ -38,6 +38,7 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { useAuthFetch, toServerError } from "../utils/api.util";
 
 // ── Station data item component ─────────────────────────────────────
@@ -81,6 +82,9 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   const orgResult = sdk.organizations.current();
   const defaultStationId =
     orgResult.data?.organization.defaultStationId ?? null;
+  // #284: one read drives both the attached-pack chips and the edit picker.
+  const { entitledSlugs: entitledBuiltinSlugs, isEntitled } =
+    useBuiltinEntitlements();
   const isDefaultStation = defaultStationId === stationId;
 
   const [editOpen, setEditOpen] = useState(false);
@@ -213,6 +217,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                     <ToolPackChipWithMetadata
                                       key={pack}
                                       pack={pack}
+                                      entitled={isEntitled(pack)}
                                     />
                                   )
                                 )}
@@ -334,6 +339,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                   </Stack>
                   {editOpen && (
                     <EditStationDialog
+                      entitledBuiltinSlugs={entitledBuiltinSlugs}
                       key={stationId}
                       open={editOpen}
                       onClose={() => setEditOpen(false)}
