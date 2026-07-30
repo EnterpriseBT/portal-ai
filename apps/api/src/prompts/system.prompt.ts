@@ -456,13 +456,16 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "if the value is negative, say it went down.",
     // Three branches, not two (#284): a plan limit is not a product gap, and
     // neither is a station that was never configured with the pack.
-    "- **If no tool fits, say so plainly — and say WHY.** If the capability " +
-      'is listed under "Not Included In This Plan" below, say it is not ' +
-      "included in the organization's current plan and point at Settings → " +
-      "Subscription & Billing. Otherwise the station simply doesn't have a " +
-      "tool for it (or the data doesn't fit one) — say that instead. Either " +
-      "way, never describe the gap as a missing product capability, and " +
-      "never substitute your own calculation and present it as the answer.",
+    "- **If no tool fits, say so plainly — and say WHY.** First check the " +
+      '"Not Included In This Plan" section below: it lists each excluded ' +
+      "pack **and the capability it would give you**. If the request needs " +
+      "one of those capabilities, say it is not included in the " +
+      "organization's current plan and point at Settings → Subscription & " +
+      "Billing. Otherwise the station simply doesn't have a tool for it (or " +
+      "the data doesn't fit one) — say that instead. Either way, never " +
+      "describe the gap as a missing product capability, never tell the user " +
+      "to do it manually in the UI as a workaround, and never substitute " +
+      "your own calculation and present it as the answer.",
     "",
     "Your value is choosing the right tool, supplying correct inputs, and " +
       "briefly interpreting what comes back — not being a knowledge source or " +
@@ -634,20 +637,37 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("## Not Included In This Plan");
     lines.push("");
     lines.push(
-      `This station is configured with ${joinPhrases(
-        stationContext.unentitledToolPacks.map((p) => `\`${p}\``)
-      )}, but ${stationContext.unentitledToolPacks.length === 1 ? "that pack is" : "those packs are"} ` +
-        "**not included in the organization's current plan**, so their tools " +
-        "do not exist in this session."
+      "This station is configured with the packs below, but the " +
+        "organization's current plan does **not** include them, so their " +
+        "tools do not exist in this session:"
+    );
+    lines.push("");
+    // Name the CAPABILITY, not just the slug. A slug is not a description: an
+    // agent asked to "create an entity" cannot be expected to map that onto
+    // `entity_management` by itself, and when it can't it falls through to
+    // "this station has no tool for that" and explains a plan limit as a
+    // product gap. That was the observed failure this list exists to prevent.
+    for (const slug of stationContext.unentitledToolPacks) {
+      const section = PACK_PROMPT_SECTIONS[slug as BuiltinToolpackSlug];
+      lines.push(
+        section
+          ? `- \`${slug}\` — would let you **${section.capability}**`
+          : `- \`${slug}\``
+      );
+    }
+    lines.push("");
+    lines.push(
+      "If the user asks for anything in that list, say it is **not included " +
+        "in the organization's current plan** and that the plan can be " +
+        "changed in Settings → Subscription & Billing. Then stop."
     );
     lines.push("");
     lines.push(
-      "If the user asks for something one of those packs would do: say it is " +
-        "not included in the organization's current plan, and that the plan " +
-        "can be changed in Settings → Subscription & Billing. Do NOT describe " +
-        "the capability as missing from the product, do not offer to do it " +
-        "anyway, and do not substitute a different tool as though it were the " +
-        "same thing."
+      "Specifically, do NOT: describe it as missing from the product or from " +
+        "your tools; tell the user to do it manually through the UI instead " +
+        "(that is a punt, not an answer — the plan is the real reason); offer " +
+        "to do it anyway; or substitute a different tool as though it were " +
+        "the same thing. Naming the plan is the whole answer."
     );
     lines.push("");
   }

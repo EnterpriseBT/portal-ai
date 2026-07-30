@@ -651,10 +651,17 @@ describe("buildSystemPrompt — capability surface is entitlement-driven (#284)"
     }
   });
 
-  it("a configured-but-unentitled pack contributes nothing to the prompt", () => {
+  it("a configured-but-unentitled pack is never OFFERED, only disclaimed", () => {
     // The reported bug, as a test: entity_management configured on a
     // standard-tier station meant the prompt described write tools that
     // buildAnalyticsTools had already stripped from the same session.
+    //
+    // "Contributes nothing" is too blunt an assertion: the capability MUST be
+    // named inside the plan block (naming it as unavailable is the opposite of
+    // claiming it — and withholding the name is what made the agent explain a
+    // plan limit as a product gap). What must not happen is the pack's
+    // guidance rendering, or its capability appearing in the role intro's
+    // claim sentence.
     const prompt = buildSystemPrompt(
       makeContext({
         effectiveToolPacks: ["data_query"],
@@ -662,10 +669,52 @@ describe("buildSystemPrompt — capability surface is entitlement-driven (#284)"
       })
     );
 
-    for (const marker of PACK_PROMPT_SECTIONS.entity_management.markers) {
-      expect(prompt).not.toContain(marker);
-    }
     expect(prompt).not.toContain("## Entity Management Notes");
+    expect(prompt).not.toContain("### Creating a new entity");
+
+    const claim = prompt.split("## Current time")[0];
+    const capability = PACK_PROMPT_SECTIONS.entity_management.capability;
+    expect(claim).not.toContain(capability);
+
+    const planBlock = prompt.slice(
+      prompt.indexOf("## Not Included In This Plan")
+    );
+    expect(planBlock).toContain(capability);
+  });
+
+  it("names each unentitled pack's capability, not just its slug", () => {
+    // Regression (smoke §7): the block listed bare slugs, so an agent asked to
+    // "create an entity" could not map the request onto `entity_management`,
+    // fell through to the station-has-no-tool branch, and told the user to do
+    // it manually in the UI — the exact framing this ticket removes.
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["data_query"],
+        unentitledToolPacks: ["entity_management", "visualize"],
+      })
+    );
+
+    expect(prompt).toContain(
+      `\`entity_management\` — would let you **${PACK_PROMPT_SECTIONS.entity_management.capability}**`
+    );
+    expect(prompt).toContain(
+      `\`visualize\` — would let you **${PACK_PROMPT_SECTIONS.visualize.capability}**`
+    );
+  });
+
+  it("forbids the UI punt when a capability is plan-excluded", () => {
+    // The anti-punt rule lived only inside entity_management's own guidance,
+    // which is not rendered when the pack is unentitled — so the one
+    // instruction that would have prevented the observed reply vanished
+    // exactly when it was needed.
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["data_query"],
+        unentitledToolPacks: ["entity_management"],
+      })
+    );
+    expect(prompt).toMatch(/manually through the UI instead/i);
+    expect(prompt).toMatch(/punt, not an answer/i);
   });
 
   it("names the unentitled packs and the upgrade path when the plan excludes some", () => {
