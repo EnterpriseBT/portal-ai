@@ -187,6 +187,9 @@ describe("filterGlossary", () => {
       [
         "Custom Toolpack",
         "Pinned Result",
+        // #284: plan entitlement is an Analytics concept — a tool pack can be
+        // attached but inactive on the plan.
+        "Plan Entitlement",
         "Portal",
         "Portal Message",
         "Portal Result",

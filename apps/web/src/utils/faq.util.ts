@@ -153,6 +153,14 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     relatedGlossaryTerms: ["Tool Pack", "Station", "Portal"],
   },
   {
+    question:
+      "Why is a tool pack on my station greyed out, and why won't the assistant use it?",
+    answer:
+      "That pack isn't included in your current plan. Plans decide which tool packs are available, and a station can keep a pack that a later plan change excluded — so instead of removing it, we mark it inactive: the chip stays visible but dimmed, the pack is badged \"Inactive on your plan\" on the Toolpacks page, and it can't be added to another station until the plan includes it. Its tools are absent from portal sessions, which is why the assistant will tell you the capability isn't on your plan rather than pretending it doesn't exist. Nothing was deleted, and nothing needs re-attaching: change the plan in Settings → Subscription & Billing and the pack is live again in your next portal session.",
+    category: FAQCategory.Analytics,
+    relatedGlossaryTerms: ["Plan Entitlement", "Tool Pack", "Station"],
+  },
+  {
     question: "How do I save results from a portal session?",
     answer:
       "When the assistant returns a chart, table, or text block you want to keep, click the pin action on that portal result. Pinned results show up on your dashboard and on the Pinned Results page so you can return to them without rerunning the conversation.",
