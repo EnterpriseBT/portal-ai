@@ -16,6 +16,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
+import { EntitlementService } from "../services/entitlement.service.js";
 import { stations, organizations, portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { SystemUtilities } from "../utils/system.util.js";
@@ -62,6 +63,45 @@ async function parseToolpackRefs(
     }
   }
   return { ok: true, builtinSlugs, customIds };
+}
+
+/**
+ * Reject built-in slugs the org's tier doesn't include (#284).
+ *
+ * Runs over **newly added** slugs only. Already-persisted unentitled packs
+ * are tolerated forever: a tier downgrade must never make an existing
+ * station un-editable, and an upgrade must never need a re-attach. That is
+ * the same non-destructive posture #214 took for custom packs.
+ *
+ * Returns the `ApiError` to hand to `next()`, or null when everything is
+ * allowed. An empty slug list short-circuits without touching the DB, so a
+ * rename-only PATCH costs no entitlement queries.
+ *
+ * Fail-closed: if the tier policy can't be resolved, `splitBuiltinPacks`
+ * throws and the write fails. A guard that failed open here would recreate
+ * the silent state this ticket removes.
+ */
+async function denyUnentitledBuiltins(
+  organizationId: string,
+  newBuiltinSlugs: string[]
+): Promise<ApiError | null> {
+  if (newBuiltinSlugs.length === 0) return null;
+
+  const { unentitled, tier } = await EntitlementService.splitBuiltinPacks(
+    organizationId,
+    newBuiltinSlugs
+  );
+  if (unentitled.length === 0) return null;
+
+  logger.warn(
+    { organizationId, tier, denied: unentitled },
+    "Station write denied unentitled built-in toolpacks"
+  );
+  return new ApiError(
+    403,
+    ApiCode.STATION_TOOLPACK_NOT_ENTITLED,
+    `Tool pack${unentitled.length === 1 ? "" : "s"} not included in your plan: ${unentitled.join(", ")}`
+  );
 }
 
 // ── GET /api/stations ─────────────────────────────────────────────────────
@@ -356,6 +396,15 @@ stationRouter.get(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: >
+ *           A built-in tool pack in the payload is not included in the
+ *           organization's plan. Only newly attached packs are rejected;
+ *           packs the station already carries stay writable.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -394,6 +443,16 @@ stationRouter.post(
           )
         );
       }
+
+      // #284: every built-in in a create payload is a new attach — including
+      // the `["data_query"]` default above, which is safe only because every
+      // tier entitles it (pinned by a tier-catalog invariant). Guard BEFORE
+      // the station insert so a denial leaves no orphan row.
+      const denial = await denyUnentitledBuiltins(
+        organizationId,
+        refs.builtinSlugs
+      );
+      if (denial) return next(denial);
 
       const factory = new StationModelFactory();
       const model = factory.create(userId);
@@ -535,6 +594,15 @@ stationRouter.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       403:
+ *         description: >
+ *           A built-in tool pack in the payload is not included in the
+ *           organization's plan. Only newly attached packs are rejected;
+ *           packs the station already carries stay writable.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -588,6 +656,22 @@ stationRouter.patch(
           builtinSlugs: refs.builtinSlugs,
           customIds: refs.customIds,
         };
+
+        // #284: only NEWLY added built-ins are gated. Diff the payload against
+        // what's already persisted (the same read GET performs) so re-sending
+        // or removing an already-attached unentitled pack keeps working.
+        const existingRows =
+          await DbService.repository.stationToolpacks.findByStationId(id);
+        const existingBuiltins = new Set(
+          existingRows
+            .map((r) => r.builtinSlug)
+            .filter((slug): slug is string => slug !== null)
+        );
+        const denial = await denyUnentitledBuiltins(
+          organizationId,
+          refs.builtinSlugs.filter((slug) => !existingBuiltins.has(slug))
+        );
+        if (denial) return next(denial);
       }
 
       const updates: Record<string, unknown> = {

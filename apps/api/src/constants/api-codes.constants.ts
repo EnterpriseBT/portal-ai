@@ -238,6 +238,13 @@ export enum ApiCode {
   TOOLPACK_SIGNING_SECRET_NOT_INITIALIZED = "TOOLPACK_SIGNING_SECRET_NOT_INITIALIZED",
   /** Org's tier does not include custom toolpacks (#214). 403. */
   TOOLPACK_NOT_ENTITLED = "TOOLPACK_NOT_ENTITLED",
+  /**
+   * A station write tried to newly attach a built-in pack the org's tier
+   * doesn't include (#284). 403. Only *newly added* slugs are rejected —
+   * already-persisted ones stay writable so a downgrade never makes a
+   * station un-editable.
+   */
+  STATION_TOOLPACK_NOT_ENTITLED = "STATION_TOOLPACK_NOT_ENTITLED",
 
   // Layout Plans (connector_instance_layout_plans)
   LAYOUT_PLAN_INVALID_PAYLOAD = "LAYOUT_PLAN_INVALID_PAYLOAD",

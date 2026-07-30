@@ -10,6 +10,13 @@ jest.unstable_mockModule("../api/sdk", () => ({
     toolpacks: {
       list: mockListResult,
     },
+    // #284: the container reads built-in entitlements itself so a caller
+    // that forgets to pass them can't render a chip that lies. Undefined
+    // data means the hook falls back to "everything entitled" (fail open),
+    // which is the state these resolution cases expect.
+    organizations: {
+      usage: () => ({ data: undefined, isLoading: false, isError: false }),
+    },
   },
   queryKeys: { toolpacks: { root: ["toolpacks"] } },
 }));

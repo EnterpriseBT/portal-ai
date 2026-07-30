@@ -7,6 +7,7 @@ import {
 import type { Toolpack } from "@portalai/core/contracts";
 
 import { sdk } from "../api/sdk";
+import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { ToolPackChip } from "./ToolPackChip.component";
 import { ToolpackMetadataModalUI } from "./ToolpackMetadataModal.component";
 
@@ -55,6 +56,11 @@ export interface ToolPackChipWithMetadataUIProps {
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
+  /**
+   * Whether the org's plan includes this pack (#284). Forwarded to both the
+   * chip (muted + tooltip) and the modal (plan notice). Defaults to `true`.
+   */
+  entitled?: boolean;
 }
 
 /**
@@ -65,7 +71,7 @@ export interface ToolPackChipWithMetadataUIProps {
  */
 export const ToolPackChipWithMetadataUI: React.FC<
   ToolPackChipWithMetadataUIProps
-> = ({ pack, toolpack, open, onOpen, onClose }) => {
+> = ({ pack, toolpack, open, onOpen, onClose, entitled = true }) => {
   const clickable = toolpack !== null;
   return (
     <>
@@ -74,11 +80,13 @@ export const ToolPackChipWithMetadataUI: React.FC<
         label={toolpack?.kind === "custom" ? toolpack.name : undefined}
         onClick={clickable ? onOpen : undefined}
         sx={clickable ? { cursor: "pointer" } : undefined}
+        entitled={entitled}
       />
       <ToolpackMetadataModalUI
         toolpack={toolpack}
         open={open}
         onClose={onClose}
+        entitled={entitled}
       />
     </>
   );
@@ -88,6 +96,12 @@ export const ToolPackChipWithMetadataUI: React.FC<
 
 export interface ToolPackChipWithMetadataProps {
   pack: string;
+  /**
+   * Overrides the container's own entitlement read (#284). Views that
+   * already hold the entitled-slug set pass it to avoid re-deriving; the
+   * default is the container's `useBuiltinEntitlements()` read.
+   */
+  entitled?: boolean;
 }
 
 /**
@@ -97,10 +111,11 @@ export interface ToolPackChipWithMetadataProps {
  */
 export const ToolPackChipWithMetadata: React.FC<
   ToolPackChipWithMetadataProps
-> = ({ pack }) => {
+> = ({ pack, entitled }) => {
   const [open, setOpen] = useState(false);
   const listResult = sdk.toolpacks.list();
   const listData = listResult.data;
+  const { isEntitled } = useBuiltinEntitlements();
 
   const toolpack = useMemo(
     () => resolveToolpack(pack, (listData?.toolpacks ?? []) as Toolpack[]),
@@ -114,6 +129,7 @@ export const ToolPackChipWithMetadata: React.FC<
       open={open}
       onOpen={() => setOpen(true)}
       onClose={() => setOpen(false)}
+      entitled={entitled ?? isEntitled(pack)}
     />
   );
 };

@@ -1,6 +1,8 @@
 import { describe, it, expect } from "@jest/globals";
+import { BuiltinToolpackSlugSchema } from "@portalai/core/registries";
 import {
   buildSystemPrompt,
+  PACK_PROMPT_SECTIONS,
   type StationContext,
 } from "../../prompts/system.prompt.js";
 
@@ -13,6 +15,10 @@ function makeContext(overrides: Partial<StationContext> = {}): StationContext {
     stationId: "station-1",
     stationName: "Test Station",
     organizationTimezone: "UTC",
+    // #284: the prompt gates on EFFECTIVE packs (configured ∩ entitled).
+    // `unentitledToolPacks` defaults to none so existing cases describe a
+    // fully-entitled station, exactly as they did pre-rename.
+    unentitledToolPacks: [],
     entities: [
       {
         id: "entity-1",
@@ -56,7 +62,7 @@ function makeContext(overrides: Partial<StationContext> = {}): StationContext {
       },
     ],
     entityGroups: [],
-    toolPacks: ["data_query"],
+    effectiveToolPacks: ["data_query"],
     ...overrides,
   };
 }
@@ -91,7 +97,7 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
   it("never embeds connectorEntityId / columnDefinitionId / fieldMappingId / capability markers (those moved to the tool)", () => {
     const prompt = buildSystemPrompt(
       makeContext({
-        toolPacks: ["entity_management"],
+        effectiveToolPacks: ["entity_management"],
         entityCapabilities: {
           "entity-1": { read: true, write: true, push: false },
           "entity-2": { read: true, write: false, push: false },
@@ -117,7 +123,9 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
     ["financial"],
     ["entity_management"],
   ])("states the route-to-a-tool role when %s is enabled", (pack) => {
-    const prompt = buildSystemPrompt(makeContext({ toolPacks: [pack] }));
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: [pack] })
+    );
     expect(prompt).toContain("## Your role: route to a tool");
     expect(prompt).toMatch(/tool-caller/i);
     // the load-bearing prohibitions
@@ -128,7 +136,7 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
 
   it("is present even with a minimal toolpack set", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query"] })
+      makeContext({ effectiveToolPacks: ["data_query"] })
     );
     expect(prompt).toContain("## Your role: route to a tool");
   });
@@ -137,7 +145,7 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
 describe("buildSystemPrompt — entity management notes", () => {
   it('includes "Entity Management Notes" section when entity_management in toolPacks', () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] })
+      makeContext({ effectiveToolPacks: ["data_query", "entity_management"] })
     );
 
     expect(prompt).toContain("## Entity Management Notes");
@@ -148,7 +156,7 @@ describe("buildSystemPrompt — entity management notes", () => {
 
   it("documents normalizedKey concept", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] })
+      makeContext({ effectiveToolPacks: ["entity_management"] })
     );
 
     expect(prompt).toContain("normalizedKey");
@@ -157,7 +165,7 @@ describe("buildSystemPrompt — entity management notes", () => {
 
   it("documents validationPattern and canonicalFormat on column definitions", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] })
+      makeContext({ effectiveToolPacks: ["entity_management"] })
     );
 
     expect(prompt).toContain("validationPattern");
@@ -166,7 +174,7 @@ describe("buildSystemPrompt — entity management notes", () => {
 
   it("documents field mapping attributes: required, defaultValue, format, enumValues", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] })
+      makeContext({ effectiveToolPacks: ["entity_management"] })
     );
 
     expect(prompt).toContain("normalizedKey");
@@ -177,7 +185,7 @@ describe("buildSystemPrompt — entity management notes", () => {
 
   it("does not reference currency type", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] })
+      makeContext({ effectiveToolPacks: ["entity_management"] })
     );
 
     expect(prompt).toContain("no `currency` type");
@@ -186,7 +194,7 @@ describe("buildSystemPrompt — entity management notes", () => {
 
   it('omits "Entity Management Notes" when entity_management not in toolPacks', () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query"] })
+      makeContext({ effectiveToolPacks: ["data_query"] })
     );
 
     expect(prompt).not.toContain("Entity Management Notes");
@@ -221,15 +229,15 @@ describe("buildSystemPrompt — response style", () => {
   });
 
   it("includes ## Response Style for every toolPack composition", () => {
-    const compositions: StationContext["toolPacks"][] = [
+    const compositions: StationContext["effectiveToolPacks"][] = [
       [],
       ["data_query"],
       ["entity_management"],
       ["data_query", "entity_management"],
     ];
 
-    for (const toolPacks of compositions) {
-      const prompt = buildSystemPrompt(makeContext({ toolPacks }));
+    for (const effectiveToolPacks of compositions) {
+      const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks }));
       expect(prompt).toContain("## Response Style");
     }
   });
@@ -237,7 +245,7 @@ describe("buildSystemPrompt — response style", () => {
   it("places ## Response Style after all other sections", () => {
     const prompt = buildSystemPrompt(
       makeContext({
-        toolPacks: ["data_query", "entity_management"],
+        effectiveToolPacks: ["data_query", "entity_management"],
         entityGroups: [
           {
             id: "eg-1",
@@ -290,14 +298,28 @@ describe("buildSystemPrompt — response style", () => {
       "Skip post-ambles",
       "Summary:",
       "Key takeaways:",
-      "hypothesis_test",
-      "web_search",
-      "resolve_identity",
       "Q3 revenue was $1.24M",
     ];
 
     for (const phrase of invariants) {
       expect(prompt).toContain(phrase);
+    }
+  });
+
+  // #284: the interpretive-output sentence used to name hypothesis_test,
+  // web_search and resolve_identity unconditionally — on a station with
+  // neither the statistics nor the web_search pack. Those names are now
+  // assembled from the effective packs, so they are asserted against a
+  // context that actually provides them.
+  it("names interpretive tools for the packs that provide them", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["data_query", "statistics", "web_search"],
+      })
+    );
+
+    for (const tool of ["hypothesis_test", "web_search", "resolve_identity"]) {
+      expect(prompt).toContain(tool);
     }
   });
 
@@ -320,7 +342,7 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
   // Case 74
   it("no longer references the AlaSQL metadata tables", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] })
+      makeContext({ effectiveToolPacks: ["data_query", "entity_management"] })
     );
     // The AlaSQL surface used bare names like `_connector_instances`,
     // `_connector_entities`, etc. as the table identifier. They must
@@ -335,7 +357,7 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
   // Case 75
   it("still surfaces the synthetic _record_id and _connector_entity_id columns", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] })
+      makeContext({ effectiveToolPacks: ["data_query", "entity_management"] })
     );
     expect(prompt).toContain("_record_id");
     expect(prompt).toContain("_connector_entity_id");
@@ -344,7 +366,7 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
   // Case 76
   it("includes the PostgreSQL-compatible SQL guidance block when data_query is enabled", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query"] })
+      makeContext({ effectiveToolPacks: ["data_query"] })
     );
     expect(prompt).toContain("## SQL Guidance");
     expect(prompt).toContain("PostgreSQL-compatible SQL");
@@ -360,7 +382,7 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
 
   it("omits the SQL guidance block when data_query is not enabled", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] })
+      makeContext({ effectiveToolPacks: ["entity_management"] })
     );
     expect(prompt).not.toContain("## SQL Guidance");
   });
@@ -368,7 +390,9 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
   // #269 — visualize_d3 needs SQL, so the guidance also applies when the
   // `visualize` pack is enabled even without `data_query`.
   it("includes SQL guidance + visualize_d3 charting guidance when only visualize is enabled", () => {
-    const prompt = buildSystemPrompt(makeContext({ toolPacks: ["visualize"] }));
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["visualize"] })
+    );
     expect(prompt).toContain("## SQL Guidance");
     expect(prompt).toContain("visualize_d3");
     // The agent supplies an instruction (intent), not a program.
@@ -377,7 +401,7 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
 
   it("drops the AlaSQL `[bracket]` example query in favour of a double-quoted one", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] })
+      makeContext({ effectiveToolPacks: ["data_query", "entity_management"] })
     );
     expect(prompt).not.toContain("FROM [table]");
     expect(prompt).toMatch(/FROM "contacts"/);
@@ -388,7 +412,7 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
   it("no longer embeds capability tags in the prompt (moved to station_context)", () => {
     const prompt = buildSystemPrompt(
       makeContext({
-        toolPacks: ["data_query", "entity_management"],
+        effectiveToolPacks: ["data_query", "entity_management"],
         entityCapabilities: {
           "entity-1": { read: true, write: true, push: false },
           "entity-2": { read: true, write: false, push: false },
@@ -412,14 +436,14 @@ describe("buildSystemPrompt — schema introspection meta views (#87)", () => {
   });
 
   it("omits the Schema Introspection section entirely when data_query is disabled", () => {
-    const prompt = buildSystemPrompt(makeContext({ toolPacks: [] }));
+    const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks: [] }));
     expect(prompt).not.toContain("## Schema Introspection");
     expect(prompt).not.toContain("_meta_entities");
   });
 
   it("tells the agent to re-introspect after creating an entity mid-session", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] })
+      makeContext({ effectiveToolPacks: ["data_query", "entity_management"] })
     );
     // Specifically calls out the failure mode the user hit: created
     // entity, can't find it via static prompt listing.
@@ -436,7 +460,7 @@ describe("buildSystemPrompt — schema introspection meta views (#87)", () => {
 
   it("includes the entity-creation guidance with the right failure-mode behavior", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] })
+      makeContext({ effectiveToolPacks: ["data_query", "entity_management"] })
     );
     expect(prompt).toContain("### Creating a new entity");
     // The critical anti-pattern from the user's failing session:
@@ -450,14 +474,14 @@ describe("buildSystemPrompt — schema introspection meta views (#87)", () => {
 
   it("omits entity-creation guidance when entity_management is NOT enabled", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query"] })
+      makeContext({ effectiveToolPacks: ["data_query"] })
     );
     expect(prompt).not.toContain("### Creating a new entity");
   });
 
   it("does NOT mention a _meta_connector_instances view (instances are listed statically in the prompt instead)", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] })
+      makeContext({ effectiveToolPacks: ["data_query", "entity_management"] })
     );
     expect(prompt).not.toContain("_meta_connector_instances");
   });
@@ -467,7 +491,7 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
   it("mentions the count of attached connector instances + points at station_context", () => {
     const prompt = buildSystemPrompt(
       makeContext({
-        toolPacks: ["data_query", "entity_management"],
+        effectiveToolPacks: ["data_query", "entity_management"],
         connectorInstances: [
           {
             id: "ci-1",
@@ -495,7 +519,7 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
   it("instructs the agent to call the tool — never invent or ask the user", () => {
     const prompt = buildSystemPrompt(
       makeContext({
-        toolPacks: ["data_query", "entity_management"],
+        effectiveToolPacks: ["data_query", "entity_management"],
         connectorInstances: [
           {
             id: "ci-1",
@@ -513,7 +537,7 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
   it("omits the section when entity_management is NOT enabled", () => {
     const prompt = buildSystemPrompt(
       makeContext({
-        toolPacks: ["data_query"],
+        effectiveToolPacks: ["data_query"],
         connectorInstances: [
           {
             id: "ci-1",
@@ -530,7 +554,7 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
   it("omits the section when connectorInstances is empty", () => {
     const prompt = buildSystemPrompt(
       makeContext({
-        toolPacks: ["data_query", "entity_management"],
+        effectiveToolPacks: ["data_query", "entity_management"],
         connectorInstances: [],
       })
     );
@@ -570,7 +594,223 @@ describe("buildSystemPrompt — Current time (#90)", () => {
   it("renders ## Current time even when no toolpacks are enabled", () => {
     // Temporal context is universal — not gated on data_query /
     // entity_management.
-    const prompt = buildSystemPrompt(makeContext({ toolPacks: [] }));
+    const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks: [] }));
     expect(prompt).toContain("## Current time");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Capability honesty (#284)
+//
+// The agent must never claim, offer, or describe a capability its effective
+// pack set doesn't include — and re-tiering must change what it claims with
+// no prompt edit. That's enforced structurally rather than by review:
+// PACK_PROMPT_SECTIONS is exhaustive over the slug union (a new pack is a
+// compile error until it declares an entry), and the guard below asserts each
+// pack's markers appear IFF the pack is effective.
+// ---------------------------------------------------------------------------
+
+const ALL_SLUGS = BuiltinToolpackSlugSchema.options;
+
+describe("buildSystemPrompt — capability surface is entitlement-driven (#284)", () => {
+  it.each(ALL_SLUGS)(
+    "GUARD: %s's markers appear iff the pack is effective",
+    (slug) => {
+      const section = PACK_PROMPT_SECTIONS[slug];
+      expect(section.markers.length).toBeGreaterThan(0);
+
+      const withPack = buildSystemPrompt(
+        makeContext({ effectiveToolPacks: [slug] })
+      );
+      for (const marker of section.markers) {
+        expect(withPack).toContain(marker);
+      }
+
+      // Every OTHER pack effective — this pack's markers must be absent.
+      const withoutPack = buildSystemPrompt(
+        makeContext({
+          effectiveToolPacks: ALL_SLUGS.filter((s) => s !== slug),
+        })
+      );
+      for (const marker of section.markers) {
+        expect(withoutPack).not.toContain(marker);
+      }
+    }
+  );
+
+  it("capability phrases are pairwise distinct and non-substring", () => {
+    // The guard above compares strings, so an overlapping phrase would let
+    // one pack satisfy another's marker (or fail it spuriously).
+    const phrases = ALL_SLUGS.map((s) => PACK_PROMPT_SECTIONS[s].capability);
+    expect(new Set(phrases).size).toBe(phrases.length);
+    for (const a of phrases) {
+      for (const b of phrases) {
+        if (a === b) continue;
+        expect(a.includes(b)).toBe(false);
+      }
+    }
+  });
+
+  it("a configured-but-unentitled pack is never OFFERED, only disclaimed", () => {
+    // The reported bug, as a test: entity_management configured on a
+    // standard-tier station meant the prompt described write tools that
+    // buildAnalyticsTools had already stripped from the same session.
+    //
+    // "Contributes nothing" is too blunt an assertion: the capability MUST be
+    // named inside the plan block (naming it as unavailable is the opposite of
+    // claiming it — and withholding the name is what made the agent explain a
+    // plan limit as a product gap). What must not happen is the pack's
+    // guidance rendering, or its capability appearing in the role intro's
+    // claim sentence.
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["data_query"],
+        unentitledToolPacks: ["entity_management"],
+      })
+    );
+
+    expect(prompt).not.toContain("## Entity Management Notes");
+    expect(prompt).not.toContain("### Creating a new entity");
+
+    const claim = prompt.split("## Current time")[0];
+    const capability = PACK_PROMPT_SECTIONS.entity_management.capability;
+    expect(claim).not.toContain(capability);
+
+    const planBlock = prompt.slice(
+      prompt.indexOf("## Not Included In This Plan")
+    );
+    expect(planBlock).toContain(capability);
+  });
+
+  it("names each unentitled pack's capability, not just its slug", () => {
+    // Regression (smoke §7): the block listed bare slugs, so an agent asked to
+    // "create an entity" could not map the request onto `entity_management`,
+    // fell through to the station-has-no-tool branch, and told the user to do
+    // it manually in the UI — the exact framing this ticket removes.
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["data_query"],
+        unentitledToolPacks: ["entity_management", "visualize"],
+      })
+    );
+
+    expect(prompt).toContain(
+      `\`entity_management\` — would let you **${PACK_PROMPT_SECTIONS.entity_management.capability}**`
+    );
+    expect(prompt).toContain(
+      `\`visualize\` — would let you **${PACK_PROMPT_SECTIONS.visualize.capability}**`
+    );
+  });
+
+  it("states the plan as settled fact rather than a hedge", () => {
+    // The observed reply hedged — "isn't included in the current plan OR isn't
+    // exposed as a tool here", plus "go check if it's available on your plan".
+    // The prompt knows why the tool is absent; the agent shouldn't equivocate.
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["data_query"],
+        unentitledToolPacks: ["entity_management"],
+      })
+    );
+    expect(prompt).toMatch(/state it as settled fact/i);
+    expect(prompt).toMatch(/do not hedge it as one possible explanation/i);
+  });
+
+  it("does not forbid pointing the user at the UI, but does forbid 'the product cannot do this'", () => {
+    // Toolpack entitlements gate the AGENT's tools, not the product: entity and
+    // column creation stay available in the UI on every plan
+    // (connector-entity.router.ts has no entitlement gate). Telling the user
+    // they can do it themselves is true and useful — an earlier revision of
+    // this prompt banned it, which traded a good sentence for a worse answer.
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["data_query"],
+        unentitledToolPacks: ["entity_management"],
+      })
+    );
+    expect(prompt).toMatch(/not missing from the product/i);
+    expect(prompt).toMatch(/saying so is helpful and welcome/i);
+    expect(prompt).not.toMatch(/punt, not an answer/i);
+    expect(prompt).not.toMatch(/manually through the UI instead/i);
+  });
+
+  it("renders no plan-limit block when nothing is unentitled", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["data_query"] })
+    );
+    expect(prompt).not.toContain("## Not Included In This Plan");
+  });
+
+  it("degrades cleanly with zero effective packs", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: [], unentitledToolPacks: [] })
+    );
+
+    // The pack-independent spine survives…
+    expect(prompt).toContain("## Your role: route to a tool");
+    expect(prompt).toMatch(/Don't fabricate results/i);
+    expect(prompt).toMatch(/If no tool fits/i);
+    // …and no capability is claimed.
+    for (const slug of ALL_SLUGS) {
+      for (const marker of PACK_PROMPT_SECTIONS[slug].markers) {
+        expect(prompt).not.toContain(marker);
+      }
+    }
+  });
+
+  it("gives the no-tool-fits guidance all three branches", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["data_query"],
+        unentitledToolPacks: ["entity_management"],
+      })
+    );
+
+    // effective → use it; unentitled → plan limit; neither → station gap.
+    expect(prompt).toMatch(/If no tool fits/i);
+    expect(prompt).toMatch(/not included in the organization's current plan/i);
+    expect(prompt).toMatch(/station (simply )?doesn't have/i);
+  });
+
+  it("assembles Response Style's rendered-block list from effective packs only", () => {
+    const withCharts = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["data_query", "visualize"] })
+    );
+    expect(withCharts).toContain("charts");
+
+    const withoutCharts = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["data_query"] })
+    );
+    expect(withoutCharts).toContain("## Response Style");
+    expect(withoutCharts).not.toMatch(/feed of rendered blocks[^.]*charts/);
+  });
+
+  it("nests the entity-creation walkthrough under SQL availability", () => {
+    // Pre-#284 nesting, preserved: the walkthrough reads the meta-view
+    // catalog, which only exists when SQL authoring does.
+    const withSql = buildSystemPrompt(
+      makeContext({
+        effectiveToolPacks: ["data_query", "entity_management"],
+      })
+    );
+    expect(withSql).toContain("### Creating a new entity");
+
+    const withoutSql = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["entity_management"] })
+    );
+    expect(withoutSql).toContain("## Entity Management Notes");
+    expect(withoutSql).not.toContain("### Creating a new entity");
+  });
+
+  it("names interpretive-output tools only for effective packs", () => {
+    const withStats = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["statistics"] })
+    );
+    expect(withStats).toContain("hypothesis_test");
+
+    const withoutStats = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["data_query"] })
+    );
+    expect(withoutStats).not.toContain("hypothesis_test");
   });
 });

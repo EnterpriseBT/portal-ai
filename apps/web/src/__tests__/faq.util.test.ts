@@ -65,8 +65,9 @@ describe("FAQ_ENTRIES", () => {
     "What are entity groups and when should I use them?",
     'What is a "link field" in an entity group?',
     "How do tags work?",
-    // Analytics & Portals (3)
+    // Analytics & Portals (4)
     "What are tool packs?",
+    "Why is a tool pack on my station greyed out, and why won't the assistant use it?",
     "How do I save results from a portal session?",
     "What's the difference between a portal and a portal result?",
     // Jobs & Background Tasks (2)
@@ -74,8 +75,8 @@ describe("FAQ_ENTRIES", () => {
     "Why did my job fail?",
   ];
 
-  it("includes every question listed in the audit doc (21 total)", () => {
-    expect(expectedQuestions).toHaveLength(21);
+  it("includes every question listed in the audit doc (22 total)", () => {
+    expect(expectedQuestions).toHaveLength(22);
     for (const question of expectedQuestions) {
       const match = FAQ_ENTRIES.find((e) => e.question === question);
       expect(match).toBeDefined();

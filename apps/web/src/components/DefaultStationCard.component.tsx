@@ -20,6 +20,11 @@ import Link from "@mui/material/Link";
 import DataResult from "./DataResult.component";
 import { OrgData } from "./StationList.component";
 import { ToolPackChip } from "./ToolPackChip.component";
+import {
+  ALL_BUILTIN_SLUGS,
+  isBuiltinPackEntitled,
+} from "../utils/tool-packs.util";
+import { useBuiltinEntitlements } from "../utils/use-builtin-entitlements.util";
 import { sdk } from "../api/sdk";
 
 // ── Station data fetch ──────────────────────────────────────────────
@@ -41,6 +46,12 @@ export interface DefaultStationCardUIProps {
   onLaunchPortal: (stationId: string) => void;
   onChangeDefault: () => void;
   onViewStation?: (stationId: string) => void;
+  /**
+   * Built-in pack slugs the org's tier includes (#284). Chips for packs
+   * outside the set render inert with the reason named. Defaults to every
+   * built-in (fail open).
+   */
+  entitledBuiltinSlugs?: ReadonlySet<string>;
 }
 
 export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
@@ -48,6 +59,7 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
   onLaunchPortal,
   onChangeDefault,
   onViewStation,
+  entitledBuiltinSlugs = ALL_BUILTIN_SLUGS,
 }) => {
   if (!station) {
     return (
@@ -116,7 +128,14 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
               value: (
                 <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
                   {(station.enabledToolpacks ?? []).map((pack) => (
-                    <ToolPackChip key={pack} pack={pack} />
+                    <ToolPackChip
+                      key={pack}
+                      pack={pack}
+                      entitled={isBuiltinPackEntitled(
+                        pack,
+                        entitledBuiltinSlugs
+                      )}
+                    />
                   ))}
                 </Stack>
               ),
@@ -140,46 +159,51 @@ export interface DefaultStationCardConnectedProps {
 
 export const DefaultStationCardConnected: React.FC<
   DefaultStationCardConnectedProps
-> = ({ onLaunchPortal, onChangeDefault, onViewStation }) => (
-  <OrgData>
-    {(orgResult) => (
-      <DataResult results={{ org: orgResult }}>
-        {(data) => {
-          const org = data.org as unknown as OrganizationGetResponse;
-          const defaultStationId = org.organization.defaultStationId;
+> = ({ onLaunchPortal, onChangeDefault, onViewStation }) => {
+  // #284: entitlements for the attached-pack chips below.
+  const { entitledSlugs: entitledBuiltinSlugs } = useBuiltinEntitlements();
+  return (
+    <OrgData>
+      {(orgResult) => (
+        <DataResult results={{ org: orgResult }}>
+          {(data) => {
+            const org = data.org as unknown as OrganizationGetResponse;
+            const defaultStationId = org.organization.defaultStationId;
 
-          if (!defaultStationId) {
+            if (!defaultStationId) {
+              return (
+                <DefaultStationCardUI
+                  station={null}
+                  onLaunchPortal={onLaunchPortal}
+                  onChangeDefault={onChangeDefault}
+                />
+              );
+            }
+
             return (
-              <DefaultStationCardUI
-                station={null}
-                onLaunchPortal={onLaunchPortal}
-                onChangeDefault={onChangeDefault}
-              />
+              <StationData id={defaultStationId}>
+                {(stationResult) => (
+                  <DataResult results={{ station: stationResult }}>
+                    {(stationData) => {
+                      const payload =
+                        stationData.station as unknown as StationGetResponsePayload;
+                      return (
+                        <DefaultStationCardUI
+                          station={payload.station}
+                          onLaunchPortal={onLaunchPortal}
+                          onChangeDefault={onChangeDefault}
+                          onViewStation={onViewStation}
+                          entitledBuiltinSlugs={entitledBuiltinSlugs}
+                        />
+                      );
+                    }}
+                  </DataResult>
+                )}
+              </StationData>
             );
-          }
-
-          return (
-            <StationData id={defaultStationId}>
-              {(stationResult) => (
-                <DataResult results={{ station: stationResult }}>
-                  {(stationData) => {
-                    const payload =
-                      stationData.station as unknown as StationGetResponsePayload;
-                    return (
-                      <DefaultStationCardUI
-                        station={payload.station}
-                        onLaunchPortal={onLaunchPortal}
-                        onChangeDefault={onChangeDefault}
-                        onViewStation={onViewStation}
-                      />
-                    );
-                  }}
-                </DataResult>
-              )}
-            </StationData>
-          );
-        }}
-      </DataResult>
-    )}
-  </OrgData>
-);
+          }}
+        </DataResult>
+      )}
+    </OrgData>
+  );
+};

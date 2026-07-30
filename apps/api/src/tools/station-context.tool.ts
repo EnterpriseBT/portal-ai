@@ -3,6 +3,7 @@ import { tool } from "ai";
 
 import { AnalyticsService } from "../services/analytics.service.js";
 import { DbService } from "../services/db.service.js";
+import { EntitlementService } from "../services/entitlement.service.js";
 import { loadConnectorInstanceContexts } from "../services/portal.service.js";
 import { wideTableStatementCache } from "../services/wide-table-statement.cache.js";
 import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
@@ -41,6 +42,7 @@ const InputSchema = z.object({
         "entityGroups",
         "capabilities",
         "columnDefinitions",
+        "toolPacks",
       ])
     )
     .optional()
@@ -108,6 +110,20 @@ interface StationContextResponse {
     type: string;
     description: string | null;
   }>;
+  /**
+   * The station's built-in tool packs, split by what the organization's plan
+   * includes (#284).
+   *
+   * `effective` packs have live tools in this session. `unentitled` packs are
+   * attached to the station but excluded by the plan — their tools do not
+   * exist here, and asking for what they'd do is a plan limit, not a missing
+   * product capability. Reported as a field because an agent can misread
+   * prose but not a value it has to read.
+   */
+  toolPacks?: {
+    effective: string[];
+    unentitled: string[];
+  };
 }
 
 export class StationContextTool extends Tool<typeof InputSchema> {
@@ -120,7 +136,11 @@ export class StationContextTool extends Tool<typeof InputSchema> {
     "`columnDefinitionId` / `fieldMappingId` / `sourceField`), connector " +
     "instances (with `connectorInstanceId`), entity groups, and the " +
     "organization's `columnDefinitions` catalog (the `columnDefinitionId`s " +
-    "available to `field_mapping_create`). **Call this before any tool that " +
+    "available to `field_mapping_create`), and `toolPacks` — the station's " +
+    "packs split into `effective` (their tools exist in this session) and " +
+    "`unentitled` (attached to the station but not included in the " +
+    "organization's plan, so their tools do NOT exist here). **Call this " +
+    "before any tool that " +
     "asks for a `connectorEntityId`, `connectorInstanceId`, " +
     "`columnDefinitionId`, `fieldMappingId`, or wide-column name** — do not " +
     "invent values, do not ask the user, and do not rely on the static " +
@@ -147,6 +167,7 @@ export class StationContextTool extends Tool<typeof InputSchema> {
             "entityGroups",
             "capabilities",
             "columnDefinitions",
+            "toolPacks",
           ]
         );
 
@@ -164,6 +185,25 @@ export class StationContextTool extends Tool<typeof InputSchema> {
             timezone,
           },
         };
+
+        // #284: the station's configured packs, split against the plan. Read
+        // here rather than threaded in, so the tool tells the truth no matter
+        // which session built it.
+        if (sections.has("toolPacks")) {
+          const packRows =
+            await DbService.repository.stationToolpacks.findByStationId(
+              stationId
+            );
+          const configured = packRows
+            .map((r) => r.builtinSlug)
+            .filter((slug): slug is string => slug !== null);
+          const { effective, unentitled } =
+            await EntitlementService.splitBuiltinPacks(
+              organizationId,
+              configured
+            );
+          response.toolPacks = { effective, unentitled };
+        }
 
         // Single round-trip for entities + groups (and connector
         // instances are loaded out-of-band; cheap).

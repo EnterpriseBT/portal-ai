@@ -47,6 +47,8 @@ const {
   connectorDefinitions,
   connectorInstances,
   stationInstances,
+  stationToolpacks,
+  tiers,
 } = schema;
 
 const now = Date.now();
@@ -367,6 +369,229 @@ describe("Station Router", () => {
   });
 
   // ── DELETE /api/stations/:id ──────────────────────────────────────
+
+  // ── Built-in toolpack entitlement guard (#284) ────────────────────
+  //
+  // Newly ADDED unentitled built-ins are rejected; already-persisted ones
+  // are tolerated forever, so a downgrade never makes a station
+  // un-editable and an upgrade needs no re-attach. Uses a dedicated
+  // restricted tier row + org tier flips — the shared `standard` row is
+  // never mutated, so the slug-keyed resolveTier cache stays clean.
+
+  describe("entitlement guard (#284)", () => {
+    const RESTRICTED_SLUG = "test-station-noent-tier";
+
+    async function seedRestrictedTier() {
+      await (db as ReturnType<typeof drizzle>)
+        .insert(tiers)
+        .values({
+          id: `tier-${Date.now()}-station-noent`,
+          created: Date.now(),
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+          slug: RESTRICTED_SLUG,
+          displayName: "Data Query Only (test)",
+          periodKind: "monthly",
+          periodAnchorDay: 1,
+          overage: "hard-deny",
+          meteredUnitsPerPeriod: 1000,
+          meteredRatePerMin: 20,
+          expensiveUnitsPerPeriod: 100,
+          expensiveRatePerMin: 5,
+          // Only data_query — every other built-in is unentitled.
+          builtinToolpacks: ["data_query"],
+          customToolpacks: false,
+        } as never)
+        .onConflictDoNothing();
+    }
+
+    async function setOrgTier(organizationId: string, slug: string) {
+      await (db as ReturnType<typeof drizzle>)
+        .update(organizations)
+        .set({ tier: slug })
+        .where(eq(organizations.id, organizationId));
+    }
+
+    async function livePackRows(stationId: string) {
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stationToolpacks)
+        .where(eq(stationToolpacks.stationId, stationId));
+      return rows.filter((r) => r.deleted === null);
+    }
+
+    async function attachPack(stationId: string, slug: string) {
+      await (db as ReturnType<typeof drizzle>).insert(stationToolpacks).values({
+        id: generateId(),
+        stationId,
+        builtinSlug: slug,
+        organizationToolpackId: null,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    }
+
+    /** Seed an org on the restricted tier. */
+    async function seedRestrictedOrg() {
+      const seeded = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      await seedRestrictedTier();
+      await setOrgTier(seeded.organizationId, RESTRICTED_SLUG);
+      return seeded;
+    }
+
+    afterEach(async () => {
+      // The org may still FK-reference the scratch tier — repoint before delete.
+      await (db as ReturnType<typeof drizzle>)
+        .update(organizations)
+        .set({ tier: "standard" });
+      await (db as ReturnType<typeof drizzle>)
+        .delete(tiers)
+        .where(eq(tiers.slug, RESTRICTED_SLUG));
+    });
+
+    // ── POST ────────────────────────────────────────────────────────
+
+    it("403s POST with an unentitled built-in and persists nothing", async () => {
+      const { organizationId } = await seedRestrictedOrg();
+
+      const res = await request(app)
+        .post("/api/stations")
+        .send({
+          name: "Blocked",
+          toolPacks: ["data_query", "entity_management"],
+        })
+        .expect(403);
+
+      expect(res.body.code).toBe(ApiCode.STATION_TOOLPACK_NOT_ENTITLED);
+      expect(res.body.message).toMatch(/entity_management/);
+
+      // No station row, and therefore no toolpack rows — the guard runs
+      // before the insert, not after it.
+      const rows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stations)
+        .where(eq(stations.organizationId, organizationId));
+      expect(rows.filter((r) => r.deleted === null)).toHaveLength(0);
+      const packs = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(stationToolpacks);
+      expect(packs).toHaveLength(0);
+    });
+
+    it("201s POST with no toolPacks — the data_query default is entitled on every tier", async () => {
+      await seedRestrictedOrg();
+
+      const res = await request(app)
+        .post("/api/stations")
+        .send({ name: "Default Packs" })
+        .expect(201);
+
+      const packs = await livePackRows(res.body.payload.station.id);
+      expect(packs.map((p) => p.builtinSlug)).toEqual(["data_query"]);
+    });
+
+    // ── PATCH ───────────────────────────────────────────────────────
+
+    it("403s PATCH that adds an unentitled built-in, leaving rows unchanged", async () => {
+      const { organizationId } = await seedRestrictedOrg();
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      await attachPack(station.id, "data_query");
+
+      const res = await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({ toolPacks: ["data_query", "visualize"] })
+        .expect(403);
+
+      expect(res.body.code).toBe(ApiCode.STATION_TOOLPACK_NOT_ENTITLED);
+      const packs = await livePackRows(station.id);
+      expect(packs.map((p) => p.builtinSlug)).toEqual(["data_query"]);
+    });
+
+    it("200s a rename-only PATCH on a station already carrying an unentitled pack", async () => {
+      // The downgrade case: the station keeps working, including edits that
+      // don't touch its packs.
+      const { organizationId } = await seedRestrictedOrg();
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      await attachPack(station.id, "data_query");
+      await attachPack(station.id, "entity_management");
+
+      const res = await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({ name: "Renamed Anyway" })
+        .expect(200);
+
+      expect(res.body.payload.station.name).toBe("Renamed Anyway");
+      const packs = await livePackRows(station.id);
+      expect(packs.map((p) => p.builtinSlug).sort()).toEqual([
+        "data_query",
+        "entity_management",
+      ]);
+    });
+
+    it("200s a PATCH that re-sends an already-persisted unentitled slug", async () => {
+      const { organizationId } = await seedRestrictedOrg();
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      await attachPack(station.id, "data_query");
+      await attachPack(station.id, "entity_management");
+
+      // Nothing is newly added, so nothing is denied.
+      await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({ toolPacks: ["data_query", "entity_management"] })
+        .expect(200);
+
+      const packs = await livePackRows(station.id);
+      expect(packs.map((p) => p.builtinSlug).sort()).toEqual([
+        "data_query",
+        "entity_management",
+      ]);
+    });
+
+    it("lets an unentitled slug be removed, then 403s re-adding it", async () => {
+      const { organizationId } = await seedRestrictedOrg();
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+      await attachPack(station.id, "data_query");
+      await attachPack(station.id, "entity_management");
+
+      // Dropping an unentitled pack is always allowed.
+      await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({ toolPacks: ["data_query"] })
+        .expect(200);
+      expect(
+        (await livePackRows(station.id)).map((p) => p.builtinSlug)
+      ).toEqual(["data_query"]);
+
+      // Re-adding it is a new attach, and denied.
+      const res = await request(app)
+        .patch(`/api/stations/${station.id}`)
+        .send({ toolPacks: ["data_query", "entity_management"] })
+        .expect(403);
+      expect(res.body.code).toBe(ApiCode.STATION_TOOLPACK_NOT_ENTITLED);
+    });
+  });
 
   describe("DELETE /api/stations/:id", () => {
     it("soft-deletes a station", async () => {

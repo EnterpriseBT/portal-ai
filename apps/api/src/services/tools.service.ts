@@ -12,6 +12,7 @@ import { type Tool } from "ai";
 import { AnalyticsService } from "./analytics.service.js";
 import { DbService } from "./db.service.js";
 import { TierService } from "./tier.service.js";
+import { EntitlementService } from "./entitlement.service.js";
 import { wrapWithCostGate, type GateableTool } from "./cost-gate.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import type { CostHint } from "@portalai/core/models";
@@ -427,22 +428,17 @@ export class ToolService {
     // is unentitled legitimately builds a session with system tools only.
     const org = await repo.organizations.findById(organizationId);
     const policy = await TierService.resolveTier(org ?? { tier: "" });
-    const { isBuiltinToolpackSlug } = await import("@portalai/core/registries");
-    const entitledBuiltins = new Set(policy.entitlements.builtinToolpacks);
-    const unknownAllowlisted = policy.entitlements.builtinToolpacks.filter(
-      (s) => !isBuiltinToolpackSlug(s)
-    );
-    if (unknownAllowlisted.length > 0) {
-      logger.warn(
-        { slugs: unknownAllowlisted, tier: policy.tier },
-        "Tier allowlist carries slugs unknown to the toolpack registry; ignoring them"
-      );
-    }
     const entitledCustomPackIds = policy.entitlements.customToolpacks
       ? customPackIds
       : [];
 
-    const toolPacks = builtinSlugs.filter((s) => entitledBuiltins.has(s));
+    // #284: the configured→effective split (and the unknown-slug warn) moved
+    // to EntitlementService, which the station write guard, buildStationContext,
+    // and the station_context tool also read. Same behavior, one definition.
+    const { effective: toolPacks } = await EntitlementService.splitBuiltinPacks(
+      organizationId,
+      builtinSlugs
+    );
     // Station-enabled ∩ tier-entitled packs only. System tools are attached
     // below by their `alwaysAvailable` capability (#121), not via pack
     // membership — never gated by entitlements.

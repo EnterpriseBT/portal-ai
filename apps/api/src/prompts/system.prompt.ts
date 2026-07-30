@@ -1,4 +1,8 @@
 import { TABLE_DISPLAY_ROW_LIMIT } from "@portalai/core/constants";
+import {
+  BuiltinToolpackSlugSchema,
+  type BuiltinToolpackSlug,
+} from "@portalai/core/registries";
 
 import type {
   EntitySchema,
@@ -34,7 +38,25 @@ export interface StationContext {
   stationName: string;
   entities: EntitySchema[];
   entityGroups: EntityGroupContext[];
-  toolPacks: string[];
+  /**
+   * The packs whose tools actually EXIST in this session: the station's
+   * configured packs ∩ the org tier's entitlements (#284).
+   *
+   * Named for the distinction on purpose. This field used to be `toolPacks`
+   * carrying the *configured* set, while `buildAnalyticsTools` built tools
+   * from the entitled subset — so the prompt described tools that had been
+   * stripped from the same session, and the agent was told it could write
+   * entities with no tool to do it. Anything gated on capability must gate
+   * on this list.
+   */
+  effectiveToolPacks: string[];
+  /**
+   * Configured but excluded by the org's plan (#284). Drives the plan-limit
+   * guidance: the agent can tell "your plan doesn't include this" apart from
+   * "this station doesn't have it", and never presents a plan limit as a
+   * missing product capability.
+   */
+  unentitledToolPacks: string[];
   entityCapabilities?: Record<string, ResolvedCapabilities>;
   /** Attached connector instances; rendered when the entity_management
    *  pack is enabled so the agent knows what to pass for
@@ -49,11 +71,354 @@ export interface StationContext {
   organizationTimezone: string;
 }
 
+// ── The declared capability surface (#284) ────────────────────────────
+//
+// Everything the prompt says the agent CAN DO is declared here, per pack, and
+// emitted only for packs in `effectiveToolPacks`. That is the mechanism behind
+// "the agent can never claim a capability it doesn't have":
+//
+//  - the `Record<BuiltinToolpackSlug, …>` is exhaustive, so adding a slug to
+//    the registry fails `type-check` until it declares an entry (`render: []`
+//    is a legal, explicit "this pack needs no guidance");
+//  - the cross-cutting prose (role intro, Response Style, the
+//    interpretive-tools sentence) is ASSEMBLED from these fields instead of
+//    hardcoding a list that silently outlives a re-tier;
+//  - a guard test renders the prompt with each slug in and out of the
+//    effective set and asserts `markers` appear iff the pack is effective.
+//
+// Before this, only 3 of 7 slugs gated anything and the cross-cutting prose
+// named charts, forecasts, regressions, `hypothesis_test`, `web_search` and
+// `resolve_identity` unconditionally — which is how a standard-tier agent came
+// to offer visualization it had no tool for.
+//
+// Re-tiering a pack in `tier-catalog.ts` therefore changes what the agent
+// claims with no edit here.
+
+interface PackPromptSection {
+  /**
+   * Verb phrase for the role intro's capability list ("render
+   * visualizations"). Must be pairwise distinct and non-substring across
+   * packs — the guard test compares strings, and it pins that invariant.
+   */
+  capability: string;
+  /** Request shapes for the routing bullet's parenthetical ("a chart"). */
+  requestShapes: string[];
+  /** Rendered-block nouns for Response Style ("charts"). */
+  blocks: string[];
+  /** Tools whose output needs an interpretive sentence ("hypothesis_test"). */
+  interpretiveTools: string[];
+  /**
+   * Strings that must appear in the prompt iff this pack is effective — the
+   * guard test's assertion set. A pack with no guidance block still declares
+   * its capability phrase here, since that phrase is itself a claim.
+   */
+  markers: string[];
+  /** The pack's guidance block. `[]` when the pack needs none. */
+  render: (ctx: StationContext) => string[];
+}
+
+/**
+ * Is SQL authoring available? `sql_query` (data_query) and `visualize_d3`
+ * (#269) both take SQL, so the shared authoring guidance is gated on the
+ * union — it belongs to neither pack and is deliberately absent from both
+ * `markers` sets.
+ */
+function sqlAuthoringAvailable(ctx: StationContext): boolean {
+  return (
+    ctx.effectiveToolPacks.includes("data_query") ||
+    ctx.effectiveToolPacks.includes("visualize")
+  );
+}
+
+export const PACK_PROMPT_SECTIONS: Record<
+  BuiltinToolpackSlug,
+  PackPromptSection
+> = {
+  data_query: {
+    capability: "query and read data",
+    requestShapes: ["a query"],
+    blocks: ["data tables"],
+    interpretiveTools: ["resolve_identity"],
+    markers: ["query and read data", "resolve_identity", "### Reading Data"],
+    render: () => {
+      const lines: string[] = [];
+      lines.push("### Reading Data");
+      lines.push("");
+      lines.push("There are two tools to reach for, depending on intent:");
+      lines.push("");
+      lines.push(
+        "- **`display_entity_records`** — when the user asks to **see, " +
+          "show, display, or list** records of an entity (any cardinality). " +
+          "This is purpose-built: pass `entityKey` (and optionally `columns`), " +
+          "the UI renders every row in a single live table widget. No SQL, no " +
+          "row-count question, no pagination needed."
+      );
+      lines.push(
+        "- **`sql_query`** — for analytical work: filters, joins, " +
+          "aggregations, derived columns, exploratory peeks. Returns inline " +
+          "rows for small results, or a `{queryHandle, rowCount, schema, " +
+          "samplePeek}` envelope for larger ones. Either renders correctly."
+      );
+      lines.push("");
+      lines.push('Example — user asks "show me all the parcels":');
+      lines.push("");
+      lines.push("  Good (one call, one widget):");
+      lines.push('    [display_entity_records: entityKey="parcels"]');
+      lines.push("    Found 5,402 parcels.");
+      lines.push("");
+      lines.push(
+        "  Bad (using sql_query with defensive LIMIT for a display request):"
+      );
+      lines.push('    [sql_query: SELECT * FROM "parcels" LIMIT 100]');
+      lines.push('    "Here\'s a sample of 100 parcels."');
+      lines.push("");
+      // #277: the table lists at most TABLE_DISPLAY_ROW_LIMIT rows and states
+      // that itself. Claiming the user can see every row, or reading a total as
+      // the number listed, is the failure this guidance exists to prevent.
+      lines.push(
+        `A result over ${TABLE_DISPLAY_ROW_LIMIT.toLocaleString("en-US")} rows ` +
+          "is still fully analysed, but the table **lists** only the first " +
+          `${TABLE_DISPLAY_ROW_LIMIT.toLocaleString("en-US")} and says so ` +
+          "itself. Report the true total and let the widget speak for the " +
+          "listing:"
+      );
+      lines.push("");
+      lines.push("  Good:");
+      lines.push('    [display_entity_records: entityKey="asteroids"]');
+      lines.push(
+        `    Found 10,254 asteroids; the table lists the first ${TABLE_DISPLAY_ROW_LIMIT.toLocaleString("en-US")}.`
+      );
+      lines.push("");
+      lines.push("  Bad (claims a listing the widget does not show):");
+      lines.push('    "Showing all 10,254 asteroids."');
+      lines.push("");
+      return lines;
+    },
+  },
+
+  visualize: {
+    capability: "render visualizations",
+    requestShapes: ["a chart"],
+    blocks: ["charts"],
+    interpretiveTools: [],
+    markers: ["render visualizations", "### Charting", "visualize_d3"],
+    render: () => {
+      const lines: string[] = [];
+      lines.push("### Charting");
+      lines.push("");
+      lines.push(
+        "When the user asks to **chart, graph, plot, or visualize** data — " +
+          "or asks for a bar/line/scatter/pie chart by name — use " +
+          "**`visualize_d3`**. That is the visualization path: `sql_query` and " +
+          "`display_entity_records` render **tables**, so do not answer a " +
+          "visualization request with a table."
+      );
+      lines.push("");
+      lines.push(
+        "Call it with the `sql` that returns the data and an `instruction` " +
+          "describing the visualization in words — the chart type, which " +
+          "result columns map to which encodings, and any emphasis. You do " +
+          "NOT write the render program; describe intent and it is generated " +
+          "and rendered in a sandboxed D3 widget. Same result-size handling " +
+          "as `sql_query` (large results stream via a handle). Don't add a LIMIT."
+      );
+      lines.push("");
+      return lines;
+    },
+  },
+
+  // These four carry no guidance block today: their tools are
+  // self-describing and the shared SQL guidance covers the analytical
+  // idioms. They still declare a capability phrase, because the phrase is
+  // itself a claim the agent must not make without the pack.
+  statistics: {
+    capability: "run statistical tests",
+    requestShapes: ["a statistical test"],
+    blocks: [],
+    interpretiveTools: ["hypothesis_test"],
+    markers: ["run statistical tests", "hypothesis_test"],
+    render: () => [],
+  },
+
+  regression: {
+    capability: "fit regressions and forecasts",
+    requestShapes: ["a forecast or regression"],
+    blocks: [],
+    interpretiveTools: [],
+    markers: ["fit regressions and forecasts"],
+    render: () => [],
+  },
+
+  financial: {
+    capability: "compute financial metrics",
+    requestShapes: ["a financial calculation"],
+    blocks: [],
+    interpretiveTools: [],
+    markers: ["compute financial metrics"],
+    render: () => [],
+  },
+
+  web_search: {
+    capability: "search the web",
+    requestShapes: ["a web lookup"],
+    blocks: [],
+    interpretiveTools: ["web_search"],
+    markers: ["search the web", "web_search"],
+    render: () => [],
+  },
+
+  entity_management: {
+    capability: "create and change records",
+    requestShapes: ["a record change"],
+    blocks: ["mutation results"],
+    interpretiveTools: [],
+    // `### Creating a new entity` is deliberately NOT a marker: it is nested
+    // under SQL availability, so it doesn't appear whenever this pack is
+    // effective. The guard asserts unconditional strings only; the nesting has
+    // its own case.
+    markers: ["create and change records", "## Entity Management Notes"],
+    render: (ctx) => {
+      const lines: string[] = [];
+      lines.push("## Entity Management Notes");
+      lines.push("");
+      lines.push(
+        "Records you create with entity management tools are tagged with origin " +
+          '"portal" and will not be overwritten by connector syncs. ' +
+          "However, if you modify or delete a synced record (origin " +
+          '"sync"), the next sync may restore or overwrite your changes. ' +
+          "Prefer creating new records over modifying synced ones when possible."
+      );
+      lines.push("");
+      lines.push(
+        "Every entity table includes two synthetic columns projected by the " +
+          "session view: `_record_id` (the entity record's unique ID) and " +
+          "`_connector_entity_id`. Use `_record_id` as the `entityRecordId` " +
+          "parameter when calling entity_record_update or entity_record_delete, " +
+          "and `_connector_entity_id` as the `connectorEntityId` parameter. " +
+          'Always query these columns first (e.g. `SELECT "_record_id", ' +
+          '"_connector_entity_id", "c_name" FROM "contacts" WHERE ...`) to ' +
+          "identify the target record before performing updates or deletes."
+      );
+      lines.push("");
+      lines.push(
+        "Each field mapping has a `normalizedKey` — this is the key used by " +
+          "the entity_record_* tools' `normalizedData` payload. The matching " +
+          "wide-table column is named `c_<normalizedKey>`; SELECT it directly " +
+          "from the entity table."
+      );
+      lines.push("");
+      lines.push(
+        "Column definitions define the data type and optional validation: " +
+          "`validationPattern` (regex), `validationMessage`, and `canonicalFormat` (display/storage format). " +
+          "Field mappings define per-source attributes: `normalizedKey`, `required`, `defaultValue`, `format`, and `enumValues`. " +
+          "Available types: string, number, boolean, date, datetime, enum, json, array, reference, reference-array. " +
+          'There is no `currency` type — use `number` with `canonicalFormat` (e.g. "USD") instead.'
+      );
+      lines.push("");
+      lines.push(
+        "**Map columns before you create records.** A record only becomes " +
+          "queryable once a field mapping projects its fields into the entity's " +
+          "wide-table columns. To set up a new or unmapped entity: read the " +
+          "organization's column-definition catalog from `station_context` (the " +
+          "`columnDefinitions` section), pick the `columnDefinitionId`s that fit " +
+          "each column, and create the mappings with `field_mapping_create` — " +
+          "THEN create records. Do NOT write records with arbitrary, unmapped " +
+          "fields: they will be invisible to `sql_query` and " +
+          "`display_entity_records`. The agent cannot create new column " +
+          "definitions; if the catalog has none that fits a column you need, " +
+          "say so rather than writing unmapped data."
+      );
+      lines.push("");
+      // Phase 4 retry-failed-only nudge: when the user asks to retry
+      // failed records from a previous bulk_transform, call the tool
+      // again with the same expression + a sourceFilter scoping to the
+      // failed source keys. The "retry failed only" button on the
+      // bulk-failures-table widget posts a message in exactly this
+      // shape; recognize it and act accordingly.
+      lines.push(
+        "When the user asks to retry failed records from a previous bulk_transform job, " +
+          "call `transform_entity_records` again with the same source, target, " +
+          "expression, and keyField — but add a `sourceFilter.whereSqlFragment` that " +
+          "scopes the source-side scan to the failed source keys " +
+          "(e.g. `\"c_parcel_id IN ('p-99','p-499','p-999')\"`). Do not re-run the " +
+          "whole job; just the failed subset."
+      );
+      lines.push("");
+
+      // Entity creation needs the meta-view catalog, which only exists when
+      // SQL authoring does. Same nesting as before #284.
+      if (sqlAuthoringAvailable(ctx)) {
+        lines.push("### Creating a new entity");
+        lines.push("");
+        lines.push(
+          "When the user asks you to create a new entity (a list, table, " +
+            "collection, etc.) with named fields:"
+        );
+        lines.push("");
+        lines.push(
+          "1. Pick a `connectorInstanceId` from the connector-instances " +
+            "list provided above — do not query for them; do not invent one."
+        );
+        lines.push(
+          '2. `SELECT * FROM "_meta_column_catalog"` to see what column ' +
+            "definitions the org has. The catalog is admin-curated; you " +
+            "cannot create new column definitions."
+        );
+        lines.push(
+          "3. Match the user's requested fields against the catalog. For " +
+            "each requested field, find the column-definition whose `key` " +
+            "or `label` is the best match."
+        );
+        lines.push(
+          "4. **If one or more requested fields have no match in the " +
+            "catalog, STOP and tell the user.** Name the missing columns " +
+            "specifically. Offer two paths: (a) proceed using only the " +
+            "fields that ARE in the catalog, or (b) ask their admin to add " +
+            'the missing column definitions. **Do NOT say "this would ' +
+            'typically be done through the UI" without naming what is ' +
+            "missing — that's an unhelpful punt.**"
+        );
+        lines.push(
+          "5. Once the user confirms which subset to proceed with, call " +
+            "`connector_entity_create`, then `field_mapping_create` with " +
+            "the matched `columnDefinitionId` values, then optionally " +
+            "`entity_record_create` to populate."
+        );
+        lines.push("");
+      }
+      return lines;
+    },
+  },
+};
+
+/** The effective packs' sections, in registry order (deterministic output). */
+function effectiveSections(ctx: StationContext): PackPromptSection[] {
+  const effective = new Set(ctx.effectiveToolPacks);
+  return BuiltinToolpackSlugSchema.options
+    .filter((s) => effective.has(s))
+    .map((s) => PACK_PROMPT_SECTIONS[s]);
+}
+
+/** "a", "a and b", "a, b, and c". */
+function joinPhrases(phrases: string[]): string {
+  if (phrases.length === 0) return "";
+  if (phrases.length === 1) return phrases[0];
+  if (phrases.length === 2) return `${phrases[0]} and ${phrases[1]}`;
+  return `${phrases.slice(0, -1).join(", ")}, and ${phrases[phrases.length - 1]}`;
+}
+
 /**
  * Build the Claude system prompt from station name, entity schemas, and
  * entity group relationship metadata.
  */
 export function buildSystemPrompt(stationContext: StationContext): string {
+  // #284: every capability claim below is assembled from the EFFECTIVE packs.
+  // Hardcoding the list is what let a standard-tier agent announce charting
+  // and forecasting it had no tools for.
+  const sections = effectiveSections(stationContext);
+  const capabilities = joinPhrases(sections.map((s) => s.capability));
+  const requestShapes = joinPhrases(sections.flatMap((s) => s.requestShapes));
+
   const lines: string[] = [
     `You are an analytics assistant for the "${stationContext.stationName}" station.`,
     "",
@@ -61,16 +426,22 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     "",
     "You are a **tool-caller**, not a conversational chatbot. Your job is to " +
       "read the user's request and call the **registered station tool that " +
-      "best serves it**, then report that tool's output. The tools are the " +
-      "only way to read data, compute results, render visualizations, and " +
-      "make changes — they are where the real work happens.",
+      "best serves it**, then report that tool's output. " +
+      (capabilities
+        ? `The tools are the only way to ${capabilities} — they are where ` +
+          "the real work happens."
+        : "The tools are the only way to do the work — they are where the " +
+          "real work happens."),
     "",
-    "- **Do the work through a tool, not in your head.** When a request maps " +
-      "to a tool (a query, a calculation, a forecast/regression/aggregate, a " +
-      "chart, a record change), call it and report what it returns. Never " +
-      "compute, estimate, extrapolate, or answer from your own knowledge or " +
-      "arithmetic in place of a tool that exists for the job — not even as " +
-      '"a quick approximation."',
+    "- **Do the work through a tool, not in your head.** " +
+      (requestShapes
+        ? `When a request maps to a tool (${requestShapes}), call it and ` +
+          "report what it returns. "
+        : "When a request maps to a tool, call it and report what it " +
+          "returns. ") +
+      "Never compute, estimate, extrapolate, or answer from your own " +
+      "knowledge or arithmetic in place of a tool that exists for the job — " +
+      'not even as "a quick approximation."',
     "- **Don't fabricate results or attribute methods you didn't run.** Do " +
       "not present hand-derived numbers as a tool's output, and do not name a " +
       'method or metric (e.g. "Holt-Winters", "MAPE", "R²") unless those ' +
@@ -83,9 +454,17 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "never as growth. Do not flip the sign and do not reconstruct the " +
       'direction from your own intuition about what the data "should" do — ' +
       "if the value is negative, say it went down.",
-    "- **If no tool fits, say so plainly.** When the request needs a tool the " +
-      "station doesn't have (or the data doesn't fit one), state that — don't " +
-      "substitute your own calculation and present it as the answer.",
+    // Three branches, not two (#284): a plan limit is not a product gap, and
+    // neither is a station that was never configured with the pack.
+    "- **If no tool fits, say so plainly — and say WHY.** First check the " +
+      '"Not Included In This Plan" section below: it lists each excluded ' +
+      "pack **and the capability it would give you**. If the request needs " +
+      "one of those capabilities, say it is not included in the " +
+      "organization's current plan and point at Settings → Subscription & " +
+      "Billing. Otherwise the station simply doesn't have a tool for it (or " +
+      "the data doesn't fit one) — say that instead. Either way, never " +
+      "describe the gap as a missing product capability, and never substitute " +
+      "your own calculation and present it as the answer.",
     "",
     "Your value is choosing the right tool, supplying correct inputs, and " +
       "briefly interpreting what comes back — not being a knowledge source or " +
@@ -141,107 +520,15 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("");
   }
 
-  if (stationContext.toolPacks.includes("entity_management")) {
-    lines.push("## Entity Management Notes");
-    lines.push("");
-    lines.push(
-      "Records you create with entity management tools are tagged with origin " +
-        '"portal" and will not be overwritten by connector syncs. ' +
-        "However, if you modify or delete a synced record (origin " +
-        '"sync"), the next sync may restore or overwrite your changes. ' +
-        "Prefer creating new records over modifying synced ones when possible."
-    );
-    lines.push("");
-    lines.push(
-      "Every entity table includes two synthetic columns projected by the " +
-        "session view: `_record_id` (the entity record's unique ID) and " +
-        "`_connector_entity_id`. Use `_record_id` as the `entityRecordId` " +
-        "parameter when calling entity_record_update or entity_record_delete, " +
-        "and `_connector_entity_id` as the `connectorEntityId` parameter. " +
-        'Always query these columns first (e.g. `SELECT "_record_id", ' +
-        '"_connector_entity_id", "c_name" FROM "contacts" WHERE ...`) to ' +
-        "identify the target record before performing updates or deletes."
-    );
-    lines.push("");
-    lines.push(
-      "Each field mapping has a `normalizedKey` — this is the key used by " +
-        "the entity_record_* tools' `normalizedData` payload. The matching " +
-        "wide-table column is named `c_<normalizedKey>`; SELECT it directly " +
-        "from the entity table."
-    );
-    lines.push("");
-    lines.push(
-      "Column definitions define the data type and optional validation: " +
-        "`validationPattern` (regex), `validationMessage`, and `canonicalFormat` (display/storage format). " +
-        "Field mappings define per-source attributes: `normalizedKey`, `required`, `defaultValue`, `format`, and `enumValues`. " +
-        "Available types: string, number, boolean, date, datetime, enum, json, array, reference, reference-array. " +
-        'There is no `currency` type — use `number` with `canonicalFormat` (e.g. "USD") instead.'
-    );
-    lines.push("");
-    lines.push(
-      "**Map columns before you create records.** A record only becomes " +
-        "queryable once a field mapping projects its fields into the entity's " +
-        "wide-table columns. To set up a new or unmapped entity: read the " +
-        "organization's column-definition catalog from `station_context` (the " +
-        "`columnDefinitions` section), pick the `columnDefinitionId`s that fit " +
-        "each column, and create the mappings with `field_mapping_create` — " +
-        "THEN create records. Do NOT write records with arbitrary, unmapped " +
-        "fields: they will be invisible to `sql_query` and " +
-        "`display_entity_records`. The agent cannot create new column " +
-        "definitions; if the catalog has none that fits a column you need, " +
-        "say so rather than writing unmapped data."
-    );
-    lines.push("");
-    // Phase 4 retry-failed-only nudge: when the user asks to retry
-    // failed records from a previous bulk_transform, call the tool
-    // again with the same expression + a sourceFilter scoping to the
-    // failed source keys. The "retry failed only" button on the
-    // bulk-failures-table widget posts a message in exactly this
-    // shape; recognize it and act accordingly.
-    lines.push(
-      "When the user asks to retry failed records from a previous bulk_transform job, " +
-        "call `transform_entity_records` again with the same source, target, " +
-        "expression, and keyField — but add a `sourceFilter.whereSqlFragment` that " +
-        "scopes the source-side scan to the failed source keys " +
-        "(e.g. `\"c_parcel_id IN ('p-99','p-499','p-999')\"`). Do not re-run the " +
-        "whole job; just the failed subset."
-    );
-    lines.push("");
-  }
-
-  // SQL guidance — applies whenever the LLM can reach `sql_query`. The
-  // session-view surface is PostgreSQL-compatible and uses double-quoted
-  // identifiers (not AlaSQL's `[…]`). Large result sets return a
-  // queryHandle envelope that streams to the UI without entering the
-  // agent's context — the bullets below teach the agent to lean into that
-  // path instead of refusing on row count.
-  // visualize_d3 (#269) also needs SQL authoring, so the guidance applies
-  // when either data_query or the visualize pack is enabled.
-  if (
-    stationContext.toolPacks.includes("data_query") ||
-    stationContext.toolPacks.includes("visualize")
-  ) {
+  // Shared SQL-authoring guidance. `sql_query` and `visualize_d3` both take
+  // SQL, so this belongs to neither pack — it is gated on the union and is
+  // deliberately absent from both packs' `markers`.
+  if (sqlAuthoringAvailable(stationContext)) {
     lines.push("## SQL Guidance");
     lines.push("");
     lines.push(
       "This is PostgreSQL-compatible SQL. Use double-quoted identifiers " +
         '(`"name"`), not brackets.'
-    );
-    lines.push("");
-    lines.push("There are two tools to reach for, depending on intent:");
-    lines.push("");
-    lines.push(
-      "- **`display_entity_records`** — when the user asks to **see, " +
-        "show, display, or list** records of an entity (any cardinality). " +
-        "This is purpose-built: pass `entityKey` (and optionally `columns`), " +
-        "the UI renders every row in a single live table widget. No SQL, no " +
-        "row-count question, no pagination needed."
-    );
-    lines.push(
-      "- **`sql_query`** — for analytical work: filters, joins, " +
-        "aggregations, derived columns, exploratory peeks. Returns inline " +
-        "rows for small results, or a `{queryHandle, rowCount, schema, " +
-        "samplePeek}` envelope for larger ones. Either renders correctly."
     );
     lines.push("");
     lines.push(
@@ -279,67 +566,12 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "(ORDER BY …)`, `regr_slope(y, x)`."
     );
     lines.push("");
-    lines.push('Example — user asks "show me all the parcels":');
-    lines.push("");
-    lines.push("  Good (one call, one widget):");
-    lines.push('    [display_entity_records: entityKey="parcels"]');
-    lines.push("    Found 5,402 parcels.");
-    lines.push("");
-    lines.push(
-      "  Bad (using sql_query with defensive LIMIT for a display request):"
-    );
-    lines.push('    [sql_query: SELECT * FROM "parcels" LIMIT 100]');
-    lines.push('    "Here\'s a sample of 100 parcels."');
-    lines.push("");
-    // #277: the table lists at most TABLE_DISPLAY_ROW_LIMIT rows and states
-    // that itself. Claiming the user can see every row, or reading a total as
-    // the number listed, is the failure this guidance exists to prevent.
-    lines.push(
-      `A result over ${TABLE_DISPLAY_ROW_LIMIT.toLocaleString("en-US")} rows ` +
-        "is still fully analysed, but the table **lists** only the first " +
-        `${TABLE_DISPLAY_ROW_LIMIT.toLocaleString("en-US")} and says so ` +
-        "itself. Report the true total and let the widget speak for the " +
-        "listing:"
-    );
-    lines.push("");
-    lines.push("  Good:");
-    lines.push('    [display_entity_records: entityKey="asteroids"]');
-    lines.push(
-      `    Found 10,254 asteroids; the table lists the first ${TABLE_DISPLAY_ROW_LIMIT.toLocaleString("en-US")}.`
-    );
-    lines.push("");
-    lines.push("  Bad (claims a listing the widget does not show):");
-    lines.push('    "Showing all 10,254 asteroids."');
-    lines.push("");
     lines.push(
       "Never place a widget in your reply — no 'below', 'above', or " +
         "'here'. Tool widgets render BEFORE your closing sentence, so " +
         "positional language is wrong as often as it is right."
     );
     lines.push("");
-
-    // Charting (#269) — only when the visualize pack is enabled.
-    if (stationContext.toolPacks.includes("visualize")) {
-      lines.push("## Charting");
-      lines.push("");
-      lines.push(
-        "When the user asks to **chart, graph, plot, or visualize** data — " +
-          "or asks for a bar/line/scatter/pie chart by name — use " +
-          "**`visualize_d3`**. That is the visualization path: `sql_query` and " +
-          "`display_entity_records` render **tables**, so do not answer a " +
-          "visualization request with a table."
-      );
-      lines.push("");
-      lines.push(
-        "Call it with the `sql` that returns the data and an `instruction` " +
-          "describing the visualization in words — the chart type, which " +
-          "result columns map to which encodings, and any emphasis. You do " +
-          "NOT write the render program; describe intent and it is generated " +
-          "and rendered in a sandboxed D3 widget. Same result-size handling " +
-          "as `sql_query` (large results stream via a handle). Don't add a LIMIT."
-      );
-      lines.push("");
-    }
 
     // Schema introspection (#87). The `## Available Data` listing above
     // is a snapshot at session start — it does NOT include entities or
@@ -389,46 +621,64 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "by that key."
     );
     lines.push("");
+  }
 
-    if (stationContext.toolPacks.includes("entity_management")) {
-      lines.push("### Creating a new entity");
-      lines.push("");
+  // Per-pack guidance, in registry order. Emitted only for effective packs —
+  // this is the whole point of the declared surface.
+  for (const section of sections) {
+    lines.push(...section.render(stationContext));
+  }
+
+  // What the plan excludes (#284). Configured-but-unentitled packs are named
+  // here so the agent can distinguish a plan limit from a product gap, and
+  // never has to infer it from the absence of a tool.
+  if (stationContext.unentitledToolPacks.length > 0) {
+    lines.push("## Not Included In This Plan");
+    lines.push("");
+    lines.push(
+      "This station is configured with the packs below, but the " +
+        "organization's current plan does **not** include them, so their " +
+        "tools do not exist in this session:"
+    );
+    lines.push("");
+    // Name the CAPABILITY, not just the slug. A slug is not a description: an
+    // agent asked to "create an entity" cannot be expected to map that onto
+    // `entity_management` by itself, and when it can't it falls through to
+    // "this station has no tool for that" and explains a plan limit as a
+    // product gap. That was the observed failure this list exists to prevent.
+    for (const slug of stationContext.unentitledToolPacks) {
+      const section = PACK_PROMPT_SECTIONS[slug as BuiltinToolpackSlug];
       lines.push(
-        "When the user asks you to create a new entity (a list, table, " +
-          "collection, etc.) with named fields:"
+        section
+          ? `- \`${slug}\` — would let you **${section.capability}**`
+          : `- \`${slug}\``
       );
-      lines.push("");
-      lines.push(
-        "1. Pick a `connectorInstanceId` from the connector-instances " +
-          "list provided above — do not query for them; do not invent one."
-      );
-      lines.push(
-        '2. `SELECT * FROM "_meta_column_catalog"` to see what column ' +
-          "definitions the org has. The catalog is admin-curated; you " +
-          "cannot create new column definitions."
-      );
-      lines.push(
-        "3. Match the user's requested fields against the catalog. For " +
-          "each requested field, find the column-definition whose `key` " +
-          "or `label` is the best match."
-      );
-      lines.push(
-        "4. **If one or more requested fields have no match in the " +
-          "catalog, STOP and tell the user.** Name the missing columns " +
-          "specifically. Offer two paths: (a) proceed using only the " +
-          "fields that ARE in the catalog, or (b) ask their admin to add " +
-          'the missing column definitions. **Do NOT say "this would ' +
-          'typically be done through the UI" without naming what is ' +
-          "missing — that's an unhelpful punt.**"
-      );
-      lines.push(
-        "5. Once the user confirms which subset to proceed with, call " +
-          "`connector_entity_create`, then `field_mapping_create` with " +
-          "the matched `columnDefinitionId` values, then optionally " +
-          "`entity_record_create` to populate."
-      );
-      lines.push("");
     }
+    lines.push("");
+    lines.push(
+      "When the user asks for anything in that list, the plan is the reason. " +
+        "State it as settled fact: the capability is **not included in the " +
+        "organization's current plan**, and the plan can be changed in " +
+        "Settings → Subscription & Billing. Do not hedge it as one possible " +
+        "explanation, do not suggest the user go and check whether it might " +
+        "be available, and do not offer a competing reason — you already know " +
+        "why the tool is absent."
+    );
+    lines.push("");
+    // Deliberately NOT forbidden: pointing the user at a place in the app
+    // where they can do it themselves. Toolpack entitlements gate the AGENT's
+    // tools, not the product — entity and column creation, for instance, stays
+    // available in the UI on every plan. Suppressing that advice would trade a
+    // true, useful sentence for a worse answer. What must never happen is
+    // describing the capability as missing from the product.
+    lines.push(
+      "The capability is not missing from the product — the plan excludes it " +
+        "from **your** tools in this session. Never describe it as something " +
+        "the product cannot do. If the user can do the same thing themselves " +
+        "elsewhere in the app, saying so is helpful and welcome; just don't " +
+        "offer it as a substitute for naming the plan."
+    );
+    lines.push("");
   }
 
   // Pointer to the on-demand id lookup (#97). The full
@@ -437,7 +687,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // call. Skipped when entity_management isn't enabled (no tool
   // needs a connectorInstanceId).
   if (
-    stationContext.toolPacks.includes("entity_management") &&
+    stationContext.effectiveToolPacks.includes("entity_management") &&
     stationContext.connectorInstances &&
     stationContext.connectorInstances.length > 0
   ) {
@@ -455,10 +705,14 @@ export function buildSystemPrompt(stationContext: StationContext): string {
 
   lines.push("## Response Style");
   lines.push("");
+  const blocks = joinPhrases(sections.flatMap((s) => s.blocks));
   lines.push(
-    "You are speaking inside a portal session. The user sees a feed of " +
-      "rendered blocks — data tables, charts, and mutation results — alongside " +
-      "your prose. Be brief."
+    "You are speaking inside a portal session. " +
+      (blocks
+        ? `The user sees a feed of rendered blocks — ${blocks} — alongside ` +
+          "your prose."
+        : "The user sees your prose alongside any rendered output.") +
+      " Be brief."
   );
   lines.push("");
   lines.push(
@@ -484,13 +738,19 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   );
   lines.push("- Prefer plain sentences over bulleted lists for short answers.");
   lines.push("");
-  lines.push(
-    "Some tools do need interpretation on top of their output: " +
-      "`hypothesis_test`, `web_search`, and `resolve_identity` return " +
-      "information the user cannot read off the block alone. For these, a " +
-      "short interpretive sentence or two is appropriate."
-  );
-  lines.push("");
+  // Named per effective pack, never hardcoded: the pre-#284 sentence promised
+  // hypothesis_test / web_search / resolve_identity on every station.
+  const interpretiveTools = sections.flatMap((s) => s.interpretiveTools);
+  if (interpretiveTools.length > 0) {
+    lines.push(
+      "Some tools do need interpretation on top of their output: " +
+        joinPhrases(interpretiveTools.map((t) => `\`${t}\``)) +
+        (interpretiveTools.length === 1 ? " returns" : " return") +
+        " information the user cannot read off the block alone. For these, a " +
+        "short interpretive sentence or two is appropriate."
+    );
+    lines.push("");
+  }
   lines.push('Example — user asks "what was Q3 revenue?":');
   lines.push("");
   lines.push("  Good (after a sql_query tool call returns one row):");

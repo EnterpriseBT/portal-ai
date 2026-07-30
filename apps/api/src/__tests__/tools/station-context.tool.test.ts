@@ -7,6 +7,7 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 const mockFindStationById = jest.fn<() => Promise<unknown>>();
 const mockFindOrgById = jest.fn<() => Promise<unknown>>();
 const mockFindColumnDefs = jest.fn<() => Promise<unknown[]>>();
+const mockFindStationToolpacks = jest.fn<() => Promise<unknown[]>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -14,6 +15,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       stations: { findById: mockFindStationById },
       organizations: { findById: mockFindOrgById },
       columnDefinitions: { findByOrganizationId: mockFindColumnDefs },
+      stationToolpacks: { findByStationId: mockFindStationToolpacks },
     },
   },
 }));
@@ -47,6 +49,19 @@ const mockResolveEntityCapabilities = jest
   .mockResolvedValue({});
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   resolveEntityCapabilities: mockResolveEntityCapabilities,
+}));
+
+// #284: the tool reports the station's packs split by what the plan includes,
+// so the agent reads the distinction off a field instead of inferring it.
+const mockSplitBuiltinPacks =
+  jest.fn<
+    () => Promise<{ effective: string[]; unentitled: string[]; tier: string }>
+  >();
+jest.unstable_mockModule("../../services/entitlement.service.js", () => ({
+  EntitlementService: {
+    splitBuiltinPacks: mockSplitBuiltinPacks,
+    customPacksEntitled: jest.fn(),
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -158,6 +173,16 @@ describe("StationContextTool", () => {
     });
     mockResolveEntityCapabilities.mockResolvedValue({
       "ent-parcels": { read: true, write: true, push: false },
+    });
+    // Default: two configured built-ins, both entitled.
+    mockFindStationToolpacks.mockResolvedValue([
+      { builtinSlug: "data_query", organizationToolpackId: null },
+      { builtinSlug: "statistics", organizationToolpackId: null },
+    ]);
+    mockSplitBuiltinPacks.mockResolvedValue({
+      effective: ["data_query", "statistics"],
+      unentitled: [],
+      tier: "standard",
     });
     mockFindColumnDefs.mockResolvedValue([
       {
@@ -305,6 +330,47 @@ describe("StationContextTool", () => {
     expect(result.entities).toBeDefined();
     expect(result.connectorInstances).toBeUndefined();
     expect(result.entityGroups).toBeUndefined();
+  });
+
+  // ── Tool-pack entitlement split (#284) ─────────────────────────────
+  //
+  // Per CLAUDE.md's tool-surface rule: an LLM can misread guidance, but it
+  // can't misread a field it has to echo. The prompt also gates on the
+  // effective set, but this is the part the agent can query.
+
+  it("reports the station's packs split into effective and unentitled", async () => {
+    mockSplitBuiltinPacks.mockResolvedValueOnce({
+      effective: ["data_query"],
+      unentitled: ["entity_management"],
+      tier: "standard",
+    });
+
+    const result = (await exec()) as {
+      toolPacks: { effective: string[]; unentitled: string[] };
+    };
+
+    expect(result.toolPacks).toEqual({
+      effective: ["data_query"],
+      unentitled: ["entity_management"],
+    });
+  });
+
+  it("includes the toolPacks section by default", async () => {
+    const result = (await exec()) as Record<string, unknown>;
+    expect(result.toolPacks).toEqual({
+      effective: ["data_query", "statistics"],
+      unentitled: [],
+    });
+  });
+
+  it("omits the toolPacks section when `include` excludes it", async () => {
+    const result = (await exec({ include: ["entities"] })) as Record<
+      string,
+      unknown
+    >;
+    expect(result.toolPacks).toBeUndefined();
+    // …and doesn't pay for the split it isn't reporting.
+    expect(mockSplitBuiltinPacks).not.toHaveBeenCalled();
   });
 
   it("falls back to UTC when the org's timezone is not a valid IANA name", async () => {
