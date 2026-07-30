@@ -115,6 +115,17 @@ describe("TIER_CATALOG (#218)", () => {
     });
   });
 
+  // #284: POST /api/stations defaults `toolPacks` to ["data_query"] when the
+  // caller sends none, and the entitlement guard runs over that default. If a
+  // tier ever stopped entitling data_query, station creation would 403 on a
+  // payload the user never wrote. Re-tiering is free; dropping data_query is
+  // not — this pins that.
+  it("every tier entitles data_query (the station-create default)", () => {
+    for (const entry of TIER_CATALOG) {
+      expect(entry.builtinToolpacks).toContain("data_query");
+    }
+  });
+
   it("the catalog is frozen (no runtime mutation)", () => {
     expect(Object.isFrozen(TIER_CATALOG)).toBe(true);
     expect(() => {
