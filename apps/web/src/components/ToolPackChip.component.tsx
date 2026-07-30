@@ -37,6 +37,7 @@ export const ToolPackChip: React.FC<ToolPackChipProps> = ({
   variant = "outlined",
   label,
   entitled = true,
+  sx,
   ...rest
 }) => {
   const IconComponent = ToolPackIconUtil.getIcon(pack);
@@ -52,8 +53,16 @@ export const ToolPackChip: React.FC<ToolPackChipProps> = ({
         : {
             "data-entitled": "false",
             "aria-label": `${resolvedLabel} — ${UNENTITLED_PACK_REASON}`,
-            sx: { opacity: 0.6, borderStyle: "dashed" },
           })}
+      // `sx` is pulled out of `rest` and MERGED rather than spread over: a
+      // caller passing its own sx (the chip-with-metadata surfaces pass a
+      // cursor style) used to clobber the unentitled treatment entirely,
+      // leaving the tooltip and aria-label working with no visual difference.
+      // Caller styles come last, so they still win on conflicting keys.
+      sx={[
+        !entitled && { opacity: 0.6, borderStyle: "dashed" },
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ].filter(Boolean)}
       {...rest}
     />
   );

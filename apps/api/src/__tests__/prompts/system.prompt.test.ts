@@ -702,35 +702,36 @@ describe("buildSystemPrompt — capability surface is entitlement-driven (#284)"
     );
   });
 
-  it("forbids the UI punt when a capability is plan-excluded", () => {
-    // The anti-punt rule lived only inside entity_management's own guidance,
-    // which is not rendered when the pack is unentitled — so the one
-    // instruction that would have prevented the observed reply vanished
-    // exactly when it was needed.
+  it("states the plan as settled fact rather than a hedge", () => {
+    // The observed reply hedged — "isn't included in the current plan OR isn't
+    // exposed as a tool here", plus "go check if it's available on your plan".
+    // The prompt knows why the tool is absent; the agent shouldn't equivocate.
     const prompt = buildSystemPrompt(
       makeContext({
         effectiveToolPacks: ["data_query"],
         unentitledToolPacks: ["entity_management"],
       })
     );
-    expect(prompt).toMatch(/manually through the UI instead/i);
-    expect(prompt).toMatch(/punt, not an answer/i);
+    expect(prompt).toMatch(/state it as settled fact/i);
+    expect(prompt).toMatch(/do not hedge it as one possible explanation/i);
   });
 
-  it("names the unentitled packs and the upgrade path when the plan excludes some", () => {
+  it("does not forbid pointing the user at the UI, but does forbid 'the product cannot do this'", () => {
+    // Toolpack entitlements gate the AGENT's tools, not the product: entity and
+    // column creation stay available in the UI on every plan
+    // (connector-entity.router.ts has no entitlement gate). Telling the user
+    // they can do it themselves is true and useful — an earlier revision of
+    // this prompt banned it, which traded a good sentence for a worse answer.
     const prompt = buildSystemPrompt(
       makeContext({
         effectiveToolPacks: ["data_query"],
-        unentitledToolPacks: ["entity_management", "visualize"],
+        unentitledToolPacks: ["entity_management"],
       })
     );
-
-    expect(prompt).toContain("## Not Included In This Plan");
-    expect(prompt).toContain("entity_management");
-    expect(prompt).toContain("visualize");
-    expect(prompt).toMatch(/Subscription & Billing/);
-    // It must not read as a missing product capability.
-    expect(prompt).toMatch(/not included in the organization's current plan/i);
+    expect(prompt).toMatch(/not missing from the product/i);
+    expect(prompt).toMatch(/saying so is helpful and welcome/i);
+    expect(prompt).not.toMatch(/punt, not an answer/i);
+    expect(prompt).not.toMatch(/manually through the UI instead/i);
   });
 
   it("renders no plan-limit block when nothing is unentitled", () => {

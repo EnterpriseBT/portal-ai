@@ -66,6 +66,27 @@ describe("ToolPackChip", () => {
       );
     });
 
+    it("keeps the unentitled styling when the caller passes its own sx", () => {
+      // Regression: `{...rest}` used to spread after the conditional sx, so any
+      // caller-supplied sx clobbered the muted/dashed treatment. That silently
+      // broke exactly the two surfaces that pass one — the portal header and
+      // station detail, both via ToolPackChipWithMetadata's cursor style —
+      // while leaving data-entitled and the tooltip intact, so it read as
+      // "tooltip works, styling missing".
+      render(
+        <ToolPackChip
+          pack="entity_management"
+          entitled={false}
+          sx={{ cursor: "pointer" }}
+        />
+      );
+      const chip = document.querySelector('[data-entitled="false"]')!;
+      expect(chip).toHaveStyle({ borderStyle: "dashed" });
+      expect(chip).toHaveStyle({ opacity: "0.6" });
+      // …and the caller's own style still applies.
+      expect(chip).toHaveStyle({ cursor: "pointer" });
+    });
+
     it("keeps the pack label and icon when unentitled", () => {
       render(<ToolPackChip pack="entity_management" entitled={false} />);
       // The pack is still named — inert, not hidden.

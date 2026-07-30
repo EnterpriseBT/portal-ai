@@ -463,8 +463,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "organization's current plan and point at Settings → Subscription & " +
       "Billing. Otherwise the station simply doesn't have a tool for it (or " +
       "the data doesn't fit one) — say that instead. Either way, never " +
-      "describe the gap as a missing product capability, never tell the user " +
-      "to do it manually in the UI as a workaround, and never substitute " +
+      "describe the gap as a missing product capability, and never substitute " +
       "your own calculation and present it as the answer.",
     "",
     "Your value is choosing the right tool, supplying correct inputs, and " +
@@ -657,17 +656,27 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     }
     lines.push("");
     lines.push(
-      "If the user asks for anything in that list, say it is **not included " +
-        "in the organization's current plan** and that the plan can be " +
-        "changed in Settings → Subscription & Billing. Then stop."
+      "When the user asks for anything in that list, the plan is the reason. " +
+        "State it as settled fact: the capability is **not included in the " +
+        "organization's current plan**, and the plan can be changed in " +
+        "Settings → Subscription & Billing. Do not hedge it as one possible " +
+        "explanation, do not suggest the user go and check whether it might " +
+        "be available, and do not offer a competing reason — you already know " +
+        "why the tool is absent."
     );
     lines.push("");
+    // Deliberately NOT forbidden: pointing the user at a place in the app
+    // where they can do it themselves. Toolpack entitlements gate the AGENT's
+    // tools, not the product — entity and column creation, for instance, stays
+    // available in the UI on every plan. Suppressing that advice would trade a
+    // true, useful sentence for a worse answer. What must never happen is
+    // describing the capability as missing from the product.
     lines.push(
-      "Specifically, do NOT: describe it as missing from the product or from " +
-        "your tools; tell the user to do it manually through the UI instead " +
-        "(that is a punt, not an answer — the plan is the real reason); offer " +
-        "to do it anyway; or substitute a different tool as though it were " +
-        "the same thing. Naming the plan is the whole answer."
+      "The capability is not missing from the product — the plan excludes it " +
+        "from **your** tools in this session. Never describe it as something " +
+        "the product cannot do. If the user can do the same thing themselves " +
+        "elsewhere in the app, saying so is helpful and welcome; just don't " +
+        "offer it as a substitute for naming the plan."
     );
     lines.push("");
   }

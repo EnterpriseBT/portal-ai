@@ -112,6 +112,25 @@ describe("ToolPackChipWithMetadataUI", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the unentitled chip styling even though it passes a cursor sx", () => {
+    // The two surfaces that mount this component (portal header, station
+    // detail) are exactly the ones that regressed: a clickable chip supplies
+    // its own sx, which used to overwrite the muted/dashed treatment.
+    render(
+      <ToolPackChipWithMetadataUI
+        pack="data_query"
+        toolpack={builtinPack}
+        open={false}
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+        entitled={false}
+      />
+    );
+    const chip = document.querySelector('[data-entitled="false"]')!;
+    expect(chip).toHaveStyle({ borderStyle: "dashed" });
+    expect(chip).toHaveStyle({ cursor: "pointer" });
+  });
+
   it("forwards entitled=false to the metadata modal", () => {
     render(
       <ToolPackChipWithMetadataUI
