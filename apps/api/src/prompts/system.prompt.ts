@@ -34,7 +34,25 @@ export interface StationContext {
   stationName: string;
   entities: EntitySchema[];
   entityGroups: EntityGroupContext[];
-  toolPacks: string[];
+  /**
+   * The packs whose tools actually EXIST in this session: the station's
+   * configured packs ∩ the org tier's entitlements (#284).
+   *
+   * Named for the distinction on purpose. This field used to be `toolPacks`
+   * carrying the *configured* set, while `buildAnalyticsTools` built tools
+   * from the entitled subset — so the prompt described tools that had been
+   * stripped from the same session, and the agent was told it could write
+   * entities with no tool to do it. Anything gated on capability must gate
+   * on this list.
+   */
+  effectiveToolPacks: string[];
+  /**
+   * Configured but excluded by the org's plan (#284). Drives the plan-limit
+   * guidance: the agent can tell "your plan doesn't include this" apart from
+   * "this station doesn't have it", and never presents a plan limit as a
+   * missing product capability.
+   */
+  unentitledToolPacks: string[];
   entityCapabilities?: Record<string, ResolvedCapabilities>;
   /** Attached connector instances; rendered when the entity_management
    *  pack is enabled so the agent knows what to pass for
@@ -141,7 +159,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("");
   }
 
-  if (stationContext.toolPacks.includes("entity_management")) {
+  if (stationContext.effectiveToolPacks.includes("entity_management")) {
     lines.push("## Entity Management Notes");
     lines.push("");
     lines.push(
@@ -218,8 +236,8 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // visualize_d3 (#269) also needs SQL authoring, so the guidance applies
   // when either data_query or the visualize pack is enabled.
   if (
-    stationContext.toolPacks.includes("data_query") ||
-    stationContext.toolPacks.includes("visualize")
+    stationContext.effectiveToolPacks.includes("data_query") ||
+    stationContext.effectiveToolPacks.includes("visualize")
   ) {
     lines.push("## SQL Guidance");
     lines.push("");
@@ -319,7 +337,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     lines.push("");
 
     // Charting (#269) — only when the visualize pack is enabled.
-    if (stationContext.toolPacks.includes("visualize")) {
+    if (stationContext.effectiveToolPacks.includes("visualize")) {
       lines.push("## Charting");
       lines.push("");
       lines.push(
@@ -390,7 +408,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     );
     lines.push("");
 
-    if (stationContext.toolPacks.includes("entity_management")) {
+    if (stationContext.effectiveToolPacks.includes("entity_management")) {
       lines.push("### Creating a new entity");
       lines.push("");
       lines.push(
@@ -437,7 +455,7 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // call. Skipped when entity_management isn't enabled (no tool
   // needs a connectorInstanceId).
   if (
-    stationContext.toolPacks.includes("entity_management") &&
+    stationContext.effectiveToolPacks.includes("entity_management") &&
     stationContext.connectorInstances &&
     stationContext.connectorInstances.length > 0
   ) {

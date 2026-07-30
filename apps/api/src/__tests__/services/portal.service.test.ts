@@ -87,6 +87,23 @@ jest.unstable_mockModule(
 const mockResolveEntityCapabilities = jest
   .fn<() => Promise<Record<string, unknown>>>()
   .mockResolvedValue({});
+// #284: buildStationContext splits its configured packs through
+// EntitlementService. The default is fully permissive so every pre-existing
+// case describes an entitled station; the entitlement cases below override it.
+const mockSplitBuiltinPacks =
+  jest.fn<
+    (
+      orgId: string,
+      slugs: readonly string[]
+    ) => Promise<{ effective: string[]; unentitled: string[]; tier: string }>
+  >();
+jest.unstable_mockModule("../../services/entitlement.service.js", () => ({
+  EntitlementService: {
+    splitBuiltinPacks: mockSplitBuiltinPacks,
+    customPacksEntitled: jest.fn(),
+  },
+}));
+
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   resolveEntityCapabilities: mockResolveEntityCapabilities,
 }));
@@ -280,6 +297,11 @@ function makeSse() {
 describe("PortalService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSplitBuiltinPacks.mockImplementation(async (_org, slugs) => ({
+      effective: [...slugs],
+      unentitled: [],
+      tier: "standard",
+    }));
     _idCounter = 0;
   });
 
@@ -502,6 +524,84 @@ describe("PortalService", () => {
       // The connector-loading helpers must not even run.
       expect(mockStationInstancesFindByStationId).not.toHaveBeenCalled();
       expect(mockResolveEntityCapabilities).not.toHaveBeenCalled();
+    });
+
+    // ── Entitlement split (#284) ──────────────────────────────────────
+    //
+    // The caller passes CONFIGURED packs; the context reports what the
+    // session actually has. Before #284 the prompt received the configured
+    // set while buildAnalyticsTools built from the entitled subset, so the
+    // agent was told about tools that had been stripped from its own session.
+
+    it("splits configured packs into effective and unentitled", async () => {
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
+
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+      mockSplitBuiltinPacks.mockResolvedValueOnce({
+        effective: ["data_query"],
+        unentitled: ["entity_management"],
+        tier: "standard",
+      });
+
+      const ctx = await buildStationContext({
+        station: { id: STATION_ID, name: "Sales Station" },
+        organizationId: ORG_ID,
+        toolPacks: ["data_query", "entity_management"],
+      });
+
+      expect(ctx.effectiveToolPacks).toEqual(["data_query"]);
+      expect(ctx.unentitledToolPacks).toEqual(["entity_management"]);
+      expect(mockSplitBuiltinPacks).toHaveBeenCalledWith(ORG_ID, [
+        "data_query",
+        "entity_management",
+      ]);
+    });
+
+    it("skips connector + capability loading when entity_management is configured but unentitled", async () => {
+      // The pack's tools don't exist, so the work that only feeds them is
+      // wasted — and surfacing connectorInstances would imply a capability
+      // the session doesn't have.
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
+
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+      mockSplitBuiltinPacks.mockResolvedValueOnce({
+        effective: ["data_query"],
+        unentitled: ["entity_management"],
+        tier: "standard",
+      });
+
+      const ctx = await buildStationContext({
+        station: { id: STATION_ID, name: "Sales Station" },
+        organizationId: ORG_ID,
+        toolPacks: ["data_query", "entity_management"],
+      });
+
+      expect(ctx.connectorInstances).toBeUndefined();
+      expect(ctx.entityCapabilities).toBeUndefined();
+      expect(mockStationInstancesFindByStationId).not.toHaveBeenCalled();
+      expect(mockResolveEntityCapabilities).not.toHaveBeenCalled();
+    });
+
+    it("still loads connectors + capabilities when entity_management is entitled", async () => {
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
+
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+      mockStationInstancesFindByStationId.mockResolvedValueOnce([]);
+      mockResolveEntityCapabilities.mockResolvedValueOnce({});
+
+      const ctx = await buildStationContext({
+        station: { id: STATION_ID, name: "Sales Station" },
+        organizationId: ORG_ID,
+        toolPacks: ["entity_management"],
+      });
+
+      expect(ctx.effectiveToolPacks).toEqual(["entity_management"]);
+      expect(ctx.unentitledToolPacks).toEqual([]);
+      expect(ctx.connectorInstances).toEqual([]);
+      expect(ctx.entityCapabilities).toEqual({});
     });
 
     it("reflects newly-attached connectors on a second call (no stale caching)", async () => {
@@ -728,7 +828,8 @@ describe("PortalService", () => {
       organizationTimezone: "UTC",
       entities: ENTITIES,
       entityGroups: [],
-      toolPacks: ["data_query"],
+      effectiveToolPacks: ["data_query"],
+      unentitledToolPacks: [],
     };
 
     const stationContextWithGroups = {

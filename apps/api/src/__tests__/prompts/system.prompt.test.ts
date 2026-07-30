@@ -13,6 +13,10 @@ function makeContext(overrides: Partial<StationContext> = {}): StationContext {
     stationId: "station-1",
     stationName: "Test Station",
     organizationTimezone: "UTC",
+    // #284: the prompt gates on EFFECTIVE packs (configured ∩ entitled).
+    // `unentitledToolPacks` defaults to none so existing cases describe a
+    // fully-entitled station, exactly as they did pre-rename.
+    unentitledToolPacks: [],
     entities: [
       {
         id: "entity-1",
@@ -56,7 +60,7 @@ function makeContext(overrides: Partial<StationContext> = {}): StationContext {
       },
     ],
     entityGroups: [],
-    toolPacks: ["data_query"],
+    effectiveToolPacks: ["data_query"],
     ...overrides,
   };
 }
@@ -91,7 +95,7 @@ describe("buildSystemPrompt — Available Data roster (#97)", () => {
   it("never embeds connectorEntityId / columnDefinitionId / fieldMappingId / capability markers (those moved to the tool)", () => {
     const prompt = buildSystemPrompt(
       makeContext({
-        toolPacks: ["entity_management"],
+        effectiveToolPacks: ["entity_management"],
         entityCapabilities: {
           "entity-1": { read: true, write: true, push: false },
           "entity-2": { read: true, write: false, push: false },
@@ -117,7 +121,9 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
     ["financial"],
     ["entity_management"],
   ])("states the route-to-a-tool role when %s is enabled", (pack) => {
-    const prompt = buildSystemPrompt(makeContext({ toolPacks: [pack] }));
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: [pack] })
+    );
     expect(prompt).toContain("## Your role: route to a tool");
     expect(prompt).toMatch(/tool-caller/i);
     // the load-bearing prohibitions
@@ -128,7 +134,7 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
 
   it("is present even with a minimal toolpack set", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query"] })
+      makeContext({ effectiveToolPacks: ["data_query"] })
     );
     expect(prompt).toContain("## Your role: route to a tool");
   });
@@ -137,7 +143,7 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
 describe("buildSystemPrompt — entity management notes", () => {
   it('includes "Entity Management Notes" section when entity_management in toolPacks', () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] })
+      makeContext({ effectiveToolPacks: ["data_query", "entity_management"] })
     );
 
     expect(prompt).toContain("## Entity Management Notes");
@@ -148,7 +154,7 @@ describe("buildSystemPrompt — entity management notes", () => {
 
   it("documents normalizedKey concept", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] })
+      makeContext({ effectiveToolPacks: ["entity_management"] })
     );
 
     expect(prompt).toContain("normalizedKey");
@@ -157,7 +163,7 @@ describe("buildSystemPrompt — entity management notes", () => {
 
   it("documents validationPattern and canonicalFormat on column definitions", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] })
+      makeContext({ effectiveToolPacks: ["entity_management"] })
     );
 
     expect(prompt).toContain("validationPattern");
@@ -166,7 +172,7 @@ describe("buildSystemPrompt — entity management notes", () => {
 
   it("documents field mapping attributes: required, defaultValue, format, enumValues", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] })
+      makeContext({ effectiveToolPacks: ["entity_management"] })
     );
 
     expect(prompt).toContain("normalizedKey");
@@ -177,7 +183,7 @@ describe("buildSystemPrompt — entity management notes", () => {
 
   it("does not reference currency type", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] })
+      makeContext({ effectiveToolPacks: ["entity_management"] })
     );
 
     expect(prompt).toContain("no `currency` type");
@@ -186,7 +192,7 @@ describe("buildSystemPrompt — entity management notes", () => {
 
   it('omits "Entity Management Notes" when entity_management not in toolPacks', () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query"] })
+      makeContext({ effectiveToolPacks: ["data_query"] })
     );
 
     expect(prompt).not.toContain("Entity Management Notes");
@@ -221,15 +227,15 @@ describe("buildSystemPrompt — response style", () => {
   });
 
   it("includes ## Response Style for every toolPack composition", () => {
-    const compositions: StationContext["toolPacks"][] = [
+    const compositions: StationContext["effectiveToolPacks"][] = [
       [],
       ["data_query"],
       ["entity_management"],
       ["data_query", "entity_management"],
     ];
 
-    for (const toolPacks of compositions) {
-      const prompt = buildSystemPrompt(makeContext({ toolPacks }));
+    for (const effectiveToolPacks of compositions) {
+      const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks }));
       expect(prompt).toContain("## Response Style");
     }
   });
@@ -237,7 +243,7 @@ describe("buildSystemPrompt — response style", () => {
   it("places ## Response Style after all other sections", () => {
     const prompt = buildSystemPrompt(
       makeContext({
-        toolPacks: ["data_query", "entity_management"],
+        effectiveToolPacks: ["data_query", "entity_management"],
         entityGroups: [
           {
             id: "eg-1",
@@ -320,7 +326,7 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
   // Case 74
   it("no longer references the AlaSQL metadata tables", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] })
+      makeContext({ effectiveToolPacks: ["data_query", "entity_management"] })
     );
     // The AlaSQL surface used bare names like `_connector_instances`,
     // `_connector_entities`, etc. as the table identifier. They must
@@ -335,7 +341,7 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
   // Case 75
   it("still surfaces the synthetic _record_id and _connector_entity_id columns", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] })
+      makeContext({ effectiveToolPacks: ["data_query", "entity_management"] })
     );
     expect(prompt).toContain("_record_id");
     expect(prompt).toContain("_connector_entity_id");
@@ -344,7 +350,7 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
   // Case 76
   it("includes the PostgreSQL-compatible SQL guidance block when data_query is enabled", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query"] })
+      makeContext({ effectiveToolPacks: ["data_query"] })
     );
     expect(prompt).toContain("## SQL Guidance");
     expect(prompt).toContain("PostgreSQL-compatible SQL");
@@ -360,7 +366,7 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
 
   it("omits the SQL guidance block when data_query is not enabled", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] })
+      makeContext({ effectiveToolPacks: ["entity_management"] })
     );
     expect(prompt).not.toContain("## SQL Guidance");
   });
@@ -368,7 +374,9 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
   // #269 — visualize_d3 needs SQL, so the guidance also applies when the
   // `visualize` pack is enabled even without `data_query`.
   it("includes SQL guidance + visualize_d3 charting guidance when only visualize is enabled", () => {
-    const prompt = buildSystemPrompt(makeContext({ toolPacks: ["visualize"] }));
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["visualize"] })
+    );
     expect(prompt).toContain("## SQL Guidance");
     expect(prompt).toContain("visualize_d3");
     // The agent supplies an instruction (intent), not a program.
@@ -377,7 +385,7 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
 
   it("drops the AlaSQL `[bracket]` example query in favour of a double-quoted one", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] })
+      makeContext({ effectiveToolPacks: ["data_query", "entity_management"] })
     );
     expect(prompt).not.toContain("FROM [table]");
     expect(prompt).toMatch(/FROM "contacts"/);
@@ -388,7 +396,7 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
   it("no longer embeds capability tags in the prompt (moved to station_context)", () => {
     const prompt = buildSystemPrompt(
       makeContext({
-        toolPacks: ["data_query", "entity_management"],
+        effectiveToolPacks: ["data_query", "entity_management"],
         entityCapabilities: {
           "entity-1": { read: true, write: true, push: false },
           "entity-2": { read: true, write: false, push: false },
@@ -412,14 +420,14 @@ describe("buildSystemPrompt — schema introspection meta views (#87)", () => {
   });
 
   it("omits the Schema Introspection section entirely when data_query is disabled", () => {
-    const prompt = buildSystemPrompt(makeContext({ toolPacks: [] }));
+    const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks: [] }));
     expect(prompt).not.toContain("## Schema Introspection");
     expect(prompt).not.toContain("_meta_entities");
   });
 
   it("tells the agent to re-introspect after creating an entity mid-session", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] })
+      makeContext({ effectiveToolPacks: ["data_query", "entity_management"] })
     );
     // Specifically calls out the failure mode the user hit: created
     // entity, can't find it via static prompt listing.
@@ -436,7 +444,7 @@ describe("buildSystemPrompt — schema introspection meta views (#87)", () => {
 
   it("includes the entity-creation guidance with the right failure-mode behavior", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] })
+      makeContext({ effectiveToolPacks: ["data_query", "entity_management"] })
     );
     expect(prompt).toContain("### Creating a new entity");
     // The critical anti-pattern from the user's failing session:
@@ -450,14 +458,14 @@ describe("buildSystemPrompt — schema introspection meta views (#87)", () => {
 
   it("omits entity-creation guidance when entity_management is NOT enabled", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query"] })
+      makeContext({ effectiveToolPacks: ["data_query"] })
     );
     expect(prompt).not.toContain("### Creating a new entity");
   });
 
   it("does NOT mention a _meta_connector_instances view (instances are listed statically in the prompt instead)", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] })
+      makeContext({ effectiveToolPacks: ["data_query", "entity_management"] })
     );
     expect(prompt).not.toContain("_meta_connector_instances");
   });
@@ -467,7 +475,7 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
   it("mentions the count of attached connector instances + points at station_context", () => {
     const prompt = buildSystemPrompt(
       makeContext({
-        toolPacks: ["data_query", "entity_management"],
+        effectiveToolPacks: ["data_query", "entity_management"],
         connectorInstances: [
           {
             id: "ci-1",
@@ -495,7 +503,7 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
   it("instructs the agent to call the tool — never invent or ask the user", () => {
     const prompt = buildSystemPrompt(
       makeContext({
-        toolPacks: ["data_query", "entity_management"],
+        effectiveToolPacks: ["data_query", "entity_management"],
         connectorInstances: [
           {
             id: "ci-1",
@@ -513,7 +521,7 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
   it("omits the section when entity_management is NOT enabled", () => {
     const prompt = buildSystemPrompt(
       makeContext({
-        toolPacks: ["data_query"],
+        effectiveToolPacks: ["data_query"],
         connectorInstances: [
           {
             id: "ci-1",
@@ -530,7 +538,7 @@ describe("buildSystemPrompt — Connector Instances pointer (#97)", () => {
   it("omits the section when connectorInstances is empty", () => {
     const prompt = buildSystemPrompt(
       makeContext({
-        toolPacks: ["data_query", "entity_management"],
+        effectiveToolPacks: ["data_query", "entity_management"],
         connectorInstances: [],
       })
     );
@@ -570,7 +578,7 @@ describe("buildSystemPrompt — Current time (#90)", () => {
   it("renders ## Current time even when no toolpacks are enabled", () => {
     // Temporal context is universal — not gated on data_query /
     // entity_management.
-    const prompt = buildSystemPrompt(makeContext({ toolPacks: [] }));
+    const prompt = buildSystemPrompt(makeContext({ effectiveToolPacks: [] }));
     expect(prompt).toContain("## Current time");
   });
 });

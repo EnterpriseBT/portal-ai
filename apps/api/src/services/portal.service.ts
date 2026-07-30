@@ -21,6 +21,7 @@ import { eq, and } from "drizzle-orm";
 
 import { AiService } from "./ai.service.js";
 import { AnalyticsService } from "./analytics.service.js";
+import { EntitlementService } from "./entitlement.service.js";
 import { ToolService } from "./tools.service.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
@@ -1011,25 +1012,41 @@ export async function loadOrganizationTimezone(
  * `connectorInstances` and `entityCapabilities` — connectors attached
  * mid-session must show up in the next turn's system prompt.
  *
- * Caller passes in the resolved `station` row and `toolPacks` to
- * avoid re-fetching them when they're already in scope.
+ * Caller passes in the resolved `station` row and its **configured**
+ * `toolPacks` to avoid re-fetching them when they're already in scope. The
+ * split against the org's entitlements happens inside (#284) — callers do not
+ * pre-filter, and must not.
  */
 export async function buildStationContext(args: {
   station: { id: string; name: string };
   organizationId: string;
+  /**
+   * The station's **configured** packs, as `station_toolpacks` holds them.
+   * The split against the org's entitlements happens here (#284) so every
+   * caller reports the same truth.
+   */
   toolPacks: string[];
 }): Promise<StationContext> {
   const { station, organizationId, toolPacks } = args;
+
+  // #284: configured ≠ available. buildAnalyticsTools has filtered packs
+  // against the tier since #214, so a context built from the configured set
+  // described tools that didn't exist in the same session. Everything below
+  // gates on `effective`.
+  const { effective: effectiveToolPacks, unentitled: unentitledToolPacks } =
+    await EntitlementService.splitBuiltinPacks(organizationId, toolPacks);
 
   const stationData = await AnalyticsService.loadStation(
     station.id,
     organizationId
   );
-  const entityCapabilities = toolPacks.includes("entity_management")
+  const entityManagementAvailable =
+    effectiveToolPacks.includes("entity_management");
+  const entityCapabilities = entityManagementAvailable
     ? await resolveEntityCapabilities(station.id)
     : undefined;
   const connectorInstances: ConnectorInstanceContext[] | undefined =
-    toolPacks.includes("entity_management")
+    entityManagementAvailable
       ? await loadConnectorInstanceContexts(station.id)
       : undefined;
   const organizationTimezone = await loadOrganizationTimezone(organizationId);
@@ -1040,7 +1057,8 @@ export async function buildStationContext(args: {
     organizationTimezone,
     entities: stationData.entities,
     entityGroups: stationData.entityGroups,
-    toolPacks,
+    effectiveToolPacks,
+    unentitledToolPacks,
     entityCapabilities,
     connectorInstances,
   };
