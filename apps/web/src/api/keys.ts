@@ -11,6 +11,7 @@ import type { EntityTagListRequestQuery } from "@portalai/core/contracts";
 import type { JobListRequestQuery } from "@portalai/core/contracts";
 import type { UsageLedgerListRequestQuery } from "@portalai/core/contracts";
 import type { StationListRequestQuery } from "@portalai/core/contracts";
+import type { StationGetRequestQuery } from "@portalai/core/contracts";
 import type { PortalListRequestQuery } from "@portalai/core/contracts";
 import type { ToolpackListRequestQuery } from "@portalai/core/contracts";
 
@@ -157,7 +158,10 @@ export const queryKeys = {
     root: ["stations"] as const,
     list: (params?: StationListRequestQuery) =>
       [...queryKeys.stations.root, "list", params] as const,
-    get: (id: string) => [...queryKeys.stations.root, "get", id] as const,
+    /** `params` is part of the key: an `include` fetch and a bare one return
+     *  different payload shapes and must not share a cache entry (#300). */
+    get: (id: string, params?: StationGetRequestQuery) =>
+      [...queryKeys.stations.root, "get", id, params] as const,
   },
   portals: {
     root: ["portals"] as const,
@@ -195,11 +199,13 @@ export const queryKeys = {
   },
   connectorInstanceLayoutPlans: {
     root: ["connectorInstanceLayoutPlans"] as const,
-    detail: (connectorInstanceId: string) =>
+    /** `params` included for the same reason as `stations.get` (#300). */
+    detail: (connectorInstanceId: string, params?: { include?: string }) =>
       [
         ...queryKeys.connectorInstanceLayoutPlans.root,
         "detail",
         connectorInstanceId,
+        params,
       ] as const,
     editContext: (connectorInstanceId: string) =>
       [

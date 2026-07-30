@@ -40,7 +40,11 @@ describe("connectorInstanceLayoutPlans.api", () => {
         include: "interpretationTrace",
       });
       expect(mockUseAuthQuery).toHaveBeenCalledWith(
-        queryKeys.connectorInstanceLayoutPlans.detail("ci_123"),
+        // #300: params belong in the key too, or an `include` fetch and a
+        // bare one collide on one entry.
+        queryKeys.connectorInstanceLayoutPlans.detail("ci_123", {
+          include: "interpretationTrace",
+        }),
         "/api/connector-instances/ci_123/layout-plan?include=interpretationTrace",
         undefined,
         undefined
@@ -107,11 +111,22 @@ describe("queryKeys.connectorInstanceLayoutPlans", () => {
     ]);
   });
 
-  it("derives detail() from root + id", () => {
+  it("derives detail() from root + id + params", () => {
     expect(queryKeys.connectorInstanceLayoutPlans.detail("ci_123")).toEqual([
       "connectorInstanceLayoutPlans",
       "detail",
       "ci_123",
+      undefined,
+    ]);
+    expect(
+      queryKeys.connectorInstanceLayoutPlans.detail("ci_123", {
+        include: "interpretationTrace",
+      })
+    ).toEqual([
+      "connectorInstanceLayoutPlans",
+      "detail",
+      "ci_123",
+      { include: "interpretationTrace" },
     ]);
   });
 

@@ -33,7 +33,7 @@ export const stations = {
     options?: QueryOptions<StationGetResponsePayload>
   ) =>
     useAuthQuery<StationGetResponsePayload>(
-      queryKeys.stations.get(id),
+      queryKeys.stations.get(id, params),
       buildUrl(`/api/stations/${encodeURIComponent(id)}`, params),
       undefined,
       options

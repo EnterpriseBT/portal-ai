@@ -28,7 +28,10 @@ export const connectorInstanceLayoutPlans = {
     options?: QueryOptions<LayoutPlanResponsePayload>
   ) =>
     useAuthQuery<LayoutPlanResponsePayload>(
-      queryKeys.connectorInstanceLayoutPlans.detail(connectorInstanceId),
+      queryKeys.connectorInstanceLayoutPlans.detail(
+        connectorInstanceId,
+        params
+      ),
       buildUrl(base(connectorInstanceId), params),
       undefined,
       options

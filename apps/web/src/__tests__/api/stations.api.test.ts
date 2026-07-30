@@ -57,6 +57,45 @@ describe("stations.api", () => {
       );
     });
 
+    // #300: the key used to drop `params` while the URL used them, so a
+    // caller with `include` and a caller without shared one cache entry
+    // holding two different payload shapes — the portal header rendered a
+    // connector UUID whenever the un-enriched fetch owned the entry.
+    it("keys enriched and un-enriched fetches separately", () => {
+      const bare = queryKeys.stations.get("station-123");
+      const enriched = queryKeys.stations.get("station-123", {
+        include: "connectorInstance",
+      });
+      expect(enriched).not.toEqual(bare);
+    });
+
+    it("threads params into both the key and the URL", () => {
+      stations.get("station-123", { include: "connectorInstance" });
+      expect(mockUseAuthQuery).toHaveBeenCalledWith(
+        queryKeys.stations.get("station-123", {
+          include: "connectorInstance",
+        }),
+        "/api/stations/station-123?include=connectorInstance",
+        undefined,
+        undefined
+      );
+    });
+
+    it("keeps stations.root a prefix of every get key", () => {
+      // This is what keeps the ~10 invalidateQueries({ queryKey:
+      // stations.root }) call sites reaching both cache entries. A future
+      // refactor could break it silently; this case is the tripwire.
+      const root = queryKeys.stations.root;
+      for (const key of [
+        queryKeys.stations.get("station-123"),
+        queryKeys.stations.get("station-123", {
+          include: "connectorInstance",
+        }),
+      ]) {
+        expect(key.slice(0, root.length)).toEqual([...root]);
+      }
+    });
+
     it("encodes id in URL", () => {
       stations.get("station/with/slashes");
       expect(mockUseAuthQuery).toHaveBeenCalledWith(
