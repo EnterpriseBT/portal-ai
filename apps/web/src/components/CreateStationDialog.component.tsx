@@ -13,6 +13,7 @@ import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
 import { FormAlert } from "./FormAlert.component";
 import { ToolPackChip } from "./ToolPackChip.component";
 import type { ServerError } from "../utils/api.util";
+import { ToolPackIconUtil } from "../utils/tool-pack-icons.util";
 import {
   validateWithSchema,
   focusFirstInvalidField,
@@ -231,15 +232,22 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
               option,
               entitledBuiltinSlugs
             );
+            // The option list carries the same icon as the selected chip
+            // below and as the Edit dialog's picker (#302). Without it this
+            // list was the one pack surface with no iconography at all.
+            const OptionIcon = ToolPackIconUtil.getIcon(option);
             return (
               <Box component="li" key={key} {...optionProps}>
-                <Stack spacing={0}>
-                  <span>{ToolPackUtil.getLabel(option, customLabels)}</span>
-                  {unentitled && (
-                    <Typography variant="caption" color="text.secondary">
-                      {UNENTITLED_PACK_REASON}
-                    </Typography>
-                  )}
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <OptionIcon fontSize="small" />
+                  <Stack spacing={0}>
+                    <span>{ToolPackUtil.getLabel(option, customLabels)}</span>
+                    {unentitled && (
+                      <Typography variant="caption" color="text.secondary">
+                        {UNENTITLED_PACK_REASON}
+                      </Typography>
+                    )}
+                  </Stack>
                 </Stack>
               </Box>
             );

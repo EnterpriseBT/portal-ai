@@ -234,5 +234,55 @@ describe("CreateStationDialog", () => {
         screen.queryByText("Not included in your plan")
       ).not.toBeInTheDocument();
     });
+
+    // ── Option-list icons (#302) ─────────────────────────────────────
+    //
+    // Found while smoke-walking #302: this list was the one pack surface
+    // with no iconography, while the selected chips below it and the Edit
+    // dialog's picker both showed icons.
+
+    it("renders each option with its pack icon", async () => {
+      render(
+        <CreateStationDialog
+          {...defaultProps}
+          entitledBuiltinSlugs={entitled}
+        />
+      );
+      openPicker();
+
+      await waitFor(() => {
+        expect(screen.getByText("Visualize")).toBeInTheDocument();
+      });
+
+      const visualize = screen.getByText("Visualize").closest("li")!;
+      expect(
+        visualize.querySelector('[data-testid="AutoGraphOutlinedIcon"]')
+      ).toBeInTheDocument();
+
+      const webSearch = screen.getByText("Web Search").closest("li")!;
+      expect(
+        webSearch.querySelector('[data-testid="TravelExploreOutlinedIcon"]')
+      ).toBeInTheDocument();
+    });
+
+    it("renders an icon on unentitled options too, so the row stays legible", async () => {
+      render(
+        <CreateStationDialog
+          {...defaultProps}
+          entitledBuiltinSlugs={entitled}
+        />
+      );
+      openPicker();
+
+      await waitFor(() => {
+        expect(screen.getByText("Entity Management")).toBeInTheDocument();
+      });
+
+      const option = screen.getByText("Entity Management").closest("li")!;
+      expect(option).toHaveAttribute("aria-disabled", "true");
+      expect(
+        option.querySelector('[data-testid="HubOutlinedIcon"]')
+      ).toBeInTheDocument();
+    });
   });
 });

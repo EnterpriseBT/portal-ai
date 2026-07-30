@@ -35,11 +35,13 @@ Custom packs' `"Extension"` is server-hardcoded and not user-settable, so `iconS
 **Files**
 - Edit `apps/web/src/utils/tool-pack-icons.util.ts` — replace the slug-keyed `TOOL_PACK_ICONS` with an `iconSlug`-keyed map (`Storage`, `AutoGraph`, `BarChart`, `TrendingUp`, `Paid`, `TravelExplore`, `Hub`, `Extension`); `getIcon` resolves ref → `iconSlug` → component, mirroring `ToolPackUtil.getLabel`; `getCustomIcon()` stays, now returning the `"Extension"` entry by declaration rather than by fallthrough. Add the `AutoGraphOutlined` import.
 - Edit `packages/core/src/registries/builtin-toolpacks.ts` — four `iconSlug` strings: `visualize` → `"AutoGraph"`, `financial` → `"Paid"`, `web_search` → `"TravelExplore"`, `entity_management` → `"Hub"`.
+- Edit `apps/web/src/components/CreateStationDialog.component.tsx` — render the pack icon in the `Autocomplete`'s `renderOption` (`:225`). **Found while smoke-walking this ticket** and folded in at the user's call: this option list was the only pack surface with no iconography at all, while the selected chips directly below it (`renderTags` → `ToolPackChip`) and the Edit dialog's picker both showed icons. Predates #302 — the list has looked like this since #299 — but it's the same inconsistency this ticket exists to remove, so fixing it here beats filing a near-duplicate.
 - Edit `apps/web/jest.config.js` — add `^@portalai/core/registries$` → core **source** to `moduleNameMapper`. Discovered during implementation and load-bearing: `registries` was the one core subpath not mapped, so web tests resolved it through package `exports` to `packages/core/dist/`. The guard below asserts the icon map covers the registry, which is meaningless against a stale build — and would have passed while source and map disagreed. `ui`/`models`/`contracts` are already mapped this way.
 
 **Tests**
 - Edit `apps/web/src/__tests__/ToolPackIconUtil.test.ts` — add `visualize` → `AutoGraphOutlined`; **replace the hand-enumerated distinctness test with a registry-derived guard** iterating `BUILTIN_TOOLPACKS`: every pack's `iconSlug` has a mapped component, no built-in resolves to `ExtensionOutlined`, all built-in icons distinct. This is the assertion that would have failed on #269.
 - Edit `packages/core/src/__tests__/registries/builtin-toolpacks.test.ts` — pin `iconSlug: "AutoGraph"` in the existing `visualize pack (#269)` block (`:146-166`).
+- Edit `apps/web/src/__tests__/CreateStationDialog.test.tsx` — assert each option row carries its pack icon (`Visualize` → `AutoGraphOutlinedIcon`, `Web Search` → `TravelExploreOutlinedIcon`), and that an **unentitled** row keeps its icon alongside `aria-disabled` so #284's treatment stays legible.
 - Unchanged by design: `ToolPackChip.test.tsx`'s fallback cases assert unknown / `org:` refs, which still resolve to the puzzle piece.
 - `npm run test:unit` (web + core), `npm run type-check`, `npm run lint`, `npm run format:check`.
 
@@ -51,7 +53,7 @@ Custom packs' `"Extension"` is server-hardcoded and not user-settable, so `iconS
 1. Open a station's Edit dialog → toolpack picker: **Visualize** shows the rising-line-with-sparkles icon, distinct from Statistics' bar chart and from any custom pack's puzzle piece.
 2. Same picker: Data Query, Statistics, Regression, Financial, Web Search, and Entity Management look **exactly as before** — in particular Entity Management is still a network graph (not a pencil) and Web Search is still a globe-with-magnifier (not a plain magnifier).
 3. Register (or open) a custom toolpack → its chip still shows the puzzle piece.
-4. Create Station dialog → the pack chips match the Edit dialog for every pack, built-in and custom.
+4. Create Station dialog → **the option list now shows an icon per pack** (it showed none before this change), and selecting a pack yields a chip whose icon matches the Edit dialog. Options and chips resolve through different call sites, so check both. Unentitled rows stay disabled *and* keep their icon.
 5. A station carrying a pack the org's tier excludes still renders muted with its correct icon (#284 treatment intact).
 
 ## Out of scope
