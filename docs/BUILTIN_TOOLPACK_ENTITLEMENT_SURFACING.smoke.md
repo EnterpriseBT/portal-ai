@@ -31,7 +31,9 @@ The whole ticket is about a tier that entitles *some* built-in packs. Two comman
 - [ ] Note your org id: `npx portalai org list --env local --json` (or Settings → Organization).
 - [ ] Put the org on `standard`: `npx portalai org set-tier <orgId> standard --env local --yes`
 
-> **Tier cache — read this before every tier flip.** `TierService` caches the resolved policy per slug for **60 seconds** (`CACHE_TTL_MS`). After any `set-tier`, either wait ~60s or restart the API before expecting the app to see it. Every "flip the tier" step below assumes you did one of the two.
+> **Tier cache — what actually needs a wait.** `TierService` caches the resolved policy **keyed by tier slug** for 60 seconds (`CACHE_TTL_MS`).
+> - **`org set-tier` takes effect immediately.** It changes the org's slug, and the next request resolves that slug's (correctly cached) policy. No wait, no restart. Verified live during this walk: `standard → pro → standard` flipped the effective pack set on each call with no delay.
+> - **Editing a tier row's *contents* is what needs the wait** — `portalops tier apply`, or hand-editing `tiers.builtin_toolpacks`. That mutates a policy already cached under its slug, so wait ~60s or restart the API. This applies to §9's re-tier step, not to any `set-tier` below.
 
 > **Stripe guard.** If your local org has a live Stripe subscription, `set-tier` refuses with exit 9 (`ADMIN_CONFLICT`) — that's #259 working. Either use an org with no subscription or pass `--allow-stripe-desync` consciously for the duration of this walk.
 
@@ -42,12 +44,12 @@ The whole ticket is about a tier that entitles *some* built-in packs. Two comman
 | **entitled-station** | A station with **only** `data_query` + `web_search` enabled (both entitled on `standard`). Any connector instance attached. | §1, §4, §7 |
 | **legacy-station** | A station that **already carries `entity_management`** (and ideally `visualize`) while your org is on `standard`. Create it *while the org is on `pro`*, then flip back to `standard` — that's the downgrade state the whole ticket exists for. | §2, §4, §6, §7, §8 |
 
-- [ ] Build **legacy-station**: `npx portalai org set-tier <orgId> pro --env local --yes` → wait/restart → create a station with `data_query`, `entity_management`, and `visualize` → `npx portalai org set-tier <orgId> standard --env local --yes` → wait/restart.
+- [ ] Build **legacy-station**: `npx portalai org set-tier <orgId> pro --env local --yes` → create a station with `data_query`, `entity_management`, and `visualize` → `npx portalai org set-tier <orgId> standard --env local --yes`. (Both flips are immediate — see the cache note above.)
 - [ ] Attach a writable connector instance to **legacy-station** (the agent's entity-creation path needs one to be a fair test in §7).
 
 ### Reset between runs
 
-- [ ] `npx portalai org set-tier <orgId> standard --env local --yes` returns you to the baseline; wait ~60s or restart the API.
+- [ ] `npx portalai org set-tier <orgId> standard --env local --yes` returns you to the baseline, effective immediately.
 - [ ] No data reset needed — nothing in this ticket writes or deletes station/pack rows except the station edits you make yourself. A downgrade is non-destructive by design (that's §8).
 
 ---
@@ -152,7 +154,7 @@ Open a portal on **legacy-station** (`standard` tier, so `entity_management` + `
 ## §8 — Downgrade / upgrade round-trip
 
 - [ ] **Downgrade is non-destructive:** with legacy-station on `standard`, `db:studio` → `station_toolpacks` still holds live rows for `entity_management` and `visualize` (`deleted IS NULL`). Nothing was stripped.
-- [ ] **Upgrade needs no re-attach:** `npx portalai org set-tier <orgId> pro --env local --yes` → wait ~60s or restart the API → open a **new** portal on legacy-station and prompt **"Create an entity called scrabble_scores…"**. It now works, with **no** edit to the station.
+- [ ] **Upgrade needs no re-attach:** `npx portalai org set-tier <orgId> pro --env local --yes` → open a **new** portal on legacy-station and prompt **"Create an entity called scrabble_scores…"**. It now works, with **no** edit to the station.
 - [ ] The same station's chips (§4) are no longer dimmed, `/toolpacks` badges are gone, and the pickers offer everything.
 - [ ] **All-unentitled station still builds a session:** create a station whose **only** pack is `entity_management` while on `pro`, then flip to `standard`. Open a portal on it: the session **opens** (it does not error) and the agent has only the system tools (`current_time`, `station_context`). Prompt "what can you do here?" → it claims no pack capabilities and names the plan limit.
 - [ ] Flip back: `npx portalai org set-tier <orgId> standard --env local --yes`.
@@ -163,7 +165,7 @@ Open a portal on **legacy-station** (`standard` tier, so `entity_management` + `
 
 These are the "can never regress" claims. Verify once; they need no running app.
 
-- [ ] **Re-tiering needs no prompt edit.** Temporarily add `"visualize"` to `standard.builtinToolpacks` in `packages/core/src/registries/tier-catalog.ts`, run `npx portalops tier apply --env local --yes`, restart the API, and re-run the charting prompt from §7 → the agent now offers charting. **Revert the catalog edit** (`git checkout packages/core/src/registries/tier-catalog.ts`) and re-apply.
+- [ ] **Re-tiering needs no prompt edit.** Temporarily add `"visualize"` to `standard.builtinToolpacks` in `packages/core/src/registries/tier-catalog.ts`, run `npx portalops tier apply --env local --yes`, then **wait ~60s or restart the API** (this edits a cached tier row — the one case that needs it), and re-run the charting prompt from §7 → the agent now offers charting. **Revert the catalog edit** (`git checkout packages/core/src/registries/tier-catalog.ts`) and re-apply.
 - [ ] **A new pack fails the build until it's declared.** Add a throwaway slug (e.g. `"scratch_pack"`) to `BuiltinToolpackSlugSchema` in `packages/core/src/registries/builtin-toolpacks.ts`, then **`npm run build --workspace=packages/core`**, then `cd apps/api && npx tsc --noEmit` → it **fails** with `Property 'scratch_pack' is missing … but required in type 'Record<…, PackPromptSection>'`.
       **The rebuild is not optional:** `apps/api` type-checks against core's built `dist`, so skipping it makes this step pass and look like the guarantee is absent when it isn't. Revert the slug and rebuild core again afterwards.
 - [ ] **The iff-effective guard is real.** In `apps/api/src/prompts/system.prompt.ts`, move one pack's `capability` phrase into the unconditional intro text (i.e. hardcode it) and run `cd apps/api && npm run test:unit -- src/__tests__/prompts` → the guard case for that slug **fails**. Revert.
