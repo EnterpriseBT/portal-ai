@@ -164,7 +164,8 @@ Open a portal on **legacy-station** (`standard` tier, so `entity_management` + `
 These are the "can never regress" claims. Verify once; they need no running app.
 
 - [ ] **Re-tiering needs no prompt edit.** Temporarily add `"visualize"` to `standard.builtinToolpacks` in `packages/core/src/registries/tier-catalog.ts`, run `npx portalops tier apply --env local --yes`, restart the API, and re-run the charting prompt from §7 → the agent now offers charting. **Revert the catalog edit** (`git checkout packages/core/src/registries/tier-catalog.ts`) and re-apply.
-- [ ] **A new pack fails the build until it's declared.** Add a throwaway slug (e.g. `"scratch_pack"`) to `BuiltinToolpackSlugSchema` in `packages/core/src/registries/builtin-toolpacks.ts` and run `npm run type-check` → it **fails** on `PACK_PROMPT_SECTIONS` missing the entry. Revert.
+- [ ] **A new pack fails the build until it's declared.** Add a throwaway slug (e.g. `"scratch_pack"`) to `BuiltinToolpackSlugSchema` in `packages/core/src/registries/builtin-toolpacks.ts`, then **`npm run build --workspace=packages/core`**, then `cd apps/api && npx tsc --noEmit` → it **fails** with `Property 'scratch_pack' is missing … but required in type 'Record<…, PackPromptSection>'`.
+      **The rebuild is not optional:** `apps/api` type-checks against core's built `dist`, so skipping it makes this step pass and look like the guarantee is absent when it isn't. Revert the slug and rebuild core again afterwards.
 - [ ] **The iff-effective guard is real.** In `apps/api/src/prompts/system.prompt.ts`, move one pack's `capability` phrase into the unconditional intro text (i.e. hardcode it) and run `cd apps/api && npm run test:unit -- src/__tests__/prompts` → the guard case for that slug **fails**. Revert.
 
 ---
