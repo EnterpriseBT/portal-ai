@@ -49,12 +49,16 @@ Custom packs' `"Extension"` is server-hardcoded and not user-settable, so `iconS
 
 ## Smoke (manual, against your dev stack)
 
-0. **Restart `npm run dev` first.** Nothing aliases `@portalai/core` to source for Vite, so the app reads `packages/core/dist/` — an already-running dev server serves the *old* `iconSlug` values and Visualize will still show a puzzle piece. `dev` dependsOn `^build`, so a fresh start rebuilds core; a running one does not.
-1. Open a station's Edit dialog → toolpack picker: **Visualize** shows the rising-line-with-sparkles icon, distinct from Statistics' bar chart and from any custom pack's puzzle piece.
-2. Same picker: Data Query, Statistics, Regression, Financial, Web Search, and Entity Management look **exactly as before** — in particular Entity Management is still a network graph (not a pencil) and Web Search is still a globe-with-magnifier (not a plain magnifier).
-3. Register (or open) a custom toolpack → its chip still shows the puzzle piece.
-4. Create Station dialog → **the option list now shows an icon per pack** (it showed none before this change), and selecting a pack yields a chip whose icon matches the Edit dialog. Options and chips resolve through different call sites, so check both. Unentitled rows stay disabled *and* keep their icon.
-5. A station carrying a pack the org's tier excludes still renders muted with its correct icon (#284 treatment intact).
+**Walked 2026-07-30 against the local stack — confirmed complete by the user.** One item was not walkable locally and is recorded as a skip, not a pass.
+
+- [x] **0. Restart `npm run dev` first.** Nothing aliases `@portalai/core` to source for Vite, so the app reads `packages/core/dist/` — an already-running dev server serves the *old* `iconSlug` values and Visualize will still show a puzzle piece. `dev` dependsOn `^build`, so a fresh start rebuilds core; a running one does not.
+  *Result:* the stack had been running since before the change and did need the restart; the module the browser loads was then verified to carry `AutoGraph`/`Paid`/`TravelExplore`/`Hub`.
+- [x] **1.** Station Edit dialog → toolpack picker: **Visualize** shows the rising-line-with-sparkles icon, distinct from Statistics' bar chart and from any custom pack's puzzle piece. *Result:* confirmed — no puzzle piece, and not a near-duplicate of Statistics, so `AutoGraph` stands and `BubbleChart` was not needed.
+- [x] **2.** Same picker: Data Query, Statistics, Regression, Financial, Web Search, and Entity Management look **exactly as before** — Entity Management still a network graph (not a pencil), Web Search still a globe-with-magnifier (not a plain magnifier). *Result:* confirmed — the three `iconSlug` corrections are a visual no-op as intended.
+- [ ] **3.** Register (or open) a custom toolpack → its chip still shows the puzzle piece.
+  *Not walked — deliberate skip.* The local DB has zero `organization_toolpacks`, and registering one needs a webhook the API can fetch a schema from. Covered instead by unit tests (`getCustomIcon()` and `org:<id>` refs both resolve to `ExtensionOutlined`) and by the fact that custom packs now get the puzzle piece from the API's declared `iconSlug: "Extension"` (`toolpacks.router.ts:66`) rather than from a fallthrough. Worth walking on any environment that has a custom pack registered.
+- [x] **4.** Create Station dialog → **the option list now shows an icon per pack** (it showed none before this change), and selecting a pack yields a chip whose icon matches the Edit dialog. Options and chips resolve through different call sites, so check both. Unentitled rows stay disabled *and* keep their icon. *Result:* the walk found this list had **no** icons at all — a pre-existing gap from #299 — which was fixed in this branch at the user's call and re-verified.
+- [x] **5.** A station carrying a pack the org's tier excludes still renders muted with its correct icon (#284 treatment intact). *Result:* confirmed — unentitled packs correctly disabled.
 
 ## Out of scope
 
