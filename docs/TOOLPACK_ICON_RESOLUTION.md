@@ -35,6 +35,7 @@ Custom packs' `"Extension"` is server-hardcoded and not user-settable, so `iconS
 **Files**
 - Edit `apps/web/src/utils/tool-pack-icons.util.ts` — replace the slug-keyed `TOOL_PACK_ICONS` with an `iconSlug`-keyed map (`Storage`, `AutoGraph`, `BarChart`, `TrendingUp`, `Paid`, `TravelExplore`, `Hub`, `Extension`); `getIcon` resolves ref → `iconSlug` → component, mirroring `ToolPackUtil.getLabel`; `getCustomIcon()` stays, now returning the `"Extension"` entry by declaration rather than by fallthrough. Add the `AutoGraphOutlined` import.
 - Edit `packages/core/src/registries/builtin-toolpacks.ts` — four `iconSlug` strings: `visualize` → `"AutoGraph"`, `financial` → `"Paid"`, `web_search` → `"TravelExplore"`, `entity_management` → `"Hub"`.
+- Edit `apps/web/jest.config.js` — add `^@portalai/core/registries$` → core **source** to `moduleNameMapper`. Discovered during implementation and load-bearing: `registries` was the one core subpath not mapped, so web tests resolved it through package `exports` to `packages/core/dist/`. The guard below asserts the icon map covers the registry, which is meaningless against a stale build — and would have passed while source and map disagreed. `ui`/`models`/`contracts` are already mapped this way.
 
 **Tests**
 - Edit `apps/web/src/__tests__/ToolPackIconUtil.test.ts` — add `visualize` → `AutoGraphOutlined`; **replace the hand-enumerated distinctness test with a registry-derived guard** iterating `BUILTIN_TOOLPACKS`: every pack's `iconSlug` has a mapped component, no built-in resolves to `ExtensionOutlined`, all built-in icons distinct. This is the assertion that would have failed on #269.
@@ -46,6 +47,7 @@ Custom packs' `"Extension"` is server-hardcoded and not user-settable, so `iconS
 
 ## Smoke (manual, against your dev stack)
 
+0. **Restart `npm run dev` first.** Nothing aliases `@portalai/core` to source for Vite, so the app reads `packages/core/dist/` — an already-running dev server serves the *old* `iconSlug` values and Visualize will still show a puzzle piece. `dev` dependsOn `^build`, so a fresh start rebuilds core; a running one does not.
 1. Open a station's Edit dialog → toolpack picker: **Visualize** shows the rising-line-with-sparkles icon, distinct from Statistics' bar chart and from any custom pack's puzzle piece.
 2. Same picker: Data Query, Statistics, Regression, Financial, Web Search, and Entity Management look **exactly as before** — in particular Entity Management is still a network graph (not a pencil) and Web Search is still a globe-with-magnifier (not a plain magnifier).
 3. Register (or open) a custom toolpack → its chip still shows the puzzle piece.

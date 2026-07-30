@@ -223,7 +223,7 @@ const VISUALIZE_PACK: BuiltinToolpackSpec = {
   name: "Visualize",
   description:
     "Render expressive, interactive D3 visualizations from SQL query results.",
-  iconSlug: "InsertChart",
+  iconSlug: "AutoGraph",
   tools: [
     {
       name: "visualize_d3",
@@ -445,7 +445,7 @@ const FINANCIAL_PACK: BuiltinToolpackSpec = {
   name: "Financial",
   description:
     "Time-value-of-money, NPV/IRR (regular and irregular dates), depreciation, amortization, technical indicators, and portfolio risk metrics.",
-  iconSlug: "AccountBalance",
+  iconSlug: "Paid",
   tools: [
     {
       name: "tvm",
@@ -686,7 +686,7 @@ const WEB_SEARCH_PACK: BuiltinToolpackSpec = {
   name: "Web Search",
   description:
     "Search the public web for current information beyond the model's training cutoff.",
-  iconSlug: "Search",
+  iconSlug: "TravelExplore",
   tools: [
     {
       name: "web_search",
@@ -710,7 +710,7 @@ const ENTITY_MANAGEMENT_PACK: BuiltinToolpackSpec = {
   name: "Entity Management",
   description:
     "Create, update, and delete entity records, connector entities, and field mappings on stations whose connectors permit writes. Each tool accepts 1–100 items per call.",
-  iconSlug: "Edit",
+  iconSlug: "Hub",
   tools: [
     {
       name: "entity_record_create",

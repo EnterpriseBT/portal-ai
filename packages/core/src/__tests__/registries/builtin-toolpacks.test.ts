@@ -163,6 +163,14 @@ describe("visualize pack (#269)", () => {
     expect(props.spec).toBeUndefined();
   });
 
+  // #302 — the declared iconSlug is what the UI renders, so it is part of
+  // the pack's contract, not decoration. "AutoGraph" reads as a generated
+  // chart and stays distinct from the statistics pack's "BarChart".
+  it("declares the AutoGraph icon, not the custom-pack Extension puzzle piece", () => {
+    expect(pack!.iconSlug).toBe("AutoGraph");
+    expect(pack!.iconSlug).not.toBe("Extension");
+  });
+
   it("visualize_d3 capability: d3 result, expensive (Opus codegen), handle-on-large", () => {
     const cap = tool!.capability;
     expect(cap.resultKind).toBe("d3");

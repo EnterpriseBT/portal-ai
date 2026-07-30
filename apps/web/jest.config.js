@@ -45,6 +45,10 @@ export default {
     "^@portalai/core/ui$": "<rootDir>/../../packages/core/src/ui/index.ts",
     "^@portalai/core/models$": "<rootDir>/../../packages/core/src/models/index.ts",
     "^@portalai/core/contracts$": "<rootDir>/../../packages/core/src/contracts/index.ts",
+    // Registries must map to source, not dist: the toolpack icon guard
+    // (#302) asserts the web icon map covers every registry pack, which is
+    // only meaningful against the registry as written.
+    "^@portalai/core/registries$": "<rootDir>/../../packages/core/src/registries/index.ts",
     "^@portalai/core$": "<rootDir>/../../packages/core/src/index.ts",
     // Force CJS build of uuid (jsdom env resolves to ESM browser build which Jest can't parse)
     "^uuid$": "<rootDir>/../../node_modules/uuid/dist/index.js",
