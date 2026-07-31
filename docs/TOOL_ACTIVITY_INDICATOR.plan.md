@@ -129,7 +129,7 @@ The user-visible slice. The three props-only pieces (clock hook, extended indica
 - New: `apps/web/src/components/ToolActivityStrip.component.tsx` — pure UI, no positioning of its own.
 - New: `apps/web/src/__tests__/ToolActivityStrip.test.tsx`.
 - Edit: `apps/web/src/components/ChatWindow.component.tsx` — `statusStrip?: React.ReactNode` on `ChatWindowUIProps` (`:38`), rendered absolutely inside the `position: relative` scroll container (`:181`), after the `showJumpBottom` block. The composer box (`:234`) is **not** modified.
-- Edit: `apps/web/src/components/PortalSession.component.tsx` — `activeToolLabel` / `activeToolElapsedSeconds` on `PortalSessionUIProps` + `MessageListProps`; widened `showTypingIndicator` (`:64`); `statusStrip` passed to `ChatWindowUI`; container derives `toolSteps.at(-1)`, calls `useElapsed` once, resolves `toolPhaseLabel`.
+- Edit: `apps/web/src/components/PortalSession.component.tsx` — `activeToolLabel` / `activeToolElapsedSeconds` on `PortalSessionUIProps` + `MessageListProps`; widened `showTypingIndicator` (`:64`); `statusStrip` passed to `ChatWindowUI`; container derives the last element of `toolSteps` by index (`apps/web` is ES2020 — no `Array.prototype.at`), calls `useElapsed` once, resolves `toolPhaseLabel`.
 - Edit: `apps/web/src/__tests__/ChatWindowUI.test.tsx`, `apps/web/src/__tests__/PortalSession.test.tsx` — upgrade the `sse.api` stub (`:80-89`) to capture listeners; promote slice 4's fake `EventSource` to a shared `src/__tests__/__mocks__/` helper now that it has a second consumer.
 
 **Steps**

@@ -258,7 +258,7 @@ Rendered **inside** the `position: relative` scroll container (`:181`), as a sib
 - `PortalSessionUIProps` and `MessageListProps` gain `activeToolLabel?: string | null` and `activeToolElapsedSeconds?: number`.
 - `MessageList`: `showTypingIndicator` (`:64`) becomes `isStreaming && (!hasStreamingContent || activeToolLabel != null)`; the render at `:107` passes `label`/`elapsedSeconds` through.
 - `PortalSessionUI` passes `statusStrip={activeToolLabel ? <ToolActivityStrip … /> : undefined}` to `ChatWindowUI`.
-- Container: `const activeStep = streamState.toolSteps.at(-1) ?? null;` then `const elapsedSeconds = useElapsed(activeStep?.startedAt ?? null);` and `const activeToolLabel = activeStep ? toolPhaseLabel(activeStep.toolName) : null;`. The clock runs **once**, in the container; both surfaces receive numbers and strings only.
+- Container: `const activeStep = streamState.toolSteps[streamState.toolSteps.length - 1] ?? null;` (**not** `.at(-1)` — `apps/web` targets ES2020, where `Array.prototype.at` is not in `lib`) then `const elapsedSeconds = useElapsed(activeStep?.startedAt ?? null);` and `const activeToolLabel = activeStep ? toolPhaseLabel(activeStep.toolName) : null;`. The clock runs **once**, in the container; both surfaces receive numbers and strings only.
 
 ## Migration / Seed
 
