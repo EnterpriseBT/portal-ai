@@ -3,11 +3,15 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 // ── Mocks ─────────────────────────────────────────────────────────────
 
 const mockFindById_org = jest.fn<() => Promise<unknown>>();
+const mockFindByStationId_packs = jest.fn<() => Promise<unknown[]>>();
+const mockFindManyByIds_customPacks = jest.fn<() => Promise<unknown[]>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       organizations: { findById: mockFindById_org },
+      stationToolpacks: { findByStationId: mockFindByStationId_packs },
+      organizationToolpacks: { findManyByIds: mockFindManyByIds_customPacks },
     },
   },
 }));
@@ -140,5 +144,165 @@ describe("EntitlementService.customPacksEntitled (#284)", () => {
       makePolicy({ builtinToolpacks: [], customToolpacks: true }, "pro")
     );
     expect(await EntitlementService.customPacksEntitled(ORG_ID)).toBe(true);
+  });
+});
+
+// ── resolveStationPacks (#306) ─────────────────────────────────────────
+//
+// The single derivation of "what packs does this station actually have",
+// built-in AND custom. Before #306, three paths each answered this from
+// `builtinSlug` alone, so a registered custom pack was invisible to the agent
+// even while its tools were attached — the agent denied tools it could call.
+
+describe("EntitlementService.resolveStationPacks (#306)", () => {
+  const STATION_ID = "station-001";
+
+  const builtinRow = (slug: string, i = 0) => ({
+    id: `stp-b${i}`,
+    stationId: STATION_ID,
+    builtinSlug: slug,
+    organizationToolpackId: null,
+  });
+
+  const customRow = (packId: string, i = 0) => ({
+    id: `stp-c${i}`,
+    stationId: STATION_ID,
+    builtinSlug: null,
+    organizationToolpackId: packId,
+  });
+
+  const customPack = (id: string, name: string, toolNames: string[]) => ({
+    id,
+    organizationId: ORG_ID,
+    name,
+    description: `${name} description`,
+    tools: toolNames.map((n) => ({ name: n, description: `${n} does things` })),
+  });
+
+  beforeEach(() => {
+    mockFindByStationId_packs.mockResolvedValue([]);
+    mockFindManyByIds_customPacks.mockResolvedValue([]);
+  });
+
+  it("splits built-in slugs exactly as splitBuiltinPacks does", async () => {
+    mockFindByStationId_packs.mockResolvedValue([
+      builtinRow("data_query", 1),
+      builtinRow("statistics", 2),
+    ]);
+
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+
+    expect(mockFindByStationId_packs).toHaveBeenCalledWith(STATION_ID);
+    expect(packs.effective).toEqual(["data_query"]);
+    expect(packs.unentitled).toEqual(["statistics"]);
+  });
+
+  it("returns registered custom packs with their tool names", async () => {
+    mockResolveTier.mockResolvedValue(
+      makePolicy({ builtinToolpacks: ["data_query"], customToolpacks: true })
+    );
+    mockFindByStationId_packs.mockResolvedValue([
+      builtinRow("data_query", 1),
+      customRow("otp-1", 1),
+    ]);
+    mockFindManyByIds_customPacks.mockResolvedValue([
+      customPack("otp-1", "smoke", ["refresh_crm", "sync_all_records"]),
+    ]);
+
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+
+    expect(mockFindManyByIds_customPacks).toHaveBeenCalledWith(["otp-1"], {
+      organizationId: ORG_ID,
+    });
+    expect(packs.customPacks).toEqual([
+      {
+        name: "smoke",
+        description: "smoke description",
+        toolNames: ["refresh_crm", "sync_all_records"],
+      },
+    ]);
+    expect(packs.effective).toEqual(["data_query"]);
+  });
+
+  it("never reports a custom pack as unentitled", async () => {
+    // `splitBuiltinPacks` would classify any non-builtin ref as a plan limit,
+    // which is what sent the user to Subscription & Billing for a working pack.
+    mockResolveTier.mockResolvedValue(
+      makePolicy({ builtinToolpacks: ["data_query"], customToolpacks: true })
+    );
+    mockFindByStationId_packs.mockResolvedValue([
+      builtinRow("data_query", 1),
+      customRow("otp-1", 1),
+    ]);
+    mockFindManyByIds_customPacks.mockResolvedValue([
+      customPack("otp-1", "smoke", ["refresh_crm"]),
+    ]);
+
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+
+    expect(packs.unentitled).toEqual([]);
+    expect(packs.unentitled).not.toContain("otp-1");
+  });
+
+  it("omits custom packs when the tier does not include them", async () => {
+    // #214: registrations stay untouched on a downgrade; their tools simply
+    // stop being offered — so the inventory must stop naming them too.
+    mockResolveTier.mockResolvedValue(
+      makePolicy({ builtinToolpacks: ["data_query"], customToolpacks: false })
+    );
+    mockFindByStationId_packs.mockResolvedValue([
+      builtinRow("data_query", 1),
+      customRow("otp-1", 1),
+    ]);
+
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+
+    expect(packs.customPacks).toEqual([]);
+    expect(mockFindManyByIds_customPacks).not.toHaveBeenCalled();
+    expect(packs.effective).toEqual(["data_query"]);
+  });
+
+  it("handles a custom-only station", async () => {
+    mockResolveTier.mockResolvedValue(
+      makePolicy({ builtinToolpacks: ["data_query"], customToolpacks: true })
+    );
+    mockFindByStationId_packs.mockResolvedValue([customRow("otp-1", 1)]);
+    mockFindManyByIds_customPacks.mockResolvedValue([
+      customPack("otp-1", "smoke", ["refresh_crm"]),
+    ]);
+
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+
+    expect(packs.effective).toEqual([]);
+    expect(packs.unentitled).toEqual([]);
+    expect(packs.customPacks).toHaveLength(1);
+  });
+
+  it("returns empty lists for a station with no packs at all", async () => {
+    const packs = await EntitlementService.resolveStationPacks(
+      STATION_ID,
+      ORG_ID
+    );
+
+    expect(packs).toMatchObject({
+      effective: [],
+      unentitled: [],
+      customPacks: [],
+    });
   });
 });

@@ -97,9 +97,27 @@ const mockSplitBuiltinPacks =
       slugs: readonly string[]
     ) => Promise<{ effective: string[]; unentitled: string[]; tier: string }>
   >();
+// #306: buildStationContext + createPortal now read the station's packs
+// through `resolveStationPacks` (built-in split + custom packs in one call).
+const mockResolveStationPacks = jest.fn<
+  (
+    stationId: string,
+    orgId: string
+  ) => Promise<{
+    effective: string[];
+    unentitled: string[];
+    customPacks: {
+      name: string;
+      description: string | null;
+      toolNames: string[];
+    }[];
+    tier: string;
+  }>
+>();
 jest.unstable_mockModule("../../services/entitlement.service.js", () => ({
   EntitlementService: {
     splitBuiltinPacks: mockSplitBuiltinPacks,
+    resolveStationPacks: mockResolveStationPacks,
     customPacksEntitled: jest.fn(),
   },
 }));
@@ -302,6 +320,19 @@ describe("PortalService", () => {
       unentitled: [],
       tier: "standard",
     }));
+    // #306: mirror the real composition so cases that set up join-table rows
+    // and a split still describe the same behavior through the resolver.
+    mockResolveStationPacks.mockImplementation(async (stationId, orgId) => {
+      void stationId;
+      const rows = (await mockFindByStationId_toolpacks()) as {
+        builtinSlug: string | null;
+      }[];
+      const builtin = rows
+        .map((r) => r.builtinSlug)
+        .filter((sl): sl is string => sl !== null);
+      const split = await mockSplitBuiltinPacks(orgId, builtin);
+      return { ...split, customPacks: [] };
+    });
     _idCounter = 0;
   });
 
@@ -435,14 +466,20 @@ describe("PortalService", () => {
       ).rejects.toMatchObject({ code: ApiCode.PORTAL_STATION_NO_TOOLS });
     });
 
-    it("throws PORTAL_STATION_NO_TOOLS when only custom toolpack rows exist (phase 1)", async () => {
+    // #306 inverts a phase-1 pin. This case used to assert the opposite —
+    // "throws … when only custom toolpack rows exist (phase 1)" — because
+    // custom packs didn't reach the executor yet. #214 changed that:
+    // `buildAnalyticsTools` accepts builtin-OR-custom (`tools.service.ts:416`),
+    // so a custom-only station is a valid configuration and this guard was the
+    // last thing making it unusable.
+    it("opens a portal on a custom-only station", async () => {
       mockFindById_station.mockResolvedValue(STATION);
       mockFindByStationId_toolpacks.mockResolvedValue([
         {
           id: "stp-custom",
           stationId: STATION_ID,
           builtinSlug: null,
-          organizationToolpackId: "otp-future",
+          organizationToolpackId: "otp-1",
           created: Date.now(),
           createdBy: USER_ID,
           updated: null,
@@ -451,6 +488,32 @@ describe("PortalService", () => {
           deletedBy: null,
         },
       ]);
+      mockCreate_portal.mockResolvedValue(PORTAL);
+      mockLoadStation.mockResolvedValue(STATION_DATA);
+      mockResolveStationPacks.mockResolvedValue({
+        effective: [],
+        unentitled: [],
+        customPacks: [
+          { name: "smoke", description: null, toolNames: ["refresh_crm"] },
+        ],
+        tier: "pro",
+      });
+
+      const result = await PortalService.createPortal({
+        stationId: STATION_ID,
+        organizationId: ORG_ID,
+        userId: USER_ID,
+      });
+
+      expect(result.portalId).toBe(PORTAL_ID);
+      expect(result.stationContext.customToolPacks).toEqual([
+        { name: "smoke", description: null, toolNames: ["refresh_crm"] },
+      ]);
+    });
+
+    it("still throws PORTAL_STATION_NO_TOOLS when neither kind of row exists", async () => {
+      mockFindById_station.mockResolvedValue(STATION);
+      mockFindByStationId_toolpacks.mockResolvedValue([]);
 
       await expect(
         PortalService.createPortal({
@@ -475,7 +538,7 @@ describe("PortalService", () => {
     // derives the packs from `station_toolpacks` itself and cannot be handed
     // the wrong array.
 
-    it("derives the station's packs from station_toolpacks, unprompted", async () => {
+    it("derives the station's packs from the station id, unprompted", async () => {
       const { buildStationContext } =
         await import("../../services/portal.service.js");
 
@@ -489,11 +552,10 @@ describe("PortalService", () => {
         organizationId: ORG_ID,
       });
 
-      expect(mockFindByStationId_toolpacks).toHaveBeenCalledWith(STATION_ID);
-      expect(mockSplitBuiltinPacks).toHaveBeenCalledWith(ORG_ID, [
-        "data_query",
-        "visualize",
-      ]);
+      // #306 moved the join-table read into `resolveStationPacks`, whose own
+      // suite pins the query. What matters here is that the context is built
+      // from the station id alone — no caller-supplied packs to get wrong.
+      expect(mockResolveStationPacks).toHaveBeenCalledWith(STATION_ID, ORG_ID);
       expect(ctx.effectiveToolPacks).toEqual(["data_query", "visualize"]);
     });
 
@@ -523,12 +585,8 @@ describe("PortalService", () => {
         organizationId: ORG_ID,
       });
 
-      // No null entries leak into the pack list (#306 changes what these rows
-      // contribute; this pins that they never corrupt the built-in list).
+      // No null entries leak into the built-in pack list.
       expect(ctx.effectiveToolPacks).toEqual(["data_query"]);
-      expect(mockSplitBuiltinPacks).toHaveBeenCalledWith(ORG_ID, [
-        "data_query",
-      ]);
     });
 
     it("yields empty pack lists for a station with no rows, without throwing", async () => {

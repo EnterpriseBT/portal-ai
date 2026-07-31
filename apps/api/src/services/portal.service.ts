@@ -326,15 +326,17 @@ export class PortalService {
       throw new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found");
     }
 
-    // Validate station has at least one built-in tool pack enabled.
-    // Custom toolpack rows are accepted at the DB layer (phase 2) but
-    // do not yet contribute to the executor — phase 1 only counts
-    // built-in slugs.
+    // Validate the station has at least one tool pack enabled, of **either**
+    // kind (#306). This used to count built-in slugs only, which made a
+    // custom-only station unable to open a portal at all — a phase-1 rule that
+    // outlived its era: since #214 `buildAnalyticsTools` accepts
+    // builtin-or-custom (`tools.service.ts:416`), so the executor already
+    // treats a custom-only station as valid.
     const enabled = await repo.stationToolpacks.findByStationId(stationId);
-    const toolPacks = enabled
-      .map((r) => r.builtinSlug)
-      .filter((s): s is string => s !== null);
-    if (toolPacks.length === 0) {
+    const enabledPackCount = enabled.filter(
+      (r) => r.builtinSlug !== null || r.organizationToolpackId !== null
+    ).length;
+    if (enabledPackCount === 0) {
       throw new ApiError(
         400,
         ApiCode.PORTAL_STATION_NO_TOOLS,
@@ -1063,22 +1065,18 @@ export async function buildStationContext(args: {
 }): Promise<StationContext> {
   const { station, organizationId } = args;
 
-  // Configured packs, straight from the join table that owns them. Custom-pack
-  // rows carry a null `builtinSlug` and contribute nothing here (#306 adds
-  // them to the context as their own field).
-  const packRows = await DbService.repository.stationToolpacks.findByStationId(
-    station.id
-  );
-  const toolPacks = packRows
-    .map((r) => r.builtinSlug)
-    .filter((s): s is string => s !== null);
-
+  // The station's packs — built-in and custom — from the one derivation that
+  // reads both columns of the join table (#306).
+  //
   // #284: configured ≠ available. buildAnalyticsTools has filtered packs
   // against the tier since #214, so a context built from the configured set
   // described tools that didn't exist in the same session. Everything below
   // gates on `effective`.
-  const { effective: effectiveToolPacks, unentitled: unentitledToolPacks } =
-    await EntitlementService.splitBuiltinPacks(organizationId, toolPacks);
+  const {
+    effective: effectiveToolPacks,
+    unentitled: unentitledToolPacks,
+    customPacks: customToolPacks,
+  } = await EntitlementService.resolveStationPacks(station.id, organizationId);
 
   const stationData = await AnalyticsService.loadStation(
     station.id,
@@ -1103,6 +1101,7 @@ export async function buildStationContext(args: {
     entityGroups: stationData.entityGroups,
     effectiveToolPacks,
     unentitledToolPacks,
+    customToolPacks,
     entityCapabilities,
     connectorInstances,
   };

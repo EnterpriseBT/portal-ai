@@ -57,9 +57,28 @@ const mockSplitBuiltinPacks =
   jest.fn<
     () => Promise<{ effective: string[]; unentitled: string[]; tier: string }>
   >();
+// #306: the tool now reads the station's packs — built-in AND custom —
+// through the one resolver. Default delegates to the split mock so the
+// pre-existing cases keep describing the same behavior.
+const mockResolveStationPacks = jest.fn<
+  (
+    stationId: string,
+    orgId: string
+  ) => Promise<{
+    effective: string[];
+    unentitled: string[];
+    customPacks: {
+      name: string;
+      description: string | null;
+      toolNames: string[];
+    }[];
+    tier: string;
+  }>
+>();
 jest.unstable_mockModule("../../services/entitlement.service.js", () => ({
   EntitlementService: {
     splitBuiltinPacks: mockSplitBuiltinPacks,
+    resolveStationPacks: mockResolveStationPacks,
     customPacksEntitled: jest.fn(),
   },
 }));
@@ -184,6 +203,12 @@ describe("StationContextTool", () => {
       unentitled: [],
       tier: "standard",
     });
+    // #306: default delegates to the split mock, so cases that drive
+    // `mockSplitBuiltinPacks` keep working unchanged.
+    mockResolveStationPacks.mockImplementation(async () => ({
+      ...(await mockSplitBuiltinPacks()),
+      customPacks: [],
+    }));
     mockFindColumnDefs.mockResolvedValue([
       {
         id: "cd-id",
@@ -346,12 +371,18 @@ describe("StationContextTool", () => {
     });
 
     const result = (await exec()) as {
-      toolPacks: { effective: string[]; unentitled: string[] };
+      toolPacks: {
+        effective: string[];
+        unentitled: string[];
+        custom: unknown[];
+      };
     };
 
     expect(result.toolPacks).toEqual({
       effective: ["data_query"],
       unentitled: ["entity_management"],
+      // #306 added `custom`; empty here since no custom pack is attached.
+      custom: [],
     });
   });
 
@@ -360,7 +391,66 @@ describe("StationContextTool", () => {
     expect(result.toolPacks).toEqual({
       effective: ["data_query", "statistics"],
       unentitled: [],
+      custom: [],
     });
+  });
+
+  // ── Custom packs in the inventory (#306) ───────────────────────────
+  //
+  // The reported bug: a registered custom pack was attached and callable, but
+  // this section reported built-ins only, so the agent told the user the pack
+  // did not exist and pointed at Subscription & Billing.
+
+  it("reports attached custom packs and their tool names", async () => {
+    mockResolveStationPacks.mockResolvedValueOnce({
+      effective: ["data_query"],
+      unentitled: [],
+      customPacks: [
+        {
+          name: "smoke",
+          description: "Internal CRM helpers.",
+          toolNames: ["refresh_crm", "sync_all_records"],
+        },
+      ],
+      tier: "pro",
+    });
+
+    const result = (await exec()) as {
+      toolPacks: {
+        effective: string[];
+        unentitled: string[];
+        custom: {
+          name: string;
+          description: string | null;
+          toolNames: string[];
+        }[];
+      };
+    };
+
+    expect(result.toolPacks.custom).toEqual([
+      {
+        name: "smoke",
+        description: "Internal CRM helpers.",
+        toolNames: ["refresh_crm", "sync_all_records"],
+      },
+    ]);
+    // A custom pack must never be reported as a plan limit.
+    expect(result.toolPacks.unentitled).toEqual([]);
+  });
+
+  it("reports an empty custom list when the station has none", async () => {
+    const result = (await exec()) as {
+      toolPacks: { custom: unknown[] };
+    };
+    expect(result.toolPacks.custom).toEqual([]);
+  });
+
+  it("resolves packs by station and org id", async () => {
+    await exec();
+    expect(mockResolveStationPacks).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String)
+    );
   });
 
   it("omits the toolPacks section when `include` excludes it", async () => {

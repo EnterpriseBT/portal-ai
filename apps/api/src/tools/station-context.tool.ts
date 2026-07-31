@@ -123,6 +123,17 @@ interface StationContextResponse {
   toolPacks?: {
     effective: string[];
     unentitled: string[];
+    /**
+     * Org-registered (webhook) packs attached to this station (#306), with the
+     * tools each provides. Empty when the plan excludes custom toolpacks.
+     * These are LIVE tools — never report a pack listed here as unavailable,
+     * and never attribute its absence to the plan.
+     */
+    custom: Array<{
+      name: string;
+      description: string | null;
+      toolNames: string[];
+    }>;
   };
 }
 
@@ -137,9 +148,11 @@ export class StationContextTool extends Tool<typeof InputSchema> {
     "instances (with `connectorInstanceId`), entity groups, and the " +
     "organization's `columnDefinitions` catalog (the `columnDefinitionId`s " +
     "available to `field_mapping_create`), and `toolPacks` — the station's " +
-    "packs split into `effective` (their tools exist in this session) and " +
-    "`unentitled` (attached to the station but not included in the " +
-    "organization's plan, so their tools do NOT exist here). **Call this " +
+    "packs split into `effective` (built-in, their tools exist in this " +
+    "session), `unentitled` (built-in, attached but not included in the " +
+    "organization's plan, so their tools do NOT exist here), and `custom` " +
+    "(toolpacks your organization registered itself, with the `toolNames` " +
+    "each provides — these are live, callable tools). **Call this " +
     "before any tool that " +
     "asks for a `connectorEntityId`, `connectorInstanceId`, " +
     "`columnDefinitionId`, `fieldMappingId`, or wide-column name** — do not " +
@@ -190,19 +203,15 @@ export class StationContextTool extends Tool<typeof InputSchema> {
         // here rather than threaded in, so the tool tells the truth no matter
         // which session built it.
         if (sections.has("toolPacks")) {
-          const packRows =
-            await DbService.repository.stationToolpacks.findByStationId(
-              stationId
+          // #306: one derivation for both kinds of pack. This used to read
+          // `builtinSlug` only, so a registered custom pack was invisible here
+          // and the agent denied holding tools it could call.
+          const { effective, unentitled, customPacks } =
+            await EntitlementService.resolveStationPacks(
+              stationId,
+              organizationId
             );
-          const configured = packRows
-            .map((r) => r.builtinSlug)
-            .filter((slug): slug is string => slug !== null);
-          const { effective, unentitled } =
-            await EntitlementService.splitBuiltinPacks(
-              organizationId,
-              configured
-            );
-          response.toolPacks = { effective, unentitled };
+          response.toolPacks = { effective, unentitled, custom: customPacks };
         }
 
         // Single round-trip for entities + groups (and connector

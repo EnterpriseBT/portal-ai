@@ -9,6 +9,7 @@ import type {
   EntityGroupContext,
 } from "../services/analytics.service.js";
 import type { ResolvedCapabilities } from "../utils/resolve-capabilities.util.js";
+import type { CustomPackSummary } from "../services/entitlement.service.js";
 
 /**
  * Connector instance attached to this station — surfaced in the
@@ -57,6 +58,16 @@ export interface StationContext {
    * missing product capability.
    */
   unentitledToolPacks: string[];
+  /**
+   * Org-registered (webhook) toolpacks attached to this station (#306).
+   *
+   * Kept separate from `effectiveToolPacks` deliberately: that list is typed
+   * to built-in slugs and is what `PACK_PROMPT_SECTIONS` and the capability
+   * gates key off, so a custom pack cannot live in it. Empty when the org's
+   * tier excludes custom toolpacks — their tools aren't constructed then, so
+   * naming them would describe nothing.
+   */
+  customToolPacks?: CustomPackSummary[];
   entityCapabilities?: Record<string, ResolvedCapabilities>;
   /** Attached connector instances; rendered when the entity_management
    *  pack is enabled so the agent knows what to pass for
@@ -627,6 +638,37 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   // this is the whole point of the declared surface.
   for (const section of sections) {
     lines.push(...section.render(stationContext));
+  }
+
+  // Org-provided tools (#306). Custom toolpacks are attached by
+  // `buildAnalyticsTools` exactly like built-ins, but they carry no declared
+  // prompt section — so without this block the agent held tools it had never
+  // been told about, and denied having them when asked. Named here with their
+  // tools so "what can the <pack> toolpack do?" is answerable.
+  const customPacks = stationContext.customToolPacks ?? [];
+  if (customPacks.length > 0) {
+    lines.push("## Organization-Provided Tools");
+    lines.push("");
+    lines.push(
+      "This station also has toolpacks your organization registered itself. " +
+        "Their tools are available to you in this session exactly like the " +
+        "built-in ones:"
+    );
+    lines.push("");
+    for (const pack of customPacks) {
+      const summary = pack.description ? ` — ${pack.description}` : "";
+      lines.push(`- \`${pack.name}\`${summary}`);
+      for (const toolName of pack.toolNames) {
+        lines.push(`  - \`${toolName}\``);
+      }
+    }
+    lines.push("");
+    lines.push(
+      "These are real, callable tools. Never tell the user a registered pack " +
+        "is unavailable, and never attribute its absence to the " +
+        "organization's plan — if it is listed here, you have it."
+    );
+    lines.push("");
   }
 
   // What the plan excludes (#284). Configured-but-unentitled packs are named
