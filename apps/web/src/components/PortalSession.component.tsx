@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
 import { Box, Icon, IconName, StatusMessage } from "@portalai/core/ui";
 import { ContentBlockRenderer } from "@portalai/core";
+import { toolPhaseLabel } from "@portalai/core/registries";
 import Typography from "@mui/material/Typography";
 import MuiLink from "@mui/material/Link";
 import type {
@@ -20,12 +21,14 @@ import { sdk, queryKeys } from "../api/sdk";
 import { usePortalStream } from "../utils/portal-stream.util";
 import { ChatWindowUI, type ChatWindowHandle } from "./ChatWindow.component";
 import { usePortalChatLock } from "../utils/portal-chat-lock.util";
+import { useElapsed } from "../utils/use-elapsed.util";
 import {
   PortalMessage,
   renderWebBlock,
   shouldRenderViaWeb,
 } from "./PortalMessage.component";
 import { TypingIndicator } from "./TypingIndicator.component";
+import { ToolActivityStrip } from "./ToolActivityStrip.component";
 import { MessageTimestamp } from "./MessageTimestamp.component";
 
 // ── Message List (memoized to avoid re-renders on input changes) ─────
@@ -41,6 +44,10 @@ interface MessageListProps {
   /** Send time of the in-flight turn (epoch ms), or null when idle — stamps
    *  the streaming assistant message (#180). */
   streamStartedAt?: number | null;
+  /** Phase of the tool running right now, or null when none is (#279). */
+  activeToolLabel?: string | null;
+  /** Whole seconds on that tool's step (#279). */
+  activeToolElapsedSeconds?: number;
 }
 
 const MessageList = React.memo<MessageListProps>(
@@ -53,15 +60,19 @@ const MessageList = React.memo<MessageListProps>(
     streamError,
     isStreaming,
     streamStartedAt = null,
+    activeToolLabel = null,
+    activeToolElapsedSeconds,
   }) => {
     const hasStreamingContent =
       streamingBlocks !== null && streamingBlocks.length > 0;
     const isEmpty =
       messages.length === 0 && !hasStreamingContent && !streamError;
-    // Show typing indicator only between user-send and first delta —
-    // once any streamed block arrives, the block itself is the visual
-    // confirmation that the assistant is responding.
-    const showTypingIndicator = isStreaming && !hasStreamingContent;
+    // Between user-send and the first delta the indicator is the only sign of
+    // life. It also stays up for as long as a tool is running (#279): a tool
+    // turn's first delta is usually a one-line preamble, after which the feed
+    // would otherwise sit frozen until the finished block lands.
+    const showTypingIndicator =
+      isStreaming && (!hasStreamingContent || activeToolLabel !== null);
 
     if (isEmpty) {
       return <PortalSessionEmptyState />;
@@ -104,7 +115,12 @@ const MessageList = React.memo<MessageListProps>(
           </Box>
         )}
 
-        {showTypingIndicator && <TypingIndicator />}
+        {showTypingIndicator && (
+          <TypingIndicator
+            label={activeToolLabel ?? undefined}
+            elapsedSeconds={activeToolElapsedSeconds}
+          />
+        )}
 
         {streamError && <StatusMessage variant="error" message={streamError} />}
       </>
@@ -170,6 +186,10 @@ export interface PortalSessionUIProps {
   streamStartedAt?: number | null;
   /** Locked when a non-terminal bulk job is bound to this portal (#85). */
   chatLocked?: boolean;
+  /** Phase of the tool running right now, or null when none is (#279). */
+  activeToolLabel?: string | null;
+  /** Whole seconds on that tool's step (#279). */
+  activeToolElapsedSeconds?: number;
 }
 
 export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
@@ -187,6 +207,8 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
   isStreaming,
   streamStartedAt,
   chatLocked,
+  activeToolLabel = null,
+  activeToolElapsedSeconds,
 }) => (
   <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
     <ChatWindowUI
@@ -196,6 +218,14 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
       onCancel={onCancel}
       onExit={onExit}
       disabled={isStreaming || chatLocked}
+      statusStrip={
+        activeToolLabel ? (
+          <ToolActivityStrip
+            label={activeToolLabel}
+            elapsedSeconds={activeToolElapsedSeconds ?? 0}
+          />
+        ) : undefined
+      }
     >
       <MessageList
         portalId={portalId}
@@ -206,6 +236,8 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
         streamError={streamError}
         isStreaming={isStreaming}
         streamStartedAt={streamStartedAt}
+        activeToolLabel={activeToolLabel}
+        activeToolElapsedSeconds={activeToolElapsedSeconds}
       />
     </ChatWindowUI>
   </Box>
@@ -389,6 +421,15 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
 
   const chatLock = usePortalChatLock(portalId);
 
+  // #279 — the newest open tool step is the one the user is shown; when it
+  // closes, the one before it becomes current again. Indexed rather than
+  // `.at(-1)`: apps/web targets ES2020, where Array.prototype.at is not in lib.
+  const { toolSteps } = streamState;
+  const activeStep = toolSteps[toolSteps.length - 1] ?? null;
+  // One interval for the whole turn, owned here — both surfaces receive a
+  // plain number and stay pure.
+  const activeToolElapsedSeconds = useElapsed(activeStep?.startedAt ?? null);
+
   return (
     <PortalSessionUI
       portalId={portalId}
@@ -405,6 +446,8 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       isStreaming={streamState.isStreaming}
       streamStartedAt={streamStartedAt}
       chatLocked={chatLock.locked}
+      activeToolLabel={activeStep ? toolPhaseLabel(activeStep.toolName) : null}
+      activeToolElapsedSeconds={activeToolElapsedSeconds}
     />
   );
 };

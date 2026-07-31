@@ -9,59 +9,14 @@ import { jest } from "@jest/globals";
 // blanking the indicator.
 //
 // The pre-existing portal-stream test covers only the pure `streamingBlockFor`
-// mapper, so driving the hook's listeners needs a capturable EventSource —
-// modelled on the one in `job-stream.util.test.ts`.
+// mapper, so driving the hook's listeners needs a capturable EventSource.
 
-type ESListener = (event: MessageEvent) => void;
+import {
+  MockEventSource,
+  installMockEventSource,
+} from "./__mocks__/mock-event-source";
 
-class MockEventSource {
-  static lastInstance: MockEventSource | null = null;
-
-  url: string;
-  close: jest.Mock;
-  onerror: ((event: Event) => void) | null = null;
-
-  private _listeners = new Map<string, ESListener[]>();
-
-  constructor(url: string) {
-    this.url = url;
-    this.close = jest.fn();
-    MockEventSource.lastInstance = this;
-  }
-
-  addEventListener(type: string, listener: ESListener) {
-    const list = this._listeners.get(type) || [];
-    list.push(listener);
-    this._listeners.set(type, list);
-  }
-
-  removeEventListener(type: string, listener: ESListener) {
-    const list = this._listeners.get(type) || [];
-    this._listeners.set(
-      type,
-      list.filter((l) => l !== listener)
-    );
-  }
-
-  __emit(type: string, data: unknown) {
-    const event = { data: JSON.stringify(data) } as MessageEvent;
-    this._listeners.get(type)?.forEach((fn) => fn(event));
-  }
-
-  __emitError() {
-    this.onerror?.(new Event("error"));
-  }
-
-  static reset() {
-    MockEventSource.lastInstance = null;
-  }
-}
-
-Object.defineProperty(globalThis, "EventSource", {
-  value: MockEventSource,
-  writable: true,
-  configurable: true,
-});
+installMockEventSource();
 
 const mockConnect = jest.fn<(path: string) => Promise<MockEventSource>>();
 

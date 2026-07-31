@@ -42,10 +42,21 @@ export interface ChatWindowUIProps {
   onExit: () => void;
   disabled?: boolean;
   children?: React.ReactNode;
+  /**
+   * Transient status pinned just above the composer (#279 — the tool activity
+   * strip). Rendered as an **overlay** inside the scroll region, so it
+   * occupies no layout space: a row that appeared mid-turn would move the text
+   * input under a user who may be typing and re-measure the feed's scroll
+   * viewport while the auto-scroll effect is running.
+   */
+  statusStrip?: React.ReactNode;
 }
 
 export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
-  ({ onSubmit, onReset, onCancel, onExit, disabled, children }, ref) => {
+  (
+    { onSubmit, onReset, onCancel, onExit, disabled, children, statusStrip },
+    ref
+  ) => {
     const { isMobile } = useLayout();
     const [value, setValue] = useState("");
     const [showJumpTop, setShowJumpTop] = useState(false);
@@ -229,6 +240,25 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
                 <KeyboardArrowDownIcon fontSize="small" />
               </MuiIconButton>
             </Tooltip>
+          )}
+          {statusStrip && (
+            <Box
+              data-testid="chat-status-strip"
+              sx={{
+                position: "absolute",
+                bottom: 8,
+                left: 16,
+                // Clear of the jump-to-bottom button in the corner.
+                right: 64,
+                zIndex: 1,
+                display: "flex",
+                justifyContent: "flex-start",
+                // Never intercept clicks or text selection in the feed beneath.
+                pointerEvents: "none",
+              }}
+            >
+              {statusStrip}
+            </Box>
           )}
         </Box>
         <Box sx={{ flexShrink: 0, p: 2, borderTop: 1, borderColor: "divider" }}>

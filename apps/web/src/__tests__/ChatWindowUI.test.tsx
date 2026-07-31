@@ -83,6 +83,51 @@ describe("ChatWindowUI", () => {
     });
   });
 
+  // #279: the tool activity strip mounts here as an OVERLAY, not as a row in
+  // the composer's box. The distinction is the whole point — a row that
+  // appears when a tool starts would move the text input under a user who may
+  // be typing into it, and re-measure the feed's scroll viewport mid-stream.
+  describe("status strip slot (#279)", () => {
+    const STRIP = <div data-testid="strip-probe">Building the chart</div>;
+
+    it("renders the status strip when one is provided", () => {
+      render(<ChatWindowUI {...createProps()} statusStrip={STRIP} />);
+      expect(screen.getByTestId("strip-probe")).toBeInTheDocument();
+    });
+
+    it("renders nothing when no status strip is provided", () => {
+      render(<ChatWindowUI {...createProps()} />);
+      expect(screen.queryByTestId("strip-probe")).not.toBeInTheDocument();
+    });
+
+    it("positions the strip absolutely so it occupies no layout space", () => {
+      const { container } = render(
+        <ChatWindowUI {...createProps()} statusStrip={STRIP} />
+      );
+      const wrapper = container.querySelector(
+        "[data-testid='chat-status-strip']"
+      );
+      expect(wrapper).not.toBeNull();
+      expect(getComputedStyle(wrapper!).position).toBe("absolute");
+    });
+
+    it("keeps the strip out of the composer box, above it", () => {
+      const { container } = render(
+        <ChatWindowUI {...createProps()} statusStrip={STRIP} />
+      );
+      const wrapper = container.querySelector(
+        "[data-testid='chat-status-strip']"
+      )!;
+      const input = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);
+
+      // Not a sibling/ancestor of the input's container — if the strip lived
+      // in the composer box, the composer's height would change with it.
+      expect(wrapper.contains(input)).toBe(false);
+      const composerBox = input.closest("div")?.parentElement;
+      expect(composerBox?.contains(wrapper)).toBe(false);
+    });
+  });
+
   afterEach(() => {
     resetMatchMedia();
   });
