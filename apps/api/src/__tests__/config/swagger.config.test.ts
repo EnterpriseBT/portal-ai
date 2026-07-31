@@ -245,6 +245,30 @@ describe("swagger spec — portal stream events (#279)", () => {
   });
 });
 
+// The `Station` component is referenced by the create/update responses, both
+// of which return `enabledToolpacks`. It used to declare a REQUIRED
+// `toolPacks` — the *request* body's field name — so a generated client
+// expected a field the API never sends.
+describe("swagger spec — Station response schema", () => {
+  const spec = swaggerSpec as OpenApiSchemaBag;
+  const station = (spec.components?.schemas ?? {})["Station"] as {
+    required?: string[];
+    properties?: Record<string, unknown>;
+  };
+
+  it("declares enabledToolpacks, not the request body's toolPacks", () => {
+    expect(station.properties).toHaveProperty("enabledToolpacks");
+    expect(station.properties).not.toHaveProperty("toolPacks");
+  });
+
+  it("does not require the pack list", () => {
+    // `StationWithToolpacksSchema` in @portalai/core/contracts has it optional
+    // — it is only populated by the toolpacks join.
+    expect(station.required ?? []).not.toContain("enabledToolpacks");
+    expect(station.required ?? []).not.toContain("toolPacks");
+  });
+});
+
 describe("swagger spec — layout-plan endpoints", () => {
   const spec = swaggerSpec as OpenApiSchemaBag;
   const paths = spec.paths ?? {};
