@@ -814,3 +814,61 @@ describe("buildSystemPrompt — capability surface is entitlement-driven (#284)"
     expect(withoutStats).not.toContain("hypothesis_test");
   });
 });
+
+// ── Organization-provided tools (#306) ────────────────────────────────
+//
+// Custom toolpacks are attached by `buildAnalyticsTools` exactly like
+// built-ins, but they carry no declared `PACK_PROMPT_SECTIONS` entry — so
+// before this block the agent held tools it had never been told about and
+// denied having them when asked, pointing the user at billing instead.
+
+describe("buildSystemPrompt — organization-provided tools (#306)", () => {
+  const smokePack = {
+    name: "smoke",
+    description: "Internal CRM helpers.",
+    toolNames: ["refresh_crm", "sync_all_records"],
+  };
+
+  it("names each custom pack and its tools", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ customToolPacks: [smokePack] })
+    );
+
+    expect(prompt).toContain("Organization-Provided Tools");
+    expect(prompt).toContain("smoke");
+    expect(prompt).toContain("Internal CRM helpers.");
+    expect(prompt).toContain("refresh_crm");
+    expect(prompt).toContain("sync_all_records");
+  });
+
+  it("renders no such section when there are no custom packs", () => {
+    expect(buildSystemPrompt(makeContext())).not.toContain(
+      "Organization-Provided Tools"
+    );
+    expect(
+      buildSystemPrompt(makeContext({ customToolPacks: [] }))
+    ).not.toContain("Organization-Provided Tools");
+  });
+
+  it("tells the agent not to blame the plan for a listed pack", () => {
+    // The reported symptom was the agent sending the user to Subscription &
+    // Billing for a pack that was registered, entitled, attached, and working.
+    const prompt = buildSystemPrompt(
+      makeContext({ customToolPacks: [smokePack] })
+    );
+    expect(prompt).toContain("never attribute its absence to the");
+  });
+
+  it("omits a pack with no description cleanly", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({
+        customToolPacks: [
+          { name: "bare", description: null, toolNames: ["do_thing"] },
+        ],
+      })
+    );
+    expect(prompt).toContain("`bare`");
+    expect(prompt).toContain("do_thing");
+    expect(prompt).not.toContain("bare — ");
+  });
+});

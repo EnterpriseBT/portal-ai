@@ -15,6 +15,25 @@ export interface BuiltinPackSplit {
   tier: string;
 }
 
+/** One org-registered (webhook) toolpack, as an inventory entry (#306). */
+export interface CustomPackSummary {
+  /** The pack's registered slug-shaped name, e.g. `smoke`. */
+  name: string;
+  description: string | null;
+  /** The tool names the pack provides, in registration order. */
+  toolNames: string[];
+}
+
+/** A station's packs: the built-in split plus its custom packs (#306). */
+export interface StationPacks extends BuiltinPackSplit {
+  /**
+   * Registered custom packs attached to this station. Empty when the org's
+   * tier does not include custom toolpacks (#214) — their tools are not
+   * constructed in that case, so naming them would describe nothing.
+   */
+  customPacks: CustomPackSummary[];
+}
+
 /**
  * The single definition of "which built-in packs does this org actually
  * have" (#284).
@@ -70,6 +89,69 @@ export class EntitlementService {
     }
 
     return { effective, unentitled, tier: policy.tier };
+  }
+
+  /**
+   * The single derivation of what packs a station actually has — built-in
+   * **and** custom (#306).
+   *
+   * Before this, three paths answered the question from `builtinSlug` alone
+   * while `ToolService.buildAnalyticsTools` correctly read both columns. So a
+   * registered custom pack was attached and callable but absent from every
+   * inventory the agent reads, and the agent denied tools it held. Worse,
+   * `splitBuiltinPacks` classifies any non-builtin ref as *unentitled*, so a
+   * custom pack that did reach it would be reported to the user as a plan
+   * limit — which is where the spurious "check Subscription & Billing"
+   * guidance came from.
+   *
+   * Custom packs are omitted entirely when the tier's `customToolpacks`
+   * entitlement is false, matching #214: registrations survive a downgrade,
+   * their tools stop being offered, so the inventory must stop naming them.
+   */
+  static async resolveStationPacks(
+    stationId: string,
+    organizationId: string
+  ): Promise<StationPacks> {
+    const rows =
+      await DbService.repository.stationToolpacks.findByStationId(stationId);
+
+    const builtinSlugs = rows
+      .map((r) => r.builtinSlug)
+      .filter((s): s is string => s !== null);
+    const customPackIds = rows
+      .map((r) => r.organizationToolpackId)
+      .filter((id): id is string => id !== null);
+
+    const { effective, unentitled, tier } =
+      await EntitlementService.splitBuiltinPacks(organizationId, builtinSlugs);
+
+    if (customPackIds.length === 0) {
+      return { effective, unentitled, customPacks: [], tier };
+    }
+
+    // Gate before the lookup: an unentitled org shouldn't pay for the read.
+    const entitled =
+      await EntitlementService.customPacksEntitled(organizationId);
+    if (!entitled) {
+      return { effective, unentitled, customPacks: [], tier };
+    }
+
+    const packs =
+      await DbService.repository.organizationToolpacks.findManyByIds(
+        customPackIds,
+        { organizationId }
+      );
+
+    return {
+      effective,
+      unentitled,
+      customPacks: packs.map((p) => ({
+        name: p.name,
+        description: p.description,
+        toolNames: p.tools.map((t) => t.name),
+      })),
+      tier,
+    };
   }
 
   /** Whether the org's tier includes custom (webhook) toolpacks (#214). */
