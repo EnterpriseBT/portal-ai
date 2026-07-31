@@ -363,7 +363,6 @@ export class PortalService {
     const stationContext = await buildStationContext({
       station,
       organizationId,
-      toolPacks,
     });
 
     logger.info({ portalId: portal.id, stationId }, "Portal created");
@@ -1046,22 +1045,33 @@ export async function loadOrganizationTimezone(
  * `connectorInstances` and `entityCapabilities` — connectors attached
  * mid-session must show up in the next turn's system prompt.
  *
- * Caller passes in the resolved `station` row and its **configured**
- * `toolPacks` to avoid re-fetching them when they're already in scope. The
- * split against the org's entitlements happens inside (#284) — callers do not
- * pre-filter, and must not.
+ * Caller passes in the resolved `station` row; the **configured** packs are
+ * read from `station_toolpacks` here rather than accepted as an argument
+ * (#307). That parameter used to exist to save a re-fetch when the caller
+ * already had the rows in scope — and it was how the streaming path came to
+ * pass `(station as any).toolPacks`, a field no station row carries, so every
+ * streamed turn built its context from `[]` and the prompt's capability
+ * surface was empty. Deriving here costs one query the create path repeats
+ * and makes the wrong-array bug unrepresentable.
+ *
+ * The split against the org's entitlements also happens inside (#284) —
+ * callers do not pre-filter, and must not.
  */
 export async function buildStationContext(args: {
   station: { id: string; name: string };
   organizationId: string;
-  /**
-   * The station's **configured** packs, as `station_toolpacks` holds them.
-   * The split against the org's entitlements happens here (#284) so every
-   * caller reports the same truth.
-   */
-  toolPacks: string[];
 }): Promise<StationContext> {
-  const { station, organizationId, toolPacks } = args;
+  const { station, organizationId } = args;
+
+  // Configured packs, straight from the join table that owns them. Custom-pack
+  // rows carry a null `builtinSlug` and contribute nothing here (#306 adds
+  // them to the context as their own field).
+  const packRows = await DbService.repository.stationToolpacks.findByStationId(
+    station.id
+  );
+  const toolPacks = packRows
+    .map((r) => r.builtinSlug)
+    .filter((s): s is string => s !== null);
 
   // #284: configured ≠ available. buildAnalyticsTools has filtered packs
   // against the tier since #214, so a context built from the configured set

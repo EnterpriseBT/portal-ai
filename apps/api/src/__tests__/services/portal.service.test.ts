@@ -465,6 +465,88 @@ describe("PortalService", () => {
   // ── buildStationContext (#95) ─────────────────────────────────────────────
 
   describe("buildStationContext", () => {
+    // ── #307 regression ───────────────────────────────────────────────
+    //
+    // The packs used to be a caller-supplied argument. The streaming path
+    // passed `(station as any).toolPacks` — a field that does not exist on a
+    // station row — so every streamed turn built its context from `[]`,
+    // `splitBuiltinPacks` short-circuited on the empty input, and the prompt's
+    // capability surface (#284) was empty on every turn. The function now
+    // derives the packs from `station_toolpacks` itself and cannot be handed
+    // the wrong array.
+
+    it("derives the station's packs from station_toolpacks, unprompted", async () => {
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
+
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+      mockFindByStationId_toolpacks.mockResolvedValueOnce(
+        makeToolpackRows(["data_query", "visualize"])
+      );
+
+      const ctx = await buildStationContext({
+        station: { id: STATION_ID, name: "Sales Station" },
+        organizationId: ORG_ID,
+      });
+
+      expect(mockFindByStationId_toolpacks).toHaveBeenCalledWith(STATION_ID);
+      expect(mockSplitBuiltinPacks).toHaveBeenCalledWith(ORG_ID, [
+        "data_query",
+        "visualize",
+      ]);
+      expect(ctx.effectiveToolPacks).toEqual(["data_query", "visualize"]);
+    });
+
+    it("ignores custom-pack rows, which carry a null builtinSlug", async () => {
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
+
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+      mockFindByStationId_toolpacks.mockResolvedValueOnce([
+        ...makeToolpackRows(["data_query"]),
+        {
+          id: "stp-custom",
+          stationId: STATION_ID,
+          builtinSlug: null,
+          organizationToolpackId: "otp-1",
+          created: Date.now(),
+          createdBy: USER_ID,
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        },
+      ]);
+
+      const ctx = await buildStationContext({
+        station: { id: STATION_ID, name: "Sales Station" },
+        organizationId: ORG_ID,
+      });
+
+      // No null entries leak into the pack list (#306 changes what these rows
+      // contribute; this pins that they never corrupt the built-in list).
+      expect(ctx.effectiveToolPacks).toEqual(["data_query"]);
+      expect(mockSplitBuiltinPacks).toHaveBeenCalledWith(ORG_ID, [
+        "data_query",
+      ]);
+    });
+
+    it("yields empty pack lists for a station with no rows, without throwing", async () => {
+      const { buildStationContext } =
+        await import("../../services/portal.service.js");
+
+      mockLoadStation.mockResolvedValueOnce(STATION_DATA);
+      mockFindByStationId_toolpacks.mockResolvedValueOnce([]);
+
+      const ctx = await buildStationContext({
+        station: { id: STATION_ID, name: "Sales Station" },
+        organizationId: ORG_ID,
+      });
+
+      expect(ctx.effectiveToolPacks).toEqual([]);
+      expect(ctx.unentitledToolPacks).toEqual([]);
+    });
+
     it("populates connectorInstances + entityCapabilities when entity_management is enabled", async () => {
       // Re-import to pick up the freshly-mocked repos.
       const { buildStationContext } =
@@ -488,10 +570,13 @@ describe("PortalService", () => {
         "ent-1": { read: true, write: true, push: false },
       });
 
+      mockFindByStationId_toolpacks.mockResolvedValueOnce(
+        makeToolpackRows(["data_query", "entity_management"])
+      );
+
       const ctx = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
-        toolPacks: ["data_query", "entity_management"],
       });
 
       expect(ctx.connectorInstances).toEqual([
@@ -513,10 +598,13 @@ describe("PortalService", () => {
 
       mockLoadStation.mockResolvedValueOnce(STATION_DATA);
 
+      mockFindByStationId_toolpacks.mockResolvedValueOnce(
+        makeToolpackRows(["data_query"])
+      );
+
       const ctx = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
-        toolPacks: ["data_query"],
       });
 
       expect(ctx.connectorInstances).toBeUndefined();
@@ -544,10 +632,13 @@ describe("PortalService", () => {
         tier: "standard",
       });
 
+      mockFindByStationId_toolpacks.mockResolvedValueOnce(
+        makeToolpackRows(["data_query", "entity_management"])
+      );
+
       const ctx = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
-        toolPacks: ["data_query", "entity_management"],
       });
 
       expect(ctx.effectiveToolPacks).toEqual(["data_query"]);
@@ -572,10 +663,13 @@ describe("PortalService", () => {
         tier: "standard",
       });
 
+      mockFindByStationId_toolpacks.mockResolvedValueOnce(
+        makeToolpackRows(["data_query", "entity_management"])
+      );
+
       const ctx = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
-        toolPacks: ["data_query", "entity_management"],
       });
 
       expect(ctx.connectorInstances).toBeUndefined();
@@ -592,10 +686,13 @@ describe("PortalService", () => {
       mockStationInstancesFindByStationId.mockResolvedValueOnce([]);
       mockResolveEntityCapabilities.mockResolvedValueOnce({});
 
+      mockFindByStationId_toolpacks.mockResolvedValueOnce(
+        makeToolpackRows(["entity_management"])
+      );
+
       const ctx = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
-        toolPacks: ["entity_management"],
       });
 
       expect(ctx.effectiveToolPacks).toEqual(["entity_management"]);
@@ -613,10 +710,12 @@ describe("PortalService", () => {
 
       // First call: zero connector instances attached.
       mockStationInstancesFindByStationId.mockResolvedValueOnce([]);
+      mockFindByStationId_toolpacks.mockResolvedValueOnce(
+        makeToolpackRows(["entity_management"])
+      );
       const first = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
-        toolPacks: ["entity_management"],
       });
       expect(first.connectorInstances).toEqual([]);
 
@@ -634,10 +733,12 @@ describe("PortalService", () => {
         display: "REST API",
         slug: "rest-api",
       });
+      mockFindByStationId_toolpacks.mockResolvedValueOnce(
+        makeToolpackRows(["entity_management"])
+      );
       const second = await buildStationContext({
         station: { id: STATION_ID, name: "Sales Station" },
         organizationId: ORG_ID,
-        toolPacks: ["entity_management"],
       });
       expect(second.connectorInstances).toEqual([
         {

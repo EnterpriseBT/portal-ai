@@ -95,16 +95,13 @@ portalEventsRouter.get(
         );
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const toolPacks = ((station as any).toolPacks as string[]) ?? [];
-
       // Rebuild context per message so newly-attached connectors,
       // updated entity capabilities, and freshly-synced entities show
-      // up in this turn's system prompt (#95).
+      // up in this turn's system prompt (#95). The station's packs are read
+      // from `station_toolpacks` inside (#307).
       const stationContext = await buildStationContext({
         station: { id: station.id, name: station.name },
         organizationId: portal.organizationId,
-        toolPacks,
       });
 
       sse = new SseUtil(res);
