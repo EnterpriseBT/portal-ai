@@ -266,6 +266,37 @@ export const DeltaEventSchema = z.object({
 
 export type DeltaEvent = z.infer<typeof DeltaEventSchema>;
 
+/**
+ * A tool started (#279). Emitted from the stream loop the moment the model
+ * requests a tool, so the client can show which phase the turn is in during
+ * the long gap before a result exists.
+ *
+ * Paired with `ToolCallEndEvent` by `toolCallId`. These two carry the step
+ * *lifecycle*; `ToolResultEvent` remains "here is a block to render" and is
+ * emitted only for results that have a display shape — which is why the
+ * lifecycle needs its own pair rather than riding on the result event.
+ */
+export const ToolCallEventSchema = z.object({
+  type: z.literal("tool_call"),
+  toolCallId: z.string(),
+  toolName: z.string(),
+});
+
+export type ToolCallEvent = z.infer<typeof ToolCallEventSchema>;
+
+/**
+ * A tool finished (#279) — emitted for *every* tool result, including those
+ * that resolve to no display block (a stats-only turn), which is exactly the
+ * case that would otherwise leave a step open forever.
+ */
+export const ToolCallEndEventSchema = z.object({
+  type: z.literal("tool_call_end"),
+  toolCallId: z.string(),
+  toolName: z.string(),
+});
+
+export type ToolCallEndEvent = z.infer<typeof ToolCallEndEventSchema>;
+
 export const ToolResultEventSchema = z.object({
   type: z.literal("tool_result"),
   toolName: z.string(),
@@ -291,6 +322,8 @@ export type StreamErrorEvent = z.infer<typeof StreamErrorEventSchema>;
 
 export const PortalSSEEventSchema = z.discriminatedUnion("type", [
   DeltaEventSchema,
+  ToolCallEventSchema,
+  ToolCallEndEventSchema,
   ToolResultEventSchema,
   DoneEventSchema,
   StreamErrorEventSchema,

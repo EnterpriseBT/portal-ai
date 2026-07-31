@@ -6,8 +6,12 @@ import {
   PortalBlockTypeSchema,
   PINNABLE_BLOCK_TYPES,
   DeltaEventSchema,
+  ToolCallEventSchema,
+  ToolCallEndEventSchema,
   ToolResultEventSchema,
   DoneEventSchema,
+  StreamErrorEventSchema,
+  PortalSSEEventSchema,
   PortalListResponsePayloadSchema,
   MutationResultContentBlockSchema,
   SingleMutationResultContentBlockSchema,
@@ -320,6 +324,57 @@ describe("DeltaEventSchema", () => {
   });
 });
 
+// ── ToolCallEventSchema (#279) ──────────────────────────────────────
+
+describe("ToolCallEventSchema", () => {
+  it("should accept valid tool call event", () => {
+    const result = ToolCallEventSchema.safeParse({
+      type: "tool_call",
+      toolCallId: "call-1",
+      toolName: "visualize_d3",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should reject missing toolCallId", () => {
+    const result = ToolCallEventSchema.safeParse({
+      type: "tool_call",
+      toolName: "visualize_d3",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("should reject wrong type", () => {
+    const result = ToolCallEventSchema.safeParse({
+      type: "tool_result",
+      toolCallId: "call-1",
+      toolName: "visualize_d3",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ── ToolCallEndEventSchema (#279) ───────────────────────────────────
+
+describe("ToolCallEndEventSchema", () => {
+  it("should accept valid tool call end event", () => {
+    const result = ToolCallEndEventSchema.safeParse({
+      type: "tool_call_end",
+      toolCallId: "call-1",
+      toolName: "hypothesis_test",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should reject missing toolCallId", () => {
+    const result = ToolCallEndEventSchema.safeParse({
+      type: "tool_call_end",
+      toolName: "hypothesis_test",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
 // ── ToolResultEventSchema ───────────────────────────────────────────
 
 describe("ToolResultEventSchema", () => {
@@ -339,6 +394,23 @@ describe("ToolResultEventSchema", () => {
       result: {},
     });
     expect(result.success).toBe(false);
+  });
+
+  // #279 D3: the step-lifecycle events are additive — `tool_result` keeps its
+  // exact shape. It must still parse WITHOUT a `toolCallId`, which is what
+  // proves no required field was bolted on when `tool_call_end` was added.
+  it("should still parse without a toolCallId (additive-contract pin)", () => {
+    const result = ToolResultEventSchema.safeParse({
+      type: "tool_result",
+      toolName: "sql_query",
+      result: { rows: [] },
+    });
+    expect(result.success).toBe(true);
+    expect(Object.keys(ToolResultEventSchema.shape).sort()).toEqual([
+      "result",
+      "toolName",
+      "type",
+    ]);
   });
 });
 
@@ -365,6 +437,61 @@ describe("DoneEventSchema", () => {
 
   it("should reject missing fields", () => {
     const result = DoneEventSchema.safeParse({ type: "done" });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ── PortalSSEEventSchema (#279) ─────────────────────────────────────
+
+describe("PortalSSEEventSchema", () => {
+  const events = [
+    { type: "delta", content: "hi" },
+    { type: "tool_call", toolCallId: "c-1", toolName: "sql_query" },
+    { type: "tool_call_end", toolCallId: "c-1", toolName: "sql_query" },
+    { type: "tool_result", toolName: "sql_query", result: {} },
+    { type: "done", portalId: "p-1", messageId: "m-1" },
+    { type: "stream_error", message: "boom" },
+  ];
+
+  it.each(events)("should discriminate the $type event", (event) => {
+    const result = PortalSSEEventSchema.safeParse(event);
+    expect(result.success).toBe(true);
+  });
+
+  it("should cover every event name on the wire", () => {
+    expect(events).toHaveLength(6);
+  });
+
+  it("should reject an unknown event type", () => {
+    const result = PortalSSEEventSchema.safeParse({
+      type: "tool_progress",
+      toolCallId: "c-1",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("should reject a known type with the wrong payload", () => {
+    const result = PortalSSEEventSchema.safeParse({
+      type: "tool_call",
+      toolName: "sql_query",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ── StreamErrorEventSchema ──────────────────────────────────────────
+
+describe("StreamErrorEventSchema", () => {
+  it("should accept valid stream error event", () => {
+    const result = StreamErrorEventSchema.safeParse({
+      type: "stream_error",
+      message: "Connection lost",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should reject missing message", () => {
+    const result = StreamErrorEventSchema.safeParse({ type: "stream_error" });
     expect(result.success).toBe(false);
   });
 });
