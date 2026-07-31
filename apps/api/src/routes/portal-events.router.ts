@@ -21,7 +21,7 @@ export const portalEventsRouter = Router();
 
 /**
  * @openapi
- * /api/portals/{portalId}/stream:
+ * /api/sse/portals/{portalId}/stream:
  *   get:
  *     tags:
  *       - Portal Events
@@ -29,8 +29,17 @@ export const portalEventsRouter = Router();
  *     description: >
  *       Opens a Server-Sent Events (SSE) stream that drives the AI response for the most
  *       recent user message. Authenticates via a `token` query parameter instead of the
- *       Authorization header. Events: `delta` (text chunk), `tool_result` (tool call output),
- *       `done` (stream complete).
+ *       Authorization header.
+ *       Events, in the order a tool-calling turn produces them:
+ *       `delta` (text chunk),
+ *       `tool_call` (a tool started — carries `toolCallId` + `toolName` so the client can
+ *       show which phase the turn is in),
+ *       `tool_call_end` (that tool finished — emitted for every tool, including those whose
+ *       result has no display shape),
+ *       `tool_result` (a renderable block — emitted only when the result has a display
+ *       shape, so a scalar-result tool produces none),
+ *       `done` (stream complete),
+ *       `stream_error` (the turn failed; the stream ends).
  *     parameters:
  *       - in: path
  *         name: portalId
@@ -50,12 +59,7 @@ export const portalEventsRouter = Router();
  *         content:
  *           text/event-stream:
  *             schema:
- *               type: string
- *               description: >
- *                 Newline-delimited SSE events. Each event is `data: <JSON>\n\n`.
- *                 Possible event shapes: `{ type: "delta", content: string }`,
- *                 `{ type: "tool_result", name: string, result: unknown }`,
- *                 `{ type: "done" }`.
+ *               $ref: '#/components/schemas/PortalStreamEvent'
  *       404:
  *         description: Portal or station not found
  *         content:
