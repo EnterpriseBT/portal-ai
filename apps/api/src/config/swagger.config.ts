@@ -1257,16 +1257,17 @@ const options: swaggerJsdoc.Options = {
             matchingRecordCount: { type: "integer", example: 145 },
           },
         },
+        // Referenced by the POST /api/stations and PATCH /api/stations/{id}
+        // responses. Both return `enabledToolpacks` — the joined pack refs,
+        // built-in slugs plus `org:<uuid>` for custom packs — matching
+        // `StationWithToolpacksSchema` in `@portalai/core/contracts`, where the
+        // field is optional. This schema previously declared a REQUIRED
+        // `toolPacks`, which is the *request* body's field name and appears in
+        // no response; anyone generating a client from it got a field the API
+        // never sends.
         Station: {
           type: "object",
-          required: [
-            "id",
-            "organizationId",
-            "name",
-            "toolPacks",
-            "created",
-            "createdBy",
-          ],
+          required: ["id", "organizationId", "name", "created", "createdBy"],
           properties: {
             id: {
               type: "string",
@@ -1275,10 +1276,16 @@ const options: swaggerJsdoc.Options = {
             organizationId: { type: "string" },
             name: { type: "string", example: "Sales Analytics" },
             description: { type: "string", nullable: true },
-            toolPacks: {
+            enabledToolpacks: {
               type: "array",
               items: { type: "string" },
-              example: ["data_query"],
+              description:
+                "Enabled pack refs: built-in slugs, plus `org:<uuid>` for " +
+                "each org-registered custom toolpack.",
+              example: [
+                "data_query",
+                "org:11111111-1111-4111-8111-111111111111",
+              ],
             },
             created: {
               type: "number",
