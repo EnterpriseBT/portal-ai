@@ -876,6 +876,172 @@ describe("PortalService", () => {
       });
     });
 
+    // ── #279 step lifecycle ─────────────────────────────────────────────
+    //
+    // `tool_call` / `tool_call_end` bracket a running tool so the client can
+    // name the current phase. They are deliberately independent of
+    // `tool_result`, which fires only for results that have a display shape —
+    // a stats-only turn emits no `tool_result` at all, and before this the
+    // frontend had no way to know a tool was running or had finished.
+    describe("tool step lifecycle events (#279)", () => {
+      const runStream = async (chunks: Record<string, unknown>[]) => {
+        mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
+        const sse = makeSse();
+        await PortalService.streamResponse({
+          portalId: PORTAL_ID,
+          messages: [],
+          stationContext,
+          organizationId: ORG_ID,
+          userId: "user-001",
+          sse: sse as any,
+        });
+        return sse;
+      };
+
+      const sentEvents = (sse: ReturnType<typeof makeSse>, name: string) =>
+        (sse.send as any).mock.calls.filter((c: unknown[]) => c[0] === name);
+
+      /** Index of the first `name` event in overall send order, or -1. */
+      const sendIndex = (sse: ReturnType<typeof makeSse>, name: string) =>
+        (sse.send as any).mock.calls.findIndex((c: unknown[]) => c[0] === name);
+
+      it("emits tool_call when a tool starts", async () => {
+        const sse = await runStream([
+          {
+            type: "tool-call",
+            toolName: "visualize_d3",
+            toolCallId: "tc-1",
+            input: { spec: "bar" },
+          },
+          { type: "finish" },
+        ]);
+
+        const calls = sentEvents(sse, "tool_call");
+        expect(calls).toHaveLength(1);
+        expect(calls[0][1]).toEqual({
+          type: "tool_call",
+          toolCallId: "tc-1",
+          toolName: "visualize_d3",
+        });
+      });
+
+      it("skips tool_call when the chunk carries no toolCallId", async () => {
+        const sse = await runStream([
+          { type: "tool-call", toolName: "visualize_d3", input: {} },
+          { type: "finish" },
+        ]);
+
+        // Unpairable by the client — better no step than a stuck one.
+        expect(sentEvents(sse, "tool_call")).toHaveLength(0);
+      });
+
+      it("emits tool_call_end for a display-producing tool", async () => {
+        const sse = await runStream([
+          {
+            type: "tool-result",
+            toolName: "sql_query",
+            toolCallId: "tc-2",
+            output: { rows: [{ id: 1 }] },
+          },
+          { type: "finish" },
+        ]);
+
+        const calls = sentEvents(sse, "tool_call_end");
+        expect(calls).toHaveLength(1);
+        expect(calls[0][1]).toEqual({
+          type: "tool_call_end",
+          toolCallId: "tc-2",
+          toolName: "sql_query",
+        });
+      });
+
+      // The load-bearing case. `hypothesis_test` is resultKind "scalar", so
+      // `resolveDisplayBlock` returns null and no `tool_result` is emitted —
+      // the step must still close, or the indicator hangs for the rest of the
+      // turn on a tool that already finished.
+      it("emits tool_call_end for a tool that produces no display block", async () => {
+        const sse = await runStream([
+          {
+            type: "tool-result",
+            toolName: "hypothesis_test",
+            toolCallId: "tc-3",
+            output: { pValue: 0.03, statistic: 2.1 },
+          },
+          { type: "finish" },
+        ]);
+
+        expect(sentEvents(sse, "tool_result")).toHaveLength(0);
+        expect(sentEvents(sse, "tool_call_end")).toHaveLength(1);
+        expect(sentEvents(sse, "tool_call_end")[0][1]).toMatchObject({
+          toolCallId: "tc-3",
+          toolName: "hypothesis_test",
+        });
+      });
+
+      it("emits tool_call_end before tool_result for the same call", async () => {
+        const sse = await runStream([
+          {
+            type: "tool-result",
+            toolName: "sql_query",
+            toolCallId: "tc-4",
+            output: { rows: [{ id: 1 }] },
+          },
+          { type: "finish" },
+        ]);
+
+        const endIdx = sendIndex(sse, "tool_call_end");
+        const resultIdx = sendIndex(sse, "tool_result");
+        expect(endIdx).toBeGreaterThanOrEqual(0);
+        expect(resultIdx).toBeGreaterThanOrEqual(0);
+        expect(endIdx).toBeLessThan(resultIdx);
+      });
+
+      it("leaves the tool_result payload untouched (additive contract)", async () => {
+        const sse = await runStream([
+          {
+            type: "tool-result",
+            toolName: "sql_query",
+            toolCallId: "tc-5",
+            output: { rows: [{ id: 1 }] },
+          },
+          { type: "finish" },
+        ]);
+
+        const payload = sentEvents(sse, "tool_result")[0][1];
+        expect(Object.keys(payload).sort()).toEqual([
+          "result",
+          "toolName",
+          "type",
+        ]);
+        expect(payload).not.toHaveProperty("toolCallId");
+      });
+
+      it("brackets a full tool turn in order", async () => {
+        const sse = await runStream([
+          { type: "text-delta", text: "Let me chart that" },
+          {
+            type: "tool-call",
+            toolName: "sql_query",
+            toolCallId: "tc-6",
+            input: {},
+          },
+          {
+            type: "tool-result",
+            toolName: "sql_query",
+            toolCallId: "tc-6",
+            output: { rows: [{ id: 1 }] },
+          },
+          { type: "finish" },
+        ]);
+
+        expect(sendIndex(sse, "tool_call")).toBeLessThan(
+          sendIndex(sse, "tool_call_end")
+        );
+        expect(sentEvents(sse, "tool_call")).toHaveLength(1);
+        expect(sentEvents(sse, "tool_call_end")).toHaveLength(1);
+      });
+    });
+
     it("sends data-table SSE event for sql_query tool results", async () => {
       const queryResult = { rows: [{ id: 1, name: "Alice" }] };
       const chunks = [
