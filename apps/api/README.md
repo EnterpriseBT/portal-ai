@@ -71,8 +71,8 @@ The server will start on `http://localhost:3000` (or the port specified in `.env
 
 Once the server is running, visit:
 
-- **Swagger UI**: [http://localhost:3000/api-docs](http://localhost:3000/api-docs)
-- **OpenAPI Spec (JSON)**: [http://localhost:3000/api-docs/spec](http://localhost:3000/api-docs/spec)
+- **Swagger UI**: [http://localhost:3001/api/docs](http://localhost:3001/api/docs)
+- **OpenAPI Spec (JSON)**: [http://localhost:3001/api/docs/spec](http://localhost:3001/api/docs/spec)
 
 The documentation is **auto-generated** from JSDoc comments in the route files and updates automatically during development.
 

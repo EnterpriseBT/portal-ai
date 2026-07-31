@@ -83,6 +83,105 @@ describe("ChatWindowUI", () => {
     });
   });
 
+  // #279: the tool activity strip mounts here as an OVERLAY, not as a row in
+  // the composer's box. The distinction is the whole point — a row that
+  // appears when a tool starts would move the text input under a user who may
+  // be typing into it, and re-measure the feed's scroll viewport mid-stream.
+  describe("status strip slot (#279)", () => {
+    const STRIP = <div data-testid="strip-probe">Building the chart</div>;
+
+    // The strip and the inline feed indicator show identical text, so showing
+    // both at once reads as a duplicate. The strip exists for the case the
+    // inline one can't cover — the user having scrolled away from the bottom —
+    // so it renders only then, keyed off the same signal as the jump button.
+    const scrolledAwayFromBottom = (el: HTMLElement) => {
+      Object.defineProperty(el, "scrollHeight", {
+        value: 1000,
+        configurable: true,
+      });
+      Object.defineProperty(el, "clientHeight", {
+        value: 300,
+        configurable: true,
+      });
+      Object.defineProperty(el, "scrollTop", { value: 0, configurable: true });
+      fireEvent.scroll(el);
+    };
+
+    it("hides the status strip while the feed is at the bottom", () => {
+      render(<ChatWindowUI {...createProps()} statusStrip={STRIP} />);
+      // Default jsdom geometry is a zero-height, unscrollable box — i.e. at
+      // the bottom, where the inline indicator is already visible.
+      expect(screen.queryByTestId("strip-probe")).not.toBeInTheDocument();
+    });
+
+    it("renders the status strip once the feed is scrolled away from the bottom", async () => {
+      const { container } = render(
+        <ChatWindowUI {...createProps()} statusStrip={STRIP}>
+          <div style={{ height: 1000 }}>tall feed</div>
+        </ChatWindowUI>
+      );
+      const scroller = container.querySelector("[class*='MuiBox-root']")!;
+      const el = Array.from(container.querySelectorAll("div")).find(
+        (d) => getComputedStyle(d).overflow === "auto"
+      ) as HTMLElement;
+      expect(el ?? scroller).toBeTruthy();
+
+      scrolledAwayFromBottom(el);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("strip-probe")).toBeInTheDocument();
+      });
+    });
+
+    it("renders nothing when no status strip is provided", () => {
+      render(<ChatWindowUI {...createProps()} />);
+      expect(screen.queryByTestId("strip-probe")).not.toBeInTheDocument();
+    });
+
+    /** Render with the feed scrolled up so the strip is mounted. */
+    const renderScrolledUp = async () => {
+      const result = render(
+        <ChatWindowUI {...createProps()} statusStrip={STRIP}>
+          <div style={{ height: 1000 }}>tall feed</div>
+        </ChatWindowUI>
+      );
+      const el = Array.from(result.container.querySelectorAll("div")).find(
+        (d) => getComputedStyle(d).overflow === "auto"
+      ) as HTMLElement;
+      scrolledAwayFromBottom(el);
+      await waitFor(() =>
+        expect(
+          result.container.querySelector("[data-testid='chat-status-strip']")
+        ).not.toBeNull()
+      );
+      return result;
+    };
+
+    it("positions the strip absolutely so it occupies no layout space", async () => {
+      const { container } = await renderScrolledUp();
+      const wrapper = container.querySelector(
+        "[data-testid='chat-status-strip']"
+      );
+      expect(getComputedStyle(wrapper as HTMLElement).position).toBe(
+        "absolute"
+      );
+    });
+
+    it("keeps the strip out of the composer box, above it", async () => {
+      const { container } = await renderScrolledUp();
+      const wrapper = container.querySelector(
+        "[data-testid='chat-status-strip']"
+      )!;
+      const input = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);
+
+      // Not a sibling/ancestor of the input's container — if the strip lived
+      // in the composer box, the composer's height would change with it.
+      expect(wrapper.contains(input)).toBe(false);
+      const composerBox = input.closest("div")?.parentElement;
+      expect(composerBox?.contains(wrapper)).toBe(false);
+    });
+  });
+
   afterEach(() => {
     resetMatchMedia();
   });

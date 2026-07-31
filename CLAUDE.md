@@ -356,7 +356,7 @@ Reference implementation: `packages/core/src/models/user.model.ts`
 
   Request bodies, payloads, and response shapes are referenced by `$ref` against components registered in `src/config/swagger.config.ts`, **not** spelled inline. Adding a new route generally means: (a) register the shape(s) under `components.schemas` (often `z.toJSONSchema` from the source Zod schema), and (b) refer to them via `$ref: '#/components/schemas/<Name>'` in the route's JSDoc. Inline shapes are reserved for tiny one-off `properties` that exist nowhere else; if you'd reuse a shape twice, register it.
 
-  The annotations feed `/api/docs` (Swagger UI at `http://localhost:3001/api-docs`); a route without `@openapi`, or one that re-spells a shape inline that's already a registered component, is a missing-docs bug, not "deferred."
+  The annotations feed the OpenAPI document (Swagger UI at `http://localhost:3001/api/docs`, raw spec at `/api/docs/spec`); a route without `@openapi`, or one that re-spells a shape inline that's already a registered component, is a missing-docs bug, not "deferred."
 
 ### Include / Join Convention
 
@@ -413,7 +413,7 @@ Two themes via `@portalai/core`: Brand (default, light) and Brand Dark. Persiste
 |---------|-----|
 | Web App | http://localhost:3000 |
 | API Server | http://localhost:3001 |
-| Swagger Docs | http://localhost:3001/api-docs |
+| Swagger Docs | http://localhost:3001/api/docs |
 | Core Storybook | http://localhost:7006 |
 | Web Storybook | http://localhost:6007 |
 

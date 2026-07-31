@@ -12,6 +12,8 @@ import {
   DiscoverColumnsRequestBodySchema,
   DiscoverColumnsResultSchema,
   DiscoveredColumnWithSuggestionSchema,
+  DeltaEventSchema,
+  DoneEventSchema,
   DriftReportSchema,
   HeaderStrategySchema,
   IdentityStrategySchema,
@@ -27,8 +29,12 @@ import {
   RegionHintSchema,
   RegionSchema,
   SkipRuleSchema,
+  StreamErrorEventSchema,
   TestConnectionRequestBodySchema,
   TestConnectionResultSchema,
+  ToolCallEndEventSchema,
+  ToolCallEventSchema,
+  ToolResultEventSchema,
   WarningSchema,
 } from "@portalai/core/contracts";
 import {
@@ -151,6 +157,92 @@ describe("swagger spec — spreadsheet-parsing schema registration", () => {
       expect(schemas[name]).toEqual(expected);
     }
   );
+});
+
+// #279 — the portal stream's event payloads were never registered, and the
+// route's @openapi block described them in hand-written prose that had drifted
+// from the wire (wrong path, `name` for what is really `toolName`, no
+// `stream_error`). Registering them from the Zod source makes the drift a test
+// failure instead of a docs bug.
+describe("swagger spec — portal stream events (#279)", () => {
+  const spec = swaggerSpec as OpenApiSchemaBag;
+  const schemas = spec.components?.schemas ?? {};
+  const paths = spec.paths ?? {};
+
+  const STREAM_PATH = "/api/sse/portals/{portalId}/stream";
+  const JSON_SCHEMA_OPTS = { unrepresentable: "any" as const };
+
+  const eventPairs: ReadonlyArray<readonly [string, z.ZodType]> = [
+    ["PortalDeltaEvent", DeltaEventSchema],
+    ["PortalToolCallEvent", ToolCallEventSchema],
+    ["PortalToolCallEndEvent", ToolCallEndEventSchema],
+    ["PortalToolResultEvent", ToolResultEventSchema],
+    ["PortalDoneEvent", DoneEventSchema],
+    ["PortalStreamErrorEvent", StreamErrorEventSchema],
+  ];
+
+  it.each(eventPairs.map(([name]) => name))(
+    "registers %s under components.schemas",
+    (name) => {
+      expect(schemas[name]).toBeDefined();
+    }
+  );
+
+  it.each(eventPairs)(
+    "%s in the spec is byte-equal to z.toJSONSchema(Schema)",
+    (name, schema) => {
+      expect(schemas[name]).toEqual(z.toJSONSchema(schema, JSON_SCHEMA_OPTS));
+    }
+  );
+
+  it("exposes a PortalStreamEvent union over exactly the six wire events", () => {
+    const union = schemas["PortalStreamEvent"] as {
+      oneOf?: Array<{ $ref?: string }>;
+    };
+    expect(union?.oneOf).toBeDefined();
+    expect(union.oneOf).toHaveLength(6);
+    expect(union.oneOf?.map((o) => o.$ref).sort()).toEqual(
+      eventPairs.map(([name]) => `#/components/schemas/${name}`).sort()
+    );
+  });
+
+  it("registers the stream under its real mounted path, not the stale one", () => {
+    expect(paths[STREAM_PATH]).toBeDefined();
+    // The block used to declare /api/portals/... — the router is mounted at
+    // /api/sse/portals via sse.router.ts, so the old path documented an
+    // endpoint that does not exist.
+    expect(paths["/api/portals/{portalId}/stream"]).toBeUndefined();
+  });
+
+  it("types the text/event-stream response as the PortalStreamEvent union", () => {
+    const entry = paths[STREAM_PATH] as {
+      get?: {
+        responses?: Record<
+          string,
+          { content?: Record<string, { schema?: unknown }> }
+        >;
+      };
+    };
+    expect(entry.get).toBeDefined();
+    expect(
+      entry.get?.responses?.["200"]?.content?.["text/event-stream"]?.schema
+    ).toEqual({ $ref: "#/components/schemas/PortalStreamEvent" });
+  });
+
+  it("names every wire event in the route description", () => {
+    const entry = paths[STREAM_PATH] as { get?: { description?: string } };
+    const description = entry.get?.description ?? "";
+    for (const name of [
+      "delta",
+      "tool_call",
+      "tool_call_end",
+      "tool_result",
+      "done",
+      "stream_error",
+    ]) {
+      expect(description).toContain(name);
+    }
+  });
 });
 
 describe("swagger spec — layout-plan endpoints", () => {

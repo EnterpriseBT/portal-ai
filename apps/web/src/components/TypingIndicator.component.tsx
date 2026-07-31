@@ -2,10 +2,18 @@ import React from "react";
 
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
+import Typography from "@mui/material/Typography";
 import { keyframes } from "@mui/material/styles";
 
 interface TypingIndicatorUIProps {
   ariaLabel?: string;
+  /**
+   * Phase of the running tool (#279), e.g. "Building the chart". When absent
+   * the indicator is the plain three dots it has always been.
+   */
+  label?: string;
+  /** Whole seconds on the active step, rendered as "18s" beside the label. */
+  elapsedSeconds?: number;
 }
 
 const blink = keyframes`
@@ -20,15 +28,24 @@ const blink = keyframes`
  * right-aligned `Paper elevation={1}` user bubble in
  * `PortalMessage.component.tsx`) so it reads as "the assistant is
  * typing".
+ *
+ * With a `label` (#279) it stays mounted for the whole turn and names the
+ * running tool plus how long it has been going, because a tool turn's first
+ * delta is usually a one-line preamble — after which the dots would vanish
+ * and the feed would sit frozen until the finished block arrives.
  */
 export const TypingIndicator: React.FC<TypingIndicatorUIProps> = ({
   ariaLabel = "Assistant is typing",
+  label,
+  elapsedSeconds,
 }) => (
   <Box sx={{ display: "flex", justifyContent: "flex-start", mb: 1 }}>
     <Paper
       elevation={1}
       role="status"
-      aria-label={ariaLabel}
+      // Announce the phase when there is one — "Building the chart" is the
+      // useful thing to hear, not "Assistant is typing".
+      aria-label={label ?? ariaLabel}
       data-testid="typing-indicator"
       sx={{
         px: 1.5,
@@ -53,6 +70,24 @@ export const TypingIndicator: React.FC<TypingIndicatorUIProps> = ({
           }}
         />
       ))}
+      {label && (
+        <Typography variant="body2" color="text.secondary" sx={{ ml: 0.5 }}>
+          {label}
+        </Typography>
+      )}
+      {label && typeof elapsedSeconds === "number" && (
+        <Typography
+          component="span"
+          variant="caption"
+          color="text.disabled"
+          // The counter re-renders every second; inside this role="status"
+          // live region that would announce continuously.
+          aria-hidden="true"
+          data-testid="typing-indicator-elapsed"
+        >
+          {elapsedSeconds}s
+        </Typography>
+      )}
     </Paper>
   </Box>
 );

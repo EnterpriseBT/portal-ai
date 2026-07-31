@@ -4,6 +4,8 @@ import type {
   PortalMessageResponse,
   PortalMessageBlock,
   DeltaEvent,
+  ToolCallEvent,
+  ToolCallEndEvent,
   ToolResultEvent,
   DoneEvent,
   StreamErrorEvent,
@@ -13,11 +15,29 @@ import { sse } from "../api/sse.api";
 
 // --- Types ---
 
+/**
+ * A tool call currently in flight (#279). Opened by a `tool_call` event and
+ * closed by the matching `tool_call_end`.
+ */
+export interface ToolStep {
+  toolCallId: string;
+  toolName: string;
+  /** Epoch ms, captured in the event handler — never during render. */
+  startedAt: number;
+}
+
 export interface PortalStreamState {
   streamingBlocks: PortalMessageBlock[] | null;
   isStreaming: boolean;
   streamError: string | null;
   localMessages: PortalMessageResponse[];
+  /**
+   * Tool calls open right now, oldest first — so the **last** element is the
+   * one the user is shown. A turn can run several tools concurrently; when the
+   * newest closes, the one before it becomes current again rather than the
+   * indicator going blank.
+   */
+  toolSteps: ToolStep[];
 }
 
 export interface PortalStreamActions {
@@ -77,6 +97,7 @@ export const usePortalStream = (
   >(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [toolSteps, setToolSteps] = useState<ToolStep[]>([]);
 
   // Keep a ref to the latest streaming blocks so the done handler can
   // read the current value without stale closure issues.
@@ -94,6 +115,7 @@ export const usePortalStream = (
     setIsStreaming(false);
     setStreamingBlocks(null);
     streamingBlocksRef.current = [];
+    setToolSteps([]);
   }, []);
 
   const addLocalMessage = useCallback((msg: PortalMessageResponse) => {
@@ -124,6 +146,7 @@ export const usePortalStream = (
       streamingBlocksRef.current = [];
       setStreamingBlocks([]);
       setIsStreaming(true);
+      setToolSteps([]);
       esRef.current = es;
 
       es.addEventListener("delta", (e: MessageEvent) => {
@@ -143,6 +166,27 @@ export const usePortalStream = (
           streamingBlocksRef.current = next;
           return next;
         });
+      });
+
+      // #279 step lifecycle. Filter-then-append keeps the newest step last and
+      // makes a repeated id idempotent rather than stacking duplicates.
+      es.addEventListener("tool_call", (e: MessageEvent) => {
+        const data = JSON.parse(e.data) as ToolCallEvent;
+        setToolSteps((prev) => [
+          ...prev.filter((s) => s.toolCallId !== data.toolCallId),
+          {
+            toolCallId: data.toolCallId,
+            toolName: data.toolName,
+            startedAt: Date.now(),
+          },
+        ]);
+      });
+
+      es.addEventListener("tool_call_end", (e: MessageEvent) => {
+        const data = JSON.parse(e.data) as ToolCallEndEvent;
+        setToolSteps((prev) =>
+          prev.filter((s) => s.toolCallId !== data.toolCallId)
+        );
       });
 
       es.addEventListener("tool_result", (e: MessageEvent) => {
@@ -182,6 +226,7 @@ export const usePortalStream = (
         streamingBlocksRef.current = [];
         setStreamingBlocks(null);
         setIsStreaming(false);
+        setToolSteps([]);
 
         onDoneRef.current?.(clearLocalMessages);
       });
@@ -193,6 +238,7 @@ export const usePortalStream = (
         setIsStreaming(false);
         setStreamingBlocks(null);
         streamingBlocksRef.current = [];
+        setToolSteps([]);
         setStreamError(data.message);
       });
 
@@ -202,6 +248,7 @@ export const usePortalStream = (
         setIsStreaming(false);
         setStreamingBlocks(null);
         streamingBlocksRef.current = [];
+        setToolSteps([]);
         setStreamError("Connection to the server was lost. Please try again.");
       };
     },
@@ -216,7 +263,7 @@ export const usePortalStream = (
   }, []);
 
   return [
-    { streamingBlocks, isStreaming, streamError, localMessages },
+    { streamingBlocks, isStreaming, streamError, localMessages, toolSteps },
     { send, cancel, addLocalMessage, removeLocalMessage, clearLocalMessages },
   ];
 };

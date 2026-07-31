@@ -12,6 +12,8 @@ import { streamText, stepCountIs, type ModelMessage } from "ai";
 
 import type {
   DeltaEvent,
+  ToolCallEvent,
+  ToolCallEndEvent,
   ToolResultEvent,
   DoneEvent,
   PinnedBlockEntry,
@@ -93,7 +95,14 @@ function handleTextDelta(ctx: StreamContext, text: string): void {
   ctx.sse.send("delta", event);
 }
 
-/** Handle a tool-call chunk: flush text, persist tool-call block. */
+/**
+ * Handle a tool-call chunk: flush text, persist tool-call block, and open a
+ * client-side activity step (#279).
+ *
+ * The `tool_call` event is the only signal the frontend has that a tool is
+ * running: a tool turn's first delta is usually a one-line preamble, after
+ * which the feed would sit frozen for the tool's whole duration.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function handleToolCall(ctx: StreamContext, chunk: any): void {
   if (ctx.currentText) {
@@ -108,12 +117,24 @@ function handleToolCall(ctx: StreamContext, chunk: any): void {
     // AI SDK v6 renamed `args` → `input`
     input: chunk.input ?? chunk.args,
   });
+
+  const toolCallId = chunk.toolCallId as string | undefined;
+  // Without an id the client can't pair the close event — emitting anyway
+  // would open a step that never closes, which is worse than no step.
+  if (typeof toolCallId === "string" && toolCallId.length > 0) {
+    const event: ToolCallEvent = {
+      type: "tool_call",
+      toolCallId,
+      toolName: chunk.toolName as string,
+    };
+    ctx.sse.send("tool_call", event);
+  }
 }
 
 /**
  * Handle a tool-result chunk: persist the raw tool-result block for
- * ModelMessage reconstruction, then detect display block types and
- * emit SSE events + display blocks as needed.
+ * ModelMessage reconstruction, close the client's activity step (#279), then
+ * detect display block types and emit SSE events + display blocks as needed.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function handleToolResult(ctx: StreamContext, chunk: any): void {
@@ -128,6 +149,19 @@ function handleToolResult(ctx: StreamContext, chunk: any): void {
     toolName,
     content: toolResult,
   });
+
+  // Close the step FIRST, and unconditionally — deliberately outside the
+  // display-block branch below (#279). A scalar-result tool (hypothesis_test,
+  // regression, the entity writers) emits no `tool_result` at all, so closing
+  // inside that branch would leave its step open for the rest of the turn.
+  if (typeof toolCallId === "string" && toolCallId.length > 0) {
+    const endEvent: ToolCallEndEvent = {
+      type: "tool_call_end",
+      toolCallId,
+      toolName,
+    };
+    ctx.sse.send("tool_call_end", endEvent);
+  }
 
   const displayBlock = resolveDisplayBlock(toolName, toolResult);
   if (displayBlock) {

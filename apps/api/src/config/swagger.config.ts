@@ -43,6 +43,12 @@ import {
   BillingPortalResponseSchema,
   UsageLedgerListResponseSchema,
   MaintenanceStatusResponseSchema,
+  DeltaEventSchema,
+  ToolCallEventSchema,
+  ToolCallEndEventSchema,
+  ToolResultEventSchema,
+  DoneEventSchema,
+  StreamErrorEventSchema,
 } from "@portalai/core/contracts";
 import {
   ApiAuthConfigSchema,
@@ -258,6 +264,44 @@ const usageLedgerSchemas: Record<string, unknown> = {
     MaintenanceStatusResponseSchema,
     JSON_SCHEMA_OPTS
   ),
+};
+
+/**
+ * Portal stream SSE event payloads (#279). Sourced from
+ * `@portalai/core/contracts` so the one canonical union — the same
+ * `PortalSSEEventSchema` the server emits and the client parses — is what
+ * `/api-docs` publishes.
+ *
+ * These went unregistered until #279, and the route's `@openapi` block
+ * described them in hand-written prose that had drifted from the wire. The
+ * union below is referenced by the stream route's 200 response.
+ */
+const portalStreamEventSchemas: Record<string, unknown> = {
+  PortalDeltaEvent: z.toJSONSchema(DeltaEventSchema, JSON_SCHEMA_OPTS),
+  PortalToolCallEvent: z.toJSONSchema(ToolCallEventSchema, JSON_SCHEMA_OPTS),
+  PortalToolCallEndEvent: z.toJSONSchema(
+    ToolCallEndEventSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  PortalToolResultEvent: z.toJSONSchema(
+    ToolResultEventSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  PortalDoneEvent: z.toJSONSchema(DoneEventSchema, JSON_SCHEMA_OPTS),
+  PortalStreamErrorEvent: z.toJSONSchema(
+    StreamErrorEventSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  PortalStreamEvent: {
+    oneOf: [
+      { $ref: "#/components/schemas/PortalDeltaEvent" },
+      { $ref: "#/components/schemas/PortalToolCallEvent" },
+      { $ref: "#/components/schemas/PortalToolCallEndEvent" },
+      { $ref: "#/components/schemas/PortalToolResultEvent" },
+      { $ref: "#/components/schemas/PortalDoneEvent" },
+      { $ref: "#/components/schemas/PortalStreamErrorEvent" },
+    ],
+  },
 };
 
 const options: swaggerJsdoc.Options = {
@@ -1590,6 +1634,7 @@ const options: swaggerJsdoc.Options = {
         ...orgDeleteSchemas,
         ...billingSchemas,
         ...usageLedgerSchemas,
+        ...portalStreamEventSchemas,
       },
     },
     tags: [
