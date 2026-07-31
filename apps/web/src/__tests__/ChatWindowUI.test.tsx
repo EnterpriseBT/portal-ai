@@ -90,9 +90,47 @@ describe("ChatWindowUI", () => {
   describe("status strip slot (#279)", () => {
     const STRIP = <div data-testid="strip-probe">Building the chart</div>;
 
-    it("renders the status strip when one is provided", () => {
+    // The strip and the inline feed indicator show identical text, so showing
+    // both at once reads as a duplicate. The strip exists for the case the
+    // inline one can't cover — the user having scrolled away from the bottom —
+    // so it renders only then, keyed off the same signal as the jump button.
+    const scrolledAwayFromBottom = (el: HTMLElement) => {
+      Object.defineProperty(el, "scrollHeight", {
+        value: 1000,
+        configurable: true,
+      });
+      Object.defineProperty(el, "clientHeight", {
+        value: 300,
+        configurable: true,
+      });
+      Object.defineProperty(el, "scrollTop", { value: 0, configurable: true });
+      fireEvent.scroll(el);
+    };
+
+    it("hides the status strip while the feed is at the bottom", () => {
       render(<ChatWindowUI {...createProps()} statusStrip={STRIP} />);
-      expect(screen.getByTestId("strip-probe")).toBeInTheDocument();
+      // Default jsdom geometry is a zero-height, unscrollable box — i.e. at
+      // the bottom, where the inline indicator is already visible.
+      expect(screen.queryByTestId("strip-probe")).not.toBeInTheDocument();
+    });
+
+    it("renders the status strip once the feed is scrolled away from the bottom", async () => {
+      const { container } = render(
+        <ChatWindowUI {...createProps()} statusStrip={STRIP}>
+          <div style={{ height: 1000 }}>tall feed</div>
+        </ChatWindowUI>
+      );
+      const scroller = container.querySelector("[class*='MuiBox-root']")!;
+      const el = Array.from(container.querySelectorAll("div")).find(
+        (d) => getComputedStyle(d).overflow === "auto"
+      ) as HTMLElement;
+      expect(el ?? scroller).toBeTruthy();
+
+      scrolledAwayFromBottom(el);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("strip-probe")).toBeInTheDocument();
+      });
     });
 
     it("renders nothing when no status strip is provided", () => {
@@ -100,21 +138,37 @@ describe("ChatWindowUI", () => {
       expect(screen.queryByTestId("strip-probe")).not.toBeInTheDocument();
     });
 
-    it("positions the strip absolutely so it occupies no layout space", () => {
-      const { container } = render(
-        <ChatWindowUI {...createProps()} statusStrip={STRIP} />
+    /** Render with the feed scrolled up so the strip is mounted. */
+    const renderScrolledUp = async () => {
+      const result = render(
+        <ChatWindowUI {...createProps()} statusStrip={STRIP}>
+          <div style={{ height: 1000 }}>tall feed</div>
+        </ChatWindowUI>
       );
+      const el = Array.from(result.container.querySelectorAll("div")).find(
+        (d) => getComputedStyle(d).overflow === "auto"
+      ) as HTMLElement;
+      scrolledAwayFromBottom(el);
+      await waitFor(() =>
+        expect(
+          result.container.querySelector("[data-testid='chat-status-strip']")
+        ).not.toBeNull()
+      );
+      return result;
+    };
+
+    it("positions the strip absolutely so it occupies no layout space", async () => {
+      const { container } = await renderScrolledUp();
       const wrapper = container.querySelector(
         "[data-testid='chat-status-strip']"
       );
-      expect(wrapper).not.toBeNull();
-      expect(getComputedStyle(wrapper!).position).toBe("absolute");
+      expect(getComputedStyle(wrapper as HTMLElement).position).toBe(
+        "absolute"
+      );
     });
 
-    it("keeps the strip out of the composer box, above it", () => {
-      const { container } = render(
-        <ChatWindowUI {...createProps()} statusStrip={STRIP} />
-      );
+    it("keeps the strip out of the composer box, above it", async () => {
+      const { container } = await renderScrolledUp();
       const wrapper = container.querySelector(
         "[data-testid='chat-status-strip']"
       )!;

@@ -241,7 +241,12 @@ export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(
               </MuiIconButton>
             </Tooltip>
           )}
-          {statusStrip && (
+          {/* Only while the feed is scrolled away from the bottom: the inline
+           *  indicator shows the same phase and elapsed time, so rendering
+           *  both at once reads as a duplicate. `showJumpBottom` is exactly
+           *  "can scroll and not at the bottom" — i.e. the inline indicator is
+           *  off screen, which is the case this strip exists to cover. */}
+          {statusStrip && showJumpBottom && (
             <Box
               data-testid="chat-status-strip"
               sx={{

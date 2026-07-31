@@ -11,7 +11,7 @@ Pins the contract for surfacing which tool is running during a portal turn: two 
 3. **D3 — `tool_call_end` is a third event; `ToolResultEventSchema` is not touched.** The contract change is **purely additive** (two new union variants). Step *lifecycle* and *renderable payload* stay separate concerns, and no existing consumer or `portal.service.test.ts` event-filter assertion moves.
 4. **D4 — `toolSteps: ToolStep[]`** on `PortalStreamState`. The active step is the **last** element (most-recently-started wins); closing it falls back to the next still-open step rather than blanking.
 5. **D5 — the strip is an overlay, and this is a hard requirement.** It is absolutely positioned inside the scroll container (`ChatWindow.component.tsx:181`) at its bottom edge — the same coordinate space as the existing jump buttons (`:193`/`:213`) — **not** a row in the composer's `flexShrink: 0` box (`:234`). No layout shift, no scroll re-measure, no input moving under a typing user. Recorded as an acceptance criterion on the issue.
-6. **Q1 — the strip renders only while a step is open.** A tool-free text reply gets no pill (occlusion without information).
+6. **Q1 — the strip renders only while a step is open, *and* only while the feed is scrolled away from the bottom.** A tool-free text reply gets no pill (occlusion without information); neither does a turn the user is watching at the bottom of the feed, where the inline indicator already shows the same phase and elapsed time. The two surfaces are **mutually exclusive** — amended after the #279 smoke walk found the duplicate reads as awkward. Keyed off `showJumpBottom` (`ChatWindow.component.tsx:52`), the same "can scroll and not at bottom" signal the jump-to-bottom button uses.
 7. **Q2 — an errored tool emits no `tool-result` chunk**, so its step stays open until the terminal clear. Accepted: no per-step failure event.
 8. **Q3 — accessibility:** the phase label is announced, the ticking counter is `aria-hidden` so a per-second re-render never reaches the live region.
 9. **Q4 — all 33 built-in + system tools get curated copy**, enforced by a key-set pin against `ALL_TOOL_CAPABILITIES`. (Discovery said "30 + 2"; the verified registry count is **33** — see the pin in `tool-capabilities.test.ts:88-134`.)
@@ -243,7 +243,7 @@ export interface ChatWindowUIProps {
 Rendered **inside** the `position: relative` scroll container (`:181`), as a sibling of the two jump buttons, immediately after the `showJumpBottom` block:
 
 ```tsx
-{statusStrip && (
+{statusStrip && showJumpBottom && (
   <Box sx={{ position: "absolute", bottom: 8, left: 16, right: 64, zIndex: 1,
              display: "flex", justifyContent: "flex-start", pointerEvents: "none" }}>
     {statusStrip}
@@ -251,7 +251,7 @@ Rendered **inside** the `position: relative` scroll container (`:181`), as a sib
 )}
 ```
 
-`right: 64` keeps clear of the jump-to-bottom button; `pointerEvents: "none"` keeps the overlay from stealing clicks or text selection from the feed beneath it. The composer box (`:234`) is **not** modified.
+The `showJumpBottom` guard is what makes the two surfaces mutually exclusive (Key decision 6): it is already computed as `canScroll && !atBottom` (`:150-153`), which is exactly "the inline indicator is off screen". `right: 64` keeps clear of the jump-to-bottom button; `pointerEvents: "none"` keeps the overlay from stealing clicks or text selection from the feed beneath it. The composer box (`:234`) is **not** modified.
 
 ### 11. `apps/web/src/components/PortalSession.component.tsx` (edit)
 
@@ -299,7 +299,7 @@ All suites run via the package's npm script — `npm run test:unit` from `packag
 ## Acceptance criteria
 
 - [ ] Prompting a chart over a large table shows a continuously-updating indicator naming the phase and elapsed seconds, from send until the chart renders, with no gap after the assistant's opening text.
-- [ ] Both surfaces show the phase: inline in the feed and in the overlay strip, and the strip stays visible when the feed is scrolled up.
+- [ ] The surfaces are mutually exclusive: at the bottom of the feed only the inline indicator shows; scrolled away from the bottom the strip shows instead and stays visible. The same phase is never displayed twice at once.
 - [ ] A multi-tool turn advances the label as each tool starts, leaving no stale label.
 - [ ] With two calls open at once, the newest is shown; closing it reveals the older one rather than blanking.
 - [ ] A custom/webhook tool shows a name-derived label for its duration — never blank.
@@ -309,7 +309,7 @@ All suites run via the package's npm script — `npm run test:unit` from `packag
 - [ ] **Neither surface causes layout shift**: the composer never moves, the feed's scroll position is not re-measured mid-turn, and typing during a tool call is uninterrupted.
 - [ ] After the turn, no trace of the trail remains — the rendered blocks are the record.
 - [ ] Reloading mid-turn shows no phantom indicator.
-- [ ] `/api-docs` lists all six portal-stream events under the correct `/api/sse/portals/{portalId}/stream` path.
+- [ ] `/api/docs` lists all six portal-stream events under the correct `/api/sse/portals/{portalId}/stream` path.
 
 ## Risks & rollback
 

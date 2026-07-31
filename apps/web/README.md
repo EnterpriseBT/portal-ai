@@ -593,7 +593,7 @@ npm run dev
 
 - **Web App**: http://localhost:3000
 - **API Server**: http://localhost:3001
-- **Swagger Docs**: http://localhost:3001/api-docs
+- **Swagger Docs**: http://localhost:3001/api/docs
 - **Storybook**: http://localhost:6007
 
 ## Additional Resources

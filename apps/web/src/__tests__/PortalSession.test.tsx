@@ -147,6 +147,24 @@ const makeQueryResult = (
   error: null,
 });
 
+/**
+ * Force the chat feed's scroll container to look scrolled-away-from-bottom.
+ * jsdom reports zero geometry, which reads as "at the bottom" — the state in
+ * which the strip is deliberately hidden (#279).
+ */
+const scrollFeedAwayFromBottom = (container: HTMLElement) => {
+  const el = Array.from(container.querySelectorAll("div")).find(
+    (d) => getComputedStyle(d).overflow === "auto"
+  ) as HTMLElement;
+  Object.defineProperty(el, "scrollHeight", {
+    value: 1000,
+    configurable: true,
+  });
+  Object.defineProperty(el, "clientHeight", { value: 300, configurable: true });
+  Object.defineProperty(el, "scrollTop", { value: 0, configurable: true });
+  fireEvent.scroll(el);
+};
+
 // ── Tests ─────────────────────────────────────────────────────────────
 
 describe("PortalSessionUI", () => {
@@ -262,11 +280,28 @@ describe("PortalSessionUI", () => {
       expect(indicator).toHaveTextContent("18s");
     });
 
-    it("names the running tool in the pinned strip", () => {
+    // The two surfaces are mutually exclusive (#279 smoke finding): they carry
+    // identical text, so the strip only takes over once the inline indicator
+    // has scrolled out of view.
+    it("shows only the inline indicator while the feed is at the bottom", () => {
       render(<PortalSessionUI {...streaming} />);
-      const strip = screen.getByTestId("tool-activity-strip");
-      expect(strip).toHaveTextContent("Building the chart");
-      expect(strip).toHaveTextContent("18s");
+      expect(screen.getByTestId("typing-indicator")).toHaveTextContent(
+        "Building the chart"
+      );
+      expect(
+        screen.queryByTestId("tool-activity-strip")
+      ).not.toBeInTheDocument();
+    });
+
+    it("hands the phase to the pinned strip once the feed is scrolled up", async () => {
+      const { container } = render(<PortalSessionUI {...streaming} />);
+      scrollFeedAwayFromBottom(container);
+
+      await waitFor(() => {
+        const strip = screen.getByTestId("tool-activity-strip");
+        expect(strip).toHaveTextContent("Building the chart");
+        expect(strip).toHaveTextContent("18s");
+      });
     });
 
     // The bug this ticket fixes: a tool turn's first delta is a one-line
@@ -364,7 +399,7 @@ describe("PortalSession (container) via PortalSessionUI", () => {
   // becomes an open step in the hook, the newest step resolves to curated copy
   // via `toolPhaseLabel`, and both surfaces render it. The pieces are unit
   // tested individually; this proves they are actually connected.
-  it("resolves the phase label from the tool name and shows it on both surfaces", async () => {
+  it("resolves the phase label from the tool name and clears it on tool_call_end", async () => {
     mockGetPortal.mockReturnValue(makeQueryResult([]));
     mockSendMessage.mockResolvedValue(undefined);
 
@@ -398,9 +433,6 @@ describe("PortalSession (container) via PortalSessionUI", () => {
         "Querying your data"
       );
     });
-    expect(screen.getByTestId("tool-activity-strip")).toHaveTextContent(
-      "Querying your data"
-    );
     expect(screen.queryByText("sql_query")).not.toBeInTheDocument();
 
     await act(async () => {

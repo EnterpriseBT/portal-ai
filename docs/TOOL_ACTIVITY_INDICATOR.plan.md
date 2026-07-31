@@ -89,7 +89,7 @@ Register all six portal-stream events + the `PortalStreamEvent` union, and fix t
 2. **Implement** the registrations and the annotation corrections. Green.
 3. Lint + type-check.
 
-**Done when:** the five cases pass and `/api-docs` lists the stream under its real path with all six events.
+**Done when:** the five cases pass and `/api/docs` lists the stream under its real path with all six events.
 
 **Risk:** `swaggerSpec` is built from the route JSDoc via `apis: ["./src/routes/*.ts"]` (`:1684`), a **cwd-relative** glob. The existing suite already asserts on `swaggerSpec.paths`, so this resolves under `cd apps/api && npm run test:unit` — but a path assertion that mysteriously sees zero paths means the glob didn't resolve, not that the annotation is wrong.
 
