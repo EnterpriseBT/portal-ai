@@ -39,7 +39,8 @@ The `as any` cast is deleted with the parameter, restoring type-checker coverage
 ## Smoke (manual, against your dev stack)
 
 1. `npm run dev`, open a portal session on a station with `data_query` + `visualize` enabled.
-2. Prompt **"what can you do on this station?"** → the reply describes the station's actual capabilities (querying, charting). Before the fix the prompt carried no pack guidance at all, so this answer was assembled from the tool list alone.
+2. Prompt **"what can you do on this station?"** → the reply describes the station's actual **built-in** capabilities (querying, charting, entities, stats, web search). Before the fix the prompt carried no pack guidance at all, so this answer was assembled from the tool list alone. *Weak evidence on its own — the tool list can carry a plausible answer either way; step 4 is what proves the invariant.*
+   - **Expected gap:** an attached **custom** toolpack is still absent from this answer. That is #306, not a regression here — this ticket restores the built-in list only.
 3. Prompt a chart over an entity → still works (it did before; this pins that the fix didn't regress tool availability).
 4. On a station with **only** `data_query` enabled, ask **"can you make me a chart?"** → the agent does not claim charting. This is #284's invariant working again: guidance is emitted per effective pack.
 5. On an org whose plan excludes a configured pack, confirm the agent still distinguishes "your plan doesn't include this" from "this station doesn't have it" (the `unentitledToolPacks` copy, unchanged here).
