@@ -111,6 +111,8 @@ The jsdom tests prove the strip is absolutely positioned and lives outside the c
 - [ ] Type into the input **while a tool is running**. The pill appearing mid-keystroke does not move the caret, resize the field, or interrupt typing.
 - [ ] With the feed scrolled to the bottom, watch the message area as the pill appears: the feed does **not** jump, re-scroll, or shift its content.
 - [ ] Scroll to a specific message mid-feed while a tool runs. Your scroll position **holds** — it is not yanked to the bottom when the pill mounts or unmounts.
+- [ ] **Threshold boundary.** While a tool is running, scroll **slowly** back and forth across the ~80px-from-bottom mark (`JUMP_THRESHOLD_PX`, `ChatWindow.component.tsx:25`). The pill must not **flicker** — it appears and disappears once per crossing, cleanly. Flickering would mean the strip's visibility is feeding back into the scroll geometry that decides it (it shouldn't: the strip is absolutely positioned and is a *sibling* of the scroll container, not a child, so neither `ResizeObserver` in that file observes it).
+- [ ] At that same boundary, the pill and the **jump-to-bottom button** appear and disappear **together** — they read the same `showJumpBottom` signal, so one showing without the other is a bug.
 
 ## §7 — Accessibility
 
