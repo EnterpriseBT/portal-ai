@@ -88,11 +88,16 @@ Each of these must clear **both** surfaces.
 - [ ] Start a long turn (§1 prompt). While a tool is running, press **Cancel**.
 - [ ] Both the inline indicator and the pill disappear **immediately**.
 
-### §5b — Stream error
+### §5b — Connection loss
 
-- [ ] Start a long turn, then kill the API (`Ctrl-C` in the `npm run dev` API pane) while a tool is running.
-- [ ] Both surfaces clear, and the existing connection-error `StatusMessage` is what remains in the feed.
+This exercises the client's **`es.onerror`** path, not the `stream_error` event. Both clear the open steps and both leave a `StatusMessage`, so the acceptance criterion holds either way — but they are different handlers, and only `onerror` is reachable by killing the server. A genuine `stream_error` (the server's `sse.sendError`, e.g. the model call failing) is covered by unit test only unless you deliberately break the API's Anthropic key.
+
+- [ ] Start a long turn, then kill the API while a tool is running.
+- [ ] Both surfaces clear, and the existing connection-error `StatusMessage` ("Connection to the server was lost. Please try again.") is what remains in the feed.
+- [ ] The feed does **not** silently recover or show a stale indicator once the API comes back.
 - [ ] Restart the API before continuing.
+
+> **In this devcontainer**, `npm run dev` runs the API under nodemon via `concurrently`, so there is no separate pane to `Ctrl-C`. `kill -9` on the server process takes nodemon's whole child chain with it and it will **not** respawn on its own — nudge its watcher with `touch apps/api/src/index.ts` (a no-op that leaves the file unchanged) and the server comes back in ~15s.
 
 ### §5c — Completion leaves no trace
 
