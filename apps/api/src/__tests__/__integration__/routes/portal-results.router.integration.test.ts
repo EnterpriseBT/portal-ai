@@ -378,6 +378,61 @@ describe("Portal Results Router", () => {
       expect(pr.content.pipeline).toBeUndefined();
       expect(typeof pr.snapshotUpdatedAt).toBe("number");
     });
+
+    // #312 smoke find: the display block for a query-backed handle carries no
+    // `sql` — the pipeline must derive from the server-side handle meta.
+    it("derives a query-backed table pin's pipeline from the handle meta", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const { PortalSqlHandleService } =
+        await import("../../../services/portal-sql-handle.service.js");
+      const { envelope } = await PortalSqlHandleService.produce({
+        sql: "SELECT 1 AS x",
+        stationId: station.id,
+        organizationId,
+      });
+
+      // The persisted display block strips the envelope's sql — mirror that.
+      const { sql: _dropped, ...blockContent } = envelope as Record<
+        string,
+        unknown
+      > & { sql: unknown };
+      const assistantMsg = createPortalMessage(
+        organizationId,
+        portal.id,
+        "assistant",
+        [{ type: "data-table", content: blockContent }]
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalMessages)
+        .values(assistantMsg as never);
+
+      const res = await request(app)
+        .post("/api/portal-results")
+        .send({ portalId: portal.id, blockIndex: 0, name: "Query Table" })
+        .expect(201);
+
+      const pr = res.body.payload.portalResult;
+      expect(pr.content.pipeline).toEqual({
+        sql: "SELECT 1 AS x",
+        stationId: station.id,
+        organizationId,
+      });
+      expect(pr.content.queryHandle).toBeUndefined();
+    });
   });
 
   // ── POST /api/portal-results/:id/refresh (#312) ───────────────────

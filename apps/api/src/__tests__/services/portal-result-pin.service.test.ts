@@ -127,7 +127,10 @@ describe("PortalResultPinService.materialize", () => {
   });
 
   it("derives no pipeline when the envelope's sql is null (produceFromRows)", async () => {
-    const deps: MaterializeDeps = { getSnapshot: fakeSnapshot(3) as never };
+    const deps: MaterializeDeps = {
+      getSnapshot: fakeSnapshot(3) as never,
+      getMeta: jest.fn(async () => ({ sql: null })) as never,
+    };
     const result = await PortalResultPinService.materialize(
       "data-table",
       {
@@ -145,6 +148,54 @@ describe("PortalResultPinService.materialize", () => {
     const content = result.content as Record<string, unknown>;
     expect((content.rows as unknown[]).length).toBe(3);
     expect(content.truncated).toBe(false);
+    expect(content.pipeline).toBeUndefined();
+  });
+
+  // #312 smoke find: the persisted display block omits the envelope's
+  // retained sql — the server-side handle meta is the authoritative source.
+  it("derives the pipeline from server-side handle meta when the block omits sql", async () => {
+    const getMeta = jest.fn(async () => ({ sql: "SELECT a FROM t" }));
+    const result = await PortalResultPinService.materialize(
+      "data-table",
+      {
+        // The real block shape: no `sql`, no `truncated` (see portal.service
+        // resolveDisplayBlock) — only what the client renderer needs.
+        queryHandle: "qh-4",
+        rowCount: 3,
+        schema: [{ name: "a", type: "number" }],
+        sampled: false,
+        samplePeek: [],
+      },
+      SCOPE,
+      { getSnapshot: fakeSnapshot(3) as never, getMeta: getMeta as never }
+    );
+    expect(getMeta).toHaveBeenCalledWith("qh-4");
+    const content = result.content as Record<string, unknown>;
+    expect(content.pipeline).toEqual({
+      sql: "SELECT a FROM t",
+      stationId: "station-1",
+      organizationId: "org-1",
+    });
+  });
+
+  it("stays a static snapshot when the meta read fails mid-pin", async () => {
+    const getMeta = jest.fn(async () => {
+      throw expiredError();
+    });
+    const result = await PortalResultPinService.materialize(
+      "data-table",
+      {
+        queryHandle: "qh-5",
+        rowCount: 3,
+        schema: [{ name: "a", type: "number" }],
+        sampled: false,
+        samplePeek: [],
+      },
+      SCOPE,
+      { getSnapshot: fakeSnapshot(3) as never, getMeta: getMeta as never }
+    );
+    const content = result.content as Record<string, unknown>;
+    expect((content.rows as unknown[]).length).toBe(3);
     expect(content.pipeline).toBeUndefined();
   });
 

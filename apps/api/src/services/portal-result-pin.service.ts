@@ -21,9 +21,10 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { PortalSqlHandleService } from "./portal-sql-handle.service.js";
 import { resolveSqlDelivery as defaultResolveSqlDelivery } from "../tools/result-sink.js";
 
-/** DI seam (test): the handle snapshot reader + the SQL delivery resolver. */
+/** DI seam (test): the handle readers + the SQL delivery resolver. */
 export interface MaterializeDeps {
   getSnapshot?: typeof PortalSqlHandleService.getSnapshot;
+  getMeta?: typeof PortalSqlHandleService.getMeta;
   resolveSqlDelivery?: typeof defaultResolveSqlDelivery;
 }
 
@@ -142,15 +143,36 @@ export class PortalResultPinService {
     const getSnapshot =
       deps.getSnapshot ??
       PortalSqlHandleService.getSnapshot.bind(PortalSqlHandleService);
+    const getMeta =
+      deps.getMeta ??
+      PortalSqlHandleService.getMeta.bind(PortalSqlHandleService);
     const resolveSqlDelivery =
       deps.resolveSqlDelivery ?? defaultResolveSqlDelivery;
-    const pipeline = derivePipeline(source, scope);
+    let pipeline = derivePipeline(source, scope);
 
     try {
       const snap = await getSnapshot(source.queryHandle as string, {
         offset: 0,
         limit: PIN_SNAPSHOT_ROW_CAP,
       });
+      if (!pipeline) {
+        // The persisted display block omits the envelope's retained `sql`
+        // (it carries only what the client renderer needs) — the
+        // server-side handle meta is the authoritative source (#312 smoke
+        // find). A failed meta read degrades to a static snapshot.
+        try {
+          const meta = await getMeta(source.queryHandle as string);
+          if (typeof meta.sql === "string" && meta.sql.length > 0) {
+            pipeline = {
+              sql: meta.sql,
+              stationId: scope.stationId,
+              organizationId: scope.organizationId,
+            };
+          }
+        } catch {
+          // expired between the snapshot and meta reads — static pin
+        }
+      }
       return assemble(source, snap.rows, snap.total, pipeline);
     } catch (err) {
       const expired =
