@@ -406,10 +406,8 @@ describe("Portal Results Router", () => {
       });
 
       // The persisted display block strips the envelope's sql — mirror that.
-      const { sql: _dropped, ...blockContent } = envelope as Record<
-        string,
-        unknown
-      > & { sql: unknown };
+      const blockContent: Record<string, unknown> = { ...envelope };
+      delete blockContent.sql;
       const assistantMsg = createPortalMessage(
         organizationId,
         portal.id,
