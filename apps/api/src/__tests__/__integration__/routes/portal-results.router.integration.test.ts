@@ -380,6 +380,139 @@ describe("Portal Results Router", () => {
     });
   });
 
+  // ── POST /api/portal-results/:id/refresh (#312) ───────────────────
+
+  describe("POST /api/portal-results/:id/refresh", () => {
+    it("re-executes the stored pipeline and persists the snapshot back", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const pipeline = {
+        sql: "SELECT 1 AS x",
+        stationId: station.id,
+        organizationId,
+      };
+      const assistantMsg = createPortalMessage(
+        organizationId,
+        portal.id,
+        "assistant",
+        [
+          {
+            type: "d3",
+            content: {
+              program: "api.svg.append('g');",
+              rows: [{ x: 999 }], // stale snapshot the refresh replaces
+              pipeline,
+            },
+          },
+        ]
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalMessages)
+        .values(assistantMsg as never);
+
+      const pinned = await request(app)
+        .post("/api/portal-results")
+        .send({ portalId: portal.id, blockIndex: 0, name: "Live Chart" })
+        .expect(201);
+      const id = pinned.body.payload.portalResult.id as string;
+      const pinnedAt = pinned.body.payload.portalResult
+        .snapshotUpdatedAt as number;
+
+      const res = await request(app)
+        .post(`/api/portal-results/${id}/refresh`)
+        .expect(200);
+      expect(res.body.payload).toEqual({ kind: "inline", rows: [{ x: 1 }] });
+
+      // Persist-back: the stored snapshot now holds the fresh rows.
+      const after = await request(app)
+        .get(`/api/portal-results/${id}`)
+        .expect(200);
+      expect(after.body.payload.portalResult.content.rows).toEqual([{ x: 1 }]);
+      expect(
+        after.body.payload.portalResult.snapshotUpdatedAt
+      ).toBeGreaterThanOrEqual(pinnedAt);
+    });
+
+    it("returns 404 for an unknown pinned result", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .post(`/api/portal-results/${generateId()}/refresh`)
+        .expect(404);
+      expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_NOT_FOUND);
+    });
+
+    it("returns 422 for a pin with no durable pipeline", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const staticPin = createPortalResult(
+        organizationId,
+        station.id,
+        portal.id,
+        {
+          type: "data-table",
+          content: { columns: ["a"], rows: [{ a: 1 }] },
+        }
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalResults)
+        .values(staticPin as never);
+
+      const res = await request(app)
+        .post(`/api/portal-results/${staticPin.id}/refresh`)
+        .expect(422);
+      expect(res.body.code).toBe(ApiCode.VIZ_WIDGET_NOT_REFRESHABLE);
+    });
+
+    it("returns 429 past the per-org refresh window", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const { incrementRateWindow } =
+        await import("../../../utils/rate-limit.util.js");
+      const { VIZ_REFRESH_RATE_PER_MIN } =
+        await import("@portalai/core/constants");
+      // Exhaust the shared viz-refresh window (same budget as the
+      // message-block addresser). The 429 fires before row lookup.
+      for (let i = 0; i <= VIZ_REFRESH_RATE_PER_MIN; i++) {
+        await incrementRateWindow(`viz-refresh:${organizationId}`);
+      }
+
+      const res = await request(app)
+        .post(`/api/portal-results/${generateId()}/refresh`)
+        .expect(429);
+      expect(res.body.code).toBe(ApiCode.VIZ_REFRESH_RATE_LIMITED);
+    });
+  });
+
   // ── GET /api/portal-results ───────────────────────────────────────
 
   describe("GET /api/portal-results", () => {

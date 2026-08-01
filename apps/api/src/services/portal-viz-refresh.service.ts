@@ -11,17 +11,41 @@
  */
 
 import type { WidgetRefreshResponse } from "@portalai/core/contracts";
-import { D3PipelineSchema } from "@portalai/core/contracts";
+import { D3PipelineSchema, type D3Pipeline } from "@portalai/core/contracts";
+import { PIN_SNAPSHOT_ROW_CAP } from "@portalai/core/constants";
+import { DateFactory } from "@portalai/core/utils";
 
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { PortalSqlHandleService } from "./portal-sql-handle.service.js";
 import { resolveSqlDelivery as defaultResolveSqlDelivery } from "../tools/result-sink.js";
 import { portalMessagesRepo } from "../db/repositories/portal-messages.repository.js";
-import type { PortalMessageSelect } from "../db/schema/zod.js";
+import { portalResultsRepo } from "../db/repositories/portal-results.repository.js";
+import type {
+  PortalMessageSelect,
+  PortalResultSelect,
+  PortalResultInsert,
+} from "../db/schema/zod.js";
+import { createLogger } from "../utils/logger.util.js";
+
+const logger = createLogger({ module: "portal-viz-refresh" });
 
 /** DI seam (test): the message loader + the SQL delivery resolver. */
 export interface VizRefreshDeps {
   findMessageById?: (id: string) => Promise<PortalMessageSelect | undefined>;
+  resolveSqlDelivery?: typeof defaultResolveSqlDelivery;
+}
+
+/** DI seam (test) for the pin addresser (#312). */
+export interface PinRefreshDeps {
+  findPortalResultById?: (
+    id: string
+  ) => Promise<PortalResultSelect | undefined>;
+  updatePortalResult?: (
+    id: string,
+    patch: Partial<PortalResultInsert>
+  ) => Promise<PortalResultSelect | undefined>;
+  getSnapshot?: typeof PortalSqlHandleService.getSnapshot;
   resolveSqlDelivery?: typeof defaultResolveSqlDelivery;
 }
 
@@ -76,11 +100,110 @@ export class PortalVizRefreshService {
     }
     const pipeline = parsed.data;
 
-    // Re-execute read-only, scoped to the pipeline's station under the caller's
-    // (verified) org — same funnel as the original mint.
+    return this.executePipeline(
+      pipeline,
+      params.organizationId,
+      resolveSqlDelivery
+    );
+  }
+
+  /**
+   * Pin addresser (#312): re-execute a pinned result's stored pipeline.
+   * Scope gates on the row's own `organizationId` (cross-org → the same 404
+   * as a missing row — no existence leak), then **persists back** the fresh
+   * snapshot (rows ≤ `PIN_SNAPSHOT_ROW_CAP`, `rowCount`, `truncated`,
+   * `snapshotUpdatedAt`). Persist-back failure is non-fatal: the live
+   * delivery already succeeded and the stale stored snapshot self-heals on
+   * the next refresh.
+   */
+  static async refreshPinnedResult(
+    params: { portalResultId: string; organizationId: string },
+    deps: PinRefreshDeps = {}
+  ): Promise<WidgetRefreshResponse> {
+    const findPortalResultById =
+      deps.findPortalResultById ??
+      ((id: string) => portalResultsRepo.findById(id));
+    const updatePortalResult =
+      deps.updatePortalResult ??
+      ((id: string, patch: Partial<PortalResultInsert>) =>
+        portalResultsRepo.update(id, patch));
+    const getSnapshot =
+      deps.getSnapshot ??
+      PortalSqlHandleService.getSnapshot.bind(PortalSqlHandleService);
+    const resolveSqlDelivery =
+      deps.resolveSqlDelivery ?? defaultResolveSqlDelivery;
+
+    const row = await findPortalResultById(params.portalResultId);
+    if (!row || row.organizationId !== params.organizationId) {
+      throw new ApiError(
+        404,
+        ApiCode.PORTAL_RESULT_NOT_FOUND,
+        "Pinned result not found"
+      );
+    }
+
+    const content = (row.content ?? {}) as Record<string, unknown>;
+    const parsed = D3PipelineSchema.safeParse(content.pipeline);
+    if (!parsed.success) {
+      throw new ApiError(
+        422,
+        ApiCode.VIZ_WIDGET_NOT_REFRESHABLE,
+        "This pinned result has no durable pipeline and can't be refreshed."
+      );
+    }
+
+    const delivery = await this.executePipeline(
+      parsed.data,
+      params.organizationId,
+      resolveSqlDelivery
+    );
+
+    try {
+      let rows: Array<Record<string, unknown>>;
+      let total: number;
+      if (delivery.kind === "inline") {
+        rows = delivery.rows;
+        total = rows.length;
+      } else {
+        const snap = await getSnapshot(delivery.queryHandle, {
+          offset: 0,
+          limit: PIN_SNAPSHOT_ROW_CAP,
+        });
+        rows = snap.rows;
+        total = delivery.rowCount;
+      }
+      await updatePortalResult(row.id, {
+        content: {
+          ...content,
+          rows,
+          rowCount: total,
+          truncated: total > rows.length,
+        },
+        snapshotUpdatedAt: new DateFactory("UTC").now().getTime(),
+      });
+    } catch (err) {
+      logger.warn(
+        { err, portalResultId: row.id },
+        "pin refresh persist-back failed; stored snapshot left stale"
+      );
+    }
+
+    return delivery;
+  }
+
+  /**
+   * Shared core: execute a durable pipeline read-only under the (verified)
+   * caller org — the same funnel as the original mint — and map the delivery
+   * to the refresh-response union.
+   */
+  private static async executePipeline(
+    pipeline: D3Pipeline,
+    organizationId: string,
+    resolveSqlDelivery: typeof defaultResolveSqlDelivery
+  ): Promise<WidgetRefreshResponse> {
     const delivery = await resolveSqlDelivery(
       { sql: pipeline.sql },
-      { stationId: pipeline.stationId, organizationId: params.organizationId }
+      { stationId: pipeline.stationId, organizationId }
     );
 
     if (delivery.kind === "handle") {

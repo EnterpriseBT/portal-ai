@@ -14,8 +14,11 @@ import { DbService } from "../services/db.service.js";
 import { portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalResultPinService } from "../services/portal-result-pin.service.js";
+import { PortalVizRefreshService } from "../services/portal-viz-refresh.service.js";
+import { incrementRateWindow } from "../utils/rate-limit.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { DateFactory } from "@portalai/core/utils";
+import { VIZ_REFRESH_RATE_PER_MIN } from "@portalai/core/constants";
 
 const logger = createLogger({ module: "portal-results" });
 
@@ -230,6 +233,103 @@ portalResultsRouter.post(
               "Failed to pin result"
             )
       );
+    }
+  }
+);
+
+// ── POST /api/portal-results/:id/refresh ──────────────────────────────────
+
+/**
+ * @openapi
+ * /api/portal-results/{id}/refresh:
+ *   post:
+ *     tags:
+ *       - Portal Results
+ *     summary: Re-execute a pinned result's durable pipeline for fresh data
+ *     description: >
+ *       Pin-addressed live refresh (#312). The server reads the pipeline from
+ *       the pinned row's own stored content and re-runs it read-only under the
+ *       caller's organization — the client never supplies SQL. A successful
+ *       refresh persists the fresh snapshot back onto the row
+ *       (`snapshotUpdatedAt`), so the stored fallback is always the last known
+ *       good data. Free and unmetered; shares the per-org widget-refresh rate
+ *       window.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Pinned result id
+ *     responses:
+ *       200:
+ *         description: A fresh delivery for the pinned result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 payload:
+ *                   $ref: '#/components/schemas/WidgetRefreshResponse'
+ *       404:
+ *         description: No pinned result for this id (or cross-org)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       422:
+ *         description: The pinned result has no durable pipeline
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       429:
+ *         description: Per-org rate limit exceeded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+portalResultsRouter.post(
+  "/:id/refresh",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const organizationId = req.application!.metadata.organizationId;
+
+      // Per-org rate limit — the same window as the message-block
+      // widget-refresh (one budget across both addressers). Fail-open on a
+      // Redis blip: the re-execution is already bounded (read-only +
+      // statement_timeout + LIMIT).
+      try {
+        const count = await incrementRateWindow(
+          `viz-refresh:${organizationId}`
+        );
+        if (count > VIZ_REFRESH_RATE_PER_MIN) {
+          throw new ApiError(
+            429,
+            ApiCode.VIZ_REFRESH_RATE_LIMITED,
+            "Too many widget refreshes this minute."
+          );
+        }
+      } catch (err) {
+        if (err instanceof ApiError) throw err; // the 429 propagates
+        logger.warn(
+          { err },
+          "viz-refresh rate limiter unavailable; failing open"
+        );
+      }
+
+      const payload = await PortalVizRefreshService.refreshPinnedResult({
+        portalResultId: req.params.id,
+        organizationId,
+      });
+      return HttpService.success(res, payload);
+    } catch (err) {
+      return next(err);
     }
   }
 );
