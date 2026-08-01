@@ -311,9 +311,9 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Pinned Result",
     category: GlossaryCategory.Analytics,
     definition:
-      "A portal result you've saved for quick access from the dashboard or the pinned-results page.",
+      "A portal result you've saved for quick access from the dashboard or the pinned-results page. Any durable answer pins — text, tables, and charts. Pinned tables and charts remember the query behind them, so opening one shows live data, with the last saved snapshot as the fallback.",
     example:
-      "Pin a quarterly-revenue chart so it's one click away from the dashboard.",
+      "Pin a quarterly-revenue chart so it's one click away from the dashboard — it refreshes itself when you open it.",
     relatedTerms: ["Portal Result", "Default Station"],
     pageRoute: ApplicationRoute.PortalResults,
   },

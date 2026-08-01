@@ -7,11 +7,15 @@ import type { ApiError } from "../utils";
 type ListQuery = UseQueryResult<PortalResultsListPayload, ApiError>;
 
 let currentListQuery: Partial<ListQuery> = {};
+const mockRemove = jest.fn<(vars: { id: string }) => Promise<unknown>>();
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     portalResults: {
       list: () => currentListQuery,
+      // #312 (closes the UNPIN_SDK_BYPASS remainder): unpin routes through
+      // the SDK here too.
+      remove: () => ({ mutateAsync: mockRemove, isPending: false }),
     },
   },
   queryKeys: {
@@ -22,20 +26,27 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-jest.unstable_mockModule("../utils/api.util", () => ({
-  useAuthFetch: () => ({
-    fetchWithAuth: jest
-      .fn<() => Promise<unknown>>()
-      .mockResolvedValue(undefined),
-  }),
-  useAuthQuery: jest.fn(),
-  useAuthMutation: jest.fn(),
-  resolveApiUrl: (path: string) => path,
-}));
-
-const { render, screen } = await import("./test-utils");
+const { render, screen, fireEvent, waitFor } = await import("./test-utils");
+const { QueryClient } = await import("@tanstack/react-query");
+const { ToastContext } = await import("../utils/toast.context");
 const { PinnedResultsListView } =
   await import("../views/PinnedResultsListView.view");
+
+const mockToast = {
+  success: jest.fn(),
+  info: jest.fn(),
+  warning: jest.fn(),
+  error:
+    jest.fn<
+      (
+        msg: string,
+        opts?: { action?: { label: string; onClick: () => void } }
+      ) => void
+    >(),
+  show: jest.fn(),
+  dismiss: jest.fn(),
+  dismissAll: jest.fn(),
+};
 
 const makePinnedResult = (
   overrides: Partial<PortalResult> = {}
@@ -61,7 +72,58 @@ const makePinnedResult = (
 
 describe("PinnedResultsListView", () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     currentListQuery = {};
+    mockRemove.mockReset().mockResolvedValue(undefined);
+  });
+
+  // ── #312: unpin through the SDK ────────────────────────────────────
+
+  const renderWithResult = () => {
+    currentListQuery = {
+      data: {
+        portalResults: [makePinnedResult({ id: "r-1", name: "Revenue" })],
+        total: 1,
+        limit: 20,
+        offset: 0,
+      },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<ListQuery>;
+    const queryClient = new QueryClient();
+    const invalidateSpy = jest.spyOn(queryClient, "invalidateQueries");
+    render(
+      <ToastContext.Provider value={mockToast}>
+        <PinnedResultsListView />
+      </ToastContext.Provider>,
+      { queryClient }
+    );
+    return { invalidateSpy };
+  };
+
+  it("routes unpin through the SDK mutation and invalidates the root", async () => {
+    const { invalidateSpy } = renderWithResult();
+
+    fireEvent.click(screen.getByRole("button", { name: "Unpin" }));
+
+    await waitFor(() => expect(mockRemove).toHaveBeenCalledWith({ id: "r-1" }));
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["portalResults"],
+      })
+    );
+  });
+
+  it("raises an error toast when the unpin fails", async () => {
+    mockRemove.mockRejectedValue(new Error("boom"));
+    const { invalidateSpy } = renderWithResult();
+
+    fireEvent.click(screen.getByRole("button", { name: "Unpin" }));
+
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledTimes(1));
+    expect(mockToast.error.mock.calls[0][0]).toMatch(/could not remove/i);
+    expect(invalidateSpy).not.toHaveBeenCalled();
   });
 
   it("should display the Pinned Results heading", () => {
