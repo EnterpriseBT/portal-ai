@@ -234,7 +234,11 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
             <Box sx={{ flex: 1, minWidth: 0, overflow: "auto" }}>
               <ContentBlockRenderer
                 block={block}
-                blockRef={{ messageId: message.id, blockIndex: i }}
+                blockRef={{
+                  kind: "message",
+                  messageId: message.id,
+                  blockIndex: i,
+                }}
                 dataUpdatedAt={message.created}
               />
             </Box>

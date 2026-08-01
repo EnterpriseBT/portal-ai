@@ -354,12 +354,14 @@ describe("PortalMessageUI", () => {
       ).toHaveLength(2);
     });
 
-    // #270: a persisted d3 block is rendered with its blockRef so the widget
-    // can refresh itself against { messageId, blockIndex }.
+    // #270/#312: a persisted d3 block is rendered with its discriminated
+    // blockRef so the widget can refresh itself through the message addresser.
     it("threads blockRef { messageId, blockIndex } to a persisted d3 block", () => {
       registerBlockRenderer("d3", (_b, ctx) => (
         <div data-testid="d3-blockref-stub">
-          {`${ctx?.blockRef?.messageId}:${ctx?.blockRef?.blockIndex}`}
+          {ctx?.blockRef?.kind === "message"
+            ? `${ctx.blockRef.messageId}:${ctx.blockRef.blockIndex}`
+            : "no-message-ref"}
         </div>
       ));
       const message = makeMessage({

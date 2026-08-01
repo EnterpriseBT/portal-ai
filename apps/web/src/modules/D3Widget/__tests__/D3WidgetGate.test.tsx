@@ -28,6 +28,9 @@ jest.unstable_mockModule("../../../api/sdk", () => ({
       handleSnapshotPage: () => ({ mutateAsync: pageMutate }),
       widgetRefresh: () => ({ mutateAsync: refreshMutate, isPending: false }),
     },
+    portalResults: {
+      refresh: () => ({ mutateAsync: jest.fn() }),
+    },
   },
 }));
 

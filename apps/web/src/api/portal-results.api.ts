@@ -1,4 +1,7 @@
-import type { PinResultBody } from "@portalai/core/contracts";
+import type {
+  PinResultBody,
+  WidgetRefreshResponse,
+} from "@portalai/core/contracts";
 
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
@@ -71,6 +74,19 @@ export const portalResults = {
     useAuthMutation<{ id: string }, { id: string }>({
       url: ({ id }) => `/api/portal-results/${encodeURIComponent(id)}`,
       method: "DELETE",
+      body: () => undefined,
+    }),
+
+  /**
+   * Re-execute a pinned result's durable pipeline for live data (#312).
+   * Id-in-variables like `remove` — the widget-refresh hook serves many
+   * refs. The server persists the fresh snapshot back onto the row, so
+   * consumers should invalidate `queryKeys.portalResults.get(id)` on
+   * success.
+   */
+  refresh: () =>
+    useAuthMutation<WidgetRefreshResponse, { id: string }>({
+      url: ({ id }) => `/api/portal-results/${encodeURIComponent(id)}/refresh`,
       body: () => undefined,
     }),
 };

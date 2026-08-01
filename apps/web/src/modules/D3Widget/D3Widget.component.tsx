@@ -16,11 +16,9 @@ import { DateFactory } from "@portalai/core/utils";
 
 import { D3SandboxFrameUI } from "./D3SandboxFrame.component";
 import { useProgressiveHandleRows } from "./utils/progressive-rows.util";
-import {
-  useWidgetRefresh,
-  type WidgetRef,
-} from "./utils/use-widget-refresh.util";
+import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
 import { buildSandboxTheme } from "./utils/sandbox-theme.util";
+import type { BlockRef } from "@portalai/core";
 
 import type { D3BlockContent } from "@portalai/core/contracts";
 import type { ProgressiveBatch } from "./utils/progressive-rows.util";
@@ -241,7 +239,7 @@ export interface D3WidgetProps {
   content: D3BlockContent | unknown;
   /** Persisted-block reference (#270) — enables refresh. Absent for
    *  streaming/unpersisted blocks. */
-  blockRef?: WidgetRef;
+  blockRef?: BlockRef;
   /** Epoch ms the block's data was persisted (the message's `created`) —
    *  seeds the freshness clock so a just-minted widget isn't auto-refreshed. */
   dataUpdatedAt?: number;
