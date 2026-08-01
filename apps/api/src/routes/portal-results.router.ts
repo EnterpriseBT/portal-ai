@@ -13,6 +13,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { PortalResultPinService } from "../services/portal-result-pin.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { DateFactory } from "@portalai/core/utils";
 
@@ -71,14 +72,24 @@ export const portalResultsRouter = Router();
  *         description: >
  *           Invalid payload (`PORTAL_RESULT_NOT_FOUND`), block index outside
  *           the target message (`PORTAL_RESULT_BLOCK_INDEX_INVALID`), or a
- *           block whose type is not pinnable — visualization blocks such as
- *           `d3` display but never pin (`PORTAL_RESULT_TYPE_NOT_PINNABLE`).
+ *           block that cannot pin — a transient kind, a type with no
+ *           pinned-content contract, or content failing that contract
+ *           (`PORTAL_RESULT_TYPE_NOT_PINNABLE`). Durable kinds (`text`,
+ *           `data-table`, `d3`, `geo`) pin since #312.
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
  *         description: Portal or assistant message not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       422:
+ *         description: >
+ *           The block's handle-backed data has expired and it carries no
+ *           re-executable pipeline (`PORTAL_RESULT_CONTENT_EXPIRED`).
  *         content:
  *           application/json:
  *             schema:
@@ -170,8 +181,14 @@ portalResultsRouter.post(
       }
       const type = blockType as PortalResultType;
 
-      // All display blocks from resolveDisplayBlock follow { type, content }.
-      const content = block.content as Record<string, unknown>;
+      // #312: materialize — validate against the per-type contract and
+      // resolve a self-contained snapshot (handle envelopes never persist).
+      // Display blocks from resolveDisplayBlock follow { type, content }.
+      const { content, snapshotUpdatedAt } =
+        await PortalResultPinService.materialize(type, block.content, {
+          stationId: portal.stationId,
+          organizationId,
+        });
 
       const now = new DateFactory("UTC").now().getTime();
       const portalResult = await DbService.repository.portalResults.create({
@@ -183,7 +200,8 @@ portalResultsRouter.post(
         blockIndex: blockIndex ?? null,
         name,
         type,
-        content,
+        content: content as Record<string, unknown>,
+        snapshotUpdatedAt,
         created: now,
         createdBy: userId,
         updated: null,

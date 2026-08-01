@@ -269,6 +269,115 @@ describe("Portal Results Router", () => {
         .send({ portalId: portal.id, blockIndex: 0, name: "The narrative" })
         .expect(201);
     });
+
+    // #312: durable viz kinds pin end-to-end — the stored content is the
+    // materialized inline shape and snapshotUpdatedAt is stamped.
+    it("pins a d3 block with its materialized inline shape", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const pipeline = {
+        sql: "SELECT 1 AS x",
+        stationId: station.id,
+        organizationId,
+      };
+      const assistantMsg = createPortalMessage(
+        organizationId,
+        portal.id,
+        "assistant",
+        [
+          { type: "text", content: "Here is the chart." },
+          {
+            type: "d3",
+            content: {
+              program: "api.svg.append('g');",
+              rows: [{ x: 1 }],
+              pipeline,
+            },
+          },
+        ]
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalMessages)
+        .values(assistantMsg as never);
+
+      const res = await request(app)
+        .post("/api/portal-results")
+        .send({ portalId: portal.id, blockIndex: 1, name: "My Chart" })
+        .expect(201);
+
+      const pr = res.body.payload.portalResult;
+      expect(pr.type).toBe("d3");
+      expect(pr.content.program).toBe("api.svg.append('g');");
+      expect(pr.content.rows).toEqual([{ x: 1 }]);
+      expect(pr.content.pipeline).toEqual(pipeline);
+      expect(typeof pr.snapshotUpdatedAt).toBe("number");
+    });
+
+    // #312: a handle-backed table pins as a self-contained snapshot — the
+    // ephemeral envelope is hydrated (real Redis) and never persisted.
+    it("pins a handle-backed data-table as a materialized snapshot", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const { PortalSqlHandleService } =
+        await import("../../../services/portal-sql-handle.service.js");
+      const { envelope } = await PortalSqlHandleService.produceFromRows({
+        rows: [{ a: 1 }, { a: 2 }, { a: 3 }],
+        stationId: station.id,
+        organizationId,
+      });
+
+      const assistantMsg = createPortalMessage(
+        organizationId,
+        portal.id,
+        "assistant",
+        [{ type: "data-table", content: { ...envelope } }]
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalMessages)
+        .values(assistantMsg as never);
+
+      const res = await request(app)
+        .post("/api/portal-results")
+        .send({ portalId: portal.id, blockIndex: 0, name: "My Table" })
+        .expect(201);
+
+      const pr = res.body.payload.portalResult;
+      expect(pr.type).toBe("data-table");
+      expect(pr.content.rows).toEqual([{ a: 1 }, { a: 2 }, { a: 3 }]);
+      expect(pr.content.columns).toEqual(["a"]);
+      expect(pr.content.truncated).toBe(false);
+      // The ephemeral envelope never persists; produceFromRows handles have
+      // no query to re-execute, so no pipeline is derived either.
+      expect(pr.content.queryHandle).toBeUndefined();
+      expect(pr.content.pipeline).toBeUndefined();
+      expect(typeof pr.snapshotUpdatedAt).toBe("number");
+    });
   });
 
   // ── GET /api/portal-results ───────────────────────────────────────
