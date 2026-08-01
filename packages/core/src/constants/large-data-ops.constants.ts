@@ -61,6 +61,11 @@ export const HANDLE_ROW_CAP = 100_000;
  */
 export const TABLE_DISPLAY_ROW_LIMIT = 5_000;
 
+/** Max rows persisted into a pinned result's stored snapshot (#312). Bound to
+ *  the display limit — rows beyond it are unreachable in a pinned table
+ *  anyway; `truncated`/`rowCount` on the stored content record the excess. */
+export const PIN_SNAPSHOT_ROW_CAP = TABLE_DISPLAY_ROW_LIMIT;
+
 /** A `d3` widget auto-refreshes when its data is older than this (#270). Short
  *  enough to read as "live", long enough that re-viewing/scrolling past a widget
  *  costs no SQL. Tunable; kept in the 2–5 min band. */

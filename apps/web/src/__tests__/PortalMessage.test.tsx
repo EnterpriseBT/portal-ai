@@ -324,7 +324,8 @@ describe("PortalMessageUI", () => {
   // pinnability only controls the pin affordance. Pre-fix, PortalMessage
   // used pinnability as its display filter and d3 blocks vanished.
   describe("registered non-pinnable blocks (d3)", () => {
-    it("renders a registered d3 block without a pin affordance", () => {
+    // #312 (supersedes the #273 gate): durable viz blocks are pinnable.
+    it("renders a registered d3 block with its own pin affordance", () => {
       registerBlockRenderer("d3", (b) => (
         <div data-testid="d3-widget-stub">
           {String((b.content as { program: string }).program)}
@@ -347,10 +348,10 @@ describe("PortalMessageUI", () => {
       );
       // The d3 block displays…
       expect(screen.getByTestId("d3-widget-stub")).toHaveTextContent("api.d3;");
-      // …but only the text block offers a pin.
+      // …and both the text block and the d3 block offer a pin (#312).
       expect(
         screen.getAllByRole("button", { name: /pin result/i })
-      ).toHaveLength(1);
+      ).toHaveLength(2);
     });
 
     // #270: a persisted d3 block is rendered with its blockRef so the widget

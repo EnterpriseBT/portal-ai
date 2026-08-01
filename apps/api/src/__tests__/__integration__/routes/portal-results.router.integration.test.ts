@@ -218,9 +218,10 @@ describe("Portal Results Router", () => {
       expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_BLOCK_INDEX_INVALID);
     });
 
-    // #273: visualization blocks are not pinnable — the gate is server-side,
-    // not just a hidden affordance, and it reports a typed code.
-    it("returns 400 PORTAL_RESULT_TYPE_NOT_PINNABLE for a d3 block", async () => {
+    // #312 (supersedes the #273 gate): durable viz kinds now pin; the
+    // server-side rejection remains for transient kinds, with the same
+    // typed code.
+    it("returns 400 PORTAL_RESULT_TYPE_NOT_PINNABLE for a transient block", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
@@ -241,13 +242,12 @@ describe("Portal Results Router", () => {
         portal.id,
         "assistant",
         [
-          { type: "text", content: "Here is the chart." },
+          { type: "text", content: "Import running." },
           {
-            type: "d3",
+            type: "bulk-job-progress",
             content: {
-              program: "api.svg.append('g');",
-              rowCount: 3,
-              title: "Asteroids by hazard class",
+              jobId: "job-1",
+              expectedRecords: 500,
             },
           },
         ]
@@ -258,7 +258,7 @@ describe("Portal Results Router", () => {
 
       const res = await request(app)
         .post("/api/portal-results")
-        .send({ portalId: portal.id, blockIndex: 1, name: "My Chart" })
+        .send({ portalId: portal.id, blockIndex: 1, name: "My Import" })
         .expect(400);
 
       expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_TYPE_NOT_PINNABLE);

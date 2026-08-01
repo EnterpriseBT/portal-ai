@@ -65,6 +65,7 @@ const makePinnedResult = (
   content: { value: "Total revenue: **$1.2M**" },
   created: Date.now() - 3600000,
   createdBy: "user-1",
+  snapshotUpdatedAt: null,
   updated: null,
   updatedBy: null,
   deleted: null,

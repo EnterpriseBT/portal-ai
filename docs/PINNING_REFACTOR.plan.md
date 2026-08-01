@@ -182,6 +182,7 @@ The user-facing payoff: pin anything durable in chat; the detail view goes live.
 
 - **Migration ordering:** slice 1's migration must be applied before slice 2's integration tests run (`npm run db:migrate` in the dev/test DB).
 - **Transitional window (slices 1→2):** the route accepts `d3` pins as verbatim copies until materialization lands — fine inside one PR; no test asserts the stored shape until slice 2.
+- **Slice-1 correction (found during implementation):** plain `d3` blocks never took the web-render bypass, so the chat pin affordance for d3 lights up as soon as the enum widens — its `PortalMessage` regression test flipped in slice 1, not slice 5. Slice 5 still owns the handle-backed data-table affordance (the actual `shouldRenderViaWeb` bypass).
 - **#84 seam:** only `PINNED_CONTENT_SCHEMAS` (slice 1). If #84 merges first, its geo entry is added there; if #312 merges first, #84 adds it in its own branch. Neither blocks the other.
 - **Doc-sync inventory (slice 6):** `GATE_VIZ_PINNING.md`, glossary/FAQ; `PIN_DIALOG_ERRORS.md`/`UNPIN_SDK_BYPASS.md` stay accurate (the dialog contract and the id-in-variables shape are unchanged; the bypass doc's "remaining bypasses" note is resolved by slice 6 — add a one-line closure note).
 - **Spec case totals:** ≈44 across slices (8 + 12 + 11 + 4 + 10 + 2), matching the spec's test plan.
