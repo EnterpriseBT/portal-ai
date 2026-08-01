@@ -6,6 +6,8 @@ import type { ActionSuiteItem } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import TextSnippetOutlinedIcon from "@mui/icons-material/TextSnippetOutlined";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
+import InsertChartOutlinedIcon from "@mui/icons-material/InsertChartOutlined";
+import MapOutlinedIcon from "@mui/icons-material/MapOutlined";
 import PushPinIcon from "@mui/icons-material/PushPin";
 
 import DataResult from "./DataResult.component";
@@ -15,6 +17,12 @@ import type { PortalResultsListPayload } from "../api/portal-results.api";
 // ── Result type icon ────────────────────────────────────────────────
 
 function ResultTypeIcon({ type }: { type: string }) {
+  if (type === "d3") {
+    return <InsertChartOutlinedIcon fontSize="small" color="action" />;
+  }
+  if (type === "geo") {
+    return <MapOutlinedIcon fontSize="small" color="action" />;
+  }
   if (type === "data-table") {
     return <TableChartOutlinedIcon fontSize="small" color="action" />;
   }

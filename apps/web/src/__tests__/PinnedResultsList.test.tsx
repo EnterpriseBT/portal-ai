@@ -27,6 +27,20 @@ const makePinnedResult = (
   ...overrides,
 });
 
+// #312: durable viz kinds get their own type icons.
+const d3Result = makePinnedResult({
+  id: "result-d3",
+  name: "Revenue Chart",
+  type: "d3",
+  content: { program: "api.svg;", rows: [] },
+});
+const geoResult = makePinnedResult({
+  id: "result-geo",
+  name: "Parcel Map",
+  type: "geo",
+  content: { layers: [] },
+});
+
 const result1 = makePinnedResult();
 const result2 = makePinnedResult({
   id: "result-2",
@@ -119,6 +133,17 @@ describe("PinnedResultCardUI", () => {
       />
     );
     expect(screen.queryByText(/from/)).not.toBeInTheDocument();
+  });
+
+  // #312: durable viz kinds get their own type icons.
+  it("should render a chart icon for d3 results", () => {
+    render(<PinnedResultCardUI {...defaultCardProps} result={d3Result} />);
+    expect(screen.getByTestId("InsertChartOutlinedIcon")).toBeInTheDocument();
+  });
+
+  it("should render a map icon for geo results", () => {
+    render(<PinnedResultCardUI {...defaultCardProps} result={geoResult} />);
+    expect(screen.getByTestId("MapOutlinedIcon")).toBeInTheDocument();
   });
 });
 

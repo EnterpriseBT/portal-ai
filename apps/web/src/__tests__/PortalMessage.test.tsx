@@ -21,6 +21,15 @@ jest.unstable_mockModule("../api/sdk", () => ({
           isPending: false,
         }) as Partial<UseMutationResult>,
     },
+    // QueryResultDataBlock (handle-backed tables, now pinnable — #312)
+    // hydrates through this.
+    portalSql: {
+      handleSnapshot: () => ({ mutateAsync: jest.fn() }),
+    },
+    // BulkFailuresTableBlock's retry affordance.
+    portals: {
+      sendMessage: () => ({ mutate: jest.fn(), isPending: false }),
+    },
   },
   queryKeys: {
     portalResults: { root: ["portalResults"] },
@@ -46,6 +55,16 @@ const mockToast = {
   dismiss: jest.fn(),
   dismissAll: jest.fn(),
 };
+
+// The failures table needs router params; stub it — this suite only cares
+// that web-layer transient blocks render without a pin affordance (#312).
+jest.unstable_mockModule(
+  "../components/BulkFailuresTableBlock.component",
+  () => ({
+    BulkFailuresTableBlock: () => <div data-testid="bulk-failures-stub" />,
+    BulkFailuresTableBlockUI: () => null,
+  })
+);
 
 // Mock react-markdown so jsdom doesn't choke on it.
 jest.unstable_mockModule("react-markdown", () => ({
@@ -352,6 +371,63 @@ describe("PortalMessageUI", () => {
       expect(
         screen.getAllByRole("button", { name: /pin result/i })
       ).toHaveLength(2);
+    });
+
+    // #312: handle-backed tables render via the web layer AND offer a pin —
+    // the render path no longer decides pinnability.
+    it("offers a pin on a handle-backed data-table block", () => {
+      const message = makeMessage({
+        role: "assistant",
+        blocks: [
+          {
+            type: "data-table",
+            content: {
+              queryHandle: "qh-1",
+              rowCount: 250,
+              schema: [{ name: "a", type: "number" }],
+              sampled: false,
+              truncated: false,
+              samplePeek: [],
+              sql: "SELECT a FROM t",
+            },
+          },
+        ],
+      });
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn(async () => {})}
+          onUnpin={jest.fn()}
+        />
+      );
+      expect(
+        screen.getByRole("button", { name: /pin result/i })
+      ).toBeInTheDocument();
+    });
+
+    // #92 deferral unchanged: transient web-layer blocks never pin.
+    it("offers no pin on a transient web-layer block", () => {
+      const message = makeMessage({
+        role: "assistant",
+        blocks: [
+          {
+            type: "bulk-failures-table",
+            content: { jobId: "job-1", failures: [] },
+          },
+        ],
+      });
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn(async () => {})}
+          onUnpin={jest.fn()}
+        />
+      );
+      expect(
+        screen.queryByRole("button", { name: /pin result/i })
+      ).not.toBeInTheDocument();
     });
 
     // #270/#312: a persisted d3 block is rendered with its discriminated
