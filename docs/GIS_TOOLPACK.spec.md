@@ -35,6 +35,28 @@ Core contracts (`geoRole`, MapSpec, `geo` block + pinned entry, GIS pack + capab
 
 PostGIS and SQL-pushdown spatial predicates; vector-tile self-hosting; self-hosted Nominatim; drawing tools; geofencing; 3D/terrain; routing; isochrone/network/hotspot analysis; choropleth statistical binning beyond categorical/threshold styling.
 
+## Visibility of limits (no quiet degradation)
+
+**Standing rule for this epic:** every cap, simplification, drop, or partial failure is either **visible in the UI** or **returned in the tool result the agent relays**. None is implicit. This extends the existing convention — #147 presents a truncated `rowCount` as a lower bound, #277/#291 made the result-table row cap explicit — to a surface with many more places to hide one. A map that silently shows 9,000 of 350,000 parcels, or a simplified boundary the user reads as authoritative, is a correctness failure, not a performance optimization.
+
+| # | Limit / degradation | Where | How the user learns |
+|---|---|---|---|
+| 1 | Inline layer exceeds `MAP_LAYER_FEATURE_CAP` | 314 | "Showing first N of M features" on the layer, with the switch-to-tiles affordance or an explanation of why it didn't |
+| 2 | Geometry simplified for the current zoom | 316 → 314 | A persistent "simplified at this zoom" indicator while any layer is generalized — **shapes are approximations, and a parcel boundary read as legal is a real-world error**. Clears when zoomed to full detail |
+| 3 | Tile drops features at low zoom (density cap) | 316 → 314 | Explicit "partial at this zoom — zoom in for all features", never a silently thinner map |
+| 4 | Tile query hits `statement_timeout` | 316 | The failing tile renders an error state and the widget raises one visible notice — not blank map area that reads as "no data here" |
+| 5 | Geometry repaired by `ST_MakeValid` on import | 316 | Counted and reported in the sync summary ("N geometries repaired"), because a repaired shape differs from the source |
+| 6 | Geometry rejected as unconvertible (`json → geometry`, invalid input) | 316 | Per-row typed error naming the row; the sync reports the count. Never silently skipped |
+| 7 | SRID unsupported / unreprojectable | 316 | Typed error at import; the column does not land half-converted |
+| 8 | MapSpec exceeds 8 layers, or a layer references a missing column | 314 | Typed validation error to the agent, which relays it — no partial render |
+| 9 | Expression malformed at paint time | 314 | Widget error state (already specified) |
+| 10 | Popup template references a field absent from the row | 314 | Renders the field name as unresolved rather than a blank popup |
+| 11 | Pinned map refresh fails | 314 | Last snapshot + notice (inherited from #312) |
+| 12 | Geocode quota exhausted / rate limited / provider down | 315 | Typed tool result the agent relays — never fabricated coordinates |
+| 13 | Bulk geocode partially fails | 315 | Job result carries `{ geocoded, cached, failed }`; the progress block reports the failed count and the affected rows are identifiable. Partial success is reported as partial, using the existing `BULK_JOB_PARTIAL_FAILURE` shape |
+
+**Test obligation:** each row above has a case asserting the *notice*, not merely the underlying behaviour — a cap that works but says nothing is a failing test. **Design obligation:** any new cap introduced during implementation is added to this table in the same PR.
+
 ## Where computation happens (PostGIS is the substrate — #316)
 
 **Revised 2026-08-02:** the epic now enables PostGIS first ([#316](https://github.com/EnterpriseBT/portal-ai/issues/316)), so geometry math runs **in the database**, not in Node. The division of labour:
