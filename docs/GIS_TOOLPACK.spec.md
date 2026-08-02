@@ -27,6 +27,34 @@ Core contracts (`geoRole`, MapSpec, `geo` block + pinned entry, GIS pack + capab
 
 PostGIS and SQL-pushdown spatial predicates; vector-tile self-hosting; self-hosted Nominatim; drawing tools; geofencing; 3D/terrain; routing; isochrone/network/hotspot analysis; choropleth statistical binning beyond categorical/threshold styling.
 
+## Where computation happens (there is no PostGIS)
+
+Worth stating plainly, because the current agent prompt implies otherwise (see the drift fix below): **no PostGIS extension exists in this system** and this epic does not add one. The division of labour is:
+
+| Stage | Runs where | Does what |
+|---|---|---|
+| Storage | Postgres JSONB | geometry as GeoJSON in a `c_*` wide column; coordinates as plain numeric columns. `geoRole` labels which is which. |
+| Selection / filtering | plain Postgres SQL | `WHERE`, joins, aggregates, JSONB accessors (`->`, `->>`). **No** spatial operators (`ST_*`), no spatial index. |
+| Spatial math | Node — `GisService` (turf + proj4), called by the GIS tools | distance, point-in-polygon, centroid, buffer, bbox, reprojection. |
+| Delivery | `resolveSqlDelivery` | inline rows ≤ `INLINE_ROWS_THRESHOLD`, else a query handle. |
+| Render | `MapWidget` → MapLibre | rows → GeoJSON features per layer `source`; styling from expressions; ≤ `MAP_LAYER_FEATURE_CAP` features per layer. |
+
+So the database stores and filters, Node computes geometry, and the renderer paints. `visualize_map` is the seam: SQL selects the records, the spec says how to draw them.
+
+### Raising the declarative ceiling — and where it actually stops
+
+MapLibre expressions style *existing* features: they map feature properties to paint values. They cannot invent geometry, draw outside the map canvas, animate over time, or compute across features at render time. The ceiling is nonetheless higher than that sounds, because **geometry can be computed upstream** — and the agent must be told so (`system.prompt.ts`):
+
+- **Derive geometry in SQL**: origin→destination arcs as `LineString`s built from coordinate columns; grid/hexbin aggregation via `GROUP BY` on rounded coordinates; convex extents via aggregate + the `compute_bounding_box` tool.
+- **Derive geometry with the pack's own tools**: `buffer` (service radii), `centroid` (label points for polygons), `reproject` (non-WGS84 sources), then feed the result into `visualize_map`.
+- **Style per-feature with expressions**: conditional fills/strokes, continuous ramps, multi-variable nested conditions.
+
+What genuinely remains behind the reserved `program` hatch is **render-time behaviour**, not data shape: time playback/animation, chrome outside the canvas (e.g. a bivariate 3×3 legend matrix), D3 overlays (contours, Voronoi, inset charts), and brushing/filtering that recomputes on interaction.
+
+### Drift fix (in scope)
+
+`apps/api/src/tools/transform-entity-records.tool.ts:239` instructs the agent to express derivations as `ST_Area(geometry::geography) / 4047 AS c_acreage`. No PostGIS is installed, so that SQL fails — the prompt is teaching a broken idiom today, independent of this epic. Replace the example with a non-spatial projection and point geometry math at the GIS tools instead. (A regression test asserts no `ST_*` appears in agent-facing prompt copy.)
+
 ## Surface
 
 ### `packages/core/src/models/column-definition.model.ts`
@@ -228,7 +256,7 @@ MapSpec: defaults applied; ≥1 and ≤8 layers; `polygons`/`lines` reject a lat
 
 ### `apps/api` unit — `__tests__/services/gis.service.test.ts`, `geocoding/*.test.ts`, `__tests__/tools/visualize-map.tool.test.ts`, `adapters/rest-api/geometry.util.test.ts`, `inference.util.test.ts`, `__tests__/services/tools.service.test.ts`
 
-Spatial math vs turf reference fixtures (distance, point-in-polygon, centroid, bbox, buffer); `reproject` 3857↔4326 round-trip ≤ 1e-6; streaming `compute_bounding_box` folds a handle; dual-mode `point_in_polygon`/`reproject` reject both-sources-supplied and stream a handle. Geocode: provider hit, **cache hit returns `cached: true` and resolver yields 0 units**, provider down → typed `GEOCODE_PROVIDER_UNAVAILABLE`, unresolvable address → `GEOCODE_ADDRESS_UNRESOLVED`, missing key throws at build. `visualize_map`: invalid spec → `MAP_SPEC_INVALID`; inline vs handle both routed through the sink; block shape asserted. `geometry.util`: ArcGIS rings→GeoJSON, wkid 102100 reprojected, idempotent on WGS84, invalid → `null`. Inference: the three geometry shapes → `"geometry"`; lat/lng names+ranges → roles; out-of-range numeric not tagged. Cost-gate wrap guard enumerates `gis`. ≈ 34 cases.
+Spatial math vs turf reference fixtures (distance, point-in-polygon, centroid, bbox, buffer); `reproject` 3857↔4326 round-trip ≤ 1e-6; streaming `compute_bounding_box` folds a handle; dual-mode `point_in_polygon`/`reproject` reject both-sources-supplied and stream a handle. Geocode: provider hit, **cache hit returns `cached: true` and resolver yields 0 units**, provider down → typed `GEOCODE_PROVIDER_UNAVAILABLE`, unresolvable address → `GEOCODE_ADDRESS_UNRESOLVED`, missing key throws at build. `visualize_map`: invalid spec → `MAP_SPEC_INVALID`; inline vs handle both routed through the sink; block shape asserted. `geometry.util`: ArcGIS rings→GeoJSON, wkid 102100 reprojected, idempotent on WGS84, invalid → `null`. Inference: the three geometry shapes → `"geometry"`; lat/lng names+ranges → roles; out-of-range numeric not tagged. Cost-gate wrap guard enumerates `gis`. Prompt regression: **no `ST_*` token appears in agent-facing tool descriptions or `system.prompt`** (the drift fix), and the geo guidance names the compute-upstream idiom. ≈ 36 cases.
 
 ### `apps/api` integration — `__integration__/routes/…`, `__integration__/queues/bulk-geocode.integration.test.ts` (new)
 
@@ -238,7 +266,7 @@ Seeded geo definitions exist and are idempotent across two `db:seed` runs; a `ge
 
 MapWidget UI: points-only, polygons-only, mixed, heatmap, cluster, empty state, error state, fit-to-bounds, popup template, feature-cap notice, theme-keyed basemap; **an expression-styled layer renders and a malformed expression falls into the widget error state**; `colorBy` renders a legend; renderer registration dispatches a `geo` block; the gate mounts only in view. `geoRole` select renders, submits, and clears to null. Icon + glossary/FAQ pins. ≈ 18 cases.
 
-**Totals ≈ 77 cases.** The migration needs no dedicated test (dual-schema type-checks + the integration suite cover it); the seed does (idempotency case above).
+**Totals ≈ 79 cases.** The migration needs no dedicated test (dual-schema type-checks + the integration suite cover it); the seed does (idempotency case above).
 
 ## Acceptance criteria
 
@@ -265,7 +293,7 @@ MapWidget UI: points-only, polygons-only, mixed, heatmap, cluster, empty state, 
 ## Files touched
 
 - **core:** `models/column-definition.model.ts` · `contracts/{column-definition,map-spec,pinned-result,index}.ts` · `constants/large-data-ops.constants.ts` · `registries/builtin-toolpacks.ts` · tests
-- **api:** `db/schema/column-definitions.table.ts` + `zod.ts` + `type-checks.ts` + `drizzle/<migration>` · `services/seed.service.ts` · `services/gis.service.ts` · `services/geocoding/{provider,mapbox,cache}.ts` · `tools/{visualize-map,geocode,reverse-geocode,compute-distance,point-in-polygon,centroid,buffer,compute-bounding-box,reproject,bulk-geocode-records}.tool.ts` · `services/tools.service.ts` · `services/portal.service.ts` · `services/cost-gate.service.ts` (resolver registration) · `constants/api-codes.constants.ts` · `models`→`job.model.ts` (core) + `queues/processors/bulk-geocode.processor.ts` + `queues/processors/index.ts` · `adapters/rest-api/{inference.util,classifier.haiku,classifier.prompt,transform.util,geometry.util}.ts` · `tools/station-context.tool.ts` · `prompts/system.prompt.ts` · `environment.ts` · `config/swagger.config.ts` · `infra/cloudformation/backend.yml` · tests
+- **api:** `db/schema/column-definitions.table.ts` + `zod.ts` + `type-checks.ts` + `drizzle/<migration>` · `services/seed.service.ts` · `services/gis.service.ts` · `services/geocoding/{provider,mapbox,cache}.ts` · `tools/{visualize-map,geocode,reverse-geocode,compute-distance,point-in-polygon,centroid,buffer,compute-bounding-box,reproject,bulk-geocode-records}.tool.ts` · `services/tools.service.ts` · `services/portal.service.ts` · `services/cost-gate.service.ts` (resolver registration) · `constants/api-codes.constants.ts` · `models`→`job.model.ts` (core) + `queues/processors/bulk-geocode.processor.ts` + `queues/processors/index.ts` · `adapters/rest-api/{inference.util,classifier.haiku,classifier.prompt,transform.util,geometry.util}.ts` · `tools/station-context.tool.ts` · `tools/transform-entity-records.tool.ts` (ST_* drift fix) · `prompts/system.prompt.ts` · `environment.ts` · `config/swagger.config.ts` · `infra/cloudformation/backend.yml` · tests
 - **web:** `modules/MapWidget/**` · `main.tsx` · `vite.config.ts` · `components/{Edit,Create}ColumnDefinitionDialog.component.tsx` · `utils/{tool-pack-icons,glossary,faq}.util.ts` · tests + stories
 - **docs:** `README`/toolpack docs · `CUSTOM_TOOLPACK_INTEGRATION.md` untouched (no wire-contract change)
 
