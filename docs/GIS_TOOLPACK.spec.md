@@ -2,6 +2,8 @@
 
 **Issue:** [EnterpriseBT/portal-ai#84](https://github.com/EnterpriseBT/portal-ai/issues/84) · **Discovery:** `docs/GIS_TOOLPACK.discovery.md`
 
+**Status: partly superseded.** The epic was restructured on 2026-08-02 into three sequential children — #316 (PostGIS substrate) → #314 (pack + map) → #315 (geocoding) — and PostGIS moving first invalidates this spec's storage and tool-cardinality decisions (see the revised *Where computation happens* section and Key decisions 3 and 5). The MapSpec/renderer/geocoding/pinning contracts stand as written. Each child re-pins its own surface in its plan.
+
 Pins the `gis` built-in toolpack (six pure spatial tools, two metered geocoders, an expensive bulk-column geocode job, and `visualize_map`), the declarative MapSpec + `geo` block contract and its MapLibre renderer, and the `geoRole` column annotation with ArcGIS→WGS84 normalization on import.
 
 ## Key decisions (flag for review)
@@ -10,12 +12,13 @@ Pins the `gis` built-in toolpack (six pure spatial tools, two metered geocoders,
 
    Why not mirror `visualize_d3`'s codegen sandbox: that sandbox is safe precisely because its CSP is `default-src 'none'` (`sandbox-srcdoc.util.ts:15`) — every network channel closed, which is affordable for D3 because it needs none. A map needs tiles, glyphs, and sprites, so a codegen map sandbox must open `connect-src`/`img-src` **to model-authored JS**. That is a new security surface, and it buys little here: MapLibre's expression DSL already covers the styling range, while our own renderer can generate legends from the spec (a program would have to draw its own each time) and we can validate that referenced columns exist in the result schema (a program can't be validated at all).
 2. **MapLibre GL, direct-mount** (D2-A). The D3 sandbox iframe is unusable: its srcdoc CSP forbids network, and tiles/glyphs are network fetches. `React.lazy` + the repo's first `manualChunks` entry keeps ~200 KB out of the main chunk.
-3. **`geoRole`, not a `geometry` type** (D4, revised 2026-08-02). One nullable annotation carries the geometry case *and* the lat/lng-pair case; `ColumnDataTypeEnum` is untouched.
+3. **`geometry` is a real column type; `geoRole` covers `lat`/`lng` only** (D4, twice-revised 2026-08-02). The role-not-type argument held only while geometry lived in JSONB — under #316's PostGIS substrate the storage genuinely differs (typed, SRID-constrained, GiST-indexed), so the type carries information. Coordinate pairs remain plain numbers, so the role still does that job. **#316 owns this contract**; the `geoRole`-shaped surface described below is superseded where the two disagree, and the plan re-derives it.
 4. **Canonical geo column definitions are seeded** as `system` rows alongside `email` / `name` / `address`, so the role arrives through the existing field-mapping catalog rather than inference alone.
-5. **Mapbox behind a provider interface**, key via the standard Secrets-Manager → CI/CD → env-var path; a **global** Redis address cache makes repeats **zero-unit** through the async `CostResolver` (discovery Q1: `resolveCallCost` awaits, verified at `cost-gate.service.ts:43,68`).
-6. **Bulk geocode writes GeoJSON Points only** — lat/lng are SQL extractions, never duplicated columns (confirmed).
-7. **Geo blocks pin** by registering one `PINNED_CONTENT_SCHEMAS` entry; #312 shipped the mechanism and pre-admitted `geo`.
-8. Enterprise-scale carry-forward: charges bill on success and itemize in the #221 ledger; provider/Redis failures are typed tool results the agent relays, **never fabricated coordinates**; per-layer feature cap declared in the contract, not implicit; the bulk job locks its target entity.
+5. **Spatial tools are `engine-pushdown`, not Node folds** (D5, revised) — the capability table below still shows the pre-PostGIS `streaming`/`pure` postures and is superseded by #316's substrate; the per-child plans re-derive the declarations, and the plan also asks which tools still earn a place once the agent can write `ST_*` directly.
+6. **Mapbox behind a provider interface**, key via the standard Secrets-Manager → CI/CD → env-var path; a **global** Redis address cache makes repeats **zero-unit** through the async `CostResolver` (discovery Q1: `resolveCallCost` awaits, verified at `cost-gate.service.ts:43,68`).
+7. **Bulk geocode writes GeoJSON Points only** — lat/lng are SQL extractions, never duplicated columns (confirmed).
+8. **Geo blocks pin** by registering one `PINNED_CONTENT_SCHEMAS` entry; #312 shipped the mechanism and pre-admitted `geo`.
+9. Enterprise-scale carry-forward: charges bill on success and itemize in the #221 ledger; provider/Redis failures are typed tool results the agent relays, **never fabricated coordinates**; per-layer feature cap declared in the contract, not implicit; the bulk job locks its target entity.
 
 ## Scope
 
@@ -27,33 +30,33 @@ Core contracts (`geoRole`, MapSpec, `geo` block + pinned entry, GIS pack + capab
 
 PostGIS and SQL-pushdown spatial predicates; vector-tile self-hosting; self-hosted Nominatim; drawing tools; geofencing; 3D/terrain; routing; isochrone/network/hotspot analysis; choropleth statistical binning beyond categorical/threshold styling.
 
-## Where computation happens (there is no PostGIS)
+## Where computation happens (PostGIS is the substrate — #316)
 
-Worth stating plainly, because the current agent prompt implies otherwise (see the drift fix below): **no PostGIS extension exists in this system** and this epic does not add one. The division of labour is:
+**Revised 2026-08-02:** the epic now enables PostGIS first ([#316](https://github.com/EnterpriseBT/portal-ai/issues/316)), so geometry math runs **in the database**, not in Node. The division of labour:
 
 | Stage | Runs where | Does what |
 |---|---|---|
-| Storage | Postgres JSONB | geometry as GeoJSON in a `c_*` wide column; coordinates as plain numeric columns. `geoRole` labels which is which. |
-| Selection / filtering | plain Postgres SQL | `WHERE`, joins, aggregates, JSONB accessors (`->`, `->>`). **No** spatial operators (`ST_*`), no spatial index. |
-| Spatial math | Node — `GisService` (turf + proj4), called by the GIS tools | distance, point-in-polygon, centroid, buffer, bbox, reprojection. |
+| Storage | Postgres — typed `geometry(Geometry, 4326)` wide column + GiST index (#316) | geometry with a tracked SRID; coordinate pairs stay plain numerics labelled by `geoRole`. |
+| Selection / filtering **and geometry math** | Postgres — `ST_*` | `ST_Intersects` / `ST_DWithin` / `ST_Contains` (index-backed), `ST_Distance` and `ST_Area` on `geography` (spheroidal, not approximate), `ST_Transform`, `ST_Centroid`, `ST_Buffer`, `ST_Extent`, `ST_MakeValid`. |
+| Tools | thin projections over that SQL | the pack composes `ST_*` and returns results through the sink — no turf, no proj4, no per-row Node loop. |
 | Delivery | `resolveSqlDelivery` | inline rows ≤ `INLINE_ROWS_THRESHOLD`, else a query handle. |
-| Render | `MapWidget` → MapLibre | rows → GeoJSON features per layer `source`; styling from expressions; ≤ `MAP_LAYER_FEATURE_CAP` features per layer. |
+| Render | `MapWidget` → MapLibre | rows → GeoJSON (`ST_AsGeoJSON`) per layer `source`; styling from expressions; ≤ `MAP_LAYER_FEATURE_CAP` features per layer. |
 
-So the database stores and filters, Node computes geometry, and the renderer paints. `visualize_map` is the seam: SQL selects the records, the spec says how to draw them.
+So the database stores, filters, **and computes**; the renderer paints. `visualize_map` is the seam: SQL selects and shapes the records, the spec says how to draw them. This is what buys correctness (validity repair, geodesic distance/area, SRID tracking) and scale (a predicate uses the index instead of streaming every candidate row into Node under a 30s timeout).
 
 ### Raising the declarative ceiling — and where it actually stops
 
 MapLibre expressions style *existing* features: they map feature properties to paint values. They cannot invent geometry, draw outside the map canvas, animate over time, or compute across features at render time. The ceiling is nonetheless higher than that sounds, because **geometry can be computed upstream** — and the agent must be told so (`system.prompt.ts`):
 
-- **Derive geometry in SQL**: origin→destination arcs as `LineString`s built from coordinate columns; grid/hexbin aggregation via `GROUP BY` on rounded coordinates; convex extents via aggregate + the `compute_bounding_box` tool.
-- **Derive geometry with the pack's own tools**: `buffer` (service radii), `centroid` (label points for polygons), `reproject` (non-WGS84 sources), then feed the result into `visualize_map`.
+- **Derive geometry in SQL** — and with PostGIS this is genuinely powerful rather than a workaround: `ST_MakeLine` for origin→destination arcs, `ST_HexagonGrid` for real hexbins (not `GROUP BY` on rounded coordinates), `ST_Union` to dissolve, `ST_ConvexHull` for extents, `ST_SimplifyPreserveTopology` to make a dense layer renderable.
+- **Derive geometry with the pack's tools** where they earn their place: `buffer` (service radii), `centroid` (polygon label points), `reproject` (non-WGS84 sources) — each a thin `ST_*` projection.
 - **Style per-feature with expressions**: conditional fills/strokes, continuous ramps, multi-variable nested conditions.
 
 What genuinely remains behind the reserved `program` hatch is **render-time behaviour**, not data shape: time playback/animation, chrome outside the canvas (e.g. a bivariate 3×3 legend matrix), D3 overlays (contours, Voronoi, inset charts), and brushing/filtering that recomputes on interaction.
 
-### Drift fix (in scope)
+### The `ST_Area` prompt line — inverted, not removed
 
-`apps/api/src/tools/transform-entity-records.tool.ts:239` instructs the agent to express derivations as `ST_Area(geometry::geography) / 4047 AS c_acreage`. No PostGIS is installed, so that SQL fails — the prompt is teaching a broken idiom today, independent of this epic. Replace the example with a non-spatial projection and point geometry math at the GIS tools instead. (A regression test asserts no `ST_*` appears in agent-facing prompt copy.)
+`transform-entity-records.tool.ts:239` already advertises `ST_Area(geometry::geography) / 4047 AS c_acreage`. That instruction is **broken today** (no extension) and was briefly scoped as a drift fix; #316 makes it **correct** instead. So the deliverable inverts: rather than deleting the example, #316 verifies it executes through the read-only tool path, and the regression test asserts the opposite of what was planned — that `ST_*` in agent-facing copy is *backed by a live extension*. Worth recording because that stale line is what made the architecture look PostGIS-backed when it wasn't.
 
 ## Surface
 
