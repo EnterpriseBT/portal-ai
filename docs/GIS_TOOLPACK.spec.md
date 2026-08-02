@@ -2,7 +2,12 @@
 
 **Issue:** [EnterpriseBT/portal-ai#84](https://github.com/EnterpriseBT/portal-ai/issues/84) · **Discovery:** `docs/GIS_TOOLPACK.discovery.md`
 
-**Status: partly superseded.** The epic was restructured on 2026-08-02 into three sequential children — #316 (PostGIS substrate) → #314 (pack + map) → #315 (geocoding) — and PostGIS moving first invalidates this spec's storage and tool-cardinality decisions (see the revised *Where computation happens* section and Key decisions 3 and 5). The MapSpec/renderer/geocoding/pinning contracts stand as written. Each child re-pins its own surface in its plan.
+**Status: partly superseded.** The epic was restructured on 2026-08-02 into three sequential children — #316 (PostGIS substrate + vector tiles) → #314 (pack + map) → #315 (geocoding) — and two decisions taken after this spec was drafted invalidate parts of it:
+
+1. **PostGIS is the substrate**, so geometry math is `ST_*` in the database, not turf in Node (revised *Where computation happens*; Key decisions 3 and 5).
+2. **The pack carries no hand-rolled spatial tools.** The nine-tool surface below collapses to **`visualize_map`** (this spec's MapSpec contract) plus **`geocode` / `reverse_geocode` / bulk geocode** (#315). `compute_distance`, `point_in_polygon`, `centroid`, `buffer`, `compute_bounding_box`, and `reproject` are dropped — each is one line of `ST_*` the agent composes directly, and a fixed-signature wrapper is strictly *less* expressive than the SQL it wraps. The capability table below is therefore historical for those six rows.
+
+What stands unchanged: the MapSpec + expression contract, the `geo` block shape and its reserved `program` hatch, the pinned-content entry, the geocoding/cache/cost contracts, and the enterprise-scale posture. Each child re-pins its own surface in its plan.
 
 Pins the `gis` built-in toolpack (six pure spatial tools, two metered geocoders, an expensive bulk-column geocode job, and `visualize_map`), the declarative MapSpec + `geo` block contract and its MapLibre renderer, and the `geoRole` column annotation with ArcGIS→WGS84 normalization on import.
 
@@ -14,7 +19,7 @@ Pins the `gis` built-in toolpack (six pure spatial tools, two metered geocoders,
 2. **MapLibre GL, direct-mount** (D2-A). The D3 sandbox iframe is unusable: its srcdoc CSP forbids network, and tiles/glyphs are network fetches. `React.lazy` + the repo's first `manualChunks` entry keeps ~200 KB out of the main chunk.
 3. **`geometry` is a real column type; `geoRole` covers `lat`/`lng` only** (D4, twice-revised 2026-08-02). The role-not-type argument held only while geometry lived in JSONB — under #316's PostGIS substrate the storage genuinely differs (typed, SRID-constrained, GiST-indexed), so the type carries information. Coordinate pairs remain plain numbers, so the role still does that job. **#316 owns this contract**; the `geoRole`-shaped surface described below is superseded where the two disagree, and the plan re-derives it.
 4. **Canonical geo column definitions are seeded** as `system` rows alongside `email` / `name` / `address`, so the role arrives through the existing field-mapping catalog rather than inference alone.
-5. **Spatial tools are `engine-pushdown`, not Node folds** (D5, revised) — the capability table below still shows the pre-PostGIS `streaming`/`pure` postures and is superseded by #316's substrate; the per-child plans re-derive the declarations, and the plan also asks which tools still earn a place once the agent can write `ST_*` directly.
+5. **No hand-rolled spatial tools** (D5, superseded) — the capability table's six pure-compute rows are historical. Spatial questions are answered by the agent writing `ST_*` SQL through `sql_query`; the pack ships only what SQL cannot do. Fewer tools is the *more* expressive design, because a wrapper's signature is a ceiling and SQL has none.
 6. **Mapbox behind a provider interface**, key via the standard Secrets-Manager → CI/CD → env-var path; a **global** Redis address cache makes repeats **zero-unit** through the async `CostResolver` (discovery Q1: `resolveCallCost` awaits, verified at `cost-gate.service.ts:43,68`).
 7. **Bulk geocode writes GeoJSON Points only** — lat/lng are SQL extractions, never duplicated columns (confirmed).
 8. **Geo blocks pin** by registering one `PINNED_CONTENT_SCHEMAS` entry; #312 shipped the mechanism and pre-admitted `geo`.
@@ -167,6 +172,8 @@ export const GeoHandleContentSchema = GeoBaseContentSchema.extend(
 export const GeoBlockContentSchema = z.union([GeoHandleContentSchema, GeoInlineContentSchema]);
 ```
 
+**Two source kinds (revised 2026-08-02).** A layer's data arrives either as **inline GeoJSON** — rows already delivered by the sink, for small results — or from a **vector-tile source** pointing at #316's org-scoped `ST_AsMVT` endpoint, for large ones. `MapLayerSchema.source` therefore gains a tile variant alongside `geometryColumn` / lat-lng, and the widget maps it to a native MapLibre vector source. This is what makes "large geometry dataset" a server concern rather than a client limit: tiles transfer only the viewport, simplified per zoom, so `MAP_LAYER_FEATURE_CAP` applies to the inline path only. #314 pins the exact discriminant.
+
 **Escape hatch (contract reserved, not implemented in #314).** `GeoBaseContentSchema` carries an optional `program: z.string().min(1).optional()`. `visualize_map` never emits it and the #314 renderer ignores it; reserving the field now means a future child can add a codegen path + a network-permitted sandbox runtime (CSP allowlisting only the tile host) without changing the block type, the pinned-content schema, or any persisted row. The renderer's contract is: **`program` present ⇒ sandbox path, else spec path** — so the two can coexist per block rather than as a global mode.
 
 ### `packages/core/src/contracts/pinned-result.contract.ts`
@@ -259,7 +266,7 @@ MapSpec: defaults applied; ≥1 and ≤8 layers; `polygons`/`lines` reject a lat
 
 ### `apps/api` unit — `__tests__/services/gis.service.test.ts`, `geocoding/*.test.ts`, `__tests__/tools/visualize-map.tool.test.ts`, `adapters/rest-api/geometry.util.test.ts`, `inference.util.test.ts`, `__tests__/services/tools.service.test.ts`
 
-Spatial math vs turf reference fixtures (distance, point-in-polygon, centroid, bbox, buffer); `reproject` 3857↔4326 round-trip ≤ 1e-6; streaming `compute_bounding_box` folds a handle; dual-mode `point_in_polygon`/`reproject` reject both-sources-supplied and stream a handle. Geocode: provider hit, **cache hit returns `cached: true` and resolver yields 0 units**, provider down → typed `GEOCODE_PROVIDER_UNAVAILABLE`, unresolvable address → `GEOCODE_ADDRESS_UNRESOLVED`, missing key throws at build. `visualize_map`: invalid spec → `MAP_SPEC_INVALID`; inline vs handle both routed through the sink; block shape asserted. `geometry.util`: ArcGIS rings→GeoJSON, wkid 102100 reprojected, idempotent on WGS84, invalid → `null`. Inference: the three geometry shapes → `"geometry"`; lat/lng names+ranges → roles; out-of-range numeric not tagged. Cost-gate wrap guard enumerates `gis`. Prompt regression: **no `ST_*` token appears in agent-facing tool descriptions or `system.prompt`** (the drift fix), and the geo guidance names the compute-upstream idiom. ≈ 36 cases.
+*(The turf/dual-mode tool cases below are void — those tools are dropped; #316 tests `ST_*` correctness against PostGIS itself and #314 tests the render path.)* Geocode: provider hit, **cache hit returns `cached: true` and resolver yields 0 units**, provider down → typed `GEOCODE_PROVIDER_UNAVAILABLE`, unresolvable address → `GEOCODE_ADDRESS_UNRESOLVED`, missing key throws at build. `visualize_map`: invalid spec → `MAP_SPEC_INVALID`; inline vs handle both routed through the sink; block shape asserted. `geometry.util`: ArcGIS rings→GeoJSON, wkid 102100 reprojected, idempotent on WGS84, invalid → `null`. Inference: the three geometry shapes → `"geometry"`; lat/lng names+ranges → roles; out-of-range numeric not tagged. Cost-gate wrap guard enumerates `gis`. Prompt regression: **no `ST_*` token appears in agent-facing tool descriptions or `system.prompt`** (the drift fix), and the geo guidance names the compute-upstream idiom. ≈ 36 cases.
 
 ### `apps/api` integration — `__integration__/routes/…`, `__integration__/queues/bulk-geocode.integration.test.ts` (new)
 
@@ -269,7 +276,7 @@ Seeded geo definitions exist and are idempotent across two `db:seed` runs; a `ge
 
 MapWidget UI: points-only, polygons-only, mixed, heatmap, cluster, empty state, error state, fit-to-bounds, popup template, feature-cap notice, theme-keyed basemap; **an expression-styled layer renders and a malformed expression falls into the widget error state**; `colorBy` renders a legend; renderer registration dispatches a `geo` block; the gate mounts only in view. `geoRole` select renders, submits, and clears to null. Icon + glossary/FAQ pins. ≈ 18 cases.
 
-**Totals ≈ 79 cases.** The migration needs no dedicated test (dual-schema type-checks + the integration suite cover it); the seed does (idempotency case above).
+**Totals ≈ 79 cases as drafted; the per-child plans restate them** (the dropped-tool cases fall away, and #316 adds extension/typed-column/tile cases). The migration needs no dedicated test (dual-schema type-checks + the integration suite cover it); the seed does (idempotency case above).
 
 ## Acceptance criteria
 
