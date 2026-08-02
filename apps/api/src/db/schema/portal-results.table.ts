@@ -1,4 +1,11 @@
-import { integer, pgTable, text, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  integer,
+  pgTable,
+  text,
+  jsonb,
+  pgEnum,
+} from "drizzle-orm/pg-core";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
 import { stations } from "./stations.table.js";
@@ -10,6 +17,8 @@ import { portals } from "./portals.table.js";
 export const portalResultTypeEnum = pgEnum("portal_result_type", [
   "text",
   "data-table",
+  "d3",
+  "geo",
 ]);
 
 /**
@@ -30,4 +39,7 @@ export const portalResults = pgTable("portal_results", {
   name: text("name").notNull(),
   type: portalResultTypeEnum("type").notNull(),
   content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+  /** Epoch ms of the last successful snapshot write (#312) — pin time,
+   *  then each persist-back refresh. Null on pre-#312 rows. */
+  snapshotUpdatedAt: bigint("snapshot_updated_at", { mode: "number" }),
 });

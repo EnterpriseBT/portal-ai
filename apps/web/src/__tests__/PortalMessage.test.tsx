@@ -21,6 +21,15 @@ jest.unstable_mockModule("../api/sdk", () => ({
           isPending: false,
         }) as Partial<UseMutationResult>,
     },
+    // QueryResultDataBlock (handle-backed tables, now pinnable — #312)
+    // hydrates through this.
+    portalSql: {
+      handleSnapshot: () => ({ mutateAsync: jest.fn() }),
+    },
+    // BulkFailuresTableBlock's retry affordance.
+    portals: {
+      sendMessage: () => ({ mutate: jest.fn(), isPending: false }),
+    },
   },
   queryKeys: {
     portalResults: { root: ["portalResults"] },
@@ -46,6 +55,16 @@ const mockToast = {
   dismiss: jest.fn(),
   dismissAll: jest.fn(),
 };
+
+// The failures table needs router params; stub it — this suite only cares
+// that web-layer transient blocks render without a pin affordance (#312).
+jest.unstable_mockModule(
+  "../components/BulkFailuresTableBlock.component",
+  () => ({
+    BulkFailuresTableBlock: () => <div data-testid="bulk-failures-stub" />,
+    BulkFailuresTableBlockUI: () => null,
+  })
+);
 
 // Mock react-markdown so jsdom doesn't choke on it.
 jest.unstable_mockModule("react-markdown", () => ({
@@ -324,7 +343,8 @@ describe("PortalMessageUI", () => {
   // pinnability only controls the pin affordance. Pre-fix, PortalMessage
   // used pinnability as its display filter and d3 blocks vanished.
   describe("registered non-pinnable blocks (d3)", () => {
-    it("renders a registered d3 block without a pin affordance", () => {
+    // #312 (supersedes the #273 gate): durable viz blocks are pinnable.
+    it("renders a registered d3 block with its own pin affordance", () => {
       registerBlockRenderer("d3", (b) => (
         <div data-testid="d3-widget-stub">
           {String((b.content as { program: string }).program)}
@@ -347,18 +367,77 @@ describe("PortalMessageUI", () => {
       );
       // The d3 block displays…
       expect(screen.getByTestId("d3-widget-stub")).toHaveTextContent("api.d3;");
-      // …but only the text block offers a pin.
+      // …and both the text block and the d3 block offer a pin (#312).
       expect(
         screen.getAllByRole("button", { name: /pin result/i })
-      ).toHaveLength(1);
+      ).toHaveLength(2);
     });
 
-    // #270: a persisted d3 block is rendered with its blockRef so the widget
-    // can refresh itself against { messageId, blockIndex }.
+    // #312: handle-backed tables render via the web layer AND offer a pin —
+    // the render path no longer decides pinnability.
+    it("offers a pin on a handle-backed data-table block", () => {
+      const message = makeMessage({
+        role: "assistant",
+        blocks: [
+          {
+            type: "data-table",
+            content: {
+              queryHandle: "qh-1",
+              rowCount: 250,
+              schema: [{ name: "a", type: "number" }],
+              sampled: false,
+              truncated: false,
+              samplePeek: [],
+              sql: "SELECT a FROM t",
+            },
+          },
+        ],
+      });
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn(async () => {})}
+          onUnpin={jest.fn()}
+        />
+      );
+      expect(
+        screen.getByRole("button", { name: /pin result/i })
+      ).toBeInTheDocument();
+    });
+
+    // #92 deferral unchanged: transient web-layer blocks never pin.
+    it("offers no pin on a transient web-layer block", () => {
+      const message = makeMessage({
+        role: "assistant",
+        blocks: [
+          {
+            type: "bulk-failures-table",
+            content: { jobId: "job-1", failures: [] },
+          },
+        ],
+      });
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn(async () => {})}
+          onUnpin={jest.fn()}
+        />
+      );
+      expect(
+        screen.queryByRole("button", { name: /pin result/i })
+      ).not.toBeInTheDocument();
+    });
+
+    // #270/#312: a persisted d3 block is rendered with its discriminated
+    // blockRef so the widget can refresh itself through the message addresser.
     it("threads blockRef { messageId, blockIndex } to a persisted d3 block", () => {
       registerBlockRenderer("d3", (_b, ctx) => (
         <div data-testid="d3-blockref-stub">
-          {`${ctx?.blockRef?.messageId}:${ctx?.blockRef?.blockIndex}`}
+          {ctx?.blockRef?.kind === "message"
+            ? `${ctx.blockRef.messageId}:${ctx.blockRef.blockIndex}`
+            : "no-message-ref"}
         </div>
       ));
       const message = makeMessage({

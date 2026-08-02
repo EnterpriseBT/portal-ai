@@ -218,9 +218,10 @@ describe("Portal Results Router", () => {
       expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_BLOCK_INDEX_INVALID);
     });
 
-    // #273: visualization blocks are not pinnable — the gate is server-side,
-    // not just a hidden affordance, and it reports a typed code.
-    it("returns 400 PORTAL_RESULT_TYPE_NOT_PINNABLE for a d3 block", async () => {
+    // #312 (supersedes the #273 gate): durable viz kinds now pin; the
+    // server-side rejection remains for transient kinds, with the same
+    // typed code.
+    it("returns 400 PORTAL_RESULT_TYPE_NOT_PINNABLE for a transient block", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
@@ -241,13 +242,69 @@ describe("Portal Results Router", () => {
         portal.id,
         "assistant",
         [
+          { type: "text", content: "Import running." },
+          {
+            type: "bulk-job-progress",
+            content: {
+              jobId: "job-1",
+              expectedRecords: 500,
+            },
+          },
+        ]
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalMessages)
+        .values(assistantMsg as never);
+
+      const res = await request(app)
+        .post("/api/portal-results")
+        .send({ portalId: portal.id, blockIndex: 1, name: "My Import" })
+        .expect(400);
+
+      expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_TYPE_NOT_PINNABLE);
+
+      // The text block in the same message still pins.
+      await request(app)
+        .post("/api/portal-results")
+        .send({ portalId: portal.id, blockIndex: 0, name: "The narrative" })
+        .expect(201);
+    });
+
+    // #312: durable viz kinds pin end-to-end — the stored content is the
+    // materialized inline shape and snapshotUpdatedAt is stamped.
+    it("pins a d3 block with its materialized inline shape", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const pipeline = {
+        sql: "SELECT 1 AS x",
+        stationId: station.id,
+        organizationId,
+      };
+      const assistantMsg = createPortalMessage(
+        organizationId,
+        portal.id,
+        "assistant",
+        [
           { type: "text", content: "Here is the chart." },
           {
             type: "d3",
             content: {
               program: "api.svg.append('g');",
-              rowCount: 3,
-              title: "Asteroids by hazard class",
+              rows: [{ x: 1 }],
+              pipeline,
             },
           },
         ]
@@ -259,15 +316,253 @@ describe("Portal Results Router", () => {
       const res = await request(app)
         .post("/api/portal-results")
         .send({ portalId: portal.id, blockIndex: 1, name: "My Chart" })
-        .expect(400);
-
-      expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_TYPE_NOT_PINNABLE);
-
-      // The text block in the same message still pins.
-      await request(app)
-        .post("/api/portal-results")
-        .send({ portalId: portal.id, blockIndex: 0, name: "The narrative" })
         .expect(201);
+
+      const pr = res.body.payload.portalResult;
+      expect(pr.type).toBe("d3");
+      expect(pr.content.program).toBe("api.svg.append('g');");
+      expect(pr.content.rows).toEqual([{ x: 1 }]);
+      expect(pr.content.pipeline).toEqual(pipeline);
+      expect(typeof pr.snapshotUpdatedAt).toBe("number");
+    });
+
+    // #312: a handle-backed table pins as a self-contained snapshot — the
+    // ephemeral envelope is hydrated (real Redis) and never persisted.
+    it("pins a handle-backed data-table as a materialized snapshot", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const { PortalSqlHandleService } =
+        await import("../../../services/portal-sql-handle.service.js");
+      const { envelope } = await PortalSqlHandleService.produceFromRows({
+        rows: [{ a: 1 }, { a: 2 }, { a: 3 }],
+        stationId: station.id,
+        organizationId,
+      });
+
+      const assistantMsg = createPortalMessage(
+        organizationId,
+        portal.id,
+        "assistant",
+        [{ type: "data-table", content: { ...envelope } }]
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalMessages)
+        .values(assistantMsg as never);
+
+      const res = await request(app)
+        .post("/api/portal-results")
+        .send({ portalId: portal.id, blockIndex: 0, name: "My Table" })
+        .expect(201);
+
+      const pr = res.body.payload.portalResult;
+      expect(pr.type).toBe("data-table");
+      expect(pr.content.rows).toEqual([{ a: 1 }, { a: 2 }, { a: 3 }]);
+      expect(pr.content.columns).toEqual(["a"]);
+      expect(pr.content.truncated).toBe(false);
+      // The ephemeral envelope never persists; produceFromRows handles have
+      // no query to re-execute, so no pipeline is derived either.
+      expect(pr.content.queryHandle).toBeUndefined();
+      expect(pr.content.pipeline).toBeUndefined();
+      expect(typeof pr.snapshotUpdatedAt).toBe("number");
+    });
+
+    // #312 smoke find: the display block for a query-backed handle carries no
+    // `sql` — the pipeline must derive from the server-side handle meta.
+    it("derives a query-backed table pin's pipeline from the handle meta", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const { PortalSqlHandleService } =
+        await import("../../../services/portal-sql-handle.service.js");
+      const { envelope } = await PortalSqlHandleService.produce({
+        sql: "SELECT 1 AS x",
+        stationId: station.id,
+        organizationId,
+      });
+
+      // The persisted display block strips the envelope's sql — mirror that.
+      const blockContent: Record<string, unknown> = { ...envelope };
+      delete blockContent.sql;
+      const assistantMsg = createPortalMessage(
+        organizationId,
+        portal.id,
+        "assistant",
+        [{ type: "data-table", content: blockContent }]
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalMessages)
+        .values(assistantMsg as never);
+
+      const res = await request(app)
+        .post("/api/portal-results")
+        .send({ portalId: portal.id, blockIndex: 0, name: "Query Table" })
+        .expect(201);
+
+      const pr = res.body.payload.portalResult;
+      expect(pr.content.pipeline).toEqual({
+        sql: "SELECT 1 AS x",
+        stationId: station.id,
+        organizationId,
+      });
+      expect(pr.content.queryHandle).toBeUndefined();
+    });
+  });
+
+  // ── POST /api/portal-results/:id/refresh (#312) ───────────────────
+
+  describe("POST /api/portal-results/:id/refresh", () => {
+    it("re-executes the stored pipeline and persists the snapshot back", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const pipeline = {
+        sql: "SELECT 1 AS x",
+        stationId: station.id,
+        organizationId,
+      };
+      const assistantMsg = createPortalMessage(
+        organizationId,
+        portal.id,
+        "assistant",
+        [
+          {
+            type: "d3",
+            content: {
+              program: "api.svg.append('g');",
+              rows: [{ x: 999 }], // stale snapshot the refresh replaces
+              pipeline,
+            },
+          },
+        ]
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalMessages)
+        .values(assistantMsg as never);
+
+      const pinned = await request(app)
+        .post("/api/portal-results")
+        .send({ portalId: portal.id, blockIndex: 0, name: "Live Chart" })
+        .expect(201);
+      const id = pinned.body.payload.portalResult.id as string;
+      const pinnedAt = pinned.body.payload.portalResult
+        .snapshotUpdatedAt as number;
+
+      const res = await request(app)
+        .post(`/api/portal-results/${id}/refresh`)
+        .expect(200);
+      expect(res.body.payload).toEqual({ kind: "inline", rows: [{ x: 1 }] });
+
+      // Persist-back: the stored snapshot now holds the fresh rows.
+      const after = await request(app)
+        .get(`/api/portal-results/${id}`)
+        .expect(200);
+      expect(after.body.payload.portalResult.content.rows).toEqual([{ x: 1 }]);
+      expect(
+        after.body.payload.portalResult.snapshotUpdatedAt
+      ).toBeGreaterThanOrEqual(pinnedAt);
+    });
+
+    it("returns 404 for an unknown pinned result", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .post(`/api/portal-results/${generateId()}/refresh`)
+        .expect(404);
+      expect(res.body.code).toBe(ApiCode.PORTAL_RESULT_NOT_FOUND);
+    });
+
+    it("returns 422 for a pin with no durable pipeline", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const staticPin = createPortalResult(
+        organizationId,
+        station.id,
+        portal.id,
+        {
+          type: "data-table",
+          content: { columns: ["a"], rows: [{ a: 1 }] },
+        }
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalResults)
+        .values(staticPin as never);
+
+      const res = await request(app)
+        .post(`/api/portal-results/${staticPin.id}/refresh`)
+        .expect(422);
+      expect(res.body.code).toBe(ApiCode.VIZ_WIDGET_NOT_REFRESHABLE);
+    });
+
+    it("returns 429 past the per-org refresh window", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const { incrementRateWindow } =
+        await import("../../../utils/rate-limit.util.js");
+      const { VIZ_REFRESH_RATE_PER_MIN } =
+        await import("@portalai/core/constants");
+      // Exhaust the shared viz-refresh window (same budget as the
+      // message-block addresser). The 429 fires before row lookup.
+      for (let i = 0; i <= VIZ_REFRESH_RATE_PER_MIN; i++) {
+        await incrementRateWindow(`viz-refresh:${organizationId}`);
+      }
+
+      const res = await request(app)
+        .post(`/api/portal-results/${generateId()}/refresh`)
+        .expect(429);
+      expect(res.body.code).toBe(ApiCode.VIZ_REFRESH_RATE_LIMITED);
     });
   });
 

@@ -27,11 +27,17 @@ const refreshMutate =
     }) => Promise<WidgetRefreshResponse>
   >();
 
+const pinRefreshMutate =
+  jest.fn<(vars: { id: string }) => Promise<WidgetRefreshResponse>>();
+
 jest.unstable_mockModule("../../../api/sdk", () => ({
   sdk: {
     portalSql: {
       handleSnapshotPage: () => ({ mutateAsync }),
       widgetRefresh: () => ({ mutateAsync: refreshMutate, isPending: false }),
+    },
+    portalResults: {
+      refresh: () => ({ mutateAsync: pinRefreshMutate }),
     },
   },
 }));
@@ -72,7 +78,11 @@ beforeEach(() => {
 // Unique block refs per test so the module-level freshness map doesn't leak
 // hydration timestamps across cases.
 let refSeq = 0;
-const freshRef = () => ({ messageId: `msg-${++refSeq}`, blockIndex: 1 });
+const freshRef = () => ({
+  kind: "message" as const,
+  messageId: `msg-${++refSeq}`,
+  blockIndex: 1,
+});
 const STALE = 0; // epoch 0 → always past the freshness window
 const inlineBlock = (rows: Array<Record<string, unknown>> = [{ x: 1 }]) =>
   ({ program: PROGRAM, rows }) as D3BlockContent;

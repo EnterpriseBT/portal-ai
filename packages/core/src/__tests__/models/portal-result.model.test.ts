@@ -21,6 +21,7 @@ const validPortalResultFields = {
   name: "Q4 Revenue Table",
   type: "data-table" as const,
   content: { columns: ["quarter", "revenue"], rows: [] },
+  snapshotUpdatedAt: null,
   updated: null,
   updatedBy: null,
   deleted: null,
@@ -47,6 +48,7 @@ describe("PortalResultSchema", () => {
       name: "Q4 Revenue Table",
       type: "data-table",
       content: { columns: ["quarter", "revenue"], rows: [] },
+      snapshotUpdatedAt: null,
     };
     const result = PortalResultSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -89,6 +91,7 @@ describe("PortalResultSchema", () => {
       name: "Summary",
       type: "text",
       content: { body: "hello" },
+      snapshotUpdatedAt: null,
     };
     const result = PortalResultSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -131,6 +134,7 @@ describe("PortalResultSchema", () => {
       name: "Text Result",
       type: "text",
       content: { body: "Some text" },
+      snapshotUpdatedAt: null,
     };
     const result = PortalResultSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -153,6 +157,7 @@ describe("PortalResultSchema", () => {
       name: "Table Result",
       type: "data-table",
       content: { columns: ["a"], rows: [{ a: 1 }] },
+      snapshotUpdatedAt: null,
     };
     const result = PortalResultSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -168,6 +173,83 @@ describe("PortalResultSchema", () => {
   it('should reject the retired type "vega"', () => {
     const result = PortalResultTypeSchema.safeParse("vega");
     expect(result.success).toBe(false);
+  });
+
+  // #312: durable viz kinds join the pinnable vocabulary.
+  it('should accept type "d3"', () => {
+    const result = PortalResultTypeSchema.safeParse("d3");
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept type "geo"', () => {
+    const result = PortalResultTypeSchema.safeParse("geo");
+    expect(result.success).toBe(true);
+  });
+
+  // #312: `snapshotUpdatedAt` is required-nullable, like `messageId`.
+  it("should accept a numeric snapshotUpdatedAt", () => {
+    const data = {
+      id: "pr-1",
+      created: Date.now(),
+      createdBy: "user-1",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      organizationId: "org-1",
+      stationId: "station-1",
+      portalId: "portal-1",
+      messageId: null,
+      blockIndex: null,
+      name: "Snapshotted",
+      type: "d3",
+      content: { program: "api.svg;", rows: [] },
+      snapshotUpdatedAt: Date.now(),
+    };
+    expect(PortalResultSchema.safeParse(data).success).toBe(true);
+  });
+
+  it("should reject a missing snapshotUpdatedAt", () => {
+    const data = {
+      id: "pr-1",
+      created: Date.now(),
+      createdBy: "user-1",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      organizationId: "org-1",
+      stationId: "station-1",
+      portalId: null,
+      messageId: null,
+      blockIndex: null,
+      name: "No snapshot key",
+      type: "text",
+      content: { body: "x" },
+    };
+    expect(PortalResultSchema.safeParse(data).success).toBe(false);
+  });
+
+  it("should reject a non-integer snapshotUpdatedAt", () => {
+    const data = {
+      id: "pr-1",
+      created: Date.now(),
+      createdBy: "user-1",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      organizationId: "org-1",
+      stationId: "station-1",
+      portalId: null,
+      messageId: null,
+      blockIndex: null,
+      name: "Bad snapshot",
+      type: "text",
+      content: { body: "x" },
+      snapshotUpdatedAt: 1.5,
+    };
+    expect(PortalResultSchema.safeParse(data).success).toBe(false);
   });
 });
 
@@ -261,6 +343,7 @@ describe("PortalResultModelFactory", () => {
       expect(shape).toHaveProperty("name");
       expect(shape).toHaveProperty("type");
       expect(shape).toHaveProperty("content");
+      expect(shape).toHaveProperty("snapshotUpdatedAt");
     });
 
     it("should allow updating domain fields after creation", () => {

@@ -195,18 +195,12 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
       sx={{ mb: 2, minWidth: 0, maxWidth: "100%" }}
     >
       {message.blocks.map((block: PortalMessageBlock, i: number) => {
-        // Web-specific blocks render without a pin affordance (the
-        // bulk-job-progress widget pins on terminal once the underlying
-        // data is canonical; pin work is filed as #92).
-        if (shouldRenderViaWeb(block)) {
-          return (
-            <Box key={i} sx={{ p: 1, mb: 1 }}>
-              {renderWebBlock(block)}
-            </Box>
-          );
-        }
-
-        if (!isDisplayableBlock(block)) return null;
+        // #312: the render path no longer decides pinnability — web-layer
+        // blocks (handle-backed tables) get the same pin affordance as core
+        // blocks when their type is pinnable. Transient kinds
+        // (bulk-job-progress, bulk-failures-table) stay unpinnable (#92).
+        const viaWeb = shouldRenderViaWeb(block);
+        if (!viaWeb && !isDisplayableBlock(block)) return null;
         const pinnable = hasPinnableContent(block);
         const pinKey = `${message.id}:${i}`;
         const portalResultId = pinnedBlocks.get(pinKey);
@@ -232,11 +226,19 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
             }}
           >
             <Box sx={{ flex: 1, minWidth: 0, overflow: "auto" }}>
-              <ContentBlockRenderer
-                block={block}
-                blockRef={{ messageId: message.id, blockIndex: i }}
-                dataUpdatedAt={message.created}
-              />
+              {viaWeb ? (
+                renderWebBlock(block)
+              ) : (
+                <ContentBlockRenderer
+                  block={block}
+                  blockRef={{
+                    kind: "message",
+                    messageId: message.id,
+                    blockIndex: i,
+                  }}
+                  dataUpdatedAt={message.created}
+                />
+              )}
             </Box>
             {!pinnable ? null : isPinned ? (
               <Tooltip title="Unpin result">

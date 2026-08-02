@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { VIZ_REFRESH_FRESHNESS_MS } from "@portalai/core/constants";
+import type { BlockRef } from "@portalai/core";
 import type { WidgetRefreshResponse } from "@portalai/core/contracts";
 
-import { sdk } from "../../../api/sdk";
-import { toServerError, type ServerError } from "../../../utils/api.util";
-
-export interface WidgetRef {
-  messageId: string;
-  blockIndex: number;
-}
+import { sdk } from "../api/sdk";
+import { toServerError, type ServerError } from "./api.util";
 
 /**
- * Session-scoped last-hydration clock, keyed by widget. Module-level so it
- * survives remounts — a widget viewed repeatedly within the freshness window
- * refetches at most once (#270 D6). Not persisted; a page reload starts fresh.
+ * Session-scoped last-hydration clock, keyed by the discriminated BlockRef
+ * (#312) — `message:<id>:<idx>` / `pin:<id>` never collide. Module-level so
+ * it survives remounts — a widget viewed repeatedly within the freshness
+ * window refetches at most once (#270 D6). Not persisted; a page reload
+ * starts fresh.
  */
 const lastHydratedAt = new Map<string, number>();
-const keyOf = (messageId: string, blockIndex: number) =>
-  `${messageId}:${blockIndex}`;
+const keyOf = (ref: BlockRef): string =>
+  ref.kind === "message"
+    ? `message:${ref.messageId}:${ref.blockIndex}`
+    : `pin:${ref.portalResultId}`;
 
 export interface UseWidgetRefreshResult {
   /** Fresh delivery from the last successful refresh, or null. */
@@ -34,20 +34,25 @@ export interface UseWidgetRefreshResult {
 }
 
 /**
- * Freshness-gated widget refresh (#270 D6). Auto-refreshes once on mount when
- * the data is stale (older than `VIZ_REFRESH_FRESHNESS_MS`, seeded from
- * `dataUpdatedAt`), and exposes `refresh()` for the always-present manual
- * button. A just-minted widget (`dataUpdatedAt ≈ now`) is fresh and skips the
- * auto-refresh. Absent `blockRef` (streaming/unpersisted) → no refresh at all.
+ * Freshness-gated widget refresh (#270 D6, promoted + widened in #312).
+ * Auto-refreshes once on mount when the data is stale (older than
+ * `VIZ_REFRESH_FRESHNESS_MS`, seeded from `dataUpdatedAt`), and exposes
+ * `refresh()` for the always-present manual button. A just-minted widget
+ * (`dataUpdatedAt ≈ now`) is fresh and skips the auto-refresh. Absent
+ * `blockRef` (streaming/unpersisted) → no refresh at all.
+ *
+ * Dispatch follows the ref's kind: message-block refs hit the
+ * widget-refresh endpoint; pin refs hit the pinned-result refresh endpoint
+ * (which also persists the fresh snapshot back server-side).
  */
 export function useWidgetRefresh(
-  blockRef: WidgetRef | undefined,
+  blockRef: BlockRef | undefined,
   dataUpdatedAt: number | undefined
 ): UseWidgetRefreshResult {
-  const messageId = blockRef?.messageId;
-  const blockIndex = blockRef?.blockIndex;
+  const key = blockRef ? keyOf(blockRef) : undefined;
 
-  const { mutateAsync } = sdk.portalSql.widgetRefresh();
+  const { mutateAsync: refreshMessageBlock } = sdk.portalSql.widgetRefresh();
+  const { mutateAsync: refreshPin } = sdk.portalResults.refresh();
   const [fresh, setFresh] = useState<WidgetRefreshResponse | null>(null);
   const [error, setError] = useState<ServerError | null>(null);
   const [notRefreshable, setNotRefreshable] = useState(false);
@@ -56,20 +61,28 @@ export function useWidgetRefresh(
   // refresh). A `try/finally` guarantees the spinner ends when refresh() does.
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(() =>
-    messageId != null && blockIndex != null
-      ? (lastHydratedAt.get(keyOf(messageId, blockIndex)) ??
-        dataUpdatedAt ??
-        null)
-      : null
+    key != null ? (lastHydratedAt.get(key) ?? dataUpdatedAt ?? null) : null
   );
 
+  // Keep the ref itself stable for the callback without spreading its
+  // variant fields into dependency arrays.
+  const refRef = useRef(blockRef);
+  refRef.current = blockRef;
+
   const refresh = useCallback(async () => {
-    if (messageId == null || blockIndex == null) return;
+    const ref = refRef.current;
+    if (ref == null) return;
     setIsRefreshing(true);
     try {
-      const res = await mutateAsync({ messageId, blockIndex });
+      const res =
+        ref.kind === "message"
+          ? await refreshMessageBlock({
+              messageId: ref.messageId,
+              blockIndex: ref.blockIndex,
+            })
+          : await refreshPin({ id: ref.portalResultId });
       const now = Date.now();
-      lastHydratedAt.set(keyOf(messageId, blockIndex), now);
+      lastHydratedAt.set(keyOf(ref), now);
       setError(null);
       setFresh(res);
       setLastUpdatedAt(now);
@@ -83,22 +96,21 @@ export function useWidgetRefresh(
     } finally {
       setIsRefreshing(false);
     }
-  }, [messageId, blockIndex, mutateAsync]);
+  }, [refreshMessageBlock, refreshPin]);
 
   // Auto-refresh once on mount when stale. #271 owns the viewport-driven
   // trigger that fans this across many widgets on a dashboard.
   const autoFired = useRef(false);
   useEffect(() => {
-    if (messageId == null || blockIndex == null || autoFired.current) return;
-    const seededAt =
-      lastHydratedAt.get(keyOf(messageId, blockIndex)) ?? dataUpdatedAt ?? 0;
+    if (key == null || autoFired.current) return;
+    const seededAt = lastHydratedAt.get(key) ?? dataUpdatedAt ?? 0;
     if (Date.now() - seededAt > VIZ_REFRESH_FRESHNESS_MS) {
       autoFired.current = true;
       // Mount-triggered async fetch (fires once per stale mount). #271 owns the
       // viewport-driven trigger for many widgets.
       void refresh();
     }
-  }, [messageId, blockIndex, dataUpdatedAt, refresh]);
+  }, [key, dataUpdatedAt, refresh]);
 
   return {
     fresh,

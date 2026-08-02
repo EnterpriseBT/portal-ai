@@ -1,5 +1,7 @@
 # Gate pinning of visualization blocks — Condensed design (#273)
 
+> **Superseded by #312 (2026-08-01).** Pins now **materialize** a self-contained snapshot plus a re-executable pipeline (`docs/PINNING_REFACTOR.spec.md`), so durable viz kinds (`d3`, `geo`) joined `PortalResultTypeSchema` and this gate's regression tests were deliberately flipped — exactly as the "What flipping this later means" note below anticipated. The typed rejection this ticket shipped remains, guarding transient kinds.
+
 **Issue:** [EnterpriseBT/portal-ai#273](https://github.com/EnterpriseBT/portal-ai/issues/273) · Task · **small / condensed** (discovery + spec + plan + smoke in one doc).
 
 **Why.** A pinned visualization would copy the block content verbatim — for a `d3` widget that's a render program plus a pipeline pointer, and the durable-dashboard model that would make such a pin meaningful is the follow-up epic. So this epic must not ship snapshot-pinning of visualizations. Surveying the branch, the *behavior* is already in place: the pinnable set is derived from `PortalResultTypeSchema`, `d3` was never added to it (#268 deliberately split display from pinnability), and #272 removed `vega`/`vega-lite` from the enum, the DB type, and the streaming paths. What is **not** in place is the ticket's second deliverable — the server rejection is untyped, returning a 400 under `PORTAL_RESULT_NOT_FOUND` — and nothing locks the gate against regression. This ticket closes that gap in `apps/api` (+ a web regression test).

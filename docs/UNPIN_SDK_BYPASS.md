@@ -82,3 +82,5 @@ So the ticket's third deliverable ships here after all: a failed unpin raises `t
 - **Merging the two "Unpin"/"Delete" affordances** in the detail view. They deliberately differ (one confirms), so only the duplicated request logic is removed, not a UX decision.
 - **Reshaping `rename`** — it has a correct caller; changing it is unrelated churn.
 - **Auditing every other `fetchWithAuth` call site** across `apps/web` for the same violation. Worth its own sweep ticket; this one fixes the portal-results endpoint.
+
+> **Closure note (#312, 2026-08-01):** the two portal-results unpin bypasses this doc left in place (`Dashboard.view.tsx`, `PinnedResultsListView.view.tsx`) were routed through `sdk.portalResults.remove()` with the same toast-with-Retry pattern. No raw `fetchWithAuth` against `/api/portal-results` remains.

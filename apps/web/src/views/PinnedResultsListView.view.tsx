@@ -20,7 +20,7 @@ import {
 } from "../components/PaginationToolbar.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch } from "../utils/api.util";
+import { useToast } from "../utils/toast.context";
 import type {
   PortalResultsListPayload,
   PortalResultsListParams,
@@ -48,7 +48,8 @@ const PinnedResultsDataList: React.FC<PinnedResultsDataListProps> = ({
 export const PinnedResultsListView: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { fetchWithAuth } = useAuthFetch();
+  const toast = useToast();
+  const removeMutation = sdk.portalResults.remove();
 
   const pagination = usePagination({
     sortFields: [{ field: "created", label: "Created" }],
@@ -63,16 +64,22 @@ export const PinnedResultsListView: React.FC = () => {
     [navigate]
   );
 
+  // #312 (closes the UNPIN_SDK_BYPASS remainder): unpin routes through the
+  // SDK; failures raise a persistent toast with Retry (Toast Pattern).
   const handleUnpin = useCallback(
-    async (id: string) => {
-      await fetchWithAuth(`/api/portal-results/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.portalResults.root,
-      });
+    async function attempt(id: string): Promise<void> {
+      try {
+        await removeMutation.mutateAsync({ id });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.portalResults.root,
+        });
+      } catch {
+        toast.error("Could not remove this pinned result. Please try again.", {
+          action: { label: "Retry", onClick: () => void attempt(id) },
+        });
+      }
     },
-    [fetchWithAuth, queryClient]
+    [removeMutation, queryClient, toast]
   );
 
   return (

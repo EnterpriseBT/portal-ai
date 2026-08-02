@@ -169,17 +169,21 @@ describe("PortalBlockTypeSchema", () => {
 // ── PINNABLE_BLOCK_TYPES ────────────────────────────────────────────
 
 describe("PINNABLE_BLOCK_TYPES", () => {
-  // #272: with Vega removed, no visualization type is pinnable — the
-  // pinnable set is `text` | `data-table` only.
-  it("contains no visualization type", () => {
-    expect(PINNABLE_BLOCK_TYPES.has("vega" as never)).toBe(false);
-    expect(PINNABLE_BLOCK_TYPES.has("vega-lite" as never)).toBe(false);
-    expect(PINNABLE_BLOCK_TYPES.has("d3" as never)).toBe(false);
-  });
-
-  it("contains text and data-table", () => {
+  // #312 (supersedes the #272/#273 gate): every durable block kind is
+  // pinnable — pins materialize a snapshot + pipeline, so viz kinds no
+  // longer need the dashboards model to pin safely.
+  it("contains every durable block kind", () => {
     expect(PINNABLE_BLOCK_TYPES.has("text")).toBe(true);
     expect(PINNABLE_BLOCK_TYPES.has("data-table")).toBe(true);
+    expect(PINNABLE_BLOCK_TYPES.has("d3")).toBe(true);
+    expect(PINNABLE_BLOCK_TYPES.has("geo")).toBe(true);
+  });
+
+  it("contains no retired or transient type", () => {
+    expect(PINNABLE_BLOCK_TYPES.has("vega" as never)).toBe(false);
+    expect(PINNABLE_BLOCK_TYPES.has("vega-lite" as never)).toBe(false);
+    expect(PINNABLE_BLOCK_TYPES.has("bulk-job-progress" as never)).toBe(false);
+    expect(PINNABLE_BLOCK_TYPES.has("tool-call" as never)).toBe(false);
   });
 });
 

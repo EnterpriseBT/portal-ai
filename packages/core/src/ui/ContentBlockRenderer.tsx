@@ -18,16 +18,28 @@ import { MutationResultBlock } from "./MutationResultBlock.js";
 // `block.type`-agnostic dispatch; it just looks the renderer up.
 
 /**
+ * Server-addressable identity of a persisted block (#270, widened in #312):
+ * either a message block (`{ messageId, blockIndex }`) or a pinned result
+ * (`{ portalResultId }`). A renderer uses it to call back to the server —
+ * e.g. refresh the block's durable pipeline through the addresser matching
+ * its kind.
+ */
+export type BlockRef =
+  | { kind: "message"; messageId: string; blockIndex: number }
+  | { kind: "pin"; portalResultId: string };
+
+/**
  * Optional per-render context threaded to a renderer (#270). `blockRef`
- * identifies a *persisted* block by `{ messageId, blockIndex }` so a renderer
- * (the d3 widget) can call back to the server for that block — e.g. refresh its
- * pipeline. Absent for streaming/unpersisted blocks (nothing to reference yet).
+ * identifies the *persisted* home of the block so a renderer (the d3 widget)
+ * can call back to the server for it — e.g. refresh its pipeline. Absent for
+ * streaming/unpersisted blocks (nothing to reference yet).
  */
 export interface BlockRenderContext {
-  blockRef?: { messageId: string; blockIndex: number };
+  blockRef?: BlockRef;
   /** Epoch ms the block's data was produced/persisted (the message's
-   *  `created`). A renderer uses it to seed a freshness clock (#270) so a
-   *  just-minted widget isn't auto-refreshed while a reopened one is. */
+   *  `created`, or a pin's `snapshotUpdatedAt`). A renderer uses it to seed
+   *  a freshness clock (#270) so a just-minted widget isn't auto-refreshed
+   *  while a reopened one is. */
   dataUpdatedAt?: number;
 }
 

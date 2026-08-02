@@ -23,6 +23,7 @@ import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { HealthCheck } from "../components/HealthCheck.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useAuthFetch, toServerError } from "../utils/api.util";
+import { useToast } from "../utils/toast.context";
 import type { ServerError } from "../utils/api.util";
 
 // ── Dashboard UI (pure) ─────────────────────────────────────────────
@@ -99,7 +100,11 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
 export const DashboardView: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const toast = useToast();
+  // Portal delete still goes through fetchWithAuth (portals endpoint);
+  // portal-result unpin routes through the SDK (#312).
   const { fetchWithAuth } = useAuthFetch();
+  const removeMutation = sdk.portalResults.remove();
 
   // ── Create portal ───────────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false);
@@ -181,15 +186,22 @@ export const DashboardView: React.FC = () => {
     [navigate]
   );
 
+  // #312 (closes the UNPIN_SDK_BYPASS remainder): unpin routes through the
+  // SDK; failures raise a persistent toast with Retry (Toast Pattern).
   const handleUnpin = useCallback(
-    async (resultId: string) => {
-      await fetchWithAuth(
-        `/api/portal-results/${encodeURIComponent(resultId)}`,
-        { method: "DELETE" }
-      );
-      queryClient.invalidateQueries({ queryKey: queryKeys.portalResults.root });
+    async function attempt(resultId: string): Promise<void> {
+      try {
+        await removeMutation.mutateAsync({ id: resultId });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.portalResults.root,
+        });
+      } catch {
+        toast.error("Could not remove this pinned result. Please try again.", {
+          action: { label: "Retry", onClick: () => void attempt(resultId) },
+        });
+      }
     },
-    [fetchWithAuth, queryClient]
+    [removeMutation, queryClient, toast]
   );
 
   const handleViewAllResults = useCallback(() => {

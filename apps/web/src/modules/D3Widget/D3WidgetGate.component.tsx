@@ -6,7 +6,7 @@ import { useScrollRoot } from "../../utils/scroll-root.context";
 import { D3Widget } from "./D3Widget.component";
 
 import type { D3BlockContent } from "@portalai/core/contracts";
-import type { WidgetRef } from "./utils/use-widget-refresh.util";
+import type { BlockRef } from "@portalai/core";
 
 /** Seed height before a widget has ever rendered (matches the sandbox frame). */
 const PLACEHOLDER_SEED_HEIGHT = 360;
@@ -34,7 +34,7 @@ export const D3WidgetPlaceholderUI: React.FC<D3WidgetPlaceholderUIProps> = ({
 
 export interface D3WidgetGateProps {
   content: D3BlockContent | unknown;
-  blockRef?: WidgetRef;
+  blockRef?: BlockRef;
   dataUpdatedAt?: number;
 }
 

@@ -6,6 +6,7 @@ import type { UseMutationResult } from "@tanstack/react-query";
 
 const mockRemove = jest.fn<(vars: { id: string }) => Promise<unknown>>();
 const mockRename = jest.fn();
+const mockPinRefresh = jest.fn<(vars: { id: string }) => Promise<unknown>>();
 let currentGetQuery: Record<string, unknown> = {};
 
 jest.unstable_mockModule("../api/sdk", () => ({
@@ -22,6 +23,15 @@ jest.unstable_mockModule("../api/sdk", () => ({
           mutateAsync: mockRemove,
           isPending: false,
         }) as Partial<UseMutationResult>,
+      refresh: () =>
+        ({
+          mutateAsync: mockPinRefresh,
+        }) as Partial<UseMutationResult>,
+    },
+    // useWidgetRefresh's message-branch endpoint (unused here, but the hook
+    // instantiates both).
+    portalSql: {
+      widgetRefresh: () => ({ mutateAsync: jest.fn() }),
     },
   },
   queryKeys: {
@@ -48,6 +58,7 @@ const mockToast = {
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
 const { QueryClient } = await import("@tanstack/react-query");
 const { ToastContext } = await import("../utils/toast.context");
+const { registerBlockRenderer } = await import("@portalai/core");
 const { PinnedResultDetailUI, PinnedResultDetailView } =
   await import("../views/PinnedResultDetail.view");
 
@@ -65,6 +76,7 @@ const makePinnedResult = (
   content: { value: "Total revenue: **$1.2M**" },
   created: Date.now() - 3600000,
   createdBy: "user-1",
+  snapshotUpdatedAt: null,
   updated: null,
   updatedBy: null,
   deleted: null,
@@ -105,6 +117,121 @@ describe("PinnedResultDetailUI", () => {
       />
     );
     expect(screen.getByText("Table")).toBeInTheDocument();
+  });
+
+  // ── #312: durable viz kinds ────────────────────────────────────────
+
+  it("renders Chart / Map chips for d3 / geo types", () => {
+    const { unmount } = render(
+      <PinnedResultDetailUI
+        {...defaultProps}
+        result={makePinnedResult({
+          type: "d3",
+          content: { program: "api.svg;", rows: [] },
+        })}
+      />
+    );
+    expect(screen.getByText("Chart")).toBeInTheDocument();
+    unmount();
+
+    render(
+      <PinnedResultDetailUI
+        {...defaultProps}
+        result={makePinnedResult({
+          type: "geo",
+          content: { layers: [] },
+        })}
+      />
+    );
+    expect(screen.getByText("Map")).toBeInTheDocument();
+  });
+
+  it("threads a pin blockRef + snapshot timestamp to the block renderer", () => {
+    registerBlockRenderer("d3", (_b, ctx) => (
+      <div data-testid="pin-blockref-stub">
+        {ctx?.blockRef?.kind === "pin"
+          ? `${ctx.blockRef.portalResultId}:${ctx?.dataUpdatedAt}`
+          : "no-pin-ref"}
+      </div>
+    ));
+    render(
+      <PinnedResultDetailUI
+        {...defaultProps}
+        result={makePinnedResult({
+          type: "d3",
+          content: { program: "api.svg;", rows: [] },
+          snapshotUpdatedAt: 424242,
+        })}
+      />
+    );
+    expect(screen.getByTestId("pin-blockref-stub")).toHaveTextContent(
+      "result-1:424242"
+    );
+  });
+
+  it("shows an expired-data notice for a legacy snapshot-less pin", () => {
+    render(
+      <PinnedResultDetailUI
+        {...defaultProps}
+        result={makePinnedResult({
+          type: "data-table",
+          content: { queryHandle: "qh-dead", columns: ["a"] },
+        })}
+      />
+    );
+    expect(screen.getByTestId("pinned-expired-notice")).toBeInTheDocument();
+  });
+
+  it("marks a tombstoned source portal instead of offering the link", () => {
+    render(
+      <PinnedResultDetailUI
+        {...defaultProps}
+        result={makePinnedResult({ portalId: null })}
+      />
+    );
+    expect(screen.getByText(/portal deleted/i)).toBeInTheDocument();
+  });
+
+  it("renders the refresh control and fires onRefresh", () => {
+    const onRefresh = jest.fn();
+    render(
+      <PinnedResultDetailUI
+        {...defaultProps}
+        result={makePinnedResult({
+          type: "data-table",
+          content: { columns: ["a"], rows: [{ a: 1 }] },
+        })}
+        refresh={{
+          isRefreshing: false,
+          error: null,
+          lastUpdatedAt: Date.now(),
+          onRefresh,
+        }}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /refresh data/i }));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the stored table and shows a notice when a refresh fails", () => {
+    render(
+      <PinnedResultDetailUI
+        {...defaultProps}
+        result={makePinnedResult({
+          type: "data-table",
+          content: { columns: ["a"], rows: [{ a: 1 }] },
+        })}
+        refresh={{
+          isRefreshing: false,
+          error: { message: "source gone", code: "PORTAL_SQL_FORBIDDEN" },
+          lastUpdatedAt: 111,
+          onRefresh: jest.fn(),
+        }}
+      />
+    );
+    expect(screen.getByTestId("pinned-refresh-error")).toBeInTheDocument();
+    // The stored snapshot still renders.
+    expect(screen.getByTestId("result-content")).toBeInTheDocument();
   });
 
   it("should render relative created timestamp", () => {
@@ -215,6 +342,82 @@ describe("PinnedResultDetailUI", () => {
 // "Unpin" and the confirm-dialog "Delete" were two byte-identical
 // hand-rolled `fetchWithAuth` calls. Both now route through one handler on
 // the SDK mutation, so both paths need container-level coverage.
+
+describe("PinnedResultDetailView container — live refresh (#312)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPinRefresh
+      .mockReset()
+      .mockResolvedValue({ kind: "inline", rows: [{ a: 2 }] });
+  });
+
+  it("auto-refreshes a stale refreshable pin and invalidates its query", async () => {
+    // Unique id — the hook's session freshness map is module-level.
+    currentGetQuery = {
+      data: {
+        portalResult: makePinnedResult({
+          id: "result-live-1",
+          type: "data-table",
+          content: {
+            columns: ["a"],
+            rows: [{ a: 1 }],
+            pipeline: {
+              sql: "SELECT a FROM t",
+              stationId: "st-1",
+              organizationId: "org-1",
+            },
+          },
+          snapshotUpdatedAt: Date.now() - 10 * 60 * 1000, // stale
+        }),
+      },
+      isLoading: false,
+      error: null,
+    };
+    const queryClient = new QueryClient();
+    const invalidateSpy = jest.spyOn(queryClient, "invalidateQueries");
+    render(
+      <ToastContext.Provider value={mockToast}>
+        <PinnedResultDetailView portalResultId="result-live-1" />
+      </ToastContext.Provider>,
+      { queryClient }
+    );
+
+    await waitFor(() =>
+      expect(mockPinRefresh).toHaveBeenCalledWith({ id: "result-live-1" })
+    );
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["pr", "result-live-1"],
+      })
+    );
+  });
+
+  it("never wires page-level refresh for a pipeline-less pin", async () => {
+    currentGetQuery = {
+      data: {
+        portalResult: makePinnedResult({
+          id: "result-static-1",
+          type: "data-table",
+          content: { columns: ["a"], rows: [{ a: 1 }] },
+          snapshotUpdatedAt: Date.now() - 10 * 60 * 1000,
+        }),
+      },
+      isLoading: false,
+      error: null,
+    };
+    render(
+      <ToastContext.Provider value={mockToast}>
+        <PinnedResultDetailView portalResultId="result-static-1" />
+      </ToastContext.Provider>,
+      { queryClient: new QueryClient() }
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /refresh data/i })
+    ).not.toBeInTheDocument();
+    expect(mockPinRefresh).not.toHaveBeenCalled();
+  });
+});
 
 describe("PinnedResultDetailView container — remove", () => {
   const renderContainer = () => {

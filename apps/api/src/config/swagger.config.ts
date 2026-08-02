@@ -1459,10 +1459,16 @@ const options: swaggerJsdoc.Options = {
             name: { type: "string", example: "Q1 Revenue Table" },
             type: {
               type: "string",
-              enum: ["text", "data-table"],
+              enum: ["text", "data-table", "d3", "geo"],
               example: "data-table",
             },
             content: { type: "object", additionalProperties: true },
+            snapshotUpdatedAt: {
+              type: "number",
+              nullable: true,
+              description:
+                "Epoch ms of the last successful snapshot write (#312) — pin time, then each persist-back refresh. Null on pre-#312 rows.",
+            },
             created: { type: "number", description: "Epoch ms" },
             createdBy: { type: "string" },
             updated: { type: "number", nullable: true },

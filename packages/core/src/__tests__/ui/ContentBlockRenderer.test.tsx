@@ -152,10 +152,14 @@ describe("registerBlockRenderer", () => {
     render(
       <ContentBlockRenderer
         block={{ type: "blockref-test", content: null }}
-        blockRef={{ messageId: "msg-9", blockIndex: 3 }}
+        blockRef={{ kind: "message", messageId: "msg-9", blockIndex: 3 }}
       />
     );
-    expect(seen).toEqual({ messageId: "msg-9", blockIndex: 3 });
+    expect(seen).toEqual({
+      kind: "message",
+      messageId: "msg-9",
+      blockIndex: 3,
+    });
   });
 
   it("omitting blockRef is a no-op — ctx.blockRef is undefined, render unaffected", () => {

@@ -519,6 +519,13 @@
       "when": 1784934400723,
       "tag": "0073_remove_vega_portal_result_types",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1785546579537,
+      "tag": "0074_widen-portal-result-type-live-pins",
+      "breakpoints": true
     }
   ]
 }
