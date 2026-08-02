@@ -2,6 +2,8 @@
 
 **Issue:** [EnterpriseBT/portal-ai#84](https://github.com/EnterpriseBT/portal-ai/issues/84) (PRD rewritten 2026-07-31; this doc supersedes the June-29 discovery that lived on the deleted first `feat/gis-toolpack` branch)
 
+> **Revised 2026-08-02 at spec time, two changes.** (a) **Decision 4 reversed:** `geometry` does *not* join `ColumnDataType`. Geometry is JSON and latitude is a number — storage type and geospatial meaning are orthogonal — so a single nullable `geoRole` annotation carries both the geometry case and the lat/lng-pair case (Decision 3), collapsing two mechanisms into one and avoiding an enum widening with no behavioural gain (`json` is already non-sortable, already JSONB; reprojection triggers on shape detection, not the label). This also dissolves the type-transition-allowlist question the enum would have raised. (b) **Map blocks pin:** #312 merged, pre-admitting `geo` to `PortalResultTypeSchema`, so the "not pinnable" note below is obsolete — GIS registers the `geo` entry in `PINNED_CONTENT_SCHEMAS` and inherits materialization + refresh. Open questions 1 and 2 are resolved (see their entries).
+
 **Why this exists.** Connectors already import records carrying geometry — ArcGIS FeatureServer responses arrive as `{rings, spatialReference: {wkid: 102100}}` (Web Mercator) — but that geometry lands as opaque JSON in a JSONB cell: nothing can query, compute over, or render it. The PRD adds a built-in `gis` pack (spatial compute, metered geocoding, an expensive bulk-column geocode job, and `visualize_map`), a frontend map renderer, a `geometry` column type inferred and reprojected on import, and a lat/lng coordinate-pair hint — tier-gated to Pro/Enterprise. The PRD deliberately deferred three mechanisms to this doc: the map render path, the map library, and the geocoding provider. This is the doc that decides them against the post-Vega, post-cost-gate, tier-gated codebase.
 
 ## The current shape
@@ -71,7 +73,7 @@ Frontend: `registerBlockRenderer("geo", …)` is already documented as the inten
 - **B — entity-level pair annotation.** A `{lat, lng}` pointer on the connector entity; single source of truth per entity but a new concept, and breaks when an entity has two coordinate pairs (origin/destination).
 - **C — no persistence; agent picks at call time.** Zero schema change — the agent reads column names from the station-context catalog and passes `latColumn`/`lngColumn`. But nothing is "inferred + overridable" as the PRD requires, and every map call re-derives the guess.
 
-**Lean: A.** It matches the PRD contract (inferred, persisted, overridable), survives multiple pairs per entity, and C's call-time override remains available as the escape hatch since the spec fields exist regardless.
+**Decided: A — and it is now the *only* geo-annotation mechanism** (see the revised Decision 4, which folds the geometry case into the same `geoRole` field). It matches the PRD contract (inferred, persisted, overridable), survives multiple pairs per entity, and C's call-time override remains available since the spec fields exist regardless.
 
 ### Decision 4 — Geocoding provider + zero-charge cache
 
@@ -97,16 +99,16 @@ New `bulk_geocode` job type cloned from the `bulk_transform` precedent end-to-en
 2. Spatial compute tools delegate math to a `gis.service.ts` using per-module turf (`@turf/distance`, `@turf/boolean-point-in-polygon`, `@turf/centroid`, `@turf/bbox`, `@turf/buffer`) + `proj4` for reprojection; column-wide forms use `withComputeInput` + `record-source` with `consumption: streaming`; output through the result sink only.
 3. `visualize_map` = `{ sql, spec, title? }` with an agent-authored, Zod-validated MapSpec; block `{ type: "geo", spec, pipeline, rows | handle }`; a `geo` arm in `resolveDisplayBlock`; refresh through the existing widget-refresh route untouched.
 4. Frontend = `apps/web/src/modules/MapWidget/` (MapLibre GL, direct mount, `React.lazy` + `manualChunks`), registered via `registerBlockRenderer("geo", …)` from `main.tsx`, reusing the gate/chrome/status-chip/refresh utilities; CARTO light/dark basemaps (key-free, attribution required) with OSM fallback.
-5. `geometry` in `ColumnDataTypeEnum` (non-sortable), heuristic detection of GeoJSON/ArcGIS/Feature shapes before the object→`json` collapse, `geometry → jsonb` in the wide-table reconciler, hand-edit of `system.prompt.ts:325`, ArcGIS→WGS84 reprojection in the adapter transform hop (`geometry.util.ts`).
-6. `geoRole: "lat" | "lng" | null` on `ColumnDefinitionSchema`, inferred on import (name + range), user-overridable, with explicit spec-field override in `visualize_map`.
+5. **One** `geoRole: "geometry" | "lat" | "lng" | null` field on `ColumnDefinitionSchema` (revised — no `ColumnDataTypeEnum` change): heuristic shape detection sets `"geometry"`, name+range heuristics set `"lat"`/`"lng"`, all user-overridable in `EditColumnDefinitionDialog`, surfaced to the agent via `station_context`, with `visualize_map`'s explicit column fields authoritative.
+6. ArcGIS→WGS84 reprojection in the adapter transform hop (`geometry.util.ts`); `system.prompt.ts` geo guidance describes the role, not a type.
 7. `geocode`/`reverse_geocode` behind a `GeocodingProvider` interface (Mapbox first), `GEOCODING_API_KEY` through the standard secrets path, global Redis address cache with 0-unit cache hits via a registered cost resolver.
 8. `bulk_geocode` job per Decision 5.
 9. Correct the `ST_Area(geography)` prompt drift in `transform-entity-records.tool.ts:239` (no PostGIS exists) as part of the doc-sync pass.
 
 ## Open questions
 
-1. **Can a cost resolver consult Redis?** If `resolveCallCost` is sync-only, cache-hit-zero-charge needs the fallback (tool marks the result cached; the wrap skips `commitCharge`). **Lean: verify at spec time; either mechanism satisfies the PRD.**
-2. **Where does the user override `geoRole`/`geometry` type?** The existing column-definition edit surface was not surveyed in depth; if no editable surface exists for these fields, the override lands in the field-mapping editor. **Lean: reuse whatever surface edits `ColumnDefinition.type` today; confirm during spec.**
+1. ~~**Can a cost resolver consult Redis?**~~ **Resolved 2026-08-02:** yes — `CostResolver` is typed `(input) => number | Promise<number>` and `resolveCallCost` awaits it (`cost-gate.service.ts:43,68`). The address cache is consulted inside the registered resolver, so a cache hit resolves to 0 units directly; no fallback mechanism needed.
+2. ~~**Where does the user override the geo annotation?**~~ **Resolved 2026-08-02:** `apps/web/src/components/EditColumnDefinitionDialog.component.tsx` already edits `ColumnDefinition.type` behind a transition allowlist; `geoRole` becomes a plain field on that form (no transition policy needed, since it is not the storage type). `CreateColumnDefinitionDialog` gains the same field.
 3. **Basemap attribution + dark theme.** CARTO's free basemaps require attribution and the app has a dark theme. **Lean: CARTO light/dark keyed to the active MUI theme, attribution control always on.**
 4. **Does `bulk_geocode` write lat/lng numeric columns too?** Some consumers (choropleth joins, exports) want plain numbers. **Lean: write only the GeoJSON Point geometry column; lat/lng extraction is SQL (`->>'coordinates'`), not duplicated storage.**
 
@@ -123,7 +125,7 @@ New `bulk_geocode` job type cloned from the `bulk_transform` precedent end-to-en
 ## What this doesn't decide
 
 - **PostGIS / SQL-pushdown spatial predicates** — geometry stays JSONB; deferred until query performance demands it (bigger lift, own ticket).
-- **Pinning for `geo` (and all viz) blocks** — per the user's direction, the map block ships non-pinnable (parity with `visualize_d3`; `GATE_VIZ_PINNING.md`); pin support arrives with the planned pinning refactor, not here.
+- **The pinning mechanism itself** — shipped in #312, which pre-admitted `geo` to `PortalResultTypeSchema`; GIS only registers the `geo` entry in `PINNED_CONTENT_SCHEMAS` and inherits materialization, refresh, and persist-back.
 - **Self-hosted Nominatim / tile self-hosting** — the provider interface and basemap config are the only accommodations.
 - **Drawing tools, geofencing/push, 3D/terrain, routing, isochrones/network/hotspot analysis** — PRD out-of-scope, unchanged.
 - **Choropleth statistical binning UX** — the MapSpec carries per-layer styling keyed to columns; anything smarter (Jenks breaks, legends beyond categorical) waits for real demand.
