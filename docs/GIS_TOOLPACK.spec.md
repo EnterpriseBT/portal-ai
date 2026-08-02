@@ -6,7 +6,9 @@ Pins the `gis` built-in toolpack (six pure spatial tools, two metered geocoders,
 
 ## Key decisions (flag for review)
 
-1. **`visualize_map` takes an agent-authored MapSpec** (discovery D1-A) — no codegen sub-call. A map spec is a small closed vocabulary the agent authors directly, like SQL; `visualize_d3` needed codegen only because D3 programs are unbounded.
+1. **`visualize_map` takes an agent-authored MapSpec whose style values accept MapLibre expressions** (discovery D1-A, extended 2026-08-02) — no codegen sub-call. Expressions (`case` / `match` / `interpolate` / `get`) give full data-driven symbology as **JSON the agent authors**, so no model-written JS executes and no network channel opens to it. The block contract **reserves an optional `program` variant** (see *Escape hatch*) so a sandboxed codegen renderer can land in a later child without a contract break or a re-pin.
+
+   Why not mirror `visualize_d3`'s codegen sandbox: that sandbox is safe precisely because its CSP is `default-src 'none'` (`sandbox-srcdoc.util.ts:15`) — every network channel closed, which is affordable for D3 because it needs none. A map needs tiles, glyphs, and sprites, so a codegen map sandbox must open `connect-src`/`img-src` **to model-authored JS**. That is a new security surface, and it buys little here: MapLibre's expression DSL already covers the styling range, while our own renderer can generate legends from the spec (a program would have to draw its own each time) and we can validate that referenced columns exist in the result schema (a program can't be validated at all).
 2. **MapLibre GL, direct-mount** (D2-A). The D3 sandbox iframe is unusable: its srcdoc CSP forbids network, and tiles/glyphs are network fetches. `React.lazy` + the repo's first `manualChunks` entry keeps ~200 KB out of the main chunk.
 3. **`geoRole`, not a `geometry` type** (D4, revised 2026-08-02). One nullable annotation carries the geometry case *and* the lat/lng-pair case; `ColumnDataTypeEnum` is untouched.
 4. **Canonical geo column definitions are seeded** as `system` rows alongside `email` / `name` / `address`, so the role arrives through the existing field-mapping catalog rather than inference alone.
@@ -58,16 +60,39 @@ export const MapGeometrySourceSchema = z.union([
   z.object({ latColumn: z.string().min(1), lngColumn: z.string().min(1) }),
 ]);
 
+/**
+ * A style value is either a literal or a **MapLibre expression** — a JSON
+ * array whose head is an operator (`["case", …]`, `["match", …]`,
+ * `["interpolate", …]`, `["get", "col"]`). Expressions are the flexibility
+ * seam: full per-feature, data-driven symbology authored as JSON, with no
+ * model-written JS and no network access granted to it. Passed through to
+ * MapLibre as-is; a malformed expression surfaces as the widget's typed
+ * error state, never a silent mis-render.
+ */
+export const MapExpressionSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.array(z.union([z.string(), z.number(), z.boolean(), z.null(), MapExpressionSchema])).min(1)
+);
+const styleValue = <T extends z.ZodTypeAny>(literal: T) =>
+  z.union([literal, MapExpressionSchema]);
+
 export const MapLayerStyleSchema = z.object({
-  color: z.string().optional(),
-  /** Categorical or threshold colouring keyed to a result column. */
+  color: styleValue(z.string()).optional(),
+  /** Sugar over an expression: categorical/threshold colouring keyed to a
+   *  result column. Compiles to a `match`/`step` expression, and is what the
+   *  renderer reads to auto-generate a legend. */
   colorBy: z.object({
     column: z.string().min(1),
     palette: z.array(z.string()).optional(),
+    /** Explicit value→colour pairs; omitted ⇒ palette assigned in sort order. */
+    stops: z.array(z.tuple([z.union([z.string(), z.number()]), z.string()])).optional(),
   }).optional(),
-  opacity: z.number().min(0).max(1).optional(),
-  radius: z.number().positive().optional(),
-  width: z.number().positive().optional(),
+  opacity: styleValue(z.number().min(0).max(1)).optional(),
+  radius: styleValue(z.number().positive()).optional(),
+  width: styleValue(z.number().positive()).optional(),
+  /** Outline colour/width for polygons + lines — expression-capable, which is
+   *  how "highlight the vacant ones" gets a heavier stroke as well as a fill. */
+  outlineColor: styleValue(z.string()).optional(),
+  outlineWidth: styleValue(z.number().nonnegative()).optional(),
 });
 
 export const MapLayerSchema = z.object({
@@ -110,6 +135,8 @@ export const GeoHandleContentSchema = GeoBaseContentSchema.extend(
 );
 export const GeoBlockContentSchema = z.union([GeoHandleContentSchema, GeoInlineContentSchema]);
 ```
+
+**Escape hatch (contract reserved, not implemented in #314).** `GeoBaseContentSchema` carries an optional `program: z.string().min(1).optional()`. `visualize_map` never emits it and the #314 renderer ignores it; reserving the field now means a future child can add a codegen path + a network-permitted sandbox runtime (CSP allowlisting only the tile host) without changing the block type, the pinned-content schema, or any persisted row. The renderer's contract is: **`program` present ⇒ sandbox path, else spec path** — so the two can coexist per block rather than as a global mode.
 
 ### `packages/core/src/contracts/pinned-result.contract.ts`
 
@@ -197,7 +224,7 @@ Per package — `npm run test:unit`, plus `npm run test:integration` in `apps/ap
 
 ### `packages/core` — `__tests__/contracts/map-spec.contract.test.ts` (new), `pinned-result.contract.test.ts`, `models/column-definition.model.test.ts`, `registries/builtin-toolpacks.test.ts`, `registries/tool-capabilities.test.ts`
 
-MapSpec: defaults applied; ≥1 and ≤8 layers; `polygons`/`lines` reject a lat/lng source; `colorBy` accepted; geo block union resolves handle-first. `PINNED_CONTENT_SCHEMAS.geo` now defined and accepts the inline shape. `geoRole` nullable + rejects unknown roles; `ColumnDataTypeEnum` **unchanged** (regression pin). Pack count 7→8; every GIS tool has a capability; costHint pin extended; coherence holds (`geo` ⇒ `rows`). ≈ 16 cases.
+MapSpec: defaults applied; ≥1 and ≤8 layers; `polygons`/`lines` reject a lat/lng source; `colorBy` accepted (incl. explicit `stops`); **an expression is accepted anywhere a literal style value is** (`["case", ["==", ["get","prop_class"], "vacant"], "#ff8a00", "#cfd8dc"]`) and a non-array garbage value is rejected; nested expressions recurse; an optional `program` field parses but is ignored by the spec path; geo block union resolves handle-first. `PINNED_CONTENT_SCHEMAS.geo` now defined and accepts the inline shape. `geoRole` nullable + rejects unknown roles; `ColumnDataTypeEnum` **unchanged** (regression pin). Pack count 7→8; every GIS tool has a capability; costHint pin extended; coherence holds (`geo` ⇒ `rows`). ≈ 16 cases.
 
 ### `apps/api` unit — `__tests__/services/gis.service.test.ts`, `geocoding/*.test.ts`, `__tests__/tools/visualize-map.tool.test.ts`, `adapters/rest-api/geometry.util.test.ts`, `inference.util.test.ts`, `__tests__/services/tools.service.test.ts`
 
@@ -209,7 +236,7 @@ Seeded geo definitions exist and are idempotent across two `db:seed` runs; a `ge
 
 ### `apps/web` — `modules/MapWidget/__tests__/*`, `__tests__/{EditColumnDefinitionDialog,CreateColumnDefinitionDialog}.test.tsx`, `tool-pack-icons` guard, `glossary.util.test.ts` / `faq.util.test.ts`
 
-MapWidget UI: points-only, polygons-only, mixed, heatmap, cluster, empty state, error state, fit-to-bounds, popup template, feature-cap notice, theme-keyed basemap; renderer registration dispatches a `geo` block; the gate mounts only in view. `geoRole` select renders, submits, and clears to null. Icon + glossary/FAQ pins. ≈ 18 cases.
+MapWidget UI: points-only, polygons-only, mixed, heatmap, cluster, empty state, error state, fit-to-bounds, popup template, feature-cap notice, theme-keyed basemap; **an expression-styled layer renders and a malformed expression falls into the widget error state**; `colorBy` renders a legend; renderer registration dispatches a `geo` block; the gate mounts only in view. `geoRole` select renders, submits, and clears to null. Icon + glossary/FAQ pins. ≈ 18 cases.
 
 **Totals ≈ 77 cases.** The migration needs no dedicated test (dual-schema type-checks + the integration suite cover it); the seed does (idempotency case above).
 
@@ -220,6 +247,7 @@ MapWidget UI: points-only, polygons-only, mixed, heatmap, cluster, empty state, 
 - A ≥100-feature result arrives as a query handle, a small one inline; both render through the same `geo` path with no open-coded threshold.
 - A map block re-executes through widget-refresh **and pins**, materializing + refreshing like any durable block.
 - A table with `lat`/`lng` numeric columns and no geometry column plots as points.
+- The conditional-highlight case works without codegen: *"show all the parcels in Salt Lake County and highlight the vacant ones"* renders one polygons layer whose fill and outline come from a `case` expression (or `colorBy`), with a legend generated from the spec. A malformed expression shows the widget's typed error state rather than a blank or mis-styled map.
 - `geocode` resolves sanity addresses; a repeat address is served from cache at **zero units**; provider-down / unresolvable / quota-exhausted paths surface as typed results the agent relays — never invented coordinates; successful calls itemize in the usage ledger.
 - `bulk_geocode` requires the ack, locks its entity (mutations 409), writes GeoJSON Points into the target column, reports via the progress block, and charges once.
 - Column-wide `point_in_polygon`/`reproject` operate over a handle at any N; `compute_bounding_box` folds a handle to one bbox; `reproject` round-trips 3857↔4326 within 1e-6; `point_in_polygon` agrees with turf on fixtures.
@@ -231,6 +259,7 @@ MapWidget UI: points-only, polygons-only, mixed, heatmap, cluster, empty state, 
 - **Provider spend** — bounded by the org's metered quota + per-minute rate (existing gate), the global address cache, and the ack gate on the bulk path. Gate infra errors keep the documented **fail-open** posture: acceptable because a geocode unit is cheap and the provider key carries its own ceiling; the alternative (fail-closed) would break maps on a Redis blip.
 - **Bundle weight** — MapLibre is lazy + own chunk; a regression shows up as main-chunk growth in the build output.
 - **Reprojection correctness** — only 3857↔4326 is guaranteed; other CRS return typed `GIS_CRS_UNSUPPORTED` rather than silently wrong coordinates.
+- **Codegen deferral is deliberate, not an oversight** — the reserved `program` field means adopting a sandboxed map program later is additive. The security reason it is not in #314: a map sandbox must grant network access to model-authored JS, unlike the d3 sandbox's `default-src 'none'`. Whoever picks that up owns a tile-host-only CSP allowlist and an exfiltration review.
 - **Rollback** — the pack is data-gated: dropping `"gis"` from the slug enum (or a tier's list) removes the tools with no data migration; the `geo_role` column is additive and nullable, and seeded rows are `system` rows that can be soft-deleted. No destructive step to reverse.
 
 ## Files touched
