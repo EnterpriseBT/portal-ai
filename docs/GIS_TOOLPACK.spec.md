@@ -1,0 +1,245 @@
+# GIS toolpack + map visualization — Spec
+
+**Issue:** [EnterpriseBT/portal-ai#84](https://github.com/EnterpriseBT/portal-ai/issues/84) · **Discovery:** `docs/GIS_TOOLPACK.discovery.md`
+
+Pins the `gis` built-in toolpack (six pure spatial tools, two metered geocoders, an expensive bulk-column geocode job, and `visualize_map`), the declarative MapSpec + `geo` block contract and its MapLibre renderer, and the `geoRole` column annotation with ArcGIS→WGS84 normalization on import.
+
+## Key decisions (flag for review)
+
+1. **`visualize_map` takes an agent-authored MapSpec** (discovery D1-A) — no codegen sub-call. A map spec is a small closed vocabulary the agent authors directly, like SQL; `visualize_d3` needed codegen only because D3 programs are unbounded.
+2. **MapLibre GL, direct-mount** (D2-A). The D3 sandbox iframe is unusable: its srcdoc CSP forbids network, and tiles/glyphs are network fetches. `React.lazy` + the repo's first `manualChunks` entry keeps ~200 KB out of the main chunk.
+3. **`geoRole`, not a `geometry` type** (D4, revised 2026-08-02). One nullable annotation carries the geometry case *and* the lat/lng-pair case; `ColumnDataTypeEnum` is untouched.
+4. **Canonical geo column definitions are seeded** as `system` rows alongside `email` / `name` / `address`, so the role arrives through the existing field-mapping catalog rather than inference alone.
+5. **Mapbox behind a provider interface**, key via the standard Secrets-Manager → CI/CD → env-var path; a **global** Redis address cache makes repeats **zero-unit** through the async `CostResolver` (discovery Q1: `resolveCallCost` awaits, verified at `cost-gate.service.ts:43,68`).
+6. **Bulk geocode writes GeoJSON Points only** — lat/lng are SQL extractions, never duplicated columns (confirmed).
+7. **Geo blocks pin** by registering one `PINNED_CONTENT_SCHEMAS` entry; #312 shipped the mechanism and pre-admitted `geo`.
+8. Enterprise-scale carry-forward: charges bill on success and itemize in the #221 ledger; provider/Redis failures are typed tool results the agent relays, **never fabricated coordinates**; per-layer feature cap declared in the contract, not implicit; the bulk job locks its target entity.
+
+## Scope
+
+### In scope
+
+Core contracts (`geoRole`, MapSpec, `geo` block + pinned entry, GIS pack + capabilities), the DB column + migration + seeds, nine tool implementations + a `GisService`, the geocoding provider/cache/cost-resolver, the `bulk_geocode` job, geo inference + ArcGIS reprojection, `geoRole` in `station_context`, the `MapWidget` module + `geo` renderer, the `geoRole` form field, tier/icon/doc surfaces.
+
+### Out of scope
+
+PostGIS and SQL-pushdown spatial predicates; vector-tile self-hosting; self-hosted Nominatim; drawing tools; geofencing; 3D/terrain; routing; isochrone/network/hotspot analysis; choropleth statistical binning beyond categorical/threshold styling.
+
+## Surface
+
+### `packages/core/src/models/column-definition.model.ts`
+
+```ts
+/** How a column participates in geospatial operations (#84). Orthogonal to
+ *  `type`: geometry is JSON, coordinates are numbers. */
+export const GeoRoleSchema = z.enum(["geometry", "lat", "lng"]);
+export type GeoRole = z.infer<typeof GeoRoleSchema>;
+
+export const ColumnDefinitionSchema = CoreSchema.extend({
+  // …existing fields unchanged (type stays ColumnDataTypeEnum)…
+  geoRole: GeoRoleSchema.nullable(),
+});
+```
+
+`SORTABLE_COLUMN_TYPES` and `ColumnDataTypeEnum` are **not** modified. `column-definition.contract.ts:48,71` (create/update bodies) gain `geoRole: GeoRoleSchema.nullish()`.
+
+### `packages/core/src/contracts/map-spec.contract.ts` (new)
+
+```ts
+export const MapBasemapSchema = z.union([
+  z.enum(["carto-light", "carto-dark", "osm"]),
+  z.object({ url: z.string().url() }),
+]);
+
+/** Where a layer's geometry comes from — a GeoJSON column, or a lat/lng pair.
+ *  Explicit and authoritative: an entity may carry two coordinate pairs. */
+export const MapGeometrySourceSchema = z.union([
+  z.object({ geometryColumn: z.string().min(1) }),
+  z.object({ latColumn: z.string().min(1), lngColumn: z.string().min(1) }),
+]);
+
+export const MapLayerStyleSchema = z.object({
+  color: z.string().optional(),
+  /** Categorical or threshold colouring keyed to a result column. */
+  colorBy: z.object({
+    column: z.string().min(1),
+    palette: z.array(z.string()).optional(),
+  }).optional(),
+  opacity: z.number().min(0).max(1).optional(),
+  radius: z.number().positive().optional(),
+  width: z.number().positive().optional(),
+});
+
+export const MapLayerSchema = z.object({
+  kind: z.enum(["points", "polygons", "lines", "heatmap", "cluster"]),
+  source: MapGeometrySourceSchema,
+  label: z.string().optional(),
+  style: MapLayerStyleSchema.optional(),
+}).superRefine((l, ctx) => {
+  // polygons/lines need real geometry — a coordinate pair cannot express them.
+  if ((l.kind === "polygons" || l.kind === "lines") && !("geometryColumn" in l.source))
+    ctx.addIssue({ code: "custom", path: ["source"],
+      message: `layer kind '${l.kind}' requires geometryColumn` });
+});
+
+export const MapSpecSchema = z.object({
+  basemap: MapBasemapSchema.default("carto-light"),
+  initialView: z.union([
+    z.object({ center: z.tuple([z.number(), z.number()]), zoom: z.number() }),
+    z.literal("fit"),
+  ]).default("fit"),
+  layers: z.array(MapLayerSchema).min(1).max(8),
+  /** Mustache-style template over the feature's row fields. */
+  popup: z.object({ template: z.string().min(1) }).optional(),
+});
+```
+
+**Geo block content** (mirrors `d3-widget.contract.ts` exactly, handle branch first):
+
+```ts
+const GeoBaseContentSchema = z.object({
+  spec: MapSpecSchema,
+  title: z.string().optional(),
+  pipeline: D3PipelineSchema.optional(),   // the shared durable descriptor
+});
+export const GeoInlineContentSchema = GeoBaseContentSchema.extend({
+  rows: z.array(z.record(z.string(), z.unknown())),
+});
+export const GeoHandleContentSchema = GeoBaseContentSchema.extend(
+  QueryHandleEnvelopeFieldsSchema.shape
+);
+export const GeoBlockContentSchema = z.union([GeoHandleContentSchema, GeoInlineContentSchema]);
+```
+
+### `packages/core/src/contracts/pinned-result.contract.ts`
+
+```ts
+PINNED_CONTENT_SCHEMAS.geo = GeoInlineContentSchema;   // the #312 seam
+```
+
+### `packages/core/src/constants/large-data-ops.constants.ts`
+
+```ts
+/** Max features rendered per map layer (#84). Bounds the client; the wire
+ *  payload is already bounded by the sink threshold + handle snapshot cap. */
+export const MAP_LAYER_FEATURE_CAP = 10_000;
+/** Geocode address-cache TTL — results are effectively static. */
+export const GEOCODE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+```
+
+### `packages/core/src/registries/builtin-toolpacks.ts`
+
+Slug `"gis"` appended to `BuiltinToolpackSlugSchema` (`:32-40`); `GIS_PACK` spec literal (`iconSlug: "Map"` — geo-themed; `TravelExplore` is already taken by `web_search`, and the exact glyph is adjustable since the CI guard only requires *an* entry in `tool-pack-icons.util.ts`), appended to `BUILTIN_TOOLPACKS`; nine `CAPABILITIES` entries:
+
+| Tool | costHint | consumption | production | resultKind | computeShape |
+|---|---|---|---|---|---|
+| `visualize_map` | free | engine-pushdown | `{kind:"rows", onLarge:"handle"}` | `geo` | reduce |
+| `geocode`, `reverse_geocode` | metered | none | `{kind:"value"}` | scalar | map |
+| `compute_distance`, `centroid`, `buffer` | free | none | `{kind:"value"}` | scalar | map (`pure: true`) |
+| `compute_bounding_box` | free | streaming | `{kind:"value"}` | scalar | reduce |
+| `point_in_polygon`, `reproject` | free | streaming | `{kind:"rows", onLarge:"handle"}` | data-table | map |
+
+`point_in_polygon` / `reproject` are **single dual-mode tools** (#158): `withComputeInput` (`compute-input.util.ts:35-64`) adds `rows` XOR `queryHandle`; inline single-geometry params live alongside. `tier-catalog.ts` needs **no edit** — `pro` (`:130`) and `enterprise` (`:152`) spread `[...BuiltinToolpackSlugSchema.options]`; `standard`/`plus` enumerate and correctly omit `gis`.
+
+### `apps/api` — tools
+
+`GisService` (`src/services/gis.service.ts`) holds the math over per-module turf (`@turf/distance`, `@turf/boolean-point-in-polygon`, `@turf/centroid`, `@turf/bbox`, `@turf/buffer`) + `proj4`; tools stay thin `Tool` subclasses (`types/tools.ts:3-18`), one file each in `src/tools/`. Output **only** via `resolveResultSink` / `resolveSqlDelivery` (`no-open-coded-sink.test.ts` enforces it).
+
+- `geocode({ address })` → `{ lat, lng, formattedAddress, confidence, cached }`; `reverse_geocode({ lat, lng })` → `{ address, components, confidence, cached }`.
+- `GeocodingProvider` (`src/services/geocoding/provider.ts`): `{ geocode(address): Promise<GeocodeHit>; reverseGeocode(lat, lng): Promise<ReverseHit> }`; `MapboxGeocodingProvider` is the only implementation. Missing `environment.GEOCODING_API_KEY` throws at `build()` (the `web-search.tool.ts:20-23` precedent).
+- Cache: `geocode:v1:<provider>:<normalized-address>` (lowercase, trim, collapse whitespace), `GEOCODE_CACHE_TTL_MS`, **global** (address→coords is org-independent public data).
+- Zero-charge: `registerCostResolver("geocode", async (input) => (await cacheHas(input)) ? 0 : 1)` (+ the same for `reverse_geocode`) — legal because `CostResolver` returns `number | Promise<number>`.
+- `visualize_map({ sql, spec, title? })`: validates `spec` with `MapSpecSchema`, calls `resolveSqlDelivery`, emits `{ type: "geo", spec, pipeline: { sql, stationId, organizationId }, rows | …envelope }`. `resolveDisplayBlock` (`portal.service.ts:191`) gains a `geo` arm beside `d3 :209`.
+
+### `apps/api` — bulk geocode job
+
+`job.model.ts`: `JobTypeEnum` (`:38-46`) + `"bulk_geocode"`; `BulkGeocodeMetadataSchema` (JSDoc declaring the locked ids) `{ connectorEntityId, sourceColumnKey, targetColumnKey, portalId, expectedRecords }`; `BulkGeocodeResultSchema` `{ geocoded, cached, failed, durationMs }`; `JobTypeMap` (`:430`), `JOB_TYPE_SCHEMAS` (`:460`), and `JOB_LOCK_KEYS` (`:520-531`) entry `{ targetConnectorEntityIds, portalId }` mirroring `bulk_transform`.
+
+Tool `bulk_geocode_records`: ack-gate via `CostAcknowledgementService.computeJobSignature` → `BULK_DISPATCH_COST_NOT_ACKNOWLEDGED` on first call (the `transform-entity-records.tool.ts:572-621` pattern), `assertConnectorEntityUnlocked` (`job-lock.service.ts:137`), enqueue via `JobsService`, returns `{ jobId, expectedRecords, blockKind: "bulk-job-progress", blockContent }`. `resultKind: "progress"` ⇒ the wrap sets `deferChargeToJob` (`tools.service.ts:750`); the processor (`queues/processors/bulk-geocode.processor.ts`) charges `commitCharge({ toolCallId: "job:<jobId>", units: <successful uncached geocodes> })` — retry-safe by dedup key.
+
+### `apps/api` — codes, env, inference
+
+`api-codes.constants.ts`: `GEOCODE_PROVIDER_UNAVAILABLE`, `GEOCODE_ADDRESS_UNRESOLVED`, `GIS_GEOMETRY_INVALID`, `GIS_CRS_UNSUPPORTED`, `MAP_SPEC_INVALID` (+ recommendation entries). Provider/geometry failures return **typed tool results**, never fabricated coordinates.
+
+`environment.ts:49` gains `GEOCODING_API_KEY`; `infra/cloudformation/backend.yml` mirrors `TAVILY_API_KEY`'s three sites (`:59` parameter, `:232` task-role grant, `:489-490` container secret); `.env.example` updated.
+
+Inference (`adapters/rest-api/inference.util.ts:55-65`): before the object→`json` collapse, detect `{type, coordinates}` | `{rings|paths, spatialReference}` | `{type:"Feature", geometry}` → suggest `geoRole: "geometry"`; numeric columns whose key matches `/^(lat|latitude)$/i` (range ⊂ [-90, 90]) or `/^(lon|lng|long|longitude)$/i` (⊂ [-180, 180]) → `"lat"` / `"lng"`. `classifier.haiku.ts:71-82` response gains optional `suggestedGeoRole`. New `adapters/rest-api/geometry.util.ts`: `normalizeGeometry(value): GeoJSON | null` — ArcGIS rings/paths → GeoJSON, `wkid 102100 | 3857` → WGS84 via `proj4`, idempotent on already-WGS84 GeoJSON; called from the transform hop (`transform.util.ts`).
+
+`station-context.tool.ts:266,310` emits `geoRole` per column so the agent routes by declaration.
+
+### `apps/web`
+
+- `src/modules/MapWidget/` — `MapWidget.component.tsx` (container + `MapWidgetUI`), `MapWidgetGate.component.tsx` (in-view mount, mirroring `D3WidgetGate:48`), `utils/register.util.tsx` → `registerBlockRenderer("geo", …)` called from `main.tsx`, `utils/maplibre-loader.util.ts` (`React.lazy` + dynamic import), `__tests__/`, `stories/`. Reuses the shared `useWidgetRefresh` (now at `src/utils/`, message **and** pin refs) and the status-chip/`onHeight` chrome vocabulary. Interactions: pan/zoom, click→popup from `spec.popup.template`, hover highlight, fit-to-bounds, basemap keyed to the MUI theme (`carto-light`/`carto-dark`) with attribution control always on. Per-layer features clamped to `MAP_LAYER_FEATURE_CAP` with a visible "showing first N" note.
+- `vite.config.ts` — first `build.rollupOptions.output.manualChunks` entry isolating `maplibre-gl`.
+- `EditColumnDefinitionDialog` / `CreateColumnDefinitionDialog` — a `geoRole` `Select` (None / Geometry / Latitude / Longitude). **No transition allowlist involvement**: `geoRole` is not the storage type, so `ALLOWED_TYPE_TRANSITIONS` / `BLOCKED_TYPES` are untouched.
+- `utils/tool-pack-icons.util.ts:38-47` — a `gis` entry (CI-guarded, #303).
+- `utils/glossary.util.ts`, `faq.util.ts` — geospatial column role, map visualization, geocoding.
+
+## Migration
+
+`npm run db:generate -- --name add-column-definition-geo-role` — one nullable `geo_role text` column on `column_definitions` (`drizzle-zod` + `type-checks.ts` re-derive; build fails on drift). **No enum migration** (the revised design touches no pg enum) and **no backfill**: existing rows get `NULL`, and the seed below plus inference populate roles going forward.
+
+## Seed
+
+`SYSTEM_COLUMN_DEFINITIONS` (`apps/api/src/services/seed.service.ts:31`) gains three canonical `system: true` rows, matching how `email` / `name` / `address` already work — so a field mapping can adopt a geo role without inference:
+
+| key | label | type | geoRole | notes |
+|---|---|---|---|---|
+| `geometry` | Geometry | `json` | `geometry` | "GeoJSON geometry in WGS84 (EPSG:4326)" |
+| `latitude` | Latitude | `number` | `lat` | validation message names the −90…90 range |
+| `longitude` | Longitude | `number` | `lng` | −180…180 |
+
+Every existing row keeps `geoRole: null`. The pre-existing `address` (string) definition is the bulk-geocode input column — no new seed needed for it. Seeding is idempotent (upsert by `key`), so re-running `db:seed` on a populated org is safe.
+
+## TDD test plan
+
+Per package — `npm run test:unit`, plus `npm run test:integration` in `apps/api`. Never raw jest.
+
+### `packages/core` — `__tests__/contracts/map-spec.contract.test.ts` (new), `pinned-result.contract.test.ts`, `models/column-definition.model.test.ts`, `registries/builtin-toolpacks.test.ts`, `registries/tool-capabilities.test.ts`
+
+MapSpec: defaults applied; ≥1 and ≤8 layers; `polygons`/`lines` reject a lat/lng source; `colorBy` accepted; geo block union resolves handle-first. `PINNED_CONTENT_SCHEMAS.geo` now defined and accepts the inline shape. `geoRole` nullable + rejects unknown roles; `ColumnDataTypeEnum` **unchanged** (regression pin). Pack count 7→8; every GIS tool has a capability; costHint pin extended; coherence holds (`geo` ⇒ `rows`). ≈ 16 cases.
+
+### `apps/api` unit — `__tests__/services/gis.service.test.ts`, `geocoding/*.test.ts`, `__tests__/tools/visualize-map.tool.test.ts`, `adapters/rest-api/geometry.util.test.ts`, `inference.util.test.ts`, `__tests__/services/tools.service.test.ts`
+
+Spatial math vs turf reference fixtures (distance, point-in-polygon, centroid, bbox, buffer); `reproject` 3857↔4326 round-trip ≤ 1e-6; streaming `compute_bounding_box` folds a handle; dual-mode `point_in_polygon`/`reproject` reject both-sources-supplied and stream a handle. Geocode: provider hit, **cache hit returns `cached: true` and resolver yields 0 units**, provider down → typed `GEOCODE_PROVIDER_UNAVAILABLE`, unresolvable address → `GEOCODE_ADDRESS_UNRESOLVED`, missing key throws at build. `visualize_map`: invalid spec → `MAP_SPEC_INVALID`; inline vs handle both routed through the sink; block shape asserted. `geometry.util`: ArcGIS rings→GeoJSON, wkid 102100 reprojected, idempotent on WGS84, invalid → `null`. Inference: the three geometry shapes → `"geometry"`; lat/lng names+ranges → roles; out-of-range numeric not tagged. Cost-gate wrap guard enumerates `gis`. ≈ 34 cases.
+
+### `apps/api` integration — `__integration__/routes/…`, `__integration__/queues/bulk-geocode.integration.test.ts` (new)
+
+Seeded geo definitions exist and are idempotent across two `db:seed` runs; a `geoRole` update round-trips via the column-definition route; `station_context` emits `geoRole`; `bulk_geocode` — first call returns the ack rejection, acked call enqueues + locks (a competing mutation gets `409 ENTITY_LOCKED_BY_JOB`), processor writes GeoJSON Points and charges once with `toolCallId: "job:<id>"`, re-run is idempotent. ≈ 9 cases.
+
+### `apps/web` — `modules/MapWidget/__tests__/*`, `__tests__/{EditColumnDefinitionDialog,CreateColumnDefinitionDialog}.test.tsx`, `tool-pack-icons` guard, `glossary.util.test.ts` / `faq.util.test.ts`
+
+MapWidget UI: points-only, polygons-only, mixed, heatmap, cluster, empty state, error state, fit-to-bounds, popup template, feature-cap notice, theme-keyed basemap; renderer registration dispatches a `geo` block; the gate mounts only in view. `geoRole` select renders, submits, and clears to null. Icon + glossary/FAQ pins. ≈ 18 cases.
+
+**Totals ≈ 77 cases.** The migration needs no dedicated test (dual-schema type-checks + the integration suite cover it); the seed does (idempotency case above).
+
+## Acceptance criteria
+
+- A Pro/Enterprise station lists the GIS pack with its icon; Standard/Plus surface it as not-on-tier and its tools are uncallable.
+- The parcel walkthrough passes: ArcGIS FeatureServer → JSONata → sync stores WGS84 GeoJSON with `geoRole: "geometry"` → *"show all vacant parcels on a map, colored by zoning"* → `visualize_map` → interactive map; clicking a parcel pops its address + class.
+- A ≥100-feature result arrives as a query handle, a small one inline; both render through the same `geo` path with no open-coded threshold.
+- A map block re-executes through widget-refresh **and pins**, materializing + refreshing like any durable block.
+- A table with `lat`/`lng` numeric columns and no geometry column plots as points.
+- `geocode` resolves sanity addresses; a repeat address is served from cache at **zero units**; provider-down / unresolvable / quota-exhausted paths surface as typed results the agent relays — never invented coordinates; successful calls itemize in the usage ledger.
+- `bulk_geocode` requires the ack, locks its entity (mutations 409), writes GeoJSON Points into the target column, reports via the progress block, and charges once.
+- Column-wide `point_in_polygon`/`reproject` operate over a handle at any N; `compute_bounding_box` folds a handle to one bbox; `reproject` round-trips 3857↔4326 within 1e-6; `point_in_polygon` agrees with turf on fixtures.
+- Seeded `geometry` / `latitude` / `longitude` definitions are available for field mapping; a user can set or clear any column's `geoRole`, and the agent sees it in `station_context`.
+- All pins/guards pass with `gis`: pack count, costHint, capability coherence, cost-gate wrap, `no-open-coded-sink`, `system.prompt`, tool-pack icons.
+
+## Risks & rollback
+
+- **Provider spend** — bounded by the org's metered quota + per-minute rate (existing gate), the global address cache, and the ack gate on the bulk path. Gate infra errors keep the documented **fail-open** posture: acceptable because a geocode unit is cheap and the provider key carries its own ceiling; the alternative (fail-closed) would break maps on a Redis blip.
+- **Bundle weight** — MapLibre is lazy + own chunk; a regression shows up as main-chunk growth in the build output.
+- **Reprojection correctness** — only 3857↔4326 is guaranteed; other CRS return typed `GIS_CRS_UNSUPPORTED` rather than silently wrong coordinates.
+- **Rollback** — the pack is data-gated: dropping `"gis"` from the slug enum (or a tier's list) removes the tools with no data migration; the `geo_role` column is additive and nullable, and seeded rows are `system` rows that can be soft-deleted. No destructive step to reverse.
+
+## Files touched
+
+- **core:** `models/column-definition.model.ts` · `contracts/{column-definition,map-spec,pinned-result,index}.ts` · `constants/large-data-ops.constants.ts` · `registries/builtin-toolpacks.ts` · tests
+- **api:** `db/schema/column-definitions.table.ts` + `zod.ts` + `type-checks.ts` + `drizzle/<migration>` · `services/seed.service.ts` · `services/gis.service.ts` · `services/geocoding/{provider,mapbox,cache}.ts` · `tools/{visualize-map,geocode,reverse-geocode,compute-distance,point-in-polygon,centroid,buffer,compute-bounding-box,reproject,bulk-geocode-records}.tool.ts` · `services/tools.service.ts` · `services/portal.service.ts` · `services/cost-gate.service.ts` (resolver registration) · `constants/api-codes.constants.ts` · `models`→`job.model.ts` (core) + `queues/processors/bulk-geocode.processor.ts` + `queues/processors/index.ts` · `adapters/rest-api/{inference.util,classifier.haiku,classifier.prompt,transform.util,geometry.util}.ts` · `tools/station-context.tool.ts` · `prompts/system.prompt.ts` · `environment.ts` · `config/swagger.config.ts` · `infra/cloudformation/backend.yml` · tests
+- **web:** `modules/MapWidget/**` · `main.tsx` · `vite.config.ts` · `components/{Edit,Create}ColumnDefinitionDialog.component.tsx` · `utils/{tool-pack-icons,glossary,faq}.util.ts` · tests + stories
+- **docs:** `README`/toolpack docs · `CUSTOM_TOOLPACK_INTEGRATION.md` untouched (no wire-contract change)
+
+## Next step
+
+`/plan 84` slices this into TDD commits on this branch — roughly: (1) `geoRole` contract + migration + seeds; (2) `GisService` + the six pure spatial tools + capabilities/pins; (3) streaming/dual-mode forms; (4) MapSpec + `visualize_map` + the `geo` display arm + the pinned-content entry; (5) MapWidget module + renderer + chunking + stories; (6) geocoding provider + cache + zero-unit resolver; (7) `bulk_geocode` job + lock + progress; (8) inference + ArcGIS normalization + `station_context`; (9) prompt/doc/icon sync + smoke. Slices 1–5 need no external key; 6–7 need `GEOCODING_API_KEY` provisioned in app-dev.
