@@ -31,6 +31,8 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
       "MICROSOFT_OAUTH_CLIENT_ID",
       "MICROSOFT_OAUTH_TENANT",
       "NAMESPACE",
+      "SALES_EMAIL", // #311 public site-config contact
+      "SUPPORT_EMAIL", // #311 public site-config contact
       "SYSTEM_ID",
     ]);
     // every SSM entry declares a type
@@ -59,6 +61,32 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
     expect(pathFor(appDev, lookupKey("AUTH0_DOMAIN"))).toBe(
       "/portalai/dev/auth0-domain"
     );
+  });
+
+  // #311: the marketing-site contact keys — SSM (plain config, not secret),
+  // marked siteConfig so the post-write rebuild hook (slice 4) can key on it.
+  it("SUPPORT_EMAIL / SALES_EMAIL are siteConfig-marked SSM entries (#311)", () => {
+    expect(lookupKey("SUPPORT_EMAIL")).toMatchObject({
+      kind: "ssm",
+      name: "support-email",
+      siteConfig: true,
+    });
+    expect(lookupKey("SALES_EMAIL")).toMatchObject({
+      kind: "ssm",
+      name: "sales-email",
+      siteConfig: true,
+    });
+    expect(pathFor(appDev, lookupKey("SUPPORT_EMAIL"))).toBe(
+      "/portalai/dev/support-email"
+    );
+    expect(pathFor(appDev, lookupKey("SALES_EMAIL"))).toBe(
+      "/portalai/dev/sales-email"
+    );
+    // No other entry is siteConfig-marked (the hook must not over-fire).
+    expect(CATALOG.filter((e) => e.siteConfig).map((e) => e.key)).toEqual([
+      "SUPPORT_EMAIL",
+      "SALES_EMAIL",
+    ]);
   });
 
   it("STRIPE_WEBHOOK_SECRET is a Secrets Manager entry (#239)", () => {

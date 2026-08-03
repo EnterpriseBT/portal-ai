@@ -283,6 +283,16 @@ Resources:
               - ssmmessages:OpenControlChannel
               - ssmmessages:OpenDataChannel
             Resource: "*"
+          # #311: runtime business-config reads (BusinessConfigService) — the
+          # app itself reads the `portalops vars` SSM catalog at request time,
+          # TTL-cached, so a `vars set` reaches the public site-config
+          # endpoint without a task recycle. Same grant shape as the
+          # execution role's startup injection above.
+          - Effect: Allow
+            Action:
+              - ssm:GetParameters
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/*"
 
   TaskRole:
     Type: AWS::IAM::Role
@@ -477,6 +487,13 @@ Resources:
                     Fn::Sub: "${Environment}-RedisEndpoint"
                   Port: !ImportValue
                     Fn::Sub: "${Environment}-RedisPort"
+            # #311: enables runtime business-config SSM reads
+            # (BusinessConfigService). Deliberately NOT a Secrets/ValueFrom
+            # entry — the contact params are read at request time, and a
+            # ValueFrom on a not-yet-provisioned parameter would block task
+            # startup on operator action.
+            - Name: BUSINESS_CONFIG_SSM_PREFIX
+              Value: !Sub "/portalai/${Environment}"
           Secrets:
             - Name: DATABASE_URL
               ValueFrom: !Ref SecretArnDatabaseUrl

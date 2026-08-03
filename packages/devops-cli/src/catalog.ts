@@ -23,6 +23,9 @@ export interface CatalogEntry {
   name: string;
   /** SSM parameter type (ssm entries only). */
   ssmType?: "String" | "SecureString";
+  /** #311: marketing-site business config — a successful `vars set` of a
+   *  marked key fires the site-rebuild dispatch (slice 4). */
+  siteConfig?: boolean;
 }
 
 const secret = (key: string, name: string): CatalogEntry => ({
@@ -59,6 +62,11 @@ export const CATALOG: CatalogEntry[] = [
   ssm("CORS_ORIGIN", "cors-origin"),
   ssm("NAMESPACE", "namespace"),
   ssm("SYSTEM_ID", "system-id"),
+  // #311: public site-config contact addresses — served by
+  // GET /api/public/site-config (runtime SSM read, env fallback) and baked
+  // into the marketing site at build time.
+  { ...ssm("SUPPORT_EMAIL", "support-email"), siteConfig: true },
+  { ...ssm("SALES_EMAIL", "sales-email"), siteConfig: true },
 ];
 
 /** Resolve a catalog key or throw (typed) pointing at `vars describe`. */

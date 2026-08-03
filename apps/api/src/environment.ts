@@ -91,6 +91,15 @@ export const environment = {
   MICROSOFT_OAUTH_TENANT: process.env.MICROSOFT_OAUTH_TENANT || "common",
   // Redis configuration (BullMQ + Pub/Sub)
   REDIS_URL: process.env.REDIS_URL || "redis://localhost:6380",
+  // ── Public site-config business facts (#311). The env vars are the
+  //    LOCAL-DEV / fail-soft fallback; deployed envs read the live values
+  //    from SSM at runtime (BusinessConfigService) so a `portalops vars set`
+  //    reaches the endpoint without an ECS task recycle.
+  SUPPORT_EMAIL: process.env.SUPPORT_EMAIL || "",
+  SALES_EMAIL: process.env.SALES_EMAIL || "",
+  // The env's SSM parameter prefix (e.g. "/portalai/dev"). Unset ⇒ SSM reads
+  // disabled entirely — local dev needs no AWS credentials.
+  BUSINESS_CONFIG_SSM_PREFIX: process.env.BUSINESS_CONFIG_SSM_PREFIX || "",
   // Retention window for the tool-usage audit ledger (#179 D5): rows older
   // than this many months are hard-deleted by the daily maintenance purge.
   // 24 months ≫ any dispute window; widening it is an env change + restart.

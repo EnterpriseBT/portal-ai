@@ -58,6 +58,10 @@ Mutation. Batch-apply a `KEY=VALUE` env file (comments `#`, blanks, single surro
 Read (writes a **local** file). Default `./cloud-vars.<env>.env`; refuses overwrite; mode 0600; contains **plaintext secrets** (stderr warning).
 `--json`: `{ "path", "warning" }`
 
+### Marketing-site business config (#311)
+
+`SUPPORT_EMAIL` and `SALES_EMAIL` are SSM catalog entries (`support-email` / `sales-email` under the env's parameter prefix) served live by `GET /api/public/site-config` — the API reads them from SSM at request time (TTL-cached, env-var fallback), so a `vars set` reaches the endpoint **without** an ECS task recycle. They are marked `siteConfig` in the catalog: a successful `vars set` of either fires the marketing-site rebuild dispatch so the change propagates to the published static HTML.
+
 ---
 
 ## db
