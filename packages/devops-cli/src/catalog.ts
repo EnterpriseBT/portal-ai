@@ -52,6 +52,11 @@ export const CATALOG: CatalogEntry[] = [
   secret("OAUTH_STATE_SECRET", "oauth-state-secret"),
   secret("STRIPE_SECRET_KEY", "stripe-secret-key"), // #218 tier apply (rk_ recommended)
   secret("STRIPE_WEBHOOK_SECRET", "stripe-webhook-secret"), // #239 webhook signature verification
+  // #311: fine-grained PAT scoped to this repo (Contents: read + repository
+  // dispatch) — lets the API request a marketing-site rebuild when a Stripe
+  // `price.*` webhook moves an amount the site has baked into static HTML.
+  // NOT marked `siteConfig`: rotating the token is not a published fact.
+  secret("GITHUB_DISPATCH_TOKEN", "github-dispatch-token"),
   // ── SSM Parameter Store (config) ─
   ssm("GOOGLE_OAUTH_CLIENT_ID", "google-oauth-client-id"),
   ssm("MICROSOFT_OAUTH_CLIENT_ID", "microsoft-oauth-client-id"),

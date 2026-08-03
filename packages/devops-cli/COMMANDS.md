@@ -60,7 +60,19 @@ Read (writes a **local** file). Default `./cloud-vars.<env>.env`; refuses overwr
 
 ### Marketing-site business config (#311)
 
-`SUPPORT_EMAIL` and `SALES_EMAIL` are SSM catalog entries (`support-email` / `sales-email` under the env's parameter prefix) served live by `GET /api/public/site-config` — the API reads them from SSM at request time (TTL-cached, env-var fallback), so a `vars set` reaches the endpoint **without** an ECS task recycle. They are marked `siteConfig` in the catalog: a successful `vars set` of either fires the marketing-site rebuild dispatch so the change propagates to the published static HTML.
+`SUPPORT_EMAIL` and `SALES_EMAIL` are SSM catalog entries (`support-email` / `sales-email` under the env's parameter prefix) served live by `GET /api/public/site-config` — the API reads them from SSM at request time (TTL-cached, env-var fallback), so a `vars set` reaches the endpoint **without** an ECS task recycle. They are marked `siteConfig` in the catalog: a successful `vars set` (or a `vars apply` batch carrying one) fires the marketing-site rebuild dispatch so the change propagates to the published static HTML.
+
+**The rebuild dispatch.** Three independent triggers refresh the published site, so no single one is load-bearing:
+
+| Trigger | Fires when | Credential |
+|---|---|---|
+| `portalops` | `vars set`/`vars apply` of a `siteConfig` key, or a non-dry-run `tier apply` that changed ≥1 row | your shell `GITHUB_TOKEN` |
+| API | a Stripe `price.created`/`price.updated`/`price.deleted` webhook (first delivery only) | `GITHUB_DISPATCH_TOKEN` |
+| Schedule | nightly, unconditionally — the safety net | the workflow's own token |
+
+The `portalops` dispatch **never blocks the write**: the value is already committed when it fires, so an unset `GITHUB_TOKEN` or a GitHub outage prints one stderr notice and still exits 0. Double-firing (a Stripe price change followed by a `tier apply`) is expected and harmless — rebuilds are idempotent and the workflow's concurrency group serializes them.
+
+`GITHUB_DISPATCH_TOKEN` is a **secret** catalog entry (`github-dispatch-token`): a fine-grained PAT scoped to this repo with Contents: read + repository dispatch. It is the API's identity, deliberately separate from your operator token. Set it with `portalops vars set GITHUB_DISPATCH_TOKEN <pat> --env <env> --yes`; leaving it unset makes the API-side dispatch a no-op and leaves the nightly schedule as the freshness guarantee.
 
 ---
 

@@ -14,6 +14,13 @@ import {
 
 jest.unstable_mockModule("@portalai/cli-env", () => cliEnvMockModule());
 
+// #311: the site-rebuild dispatch is a side effect of writing a `siteConfig`
+// key. Mocked so the tests assert the HOOK, not GitHub.
+const mockFireSiteRebuild = jest.fn<(reason: string) => Promise<void>>();
+jest.unstable_mockModule("../github-dispatch.js", () => ({
+  fireSiteRebuild: mockFireSiteRebuild,
+}));
+
 const mockGetSecret = mocks.getSecret;
 const mockGetParam = mocks.getParam;
 
@@ -26,6 +33,8 @@ const appDev = BUILTIN_ENVIRONMENTS["app-dev"];
 let tmpDir: string;
 beforeEach(() => {
   resetCliEnvMocks();
+  mockFireSiteRebuild.mockReset();
+  mockFireSiteRebuild.mockResolvedValue(undefined);
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "portalops-vars-"));
 });
 afterEach(() => {
@@ -241,5 +250,54 @@ describe("templateVars", () => {
     expect(content).toContain("AUTH0_DOMAIN=param-val");
 
     await expect(templateVars(appDev, out)).rejects.toThrow(/refusing/i);
+  });
+});
+
+// ── #311 slice 4: the site-rebuild hook on siteConfig writes ─────────
+
+describe("site-rebuild dispatch hook (#311)", () => {
+  it("fires after setting a siteConfig key, naming the key and env", async () => {
+    await setVar(appDev, "SUPPORT_EMAIL", "help@portalsai.io", { yes: true });
+
+    expect(mockFireSiteRebuild).toHaveBeenCalledTimes(1);
+    expect(mockFireSiteRebuild.mock.calls[0][0]).toContain("SUPPORT_EMAIL");
+    expect(mockFireSiteRebuild.mock.calls[0][0]).toContain("app-dev");
+  });
+
+  it("does not fire for an ordinary key", async () => {
+    await setVar(appDev, "CORS_ORIGIN", "https://app-dev.portalsai.io", {
+      yes: true,
+    });
+
+    expect(mockFireSiteRebuild).not.toHaveBeenCalled();
+  });
+
+  it("fires once for a batch apply carrying siteConfig keys", async () => {
+    const file = path.join(tmpDir, "vars.env");
+    fs.writeFileSync(
+      file,
+      [
+        "CORS_ORIGIN=https://app-dev.portalsai.io",
+        "SUPPORT_EMAIL=help@portalsai.io",
+        "SALES_EMAIL=sales@portalsai.io",
+      ].join("\n")
+    );
+
+    await applyVars(appDev, file, { yes: true });
+
+    expect(mockFireSiteRebuild).toHaveBeenCalledTimes(1);
+    const reason = mockFireSiteRebuild.mock.calls[0][0];
+    expect(reason).toContain("SUPPORT_EMAIL");
+    expect(reason).toContain("SALES_EMAIL");
+    expect(reason).not.toContain("CORS_ORIGIN");
+  });
+
+  it("does not fire for a batch with no siteConfig keys", async () => {
+    const file = path.join(tmpDir, "vars.env");
+    fs.writeFileSync(file, "CORS_ORIGIN=https://app-dev.portalsai.io\n");
+
+    await applyVars(appDev, file, { yes: true });
+
+    expect(mockFireSiteRebuild).not.toHaveBeenCalled();
   });
 });

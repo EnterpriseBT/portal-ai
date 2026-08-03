@@ -74,6 +74,21 @@ Parameters:
   SecretArnStripeWebhookSecret:
     Type: String
     Description: Full ARN of portalai/{env}/stripe-webhook-secret secret
+  SecretArnGithubDispatchToken:
+    Type: String
+    Default: ""
+    Description: >-
+      Full ARN of portalai/{env}/github-dispatch-token secret (#311).
+      Fine-grained PAT (Contents: read + repository dispatch) the API uses to
+      request a marketing-site rebuild after a Stripe price change. Optional:
+      empty leaves the container var unset, which makes the dispatch a no-op
+      and lets the nightly scheduled rebuild carry the change instead.
+
+Conditions:
+  # #311: the site-rebuild PAT is optional. Without it the container var is
+  # simply absent, `RebuildDispatchService` no-ops, and the nightly scheduled
+  # rebuild remains the freshness guarantee.
+  HasGithubDispatchToken: !Not [!Equals [!Ref SecretArnGithubDispatchToken, ""]]
 
 Resources:
   # ── ECR Repository ───────────────────────────────────────
@@ -235,6 +250,10 @@ Resources:
               - !Ref SecretArnOauthStateSecret
               - !Ref SecretArnStripeSecretKey
               - !Ref SecretArnStripeWebhookSecret
+              - !If
+                - HasGithubDispatchToken
+                - !Ref SecretArnGithubDispatchToken
+                - !Ref AWS::NoValue
               - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!*"
           - Effect: Allow
             Action:
@@ -515,6 +534,11 @@ Resources:
               ValueFrom: !Ref SecretArnStripeSecretKey
             - Name: STRIPE_WEBHOOK_SECRET
               ValueFrom: !Ref SecretArnStripeWebhookSecret
+            - !If
+              - HasGithubDispatchToken
+              - Name: GITHUB_DISPATCH_TOKEN
+                ValueFrom: !Ref SecretArnGithubDispatchToken
+              - !Ref AWS::NoValue
             - Name: GOOGLE_OAUTH_CLIENT_ID
               ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/google-oauth-client-id"
             - Name: MICROSOFT_OAUTH_CLIENT_ID

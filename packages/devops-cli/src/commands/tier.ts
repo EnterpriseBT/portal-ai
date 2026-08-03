@@ -36,6 +36,7 @@ import {
   type SecretReader,
 } from "../stripe.js";
 import { tiers } from "../tables.js";
+import { fireSiteRebuild } from "../github-dispatch.js";
 import type { MutateOptions } from "./vars.js";
 
 /** `tier create` targeted a slug that already exists (#241). Maps to exit 9. */
@@ -351,6 +352,12 @@ export async function tierApply(
           },
         });
       }
+      // #311: tier rows are the pricing page. Converging them changes what
+      // the site should be publishing, so ask for a rebuild — after the
+      // writes and audit, and unable to fail either.
+      await fireSiteRebuild(
+        `tier apply ${dirty.map((c) => c.slug).join(",")} (${def.name})`
+      );
     }
     return { dryRun: false, changes, unmanaged };
   } finally {

@@ -100,6 +100,13 @@ export const environment = {
   // The env's SSM parameter prefix (e.g. "/portalai/dev"). Unset ⇒ SSM reads
   // disabled entirely — local dev needs no AWS credentials.
   BUSINESS_CONFIG_SSM_PREFIX: process.env.BUSINESS_CONFIG_SSM_PREFIX || "",
+  // ── Site-rebuild dispatch (#311). A fine-grained PAT scoped to this repo
+  //    (Contents: read + repository dispatch) and the `owner/repo` it fires
+  //    at. Unset ⇒ dispatch is a no-op: the nightly scheduled rebuild is the
+  //    safety net, so a missing token degrades freshness, never correctness.
+  GITHUB_DISPATCH_TOKEN: process.env.GITHUB_DISPATCH_TOKEN || "",
+  GITHUB_DISPATCH_REPO:
+    process.env.GITHUB_DISPATCH_REPO || "EnterpriseBT/portal-ai",
   // Per-IP fixed-window cap on the anonymous `/api/public` router. Generous
   // by design: the site fetches the snapshot ONCE per build, so anything
   // near this ceiling is a scraper, not a legitimate consumer.

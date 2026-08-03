@@ -114,6 +114,7 @@ jobs:
               SecretArnOauthStateSecret=${{ secrets.DEV_SECRET_ARN_OAUTH_STATE_SECRET }} \
               SecretArnStripeSecretKey=${{ secrets.DEV_SECRET_ARN_STRIPE_SECRET_KEY }} \
               SecretArnStripeWebhookSecret=${{ secrets.DEV_SECRET_ARN_STRIPE_WEBHOOK_SECRET }} \
+              SecretArnGithubDispatchToken=${{ secrets.DEV_SECRET_ARN_GITHUB_DISPATCH_TOKEN }} \
             --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset
 

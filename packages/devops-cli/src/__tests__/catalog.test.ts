@@ -15,6 +15,7 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
       "AUTH0_WEBHOOK_SECRET",
       "DATABASE_URL",
       "ENCRYPTION_KEY",
+      "GITHUB_DISPATCH_TOKEN", // #311 API-side site-rebuild dispatch
       "GOOGLE_OAUTH_CLIENT_SECRET",
       "MICROSOFT_OAUTH_CLIENT_SECRET",
       "OAUTH_STATE_SECRET",

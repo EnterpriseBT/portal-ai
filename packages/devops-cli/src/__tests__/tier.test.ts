@@ -29,6 +29,13 @@ jest.unstable_mockModule("drizzle-orm/postgres-js", () => ({
   drizzle: jest.fn(() => ({})),
 }));
 
+// #311: converging tier rows changes the pricing page, so a non-dry-run
+// apply with changes asks for a site rebuild. Mocked to assert the hook.
+const mockFireSiteRebuild = jest.fn<(reason: string) => Promise<void>>();
+jest.unstable_mockModule("../github-dispatch.js", () => ({
+  fireSiteRebuild: mockFireSiteRebuild,
+}));
+
 const { resolveStripeKey, TierApplyMissingPricesError } =
   await import("../stripe.js");
 const { exitCodeFor, jsonError } = await import("../output.js");
@@ -111,6 +118,8 @@ const fakeStore = (rows: ReturnType<typeof standardRow>[]) => {
 const ORIGINAL_KEY = process.env.STRIPE_SECRET_KEY;
 beforeEach(() => {
   resetCliEnvMocks();
+  mockFireSiteRebuild.mockReset();
+  mockFireSiteRebuild.mockResolvedValue(undefined);
   process.env.STRIPE_SECRET_KEY = "sk_test_fixture";
 });
 afterEach(() => {
@@ -743,5 +752,51 @@ describe("CONVERGED_POLICY_FIELDS (#241 case 21)", () => {
     });
     expect(v.public).toBe(false);
     expect(v.displayOrder).toBe(0);
+  });
+});
+
+// ── #311 slice 4: the site-rebuild hook on tier convergence ──────────
+
+describe("tierApply site-rebuild dispatch (#311)", () => {
+  it("fires once after a non-dry-run apply that changed rows", async () => {
+    const { factory } = fakeStore([
+      standardRow({ public: false, displayOrder: 0 }),
+    ]);
+
+    await tierApply(
+      local as never,
+      { yes: true },
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
+    );
+
+    expect(mockFireSiteRebuild).toHaveBeenCalledTimes(1);
+    expect(mockFireSiteRebuild.mock.calls[0][0]).toContain("standard");
+  });
+
+  it("does not fire on a dry run — nothing was published", async () => {
+    const { factory } = fakeStore([
+      standardRow({ public: false, displayOrder: 0 }),
+    ]);
+
+    await tierApply(
+      local as never,
+      { dryRun: true },
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
+    );
+
+    expect(mockFireSiteRebuild).not.toHaveBeenCalled();
+  });
+
+  it("does not fire when the diff is empty (every change a noop)", async () => {
+    const { factory } = fakeStore([standardRow()]);
+
+    const result = await tierApply(
+      local as never,
+      { yes: true },
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
+    );
+
+    expect(result.changes.every((c) => c.action === "noop")).toBe(true);
+    expect(mockFireSiteRebuild).not.toHaveBeenCalled();
   });
 });
