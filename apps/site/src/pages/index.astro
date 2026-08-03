@@ -1,0 +1,24 @@
+---
+import Base from "../layouts/Base.astro";
+import { fetchSiteConfig } from "../lib/site-config.js";
+
+const { config, isFixture } = await fetchSiteConfig();
+const buildStamp = isFixture ? "fixture" : config.generatedAt;
+---
+
+<Base
+  title="Portal.ai — Ask your data questions in plain language"
+  description="Portal.ai connects your data sources and answers questions about them in plain language, with charts and tables you can pin and share."
+  path="/"
+  buildStamp={buildStamp}
+>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <main id="main" class="container section">
+    <h1>Ask your data questions in plain language</h1>
+    <p>
+      Connect your spreadsheets, databases, and APIs — then ask questions and
+      get answers you can act on.
+    </p>
+    <button type="button" data-theme-toggle>Toggle theme</button>
+  </main>
+</Base>

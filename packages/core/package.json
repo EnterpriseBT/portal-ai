@@ -53,6 +53,7 @@
       "require": "./dist/content/index.js",
       "default": "./dist/content/index.js"
     },
+    "./package.json": "./package.json",
     "./styles": "./dist/styles/index.css",
     "./styles/fonts": "./dist/styles/fonts.css",
     "./styles/global": "./dist/styles/global.css"

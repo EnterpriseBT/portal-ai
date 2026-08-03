@@ -1,0 +1,133 @@
+---
+/**
+ * The one layout every page uses (#311).
+ *
+ * Owns the head contract — unique title/description, self-referencing
+ * canonical, OG/Twitter, the `portal:build` provenance stamp — and the
+ * theme protocol. Pages supply content and JSON-LD; they never hand-roll
+ * head tags, so an SEO regression is a change here, not a missed page.
+ */
+import "../styles/tokens.css";
+import "../styles/global.css";
+
+export interface Props {
+  title: string;
+  description: string;
+  /** Route path with leading and trailing slash, e.g. `/pricing/`. */
+  path: string;
+  /** JSON-LD objects for this page, serialized into ld+json blocks. */
+  jsonLd?: unknown[];
+  /** Snapshot provenance: the API's `generatedAt`, or `fixture`. */
+  buildStamp: string;
+  noindex?: boolean;
+}
+
+const {
+  title,
+  description,
+  path,
+  jsonLd = [],
+  buildStamp,
+  noindex = false,
+} = Astro.props;
+
+const canonical = new URL(path, Astro.site).href;
+const ogImage = new URL("/og-default.png", Astro.site).href;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex, follow" />}
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Portal.ai" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+
+    {
+      /* Provenance: which config snapshot these prices came from. `fixture`
+        here means the build never reached the API — the deploy workflow
+        greps for exactly that and refuses to publish. */
+    }
+    <meta name="portal:build" content={buildStamp} />
+
+    {
+      jsonLd.map((item) => (
+        <script
+          is:inline
+          type="application/ld+json"
+          set:html={JSON.stringify(item)}
+        />
+      ))
+    }
+
+    {
+      /* Theme, resolved BEFORE first paint.
+
+        Inline and synchronous on purpose: a deferred script would let the
+        light theme paint first and then snap to dark, which is worse than
+        no theming at all. It reads the same localStorage key and the same
+        JSON encoding the app writes, so someone arriving from the product
+        keeps their choice. */
+    }
+    <script is:inline>
+      (function () {
+        try {
+          var stored = localStorage.getItem("portalai-theme");
+          var name = stored ? JSON.parse(stored) : null;
+          var theme =
+            name === "brand.dark"
+              ? "dark"
+              : name === "brand"
+                ? "light"
+                : window.matchMedia("(prefers-color-scheme: dark)").matches
+                  ? "dark"
+                  : "light";
+          document.documentElement.setAttribute("data-theme", theme);
+        } catch {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+  </head>
+
+  <body>
+    <slot />
+
+    {
+      /* The toggle writes the app's encoding so the choice travels with the
+        visitor into the product. Progressive enhancement: with JS off the
+        page still renders in whatever the inline script resolved. */
+    }
+    <script is:inline>
+      document.addEventListener("click", function (event) {
+        var trigger = event.target.closest("[data-theme-toggle]");
+        if (!trigger) return;
+        var root = document.documentElement;
+        var next =
+          root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+        root.setAttribute("data-theme", next);
+        try {
+          localStorage.setItem(
+            "portalai-theme",
+            JSON.stringify(next === "dark" ? "brand.dark" : "brand")
+          );
+        } catch {
+          /* private mode — the toggle still works for this page view */
+        }
+      });
+    </script>
+  </body>
+</html>

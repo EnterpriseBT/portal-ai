@@ -1,0 +1,109 @@
+/**
+ * Base stylesheet for the public site (#311).
+ *
+ * Every value comes from `tokens.css`, which is generated from the same
+ * theme JSONs the app renders. Nothing here hardcodes a brand color — a
+ * palette change in `@portalai/core` reaches this page on the next build.
+ */
+
+@import "@portalai/core/styles/fonts";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family-body);
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  background: var(--color-background-default);
+  /* Repaint on theme toggle without a jarring snap. */
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-family-heading);
+  line-height: 1.2;
+  margin: 0 0 calc(var(--space-unit) * 2);
+}
+
+h1 {
+  font-size: clamp(2rem, 5vw, 3.25rem);
+}
+
+h2 {
+  font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+}
+
+p {
+  margin: 0 0 calc(var(--space-unit) * 2);
+}
+
+a {
+  color: var(--color-primary-main);
+  text-underline-offset: 0.2em;
+}
+
+a:focus-visible,
+button:focus-visible,
+[data-theme-toggle]:focus-visible {
+  outline: 2px solid var(--color-primary-main);
+  outline-offset: 2px;
+}
+
+code,
+pre {
+  font-family: var(--font-family-mono);
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ── Layout primitives ─────────────────────────────────────────────── */
+
+.container {
+  width: min(100% - calc(var(--space-unit) * 4), 72rem);
+  margin-inline: auto;
+}
+
+.section {
+  padding-block: calc(var(--space-unit) * 8);
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+}
+
+.skip-link:focus {
+  left: var(--space-unit);
+  top: var(--space-unit);
+  z-index: 10;
+  padding: var(--space-unit);
+  background: var(--color-background-paper);
+  border-radius: var(--radius-base);
+}
