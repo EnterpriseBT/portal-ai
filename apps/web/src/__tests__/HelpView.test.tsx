@@ -1,13 +1,13 @@
 import { jest } from "@jest/globals";
 import type { GettingStartedStep } from "../utils/getting-started.util";
-import type { GlossaryEntry } from "../utils/glossary.util";
-import type { FAQEntry } from "../utils/faq.util";
+import type { GlossaryEntry } from "@portalai/core/content";
+import type { FAQEntry } from "@portalai/core/content";
 
 const { render, screen, within } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { HelpView, HelpViewUI } = await import("../views/Help.view");
-const { GlossaryCategory } = await import("../utils/glossary.util");
-const { FAQCategory } = await import("../utils/faq.util");
+const { GlossaryCategory } = await import("@portalai/core/content");
+const { FAQCategory } = await import("@portalai/core/content");
 const { ApplicationRoute } = await import("../utils/routes.util");
 
 const stepsFixture: GettingStartedStep[] = [

@@ -3,8 +3,8 @@ import {
   FAQ_ENTRIES,
   FAQCategory,
   filterFAQ,
-} from "../utils/faq.util";
-import { GLOSSARY_ENTRIES } from "../utils/glossary.util";
+} from "../../content/faq.util.js";
+import { GLOSSARY_ENTRIES } from "../../content/glossary.util.js";
 
 // ── 2.1 — Type and category enum ────────────────────────────────────
 

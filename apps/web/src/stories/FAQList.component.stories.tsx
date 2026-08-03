@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
 
 import { FAQList, type FAQListProps } from "../components/FAQList.component";
-import { FAQ_ENTRIES, FAQCategory, filterFAQ } from "../utils/faq.util";
+import { FAQ_ENTRIES, FAQCategory, filterFAQ } from "@portalai/core/content";
 
 const meta = {
   title: "Components/FAQList",

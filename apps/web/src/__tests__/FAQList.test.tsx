@@ -1,10 +1,10 @@
 import { jest } from "@jest/globals";
-import type { FAQEntry } from "../utils/faq.util";
+import type { FAQEntry } from "@portalai/core/content";
 
 const { render, screen, within } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { FAQList } = await import("../components/FAQList.component");
-const { FAQCategory } = await import("../utils/faq.util");
+const { FAQCategory } = await import("@portalai/core/content");
 
 const fixture: FAQEntry[] = [
   {

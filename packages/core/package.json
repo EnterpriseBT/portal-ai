@@ -47,6 +47,12 @@
       "require": "./dist/constants/index.js",
       "default": "./dist/constants/index.js"
     },
+    "./content": {
+      "types": "./dist/content/index.d.ts",
+      "import": "./dist/content/index.js",
+      "require": "./dist/content/index.js",
+      "default": "./dist/content/index.js"
+    },
     "./styles": "./dist/styles/index.css",
     "./styles/fonts": "./dist/styles/fonts.css",
     "./styles/global": "./dist/styles/global.css"
@@ -55,7 +61,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "npm run clean && npm run build:ts && npm run build:scss && npm run build:assets",
+    "build": "npm run clean && npm run build:ts && npm run build:scss && npm run build:assets && npm run build:fonts",
     "build:ts": "tsc --project tsconfig.build.json",
     "build:scss": "sass src/assets/scss:dist/styles --no-source-map",
     "build:assets": "cp -r src/assets/fonts dist/fonts && cp -r src/assets/themes dist/themes && mkdir -p dist/assets/icons && cp -r src/assets/icons dist/assets/",
@@ -72,7 +78,8 @@
     "test:integration": "true",
     "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
-    "test:ui": "NODE_OPTIONS=--experimental-vm-modules jest --watch --verbose=false"
+    "test:ui": "NODE_OPTIONS=--experimental-vm-modules jest --watch --verbose=false",
+    "build:fonts": "node scripts/build-fonts.mjs"
   },
   "peerDependencies": {
     "react": "^19.0.0",
@@ -109,6 +116,7 @@
     "sass": "^1.97.3",
     "storybook": "^8.6.15",
     "ts-jest": "^29.4.6",
+    "ttf2woff2": "^8.0.1",
     "typescript": "^5.7.2",
     "vite": "^6.4.1",
     "vite-plugin-svgr": "^4.5.0"

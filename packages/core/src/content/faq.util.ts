@@ -1,3 +1,11 @@
+/**
+ * The product FAQ — shared by the in-app Help view and the public marketing
+ * site (#311), where the entries also become `FAQPage` JSON-LD.
+ *
+ * Moved verbatim from `apps/web/src/utils`. Like the glossary, it imports
+ * nothing: pure data, no bundler assumptions.
+ */
+
 // ── Categories ──────────────────────────────────────────────────────
 
 export enum FAQCategory {
