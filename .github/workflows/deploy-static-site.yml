@@ -1,0 +1,177 @@
+name: Deploy Static Site
+
+# Reusable deploy for the public marketing site (#311). Both callers
+# (`deploy-site-dev.yml`, `deploy-site-prod.yml`) go through here so the dev
+# and prod paths cannot drift — the only differences between them are the
+# inputs below.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: "dev | prod — selects stack names and CloudFormation Environment"
+        required: true
+        type: string
+      subdomain:
+        description: "Subdomain prefix, e.g. site-dev or www"
+        required: true
+        type: string
+      build-ref:
+        description: "Git ref to build. Prod always passes a release tag, never a branch."
+        required: true
+        type: string
+      site-url:
+        description: "Canonical origin, e.g. https://site-dev.portalsai.io"
+        required: true
+        type: string
+      site-config-url:
+        description: "The public site-config endpoint. ALWAYS set — an empty value would produce a fixture build."
+        required: true
+        type: string
+      app-url:
+        description: "Where sign-in/sign-up CTAs point"
+        required: true
+        type: string
+      gh-environment:
+        description: >-
+          GitHub Environment to run under, for its protection rules. A caller
+          job that uses `uses:` cannot declare `environment:` itself, so the
+          prod gate (required reviewers) has to be applied here.
+        required: false
+        type: string
+        default: ""
+    secrets:
+      aws-role-arn:
+        required: true
+      hosted-zone-id:
+        required: true
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.gh-environment }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout ${{ inputs.build-ref }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.build-ref }}
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.aws-role-arn }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Prod has no network/database/backend stack of its own yet, so it
+      # needs dns-certs deployed here. Dev already gets it from deploy-dev.
+      - name: Deploy DNS & certs stack (prod only)
+        if: inputs.environment == 'prod'
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-prod-dns-certs \
+            --template-file infra/cloudformation/dns-certs.yml \
+            --parameter-overrides \
+              Environment=prod \
+              HostedZoneId=${{ secrets.hosted-zone-id }} \
+            --no-fail-on-empty-changeset
+
+      - name: Deploy site stack
+        run: |
+          CERT_ARN=$(aws cloudformation describe-stacks \
+            --stack-name portalai-${{ inputs.environment }}-dns-certs \
+            --query "Stacks[0].Outputs[?ExportName=='${{ inputs.environment }}-CertificateArn'].OutputValue" \
+            --output text)
+          aws cloudformation deploy \
+            --stack-name portalai-${{ inputs.environment }}-site \
+            --template-file infra/cloudformation/site.yml \
+            --parameter-overrides \
+              Environment=${{ inputs.environment }} \
+              Subdomain=${{ inputs.subdomain }} \
+              CertificateArn="$CERT_ARN" \
+              HostedZoneId=${{ secrets.hosted-zone-id }} \
+            --no-fail-on-empty-changeset
+
+      # `SITE_CONFIG_URL` is set, so any failure to reach or parse the
+      # endpoint fails this step. That is the intent: keep the last good
+      # deploy live rather than publish a page with missing prices.
+      - name: Build site
+        env:
+          SITE_URL: ${{ inputs.site-url }}
+          SITE_CONFIG_URL: ${{ inputs.site-config-url }}
+          SITE_APP_URL: ${{ inputs.app-url }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: npx turbo run build --filter=@portalai/site
+
+      # Belt and braces over the build's own check: if the fixture ever
+      # reached a published artifact, every price on the site would be $0.
+      - name: Refuse to publish a fixture build
+        run: |
+          if grep -rl 'name="portal:build" content="[^"]*fixture' apps/site/dist --include='*.html'; then
+            echo "::error::Built HTML carries the fixture stamp — the build did not read live config. Refusing to publish."
+            exit 1
+          fi
+          echo "No fixture stamp found; build used live configuration."
+
+      - name: Resolve stack outputs
+        id: stack
+        run: |
+          BUCKET=$(aws cloudformation describe-stacks \
+            --stack-name portalai-${{ inputs.environment }}-site \
+            --query "Stacks[0].Outputs[?ExportName=='${{ inputs.environment }}-SiteBucketName'].OutputValue" \
+            --output text)
+          DIST=$(aws cloudformation describe-stacks \
+            --stack-name portalai-${{ inputs.environment }}-site \
+            --query "Stacks[0].Outputs[?ExportName=='${{ inputs.environment }}-SiteDistributionId'].OutputValue" \
+            --output text)
+          echo "bucket=$BUCKET" >> "$GITHUB_OUTPUT"
+          echo "distribution=$DIST" >> "$GITHUB_OUTPUT"
+
+      # Two passes, in this order, both deliberate:
+      #
+      #  1. Fingerprinted assets (/_astro/*) are immutable — cache them for a
+      #     year. Uploading them FIRST means the new HTML never references an
+      #     asset that isn't there yet.
+      #  2. HTML/XML/TXT must revalidate every time, or a price change would
+      #     sit in browser caches long after the invalidation.
+      #
+      # `--delete` runs only on the second pass, once every replacement
+      # object is already in place.
+      - name: Sync immutable assets
+        run: |
+          aws s3 sync apps/site/dist/ "s3://${{ steps.stack.outputs.bucket }}/" \
+            --exclude "*.html" --exclude "*.xml" --exclude "*.txt" \
+            --cache-control "public, max-age=31536000, immutable"
+
+      - name: Sync HTML and machine-readable files
+        run: |
+          aws s3 sync apps/site/dist/ "s3://${{ steps.stack.outputs.bucket }}/" \
+            --exclude "*" \
+            --include "*.html" --include "*.xml" --include "*.txt" \
+            --cache-control "public, max-age=0, must-revalidate" \
+            --delete
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.stack.outputs.distribution }}" \
+            --paths "/*"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Site deployed"
+            echo ""
+            echo "- Environment: \`${{ inputs.environment }}\`"
+            echo "- URL: ${{ inputs.site-url }}"
+            echo "- Built from: \`${{ inputs.build-ref }}\` (${{ github.sha }})"
+            echo "- Config source: ${{ inputs.site-config-url }}"
+          } >> "$GITHUB_STEP_SUMMARY"

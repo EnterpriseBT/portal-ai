@@ -1,0 +1,46 @@
+name: Deploy Site (dev)
+
+# The dev marketing site (#311). Three triggers, deliberately overlapping —
+# no single one is load-bearing:
+#
+#   push        — code changes to the site itself
+#   dispatch    — a config change (Stripe price, tier apply, vars set) fired
+#                 by RebuildDispatchService or portalops
+#   schedule    — nightly, unconditionally. The safety net that bounds
+#                 staleness to 24h even if every dispatch is lost.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/site/**"
+      - "packages/core/src/content/**"
+      - "packages/core/src/assets/**"
+      - "packages/core/src/contracts/site-config.contract.ts"
+      - "infra/cloudformation/site.yml"
+      - ".github/workflows/deploy-site-dev.yml"
+      - ".github/workflows/deploy-static-site.yml"
+  repository_dispatch:
+    types: [site-config-changed]
+  schedule:
+    # 09:00 UTC daily — the staleness ceiling.
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-site-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy-static-site.yml
+    with:
+      environment: dev
+      subdomain: site-dev
+      build-ref: main
+      site-url: https://site-dev.portalsai.io
+      site-config-url: https://api-dev.portalsai.io/api/public/site-config
+      app-url: https://app-dev.portalsai.io
+    secrets:
+      aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
+      hosted-zone-id: ${{ secrets.DEV_HOSTED_ZONE_ID }}
