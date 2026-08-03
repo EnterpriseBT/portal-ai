@@ -78,6 +78,9 @@ const standardRow = (over: Record<string, unknown> = {}) => ({
   builtinToolpacks: [...CATALOG_STANDARD.builtinToolpacks],
   customToolpacks: CATALOG_STANDARD.customToolpacks,
   cta: CATALOG_STANDARD.cta,
+  // #311: marketing-site fields (catalog-owned).
+  public: CATALOG_STANDARD.public,
+  displayOrder: CATALOG_STANDARD.displayOrder,
   description: null,
   visibleToOrganizationId: null,
   ...over,
@@ -262,6 +265,32 @@ describe("tierApply convergence (#218 case 5)", () => {
       to: [...CATALOG_STANDARD.builtinToolpacks],
     });
     expect(store.applyChanges).toHaveBeenCalledTimes(1);
+  });
+
+  // #311: a live row that predates the marketing site (is_public=false,
+  // display_order=0) is flipped public by apply — the "no code change to
+  // publish a tier" acceptance criterion.
+  it("converges public/displayOrder from the catalog (#311)", async () => {
+    const { factory } = fakeStore([
+      standardRow({ public: false, displayOrder: 0 }),
+    ]);
+
+    const result = await tierApply(
+      local as never,
+      { dryRun: true },
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
+    );
+
+    const standard = result.changes.find((c) => c.slug === "standard")!;
+    expect(standard.action).toBe("update");
+    expect(standard.fields.public).toEqual({
+      from: false,
+      to: CATALOG_STANDARD.public,
+    });
+    expect(standard.fields.displayOrder).toEqual({
+      from: 0,
+      to: CATALOG_STANDARD.displayOrder,
+    });
   });
 
   it("a null stripeLookupKey converges stripe_price_id back to NULL", async () => {
@@ -684,6 +713,12 @@ describe("CONVERGED_POLICY_FIELDS (#241 case 21)", () => {
     expect(CONVERGED_POLICY_FIELDS).not.toContain("visibleToOrganizationId");
   });
 
+  // #311: the marketing-site fields are catalog-owned policy.
+  it("includes public and displayOrder (#311)", () => {
+    expect(CONVERGED_POLICY_FIELDS).toContain("public");
+    expect(CONVERGED_POLICY_FIELDS).toContain("displayOrder");
+  });
+
   it("buildTierUpdateSets omits unprovided fields", () => {
     const sets = buildTierUpdateSets({ slug: "x", cta: "contact" });
     expect(sets).toMatchObject({ cta: "contact", updatedBy: "portalops" });
@@ -696,5 +731,17 @@ describe("CONVERGED_POLICY_FIELDS (#241 case 21)", () => {
     expect(typeof v.id).toBe("string");
     expect(typeof v.created).toBe("number");
     expect(v.cta).toBe("contact");
+  });
+
+  // #311: custom (per-client) tiers are never public — the DB CHECK forbids
+  // public + org-scoped, and create defaults must sit below it.
+  it("buildTierCreateValues defaults public:false / displayOrder:0 (#311)", () => {
+    const v = buildTierCreateValues({
+      slug: "acme",
+      displayName: "Acme",
+      visibleToOrganizationId: "org_acme",
+    });
+    expect(v.public).toBe(false);
+    expect(v.displayOrder).toBe(0);
   });
 });

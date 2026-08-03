@@ -77,6 +77,10 @@ export const CONVERGED_POLICY_FIELDS = [
   // `visibleToOrganizationId` are NOT here — they are operator/per-client
   // state a `tier apply` must never clobber.
   "cta",
+  // #311: the marketing-site fields are catalog-owned policy too — flipping
+  // a tier public is a catalog edit + apply, never a code change.
+  "public",
+  "displayOrder",
 ] as const;
 type ConvergedPolicyField = (typeof CONVERGED_POLICY_FIELDS)[number];
 
@@ -402,6 +406,10 @@ export function buildTierCreateValues(
     builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
     customToolpacks: true,
     cta: input.cta ?? "contact",
+    // #311: custom (per-client) tiers are never public — the DB CHECK
+    // forbids public + org-scoped.
+    public: false,
+    displayOrder: 0,
     description: input.description ?? null,
     visibleToOrganizationId: input.visibleToOrganizationId ?? null,
   };

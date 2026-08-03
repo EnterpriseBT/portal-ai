@@ -52,6 +52,9 @@ export const tiers = pgTable("tiers", {
   // #241: cta is converged from the catalog; description + visibility are
   // operator/per-client state the tier create/update commands write directly.
   cta: text("cta").notNull(),
+  // #311: marketing-site fields, converged from the catalog.
+  public: boolean("is_public").notNull(),
+  displayOrder: integer("display_order").notNull(),
   description: text("description"),
   visibleToOrganizationId: text("visible_to_organization_id"),
 });

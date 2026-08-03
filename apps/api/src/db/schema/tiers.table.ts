@@ -61,6 +61,13 @@ export const tiers = pgTable(
      *  is the fail-closed baseline (no CTA); `tier apply` converges it from the
      *  catalog. */
     cta: text("cta").notNull().default("none"),
+    /** #311: served to anonymous visitors by `GET /api/public/site-config`.
+     *  Fail-closed default — a row is invisible to the marketing site unless
+     *  the catalog explicitly marks it (`tier apply` converges it). Column
+     *  `is_public`: PUBLIC is a Postgres reserved word. */
+    public: boolean("is_public").notNull().default(false),
+    /** #311: marketing pricing-card order (ascending). Catalog-converged. */
+    displayOrder: integer("display_order").notNull().default(0),
     /** #241: operator-authored plan blurb. Nullable; excluded from `tier apply`
      *  convergence so operator copy is never clobbered. */
     description: text("description"),
@@ -96,6 +103,12 @@ export const tiers = pgTable(
     check(
       "tiers_cta_price_check",
       sql`${t.cta} <> 'subscribe' OR ${t.stripePriceId} IS NOT NULL`
+    ),
+    // #311: a public (marketing-site) tier can never be org-private —
+    // unrepresentable at the DB, not merely filtered by the finder.
+    check(
+      "tiers_public_org_check",
+      sql`${t.public} = false OR ${t.visibleToOrganizationId} IS NULL`
     ),
     check(
       "tiers_charges_nonneg",
