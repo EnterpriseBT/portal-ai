@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "npm run build:tokens && astro dev --port 3002",
     "build:tokens": "node scripts/generate-tokens.mjs",
-    "build": "npm run build:tokens && astro build",
+    "build": "npm run build:tokens && astro build && node scripts/verify-pages.mjs",
     "preview": "astro preview --port 3002",
     "lint": "eslint src scripts --ext .ts,.mjs,.astro --max-warnings 0",
     "lint:fix": "eslint src scripts --ext .ts,.mjs,.astro --max-warnings 0 --fix",

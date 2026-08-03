@@ -1,0 +1,148 @@
+---
+import Page from "../layouts/Page.astro";
+import { siteConfig, siteUrl, appUrl } from "../lib/site-context.js";
+import { orderedTiers, formatPrice } from "../lib/site-config.js";
+import {
+  breadcrumbLd,
+  softwareApplicationLd,
+  faqPageLd,
+} from "../lib/jsonld.js";
+
+/**
+ * Every number on this page comes from the build snapshot — nothing is
+ * hardcoded. Publishing a price change is `portalops tier apply` (or a
+ * Stripe price edit) plus the rebuild it dispatches; it is never a code
+ * change. That is the whole point of the endpoint.
+ */
+const tiers = orderedTiers(siteConfig);
+
+const jsonLd = [
+  breadcrumbLd(siteUrl, [
+    { name: "Home", path: "/" },
+    { name: "Pricing", path: "/pricing/" },
+  ]),
+  softwareApplicationLd(siteUrl, siteConfig),
+  faqPageLd(),
+];
+
+/** `null` credits mean unlimited, not zero — the distinction is the plan. */
+const credit = (value: number | null) =>
+  value === null ? "Unlimited" : value.toLocaleString("en-US");
+
+const packLabel = (slug: string) =>
+  slug
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+---
+
+<Page
+  title="Pricing — Portals.ai"
+  description="Portals.ai pricing plans, with monthly credit allocations and the toolpacks included in each. Talk to us about custom plans."
+  path="/pricing/"
+  jsonLd={jsonLd}
+>
+  <h1>Pricing</h1>
+  <p class="muted">
+    Plans differ by how much tool work they include each month and which
+    toolpacks the agent can reach for. Connecting data, building portals, and
+    pinning results are never metered.
+  </p>
+
+  <ul class="card-grid">
+    {
+      tiers.map((tier) => (
+        <li class="card">
+          <h2>{tier.displayName}</h2>
+
+          {tier.price ? (
+            <p class="price">
+              <span class="price__amount">
+                {formatPrice(tier.price.unitAmount, tier.price.currency)}
+              </span>
+              <span class="muted">/{tier.price.interval}</span>
+            </p>
+          ) : (
+            <p class="price">
+              <span class="price__amount">Let's talk</span>
+            </p>
+          )}
+
+          {tier.description && <p>{tier.description}</p>}
+
+          <dl class="allowance">
+            <div>
+              <dt>Standard tool calls</dt>
+              <dd>{credit(tier.credits.metered)} / month</dd>
+            </div>
+            <div>
+              <dt>Heavy tool calls</dt>
+              <dd>{credit(tier.credits.expensive)} / month</dd>
+            </div>
+          </dl>
+
+          <p class="muted">
+            {tier.builtinToolpacks.length > 0
+              ? `Toolpacks: ${tier.builtinToolpacks.map(packLabel).join(", ")}`
+              : "Core workspace only"}
+            {tier.customToolpacks && " · your own webhook tools"}
+          </p>
+
+          <div class="card__spacer" />
+
+          {tier.cta === "contact" || tier.price === null ? (
+            <a class="button" href="/contact/">
+              Contact sales
+            </a>
+          ) : tier.cta === "subscribe" ? (
+            <a class="button button--primary" href={appUrl}>
+              Choose {tier.displayName}
+            </a>
+          ) : (
+            <a class="button" href={appUrl}>
+              Get started
+            </a>
+          )}
+        </li>
+      ))
+    }
+  </ul>
+
+  <p class="muted">
+    Need something that isn't listed — higher allowances, a private toolpack, an
+    invoice instead of a card? <a href="/contact/">Get in touch</a>.
+  </p>
+
+  <style>
+    .price {
+      margin-block-end: calc(var(--space-unit) * 2);
+    }
+
+    .price__amount {
+      font-family: var(--font-family-heading);
+      font-size: 2rem;
+      font-weight: var(--font-weight-bold);
+    }
+
+    .allowance {
+      margin: 0 0 calc(var(--space-unit) * 2);
+    }
+
+    .allowance div {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--space-unit);
+      padding-block: calc(var(--space-unit) * 0.5);
+      border-block-end: 1px solid var(--color-divider);
+    }
+
+    .allowance dt {
+      color: var(--color-text-secondary);
+    }
+
+    .allowance dd {
+      margin: 0;
+      font-weight: var(--font-weight-medium);
+    }
+  </style>
+</Page>

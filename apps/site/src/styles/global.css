@@ -107,3 +107,58 @@ img {
   background: var(--color-background-paper);
   border-radius: var(--radius-base);
 }
+
+/* ── Buttons / CTAs ────────────────────────────────────────────────── */
+
+.button {
+  display: inline-block;
+  padding: calc(var(--space-unit) * 1.25) calc(var(--space-unit) * 2.5);
+  margin-inline-end: var(--space-unit);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-base);
+  font-weight: var(--font-weight-medium);
+  text-decoration: none;
+  color: var(--color-text-primary);
+}
+
+.button--primary {
+  background: var(--color-primary-main);
+  border-color: var(--color-primary-main);
+  color: var(--color-primary-contrast-text);
+}
+
+.button:hover {
+  border-color: var(--color-primary-main);
+}
+
+/* ── Cards ─────────────────────────────────────────────────────────── */
+
+.card-grid {
+  display: grid;
+  gap: calc(var(--space-unit) * 3);
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  padding: calc(var(--space-unit) * 3);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-base);
+  background: var(--color-background-paper);
+}
+
+.card h3 {
+  margin-block-end: var(--space-unit);
+}
+
+.card__spacer {
+  flex: 1;
+}
+
+.muted {
+  color: var(--color-text-secondary);
+}

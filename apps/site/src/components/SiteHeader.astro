@@ -1,0 +1,103 @@
+---
+/** Site-wide navigation. Pure markup + tokens — no client JS beyond the
+ *  theme toggle the base layout delegates. */
+import { appUrl } from "../lib/site-context.js";
+
+const links = [
+  { href: "/features/", label: "Features" },
+  { href: "/use-cases/", label: "Use cases" },
+  { href: "/pricing/", label: "Pricing" },
+  { href: "/contact/", label: "Contact" },
+];
+
+const { current } = Astro.props as { current?: string };
+---
+
+<header class="site-header">
+  <div class="container site-header__inner">
+    <a class="site-header__brand" href="/">Portals.ai</a>
+
+    <nav aria-label="Primary">
+      <ul class="site-header__nav">
+        {
+          links.map((link) => (
+            <li>
+              <a
+                href={link.href}
+                aria-current={current === link.href ? "page" : undefined}
+              >
+                {link.label}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
+
+    <div class="site-header__actions">
+      <button type="button" data-theme-toggle aria-label="Toggle colour theme">
+        Theme
+      </button>
+      <a class="button button--primary" href={appUrl}>Sign in</a>
+    </div>
+  </div>
+</header>
+
+<style>
+  .site-header {
+    border-bottom: 1px solid var(--color-divider);
+    background: var(--color-background-paper);
+  }
+
+  .site-header__inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(var(--space-unit) * 2);
+    padding-block: calc(var(--space-unit) * 2);
+  }
+
+  .site-header__brand {
+    font-family: var(--font-family-heading);
+    font-weight: var(--font-weight-bold);
+    font-size: 1.25rem;
+    text-decoration: none;
+    color: var(--color-text-primary);
+  }
+
+  .site-header__nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(var(--space-unit) * 2);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .site-header__nav a {
+    color: var(--color-text-secondary);
+    text-decoration: none;
+  }
+
+  .site-header__nav a:hover,
+  .site-header__nav a[aria-current="page"] {
+    color: var(--color-primary-main);
+  }
+
+  .site-header__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-unit);
+    margin-inline-start: auto;
+  }
+
+  .site-header__actions button {
+    font: inherit;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    background: none;
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-base);
+    padding: calc(var(--space-unit) * 0.5) var(--space-unit);
+  }
+</style>

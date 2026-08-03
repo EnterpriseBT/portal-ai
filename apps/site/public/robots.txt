@@ -1,0 +1,31 @@
+# Portals.ai — public marketing site (#311)
+#
+# Explicit allow-list. AI crawlers are welcomed by name rather than left to
+# a default, because this site exists partly to be summarised accurately by
+# them: the pages carry JSON-LD and llms.txt for exactly that purpose.
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: *
+Allow: /
+
+Sitemap: https://site-dev.portalsai.io/sitemap-index.xml

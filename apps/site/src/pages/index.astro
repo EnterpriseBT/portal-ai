@@ -1,24 +1,98 @@
 ---
-import Base from "../layouts/Base.astro";
-import { fetchSiteConfig } from "../lib/site-config.js";
+import Page from "../layouts/Page.astro";
+import { siteConfig, siteUrl, appUrl } from "../lib/site-context.js";
+import {
+  organizationLd,
+  webSiteLd,
+  softwareApplicationLd,
+} from "../lib/jsonld.js";
 
-const { config, isFixture } = await fetchSiteConfig();
-const buildStamp = isFixture ? "fixture" : config.generatedAt;
+const jsonLd = [
+  organizationLd(siteUrl, siteConfig.contact.supportEmail),
+  webSiteLd(siteUrl),
+  softwareApplicationLd(siteUrl, siteConfig),
+];
+
+const steps = [
+  {
+    title: "Connect your sources",
+    body: "Upload spreadsheets, point at a database, or pull from a REST API. Portals.ai reads the structure so you don't have to describe it.",
+  },
+  {
+    title: "Agree on the vocabulary",
+    body: 'Map each source\'s fields onto shared column definitions, so "customer" means the same thing everywhere — even when three systems spell it differently.',
+  },
+  {
+    title: "Ask in plain language",
+    body: "Open a portal and ask. You get tables, charts, and summaries built from your live data, and you can pin the ones worth keeping.",
+  },
+];
 ---
 
-<Base
-  title="Portal.ai — Ask your data questions in plain language"
-  description="Portal.ai connects your data sources and answers questions about them in plain language, with charts and tables you can pin and share."
+<Page
+  title="Portals.ai — Ask your data questions in plain language"
+  description="Connect your spreadsheets, databases, and APIs, then ask questions about them in plain language. Portals.ai returns tables and charts built from your live data."
   path="/"
-  buildStamp={buildStamp}
+  jsonLd={jsonLd}
 >
-  <a class="skip-link" href="#main">Skip to content</a>
-  <main id="main" class="container section">
+  <section class="hero">
     <h1>Ask your data questions in plain language</h1>
-    <p>
-      Connect your spreadsheets, databases, and APIs — then ask questions and
-      get answers you can act on.
+    <p class="hero__lede">
+      Your numbers already live in a spreadsheet, a database, and three SaaS
+      tools. Portals.ai connects them, agrees on what the fields mean, and
+      answers questions about the combined picture — no SQL, no export, no
+      waiting on someone else's queue.
     </p>
-    <button type="button" data-theme-toggle>Toggle theme</button>
-  </main>
-</Base>
+    <p>
+      <a class="button button--primary" href={appUrl}>Get started</a>
+      <a class="button" href="/features/">See what it does</a>
+    </p>
+  </section>
+
+  <section class="section" aria-labelledby="how">
+    <h2 id="how">How it works</h2>
+    <ol class="steps">
+      {
+        steps.map((step) => (
+          <li>
+            <h3>{step.title}</h3>
+            <p>{step.body}</p>
+          </li>
+        ))
+      }
+    </ol>
+  </section>
+
+  <section class="section" aria-labelledby="who">
+    <h2 id="who">Who it's for</h2>
+    <p>
+      Teams that have outgrown spreadsheets but don't have an analytics
+      department. See the <a href="/use-cases/">use cases</a>, or jump straight
+      to <a href="/pricing/">pricing</a>.
+    </p>
+  </section>
+
+  <style>
+    .hero {
+      padding-block: calc(var(--space-unit) * 6);
+      max-width: 48rem;
+    }
+
+    .hero__lede {
+      font-size: 1.15rem;
+      color: var(--color-text-secondary);
+    }
+
+    .steps {
+      display: grid;
+      gap: calc(var(--space-unit) * 3);
+      grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+      list-style: none;
+      padding: 0;
+    }
+
+    .steps h3 {
+      margin-block-end: var(--space-unit);
+    }
+  </style>
+</Page>

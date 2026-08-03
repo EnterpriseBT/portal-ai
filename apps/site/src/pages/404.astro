@@ -1,0 +1,21 @@
+---
+import Page from "../layouts/Page.astro";
+
+/** Served by CloudFront for both 403 and 404, with a real 404 status —
+ *  see `CustomErrorResponses` in `infra/cloudformation/site.yml`. A soft
+ *  200 here would get the whole site's missing pages indexed. */
+---
+
+<Page
+  title="Page not found — Portals.ai"
+  description="That page doesn't exist. Try features, use cases, or pricing."
+  path="/404/"
+  noindex={true}
+>
+  <h1>That page doesn't exist</h1>
+  <p>
+    The link may be out of date. Try <a href="/features/">features</a>,
+    <a href="/use-cases/">use cases</a>, or <a href="/pricing/">pricing</a>.
+  </p>
+  <p><a class="button button--primary" href="/">Back home</a></p>
+</Page>

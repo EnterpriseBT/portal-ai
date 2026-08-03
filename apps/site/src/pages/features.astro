@@ -1,0 +1,115 @@
+---
+import Page from "../layouts/Page.astro";
+import { GLOSSARY_ENTRIES, GlossaryCategory } from "@portalai/core/content";
+import { siteUrl } from "../lib/site-context.js";
+import { breadcrumbLd, definedTermSetLd, faqPageLd } from "../lib/jsonld.js";
+
+/**
+ * Feature copy is organised around the product's OWN vocabulary
+ * (`@portalai/core/content`) rather than a parallel marketing glossary, so
+ * a term renamed in the product is renamed here on the next build.
+ */
+const CATEGORY_COPY: Array<{
+  category: GlossaryCategory;
+  heading: string;
+  lede: string;
+}> = [
+  {
+    category: GlossaryCategory.DataSources,
+    heading: "Connect anything you already have",
+    lede: "Spreadsheets, databases, REST APIs, Google Sheets, Excel on OneDrive. Each connection stays live — set a sync cadence and the data keeps up.",
+  },
+  {
+    category: GlossaryCategory.DataModeling,
+    heading: "Agree on what the fields mean",
+    lede: "Map every source onto shared column definitions with types, validation, and canonical formats, so three systems spelling a date three ways stop being three problems.",
+  },
+  {
+    category: GlossaryCategory.Organization,
+    heading: "Combine sources without merging them",
+    lede: "Group related entities, link them on shared fields, and tag what matters — then preview the overlap before you commit to it.",
+  },
+  {
+    category: GlossaryCategory.Analytics,
+    heading: "Ask, don't query",
+    lede: "Portals answer in tables, charts, and prose built from your live data. Pin the results worth keeping; extend the agent's reach with toolpacks.",
+  },
+  {
+    category: GlossaryCategory.System,
+    heading: "Long work runs in the background",
+    lede: "Imports, syncs, and plan commits run as jobs you can watch, with the affected records locked until they finish.",
+  },
+];
+
+const byCategory = (category: GlossaryCategory) =>
+  GLOSSARY_ENTRIES.filter((entry) => entry.category === category);
+
+const jsonLd = [
+  breadcrumbLd(siteUrl, [
+    { name: "Home", path: "/" },
+    { name: "Features", path: "/features/" },
+  ]),
+  definedTermSetLd(
+    siteUrl,
+    GLOSSARY_ENTRIES.map((entry) => ({
+      term: entry.term,
+      definition: entry.definition,
+    }))
+  ),
+  faqPageLd(),
+];
+---
+
+<Page
+  title="Features — Portals.ai"
+  description="Connect spreadsheets, databases and APIs; normalise them onto a shared vocabulary; then ask questions and get tables, charts and pinned results from your live data."
+  path="/features/"
+  jsonLd={jsonLd}
+>
+  <h1>What Portals.ai does</h1>
+  <p class="muted">
+    Five things, in the order you'll meet them. The terms below are the
+    product's own — you'll see the same words in the app.
+  </p>
+
+  {
+    CATEGORY_COPY.map((section) => (
+      <section class="section" aria-labelledby={section.category}>
+        <h2 id={section.category}>{section.heading}</h2>
+        <p>{section.lede}</p>
+        <dl class="terms">
+          {byCategory(section.category).map((entry) => (
+            <div class="terms__item">
+              <dt>{entry.term}</dt>
+              <dd>{entry.definition}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+    ))
+  }
+
+  <style>
+    .terms {
+      display: grid;
+      gap: calc(var(--space-unit) * 2);
+      grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+      margin: 0;
+    }
+
+    .terms__item {
+      padding: calc(var(--space-unit) * 2);
+      border-inline-start: 2px solid var(--color-divider);
+    }
+
+    .terms dt {
+      font-weight: var(--font-weight-bold);
+      margin-block-end: calc(var(--space-unit) * 0.5);
+    }
+
+    .terms dd {
+      margin: 0;
+      color: var(--color-text-secondary);
+    }
+  </style>
+</Page>
