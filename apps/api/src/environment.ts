@@ -100,6 +100,13 @@ export const environment = {
   // The env's SSM parameter prefix (e.g. "/portalai/dev"). Unset ⇒ SSM reads
   // disabled entirely — local dev needs no AWS credentials.
   BUSINESS_CONFIG_SSM_PREFIX: process.env.BUSINESS_CONFIG_SSM_PREFIX || "",
+  // Per-IP fixed-window cap on the anonymous `/api/public` router. Generous
+  // by design: the site fetches the snapshot ONCE per build, so anything
+  // near this ceiling is a scraper, not a legitimate consumer.
+  PUBLIC_SITE_RATE_LIMIT_PER_MIN: parseInt(
+    process.env.PUBLIC_SITE_RATE_LIMIT_PER_MIN || "60",
+    10
+  ),
   // Retention window for the tool-usage audit ledger (#179 D5): rows older
   // than this many months are hard-deleted by the daily maintenance purge.
   // 24 months ≫ any dispute window; widening it is an env change + restart.

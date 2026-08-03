@@ -58,6 +58,17 @@ export enum ApiCode {
   /** Stripe portal-session call failed. 502. */
   BILLING_PORTAL_FAILED = "BILLING_PORTAL_FAILED",
 
+  // Public site config (#311)
+  /** A public tier carries a stripePriceId whose price will not resolve
+   *  (Stripe outage or deleted price). 503 — fail closed so the site build
+   *  fails loudly instead of publishing a misleading contact card. */
+  SITE_CONFIG_PRICE_UNRESOLVED = "SITE_CONFIG_PRICE_UNRESOLVED",
+  /** Per-IP fixed-window limit exceeded on the anonymous public router. 429. */
+  SITE_CONFIG_RATE_LIMITED = "SITE_CONFIG_RATE_LIMITED",
+  /** Snapshot assembly failed for any other reason, or the assembled
+   *  snapshot failed its own contract on the way out. 500. */
+  SITE_CONFIG_FETCH_FAILED = "SITE_CONFIG_FETCH_FAILED",
+
   // Webhooks
   WEBHOOK_MISSING_SIGNATURE = "WEBHOOK_MISSING_SIGNATURE",
   WEBHOOK_INVALID_SIGNATURE = "WEBHOOK_INVALID_SIGNATURE",
