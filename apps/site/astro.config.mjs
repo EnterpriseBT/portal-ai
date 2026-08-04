@@ -15,6 +15,10 @@ export default defineConfig({
   site: process.env.SITE_URL || "https://site-dev.portalsai.io",
   trailingSlash: "always",
   outDir: "dist",
+  // `host: true` binds 0.0.0.0 instead of Astro's loopback default, which is
+  // what makes the dev server reachable from the host browser through the
+  // devcontainer's published port. Same reason `apps/web` sets it (#311).
+  server: { port: 3002, host: true },
   integrations: [
     sitemap({
       // Keep the sitemap and the pages' own robots meta telling the same

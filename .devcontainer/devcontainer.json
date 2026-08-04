@@ -3,13 +3,16 @@
   "dockerComposeFile": "../docker-compose.yml",
   "service": "dev",
   "workspaceFolder": "/workspace",
-  "forwardPorts": [3000, 3001, 5432, 7006, 7007, 4983],
+  "forwardPorts": [3000, 3001, 3002, 5432, 7006, 7007, 4983],
   "portsAttributes": {
     "3000": {
       "label": "Web App"
     },
     "3001": {
       "label": "API"
+    },
+    "3002": {
+      "label": "Marketing Site"
     },
     "5432": {
       "label": "PostgreSQL"
