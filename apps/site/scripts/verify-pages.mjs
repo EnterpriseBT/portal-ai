@@ -146,6 +146,17 @@ for (const page of pages) {
   if (!html.includes('name="portal:build"')) {
     fail(`${route}: missing portal:build provenance stamp`);
   }
+
+  // ── the share image actually exists ────────────────────────────────
+  // A 404'd og:image renders as a broken share card everywhere the link is
+  // posted, and nothing on the page itself looks wrong — so nobody notices.
+  const ogImage = html.match(/property="og:image"\s+content="([^"]*)"/)?.[1];
+  if (ogImage) {
+    const asset = path.join(dist, new URL(ogImage).pathname);
+    if (!fs.existsSync(asset)) {
+      fail(`${route}: og:image ${ogImage} is not in the build output`);
+    }
+  }
 }
 
 // ── sitemap covers every indexable route ─────────────────────────────

@@ -5,6 +5,7 @@ A Turborepo monorepo for displaying dynamic UI content from a Model-Controller-P
 ## Tech Stack
 
 - **Frontend**: React 19, TypeScript, Vite, Material UI, TanStack Router/Query, Auth0
+- **Public site**: Astro (static), no client framework — see [`apps/site/README.md`](apps/site/README.md)
 - **Backend**: Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL, Auth0 JWT
 - **Shared**: Zod domain models, MUI component library
 - **Tooling**: Turborepo, ESLint, Prettier, Jest, Storybook
@@ -15,6 +16,7 @@ A Turborepo monorepo for displaying dynamic UI content from a Model-Controller-P
 apps/
   web/                  → React frontend (localhost:3000)
   api/                  → Express API server (localhost:3001)
+  site/                 → Astro public marketing site (localhost:3002)
 packages/
   core/                 → Shared UI components, themes, and Zod domain models
   spreadsheet-parsing/  → Workbook layout interpretation + replay
@@ -52,6 +54,14 @@ Copy `.env.example` to `.env` in each app directory:
 
 - `apps/web/.env` — Auth0 client config (`VITE_AUTH0_*`)
 - `apps/api/.env` — Auth0 API config, database URL, CORS settings
+
+`apps/site` needs none: with `SITE_CONFIG_URL` unset it builds against a
+committed fixture, so `npm run build` works offline. Point it at a running
+API to see real prices:
+
+```bash
+SITE_CONFIG_URL=http://localhost:3001/api/public/site-config npm run dev -w @portalai/site
+```
 
 ## Scripts
 

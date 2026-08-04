@@ -9,6 +9,7 @@ Portal.ai is a Turborepo monorepo for displaying dynamic UI content from a Model
 | Package | Path | Purpose |
 |---------|------|---------|
 | `@portalai/web` | `apps/web/` | Vite + React 19 frontend with Auth0, TanStack Router/Query, MUI |
+| `@portalai/site` | `apps/site/` | Astro static public marketing site. No auth, no client JS beyond a theme toggle; prices and contact addresses are baked in at build time from `GET /api/public/site-config` |
 | `@portalai/api` | `apps/api/` | Express + TypeScript API with Auth0 JWT, Drizzle ORM, PostgreSQL |
 | `@portalai/core` | `packages/core/` | Shared UI components, MUI themes, Zod domain models, utilities |
 | `@portalai/cli-env` | `packages/cli-env/` | Shared CLI environment-access layer: env registry, AWS-IAM + Auth0 device-flow authorization, `resolveEnvConnection`. Node-only — never imported by web/core |
@@ -405,13 +406,16 @@ TanStack Router with file-based routing in `apps/web/src/routes/`. Route tree au
 
 ## Theming
 
-Two themes via `@portalai/core`: Brand (default, light) and Brand Dark. Persisted in localStorage. Fonts: Noto Sans (body), Playfair Display (headings), Cutive Mono (monospace).
+Two themes via `@portalai/core`: Brand (default, light) and Brand Dark. Persisted in localStorage under `portalai-theme` (JSON-encoded `"brand"` / `"brand.dark"`). Fonts: **Exo 2** (body), **Fraunces** (headings), **Space Grotesk** (secondary sans), **Space Mono** (monospace) — shipped as WOFF2 with TTF fallbacks (`packages/core` `build:fonts`).
+
+`apps/site` consumes the same two theme JSONs through a build-time bridge (`scripts/generate-tokens.mjs` → CSS custom properties) rather than MUI, and honours the same localStorage key — so a visitor's choice survives the trip between the marketing site and the app. A palette change in `@portalai/core` reaches the site on its next build; there is no second copy of the brand.
 
 ## Environment URLs
 
 | Service | URL |
 |---------|-----|
 | Web App | http://localhost:3000 |
+| Marketing Site | http://localhost:3002 |
 | API Server | http://localhost:3001 |
 | Swagger Docs | http://localhost:3001/api/docs |
 | Core Storybook | http://localhost:7006 |
@@ -590,8 +594,8 @@ These are the protection rules `main` should carry. They are settings on the rep
 ### Documentation surfaces (the inventory)
 
 **Structured user-facing Help** (surfaced in `apps/web/src/views/Help.view.tsx`)
-- `apps/web/src/utils/glossary.util.ts` — term definitions, examples, related terms
-- `apps/web/src/utils/faq.util.ts` — Q&A pairs
+- `packages/core/src/content/glossary.util.ts` — term definitions, examples, related terms. **Shared with the public marketing site** (#311), so a change here is user-facing in two places. In-app routes are NOT here: `apps/web/src/utils/glossary-routes.util.ts` re-attaches them via `withPageRoutes`, and a term renamed in core without updating that map silently loses its Help link (a test catches it).
+- `packages/core/src/content/faq.util.ts` — Q&A pairs. Also rendered as `FAQPage` JSON-LD on the marketing site.
 - `apps/web/src/utils/getting-started.util.ts` — onboarding steps + CTAs
 
 **Agent / tool contract** (three places that drift independently)
