@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Portal.ai — Route 53 & ACM Certificates
+Description: Portals AI — Route 53 & ACM Certificates
 
 Parameters:
   Environment:

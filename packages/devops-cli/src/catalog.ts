@@ -23,6 +23,9 @@ export interface CatalogEntry {
   name: string;
   /** SSM parameter type (ssm entries only). */
   ssmType?: "String" | "SecureString";
+  /** #311: marketing-site business config — a successful `vars set` of a
+   *  marked key fires the site-rebuild dispatch (slice 4). */
+  siteConfig?: boolean;
 }
 
 const secret = (key: string, name: string): CatalogEntry => ({
@@ -49,6 +52,11 @@ export const CATALOG: CatalogEntry[] = [
   secret("OAUTH_STATE_SECRET", "oauth-state-secret"),
   secret("STRIPE_SECRET_KEY", "stripe-secret-key"), // #218 tier apply (rk_ recommended)
   secret("STRIPE_WEBHOOK_SECRET", "stripe-webhook-secret"), // #239 webhook signature verification
+  // #311: fine-grained PAT scoped to this repo (Contents: read + repository
+  // dispatch) — lets the API request a marketing-site rebuild when a Stripe
+  // `price.*` webhook moves an amount the site has baked into static HTML.
+  // NOT marked `siteConfig`: rotating the token is not a published fact.
+  secret("GITHUB_DISPATCH_TOKEN", "github-dispatch-token"),
   // ── SSM Parameter Store (config) ─
   ssm("GOOGLE_OAUTH_CLIENT_ID", "google-oauth-client-id"),
   ssm("MICROSOFT_OAUTH_CLIENT_ID", "microsoft-oauth-client-id"),
@@ -59,6 +67,11 @@ export const CATALOG: CatalogEntry[] = [
   ssm("CORS_ORIGIN", "cors-origin"),
   ssm("NAMESPACE", "namespace"),
   ssm("SYSTEM_ID", "system-id"),
+  // #311: public site-config contact addresses — served by
+  // GET /api/public/site-config (runtime SSM read, env fallback) and baked
+  // into the marketing site at build time.
+  { ...ssm("SUPPORT_EMAIL", "support-email"), siteConfig: true },
+  { ...ssm("SALES_EMAIL", "sales-email"), siteConfig: true },
 ];
 
 /** Resolve a catalog key or throw (typed) pointing at `vars describe`. */

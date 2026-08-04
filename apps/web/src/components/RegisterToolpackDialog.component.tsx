@@ -223,7 +223,7 @@ export const RegisterToolpackDialogUI: React.FC<
             sx={{ lineHeight: 1.4, fontWeight: 400 }}
           >
             Connect your own webhook server so the assistant can call its tools
-            during portal sessions. Portals.ai fetches your tool catalog once at
+            during portal sessions. Portals AI fetches your tool catalog once at
             registration, then HMAC-signs every outbound call so your server can
             verify the request came from us.
           </Typography>

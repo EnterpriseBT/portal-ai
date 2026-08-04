@@ -44,6 +44,10 @@ export const TierCatalogEntrySchema = z.object({
   /** Card call-to-action (#241) — converged from the catalog. `subscribe`
    *  requires a resolvable `stripeLookupKey`; `none` is the free default. */
   cta: TierCtaSchema,
+  /** #311: served to anonymous visitors on the public marketing site. */
+  public: z.boolean(),
+  /** #311: marketing pricing-card order, ascending. */
+  displayOrder: z.number().int().nonnegative(),
   /** Stripe `lookup_key` — the cross-env price identity. null = not
    *  purchasable (no checkout path). */
   stripeLookupKey: z.string().min(1).nullable(),
@@ -84,6 +88,8 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       builtinToolpacks: ["data_query", "web_search"],
       customToolpacks: false,
       cta: "none",
+      public: true,
+      displayOrder: 1,
       stripeLookupKey: null,
     },
     {
@@ -109,6 +115,8 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       ],
       customToolpacks: false,
       cta: "subscribe",
+      public: true,
+      displayOrder: 2,
       stripeLookupKey: "plus_monthly",
     },
     {
@@ -130,6 +138,8 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
       customToolpacks: true,
       cta: "subscribe",
+      public: true,
+      displayOrder: 3,
       stripeLookupKey: "pro_monthly",
     },
     {
@@ -152,6 +162,8 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
       customToolpacks: true,
       cta: "contact",
+      public: true,
+      displayOrder: 4,
       stripeLookupKey: null,
     },
   ])

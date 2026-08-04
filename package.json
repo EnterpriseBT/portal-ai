@@ -42,6 +42,6 @@
 		"@types/react-dom": "^19.0.0"
 	},
 	"lint-staged": {
-		"{apps,packages}/*/src/**/*.{ts,tsx,json,css,scss}": "prettier --write"
+		"{apps,packages}/*/{src,scripts}/**/*.{ts,tsx,json,css,scss,astro}": "prettier --write"
 	}
 }

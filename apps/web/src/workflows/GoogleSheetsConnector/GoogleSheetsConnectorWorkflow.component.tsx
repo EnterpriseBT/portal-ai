@@ -486,7 +486,7 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
               }}
               providerLabel="Google Sheets"
               providerIcon={<GoogleIcon />}
-              scopesDescription="Authorize Portal.ai to read your Google Drive and Sheets. We only ever request read access — no writes, no deletions."
+              scopesDescription="Authorize Portals AI to read your Google Drive and Sheets. We only ever request read access — no writes, no deletions."
             />
           </StepPanel>
 

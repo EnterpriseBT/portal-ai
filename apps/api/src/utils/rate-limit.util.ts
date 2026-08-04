@@ -4,7 +4,21 @@
  *
  * A wall-clock-minute window keyed in Redis. Fail-open is the caller's job
  * (the gate treats a Redis error as "allow" — the Postgres quota still caps
- * spend).
+ * spend), and every caller implements that as a `try/catch`.
+ *
+ * **Why the timeout race below exists.** `redis.util.ts` sets
+ * `maxRetriesPerRequest: null` because BullMQ requires it. A side effect is
+ * that a command issued while Redis is unreachable is *queued* by ioredis's
+ * offline queue rather than rejected — the promise never settles, so it
+ * reaches no `catch` block and the caller's fail-open never runs. Found while
+ * smoke-walking #311: `/api/public/site-config` hung past 45s during a Redis
+ * outage instead of allowing the request. A hang is worse than the 500 the
+ * fail-open was written to avoid, and on that anonymous route it is reachable
+ * with no credential.
+ *
+ * So every Redis call here is bounded and **rejects** on timeout. Rejection
+ * is precisely what the four call sites already treat as "allow", so their
+ * documented posture becomes true without changing any of them.
  */
 
 import { getRedisClient } from "./redis.util.js";
@@ -12,8 +26,48 @@ import { getRedisClient } from "./redis.util.js";
 const WINDOW_TTL_SECONDS = 120; // covers the current minute + boundary slack
 
 /**
+ * Ceiling for a single Redis round-trip. A healthy `INCR` is sub-millisecond;
+ * anything approaching this is an outage, not load. Deliberately short — the
+ * cost of giving up early is one unmetered call, and the cost of waiting is a
+ * held connection on a public endpoint.
+ */
+export const REDIS_OP_TIMEOUT_MS = 1_000;
+
+/** Reject if `operation` hasn't settled within `REDIS_OP_TIMEOUT_MS`. */
+async function bounded<T>(operation: Promise<T>, label: string): Promise<T> {
+  // Observe the abandoned command so a late failure can't surface as an
+  // unhandled rejection (which would take the process down).
+  void operation.catch(() => {});
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `Redis ${label} timed out after ${REDIS_OP_TIMEOUT_MS}ms`
+              )
+            ),
+          REDIS_OP_TIMEOUT_MS
+        );
+        // Don't hold the event loop open on shutdown.
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
  * Increment the counter for `key` in the current wall-clock-minute window and
  * return the new count. The first increment of a window sets its TTL.
+ *
+ * Throws if Redis errors **or** fails to answer within
+ * `REDIS_OP_TIMEOUT_MS`. Callers treat either as "allow".
  *
  * @param key  a caller-scoped key, e.g. `"${organizationId}:${costClass}"`
  * @param now  epoch ms (injectable for deterministic tests)
@@ -24,9 +78,9 @@ export async function incrementRateWindow(
 ): Promise<number> {
   const redis = getRedisClient();
   const windowKey = `usage:rate:${key}:${Math.floor(now / 60_000)}`;
-  const count = await redis.incr(windowKey);
+  const count = await bounded(redis.incr(windowKey), "INCR");
   if (count === 1) {
-    await redis.expire(windowKey, WINDOW_TTL_SECONDS);
+    await bounded(redis.expire(windowKey, WINDOW_TTL_SECONDS), "EXPIRE");
   }
   return count;
 }

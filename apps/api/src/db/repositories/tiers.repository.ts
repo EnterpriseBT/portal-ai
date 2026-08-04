@@ -66,6 +66,25 @@ export class TiersRepository extends Repository<
       .orderBy(tiers.created);
   }
 
+  /** #311: tiers served to ANONYMOUS visitors (the public marketing site).
+   *  Predicates on BOTH `public = true` AND `visibleToOrganizationId IS
+   *  NULL` — belt to the `tiers_public_org_check` CHECK's braces; a
+   *  per-client private tier must be provably absent from the public
+   *  snapshot. Ordered by displayOrder (pricing-card order), then created. */
+  async findPublic(client: DbClient = db): Promise<TierSelect[]> {
+    return (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(tiers.public, true),
+          isNull(tiers.visibleToOrganizationId),
+          this.notDeleted()
+        )
+      )
+      .orderBy(tiers.displayOrder, tiers.created);
+  }
+
   /** `stripe_price_id → slug` for every live priced tier — the webhook's
    *  price→tier map (#176 D1). */
   async priceIndex(client: DbClient = db): Promise<Map<string, string>> {

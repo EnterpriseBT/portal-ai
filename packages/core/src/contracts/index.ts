@@ -103,3 +103,6 @@ export * from "./google-sheets.contract.js";
 
 /** Microsoft 365 Excel connector endpoint contracts */
 export * from "./microsoft-excel.contract.js";
+
+/** Public marketing-site config contracts (#311) — schemas & types */
+export * from "./site-config.contract.js";

@@ -11,7 +11,7 @@ import {
   FAQ_CATEGORY_LABELS,
   FAQCategory,
   type FAQEntry,
-} from "../utils/faq.util";
+} from "@portalai/core/content";
 
 export interface FAQListProps {
   entries: FAQEntry[];

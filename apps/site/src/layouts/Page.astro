@@ -1,0 +1,37 @@
+---
+/**
+ * Standard page shell: header, `<main>`, footer, plus the base layout's head
+ * contract. Pages provide content and JSON-LD only — the reason SEO tags are
+ * uniform is that no page is allowed to assemble its own.
+ */
+import Base from "./Base.astro";
+import SiteHeader from "../components/SiteHeader.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+import { buildStamp } from "../lib/site-context.js";
+
+export interface Props {
+  title: string;
+  description: string;
+  path: string;
+  jsonLd?: unknown[];
+  noindex?: boolean;
+}
+
+const { title, description, path, jsonLd = [], noindex = false } = Astro.props;
+---
+
+<Base
+  title={title}
+  description={description}
+  path={path}
+  jsonLd={jsonLd}
+  buildStamp={buildStamp}
+  noindex={noindex}
+>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <SiteHeader current={path} />
+  <main id="main" class="container section">
+    <slot />
+  </main>
+  <SiteFooter />
+</Base>
