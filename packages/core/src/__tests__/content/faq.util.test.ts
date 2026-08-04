@@ -47,7 +47,7 @@ describe("FAQ_CATEGORY_LABELS", () => {
 describe("FAQ_ENTRIES", () => {
   const expectedQuestions = [
     // Getting Started (8 — billing #176 added 3, entitlements #214 added 1)
-    "What is Portals.ai and what can I do with it?",
+    "What is Portals AI and what can I do with it?",
     "How do I connect my first data source?",
     "What is a Station and why do I need one?",
     "How do I start asking questions about my data?",

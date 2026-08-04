@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Portal.ai — ECR + ECS Fargate + ALB
+Description: Portals AI — ECR + ECS Fargate + ALB
 
 Parameters:
   Environment:

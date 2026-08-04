@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Portal.ai — SSM-managed bastion for private RDS access
+Description: Portals AI — SSM-managed bastion for private RDS access
 
 Parameters:
   Environment:

@@ -48,7 +48,7 @@ export const WithMultipleElements: Story = {
   args: {
     children: (
       <Box display="flex" flexDirection="column" gap={3}>
-        <Typography variant="h4">Welcome to Portals.ai</Typography>
+        <Typography variant="h4">Welcome to Portals AI</Typography>
         <Box
           sx={{
             p: 3,

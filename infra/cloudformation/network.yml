@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Portal.ai — VPC & Networking
+Description: Portals AI — VPC & Networking
 
 Parameters:
   Environment:

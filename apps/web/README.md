@@ -1,6 +1,6 @@
-# Portal.ai Web
+# Portals AI Web
 
-React web application for the Portal.ai project with Auth0 authentication, Material UI, and TanStack Router.
+React web application for the Portals AI project with Auth0 authentication, Material UI, and TanStack Router.
 
 ## Features
 

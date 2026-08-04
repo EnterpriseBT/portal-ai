@@ -1,8 +1,8 @@
-# Portal.ai
+# Portals AI
 
 ## Overview
 
-Portal.ai is a Turborepo monorepo for displaying dynamic UI content from a Model-Controller-Presenter architecture. It consists of a React frontend, an Express API server, and a shared component/model library.
+Portals AI is a Turborepo monorepo for displaying dynamic UI content from a Model-Controller-Presenter architecture. It consists of a React frontend, an Express API server, and a shared component/model library.
 
 ## Monorepo Structure
 
@@ -499,7 +499,7 @@ When sizing chose `condensed`, `/discovery <N> condensed` writes a single `docs/
 
 ### Enterprise-scale considerations in discovery
 
-Portal.ai is an enterprise, multi-tenant, billing-facing product — a discovery doc's **default lens is enterprise-scale**, not prototype-grade. Every discovery (the `/discovery` skill scaffolds this section automatically) carries an **"Enterprise-scale considerations"** pass that weighs the design against these dimensions, each getting a `Lean:` or an explicit `N/A because …`:
+Portals AI is an enterprise, multi-tenant, billing-facing product — a discovery doc's **default lens is enterprise-scale**, not prototype-grade. Every discovery (the `/discovery` skill scaffolds this section automatically) carries an **"Enterprise-scale considerations"** pass that weighs the design against these dimensions, each getting a `Lean:` or an explicit `N/A because …`:
 
 - **Concurrency & correctness** — multi-instance/ECS races, atomicity of check-then-act, idempotency keys.
 - **Accuracy & auditability** — a durable record-of-truth (ledger / event log) vs. an ephemeral counter; chargeback / dispute / compliance needs.

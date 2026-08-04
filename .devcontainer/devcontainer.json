@@ -1,5 +1,5 @@
 {
-  "name": "Portal.ai",
+  "name": "Portals AI",
   "dockerComposeFile": "../docker-compose.yml",
   "service": "dev",
   "workspaceFolder": "/workspace",

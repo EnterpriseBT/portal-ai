@@ -1,4 +1,4 @@
-# Portals.ai — public marketing site (#311)
+# Portals AI — public marketing site (#311)
 #
 # Explicit allow-list. AI crawlers are welcomed by name rather than left to
 # a default, because this site exists partly to be summarised accurately by

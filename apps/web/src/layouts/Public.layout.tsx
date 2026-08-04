@@ -16,7 +16,7 @@ export const PublicLayout = ({ children }: { children: React.ReactNode }) => {
         <Toolbar sx={{ justifyContent: "space-between" }}>
           <Link to="/" style={{ textDecoration: "none", color: "inherit" }}>
             <Typography variant="h3" color="inherit">
-              Portals.ai
+              Portals AI
             </Typography>
           </Link>
           <ButtonGroup>

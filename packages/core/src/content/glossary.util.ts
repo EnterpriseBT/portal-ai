@@ -86,7 +86,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Sync",
     category: GlossaryCategory.DataSources,
     definition:
-      "Pulling the latest data from a connector into Portals.ai so your entities stay current.",
+      "Pulling the latest data from a connector into Portals AI so your entities stay current.",
     example:
       'Click "Sync" on a connector instance to fetch any new or changed records from the source.',
     relatedTerms: ["Connector Instance", "Entity Record", "Job"],

@@ -1,6 +1,6 @@
 # @portalai/core
 
-Core React component library for Portal.ai with Material-UI integration.
+Core React component library for Portals AI with Material-UI integration.
 
 ## Installation
 

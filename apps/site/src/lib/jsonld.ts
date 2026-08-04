@@ -11,7 +11,7 @@
 import type { PublicSiteConfigResponse } from "@portalai/core/contracts";
 import { FAQ_ENTRIES } from "@portalai/core/content";
 
-const ORG_NAME = "Portals.ai";
+const ORG_NAME = "Portals AI";
 
 export function organizationLd(siteUrl: string, supportEmail: string) {
   return {

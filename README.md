@@ -1,4 +1,4 @@
-# Portals.ai
+# Portals AI
 
 A Turborepo monorepo for displaying dynamic UI content from a Model-Controller-Presenter architecture.
 

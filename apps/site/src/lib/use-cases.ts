@@ -20,7 +20,7 @@ export interface UseCase {
   description: string;
   /** Card blurb on the index page. */
   summary: string;
-  /** The situation before Portals.ai. */
+  /** The situation before Portals AI. */
   problem: string[];
   /** What the product does about it, in product terms. */
   workflow: Array<{ step: string; detail: string }>;
@@ -31,7 +31,7 @@ export const USE_CASES: UseCase[] = [
     slug: "operations",
     name: "Operations teams",
     heading: "Your numbers are in six places and none of them agree",
-    title: "Portals.ai for operations teams",
+    title: "Portals AI for operations teams",
     description:
       "Join your CRM export, billing spreadsheet, and support tool into one shared vocabulary, then ask questions about the combined picture without exporting anything again.",
     summary:
@@ -68,7 +68,7 @@ export const USE_CASES: UseCase[] = [
     slug: "founders",
     name: "Founders & operators",
     heading: "You need the number now, not next sprint",
-    title: "Portals.ai for founders and small teams",
+    title: "Portals AI for founders and small teams",
     description:
       "Get answers from your own data without hiring an analyst or waiting on an engineering queue — connect your sources and ask in plain language.",
     summary:
@@ -100,7 +100,7 @@ export const USE_CASES: UseCase[] = [
     slug: "analysts",
     name: "Analysts",
     heading: "Stop rewriting the same query for other people",
-    title: "Portals.ai for analysts",
+    title: "Portals AI for analysts",
     description:
       "Define the vocabulary once, then let the rest of the team ask their own questions — and extend the agent with your own webhook tools when the built-ins run out.",
     summary:

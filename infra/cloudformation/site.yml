@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Portals.ai — S3 + CloudFront (public marketing site, #311)
+Description: Portals AI — S3 + CloudFront (public marketing site, #311)
 
 # Sibling of `frontend.yml`, same private-bucket + OAC + Route 53 shape.
 # Every difference below exists because this serves a MULTI-PAGE STATIC SITE
@@ -191,7 +191,7 @@ Resources:
     Properties:
       DistributionConfig:
         Enabled: true
-        Comment: !Sub "Portals.ai ${Environment} marketing site"
+        Comment: !Sub "Portals AI ${Environment} marketing site"
         Aliases:
           - !Sub "${Subdomain}.${DomainName}"
         DefaultRootObject: index.html
