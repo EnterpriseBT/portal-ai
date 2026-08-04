@@ -27,7 +27,7 @@ SITE_CONFIG_URL=http://localhost:3001/api/public/site-config \
 |---|---|---|
 | `SITE_CONFIG_URL` | *(unset → fixture mode)* | The public snapshot endpoint. Set in every deploy. |
 | `SITE_URL` | `https://site-dev.portalsai.io` | Canonical origin for canonicals, OG tags, sitemap. |
-| `SITE_APP_URL` | `https://app-dev.portalsai.io` | Where sign-in/sign-up CTAs point. |
+| `SITE_APP_URL` | `localhost:3000` in `astro dev`, else `https://app-dev.portalsai.io` | Where sign-in/sign-up/pricing CTAs point — the web app matching this site's env. Every deploy sets it explicitly. |
 | `GITHUB_SHA` | `local` | Stamped into `<meta name="portal:build">`. |
 
 ## Where the content comes from

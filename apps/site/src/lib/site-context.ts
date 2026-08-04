@@ -35,9 +35,19 @@ export const buildStamp = `${commit} ${
   isFixtureBuild ? "fixture" : siteConfig.generatedAt
 }`;
 
-/** Where the "sign up" CTAs point. */
+/**
+ * Where the "sign up" / sign-in / pricing CTAs point — the web app that
+ * matches this site's environment. Every real deploy sets `SITE_APP_URL`
+ * explicitly (see `deploy-site-dev.yml` → app-dev, prod → prod). Only local
+ * dev falls through, and it must land on the local app, not app-dev — so
+ * `astro dev` defaults to `localhost:3000` and a built (deployed) site keeps
+ * the app-dev default for any env that forgot to set the var.
+ */
 export const appUrl =
-  process.env.SITE_APP_URL || "https://app-dev.portalsai.io";
+  process.env.SITE_APP_URL ||
+  (import.meta.env.DEV
+    ? "http://localhost:3000"
+    : "https://app-dev.portalsai.io");
 
 /** Canonical origin — mirrors `astro.config.mjs`'s `site`. */
 export const siteUrl = process.env.SITE_URL || "https://site-dev.portalsai.io";

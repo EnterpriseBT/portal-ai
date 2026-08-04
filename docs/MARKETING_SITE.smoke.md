@@ -209,6 +209,13 @@ Do this against the **live-config** `dist/` from §2c. Serve it: `cd apps/site &
 - [ ] Lighthouse (Chrome DevTools, against `astro preview`): **SEO 100**, **Accessibility ≥ 95**.
 - [ ] At 375px width, no horizontal scroll on any page.
 
+### §3g — CTAs point at the matching app environment
+
+> Every "Sign in" / "Get started" / pricing-subscribe link targets the web app for **this** site's environment — local → local, site-dev → app-dev, prod → prod. Deploys set `SITE_APP_URL` explicitly; local dev must not leak to app-dev.
+
+- [ ] Run the dev server (`cd apps/site && npm run dev`) and load the site. The header **Sign in**, the home/use-case **Get started**, and every **pricing** button point at `http://localhost:3000` — not `app-dev.portalsai.io`. Quick check: `curl -s http://localhost:3002/ http://localhost:3002/pricing/ | grep -oE 'href="http://localhost:3000"|href="https://app-dev[^"]*"' | sort -u` → only the `localhost:3000` form appears.
+- [ ] Build the live-config `dist/` from §2c (no `SITE_APP_URL` set) and `grep -o 'app-dev.portalsai.io' dist/index.html` → present. A built site keeps the app-dev default; only `astro dev` swaps to localhost.
+
 ---
 
 ## §4 — Theme parity with the app
@@ -217,7 +224,7 @@ Do this against the **live-config** `dist/` from §2c. Serve it: `cd apps/site &
 
 - [ ] Open `http://localhost:3000` (app) and `http://localhost:3002` (site) side by side in light mode. Background, surface, primary accent, body font (Exo 2), and heading font (Fraunces) match.
 - [ ] Switch the app to Brand Dark. Reload the site in the same browser — **the site is already dark** (it reads the app's `portalai-theme` localStorage key).
-- [ ] Click the site's **Theme** button. It flips, and reloading keeps the new value.
+- [ ] Click the site's **theme toggle** (the sun/moon icon, matching the app). It flips, and reloading keeps the new value.
 - [ ] Go back to the app and reload: the app now reflects the choice the *site* wrote (same key, same JSON encoding).
 - [ ] Hard-reload the site in dark mode several times with the network throttled to Slow 3G — **no white flash** before dark paints.
 - [ ] In a fresh private window with no stored preference, the site follows the OS `prefers-color-scheme`.
@@ -326,7 +333,7 @@ After every section above is green:
 
 - [ ] §1 (endpoint) — anonymous 200, no tenant data, private tiers absent, fail-closed 503, rate limit + fail-open, Swagger has no security key.
 - [ ] §2 (config-driven) — nothing hardcoded; fixture and live builds both work; a tier rename reaches the site with no code change; a dead endpoint fails the build.
-- [ ] §3 (pages/SEO) — full HTML with no JS, head contract, JSON-LD, robots/llms/sitemap, self-check guards it, validators pass.
+- [ ] §3 (pages/SEO) — full HTML with no JS, head contract, JSON-LD, robots/llms/sitemap, self-check guards it, validators pass, CTAs target the matching app env.
 - [ ] §4 (theme) — parity with the app both ways, persists, no flash.
 - [ ] §5 (content/fonts) — in-app Help intact including route links; woff2 served.
 - [ ] §6 (tooling) — every root task passes with the site; `:3002` in `npm run dev`.
