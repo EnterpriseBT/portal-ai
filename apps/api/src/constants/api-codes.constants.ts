@@ -65,6 +65,10 @@ export enum ApiCode {
   SITE_CONFIG_PRICE_UNRESOLVED = "SITE_CONFIG_PRICE_UNRESOLVED",
   /** Per-IP fixed-window limit exceeded on the anonymous public router. 429. */
   SITE_CONFIG_RATE_LIMITED = "SITE_CONFIG_RATE_LIMITED",
+  /** A contact address resolved empty — neither SSM nor the env fallback
+   *  supplied it. 503 — fail closed, symmetrical with the price rule: an
+   *  empty address publishes `<a href="mailto:">` on every page. */
+  SITE_CONFIG_CONTACT_UNRESOLVED = "SITE_CONFIG_CONTACT_UNRESOLVED",
   /** Snapshot assembly failed for any other reason, or the assembled
    *  snapshot failed its own contract on the way out. 500. */
   SITE_CONFIG_FETCH_FAILED = "SITE_CONFIG_FETCH_FAILED",

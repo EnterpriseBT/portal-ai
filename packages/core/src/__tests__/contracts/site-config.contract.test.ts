@@ -9,6 +9,7 @@ import { describe, it, expect } from "@jest/globals";
 
 import {
   PublicSiteTierSchema,
+  PublicSiteContactSchema,
   PublicSiteConfigResponseSchema,
 } from "../../contracts/site-config.contract";
 
@@ -75,4 +76,26 @@ describe("PublicSiteConfigResponseSchema (#311)", () => {
       }).success
     ).toBe(false);
   });
+});
+
+// ── the contact rule (found smoke-walking #311) ──────────────────────
+
+describe("PublicSiteContactSchema", () => {
+  const valid = {
+    supportEmail: "support@portalsai.io",
+    salesEmail: "sales@portalsai.io",
+  };
+
+  it("accepts real addresses", () => {
+    expect(PublicSiteContactSchema.parse(valid)).toEqual(valid);
+  });
+
+  it.each(["supportEmail", "salesEmail"] as const)(
+    "rejects an empty %s — an unset env var must not become a mailto: href",
+    (field) => {
+      expect(
+        PublicSiteContactSchema.safeParse({ ...valid, [field]: "" }).success
+      ).toBe(false);
+    }
+  );
 });

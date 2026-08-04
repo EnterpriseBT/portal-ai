@@ -147,6 +147,17 @@ for (const page of pages) {
     fail(`${route}: missing portal:build provenance stamp`);
   }
 
+  // ── no dead links ──────────────────────────────────────────────────
+  // The contract now forbids empty contact addresses upstream, but this is
+  // the layer that SHOULD have caught them and didn't: the build reported
+  // "11 pages OK" while shipping `<a href="mailto:"></a>` in every footer
+  // (found smoke-walking #311). Cheap, and generalises to any empty href.
+  for (const [, href] of html.matchAll(/href="([^"]*)"/g)) {
+    if (href === "" || href === "mailto:" || href === "tel:") {
+      fail(`${route}: empty href="${href}" — a dead link shipped`);
+    }
+  }
+
   // ── the share image actually exists ────────────────────────────────
   // A 404'd og:image renders as a broken share card everywhere the link is
   // posted, and nothing on the page itself looks wrong — so nobody notices.

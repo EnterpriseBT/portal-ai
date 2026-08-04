@@ -16,6 +16,7 @@ import {
 } from "@jest/globals";
 import request from "supertest";
 import { Response } from "express";
+import { Redis } from "ioredis";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { inArray } from "drizzle-orm";
@@ -33,6 +34,14 @@ import {
 // environment.ts loads). 65 attempts against a 30/min window guarantee at
 // least one 429 even if a wall-clock minute boundary splits the flood.
 process.env.PUBLIC_SITE_RATE_LIMIT_PER_MIN = "30";
+
+// Contact addresses are REQUIRED: the endpoint fails closed with 503
+// SITE_CONFIG_CONTACT_UNRESOLVED rather than publishing empty `mailto:`
+// hrefs (found smoke-walking #311). No SSM in CI, so these env fallbacks
+// stand in. The unset-address 503 itself is covered in the service unit
+// suite, where the env can be varied per case.
+process.env.SUPPORT_EMAIL = "support@portalsai.test";
+process.env.SALES_EMAIL = "sales@portalsai.test";
 
 // The public route must never pass through jwtCheck — mock it to reject
 // EVERYTHING so any accidental routing through the protected router fails.
@@ -106,7 +115,31 @@ describe("GET /api/public/site-config (#311)", () => {
 
     jest.spyOn(StripeService, "getPrice").mockResolvedValue(PRICE);
     SiteConfigService.clearCache();
+
+    // Clear this IP's rate-limit window. The counter is a SHARED Redis key
+    // (`usage:rate:public-site:<ip>:<minute>`), so without this the suite
+    // inherits whatever traffic the same host already sent — a local smoke
+    // walk, or a parallel CI job — and the pre-flood cases 429 instead of
+    // 200. Found smoke-walking #311, where a manual flood broke the suite.
+    await clearRateWindows();
   });
+
+  /** Drop every public-site rate-limit key so each case starts at zero. */
+  async function clearRateWindows() {
+    const redis = new Redis(process.env.REDIS_URL!, {
+      maxRetriesPerRequest: 1,
+      lazyConnect: true,
+    });
+    try {
+      await redis.connect();
+      const keys = await redis.keys("usage:rate:public-site:*");
+      if (keys.length > 0) await redis.del(...keys);
+    } catch {
+      // Redis unreachable ⇒ the limiter fails open anyway; nothing to clear.
+    } finally {
+      redis.disconnect();
+    }
+  }
 
   afterEach(async () => {
     jest.restoreAllMocks();
@@ -191,6 +224,12 @@ describe("GET /api/public/site-config (#311)", () => {
     expect(priced.credits).toEqual({ metered: 500, expensive: 20 });
     // The org id must appear nowhere in the serialized response.
     expect(JSON.stringify(res.body)).not.toContain(orgA);
+
+    // Contact addresses are served, non-empty (the fail-closed rule above).
+    expect(payload.contact).toEqual({
+      supportEmail: "support@portalsai.test",
+      salesEmail: "sales@portalsai.test",
+    });
   });
 
   // ── case 3 — an org-private tier is provably absent ───────────────

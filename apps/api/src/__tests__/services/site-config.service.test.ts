@@ -180,3 +180,58 @@ it("does not cache a failure — the next call retries", async () => {
   const snapshot = await SiteConfigService.getSiteConfig();
   expect(snapshot.tiers[0].price).toEqual(PRICE);
 });
+
+// ── the contact rule (found smoke-walking #311) ──────────────────────
+//
+// `BusinessConfigService` degrades SSM → env → `""`. An empty address is
+// indistinguishable from "no support channel" once it is a `mailto:` href in
+// published HTML: the endpoint served `""`, the site build succeeded, and
+// every page shipped `<a href="mailto:"></a>` with two dead CTAs on
+// /contact/. Fail closed, symmetrically with the price rule.
+
+it.each(["supportEmail", "salesEmail"] as const)(
+  "throws 503 SITE_CONFIG_CONTACT_UNRESOLVED when %s is empty",
+  async (field) => {
+    mockFindPublic.mockResolvedValue([publicRow()]);
+    mockGetContact.mockResolvedValue({ ...CONTACT, [field]: "" });
+
+    const error = await SiteConfigService.getSiteConfig().catch((e) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.status).toBe(503);
+    expect(error.code).toBe(ApiCode.SITE_CONFIG_CONTACT_UNRESOLVED);
+    // The operator needs to know WHICH key to set.
+    expect(error.message).toContain(field);
+  }
+);
+
+it("treats a whitespace-only address as missing", async () => {
+  mockFindPublic.mockResolvedValue([publicRow()]);
+  mockGetContact.mockResolvedValue({ ...CONTACT, supportEmail: "   " });
+
+  await expect(SiteConfigService.getSiteConfig()).rejects.toThrow(
+    /not configured/i
+  );
+});
+
+it("names both addresses when both are missing", async () => {
+  mockFindPublic.mockResolvedValue([publicRow()]);
+  mockGetContact.mockResolvedValue({ supportEmail: "", salesEmail: "" });
+
+  const error = await SiteConfigService.getSiteConfig().catch((e) => e);
+
+  expect(error.message).toContain("supportEmail");
+  expect(error.message).toContain("salesEmail");
+});
+
+it("does not cache the contact failure", async () => {
+  mockFindPublic.mockResolvedValue([publicRow()]);
+  mockGetContact.mockResolvedValue({ ...CONTACT, supportEmail: "" });
+  await expect(SiteConfigService.getSiteConfig()).rejects.toThrow();
+
+  // An operator setting the var must not have to wait out a TTL.
+  mockGetContact.mockResolvedValue(CONTACT);
+  await expect(SiteConfigService.getSiteConfig()).resolves.toMatchObject({
+    contact: CONTACT,
+  });
+});

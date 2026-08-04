@@ -19,14 +19,23 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, lin
 - [ ] `npm run build` — required before anything else. `packages/core` gained a `./content` subpath and a `build:fonts` step; the API and site both resolve core from `dist`.
 - [ ] `cd apps/api && npm run db:migrate && cd ../..` — migration `tier-public-display-order` adds `tiers.is_public` + `tiers.display_order` and the `tiers_public_org_check` CHECK. Confirm it applies cleanly.
 - [ ] `npx portalops tier apply --env local` — **required.** The migration defaults every existing row to `is_public = false`; `tier apply` is what flips the catalog's rows public. Until you run it the pricing page is legitimately empty.
+- [ ] Set the contact addresses in `apps/api/.env` — **required**, not optional:
+      `SUPPORT_EMAIL=support@portalsai.io` and `SALES_EMAIL=sales@portalsai.io`.
+      The endpoint fails closed (503) rather than publishing empty `mailto:`
+      links, so an unset value now blocks the walk at §1 by design.
 - [ ] `npm run dev` boots cleanly: API `:3001`, web `:3000`, **site `:3002`**.
+- [ ] **Port 3002 must be published by your devcontainer.** `docker-compose.yml`
+      maps it, but a container created before that line was added won't expose
+      it — check with `docker inspect <dev-container> --format '{{json .HostConfig.PortBindings}}'`
+      and rebuild/reopen the devcontainer if `3002` is absent. Only the browser
+      steps (§3f, §4) need this; `curl` from inside the container works either way.
 
 ### Fixtures
 
 | Alias | Shape | Used by |
 |---|---|---|
 | **catalog tiers** | The four `TIER_CATALOG` rows, made public by `tier apply` above. | §1, §2, §4 |
-| **private tier** | One org-scoped tier: `npx portalai tier create --env local …` with `visibleToOrganizationId` set and `public` left false (the CHECK forbids public + org-scoped together). | §1 |
+| **private tier** | One org-scoped tier: `npx portalops tier create --env local --slug acme-smoke --display-name "Acme" --visible-to-org <orgId>`, leaving `public` false (the CHECK forbids public + org-scoped together). Tier commands are on **`portalops`**. | §1 |
 | **Stripe test mode** | `STRIPE_SECRET_KEY` in `apps/api/.env` pointing at your local test account, with prices matching the catalog's lookup keys — otherwise `tier apply` exits 8 naming the missing keys. See `project_local_stripe_smoke_gotchas`. | §1, §2 |
 
 ### Reset between runs
@@ -52,7 +61,8 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, lin
 - [ ] `curl -s http://localhost:3001/api/public/site-config | jq 'keys'` → exactly `["contact","generatedAt","tiers"]`.
 - [ ] `curl -s … | jq '.payload.tiers[0] | keys'` → exactly `["builtinToolpacks","credits","cta","customToolpacks","description","displayName","displayOrder","price","slug"]`.
 - [ ] No `organizationId`, `perToolCaps`, `overage`, `periodKind`, `freeUnitsPerPeriod`, or usage/balance field appears anywhere in the response.
-- [ ] `contact.supportEmail` / `contact.salesEmail` match your `apps/api/.env` `SUPPORT_EMAIL` / `SALES_EMAIL` (local dev has no SSM — the env fallback is the expected path).
+- [ ] `contact.supportEmail` / `contact.salesEmail` match your `apps/api/.env` `SUPPORT_EMAIL` / `SALES_EMAIL` (local dev has no SSM — the env fallback is the expected path), and **neither is empty**.
+- [ ] Fail-closed check: comment out `SUPPORT_EMAIL` in `apps/api/.env`, restart the API, `curl -s -i …` → **503** with `code: "SITE_CONFIG_CONTACT_UNRESOLVED"` and a message naming `supportEmail`. Restore it. *(An empty address used to publish `<a href="mailto:"></a>` on every page with the build reporting success.)*
 
 ### §1c — Private and non-public tiers are absent
 
@@ -75,7 +85,15 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, lin
 - [ ] `for i in $(seq 1 70); do curl -s -o /dev/null -w "%{http_code} " http://localhost:3001/api/public/site-config; done; echo`
 - [ ] The first ~60 are `200`; later ones are `429`.
 - [ ] A `429` body carries `code: "SITE_CONFIG_RATE_LIMITED"`.
-- [ ] **Fail-open check:** stop Redis (`docker stop portalai-redis-1`), `curl` again → still **200** (a marketing fetch must not 500 on a Redis blip). Restart Redis afterwards.
+- [ ] **Fail-open check:** stop Redis (`docker stop portalai-redis-1`), then
+      `curl -s -m 20 -o /dev/null -w "%{http_code} in %{time_total}s\n" http://localhost:3001/api/public/site-config`
+      → **200 in ≈1s**. Both halves matter: a marketing fetch must not 500 on a
+      Redis blip, **and it must not hang** — `redis.util.ts` sets
+      `maxRetriesPerRequest: null` for BullMQ, so an unbounded command is queued
+      forever rather than rejected, and the caller's `catch` never runs.
+      Time it, don't just check the status. Restart Redis afterwards.
+- [ ] Re-verify limiting still works after Redis returns: wait for the next
+      wall-clock minute, re-flood, and confirm 429s reappear.
 
 ### §1f — Swagger
 
@@ -90,9 +108,22 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, lin
 
 ### §2a — Nothing is hardcoded
 
-- [ ] `grep -rnE '\$[0-9]|[0-9]+ ?/ ?(mo|month|year)' apps/site/src` → no price literals. (`site-config.fixture.json` is the deliberate exception — it is the offline fixture, and its amounts are `0`.)
-- [ ] `grep -rniE '[a-z0-9._%+-]+@[a-z0-9.-]+\.(io|com)' apps/site/src` → only the fixture's `*@example.invalid` placeholders. No real address.
-- [ ] `grep -rn '#[0-9a-fA-F]\{6\}' apps/site/src` → no hex colours outside the generated `tokens.css` (which is gitignored).
+Scope each grep to shipped page code — exclude tests, the offline fixture, and
+the generated `tokens.css`, or you'll spend the step triaging false positives:
+
+```bash
+SHIP='apps/site/src/pages apps/site/src/components apps/site/src/layouts'
+grep -rnE '\$[0-9]|[0-9]+ ?/ ?(mo|month|year)' $SHIP          # prices
+grep -rniE '[a-z0-9._%+-]+@[a-z0-9.-]+\.(io|com)' $SHIP        # addresses
+grep -rn '#[0-9a-fA-F]\{6\}' $SHIP                            # brand colours
+```
+
+- [ ] All three return **nothing**. Every amount, address, and colour on a
+      shipped page comes from the snapshot or a CSS custom property.
+- [ ] The deliberate exceptions, if you widen the scope: `site-config.fixture.json`
+      (offline fixture, amounts are `0`, addresses are `*@example.invalid`),
+      `src/lib/*.ts` doc comments and unit-test fixtures, and the generated
+      `src/styles/tokens.css` (gitignored — it is where the palette *should* be).
 
 ### §2b — Offline (fixture) build
 
@@ -108,17 +139,26 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, lin
 
 ### §2d — Publishing a tier change takes no code change
 
-- [ ] Pick a public tier. `npx portalai tier update --env local --slug <slug> --display-name "Smoke Renamed" --yes` (or edit `display_name` in `db:studio`).
-- [ ] Restart the API (or wait 60s), then re-run the live build from §2c.
-- [ ] `dist/pricing/index.html` shows **Smoke Renamed**. No file under `apps/site` was edited.
-- [ ] Revert the name.
+Use the **operator-owned** field, not a catalog-owned one. `description` and
+`visibleToOrganizationId` are deliberately excluded from `CONVERGED_POLICY_FIELDS`;
+everything else (including `displayName`, `cta`, `public`, `displayOrder`) is
+catalog policy that the next `tier apply` would clobber. Tier commands live on
+**`portalops`**, not `portalai`.
+
+- [ ] `npx portalops tier description --env local --slug pro --set "Smoke walk: set from the CLI, no code change."`
+      → `{"slug":"pro","description":"Smoke walk: …"}`
+- [ ] Wait 60s (the snapshot cache TTL) or restart the API, then re-run the live build from §2c.
+- [ ] `dist/pricing/index.html` contains that sentence, and `git status --porcelain apps/site` shows **no source change**.
+- [ ] `npx portalops tier description --env local --slug pro --clear` to reset.
+- [ ] The catalog-owned path, for contrast: flip a row's `is_public` in `db:studio`, then `npx portalops tier apply --env local` puts it back — convergence is the mechanism, and it is still not a code change.
 
 ### §2e — The endpoint going down fails the build
 
 > Acceptance: *"Taking the endpoint down (or an unresolvable priced tier) **fails the build**."*
 
 - [ ] Stop the API (or use a dead port): `SITE_CONFIG_URL=http://127.0.0.1:9/api/public/site-config npm run build`
-- [ ] The build **fails** with a fetch error. It does **not** fall back to the fixture and does **not** emit a `dist/`.
+- [ ] The build **fails** (non-zero exit) with a fetch error, and does **not** fall back to the fixture.
+- [ ] Note that `dist/` is *emptied* — Astro clears `outDir` before generating, so a failed build leaves no output. That is fine and not a bug: the protection for the live site is that the failed **build step short-circuits the workflow before `s3 sync` runs**, so the previously deployed site stays up untouched. Don't expect the old `dist/` to survive locally.
 - [ ] Re-break a priced tier as in §1d, restart the API, and run the live build: it fails on the 503 rather than publishing a contact card.
 
 ---
@@ -208,7 +248,15 @@ Do this against the **live-config** `dist/` from §2c. Serve it: `cd apps/site &
 
 > Acceptance: *"Root `build`/`lint`/`type-check`/`format:check`/`test:unit` pass with `apps/site`; `npm run dev` brings the site up on `:3002` beside web/api."*
 
+- [ ] **Stop `npm run dev` first.** Root `test:unit` runs every package's jest
+      concurrently under turbo; with three dev servers in watch mode also
+      competing for CPU, `apps/web`'s `userEvent` tests blow their 5s timeout
+      and fail spuriously (observed repeatedly during this walk — 3–9s
+      timeouts, never assertion failures, all green once the servers stopped).
 - [ ] From the repo root, each of these passes with `@portalai/site` in the task list: `npm run build`, `npm run lint`, `npm run type-check`, `npm run format:check`, `npm run test:unit`.
+- [ ] `cd apps/api && npm run test:integration` — 106 suites green, including
+      `public-site.router.integration.test.ts` (which now clears its own Redis
+      rate-limit keys, so ambient traffic can't 429 it).
 - [ ] `npm run dev` — all three servers come up; `http://localhost:3002` serves the site.
 - [ ] Formatting hook: deliberately mangle whitespace in an `.astro` file, `git add` it, `git commit` — lint-staged reformats it (the root glob now covers `.astro`).
 

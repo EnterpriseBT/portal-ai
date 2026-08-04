@@ -62,6 +62,26 @@ export class SiteConfigService {
       BusinessConfigService.getContact(),
     ]);
 
+    // Fail closed on a missing address, symmetrical with the price rule
+    // below. `BusinessConfigService` degrades SSM → env → `""`, and an empty
+    // string is indistinguishable from "no support channel" once it is a
+    // `mailto:` href baked into every published page. Refuse to serve it.
+    const missingContact = (["supportEmail", "salesEmail"] as const).filter(
+      (field) => !contact[field]?.trim()
+    );
+    if (missingContact.length > 0) {
+      logger.error(
+        { missingContact },
+        "Public contact address unresolved; failing closed"
+      );
+      throw new ApiError(
+        503,
+        ApiCode.SITE_CONFIG_CONTACT_UNRESOLVED,
+        `Contact address(es) not configured: ${missingContact.join(", ")}. ` +
+          "Set them via `portalops vars set` (or SUPPORT_EMAIL/SALES_EMAIL locally)."
+      );
+    }
+
     const tiers = await Promise.all(
       rows.map(async (row) => {
         let price = null;
