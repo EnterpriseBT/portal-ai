@@ -55,6 +55,9 @@ const packLabel = (slug: string) =>
         <li class="card">
           <h2>{tier.displayName}</h2>
 
+          {/* Price copy is driven by `cta`, the single source of truth — a
+              null price is not implicitly "contact". `contact` ⇒ "Let's talk";
+              `none` ⇒ the free/starter tier. */}
           {tier.price ? (
             <p class="price">
               <span class="price__amount">
@@ -62,9 +65,13 @@ const packLabel = (slug: string) =>
               </span>
               <span class="muted">/{tier.price.interval}</span>
             </p>
-          ) : (
+          ) : tier.cta === "contact" ? (
             <p class="price">
               <span class="price__amount">Let's talk</span>
+            </p>
+          ) : (
+            <p class="price">
+              <span class="price__amount">Free</span>
             </p>
           )}
 
@@ -90,16 +97,19 @@ const packLabel = (slug: string) =>
 
           <div class="card__spacer" />
 
-          {tier.cta === "contact" || tier.price === null ? (
-            <a class="button" href="/contact/">
-              Contact sales
-            </a>
-          ) : tier.cta === "subscribe" ? (
+          {/* CTA is driven purely by `cta`: `subscribe` ⇒ checkout,
+              `contact` ⇒ the contact page, `none` ⇒ the free self-serve entry
+              point. Don't infer "contact" from a missing price. */}
+          {tier.cta === "subscribe" ? (
             <a class="button button--primary" href={appUrl}>
               Choose {tier.displayName}
             </a>
+          ) : tier.cta === "contact" ? (
+            <a class="button" href="/contact/">
+              Contact sales
+            </a>
           ) : (
-            <a class="button" href={appUrl}>
+            <a class="button button--primary" href={appUrl}>
               Get started
             </a>
           )}
