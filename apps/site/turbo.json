@@ -1,0 +1,16 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "cache": false,
+      "passThroughEnv": [
+        "SITE_URL",
+        "SITE_CONFIG_URL",
+        "SITE_APP_URL",
+        "GITHUB_SHA",
+        "BUILD_SHA"
+      ]
+    }
+  }
+}
