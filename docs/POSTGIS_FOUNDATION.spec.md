@@ -66,7 +66,7 @@ case "geometry":
   return "geometry(Geometry, 4326)";
 ```
 
-`Geometry` (not `Polygon`) because one column may hold mixed polygon/point/line features; the SRID constraint is the part that matters. The reconciler additionally creates **`CREATE INDEX CONCURRENTLY IF NOT EXISTS <col>_gist ON er__<id> USING GIST (<col>)`** for every geometry column, and `wide_table_columns.pgType` records `geometry(Geometry, 4326)` so existing drift detection compares correctly.
+`Geometry` (not `Polygon`) because one column may hold mixed polygon/point/line features; the SRID constraint is the part that matters. The reconciler additionally creates a GiST index — **`CREATE INDEX IF NOT EXISTS "er__<id>__<col>_gist" ON er__<id> USING GIST (<col>)`** — for every geometry column, and `wide_table_columns.pgType` records `geometry(Geometry, 4326)` so existing drift detection compares correctly. **Resolved at slice-3 implementation:** the index is a plain `CREATE INDEX`, not `CONCURRENTLY` — `applyAdds` runs inside the reconciler's entity-lock transaction, and `CONCURRENTLY` cannot run in a transaction (see Risks). This is safe because a column is added while its table is empty or small (first sync, before rows land); the risk note's "fall back to a plain `CREATE INDEX` while tables are small" is the path taken.
 
 ### `apps/api/src/services/wide-table-statement.cache.ts` — per-column write expressions
 

@@ -425,6 +425,22 @@ export class WideTableReconcilerService {
           `ALTER TABLE ${tableName} ADD COLUMN ${quoteIdent(columnName)} ${add.pgType}`
         )
       );
+
+      // #316: geometry columns get a GiST index so ST_* predicates use an
+      // index scan. Plain CREATE INDEX (not CONCURRENTLY) because applyAdds
+      // runs inside the entity-lock transaction and CONCURRENTLY cannot —
+      // safe here because a column is added while its table is empty or small
+      // (at first sync, before rows land). IF NOT EXISTS keeps reconcile
+      // idempotent.
+      if (add.pgType.startsWith("geometry")) {
+        await (tx as typeof db).execute(
+          sql.raw(
+            `CREATE INDEX IF NOT EXISTS ${quoteIdent(
+              `er__${connectorEntityId}__${columnName}_gist`
+            )} ON ${tableName} USING GIST (${quoteIdent(columnName)})`
+          )
+        );
+      }
       await this.columnsRepo.create(
         {
           id: SystemUtilities.id.v4.generate(),
