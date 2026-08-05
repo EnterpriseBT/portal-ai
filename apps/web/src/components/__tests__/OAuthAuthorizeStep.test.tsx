@@ -14,14 +14,14 @@ const GOOGLE_DEFAULTS = {
   providerLabel: "Google Sheets",
   providerIcon: <GoogleIcon data-testid="google-icon" />,
   scopesDescription:
-    "Authorize Portal.ai to read your Google Drive and Sheets. We only ever request read access.",
+    "Authorize Portals AI to read your Google Drive and Sheets. We only ever request read access.",
 };
 
 const MSFT_DEFAULTS = {
   providerLabel: "Microsoft 365",
   providerIcon: <MicrosoftIcon data-testid="microsoft-icon" />,
   scopesDescription:
-    "Authorize Portal.ai to read your Microsoft 365 Excel files in OneDrive. Read access only.",
+    "Authorize Portals AI to read your Microsoft 365 Excel files in OneDrive. Read access only.",
 };
 
 function makeProps(
@@ -52,7 +52,7 @@ describe("OAuthAuthorizeStep — slug-agnostic behavior (Google fixtures)", () =
   it("renders the scopesDescription as the body copy", () => {
     render(<OAuthAuthorizeStep {...makeProps({ state: "idle" })} />);
     expect(
-      screen.getByText(/authorize portal\.ai to read your google drive/i)
+      screen.getByText(/authorize portals ai to read your google drive/i)
     ).toBeInTheDocument();
   });
 
@@ -138,7 +138,7 @@ describe("OAuthAuthorizeStep — Microsoft branding", () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId("microsoft-icon")).toBeInTheDocument();
     expect(
-      screen.getByText(/authorize portal\.ai to read your microsoft 365 excel/i)
+      screen.getByText(/authorize portals ai to read your microsoft 365 excel/i)
     ).toBeInTheDocument();
   });
 });

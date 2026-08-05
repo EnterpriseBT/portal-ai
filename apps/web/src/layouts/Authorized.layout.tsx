@@ -40,7 +40,7 @@ export const AuthorizedLayout = ({
               }}
             >
               <Typography variant="h3" color="inherit" margin="auto">
-                Portals.ai
+                Portals AI
               </Typography>
             </Link>
           </ButtonGroup>

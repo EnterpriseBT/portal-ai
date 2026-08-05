@@ -9,7 +9,7 @@ import {
   GLOSSARY_ENTRIES,
   GlossaryCategory,
   filterGlossary,
-} from "../utils/glossary.util";
+} from "@portalai/core/content";
 
 const meta = {
   title: "Components/GlossaryList",

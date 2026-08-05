@@ -43,6 +43,10 @@ import {
   BillingPortalResponseSchema,
   UsageLedgerListResponseSchema,
   MaintenanceStatusResponseSchema,
+  PublicSitePriceSchema,
+  PublicSiteTierSchema,
+  PublicSiteContactSchema,
+  PublicSiteConfigResponseSchema,
   DeltaEventSchema,
   ToolCallEventSchema,
   ToolCallEndEventSchema,
@@ -267,6 +271,22 @@ const usageLedgerSchemas: Record<string, unknown> = {
 };
 
 /**
+ * Public marketing-site config schemas (#311). Sourced from
+ * `@portalai/core/contracts` — the same strict schemas the endpoint
+ * validates against on the way out and `apps/site` parses at build time, so
+ * the published spec cannot drift from the wire.
+ */
+const publicSiteSchemas: Record<string, unknown> = {
+  PublicSitePrice: z.toJSONSchema(PublicSitePriceSchema, JSON_SCHEMA_OPTS),
+  PublicSiteTier: z.toJSONSchema(PublicSiteTierSchema, JSON_SCHEMA_OPTS),
+  PublicSiteContact: z.toJSONSchema(PublicSiteContactSchema, JSON_SCHEMA_OPTS),
+  PublicSiteConfigResponse: z.toJSONSchema(
+    PublicSiteConfigResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+};
+
+/**
  * Portal stream SSE event payloads (#279). Sourced from
  * `@portalai/core/contracts` so the one canonical union — the same
  * `PortalSSEEventSchema` the server emits and the client parses — is what
@@ -308,10 +328,10 @@ const options: swaggerJsdoc.Options = {
   definition: {
     openapi: "3.0.0",
     info: {
-      title: "Portal.ai API Documentation",
+      title: "Portals AI API Documentation",
       version: "1.0.0",
       description:
-        "API documentation for the Portal.ai application. This API provides endpoints for health checks and protected resources with Auth0 JWT authentication.",
+        "API documentation for the Portals AI application. This API provides endpoints for health checks and protected resources with Auth0 JWT authentication.",
       contact: {
         name: "API Support",
       },
@@ -1647,6 +1667,7 @@ const options: swaggerJsdoc.Options = {
         ...orgDeleteSchemas,
         ...billingSchemas,
         ...usageLedgerSchemas,
+        ...publicSiteSchemas,
         ...portalStreamEventSchemas,
       },
     },
@@ -1736,6 +1757,11 @@ const options: swaggerJsdoc.Options = {
         name: "Portal SQL",
         description:
           "Query handle endpoints for the reads track (#85 Phase 3) — snapshot + SSE stream of staged batches",
+      },
+      {
+        name: "Public Site",
+        description:
+          "Anonymous, rate-limited endpoints consumed by the public marketing site's build (#311) — no authentication, no tenant data",
       },
     ],
   },

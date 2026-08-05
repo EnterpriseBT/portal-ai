@@ -1,0 +1,76 @@
+---
+import Page from "../../layouts/Page.astro";
+import { USE_CASES } from "../../lib/use-cases.js";
+import { siteUrl, appUrl } from "../../lib/site-context.js";
+import { breadcrumbLd } from "../../lib/jsonld.js";
+
+/** One route file, one page per persona — adding a persona is a data edit
+ *  in `use-cases.ts`, and the sitemap picks it up automatically. */
+export function getStaticPaths() {
+  return USE_CASES.map((useCase) => ({
+    params: { slug: useCase.slug },
+    props: { useCase },
+  }));
+}
+
+const { useCase } = Astro.props;
+const path = `/use-cases/${useCase.slug}/`;
+
+const jsonLd = [
+  breadcrumbLd(siteUrl, [
+    { name: "Home", path: "/" },
+    { name: "Use cases", path: "/use-cases/" },
+    { name: useCase.name, path },
+  ]),
+];
+---
+
+<Page
+  title={`${useCase.title} — Portals AI`}
+  description={useCase.description}
+  path={path}
+  jsonLd={jsonLd}
+>
+  <p class="muted"><a href="/use-cases/">Use cases</a> / {useCase.name}</p>
+
+  <h1>{useCase.heading}</h1>
+
+  <section class="section" aria-labelledby="problem">
+    <h2 id="problem">Where it hurts</h2>
+    <ul>
+      {useCase.problem.map((line) => <li>{line}</li>)}
+    </ul>
+  </section>
+
+  <section class="section" aria-labelledby="workflow">
+    <h2 id="workflow">How Portals AI handles it</h2>
+    <ol class="workflow">
+      {
+        useCase.workflow.map((entry) => (
+          <li>
+            <h3>{entry.step}</h3>
+            <p>{entry.detail}</p>
+          </li>
+        ))
+      }
+    </ol>
+  </section>
+
+  <p>
+    <a class="button button--primary" href={appUrl}>Get started</a>
+    <a class="button" href="/pricing/">See pricing</a>
+  </p>
+
+  <style>
+    .workflow {
+      display: grid;
+      gap: calc(var(--space-unit) * 3);
+      list-style: decimal;
+      padding-inline-start: calc(var(--space-unit) * 3);
+    }
+
+    .workflow h3 {
+      margin-block-end: calc(var(--space-unit) * 0.5);
+    }
+  </style>
+</Page>

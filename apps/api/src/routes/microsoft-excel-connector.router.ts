@@ -1,7 +1,7 @@
 /**
  * Microsoft 365 Excel connector — OAuth2 dance routes (Phase A).
  *
- * Authorize is JWT-protected (the user is logged into Portal.ai when
+ * Authorize is JWT-protected (the user is logged into Portals AI when
  * they trigger the popup). Callback is JWT-unprotected — Microsoft's
  * redirect doesn't carry a Bearer token; the signed `state` token is
  * the security boundary instead. Two routers in this file mirror the

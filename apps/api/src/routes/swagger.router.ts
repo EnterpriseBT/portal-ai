@@ -13,7 +13,7 @@ swaggerRouter.get(
   "/",
   swaggerUi.setup(swaggerSpec, {
     customCss: ".swagger-ui .topbar { display: none }",
-    customSiteTitle: "Portal.ai API Documentation",
+    customSiteTitle: "Portals AI API Documentation",
   })
 );
 

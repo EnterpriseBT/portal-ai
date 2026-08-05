@@ -26,6 +26,10 @@ import {
   LayoutPlanInterpretDraftResponsePayloadSchema,
   LayoutPlanSchema,
   PatchApiEndpointRequestBodySchema,
+  PublicSiteConfigResponseSchema,
+  PublicSiteContactSchema,
+  PublicSitePriceSchema,
+  PublicSiteTierSchema,
   RegionHintSchema,
   RegionSchema,
   SkipRuleSchema,
@@ -472,5 +476,61 @@ describe("swagger spec — legacy uploads surface is fully removed", () => {
     "/api/uploads/{jobId}/confirm",
   ])("does not register %s in the spec at all", (path) => {
     expect(paths[path]).toBeUndefined();
+  });
+});
+
+// #311 — the public site-config endpoint is the API's only anonymous data
+// surface. Its schemas must be registered (the route `$ref`s them) and must
+// round-trip from the Zod source, and — the part that actually matters — the
+// path must carry NO `security` key, or Swagger would advertise a bearer
+// requirement the endpoint deliberately doesn't have.
+describe("swagger spec — public site config (#311)", () => {
+  const spec = swaggerSpec as OpenApiSchemaBag;
+  const schemas = spec.components?.schemas ?? {};
+  const paths = spec.paths ?? {};
+
+  const JSON_SCHEMA_OPTS = { unrepresentable: "any" as const };
+  const publicSitePairs: ReadonlyArray<readonly [string, z.ZodType]> = [
+    ["PublicSitePrice", PublicSitePriceSchema],
+    ["PublicSiteTier", PublicSiteTierSchema],
+    ["PublicSiteContact", PublicSiteContactSchema],
+    ["PublicSiteConfigResponse", PublicSiteConfigResponseSchema],
+  ];
+
+  it.each(publicSitePairs.map(([name]) => name))(
+    "registers %s under components.schemas",
+    (name) => {
+      expect(schemas[name]).toBeDefined();
+    }
+  );
+
+  it.each(publicSitePairs)(
+    "%s in the spec is byte-equal to z.toJSONSchema(Schema)",
+    (name, schema) => {
+      expect(schemas[name]).toEqual(z.toJSONSchema(schema, JSON_SCHEMA_OPTS));
+    }
+  );
+
+  it("documents GET /api/public/site-config with no security requirement", () => {
+    const entry = (
+      paths["/api/public/site-config"] as Record<string, unknown> | undefined
+    )?.["get"] as
+      | {
+          tags?: string[];
+          security?: unknown;
+          responses?: Record<string, unknown>;
+        }
+      | undefined;
+
+    expect(entry).toBeDefined();
+    expect(entry?.tags).toContain("Public Site");
+    expect(entry?.security).toBeUndefined();
+    // The fail-closed 503 and the per-IP 429 are part of the contract.
+    expect(Object.keys(entry?.responses ?? {}).sort()).toEqual([
+      "200",
+      "429",
+      "500",
+      "503",
+    ]);
   });
 });

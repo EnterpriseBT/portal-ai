@@ -1,0 +1,91 @@
+---
+import Page from "../layouts/Page.astro";
+import { siteConfig, siteUrl } from "../lib/site-context.js";
+import { breadcrumbLd } from "../lib/jsonld.js";
+
+/**
+ * STRUCTURE ONLY — see `privacy.astro`. Business-reviewed copy replaces
+ * these sections before the production tag.
+ */
+const { supportEmail } = siteConfig.contact;
+
+const SECTIONS = [
+  { heading: "Agreement to these terms", prompt: "Who is bound, and when." },
+  {
+    heading: "Your account",
+    prompt: "Eligibility, organization ownership, and member responsibilities.",
+  },
+  {
+    heading: "Acceptable use",
+    prompt:
+      "What you may not connect, ask, or automate — including the limits on custom webhook tools you register.",
+  },
+  {
+    heading: "Plans, credits, and billing",
+    prompt:
+      "How monthly tool-credit allocations work, what happens when a plan's allowance is exhausted, renewal, and cancellation.",
+  },
+  {
+    heading: "Your data and your content",
+    prompt:
+      "You keep ownership; the licence you grant us is limited to operating the service.",
+  },
+  {
+    heading: "Service availability and changes",
+    prompt: "Uptime expectations, and how we handle changes to features.",
+  },
+  {
+    heading: "Warranties and liability",
+    prompt: "Disclaimers and the limits on our liability.",
+  },
+  { heading: "Termination", prompt: "How either side ends the agreement." },
+  { heading: "Governing law", prompt: "Jurisdiction and dispute resolution." },
+];
+
+const jsonLd = [
+  breadcrumbLd(siteUrl, [
+    { name: "Home", path: "/" },
+    { name: "Terms", path: "/terms/" },
+  ]),
+];
+---
+
+<!-- business copy pending: blocks prod tag -->
+<Page
+  title="Terms of service — Portals AI"
+  description="The terms governing use of Portals AI, including accounts, acceptable use, plans and billing, and data ownership."
+  path="/terms/"
+  jsonLd={jsonLd}
+  noindex={true}
+>
+  <h1>Terms of service</h1>
+
+  <p class="pending" role="note">
+    <strong>Draft.</strong> This page is structural. The binding terms are being prepared
+    and must replace every section below before Portals AI goes to production.
+  </p>
+
+  {
+    SECTIONS.map((section) => (
+      <section class="section">
+        <h2>{section.heading}</h2>
+        <p class="muted">{section.prompt}</p>
+      </section>
+    ))
+  }
+
+  <p>
+    Questions about these terms: <a href={`mailto:${supportEmail}`}
+      >{supportEmail}</a
+    >
+  </p>
+
+  <style>
+    .pending {
+      padding: calc(var(--space-unit) * 2);
+      border: 1px solid var(--color-warning-main);
+      border-radius: var(--radius-base);
+      background: var(--color-background-paper);
+    }
+  </style>
+</Page>

@@ -59,7 +59,7 @@ import type {
 } from "../../modules/RegionEditor";
 
 const MICROSOFT_SCOPES_DESCRIPTION =
-  "Authorize Portal.ai to read your Microsoft 365 Excel files in OneDrive. We only ever request read access — no writes, no deletions.";
+  "Authorize Portals AI to read your Microsoft 365 Excel files in OneDrive. We only ever request read access — no writes, no deletions.";
 const FALLBACK_TITLE = "Microsoft 365 Excel";
 
 interface MicrosoftExcelConnectorWorkflowProps {

@@ -1,6 +1,6 @@
-# Portal.ai API
+# Portals AI API
 
-Express API server for the Portal.ai application with Auth0 JWT authentication.
+Express API server for the Portals AI application with Auth0 JWT authentication.
 
 ## Features
 

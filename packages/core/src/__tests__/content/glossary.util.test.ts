@@ -4,7 +4,7 @@ import {
   GlossaryCategory,
   filterGlossary,
   type GlossaryEntry,
-} from "../utils/glossary.util";
+} from "../../content/glossary.util.js";
 
 // ── 1.1 — Type and category enum ────────────────────────────────────
 
@@ -122,13 +122,15 @@ describe("GLOSSARY_ENTRIES", () => {
     }
   });
 
-  it("pageRoute (when set) starts with '/' — no absolute URLs", () => {
-    for (const entry of GLOSSARY_ENTRIES) {
-      if (entry.pageRoute !== undefined) {
-        expect(entry.pageRoute.startsWith("/")).toBe(true);
-        expect(entry.pageRoute.startsWith("http")).toBe(false);
-      }
-    }
+  // #311: the field survives in the type (apps/web re-attaches routes via
+  // `withPageRoutes`), but the shared dataset must carry NO values — a route
+  // into the authenticated app is meaningless on the public marketing site,
+  // and a value creeping back in here is how that leaks.
+  it("carries no pageRoute values — routes belong to the consuming app", () => {
+    const withRoutes = GLOSSARY_ENTRIES.filter(
+      (e) => e.pageRoute !== undefined
+    );
+    expect(withRoutes.map((e) => e.term)).toEqual([]);
   });
 
   it("terms are unique within the dataset (case-insensitive)", () => {

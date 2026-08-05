@@ -129,6 +129,12 @@ export const TierSchema = CoreSchema.extend({
    *  (kept `string` here so the dual-schema `IsAssignable` guard holds — the
    *  DB column is `text`, like `overage`/`periodKind`). */
   cta: z.string(),
+  /** #311: served to anonymous visitors by `GET /api/public/site-config`.
+   *  Fail-closed default false; a public tier can never be org-scoped
+   *  (`tiers_public_org_check`). DB column `is_public`. */
+  public: z.boolean(),
+  /** #311: marketing pricing-card order, ascending. */
+  displayOrder: z.number().int(),
   /** Operator-authored plan blurb (#241). Null = no blurb. Deliberately
    *  excluded from `tier apply` convergence so an apply never clobbers copy. */
   description: z.string().nullable(),

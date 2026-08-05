@@ -95,6 +95,25 @@ jobs:
               HostedZoneId=${{ secrets.DEV_HOSTED_ZONE_ID }} \
             --no-fail-on-empty-changeset
 
+      # Public marketing site (#311). Stack only — the content deploy is
+      # `deploy-site-dev.yml`, which also runs on config-change dispatches
+      # and nightly, so it can't live inside this push-triggered pipeline.
+      - name: Deploy site stack
+        run: |
+          CERT_ARN=$(aws cloudformation describe-stacks \
+            --stack-name portalai-dev-dns-certs \
+            --query "Stacks[0].Outputs[?ExportName=='dev-CertificateArn'].OutputValue" \
+            --output text)
+          aws cloudformation deploy \
+            --stack-name portalai-dev-site \
+            --template-file infra/cloudformation/site.yml \
+            --parameter-overrides \
+              Environment=dev \
+              Subdomain=site-dev \
+              CertificateArn="$CERT_ARN" \
+              HostedZoneId=${{ secrets.DEV_HOSTED_ZONE_ID }} \
+            --no-fail-on-empty-changeset
+
       - name: Deploy backend stack
         run: |
           aws cloudformation deploy \
@@ -114,6 +133,7 @@ jobs:
               SecretArnOauthStateSecret=${{ secrets.DEV_SECRET_ARN_OAUTH_STATE_SECRET }} \
               SecretArnStripeSecretKey=${{ secrets.DEV_SECRET_ARN_STRIPE_SECRET_KEY }} \
               SecretArnStripeWebhookSecret=${{ secrets.DEV_SECRET_ARN_STRIPE_WEBHOOK_SECRET }} \
+              SecretArnGithubDispatchToken=${{ secrets.DEV_SECRET_ARN_GITHUB_DISPATCH_TOKEN }} \
             --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset
 
@@ -292,6 +312,28 @@ jobs:
             exit 1
           fi
           echo "Seed completed successfully"
+
+      # Create-if-absent contact config for the public site-config endpoint
+      # (#319). A fresh env has no SSM contacts, and there is no env fallback
+      # on ECS, so site-config fail-closes (503) and the site deploy can't
+      # publish. Seed placeholders here so a fresh dev env is green by
+      # default; an operator's `portalops vars set` value is NEVER overwritten
+      # (we write only when the param is absent). Non-prod only — this step
+      # lives solely in the dev pipeline; prod stays fail-closed by design.
+      - name: Seed contact config (create-if-absent)
+        run: |
+          seed() {
+            local name="$1" value="$2"
+            if aws ssm get-parameter --name "$name" >/dev/null 2>&1; then
+              echo "$name already set — leaving operator value"
+            elif aws ssm put-parameter --name "$name" --type String --value "$value" >/dev/null; then
+              echo "seeded $name"
+            else
+              echo "::warning::could not seed $name — the site-config preflight will report it if unresolved"
+            fi
+          }
+          seed /portalai/dev/support-email support@portalsai.io
+          seed /portalai/dev/sales-email sales@portalsai.io
 
       - name: Update backend stack and deploy
         run: |

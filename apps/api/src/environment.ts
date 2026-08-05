@@ -91,6 +91,29 @@ export const environment = {
   MICROSOFT_OAUTH_TENANT: process.env.MICROSOFT_OAUTH_TENANT || "common",
   // Redis configuration (BullMQ + Pub/Sub)
   REDIS_URL: process.env.REDIS_URL || "redis://localhost:6380",
+  // ── Public site-config business facts (#311). The env vars are the
+  //    LOCAL-DEV / fail-soft fallback; deployed envs read the live values
+  //    from SSM at runtime (BusinessConfigService) so a `portalops vars set`
+  //    reaches the endpoint without an ECS task recycle.
+  SUPPORT_EMAIL: process.env.SUPPORT_EMAIL || "",
+  SALES_EMAIL: process.env.SALES_EMAIL || "",
+  // The env's SSM parameter prefix (e.g. "/portalai/dev"). Unset ⇒ SSM reads
+  // disabled entirely — local dev needs no AWS credentials.
+  BUSINESS_CONFIG_SSM_PREFIX: process.env.BUSINESS_CONFIG_SSM_PREFIX || "",
+  // ── Site-rebuild dispatch (#311). A fine-grained PAT scoped to this repo
+  //    (Contents: read + repository dispatch) and the `owner/repo` it fires
+  //    at. Unset ⇒ dispatch is a no-op: the nightly scheduled rebuild is the
+  //    safety net, so a missing token degrades freshness, never correctness.
+  GITHUB_DISPATCH_TOKEN: process.env.GITHUB_DISPATCH_TOKEN || "",
+  GITHUB_DISPATCH_REPO:
+    process.env.GITHUB_DISPATCH_REPO || "EnterpriseBT/portal-ai",
+  // Per-IP fixed-window cap on the anonymous `/api/public` router. Generous
+  // by design: the site fetches the snapshot ONCE per build, so anything
+  // near this ceiling is a scraper, not a legitimate consumer.
+  PUBLIC_SITE_RATE_LIMIT_PER_MIN: parseInt(
+    process.env.PUBLIC_SITE_RATE_LIMIT_PER_MIN || "60",
+    10
+  ),
   // Retention window for the tool-usage audit ledger (#179 D5): rows older
   // than this many months are hard-deleted by the daily maintenance purge.
   // 24 months ≫ any dispute window; widening it is an env change + restart.

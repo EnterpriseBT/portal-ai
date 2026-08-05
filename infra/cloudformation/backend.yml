@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Portal.ai — ECR + ECS Fargate + ALB
+Description: Portals AI — ECR + ECS Fargate + ALB
 
 Parameters:
   Environment:
@@ -74,6 +74,21 @@ Parameters:
   SecretArnStripeWebhookSecret:
     Type: String
     Description: Full ARN of portalai/{env}/stripe-webhook-secret secret
+  SecretArnGithubDispatchToken:
+    Type: String
+    Default: ""
+    Description: >-
+      Full ARN of portalai/{env}/github-dispatch-token secret (#311).
+      Fine-grained PAT (Contents: read + repository dispatch) the API uses to
+      request a marketing-site rebuild after a Stripe price change. Optional:
+      empty leaves the container var unset, which makes the dispatch a no-op
+      and lets the nightly scheduled rebuild carry the change instead.
+
+Conditions:
+  # #311: the site-rebuild PAT is optional. Without it the container var is
+  # simply absent, `RebuildDispatchService` no-ops, and the nightly scheduled
+  # rebuild remains the freshness guarantee.
+  HasGithubDispatchToken: !Not [!Equals [!Ref SecretArnGithubDispatchToken, ""]]
 
 Resources:
   # ── ECR Repository ───────────────────────────────────────
@@ -235,6 +250,10 @@ Resources:
               - !Ref SecretArnOauthStateSecret
               - !Ref SecretArnStripeSecretKey
               - !Ref SecretArnStripeWebhookSecret
+              - !If
+                - HasGithubDispatchToken
+                - !Ref SecretArnGithubDispatchToken
+                - !Ref AWS::NoValue
               - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!*"
           - Effect: Allow
             Action:
@@ -283,6 +302,16 @@ Resources:
               - ssmmessages:OpenControlChannel
               - ssmmessages:OpenDataChannel
             Resource: "*"
+          # #311: runtime business-config reads (BusinessConfigService) — the
+          # app itself reads the `portalops vars` SSM catalog at request time,
+          # TTL-cached, so a `vars set` reaches the public site-config
+          # endpoint without a task recycle. Same grant shape as the
+          # execution role's startup injection above.
+          - Effect: Allow
+            Action:
+              - ssm:GetParameters
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/*"
 
   TaskRole:
     Type: AWS::IAM::Role
@@ -477,6 +506,13 @@ Resources:
                     Fn::Sub: "${Environment}-RedisEndpoint"
                   Port: !ImportValue
                     Fn::Sub: "${Environment}-RedisPort"
+            # #311: enables runtime business-config SSM reads
+            # (BusinessConfigService). Deliberately NOT a Secrets/ValueFrom
+            # entry — the contact params are read at request time, and a
+            # ValueFrom on a not-yet-provisioned parameter would block task
+            # startup on operator action.
+            - Name: BUSINESS_CONFIG_SSM_PREFIX
+              Value: !Sub "/portalai/${Environment}"
           Secrets:
             - Name: DATABASE_URL
               ValueFrom: !Ref SecretArnDatabaseUrl
@@ -498,6 +534,11 @@ Resources:
               ValueFrom: !Ref SecretArnStripeSecretKey
             - Name: STRIPE_WEBHOOK_SECRET
               ValueFrom: !Ref SecretArnStripeWebhookSecret
+            - !If
+              - HasGithubDispatchToken
+              - Name: GITHUB_DISPATCH_TOKEN
+                ValueFrom: !Ref SecretArnGithubDispatchToken
+              - !Ref AWS::NoValue
             - Name: GOOGLE_OAUTH_CLIENT_ID
               ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/google-oauth-client-id"
             - Name: MICROSOFT_OAUTH_CLIENT_ID

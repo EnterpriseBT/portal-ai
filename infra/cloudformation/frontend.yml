@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Portal.ai — S3 + CloudFront (static frontend)
+Description: Portals AI — S3 + CloudFront (static frontend)
 
 Parameters:
   Environment:
@@ -149,7 +149,7 @@ Resources:
     Properties:
       DistributionConfig:
         Enabled: true
-        Comment: !Sub "Portal.ai ${Environment} frontend"
+        Comment: !Sub "Portals AI ${Environment} frontend"
         Aliases:
           - !Sub "${Subdomain}.${DomainName}"
         # Serve index.html for the root path automatically

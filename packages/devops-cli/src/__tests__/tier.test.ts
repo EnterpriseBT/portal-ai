@@ -29,6 +29,13 @@ jest.unstable_mockModule("drizzle-orm/postgres-js", () => ({
   drizzle: jest.fn(() => ({})),
 }));
 
+// #311: converging tier rows changes the pricing page, so a non-dry-run
+// apply with changes asks for a site rebuild. Mocked to assert the hook.
+const mockFireSiteRebuild = jest.fn<(reason: string) => Promise<void>>();
+jest.unstable_mockModule("../github-dispatch.js", () => ({
+  fireSiteRebuild: mockFireSiteRebuild,
+}));
+
 const { resolveStripeKey, TierApplyMissingPricesError } =
   await import("../stripe.js");
 const { exitCodeFor, jsonError } = await import("../output.js");
@@ -78,6 +85,9 @@ const standardRow = (over: Record<string, unknown> = {}) => ({
   builtinToolpacks: [...CATALOG_STANDARD.builtinToolpacks],
   customToolpacks: CATALOG_STANDARD.customToolpacks,
   cta: CATALOG_STANDARD.cta,
+  // #311: marketing-site fields (catalog-owned).
+  public: CATALOG_STANDARD.public,
+  displayOrder: CATALOG_STANDARD.displayOrder,
   description: null,
   visibleToOrganizationId: null,
   ...over,
@@ -108,6 +118,8 @@ const fakeStore = (rows: ReturnType<typeof standardRow>[]) => {
 const ORIGINAL_KEY = process.env.STRIPE_SECRET_KEY;
 beforeEach(() => {
   resetCliEnvMocks();
+  mockFireSiteRebuild.mockReset();
+  mockFireSiteRebuild.mockResolvedValue(undefined);
   process.env.STRIPE_SECRET_KEY = "sk_test_fixture";
 });
 afterEach(() => {
@@ -262,6 +274,32 @@ describe("tierApply convergence (#218 case 5)", () => {
       to: [...CATALOG_STANDARD.builtinToolpacks],
     });
     expect(store.applyChanges).toHaveBeenCalledTimes(1);
+  });
+
+  // #311: a live row that predates the marketing site (is_public=false,
+  // display_order=0) is flipped public by apply — the "no code change to
+  // publish a tier" acceptance criterion.
+  it("converges public/displayOrder from the catalog (#311)", async () => {
+    const { factory } = fakeStore([
+      standardRow({ public: false, displayOrder: 0 }),
+    ]);
+
+    const result = await tierApply(
+      local as never,
+      { dryRun: true },
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
+    );
+
+    const standard = result.changes.find((c) => c.slug === "standard")!;
+    expect(standard.action).toBe("update");
+    expect(standard.fields.public).toEqual({
+      from: false,
+      to: CATALOG_STANDARD.public,
+    });
+    expect(standard.fields.displayOrder).toEqual({
+      from: 0,
+      to: CATALOG_STANDARD.displayOrder,
+    });
   });
 
   it("a null stripeLookupKey converges stripe_price_id back to NULL", async () => {
@@ -684,6 +722,12 @@ describe("CONVERGED_POLICY_FIELDS (#241 case 21)", () => {
     expect(CONVERGED_POLICY_FIELDS).not.toContain("visibleToOrganizationId");
   });
 
+  // #311: the marketing-site fields are catalog-owned policy.
+  it("includes public and displayOrder (#311)", () => {
+    expect(CONVERGED_POLICY_FIELDS).toContain("public");
+    expect(CONVERGED_POLICY_FIELDS).toContain("displayOrder");
+  });
+
   it("buildTierUpdateSets omits unprovided fields", () => {
     const sets = buildTierUpdateSets({ slug: "x", cta: "contact" });
     expect(sets).toMatchObject({ cta: "contact", updatedBy: "portalops" });
@@ -696,5 +740,63 @@ describe("CONVERGED_POLICY_FIELDS (#241 case 21)", () => {
     expect(typeof v.id).toBe("string");
     expect(typeof v.created).toBe("number");
     expect(v.cta).toBe("contact");
+  });
+
+  // #311: custom (per-client) tiers are never public — the DB CHECK forbids
+  // public + org-scoped, and create defaults must sit below it.
+  it("buildTierCreateValues defaults public:false / displayOrder:0 (#311)", () => {
+    const v = buildTierCreateValues({
+      slug: "acme",
+      displayName: "Acme",
+      visibleToOrganizationId: "org_acme",
+    });
+    expect(v.public).toBe(false);
+    expect(v.displayOrder).toBe(0);
+  });
+});
+
+// ── #311 slice 4: the site-rebuild hook on tier convergence ──────────
+
+describe("tierApply site-rebuild dispatch (#311)", () => {
+  it("fires once after a non-dry-run apply that changed rows", async () => {
+    const { factory } = fakeStore([
+      standardRow({ public: false, displayOrder: 0 }),
+    ]);
+
+    await tierApply(
+      local as never,
+      { yes: true },
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
+    );
+
+    expect(mockFireSiteRebuild).toHaveBeenCalledTimes(1);
+    expect(mockFireSiteRebuild.mock.calls[0][0]).toContain("standard");
+  });
+
+  it("does not fire on a dry run — nothing was published", async () => {
+    const { factory } = fakeStore([
+      standardRow({ public: false, displayOrder: 0 }),
+    ]);
+
+    await tierApply(
+      local as never,
+      { dryRun: true },
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
+    );
+
+    expect(mockFireSiteRebuild).not.toHaveBeenCalled();
+  });
+
+  it("does not fire when the diff is empty (every change a noop)", async () => {
+    const { factory } = fakeStore([standardRow()]);
+
+    const result = await tierApply(
+      local as never,
+      { yes: true },
+      { store: factory as never, catalog: [CATALOG_STANDARD] as never }
+    );
+
+    expect(result.changes.every((c) => c.action === "noop")).toBe(true);
+    expect(mockFireSiteRebuild).not.toHaveBeenCalled();
   });
 });

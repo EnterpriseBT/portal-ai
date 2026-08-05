@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Portal.ai — RDS PostgreSQL
+Description: Portals AI — RDS PostgreSQL
 
 Parameters:
   Environment:

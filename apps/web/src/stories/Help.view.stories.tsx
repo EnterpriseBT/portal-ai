@@ -7,8 +7,8 @@ import {
   GLOSSARY_ENTRIES,
   filterGlossary,
   GlossaryCategory,
-} from "../utils/glossary.util";
-import { FAQ_ENTRIES } from "../utils/faq.util";
+} from "@portalai/core/content";
+import { FAQ_ENTRIES } from "@portalai/core/content";
 
 const meta = {
   title: "Views/HelpView",

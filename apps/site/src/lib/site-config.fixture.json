@@ -1,0 +1,94 @@
+{
+  "tiers": [
+    {
+      "slug": "standard",
+      "displayName": "Standard",
+      "description": null,
+      "cta": "none",
+      "displayOrder": 1,
+      "credits": {
+        "metered": 500,
+        "expensive": 20
+      },
+      "builtinToolpacks": ["data_query", "web_search"],
+      "customToolpacks": false,
+      "price": null
+    },
+    {
+      "slug": "plus",
+      "displayName": "Plus",
+      "description": null,
+      "cta": "subscribe",
+      "displayOrder": 2,
+      "credits": {
+        "metered": 5000,
+        "expensive": 200
+      },
+      "builtinToolpacks": [
+        "data_query",
+        "statistics",
+        "web_search",
+        "entity_management"
+      ],
+      "customToolpacks": false,
+      "price": {
+        "unitAmount": 0,
+        "currency": "usd",
+        "interval": "month"
+      }
+    },
+    {
+      "slug": "pro",
+      "displayName": "Pro",
+      "description": null,
+      "cta": "subscribe",
+      "displayOrder": 3,
+      "credits": {
+        "metered": null,
+        "expensive": 1000000
+      },
+      "builtinToolpacks": [
+        "data_query",
+        "statistics",
+        "regression",
+        "financial",
+        "web_search",
+        "entity_management",
+        "visualize"
+      ],
+      "customToolpacks": true,
+      "price": {
+        "unitAmount": 0,
+        "currency": "usd",
+        "interval": "month"
+      }
+    },
+    {
+      "slug": "enterprise",
+      "displayName": "Enterprise",
+      "description": null,
+      "cta": "contact",
+      "displayOrder": 4,
+      "credits": {
+        "metered": null,
+        "expensive": null
+      },
+      "builtinToolpacks": [
+        "data_query",
+        "statistics",
+        "regression",
+        "financial",
+        "web_search",
+        "entity_management",
+        "visualize"
+      ],
+      "customToolpacks": true,
+      "price": null
+    }
+  ],
+  "contact": {
+    "supportEmail": "support@example.invalid",
+    "salesEmail": "sales@example.invalid"
+  },
+  "generatedAt": "1970-01-01T00:00:00.000Z"
+}
