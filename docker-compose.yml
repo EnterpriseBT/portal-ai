@@ -50,7 +50,17 @@ services:
       - mcp-net
 
   postgres:
-    image: postgres:17-alpine
+    # PostGIS-enabled base image (#316). `CREATE EXTENSION postgis` in the
+    # 0075 migration needs the extension shipped in the image; plain
+    # postgres:17-alpine does not carry it. Pinned to the 17-3.5 line (PG17 +
+    # PostGIS 3.5) to match RDS's Postgres 17.
+    #
+    # imresamu/postgis, not postgis/postgis: the official image is amd64-only
+    # (no arm64 manifest), so it won't run on Apple-Silicon dev machines. The
+    # imresamu mirror is a multi-arch (amd64+arm64) rebuild maintained by a
+    # PostGIS contributor with identical tags/versions. CI runners are amd64
+    # and would accept either. See docs/POSTGIS_FOUNDATION.spec.md.
+    image: imresamu/postgis:17-3.5-alpine
     restart: unless-stopped
     ports:
       - "5432:5432"
@@ -69,7 +79,10 @@ services:
       - mcp-net
 
   postgres-test:
-    image: postgres:17-alpine
+    # PostGIS-enabled base image (#316) — must match the app database above so
+    # the integration suite exercises the same substrate as production. See the
+    # image note on the `postgres` service for why this is the imresamu mirror.
+    image: imresamu/postgis:17-3.5-alpine
     restart: unless-stopped
     ports:
       - "5433:5432"

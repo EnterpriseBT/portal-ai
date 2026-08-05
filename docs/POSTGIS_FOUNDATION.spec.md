@@ -30,7 +30,8 @@ The `gis` toolpack and `visualize_map` (#314), the map widget's tile consumption
 ### Extension + images
 
 - **Migration** `enable-postgis` — `CREATE EXTENSION IF NOT EXISTS postgis;`. Must be the **first** migration touching geometry; every typed column depends on it.
-- `docker-compose.yml:53,72` — `postgres:17-alpine` → `postgis/postgis:17-3.5-alpine` for both the app and test databases; `.devcontainer` follows. `infra/cloudformation/database.yml` needs no change (`Engine: postgres` 17.9 supports the extension); enabling is the migration's job.
+- `docker-compose.yml:53,72` — `postgres:17-alpine` → `imresamu/postgis:17-3.5-alpine` for both the app and test databases. `.devcontainer/devcontainer.json` inherits the compose `postgres` service and pins no image itself, so it needs no edit. `infra/cloudformation/database.yml` needs no change (`Engine: postgres` 17.9 supports the extension); enabling is the migration's job.
+  - **Image source (decided at slice-1 implementation, 2026-08-05):** the spec originally pinned the official `postgis/postgis:17-3.5-alpine`, but the official PostGIS images publish **no arm64 manifest** (both the alpine and Debian 17-3.5 tags are amd64-only), so they cannot run on Apple-Silicon dev machines — only on the amd64 CI runners. `imresamu/postgis:17-3.5-alpine` is a multi-arch (amd64 + arm64) rebuild maintained by a PostGIS contributor, with identical tags and versions (PG17 + PostGIS 3.5). It is the standard fill for exactly this official-image gap. This is a conscious supply-chain choice — a community mirror over the org image — made because the org image does not run on the local target architecture.
 
 ### `packages/core/src/models/column-definition.model.ts`
 
