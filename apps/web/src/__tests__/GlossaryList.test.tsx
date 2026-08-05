@@ -1,10 +1,10 @@
 import { jest } from "@jest/globals";
-import type { GlossaryEntry } from "../utils/glossary.util";
+import type { GlossaryEntry } from "@portalai/core/content";
 
 const { render, screen, within } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { GlossaryList } = await import("../components/GlossaryList.component");
-const { GlossaryCategory } = await import("../utils/glossary.util");
+const { GlossaryCategory } = await import("@portalai/core/content");
 
 const fixture: GlossaryEntry[] = [
   {

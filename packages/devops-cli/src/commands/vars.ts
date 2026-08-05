@@ -26,6 +26,7 @@ import {
   pathFor,
   type CatalogKind,
 } from "../catalog.js";
+import { fireSiteRebuild } from "../github-dispatch.js";
 
 /** Confirmation flags every mutating command threads to the guard. Guards
  *  live IN the command functions (not just the bin) so library consumers —
@@ -187,6 +188,12 @@ export async function setVar(
     command: "vars set",
     args: { key, kind: entry.kind, created },
   });
+  // #311: the marketing site bakes `siteConfig` keys into static HTML at
+  // build time, so a change here is invisible until a rebuild. Fired AFTER
+  // the write + audit, and never able to fail them.
+  if (entry.siteConfig) {
+    await fireSiteRebuild(`vars set ${key} (${def.name})`);
+  }
   return { key, updated: true, created };
 }
 
@@ -242,15 +249,23 @@ export async function applyVars(
   if (pending.length === 0) return { applied: [] };
 
   guardMutation(def, opts);
+  const siteKeys: string[] = [];
   for (const { key, value } of pending) {
     const entry = lookupKey(key);
     const { created } = await writeEntry(def, entry, value);
+    if (entry.siteConfig) siteKeys.push(key);
     await recordAudit({
       env: def.name,
       operator: "portalops",
       command: "vars apply",
       args: { key, kind: entry.kind, created, file: path.basename(file) },
     });
+  }
+  // #311: same staleness rule as `vars set` — a batch that happens to carry
+  // a `siteConfig` key leaves the published site wrong until a rebuild. One
+  // dispatch for the whole batch; rebuilds are idempotent.
+  if (siteKeys.length > 0) {
+    await fireSiteRebuild(`vars apply ${siteKeys.join(",")} (${def.name})`);
   }
   return { applied: pending.map((p) => p.key) };
 }

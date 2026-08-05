@@ -1,0 +1,94 @@
+---
+import Page from "../layouts/Page.astro";
+import { siteConfig, siteUrl } from "../lib/site-context.js";
+import { breadcrumbLd } from "../lib/jsonld.js";
+
+/**
+ * STRUCTURE ONLY. The headings below are the sections a privacy policy for
+ * this product has to cover; the text under them must be written or
+ * reviewed by the business before any production release. The marker in the
+ * markup is what the prod pipeline greps for.
+ */
+const { supportEmail } = siteConfig.contact;
+
+const SECTIONS = [
+  {
+    heading: "What we collect",
+    prompt:
+      "Account identity from Auth0, the data you connect through connectors, and operational telemetry about jobs and tool calls.",
+  },
+  {
+    heading: "How we use it",
+    prompt:
+      "To operate the workspace you asked for: syncing your sources, answering your portal questions, and metering tool usage against your plan.",
+  },
+  {
+    heading: "Third parties we share it with",
+    prompt:
+      "Subprocessors required to run the service — cloud hosting, the model provider behind portal answers, the payment processor, and any third-party tool you explicitly enable.",
+  },
+  {
+    heading: "Where your data lives and how long we keep it",
+    prompt:
+      "Storage region, retention windows for connected data and the usage audit ledger, and what deletion removes.",
+  },
+  {
+    heading: "Your rights",
+    prompt:
+      "Access, correction, export, and deletion — and how to exercise them.",
+  },
+  {
+    heading: "Security",
+    prompt:
+      "Encryption in transit and at rest, credential handling for connectors, and how we scope access internally.",
+  },
+  { heading: "Changes to this policy", prompt: "How we notify you." },
+];
+
+const jsonLd = [
+  breadcrumbLd(siteUrl, [
+    { name: "Home", path: "/" },
+    { name: "Privacy", path: "/privacy/" },
+  ]),
+];
+---
+
+<!-- business copy pending: blocks prod tag -->
+<Page
+  title="Privacy policy — Portals AI"
+  description="How Portals AI collects, uses, stores, and shares your data, and the rights you have over it."
+  path="/privacy/"
+  jsonLd={jsonLd}
+  noindex={true}
+>
+  <h1>Privacy policy</h1>
+
+  <p class="pending" role="note">
+    <strong>Draft.</strong> This page is structural. The binding policy text is being
+    prepared and must replace every section below before Portals AI goes to production.
+  </p>
+
+  {
+    SECTIONS.map((section) => (
+      <section class="section">
+        <h2>{section.heading}</h2>
+        <p class="muted">{section.prompt}</p>
+      </section>
+    ))
+  }
+
+  <p>
+    Questions about this policy: <a href={`mailto:${supportEmail}`}
+      >{supportEmail}</a
+    >
+  </p>
+
+  <style>
+    .pending {
+      padding: calc(var(--space-unit) * 2);
+      border: 1px solid var(--color-warning-main);
+      border-radius: var(--radius-base);
+      background: var(--color-background-paper);
+    }
+  </style>
+</Page>

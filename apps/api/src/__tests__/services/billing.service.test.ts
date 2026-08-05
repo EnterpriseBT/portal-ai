@@ -1,9 +1,25 @@
 /**
- * Unit tests for `BillingService.deriveTierFromSubscription` (#176 slice 2) —
- * the pure Decision-3 status table. No I/O; the Stripe SDK never loads.
+ * Unit tests for `BillingService` — the pure Decision-3 status table
+ * (`deriveTierFromSubscription`, #176 slice 2) and the `price.*` →
+ * site-rebuild fan-out on `recordIgnoredEvent` (#311 slice 4).
+ *
+ * Still no real I/O: the repository and the dispatch service are mocked, so
+ * the Stripe SDK and a database never load.
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { jest, describe, it, expect, beforeEach } from "@jest/globals";
+
+const mockInsertIfNew = jest.fn<(row: unknown) => Promise<boolean>>();
+jest.unstable_mockModule("../../services/db.service.js", () => ({
+  DbService: {
+    repository: { stripeEvents: { insertIfNew: mockInsertIfNew } },
+  },
+}));
+
+const mockFireSiteRebuild = jest.fn<(reason: string) => Promise<void>>();
+jest.unstable_mockModule("../../services/rebuild-dispatch.service.js", () => ({
+  RebuildDispatchService: { fireSiteRebuild: mockFireSiteRebuild },
+}));
 
 const { BillingService } = await import("../../services/billing.service.js");
 
@@ -143,5 +159,67 @@ describe("BillingService.deriveTierFromSubscription", () => {
         "pro"
       ).anchorDay
     ).toBeNull();
+  });
+});
+
+// ── #311 slice 4: price events fan out to a site rebuild ─────────────
+
+describe("BillingService.recordIgnoredEvent — site-rebuild fan-out (#311)", () => {
+  /** A verified Stripe event of `type`, shaped like the webhook's payload. */
+  function priceEvent(type: string, id = `evt_${type}`) {
+    return {
+      id,
+      type,
+      data: { object: { id: "price_pro", object: "price" } },
+    } as unknown as Parameters<typeof BillingService.recordIgnoredEvent>[0];
+  }
+
+  beforeEach(() => {
+    mockInsertIfNew.mockReset();
+    mockFireSiteRebuild.mockReset();
+    mockInsertIfNew.mockResolvedValue(true);
+    mockFireSiteRebuild.mockResolvedValue(undefined);
+  });
+
+  it("still records price.updated as `ignored` — webhook semantics unchanged", async () => {
+    await expect(
+      BillingService.recordIgnoredEvent(priceEvent("price.updated"))
+    ).resolves.toBe("ignored");
+
+    // The row's outcome is what the audit trail keys off.
+    const row = mockInsertIfNew.mock.calls[0][0] as { outcome: string };
+    expect(row.outcome).toBe("ignored");
+  });
+
+  it.each(["price.created", "price.updated", "price.deleted"])(
+    "fires a site rebuild for %s",
+    async (type) => {
+      await BillingService.recordIgnoredEvent(priceEvent(type));
+      expect(mockFireSiteRebuild).toHaveBeenCalledWith(`stripe:${type}`);
+    }
+  );
+
+  it("does not fire for an unrelated ignored event", async () => {
+    await BillingService.recordIgnoredEvent(priceEvent("invoice.paid"));
+    expect(mockFireSiteRebuild).not.toHaveBeenCalled();
+  });
+
+  it("does not fire on a redelivery (dedup returns duplicate)", async () => {
+    mockInsertIfNew.mockResolvedValue(false);
+
+    await expect(
+      BillingService.recordIgnoredEvent(priceEvent("price.updated"))
+    ).resolves.toBe("duplicate");
+    expect(mockFireSiteRebuild).not.toHaveBeenCalled();
+  });
+
+  it("a dispatch failure never fails the webhook", async () => {
+    // Defensive: the service swallows its own errors, but the webhook must
+    // survive even if that contract is ever broken upstream.
+    mockFireSiteRebuild.mockRejectedValue(new Error("github down"));
+
+    await expect(
+      BillingService.recordIgnoredEvent(priceEvent("price.updated"))
+    ).resolves.toBe("ignored");
   });
 });

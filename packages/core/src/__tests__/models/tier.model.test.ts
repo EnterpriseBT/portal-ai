@@ -46,6 +46,9 @@ const validRowFields = {
   builtinToolpacks: ["data_query", "web_search"],
   customToolpacks: true,
   cta: "none",
+  // #311: marketing-site fields.
+  public: false,
+  displayOrder: 0,
   description: null,
   visibleToOrganizationId: null,
 };

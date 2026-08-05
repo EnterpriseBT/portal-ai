@@ -1,0 +1,55 @@
+---
+import Page from "../layouts/Page.astro";
+import { siteConfig, siteUrl } from "../lib/site-context.js";
+import { breadcrumbLd, organizationLd } from "../lib/jsonld.js";
+
+/** Addresses are operator-owned (`portalops vars set SUPPORT_EMAIL`) and
+ *  arrive in the build snapshot — changing one is a config write plus the
+ *  rebuild it dispatches, never a deploy. */
+const { supportEmail, salesEmail } = siteConfig.contact;
+
+const jsonLd = [
+  breadcrumbLd(siteUrl, [
+    { name: "Home", path: "/" },
+    { name: "Contact", path: "/contact/" },
+  ]),
+  organizationLd(siteUrl, supportEmail),
+];
+---
+
+<Page
+  title="Contact — Portals AI"
+  description="Get in touch with Portals AI about support, sales, custom plans, or private toolpacks."
+  path="/contact/"
+  jsonLd={jsonLd}
+>
+  <h1>Get in touch</h1>
+
+  <ul class="card-grid">
+    <li class="card">
+      <h2>Sales</h2>
+      <p>
+        Custom allowances, private toolpacks, invoicing, or a plan that isn't on
+        the pricing page — start here.
+      </p>
+      <div class="card__spacer"></div>
+      <p>
+        <a class="button button--primary" href={`mailto:${salesEmail}`}
+          >{salesEmail}</a
+        >
+      </p>
+    </li>
+
+    <li class="card">
+      <h2>Support</h2>
+      <p>
+        Already using Portals AI and something isn't behaving? Tell us what you
+        were doing and what you expected.
+      </p>
+      <div class="card__spacer"></div>
+      <p>
+        <a class="button" href={`mailto:${supportEmail}`}>{supportEmail}</a>
+      </p>
+    </li>
+  </ul>
+</Page>

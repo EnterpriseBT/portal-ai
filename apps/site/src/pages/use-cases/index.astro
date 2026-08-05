@@ -1,0 +1,40 @@
+---
+import Page from "../../layouts/Page.astro";
+import { USE_CASES } from "../../lib/use-cases.js";
+import { siteUrl } from "../../lib/site-context.js";
+import { breadcrumbLd } from "../../lib/jsonld.js";
+
+const jsonLd = [
+  breadcrumbLd(siteUrl, [
+    { name: "Home", path: "/" },
+    { name: "Use cases", path: "/use-cases/" },
+  ]),
+];
+---
+
+<Page
+  title="Use cases — Portals AI"
+  description="How operations teams, founders, and analysts use Portals AI to connect their data sources and answer questions about the combined picture."
+  path="/use-cases/"
+  jsonLd={jsonLd}
+>
+  <h1>Use cases</h1>
+  <p class="muted">Same product, three different starting problems.</p>
+
+  <ul class="card-grid">
+    {
+      USE_CASES.map((useCase) => (
+        <li class="card">
+          <h2>{useCase.name}</h2>
+          <p>{useCase.summary}</p>
+          <div class="card__spacer" />
+          <p>
+            <a class="button" href={`/use-cases/${useCase.slug}/`}>
+              Read more
+            </a>
+          </p>
+        </li>
+      ))
+    }
+  </ul>
+</Page>

@@ -134,6 +134,32 @@ describe("TIER_CATALOG (#218)", () => {
   });
 });
 
+// ── #311 — the public marketing-site fields ───────────────────────────
+
+describe("TIER_CATALOG public/displayOrder (#311)", () => {
+  it("every entry carries `public` and an integer `displayOrder`", () => {
+    for (const entry of TIER_CATALOG) {
+      expect(typeof entry.public).toBe("boolean");
+      expect(Number.isInteger(entry.displayOrder)).toBe(true);
+    }
+    // The four self-serve tiers all appear on the marketing site.
+    expect(TIER_CATALOG.every((e) => e.public)).toBe(true);
+  });
+
+  it("displayOrders are unique and ascending in catalog order", () => {
+    const orders = TIER_CATALOG.map((e) => e.displayOrder);
+    expect(new Set(orders).size).toBe(orders.length);
+    expect([...orders].sort((a, b) => a - b)).toEqual(orders);
+  });
+
+  it("the schema rejects a negative displayOrder", () => {
+    const base = TIER_CATALOG_BY_SLUG.get("standard")!;
+    expect(
+      TierCatalogEntrySchema.safeParse({ ...base, displayOrder: -1 }).success
+    ).toBe(false);
+  });
+});
+
 // ── case 2 — the flat-map convergence guarantee ───────────────────────
 
 describe("TierCatalogEntrySchema ↔ TierSchema field mirror (#218)", () => {

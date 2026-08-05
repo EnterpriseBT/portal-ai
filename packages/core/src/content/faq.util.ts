@@ -1,3 +1,11 @@
+/**
+ * The product FAQ — shared by the in-app Help view and the public marketing
+ * site (#311), where the entries also become `FAQPage` JSON-LD.
+ *
+ * Moved verbatim from `apps/web/src/utils`. Like the glossary, it imports
+ * nothing: pure data, no bundler assumptions.
+ */
+
 // ── Categories ──────────────────────────────────────────────────────
 
 export enum FAQCategory {
@@ -30,9 +38,9 @@ export interface FAQEntry {
 export const FAQ_ENTRIES: FAQEntry[] = [
   // Getting Started
   {
-    question: "What is Portals.ai and what can I do with it?",
+    question: "What is Portals AI and what can I do with it?",
     answer:
-      "Portals.ai is a workspace for connecting your data sources, normalizing them into a shared vocabulary, and asking questions about them in chat-style sessions called portals. You can pull in data from CSVs, databases, and other tools, define how their fields relate, and then explore or analyze the combined data through portals.",
+      "Portals AI is a workspace for connecting your data sources, normalizing them into a shared vocabulary, and asking questions about them in chat-style sessions called portals. You can pull in data from CSVs, databases, and other tools, define how their fields relate, and then explore or analyze the combined data through portals.",
     category: FAQCategory.GettingStarted,
     relatedGlossaryTerms: ["Connector Instance", "Station", "Portal"],
   },
@@ -110,7 +118,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "What happens when I sync an entity?",
     answer:
-      "Syncing pulls the latest records from the connector source into Portals.ai. New records are added, changed records are updated, and the entity's record count and last-sync timestamp are refreshed. A sync runs as a background job you can monitor on the Jobs page.",
+      "Syncing pulls the latest records from the connector source into Portals AI. New records are added, changed records are updated, and the entity's record count and last-sync timestamp are refreshed. A sync runs as a background job you can monitor on the Jobs page.",
     category: FAQCategory.Data,
     relatedGlossaryTerms: ["Sync", "Connector Entity", "Job"],
   },

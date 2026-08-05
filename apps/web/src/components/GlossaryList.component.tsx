@@ -12,7 +12,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import {
   GLOSSARY_CATEGORY_LABELS,
   type GlossaryEntry,
-} from "../utils/glossary.util";
+} from "@portalai/core/content";
 
 /**
  * Render a glossary `definition` or `example` string with markdown

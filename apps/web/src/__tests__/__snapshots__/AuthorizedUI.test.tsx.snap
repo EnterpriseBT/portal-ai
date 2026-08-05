@@ -30,7 +30,7 @@ exports[`AuthorizedUI Component Error State should call handleAuthError and show
           <h3
             class="MuiTypography-root MuiTypography-h3 css-wxvbvs-MuiTypography-root"
           >
-            Portals.ai
+            Portals AI
           </h3>
         </a>
         <div
@@ -113,7 +113,7 @@ exports[`AuthorizedUI Component Loading State should render LoadingView when loa
           <h3
             class="MuiTypography-root MuiTypography-h3 css-wxvbvs-MuiTypography-root"
           >
-            Portals.ai
+            Portals AI
           </h3>
         </a>
         <div

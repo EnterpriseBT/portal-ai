@@ -1,0 +1,262 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Portals AI — S3 + CloudFront (public marketing site, #311)
+
+# Sibling of `frontend.yml`, same private-bucket + OAC + Route 53 shape.
+# Every difference below exists because this serves a MULTI-PAGE STATIC SITE
+# rather than a single-page app:
+#
+#   * A CloudFront Function rewrites directory-style URIs to `index.html`
+#     instead of the SPA's blanket "any miss → index.html".
+#   * A miss returns a real 404 with a branded page, not a 200. The SPA can
+#     honestly answer every URL because its router decides; this site cannot,
+#     and a soft 200 would get every typo'd URL indexed.
+#   * No COOP header: there are no OAuth popups on a marketing page.
+#
+# Physical resource names are discriminated with `-site-` because CloudFront
+# OAC and response-headers-policy names are account-global and would
+# otherwise collide with `frontend.yml`'s in the same environment.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+  Subdomain:
+    Type: String
+    Default: site-dev
+    Description: Subdomain prefix (e.g. site-dev for dev, www for prod)
+  DomainName:
+    Type: String
+    Default: portalsai.io
+  CertificateArn:
+    Type: String
+    Description: ACM certificate ARN (must be in us-east-1 for CloudFront)
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: Route 53 hosted zone for DomainName
+
+Resources:
+  # ── S3 Access Logs Bucket ────────────────────────────────────────────────
+  SiteAccessLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${Subdomain}.${DomainName}-access-logs"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      LoggingConfiguration:
+        LogFilePrefix: self-logs/
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-site-access-logs"
+
+  # ── S3 Bucket (private — served exclusively via CloudFront OAC) ──────────
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${Subdomain}.${DomainName}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LoggingConfiguration:
+        DestinationBucketName: !Ref SiteAccessLogsBucket
+        LogFilePrefix: s3-access/
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-site"
+
+  # ── Bucket Policy: allow CloudFront OAC to read objects ─────────────────
+  SiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${SiteBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${SiteDistribution}"
+          - Sid: DenyNonSSLRequests
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt SiteBucket.Arn
+              - !Sub "${SiteBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  # ── Origin Access Control ────────────────────────────────────────────────
+  SiteOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "portalai-${Environment}-site-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # ── Response Headers Policy ──────────────────────────────────────────────
+  # No COOP here (see the template header). Just the baseline security
+  # headers plus HSTS, which is safe on a domain that is HTTPS-only.
+  SiteResponseHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub "portalai-${Environment}-site-headers"
+        Comment: "Baseline security headers for the public marketing site."
+        SecurityHeadersConfig:
+          ContentTypeOptions:
+            Override: true
+          FrameOptions:
+            FrameOption: DENY
+            Override: true
+          ReferrerPolicy:
+            ReferrerPolicy: strict-origin-when-cross-origin
+            Override: true
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 31536000
+            IncludeSubdomains: true
+            Override: true
+
+  # ── CloudFront Function: directory-index rewrite ─────────────────────────
+  # Astro is configured `trailingSlash: "always"` + `build.format: directory`,
+  # so every route is `<route>/index.html` in S3. Viewer requests arrive as
+  # `/features/` (or `/features`), which S3 cannot resolve on its own.
+  #
+  # Rewriting at the edge — rather than 301-redirecting — keeps one canonical
+  # URL per page. A redirect chain would split link equity and add a
+  # round-trip to every navigation.
+  #
+  # URI matrix this handles:
+  #   /              → /index.html
+  #   /features/     → /features/index.html
+  #   /features      → /features/index.html
+  #   /styles.css    → unchanged (last segment contains a dot)
+  #   /missing/      → /missing/index.html → S3 404 → branded /404.html
+  SiteIndexRewrite:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "portalai-${Environment}-site-index-rewrite"
+      AutoPublish: true
+      FunctionConfig:
+        Comment: "Rewrites directory-style URIs to their index.html object."
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+
+          if (uri.endsWith("/")) {
+            request.uri = uri + "index.html";
+            return request;
+          }
+
+          // A dot in the last segment means it's a file (styles.css,
+          // og-default.png, sitemap-index.xml, robots.txt) — leave it alone.
+          var lastSegment = uri.substring(uri.lastIndexOf("/") + 1);
+          if (lastSegment.indexOf(".") === -1) {
+            request.uri = uri + "/index.html";
+          }
+
+          return request;
+        }
+
+  # ── CloudFront Distribution ──────────────────────────────────────────────
+  SiteDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "Portals AI ${Environment} marketing site"
+        Aliases:
+          - !Sub "${Subdomain}.${DomainName}"
+        DefaultRootObject: index.html
+        # A missing page is a REAL 404 with a branded body. Deliberately
+        # unlike frontend.yml's SPA rewrite: mapping misses to 200 would
+        # tell crawlers every mistyped URL is a valid page.
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 404
+            ResponsePagePath: /404.html
+          - ErrorCode: 404
+            ResponseCode: 404
+            ResponsePagePath: /404.html
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+            OriginAccessControlId: !GetAtt SiteOriginAccessControl.Id
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized (AWS managed)
+          ResponseHeadersPolicyId: !Ref SiteResponseHeadersPolicy
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt SiteIndexRewrite.FunctionARN
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+        HttpVersion: http2and3
+        IPV6Enabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-site"
+
+  # ── Route 53 A-record (alias → CloudFront) ──────────────────────────────
+  SiteDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "${Subdomain}.${DomainName}"
+      Type: A
+      AliasTarget:
+        HostedZoneId: Z2FDTNDATAQYW2
+        DNSName: !GetAtt SiteDistribution.DomainName
+        EvaluateTargetHealth: false
+
+Outputs:
+  SiteBucketName:
+    Description: S3 bucket name (used by the pipeline for s3 sync)
+    Value: !Ref SiteBucket
+    Export:
+      Name: !Sub "${Environment}-SiteBucketName"
+
+  SiteDistributionId:
+    Description: CloudFront distribution ID (used by the pipeline for invalidation)
+    Value: !Ref SiteDistribution
+    Export:
+      Name: !Sub "${Environment}-SiteDistributionId"
+
+  SiteDomain:
+    Description: CloudFront distribution domain name
+    Value: !GetAtt SiteDistribution.DomainName

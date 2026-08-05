@@ -1,4 +1,17 @@
-import { ApplicationRoute } from "./routes.util";
+/**
+ * The product glossary — the canonical vocabulary, shared by the in-app Help
+ * view and the public marketing site (#311).
+ *
+ * Moved here from `apps/web/src/utils` so both surfaces name a concept the
+ * same way. `pageRoute` stays in the type but carries NO values here: a
+ * route into the authenticated app is meaningless to an anonymous visitor,
+ * and importing `ApplicationRoute` would couple this package to the web
+ * app's router. `apps/web` re-attaches the routes at read time via
+ * `withPageRoutes` (`utils/glossary-routes.util.ts`).
+ *
+ * This module must import nothing — it is pure data consumed at build time
+ * by a static site with no bundler assumptions.
+ */
 
 // ── Categories ──────────────────────────────────────────────────────
 
@@ -41,7 +54,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "The CSV connector definition is the template; you can create many CSV connector instances from it.",
     relatedTerms: ["Connector Instance", "Connector Entity"],
-    pageRoute: ApplicationRoute.Connectors,
   },
   {
     term: "Connector Instance",
@@ -51,7 +63,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       'You upload a CSV of customer data — that creates a connector instance named "Q1 Customers CSV".',
     relatedTerms: ["Connector Definition", "Connector Entity", "Station"],
-    pageRoute: ApplicationRoute.Connectors,
   },
   {
     term: "Connector Entity",
@@ -61,7 +72,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "A database connector instance might expose Customers, Orders, and Products as separate connector entities.",
     relatedTerms: ["Connector Instance", "Entity Record", "Field Mapping"],
-    pageRoute: ApplicationRoute.Entities,
   },
   {
     term: "Entity Record",
@@ -71,17 +81,15 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "Each row in your customers CSV becomes one entity record under the Customers connector entity.",
     relatedTerms: ["Connector Entity", "Normalized Data", "Sync"],
-    pageRoute: ApplicationRoute.Entities,
   },
   {
     term: "Sync",
     category: GlossaryCategory.DataSources,
     definition:
-      "Pulling the latest data from a connector into Portals.ai so your entities stay current.",
+      "Pulling the latest data from a connector into Portals AI so your entities stay current.",
     example:
       'Click "Sync" on a connector instance to fetch any new or changed records from the source.',
     relatedTerms: ["Connector Instance", "Entity Record", "Job"],
-    pageRoute: ApplicationRoute.Entities,
   },
   // Data Modeling
   {
@@ -92,7 +100,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       'Define an "email" column once with email-pattern validation, then map it across every entity that has email data.',
     relatedTerms: ["Field Mapping", "Data Types", "Validation Pattern"],
-    pageRoute: ApplicationRoute.ColumnDefinitions,
   },
   {
     term: "Field Mapping",
@@ -102,7 +109,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       'Map the "Email Address" field from your CRM and the "email" field from your CSV to the same email column definition.',
     relatedTerms: ["Column Definition", "Connector Entity", "Normalized Data"],
-    pageRoute: ApplicationRoute.Entities,
   },
   {
     term: "Data Types",
@@ -112,7 +118,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       'A "price" column uses the number type; a "tags" column uses the array type.',
     relatedTerms: ["Column Definition", "Validation Pattern"],
-    pageRoute: ApplicationRoute.ColumnDefinitions,
   },
   {
     term: "Validation Pattern",
@@ -122,7 +127,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "An email column might use the pattern `^[^@]+@[^@]+\\.[^@]+$` to reject malformed addresses.",
     relatedTerms: ["Column Definition", "Normalized Data"],
-    pageRoute: ApplicationRoute.ColumnDefinitions,
   },
   {
     term: "Canonical Format",
@@ -132,7 +136,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       'A canonical date format ensures "2026-04-13" is shown identically whether the source stored it as "4/13/26" or "13 Apr 2026".',
     relatedTerms: ["Column Definition", "Normalized Data"],
-    pageRoute: ApplicationRoute.ColumnDefinitions,
   },
   {
     term: "Primary Key",
@@ -141,7 +144,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
       "The field on a connector entity that uniquely identifies each record.",
     example: 'A Customers entity might use "customer_id" as its primary key.',
     relatedTerms: ["Connector Entity", "Entity Record"],
-    pageRoute: ApplicationRoute.Entities,
   },
   {
     term: "Normalized Data",
@@ -151,7 +153,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "After normalization, a CRM contact and a CSV row both surface their email under the same shared field.",
     relatedTerms: ["Field Mapping", "Column Definition", "Canonical Format"],
-    pageRoute: ApplicationRoute.Entities,
   },
 
   // Organization
@@ -163,7 +164,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "Group your CRM Contacts and your support tool Users together so the same person appears once across both sources.",
     relatedTerms: ["Entity Group Member", "Link Field", "Overlap Preview"],
-    pageRoute: ApplicationRoute.EntityGroups,
   },
   {
     term: "Entity Group Member",
@@ -173,7 +173,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       'Inside the "People" entity group, both the CRM Contacts entity and the support Users entity are members.',
     relatedTerms: ["Entity Group", "Link Field"],
-    pageRoute: ApplicationRoute.EntityGroups,
   },
   {
     term: "Link Field",
@@ -183,7 +182,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       'Use "email" as the link field so the same person in your CRM and your billing system can be recognized as one.',
     relatedTerms: ["Entity Group", "Entity Group Member", "Overlap Preview"],
-    pageRoute: ApplicationRoute.EntityGroups,
   },
   {
     term: "Entity Tag",
@@ -193,7 +191,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       'Tag all your customer-data entities with a green "Customers" tag for quick filtering on the entities page.',
     relatedTerms: ["Connector Entity"],
-    pageRoute: ApplicationRoute.Tags,
   },
   {
     term: "Overlap Preview",
@@ -203,7 +200,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "An overlap preview might show that 78% of CRM contacts are also present in your billing system.",
     relatedTerms: ["Entity Group", "Link Field"],
-    pageRoute: ApplicationRoute.EntityGroups,
   },
 
   // Analytics
@@ -220,7 +216,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
       "Portal",
       "Default Station",
     ],
-    pageRoute: ApplicationRoute.Stations,
   },
   {
     term: "Tool",
@@ -239,7 +234,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "Enable the regression tool pack on a station so the assistant has the `regression`, `forecast`, and `decompose` tools available for time-series questions.",
     relatedTerms: ["Tool", "Station", "Portal", "Custom Toolpack"],
-    pageRoute: ApplicationRoute.Toolpacks,
   },
   {
     term: "Plan Entitlement",
@@ -249,7 +243,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "A station shows a dashed, greyed-out `entity_management` chip badged \"Inactive on your plan\". Asked to create records there, the assistant says record creation isn't included in the current plan and links to Settings → Subscription & Billing. Upgrading makes the same station's pack live again with no edit.",
     relatedTerms: ["Tool Pack", "Station", "Portal"],
-    pageRoute: ApplicationRoute.Toolpacks,
   },
   {
     term: "Custom Toolpack",
@@ -259,7 +252,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       'Register a "customer_intel" pack with a `score_churn_risk` tool that calls your in-house ML service. Attach it to your retention station and the assistant can compute risk scores mid-session — something a SQL query alone can\'t do.',
     relatedTerms: ["Tool", "Tool Pack", "Station", "Portal", "Signing Secret"],
-    pageRoute: ApplicationRoute.Toolpacks,
   },
   {
     term: "Signing Secret",
@@ -269,7 +261,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "Register a toolpack, copy the displayed `whsec_...` secret into your server's environment (e.g. `TOOLPACK_SIGNING_SECRET`), and verify every incoming request before processing — recompute the HMAC over `<ts>.<id>.<rawBody>` and compare with `crypto.timingSafeEqual` (Node) / `hmac.compare_digest` (Python) / `hmac.Equal` (Go).",
     relatedTerms: ["Custom Toolpack", "Tool Pack"],
-    pageRoute: ApplicationRoute.Toolpacks,
   },
   {
     term: "Portal",
@@ -315,7 +306,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "Pin a quarterly-revenue chart so it's one click away from the dashboard — it refreshes itself when you open it.",
     relatedTerms: ["Portal Result", "Default Station"],
-    pageRoute: ApplicationRoute.PortalResults,
   },
   {
     term: "Visualization Widget",
@@ -336,7 +326,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "Re-validating an entity definition spawns a revalidation job that runs in the background while you keep working.",
     relatedTerms: ["Job Status", "Sync"],
-    pageRoute: ApplicationRoute.Jobs,
   },
   {
     term: "Job Status",
@@ -346,7 +335,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "A sync job moves from pending to active to completed once it finishes successfully.",
     relatedTerms: ["Job"],
-    pageRoute: ApplicationRoute.Jobs,
   },
   {
     term: "Organization",
@@ -365,7 +353,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "Set your most-used station as the default so the dashboard surfaces its portals and pinned results first.",
     relatedTerms: ["Station", "Pinned Result"],
-    pageRoute: ApplicationRoute.Stations,
   },
   {
     term: "Subscription Plan",
@@ -375,7 +362,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "Upgrading from Standard to a paid plan raises your monthly metered and expensive usage allocations.",
     relatedTerms: ["Organization", "Billing Portal"],
-    pageRoute: ApplicationRoute.Settings,
   },
   {
     term: "Billing Portal",
@@ -385,7 +371,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "To switch plans or update your card, open Manage subscription — everything happens in the billing portal, and your plan here updates automatically.",
     relatedTerms: ["Subscription Plan", "Organization"],
-    pageRoute: ApplicationRoute.Settings,
   },
 ];
 

@@ -32,20 +32,24 @@ import {
   GlossaryCategory,
   filterGlossary,
   type GlossaryEntry,
-} from "../utils/glossary.util";
-import {
   FAQ_CATEGORY_LABELS,
   FAQ_ENTRIES,
   FAQCategory,
   filterFAQ,
   type FAQEntry,
-} from "../utils/faq.util";
+} from "@portalai/core/content";
+import { withPageRoutes } from "../utils/glossary-routes.util";
 
 // ── Constants ───────────────────────────────────────────────────────
 
 const TAB_GETTING_STARTED = 0;
 const TAB_GLOSSARY = 1;
 const TAB_FAQ = 2;
+
+/** The shared glossary (`@portalai/core/content`) carries no in-app routes —
+ *  they'd be meaningless on the public marketing site. Graft them back on
+ *  once at module scope; the dataset is static. */
+const GLOSSARY_ENTRIES_WITH_ROUTES = withPageRoutes(GLOSSARY_ENTRIES);
 
 // ── UI props ────────────────────────────────────────────────────────
 
@@ -253,7 +257,7 @@ export const HelpView: React.FC = () => {
   return (
     <HelpViewUI
       steps={GETTING_STARTED_STEPS}
-      glossaryEntries={GLOSSARY_ENTRIES}
+      glossaryEntries={GLOSSARY_ENTRIES_WITH_ROUTES}
       faqEntries={FAQ_ENTRIES}
       onNavigate={handleNavigate}
     />

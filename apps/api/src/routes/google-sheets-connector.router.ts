@@ -5,7 +5,7 @@
  * popup; Google redirects to the callback with `code+state`; we exchange,
  * fetch the user's email, and persist a pending `ConnectorInstance`.
  *
- * Authorize is JWT-protected (the user is logged into Portal.ai when they
+ * Authorize is JWT-protected (the user is logged into Portals AI when they
  * trigger the popup). Callback is JWT-unprotected — Google's redirect
  * doesn't carry a Bearer token; the signed `state` token is the security
  * boundary instead. Hence two routers in this file: `googleSheetsConnectorRouter`

@@ -15,6 +15,7 @@ import type { BillingTier } from "@portalai/core/contracts";
 import { DbService } from "./db.service.js";
 import { StripeService } from "./stripe.service.js";
 import { TierService } from "./tier.service.js";
+import { RebuildDispatchService } from "./rebuild-dispatch.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { environment } from "../environment.js";
@@ -23,6 +24,16 @@ import { createLogger } from "../utils/logger.util.js";
 import type { OrganizationSelect } from "../db/schema/zod.js";
 
 const logger = createLogger({ module: "billing-service" });
+
+/** Stripe price-catalog events (#311). Recorded `ignored` like any other
+ *  unhandled type — they change no tier state — but they DO move amounts
+ *  the marketing site has baked into static HTML, so each one first-delivery
+ *  fires a site rebuild. */
+const STRIPE_PRICE_EVENTS = new Set([
+  "price.created",
+  "price.updated",
+  "price.deleted",
+]);
 
 /** The web app's settings page — Checkout/Portal return target. */
 function settingsUrl(): string {
@@ -234,6 +245,13 @@ export class BillingService {
   /**
    * Record a signature-verified event of a type we don't handle —
    * dedup'd like everything else, so redeliveries stay one row.
+   *
+   * `price.*` events keep this exact outcome (`ignored`) — no tier
+   * convergence happens here; `portalops tier apply` owns price↔tier
+   * pointing. They additionally fire a site rebuild (#311) so the marketing
+   * site's baked amounts catch up with Stripe. The dispatch runs only on
+   * first delivery (a redelivery is a `duplicate` and would rebuild for
+   * nothing) and can never fail the webhook — see `RebuildDispatchService`.
    */
   static async recordIgnoredEvent(
     event: Stripe.Event
@@ -253,6 +271,26 @@ export class BillingService {
         outcome: "ignored",
       })
     );
+
+    if (inserted && STRIPE_PRICE_EVENTS.has(event.type)) {
+      // Awaited for determinism, but guarded: the dispatch service swallows
+      // its own failures, and this `.catch` makes the webhook immune even if
+      // that contract is ever broken upstream. A rejection here would 500 a
+      // successfully-recorded event and provoke a Stripe retry.
+      await RebuildDispatchService.fireSiteRebuild(
+        `stripe:${event.type}`
+      ).catch((error) => {
+        logger.warn(
+          {
+            eventId: event.id,
+            type: event.type,
+            error: error instanceof Error ? error.message : "Unknown error",
+          },
+          "Site-rebuild dispatch threw; webhook unaffected"
+        );
+      });
+    }
+
     return inserted ? "ignored" : "duplicate";
   }
 

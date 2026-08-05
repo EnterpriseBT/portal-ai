@@ -9,6 +9,7 @@ import { protectedRouter } from "./routes/protected.router.js";
 import { sseRouter } from "./routes/sse.router.js";
 import { webhookRouter } from "./routes/webhook.router.js";
 import { webhookHandleRouter } from "./routes/webhook-handle.router.js";
+import { publicSiteRouter } from "./routes/public-site.router.js";
 import { swaggerRouter } from "./routes/swagger.router.js";
 import { environment } from "./environment.js";
 import { httpLogger } from "./middleware/logger.middleware.js";
@@ -57,6 +58,11 @@ app.use("/api/sse", sseRouter);
 // NOT user-JWT — mount before protectedRouter so jwtCheck doesn't reject the
 // webhook server's callback.
 app.use("/api/webhook", webhookHandleRouter);
+// Public marketing-site config (#311): anonymous BY DESIGN — the static site
+// fetches it at build time with no credential to present. Mounted before
+// protectedRouter so jwtCheck never sees it; rate-limited per IP instead, and
+// serving only public tier rows + operator contact routes (no tenant data).
+app.use("/api/public", publicSiteRouter);
 app.use("/api", protectedRouter);
 
 // Catch-all error handler — all ApiErrors passed to next() are handled here

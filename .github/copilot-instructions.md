@@ -1,8 +1,8 @@
-# Portal.ai — Copilot Instructions
+# Portals AI — Copilot Instructions
 
 ## Project
 
-Turborepo monorepo: React 19 frontend (`apps/web/`), Express API (`apps/api/`), shared component/model library (`packages/core/`), CLI environment-access layer (`packages/cli-env/`, Node-only), `portalops` operator CLI (`packages/devops-cli/`), `portalai` app-data CLI (`packages/admin-cli/`).
+Turborepo monorepo: React 19 frontend (`apps/web/`), Astro public marketing site (`apps/site/`), Express API (`apps/api/`), shared component/model library (`packages/core/`), CLI environment-access layer (`packages/cli-env/`, Node-only), `portalops` operator CLI (`packages/devops-cli/`), `portalai` app-data CLI (`packages/admin-cli/`).
 
 ## File Naming
 
@@ -80,7 +80,7 @@ One feature = one branch = one PR. Five artifacts land as commits on that branch
 
 ## Discovery docs — enterprise-scale lens (default)
 
-Portal.ai is enterprise, multi-tenant, and billing-facing, so a discovery doc's default lens is **enterprise-scale, not prototype-grade**. Every discovery (`docs/<SLUG>.discovery.md`) carries an **"Enterprise-scale considerations"** pass — each dimension gets a `Lean:` or an explicit `N/A because …`: concurrency & correctness (multi-instance races, atomicity, idempotency); accuracy & auditability (durable ledger vs. ephemeral counter; chargeback/compliance); failure modes (fail-open vs. fail-closed and its cost/safety implication; dependency-down degradation); scale & unbounded growth (fan-out, cardinality ceilings, backpressure); multi-tenancy (per-org isolation, noisy-neighbor); contract stability (future paid/enterprise features plug in without re-plumbing); data lifecycle (windows aligned to business/contract semantics, not arbitrary technical ones). It's a lens, not bureaucracy — proportionate to the ticket, and any prototype-grade choice must be a *conscious, stated* downgrade, never a silent default. See CLAUDE.md → "Enterprise-scale considerations in discovery".
+Portals AI is enterprise, multi-tenant, and billing-facing, so a discovery doc's default lens is **enterprise-scale, not prototype-grade**. Every discovery (`docs/<SLUG>.discovery.md`) carries an **"Enterprise-scale considerations"** pass — each dimension gets a `Lean:` or an explicit `N/A because …`: concurrency & correctness (multi-instance races, atomicity, idempotency); accuracy & auditability (durable ledger vs. ephemeral counter; chargeback/compliance); failure modes (fail-open vs. fail-closed and its cost/safety implication; dependency-down degradation); scale & unbounded growth (fan-out, cardinality ceilings, backpressure); multi-tenancy (per-org isolation, noisy-neighbor); contract stability (future paid/enterprise features plug in without re-plumbing); data lifecycle (windows aligned to business/contract semantics, not arbitrary technical ones). It's a lens, not bureaucracy — proportionate to the ticket, and any prototype-grade choice must be a *conscious, stated* downgrade, never a silent default. See CLAUDE.md → "Enterprise-scale considerations in discovery".
 
 ## Tool cost control (apps/api)
 

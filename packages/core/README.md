@@ -1,6 +1,6 @@
 # @portalai/core
 
-Core React component library for Portal.ai with Material-UI integration.
+Core React component library for Portals AI with Material-UI integration.
 
 ## Installation
 
@@ -144,9 +144,50 @@ The library includes pre-configured Material-UI themes:
 - Brand Dark theme
 
 Custom fonts:
-- **Noto Sans**: Primary body font
-- **Playfair Display**: Heading font
-- **Cutive Mono**: Monospace font
+- **Exo 2**: Primary body font (variable weight 100–900)
+- **Fraunces**: Heading / display font (variable)
+- **Space Grotesk**: Secondary sans
+- **Space Mono**: Monospace
+
+### Font pipeline
+
+`npm run build` emits both formats into `dist/fonts`: `build:assets` copies
+the source TTFs, then `build:fonts` (`scripts/build-fonts.mjs`, `ttf2woff2`)
+writes a `.woff2` beside each one — about a 59% byte reduction across the
+set. Every `@font-face` in `fonts.scss` lists **woff2 first** with the TTF as
+a fallback, because a browser takes the first format it supports.
+
+That ordering is load-bearing for the public marketing site's first paint and
+is easy to break invisibly (everything still renders, just slower), so
+`src/__tests__/assets/fonts-scss.test.ts` pins it.
+
+### Themes as data
+
+`src/assets/themes/*.json` are consumed two ways: `apps/web` builds MUI
+themes from them at runtime, and `apps/site` converts them to CSS custom
+properties at build time (`apps/site/scripts/generate-tokens.mjs`). Both read
+the same files — there is no second copy of the palette.
+
+## Content
+
+`@portalai/core/content` holds the product's canonical user-facing
+vocabulary — `GLOSSARY_ENTRIES` and `FAQ_ENTRIES` — shared by the app's Help
+view and the public marketing site (#311).
+
+```ts
+import { GLOSSARY_ENTRIES, FAQ_ENTRIES } from "@portalai/core/content";
+```
+
+Two rules keep it usable from a static-site generator, both enforced by
+`src/__tests__/content/content-purity.test.ts`:
+
+- **These modules import nothing.** The site consumes them at build time for
+  pages that must render with no JavaScript; any dependency here becomes a
+  build-time dependency of those pages.
+- **`GlossaryEntry.pageRoute` carries no values.** Routes point into the
+  authenticated app and are meaningless to an anonymous visitor. `apps/web`
+  re-attaches them at read time via `withPageRoutes`
+  (`apps/web/src/utils/glossary-routes.util.ts`).
 
 ## Contracts
 
