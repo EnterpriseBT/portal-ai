@@ -41,6 +41,7 @@ jobs:
       site-url: https://site-dev.portalsai.io
       site-config-url: https://api-dev.portalsai.io/api/public/site-config
       app-url: https://app-dev.portalsai.io
+      portalops-env: app-dev
     secrets:
       aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
       hosted-zone-id: ${{ secrets.DEV_HOSTED_ZONE_ID }}

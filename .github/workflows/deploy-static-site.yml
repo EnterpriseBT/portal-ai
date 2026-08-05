@@ -32,6 +32,14 @@ on:
         description: "Where sign-in/sign-up CTAs point"
         required: true
         type: string
+      portalops-env:
+        description: >-
+          The `portalops --env` name for this environment (e.g. `app-dev`,
+          `prod`). Used only in the preflight's remediation copy — it differs
+          from `environment` (the CFN/stack name), so the two are separate
+          inputs on purpose.
+        required: true
+        type: string
       gh-environment:
         description: >-
           GitHub Environment to run under, for its protection rules. A caller
@@ -99,6 +107,18 @@ jobs:
               CertificateArn="$CERT_ARN" \
               HostedZoneId=${{ secrets.hosted-zone-id }} \
             --no-fail-on-empty-changeset
+
+      # Probe the endpoint before building. The build would fail on a bad
+      # response anyway, but as a raw thrown fetch — this classifies it
+      # (contact unresolved / no public tiers / API still rolling) and prints
+      # the exact `portalops` remediation for the environment. Bounded retry
+      # tolerates an API mid-roll; a 503 (fail-closed config) is terminal.
+      - name: Preflight site-config
+        env:
+          SITE_CONFIG_URL: ${{ inputs.site-config-url }}
+          PORTALOPS_ENV: ${{ inputs.portalops-env }}
+          IS_PROD: ${{ inputs.environment == 'prod' }}
+        run: node apps/site/scripts/preflight-site-config.mjs
 
       # `SITE_CONFIG_URL` is set, so any failure to reach or parse the
       # endpoint fails this step. That is the intent: keep the last good
