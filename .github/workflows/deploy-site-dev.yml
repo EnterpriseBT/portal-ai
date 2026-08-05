@@ -1,25 +1,24 @@
 name: Deploy Site (dev)
 
-# The dev marketing site (#311). Three triggers, deliberately overlapping —
-# no single one is load-bearing:
+# The dev marketing site (#311). Triggers, deliberately overlapping — no
+# single one is load-bearing:
 #
-#   push        — code changes to the site itself
-#   dispatch    — a config change (Stripe price, tier apply, vars set) fired
-#                 by RebuildDispatchService or portalops
-#   schedule    — nightly, unconditionally. The safety net that bounds
-#                 staleness to 24h even if every dispatch is lost.
+#   workflow_run — after `Deploy Dev` finishes on main (#319). The site
+#                  build reads api-dev's live config, so it must run AFTER
+#                  the API redeploys — triggering on the same push raced the
+#                  API and hit a not-yet-deployed endpoint (the 401). This
+#                  also refreshes the snapshot on any backend/config change,
+#                  not just site code (workflow_run can't filter paths).
+#   dispatch     — a config change (Stripe price, tier apply, vars set) fired
+#                  by RebuildDispatchService or portalops.
+#   schedule     — nightly, unconditionally. The safety net that bounds
+#                  staleness to 24h even if every dispatch is lost.
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Deploy Dev"]
+    types: [completed]
     branches: [main]
-    paths:
-      - "apps/site/**"
-      - "packages/core/src/content/**"
-      - "packages/core/src/assets/**"
-      - "packages/core/src/contracts/site-config.contract.ts"
-      - "infra/cloudformation/site.yml"
-      - ".github/workflows/deploy-site-dev.yml"
-      - ".github/workflows/deploy-static-site.yml"
   repository_dispatch:
     types: [site-config-changed]
   schedule:
@@ -33,6 +32,11 @@ concurrency:
 
 jobs:
   deploy:
+    # Only publish when the triggering `Deploy Dev` succeeded — a failed or
+    # cancelled API deploy must not push a site built against stale/absent
+    # config. The other triggers (dispatch/schedule/manual) carry no
+    # workflow_run payload, so they always pass this gate.
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     uses: ./.github/workflows/deploy-static-site.yml
     with:
       environment: dev
@@ -41,6 +45,7 @@ jobs:
       site-url: https://site-dev.portalsai.io
       site-config-url: https://api-dev.portalsai.io/api/public/site-config
       app-url: https://app-dev.portalsai.io
+      portalops-env: app-dev
     secrets:
       aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
       hosted-zone-id: ${{ secrets.DEV_HOSTED_ZONE_ID }}

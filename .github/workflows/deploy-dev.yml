@@ -313,6 +313,28 @@ jobs:
           fi
           echo "Seed completed successfully"
 
+      # Create-if-absent contact config for the public site-config endpoint
+      # (#319). A fresh env has no SSM contacts, and there is no env fallback
+      # on ECS, so site-config fail-closes (503) and the site deploy can't
+      # publish. Seed placeholders here so a fresh dev env is green by
+      # default; an operator's `portalops vars set` value is NEVER overwritten
+      # (we write only when the param is absent). Non-prod only — this step
+      # lives solely in the dev pipeline; prod stays fail-closed by design.
+      - name: Seed contact config (create-if-absent)
+        run: |
+          seed() {
+            local name="$1" value="$2"
+            if aws ssm get-parameter --name "$name" >/dev/null 2>&1; then
+              echo "$name already set — leaving operator value"
+            elif aws ssm put-parameter --name "$name" --type String --value "$value" >/dev/null; then
+              echo "seeded $name"
+            else
+              echo "::warning::could not seed $name — the site-config preflight will report it if unresolved"
+            fi
+          }
+          seed /portalai/dev/support-email support@portalsai.io
+          seed /portalai/dev/sales-email sales@portalsai.io
+
       - name: Update backend stack and deploy
         run: |
           aws cloudformation deploy \
