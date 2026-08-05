@@ -15,6 +15,7 @@ import { sql } from "drizzle-orm";
 
 import { WideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
 import { WideTableStatementCache } from "../../../services/wide-table-statement.cache.js";
+import { WideTableRepository } from "../../../db/repositories/wide-table.repository.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import * as schema from "../../../db/schema/index.js";
 import {
@@ -282,5 +283,93 @@ describe("Wide-table geometry storage (#316)", () => {
       .join("\n")
       .toLowerCase();
     expect(planText).toMatch(/index scan|bitmap index scan/);
+  });
+
+  // ── Fail-closed geometry write via upsertMany (#316, slice 4) ──────
+
+  it("writes clean+repaired rows, drops the unparseable one (absent, not NULL)", async () => {
+    await reconciler.reconcileEntity(entityId, db);
+    const stmt = await statementCache.get(entityId, db);
+    const geomCol = stmt.columns[0].columnName;
+    const now = Date.now();
+
+    // Three entity_records: clean, self-intersecting (repairable), garbage.
+    const CLEAN = "er-clean";
+    const REPAIR = "er-repair";
+    const REJECT = "er-reject";
+    const bowtie = {
+      type: "Polygon",
+      coordinates: [
+        [
+          [0, 0],
+          [1, 1],
+          [1, 0],
+          [0, 1],
+          [0, 0],
+        ],
+      ],
+    };
+    for (const [id, geom] of [
+      [CLEAN, POLYGON],
+      [REPAIR, bowtie],
+      [REJECT, { not: "a geometry" }],
+    ] as const) {
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.entityRecords)
+        .values({
+          id,
+          organizationId: orgId,
+          connectorEntityId: entityId,
+          data: { boundary: geom },
+          sourceId: id,
+          checksum: `chk-${id}`,
+          syncedAt: now,
+          origin: "sync",
+          validationErrors: null,
+          isValid: true,
+          created: now,
+          createdBy: "test-system",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+    }
+
+    const repo = new WideTableRepository(statementCache);
+    const rows = [
+      [CLEAN, POLYGON],
+      [REPAIR, bowtie],
+      [REJECT, { not: "a geometry" }],
+    ].map(([id, geom]) => ({
+      entity_record_id: id,
+      organization_id: orgId,
+      synced_at: now,
+      is_valid: true,
+      source_id: id,
+      [geomCol]: geom,
+    }));
+
+    const result = await repo.upsertMany(entityId, rows, db);
+
+    // The unparseable row is reported and NOT written.
+    expect(result.repaired).toBe(1);
+    expect(result.rejected).toHaveLength(1);
+    expect(result.rejected[0].sourceId).toBe(REJECT);
+    expect(result.rejected[0].reason).toContain("GEOMETRY_INVALID_ON_IMPORT");
+
+    const table = `er__${entityId}`;
+    const written = (await connection.unsafe(
+      `SELECT entity_record_id, ST_IsValid(${`"${geomCol}"`}) AS valid FROM "${table}" ORDER BY entity_record_id`
+    )) as unknown as Array<{ entity_record_id: string; valid: boolean }>;
+
+    // Exactly the clean + repaired rows landed; the rejected one is absent
+    // (not present with a NULL geometry).
+    expect(written.map((r) => r.entity_record_id).sort()).toEqual([
+      CLEAN,
+      REPAIR,
+    ]);
+    // Both written geometries are valid — the bowtie was repaired on write.
+    expect(written.every((r) => r.valid)).toBe(true);
   });
 });

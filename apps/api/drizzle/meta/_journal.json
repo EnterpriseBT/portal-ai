@@ -547,6 +547,13 @@
       "when": 1785957326321,
       "tag": "0077_add-geometry-column-type",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1785965517906,
+      "tag": "0078_geometry-audit-helper",
+      "breakpoints": true
     }
   ]
 }

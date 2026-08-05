@@ -98,14 +98,22 @@ export interface GeometryAuditResult {
   /** Unparseable or non-geometry — NOT written; reported per row. */
   rejected: Array<{ sourceId: string; reason: string }>;
 }
-/** One statement over `unnest($1::text[], $2::jsonb[])` evaluating
+/** One statement expanding a jsonb payload via `jsonb_to_recordset`, evaluating
  *  ST_GeomFromGeoJSON / ST_IsValid per row; never throws on bad input. */
 export class GeometryAuditService {
-  static async auditBatch(rows: GeometryAuditRow[]): Promise<GeometryAuditResult>;
+  static async auditBatch(
+    rows: GeometryAuditRow[],
+    options?: { client?: DbClient; srid?: number }
+  ): Promise<GeometryAuditResult>;
 }
 ```
 
 The sync pipeline calls this for every geometry-typed column, writes `ok ∪ repaired`, **omits** `rejected`, and surfaces `{ repaired: n, rejected: n }` in the sync summary (limits rows 5–6). Rejected rows are addressable by `sourceId`.
+
+**Resolved at slice-4 implementation (2026-08-05):**
+- **A non-throwing parse needs a helper.** `ST_GeomFromGeoJSON` raises on malformed input, which would abort a set-based statement on the first bad row. Migration `0078_geometry-audit-helper` adds `portal_try_geom_from_geojson(text) → geometry` (a plpgsql wrapper that returns NULL on error), and `auditBatch` classifies in one round-trip: NULL ⇒ rejected, `NOT ST_IsValid` ⇒ repaired, else ok. The batch is bound as one `jsonb` payload expanded by `jsonb_to_recordset` (parallel `::text[]` array params bind unreliably in drizzle).
+- **`srid`** is an `auditBatch` option, not a per-row field: a batch shares a source SRID. A SRID absent from `spatial_ref_sys` rejects the whole batch with `GIS_SRID_UNSUPPORTED` (limits row 7).
+- **Where the sync pipeline calls it.** The plan named `transform.util.ts` as the normalization hop, but the production write path is `WideTableRepository.upsertMany` — which builds its own bound tuples and *bypasses the statement-cache insert template entirely* (so slice 3's template `writePlaceholderExpr` never runs in production). So the normalization + audit + fail-closed rejection + `{ repaired, rejected }` reporting all live in `upsertMany` (a private `auditGeometry` step + a geometry arm in the tuple builder that wraps `ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(…), 4326))`). `upsertMany` now returns `WideTableUpsertResult`; the REST adapter accumulates it into the per-endpoint counts and surfaces `SyncInstanceResult.geometry = { repaired, rejected, rejectedSample }` (sample capped at 20). This is the single choke point both the REST and CSV/XLSX write paths share.
 
 ### `apps/api/src/adapters/rest-api/geometry.util.ts` (new)
 
@@ -119,6 +127,8 @@ export function looksLikeGeometry(value: unknown): boolean;
 ```
 
 Non-4326 sources are reprojected in SQL via `ST_Transform(ST_SetSRID(…, <srid>), 4326)`; an SRID PostGIS does not know returns the typed `GIS_SRID_UNSUPPORTED` (limits row 7).
+
+**Deferred after slice 4 — source-SRID threading.** `GeometryAuditService` accepts and validates a source `srid`, but the sync write path does not yet *carry* the ArcGIS `spatialReference.wkid` from the fetched record through normalization to `upsertMany`, so the write currently assumes 4326 (`ST_SetSRID(…, 4326)`). For a GeoJSON source (always 4326 per RFC 7946) this is correct; for an ArcGIS FeatureServer returning `wkid: 102100`, the parcel would be stamped 4326 over web-mercator coordinates and land mislocated. Wiring the per-value source SRID into the projection and switching the write wrap to `ST_Transform(ST_SetSRID(…, <srid>), 4326)` is a bounded follow-up (the audit + reproject primitives already exist); it must land before the #314 parcel walkthrough smokes against a live 102100 FeatureServer.
 
 ### Type transition — `apps/api/src/constants/column-definition-transitions.constants.ts`
 

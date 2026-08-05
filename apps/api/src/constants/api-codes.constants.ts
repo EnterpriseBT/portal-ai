@@ -365,6 +365,18 @@ export enum ApiCode {
   WIDE_TABLE_RECONCILE_FAILED = "WIDE_TABLE_RECONCILE_FAILED",
   /** Logged-only — boot drift check failed and the app refuses to start. */
   WIDE_TABLE_DRIFT_AT_BOOT = "WIDE_TABLE_DRIFT_AT_BOOT",
+  /**
+   * #316: one or more geometry values in an import were unparseable and were
+   * rejected (not written) rather than coerced to NULL — fail-closed, so an
+   * unmappable feature never masquerades as an absent one. Reported with the
+   * offending `sourceId`s in the sync summary.
+   */
+  GEOMETRY_INVALID_ON_IMPORT = "GEOMETRY_INVALID_ON_IMPORT",
+  /**
+   * #316: a geometry source declared a spatial reference id PostGIS does not
+   * know (absent from `spatial_ref_sys`), so it cannot be reprojected to 4326.
+   */
+  GIS_SRID_UNSUPPORTED = "GIS_SRID_UNSUPPORTED",
 
   // Admin / re-sync trigger
   /** A wide-table resync trigger failed to fan out to one or more instances. */
