@@ -79,6 +79,12 @@ export function pgTypeForColumnDefinitionType(type: ColumnDataType): string {
     case "array":
     case "json":
       return "jsonb";
+    case "geometry":
+      // #316: typed + SRID-constrained. `Geometry` (not `Polygon`) because one
+      // column may hold mixed polygon/point/line features; the SRID constraint
+      // is what makes the GiST index and ST_* calls correct. The reconciler
+      // also creates a GiST index for these columns (slice 3).
+      return "geometry(Geometry, 4326)";
     default: {
       const _exhaustive: never = type;
       void _exhaustive;

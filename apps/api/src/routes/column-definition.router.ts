@@ -387,6 +387,7 @@ columnDefinitionRouter.post(
         validationPattern: parsed.data.validationPattern,
         validationMessage: parsed.data.validationMessage,
         canonicalFormat: parsed.data.canonicalFormat,
+        geoRole: parsed.data.geoRole,
         system: false,
       });
 

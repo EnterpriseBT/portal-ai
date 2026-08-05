@@ -87,6 +87,10 @@ export const OPERATORS_BY_COLUMN_TYPE: Record<
   json: ["is_empty", "is_not_empty"],
   reference: ["eq", "neq", "is_empty", "is_not_empty"],
   "reference-array": ["contains", "not_contains", "is_empty", "is_not_empty"],
+  // #316: geometry is opaque to the data-table filter — spatial predicates
+  // (ST_Contains, ST_DWithin, …) run through agent SQL, not this contract —
+  // so only null-presence checks apply, as with json.
+  geometry: ["is_empty", "is_not_empty"],
 };
 
 // ── Compile-time exhaustiveness check ───────────────────────────────

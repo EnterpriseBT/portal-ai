@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   ColumnDataTypeEnum,
   ColumnDefinitionSchema,
+  GeoRoleSchema,
 } from "../models/column-definition.model.js";
 import {
   PaginatedResponsePayloadSchema,
@@ -50,6 +51,7 @@ export const ColumnDefinitionCreateRequestBodySchema = z.object({
   validationPattern: z.string().nullable().optional().default(null),
   validationMessage: z.string().nullable().optional().default(null),
   canonicalFormat: z.string().nullable().optional().default(null),
+  geoRole: GeoRoleSchema.nullable().optional().default(null),
 });
 
 export type ColumnDefinitionCreateRequestBody = z.infer<
@@ -73,6 +75,7 @@ export const ColumnDefinitionUpdateRequestBodySchema = z.object({
   validationPattern: z.string().nullable().optional(),
   validationMessage: z.string().nullable().optional(),
   canonicalFormat: z.string().nullable().optional(),
+  geoRole: GeoRoleSchema.nullable().optional(),
 });
 
 export type ColumnDefinitionUpdateRequestBody = z.infer<

@@ -99,6 +99,7 @@ describe("CreateColumnDefinitionDialog", () => {
         validationPattern: null,
         validationMessage: null,
         canonicalFormat: null,
+        geoRole: null,
       });
     });
   });
@@ -137,6 +138,7 @@ describe("CreateColumnDefinitionDialog", () => {
         validationPattern: "^.+@.+$",
         validationMessage: "Must be a valid email",
         canonicalFormat: "lowercase",
+        geoRole: null,
       });
     });
   });

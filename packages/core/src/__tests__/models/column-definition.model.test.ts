@@ -3,6 +3,8 @@ import {
   ColumnDefinitionModelFactory,
   ColumnDefinitionSchema,
   ColumnDataTypeEnum,
+  GeoRoleSchema,
+  SORTABLE_COLUMN_TYPES,
 } from "../../models/column-definition.model.js";
 import {
   UUID_REGEX,
@@ -22,6 +24,7 @@ const validColumnFields = {
   validationMessage: null,
   canonicalFormat: null,
   system: false,
+  geoRole: null,
   updated: null,
   updatedBy: null,
   deleted: null,
@@ -42,6 +45,7 @@ describe("ColumnDataTypeEnum", () => {
     "array",
     "reference",
     "reference-array",
+    "geometry",
   ])("should accept '%s' as a valid type", (type) => {
     const result = ColumnDataTypeEnum.safeParse(type);
     expect(result.success).toBe(true);
@@ -51,6 +55,73 @@ describe("ColumnDataTypeEnum", () => {
     const result = ColumnDataTypeEnum.safeParse("bigint");
     expect(result.success).toBe(false);
   });
+});
+
+// ── GeoRole enum (#316) ──────────────────────────────────────────────
+
+describe("GeoRoleSchema", () => {
+  it.each(["lat", "lng"])("should accept coordinate role '%s'", (role) => {
+    expect(GeoRoleSchema.safeParse(role).success).toBe(true);
+  });
+
+  // The narrowing is the contract: geometry is a *type*, not a role, so
+  // `geoRole` must never accept "geometry" (#316 key decision 1).
+  it("should reject 'geometry' — geometry is a type, not a role", () => {
+    expect(GeoRoleSchema.safeParse("geometry").success).toBe(false);
+  });
+
+  it.each(["", "latitude", "point", "x"])(
+    "should reject non-role value '%s'",
+    (v) => {
+      expect(GeoRoleSchema.safeParse(v).success).toBe(false);
+    }
+  );
+
+  it("is nullable on the column-definition schema and required as a key", () => {
+    const withNull = ColumnDefinitionSchema.safeParse({
+      ...validColumnFields,
+      id: "cd-geo",
+      createdBy: "user-1",
+      created: Date.now(),
+      geoRole: null,
+    });
+    expect(withNull.success).toBe(true);
+
+    const withRole = ColumnDefinitionSchema.safeParse({
+      ...validColumnFields,
+      id: "cd-geo",
+      createdBy: "user-1",
+      created: Date.now(),
+      key: "latitude",
+      type: "number",
+      geoRole: "lat",
+    });
+    expect(withRole.success).toBe(true);
+
+    const missing: Record<string, unknown> = {
+      ...validColumnFields,
+      id: "cd-geo",
+      createdBy: "user-1",
+      created: Date.now(),
+    };
+    delete missing.geoRole;
+    expect(ColumnDefinitionSchema.safeParse(missing).success).toBe(false);
+  });
+});
+
+// ── SORTABLE_COLUMN_TYPES (#316) ─────────────────────────────────────
+
+describe("SORTABLE_COLUMN_TYPES", () => {
+  it("excludes geometry — ordering polygons is meaningless", () => {
+    expect(SORTABLE_COLUMN_TYPES.has("geometry")).toBe(false);
+  });
+
+  it.each(["string", "number", "date", "datetime"] as const)(
+    "includes sortable scalar '%s'",
+    (t) => {
+      expect(SORTABLE_COLUMN_TYPES.has(t)).toBe(true);
+    }
+  );
 });
 
 // ── ColumnDefinitionSchema system field ──────────────────────────────
@@ -66,6 +137,7 @@ describe("ColumnDefinitionSchema system field", () => {
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: null,
+    geoRole: null,
     createdBy: "user-1",
     created: Date.now(),
     updated: null,

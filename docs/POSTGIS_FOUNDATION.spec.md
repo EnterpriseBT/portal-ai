@@ -53,6 +53,10 @@ export const ColumnDefinitionSchema = CoreSchema.extend({
 
 `SORTABLE_COLUMN_TYPES` is unchanged and therefore excludes `geometry` (ordering polygons is meaningless). `column-definition.contract.ts:48,71` gain `geoRole`.
 
+**Storage correction (slice 2 implementation, 2026-08-05).** The migration section below originally said the `geometry` value was "a core Zod enum, not a pg enum" and that the migration carried "only `geo_role text`". Both were wrong about the actual schema: `column_definitions.type` **is** a Postgres enum (`columnDataTypeEnum = pgEnum("column_data_type", …)`), and the bidirectional dual-schema guard in `type-checks.ts` forces two consequences the original text missed:
+- `geometry` must be added to the **pg enum** `column_data_type` (`ALTER TYPE … ADD VALUE 'geometry'`), else core→Drizzle assignability fails.
+- `geo_role` must be a **pg enum** (`CREATE TYPE geo_role AS ENUM('lat','lng')`), not plain `text`. A `text` column infers `string`, which is not assignable to the model's `z.enum(["lat","lng"])`, breaking Drizzle→core assignability. The pg enum makes drizzle-zod infer the same narrow union the model declares — the same mechanism the existing `type` column already relies on.
+
 ### `apps/api/src/services/wide-table-reconciler.service.ts`
 
 `pgTypeForColumnDefinitionType` (`:63`) gains one arm — its `never` exhaustiveness check makes this a compile error until added, which is the intended forcing function:
@@ -154,7 +158,7 @@ GET /api/portal-map/tiles/pin/:portalResultId/:z/:x/:y.mvt
 
 ## Migration
 
-Two, ordered: (1) `enable-postgis` — `CREATE EXTENSION IF NOT EXISTS postgis` (idempotent, must precede any geometry DDL); (2) `add-geometry-column-type` — the `geometry` enum value is a **core Zod enum**, not a pg enum, so this migration carries only `column_definitions.geo_role text` (nullable). Wide-table geometry columns are created by the reconciler at runtime, not by a migration. **No backfill** — existing `json` geometry columns convert on demand through the pre-flighted transition, or on re-sync.
+Two, ordered: (1) `enable-postgis` — `CREATE EXTENSION IF NOT EXISTS postgis` (idempotent, must precede any geometry DDL); shipped in slice 1 as `0076_enable-postgis`. (2) `add-geometry-column-type` (`0077`) — per the storage correction above, `column_data_type` is a pg enum, so this carries `ALTER TYPE "column_data_type" ADD VALUE 'geometry'`, `CREATE TYPE "geo_role" AS ENUM('lat','lng')`, and `ADD COLUMN column_definitions.geo_role geo_role` (nullable). The `ADD VALUE`-in-transaction pattern is the same one migration `0074` already uses. Wide-table geometry columns are created by the reconciler at runtime, not by a migration. **No backfill** — existing `json` geometry columns convert on demand through the pre-flighted transition, or on re-sync.
 
 ## Seed
 

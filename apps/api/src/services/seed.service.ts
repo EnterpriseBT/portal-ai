@@ -9,7 +9,7 @@ import {
   SandboxConnectorDefinitionModelFactory,
   TierModelFactory,
 } from "@portalai/core/models";
-import type { ColumnDataType } from "@portalai/core/models";
+import type { ColumnDataType, GeoRole } from "@portalai/core/models";
 import {
   BuiltinToolpackSlugSchema,
   TIER_CATALOG_BY_SLUG,
@@ -27,6 +27,8 @@ interface SystemColumnDefinitionSpec {
   validationMessage: string | null;
   canonicalFormat: string | null;
   system: true;
+  /** #316: coordinate-pair role; omitted (⇒ null) for every non-geo row. */
+  geoRole?: GeoRole | null;
 }
 
 export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
@@ -292,6 +294,41 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     canonicalFormat: null,
     system: true,
   },
+  // ── Geospatial (#316) ────────────────────────────────────────────
+  {
+    key: "geometry",
+    label: "Geometry",
+    type: "geometry",
+    description: "PostGIS geometry (point, line, or polygon) in EPSG:4326",
+    validationPattern: null,
+    validationMessage: null,
+    canonicalFormat: null,
+    system: true,
+    // geometry is a type, not a role.
+    geoRole: null,
+  },
+  {
+    key: "latitude",
+    label: "Latitude",
+    type: "number",
+    description: "Latitude in decimal degrees (WGS 84)",
+    validationPattern: null,
+    validationMessage: null,
+    canonicalFormat: null,
+    system: true,
+    geoRole: "lat",
+  },
+  {
+    key: "longitude",
+    label: "Longitude",
+    type: "number",
+    description: "Longitude in decimal degrees (WGS 84)",
+    validationPattern: null,
+    validationMessage: null,
+    canonicalFormat: null,
+    system: true,
+    geoRole: "lng",
+  },
 ];
 
 export class SeedService {
@@ -517,6 +554,8 @@ export class SeedService {
             id: SystemUtilities.id.v4.generate(),
             organizationId,
             ...spec,
+            // spec.geoRole is optional; the model requires the key (nullable).
+            geoRole: spec.geoRole ?? null,
           })
           .parse();
       }

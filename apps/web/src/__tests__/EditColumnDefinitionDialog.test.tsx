@@ -18,6 +18,7 @@ const makeColumnDefinition = (
   validationMessage: null,
   canonicalFormat: null,
   system: false,
+  geoRole: null,
   created: 1735689600000,
   createdBy: "user-1",
   updated: null,
