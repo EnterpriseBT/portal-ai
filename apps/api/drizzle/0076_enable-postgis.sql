@@ -1,0 +1,13 @@
+-- #316 (epic #84): enable PostGIS — the substrate the GIS epic stands on.
+--
+-- This must be the FIRST migration touching geometry; every typed geometry
+-- column, GiST index, and ST_* call downstream depends on the extension
+-- being present. It carries no schema change of its own — the `geometry`
+-- column type is a core Zod enum member (see slice 2), and wide-table
+-- geometry columns are created by the reconciler at runtime, not here.
+--
+-- Idempotent by `IF NOT EXISTS`: on RDS the extension may be pre-created
+-- out-of-band by an `rds_superuser` if the app role lacks CREATE EXTENSION,
+-- in which case this is a no-op. Requires the compose/RDS base image to ship
+-- PostGIS (docker-compose.yml pins the multi-arch `imresamu/postgis:17-3.5-alpine`).
+CREATE EXTENSION IF NOT EXISTS postgis;
