@@ -120,6 +120,25 @@ describe("EditColumnDefinitionDialog", () => {
     expect(numberOption).toHaveAttribute("aria-disabled", "true");
   });
 
+  it("offers the json → geometry transition (#316)", () => {
+    render(
+      <EditColumnDefinitionDialog
+        {...defaultProps}
+        columnDefinition={makeColumnDefinition({
+          key: "boundary",
+          type: "json",
+        })}
+      />
+    );
+    fireEvent.mouseDown(screen.getByLabelText(/^Type/));
+    // json -> geometry is allowed
+    const geometryOption = screen.getByRole("option", { name: /geometry/ });
+    expect(geometryOption).not.toHaveAttribute("aria-disabled", "true");
+    // json -> string is not allowed
+    const stringOption = screen.getByRole("option", { name: /^string/ });
+    expect(stringOption).toHaveAttribute("aria-disabled", "true");
+  });
+
   // ── Submit payload ─────────────────────────────────────────────────
 
   it("should submit only changed fields", async () => {

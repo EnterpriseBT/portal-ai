@@ -31,6 +31,10 @@ import { columnDefinitions } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ColumnDefinitionValidationService } from "../services/column-definition-validation.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
+import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
+
+/** #316: bounded sample of offending sourceIds surfaced on a failed conversion. */
+const GEOMETRY_CONVERSION_SAMPLE_CAP = 20;
 
 const logger = createLogger({ module: "column-definition" });
 
@@ -618,6 +622,61 @@ columnDefinitionRouter.patch(
         }
       }
 
+      // #316: json ↔ geometry transitions rewrite stored data, unlike the
+      // re-label transitions above. Resolve the affected wide columns, and
+      // pre-flight the json→geometry direction so a single unparseable row
+      // can't abort the ALTER with an opaque error — refuse with the count +
+      // a bounded sourceId sample, leaving the column untouched.
+      const isToGeometry =
+        existing.type === "json" && parsed.data.type === "geometry";
+      const isToJson =
+        existing.type === "geometry" && parsed.data.type === "json";
+      const geoConversionTargets: Array<{
+        connectorEntityId: string;
+        wideColumn: { id: string; columnName: string };
+      }> = [];
+      if (isToGeometry || isToJson) {
+        const mappings =
+          await DbService.repository.fieldMappings.findByColumnDefinitionId(id);
+        for (const m of mappings) {
+          const cols =
+            await DbService.repository.wideTableColumns.findByConnectorEntityId(
+              m.connectorEntityId
+            );
+          const wc = cols.find((c) => c.fieldMappingId === m.id);
+          if (wc) {
+            geoConversionTargets.push({
+              connectorEntityId: m.connectorEntityId,
+              wideColumn: { id: wc.id, columnName: wc.columnName },
+            });
+          }
+        }
+
+        if (isToGeometry) {
+          const rejected: string[] = [];
+          for (const t of geoConversionTargets) {
+            const bad =
+              await wideTableReconcilerService.preflightJsonToGeometry(
+                t.connectorEntityId,
+                t.wideColumn.columnName
+              );
+            rejected.push(...bad);
+          }
+          if (rejected.length > 0) {
+            const sample = rejected.slice(0, GEOMETRY_CONVERSION_SAMPLE_CAP);
+            return next(
+              new ApiError(
+                422,
+                ApiCode.GEOMETRY_CONVERSION_FAILED,
+                `Cannot convert to geometry: ${rejected.length} row(s) hold unparseable GeoJSON. ` +
+                  `Fix or remove them at source, then retry. Sample sourceIds: ${sample.join(", ")}`,
+                { count: rejected.length, sample }
+              )
+            );
+          }
+        }
+      }
+
       const { userId } = req.application!.metadata;
 
       const columnDefinition = await DbService.repository.columnDefinitions
@@ -638,6 +697,21 @@ columnDefinitionRouter.patch(
         });
 
       logger.info({ id }, "Column definition updated");
+
+      // #316: apply the wide-table conversion now that the type is persisted.
+      // json→geometry was pre-flighted clean above; geometry→json always
+      // succeeds (ST_AsGeoJSON). Each affected wide column is rewritten +
+      // (re)indexed inside the entity lock.
+      if (isToGeometry || isToJson) {
+        for (const t of geoConversionTargets) {
+          await wideTableReconcilerService.convertGeometryColumnType(
+            t.connectorEntityId,
+            t.wideColumn,
+            isToGeometry,
+            userId
+          );
+        }
+      }
 
       // Trigger revalidation if normalization-affecting fields changed
       const REVALIDATION_FIELDS = [

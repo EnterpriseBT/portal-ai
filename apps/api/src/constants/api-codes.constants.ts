@@ -377,6 +377,14 @@ export enum ApiCode {
    * know (absent from `spatial_ref_sys`), so it cannot be reprojected to 4326.
    */
   GIS_SRID_UNSUPPORTED = "GIS_SRID_UNSUPPORTED",
+  /**
+   * #316: a `json → geometry` column-type transition pre-flight found rows
+   * whose stored value is not parseable as GeoJSON. The conversion is refused
+   * (no ALTER) and the offending `sourceId`s are named so they can be fixed at
+   * source. Unlike a re-label transition, this one rewrites data — Postgres
+   * would abort the whole ALTER on the first bad row with an opaque error.
+   */
+  GEOMETRY_CONVERSION_FAILED = "GEOMETRY_CONVERSION_FAILED",
 
   // Admin / re-sync trigger
   /** A wide-table resync trigger failed to fan out to one or more instances. */

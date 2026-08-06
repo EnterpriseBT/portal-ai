@@ -140,7 +140,9 @@ export const ALLOWED_TYPE_TRANSITIONS: Record<string, string[]> = {
 };
 ```
 
-Unlike the existing re-label transitions, this one **converts data**, so the column-definition update route pre-flights via `GeometryAuditService`: any `rejected` rows ⇒ `422 GEOMETRY_CONVERSION_FAILED` naming the count and a bounded sample of `sourceId`s, and the `ALTER` never runs. On a clean pre-flight the reconciler issues `ALTER … TYPE geometry(Geometry,4326) USING ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(<col>::text), 4326))` and creates the GiST index. The web mirror (`EditColumnDefinitionDialog.component.tsx:34`) gains the same pair.
+Unlike the existing re-label transitions, this one **converts data**, so the column-definition update route pre-flights before any `ALTER`: any unparseable rows ⇒ `422 GEOMETRY_CONVERSION_FAILED` naming the count and a bounded sample of `sourceId`s (in `error.details`), and the `ALTER` never runs. On a clean pre-flight the reconciler issues `ALTER … TYPE geometry(Geometry,4326) USING ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(<col>::text), 4326))` and creates the GiST index. The web mirror (`EditColumnDefinitionDialog.component.tsx`) gains the same pair.
+
+**Implemented in slice 5.** The route resolves the affected wide columns (`fieldMappings.findByColumnDefinitionId` → `wideTableColumns.findByConnectorEntityId`) and drives two new reconciler methods — the generic reconcile path still *refuses* type changes, so these conversions are explicit: `preflightJsonToGeometry(entity, col)` runs the check entirely in SQL via `portal_try_geom_from_geojson` (returns the rejected `source_id`s without pulling rows to Node), and `convertGeometryColumnType(entity, {id, columnName}, toGeometry, actor)` runs the `ALTER … USING …` inside the entity lock, manages the GiST index (create on →geometry, `DROP INDEX IF EXISTS` on →json), and updates `wide_table_columns.pgType`. The reverse (`geometry → json`) needs no pre-flight (`ST_AsGeoJSON` always succeeds) and drops the index.
 
 ### Tile endpoint — `apps/api/src/routes/portal-map.router.ts` (new), mounted at `protected.router.ts` as `/portal-map`
 

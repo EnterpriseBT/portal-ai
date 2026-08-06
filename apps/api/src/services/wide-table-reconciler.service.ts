@@ -303,6 +303,95 @@ export class WideTableReconcilerService {
     this.statementCache.invalidate(connectorEntityId);
   }
 
+  /** GiST index name for a geometry column (#316) — shared by add + convert. */
+  private gistIndexName(connectorEntityId: string, columnName: string): string {
+    return `er__${connectorEntityId}__${columnName}_gist`;
+  }
+
+  /**
+   * Pre-flight a `json → geometry` conversion (#316): return the `source_id`s
+   * whose stored jsonb value is NOT parseable as GeoJSON. Postgres would abort
+   * the whole `ALTER … USING` on the first such row with an opaque error, so
+   * the route calls this first and refuses the conversion (422) when it's
+   * non-empty — no ALTER runs. Evaluated entirely in SQL via the non-throwing
+   * `portal_try_geom_from_geojson` helper (migration 0078).
+   */
+  async preflightJsonToGeometry(
+    connectorEntityId: string,
+    columnName: string,
+    client: DbClient = db
+  ): Promise<string[]> {
+    const table = quoteIdent(this.wideTableRepo_.tableName(connectorEntityId));
+    const col = quoteIdent(columnName);
+    const rows = (await (client as typeof db).execute(
+      sql.raw(
+        `SELECT source_id FROM ${table} ` +
+          `WHERE ${col} IS NOT NULL ` +
+          `AND portal_try_geom_from_geojson(${col}::text) IS NULL`
+      )
+    )) as unknown as Array<{ source_id: string }>;
+    return rows.map((r) => r.source_id);
+  }
+
+  /**
+   * Convert a wide column between `jsonb` and `geometry(Geometry, 4326)` (#316),
+   * rewriting stored data and managing the GiST index + `wide_table_columns.pgType`.
+   * For `json → geometry` the caller MUST have run `preflightJsonToGeometry`
+   * clean first — this method's `ST_GeomFromGeoJSON` throws on a bad row.
+   * Runs inside the entity lock; the `ALTER … TYPE` rewrites the table.
+   */
+  async convertGeometryColumnType(
+    connectorEntityId: string,
+    wideColumn: { id: string; columnName: string },
+    toGeometry: boolean,
+    actor: string,
+    client: DbClient = db
+  ): Promise<void> {
+    await withEntityLock(client, connectorEntityId, async (tx) => {
+      const table = quoteIdent(
+        this.wideTableRepo_.tableName(connectorEntityId)
+      );
+      const col = quoteIdent(wideColumn.columnName);
+      const gist = quoteIdent(
+        this.gistIndexName(connectorEntityId, wideColumn.columnName)
+      );
+      let newPgType: string;
+      if (toGeometry) {
+        await (tx as typeof db).execute(
+          sql.raw(
+            `ALTER TABLE ${table} ALTER COLUMN ${col} ` +
+              `TYPE geometry(Geometry, 4326) ` +
+              `USING ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(${col}::text), 4326))`
+          )
+        );
+        await (tx as typeof db).execute(
+          sql.raw(
+            `CREATE INDEX IF NOT EXISTS ${gist} ON ${table} USING GIST (${col})`
+          )
+        );
+        newPgType = "geometry(Geometry, 4326)";
+      } else {
+        // geometry → json: drop the GiST index first, then rewrite to GeoJSON.
+        await (tx as typeof db).execute(
+          sql.raw(`DROP INDEX IF EXISTS ${gist}`)
+        );
+        await (tx as typeof db).execute(
+          sql.raw(
+            `ALTER TABLE ${table} ALTER COLUMN ${col} ` +
+              `TYPE jsonb USING ST_AsGeoJSON(${col})::jsonb`
+          )
+        );
+        newPgType = "jsonb";
+      }
+      await this.columnsRepo.update(
+        wideColumn.id,
+        { pgType: newPgType, updated: Date.now(), updatedBy: actor } as never,
+        tx
+      );
+      this.statementCache.invalidate(connectorEntityId);
+    });
+  }
+
   // ── Internals ───────────────────────────────────────────────────
 
   private async computeDesired(
@@ -436,7 +525,7 @@ export class WideTableReconcilerService {
         await (tx as typeof db).execute(
           sql.raw(
             `CREATE INDEX IF NOT EXISTS ${quoteIdent(
-              `er__${connectorEntityId}__${columnName}_gist`
+              this.gistIndexName(connectorEntityId, columnName)
             )} ON ${tableName} USING GIST (${quoteIdent(columnName)})`
           )
         );
