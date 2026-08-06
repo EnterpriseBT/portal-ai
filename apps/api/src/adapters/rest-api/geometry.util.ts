@@ -7,7 +7,7 @@
  * (a non-4326 source) is `ST_Transform`'s job in SQL, not this util's.
  *
  * Handled inputs:
- *   - ArcGIS polygon      `{ rings: [[[x,y],…],…] }`        → GeoJSON Polygon
+ *   - ArcGIS polygon      `{ rings: [[[x,y],…],…] }`        → Polygon / MultiPolygon
  *   - ArcGIS polyline     `{ paths: [[[x,y],…],…] }`        → LineString / MultiLineString
  *   - ArcGIS point        `{ x, y }`                        → GeoJSON Point
  *   - GeoJSON geometry    `{ type, coordinates }`           → passthrough
@@ -34,12 +34,6 @@ function isCoordinateArray(value: unknown): boolean {
   return Array.isArray(value);
 }
 
-/**
- * Translate a connector-returned geometry value into a GeoJSON geometry
- * object, or `null` if the value is not a geometry this util recognizes.
- * Shape translation only — the SRID/spatialReference is ignored here (a
- * non-4326 source is reprojected downstream via `ST_Transform`).
- */
 /** Ring is a closed sequence of [x, y] positions. */
 type Ring = number[][];
 
@@ -111,6 +105,12 @@ function esriRingsToGeoJson(rings: unknown): {
     : { type: "MultiPolygon", coordinates: outers };
 }
 
+/**
+ * Translate a connector-returned geometry value into a GeoJSON geometry
+ * object, or `null` if the value is not a geometry this util recognizes.
+ * Shape translation only — the SRID/spatialReference is ignored here (a
+ * non-4326 source is reprojected downstream via `ST_Transform`).
+ */
 export function toGeoJsonCandidate(value: unknown): unknown | null {
   if (!isRecord(value)) return null;
 
