@@ -29,6 +29,12 @@ export const WEBHOOK_READ_TOKEN_TTL_MS = 10 * 60 * 1000;
 /** Above this row count, reads automatically sample. */
 export const SAMPLING_THRESHOLD = 50_000;
 
+/** Max features rendered per inline map layer (#84 / #314). Bounds the client;
+ *  the wire payload is already bounded by the sink threshold + handle snapshot
+ *  cap. Applies to the inline path only — the vector-tile path transfers just
+ *  the viewport, so large layers render through tiles instead. */
+export const MAP_LAYER_FEATURE_CAP = 10_000;
+
 /** Per-query wall-clock cap for a SYNCHRONOUS query; PG `statement_timeout`.
  *  The job tier (#130 E1) runs past this off-thread — see
  *  `SQL_QUERY_JOB_TIMEOUT_MS`. */
