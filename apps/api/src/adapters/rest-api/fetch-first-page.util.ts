@@ -43,6 +43,14 @@ import {
   walkRecordsPath,
 } from "./rest-api.adapter.js";
 import { applyTransform } from "./transform.util.js";
+import { stampEsriSpatialReference } from "./geometry.util.js";
+
+/** Read the response-root `spatialReference` (Esri FeatureServer marker), if any. */
+function rootSpatialReference(body: unknown): unknown {
+  return typeof body === "object" && body !== null
+    ? (body as Record<string, unknown>).spatialReference
+    : undefined;
+}
 
 export async function fetchOnePage(
   endpoint: ApiEndpoint,
@@ -138,6 +146,14 @@ export async function fetchOnePage(
       walkRecordsPath(result.body, endpoint.config.recordsPath ?? ""),
       endpoint.config.recordsPath ?? ""
     );
+  }
+
+  // #316: Esri FeatureServer responses carry `spatialReference` at the root,
+  // not on each feature's geometry — thread it down so a non-4326 layer
+  // reprojects correctly on write. No-op for GeoJSON / non-Esri sources.
+  const rootSr = rootSpatialReference(result.body);
+  if (rootSr !== undefined) {
+    for (const record of records) stampEsriSpatialReference(record, rootSr);
   }
 
   return {

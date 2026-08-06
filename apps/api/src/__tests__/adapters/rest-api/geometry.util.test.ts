@@ -4,6 +4,7 @@ import {
   toGeoJsonCandidate,
   looksLikeGeometry,
   extractSourceSrid,
+  stampEsriSpatialReference,
 } from "../../../adapters/rest-api/geometry.util.js";
 
 describe("toGeoJsonCandidate", () => {
@@ -142,5 +143,66 @@ describe("extractSourceSrid", () => {
         spatialReference: { wkid: 102100 },
       })
     ).toBe(3857);
+  });
+});
+
+describe("stampEsriSpatialReference", () => {
+  const ROOT = { wkid: 102100, latestWkid: 3857 };
+
+  it("stamps the response-root SR onto an Esri geometry lacking its own", () => {
+    const record: Record<string, unknown> = {
+      state: "CO",
+      geometry: { rings: [[[0, 0]]] },
+    };
+    stampEsriSpatialReference(record, ROOT);
+    expect(
+      (record.geometry as Record<string, unknown>).spatialReference
+    ).toEqual(ROOT);
+    // And downstream SRID extraction now recovers it (102100 → 3857).
+    expect(extractSourceSrid(record.geometry)).toBe(3857);
+  });
+
+  it("stamps paths and point shapes too", () => {
+    const rec: Record<string, unknown> = {
+      line: { paths: [[[0, 0]]] },
+      pt: { x: 1, y: 2 },
+    };
+    stampEsriSpatialReference(rec, ROOT);
+    expect((rec.line as Record<string, unknown>).spatialReference).toEqual(
+      ROOT
+    );
+    expect((rec.pt as Record<string, unknown>).spatialReference).toEqual(ROOT);
+  });
+
+  it("never overwrites a geometry that already has its own SR", () => {
+    const own = { wkid: 4269 };
+    const rec: Record<string, unknown> = {
+      geometry: { rings: [[[0, 0]]], spatialReference: own },
+    };
+    stampEsriSpatialReference(rec, ROOT);
+    expect((rec.geometry as Record<string, unknown>).spatialReference).toBe(
+      own
+    );
+  });
+
+  it("is a no-op for GeoJSON (standard format — no rings/paths/x,y)", () => {
+    const rec: Record<string, unknown> = {
+      geometry: { type: "Polygon", coordinates: [[[0, 0]]] },
+    };
+    stampEsriSpatialReference(rec, ROOT);
+    expect(
+      (rec.geometry as Record<string, unknown>).spatialReference
+    ).toBeUndefined();
+  });
+
+  it("is a no-op when the root reference has no wkid, or inputs aren't records", () => {
+    const rec: Record<string, unknown> = { geometry: { rings: [[[0, 0]]] } };
+    stampEsriSpatialReference(rec, { foo: "bar" });
+    expect(
+      (rec.geometry as Record<string, unknown>).spatialReference
+    ).toBeUndefined();
+    // Non-record record / root → no throw.
+    expect(() => stampEsriSpatialReference(null, ROOT)).not.toThrow();
+    expect(() => stampEsriSpatialReference(rec, null)).not.toThrow();
   });
 });

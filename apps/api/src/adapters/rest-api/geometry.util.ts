@@ -88,6 +88,49 @@ const ESRI_SRID_ALIASES: Record<number, number> = {
   102113: 3857,
 };
 
+/** True for the Esri-JSON geometry shapes (rings / paths / point) — NOT
+ *  GeoJSON, which carries its CRS implicitly (always 4326) and has no
+ *  `spatialReference` to stamp. */
+function isEsriGeometryShape(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value)) return false;
+  return (
+    Array.isArray(value.rings) ||
+    Array.isArray(value.paths) ||
+    (typeof value.x === "number" && typeof value.y === "number")
+  );
+}
+
+/**
+ * Stamp a response-level `spatialReference` onto a record's Esri geometry
+ * values (#316). Esri FeatureServer `/query?f=json` responses put
+ * `spatialReference` at the response **root**, shared by every feature —
+ * each feature's `geometry` is just `{rings|paths|x,y}` with no SRID of its
+ * own. Without this, `extractSourceSrid` would default those to 4326 and a
+ * non-4326 (e.g. web-mercator 102100) layer would be stored mislocated.
+ *
+ * Mutates `record` in place. A no-op for GeoJSON sources (RFC 7946 has no
+ * `spatialReference` field and is always 4326) and when the root reference
+ * carries no wkid, so it never touches standard-format data. Only stamps a
+ * geometry that lacks its own `spatialReference`, so a per-feature reference
+ * (if a source ever provides one) always wins.
+ */
+export function stampEsriSpatialReference(
+  record: unknown,
+  rootSpatialReference: unknown
+): void {
+  if (!isRecord(record) || !isRecord(rootSpatialReference)) return;
+  const hasWkid =
+    typeof rootSpatialReference.wkid === "number" ||
+    typeof rootSpatialReference.latestWkid === "number";
+  if (!hasWkid) return;
+  for (const key of Object.keys(record)) {
+    const value = record[key];
+    if (isEsriGeometryShape(value) && value.spatialReference === undefined) {
+      value.spatialReference = rootSpatialReference;
+    }
+  }
+}
+
 /**
  * Extract the source SRID of a connector-returned geometry value (#316).
  * ArcGIS carries it in `spatialReference` (`latestWkid` preferred — the modern
