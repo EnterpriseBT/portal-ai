@@ -21,9 +21,9 @@ Manual smoke test for [#316](https://github.com/EnterpriseBT/portal-ai/issues/31
 ### Fixtures
 
 - [ ] Log in to the web app as your local dev identity (`bbgrabbag@gmail.com`) and select/create an org.
-- [ ] A **station** with a connector whose entity carries geometry. Two ways to get one:
-  - **Real (preferred for §4):** add a **REST API** connector pointing at any public **ArcGIS FeatureServer** polygon layer (a `.../FeatureServer/<n>/query?f=json&where=1=1&outFields=*&resultRecordCount=200` URL — these return `{ "geometry": { "rings": […], "spatialReference": { "wkid": 102100 } } }`). Probe → the geometry field should infer as type **geometry**; map it, then sync.
-  - **Minimal (enough for §2/§3/§7/§9):** create a connector entity with one column mapped to the seeded **geometry** system column definition, then let the agent write a couple of rows (see §3).
+- [ ] A **station** with an entity that carries geometry. There is **no ArcGIS connector type** — the vehicle is the ordinary **REST / JSON API connector**; an ArcGIS FeatureServer is just a JSON API whose geometry field is Esri-shaped (`{rings|paths, spatialReference:{wkid}}`), which the REST adapter normalizes to GeoJSON and infers as type `geometry`. Two ways to get one:
+  - **Real (preferred for §4):** add a **REST API** connector whose endpoint is a public ArcGIS **FeatureServer** query (`.../FeatureServer/<n>/query?f=json&where=1=1&outFields=*&resultRecordCount=200`, records path `features`). These return `{ "attributes": {…}, "geometry": { "rings": […], "spatialReference": { "wkid": 102100 } } }`. Probe → the `geometry` field should infer as type **geometry**; map it, then sync.
+  - **Minimal (enough for §2/§3/§7/§9):** create a connector entity with one column mapped to the seeded **geometry** system column definition, then write a couple of rows (see §3).
 - [ ] Note your station id and the entity's wide table name `er__<connectorEntityId>` (from `db:studio` → `connector_entities`, or ask the agent `station_context`).
 
 ### Reset between runs
