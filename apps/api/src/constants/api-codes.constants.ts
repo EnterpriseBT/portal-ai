@@ -378,6 +378,17 @@ export enum ApiCode {
    */
   GIS_SRID_UNSUPPORTED = "GIS_SRID_UNSUPPORTED",
   /**
+   * #316: the referenced map block/pin does not exist, has no durable pipeline,
+   * or belongs to another org. One code for all three so a cross-org probe
+   * can't distinguish "not yours" from "doesn't exist" — no existence leak.
+   */
+  MAP_TILE_NOT_FOUND = "MAP_TILE_NOT_FOUND",
+  /**
+   * #316: the tile query exceeded `statement_timeout`. The widget renders an
+   * error tile rather than blank ground, so a slow layer is visible.
+   */
+  MAP_TILE_TIMEOUT = "MAP_TILE_TIMEOUT",
+  /**
    * #316: a `json → geometry` column-type transition pre-flight found rows
    * whose stored value is not parseable as GeoJSON. The conversion is refused
    * (no ALTER) and the offending `sourceId`s are named so they can be fixed at
