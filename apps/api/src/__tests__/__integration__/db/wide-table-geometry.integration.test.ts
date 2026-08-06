@@ -372,4 +372,131 @@ describe("Wide-table geometry storage (#316)", () => {
     // Both written geometries are valid — the bowtie was repaired on write.
     expect(written.every((r) => r.valid)).toBe(true);
   });
+
+  it("reprojects a non-4326 (web mercator 3857) source to 4326 on write", async () => {
+    await reconciler.reconcileEntity(entityId, db);
+    const stmt = await statementCache.get(entityId, db);
+    const geomCol = stmt.columns[0].columnName;
+    const now = Date.now();
+
+    // An ArcGIS polygon in web-mercator meters around NYC, wkid 102100
+    // (→ 3857). After reprojection the stored coordinates must be degrees.
+    const mercator = {
+      rings: [
+        [
+          [-8250000, 4970000],
+          [-8250000, 4980000],
+          [-8240000, 4980000],
+          [-8240000, 4970000],
+          [-8250000, 4970000],
+        ],
+      ],
+      spatialReference: { wkid: 102100 },
+    };
+    const erId = "er-merc";
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.entityRecords)
+      .values({
+        id: erId,
+        organizationId: orgId,
+        connectorEntityId: entityId,
+        data: { boundary: mercator },
+        sourceId: erId,
+        checksum: "chk-merc",
+        syncedAt: now,
+        origin: "sync",
+        validationErrors: null,
+        isValid: true,
+        created: now,
+        createdBy: "test-system",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+
+    const repo = new WideTableRepository(statementCache);
+    const result = await repo.upsertMany(
+      entityId,
+      [
+        {
+          entity_record_id: erId,
+          organization_id: orgId,
+          synced_at: now,
+          is_valid: true,
+          source_id: erId,
+          [geomCol]: mercator,
+        },
+      ],
+      db
+    );
+    expect(result.rejected).toHaveLength(0);
+
+    const rows = (await connection.unsafe(
+      `${stmt.selectAllSql} WHERE "entity_record_id" = $1`,
+      [erId]
+    )) as unknown as Array<Record<string, unknown>>;
+    const geom = rows[0][geomCol] as { coordinates: number[][][] };
+    const [lng, lat] = geom.coordinates[0][0];
+    // Reprojected into degrees around NYC — not the raw ~8e6 meter values.
+    expect(lng).toBeGreaterThan(-75);
+    expect(lng).toBeLessThan(-73);
+    expect(lat).toBeGreaterThan(40);
+    expect(lat).toBeLessThan(41);
+  });
+
+  it("rejects a source whose SRID PostGIS does not know", async () => {
+    await reconciler.reconcileEntity(entityId, db);
+    const stmt = await statementCache.get(entityId, db);
+    const geomCol = stmt.columns[0].columnName;
+    const now = Date.now();
+
+    const erId = "er-badsrid";
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.entityRecords)
+      .values({
+        id: erId,
+        organizationId: orgId,
+        connectorEntityId: entityId,
+        data: {},
+        sourceId: erId,
+        checksum: "chk-badsrid",
+        syncedAt: now,
+        origin: "sync",
+        validationErrors: null,
+        isValid: true,
+        created: now,
+        createdBy: "test-system",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+
+    const repo = new WideTableRepository(statementCache);
+    const result = await repo.upsertMany(
+      entityId,
+      [
+        {
+          entity_record_id: erId,
+          organization_id: orgId,
+          synced_at: now,
+          is_valid: true,
+          source_id: erId,
+          [geomCol]: { ...POLYGON, spatialReference: { wkid: 987654 } },
+        },
+      ],
+      db
+    );
+
+    expect(result.rejected).toHaveLength(1);
+    expect(result.rejected[0].reason).toContain("GIS_SRID_UNSUPPORTED");
+
+    const table = `er__${entityId}`;
+    const written = (await connection.unsafe(
+      `SELECT 1 FROM "${table}" WHERE "entity_record_id" = $1`,
+      [erId]
+    )) as unknown as unknown[];
+    expect(written).toHaveLength(0);
+  });
 });

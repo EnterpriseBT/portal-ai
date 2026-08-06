@@ -3,6 +3,7 @@ import { describe, it, expect } from "@jest/globals";
 import {
   toGeoJsonCandidate,
   looksLikeGeometry,
+  extractSourceSrid,
 } from "../../../adapters/rest-api/geometry.util.js";
 
 describe("toGeoJsonCandidate", () => {
@@ -107,5 +108,39 @@ describe("looksLikeGeometry", () => {
     ["null", null],
   ])("is false for %s", (_label, value) => {
     expect(looksLikeGeometry(value)).toBe(false);
+  });
+});
+
+describe("extractSourceSrid", () => {
+  it("defaults to 4326 for GeoJSON and unspecified references", () => {
+    expect(extractSourceSrid({ type: "Point", coordinates: [0, 0] })).toBe(
+      4326
+    );
+    expect(extractSourceSrid({ rings: [[[0, 0]]] })).toBe(4326);
+    expect(extractSourceSrid("nonsense")).toBe(4326);
+  });
+
+  it("reads ArcGIS wkid", () => {
+    expect(
+      extractSourceSrid({ rings: [[[0, 0]]], spatialReference: { wkid: 4269 } })
+    ).toBe(4269);
+  });
+
+  it("prefers latestWkid over wkid", () => {
+    expect(
+      extractSourceSrid({
+        rings: [[[0, 0]]],
+        spatialReference: { wkid: 102100, latestWkid: 3857 },
+      })
+    ).toBe(3857);
+  });
+
+  it("maps the ESRI web-mercator alias 102100 → 3857", () => {
+    expect(
+      extractSourceSrid({
+        rings: [[[0, 0]]],
+        spatialReference: { wkid: 102100 },
+      })
+    ).toBe(3857);
   });
 });

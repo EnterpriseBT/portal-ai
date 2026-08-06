@@ -78,6 +78,38 @@ export function toGeoJsonCandidate(value: unknown): unknown | null {
 }
 
 /**
+ * ESRI spatial-reference ids that are aliases for a different EPSG code.
+ * ArcGIS reports web mercator as `wkid: 102100` (and legacy `102113`), which
+ * PostGIS's `spatial_ref_sys` does NOT contain — the EPSG code is 3857. Passing
+ * 102100 to ST_Transform would raise "unknown SRID", so map it here.
+ */
+const ESRI_SRID_ALIASES: Record<number, number> = {
+  102100: 3857,
+  102113: 3857,
+};
+
+/**
+ * Extract the source SRID of a connector-returned geometry value (#316).
+ * ArcGIS carries it in `spatialReference` (`latestWkid` preferred — the modern
+ * EPSG code — then `wkid`, with ESRI aliases normalized). GeoJSON has no CRS
+ * field and is 4326 by definition (RFC 7946), which is also the default for an
+ * unspecified reference.
+ */
+export function extractSourceSrid(value: unknown): number {
+  if (isRecord(value) && isRecord(value.spatialReference)) {
+    const sr = value.spatialReference;
+    const raw =
+      typeof sr.latestWkid === "number"
+        ? sr.latestWkid
+        : typeof sr.wkid === "number"
+          ? sr.wkid
+          : null;
+    if (raw !== null) return ESRI_SRID_ALIASES[raw] ?? raw;
+  }
+  return 4326;
+}
+
+/**
  * Heuristic: does this value look like a geometry (ArcGIS or GeoJSON)? Used by
  * column inference to tag a column as `geometry`. A superset check — the
  * authoritative parse is `toGeoJsonCandidate` + the audit.
