@@ -153,6 +153,19 @@ export class Formatter {
     return String(value);
   }
 
+  /**
+   * #316: geometry reads back as GeoJSON. A data-table cell shows the GeoJSON
+   * geometry type ("Polygon", "Point", …) rather than dumping thousands of
+   * coordinates — the full shape is for the map (#314), not a text cell.
+   */
+  static geometry(value: unknown): string {
+    if (value && typeof value === "object" && "type" in value) {
+      const t = (value as { type?: unknown }).type;
+      if (typeof t === "string") return t;
+    }
+    return Formatter.json(value);
+  }
+
   private static readonly formatters: Record<
     ColumnDataType,
     (value: unknown) => string
@@ -167,5 +180,6 @@ export class Formatter {
     array: Formatter.array,
     reference: Formatter.reference,
     "reference-array": Formatter.array,
+    geometry: Formatter.geometry,
   };
 }

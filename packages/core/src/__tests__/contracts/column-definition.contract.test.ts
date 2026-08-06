@@ -22,6 +22,7 @@ const validColumnDefinition = {
   validationMessage: null,
   canonicalFormat: null,
   system: false,
+  geoRole: null,
   created: Date.now(),
   createdBy: "user-1",
   updated: null,

@@ -577,6 +577,35 @@ export function buildSystemPrompt(stationContext: StationContext): string {
         "(ORDER BY …)`, `regr_slope(y, x)`."
     );
     lines.push("");
+    // #316: PostGIS is available. `geometry`-typed columns are real,
+    // SRID-4326, GiST-indexed geometries — compose ST_* directly; there are no
+    // separate spatial tools. Results project geometry as GeoJSON, but in
+    // predicates/expressions use the raw column.
+    lines.push(
+      "**Geospatial is PostGIS-native.** A `geometry` column is a real, " +
+        "SRID-4326, GiST-indexed geometry (results show it as GeoJSON, but in " +
+        "SQL use the raw column). There are no separate spatial tools — compose " +
+        "`ST_*` directly:"
+    );
+    lines.push(
+      "- Predicates (use the index) → `ST_Intersects(a, b)`, " +
+        "`ST_Contains(a, b)`, `ST_DWithin(a::geography, b::geography, meters)`."
+    );
+    lines.push(
+      "- Distance & area → cast to `geography` for meters/m²: " +
+        "`ST_Distance(a::geography, b::geography)`, `ST_Area(geom::geography)` " +
+        "(÷ 4047 for acres). Planar `geometry` math is in SRID units, not meters."
+    );
+    lines.push(
+      "- Reproject → `ST_Transform(geom, <srid>)`; build points from lat/lng → " +
+        "`ST_SetSRID(ST_MakePoint(lng, lat), 4326)`."
+    );
+    lines.push(
+      "- Compute upstream, don't post-process → `ST_Centroid`, `ST_Union` " +
+        "(dissolve), `ST_MakeLine` (path), `ST_HexagonGrid` (binning), " +
+        "`ST_SimplifyPreserveTopology`. Emit the finished geometry from SQL."
+    );
+    lines.push("");
     lines.push(
       "Never place a widget in your reply — no 'below', 'above', or " +
         "'here'. Tool widgets render BEFORE your closing sentence, so " +

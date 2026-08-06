@@ -62,6 +62,11 @@ export default async function globalSetup() {
     for (const { tablename } of wideTables) {
       await db.execute(sql.raw(`DROP TABLE "${tablename}" CASCADE`));
     }
+    // `spatial_ref_sys` is excluded: PostGIS (#316) creates this table in
+    // `public` and populates it with ~8500 SRID definitions. It is reference
+    // data owned by the extension, not test state — and because `migrate()`
+    // below no-ops on a reused container, a TRUNCATE here would never be
+    // repopulated, silently stripping ST_Transform of its projection catalog.
     await db.execute(sql`
       DO $$
       DECLARE
@@ -69,7 +74,9 @@ export default async function globalSetup() {
       BEGIN
         FOR r IN (
           SELECT tablename FROM pg_tables
-          WHERE schemaname = 'public' AND tablename NOT LIKE 'er\\_\\_%'
+          WHERE schemaname = 'public'
+            AND tablename NOT LIKE 'er\\_\\_%'
+            AND tablename <> 'spatial_ref_sys'
         ) LOOP
           EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE';
         END LOOP;

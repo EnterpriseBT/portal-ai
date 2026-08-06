@@ -1,4 +1,8 @@
-import type { ConnectorInstance, ColumnDataType } from "@portalai/core/models";
+import type {
+  ConnectorInstance,
+  ColumnDataType,
+  GeoRole,
+} from "@portalai/core/models";
 import type {
   PublicAccountInfo,
   ResolvedColumn,
@@ -38,6 +42,18 @@ export interface SyncInstanceResult {
     unchanged: number;
     deleted: number;
   };
+  /**
+   * #316: geometry audit outcome across the sync. `repaired` counts rows whose
+   * invalid geometry ST_MakeValid fixed on write; `rejected` counts rows
+   * dropped fail-closed because their geometry was unparseable (never written
+   * NULL). `rejectedSample` is a bounded list of the offending `sourceId`s.
+   * Omitted when the sync touched no geometry columns.
+   */
+  geometry?: {
+    repaired: number;
+    rejected: number;
+    rejectedSample: string[];
+  };
 }
 
 /**
@@ -72,6 +88,12 @@ export interface DiscoveredColumn {
   label: string;
   type: ColumnDataType;
   required: boolean;
+  /**
+   * #316: coordinate-pair role inferred for a numeric lat/lng column, or null.
+   * Geometry columns carry `type: "geometry"` and a null role (geometry is a
+   * type, not a role).
+   */
+  geoRole?: GeoRole | null;
 }
 
 /**

@@ -213,7 +213,7 @@ describe("SeedService Integration Tests", () => {
       organizationId = seed.organizationId;
     });
 
-    it("should insert 26 system column definitions for the organization", async () => {
+    it("should insert 29 system column definitions for the organization", async () => {
       await seedService.seedSystemColumnDefinitions(organizationId, db);
 
       const rows = await columnDefsRepo.findByOrganizationId(
@@ -221,7 +221,7 @@ describe("SeedService Integration Tests", () => {
         db
       );
 
-      expect(rows).toHaveLength(26);
+      expect(rows).toHaveLength(29);
     });
 
     it("should persist system: true for every seeded definition", async () => {
@@ -257,8 +257,11 @@ describe("SeedService Integration Tests", () => {
         "description",
         "email",
         "enum",
+        "geometry",
         "integer",
         "json_data",
+        "latitude",
+        "longitude",
         "name",
         "number_id",
         "percentage",
@@ -325,7 +328,53 @@ describe("SeedService Integration Tests", () => {
         db
       );
 
-      expect(rows).toHaveLength(26);
+      expect(rows).toHaveLength(29);
+    });
+
+    it("should seed the geo definitions with the right type and role (#316)", async () => {
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+
+      const geometry = await columnDefsRepo.findByKey(
+        organizationId,
+        "geometry",
+        db
+      );
+      expect(geometry?.type).toBe("geometry");
+      // geometry is a type, not a role — its role is null.
+      expect(geometry?.geoRole).toBeNull();
+
+      const latitude = await columnDefsRepo.findByKey(
+        organizationId,
+        "latitude",
+        db
+      );
+      expect(latitude?.type).toBe("number");
+      expect(latitude?.geoRole).toBe("lat");
+
+      const longitude = await columnDefsRepo.findByKey(
+        organizationId,
+        "longitude",
+        db
+      );
+      expect(longitude?.type).toBe("number");
+      expect(longitude?.geoRole).toBe("lng");
+    });
+
+    it("should not duplicate the geo definitions on re-seed (#316)", async () => {
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+
+      const rows = await columnDefsRepo.findByOrganizationId(
+        organizationId,
+        db
+      );
+      const geoKeys = rows
+        .filter((r) => ["geometry", "latitude", "longitude"].includes(r.key))
+        .map((r) => r.key)
+        .sort();
+
+      // three geo rows, not six
+      expect(geoKeys).toEqual(["geometry", "latitude", "longitude"]);
     });
 
     it("should use deterministic IDs — running twice produces the same IDs", async () => {
@@ -356,8 +405,8 @@ describe("SeedService Integration Tests", () => {
         db
       );
 
-      expect(rowsA).toHaveLength(26);
-      expect(rowsB).toHaveLength(26);
+      expect(rowsA).toHaveLength(29);
+      expect(rowsB).toHaveLength(29);
 
       // IDs should differ between organizations
       const uuidA = rowsA.find((r) => r.key === "uuid");

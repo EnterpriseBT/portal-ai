@@ -460,7 +460,9 @@ describe("WideTableRepository integration tests", () => {
           c_amount: 100,
         },
       ])
-    ).resolves.toBeUndefined();
+      // #316: upsertMany now returns a geometry-audit result; no geometry
+      // columns here, so it's the empty result (and, crucially, no throw).
+    ).resolves.toEqual({ repaired: 0, rejected: [] });
 
     const rows = (await repo.selectAll(entityId, db)) as Array<
       Record<string, unknown>

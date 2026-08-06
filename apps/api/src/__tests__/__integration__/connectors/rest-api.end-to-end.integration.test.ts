@@ -24,7 +24,7 @@ import {
 import request from "supertest";
 import type { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import {
@@ -53,6 +53,8 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 const { app } = await import("../../../app.js");
 const { restApiAdapter } =
   await import("../../../adapters/rest-api/rest-api.adapter.js");
+const { wideTableReconcilerService } =
+  await import("../../../services/wide-table-reconciler.service.js");
 
 let connection!: ReturnType<typeof postgres>;
 let db!: ReturnType<typeof drizzle>;
@@ -317,5 +319,106 @@ describe("REST API connector — end-to-end sync", () => {
         )
       );
     expect(live).toHaveLength(3);
+  });
+
+  it("does not orphan wide rows on resync — the reap cleans er__ (#327)", async () => {
+    const created = await request(app)
+      .post(`/api/connector-instances/${instanceId}/api-endpoints`)
+      .send({
+        key: "widgets",
+        label: "Widgets",
+        config: {
+          path: "/widgets",
+          method: "GET",
+          recordsPath: "",
+          idField: null, // synthetic source ids → full replacement each run
+          pagination: { strategy: "none" },
+        },
+      })
+      .expect(201);
+    const entityId: string = created.body.payload.entity.id;
+
+    // A field mapping so a wide table materializes (endpoint creation alone
+    // doesn't map columns).
+    const colDefId = generateId();
+    await db.insert(schema.columnDefinitions).values({
+      id: colDefId,
+      organizationId: orgId,
+      key: "widget_name",
+      label: "Name",
+      type: "string",
+      description: null,
+      validationPattern: null,
+      validationMessage: null,
+      canonicalFormat: null,
+      system: false,
+      created: Date.now(),
+      createdBy: userId,
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    await db.insert(schema.fieldMappings).values({
+      id: generateId(),
+      organizationId: orgId,
+      connectorEntityId: entityId,
+      columnDefinitionId: colDefId,
+      sourceField: "name",
+      isPrimaryKey: false,
+      normalizedKey: "name",
+      required: false,
+      defaultValue: null,
+      format: null,
+      enumValues: null,
+      refNormalizedKey: null,
+      refEntityKey: null,
+      created: Date.now(),
+      createdBy: userId,
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    // Reconcile via the singleton client (same test DB; the inserts above are
+    // committed and visible). Avoids a DbClient-vs-drizzle-generic cast.
+    await wideTableReconcilerService.reconcileEntity(entityId);
+
+    const wideCount = async (): Promise<number> => {
+      const r = (await db.execute(
+        sql.raw(`SELECT count(*)::int AS n FROM "er__${entityId}"`)
+      )) as unknown as Array<{ n: number }>;
+      return r[0].n;
+    };
+
+    // First sync → 2 records, 2 wide rows.
+    stubFetchOnce([{ name: "x" }, { name: "y" }]);
+    await restApiAdapter.syncInstance!((await loadInstance()) as never, userId);
+    expect(await wideCount()).toBe(2);
+
+    // Resync (new run watermark → synthetic ids differ → full replacement).
+    stubFetchOnce([{ name: "p" }, { name: "q" }]);
+    const r2 = await restApiAdapter.syncInstance!(
+      (await loadInstance()) as never,
+      userId
+    );
+    // Precondition: the reap actually fired (old run replaced).
+    expect(r2.recordCounts.deleted).toBe(2);
+    expect(r2.recordCounts.created).toBe(2);
+
+    const live = await db
+      .select()
+      .from(schema.entityRecords)
+      .where(
+        and(
+          eq(schema.entityRecords.connectorEntityId, entityId),
+          isNull(schema.entityRecords.deleted)
+        )
+      );
+    expect(live).toHaveLength(2);
+
+    // The bug: without the reap→wide-clean, this would be 4 (orphans). With
+    // the fix it stays at the current run's 2.
+    expect(await wideCount()).toBe(2);
   });
 });

@@ -181,3 +181,77 @@ describe("inferColumns — sample collection", () => {
     expect(result.columns[0].required).toBe(true);
   });
 });
+
+describe("inferColumns — geospatial (#316)", () => {
+  it("infers `geometry` for a column of ArcGIS ring objects", () => {
+    const records = [
+      {
+        boundary: {
+          rings: [
+            [
+              [0, 0],
+              [0, 1],
+              [1, 1],
+              [0, 0],
+            ],
+          ],
+        },
+      },
+      {
+        boundary: {
+          rings: [
+            [
+              [2, 2],
+              [2, 3],
+              [3, 3],
+              [2, 2],
+            ],
+          ],
+        },
+      },
+    ];
+    const col = inferColumns(records).columns.find((c) => c.key === "boundary");
+    expect(col?.type).toBe("geometry");
+    // geometry is a type, not a role.
+    expect(col?.geoRole ?? null).toBeNull();
+  });
+
+  it("infers `geometry` for a column of GeoJSON geometry objects", () => {
+    const records = [
+      { geom: { type: "Point", coordinates: [1, 2] } },
+      { geom: { type: "Point", coordinates: [3, 4] } },
+    ];
+    const col = inferColumns(records).columns.find((c) => c.key === "geom");
+    expect(col?.type).toBe("geometry");
+  });
+
+  it("keeps a non-geometry object column as json", () => {
+    const records = [{ meta: { a: 1 } }, { meta: { b: 2 } }];
+    const col = inferColumns(records).columns.find((c) => c.key === "meta");
+    expect(col?.type).toBe("json");
+  });
+
+  it("tags a numeric lat/lng column with a coordinate role", () => {
+    const records = [
+      { latitude: 40.7, longitude: -74.0 },
+      { latitude: 34.0, longitude: -118.2 },
+    ];
+    const cols = inferColumns(records).columns;
+    expect(cols.find((c) => c.key === "latitude")).toMatchObject({
+      type: "number",
+      geoRole: "lat",
+    });
+    expect(cols.find((c) => c.key === "longitude")).toMatchObject({
+      type: "number",
+      geoRole: "lng",
+    });
+  });
+
+  it("does NOT tag an out-of-range numeric named like a coordinate", () => {
+    // "latency" isn't a coordinate name, and 4200 is out of lat range anyway.
+    const records = [{ lat: 4200 }, { lat: 9001 }];
+    const col = inferColumns(records).columns.find((c) => c.key === "lat");
+    expect(col?.type).toBe("number");
+    expect(col?.geoRole ?? null).toBeNull();
+  });
+});

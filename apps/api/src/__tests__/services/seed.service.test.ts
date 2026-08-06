@@ -13,6 +13,7 @@ const VALID_COLUMN_DATA_TYPES: ColumnDataType[] = [
   "array",
   "reference",
   "reference-array",
+  "geometry",
 ];
 
 const KEY_PATTERN = /^[a-z][a-z0-9_]*$/;
@@ -41,8 +42,8 @@ const { SYSTEM_COLUMN_DEFINITIONS, SeedService } =
   await import("../../services/seed.service.js");
 
 describe("SYSTEM_COLUMN_DEFINITIONS", () => {
-  it("should have 26 entries", () => {
-    expect(SYSTEM_COLUMN_DEFINITIONS).toHaveLength(26);
+  it("should have 29 entries", () => {
+    expect(SYSTEM_COLUMN_DEFINITIONS).toHaveLength(29);
   });
 
   it("should have required fields on every entry", () => {
@@ -92,7 +93,7 @@ describe("SeedService.seedSystemColumnDefinitions", () => {
   it("should call upsertByKey for each definition", async () => {
     await seedService.seedSystemColumnDefinitions("org-123", fakeDb);
 
-    expect(mockUpsertByKey).toHaveBeenCalledTimes(26);
+    expect(mockUpsertByKey).toHaveBeenCalledTimes(29);
   });
 
   it("marks every seeded row with system: true", async () => {
