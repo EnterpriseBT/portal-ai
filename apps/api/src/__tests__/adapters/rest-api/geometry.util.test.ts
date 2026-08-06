@@ -22,6 +22,53 @@ describe("toGeoJsonCandidate", () => {
     ).toEqual({ type: "Polygon", coordinates: rings });
   });
 
+  it("groups disjoint Esri rings (islands) into a MultiPolygon, not a holed Polygon (#316)", () => {
+    // Two separate clockwise (exterior) rings — e.g. two islands.
+    const islandA = [
+      [0, 0],
+      [0, 10],
+      [10, 10],
+      [10, 0],
+      [0, 0],
+    ];
+    const islandB = [
+      [20, 20],
+      [20, 30],
+      [30, 30],
+      [30, 20],
+      [20, 20],
+    ];
+    const out = toGeoJsonCandidate({ rings: [islandA, islandB] }) as {
+      type: string;
+      coordinates: unknown[];
+    };
+    expect(out.type).toBe("MultiPolygon");
+    expect(out.coordinates).toHaveLength(2); // two separate polygons, no false holes
+    expect(out.coordinates).toEqual([[islandA], [islandB]]);
+  });
+
+  it("attaches a counter-clockwise ring as a hole of its containing outer (#316)", () => {
+    const outer = [
+      [0, 0],
+      [0, 10],
+      [10, 10],
+      [10, 0],
+      [0, 0],
+    ];
+    // Counter-clockwise ring inside `outer` → a hole.
+    const hole = [
+      [2, 2],
+      [8, 2],
+      [8, 8],
+      [2, 8],
+      [2, 2],
+    ];
+    expect(toGeoJsonCandidate({ rings: [outer, hole] })).toEqual({
+      type: "Polygon",
+      coordinates: [outer, hole],
+    });
+  });
+
   it("translates a single ArcGIS path → GeoJSON LineString", () => {
     const path = [
       [0, 0],

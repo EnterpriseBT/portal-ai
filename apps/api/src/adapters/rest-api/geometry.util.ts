@@ -40,6 +40,77 @@ function isCoordinateArray(value: unknown): boolean {
  * Shape translation only — the SRID/spatialReference is ignored here (a
  * non-4326 source is reprojected downstream via `ST_Transform`).
  */
+/** Ring is a closed sequence of [x, y] positions. */
+type Ring = number[][];
+
+/**
+ * Esri ring orientation (#316). Esri polygons order **exterior rings clockwise**
+ * and **holes counter-clockwise** — the shoelace sign tells them apart. Positive
+ * signed edge-sum ⇒ clockwise ⇒ an exterior (outer) ring.
+ */
+function ringIsClockwise(ring: Ring): boolean {
+  let total = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [x1, y1] = ring[i];
+    const [x2, y2] = ring[i + 1];
+    total += (x2 - x1) * (y2 + y1);
+  }
+  return total >= 0;
+}
+
+/** Ray-casting point-in-ring test, to attach a hole to its containing outer. */
+function pointInRing(pt: number[], ring: Ring): boolean {
+  const [x, y] = pt;
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * Convert Esri `rings` to GeoJSON (#316) — the standard arcgis-to-geojson
+ * algorithm. Esri lumps *every* part of a multi-part polygon (an island chain,
+ * disjoint parcels) into one `rings` array; naively mapping them to a single
+ * GeoJSON `Polygon` makes the extra exterior rings look like holes-outside-the-
+ * shell (invalid — every multi-part feature would need "repair"). Instead group
+ * rings by orientation: clockwise rings start new polygons, counter-clockwise
+ * rings are holes attached to the outer ring that contains them. One polygon ⇒
+ * `Polygon`; many ⇒ `MultiPolygon`.
+ */
+function esriRingsToGeoJson(rings: unknown): {
+  type: "Polygon" | "MultiPolygon";
+  coordinates: unknown;
+} | null {
+  if (!Array.isArray(rings) || rings.length === 0) return null;
+  const outers: Ring[][] = []; // each polygon = [outer, ...holes]
+  const holes: Ring[] = [];
+  for (const r of rings) {
+    if (!Array.isArray(r) || r.length < 4) continue; // skip degenerate rings
+    const ring = r as Ring;
+    if (ringIsClockwise(ring)) outers.push([ring]);
+    else holes.push(ring);
+  }
+  if (outers.length === 0) {
+    // No exterior detected — treat each ring as its own outer (defensive).
+    for (const h of holes) outers.push([h]);
+  } else {
+    for (const hole of holes) {
+      const owner = outers.find((poly) => pointInRing(hole[0], poly[0]));
+      if (owner) owner.push(hole);
+      else outers.push([hole]); // orphan hole → its own polygon
+    }
+  }
+  if (outers.length === 0) return null;
+  return outers.length === 1
+    ? { type: "Polygon", coordinates: outers[0] }
+    : { type: "MultiPolygon", coordinates: outers };
+}
+
 export function toGeoJsonCandidate(value: unknown): unknown | null {
   if (!isRecord(value)) return null;
 
@@ -55,9 +126,9 @@ export function toGeoJsonCandidate(value: unknown): unknown | null {
     return isCoordinateArray(value.coordinates) ? value : null;
   }
 
-  // ArcGIS polygon — `rings` are exactly a GeoJSON Polygon's coordinate array.
+  // ArcGIS polygon — group rings into Polygon / MultiPolygon by orientation.
   if (Array.isArray(value.rings)) {
-    return { type: "Polygon", coordinates: value.rings };
+    return esriRingsToGeoJson(value.rings);
   }
 
   // ArcGIS polyline — one path is a LineString; many paths a MultiLineString.
@@ -158,5 +229,18 @@ export function extractSourceSrid(value: unknown): number {
  * authoritative parse is `toGeoJsonCandidate` + the audit.
  */
 export function looksLikeGeometry(value: unknown): boolean {
-  return toGeoJsonCandidate(value) !== null;
+  if (!isRecord(value)) return false;
+  // GeoJSON-shaped (recognized `type` + coordinates / geometries).
+  if (
+    typeof value.type === "string" &&
+    GEOJSON_GEOMETRY_TYPES.has(value.type)
+  ) {
+    return value.type === "GeometryCollection"
+      ? Array.isArray(value.geometries)
+      : isCoordinateArray(value.coordinates);
+  }
+  // Esri-shaped (rings / paths / point). Shape detection is independent of
+  // convertibility — a geometry-shaped-but-degenerate value still marks the
+  // column as geometry; the audit rejects the specific bad value on write.
+  return isEsriGeometryShape(value);
 }
