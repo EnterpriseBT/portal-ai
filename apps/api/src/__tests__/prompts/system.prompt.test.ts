@@ -872,3 +872,31 @@ describe("buildSystemPrompt — organization-provided tools (#306)", () => {
     expect(prompt).not.toContain("bare — ");
   });
 });
+
+describe("buildSystemPrompt — geospatial SQL guidance (#316)", () => {
+  it("teaches the ST_* vocabulary when SQL authoring is available", () => {
+    const prompt = buildSystemPrompt(makeContext());
+    // Present because data_query enables SQL authoring.
+    expect(prompt).toContain("Geospatial is PostGIS-native");
+    expect(prompt).toContain("ST_Intersects");
+    expect(prompt).toContain("ST_DWithin");
+    // geography cast for distance/area.
+    expect(prompt).toContain("::geography");
+    expect(prompt).toContain("ST_Area(geom::geography)");
+    // reprojection + point construction.
+    expect(prompt).toContain("ST_Transform");
+    expect(prompt).toContain("ST_SetSRID(ST_MakePoint(lng, lat), 4326)");
+    // compute-upstream construction idioms.
+    expect(prompt).toContain("ST_Union");
+    expect(prompt).toContain("ST_HexagonGrid");
+    expect(prompt).toContain("ST_SimplifyPreserveTopology");
+  });
+
+  it("omits geospatial guidance when SQL authoring is unavailable", () => {
+    // A pack set with no SQL-authoring tool (no data_query / visualize_d3).
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["entity_management"] })
+    );
+    expect(prompt).not.toContain("Geospatial is PostGIS-native");
+  });
+});

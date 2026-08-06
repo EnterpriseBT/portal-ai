@@ -40,6 +40,10 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
+const { wideTableReconcilerService } =
+  await import("../../../services/wide-table-reconciler.service.js");
+const { wideTableRepo } =
+  await import("../../../db/repositories/wide-table.repository.js");
 
 const {
   connectorDefinitions,
@@ -1362,6 +1366,168 @@ describe("Column Definition Router", () => {
         );
 
       expect(jobRows).toHaveLength(0);
+    });
+  });
+
+  // ── PATCH json ↔ geometry conversion (#316) ──────────────────────
+
+  describe("PATCH json ↔ geometry conversion", () => {
+    const VALID = {
+      type: "Polygon",
+      coordinates: [
+        [
+          [0, 0],
+          [0, 1],
+          [1, 1],
+          [1, 0],
+          [0, 0],
+        ],
+      ],
+    };
+
+    /**
+     * Build org → connector → entity → json column + mapping, reconcile the
+     * wide table, and upsert one wide row per supplied value. Returns the ids
+     * plus the sanitized geometry column name.
+     */
+    async function seedJsonColumnWithRows(values: unknown[]) {
+      const dbTyped = db as ReturnType<typeof drizzle>;
+      const { organizationId } = await seedUserAndOrg(dbTyped, AUTH0_ID);
+      const def = createConnectorDefinition();
+      await dbTyped.insert(connectorDefinitions).values(def as never);
+      const instance = createConnectorInstance(def.id, organizationId);
+      await dbTyped.insert(connectorInstances).values(instance as never);
+      const entity = createConnEntity(organizationId, instance.id);
+      await dbTyped.insert(connectorEntities).values(entity as never);
+
+      const colDef = createColumnDefinition(organizationId, {
+        key: "boundary",
+        type: "json",
+      });
+      await dbTyped.insert(columnDefinitions).values(colDef as never);
+      const fm = createFieldMap(organizationId, entity.id, colDef.id, {
+        normalizedKey: "boundary",
+        sourceField: "boundary",
+      });
+      await dbTyped.insert(fieldMappings).values(fm as never);
+
+      await wideTableReconcilerService.reconcileEntity(entity.id, db);
+
+      const wcols = await dbTyped
+        .select()
+        .from(schema.wideTableColumns)
+        .where(eq(schema.wideTableColumns.connectorEntityId, entity.id));
+      const geomCol = wcols[0].columnName;
+
+      const wideRows = [];
+      for (const value of values) {
+        const er = createEntityRecord(organizationId, entity.id);
+        await dbTyped.insert(entityRecords).values(er as never);
+        wideRows.push({
+          entity_record_id: er.id,
+          organization_id: organizationId,
+          synced_at: now,
+          is_valid: true,
+          source_id: er.sourceId,
+          [geomCol]: value,
+        });
+      }
+      if (wideRows.length > 0) {
+        await wideTableRepo.upsertMany(entity.id, wideRows, db);
+      }
+
+      return {
+        organizationId,
+        entityId: entity.id,
+        colDefId: colDef.id,
+        geomCol,
+      };
+    }
+
+    async function geometryColumnSrid(
+      entityId: string,
+      geomCol: string
+    ): Promise<number | null> {
+      const rows = (await connection.unsafe(
+        `SELECT srid FROM geometry_columns WHERE f_table_name = $1 AND f_geometry_column = $2`,
+        [`er__${entityId}`, geomCol]
+      )) as unknown as Array<{ srid: number }>;
+      return rows.length ? Number(rows[0].srid) : null;
+    }
+
+    async function gistIndexCount(entityId: string): Promise<number> {
+      const rows = (await connection.unsafe(
+        `SELECT 1 FROM pg_indexes WHERE tablename = $1 AND indexname LIKE '%_gist'`,
+        [`er__${entityId}`]
+      )) as unknown as unknown[];
+      return rows.length;
+    }
+
+    it("converts a clean json column to geometry (indexed, typed)", async () => {
+      const { entityId, colDefId, geomCol } = await seedJsonColumnWithRows([
+        VALID,
+        VALID,
+      ]);
+
+      const res = await request(app)
+        .patch(`/api/column-definitions/${colDefId}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ type: "geometry" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.columnDefinition.type).toBe("geometry");
+      expect(await geometryColumnSrid(entityId, geomCol)).toBe(4326);
+      expect(await gistIndexCount(entityId)).toBe(1);
+    });
+
+    it("refuses conversion when a row holds unparseable GeoJSON (422, untouched)", async () => {
+      const { entityId, colDefId, geomCol } = await seedJsonColumnWithRows([
+        VALID,
+        { not: "a geometry" },
+      ]);
+
+      const res = await request(app)
+        .patch(`/api/column-definitions/${colDefId}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ type: "geometry" });
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.GEOMETRY_CONVERSION_FAILED);
+      expect(res.body.details.count).toBe(1);
+      expect(Array.isArray(res.body.details.sample)).toBe(true);
+
+      // Column definition stayed json; the wide column was never altered/indexed.
+      const getRes = await request(app)
+        .get(`/api/column-definitions/${colDefId}`)
+        .set("Authorization", "Bearer test-token");
+      expect(getRes.body.payload.columnDefinition.type).toBe("json");
+      expect(await geometryColumnSrid(entityId, geomCol)).toBeNull();
+      expect(await gistIndexCount(entityId)).toBe(0);
+    });
+
+    it("reverses geometry → json (drops the index, rewrites to GeoJSON)", async () => {
+      const { entityId, colDefId, geomCol } = await seedJsonColumnWithRows([
+        VALID,
+      ]);
+
+      // First convert to geometry.
+      await request(app)
+        .patch(`/api/column-definitions/${colDefId}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ type: "geometry" })
+        .expect(200);
+      expect(await gistIndexCount(entityId)).toBe(1);
+
+      // Then back to json.
+      const res = await request(app)
+        .patch(`/api/column-definitions/${colDefId}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ type: "json" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.columnDefinition.type).toBe("json");
+      expect(await geometryColumnSrid(entityId, geomCol)).toBeNull();
+      expect(await gistIndexCount(entityId)).toBe(0);
     });
   });
 });

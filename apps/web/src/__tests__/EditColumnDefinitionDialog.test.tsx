@@ -18,6 +18,7 @@ const makeColumnDefinition = (
   validationMessage: null,
   canonicalFormat: null,
   system: false,
+  geoRole: null,
   created: 1735689600000,
   createdBy: "user-1",
   updated: null,
@@ -117,6 +118,25 @@ describe("EditColumnDefinitionDialog", () => {
     // string -> number is not allowed
     const numberOption = screen.getByRole("option", { name: /^number/ });
     expect(numberOption).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("offers the json → geometry transition (#316)", () => {
+    render(
+      <EditColumnDefinitionDialog
+        {...defaultProps}
+        columnDefinition={makeColumnDefinition({
+          key: "boundary",
+          type: "json",
+        })}
+      />
+    );
+    fireEvent.mouseDown(screen.getByLabelText(/^Type/));
+    // json -> geometry is allowed
+    const geometryOption = screen.getByRole("option", { name: /geometry/ });
+    expect(geometryOption).not.toHaveAttribute("aria-disabled", "true");
+    // json -> string is not allowed
+    const stringOption = screen.getByRole("option", { name: /^string/ });
+    expect(stringOption).toHaveAttribute("aria-disabled", "true");
   });
 
   // ── Submit payload ─────────────────────────────────────────────────

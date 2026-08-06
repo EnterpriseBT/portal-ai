@@ -10,6 +10,11 @@ export const ALLOWED_TYPE_TRANSITIONS: Record<string, string[]> = {
   enum: ["string"],
   date: ["datetime"],
   datetime: ["date"],
+  // #316: json ↔ geometry. Unlike the re-label transitions above, these
+  // rewrite stored data (ST_GeomFromGeoJSON / ST_AsGeoJSON), so the
+  // `json → geometry` direction is pre-flighted at the route before any ALTER.
+  json: ["geometry"],
+  geometry: ["json"],
 };
 
 /** Types that cannot be transitioned to or from under any circumstance. */

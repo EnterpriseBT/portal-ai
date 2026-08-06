@@ -20,7 +20,18 @@ export const columnDataTypeEnum = pgEnum("column_data_type", [
   "array",
   "reference",
   "reference-array",
+  // #316: PostGIS-backed geometry — kept in lockstep with core's
+  // ColumnDataTypeEnum (the dual-schema type-check enforces it).
+  "geometry",
 ]);
+
+/**
+ * Coordinate-pair role (#316). A pg enum rather than plain text so the
+ * drizzle-zod select schema infers the same narrow union as core's
+ * `GeoRoleSchema` — a `text` column would infer `string`, breaking the
+ * bidirectional dual-schema assignability guard in `type-checks.ts`.
+ */
+export const geoRoleEnum = pgEnum("geo_role", ["lat", "lng"]);
 
 /**
  * Column definitions table.
@@ -42,6 +53,8 @@ export const columnDefinitions = pgTable(
     validationMessage: text("validation_message"),
     canonicalFormat: text("canonical_format"),
     system: boolean("system").notNull().default(false),
+    // #316: null for every non-coordinate column (including geometry).
+    geoRole: geoRoleEnum("geo_role"),
   },
   (table) => [
     uniqueIndex("column_definitions_org_key_unique")

@@ -1,0 +1,240 @@
+# PostGIS foundation — Spec
+
+**Issue:** [EnterpriseBT/portal-ai#316](https://github.com/EnterpriseBT/portal-ai/issues/316) · **Epic:** [#84](https://github.com/EnterpriseBT/portal-ai/issues/84) · **Shared discovery:** `docs/GIS_TOOLPACK.discovery.md` · **Epic spec:** `docs/GIS_TOOLPACK.spec.md`
+
+Pins the substrate the rest of the GIS epic stands on: the PostGIS extension, `geometry` as a real typed and indexed wide-table column, geometry normalization + validity reporting at import, `ST_*` available to agent SQL, and the `ST_AsMVT` vector-tile endpoint that makes arbitrarily large layers renderable.
+
+This child-level spec **supersedes the epic spec's storage sections** (`Where computation happens`, Surface → `column-definition.model.ts`, Migration, Seed), which were written before PostGIS was adopted. The epic spec's MapSpec / geo-block / geocoding contracts stand and belong to #314 and #315.
+
+## Key decisions (flag for review)
+
+1. **`geometry` is a `ColumnDataType` again; `geoRole` narrows to `lat | lng`.** Under PostGIS the storage genuinely differs (typed, SRID-constrained, GiST-indexed), which is exactly the condition the earlier role-not-type argument depended on. Coordinate pairs stay plain numerics carrying a role.
+2. **The database computes; Node does not.** No turf, no proj4. `ST_*` runs in Postgres, so validity repair, geodesic distance/area, and reprojection come from one authority.
+3. **Tiles are addressed by `BlockRef`, reusing #312's union** — `…/tiles/message/:messageId/:blockIndex/:z/:x/:y` and `…/tiles/pin/:portalResultId/:z/:x/:y`. The client never supplies SQL; the server reads the persisted pipeline, exactly as `widget-refresh` does.
+4. **Degradation is signalled in-band.** Simplification, feature capping, and timeouts each have a response header or typed status the widget renders (epic *Visibility of limits*, rows 2–7). A thinner map that says nothing is a defect.
+5. **A type conversion that cannot succeed fails before it starts.** `json → geometry` pre-flights: unconvertible rows are identified and returned; the `ALTER` only runs when it will succeed. Postgres would otherwise abort the whole statement on the first bad row with an opaque error.
+6. **Fail-closed on geometry validity.** An unparseable geometry is rejected and reported, never coerced to `NULL` and never silently dropped — a missing parcel is indistinguishable from a parcel that isn't there.
+
+## Scope
+
+### In scope
+
+Extension enablement (local/CI image + RDS migration), the `geometry` column type end-to-end (core enum → reconciler → statement cache → index), geometry audit + normalization at import, the type-transition path, `station_context` SRID exposure, `ST_*` prompt surface, the tile endpoint, and the recorded benchmark.
+
+### Out of scope
+
+The `gis` toolpack and `visualize_map` (#314), the map widget's tile consumption (#314), geocoding (#315), `ST_AsMVT` tiles for anything other than a persisted map block, raster/topology/pgRouting/3D, and backfilling historical JSONB geometry (no production geospatial data exists; re-sync is the conversion path).
+
+## Surface
+
+### Extension + images
+
+- **Migration** `enable-postgis` — `CREATE EXTENSION IF NOT EXISTS postgis;`. Must be the **first** migration touching geometry; every typed column depends on it.
+- `docker-compose.yml:53,72` — `postgres:17-alpine` → `imresamu/postgis:17-3.5-alpine` for both the app and test databases. `.devcontainer/devcontainer.json` inherits the compose `postgres` service and pins no image itself, so it needs no edit. `infra/cloudformation/database.yml` needs no change (`Engine: postgres` 17.9 supports the extension); enabling is the migration's job.
+  - **Image source (decided at slice-1 implementation, 2026-08-05):** the spec originally pinned the official `postgis/postgis:17-3.5-alpine`, but the official PostGIS images publish **no arm64 manifest** (both the alpine and Debian 17-3.5 tags are amd64-only), so they cannot run on Apple-Silicon dev machines — only on the amd64 CI runners. `imresamu/postgis:17-3.5-alpine` is a multi-arch (amd64 + arm64) rebuild maintained by a PostGIS contributor, with identical tags and versions (PG17 + PostGIS 3.5). It is the standard fill for exactly this official-image gap. This is a conscious supply-chain choice — a community mirror over the org image — made because the org image does not run on the local target architecture.
+
+### `packages/core/src/models/column-definition.model.ts`
+
+```ts
+export const ColumnDataTypeEnum = z.enum([
+  "string", "number", "boolean", "date", "datetime",
+  "enum", "json", "array", "reference", "reference-array",
+  "geometry",                                    // #316
+]);
+
+/** Coordinate-pair roles only — geometry is a type, not a role (#316). */
+export const GeoRoleSchema = z.enum(["lat", "lng"]);
+
+export const ColumnDefinitionSchema = CoreSchema.extend({
+  // …existing…
+  geoRole: GeoRoleSchema.nullable(),
+});
+```
+
+`SORTABLE_COLUMN_TYPES` is unchanged and therefore excludes `geometry` (ordering polygons is meaningless). `column-definition.contract.ts:48,71` gain `geoRole`.
+
+**Storage correction (slice 2 implementation, 2026-08-05).** The migration section below originally said the `geometry` value was "a core Zod enum, not a pg enum" and that the migration carried "only `geo_role text`". Both were wrong about the actual schema: `column_definitions.type` **is** a Postgres enum (`columnDataTypeEnum = pgEnum("column_data_type", …)`), and the bidirectional dual-schema guard in `type-checks.ts` forces two consequences the original text missed:
+- `geometry` must be added to the **pg enum** `column_data_type` (`ALTER TYPE … ADD VALUE 'geometry'`), else core→Drizzle assignability fails.
+- `geo_role` must be a **pg enum** (`CREATE TYPE geo_role AS ENUM('lat','lng')`), not plain `text`. A `text` column infers `string`, which is not assignable to the model's `z.enum(["lat","lng"])`, breaking Drizzle→core assignability. The pg enum makes drizzle-zod infer the same narrow union the model declares — the same mechanism the existing `type` column already relies on.
+
+### `apps/api/src/services/wide-table-reconciler.service.ts`
+
+`pgTypeForColumnDefinitionType` (`:63`) gains one arm — its `never` exhaustiveness check makes this a compile error until added, which is the intended forcing function:
+
+```ts
+case "geometry":
+  return "geometry(Geometry, 4326)";
+```
+
+`Geometry` (not `Polygon`) because one column may hold mixed polygon/point/line features; the SRID constraint is the part that matters. The reconciler additionally creates a GiST index — **`CREATE INDEX IF NOT EXISTS "er__<id>__<col>_gist" ON er__<id> USING GIST (<col>)`** — for every geometry column, and `wide_table_columns.pgType` records `geometry(Geometry, 4326)` so existing drift detection compares correctly. **Resolved at slice-3 implementation:** the index is a plain `CREATE INDEX`, not `CONCURRENTLY` — `applyAdds` runs inside the reconciler's entity-lock transaction, and `CONCURRENTLY` cannot run in a transaction (see Risks). This is safe because a column is added while its table is empty or small (first sync, before rows land); the risk note's "fall back to a plain `CREATE INDEX` while tables are small" is the path taken.
+
+### `apps/api/src/services/wide-table-statement.cache.ts` — per-column write expressions
+
+Today the INSERT emits bare placeholders (`:227-231`, `placeholders.push(\`$${…}\`)`), so a bound JSON value cannot become a geometry. Mirror the existing **read**-side type-aware fragment builder (`:147-158`) with a write-side one:
+
+```ts
+/** SQL expression wrapping the bound placeholder for a column's pg type.
+ *  Default: the bare placeholder. Geometry: parse + constrain + repair. */
+export function writePlaceholderExpr(pgType: string, index: number): string {
+  return pgType.startsWith("geometry")
+    ? `ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON($${index}), 4326))`
+    : `$${index}`;
+}
+```
+
+Read side: a geometry column projects as `ST_AsGeoJSON(<col>)::jsonb` so every existing consumer (`SELECT *`, the data-table renderer, `sql_query`) keeps receiving GeoJSON and needs no change.
+
+### `apps/api/src/services/geometry-audit.service.ts` (new)
+
+Validity is decided by Postgres, in **one** round-trip per batch, before the write — so repairs and rejections can be *counted and attributed* rather than silently applied:
+
+```ts
+export interface GeometryAuditRow { sourceId: string; geoJson: unknown; }
+export interface GeometryAuditResult {
+  /** Parsed clean — written as-is. */
+  ok: string[];
+  /** Parsed but invalid (self-intersection, ring order); ST_MakeValid will repair on write. */
+  repaired: string[];
+  /** Unparseable or non-geometry — NOT written; reported per row. */
+  rejected: Array<{ sourceId: string; reason: string }>;
+}
+/** One statement expanding a jsonb payload via `jsonb_to_recordset`, evaluating
+ *  ST_GeomFromGeoJSON / ST_IsValid per row; never throws on bad input. */
+export class GeometryAuditService {
+  static async auditBatch(
+    rows: GeometryAuditRow[],
+    options?: { client?: DbClient; srid?: number }
+  ): Promise<GeometryAuditResult>;
+}
+```
+
+The sync pipeline calls this for every geometry-typed column, writes `ok ∪ repaired`, **omits** `rejected`, and surfaces `{ repaired: n, rejected: n }` in the sync summary (limits rows 5–6). Rejected rows are addressable by `sourceId`.
+
+**Resolved at slice-4 implementation (2026-08-05):**
+- **A non-throwing parse needs a helper.** `ST_GeomFromGeoJSON` raises on malformed input, which would abort a set-based statement on the first bad row. Migration `0078_geometry-audit-helper` adds `portal_try_geom_from_geojson(text) → geometry` (a plpgsql wrapper that returns NULL on error), and `auditBatch` classifies in one round-trip: NULL ⇒ rejected, `NOT ST_IsValid` ⇒ repaired, else ok. The batch is bound as one `jsonb` payload expanded by `jsonb_to_recordset` (parallel `::text[]` array params bind unreliably in drizzle).
+- **`srid`** is an `auditBatch` option, not a per-row field: a batch shares a source SRID. A SRID absent from `spatial_ref_sys` rejects the whole batch with `GIS_SRID_UNSUPPORTED` (limits row 7).
+- **Where the sync pipeline calls it.** The plan named `transform.util.ts` as the normalization hop, but the production write path is `WideTableRepository.upsertMany` — which builds its own bound tuples and *bypasses the statement-cache insert template entirely* (so slice 3's template `writePlaceholderExpr` never runs in production). So the normalization + audit + fail-closed rejection + `{ repaired, rejected }` reporting all live in `upsertMany` (a private `auditGeometry` step + a geometry arm in the tuple builder that wraps `ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(…), 4326))`). `upsertMany` now returns `WideTableUpsertResult`; the REST adapter accumulates it into the per-endpoint counts and surfaces `SyncInstanceResult.geometry = { repaired, rejected, rejectedSample }` (sample capped at 20). This is the single choke point both the REST and CSV/XLSX write paths share.
+
+**Smoke findings, fixed live (2026-08-06 — a real ArcGIS states sync).** Two bugs the integration tests missed because they used already-normalized geometry values:
+- **Coercion dropped every geometry.** `coerce()` (`coercion.util.ts`) had no `geometry` arm, so geometry objects hit `default: coerceString` → `String({rings})` → `"[object Object]"`; the audit then rejected all of them (a real sync reported `created: 51` but `geometry.rejected: 51`, empty wide table). The `default` arm is why the compiler never flagged it (unlike the reconciler's `never`). Fixed: `case "geometry": coerceJson` — geometry values pass through as JSON objects. (Consider making the `coerce` switch exhaustive to catch the next missing type.)
+- **Multi-part features were mis-shaped.** Esri lumps every part of a multi-part polygon (islands, disjoint parcels) into one `rings` array; the naive `{type:"Polygon", coordinates: rings}` mapping made the extra exterior rings look like holes-outside-the-shell — invalid, so `ST_MakeValid` "repaired" them (19/51 states, all false positives; and it leaned on ST_MakeValid to guess the shape). Fixed with the standard arcgis-to-geojson algorithm (`esriRingsToGeoJson`): clockwise rings are exteriors, counter-clockwise rings are holes attached to the containing outer, one polygon ⇒ `Polygon`, many ⇒ `MultiPolygon`. `looksLikeGeometry` was decoupled from `toGeoJsonCandidate` (shape detection ≠ convertibility). Result on the real data: 51 records audit `ok=51, repaired=0, rejected=0` (MultiPolygon×19 islands preserved, Polygon×32).
+
+### `apps/api/src/adapters/rest-api/geometry.util.ts` (new)
+
+```ts
+/** ArcGIS `{rings|paths, spatialReference}` → GeoJSON; passes GeoJSON through;
+ *  returns null for anything unrecognized (the audit then rejects it).
+ *  Shape translation only — reprojection is ST_Transform's job. */
+export function toGeoJsonCandidate(value: unknown): unknown | null;
+/** Detects a geometry-shaped value for type inference. */
+export function looksLikeGeometry(value: unknown): boolean;
+```
+
+Non-4326 sources are reprojected in SQL via `ST_Transform(ST_SetSRID(…, <srid>), 4326)`; an SRID PostGIS does not know returns the typed `GIS_SRID_UNSUPPORTED` (limits row 7).
+
+**Response-root SRID threading (smoke finding, 2026-08-06).** Real ArcGIS FeatureServer `/query?f=json` responses put `spatialReference` at the response **root**, shared by all features — each feature's `geometry` is just `{rings|paths|x,y}` with no SRID of its own (verified against a live `sampleserver6` layer). The slice-4 reprojection assumed a per-value `spatialReference`, so it would never fire for real FeatureServer data — a non-4326 (e.g. web-mercator `102100`) layer would be stamped 4326 and stored mislocated. Fixed by `stampEsriSpatialReference` (in `geometry.util.ts`), called in `fetchOnePage` after record extraction: when the response body carries a root `spatialReference`, it stamps that reference onto each record's Esri-shaped geometry (only when the geometry lacks its own, and never onto GeoJSON — the standard format has no such field and is always 4326). Downstream `extractSourceSrid` then recovers it and the write reprojects. *Known gap:* the streaming path (`streamFetchOnePage`, used only for `pagination: none` + no transform) does not buffer the root reference; a non-4326 Esri source configured that way should query with `outSR=4326` or `f=geojson`. **The clean way to consume any FeatureServer is `f=geojson` (RFC-7946, always 4326) or `outSR=4326`; Esri JSON is a supported accommodation, not the assumed format.**
+
+**Source-SRID reprojection (completed in slice 4).** `upsertMany.auditGeometry` reads each value's source SRID from the *raw* geometry via `extractSourceSrid` — ArcGIS `spatialReference.latestWkid ?? wkid`, with the ESRI web-mercator aliases `102100`/`102113` mapped to EPSG `3857` (PostGIS's `spatial_ref_sys` has `3857`, not `102100`). The SRID rides to the tuple builder as a per-row sidecar key (`__geo_srid__<col>`, never a wide-table column), and the write wrap becomes `ST_MakeValid(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(…), <srid>), 4326))` whenever the SRID isn't 4326. A SRID absent from `spatial_ref_sys` rejects the row fail-closed with `GIS_SRID_UNSUPPORTED`. No explicit sync-loop threading was needed — the raw value still carries `spatialReference` when it reaches `upsertMany`, so the SRID is recovered at the single write choke point. GeoJSON sources (no CRS field) default to 4326 per RFC 7946.
+
+### Type transition — `apps/api/src/constants/column-definition-transitions.constants.ts`
+
+```ts
+export const ALLOWED_TYPE_TRANSITIONS: Record<string, string[]> = {
+  string: ["enum"], enum: ["string"],
+  date: ["datetime"], datetime: ["date"],
+  json: ["geometry"], geometry: ["json"],      // #316
+};
+```
+
+Unlike the existing re-label transitions, this one **converts data**, so the column-definition update route pre-flights before any `ALTER`: any unparseable rows ⇒ `422 GEOMETRY_CONVERSION_FAILED` naming the count and a bounded sample of `sourceId`s (in `error.details`), and the `ALTER` never runs. On a clean pre-flight the reconciler issues `ALTER … TYPE geometry(Geometry,4326) USING ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(<col>::text), 4326))` and creates the GiST index. The web mirror (`EditColumnDefinitionDialog.component.tsx`) gains the same pair.
+
+**Implemented in slice 5.** The route resolves the affected wide columns (`fieldMappings.findByColumnDefinitionId` → `wideTableColumns.findByConnectorEntityId`) and drives two new reconciler methods — the generic reconcile path still *refuses* type changes, so these conversions are explicit: `preflightJsonToGeometry(entity, col)` runs the check entirely in SQL via `portal_try_geom_from_geojson` (returns the rejected `source_id`s without pulling rows to Node), and `convertGeometryColumnType(entity, {id, columnName}, toGeometry, actor)` runs the `ALTER … USING …` inside the entity lock, manages the GiST index (create on →geometry, `DROP INDEX IF EXISTS` on →json), and updates `wide_table_columns.pgType`. The reverse (`geometry → json`) needs no pre-flight (`ST_AsGeoJSON` always succeeds) and drops the index.
+
+### Tile endpoint — `apps/api/src/routes/portal-map.router.ts` (new), mounted at `protected.router.ts` as `/portal-map`
+
+```
+GET /api/portal-map/tiles/message/:messageId/:blockIndex/:z/:x/:y.mvt
+GET /api/portal-map/tiles/pin/:portalResultId/:z/:x/:y.mvt
+```
+
+- **Addressing** reuses #312's `BlockRef` split; the server loads the block and reads its persisted pipeline SQL. **No SQL, no filter, and no table name is ever accepted from the client.**
+- **Implemented in slice 6.** `PortalMapTileService.renderTile` resolves the ref exactly as `widget-refresh` does (message block → `blocks[i].content.pipeline`; pin → `content.pipeline`), then runs the tile query via a private `defaultRunTileQuery` that opens the read-only session-view transaction (`SET LOCAL statement_timeout = 10s` → `PortalSqlService.buildSessionViews(pipeline.stationId, org)` → `SET LOCAL transaction_read_only = on`) and wraps `pipeline.sql` as the source subquery. It **gates on "the pipeline parses" (`D3PipelineSchema`), not on block type** — so #316 tests it with a pipeline-carrying fixture before any `geo` block exists. **Contract:** the pipeline SQL must expose a **raw geometry column named `geom`** — which is exactly what a `SELECT c_<geo> AS geom FROM <entity_view>` yields, since session views project data columns under their raw (un-GeoJSON'd) names. The `.mvt` suffix on the last path segment is optional (stripped from `y`). Service + coord-parsing are unit-tested with injected deps; the real `ST_AsMVT` path is integration-tested against a live geometry column.
+- **Scoping** on the owning row's `organizationId`; cross-org returns the same `404 MAP_TILE_NOT_FOUND` as a missing block — no existence leak.
+- **Validation**: `z ∈ [0,22]`, `x,y ∈ [0, 2^z)`, else `400`.
+- **Query**: `ST_AsMVT` over `ST_AsMVTGeom(ST_Transform(geom, 3857), ST_TileEnvelope(z,x,y), 4096, 64, true)`, with the block's SQL as the source subquery, `WHERE geom && ST_Transform(ST_TileEnvelope(z,x,y), 4326)` for index use, and `ST_SimplifyPreserveTopology` at a zoom-derived tolerance.
+- **Response**: `200` `application/vnd.mapbox-vector-tile` (protobuf); `204` for a genuinely empty tile; `504 MAP_TILE_TIMEOUT` on `statement_timeout` — the widget renders an error tile rather than blank ground (limits row 4).
+- **Degradation headers** (limits rows 2–3): `X-Portal-Tile-Simplified: <tolerance>` whenever tolerance > 0, and `X-Portal-Tile-Truncated: <cap>` when the per-tile feature cap `MAP_TILE_FEATURE_CAP = 50_000` clipped the tile.
+- **Caching**: `Cache-Control: private, max-age=60`, plus an `ETag` over `(pipelineHash, z, x, y, snapshotUpdatedAt)`.
+- Free and unmetered, like `widget-refresh`; the per-org `viz-refresh` rate window is **not** applied (a single pan issues dozens of legitimate tile requests) — abuse protection is the org scope plus the DB's own `statement_timeout`.
+
+### `apps/api/src/constants/api-codes.constants.ts`
+
+`MAP_TILE_NOT_FOUND`, `MAP_TILE_TIMEOUT`, `GEOMETRY_CONVERSION_FAILED`, `GEOMETRY_INVALID_ON_IMPORT`, `GIS_SRID_UNSUPPORTED` (+ recommendation strings).
+
+### Agent surface
+
+`station-context.tool.ts:266,310` emits `type: "geometry"` and the column's SRID. `system.prompt.ts` teaches the `ST_*` vocabulary (predicates, `geography` casts for distance/area, `ST_Transform`, and the construction idioms `ST_MakeLine` / `ST_HexagonGrid` / `ST_Union` / `ST_SimplifyPreserveTopology`). `transform-entity-records.tool.ts:239`'s existing `ST_Area(geometry::geography)` example is **verified to execute**, not removed.
+
+**Implemented in slice 7.** `station_context` adds `srid: 4326` on geometry columns (`null` otherwise). The prompt's geo block is gated on SQL-authoring availability (absent when the station has no SQL tool). The `ST_Area(geom::geography)` idiom is asserted through the real read-only path (`PortalSqlService.runSqlQuery`) in the tile integration test. The benchmark is a committed, reproducible script (`src/scripts/postgis-benchmark.ts`) with recorded numbers in `docs/POSTGIS_FOUNDATION.benchmark.md`: PostGIS-indexed spatial filter vs Node-over-JSONB (~6× at 500k / ~20× at 50k) and `ST_AsMVT` tile latency at z8/z12/z16. The READMEs describe neither column types nor wide-table storage, so no README sync was owed; glossary/FAQ geo entries belong to #314 (the user-visible map).
+
+## Migration
+
+Two, ordered: (1) `enable-postgis` — `CREATE EXTENSION IF NOT EXISTS postgis` (idempotent, must precede any geometry DDL); shipped in slice 1 as `0076_enable-postgis`. (2) `add-geometry-column-type` (`0077`) — per the storage correction above, `column_data_type` is a pg enum, so this carries `ALTER TYPE "column_data_type" ADD VALUE 'geometry'`, `CREATE TYPE "geo_role" AS ENUM('lat','lng')`, and `ADD COLUMN column_definitions.geo_role geo_role` (nullable). The `ADD VALUE`-in-transaction pattern is the same one migration `0074` already uses. Wide-table geometry columns are created by the reconciler at runtime, not by a migration. **No backfill** — existing `json` geometry columns convert on demand through the pre-flighted transition, or on re-sync.
+
+## Seed
+
+`SYSTEM_COLUMN_DEFINITIONS` (`seed.service.ts:31`) gains three idempotent `system: true` rows, upserted by `key`: `geometry` (type `geometry`, `geoRole: null`), `latitude` (`number`, `geoRole: "lat"`), `longitude` (`number`, `geoRole: "lng"`). The existing `address` row is unchanged and remains #315's geocode input.
+
+## TDD test plan
+
+`cd apps/api && npm run test:unit` / `npm run test:integration`; `cd packages/core && npm run test:unit`.
+
+### `packages/core` — `__tests__/models/column-definition.model.test.ts`
+
+`geometry` accepted by the enum; `geoRole` accepts `lat`/`lng` and **rejects `"geometry"`** (the narrowing is the contract); `geometry` absent from `SORTABLE_COLUMN_TYPES`. ≈ 5 cases.
+
+### `apps/api` unit — `__tests__/services/{wide-table-reconciler,wide-table-statement.cache,geometry-audit.service}.test.ts`, `adapters/rest-api/geometry.util.test.ts`, `__tests__/routes/portal-map.router.test.ts`
+
+`pgTypeForColumnDefinitionType("geometry")` → `geometry(Geometry, 4326)`; `writePlaceholderExpr` wraps only geometry types and leaves others bare; the read projection emits `ST_AsGeoJSON(...)::jsonb`. `toGeoJsonCandidate`: ArcGIS rings → Polygon, paths → LineString, GeoJSON passthrough, garbage → `null`; `looksLikeGeometry` across the three shapes plus negatives. Tile route: z/x/y bounds rejected; unknown block → 404; **cross-org → 404, not 403**; timeout → 504; header emitted when simplified; header emitted when capped; empty tile → 204. ≈ 22 cases.
+
+### `apps/api` integration — `__integration__/db/postgis.integration.test.ts`, `wide-table-geometry.integration.test.ts`, `routes/portal-map.router.integration.test.ts`, `services/geometry-audit.integration.test.ts`
+
+Extension present and migration idempotent across two runs; a synced geometry column materializes as `geometry(Geometry,4326)` with a GiST index present in `pg_indexes`; a spatial predicate uses the index (`EXPLAIN` contains `Index Scan` / `Bitmap Index Scan`); `ST_Intersects` / `ST_DWithin` / `ST_Area(::geography)` all execute through the **read-only** tool session under `statement_timeout`; audit classifies clean/invalid/unparseable and the sync reports the counts with `sourceId`s; a rejected row is **absent** from the wide table rather than `NULL`; `json → geometry` with a bad row returns `422 GEOMETRY_CONVERSION_FAILED` and leaves the column `json`; the clean case converts and indexes; a tile request returns a decodable MVT whose feature count matches the envelope, and a foreign org gets 404. ≈ 18 cases.
+
+### Prompt + seed
+
+`system.prompt.test.ts`: geo guidance names the `ST_*` idioms; the `transform-entity-records` example is asserted **executable** against the live extension (integration). Seed idempotency is covered above. ≈ 3 cases.
+
+**Totals ≈ 48 cases.** The extension migration is exercised by the integration suite (it cannot run at all without it), so it needs no separate test.
+
+## Acceptance criteria
+
+- PostGIS is present in local, CI, and app-dev; `db:migrate` is idempotent; the full existing suite passes against the new base image with no regressions.
+- A synced ArcGIS entity lands in `geometry(Geometry, 4326)` with a GiST index, and a spatial predicate on it uses that index.
+- Agent SQL can call `ST_Intersects`, `ST_DWithin`, and `ST_Area(geometry::geography)` through the normal read-only path; the `transform-entity-records` prompt example executes.
+- An invalid polygon is repaired and **counted**; an unparseable one is rejected, **named by `sourceId`**, and absent from the table — never `NULL`, never silently skipped.
+- `json → geometry` on a column with bad rows fails pre-flight with the count and sample, leaving the column untouched; on clean data it converts and indexes.
+- `ColumnDataTypeEnum` contains `geometry`; `geoRole` accepts only `lat`/`lng`; seeded geo definitions exist and re-seed cleanly.
+- A tile request returns a valid MVT for its envelope; cross-org gets 404; a timeout gets 504; simplification and feature-capping each announce themselves in a response header.
+- Distance and area match PostGIS `geography` as the reference.
+- The benchmark (turf-vs-PostGIS on the parcel query at current size and 500k synthetic; tile latency at z8/z12/z16) is committed with the smoke doc.
+
+## Risks & rollback
+
+- **Base-image swap is the widest blast radius** — every test and every developer's stack. Detected immediately by the full suite; the image is a one-line revert while no geometry column exists.
+- **`CREATE EXTENSION` needs elevated rights.** Fine locally and on RDS's `rds_superuser`; if app-dev's role lacks it, the extension is created once out-of-band and the migration's `IF NOT EXISTS` is a no-op. Verify before the app-dev deploy, not after.
+- **`CREATE INDEX CONCURRENTLY` cannot run inside a transaction** — the reconciler must issue it outside its DDL transaction, or fall back to a plain `CREATE INDEX` while tables are small. Named here because it is a silent-failure trap.
+- **Fail-closed on geometry is deliberate**: rejecting a row loses data the user supplied, but writing `NULL` would make an unmappable parcel indistinguishable from an absent one. The rejection is reported with identifiers so it can be fixed at source.
+- **Tile endpoint is a new authenticated binary surface.** Mitigations are contractual: server-held SQL only, org-scoped, bounded z/x/y, `statement_timeout`, ETag caching.
+- **Rollback**: the extension can stay installed harmlessly; reverting means dropping `geometry` from the enum, reverting `pgTypeForColumnDefinitionType`, and re-syncing affected entities as `json`. No production geospatial data exists, so no data migration is owed.
+
+## Files touched
+
+- **core:** `models/column-definition.model.ts` · `contracts/column-definition.contract.ts` · tests
+- **api:** `drizzle/<enable-postgis>` + `<add-geometry-column-type>` · `db/schema/column-definitions.table.ts` (+ `zod.ts`, `type-checks.ts`) · `services/wide-table-reconciler.service.ts` · `services/wide-table-statement.cache.ts` · `services/geometry-audit.service.ts` (new) · `adapters/rest-api/geometry.util.ts` (new) + `inference.util.ts` + `transform.util.ts` · `constants/column-definition-transitions.constants.ts` · `constants/api-codes.constants.ts` · `routes/portal-map.router.ts` (new) + `routes/protected.router.ts` + `config/swagger.config.ts` · `routes/column-definition.router.ts` (pre-flight) · `services/seed.service.ts` · `tools/station-context.tool.ts` · `prompts/system.prompt.ts` · tests
+- **web:** `components/EditColumnDefinitionDialog.component.tsx` + `CreateColumnDefinitionDialog.component.tsx` (transition mirror + `geoRole` field)
+- **infra/dev:** `docker-compose.yml` · `.devcontainer/*` · `docs/POSTGIS_FOUNDATION.benchmark.md` (new)
+
+## Next step
+
+`/plan 316` slices this on this branch — roughly: (1) extension + image swap, green suite on PostGIS; (2) core enum + `geoRole` narrowing + migration + seeds; (3) reconciler type + GiST index + statement-cache write/read expressions; (4) geometry audit + import normalization + sync reporting; (5) the pre-flighted type transition; (6) tile endpoint; (7) agent surface (`station_context`, prompts) + benchmark + doc sync. Slice 1 is the riskiest and gates everything.

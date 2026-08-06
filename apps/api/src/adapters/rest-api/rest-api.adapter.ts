@@ -228,6 +228,9 @@ async function syncInstance(
   let totalUpdated = 0;
   let totalUnchanged = 0;
   let totalDeleted = 0;
+  let totalGeometryRepaired = 0;
+  let totalGeometryRejected = 0;
+  const geometryRejectedSample: string[] = [];
 
   // The 0-90% band is split evenly across endpoints. For each
   // endpoint we hand `syncOneEndpoint` a per-page reporter that ticks
@@ -261,6 +264,13 @@ async function syncInstance(
     totalUpdated += counts.updated;
     totalUnchanged += counts.unchanged;
     totalDeleted += counts.deleted;
+    totalGeometryRepaired += counts.geometryRepaired;
+    totalGeometryRejected += counts.geometryRejected;
+    for (const sid of counts.geometryRejectedSample) {
+      if (geometryRejectedSample.length < GEOMETRY_REJECTED_SAMPLE_CAP) {
+        geometryRejectedSample.push(sid);
+      }
+    }
   }
 
   progress?.(95);
@@ -294,6 +304,15 @@ async function syncInstance(
       unchanged: totalUnchanged,
       deleted: totalDeleted,
     },
+    ...(totalGeometryRepaired > 0 || totalGeometryRejected > 0
+      ? {
+          geometry: {
+            repaired: totalGeometryRepaired,
+            rejected: totalGeometryRejected,
+            rejectedSample: geometryRejectedSample,
+          },
+        }
+      : {}),
   };
 }
 
@@ -317,6 +336,9 @@ async function syncOneEndpoint(
   updated: number;
   unchanged: number;
   deleted: number;
+  geometryRepaired: number;
+  geometryRejected: number;
+  geometryRejectedSample: string[];
 }> {
   const pagination = reconstructPagination(
     endpoint.config.pagination,
@@ -329,7 +351,15 @@ async function syncOneEndpoint(
   // through the same reference instead of returning + accumulating.
   // `recordIndex` is global across all pages so synthetic source ids
   // stay unique for an endpoint that paginates without an `idField`.
-  const counts = { created: 0, updated: 0, unchanged: 0, recordIndex: 0 };
+  const counts = {
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    recordIndex: 0,
+    geometryRepaired: 0,
+    geometryRejected: 0,
+    geometryRejectedSample: [] as string[],
+  };
 
   // Pre-fetch field mappings + the wide-table statement once per
   // endpoint so the inner loop can normalize + project each record
@@ -453,6 +483,9 @@ async function syncOneEndpoint(
     updated: counts.updated,
     unchanged: counts.unchanged,
     deleted: reaped.length,
+    geometryRepaired: counts.geometryRepaired,
+    geometryRejected: counts.geometryRejected,
+    geometryRejectedSample: counts.geometryRejectedSample,
   };
 }
 
@@ -503,8 +536,15 @@ export interface UpsertContext {
     updated: number;
     unchanged: number;
     recordIndex: number;
+    /** #316: geometry audit tallies accumulated across the endpoint. */
+    geometryRepaired: number;
+    geometryRejected: number;
+    geometryRejectedSample: string[];
   };
 }
+
+/** Cap on the number of rejected geometry sourceIds surfaced (bounded growth). */
+const GEOMETRY_REJECTED_SAMPLE_CAP = 20;
 
 /**
  * Upsert a single record into `entity_records` and mirror into the
@@ -575,7 +615,8 @@ export async function upsertRecord(
         ctx.runStartedAt,
         recordObj,
         ctx.mappingsForNormalize,
-        ctx.wideProjection
+        ctx.wideProjection,
+        ctx.counts
       );
     }
     ctx.counts.unchanged++;
@@ -615,7 +656,8 @@ export async function upsertRecord(
       ctx.runStartedAt,
       recordObj,
       ctx.mappingsForNormalize,
-      ctx.wideProjection
+      ctx.wideProjection,
+      ctx.counts
     );
   }
 
@@ -664,26 +706,56 @@ async function mirrorRecordToWideTable(
   syncedAt: number,
   recordObj: Record<string, unknown>,
   mappingsForNormalize: unknown,
-  wideProjection: ReadonlyMap<string, string>
+  wideProjection: ReadonlyMap<string, string>,
+  geoCounts?: {
+    geometryRepaired: number;
+    geometryRejected: number;
+    geometryRejectedSample: string[];
+  }
 ): Promise<void> {
   try {
     const normalized = NormalizationService.normalizeWithMappings(
       mappingsForNormalize as never,
       recordObj
     );
-    await DbService.repository.wideTable.upsertMany(connectorEntityId, [
-      projectToWideRow(
+    const result = await DbService.repository.wideTable.upsertMany(
+      connectorEntityId,
+      [
+        projectToWideRow(
+          {
+            id: recordId,
+            organizationId,
+            sourceId,
+            syncedAt,
+            isValid: normalized.isValid,
+            normalizedData: normalized.normalizedData,
+          },
+          wideProjection
+        ),
+      ]
+    );
+    // #316: surface the fail-closed geometry outcome so it's never silent.
+    if (geoCounts && (result.repaired > 0 || result.rejected.length > 0)) {
+      geoCounts.geometryRepaired += result.repaired;
+      geoCounts.geometryRejected += result.rejected.length;
+      for (const r of result.rejected) {
+        if (
+          geoCounts.geometryRejectedSample.length < GEOMETRY_REJECTED_SAMPLE_CAP
+        ) {
+          geoCounts.geometryRejectedSample.push(r.sourceId);
+        }
+      }
+      logger.warn(
         {
-          id: recordId,
-          organizationId,
+          event: "rest-api.sync.geometry-audit",
+          connectorEntityId,
           sourceId,
-          syncedAt,
-          isValid: normalized.isValid,
-          normalizedData: normalized.normalizedData,
+          repaired: result.repaired,
+          rejected: result.rejected,
         },
-        wideProjection
-      ),
-    ]);
+        "Geometry audit repaired or rejected values on import"
+      );
+    }
   } catch (err) {
     logger.error(
       {

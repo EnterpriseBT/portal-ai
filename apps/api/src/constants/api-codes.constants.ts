@@ -365,6 +365,37 @@ export enum ApiCode {
   WIDE_TABLE_RECONCILE_FAILED = "WIDE_TABLE_RECONCILE_FAILED",
   /** Logged-only — boot drift check failed and the app refuses to start. */
   WIDE_TABLE_DRIFT_AT_BOOT = "WIDE_TABLE_DRIFT_AT_BOOT",
+  /**
+   * #316: one or more geometry values in an import were unparseable and were
+   * rejected (not written) rather than coerced to NULL — fail-closed, so an
+   * unmappable feature never masquerades as an absent one. Reported with the
+   * offending `sourceId`s in the sync summary.
+   */
+  GEOMETRY_INVALID_ON_IMPORT = "GEOMETRY_INVALID_ON_IMPORT",
+  /**
+   * #316: a geometry source declared a spatial reference id PostGIS does not
+   * know (absent from `spatial_ref_sys`), so it cannot be reprojected to 4326.
+   */
+  GIS_SRID_UNSUPPORTED = "GIS_SRID_UNSUPPORTED",
+  /**
+   * #316: the referenced map block/pin does not exist, has no durable pipeline,
+   * or belongs to another org. One code for all three so a cross-org probe
+   * can't distinguish "not yours" from "doesn't exist" — no existence leak.
+   */
+  MAP_TILE_NOT_FOUND = "MAP_TILE_NOT_FOUND",
+  /**
+   * #316: the tile query exceeded `statement_timeout`. The widget renders an
+   * error tile rather than blank ground, so a slow layer is visible.
+   */
+  MAP_TILE_TIMEOUT = "MAP_TILE_TIMEOUT",
+  /**
+   * #316: a `json → geometry` column-type transition pre-flight found rows
+   * whose stored value is not parseable as GeoJSON. The conversion is refused
+   * (no ALTER) and the offending `sourceId`s are named so they can be fixed at
+   * source. Unlike a re-label transition, this one rewrites data — Postgres
+   * would abort the whole ALTER on the first bad row with an opaque error.
+   */
+  GEOMETRY_CONVERSION_FAILED = "GEOMETRY_CONVERSION_FAILED",
 
   // Admin / re-sync trigger
   /** A wide-table resync trigger failed to fan out to one or more instances. */
