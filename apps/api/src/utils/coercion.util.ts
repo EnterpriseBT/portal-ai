@@ -231,7 +231,16 @@ export function coerce(
       return coerceReference(value);
     case "reference-array":
       return coerceReferenceArray(value, format);
-    default:
+    default: {
+      // Exhaustiveness guard (#316): every `ColumnDataType` must have an
+      // explicit arm above, so `type` narrows to `never` here. Adding a new
+      // column type without a coercion is then a compile error — this is what
+      // would have caught the `geometry` gap that silently `String()`-ified
+      // geometry objects. The `coerceString` fallback stays as a runtime
+      // backstop for an out-of-contract value.
+      const _exhaustive: never = type;
+      void _exhaustive;
       return coerceString(value);
+    }
   }
 }
