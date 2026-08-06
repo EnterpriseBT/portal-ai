@@ -476,6 +476,25 @@ describe("coerce", () => {
     });
   });
 
+  it("passes a geometry object through intact — not String()-ified (#316)", () => {
+    const geom = {
+      rings: [
+        [
+          [0, 0],
+          [0, 1],
+          [1, 1],
+          [0, 0],
+        ],
+      ],
+    };
+    // Must return the object, NOT "[object Object]" (which the audit rejects).
+    expect(coerce("geometry", geom)).toEqual({ value: geom });
+    // A JSON string is parsed like json.
+    expect(coerce("geometry", '{"type":"Point","coordinates":[1,2]}')).toEqual({
+      value: { type: "Point", coordinates: [1, 2] },
+    });
+  });
+
   it("passes format through to the coercion function", () => {
     expect(coerce("number", "1.234,56", "eu")).toEqual({ value: 1234.56 });
   });
@@ -489,6 +508,7 @@ describe("coerce", () => {
       "datetime",
       "enum",
       "json",
+      "geometry",
       "array",
       "reference",
       "reference-array",

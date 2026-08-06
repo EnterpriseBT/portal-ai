@@ -219,6 +219,12 @@ export function coerce(
       return coerceEnum(value);
     case "json":
       return coerceJson(value);
+    case "geometry":
+      // #316: geometry values are JSON objects (GeoJSON or Esri JSON) — pass
+      // the object through intact (or parse a JSON string). Without this arm
+      // the `default` below would `String()` the object to "[object Object]",
+      // which the downstream geometry audit then rejects as unparseable.
+      return coerceJson(value);
     case "array":
       return coerceArray(value, format);
     case "reference":
