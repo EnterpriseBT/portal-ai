@@ -25,9 +25,23 @@ export const ColumnDataTypeEnum = z.enum([
   "array",
   "reference",
   "reference-array",
+  // #316: geometry is a real, typed, SRID-constrained, GiST-indexed column
+  // under PostGIS — the storage genuinely differs from json, which is why it
+  // earns a type rather than a role annotation.
+  "geometry",
 ]);
 
 export type ColumnDataType = z.infer<typeof ColumnDataTypeEnum>;
+
+/**
+ * Geospatial role annotation (#316). Applies only to coordinate-pair columns —
+ * a `lat`/`lng` pair really is just two numbers, so it carries a role rather
+ * than a type. Geometry is a *type* (`ColumnDataTypeEnum`), never a role, so
+ * this enum deliberately does not include `"geometry"`.
+ */
+export const GeoRoleSchema = z.enum(["lat", "lng"]);
+
+export type GeoRole = z.infer<typeof GeoRoleSchema>;
 
 /**
  * Column data types that support server-side sorting.
@@ -49,6 +63,9 @@ export const ColumnDefinitionSchema = CoreSchema.extend({
   validationMessage: z.string().nullable(),
   canonicalFormat: z.string().nullable(),
   system: z.boolean(),
+  /** Coordinate-pair role (#316); null for every non-coordinate column,
+   *  including geometry (which is a type, not a role). */
+  geoRole: GeoRoleSchema.nullable(),
 });
 
 export type ColumnDefinition = z.infer<typeof ColumnDefinitionSchema>;

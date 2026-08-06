@@ -36,6 +36,10 @@ const ALLOWED_TYPE_TRANSITIONS: Record<string, string[]> = {
   enum: ["string"],
   date: ["datetime"],
   datetime: ["date"],
+  // #316: json ↔ geometry. json→geometry is pre-flighted server-side; a
+  // failed conversion surfaces GEOMETRY_CONVERSION_FAILED via <FormAlert>.
+  json: ["geometry"],
+  geometry: ["json"],
 };
 
 const BLOCKED_TYPES = new Set(["reference", "reference-array"]);
@@ -51,6 +55,7 @@ const ALL_TYPES = [
   "array",
   "reference",
   "reference-array",
+  "geometry",
 ] as const;
 
 export interface EditColumnDefinitionDialogProps {

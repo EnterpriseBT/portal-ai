@@ -79,6 +79,12 @@ export function pgTypeForColumnDefinitionType(type: ColumnDataType): string {
     case "array":
     case "json":
       return "jsonb";
+    case "geometry":
+      // #316: typed + SRID-constrained. `Geometry` (not `Polygon`) because one
+      // column may hold mixed polygon/point/line features; the SRID constraint
+      // is what makes the GiST index and ST_* calls correct. The reconciler
+      // also creates a GiST index for these columns (slice 3).
+      return "geometry(Geometry, 4326)";
     default: {
       const _exhaustive: never = type;
       void _exhaustive;
@@ -297,6 +303,95 @@ export class WideTableReconcilerService {
     this.statementCache.invalidate(connectorEntityId);
   }
 
+  /** GiST index name for a geometry column (#316) — shared by add + convert. */
+  private gistIndexName(connectorEntityId: string, columnName: string): string {
+    return `er__${connectorEntityId}__${columnName}_gist`;
+  }
+
+  /**
+   * Pre-flight a `json → geometry` conversion (#316): return the `source_id`s
+   * whose stored jsonb value is NOT parseable as GeoJSON. Postgres would abort
+   * the whole `ALTER … USING` on the first such row with an opaque error, so
+   * the route calls this first and refuses the conversion (422) when it's
+   * non-empty — no ALTER runs. Evaluated entirely in SQL via the non-throwing
+   * `portal_try_geom_from_geojson` helper (migration 0078).
+   */
+  async preflightJsonToGeometry(
+    connectorEntityId: string,
+    columnName: string,
+    client: DbClient = db
+  ): Promise<string[]> {
+    const table = quoteIdent(this.wideTableRepo_.tableName(connectorEntityId));
+    const col = quoteIdent(columnName);
+    const rows = (await (client as typeof db).execute(
+      sql.raw(
+        `SELECT source_id FROM ${table} ` +
+          `WHERE ${col} IS NOT NULL ` +
+          `AND portal_try_geom_from_geojson(${col}::text) IS NULL`
+      )
+    )) as unknown as Array<{ source_id: string }>;
+    return rows.map((r) => r.source_id);
+  }
+
+  /**
+   * Convert a wide column between `jsonb` and `geometry(Geometry, 4326)` (#316),
+   * rewriting stored data and managing the GiST index + `wide_table_columns.pgType`.
+   * For `json → geometry` the caller MUST have run `preflightJsonToGeometry`
+   * clean first — this method's `ST_GeomFromGeoJSON` throws on a bad row.
+   * Runs inside the entity lock; the `ALTER … TYPE` rewrites the table.
+   */
+  async convertGeometryColumnType(
+    connectorEntityId: string,
+    wideColumn: { id: string; columnName: string },
+    toGeometry: boolean,
+    actor: string,
+    client: DbClient = db
+  ): Promise<void> {
+    await withEntityLock(client, connectorEntityId, async (tx) => {
+      const table = quoteIdent(
+        this.wideTableRepo_.tableName(connectorEntityId)
+      );
+      const col = quoteIdent(wideColumn.columnName);
+      const gist = quoteIdent(
+        this.gistIndexName(connectorEntityId, wideColumn.columnName)
+      );
+      let newPgType: string;
+      if (toGeometry) {
+        await (tx as typeof db).execute(
+          sql.raw(
+            `ALTER TABLE ${table} ALTER COLUMN ${col} ` +
+              `TYPE geometry(Geometry, 4326) ` +
+              `USING ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(${col}::text), 4326))`
+          )
+        );
+        await (tx as typeof db).execute(
+          sql.raw(
+            `CREATE INDEX IF NOT EXISTS ${gist} ON ${table} USING GIST (${col})`
+          )
+        );
+        newPgType = "geometry(Geometry, 4326)";
+      } else {
+        // geometry → json: drop the GiST index first, then rewrite to GeoJSON.
+        await (tx as typeof db).execute(
+          sql.raw(`DROP INDEX IF EXISTS ${gist}`)
+        );
+        await (tx as typeof db).execute(
+          sql.raw(
+            `ALTER TABLE ${table} ALTER COLUMN ${col} ` +
+              `TYPE jsonb USING ST_AsGeoJSON(${col})::jsonb`
+          )
+        );
+        newPgType = "jsonb";
+      }
+      await this.columnsRepo.update(
+        wideColumn.id,
+        { pgType: newPgType, updated: Date.now(), updatedBy: actor } as never,
+        tx
+      );
+      this.statementCache.invalidate(connectorEntityId);
+    });
+  }
+
   // ── Internals ───────────────────────────────────────────────────
 
   private async computeDesired(
@@ -419,6 +514,22 @@ export class WideTableReconcilerService {
           `ALTER TABLE ${tableName} ADD COLUMN ${quoteIdent(columnName)} ${add.pgType}`
         )
       );
+
+      // #316: geometry columns get a GiST index so ST_* predicates use an
+      // index scan. Plain CREATE INDEX (not CONCURRENTLY) because applyAdds
+      // runs inside the entity-lock transaction and CONCURRENTLY cannot —
+      // safe here because a column is added while its table is empty or small
+      // (at first sync, before rows land). IF NOT EXISTS keeps reconcile
+      // idempotent.
+      if (add.pgType.startsWith("geometry")) {
+        await (tx as typeof db).execute(
+          sql.raw(
+            `CREATE INDEX IF NOT EXISTS ${quoteIdent(
+              this.gistIndexName(connectorEntityId, columnName)
+            )} ON ${tableName} USING GIST (${quoteIdent(columnName)})`
+          )
+        );
+      }
       await this.columnsRepo.create(
         {
           id: SystemUtilities.id.v4.generate(),

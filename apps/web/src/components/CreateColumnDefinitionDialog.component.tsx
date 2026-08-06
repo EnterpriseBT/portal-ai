@@ -168,6 +168,10 @@ export const CreateColumnDefinitionDialog: React.FC<
       validationPattern: trimValidationPattern || null,
       validationMessage: trimValidationMessage || null,
       canonicalFormat: trimCanonicalFormat || null,
+      // #316: geoRole (lat/lng) has no UI here yet — the coordinate-pair role
+      // is consumed by the map (#314). Seeded lat/lng columns carry it; a
+      // manually-created column defaults to null.
+      geoRole: null,
     };
     onSubmit(body);
   };

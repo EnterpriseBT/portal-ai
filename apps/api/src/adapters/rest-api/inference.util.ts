@@ -21,9 +21,10 @@
  * The util never emits date / currency / enum — those refinements
  * come from the AI-assist layer.
  */
-import type { ColumnDataType } from "@portalai/core/models";
+import type { ColumnDataType, GeoRole } from "@portalai/core/models";
 
 import type { DiscoveredColumn } from "../adapter.interface.js";
+import { looksLikeGeometry } from "./geometry.util.js";
 
 export const MAX_SAMPLES_PER_COLUMN = 5;
 /**
@@ -62,6 +63,34 @@ function inferType(classes: Set<ValueClass>): ColumnDataType {
   if (scalars.length === 0) return "string"; // all null / no values
   if (scalars.length === 1) return scalars[0] as ColumnDataType;
   return "string"; // mixed scalars collapse
+}
+
+/**
+ * #316: infer the coordinate-pair role for a numeric column from its key name
+ * and observed value range. Deliberately conservative — a numeric column named
+ * `lat`/`latitude` whose samples fall outside [-90, 90] is NOT tagged (it's
+ * some other measurement), so a stray "latency" column can't be mislabeled.
+ */
+function inferGeoRole(key: string, samples: unknown[]): GeoRole | null {
+  const name = key.toLowerCase();
+  const numbers = samples.filter((v): v is number => typeof v === "number");
+  if (numbers.length === 0) return null;
+  const inRange = (min: number, max: number) =>
+    numbers.every((n) => n >= min && n <= max);
+
+  if ((name === "lat" || name === "latitude") && inRange(-90, 90)) {
+    return "lat";
+  }
+  if (
+    (name === "lng" ||
+      name === "lon" ||
+      name === "long" ||
+      name === "longitude") &&
+    inRange(-180, 180)
+  ) {
+    return "lng";
+  }
+  return null;
 }
 
 function pushDistinctSample(
@@ -142,10 +171,30 @@ export function inferColumns(records: unknown[]): InferenceResult {
     // the type; only the required flag).
     classes.delete("null");
 
-    const type = inferType(classes);
+    let type = inferType(classes);
+    let geoRole: GeoRole | null = null;
+
+    // #316: refine the heuristic type/role for geospatial columns.
+    // - object-typed columns whose every sample looks like a geometry
+    //   (ArcGIS rings/paths/point or GeoJSON) become `geometry`, not `json`.
+    // - numeric lat/lng columns (by name + range) carry a coordinate role.
+    if (
+      type === "json" &&
+      bucket.length > 0 &&
+      bucket.every(looksLikeGeometry)
+    ) {
+      type = "geometry";
+    } else if (type === "number") {
+      geoRole = inferGeoRole(key, bucket);
+    }
+
     const required = missingCount === 0 && nullCount === 0;
 
-    columns.push({ key, label: key, type, required });
+    const column: DiscoveredColumn = { key, label: key, type, required };
+    // Only attach a role when one was inferred — a column with no role omits
+    // the key entirely (geometry columns included: geometry is a type).
+    if (geoRole !== null) column.geoRole = geoRole;
+    columns.push(column);
     samples[key] = bucket;
   }
 

@@ -121,6 +121,14 @@ const STATION_DATA = {
           fieldMappingId: "fm-addr",
           sourceField: "address",
         },
+        {
+          key: "boundary",
+          label: "Boundary",
+          type: "geometry",
+          columnDefinitionId: "cd-geo",
+          fieldMappingId: "fm-geo",
+          sourceField: "geometry",
+        },
       ],
     },
     {
@@ -300,6 +308,21 @@ describe("StationContextTool", () => {
         }),
       ])
     );
+  });
+
+  it("surfaces srid: 4326 on geometry columns and null on others (#316)", async () => {
+    const result = (await exec()) as {
+      entities: Array<{
+        key: string;
+        columns: Array<{ key: string; type: string; srid: number | null }>;
+      }>;
+    };
+    const parcels = result.entities.find((e) => e.key === "parcels")!;
+    const boundary = parcels.columns.find((c) => c.key === "boundary")!;
+    expect(boundary.type).toBe("geometry");
+    expect(boundary.srid).toBe(4326);
+    const address = parcels.columns.find((c) => c.key === "address")!;
+    expect(address.srid).toBeNull();
   });
 
   it("falls back to wideColumnName: null when the wide table isn't provisioned", async () => {

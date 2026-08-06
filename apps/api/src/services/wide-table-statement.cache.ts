@@ -139,6 +139,45 @@ function tableNameFor(connectorEntityId: string): string {
   return `er__${connectorEntityId}`;
 }
 
+/** True for any PostGIS geometry column type, e.g. `geometry(Geometry, 4326)`. */
+function isGeometryPgType(pgType: string): boolean {
+  return pgType.startsWith("geometry");
+}
+
+/**
+ * SQL expression wrapping the bound placeholder `$index` for a column's pg
+ * type (#316). Default: the bare placeholder. Geometry: parse the bound
+ * GeoJSON, stamp SRID 4326, and repair invalid rings — so a bound JSON value
+ * becomes a valid geometry on write. Used by every INSERT tuple.
+ */
+export function writePlaceholderExpr(pgType: string, index: number): string {
+  return isGeometryPgType(pgType)
+    ? `ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON($${index}), 4326))`
+    : `$${index}`;
+}
+
+/**
+ * SELECT-projection expression for a column (#316). Geometry projects as
+ * `ST_AsGeoJSON(col)::jsonb AS col` so every existing reader (`selectAllSql`,
+ * the data-table renderer, `sql_query`) keeps receiving GeoJSON under the same
+ * column name and needs no change. Non-geometry columns project by bare name.
+ */
+function selectProjection(columnName: string, pgType: string): string {
+  const ident = quoteIdent(columnName);
+  return isGeometryPgType(pgType)
+    ? `ST_AsGeoJSON(${ident})::jsonb AS ${ident}`
+    : ident;
+}
+
+/**
+ * Read-value expression for a column reference (#316) — the value form used
+ * inside `jsonb_build_object`. Geometry becomes GeoJSON; everything else is
+ * the bare reference.
+ */
+function readValueExpr(ref: string, pgType: string): string {
+  return isGeometryPgType(pgType) ? `ST_AsGeoJSON(${ref})::jsonb` : ref;
+}
+
 /**
  * Emit the per-column searchable fragment given the column's pgType.
  * Caller wraps the result list inside `concat_ws(' ', …)`.
@@ -221,12 +260,20 @@ export class WideTableStatementCache {
     ];
     const insertColList = insertCols.map(quoteIdent).join(", ");
 
+    // Column-position → pgType, so geometry placeholders get the write
+    // wrapper (#316). Metadata block (first 5) is never geometry.
+    const insertPgTypes = [
+      ...WIDE_TABLE_METADATA_COLUMNS.map(() => "text"),
+      ...stmt.columns.map((c) => c.pgType),
+    ];
     const colsPerRow = insertCols.length;
     const tuples: string[] = [];
     for (let r = 0; r < batchSize; r++) {
       const placeholders: string[] = [];
       for (let c = 0; c < colsPerRow; c++) {
-        placeholders.push(`$${r * colsPerRow + c + 1}`);
+        placeholders.push(
+          writePlaceholderExpr(insertPgTypes[c], r * colsPerRow + c + 1)
+        );
       }
       tuples.push(`(${placeholders.join(", ")})`);
     }
@@ -290,13 +337,12 @@ export class WideTableStatementCache {
 
     const tableName = quoteIdent(tableNameFor(connectorEntityId));
 
-    // SELECT — metadata columns first, then data columns.
+    // SELECT — metadata columns first (never geometry, projected bare), then
+    // data columns projected type-aware (geometry → ST_AsGeoJSON, #316).
     const selectColList = [
-      ...WIDE_TABLE_METADATA_COLUMNS,
-      ...cols.map((c) => c.columnName),
-    ]
-      .map(quoteIdent)
-      .join(", ");
+      ...WIDE_TABLE_METADATA_COLUMNS.map(quoteIdent),
+      ...cols.map((c) => selectProjection(c.columnName, c.pgType)),
+    ].join(", ");
     const selectAllSql = `SELECT ${selectColList} FROM ${tableName}`;
 
     // INSERT — placeholder template (single row).
@@ -305,7 +351,15 @@ export class WideTableStatementCache {
       ...cols.map((c) => c.columnName),
     ];
     const insertColList = insertCols.map(quoteIdent).join(", ");
-    const valuesList = insertCols.map((_, i) => `$${i + 1}`).join(", ");
+    // The metadata block (first 5) is never geometry; data columns follow in
+    // `cols` order and get the type-aware write expression (#316).
+    const insertPgTypes = [
+      ...WIDE_TABLE_METADATA_COLUMNS.map(() => "text"),
+      ...cols.map((c) => c.pgType),
+    ];
+    const valuesList = insertCols
+      .map((_, i) => writePlaceholderExpr(insertPgTypes[i], i + 1))
+      .join(", ");
 
     // ON CONFLICT SET only updates non-PK columns.
     const setClauses = [
@@ -322,10 +376,12 @@ export class WideTableStatementCache {
     // ── New helpers ────────────────────────────────────────────────
 
     const normalizedDataJsonbExpr: AliasedExprBuilder = (alias = "w") => {
-      const pairs = cols.map(
-        (c) =>
-          `${quoteLiteral(c.normalizedKey)}, ${quoteIdent(alias)}.${quoteIdent(c.columnName)}`
-      );
+      const pairs = cols.map((c) => {
+        const ref = `${quoteIdent(alias)}.${quoteIdent(c.columnName)}`;
+        // Geometry projects as GeoJSON so the hydrated record carries GeoJSON,
+        // not the internal EWKB representation (#316).
+        return `${quoteLiteral(c.normalizedKey)}, ${readValueExpr(ref, c.pgType)}`;
+      });
       return buildJsonbObjectExpr(pairs);
     };
 
