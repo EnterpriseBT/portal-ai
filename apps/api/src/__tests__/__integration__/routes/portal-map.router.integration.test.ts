@@ -13,6 +13,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import { PortalMapTileService } from "../../../services/portal-map-tile.service.js";
+import { PortalSqlService } from "../../../services/portal-sql.service.js";
 import { WideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
 import { WideTableRepository } from "../../../db/repositories/wide-table.repository.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
@@ -31,6 +32,7 @@ describe("Portal map tile route (#316)", () => {
   let orgId: string;
   let entityId: string;
   let pinId: string;
+  let stationId: string;
 
   // A large-ish polygon near the origin (lng 0..10, lat 0..10) so it survives
   // low-zoom simplification and sits squarely in the z0 world envelope.
@@ -120,7 +122,7 @@ describe("Portal map tile route (#316)", () => {
       deletedBy: null,
     } as never);
 
-    const stationId = generateId();
+    stationId = generateId();
     await dbTyped.insert(schema.stations).values({
       id: stationId,
       organizationId: orgId,
@@ -303,5 +305,22 @@ describe("Portal map tile route (#316)", () => {
         organizationId: generateId(),
       })
     ).rejects.toMatchObject({ status: 404, code: "MAP_TILE_NOT_FOUND" });
+  });
+
+  // Slice 7: the ST_Area(geometry::geography) idiom in the
+  // `transform_entity_records` tool description must actually execute through
+  // the read-only tool path against a real geometry column.
+  it("runs ST_Area(geom::geography) through the read-only SQL path (#316)", async () => {
+    const res = await PortalSqlService.runSqlQuery({
+      sql: 'SELECT ST_Area("c_geom"::geography) AS area FROM parcels',
+      stationId,
+      organizationId: orgId,
+    });
+    const rows = "rows" in res ? res.rows : [];
+    expect(rows).toHaveLength(1);
+    // ~10°×10° polygon near the equator → a large but finite positive area (m²).
+    expect(Number((rows[0] as Record<string, unknown>).area)).toBeGreaterThan(
+      0
+    );
   });
 });

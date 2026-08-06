@@ -264,6 +264,10 @@ export class StationContextTool extends Tool<typeof InputSchema> {
                   wideColumnName: wideByKey.get(col.key) ?? null,
                   label: col.label,
                   type: col.type,
+                  // #316: geometry columns are SRID-4326 — surface it so the
+                  // agent knows what to ST_Transform from / compose against.
+                  // Non-geometry columns carry no SRID.
+                  srid: col.type === "geometry" ? 4326 : null,
                   columnDefinitionId: col.columnDefinitionId,
                   fieldMappingId: col.fieldMappingId,
                   sourceField: col.sourceField,
