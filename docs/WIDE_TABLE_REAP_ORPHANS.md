@@ -46,6 +46,8 @@ Rejected alternatives: (a) an `ON DELETE CASCADE`-style trigger — the reap is 
 3. Confirm `SELECT count(*) FROM "er__<connectorEntityId>"` is **unchanged** (the current run's N), not doubled — and `SELECT count(*) FROM "er__<id>" w JOIN entity_records er ON er.id=w.entity_record_id WHERE er.deleted IS NOT NULL` is **0** (no orphans).
 4. Sanity: the entity view / an agent `sql_query` count is unchanged and correct across the re-sync.
 
+**Sign-off — Ben Turner, 2026-08-06.** The exact assertion above (a synthetic-sourceId re-sync leaves `er__<id>` at N, not 2N, with zero orphaned wide rows) is verified by the red→green integration test in `apps/api/src/__tests__/__integration__/connectors/rest-api.end-to-end.integration.test.ts` — **red before the fix (4 rows after two syncs), green after (2)**. The manual UI walk (steps 1–4) was **waived by the operator** on the strength of that test; it was not separately performed against a running stack. CI-green on this branch is still pending the GitHub Actions outage.
+
 ## Out of scope
 
 - **Backfilling** wide tables that already carry orphans (a one-off `DELETE … WHERE entity_record_id IN (soft-deleted)` maintenance pass) — the fix prevents new orphans; existing ones are read-filtered and low-harm.
