@@ -436,6 +436,17 @@ async function syncOneEndpoint(
       runStartedAt,
       userId
     );
+  // #327: soft-deleting the transactional rows doesn't touch the wide table
+  // (soft-delete is an UPDATE, so the ON DELETE CASCADE never fires). Hard-
+  // delete the reaped rows' `er__<id>` rows too — otherwise every re-sync of a
+  // synthetic-sourceId connector orphans them and the wide table grows
+  // unbounded. Mirrors the Google Sheets / Excel / layout-plan adapters.
+  if (reaped.length > 0) {
+    await DbService.repository.wideTable.softDeleteByEntityRecordIds(
+      endpoint.entity.id,
+      reaped
+    );
+  }
 
   return {
     created: counts.created,
