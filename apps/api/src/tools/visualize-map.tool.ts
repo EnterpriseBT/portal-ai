@@ -2,7 +2,6 @@ import { z } from "zod";
 import { tool } from "ai";
 
 import { MapSpecSchema } from "@portalai/core/contracts";
-import { MAP_INLINE_FEATURE_THRESHOLD } from "@portalai/core/constants";
 
 import { Tool } from "../types/tools.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -157,14 +156,17 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
         const spec = specResult.data;
         const geomCols = geometryColumns(spec);
 
-        // Run the agent's SQL as-authored: it decides inline-vs-handle (maps
-        // inline far more generously than the 100-row table default — GeoJSON
-        // features are cheap), gives the real result schema for the column
-        // check, and is the durable pipeline. Geometry reads back as a raw
-        // geometry type here (WKB on the wire) — required for the agent's ST_*
-        // and for the tile path; the inline display re-projects it below.
+        // Run the agent's SQL as-authored: the shared sink decides
+        // inline-vs-handle (small results inline; larger stage a handle the
+        // widget renders as vector tiles — the LLM SQL layer caps at
+        // rowCap=500, so a higher inline threshold can never be reached and
+        // would only starve the tile path). It also gives the real result
+        // schema for the column check and is the durable pipeline. Geometry
+        // reads back as a raw geometry type here (WKB on the wire) — required
+        // for the agent's ST_* and the tile path; the inline display
+        // re-projects it to GeoJSON below.
         const delivery = await resolveSqlDelivery(
-          { sql, inlineThreshold: MAP_INLINE_FEATURE_THRESHOLD },
+          { sql },
           { stationId, organizationId }
         );
 

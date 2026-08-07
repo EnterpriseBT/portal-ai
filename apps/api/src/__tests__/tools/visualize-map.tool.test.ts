@@ -1,7 +1,5 @@
 import { describe, it, expect, jest } from "@jest/globals";
 
-import { MAP_INLINE_FEATURE_THRESHOLD } from "@portalai/core/constants";
-
 import { VisualizeMapTool } from "../../tools/visualize-map.tool.js";
 import type { VisualizeMapDeps } from "../../tools/visualize-map.tool.js";
 
@@ -64,15 +62,13 @@ describe("VisualizeMapTool.execute (#314)", () => {
     });
 
     expect(out).toMatchObject({ type: "geo", title: "Parcels" });
-    // Maps inline generously — the boundary is the map threshold, not the
-    // 100-row table default.
+    // Delivered through the shared sink (default threshold — a higher inline
+    // threshold can't be reached under the LLM SQL rowCap and would starve the
+    // tile path).
     expect(resolveSqlDelivery).toHaveBeenCalledWith(
-      expect.objectContaining({
-        inlineThreshold: MAP_INLINE_FEATURE_THRESHOLD,
-      }),
+      { sql: "SELECT lat, lng, prop_class FROM parcels" },
       expect.anything()
     );
-    expect(MAP_INLINE_FEATURE_THRESHOLD).toBe(2000);
     expect(out.rows).toHaveLength(2);
     expect(out.queryHandle).toBeUndefined();
     // spec is the parsed MapSpec (defaults applied).

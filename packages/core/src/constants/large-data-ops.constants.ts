@@ -30,23 +30,14 @@ export const WEBHOOK_READ_TOKEN_TTL_MS = 10 * 60 * 1000;
 export const SAMPLING_THRESHOLD = 50_000;
 
 /**
- * Inline→tile boundary for `visualize_map` (#314). A result with ≤ this many
- * rows is delivered as **inline GeoJSON** (one payload, instant pan/zoom, no
- * tile round-trip); a larger one becomes a query handle the widget renders as
- * **vector tiles**. Deliberately far above the table default
- * (`INLINE_ROWS_THRESHOLD = 100`): GeoJSON features are cheap and a modest map
- * (a few thousand parcels) should not pay per-tile SQL re-execution. Kept below
- * `MAP_LAYER_FEATURE_CAP` so the inline payload stays bounded.
- */
-export const MAP_INLINE_FEATURE_THRESHOLD = 2_000;
-
-/**
- * Defensive per-layer render clamp for the inline path (#84 / #314). The
- * inline payload is already bounded by `MAP_INLINE_FEATURE_THRESHOLD`, so in
- * normal operation this never binds; it is the backstop that clamps + surfaces
- * a "showing first N of M" notice if more features ever reach the renderer
- * inline (e.g. a pinned snapshot, or a future higher threshold). Large results
- * take the vector-tile path instead, which transfers only the viewport.
+ * Defensive per-layer render clamp for the inline map path (#84 / #314).
+ * `visualize_map` delivers small results inline and larger ones as vector
+ * tiles via the shared sink threshold (`INLINE_ROWS_THRESHOLD`), and the LLM
+ * SQL layer itself caps at `PORTAL_SQL_DEFAULTS.rowCap`, so in normal operation
+ * an inline layer stays well under this. It is the backstop that clamps +
+ * surfaces a "showing first N of M" notice if more features ever reach the
+ * renderer inline (e.g. a pinned snapshot); large layers take the tile path,
+ * which transfers only the viewport.
  */
 export const MAP_LAYER_FEATURE_CAP = 10_000;
 

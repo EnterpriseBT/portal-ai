@@ -42,14 +42,14 @@ Walk this against your own running dev stack. Boxes are yours to check — the a
 
 - [ ] On an entity that has **numeric `latitude`/`longitude` columns but no geometry column**, ask **"Plot these on a map as points."** Expect a points layer rendered from the lat/lng pair (circles at the right locations), no geometry column required.
 
-## §4 — Cardinality: inline ≤ 2,000 features, tiles beyond (AC3, AC9) · slice 5
+## §4 — Cardinality: small results inline, larger tile (AC3, AC9) · slice 5
 
-The inline→tile boundary for maps is `MAP_INLINE_FEATURE_THRESHOLD = 2,000` (not the 100-row table default — GeoJSON features are cheap, so modest maps render as one payload). Walk **both sides and the boundary**:
+The inline→tile boundary is the shared sink threshold (`INLINE_ROWS_THRESHOLD = 100`), and the LLM SQL layer caps results at `rowCap = 500` — so any map beyond ~100 features stages a handle and renders as **vector tiles**; only genuinely small results inline. Walk both sides:
 
-- [ ] **Inline tier (≤ 2,000):** a map over a small/medium set (e.g. a county's parcels, ~hundreds–low-thousands) → the `geo` block carries inline **`rows`**, and the network tab shows **no** `…/tiles/…` request. Pan/zoom is instant (data is already local).
-- [ ] **Tile tier (> 2,000):** a map over a large set ("map **every** parcel", tens of thousands) → the block carries a **query-handle envelope** (no inline `rows`), and the network tab shows `/api/portal-map/tiles/{message|pin}/…/{z}/{x}/{y}.mvt` requests, each with an `Authorization: Bearer …` header. Pan/zoom stays interactive (only the viewport transfers).
-- [ ] **Boundary:** a result of exactly ~2,000 inlines; ~2,001 tiles. (Confirm the switch happens at the map threshold, not at 100.) The choice is the sink's — no open-coded cutoff in the widget.
-- [ ] **Defensive clamp:** `MAP_LAYER_FEATURE_CAP = 10,000` is the renderer's backstop for the inline path; in normal operation it never binds (inline ≤ 2,000). If you can force >10k features inline (e.g. a pinned snapshot), the layer clamps and shows "showing first N of M" — otherwise note this as the test-covered backstop.
+- [ ] **Inline tier (≤ 100 features):** e.g. *"Map the synthetic points where c_pop2000 is at most 100, colored by c_state_name."* → the `geo` block carries inline **`rows`** (GeoJSON), **no** `…/tiles/…` request, instant pan/zoom.
+- [ ] **Tile tier (> 100 features):** e.g. *"Map all the synthetic points, colored by c_state_name"* (or `≤ 2000`) → the block carries a **query-handle envelope** (no inline `rows`), and the network shows `/api/portal-map/tiles/{message|pin}/…/{z}/{x}/{y}.mvt` requests, each with an `Authorization: Bearer …` header; pan/zoom transfers only the viewport.
+- [ ] **Boundary:** ≤ 100 inlines; > 100 tiles. The choice is the sink's — no open-coded cutoff in the widget.
+- [ ] **Defensive clamp:** `MAP_LAYER_FEATURE_CAP = 10,000` is the renderer's inline backstop; it never binds in normal operation (inline ≤ 100). Test-covered; only a forced >10k inline payload would trip it.
 
 ## §5 — Pin & widget-refresh (AC4)
 
