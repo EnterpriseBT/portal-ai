@@ -1551,6 +1551,45 @@ describe("resolveDisplayBlock → d3 (#269)", () => {
   });
 });
 
+// resolveDisplayBlock — geo (#314)
+// ---------------------------------------------------------------------------
+
+describe("resolveDisplayBlock → geo (#314)", () => {
+  const SPEC = {
+    layers: [
+      { kind: "points", source: { latColumn: "lat", lngColumn: "lng" } },
+    ],
+  };
+
+  it("routes a visualize_map success (type:geo, inline rows) to a geo block", () => {
+    const result = resolveDisplayBlock("visualize_map", {
+      type: "geo",
+      spec: SPEC,
+      rows: [{ lat: 1, lng: 2 }],
+    });
+    expect(result?.block.type).toBe("geo");
+    expect(result?.block.content).toMatchObject({ spec: SPEC });
+    expect(result?.sseResult).toBeDefined();
+  });
+
+  it("routes a handle-shaped geo result through the block (queryHandle preserved)", () => {
+    const result = resolveDisplayBlock("visualize_map", {
+      type: "geo",
+      spec: SPEC,
+      queryHandle: "qh-geo-1",
+      rowCount: 9000,
+      schema: [{ name: "geom", type: "geometry" }],
+      samplePeek: [],
+      sampled: false,
+    });
+    expect(result?.block.type).toBe("geo");
+    expect(
+      (result?.block.content as { queryHandle?: string }).queryHandle
+    ).toBe("qh-geo-1");
+    expect(result?.sseResult).toBeDefined();
+  });
+});
+
 // resolveDisplayBlock — mutation-result variants
 // ---------------------------------------------------------------------------
 
