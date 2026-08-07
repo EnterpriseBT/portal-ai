@@ -145,12 +145,15 @@ export const ErrorState: Story = {
   },
 };
 
-export const LargeResultTilesPending: Story = {
+export const LargeResultVectorTiles: Story = {
   args: {
     mode: "light",
-    title: "All parcels (large result)",
+    title: "All parcels (vector tiles)",
     spec: spec([{ kind: "polygons", source: { geometryColumn: "geom" } }]),
     rows: [],
-    tilesPending: true,
+    tileTemplate: "/api/portal-map/tiles/pin/demo/{z}/{x}/{y}.mvt",
+    getTileToken: async () => null,
+    // Drives the persistent "simplified at this zoom" notice.
+    tileStatus: { simplified: true, truncated: false, timedOut: false },
   },
 };

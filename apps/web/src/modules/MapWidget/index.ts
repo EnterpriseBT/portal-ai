@@ -38,3 +38,22 @@ export type {
   LayerData,
   LegendEntry,
 } from "./utils/map-config.util";
+
+export {
+  EMPTY_TILE_STATUS,
+  readTileStatus,
+  renderPopupTemplate,
+  tilePath,
+  TILE_SOURCE_LAYER,
+} from "./utils/tile-source.util";
+export type { TileStatus } from "./utils/tile-source.util";
+
+export {
+  fetchTile,
+  installPortalMapProtocol,
+  protocolTileUrl,
+  registerTileContext,
+  TILE_PROTOCOL,
+  unregisterTileContext,
+} from "./utils/tile-protocol.util";
+export type { TileContext } from "./utils/tile-protocol.util";

@@ -26,6 +26,8 @@ jest.unstable_mockModule("maplibre-gl", () => {
   return {
     default: {
       Map: MockMap,
+      addProtocol: () => {},
+      removeProtocol: () => {},
       NavigationControl: class {},
       Popup: class {
         setLngLat() {
@@ -100,11 +102,13 @@ describe("MapWidgetUI", () => {
     expect(screen.queryByTestId("map-widget-canvas")).not.toBeInTheDocument();
   });
 
-  it("renders the tiles-pending note for a large (handle) result", () => {
+  it("explains a large result with no persisted ref (can't tile)", () => {
     render(
-      <MapWidgetUI spec={pointsSpec} rows={[]} mode="light" tilesPending />
+      <MapWidgetUI spec={pointsSpec} rows={[]} mode="light" largeUnpersisted />
     );
-    expect(screen.getByTestId("map-widget-tiles-pending")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("map-widget-large-unpersisted")
+    ).toBeInTheDocument();
   });
 
   it("renders the map canvas and a colorBy legend when features are present", () => {
@@ -119,6 +123,53 @@ describe("MapWidgetUI", () => {
     const legend = screen.getByTestId("map-widget-legend");
     expect(legend).toHaveTextContent("vacant");
     expect(legend).toHaveTextContent("improved");
+  });
+
+  it("renders the feature-cap notice when a layer is truncated (row 1)", () => {
+    // Exceed the default per-layer cap so featuresForLayer flags truncation.
+    const many = Array.from({ length: 10_001 }, (_, i) => ({
+      lat: i % 80,
+      lng: i % 170,
+    }));
+    render(<MapWidgetUI spec={pointsSpec} rows={many} mode="light" />);
+    expect(screen.getByTestId("map-widget-cap-notice")).toHaveTextContent(
+      /first .* of .* features/i
+    );
+  });
+
+  it("renders a vector-tile map + zoom-simplified / partial / timeout notices (rows 2-4)", () => {
+    const tileProps = {
+      spec: pointsSpec,
+      rows: [],
+      mode: "light" as const,
+      tileTemplate: "/api/portal-map/tiles/pin/p1/{z}/{x}/{y}.mvt",
+      getTileToken: async () => "tok",
+    };
+    const { rerender } = render(
+      <MapWidgetUI
+        {...tileProps}
+        tileStatus={{ simplified: true, truncated: false, timedOut: false }}
+      />
+    );
+    // Tile mode renders the canvas even with no inline rows.
+    expect(screen.getByTestId("map-widget-canvas")).toBeInTheDocument();
+    expect(screen.getByTestId("map-widget-simplified")).toBeInTheDocument();
+
+    rerender(
+      <MapWidgetUI
+        {...tileProps}
+        tileStatus={{ simplified: false, truncated: true, timedOut: false }}
+      />
+    );
+    expect(screen.getByTestId("map-widget-tile-truncated")).toBeInTheDocument();
+
+    rerender(
+      <MapWidgetUI
+        {...tileProps}
+        tileStatus={{ simplified: false, truncated: false, timedOut: true }}
+      />
+    );
+    expect(screen.getByTestId("map-widget-tile-timeout")).toBeInTheDocument();
   });
 
   it("renders a title and a working refresh control", () => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -11,11 +11,13 @@ import {
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { useTheme } from "@mui/material/styles";
+import { useAuth0 } from "@auth0/auth0-react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { GeoBlockContentSchema } from "@portalai/core/contracts";
 
+import { resolveApiUrl } from "../../utils/api.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
 import {
   boundsOf,
@@ -24,6 +26,19 @@ import {
   layerToMapLibre,
   resolveBasemapStyle,
 } from "./utils/map-config.util";
+import {
+  EMPTY_TILE_STATUS,
+  renderPopupTemplate,
+  tilePath,
+  TILE_SOURCE_LAYER,
+  type TileStatus,
+} from "./utils/tile-source.util";
+import {
+  installPortalMapProtocol,
+  protocolTileUrl,
+  registerTileContext,
+  unregisterTileContext,
+} from "./utils/tile-protocol.util";
 
 import type { BlockRef } from "@portalai/core";
 import type { GeoBlockContent, MapSpec } from "@portalai/core/contracts";
@@ -31,18 +46,7 @@ import type { LegendEntry } from "./utils/map-config.util";
 
 const MAP_HEIGHT = 380;
 
-/** Mustache-ish popup fill — `{{field}}` → the feature's property. */
-function renderTemplate(
-  template: string,
-  props: Record<string, unknown>
-): string {
-  return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_m, key: string) => {
-    const v = props[key];
-    return v == null ? "" : String(v);
-  });
-}
-
-// ── UI (pure — props only; `mode` is passed in, not read from context) ──
+// ── UI (pure — props only; `mode` and auth are passed in, not read here) ──
 
 export interface MapWidgetUIProps {
   spec: MapSpec;
@@ -51,9 +55,15 @@ export interface MapWidgetUIProps {
   title?: string;
   loading?: boolean;
   error?: string | null;
-  /** Handle-variant (large) block. Tile rendering lands in the next slice;
-   *  until then a note explains why the map isn't drawn inline. */
-  tilesPending?: boolean;
+  /** Real API tile template (`…/{z}/{x}/{y}.mvt`) for a large/handle result;
+   *  present ⇒ render through vector tiles instead of inline GeoJSON. */
+  tileTemplate?: string | null;
+  /** Handle result with no server-addressable ref — can't tile; explain why. */
+  largeUnpersisted?: boolean;
+  getTileToken?: () => Promise<string | null>;
+  resolveTileUrl?: (path: string) => string;
+  /** Controlled tile-notice state (tests/stories); otherwise managed live. */
+  tileStatus?: TileStatus;
   canRefresh?: boolean;
   isRefreshing?: boolean;
   onRefresh?: () => void;
@@ -78,7 +88,11 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   title,
   loading = false,
   error = null,
-  tilesPending = false,
+  tileTemplate = null,
+  largeUnpersisted = false,
+  getTileToken,
+  resolveTileUrl = (p) => p,
+  tileStatus,
   canRefresh = false,
   isRefreshing = false,
   onRefresh,
@@ -87,6 +101,14 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   onHeight,
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
+  const ctxId = useId();
+  const [internalTileStatus, setInternalTileStatus] =
+    useState<TileStatus>(EMPTY_TILE_STATUS);
+  // A style/expression error thrown by MapLibre at addLayer time (row 9).
+  const [renderError, setRenderError] = useState<string | null>(null);
+  const tiles = tileStatus ?? internalTileStatus;
+
+  const isTile = tileTemplate != null;
 
   // Pure spec→MapLibre translation (unit-tested in map-config.util.test).
   const { layerData, mlLayers, legend, bounds, featureCapNotice, hasFeatures } =
@@ -97,9 +119,12 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
       );
       const lg: LegendEntry[] = buildLegend(spec, rows);
       const truncated = data.filter((d) => d.truncated);
+      const shown = data.reduce((n, d) => n + d.collection.features.length, 0);
       const notice =
         truncated.length > 0
-          ? `Showing the first ${data.reduce((n, d) => n + d.collection.features.length, 0).toLocaleString()} of ${truncated.reduce((n, d) => Math.max(n, d.total), 0).toLocaleString()} features.`
+          ? `Showing the first ${shown.toLocaleString()} of ${truncated
+              .reduce((n, d) => Math.max(n, d.total), 0)
+              .toLocaleString()} features.`
           : null;
       return {
         layerData: data,
@@ -111,14 +136,21 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
       };
     }, [spec, rows]);
 
-  const showMap = !error && !tilesPending && hasFeatures;
+  const showMap = !error && (isTile || hasFeatures);
 
-  // Mount MapLibre when there's something to draw. Rebuild on spec/rows/theme
-  // change (simpler + correct vs. diffing sources). No-op in tests where the
-  // module is mocked (the "load" callback never fires).
   useEffect(() => {
     if (!showMap || mapRef.current == null) return;
+    setRenderError(null);
     let map: maplibregl.Map | null = null;
+
+    if (isTile) {
+      installPortalMapProtocol(maplibregl, resolveTileUrl);
+      registerTileContext(ctxId, {
+        getToken: getTileToken ?? (async () => null),
+        onStatus: setInternalTileStatus,
+      });
+    }
+
     try {
       map = new maplibregl.Map({
         container: mapRef.current,
@@ -133,18 +165,46 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
         "top-right"
       );
       const m = map;
-      map.on("load", () => {
-        layerData.forEach((d) => {
-          m.addSource(d.sourceId, {
-            type: "geojson",
-            data: d.collection as never,
-          });
-        });
-        mlLayers.forEach((l) => m.addLayer(l as never));
-        if (bounds)
-          m.fitBounds(bounds, { padding: 32, animate: false, maxZoom: 15 });
-        // Click → popup; pointer cursor over any interactive layer.
-        const template = spec.popup?.template;
+      const template = spec.popup?.template;
+
+      m.on("load", () => {
+        try {
+          if (isTile) {
+            m.addSource(ctxId, {
+              type: "vector",
+              tiles: [protocolTileUrl(ctxId, tileTemplate as string)],
+              minzoom: 0,
+              maxzoom: 22,
+            } as never);
+            mlLayers.forEach((l) =>
+              m.addLayer({
+                ...l,
+                source: ctxId,
+                "source-layer": TILE_SOURCE_LAYER,
+              } as never)
+            );
+            if (typeof spec.initialView === "object") {
+              m.jumpTo({
+                center: spec.initialView.center,
+                zoom: spec.initialView.zoom,
+              });
+            }
+          } else {
+            layerData.forEach((d) =>
+              m.addSource(d.sourceId, {
+                type: "geojson",
+                data: d.collection as never,
+              })
+            );
+            mlLayers.forEach((l) => m.addLayer(l as never));
+            if (bounds)
+              m.fitBounds(bounds, { padding: 32, animate: false, maxZoom: 15 });
+          }
+        } catch (e) {
+          // A malformed style/expression MapLibre rejects at addLayer time (row 9).
+          setRenderError(e instanceof Error ? e.message : "Invalid map style.");
+          return;
+        }
         for (const l of mlLayers) {
           m.on("mouseenter", l.id, () => {
             m.getCanvas().style.cursor = "pointer";
@@ -158,7 +218,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
               if (!f) return;
               new maplibregl.Popup()
                 .setLngLat(e.lngLat)
-                .setHTML(renderTemplate(template, f.properties ?? {}))
+                .setHTML(renderPopupTemplate(template, f.properties ?? {}))
                 .addTo(m);
             });
           }
@@ -166,11 +226,27 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
       });
       onHeight?.(MAP_HEIGHT);
     } catch {
-      // A construction failure (e.g. no WebGL) leaves the map area empty; the
-      // widget chrome still renders. Never throw out of a render effect.
+      // Construction failure (e.g. no WebGL) — chrome still renders.
     }
-    return () => map?.remove();
-  }, [showMap, spec, rows, mode, layerData, mlLayers, bounds, onHeight]);
+    return () => {
+      map?.remove();
+      if (isTile) unregisterTileContext(ctxId);
+    };
+  }, [
+    showMap,
+    isTile,
+    spec,
+    rows,
+    mode,
+    tileTemplate,
+    ctxId,
+    getTileToken,
+    resolveTileUrl,
+    layerData,
+    mlLayers,
+    bounds,
+    onHeight,
+  ]);
 
   const chip = status !== "ready" ? STATUS_CHIP[status] : null;
   const header =
@@ -210,16 +286,17 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
     ) : null;
 
   let body: React.ReactNode;
-  if (error) {
+  const effectiveError = error ?? renderError;
+  if (effectiveError) {
     body = (
       <Alert severity="error" data-testid="map-widget-error">
-        {error}
+        {effectiveError}
       </Alert>
     );
-  } else if (tilesPending) {
+  } else if (largeUnpersisted) {
     body = (
-      <Alert severity="info" data-testid="map-widget-tiles-pending">
-        This result is large and renders as vector tiles.
+      <Alert severity="info" data-testid="map-widget-large-unpersisted">
+        This result is too large to map inline. Pin it to explore it on a map.
       </Alert>
     );
   } else if (loading) {
@@ -239,7 +316,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
         </Typography>
       </Box>
     );
-  } else if (!hasFeatures) {
+  } else if (!isTile && !hasFeatures) {
     body = (
       <Typography
         variant="body2"
@@ -263,6 +340,35 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
             overflow: "hidden",
           }}
         />
+        {/* Visibility of limits — no quiet degradation (#314). */}
+        {tiles.timedOut ? (
+          <Typography
+            variant="caption"
+            color="error"
+            data-testid="map-widget-tile-timeout"
+          >
+            A map tile timed out — pan or zoom to retry.
+          </Typography>
+        ) : null}
+        {tiles.simplified ? (
+          <Typography
+            variant="caption"
+            color="warning.main"
+            data-testid="map-widget-simplified"
+          >
+            Simplified at this zoom — shapes are approximations. Zoom in for
+            full detail.
+          </Typography>
+        ) : null}
+        {tiles.truncated ? (
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            data-testid="map-widget-tile-truncated"
+          >
+            Partial at this zoom — zoom in for all features.
+          </Typography>
+        ) : null}
         {featureCapNotice ? (
           <Typography
             variant="caption"
@@ -324,6 +430,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
 }) => {
   const muiTheme = useTheme();
   const mode = muiTheme.palette.mode === "dark" ? "dark" : "light";
+  const { getAccessTokenSilently } = useAuth0();
 
   const parsed = useMemo(
     () => GeoBlockContentSchema.safeParse(content),
@@ -338,6 +445,21 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
     notRefreshable,
     refresh,
   } = useWidgetRefresh(blockRef, dataUpdatedAt);
+
+  const getTileToken = useMemo(
+    () => async () => {
+      try {
+        return await getAccessTokenSilently({
+          authorizationParams: {
+            audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+          },
+        });
+      } catch {
+        return null;
+      }
+    },
+    [getAccessTokenSilently]
+  );
 
   if (!parsedContent) {
     return (
@@ -362,6 +484,9 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
     freshInlineRows ??
     (fresh == null && "rows" in parsedContent ? parsedContent.rows : []);
 
+  // Large result → vector tiles keyed to the block's own persisted ref.
+  const tileTemplate = isHandle ? tilePath(blockRef) : null;
+
   const status: NonNullable<MapWidgetUIProps["status"]> = isRefreshing
     ? "refreshing"
     : refreshError
@@ -375,7 +500,10 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
       mode={mode}
       title={parsedContent.title}
       error={refreshError?.message ?? null}
-      tilesPending={isHandle}
+      tileTemplate={tileTemplate}
+      largeUnpersisted={isHandle && tileTemplate == null}
+      getTileToken={getTileToken}
+      resolveTileUrl={resolveApiUrl}
       canRefresh={blockRef != null && !notRefreshable}
       isRefreshing={isRefreshing}
       onRefresh={refresh}

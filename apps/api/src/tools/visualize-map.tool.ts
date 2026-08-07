@@ -48,6 +48,42 @@ function inlineRows(
   return result.rows ?? result.sample ?? [];
 }
 
+/** The result columns a validated spec references — layer sources, colorBy,
+ *  and popup-template fields. Used to reject a spec that names a column the
+ *  query doesn't return (Visibility of limits, row 8) rather than render a
+ *  blank layer. */
+function referencedColumns(
+  spec: ReturnType<typeof MapSpecSchema.parse>
+): string[] {
+  const cols = new Set<string>();
+  for (const layer of spec.layers) {
+    if ("geometryColumn" in layer.source) cols.add(layer.source.geometryColumn);
+    else {
+      cols.add(layer.source.latColumn);
+      cols.add(layer.source.lngColumn);
+    }
+    if (layer.style?.colorBy) cols.add(layer.style.colorBy.column);
+  }
+  if (spec.popup?.template) {
+    for (const m of spec.popup.template.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)) {
+      cols.add(m[1]);
+    }
+  }
+  return [...cols];
+}
+
+/** Column names a delivery exposes — the handle envelope's schema, or the
+ *  first inline row's keys. Empty ⇒ unknown (skip the check). */
+function schemaColumnsOf(
+  delivery: Awaited<ReturnType<typeof defaultResolveSqlDelivery>>
+): Set<string> {
+  if (delivery.kind === "handle") {
+    return new Set(delivery.envelope.schema.map((c) => c.name));
+  }
+  const rows = inlineRows(delivery);
+  return new Set(rows.length ? Object.keys(rows[0]) : []);
+}
+
 export class VisualizeMapTool extends Tool<typeof InputSchema> {
   slug = "visualize_map";
   name = "Visualize (Map)";
@@ -92,6 +128,25 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
           { sql },
           { stationId, organizationId }
         );
+
+        // Reject a spec that references a column the query didn't return — a
+        // typed error the agent repairs, never a blank layer (row 8). Skipped
+        // when the result exposes no columns (nothing to validate against).
+        const columns = schemaColumnsOf(delivery);
+        if (columns.size > 0) {
+          const missing = referencedColumns(spec).filter(
+            (c) => !columns.has(c)
+          );
+          if (missing.length > 0) {
+            return {
+              error: {
+                code: ApiCode.MAP_SPEC_INVALID,
+                message: `MapSpec references columns not in the query result: ${missing.join(", ")}. Available: ${[...columns].join(", ")}.`,
+              },
+            };
+          }
+        }
+
         const titleField = title ? { title } : {};
         // Durable, re-executable pipeline so the widget can re-run its SQL for
         // live data (and tile the handle branch) after the Redis handle expires.

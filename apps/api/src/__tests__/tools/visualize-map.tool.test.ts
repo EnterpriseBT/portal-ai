@@ -108,6 +108,29 @@ describe("VisualizeMapTool.execute (#314)", () => {
     expect(resolveSqlDelivery).not.toHaveBeenCalled();
   });
 
+  it("a spec referencing a column absent from the result → MAP_SPEC_INVALID (row 8)", async () => {
+    const resolveSqlDelivery = jest.fn(async () => inlineDelivery);
+    const exec = buildTool({ resolveSqlDelivery: resolveSqlDelivery as never });
+
+    const out = await exec({
+      sql: "SELECT lat, lng, prop_class FROM parcels",
+      spec: {
+        layers: [
+          {
+            kind: "points",
+            source: { latColumn: "lat", lngColumn: "lng" },
+            style: { colorBy: { column: "zoning" } }, // not in the result
+          },
+        ],
+      },
+    });
+
+    expect(out.error).toMatchObject({ code: "MAP_SPEC_INVALID" });
+    expect((out.error as { message: string }).message).toContain("zoning");
+    // The sink WAS consulted (delivery is needed to know the columns).
+    expect(resolveSqlDelivery).toHaveBeenCalled();
+  });
+
   it("invalid spec — a polygons layer bound to a lat/lng source → MAP_SPEC_INVALID", async () => {
     const resolveSqlDelivery = jest.fn(async () => inlineDelivery);
     const exec = buildTool({ resolveSqlDelivery: resolveSqlDelivery as never });
