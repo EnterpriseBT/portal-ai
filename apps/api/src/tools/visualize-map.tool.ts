@@ -12,11 +12,12 @@ import { resolveSqlDelivery as defaultResolveSqlDelivery } from "./result-sink.j
 //
 // Unlike `visualize_d3`, the agent authors the render spec directly: a MapSpec
 // is a small closed vocabulary (the same reason the agent writes SQL), so there
-// is no codegen sub-call and no model-written JS. `spec` is intentionally typed
-// loosely here so a malformed spec reaches `execute` and is returned as a typed
-// `MAP_SPEC_INVALID` result the agent can read and repair — rather than a
-// framework-level arg-rejection. The authoritative shape is `MapSpecSchema`,
-// taught in the system prompt.
+// is no codegen sub-call and no model-written JS. `spec` is typed by
+// `MapSpecSchema` so the agent gets the exact structure (kinds, the
+// geometryColumn XOR lat/lng `source`, colorBy, popup) — a loosely-typed spec
+// left the model guessing the `source` shape and every guess failed. `execute`
+// still `safeParse`s defensively so a malformed spec is a typed
+// `MAP_SPEC_INVALID` result the agent repairs, not a hard throw.
 
 const InputSchema = z.object({
   sql: z
@@ -24,11 +25,9 @@ const InputSchema = z.object({
     .describe(
       "SQL selecting the rows to map. Select the raw geometry column (aliased `geom`) when the result may be large so it can render as vector tiles; do not add a LIMIT — result size is handled automatically."
     ),
-  spec: z
-    .record(z.string(), z.unknown())
-    .describe(
-      "A MapSpec object: { basemap?, initialView?, layers: [{ kind: points|polygons|lines|heatmap|cluster, source: {geometryColumn} | {latColumn,lngColumn}, style?, label? }], popup? }. Style values accept MapLibre expressions (case/match/interpolate/get) for per-feature symbology; `colorBy` is sugar that also drives a legend. 1–8 layers."
-    ),
+  spec: MapSpecSchema.describe(
+    "The declarative map spec: an optional basemap, 1–8 layers (each a `kind` plus a `source` that is either {geometryColumn} or {latColumn,lngColumn}), optional per-layer `style` (literals or MapLibre expressions; `colorBy` drives a legend), and an optional `popup.template`."
+  ),
   title: z.string().optional(),
 });
 
@@ -107,11 +106,20 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { sql, spec: rawSpec, title } = this.validate(input);
+        // `spec` is MapSpecSchema-typed in the input schema (so the agent gets
+        // the structure), but safeParse defensively here: a malformed spec is a
+        // typed MAP_SPEC_INVALID result the agent repairs, never a hard throw or
+        // partial render (Visibility of limits, row 8).
+        const {
+          sql,
+          spec: rawSpec,
+          title,
+        } = input as {
+          sql: string;
+          spec: unknown;
+          title?: string;
+        };
 
-        // Validate the spec explicitly so a malformed one is a typed result
-        // the agent relays + repairs — never a partial or mis-styled render
-        // (Visibility of limits, row 8).
         const specResult = MapSpecSchema.safeParse(rawSpec);
         if (!specResult.success) {
           return {
