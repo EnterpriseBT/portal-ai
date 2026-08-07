@@ -42,10 +42,8 @@ export interface VisualizeMapDeps {
 const quoteIdent = (s: string) => `"${s.replace(/"/g, '""')}"`;
 const quoteLit = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
-/** Categorical palette for server-computed `colorBy` stops (Tableau 10). The
- *  widget renders the stop colours verbatim, so inline and tiled maps colour
- *  identically. */
-const CATEGORICAL_PALETTE = [
+/** Base categorical palette (Tableau 10) — the first colours a colorBy uses. */
+const BASE_PALETTE = [
   "#4e79a7",
   "#f28e2b",
   "#e15759",
@@ -57,6 +55,31 @@ const CATEGORICAL_PALETTE = [
   "#9c755f",
   "#bab0ac",
 ];
+
+/** HSL→hex. `h` in [0,360); `s`,`l` as fractions in [0,1]. */
+function hslToHex(h: number, s: number, l: number): string {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const c = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(255 * Math.max(0, Math.min(1, c)))
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+/**
+ * A distinct colour per category **without a cap** — this is a general-purpose
+ * map, so we never assume which categories a user cares about. The Tableau-10
+ * palette covers the common small case; beyond it, golden-angle HSL hues give
+ * a distinct, well-spread colour for any cardinality (the platform's standard
+ * query row cap is the only bound, same as every other query).
+ */
+export function categoryColor(i: number): string {
+  if (i < BASE_PALETTE.length) return BASE_PALETTE[i];
+  return hslToHex((i * 137.508) % 360, 0.62, 0.55);
+}
 
 /** Geometry-column names the spec's layers bind to (lat/lng sources are plain
  *  numbers the widget turns into Points — no conversion needed). */
@@ -210,13 +233,13 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
         for (const layer of spec.layers) {
           const cb = layer.style?.colorBy;
           if (!cb || (cb.stops && cb.stops.length > 0)) continue;
-          // Top categories by frequency (not alphabetical) get the palette —
-          // the most common values are the ones worth distinguishing; the long
-          // tail beyond the palette shares the neutral fallback.
+          // Every distinct category gets a colour (no cap). Frequency order
+          // just means that if the platform's row cap ever trims the list, the
+          // most common values are kept.
           const distinctSql =
             `SELECT _q.${quoteIdent(cb.column)} AS v FROM (${sql}) _q ` +
             `WHERE _q.${quoteIdent(cb.column)} IS NOT NULL ` +
-            `GROUP BY _q.${quoteIdent(cb.column)} ORDER BY count(*) DESC, 1 LIMIT ${CATEGORICAL_PALETTE.length}`;
+            `GROUP BY _q.${quoteIdent(cb.column)} ORDER BY count(*) DESC, 1`;
           const dres = (await sqlQuery({
             sql: distinctSql,
             stationId,
@@ -229,10 +252,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
                 typeof v === "string" || typeof v === "number"
             );
           if (values.length > 0) {
-            cb.stops = values.map((v, i) => [
-              v,
-              CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length],
-            ]);
+            cb.stops = values.map((v, i) => [v, categoryColor(i)]);
           }
         }
 

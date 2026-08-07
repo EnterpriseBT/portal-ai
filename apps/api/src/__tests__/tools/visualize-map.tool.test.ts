@@ -1,6 +1,9 @@
 import { describe, it, expect, jest } from "@jest/globals";
 
-import { VisualizeMapTool } from "../../tools/visualize-map.tool.js";
+import {
+  VisualizeMapTool,
+  categoryColor,
+} from "../../tools/visualize-map.tool.js";
 import type { VisualizeMapDeps } from "../../tools/visualize-map.tool.js";
 
 // visualize_map composes only resolveSqlDelivery (#164) — no codegen. It is
@@ -49,6 +52,18 @@ function buildTool(
       }
     ).execute(args);
 }
+
+describe("categoryColor (#314 — uncapped categorical colours)", () => {
+  it("returns a valid #rrggbb for any index, palette then generated HSL", () => {
+    const hex = /^#[0-9a-f]{6}$/;
+    for (const i of [0, 1, 9, 10, 11, 25, 60, 200, 499]) {
+      expect(categoryColor(i)).toMatch(hex);
+    }
+    // First ten are the base palette; beyond that, generated + distinct.
+    expect(categoryColor(0)).toBe("#4e79a7");
+    expect(categoryColor(10)).not.toBe(categoryColor(11));
+  });
+});
 
 describe("VisualizeMapTool.execute (#314)", () => {
   it("inline delivery + valid spec → geo block with inline rows + durable pipeline", async () => {
