@@ -35,6 +35,22 @@ export interface LayerData {
 const isFiniteNum = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v);
 
+/**
+ * Coerce a coordinate value to a finite number. Accepts a number *or a numeric
+ * string* — a lat/lng bound to a `numeric` column arrives as a string (the
+ * Postgres driver returns numeric/decimal as strings to preserve precision),
+ * and JSON coordinates can be stringy too. Returns `null` for anything
+ * unparseable, so a bad row is skipped rather than plotted at NaN.
+ */
+const toFiniteNum = (v: unknown): number | null => {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+};
+
 export const sourceIdFor = (index: number): string => `layer-${index}`;
 
 /**
@@ -60,9 +76,9 @@ export function featuresForLayer(
         geometry = g as Record<string, unknown>;
       }
     } else {
-      const lng = row[source.lngColumn];
-      const lat = row[source.latColumn];
-      if (isFiniteNum(lng) && isFiniteNum(lat)) {
+      const lng = toFiniteNum(row[source.lngColumn]);
+      const lat = toFiniteNum(row[source.latColumn]);
+      if (lng != null && lat != null) {
         geometry = { type: "Point", coordinates: [lng, lat] };
       }
     }

@@ -61,6 +61,31 @@ describe("featuresForLayer", () => {
     expect(out.total).toBe(1);
   });
 
+  it("coerces numeric-string lat/lng (numeric columns arrive as strings) to numeric-coord Points (#314)", () => {
+    const layer = {
+      kind: "points",
+      source: { latColumn: "lat", lngColumn: "lng" },
+    } as MapLayer;
+    // The Postgres driver returns `numeric` columns as strings — a lat/lng
+    // column pair looks like this on the inline path.
+    const rows = [
+      { lat: "40.794", lng: "-111.909", name: "SLC" },
+      { lat: "nope", lng: "1" }, // still skipped — unparseable
+    ];
+    const out = featuresForLayer(layer, 0, rows);
+    expect(out.collection.features).toHaveLength(1);
+    expect(out.collection.features[0].geometry).toEqual({
+      type: "Point",
+      coordinates: [-111.909, 40.794], // numbers, not strings
+    });
+    // The coords are real numbers so MapLibre/bounds math works.
+    const [lng, lat] = (
+      out.collection.features[0].geometry as { coordinates: number[] }
+    ).coordinates;
+    expect(typeof lng).toBe("number");
+    expect(typeof lat).toBe("number");
+  });
+
   it("clamps to the cap and flags truncation", () => {
     const layer = {
       kind: "points",
