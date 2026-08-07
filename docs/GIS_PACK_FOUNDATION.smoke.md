@@ -82,6 +82,20 @@ Each notice must be **visible** — a cap/simplification/failure is never silent
 
 - [ ] Ask for a map in a way that yields an **invalid spec** (e.g. request **> 8 layers**, or a **polygons layer bound to a lat/lng pair**, or a layer keyed to a **column the query doesn't return**). The agent receives a typed **`MAP_SPEC_INVALID`** result (naming the problem / missing columns) and **relays it** — no partial or mis-styled map is rendered.
 
+## §10 — Real-data variety sweep (ArcGIS REST connector)
+
+Four datasets seeded into the smoke station through the **real REST API connector** (not hand-seeded) exercise every geometry type, both source shapes, and both render paths. Each is a live `visualize_map` prompt against your running app.
+
+Fixtures (already seeded by the agent; see the cleanup manifest): `parcels` (2,000 Salt Lake County polygons, ArcGIS Utah parcels), `roads` (2,000 Utah Roads lines), `cities` (60 US cities via lat/lng columns), `smoke` (60k synthetic points).
+
+- [ ] **Polygons + tiling (`parcels`):** *"Map the parcels."* → filled polygons render as vector tiles over Salt Lake City; zooming re-fetches detail; the low-zoom **simplified** notice shows then clears.
+- [ ] **Polygon popup (`parcels`):** *"Map the parcels with a popup showing the address, parcel id, and area."* → clicking a parcel opens a popup with the real `c_address` / `c_parcel_id` / `c_area` values (no `⟨field⟩` placeholders).
+- [ ] **colorBy on a SQL-derived category (`parcels`):** *"Map the parcels colored by size — small (<800), medium, large (>3000) by area."* → the agent writes a `CASE` bucket and the map shows a **3-entry legend**, each bucket a distinct color.
+- [ ] **Lines + categorical colorBy (`roads`):** *"Map the roads colored by road class (cartocode)."* → LineStrings render, colored into **~10 classes** with a matching legend.
+- [ ] **lat/lng source + inline + refresh (`cities`):** *"Map the US cities, colored by state, popup showing name and population."* → ~60 point markers render **inline** (not tiled) from the `lat`/`lng` **columns** (not a geometry column), colored across **14 states**; **refresh** the widget → markers re-render (this is the inline path where refresh is visually observable).
+- [ ] **Uncapped colors (`smoke` or `cities`):** confirm **every** category gets a color — no grey "other" bucket, no 10-category cap (the earlier cap bug).
+- [ ] **Refresh across sizes:** refresh a tiled map (`parcels`/`roads`) → no error, tiles stay live; refresh the inline `cities` map → re-renders correctly (geo-refresh GeoJSON fix).
+
 ## Sign-off
 
 - [ ] Every section above verified (or explicitly noted where a limit is test-covered rather than live-exercised)
