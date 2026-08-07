@@ -90,6 +90,13 @@ describe("resolveColorBy", () => {
     expect(legend.map((l) => l.label)).toEqual(["vacant", "improved"]);
   });
 
+  it("returns a solid colour (not a zero-pair match) when no categories resolve", () => {
+    // Tiled layer: no rows to derive categories from, no explicit stops.
+    const { expression, legend } = resolveColorBy({ column: "klass" }, []);
+    expect(typeof expression).toBe("string");
+    expect(legend).toEqual([]);
+  });
+
   it("honours explicit stops", () => {
     const { expression, legend } = resolveColorBy(
       { column: "klass", stops: [["vacant", "#ff8a00"]] },

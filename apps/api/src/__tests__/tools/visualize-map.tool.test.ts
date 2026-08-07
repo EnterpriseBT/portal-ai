@@ -91,16 +91,22 @@ describe("VisualizeMapTool.execute (#314)", () => {
       },
     };
     const resolveSqlDelivery = jest.fn(async () => rawInline);
-    const sqlQuery = jest.fn(async () => ({
-      rows: [
-        {
-          _row: {
-            c_geometry: { type: "Point", coordinates: [-111.9, 40.7] },
-            c_state_name: "alpha",
-          },
-        },
-      ],
-    }));
+    // Two query kinds: the DISTINCT-values query (colorBy stops) and the
+    // display query (geometry → GeoJSON). Branch on the SQL.
+    const sqlQuery = jest.fn(async ({ sql }: { sql: string }) =>
+      sql.includes("DISTINCT")
+        ? { rows: [{ v: "alpha" }, { v: "beta" }] }
+        : {
+            rows: [
+              {
+                _row: {
+                  c_geometry: { type: "Point", coordinates: [-111.9, 40.7] },
+                  c_state_name: "alpha",
+                },
+              },
+            ],
+          }
+    );
     const exec = buildTool({
       resolveSqlDelivery: resolveSqlDelivery as never,
       sqlQuery: sqlQuery as never,
@@ -125,11 +131,21 @@ describe("VisualizeMapTool.execute (#314)", () => {
       type: "Point",
       coordinates: [-111.9, 40.7],
     });
-    // The display query re-projected the geometry column.
-    const displaySql = (
-      (sqlQuery.mock.calls[0] as unknown[])[0] as { sql: string }
-    ).sql;
-    expect(displaySql).toContain("ST_AsGeoJSON");
+    // colorBy stops were computed server-side (so tile mode colours too).
+    const layer0 = (
+      out.spec as {
+        layers: Array<{ style: { colorBy: { stops: unknown[] } } }>;
+      }
+    ).layers[0];
+    expect(layer0.style.colorBy.stops).toEqual([
+      ["alpha", expect.any(String)],
+      ["beta", expect.any(String)],
+    ]);
+    // A display query re-projected the geometry column to GeoJSON.
+    const calls = sqlQuery.mock.calls as unknown as Array<[{ sql: string }]>;
+    const displaySql = calls
+      .map((c) => c[0].sql)
+      .find((s) => s.includes("ST_AsGeoJSON"));
     expect(displaySql).toContain('"c_geometry"');
     // The pipeline (tiles + refresh) exposes a raw `geom` column.
     expect((out.pipeline as { sql: string }).sql).toContain("AS geom");

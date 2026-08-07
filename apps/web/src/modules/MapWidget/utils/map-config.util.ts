@@ -135,6 +135,13 @@ export function resolveColorBy(
     pairs = seen.map((v, i) => [v, palette[i % palette.length]]);
   }
 
+  // No categories resolved (e.g. a tiled layer whose stops weren't computed) —
+  // return a solid visible colour rather than a `["match", input, fallback]`
+  // with zero pairs, which MapLibre rejects / paints as the invisible fallback.
+  if (pairs.length === 0) {
+    return { expression: DEFAULT_COLOR, legend: [] };
+  }
+
   const match: unknown[] = ["match", ["get", colorBy.column]];
   for (const [value, color] of pairs) {
     match.push(value, color);

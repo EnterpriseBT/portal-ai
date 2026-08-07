@@ -42,6 +42,22 @@ export interface VisualizeMapDeps {
 const quoteIdent = (s: string) => `"${s.replace(/"/g, '""')}"`;
 const quoteLit = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
+/** Categorical palette for server-computed `colorBy` stops (Tableau 10). The
+ *  widget renders the stop colours verbatim, so inline and tiled maps colour
+ *  identically. */
+const CATEGORICAL_PALETTE = [
+  "#4e79a7",
+  "#f28e2b",
+  "#e15759",
+  "#76b7b2",
+  "#59a14f",
+  "#edc948",
+  "#b07aa1",
+  "#ff9da7",
+  "#9c755f",
+  "#bab0ac",
+];
+
 /** Geometry-column names the spec's layers bind to (lat/lng sources are plain
  *  numbers the widget turns into Points — no conversion needed). */
 function geometryColumns(
@@ -184,6 +200,35 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
                 message: `MapSpec references columns not in the query result: ${missing.join(", ")}. Available: ${[...columns].join(", ")}.`,
               },
             };
+          }
+        }
+
+        // Populate `colorBy.stops` server-side so a layer coloured by category
+        // renders in BOTH modes: the tile path has no inline rows for the
+        // widget to derive categories from, so without stops its `match`
+        // expression is empty and every feature paints the fallback colour.
+        for (const layer of spec.layers) {
+          const cb = layer.style?.colorBy;
+          if (!cb || (cb.stops && cb.stops.length > 0)) continue;
+          const distinctSql =
+            `SELECT DISTINCT _q.${quoteIdent(cb.column)} AS v FROM (${sql}) _q ` +
+            `WHERE _q.${quoteIdent(cb.column)} IS NOT NULL ORDER BY 1 LIMIT ${CATEGORICAL_PALETTE.length}`;
+          const dres = (await sqlQuery({
+            sql: distinctSql,
+            stationId,
+            organizationId,
+          })) as { rows?: Array<{ v?: unknown }> };
+          const values = (dres.rows ?? [])
+            .map((r) => r.v)
+            .filter(
+              (v): v is string | number =>
+                typeof v === "string" || typeof v === "number"
+            );
+          if (values.length > 0) {
+            cb.stops = values.map((v, i) => [
+              v,
+              CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length],
+            ]);
           }
         }
 
