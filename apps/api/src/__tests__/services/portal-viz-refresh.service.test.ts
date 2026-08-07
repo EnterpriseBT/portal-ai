@@ -131,6 +131,29 @@ describe("PortalVizRefreshService.refresh (#270)", () => {
     );
   });
 
+  it("refreshes a geo block (#314), re-executing its durable pipeline", async () => {
+    const geoMessage = {
+      id: "msg-1",
+      organizationId: "org-1",
+      portalId: "portal-1",
+      role: "assistant",
+      blocks: [
+        {
+          type: "geo",
+          content: { type: "geo", spec: { layers: [] }, pipeline: PIPELINE },
+        },
+      ],
+    } as never;
+    const out = await PortalVizRefreshService.refresh(
+      { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+      deps({ findMessageById: jest.fn(async () => geoMessage) as never })
+    );
+    expect(out).toEqual({
+      kind: "inline",
+      rows: [{ month: "Jan", total: 12 }],
+    });
+  });
+
   it("cross-org caller → VIZ_WIDGET_NOT_FOUND (404, no existence leak)", async () => {
     await expectApiCode(
       PortalVizRefreshService.refresh(

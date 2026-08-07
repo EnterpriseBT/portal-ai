@@ -83,7 +83,10 @@ export class PortalVizRefreshService {
 
     const blocks = (message.blocks ?? []) as Array<Record<string, unknown>>;
     const block = blocks[params.blockIndex];
-    if (!block || block.type !== "d3") throw notFound();
+    // Both durable widget kinds refresh through the same pipeline path (#314
+    // adds `geo` alongside `d3`); a non-widget block has no pipeline.
+    if (!block || (block.type !== "d3" && block.type !== "geo"))
+      throw notFound();
 
     // Persisted display blocks are wrapped `{ type, content }` by
     // `resolveDisplayBlock` — the d3 tool result (program, pipeline, rows /
