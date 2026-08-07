@@ -60,7 +60,9 @@ export function renderPopupTemplate(
   template: string,
   props: Record<string, unknown>
 ): string {
-  return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_m, key: string) => {
+  // Tolerate single- or double-brace fields ({{x}} or {x}) — models author
+  // both. A field the feature lacks renders as ⟨field⟩, not a blank (row 10).
+  return template.replace(/\{\{?\s*([\w.]+)\s*\}?\}/g, (_m, key: string) => {
     const v = props[key];
     return v == null ? `⟨${key}⟩` : String(v);
   });

@@ -72,6 +72,7 @@ export interface RenderTileDeps {
   findPortalResultById?: (id: string) => Promise<unknown>;
   runTileQuery?: (args: {
     pipeline: D3Pipeline;
+    propertyColumns: string[];
     organizationId: string;
     z: number;
     x: number;
@@ -79,6 +80,35 @@ export interface RenderTileDeps {
     tolerance: number;
     cap: number;
   }) => Promise<TileQueryResult>;
+}
+
+const quoteIdentTile = (s: string) => `"${s.replace(/"/g, '""')}"`;
+
+/**
+ * Property columns a geo spec needs on each tile feature — the `colorBy`
+ * columns and popup-template fields. Emitted as MVT feature properties so the
+ * widget can colour + fill popups client-side (without them, `["match", ["get",
+ * col], …]` finds nothing → grey, and popups don't resolve). Excludes the
+ * reserved geometry column `geom`. Tolerates single- or double-brace fields.
+ */
+export function propertyColumnsFromSpec(spec: unknown): string[] {
+  const s = spec as
+    | {
+        layers?: Array<{ style?: { colorBy?: { column?: string } } }>;
+        popup?: { template?: string };
+      }
+    | undefined;
+  const cols = new Set<string>();
+  for (const l of s?.layers ?? []) {
+    const c = l.style?.colorBy?.column;
+    if (typeof c === "string" && c) cols.add(c);
+  }
+  const tpl = s?.popup?.template;
+  if (typeof tpl === "string") {
+    for (const m of tpl.matchAll(/\{\{?\s*([\w.]+)\s*\}?\}/g)) cols.add(m[1]);
+  }
+  cols.delete("geom");
+  return [...cols];
 }
 
 function notFound(): ApiError {
@@ -106,7 +136,11 @@ export class PortalMapTileService {
     ref: TileRef,
     organizationId: string,
     deps: RenderTileDeps
-  ): Promise<{ pipeline: D3Pipeline; snapshotUpdatedAt: number | null }> {
+  ): Promise<{
+    pipeline: D3Pipeline;
+    snapshotUpdatedAt: number | null;
+    propertyColumns: string[];
+  }> {
     const findMessageById =
       deps.findMessageById ?? ((id: string) => portalMessagesRepo.findById(id));
     const findPortalResultById =
@@ -127,7 +161,11 @@ export class PortalMapTileService {
       const inner = (block.content ?? block) as Record<string, unknown>;
       const parsed = D3PipelineSchema.safeParse(inner.pipeline);
       if (!parsed.success) throw notFound();
-      return { pipeline: parsed.data, snapshotUpdatedAt: null };
+      return {
+        pipeline: parsed.data,
+        snapshotUpdatedAt: null,
+        propertyColumns: propertyColumnsFromSpec(inner.spec),
+      };
     }
 
     const row = (await findPortalResultById(ref.portalResultId)) as Record<
@@ -144,6 +182,7 @@ export class PortalMapTileService {
         typeof row.snapshotUpdatedAt === "number"
           ? row.snapshotUpdatedAt
           : null,
+      propertyColumns: propertyColumnsFromSpec(content.spec),
     };
   }
 
@@ -155,6 +194,7 @@ export class PortalMapTileService {
    */
   private static async defaultRunTileQuery(args: {
     pipeline: D3Pipeline;
+    propertyColumns: string[];
     organizationId: string;
     z: number;
     x: number;
@@ -162,16 +202,31 @@ export class PortalMapTileService {
     tolerance: number;
     cap: number;
   }): Promise<TileQueryResult> {
-    const { pipeline, organizationId, z, x, y, tolerance, cap } = args;
+    const {
+      pipeline,
+      propertyColumns,
+      organizationId,
+      z,
+      x,
+      y,
+      tolerance,
+      cap,
+    } = args;
     const geomExpr =
       tolerance > 0
         ? `ST_SimplifyPreserveTopology(src.geom, ${tolerance})`
         : "src.geom";
     const envelope = `ST_TileEnvelope(${z}, ${x}, ${y})`;
+    // Carry the spec's property columns onto each MVT feature so the widget can
+    // colour + fill popups (without them every feature is propertyless → grey).
+    // Names come from the validated spec (colorBy/popup) and are quoted.
+    const propSelect = propertyColumns
+      .map((c) => `src.${quoteIdentTile(c)}, `)
+      .join("");
     const tileSql =
       `SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom') AS mvt, ` +
       `count(*)::int AS n FROM (` +
-      `SELECT ST_AsMVTGeom(ST_Transform(${geomExpr}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom ` +
+      `SELECT ${propSelect}ST_AsMVTGeom(ST_Transform(${geomExpr}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom ` +
       `FROM (${pipeline.sql}) src ` +
       `WHERE src.geom && ST_Transform(${envelope}, 4326) ` +
       `LIMIT ${cap}` +
@@ -222,11 +277,8 @@ export class PortalMapTileService {
     deps: RenderTileDeps = {}
   ): Promise<TileRenderResult> {
     const { ref, z, x, y, organizationId, ifNoneMatch } = params;
-    const { pipeline, snapshotUpdatedAt } = await this.resolvePipeline(
-      ref,
-      organizationId,
-      deps
-    );
+    const { pipeline, snapshotUpdatedAt, propertyColumns } =
+      await this.resolvePipeline(ref, organizationId, deps);
 
     // ETag over (pipeline SQL, z, x, y, snapshot clock). A fresh pin snapshot
     // or edited pipeline invalidates cached tiles; a static one caches well.
@@ -251,6 +303,7 @@ export class PortalMapTileService {
       deps.runTileQuery ?? this.defaultRunTileQuery.bind(this);
     const { mvt, featureCount } = await runTileQuery({
       pipeline,
+      propertyColumns,
       organizationId,
       z,
       x,

@@ -3,6 +3,7 @@ import { describe, it, expect } from "@jest/globals";
 import {
   PortalMapTileService,
   MAP_TILE_FEATURE_CAP,
+  propertyColumnsFromSpec,
   tileSimplifyTolerance,
   type RenderTileDeps,
   type TileQueryResult,
@@ -51,6 +52,32 @@ describe("tileSimplifyTolerance", () => {
   it("is positive and shrinks with zoom at low zoom", () => {
     expect(tileSimplifyTolerance(2)).toBeGreaterThan(tileSimplifyTolerance(8));
     expect(tileSimplifyTolerance(8)).toBeGreaterThan(0);
+  });
+});
+
+describe("propertyColumnsFromSpec (#314)", () => {
+  it("collects colorBy columns + popup fields, excludes geom, tolerates single/double braces", () => {
+    const spec = {
+      layers: [
+        { style: { colorBy: { column: "c_state_name" } } },
+        { style: { colorBy: { column: "c_pop2000" } } },
+        { source: { geometryColumn: "geom" } }, // no colorBy
+      ],
+      popup: {
+        template: "State: {c_state_name} — pop {{c_pop2000}} at {geom}",
+      },
+    };
+    const cols = propertyColumnsFromSpec(spec).sort();
+    // c_state_name + c_pop2000; `geom` excluded even though the popup names it.
+    expect(cols).toEqual(["c_pop2000", "c_state_name"]);
+  });
+
+  it("returns [] for a spec with no colorBy or popup", () => {
+    expect(
+      propertyColumnsFromSpec({
+        layers: [{ source: { geometryColumn: "geom" } }],
+      })
+    ).toEqual([]);
   });
 });
 
