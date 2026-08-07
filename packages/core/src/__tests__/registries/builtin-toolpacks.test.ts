@@ -12,7 +12,7 @@ import {
 describe("BUILTIN_TOOLPACKS", () => {
   // Case 1
   it("registers exactly seven packs", () => {
-    expect(BUILTIN_TOOLPACKS.length).toBe(7);
+    expect(BUILTIN_TOOLPACKS.length).toBe(8);
   });
 
   // Case 2
@@ -25,6 +25,7 @@ describe("BUILTIN_TOOLPACKS", () => {
       "web_search",
       "entity_management",
       "visualize",
+      "gis",
     ];
     const actual = BUILTIN_TOOLPACKS.map((p) => p.slug).sort();
     expect(actual).toEqual([...expected].sort());

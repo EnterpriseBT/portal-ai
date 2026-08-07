@@ -22,6 +22,7 @@ import { SqlQueryTool } from "../tools/sql-query.tool.js";
 import { DisplayEntityRecordsTool } from "../tools/display-entity-records.tool.js";
 import { StationContextTool } from "../tools/station-context.tool.js";
 import { VisualizeD3Tool } from "../tools/visualize-d3.tool.js";
+import { VisualizeMapTool } from "../tools/visualize-map.tool.js";
 import { ResolveIdentityTool } from "../tools/resolve-identity.tool.js";
 import { ClusterTool } from "../tools/cluster.tool.js";
 import { HypothesisTestTool } from "../tools/hypothesis-test.tool.js";
@@ -166,6 +167,7 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "sql_query",
   "display_entity_records",
   "visualize_d3",
+  "visualize_map",
   "resolve_identity",
   "cluster",
   "hypothesis_test",
@@ -514,6 +516,18 @@ export class ToolService {
     // -------------------------------------------------------------------
     if (enabledPacks.has("visualize")) {
       tools.visualize_d3 = new VisualizeD3Tool().build(
+        stationId,
+        organizationId
+      );
+    }
+
+    // -------------------------------------------------------------------
+    // Pack: gis (#314) — the map renderer. Spatial math is agent-authored
+    // `ST_*` SQL through sql_query (#316 substrate); this pack ships only
+    // `visualize_map`, the one thing SQL can't do. Free (no codegen).
+    // -------------------------------------------------------------------
+    if (enabledPacks.has("gis")) {
+      tools.visualize_map = new VisualizeMapTool().build(
         stationId,
         organizationId
       );

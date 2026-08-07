@@ -215,6 +215,7 @@ const ALL_PACK_SLUGS = [
   "financial",
   "web_search",
   "entity_management",
+  "gis",
 ];
 
 /** A TierPolicy with the given entitlements. Allocations are unlimited so
@@ -729,6 +730,7 @@ describe("buildAnalyticsTools()", () => {
       "financial",
       "web_search",
       "entity_management",
+      "gis",
     ]);
     mockResolveStationCapabilities.mockResolvedValue([
       {

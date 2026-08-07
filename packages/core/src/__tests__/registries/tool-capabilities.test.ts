@@ -94,6 +94,8 @@ describe("costHint pin (#184)", () => {
     transform_entity_records: "expensive",
     // expensive — per-call Opus codegen sub-call synthesizes the D3 program (#269).
     visualize_d3: "expensive",
+    // free — the agent authors the MapSpec directly, no codegen sub-call (#314).
+    visualize_map: "free",
     // free — local/engine compute, pure math, entity writes, system tools.
     amortize: "free",
     bond_math: "free",

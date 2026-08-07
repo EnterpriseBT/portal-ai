@@ -103,12 +103,12 @@ describe("Toolpacks Router", () => {
 
   describe("GET /api/toolpacks", () => {
     // Case 36
-    it("returns the seven built-in toolpacks", async () => {
+    it("returns the eight built-in toolpacks", async () => {
       const res = await request(app).get("/api/toolpacks");
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.payload.toolpacks).toHaveLength(7);
-      expect(res.body.payload.total).toBe(7);
+      expect(res.body.payload.toolpacks).toHaveLength(8);
+      expect(res.body.payload.total).toBe(8);
       const slugs = (res.body.payload.toolpacks as { slug: string }[]).map(
         (t) => t.slug
       );
@@ -117,6 +117,7 @@ describe("Toolpacks Router", () => {
           "data_query",
           "entity_management",
           "financial",
+          "gis",
           "regression",
           "statistics",
           "visualize",
