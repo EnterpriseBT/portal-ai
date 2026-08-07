@@ -399,6 +399,26 @@ describe("buildSystemPrompt — Phase 3 surface", () => {
     expect(prompt).toMatch(/instruction/i);
   });
 
+  // #314 — the gis pack teaches visualize_map + the compute-upstream idiom.
+  it("includes visualize_map mapping guidance + the compute-upstream idiom when gis is enabled", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["gis"] })
+    );
+    expect(prompt).toContain("### Mapping");
+    expect(prompt).toContain("visualize_map");
+    // Geometry the map needs but the data lacks is derived upstream in SQL.
+    expect(prompt).toMatch(/upstream in SQL/i);
+    expect(prompt).toContain("ST_MakeLine");
+  });
+
+  it("omits the mapping guidance when gis is not enabled", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["data_query"] })
+    );
+    expect(prompt).not.toContain("### Mapping");
+    expect(prompt).not.toContain("visualize_map");
+  });
+
   it("drops the AlaSQL `[bracket]` example query in favour of a double-quoted one", () => {
     const prompt = buildSystemPrompt(
       makeContext({ effectiveToolPacks: ["data_query", "entity_management"] })

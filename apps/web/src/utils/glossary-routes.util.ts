@@ -26,6 +26,7 @@ export const GLOSSARY_PAGE_ROUTES: Partial<Record<string, ApplicationRoute>> = {
   "Column Definition": ApplicationRoute.ColumnDefinitions,
   "Field Mapping": ApplicationRoute.Entities,
   "Data Types": ApplicationRoute.ColumnDefinitions,
+  Geometry: ApplicationRoute.ColumnDefinitions,
   "Validation Pattern": ApplicationRoute.ColumnDefinitions,
   "Canonical Format": ApplicationRoute.ColumnDefinitions,
   "Primary Key": ApplicationRoute.Entities,
@@ -38,6 +39,7 @@ export const GLOSSARY_PAGE_ROUTES: Partial<Record<string, ApplicationRoute>> = {
   "Overlap Preview": ApplicationRoute.EntityGroups,
   // Analytics
   Station: ApplicationRoute.Stations,
+  "Map Visualization": ApplicationRoute.Stations,
   "Tool Pack": ApplicationRoute.Toolpacks,
   "Plan Entitlement": ApplicationRoute.Toolpacks,
   "Custom Toolpack": ApplicationRoute.Toolpacks,
