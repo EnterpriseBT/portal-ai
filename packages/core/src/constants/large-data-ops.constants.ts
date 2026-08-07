@@ -29,10 +29,25 @@ export const WEBHOOK_READ_TOKEN_TTL_MS = 10 * 60 * 1000;
 /** Above this row count, reads automatically sample. */
 export const SAMPLING_THRESHOLD = 50_000;
 
-/** Max features rendered per inline map layer (#84 / #314). Bounds the client;
- *  the wire payload is already bounded by the sink threshold + handle snapshot
- *  cap. Applies to the inline path only — the vector-tile path transfers just
- *  the viewport, so large layers render through tiles instead. */
+/**
+ * Inline→tile boundary for `visualize_map` (#314). A result with ≤ this many
+ * rows is delivered as **inline GeoJSON** (one payload, instant pan/zoom, no
+ * tile round-trip); a larger one becomes a query handle the widget renders as
+ * **vector tiles**. Deliberately far above the table default
+ * (`INLINE_ROWS_THRESHOLD = 100`): GeoJSON features are cheap and a modest map
+ * (a few thousand parcels) should not pay per-tile SQL re-execution. Kept below
+ * `MAP_LAYER_FEATURE_CAP` so the inline payload stays bounded.
+ */
+export const MAP_INLINE_FEATURE_THRESHOLD = 2_000;
+
+/**
+ * Defensive per-layer render clamp for the inline path (#84 / #314). The
+ * inline payload is already bounded by `MAP_INLINE_FEATURE_THRESHOLD`, so in
+ * normal operation this never binds; it is the backstop that clamps + surfaces
+ * a "showing first N of M" notice if more features ever reach the renderer
+ * inline (e.g. a pinned snapshot, or a future higher threshold). Large results
+ * take the vector-tile path instead, which transfers only the viewport.
+ */
 export const MAP_LAYER_FEATURE_CAP = 10_000;
 
 /** Per-query wall-clock cap for a SYNCHRONOUS query; PG `statement_timeout`.

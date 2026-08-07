@@ -2,6 +2,7 @@ import { z } from "zod";
 import { tool } from "ai";
 
 import { MapSpecSchema } from "@portalai/core/contracts";
+import { MAP_INLINE_FEATURE_THRESHOLD } from "@portalai/core/constants";
 
 import { Tool } from "../types/tools.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -124,8 +125,12 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
         }
         const spec = specResult.data;
 
+        // Maps inline far more generously than the 100-row table default:
+        // GeoJSON features are cheap, and a few-thousand-feature map should
+        // render as one payload rather than pay per-tile SQL re-execution.
+        // Beyond this it becomes a handle → vector tiles.
         const delivery = await resolveSqlDelivery(
-          { sql },
+          { sql, inlineThreshold: MAP_INLINE_FEATURE_THRESHOLD },
           { stationId, organizationId }
         );
 
