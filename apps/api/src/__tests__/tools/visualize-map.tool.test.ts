@@ -94,7 +94,7 @@ describe("VisualizeMapTool.execute (#314)", () => {
     // Two query kinds: the DISTINCT-values query (colorBy stops) and the
     // display query (geometry → GeoJSON). Branch on the SQL.
     const sqlQuery = jest.fn(async ({ sql }: { sql: string }) =>
-      sql.includes("DISTINCT")
+      sql.includes("GROUP BY")
         ? { rows: [{ v: "alpha" }, { v: "beta" }] }
         : {
             rows: [

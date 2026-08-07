@@ -210,9 +210,13 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
         for (const layer of spec.layers) {
           const cb = layer.style?.colorBy;
           if (!cb || (cb.stops && cb.stops.length > 0)) continue;
+          // Top categories by frequency (not alphabetical) get the palette —
+          // the most common values are the ones worth distinguishing; the long
+          // tail beyond the palette shares the neutral fallback.
           const distinctSql =
-            `SELECT DISTINCT _q.${quoteIdent(cb.column)} AS v FROM (${sql}) _q ` +
-            `WHERE _q.${quoteIdent(cb.column)} IS NOT NULL ORDER BY 1 LIMIT ${CATEGORICAL_PALETTE.length}`;
+            `SELECT _q.${quoteIdent(cb.column)} AS v FROM (${sql}) _q ` +
+            `WHERE _q.${quoteIdent(cb.column)} IS NOT NULL ` +
+            `GROUP BY _q.${quoteIdent(cb.column)} ORDER BY count(*) DESC, 1 LIMIT ${CATEGORICAL_PALETTE.length}`;
           const dres = (await sqlQuery({
             sql: distinctSql,
             stationId,
