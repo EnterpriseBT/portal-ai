@@ -82,11 +82,12 @@ describe("resolveColorBy", () => {
       { klass: "vacant" },
     ];
     const { expression, legend } = resolveColorBy({ column: "klass" }, rows);
-    expect(expression[0]).toBe("match");
-    expect(expression[1]).toEqual(["get", "klass"]);
+    const expr = expression as unknown[];
+    expect(expr[0]).toBe("match");
+    expect(expr[1]).toEqual(["get", "klass"]);
     // vacant, <color>, improved, <color>, <fallback>
-    expect(expression).toContain("vacant");
-    expect(expression).toContain("improved");
+    expect(expr).toContain("vacant");
+    expect(expr).toContain("improved");
     expect(legend.map((l) => l.label)).toEqual(["vacant", "improved"]);
   });
 

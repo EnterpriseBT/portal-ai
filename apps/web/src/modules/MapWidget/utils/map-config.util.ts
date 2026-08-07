@@ -112,7 +112,7 @@ export interface LegendEntry {
 export function resolveColorBy(
   colorBy: NonNullable<MapLayer["style"]>["colorBy"] & object,
   rows: Row[]
-): { expression: unknown[]; legend: LegendEntry[] } {
+): { expression: unknown; legend: LegendEntry[] } {
   const palette =
     colorBy.palette && colorBy.palette.length
       ? colorBy.palette
