@@ -53,7 +53,9 @@ export async function fetchTile(
   url: string,
   signal: AbortSignal | undefined,
   deps: FetchTileDeps = {
-    fetch: globalThis.fetch,
+    // Bound to globalThis — a bare `globalThis.fetch` reference loses its
+    // receiver and throws "Illegal invocation" when called as `deps.fetch(…)`.
+    fetch: globalThis.fetch.bind(globalThis),
     registry: contexts,
     resolveUrl: (p) => p,
   }
@@ -97,7 +99,7 @@ export function installPortalMapProtocol(
   installed = true;
   maplibre.addProtocol(TILE_PROTOCOL, (params, abortController) =>
     fetchTile(params.url, abortController?.signal, {
-      fetch: globalThis.fetch,
+      fetch: globalThis.fetch.bind(globalThis),
       registry: contexts,
       resolveUrl,
     })

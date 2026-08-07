@@ -246,6 +246,46 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
         // Handle branch first — a large result rides its query-handle envelope
         // and the widget renders it through vector tiles keyed to this block.
         if (delivery.kind === "handle") {
+          // A tiled map has no inline rows to fit-to client-side, so it would
+          // open at [0,0]. Seed the initial view from the geometry extent when
+          // the spec leaves it "fit".
+          if (spec.initialView === "fit" && primaryGeom) {
+            try {
+              const extSql =
+                `SELECT ST_XMin(e) AS xmin, ST_YMin(e) AS ymin, ST_XMax(e) AS xmax, ST_YMax(e) AS ymax ` +
+                `FROM (SELECT ST_Extent(_q.${quoteIdent(primaryGeom)}::geometry) AS e FROM (${sql}) _q) x`;
+              const eres = (await sqlQuery({
+                sql: extSql,
+                stationId,
+                organizationId,
+              })) as {
+                rows?: Array<{
+                  xmin?: number;
+                  ymin?: number;
+                  xmax?: number;
+                  ymax?: number;
+                }>;
+              };
+              const b = eres.rows?.[0];
+              const nums = [b?.xmin, b?.ymin, b?.xmax, b?.ymax];
+              if (
+                b &&
+                nums.every((n) => typeof n === "number" && Number.isFinite(n))
+              ) {
+                const span =
+                  Math.max(b.xmax! - b.xmin!, b.ymax! - b.ymin!) || 0.01;
+                spec.initialView = {
+                  center: [(b.xmin! + b.xmax!) / 2, (b.ymin! + b.ymax!) / 2],
+                  zoom: Math.max(
+                    1,
+                    Math.min(15, Math.floor(Math.log2(360 / span)) - 1)
+                  ),
+                };
+              }
+            } catch {
+              // Leave "fit" — the widget falls back to its default view.
+            }
+          }
           return {
             type: "geo",
             spec,
