@@ -85,6 +85,60 @@ describe("VisualizeMapTool.execute (#314)", () => {
     });
   });
 
+  it("inline + geometryColumn source → geometry re-projected to GeoJSON; pipeline exposes `geom`", async () => {
+    // The raw delivery returns geometry as WKB hex (session view exposes a raw
+    // geometry type); the display query re-projects it to GeoJSON.
+    const rawInline = {
+      kind: "inline" as const,
+      result: {
+        rows: [{ c_geometry: "0101000020E6100000", c_state_name: "alpha" }],
+      },
+    };
+    const resolveSqlDelivery = jest.fn(async () => rawInline);
+    const sqlQuery = jest.fn(async () => ({
+      rows: [
+        {
+          _row: {
+            c_geometry: { type: "Point", coordinates: [-111.9, 40.7] },
+            c_state_name: "alpha",
+          },
+        },
+      ],
+    }));
+    const exec = buildTool({
+      resolveSqlDelivery: resolveSqlDelivery as never,
+      sqlQuery: sqlQuery as never,
+    });
+
+    const out = await exec({
+      sql: 'SELECT "c_geometry", "c_state_name" FROM "smoke"',
+      spec: {
+        layers: [
+          {
+            kind: "points",
+            source: { geometryColumn: "c_geometry" },
+            style: { colorBy: { column: "c_state_name" } },
+          },
+        ],
+      },
+    });
+
+    // Inline rows carry GeoJSON, not WKB hex.
+    const rows = out.rows as Array<Record<string, unknown>>;
+    expect(rows[0].c_geometry).toEqual({
+      type: "Point",
+      coordinates: [-111.9, 40.7],
+    });
+    // The display query re-projected the geometry column.
+    const displaySql = (
+      (sqlQuery.mock.calls[0] as unknown[])[0] as { sql: string }
+    ).sql;
+    expect(displaySql).toContain("ST_AsGeoJSON");
+    expect(displaySql).toContain('"c_geometry"');
+    // The pipeline (tiles + refresh) exposes a raw `geom` column.
+    expect((out.pipeline as { sql: string }).sql).toContain("AS geom");
+  });
+
   it("handle delivery (large result) → geo block carrying the envelope, no inline rows", async () => {
     const resolveSqlDelivery = jest.fn(async () => handleDelivery);
     const exec = buildTool({ resolveSqlDelivery: resolveSqlDelivery as never });

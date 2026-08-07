@@ -7,6 +7,7 @@ import { MAP_INLINE_FEATURE_THRESHOLD } from "@portalai/core/constants";
 import { Tool } from "../types/tools.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { resolveSqlDelivery as defaultResolveSqlDelivery } from "./result-sink.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 
 // -- Tool input --------------------------------------------------------------
 //
@@ -34,6 +35,26 @@ const InputSchema = z.object({
 /** Injectable dependencies (test seam; mirrors the DI style used elsewhere). */
 export interface VisualizeMapDeps {
   resolveSqlDelivery?: typeof defaultResolveSqlDelivery;
+  /** Runs the display query that re-projects geometry columns to GeoJSON for
+   *  the inline path (see below). */
+  sqlQuery?: typeof AnalyticsService.sqlQuery;
+}
+
+const quoteIdent = (s: string) => `"${s.replace(/"/g, '""')}"`;
+const quoteLit = (s: string) => `'${s.replace(/'/g, "''")}'`;
+
+/** Geometry-column names the spec's layers bind to (lat/lng sources are plain
+ *  numbers the widget turns into Points — no conversion needed). */
+function geometryColumns(
+  spec: ReturnType<typeof MapSpecSchema.parse>
+): string[] {
+  return [
+    ...new Set(
+      spec.layers.flatMap((l) =>
+        "geometryColumn" in l.source ? [l.source.geometryColumn] : []
+      )
+    ),
+  ];
 }
 
 /** Inline rows out of a delivery result (inline path only). */
@@ -101,6 +122,8 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
   ) {
     const resolveSqlDelivery =
       deps.resolveSqlDelivery ?? defaultResolveSqlDelivery;
+    const sqlQuery =
+      deps.sqlQuery ?? AnalyticsService.sqlQuery.bind(AnalyticsService);
 
     return tool({
       description: this.description,
@@ -132,19 +155,21 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
           };
         }
         const spec = specResult.data;
+        const geomCols = geometryColumns(spec);
 
-        // Maps inline far more generously than the 100-row table default:
-        // GeoJSON features are cheap, and a few-thousand-feature map should
-        // render as one payload rather than pay per-tile SQL re-execution.
-        // Beyond this it becomes a handle → vector tiles.
+        // Run the agent's SQL as-authored: it decides inline-vs-handle (maps
+        // inline far more generously than the 100-row table default — GeoJSON
+        // features are cheap), gives the real result schema for the column
+        // check, and is the durable pipeline. Geometry reads back as a raw
+        // geometry type here (WKB on the wire) — required for the agent's ST_*
+        // and for the tile path; the inline display re-projects it below.
         const delivery = await resolveSqlDelivery(
           { sql, inlineThreshold: MAP_INLINE_FEATURE_THRESHOLD },
           { stationId, organizationId }
         );
 
         // Reject a spec that references a column the query didn't return — a
-        // typed error the agent repairs, never a blank layer (row 8). Skipped
-        // when the result exposes no columns (nothing to validate against).
+        // typed error the agent repairs, never a blank layer (row 8).
         const columns = schemaColumnsOf(delivery);
         if (columns.size > 0) {
           const missing = referencedColumns(spec).filter(
@@ -161,13 +186,18 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
         }
 
         const titleField = title ? { title } : {};
-        // Durable, re-executable pipeline so the widget can re-run its SQL for
-        // live data (and tile the handle branch) after the Redis handle expires.
-        const pipeline = { sql, stationId, organizationId };
+        // The tile path (#316) re-runs the pipeline SQL and needs a raw geometry
+        // column named `geom`; expose it from the layer's geometry column
+        // (kept under its own name too, for ST_* + refresh).
+        const primaryGeom = geomCols[0];
+        const pipelineSql =
+          primaryGeom && primaryGeom !== "geom"
+            ? `SELECT _q.*, _q.${quoteIdent(primaryGeom)} AS geom FROM (${sql}) _q`
+            : sql;
+        const pipeline = { sql: pipelineSql, stationId, organizationId };
 
         // Handle branch first — a large result rides its query-handle envelope
-        // and the widget renders it through vector tiles; a small one inlines
-        // its GeoJSON rows. Same size threshold the sink already applies.
+        // and the widget renders it through vector tiles keyed to this block.
         if (delivery.kind === "handle") {
           return {
             type: "geo",
@@ -177,13 +207,32 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
             ...delivery.envelope,
           };
         }
-        return {
-          type: "geo",
-          spec,
-          ...titleField,
-          pipeline,
-          rows: inlineRows(delivery),
-        };
+
+        // Inline: re-project the geometry column(s) to GeoJSON so the widget can
+        // read them (a raw geometry serializes as WKB hex, which it can't). One
+        // extra small query over the same SQL, overriding just the geometry
+        // keys via jsonb merge.
+        let rows = inlineRows(delivery);
+        if (geomCols.length > 0) {
+          const overrides = geomCols
+            .map(
+              (c) => `${quoteLit(c)}, ST_AsGeoJSON(_q.${quoteIdent(c)})::jsonb`
+            )
+            .join(", ");
+          const displaySql = `SELECT to_jsonb(_q) || jsonb_build_object(${overrides}) AS _row FROM (${sql}) _q`;
+          const disp = (await sqlQuery({
+            sql: displaySql,
+            stationId,
+            organizationId,
+          })) as { rows?: Array<{ _row?: unknown }> };
+          rows = (disp.rows ?? []).map((r) => {
+            const v = r._row;
+            return (
+              typeof v === "string" ? JSON.parse(v) : (v ?? {})
+            ) as Record<string, unknown>;
+          });
+        }
+        return { type: "geo", spec, ...titleField, pipeline, rows };
       },
     });
   }
