@@ -101,7 +101,10 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   onHeight,
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
-  const ctxId = useId();
+  // React's useId() returns colon-wrapped ids (":r0:"); strip to URL-safe chars
+  // because ctxId rides in the tile URL authority (`portalmap://<ctxId>/…`),
+  // where a colon is invalid and silently breaks tile dispatch.
+  const ctxId = useId().replace(/[^a-zA-Z0-9]/g, "");
   const [internalTileStatus, setInternalTileStatus] =
     useState<TileStatus>(EMPTY_TILE_STATUS);
   // A style/expression error thrown by MapLibre at addLayer time (row 9).
