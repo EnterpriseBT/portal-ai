@@ -502,7 +502,7 @@ describe("Toolpacks Router", () => {
 
       const res = await request(app).get("/api/toolpacks");
       expect(res.status).toBe(200);
-      expect(res.body.payload.total).toBe(8); // 7 built-ins + 1 custom
+      expect(res.body.payload.total).toBe(9); // 8 built-ins + 1 custom
       const kinds = (res.body.payload.toolpacks as { kind: string }[]).map(
         (t) => t.kind
       );
