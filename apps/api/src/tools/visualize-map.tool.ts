@@ -6,6 +6,7 @@ import { MapSpecSchema } from "@portalai/core/contracts";
 import { Tool } from "../types/tools.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { resolveSqlDelivery as defaultResolveSqlDelivery } from "./result-sink.js";
+import { geometryColumnsFromSpec, geoInlineRows } from "./geo-delivery.util.js";
 import { AnalyticsService } from "../services/analytics.service.js";
 
 // -- Tool input --------------------------------------------------------------
@@ -40,7 +41,6 @@ export interface VisualizeMapDeps {
 }
 
 const quoteIdent = (s: string) => `"${s.replace(/"/g, '""')}"`;
-const quoteLit = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 /** Base categorical palette (Tableau 10) — the first colours a colorBy uses. */
 const BASE_PALETTE = [
@@ -79,20 +79,6 @@ function hslToHex(h: number, s: number, l: number): string {
 export function categoryColor(i: number): string {
   if (i < BASE_PALETTE.length) return BASE_PALETTE[i];
   return hslToHex((i * 137.508) % 360, 0.62, 0.55);
-}
-
-/** Geometry-column names the spec's layers bind to (lat/lng sources are plain
- *  numbers the widget turns into Points — no conversion needed). */
-function geometryColumns(
-  spec: ReturnType<typeof MapSpecSchema.parse>
-): string[] {
-  return [
-    ...new Set(
-      spec.layers.flatMap((l) =>
-        "geometryColumn" in l.source ? [l.source.geometryColumn] : []
-      )
-    ),
-  ];
 }
 
 /** Inline rows out of a delivery result (inline path only). */
@@ -193,7 +179,7 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
           };
         }
         const spec = specResult.data;
-        const geomCols = geometryColumns(spec);
+        const geomCols = geometryColumnsFromSpec(spec);
 
         // Run the agent's SQL as-authored: the shared sink decides
         // inline-vs-handle (small results inline; larger stage a handle the
@@ -320,29 +306,16 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
         }
 
         // Inline: re-project the geometry column(s) to GeoJSON so the widget can
-        // read them (a raw geometry serializes as WKB hex, which it can't). One
-        // extra small query over the same SQL, overriding just the geometry
-        // keys via jsonb merge.
-        let rows = inlineRows(delivery);
-        if (geomCols.length > 0) {
-          const overrides = geomCols
-            .map(
-              (c) => `${quoteLit(c)}, ST_AsGeoJSON(_q.${quoteIdent(c)})::jsonb`
-            )
-            .join(", ");
-          const displaySql = `SELECT to_jsonb(_q) || jsonb_build_object(${overrides}) AS _row FROM (${sql}) _q`;
-          const disp = (await sqlQuery({
-            sql: displaySql,
-            stationId,
-            organizationId,
-          })) as { rows?: Array<{ _row?: unknown }> };
-          rows = (disp.rows ?? []).map((r) => {
-            const v = r._row;
-            return (
-              typeof v === "string" ? JSON.parse(v) : (v ?? {})
-            ) as Record<string, unknown>;
-          });
-        }
+        // read them (a raw geometry serializes as WKB hex, which it can't). The
+        // shared helper is the same one widget-refresh uses, so a refreshed map
+        // renders identically.
+        const rows = await geoInlineRows(
+          sql,
+          geomCols,
+          inlineRows(delivery),
+          { stationId, organizationId },
+          { sqlQuery }
+        );
         return { type: "geo", spec, ...titleField, pipeline, rows };
       },
     });
