@@ -362,16 +362,20 @@ export class PortalSqlServiceImpl {
     // applies for the remainder of the transaction regardless of when
     // it is issued, so the LLM SQL still runs under the read-only
     // guard.
+    // Build the session-view DDL BEFORE opening the transaction — its own
+    // pooled reads (capabilities, entity + column metadata) must not run while
+    // this txn holds a connection, or concurrent callers deadlock the pool
+    // (each holds one connection and blocks acquiring a second). See the tile
+    // renderer for the acute fan-out case. (#314)
+    const build = await this.buildSessionViews(
+      params.stationId,
+      params.organizationId
+    );
+
     try {
       await db.transaction(async (tx) => {
         await tx.execute(
           sql.raw(`SET LOCAL statement_timeout = '${statementTimeoutMs}ms'`)
-        );
-
-        const build = await this.buildSessionViews(
-          params.stationId,
-          params.organizationId,
-          tx as unknown as DbClient
         );
 
         for (const ddl of build.views) {
@@ -455,17 +459,19 @@ export class PortalSqlServiceImpl {
       ? applyImplicitLimit(cleaned, PORTAL_SQL_DEFAULTS.rowCap)
       : { sql: cleaned };
 
+    // Build the session-view DDL before the txn — same pool-deadlock avoidance
+    // as runSqlQuery / the tile renderer. (#314)
+    const build = await this.buildSessionViews(
+      params.stationId,
+      params.organizationId
+    );
+
     try {
       await db.transaction(async (tx) => {
         await tx.execute(
           sql.raw(`SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT_MS}ms'`)
         );
 
-        const build = await this.buildSessionViews(
-          params.stationId,
-          params.organizationId,
-          tx as unknown as DbClient
-        );
         for (const ddl of build.views) {
           await tx.execute(sql.raw(ddl));
         }

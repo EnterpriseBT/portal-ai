@@ -232,17 +232,25 @@ export class PortalMapTileService {
       `LIMIT ${cap}` +
       `) q WHERE q.geom IS NOT NULL`;
 
+    // Build the session-view DDL BEFORE opening the tile transaction.
+    // `buildSessionViews` runs its own pooled DB reads (capabilities, entity +
+    // column metadata); doing that while holding this txn's connection means
+    // each concurrent tile request holds one connection and then blocks waiting
+    // for a second — and MapLibre fans out ~10 tiles at once for any sizeable
+    // layer, which deadlocks the pool (every slot held by a tile txn awaiting a
+    // second connection that never frees). Computing the DDL first keeps the txn
+    // to a single connection. (#314)
+    const build = await PortalSqlService.buildSessionViews(
+      pipeline.stationId,
+      organizationId
+    );
+
     try {
       return await db.transaction(async (tx) => {
         await tx.execute(
           sql.raw(
             `SET LOCAL statement_timeout = '${TILE_STATEMENT_TIMEOUT_MS}ms'`
           )
-        );
-        const build = await PortalSqlService.buildSessionViews(
-          pipeline.stationId,
-          organizationId,
-          tx as never
         );
         for (const ddl of build.views) {
           await tx.execute(sql.raw(ddl));
