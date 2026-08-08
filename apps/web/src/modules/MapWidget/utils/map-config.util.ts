@@ -118,6 +118,14 @@ export const DEFAULT_PALETTE = [
 
 const DEFAULT_COLOR = "#4e79a7";
 const UNMATCHED_COLOR = "#cfd8dc";
+/**
+ * Default fill opacity for low-zoom aggregate bins (#330). Deliberately
+ * translucent so the basemap underneath — city labels, roads, landmarks — reads
+ * through the coloured grid; a solid bin obscures the very context that makes an
+ * overview useful. Dataset-agnostic (applies to category and density bins) and
+ * overridable per layer via `style.opacity`. The density ramp tops out here too.
+ */
+const AGG_FILL_OPACITY = 0.5;
 
 export interface LegendEntry {
   label: string;
@@ -293,19 +301,24 @@ export function layerToMapLibre(
       source,
       maxzoom: threshold,
       paint: style.colorBy
-        ? { "fill-color": color, "fill-opacity": 0.75 }
+        ? {
+            "fill-color": color,
+            "fill-opacity": style.opacity ?? AGG_FILL_OPACITY,
+          }
         : {
             "fill-color": color,
-            // Density: opacity scales with the per-cell count over a fixed
-            // log domain (consistent across tiles, never per-tile normalized).
+            // Density: opacity scales with the per-cell count over a fixed log
+            // domain (consistent across tiles, never per-tile normalized), and
+            // tops out at the translucent AGG_FILL_OPACITY so even the densest
+            // cell lets the basemap read through.
             "fill-opacity": [
               "interpolate",
               ["linear"],
               ["log10", ["max", ["get", "_count"], 1]],
               0,
-              0.15,
+              0.1,
               Math.log10(AGG_DENSITY_MAX),
-              0.85,
+              AGG_FILL_OPACITY,
             ],
           },
     });

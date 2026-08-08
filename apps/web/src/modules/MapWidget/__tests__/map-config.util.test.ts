@@ -254,6 +254,30 @@ describe("layerToMapLibre aggregation (#330)", () => {
     const { layers } = layerToMapLibre(catLayer, 0, [], { tiled: false });
     expect(layers.some((l) => l.id === `${sourceIdFor(0)}-agg`)).toBe(false);
   });
+
+  it("bins are translucent so the basemap shows through, and honour style.opacity (#330)", () => {
+    const agg = (l: MapLayer) =>
+      layerToMapLibre(l, 0, [], { tiled: true }).layers.find(
+        (x) => x.id === `${sourceIdFor(0)}-agg`
+      )!;
+    // Default category bin: translucent (basemap reads through), not near-opaque.
+    expect(agg(catLayer).paint["fill-opacity"] as number).toBeLessThanOrEqual(
+      0.6
+    );
+    // A per-layer style.opacity overrides it.
+    const overridden = agg({
+      ...catLayer,
+      style: { ...catLayer.style, opacity: 0.9 },
+    } as MapLayer);
+    expect(overridden.paint["fill-opacity"]).toBe(0.9);
+    // Density ramp also tops out translucent.
+    const density = agg({
+      kind: "polygons",
+      source: { geometryColumn: "geom" },
+    } as MapLayer);
+    const ramp = density.paint["fill-opacity"] as number[];
+    expect(ramp[ramp.length - 1]).toBeLessThanOrEqual(0.6);
+  });
 });
 
 describe("buildLegend", () => {
