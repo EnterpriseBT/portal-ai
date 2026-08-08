@@ -121,6 +121,42 @@ async function main() {
     });
   }
 
+  // 4. Aggregate (grid-bin) tile latency at low zooms (#330). Mirrors the
+  //    overview path the tile renderer uses below its zoom threshold: snap to a
+  //    global grid, one count-density bin per cell. Confirms the grid query
+  //    stays well under the 10 s tile statement-timeout at the lowest zooms.
+  const WORLD_3857 = 40075016.685578488;
+  const tileXY = (lng: number, lat: number, z: number) => ({
+    x: Math.floor(((lng + 180) / 360) * 2 ** z),
+    y: Math.floor(
+      ((1 - Math.asinh(Math.tan((lat * Math.PI) / 180)) / Math.PI) / 2) * 2 ** z
+    ),
+  });
+  const aggResults: Array<{ z: number; ms: number; bytes: number }> = [];
+  for (const z of [6, 9, 12]) {
+    const { x, y } = tileXY(10, 10, z);
+    const env = `ST_TileEnvelope(${z}, ${x}, ${y})`;
+    const cell = WORLD_3857 / 2 ** z / Math.round(512 / 24);
+    const half = cell / 2;
+    t = process.hrtime.bigint();
+    const agg = (await sql.unsafe(
+      `WITH cells AS (
+         SELECT ST_SnapToGrid(ST_Centroid(ST_Transform(geom, 3857)), ${cell}) AS cell, count(*)::int AS _count
+         FROM bench_geo
+         WHERE geom && ST_Transform(ST_Expand(${env}, ${cell}), 4326)
+         GROUP BY 1 LIMIT 10000
+       ) SELECT (SELECT ST_AsMVT(q, 'default', 4096, 'geom') FROM (
+           SELECT _count, ST_AsMVTGeom(ST_MakeEnvelope(ST_X(cell) - ${half}, ST_Y(cell) - ${half}, ST_X(cell) + ${half}, ST_Y(cell) + ${half}, 3857), ${env}, 4096, 64, true) AS geom
+           FROM cells
+         ) q WHERE q.geom IS NOT NULL) AS mvt`
+    )) as unknown as Array<{ mvt: Uint8Array | null }>;
+    aggResults.push({
+      z,
+      ms: ms(t),
+      bytes: agg[0]?.mvt ? agg[0].mvt.length : 0,
+    });
+  }
+
   await sql.unsafe(`DROP TABLE IF EXISTS bench_geo`);
 
   console.log(
@@ -136,6 +172,10 @@ async function main() {
   console.log(`  speedup           : ${(nodeMs / pgMs).toFixed(0)}×\n`);
   console.log(`tile render (ST_AsMVT):`);
   for (const r of tileResults) {
+    console.log(`  z${r.z} : ${r.ms.toFixed(1)} ms  (${r.bytes} bytes)`);
+  }
+  console.log(`\naggregate tile render (grid bins, #330):`);
+  for (const r of aggResults) {
     console.log(`  z${r.z} : ${r.ms.toFixed(1)} ms  (${r.bytes} bytes)`);
   }
   console.log("");
