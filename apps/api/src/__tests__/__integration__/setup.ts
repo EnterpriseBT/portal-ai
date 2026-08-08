@@ -89,6 +89,30 @@ export default async function globalSetup() {
     await migrate(db, { migrationsFolder: migrationsPath });
     console.log("✅ Migrations completed");
 
+    // PostGIS ships `spatial_ref_sys` with thousands of SRID definitions, but the
+    // test image can leave the extension installed with an EMPTY catalog — and
+    // the migration's `CREATE EXTENSION IF NOT EXISTS postgis` (0076) then no-ops,
+    // never populating it. The result: `ST_Transform` loses every projection and
+    // all geometry integration tests fail with "Cannot find SRID (3857)". If the
+    // catalog is empty, repopulate it from PROJ's own database via
+    // `postgis_srs_all()` (PostGIS ≥3.4). This does NOT recreate the extension —
+    // a `DROP EXTENSION … CASCADE` would take the migration-created,
+    // postgis-dependent helpers (e.g. `portal_try_geom_from_geojson`) with it,
+    // which a no-op `migrate()` on a reused container would never restore. (#332)
+    const [srs] = (await db.execute(sql`
+      SELECT count(*)::int AS n FROM spatial_ref_sys
+    `)) as unknown as Array<{ n: number }>;
+    if (Number(srs?.n ?? 0) === 0) {
+      console.log("🗺️  spatial_ref_sys empty — repopulating from PROJ");
+      await db.execute(sql`
+        INSERT INTO spatial_ref_sys (srid, auth_name, auth_srid, srtext, proj4text)
+        SELECT auth_srid::int, auth_name, auth_srid::int, srtext, proj4text
+        FROM postgis_srs_all()
+        WHERE auth_name = 'EPSG' AND auth_srid ~ '^[0-9]+$'
+        ON CONFLICT (srid) DO NOTHING
+      `);
+    }
+
     // Re-seed data-bearing migration rows the TRUNCATE above wiped. The
     // drizzle journal lives in the `drizzle` schema, so on a reused test
     // container `migrate()` no-ops and never re-runs 0065's `standard`
