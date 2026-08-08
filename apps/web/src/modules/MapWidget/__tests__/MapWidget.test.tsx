@@ -148,7 +148,12 @@ describe("MapWidgetUI", () => {
     const { rerender } = render(
       <MapWidgetUI
         {...tileProps}
-        tileStatus={{ simplified: true, truncated: false, timedOut: false }}
+        tileStatus={{
+          simplified: true,
+          truncated: false,
+          timedOut: false,
+          aggregated: false,
+        }}
       />
     );
     // Tile mode renders the canvas even with no inline rows.
@@ -158,7 +163,12 @@ describe("MapWidgetUI", () => {
     rerender(
       <MapWidgetUI
         {...tileProps}
-        tileStatus={{ simplified: false, truncated: true, timedOut: false }}
+        tileStatus={{
+          simplified: false,
+          truncated: true,
+          timedOut: false,
+          aggregated: false,
+        }}
       />
     );
     expect(screen.getByTestId("map-widget-tile-truncated")).toBeInTheDocument();
@@ -166,10 +176,35 @@ describe("MapWidgetUI", () => {
     rerender(
       <MapWidgetUI
         {...tileProps}
-        tileStatus={{ simplified: false, truncated: false, timedOut: true }}
+        tileStatus={{
+          simplified: false,
+          truncated: false,
+          timedOut: true,
+          aggregated: false,
+        }}
       />
     );
     expect(screen.getByTestId("map-widget-tile-timeout")).toBeInTheDocument();
+  });
+
+  it("renders the aggregated-overview notice, suppressing the truncated one (#330)", () => {
+    render(
+      <MapWidgetUI
+        spec={pointsSpec}
+        rows={[]}
+        mode="light"
+        tileTemplate="/api/portal-map/tiles/pin/p1/{z}/{x}/{y}.mvt"
+        getTileToken={async () => "tok"}
+        tileStatus={{
+          simplified: false,
+          truncated: true, // even with truncated set …
+          timedOut: false,
+          aggregated: true, // … the aggregate notice wins
+        }}
+      />
+    );
+    expect(screen.getByTestId("map-widget-aggregated")).toBeInTheDocument();
+    expect(screen.queryByTestId("map-widget-tile-truncated")).toBeNull();
   });
 
   it("renders a title and a working refresh control", () => {

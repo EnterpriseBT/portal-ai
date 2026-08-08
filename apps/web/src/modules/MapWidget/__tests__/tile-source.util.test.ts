@@ -36,6 +36,7 @@ describe("readTileStatus", () => {
       simplified: true,
       truncated: false,
       timedOut: false,
+      aggregated: false,
     });
     expect(
       readTileStatus(200, headers({ "X-Portal-Tile-Truncated": "1" }))
@@ -44,11 +45,17 @@ describe("readTileStatus", () => {
   it("flags a timeout from a 504", () => {
     expect(readTileStatus(504, headers({}))).toMatchObject({ timedOut: true });
   });
+  it("flags an aggregated tile from the header (#330)", () => {
+    expect(
+      readTileStatus(200, headers({ "X-Portal-Tile-Aggregated": "1" }))
+    ).toMatchObject({ aggregated: true });
+  });
   it("is all-false for a clean tile", () => {
     expect(readTileStatus(200, headers({}))).toEqual({
       simplified: false,
       truncated: false,
       timedOut: false,
+      aggregated: false,
     });
   });
 });
