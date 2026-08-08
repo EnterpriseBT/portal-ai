@@ -108,6 +108,50 @@ describe("MapSpecSchema", () => {
   });
 });
 
+describe("MapLayerSchema aggregation (#330)", () => {
+  const withAgg = (aggregation: unknown) =>
+    MapSpecSchema.safeParse({ layers: [{ ...pointsLayer, aggregation }] });
+
+  it("parses when aggregation is omitted (optional — default-on server-side)", () => {
+    expect(MapSpecSchema.safeParse({ layers: [pointsLayer] }).success).toBe(
+      true
+    );
+  });
+
+  it("accepts a partial or empty aggregation block", () => {
+    expect(withAgg({}).success).toBe(true);
+    expect(withAgg({ enabled: false }).success).toBe(true);
+    expect(withAgg({ zoomThreshold: 10 }).success).toBe(true);
+    expect(withAgg({ gridSizePx: 32 }).success).toBe(true);
+    expect(
+      withAgg({ enabled: true, zoomThreshold: 9, gridSizePx: 16 }).success
+    ).toBe(true);
+  });
+
+  it("rejects a zoomThreshold outside 0..22", () => {
+    expect(withAgg({ zoomThreshold: -1 }).success).toBe(false);
+    expect(withAgg({ zoomThreshold: 23 }).success).toBe(false);
+  });
+
+  it("rejects a non-positive or too-large gridSizePx", () => {
+    expect(withAgg({ gridSizePx: 0 }).success).toBe(false);
+    expect(withAgg({ gridSizePx: 256 }).success).toBe(false);
+  });
+
+  it("still enforces the polygons/lat-lng superRefine with aggregation present", () => {
+    const res = MapSpecSchema.safeParse({
+      layers: [
+        {
+          kind: "polygons",
+          source: { latColumn: "lat", lngColumn: "lng" },
+          aggregation: { zoomThreshold: 8 },
+        },
+      ],
+    });
+    expect(res.success).toBe(false);
+  });
+});
+
 describe("MapLayerStyleSchema (via MapSpecSchema)", () => {
   const withStyle = (style: unknown) =>
     MapSpecSchema.safeParse({ layers: [{ ...polygonsLayer, style }] });

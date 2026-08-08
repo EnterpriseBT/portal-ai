@@ -98,3 +98,23 @@ export const VIZ_REFRESH_RATE_PER_MIN = 120;
  *  serve: `bounded` + `onOverflow:error`, and a `streaming` tool over a >cap
  *  source that lacks a keyset (no projected `id` / no declared order). */
 export const COMPUTE_MAX_ROWS = HANDLE_ROW_CAP;
+
+/**
+ * Low-zoom map aggregation defaults (#330), shared by the server tile query and
+ * the web layer/paint so the two agree without a round-trip.
+ * - `AGG_ZOOM_THRESHOLD`: aggregate at `z < this`, raw features at `z >= this`.
+ *   MapLibre zoom bounds are min-inclusive / max-exclusive, so the aggregate
+ *   fill (`maxzoom = threshold`) and the raw layer (`minzoom = threshold`) hand
+ *   off cleanly at exactly this zoom with no overlap. Set so raw only takes over
+ *   once a tile is under `MAP_TILE_FEATURE_CAP`: a dense layer (≈400k county
+ *   parcels) still packs ~22k features into a z12 tile and ~10k into z13 — both
+ *   over the cap, so raw there would clip to an arbitrary, spatially-patchy
+ *   subset. z14 drops to ~2.5k (clean). Overridable per layer for sparser data.
+ * - `AGG_GRID_PX`: target grid-cell size in screen pixels (server derives the
+ *   world-unit cell size per tile from this).
+ * - `AGG_DENSITY_MAX`: upper bound of the log-scaled density domain used to
+ *   shade cells when a layer has no `colorBy` (fixed, not per-tile normalized).
+ */
+export const AGG_ZOOM_THRESHOLD = 14;
+export const AGG_GRID_PX = 24;
+export const AGG_DENSITY_MAX = 5000;

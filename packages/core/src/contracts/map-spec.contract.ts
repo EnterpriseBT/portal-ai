@@ -93,12 +93,29 @@ export type MapLayerStyle = z.infer<typeof MapLayerStyleSchema>;
 
 // ── Layer ────────────────────────────────────────────────────────────
 
+/**
+ * Low-zoom overview control (#330). Below `zoomThreshold` the layer's features
+ * are aggregated server-side into a square grid — each cell a bin colored by the
+ * dominant `colorBy` category (count-density when there is no `colorBy`) — so a
+ * dense layer stays legible zoomed out instead of clipping to an arbitrary
+ * subset. All fields optional: an absent block means aggregation is ON with the
+ * shared defaults (`AGG_ZOOM_THRESHOLD` / `AGG_GRID_PX`); `enabled: false` opts
+ * the layer out.
+ */
+export const MapLayerAggregationSchema = z.object({
+  enabled: z.boolean().optional(),
+  gridSizePx: z.number().int().positive().max(128).optional(),
+  zoomThreshold: z.number().int().min(0).max(22).optional(),
+});
+export type MapLayerAggregation = z.infer<typeof MapLayerAggregationSchema>;
+
 export const MapLayerSchema = z
   .object({
     kind: z.enum(["points", "polygons", "lines", "heatmap", "cluster"]),
     source: MapGeometrySourceSchema,
     label: z.string().optional(),
     style: MapLayerStyleSchema.optional(),
+    aggregation: MapLayerAggregationSchema.optional(),
   })
   .superRefine((l, ctx) => {
     // polygons/lines need real geometry — a coordinate pair cannot express them.

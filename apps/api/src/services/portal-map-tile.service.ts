@@ -18,6 +18,7 @@ import crypto from "crypto";
 
 import { sql } from "drizzle-orm";
 import { D3PipelineSchema, type D3Pipeline } from "@portalai/core/contracts";
+import { AGG_ZOOM_THRESHOLD, AGG_GRID_PX } from "@portalai/core/constants";
 
 import { db } from "../db/client.js";
 import { ApiError } from "./http.service.js";
@@ -44,6 +45,12 @@ export const MAP_TILE_FEATURE_CAP = 10_000;
 const TILE_STATEMENT_TIMEOUT_MS = 10_000;
 /** MVT tile extent (standard 4096-unit grid). */
 const TILE_EXTENT = 4096;
+/** MapLibre renders vector tiles at 512 screen px by default — grid cells per
+ *  tile axis derive from this and the spec's target cell px (#330). */
+const TILE_SCREEN_PX = 512;
+/** Full Web-Mercator (EPSG:3857) world width in metres; a tile's world width at
+ *  zoom z is this / 2^z. Sizes the aggregation grid cells server-side (#330). */
+const WORLD_3857_WIDTH = 40075016.685578488;
 
 export type TileRef =
   | { kind: "message"; messageId: string; blockIndex: number }
@@ -68,18 +75,23 @@ export interface TileRenderResult {
   simplifiedTolerance: number | null;
   /** The feature cap, when it clipped the tile — else null. */
   truncatedCap: number | null;
+  /** Whether this tile is a low-zoom aggregate (grid bins), not raw features
+   *  (#330). Mutually exclusive with `truncatedCap`/`simplifiedTolerance`. */
+  aggregated: boolean;
 }
 
 /** Result of running the ST_AsMVT query. */
 export interface TileQueryResult {
   mvt: Buffer | null;
-  /** Features actually rendered into the tile (non-null clipped geometry). */
+  /** Features (or bins, when aggregated) rendered into the tile. */
   featureCount: number;
   /** Whether the per-tile feature cap clipped the source set. Derived from the
    *  count of rows the `LIMIT` returned — NOT `featureCount`, which drops
    *  boundary features whose clipped geometry is null and would under-report a
-   *  real clip (silent truncation). */
+   *  real clip (silent truncation). Always false on the aggregate path. */
   truncated: boolean;
+  /** Whether the grid-aggregation branch ran (#330). */
+  aggregated: boolean;
 }
 
 export interface RenderTileDeps {
@@ -94,6 +106,7 @@ export interface RenderTileDeps {
     y: number;
     tolerance: number;
     cap: number;
+    aggregation: TileAggregation;
   }) => Promise<TileQueryResult>;
 }
 
@@ -126,6 +139,56 @@ export function propertyColumnsFromSpec(spec: unknown): string[] {
   return [...cols];
 }
 
+/** Resolved low-zoom aggregation config for a tile (#330). */
+export interface TileAggregation {
+  enabled: boolean;
+  zoomThreshold: number;
+  gridSizePx: number;
+  /** The colorBy column whose per-cell `mode()` colours a bin — null ⇒ density. */
+  colorByColumn: string | null;
+}
+
+/**
+ * Aggregation config for a tile, read from the spec's layers (#330). The first
+ * layer that declares `aggregation` supplies the knobs; the first layer with a
+ * `colorBy` supplies the category column. An absent block ⇒ aggregation on with
+ * the shared defaults.
+ */
+export function aggregationFromSpec(spec: unknown): TileAggregation {
+  const layers =
+    (spec as { layers?: Array<Record<string, unknown>> } | undefined)?.layers ??
+    [];
+  const agg = (layers.find((l) => l && l.aggregation)?.aggregation ?? {}) as {
+    enabled?: boolean;
+    gridSizePx?: number;
+    zoomThreshold?: number;
+  };
+  let colorByColumn: string | null = null;
+  for (const l of layers) {
+    const c = (l?.style as { colorBy?: { column?: string } } | undefined)
+      ?.colorBy?.column;
+    if (typeof c === "string" && c) {
+      colorByColumn = c;
+      break;
+    }
+  }
+  return {
+    enabled: agg.enabled ?? true,
+    zoomThreshold:
+      typeof agg.zoomThreshold === "number"
+        ? agg.zoomThreshold
+        : AGG_ZOOM_THRESHOLD,
+    gridSizePx:
+      typeof agg.gridSizePx === "number" ? agg.gridSizePx : AGG_GRID_PX,
+    colorByColumn,
+  };
+}
+
+/** Whether a tile at zoom `z` aggregates under this config. */
+export function shouldAggregate(z: number, agg: TileAggregation): boolean {
+  return agg.enabled && z < agg.zoomThreshold;
+}
+
 function notFound(): ApiError {
   return new ApiError(
     404,
@@ -155,6 +218,7 @@ export class PortalMapTileService {
     pipeline: D3Pipeline;
     snapshotUpdatedAt: number | null;
     propertyColumns: string[];
+    aggregation: TileAggregation;
   }> {
     const findMessageById =
       deps.findMessageById ?? ((id: string) => portalMessagesRepo.findById(id));
@@ -180,6 +244,7 @@ export class PortalMapTileService {
         pipeline: parsed.data,
         snapshotUpdatedAt: null,
         propertyColumns: propertyColumnsFromSpec(inner.spec),
+        aggregation: aggregationFromSpec(inner.spec),
       };
     }
 
@@ -198,14 +263,98 @@ export class PortalMapTileService {
           ? row.snapshotUpdatedAt
           : null,
       propertyColumns: propertyColumnsFromSpec(content.spec),
+      aggregation: aggregationFromSpec(content.spec),
     };
   }
 
   /**
+   * Raw-feature tile SQL (the pre-#330 path). `lim` is the capped,
+   * tile-intersecting source set; `n_limited` counts its rows (how many the
+   * LIMIT actually returned) so truncation reflects the real clip, while `n` /
+   * the MVT count only the non-null clipped geometries (a boundary feature can
+   * clip to null and drop out). All interpolated numbers are server-computed.
+   */
+  static buildRawTileSql(
+    pipelineSql: string,
+    envelope: string,
+    propertyColumns: string[],
+    tolerance: number,
+    cap: number
+  ): string {
+    const geomExpr =
+      tolerance > 0
+        ? `ST_SimplifyPreserveTopology(src.geom, ${tolerance})`
+        : "src.geom";
+    // Carry the spec's property columns onto each MVT feature so the widget can
+    // colour + fill popups. Names come from the validated spec and are quoted.
+    const propSelect = propertyColumns
+      .map((c) => `src.${quoteIdentTile(c)}, `)
+      .join("");
+    return (
+      `WITH lim AS (` +
+      `SELECT ${propSelect}ST_AsMVTGeom(ST_Transform(${geomExpr}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom ` +
+      `FROM (${pipelineSql}) src ` +
+      `WHERE src.geom && ST_Transform(${envelope}, 4326) ` +
+      `LIMIT ${cap}` +
+      `) SELECT ` +
+      `(SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom') FROM lim q WHERE q.geom IS NOT NULL) AS mvt, ` +
+      `(SELECT count(*) FROM lim WHERE geom IS NOT NULL)::int AS n, ` +
+      `(SELECT count(*) FROM lim)::int AS n_limited`
+    );
+  }
+
+  /**
+   * Low-zoom aggregate tile SQL (#330). Snaps each feature's centroid to a
+   * global square grid (origin 0,0 in EPSG:3857, so bins align across tile
+   * seams), groups by cell, and emits one square bin per cell carrying
+   * `mode()` of the colorBy column (when set) + a `_count`. Cell size is pinned
+   * to ~`gridSizePx` screen pixels via the tile's world width at this zoom. The
+   * fetch envelope is expanded by one cell so bins straddling a tile edge are
+   * caught (and `ST_AsMVTGeom` clips the overhang). `n_limited` is 0 — the
+   * aggregate summarizes rather than clips, so it never reports truncation.
+   */
+  static buildAggregateTileSql(
+    pipelineSql: string,
+    z: number,
+    envelope: string,
+    aggregation: TileAggregation,
+    cap: number
+  ): string {
+    const cellsPerAxis = Math.max(
+      1,
+      Math.round(TILE_SCREEN_PX / aggregation.gridSizePx)
+    );
+    const cellSize = WORLD_3857_WIDTH / 2 ** z / cellsPerAxis;
+    const half = cellSize / 2;
+    const col = aggregation.colorByColumn;
+    const catAgg = col
+      ? `mode() WITHIN GROUP (ORDER BY src.${quoteIdentTile(col)}) AS cat, `
+      : ``;
+    const catSelect = col ? `cat AS ${quoteIdentTile(col)}, ` : ``;
+    return (
+      `WITH cells AS (` +
+      `SELECT ST_SnapToGrid(ST_Centroid(ST_Transform(src.geom, 3857)), ${cellSize}) AS cell, ` +
+      `${catAgg}count(*)::int AS _count ` +
+      `FROM (${pipelineSql}) src ` +
+      `WHERE src.geom && ST_Transform(ST_Expand(${envelope}, ${cellSize}), 4326) ` +
+      `GROUP BY 1 ` +
+      `LIMIT ${cap}` +
+      `) SELECT ` +
+      `(SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom') FROM (` +
+      `SELECT ${catSelect}_count, ` +
+      `ST_AsMVTGeom(ST_MakeEnvelope(ST_X(cell) - ${half}, ST_Y(cell) - ${half}, ST_X(cell) + ${half}, ST_Y(cell) + ${half}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom ` +
+      `FROM cells` +
+      `) q WHERE q.geom IS NOT NULL) AS mvt, ` +
+      `(SELECT count(*) FROM cells)::int AS n, ` +
+      `0 AS n_limited`
+    );
+  }
+
+  /**
    * Default tile-query runner: `ST_AsMVT` over the pipeline SQL as a source
-   * subquery, inside the read-only session-view transaction. The pipeline SQL
-   * exposes a raw geometry column `geom`; tolerance/cap are server-computed
-   * numbers and z/x/y are validated integers, so all interpolation is safe.
+   * subquery, inside the read-only session-view transaction. Delegates SQL
+   * shape to `buildRawTileSql` / `buildAggregateTileSql`; z/x/y are validated
+   * integers and every other interpolant is a server-computed number.
    */
   private static async defaultRunTileQuery(args: {
     pipeline: D3Pipeline;
@@ -216,6 +365,7 @@ export class PortalMapTileService {
     y: number;
     tolerance: number;
     cap: number;
+    aggregation: TileAggregation;
   }): Promise<TileQueryResult> {
     const {
       pipeline,
@@ -226,32 +376,19 @@ export class PortalMapTileService {
       y,
       tolerance,
       cap,
+      aggregation,
     } = args;
-    const geomExpr =
-      tolerance > 0
-        ? `ST_SimplifyPreserveTopology(src.geom, ${tolerance})`
-        : "src.geom";
     const envelope = `ST_TileEnvelope(${z}, ${x}, ${y})`;
-    // Carry the spec's property columns onto each MVT feature so the widget can
-    // colour + fill popups (without them every feature is propertyless → grey).
-    // Names come from the validated spec (colorBy/popup) and are quoted.
-    const propSelect = propertyColumns
-      .map((c) => `src.${quoteIdentTile(c)}, `)
-      .join("");
-    // `lim` is the capped, tile-intersecting source set. `n_limited` counts its
-    // rows (how many the LIMIT actually returned) so truncation reflects the
-    // real clip; `n` / the MVT count only the rows whose clipped geometry is
-    // non-null (a boundary feature can clip to null and drop out).
-    const tileSql =
-      `WITH lim AS (` +
-      `SELECT ${propSelect}ST_AsMVTGeom(ST_Transform(${geomExpr}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom ` +
-      `FROM (${pipeline.sql}) src ` +
-      `WHERE src.geom && ST_Transform(${envelope}, 4326) ` +
-      `LIMIT ${cap}` +
-      `) SELECT ` +
-      `(SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom') FROM lim q WHERE q.geom IS NOT NULL) AS mvt, ` +
-      `(SELECT count(*) FROM lim WHERE geom IS NOT NULL)::int AS n, ` +
-      `(SELECT count(*) FROM lim)::int AS n_limited`;
+    const aggregate = shouldAggregate(z, aggregation);
+    const tileSql = aggregate
+      ? this.buildAggregateTileSql(pipeline.sql, z, envelope, aggregation, cap)
+      : this.buildRawTileSql(
+          pipeline.sql,
+          envelope,
+          propertyColumns,
+          tolerance,
+          cap
+        );
 
     // Build the session-view DDL BEFORE opening the tile transaction.
     // `buildSessionViews` runs its own pooled DB reads (capabilities, entity +
@@ -288,7 +425,13 @@ export class PortalMapTileService {
         const limited = row ? Number(row.n_limited) : 0;
         const raw = row?.mvt ?? null;
         const mvt = raw ? Buffer.from(raw as Uint8Array) : null;
-        return { mvt, featureCount, truncated: limited >= cap };
+        // The aggregate path summarizes rather than clips, so it never truncates.
+        return {
+          mvt,
+          featureCount,
+          truncated: aggregate ? false : limited >= cap,
+          aggregated: aggregate,
+        };
       });
     } catch (err) {
       const code = (err as { code?: string })?.code;
@@ -308,8 +451,9 @@ export class PortalMapTileService {
     deps: RenderTileDeps = {}
   ): Promise<TileRenderResult> {
     const { ref, z, x, y, organizationId, ifNoneMatch } = params;
-    const { pipeline, snapshotUpdatedAt, propertyColumns } =
+    const { pipeline, snapshotUpdatedAt, propertyColumns, aggregation } =
       await this.resolvePipeline(ref, organizationId, deps);
+    const willAggregate = shouldAggregate(z, aggregation);
 
     // ETag over (pipeline SQL, z, x, y, snapshot clock). A fresh pin snapshot
     // or edited pipeline invalidates cached tiles; a static one caches well.
@@ -322,17 +466,21 @@ export class PortalMapTileService {
     const tolerance = tileSimplifyTolerance(z);
 
     if (ifNoneMatch && ifNoneMatch === etag) {
+      // No query runs on a 304, so derive the aggregate flag from the config +
+      // zoom (the same condition the query branches on).
       return {
         status: 304,
         etag,
-        simplifiedTolerance: tolerance > 0 ? tolerance : null,
+        simplifiedTolerance:
+          willAggregate || tolerance === 0 ? null : tolerance,
         truncatedCap: null,
+        aggregated: willAggregate,
       };
     }
 
     const runTileQuery =
       deps.runTileQuery ?? this.defaultRunTileQuery.bind(this);
-    const { mvt, featureCount, truncated } = await runTileQuery({
+    const { mvt, featureCount, truncated, aggregated } = await runTileQuery({
       pipeline,
       propertyColumns,
       organizationId,
@@ -341,10 +489,15 @@ export class PortalMapTileService {
       y,
       tolerance,
       cap: MAP_TILE_FEATURE_CAP,
+      aggregation,
     });
 
-    const simplifiedTolerance = tolerance > 0 ? tolerance : null;
-    const truncatedCap = truncated ? MAP_TILE_FEATURE_CAP : null;
+    // An aggregate tile is a complete summary — it is neither "simplified"
+    // (bins aren't approximations of real shapes) nor "truncated" (nothing was
+    // clipped). Those notices are mutually exclusive with the aggregate one.
+    const simplifiedTolerance =
+      aggregated || tolerance === 0 ? null : tolerance;
+    const truncatedCap = !aggregated && truncated ? MAP_TILE_FEATURE_CAP : null;
 
     if (truncatedCap !== null) {
       logger.warn(
@@ -355,7 +508,13 @@ export class PortalMapTileService {
 
     // Genuinely empty envelope → 204 (no bytes), still carrying the ETag.
     if (!mvt || featureCount === 0) {
-      return { status: 204, etag, simplifiedTolerance, truncatedCap: null };
+      return {
+        status: 204,
+        etag,
+        simplifiedTolerance,
+        truncatedCap: null,
+        aggregated,
+      };
     }
 
     return {
@@ -364,6 +523,7 @@ export class PortalMapTileService {
       etag,
       simplifiedTolerance,
       truncatedCap,
+      aggregated,
     };
   }
 }

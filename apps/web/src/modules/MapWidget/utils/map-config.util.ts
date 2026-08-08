@@ -1,4 +1,8 @@
-import { MAP_LAYER_FEATURE_CAP } from "@portalai/core/constants";
+import {
+  MAP_LAYER_FEATURE_CAP,
+  AGG_ZOOM_THRESHOLD,
+  AGG_DENSITY_MAX,
+} from "@portalai/core/constants";
 
 import type { MapBasemap, MapLayer, MapSpec } from "@portalai/core/contracts";
 
@@ -174,6 +178,12 @@ interface MapLibreLayer {
   type: "circle" | "fill" | "line" | "heatmap";
   source: string;
   paint: Record<string, unknown>;
+  /** Zoom gating for the low-zoom aggregation handoff (#330). MapLibre bounds
+   *  are min-inclusive / max-exclusive, so a raw layer (`minzoom = threshold`)
+   *  and an aggregate fill (`maxzoom = threshold`) hand off cleanly at the
+   *  threshold with no overlap. */
+  minzoom?: number;
+  maxzoom?: number;
 }
 
 /**
@@ -186,7 +196,8 @@ interface MapLibreLayer {
 export function layerToMapLibre(
   layer: MapLayer,
   index: number,
-  rows: Row[]
+  rows: Row[],
+  opts: { tiled?: boolean } = {}
 ): { layers: MapLibreLayer[]; legend: LegendEntry[] } {
   const source = sourceIdFor(index);
   const style = layer.style ?? {};
@@ -266,6 +277,40 @@ export function layerToMapLibre(
       break;
     }
   }
+
+  // Low-zoom aggregation (#330): a tiled layer renders as grid bins below the
+  // zoom threshold (server-side). Gate the raw layers to at/above the threshold
+  // and add a bin fill below it — colored by the same colorBy `match` (dominant
+  // category) when there's a colorBy, or a `_count` density ramp when there
+  // isn't. Inline (non-tiled) layers are unaffected.
+  const agg = layer.aggregation;
+  if (opts.tiled && agg?.enabled !== false) {
+    const threshold = agg?.zoomThreshold ?? AGG_ZOOM_THRESHOLD;
+    for (const l of layers) l.minzoom = threshold;
+    layers.push({
+      id: `${source}-agg`,
+      type: "fill",
+      source,
+      maxzoom: threshold,
+      paint: style.colorBy
+        ? { "fill-color": color, "fill-opacity": 0.75 }
+        : {
+            "fill-color": color,
+            // Density: opacity scales with the per-cell count over a fixed
+            // log domain (consistent across tiles, never per-tile normalized).
+            "fill-opacity": [
+              "interpolate",
+              ["linear"],
+              ["log10", ["max", ["get", "_count"], 1]],
+              0,
+              0.15,
+              Math.log10(AGG_DENSITY_MAX),
+              0.85,
+            ],
+          },
+    });
+  }
+
   return { layers, legend };
 }
 

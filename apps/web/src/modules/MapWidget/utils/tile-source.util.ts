@@ -17,12 +17,15 @@ export interface TileStatus {
   truncated: boolean;
   /** A tile query hit `statement_timeout`. */
   timedOut: boolean;
+  /** The tile is a low-zoom aggregate (grid bins), not raw features (#330). */
+  aggregated: boolean;
 }
 
 export const EMPTY_TILE_STATUS: TileStatus = {
   simplified: false,
   truncated: false,
   timedOut: false,
+  aggregated: false,
 };
 
 /**
@@ -49,6 +52,7 @@ export function readTileStatus(
     simplified: headers.get("X-Portal-Tile-Simplified") != null,
     truncated: headers.get("X-Portal-Tile-Truncated") != null,
     timedOut: status === 504,
+    aggregated: headers.get("X-Portal-Tile-Aggregated") != null,
   };
 }
 
