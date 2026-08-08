@@ -389,6 +389,13 @@ export enum ApiCode {
    */
   MAP_TILE_TIMEOUT = "MAP_TILE_TIMEOUT",
   /**
+   * #314: `visualize_map` received a spec that failed `MapSpecSchema`
+   * (e.g. 0 or >8 layers, a polygons/lines layer bound to a lat/lng source, a
+   * malformed style expression, or a missing required field). Returned as a
+   * typed tool result the agent relays and repairs — never a partial render.
+   */
+  MAP_SPEC_INVALID = "MAP_SPEC_INVALID",
+  /**
    * #316: a `json → geometry` column-type transition pre-flight found rows
    * whose stored value is not parseable as GeoJSON. The conversion is refused
    * (no ALTER) and the offending `sourceId`s are named so they can be fixed at
@@ -669,6 +676,8 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
     "Try a smaller batchSize, or simplify the expression.",
   [ApiCode.BULK_JOB_CANCELLED]:
     "Re-run the job to finish; already-committed records are idempotent.",
+  [ApiCode.MAP_SPEC_INVALID]:
+    "Fix the MapSpec and retry: 1–8 layers; polygons/lines need a geometryColumn (not a lat/lng pair); style values are literals or well-formed MapLibre expressions.",
   [ApiCode.BULK_JOB_PARTIAL_FAILURE]:
     "Inspect the failed records' source ids and retry, or accept the partial.",
   [ApiCode.READ_HANDLE_EXPIRED]:

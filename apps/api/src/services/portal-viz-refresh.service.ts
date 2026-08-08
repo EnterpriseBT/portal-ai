@@ -19,6 +19,11 @@ import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { PortalSqlHandleService } from "./portal-sql-handle.service.js";
 import { resolveSqlDelivery as defaultResolveSqlDelivery } from "../tools/result-sink.js";
+import {
+  geometryColumnsFromSpec,
+  geoInlineRows,
+} from "../tools/geo-delivery.util.js";
+import { AnalyticsService } from "./analytics.service.js";
 import { portalMessagesRepo } from "../db/repositories/portal-messages.repository.js";
 import { portalResultsRepo } from "../db/repositories/portal-results.repository.js";
 import type {
@@ -30,10 +35,13 @@ import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "portal-viz-refresh" });
 
-/** DI seam (test): the message loader + the SQL delivery resolver. */
+/** DI seam (test): the message loader + the SQL delivery resolver. `sqlQuery`
+ *  is the geometry→GeoJSON display query a `geo` widget needs on the inline
+ *  path (#314). */
 export interface VizRefreshDeps {
   findMessageById?: (id: string) => Promise<PortalMessageSelect | undefined>;
   resolveSqlDelivery?: typeof defaultResolveSqlDelivery;
+  sqlQuery?: typeof AnalyticsService.sqlQuery;
 }
 
 /** DI seam (test) for the pin addresser (#312). */
@@ -47,6 +55,7 @@ export interface PinRefreshDeps {
   ) => Promise<PortalResultSelect | undefined>;
   getSnapshot?: typeof PortalSqlHandleService.getSnapshot;
   resolveSqlDelivery?: typeof defaultResolveSqlDelivery;
+  sqlQuery?: typeof AnalyticsService.sqlQuery;
 }
 
 export interface VizRefreshParams {
@@ -73,6 +82,8 @@ export class PortalVizRefreshService {
       deps.findMessageById ?? ((id: string) => portalMessagesRepo.findById(id));
     const resolveSqlDelivery =
       deps.resolveSqlDelivery ?? defaultResolveSqlDelivery;
+    const sqlQuery =
+      deps.sqlQuery ?? AnalyticsService.sqlQuery.bind(AnalyticsService);
 
     const message = await findMessageById(params.messageId);
     if (!message) throw notFound();
@@ -83,7 +94,10 @@ export class PortalVizRefreshService {
 
     const blocks = (message.blocks ?? []) as Array<Record<string, unknown>>;
     const block = blocks[params.blockIndex];
-    if (!block || block.type !== "d3") throw notFound();
+    // Both durable widget kinds refresh through the same pipeline path (#314
+    // adds `geo` alongside `d3`); a non-widget block has no pipeline.
+    if (!block || (block.type !== "d3" && block.type !== "geo"))
+      throw notFound();
 
     // Persisted display blocks are wrapped `{ type, content }` by
     // `resolveDisplayBlock` — the d3 tool result (program, pipeline, rows /
@@ -100,10 +114,17 @@ export class PortalVizRefreshService {
     }
     const pipeline = parsed.data;
 
+    // A geo widget's inline rows must carry GeoJSON, not raw WKB — the same
+    // conversion the tool applies at mint (#314). Non-geo (d3) blocks have no
+    // geometry columns, so this is a no-op for them.
+    const geometryColumns = geometryColumnsFromSpec(inner.spec);
+
     return this.executePipeline(
       pipeline,
       params.organizationId,
-      resolveSqlDelivery
+      resolveSqlDelivery,
+      geometryColumns,
+      sqlQuery
     );
   }
 
@@ -132,6 +153,8 @@ export class PortalVizRefreshService {
       PortalSqlHandleService.getSnapshot.bind(PortalSqlHandleService);
     const resolveSqlDelivery =
       deps.resolveSqlDelivery ?? defaultResolveSqlDelivery;
+    const sqlQuery =
+      deps.sqlQuery ?? AnalyticsService.sqlQuery.bind(AnalyticsService);
 
     const row = await findPortalResultById(params.portalResultId);
     if (!row || row.organizationId !== params.organizationId) {
@@ -155,7 +178,9 @@ export class PortalVizRefreshService {
     const delivery = await this.executePipeline(
       parsed.data,
       params.organizationId,
-      resolveSqlDelivery
+      resolveSqlDelivery,
+      geometryColumnsFromSpec(content.spec),
+      sqlQuery
     );
 
     try {
@@ -199,13 +224,19 @@ export class PortalVizRefreshService {
   private static async executePipeline(
     pipeline: D3Pipeline,
     organizationId: string,
-    resolveSqlDelivery: typeof defaultResolveSqlDelivery
+    resolveSqlDelivery: typeof defaultResolveSqlDelivery,
+    geometryColumns: string[] = [],
+    sqlQuery: typeof AnalyticsService.sqlQuery = AnalyticsService.sqlQuery.bind(
+      AnalyticsService
+    )
   ): Promise<WidgetRefreshResponse> {
     const delivery = await resolveSqlDelivery(
       { sql: pipeline.sql },
       { stationId: pipeline.stationId, organizationId }
     );
 
+    // A large delivery rides its handle — the map widget re-tiles it through
+    // #316 (no inline rows to re-project).
     if (delivery.kind === "handle") {
       return { kind: "handle", ...delivery.envelope };
     }
@@ -213,6 +244,16 @@ export class PortalVizRefreshService {
       rows?: Array<Record<string, unknown>>;
       sample?: Array<Record<string, unknown>>;
     };
-    return { kind: "inline", rows: result.rows ?? result.sample ?? [] };
+    // Inline: a geo widget (geometryColumns non-empty) needs its geometry
+    // re-projected to GeoJSON, exactly as the tool does at mint. A d3 widget
+    // passes []-columns and the rows ride through untouched.
+    const rows = await geoInlineRows(
+      pipeline.sql,
+      geometryColumns,
+      result.rows ?? result.sample ?? [],
+      { stationId: pipeline.stationId, organizationId },
+      { sqlQuery }
+    );
+    return { kind: "inline", rows };
   }
 }

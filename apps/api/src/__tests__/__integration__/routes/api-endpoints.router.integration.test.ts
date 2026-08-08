@@ -140,6 +140,44 @@ describe("POST /api/connector-instances/:instanceId/api-endpoints", () => {
     expect(res.body.payload.config.idField).toBe("id");
   });
 
+  it("materializes fresh columns — including a geometry column — without crashing (#314 geoRole regression)", async () => {
+    // A brand-new column (no columnDefinitionId) is created fresh by
+    // materializeColumns. That path omitted the nullable-but-required
+    // `geoRole`, so every fresh-column create used to fail with
+    // FIELD_MAPPING_CREATE_FAILED. A geometry column is the canonical case.
+    const res = await request(app)
+      .post(`/api/connector-instances/${restApiInstanceId}/api-endpoints`)
+      .send({
+        key: "places",
+        label: "Places",
+        config: {
+          path: "/places",
+          method: "GET",
+          recordsPath: "",
+          idField: "id",
+          pagination: { strategy: "none" },
+        },
+        columns: [
+          {
+            sourceField: "geometry",
+            normalizedKey: "geometry",
+            type: "geometry",
+            required: true,
+          },
+          {
+            sourceField: "name",
+            normalizedKey: "name",
+            type: "string",
+            required: false,
+          },
+        ],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.payload.entity.key).toBe("places");
+  });
+
   it("returns 400 REST_API_INVALID_CONFIG on invalid payload", async () => {
     const res = await request(app)
       .post(`/api/connector-instances/${restApiInstanceId}/api-endpoints`)

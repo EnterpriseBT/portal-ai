@@ -3,6 +3,7 @@ import AutoGraphOutlined from "@mui/icons-material/AutoGraphOutlined";
 import BarChartOutlined from "@mui/icons-material/BarChartOutlined";
 import ExtensionOutlined from "@mui/icons-material/ExtensionOutlined";
 import HubOutlined from "@mui/icons-material/HubOutlined";
+import MapOutlined from "@mui/icons-material/MapOutlined";
 import PaidOutlined from "@mui/icons-material/PaidOutlined";
 import StorageOutlined from "@mui/icons-material/StorageOutlined";
 import TravelExploreOutlined from "@mui/icons-material/TravelExploreOutlined";
@@ -43,6 +44,7 @@ const ICONS_BY_SLUG: Record<string, SvgIconComponent> = {
   Paid: PaidOutlined,
   TravelExplore: TravelExploreOutlined,
   Hub: HubOutlined,
+  Map: MapOutlined,
   [CUSTOM_PACK_ICON_SLUG]: ExtensionOutlined,
 };
 

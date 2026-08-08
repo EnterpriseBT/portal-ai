@@ -237,6 +237,37 @@ export const PACK_PROMPT_SECTIONS: Record<
       return lines;
     },
   },
+  gis: {
+    capability: "map geospatial data",
+    requestShapes: ["a map"],
+    blocks: ["maps"],
+    interpretiveTools: [],
+    markers: ["map geospatial data", "### Mapping", "visualize_map"],
+    render: () => {
+      const lines: string[] = [];
+      lines.push("### Mapping");
+      lines.push("");
+      lines.push(
+        "When the user asks to **map, plot on a map, or show geographically** " +
+          "— parcels, points, routes, regions — use **`visualize_map`**, not a " +
+          "chart or a table. Pass the `sql` selecting the rows and a declarative " +
+          "`spec`: layers bound to a geometry column or a lat/lng pair, styled " +
+          "with literals or MapLibre expressions (`colorBy` also draws a " +
+          "legend). Large results tile automatically — don't add a LIMIT."
+      );
+      lines.push("");
+      lines.push(
+        "Expressions style features the data already has. Geometry the map " +
+          "needs but the rows lack — origin→destination arcs, hexbins, polygon " +
+          "label points, service-radius rings — is derived **upstream in SQL** " +
+          "with `ST_*` (`ST_MakeLine`, `ST_HexagonGrid`, `ST_Centroid`, " +
+          "`ST_Buffer`) and then fed to `visualize_map`. Select the raw geometry " +
+          "column aliased `geom` when the result may be large."
+      );
+      lines.push("");
+      return lines;
+    },
+  },
 
   // These four carry no guidance block today: their tools are
   // self-describing and the shared SQL guidance covers the analytical

@@ -203,6 +203,13 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     relatedGlossaryTerms: ["Visualization Widget", "Portal Result"],
   },
   {
+    question: "Can I show my data on a map?",
+    answer:
+      "Yes, if your data has location. When a source carries geographic shapes (for example an ArcGIS parcel layer) they're imported as a geometry column; latitude/longitude number columns work too. Then just ask — “show all vacant parcels on a map, colored by zoning” — and the assistant renders an interactive map you can pan, zoom, and click to inspect. Spatial questions like distances and areas are answered directly from your data as well. Mapping is part of the GIS tool pack, available on the Pro and Enterprise plans; add it to a station like any other tool pack.",
+    category: FAQCategory.Analytics,
+    relatedGlossaryTerms: ["Map Visualization", "Geometry", "Tool Pack"],
+  },
+  {
     question: "Do failed tool calls use up my usage allocation?",
     answer:
       "No. Some tools consume usage units from your organization's monthly allocation when they run in a portal session — mainly web search and heavier analytics like clustering. You're charged only when a tool call succeeds: if a call fails (for example, a search provider is briefly unavailable), it costs nothing. Your allocation resets at the start of each billing period, and you can see what's left on the Settings → Organization page and in a portal session's details — the Itemized usage button there lists every charged call (which tool, how many units, when, and who ran it).",

@@ -131,6 +131,88 @@ describe("PortalVizRefreshService.refresh (#270)", () => {
     );
   });
 
+  it("refreshes a geo block (#314), re-executing its durable pipeline", async () => {
+    const geoMessage = {
+      id: "msg-1",
+      organizationId: "org-1",
+      portalId: "portal-1",
+      role: "assistant",
+      blocks: [
+        {
+          type: "geo",
+          content: { type: "geo", spec: { layers: [] }, pipeline: PIPELINE },
+        },
+      ],
+    } as never;
+    const out = await PortalVizRefreshService.refresh(
+      { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+      deps({ findMessageById: jest.fn(async () => geoMessage) as never })
+    );
+    expect(out).toEqual({
+      kind: "inline",
+      rows: [{ month: "Jan", total: 12 }],
+    });
+  });
+
+  it("geo inline refresh re-projects geometry columns to GeoJSON (#314)", async () => {
+    const geoMessage = {
+      id: "msg-1",
+      organizationId: "org-1",
+      portalId: "portal-1",
+      role: "assistant",
+      blocks: [
+        {
+          type: "geo",
+          content: {
+            type: "geo",
+            spec: {
+              layers: [
+                { kind: "points", source: { geometryColumn: "c_geometry" } },
+              ],
+            },
+            pipeline: PIPELINE,
+          },
+        },
+      ],
+    } as never;
+    // Raw delivery hands back geometry as WKB hex; the display query re-projects
+    // it to GeoJSON via the shared helper.
+    const rawInline = {
+      kind: "inline" as const,
+      result: { rows: [{ c_geometry: "0101000020E6100000", name: "a" }] },
+    };
+    const sqlQuery = jest.fn(async () => ({
+      rows: [
+        {
+          _row: {
+            c_geometry: { type: "Point", coordinates: [-111.9, 40.7] },
+            name: "a",
+          },
+        },
+      ],
+    }));
+    const out = await PortalVizRefreshService.refresh(
+      { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+      deps({
+        findMessageById: jest.fn(async () => geoMessage) as never,
+        resolveSqlDelivery: jest.fn(async () => rawInline) as never,
+        sqlQuery: sqlQuery as never,
+      })
+    );
+    expect(out).toEqual({
+      kind: "inline",
+      rows: [
+        {
+          c_geometry: { type: "Point", coordinates: [-111.9, 40.7] },
+          name: "a",
+        },
+      ],
+    });
+    // The re-projection query ran (ST_AsGeoJSON over the pipeline SQL).
+    const calls = sqlQuery.mock.calls as unknown as Array<[{ sql: string }]>;
+    expect(calls[0][0].sql).toContain("ST_AsGeoJSON");
+  });
+
   it("cross-org caller → VIZ_WIDGET_NOT_FOUND (404, no existence leak)", async () => {
     await expectApiCode(
       PortalVizRefreshService.refresh(

@@ -114,10 +114,19 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Data Types",
     category: GlossaryCategory.DataModeling,
     definition:
-      "The supported value types for a column definition: string, number, boolean, date, datetime, enum, json, array, reference, and reference-array.",
+      "The supported value types for a column definition: string, number, boolean, date, datetime, enum, json, array, reference, reference-array, and geometry.",
     example:
-      'A "price" column uses the number type; a "tags" column uses the array type.',
-    relatedTerms: ["Column Definition", "Validation Pattern"],
+      'A "price" column uses the number type; a "tags" column uses the array type; a "boundary" column uses the geometry type.',
+    relatedTerms: ["Column Definition", "Validation Pattern", "Geometry"],
+  },
+  {
+    term: "Geometry",
+    category: GlossaryCategory.DataModeling,
+    definition:
+      "A column type holding a shape — a point, line, or polygon — in the WGS84 (EPSG:4326) coordinate system. Imported geometry (e.g. an ArcGIS parcel boundary) is normalized to this type so it can be queried spatially and drawn on a map.",
+    example:
+      "A parcels entity has a `boundary` geometry column; the agent computes areas with PostGIS `ST_*` SQL and renders it as a map visualization.",
+    relatedTerms: ["Data Types", "Map Visualization", "Column Definition"],
   },
   {
     term: "Validation Pattern",
@@ -315,6 +324,15 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     example:
       "Reopen yesterday's session and its revenue chart quietly reloads with today's numbers; a “Refresh chart” button and an “Updated … ago” note let you force and confirm a refresh.",
     relatedTerms: ["Portal Result", "Query Handle"],
+  },
+  {
+    term: "Map Visualization",
+    category: GlossaryCategory.Analytics,
+    definition:
+      "An interactive map built from a spatial query — points, lines, or polygons styled by your data, with pan, zoom, and click-to-inspect. Produced by the GIS tool pack's map tool from a SQL query plus a declarative style; large results stream in as vector tiles.",
+    example:
+      "“Show all vacant parcels on a map, colored by zoning” renders an interactive map you can pan and click; clicking a parcel shows its address and class.",
+    relatedTerms: ["Geometry", "Visualization Widget", "Tool Pack"],
   },
 
   // System

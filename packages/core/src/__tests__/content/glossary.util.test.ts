@@ -69,6 +69,7 @@ describe("GLOSSARY_ENTRIES", () => {
     "Canonical Format",
     "Primary Key",
     "Normalized Data",
+    "Geometry",
     // Organization
     "Entity Group",
     "Entity Group Member",
@@ -83,6 +84,7 @@ describe("GLOSSARY_ENTRIES", () => {
     "Portal Message",
     "Portal Result",
     "Pinned Result",
+    "Map Visualization",
     // System
     "Job",
     "Job Status",
@@ -188,6 +190,7 @@ describe("filterGlossary", () => {
     expect(terms).toEqual(
       [
         "Custom Toolpack",
+        "Map Visualization",
         "Pinned Result",
         // #284: plan entitlement is an Analytics concept — a tool pack can be
         // attached but inactive on the plan.

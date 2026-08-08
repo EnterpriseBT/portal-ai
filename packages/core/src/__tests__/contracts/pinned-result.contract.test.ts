@@ -9,16 +9,26 @@ import { WidgetRefreshResponseSchema } from "../../contracts/portal-sql.contract
 // ── PINNED_CONTENT_SCHEMAS registry ──────────────────────────────────
 
 describe("PINNED_CONTENT_SCHEMAS", () => {
-  it("registers text, data-table, and d3", () => {
+  it("registers text, data-table, d3, and geo", () => {
     expect(PINNED_CONTENT_SCHEMAS.text).toBeDefined();
     expect(PINNED_CONTENT_SCHEMAS["data-table"]).toBeDefined();
     expect(PINNED_CONTENT_SCHEMAS.d3).toBeDefined();
+    expect(PINNED_CONTENT_SCHEMAS.geo).toBeDefined();
   });
 
-  // #312 Open Q4: the geo entry ships with #84 — an unregistered type is
-  // rejected by the pin route with PORTAL_RESULT_TYPE_NOT_PINNABLE.
-  it("has no geo entry yet", () => {
-    expect(PINNED_CONTENT_SCHEMAS.geo).toBeUndefined();
+  // #312 Open Q4 resolved: the geo entry ships with #84/#314, so geo blocks
+  // pin and inherit materialization + refresh. It stores the inline geo shape
+  // (a handle/tile-backed map is materialized to rows at pin time).
+  it("geo schema accepts the inline geo shape", () => {
+    const res = PINNED_CONTENT_SCHEMAS.geo!.safeParse({
+      spec: {
+        layers: [
+          { kind: "points", source: { latColumn: "lat", lngColumn: "lng" } },
+        ],
+      },
+      rows: [{ lat: 40.7, lng: -111.9 }],
+    });
+    expect(res.success).toBe(true);
   });
 
   it("text schema accepts markdown and rejects the empty string", () => {

@@ -1,0 +1,176 @@
+import { z } from "zod";
+
+import { D3PipelineSchema } from "./d3-widget.contract.js";
+import { QueryHandleEnvelopeFieldsSchema } from "./portal-sql.contract.js";
+
+/**
+ * Declarative map-visualization contract (#84, child #314).
+ *
+ * `visualize_map` authors a `MapSpec` — a small, closed vocabulary the agent
+ * writes directly (the same reason it writes SQL), so there is no codegen
+ * sub-call and no model-authored JS. Style values accept **MapLibre
+ * expressions** (`case` / `match` / `interpolate` / `get`), which gives full
+ * per-feature, data-driven symbology as JSON with no network channel opened to
+ * model output. A geometry column read back from PostGIS (#316) is already a
+ * GeoJSON object, so a spec binds layers to result columns by name.
+ */
+
+// ── Basemap ──────────────────────────────────────────────────────────
+
+/** A named key-free basemap, or a custom style URL. */
+export const MapBasemapSchema = z.union([
+  z.enum(["carto-light", "carto-dark", "osm"]),
+  z.object({ url: z.string().url() }),
+]);
+export type MapBasemap = z.infer<typeof MapBasemapSchema>;
+
+// ── Geometry source ──────────────────────────────────────────────────
+
+/**
+ * Where a layer's geometry comes from — a GeoJSON `geometry` column, or a
+ * lat/lng numeric pair. Explicit and authoritative: an entity may carry two
+ * coordinate pairs (origin/destination), so the columns are named, never
+ * guessed. This names *columns*, not transport — inline-vs-tiles is the block
+ * union's job (see `GeoBlockContentSchema`).
+ */
+export const MapGeometrySourceSchema = z.union([
+  z.object({ geometryColumn: z.string().min(1) }),
+  z.object({ latColumn: z.string().min(1), lngColumn: z.string().min(1) }),
+]);
+export type MapGeometrySource = z.infer<typeof MapGeometrySourceSchema>;
+
+// ── Style values & expressions ───────────────────────────────────────
+
+/**
+ * A MapLibre expression — a JSON array whose head is an operator
+ * (`["case", …]`, `["match", …]`, `["interpolate", …]`, `["get", "col"]`).
+ * Recursive: an operand may itself be an expression. Passed through to
+ * MapLibre as-is; a malformed expression surfaces as the widget's typed error
+ * state, never a silent mis-render. The `min(1)` rejects a bare `[]` (an
+ * expression must have an operator head).
+ */
+export const MapExpressionSchema: z.ZodType<unknown> = z.lazy(() =>
+  z
+    .array(
+      z.union([
+        z.string(),
+        z.number(),
+        z.boolean(),
+        z.null(),
+        MapExpressionSchema,
+      ])
+    )
+    .min(1)
+);
+
+/** A style value is either a literal of type `T` or a MapLibre expression. */
+const styleValue = <T extends z.ZodTypeAny>(literal: T) =>
+  z.union([literal, MapExpressionSchema]);
+
+export const MapLayerStyleSchema = z.object({
+  color: styleValue(z.string()).optional(),
+  /** Sugar over an expression: categorical/threshold colouring keyed to a
+   *  result column. The renderer reads this to auto-generate a legend. */
+  colorBy: z
+    .object({
+      column: z.string().min(1),
+      palette: z.array(z.string()).optional(),
+      /** Explicit value→colour pairs; omitted ⇒ palette assigned in sort order. */
+      stops: z
+        .array(z.tuple([z.union([z.string(), z.number()]), z.string()]))
+        .optional(),
+    })
+    .optional(),
+  opacity: styleValue(z.number().min(0).max(1)).optional(),
+  radius: styleValue(z.number().positive()).optional(),
+  width: styleValue(z.number().positive()).optional(),
+  /** Outline colour/width for polygons + lines — expression-capable, which is
+   *  how "highlight the vacant ones" gets a heavier stroke as well as a fill. */
+  outlineColor: styleValue(z.string()).optional(),
+  outlineWidth: styleValue(z.number().nonnegative()).optional(),
+});
+export type MapLayerStyle = z.infer<typeof MapLayerStyleSchema>;
+
+// ── Layer ────────────────────────────────────────────────────────────
+
+export const MapLayerSchema = z
+  .object({
+    kind: z.enum(["points", "polygons", "lines", "heatmap", "cluster"]),
+    source: MapGeometrySourceSchema,
+    label: z.string().optional(),
+    style: MapLayerStyleSchema.optional(),
+  })
+  .superRefine((l, ctx) => {
+    // polygons/lines need real geometry — a coordinate pair cannot express them.
+    if (
+      (l.kind === "polygons" || l.kind === "lines") &&
+      !("geometryColumn" in l.source)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["source"],
+        message: `layer kind '${l.kind}' requires geometryColumn`,
+      });
+    }
+  });
+export type MapLayer = z.infer<typeof MapLayerSchema>;
+
+// ── Spec ─────────────────────────────────────────────────────────────
+
+export const MapSpecSchema = z.object({
+  basemap: MapBasemapSchema.default("carto-light"),
+  initialView: z
+    .union([
+      z.object({ center: z.tuple([z.number(), z.number()]), zoom: z.number() }),
+      z.literal("fit"),
+    ])
+    .default("fit"),
+  layers: z.array(MapLayerSchema).min(1).max(8),
+  /** Mustache-style template over the feature's row fields. */
+  popup: z.object({ template: z.string().min(1) }).optional(),
+});
+export type MapSpec = z.infer<typeof MapSpecSchema>;
+
+// ── Geo block content (mirrors d3-widget.contract.ts, handle branch first) ──
+
+const GeoBaseContentSchema = z.object({
+  spec: MapSpecSchema,
+  title: z.string().optional(),
+  /** Durable re-executable pipeline (shared with d3). */
+  pipeline: D3PipelineSchema.optional(),
+  /**
+   * Reserved (contract seam, unused in #314). `visualize_map` never emits it
+   * and the #314 renderer ignores it; reserving the field lets a future child
+   * add a sandboxed codegen renderer without a block-type or pinned-schema
+   * change. Contract: `program` present ⇒ sandbox path, else spec path.
+   */
+  program: z.string().min(1).optional(),
+});
+
+/** Inline binding — GeoJSON-bearing rows baked into the block (small results). */
+export const GeoInlineContentSchema = GeoBaseContentSchema.extend({
+  rows: z.array(z.record(z.string(), z.unknown())),
+});
+export type GeoInlineContent = z.infer<typeof GeoInlineContentSchema>;
+
+/**
+ * Handle binding — the full query-handle envelope rides the content (large
+ * results). The widget renders this branch through vector **tiles** keyed to
+ * the block's own message/pin coordinates (the spatial analogue of a query
+ * handle), not by hydrating rows.
+ */
+export const GeoHandleContentSchema = GeoBaseContentSchema.extend(
+  QueryHandleEnvelopeFieldsSchema.shape
+);
+export type GeoHandleContent = z.infer<typeof GeoHandleContentSchema>;
+
+/**
+ * Handle branch first: content carrying a `queryHandle` must resolve to the
+ * handle branch (the inline schema would otherwise accept it as an extra key
+ * when `rows` is also present — the producer never emits both).
+ */
+export const GeoBlockContentSchema = z.union([
+  GeoHandleContentSchema,
+  GeoInlineContentSchema,
+]);
+export type GeoBlockContent = z.infer<typeof GeoBlockContentSchema>;

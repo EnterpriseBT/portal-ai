@@ -4,6 +4,7 @@ import {
   D3InlineContentSchema,
   D3PipelineSchema,
 } from "./d3-widget.contract.js";
+import { GeoInlineContentSchema } from "./map-spec.contract.js";
 import { WidgetRefreshResponseSchema } from "./portal-sql.contract.js";
 import type { PortalResultType } from "../models/portal-result.model.js";
 
@@ -41,9 +42,16 @@ export const PinnedD3ContentSchema = D3InlineContentSchema;
 export type PinnedD3Content = z.infer<typeof PinnedD3ContentSchema>;
 
 /**
- * Per-type stored-content validators. #84 adds the `geo` entry when the geo
- * block ships. A pin attempt for a type without an entry is rejected with
- * `PORTAL_RESULT_TYPE_NOT_PINNABLE` — same code as a non-durable type.
+ * Stored content of a pinned geo widget: always the inline shape — a
+ * handle/tile-backed map is materialized to inline rows at pin time (#84/#314).
+ */
+export const PinnedGeoContentSchema = GeoInlineContentSchema;
+export type PinnedGeoContent = z.infer<typeof PinnedGeoContentSchema>;
+
+/**
+ * Per-type stored-content validators. A pin attempt for a type without an
+ * entry is rejected with `PORTAL_RESULT_TYPE_NOT_PINNABLE` — same code as a
+ * non-durable type.
  */
 export const PINNED_CONTENT_SCHEMAS: Partial<
   Record<PortalResultType, z.ZodType>
@@ -51,6 +59,7 @@ export const PINNED_CONTENT_SCHEMAS: Partial<
   text: z.string().min(1),
   "data-table": PinnedDataTableContentSchema,
   d3: PinnedD3ContentSchema,
+  geo: PinnedGeoContentSchema,
 };
 
 /**
