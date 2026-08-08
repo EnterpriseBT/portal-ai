@@ -118,7 +118,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
     useMemo(() => {
       const data = spec.layers.map((l, i) => featuresForLayer(l, i, rows));
       const layers = spec.layers.flatMap(
-        (l, i) => layerToMapLibre(l, i, rows).layers
+        (l, i) => layerToMapLibre(l, i, rows, { tiled: isTile }).layers
       );
       const lg: LegendEntry[] = buildLegend(spec, rows);
       const truncated = data.filter((d) => d.truncated);
@@ -137,7 +137,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
         featureCapNotice: notice,
         hasFeatures: data.some((d) => d.collection.features.length > 0),
       };
-    }, [spec, rows]);
+    }, [spec, rows, isTile]);
 
   const showMap = !error && (isTile || hasFeatures);
 
@@ -363,7 +363,15 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
             full detail.
           </Typography>
         ) : null}
-        {tiles.truncated ? (
+        {tiles.aggregated ? (
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            data-testid="map-widget-aggregated"
+          >
+            Aggregated overview — zoom in for detail.
+          </Typography>
+        ) : tiles.truncated ? (
           <Typography
             variant="caption"
             color="text.secondary"

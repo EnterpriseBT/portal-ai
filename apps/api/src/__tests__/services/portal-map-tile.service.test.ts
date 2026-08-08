@@ -5,9 +5,12 @@ import {
   MAP_TILE_FEATURE_CAP,
   propertyColumnsFromSpec,
   tileSimplifyTolerance,
+  aggregationFromSpec,
+  shouldAggregate,
   type RenderTileDeps,
   type TileQueryResult,
 } from "../../services/portal-map-tile.service.js";
+import { AGG_ZOOM_THRESHOLD } from "@portalai/core/constants";
 import { ApiError } from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 
@@ -31,6 +34,7 @@ function deps(
     mvt: Buffer.from([1, 2, 3]),
     featureCount: 5,
     truncated: false,
+    aggregated: false,
   }
 ): RenderTileDeps {
   return {
@@ -82,6 +86,51 @@ describe("propertyColumnsFromSpec (#314)", () => {
         layers: [{ source: { geometryColumn: "geom" } }],
       })
     ).toEqual([]);
+  });
+});
+
+describe("aggregationFromSpec + shouldAggregate (#330)", () => {
+  it("defaults to on with the shared threshold when no aggregation block is present", () => {
+    const agg = aggregationFromSpec({
+      layers: [{ style: { colorBy: { column: "c_city" } } }],
+    });
+    expect(agg.enabled).toBe(true);
+    expect(agg.zoomThreshold).toBe(AGG_ZOOM_THRESHOLD);
+    expect(agg.colorByColumn).toBe("c_city");
+  });
+
+  it("reads the first layer's aggregation block + first colorBy column", () => {
+    const agg = aggregationFromSpec({
+      layers: [
+        { aggregation: { enabled: false, zoomThreshold: 9, gridSizePx: 40 } },
+        { style: { colorBy: { column: "c_state" } } },
+      ],
+    });
+    expect(agg).toMatchObject({
+      enabled: false,
+      zoomThreshold: 9,
+      gridSizePx: 40,
+      colorByColumn: "c_state",
+    });
+  });
+
+  it("colorByColumn is null when no layer has a colorBy (density mode)", () => {
+    expect(
+      aggregationFromSpec({ layers: [{ source: { geometryColumn: "geom" } }] })
+        .colorByColumn
+    ).toBeNull();
+  });
+
+  it("shouldAggregate honours enabled + the zoom threshold", () => {
+    const on = {
+      enabled: true,
+      zoomThreshold: 12,
+      gridSizePx: 24,
+      colorByColumn: null,
+    };
+    expect(shouldAggregate(11, on)).toBe(true);
+    expect(shouldAggregate(12, on)).toBe(false); // threshold is exclusive
+    expect(shouldAggregate(5, { ...on, enabled: false })).toBe(false);
   });
 });
 
@@ -211,6 +260,7 @@ describe("PortalMapTileService.renderTile (#316)", () => {
           mvt: Buffer.from([9]),
           featureCount: MAP_TILE_FEATURE_CAP - 7, // rendered < cap …
           truncated: true, // … but the LIMIT clipped
+          aggregated: false,
         }
       )
     );
@@ -218,10 +268,36 @@ describe("PortalMapTileService.renderTile (#316)", () => {
     expect(res.truncatedCap).toBe(MAP_TILE_FEATURE_CAP);
   });
 
+  it("an aggregated tile suppresses the truncated + simplified notices (#330)", async () => {
+    const res = await PortalMapTileService.renderTile(
+      {
+        ref: { kind: "message", messageId: "msg-1", blockIndex: 0 },
+        ...base,
+        z: 6, // low zoom — would normally carry a simplified tolerance
+      },
+      deps(
+        {},
+        {
+          mvt: Buffer.from([7]),
+          featureCount: 40, // 40 bins
+          truncated: true, // even a truthy truncated is suppressed …
+          aggregated: true, // … because the tile is an aggregate
+        }
+      )
+    );
+    expect(res.status).toBe(200);
+    expect(res.aggregated).toBe(true);
+    expect(res.truncatedCap).toBeNull();
+    expect(res.simplifiedTolerance).toBeNull();
+  });
+
   it("returns 204 for a genuinely empty envelope", async () => {
     const res = await PortalMapTileService.renderTile(
       { ref: { kind: "message", messageId: "msg-1", blockIndex: 0 }, ...base },
-      deps({}, { mvt: null, featureCount: 0, truncated: false })
+      deps(
+        {},
+        { mvt: null, featureCount: 0, truncated: false, aggregated: false }
+      )
     );
     expect(res.status).toBe(204);
     expect(res.body).toBeUndefined();

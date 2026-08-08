@@ -74,6 +74,9 @@ function sendTile(res: Response, result: TileRenderResult): void {
   if (result.truncatedCap !== null) {
     res.setHeader("X-Portal-Tile-Truncated", String(result.truncatedCap));
   }
+  if (result.aggregated) {
+    res.setHeader("X-Portal-Tile-Aggregated", "1");
+  }
   if (result.status === 304) {
     res.status(304).end();
     return;

@@ -154,6 +154,11 @@ export const LargeResultVectorTiles: Story = {
     tileTemplate: "/api/portal-map/tiles/pin/demo/{z}/{x}/{y}.mvt",
     getTileToken: async () => null,
     // Drives the persistent "simplified at this zoom" notice.
-    tileStatus: { simplified: true, truncated: false, timedOut: false },
+    tileStatus: {
+      simplified: true,
+      truncated: false,
+      timedOut: false,
+      aggregated: false,
+    },
   },
 };

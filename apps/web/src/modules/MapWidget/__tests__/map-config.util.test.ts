@@ -1,6 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
 
 import type { MapLayer, MapSpec } from "@portalai/core/contracts";
+import { AGG_ZOOM_THRESHOLD } from "@portalai/core/constants";
 
 import {
   boundsOf,
@@ -194,6 +195,64 @@ describe("layerToMapLibre", () => {
     } as MapLayer;
     const { layers } = layerToMapLibre(layer, 0, []);
     expect(layers[0].type).toBe("heatmap");
+  });
+});
+
+describe("layerToMapLibre aggregation (#330)", () => {
+  const catLayer = {
+    kind: "polygons",
+    source: { geometryColumn: "geom" },
+    style: { colorBy: { column: "c_city", stops: [["SLC", "#111"]] } },
+  } as MapLayer;
+
+  it("tiled category layer → raw layers gated minzoom + an -agg fill gated maxzoom, same colorBy match", () => {
+    const { layers } = layerToMapLibre(catLayer, 0, [], { tiled: true });
+    const agg = layers.find((l) => l.id === `${sourceIdFor(0)}-agg`)!;
+    const raw = layers.filter((l) => l.id !== `${sourceIdFor(0)}-agg`);
+    // Clean handoff: raw at/above threshold, agg below it.
+    expect(agg.type).toBe("fill");
+    expect(agg.maxzoom).toBe(AGG_ZOOM_THRESHOLD);
+    expect(raw.every((l) => l.minzoom === AGG_ZOOM_THRESHOLD)).toBe(true);
+    // Bins colour by the same colorBy match as the raw fill.
+    expect((agg.paint["fill-color"] as unknown[])[0]).toBe("match");
+  });
+
+  it("no-colorBy tiled layer → agg fill uses a _count density interpolate", () => {
+    const layer = {
+      kind: "polygons",
+      source: { geometryColumn: "geom" },
+    } as MapLayer;
+    const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
+    const agg = layers.find((l) => l.id === `${sourceIdFor(0)}-agg`)!;
+    const op = agg.paint["fill-opacity"] as unknown[];
+    expect(op[0]).toBe("interpolate");
+    expect(JSON.stringify(op)).toContain("_count");
+  });
+
+  it("honours a per-layer zoomThreshold override", () => {
+    const layer = {
+      ...catLayer,
+      aggregation: { zoomThreshold: 9 },
+    } as MapLayer;
+    const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
+    expect(layers.find((l) => l.id === `${sourceIdFor(0)}-agg`)!.maxzoom).toBe(
+      9
+    );
+    expect(
+      layers.filter((l) => l.id !== `${sourceIdFor(0)}-agg`)[0].minzoom
+    ).toBe(9);
+  });
+
+  it("aggregation.enabled === false → no agg layer, raw layers not zoom-gated", () => {
+    const layer = { ...catLayer, aggregation: { enabled: false } } as MapLayer;
+    const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
+    expect(layers.some((l) => l.id === `${sourceIdFor(0)}-agg`)).toBe(false);
+    expect(layers.every((l) => l.minzoom === undefined)).toBe(true);
+  });
+
+  it("inline (not tiled) → no agg layer even with a colorBy", () => {
+    const { layers } = layerToMapLibre(catLayer, 0, [], { tiled: false });
+    expect(layers.some((l) => l.id === `${sourceIdFor(0)}-agg`)).toBe(false);
   });
 });
 
