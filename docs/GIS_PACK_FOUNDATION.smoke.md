@@ -86,9 +86,10 @@ Each notice must be **visible** — a cap/simplification/failure is never silent
 
 Four datasets seeded into the smoke station through the **real REST API connector** (not hand-seeded) exercise every geometry type, both source shapes, and both render paths. Each is a live `visualize_map` prompt against your running app.
 
-Fixtures (already seeded by the agent; see the cleanup manifest): `parcels` (2,000 Salt Lake County polygons, ArcGIS Utah parcels), `roads` (2,000 Utah Roads lines), `cities` (60 US cities via lat/lng columns), `smoke` (60k synthetic points).
+Fixtures (already seeded by the agent; see the cleanup manifest): `parcels` (**397k** Salt Lake County polygons — full county via paginated ArcGIS sync, `where=County='SaltLake'`, offset pagination), `roads` (2,000 Utah Roads lines), `cities` (60 US cities via lat/lng columns), `smoke` (60k synthetic points).
 
-- [ ] **Polygons + tiling (`parcels`):** *"Map the parcels."* → filled polygons render as vector tiles over Salt Lake City; zooming re-fetches detail; the low-zoom **simplified** notice shows then clears.
+- [ ] **Polygons + tiling at scale (`parcels`, 397k):** *"Map the parcels."* → filled polygons render as vector tiles over Salt Lake County; the county-wide view stays responsive (low-zoom tiles are capped at ~700 KB); zooming into a city/neighborhood re-fetches full detail.
+- [ ] **Density-partial notice (`parcels`, ties to §8 row 3):** at county/city zoom the **"Partial at this zoom — zoom in for all features"** notice shows (the 10k per-tile cap is clipping ~30k+ parcels/tile); it **clears** by ~z14 where a tile holds fewer than the cap.
 - [ ] **Polygon popup (`parcels`):** *"Map the parcels with a popup showing the address, parcel id, and area."* → clicking a parcel opens a popup with the real `c_address` / `c_parcel_id` / `c_area` values (no `⟨field⟩` placeholders).
 - [ ] **colorBy on a SQL-derived category (`parcels`):** *"Map the parcels colored by size — small (<800), medium, large (>3000) by area."* → the agent writes a `CASE` bucket and the map shows a **3-entry legend**, each bucket a distinct color.
 - [ ] **Lines + categorical colorBy (`roads`):** *"Map the roads colored by road class (cartocode)."* → LineStrings render, colored into **~10 classes** with a matching legend.
