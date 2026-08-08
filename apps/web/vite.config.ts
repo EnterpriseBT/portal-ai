@@ -107,6 +107,18 @@ export default defineConfig({
     }) as PluginOption,
     react() as PluginOption,
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        // Keep MapLibre GL (~200 KB gzip) out of the main chunk — it is loaded
+        // lazily by MapWidget only when a `geo` block renders (#314). The repo's
+        // first manualChunks entry.
+        manualChunks: {
+          maplibre: ["maplibre-gl"],
+        },
+      },
+    },
+  },
   server: {
     port: 3000,
     host: true,

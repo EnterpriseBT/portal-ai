@@ -29,6 +29,18 @@ export const WEBHOOK_READ_TOKEN_TTL_MS = 10 * 60 * 1000;
 /** Above this row count, reads automatically sample. */
 export const SAMPLING_THRESHOLD = 50_000;
 
+/**
+ * Defensive per-layer render clamp for the inline map path (#84 / #314).
+ * `visualize_map` delivers small results inline and larger ones as vector
+ * tiles via the shared sink threshold (`INLINE_ROWS_THRESHOLD`), and the LLM
+ * SQL layer itself caps at `PORTAL_SQL_DEFAULTS.rowCap`, so in normal operation
+ * an inline layer stays well under this. It is the backstop that clamps +
+ * surfaces a "showing first N of M" notice if more features ever reach the
+ * renderer inline (e.g. a pinned snapshot); large layers take the tile path,
+ * which transfers only the viewport.
+ */
+export const MAP_LAYER_FEATURE_CAP = 10_000;
+
 /** Per-query wall-clock cap for a SYNCHRONOUS query; PG `statement_timeout`.
  *  The job tier (#130 E1) runs past this off-thread — see
  *  `SQL_QUERY_JOB_TIMEOUT_MS`. */

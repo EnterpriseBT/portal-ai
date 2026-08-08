@@ -212,6 +212,12 @@ async function materializeColumns(
           validationPattern: null,
           validationMessage: null,
           canonicalFormat: null,
+          // `geoRole` is nullable-but-required on ColumnDefinition (a lat/lng
+          // pair carries a role; geometry is a type, not a role). The bulk
+          // draft doesn't carry a role, so a fresh def is null — omitting it
+          // left `undefined`, which fails the schema and crashed every
+          // fresh-column create through this path (#314).
+          geoRole: null,
           system: false,
         });
         const created = await DbService.repository.columnDefinitions.create(

@@ -37,6 +37,7 @@ export const BuiltinToolpackSlugSchema = z.enum([
   "web_search",
   "entity_management",
   "visualize",
+  "gis",
 ]);
 
 export type BuiltinToolpackSlug = z.infer<typeof BuiltinToolpackSlugSchema>;
@@ -248,6 +249,56 @@ const VISUALIZE_PACK: BuiltinToolpackSpec = {
               "Vertical bar chart: month on the x-axis, total revenue on the y-axis.",
           },
           output: { type: "d3" },
+        },
+      ],
+    },
+  ],
+};
+
+const GIS_PACK: BuiltinToolpackSpec = {
+  slug: "gis",
+  name: "GIS",
+  description:
+    "Map imported geometry: render interactive maps from SQL. Spatial math (distance, area, containment, buffers) is written directly as PostGIS `ST_*` in a SQL query — this pack ships the one thing SQL can't do, the map itself.",
+  iconSlug: "Map",
+  tools: [
+    {
+      name: "visualize_map",
+      description:
+        "Render an interactive map from a SQL query and a declarative MapSpec. Bind layers to result columns (a `geometry` column, or a lat/lng pair); style with literals or MapLibre expressions for per-feature colouring. Large results render as vector tiles automatically, small ones inline — do not add a LIMIT.",
+      parameterSchema: objectSchema(
+        {
+          sql: stringField(
+            "SQL selecting the rows to map. Select the raw geometry column (aliased `geom`) when the result may be large so it can render as vector tiles."
+          ),
+          spec: {
+            type: "object",
+            description:
+              "A MapSpec: { basemap?, initialView?, layers: [{ kind: points|polygons|lines|heatmap|cluster, source: {geometryColumn} | {latColumn,lngColumn}, style?, label? }], popup? }. Style values accept MapLibre expressions (case/match/interpolate/get); `colorBy` is sugar that also drives a legend. 1–8 layers.",
+          },
+          title: stringField("Optional display title for the map widget"),
+        },
+        ["sql", "spec"]
+      ),
+      examples: [
+        {
+          title: "Vacant parcels coloured by zoning",
+          input: {
+            sql: "SELECT c_geom AS geom, c_prop_class FROM er__parcels",
+            spec: {
+              layers: [
+                {
+                  kind: "polygons",
+                  source: { geometryColumn: "geom" },
+                  style: {
+                    colorBy: { column: "c_prop_class" },
+                  },
+                },
+              ],
+              popup: { template: "{{c_address}} — {{c_prop_class}}" },
+            },
+          },
+          output: { type: "geo" },
         },
       ],
     },
@@ -1069,6 +1120,21 @@ const CAPABILITIES: Record<string, ToolCapability> = {
     production: { kind: "rows", onLarge: "handle" },
     alwaysAvailable: false,
   },
+  // gis (#314) — like visualize_d3, an engine read that renders a widget, but
+  // the agent authors the MapSpec directly (no codegen sub-call), so it is
+  // `free`, not `expensive`. `geo` render ⇒ production.kind "rows".
+  visualize_map: {
+    pure: false,
+    reads: ["entity_records"],
+    writes: [],
+    consumption: { mode: "engine-pushdown" },
+    computeShape: "visualize",
+    costHint: "free",
+    locks: [],
+    resultKind: "geo",
+    production: { kind: "rows", onLarge: "handle" },
+    alwaysAvailable: false,
+  },
   // resolve_identity returns a structured match set the agent consumes; not
   // auto-surfaced (scalar = no inline display block — preserves prior behavior).
   resolve_identity: engineRead("scalar", "scan"),
@@ -1214,6 +1280,7 @@ export const BUILTIN_TOOLPACKS: ReadonlyArray<BuiltinToolpack> = Object.freeze(
     FINANCIAL_PACK,
     WEB_SEARCH_PACK,
     ENTITY_MANAGEMENT_PACK,
+    GIS_PACK,
   ].map(attachCapabilities)
 );
 

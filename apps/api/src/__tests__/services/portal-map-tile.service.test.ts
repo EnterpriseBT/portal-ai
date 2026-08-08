@@ -3,6 +3,7 @@ import { describe, it, expect } from "@jest/globals";
 import {
   PortalMapTileService,
   MAP_TILE_FEATURE_CAP,
+  propertyColumnsFromSpec,
   tileSimplifyTolerance,
   type RenderTileDeps,
   type TileQueryResult,
@@ -26,7 +27,11 @@ const messageWithPipeline = {
 
 function deps(
   over: Partial<RenderTileDeps> = {},
-  query: TileQueryResult = { mvt: Buffer.from([1, 2, 3]), featureCount: 5 }
+  query: TileQueryResult = {
+    mvt: Buffer.from([1, 2, 3]),
+    featureCount: 5,
+    truncated: false,
+  }
 ): RenderTileDeps {
   return {
     findMessageById: async () => messageWithPipeline,
@@ -51,6 +56,32 @@ describe("tileSimplifyTolerance", () => {
   it("is positive and shrinks with zoom at low zoom", () => {
     expect(tileSimplifyTolerance(2)).toBeGreaterThan(tileSimplifyTolerance(8));
     expect(tileSimplifyTolerance(8)).toBeGreaterThan(0);
+  });
+});
+
+describe("propertyColumnsFromSpec (#314)", () => {
+  it("collects colorBy columns + popup fields, excludes geom, tolerates single/double braces", () => {
+    const spec = {
+      layers: [
+        { style: { colorBy: { column: "c_state_name" } } },
+        { style: { colorBy: { column: "c_pop2000" } } },
+        { source: { geometryColumn: "geom" } }, // no colorBy
+      ],
+      popup: {
+        template: "State: {c_state_name} — pop {{c_pop2000}} at {geom}",
+      },
+    };
+    const cols = propertyColumnsFromSpec(spec).sort();
+    // c_state_name + c_pop2000; `geom` excluded even though the popup names it.
+    expect(cols).toEqual(["c_pop2000", "c_state_name"]);
+  });
+
+  it("returns [] for a spec with no colorBy or popup", () => {
+    expect(
+      propertyColumnsFromSpec({
+        layers: [{ source: { geometryColumn: "geom" } }],
+      })
+    ).toEqual([]);
   });
 });
 
@@ -167,10 +198,21 @@ describe("PortalMapTileService.renderTile (#316)", () => {
     expect(high.simplifiedTolerance).toBeNull();
   });
 
-  it("flags truncatedCap when the feature cap is hit", async () => {
+  it("flags truncatedCap from the query's `truncated`, even when the rendered count is under the cap (#314)", async () => {
+    // The clip is reported by the LIMITed row count, not the rendered feature
+    // count — boundary features clip to null geometry, so `featureCount` lands
+    // just under the cap on a genuinely-clipped tile. Truncation must still fire
+    // (no silent degradation).
     const res = await PortalMapTileService.renderTile(
       { ref: { kind: "message", messageId: "msg-1", blockIndex: 0 }, ...base },
-      deps({}, { mvt: Buffer.from([9]), featureCount: MAP_TILE_FEATURE_CAP })
+      deps(
+        {},
+        {
+          mvt: Buffer.from([9]),
+          featureCount: MAP_TILE_FEATURE_CAP - 7, // rendered < cap …
+          truncated: true, // … but the LIMIT clipped
+        }
+      )
     );
     expect(res.status).toBe(200);
     expect(res.truncatedCap).toBe(MAP_TILE_FEATURE_CAP);
@@ -179,7 +221,7 @@ describe("PortalMapTileService.renderTile (#316)", () => {
   it("returns 204 for a genuinely empty envelope", async () => {
     const res = await PortalMapTileService.renderTile(
       { ref: { kind: "message", messageId: "msg-1", blockIndex: 0 }, ...base },
-      deps({}, { mvt: null, featureCount: 0 })
+      deps({}, { mvt: null, featureCount: 0, truncated: false })
     );
     expect(res.status).toBe(204);
     expect(res.body).toBeUndefined();

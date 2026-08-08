@@ -221,6 +221,20 @@ export function resolveDisplayBlock(
     };
   }
 
+  // Geo (#314). visualize_map is `resultKind: "geo"`; the `resultKind ===
+  // undefined` fallback mirrors the d3 arm so a geo result still routes by its
+  // `type` tag before the capability lands (slice 3 pins the capability).
+  if (
+    (resultKind === "geo" ||
+      (resultKind === undefined && toolResult?.type === "geo")) &&
+    toolResult?.type === "geo"
+  ) {
+    return {
+      block: { type: "geo", content: toolResult },
+      sseResult: toolResult ?? undefined,
+    };
+  }
+
   if (resultKind === "data-table" || toolResult?.type === "data-table") {
     // Handle path (#85 Phase 1): the tool returned a queryHandle
     // envelope instead of inline rows. Route it through the

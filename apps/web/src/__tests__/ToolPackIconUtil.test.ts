@@ -2,6 +2,7 @@ import AutoGraphOutlined from "@mui/icons-material/AutoGraphOutlined";
 import BarChartOutlined from "@mui/icons-material/BarChartOutlined";
 import ExtensionOutlined from "@mui/icons-material/ExtensionOutlined";
 import HubOutlined from "@mui/icons-material/HubOutlined";
+import MapOutlined from "@mui/icons-material/MapOutlined";
 import PaidOutlined from "@mui/icons-material/PaidOutlined";
 import StorageOutlined from "@mui/icons-material/StorageOutlined";
 import TravelExploreOutlined from "@mui/icons-material/TravelExploreOutlined";
@@ -20,6 +21,7 @@ describe("ToolPackIconUtil.getIcon", () => {
     expect(ToolPackIconUtil.getIcon("financial")).toBe(PaidOutlined);
     expect(ToolPackIconUtil.getIcon("web_search")).toBe(TravelExploreOutlined);
     expect(ToolPackIconUtil.getIcon("entity_management")).toBe(HubOutlined);
+    expect(ToolPackIconUtil.getIcon("gis")).toBe(MapOutlined);
   });
 
   it("falls back to the Extension icon for unknown / custom packs", () => {

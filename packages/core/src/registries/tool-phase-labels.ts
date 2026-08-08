@@ -43,6 +43,9 @@ export const TOOL_PHASE_LABELS: Record<string, string> = {
   // visualize — the long tail this feature exists for (Opus codegen + retries).
   visualize_d3: "Building the chart",
 
+  // gis (#314)
+  visualize_map: "Drawing the map",
+
   // statistics
   cluster: "Clustering records",
   hypothesis_test: "Running the test",
