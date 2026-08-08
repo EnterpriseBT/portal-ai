@@ -29,8 +29,17 @@ import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "portal-map-tile" });
 
-/** Max features rasterised into a single tile before clipping (limits row 3). */
-export const MAP_TILE_FEATURE_CAP = 50_000;
+/**
+ * Max features rasterised into a single tile before clipping (limits row 3).
+ * Tuned for client render weight, not just query cost: a dense polygon layer
+ * (e.g. ~400k county parcels) packs 30k+ polygons into a single low-zoom tile
+ * at ~100 bytes each — several such 3.5 MB tiles fetched at once stall the
+ * browser. Capping at 10k keeps a low-zoom tile near ~1 MB and responsive; the
+ * clip surfaces as the visible "Partial at this zoom" notice (#314), so the
+ * overview is a light sample and full detail returns on zoom-in. High-zoom
+ * tiles hold far fewer features than this, so they're unaffected.
+ */
+export const MAP_TILE_FEATURE_CAP = 10_000;
 /** Statement-timeout budget for a single tile query. */
 const TILE_STATEMENT_TIMEOUT_MS = 10_000;
 /** MVT tile extent (standard 4096-unit grid). */
@@ -64,7 +73,13 @@ export interface TileRenderResult {
 /** Result of running the ST_AsMVT query. */
 export interface TileQueryResult {
   mvt: Buffer | null;
+  /** Features actually rendered into the tile (non-null clipped geometry). */
   featureCount: number;
+  /** Whether the per-tile feature cap clipped the source set. Derived from the
+   *  count of rows the `LIMIT` returned — NOT `featureCount`, which drops
+   *  boundary features whose clipped geometry is null and would under-report a
+   *  real clip (silent truncation). */
+  truncated: boolean;
 }
 
 export interface RenderTileDeps {
@@ -223,14 +238,20 @@ export class PortalMapTileService {
     const propSelect = propertyColumns
       .map((c) => `src.${quoteIdentTile(c)}, `)
       .join("");
+    // `lim` is the capped, tile-intersecting source set. `n_limited` counts its
+    // rows (how many the LIMIT actually returned) so truncation reflects the
+    // real clip; `n` / the MVT count only the rows whose clipped geometry is
+    // non-null (a boundary feature can clip to null and drop out).
     const tileSql =
-      `SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom') AS mvt, ` +
-      `count(*)::int AS n FROM (` +
+      `WITH lim AS (` +
       `SELECT ${propSelect}ST_AsMVTGeom(ST_Transform(${geomExpr}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom ` +
       `FROM (${pipeline.sql}) src ` +
       `WHERE src.geom && ST_Transform(${envelope}, 4326) ` +
       `LIMIT ${cap}` +
-      `) q WHERE q.geom IS NOT NULL`;
+      `) SELECT ` +
+      `(SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom') FROM lim q WHERE q.geom IS NOT NULL) AS mvt, ` +
+      `(SELECT count(*) FROM lim WHERE geom IS NOT NULL)::int AS n, ` +
+      `(SELECT count(*) FROM lim)::int AS n_limited`;
 
     // Build the session-view DDL BEFORE opening the tile transaction.
     // `buildSessionViews` runs its own pooled DB reads (capabilities, entity +
@@ -260,12 +281,14 @@ export class PortalMapTileService {
         const rows = (await tx.execute(sql.raw(tileSql))) as unknown as Array<{
           mvt: Buffer | Uint8Array | null;
           n: number;
+          n_limited: number;
         }>;
         const row = rows[0];
         const featureCount = row ? Number(row.n) : 0;
+        const limited = row ? Number(row.n_limited) : 0;
         const raw = row?.mvt ?? null;
         const mvt = raw ? Buffer.from(raw as Uint8Array) : null;
-        return { mvt, featureCount };
+        return { mvt, featureCount, truncated: limited >= cap };
       });
     } catch (err) {
       const code = (err as { code?: string })?.code;
@@ -309,7 +332,7 @@ export class PortalMapTileService {
 
     const runTileQuery =
       deps.runTileQuery ?? this.defaultRunTileQuery.bind(this);
-    const { mvt, featureCount } = await runTileQuery({
+    const { mvt, featureCount, truncated } = await runTileQuery({
       pipeline,
       propertyColumns,
       organizationId,
@@ -321,8 +344,7 @@ export class PortalMapTileService {
     });
 
     const simplifiedTolerance = tolerance > 0 ? tolerance : null;
-    const truncatedCap =
-      featureCount >= MAP_TILE_FEATURE_CAP ? MAP_TILE_FEATURE_CAP : null;
+    const truncatedCap = truncated ? MAP_TILE_FEATURE_CAP : null;
 
     if (truncatedCap !== null) {
       logger.warn(
