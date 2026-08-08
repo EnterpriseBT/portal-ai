@@ -1,6 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
 
 import type { MapLayer, MapSpec } from "@portalai/core/contracts";
+import { AGG_ZOOM_THRESHOLD } from "@portalai/core/constants";
 
 import {
   boundsOf,
@@ -210,8 +211,8 @@ describe("layerToMapLibre aggregation (#330)", () => {
     const raw = layers.filter((l) => l.id !== `${sourceIdFor(0)}-agg`);
     // Clean handoff: raw at/above threshold, agg below it.
     expect(agg.type).toBe("fill");
-    expect(agg.maxzoom).toBe(12); // AGG_ZOOM_THRESHOLD default
-    expect(raw.every((l) => l.minzoom === 12)).toBe(true);
+    expect(agg.maxzoom).toBe(AGG_ZOOM_THRESHOLD);
+    expect(raw.every((l) => l.minzoom === AGG_ZOOM_THRESHOLD)).toBe(true);
     // Bins colour by the same colorBy match as the raw fill.
     expect((agg.paint["fill-color"] as unknown[])[0]).toBe("match");
   });

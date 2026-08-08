@@ -7,7 +7,7 @@ Pins the contract for the grid-bins + dominant-category low-zoom overview. Disco
 1. **Square grid**, server-side, in the tile query below a zoom threshold.
 2. **`mode()`+`count` per cell** for category layers; **`count`-only density fill** when no `colorBy`.
 3. **Dual zoom-gated client layers**: aggregate `fill` (`maxzoom = threshold`) + raw kind-layer(s) (`minzoom = threshold`), same `colorBy` match.
-4. **Automatic below threshold** with an optional per-layer `aggregation` override; **default threshold `z < 12`**, tuned during smoke.
+4. **Automatic below threshold** with an optional per-layer `aggregation` override; **default threshold `z < 14`**, tuned during smoke to clear the raw over-cap band.
 5. **No silent degradation** — a new `X-Portal-Tile-Aggregated` header drives an "aggregated overview" notice; an aggregated tile is never also "truncated".
 6. Density scale domain is **fixed + log-scaled** (not per-tile normalized).
 

@@ -32,15 +32,15 @@ If the parcels are gone, re-seed per the #314 cleanup manifest before starting.
 - [ ] **Every region is filled** with square bins — no empty/blank areas anywhere in the county (contrast the old behavior where whole areas vanished).
 - [ ] Each bin is coloured by its **dominant city** (e.g. the Salt Lake City area reads as SLC's colour, Sandy's as Sandy's) — the 25-city legend still shows.
 - [ ] The notice under the map reads **"Aggregated overview — zoom in for detail."** and **not** "Partial at this zoom — zoom in for all features."
-- [ ] **Zoom into a city/neighborhood (z12+):** the bins give way to individual parcel polygons, coloured by the **same** per-city colours (a city's bins and its parcels are the same hue — shared persisted stops).
-- [ ] **DevTools → Network:** a low-zoom `…/{z}/{x}/{y}.mvt` response (z < 12) carries header **`X-Portal-Tile-Aggregated: 1`** and **no** `X-Portal-Tile-Truncated`; a z ≥ 12 `.mvt` carries **neither** aggregated nor (for this layer) truncated.
+- [ ] **Zoom into a city/neighborhood (z14+):** the bins give way to individual parcel polygons, coloured by the **same** per-city colours (a city's bins and its parcels are the same hue — shared persisted stops).
+- [ ] **DevTools → Network:** a low-zoom `…/{z}/{x}/{y}.mvt` response (z < 14) carries header **`X-Portal-Tile-Aggregated: 1`** and **no** `X-Portal-Tile-Truncated`; a z ≥ 14 `.mvt` carries **neither** aggregated nor (for this layer) truncated.
 
 ## §2 — Density fallback with no colorBy (AC2) · slice 2+3
 
 - [ ] Prompt **"Map the parcels."** (no colour). Zoom out to the county.
 - [ ] Low zoom shows a **density fill** — a single hue whose opacity scales with how many parcels fall in each cell (dense downtown cells solid, rural-edge cells faint), **not** a flat single colour.
 - [ ] The shading is **consistent cell-to-cell across the map** — a cell with ~the same count looks the same in a dense tile and a sparse tile (fixed/log domain, not per-tile normalized).
-- [ ] Zoom in past z12 → individual parcels in the layer's default colour.
+- [ ] Zoom in past z14 → individual parcels in the layer's default colour.
 
 ## §3 — Points and lines also aggregate (AC6) · slice 2+3
 
@@ -49,7 +49,7 @@ If the parcels are gone, re-seed per the #314 cleanup manifest before starting.
 
 ## §4 — Threshold handoff (AC1) · slice 3
 
-- [ ] Slowly zoom across **z12** on the parcels map. The switch from bins → raw parcels is **clean at the boundary** — no gap (a blank zoom level), no double-draw (bins overlaid on parcels). MapLibre `minzoom`/`maxzoom` are min-inclusive / max-exclusive, so exactly one representation shows at any zoom.
+- [ ] Slowly zoom across **z14** on the parcels map. The switch from bins → raw parcels is **clean at the boundary** — no gap (a blank zoom level), no double-draw (bins overlaid on parcels). MapLibre `minzoom`/`maxzoom` are min-inclusive / max-exclusive, so exactly one representation shows at any zoom.
 
 ## §5 — Performance / responsiveness (AC5) · slice 2
 
@@ -63,8 +63,8 @@ If the parcels are gone, re-seed per the #314 cleanup manifest before starting.
 ## §6 — Error & edge cases (spec Risks)
 
 - [ ] **Inline layers don't aggregate:** prompt **"Map the US cities colored by state."** (the 60-row `cities` layer renders inline, not tiled). It shows individual markers at **every** zoom — **no** bins and **no** "Aggregated overview" notice (aggregation is a tile-only path).
-- [ ] **Notice clears on zoom-in:** on the parcels map, the "Aggregated overview" notice is **present** at low zoom and **gone** once you pass z12 (not sticky).
-- [ ] *(If you exercise it)* A tiled map that hits the raw per-tile cap at z ≥ 12 still shows "Partial at this zoom" — the truncated notice is only *suppressed while aggregated*, not removed.
+- [ ] **Notice clears on zoom-in:** on the parcels map, the "Aggregated overview" notice is **present** at low zoom and **gone** once you pass z14 (not sticky).
+- [ ] *(If you exercise it)* A tiled map that hits the raw per-tile cap at z ≥ 14 still shows "Partial at this zoom" — the truncated notice is only *suppressed while aggregated*, not removed.
 
 ## Sign-off
 
