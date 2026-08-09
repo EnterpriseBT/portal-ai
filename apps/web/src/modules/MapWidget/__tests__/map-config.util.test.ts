@@ -238,7 +238,7 @@ describe("layerToMapLibre", () => {
     expect(layers[0].source).toBe(sourceIdFor(2));
   });
 
-  it("raw polygon fill is translucent by default so the basemap shows through, and honours style.opacity (#330)", () => {
+  it("raw polygon fill is translucent by default; style.opacity may only make it MORE translucent, never more opaque (#330)", () => {
     const fill = (l: MapLayer) =>
       layerToMapLibre(l, 0, []).layers.find(
         (x) => x.id === `${sourceIdFor(0)}-fill`
@@ -247,13 +247,24 @@ describe("layerToMapLibre", () => {
       kind: "polygons",
       source: { geometryColumn: "geom" },
     } as MapLayer);
-    expect(def.paint["fill-opacity"] as number).toBeLessThan(0.5); // was 0.5 (opaque)
-    const overridden = fill({
+    const base = def.paint["fill-opacity"] as number;
+    expect(base).toBeLessThan(0.5); // translucent default
+
+    // Agents author ~0.8 → capped to the translucent ceiling (basemap stays visible).
+    const opaque = fill({
       kind: "polygons",
       source: { geometryColumn: "geom" },
-      style: { opacity: 0.9 },
+      style: { opacity: 0.8 },
     } as MapLayer);
-    expect(overridden.paint["fill-opacity"]).toBe(0.9);
+    expect(opaque.paint["fill-opacity"]).toBe(base);
+
+    // A lower value is honored (more translucent).
+    const lighter = fill({
+      kind: "polygons",
+      source: { geometryColumn: "geom" },
+      style: { opacity: 0.15 },
+    } as MapLayer);
+    expect(lighter.paint["fill-opacity"]).toBe(0.15);
   });
 
   it("passes a MapLibre expression through as the colour verbatim", () => {
@@ -352,15 +363,14 @@ describe("layerToMapLibre aggregation (#330)", () => {
         (x) => x.id === `${sourceIdFor(0)}-agg`
       )!;
     // Default category bin: translucent (basemap reads through), not near-opaque.
-    expect(agg(catLayer).paint["fill-opacity"] as number).toBeLessThanOrEqual(
-      0.6
-    );
-    // A per-layer style.opacity overrides it.
+    const base = agg(catLayer).paint["fill-opacity"] as number;
+    expect(base).toBeLessThanOrEqual(0.6);
+    // An agent-authored opaque style.opacity is capped to the translucent ceiling.
     const overridden = agg({
       ...catLayer,
       style: { ...catLayer.style, opacity: 0.9 },
     } as MapLayer);
-    expect(overridden.paint["fill-opacity"]).toBe(0.9);
+    expect(overridden.paint["fill-opacity"]).toBe(base);
     // Density ramp also tops out translucent.
     const density = agg({
       kind: "polygons",

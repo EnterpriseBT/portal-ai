@@ -134,6 +134,19 @@ const AGG_FILL_OPACITY = 0.35;
  */
 const RAW_FILL_OPACITY = 0.4;
 
+/**
+ * Cap a fill's opacity at a translucent ceiling so a map fill never fully
+ * obscures the basemap (labels, roads, landmarks) — the context that makes the
+ * overview useful. A spec/agent-authored `style.opacity` can only make a fill
+ * *more* translucent, never more opaque than the ceiling (agents tend to author
+ * ~0.8, which hides everything). A number is clamped; a MapLibre expression is
+ * passed through (can't clamp statically); omitted → the ceiling.
+ */
+const cappedFillOpacity = (styleOpacity: unknown, ceiling: number): unknown =>
+  typeof styleOpacity === "number"
+    ? Math.min(styleOpacity, ceiling)
+    : (styleOpacity ?? ceiling);
+
 export interface LegendEntry {
   label: string;
   color: string;
@@ -289,7 +302,7 @@ export function layerToMapLibre(
         // Overridable per layer via style.opacity.
         paint: {
           "fill-color": color,
-          "fill-opacity": style.opacity ?? RAW_FILL_OPACITY,
+          "fill-opacity": cappedFillOpacity(style.opacity, RAW_FILL_OPACITY),
         },
       });
       layers.push({
@@ -348,7 +361,7 @@ export function layerToMapLibre(
       paint: style.colorBy
         ? {
             "fill-color": color,
-            "fill-opacity": style.opacity ?? AGG_FILL_OPACITY,
+            "fill-opacity": cappedFillOpacity(style.opacity, AGG_FILL_OPACITY),
           }
         : {
             "fill-color": color,
