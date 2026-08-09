@@ -118,6 +118,34 @@ export const DEFAULT_PALETTE = [
 
 const DEFAULT_COLOR = "#4e79a7";
 const UNMATCHED_COLOR = "#cfd8dc";
+/**
+ * Default fill opacity for low-zoom aggregate bins (#330). Deliberately
+ * translucent so the basemap underneath — city labels, roads, landmarks — reads
+ * through the coloured grid; a solid bin obscures the very context that makes an
+ * overview useful. Dataset-agnostic (applies to category and density bins) and
+ * overridable per layer via `style.opacity`. The density ramp tops out here too.
+ */
+const AGG_FILL_OPACITY = 0.35;
+/**
+ * Default fill opacity for raw (non-aggregated) polygon layers. Translucent so a
+ * filled choropleth (e.g. parcels by value) doesn't hide the basemap features
+ * underneath; a touch more opaque than the aggregate bins since it's the detail
+ * layer. Overridable per layer via `style.opacity`.
+ */
+const RAW_FILL_OPACITY = 0.4;
+
+/**
+ * Cap a fill's opacity at a translucent ceiling so a map fill never fully
+ * obscures the basemap (labels, roads, landmarks) — the context that makes the
+ * overview useful. A spec/agent-authored `style.opacity` can only make a fill
+ * *more* translucent, never more opaque than the ceiling (agents tend to author
+ * ~0.8, which hides everything). A number is clamped; a MapLibre expression is
+ * passed through (can't clamp statically); omitted → the ceiling.
+ */
+const cappedFillOpacity = (styleOpacity: unknown, ceiling: number): unknown =>
+  typeof styleOpacity === "number"
+    ? Math.min(styleOpacity, ceiling)
+    : (styleOpacity ?? ceiling);
 
 export interface LegendEntry {
   label: string;
@@ -160,6 +188,38 @@ export function resolveColorBy(
   // with zero pairs, which MapLibre rejects / paints as the invisible fallback.
   if (pairs.length === 0) {
     return { expression: DEFAULT_COLOR, legend: [] };
+  }
+
+  // Numeric stops are graduated breakpoints (value bands), not exact
+  // categories: compile to a `step` scale so a *continuous* value lands in the
+  // right band. A `match` (exact equality) would leave every non-breakpoint
+  // value on the fallback colour — i.e. an all-grey map for "colour by value",
+  // even though the legend renders. String stops stay categorical (`match`).
+  const graduated = pairs.every(([value]) => typeof value === "number");
+  if (graduated) {
+    const sorted = [...pairs].sort(
+      (a, b) => (a[0] as number) - (b[0] as number)
+    );
+    // step(input, base, break1, c1, break2, c2, …): input < break1 → base.
+    // Coerce the input with `to-number` (null/absent → 0): `step` THROWS on a
+    // null input ("expected number, found null") and MapLibre then paints the
+    // WHOLE layer its default — black. ST_AsMVT can emit a property present-but-
+    // null, so `["has", col]` alone doesn't stop null reaching `step`; the
+    // coercion makes it impossible to throw.
+    const step: unknown[] = [
+      "step",
+      ["to-number", ["get", colorBy.column], 0],
+      sorted[0][1],
+    ];
+    for (let i = 1; i < sorted.length; i++)
+      step.push(sorted[i][0], sorted[i][1]);
+    // Features that genuinely lack a value render the neutral no-data colour
+    // (not the lowest band); those with a value band via the coerced `step`.
+    const expression = ["case", ["has", colorBy.column], step, UNMATCHED_COLOR];
+    return {
+      expression,
+      legend: sorted.map(([value, color]) => ({ label: String(value), color })),
+    };
   }
 
   const match: unknown[] = ["match", ["get", colorBy.column]];
@@ -237,7 +297,13 @@ export function layerToMapLibre(
         id: `${source}-fill`,
         type: "fill",
         source,
-        paint: { "fill-color": color, "fill-opacity": style.opacity ?? 0.5 },
+        // Translucent by default so the basemap (labels, roads, landmarks) reads
+        // through a filled polygon layer — same rationale as the aggregate bins.
+        // Overridable per layer via style.opacity.
+        paint: {
+          "fill-color": color,
+          "fill-opacity": cappedFillOpacity(style.opacity, RAW_FILL_OPACITY),
+        },
       });
       layers.push({
         id: `${source}-outline`,
@@ -293,19 +359,24 @@ export function layerToMapLibre(
       source,
       maxzoom: threshold,
       paint: style.colorBy
-        ? { "fill-color": color, "fill-opacity": 0.75 }
+        ? {
+            "fill-color": color,
+            "fill-opacity": cappedFillOpacity(style.opacity, AGG_FILL_OPACITY),
+          }
         : {
             "fill-color": color,
-            // Density: opacity scales with the per-cell count over a fixed
-            // log domain (consistent across tiles, never per-tile normalized).
+            // Density: opacity scales with the per-cell count over a fixed log
+            // domain (consistent across tiles, never per-tile normalized), and
+            // tops out at the translucent AGG_FILL_OPACITY so even the densest
+            // cell lets the basemap read through.
             "fill-opacity": [
               "interpolate",
               ["linear"],
               ["log10", ["max", ["get", "_count"], 1]],
               0,
-              0.15,
+              0.1,
               Math.log10(AGG_DENSITY_MAX),
-              0.85,
+              AGG_FILL_OPACITY,
             ],
           },
     });
