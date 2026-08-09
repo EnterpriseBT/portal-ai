@@ -170,6 +170,26 @@ export function resolveColorBy(
     return { expression: DEFAULT_COLOR, legend: [] };
   }
 
+  // Numeric stops are graduated breakpoints (value bands), not exact
+  // categories: compile to a `step` scale so a *continuous* value lands in the
+  // right band. A `match` (exact equality) would leave every non-breakpoint
+  // value on the fallback colour — i.e. an all-grey map for "colour by value",
+  // even though the legend renders. String stops stay categorical (`match`).
+  const graduated = pairs.every(([value]) => typeof value === "number");
+  if (graduated) {
+    const sorted = [...pairs].sort(
+      (a, b) => (a[0] as number) - (b[0] as number)
+    );
+    // step(input, base, break1, c1, break2, c2, …): input < break1 → base.
+    const step: unknown[] = ["step", ["get", colorBy.column], sorted[0][1]];
+    for (let i = 1; i < sorted.length; i++)
+      step.push(sorted[i][0], sorted[i][1]);
+    return {
+      expression: step,
+      legend: sorted.map(([value, color]) => ({ label: String(value), color })),
+    };
+  }
+
   const match: unknown[] = ["match", ["get", colorBy.column]];
   for (const [value, color] of pairs) {
     match.push(value, color);

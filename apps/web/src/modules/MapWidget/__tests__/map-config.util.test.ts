@@ -124,6 +124,55 @@ describe("resolveColorBy", () => {
     expect(legend).toEqual([]);
   });
 
+  it("compiles numeric (graduated) stops to a step scale, not an exact match (#330)", () => {
+    const { expression, legend } = resolveColorBy(
+      {
+        column: "mkt_value",
+        stops: [
+          [0, "#f7fbff"],
+          [100000, "#c6dbef"],
+          [300000, "#6baed6"],
+        ],
+      },
+      []
+    );
+    // `step` (ranges), NOT `match` (exact) — a continuous value like 152,397
+    // must land in a band, not fall to the grey fallback.
+    expect(expression).toEqual([
+      "step",
+      ["get", "mkt_value"],
+      "#f7fbff",
+      100000,
+      "#c6dbef",
+      300000,
+      "#6baed6",
+    ]);
+    expect(legend.map((l) => l.label)).toEqual(["0", "100000", "300000"]);
+  });
+
+  it("sorts numeric stops ascending before building the step scale", () => {
+    const { expression } = resolveColorBy(
+      {
+        column: "v",
+        stops: [
+          [300000, "#3"],
+          [0, "#0"],
+          [100000, "#1"],
+        ],
+      },
+      []
+    );
+    expect(expression).toEqual([
+      "step",
+      ["get", "v"],
+      "#0",
+      100000,
+      "#1",
+      300000,
+      "#3",
+    ]);
+  });
+
   it("honours explicit stops", () => {
     const { expression, legend } = resolveColorBy(
       { column: "klass", stops: [["vacant", "#ff8a00"]] },
