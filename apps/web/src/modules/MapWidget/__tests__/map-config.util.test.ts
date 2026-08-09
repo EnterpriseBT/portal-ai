@@ -144,7 +144,7 @@ describe("resolveColorBy", () => {
     expect(expr[1]).toEqual(["has", "mkt_value"]);
     expect(expr[2]).toEqual([
       "step",
-      ["get", "mkt_value"],
+      ["to-number", ["get", "mkt_value"], 0], // coerced so null can't throw → black
       "#f7fbff",
       100000,
       "#c6dbef",
@@ -188,7 +188,7 @@ describe("resolveColorBy", () => {
     // The step (inside the null-guard `case`) is sorted ascending.
     expect((expression as unknown[])[2]).toEqual([
       "step",
-      ["get", "v"],
+      ["to-number", ["get", "v"], 0],
       "#0",
       100000,
       "#1",
@@ -236,6 +236,24 @@ describe("layerToMapLibre", () => {
     const { layers } = layerToMapLibre(layer, 2, []);
     expect(layers.map((l) => l.type)).toEqual(["fill", "line"]);
     expect(layers[0].source).toBe(sourceIdFor(2));
+  });
+
+  it("raw polygon fill is translucent by default so the basemap shows through, and honours style.opacity (#330)", () => {
+    const fill = (l: MapLayer) =>
+      layerToMapLibre(l, 0, []).layers.find(
+        (x) => x.id === `${sourceIdFor(0)}-fill`
+      )!;
+    const def = fill({
+      kind: "polygons",
+      source: { geometryColumn: "geom" },
+    } as MapLayer);
+    expect(def.paint["fill-opacity"] as number).toBeLessThan(0.5); // was 0.5 (opaque)
+    const overridden = fill({
+      kind: "polygons",
+      source: { geometryColumn: "geom" },
+      style: { opacity: 0.9 },
+    } as MapLayer);
+    expect(overridden.paint["fill-opacity"]).toBe(0.9);
   });
 
   it("passes a MapLibre expression through as the colour verbatim", () => {

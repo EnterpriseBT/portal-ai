@@ -126,6 +126,13 @@ const UNMATCHED_COLOR = "#cfd8dc";
  * overridable per layer via `style.opacity`. The density ramp tops out here too.
  */
 const AGG_FILL_OPACITY = 0.35;
+/**
+ * Default fill opacity for raw (non-aggregated) polygon layers. Translucent so a
+ * filled choropleth (e.g. parcels by value) doesn't hide the basemap features
+ * underneath; a touch more opaque than the aggregate bins since it's the detail
+ * layer. Overridable per layer via `style.opacity`.
+ */
+const RAW_FILL_OPACITY = 0.4;
 
 export interface LegendEntry {
   label: string;
@@ -181,14 +188,20 @@ export function resolveColorBy(
       (a, b) => (a[0] as number) - (b[0] as number)
     );
     // step(input, base, break1, c1, break2, c2, …): input < break1 → base.
-    const step: unknown[] = ["step", ["get", colorBy.column], sorted[0][1]];
+    // Coerce the input with `to-number` (null/absent → 0): `step` THROWS on a
+    // null input ("expected number, found null") and MapLibre then paints the
+    // WHOLE layer its default — black. ST_AsMVT can emit a property present-but-
+    // null, so `["has", col]` alone doesn't stop null reaching `step`; the
+    // coercion makes it impossible to throw.
+    const step: unknown[] = [
+      "step",
+      ["to-number", ["get", colorBy.column], 0],
+      sorted[0][1],
+    ];
     for (let i = 1; i < sorted.length; i++)
       step.push(sorted[i][0], sorted[i][1]);
-    // Guard nulls: `step` (unlike `match`) THROWS on a null/absent input
-    // ("expected number, found null"), and MapLibre then paints the whole layer
-    // its default — black. ST_AsMVT omits null properties, so a feature with no
-    // value (e.g. a parcel with no assessed value) has no key at all. Route
-    // those to the neutral no-data colour instead of letting `step` error.
+    // Features that genuinely lack a value render the neutral no-data colour
+    // (not the lowest band); those with a value band via the coerced `step`.
     const expression = ["case", ["has", colorBy.column], step, UNMATCHED_COLOR];
     return {
       expression,
@@ -271,7 +284,13 @@ export function layerToMapLibre(
         id: `${source}-fill`,
         type: "fill",
         source,
-        paint: { "fill-color": color, "fill-opacity": style.opacity ?? 0.5 },
+        // Translucent by default so the basemap (labels, roads, landmarks) reads
+        // through a filled polygon layer — same rationale as the aggregate bins.
+        // Overridable per layer via style.opacity.
+        paint: {
+          "fill-color": color,
+          "fill-opacity": style.opacity ?? RAW_FILL_OPACITY,
+        },
       });
       layers.push({
         id: `${source}-outline`,
