@@ -124,6 +124,79 @@ describe("resolveColorBy", () => {
     expect(legend).toEqual([]);
   });
 
+  it("compiles numeric (graduated) stops to a step scale, not an exact match (#330)", () => {
+    const { expression, legend } = resolveColorBy(
+      {
+        column: "mkt_value",
+        stops: [
+          [0, "#f7fbff"],
+          [100000, "#c6dbef"],
+          [300000, "#6baed6"],
+        ],
+      },
+      []
+    );
+    // `step` (ranges), NOT `match` (exact) — a continuous value like 152,397
+    // must land in a band, not fall to the grey fallback. Wrapped in a `case`
+    // on `has` so a null/absent value doesn't make `step` throw → black.
+    const expr = expression as unknown[];
+    expect(expr[0]).toBe("case");
+    expect(expr[1]).toEqual(["has", "mkt_value"]);
+    expect(expr[2]).toEqual([
+      "step",
+      ["to-number", ["get", "mkt_value"], 0], // coerced so null can't throw → black
+      "#f7fbff",
+      100000,
+      "#c6dbef",
+      300000,
+      "#6baed6",
+    ]);
+    expect(typeof expr[3]).toBe("string"); // no-data fallback colour
+    expect(legend.map((l) => l.label)).toEqual(["0", "100000", "300000"]);
+  });
+
+  it("routes null/absent numeric values to a no-data colour (no step throw → black) (#330)", () => {
+    const { expression } = resolveColorBy(
+      {
+        column: "mkt_value",
+        stops: [
+          [0, "#a"],
+          [100000, "#b"],
+        ],
+      },
+      []
+    );
+    const expr = expression as unknown[];
+    // case( has(col), step, <no-data> ) — features lacking the key never reach step.
+    expect(expr[0]).toBe("case");
+    expect(expr[1]).toEqual(["has", "mkt_value"]);
+    expect((expr[2] as unknown[])[0]).toBe("step");
+  });
+
+  it("sorts numeric stops ascending before building the step scale", () => {
+    const { expression } = resolveColorBy(
+      {
+        column: "v",
+        stops: [
+          [300000, "#3"],
+          [0, "#0"],
+          [100000, "#1"],
+        ],
+      },
+      []
+    );
+    // The step (inside the null-guard `case`) is sorted ascending.
+    expect((expression as unknown[])[2]).toEqual([
+      "step",
+      ["to-number", ["get", "v"], 0],
+      "#0",
+      100000,
+      "#1",
+      300000,
+      "#3",
+    ]);
+  });
+
   it("honours explicit stops", () => {
     const { expression, legend } = resolveColorBy(
       { column: "klass", stops: [["vacant", "#ff8a00"]] },
@@ -163,6 +236,35 @@ describe("layerToMapLibre", () => {
     const { layers } = layerToMapLibre(layer, 2, []);
     expect(layers.map((l) => l.type)).toEqual(["fill", "line"]);
     expect(layers[0].source).toBe(sourceIdFor(2));
+  });
+
+  it("raw polygon fill is translucent by default; style.opacity may only make it MORE translucent, never more opaque (#330)", () => {
+    const fill = (l: MapLayer) =>
+      layerToMapLibre(l, 0, []).layers.find(
+        (x) => x.id === `${sourceIdFor(0)}-fill`
+      )!;
+    const def = fill({
+      kind: "polygons",
+      source: { geometryColumn: "geom" },
+    } as MapLayer);
+    const base = def.paint["fill-opacity"] as number;
+    expect(base).toBeLessThan(0.5); // translucent default
+
+    // Agents author ~0.8 → capped to the translucent ceiling (basemap stays visible).
+    const opaque = fill({
+      kind: "polygons",
+      source: { geometryColumn: "geom" },
+      style: { opacity: 0.8 },
+    } as MapLayer);
+    expect(opaque.paint["fill-opacity"]).toBe(base);
+
+    // A lower value is honored (more translucent).
+    const lighter = fill({
+      kind: "polygons",
+      source: { geometryColumn: "geom" },
+      style: { opacity: 0.15 },
+    } as MapLayer);
+    expect(lighter.paint["fill-opacity"]).toBe(0.15);
   });
 
   it("passes a MapLibre expression through as the colour verbatim", () => {
@@ -253,6 +355,29 @@ describe("layerToMapLibre aggregation (#330)", () => {
   it("inline (not tiled) → no agg layer even with a colorBy", () => {
     const { layers } = layerToMapLibre(catLayer, 0, [], { tiled: false });
     expect(layers.some((l) => l.id === `${sourceIdFor(0)}-agg`)).toBe(false);
+  });
+
+  it("bins are translucent so the basemap shows through, and honour style.opacity (#330)", () => {
+    const agg = (l: MapLayer) =>
+      layerToMapLibre(l, 0, [], { tiled: true }).layers.find(
+        (x) => x.id === `${sourceIdFor(0)}-agg`
+      )!;
+    // Default category bin: translucent (basemap reads through), not near-opaque.
+    const base = agg(catLayer).paint["fill-opacity"] as number;
+    expect(base).toBeLessThanOrEqual(0.6);
+    // An agent-authored opaque style.opacity is capped to the translucent ceiling.
+    const overridden = agg({
+      ...catLayer,
+      style: { ...catLayer.style, opacity: 0.9 },
+    } as MapLayer);
+    expect(overridden.paint["fill-opacity"]).toBe(base);
+    // Density ramp also tops out translucent.
+    const density = agg({
+      kind: "polygons",
+      source: { geometryColumn: "geom" },
+    } as MapLayer);
+    const ramp = density.paint["fill-opacity"] as number[];
+    expect(ramp[ramp.length - 1]).toBeLessThanOrEqual(0.6);
   });
 });
 
