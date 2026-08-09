@@ -27,7 +27,7 @@ const InputSchema = z.object({
       "SQL selecting the rows to map. Select the raw geometry column (aliased `geom`) when the result may be large so it can render as vector tiles; do not add a LIMIT — result size is handled automatically."
     ),
   spec: MapSpecSchema.describe(
-    "The declarative map spec: an optional basemap, 1–8 layers (each a `kind` plus a `source` that is either {geometryColumn} or {latColumn,lngColumn}), optional per-layer `style` (literals or MapLibre expressions; `colorBy` drives a legend), and an optional `popup.template`."
+    'The declarative map spec: an optional basemap, 1–8 layers (each a `kind` plus a `source` that is either {geometryColumn} or {latColumn,lngColumn}), optional per-layer `style` (literals or MapLibre expressions; `colorBy` drives a legend), and an optional `popup.template`. Zoomed out, dense layers summarize automatically (polygons/points as grid bins, lines as a raw importance-ranked network); set `aggregation.treatment` on a layer to `"bins"` or `"none"` to override that per-kind default.'
   ),
   title: z.string().optional(),
 });

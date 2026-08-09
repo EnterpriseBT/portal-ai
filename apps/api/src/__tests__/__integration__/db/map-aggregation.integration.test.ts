@@ -32,6 +32,8 @@ const catAgg: TileAggregation = {
   zoomThreshold: 12,
   gridSizePx: 24,
   colorByColumn: "cat",
+  kind: "polygons",
+  rankByLength: false,
 };
 const densityAgg: TileAggregation = { ...catAgg, colorByColumn: null };
 
@@ -141,5 +143,76 @@ describe("Low-zoom grid aggregation tile SQL (#330)", () => {
     }>;
     expect(Number(rows[0].n)).toBe(2);
     expect(rows[0].mvt).toBeTruthy();
+  });
+});
+
+describe("Importance-ranked raw lines (#337)", () => {
+  const LTABLE = "line_rank_it_test";
+  const LZ = 8;
+  const LX = 48;
+  const LY = 96;
+  const LENV = `ST_TileEnvelope(${LZ}, ${LX}, ${LY})`;
+  let connection!: ReturnType<typeof postgres>;
+  let db!: ReturnType<typeof drizzle>;
+
+  // Three lines around SLC (within the z8 tile), distinct lengths:
+  // id 1 ≈ 17 km (longest), id 2 ≈ 4 km, id 3 ≈ 0.4 km (shortest).
+  const lines: Array<[number, string]> = [
+    [1, "LINESTRING(-111.95 40.76, -111.75 40.76)"],
+    [2, "LINESTRING(-111.90 40.76, -111.85 40.76)"],
+    [3, "LINESTRING(-111.900 40.76, -111.895 40.76)"],
+  ];
+
+  beforeAll(async () => {
+    if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL not set");
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection);
+    await db.execute(sql.raw(`DROP TABLE IF EXISTS "${LTABLE}"`));
+    await db.execute(
+      sql.raw(`CREATE TABLE "${LTABLE}" (id int, geom geometry(Geometry,4326))`)
+    );
+    for (const [id, wkt] of lines) {
+      await db.execute(
+        sql.raw(
+          `INSERT INTO "${LTABLE}" (id, geom) VALUES (${id}, ST_GeomFromText('${wkt}', 4326))`
+        )
+      );
+    }
+  });
+
+  afterAll(async () => {
+    await db.execute(sql.raw(`DROP TABLE IF EXISTS "${LTABLE}"`));
+    await connection.end();
+  });
+
+  const pipeline = `SELECT id, geom FROM "${LTABLE}"`;
+
+  it("raw path runs on line geometry and caps to N features", async () => {
+    const q = PortalMapTileService.buildRawTileSql(
+      pipeline,
+      LENV,
+      ["id"],
+      0,
+      2, // cap below the 3 seeded lines
+      true
+    );
+    const rows = (await db.execute(sql.raw(q))) as unknown as Array<{
+      n: number;
+      n_limited: number;
+    }>;
+    expect(Number(rows[0].n_limited)).toBe(2); // clipped to the cap
+  });
+
+  it("ranking keeps the longest features when capped", async () => {
+    // Mirror the ORDER BY the raw SQL applies, to assert WHICH survive the cap.
+    const rows = (await db.execute(
+      sql.raw(
+        `SELECT id FROM (${pipeline}) src ` +
+          `WHERE src.geom && ST_Transform(${LENV}, 4326) ` +
+          `ORDER BY ST_Length(ST_Transform(src.geom, 3857)) DESC ` +
+          `LIMIT 2`
+      )
+    )) as unknown as Array<{ id: number }>;
+    expect(rows.map((r) => Number(r.id))).toEqual([1, 2]); // longest two, not id 3
   });
 });

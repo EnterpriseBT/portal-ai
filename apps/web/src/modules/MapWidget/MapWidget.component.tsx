@@ -113,6 +113,10 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
 
   const isTile = tileTemplate != null;
 
+  // #337: a truncated line tile keeps the longest (major) features, not an
+  // arbitrary subset — so its notice reads as "most prominent", not "partial".
+  const hasLineLayer = spec.layers.some((l) => l.kind === "lines");
+
   // Pure spec→MapLibre translation (unit-tested in map-config.util.test).
   const { layerData, mlLayers, legend, bounds, featureCapNotice, hasFeatures } =
     useMemo(() => {
@@ -377,7 +381,9 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
             color="text.secondary"
             data-testid="map-widget-tile-truncated"
           >
-            Partial at this zoom — zoom in for all features.
+            {hasLineLayer
+              ? "Showing the most prominent features — zoom in for the rest."
+              : "Partial at this zoom — zoom in for all features."}
           </Typography>
         ) : null}
         {featureCapNotice ? (

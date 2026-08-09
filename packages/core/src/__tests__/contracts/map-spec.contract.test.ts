@@ -6,6 +6,7 @@ import {
   MapExpressionSchema,
   MapGeometrySourceSchema,
   MapSpecSchema,
+  resolveAggTreatment,
 } from "../../contracts/map-spec.contract.js";
 import { MAP_LAYER_FEATURE_CAP } from "../../constants/large-data-ops.constants.js";
 import { PINNED_CONTENT_SCHEMAS } from "../../contracts/pinned-result.contract.js";
@@ -205,6 +206,45 @@ describe("MapLayerStyleSchema (via MapSpecSchema)", () => {
 
   it("rejects a non-array, non-literal garbage style value", () => {
     expect(withStyle({ color: { r: 1 } }).success).toBe(false);
+  });
+});
+
+describe("MapLayerAggregationSchema — treatment (via MapSpecSchema)", () => {
+  const withAgg = (aggregation: unknown) =>
+    MapSpecSchema.safeParse({ layers: [{ ...polygonsLayer, aggregation }] });
+
+  it("accepts treatment: 'bins'", () => {
+    expect(withAgg({ treatment: "bins" }).success).toBe(true);
+  });
+
+  it("accepts treatment: 'none'", () => {
+    expect(withAgg({ treatment: "none" }).success).toBe(true);
+  });
+
+  it("rejects an unknown treatment value", () => {
+    expect(withAgg({ treatment: "grid" }).success).toBe(false);
+  });
+
+  it("accepts an aggregation block with no treatment (per-kind auto)", () => {
+    expect(withAgg({}).success).toBe(true);
+  });
+});
+
+describe("resolveAggTreatment", () => {
+  it("defaults lines to 'none' (raw, importance-ranked)", () => {
+    expect(resolveAggTreatment("lines")).toBe("none");
+  });
+
+  it("defaults points/polygons/heatmap/cluster to 'bins'", () => {
+    expect(resolveAggTreatment("points")).toBe("bins");
+    expect(resolveAggTreatment("polygons")).toBe("bins");
+    expect(resolveAggTreatment("heatmap")).toBe("bins");
+    expect(resolveAggTreatment("cluster")).toBe("bins");
+  });
+
+  it("lets an explicit treatment override the per-kind default", () => {
+    expect(resolveAggTreatment("lines", "bins")).toBe("bins");
+    expect(resolveAggTreatment("polygons", "none")).toBe("none");
   });
 });
 

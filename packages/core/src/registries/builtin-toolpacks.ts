@@ -274,7 +274,7 @@ const GIS_PACK: BuiltinToolpackSpec = {
           spec: {
             type: "object",
             description:
-              "A MapSpec: { basemap?, initialView?, layers: [{ kind: points|polygons|lines|heatmap|cluster, source: {geometryColumn} | {latColumn,lngColumn}, style?, label? }], popup? }. Style values accept MapLibre expressions (case/match/interpolate/get); `colorBy` is sugar that also drives a legend. 1–8 layers.",
+              "A MapSpec: { basemap?, initialView?, layers: [{ kind: points|polygons|lines|heatmap|cluster, source: {geometryColumn} | {latColumn,lngColumn}, style?, label?, aggregation? }], popup? }. Style values accept MapLibre expressions (case/match/interpolate/get); `colorBy` is sugar that also drives a legend. Zoomed out, dense layers summarize automatically (polygons/points as grid bins, lines as a raw importance-ranked network); `aggregation.treatment` ('bins' | 'none') overrides that per-kind default. 1–8 layers.",
           },
           title: stringField("Optional display title for the map widget"),
         },
