@@ -17,7 +17,13 @@
 import crypto from "crypto";
 
 import { sql } from "drizzle-orm";
-import { D3PipelineSchema, type D3Pipeline } from "@portalai/core/contracts";
+import {
+  D3PipelineSchema,
+  resolveAggTreatment,
+  type D3Pipeline,
+  type MapLayerKind,
+  type AggTreatment,
+} from "@portalai/core/contracts";
 import { AGG_ZOOM_THRESHOLD, AGG_GRID_PX } from "@portalai/core/constants";
 
 import { db } from "../db/client.js";
@@ -139,13 +145,18 @@ export function propertyColumnsFromSpec(spec: unknown): string[] {
   return [...cols];
 }
 
-/** Resolved low-zoom aggregation config for a tile (#330). */
+/** Resolved low-zoom aggregation config for a tile (#330, #337). */
 export interface TileAggregation {
   enabled: boolean;
   zoomThreshold: number;
   gridSizePx: number;
   /** The colorBy column whose per-cell `mode()` colours a bin — null ⇒ density. */
   colorByColumn: string | null;
+  /** Representative layer kind (#337) — drives the per-kind treatment. */
+  kind: MapLayerKind | null;
+  /** Raw path orders by `ST_Length` DESC so a capped tile keeps the major
+   *  features, not an arbitrary subset (#337). True only for line layers. */
+  rankByLength: boolean;
 }
 
 /**
@@ -158,11 +169,19 @@ export function aggregationFromSpec(spec: unknown): TileAggregation {
   const layers =
     (spec as { layers?: Array<Record<string, unknown>> } | undefined)?.layers ??
     [];
-  const agg = (layers.find((l) => l && l.aggregation)?.aggregation ?? {}) as {
+  // Representative layer: the one carrying the aggregation block, else the
+  // first. One pipeline = one geometry set, so its kind drives the treatment.
+  const rep = layers.find((l) => l && l.aggregation) ?? layers[0];
+  const agg = (rep?.aggregation ?? {}) as {
     enabled?: boolean;
     gridSizePx?: number;
     zoomThreshold?: number;
+    treatment?: AggTreatment;
   };
+  const kind = (rep?.kind ?? null) as MapLayerKind | null;
+  // Per-kind treatment (#337): explicit `treatment` wins, else lines → raw,
+  // others → bins. "none" routes to the raw path via `enabled:false`.
+  const treatment = kind ? resolveAggTreatment(kind, agg.treatment) : "bins";
   let colorByColumn: string | null = null;
   for (const l of layers) {
     const c = (l?.style as { colorBy?: { column?: string } } | undefined)
@@ -173,7 +192,7 @@ export function aggregationFromSpec(spec: unknown): TileAggregation {
     }
   }
   return {
-    enabled: agg.enabled ?? true,
+    enabled: treatment === "none" ? false : (agg.enabled ?? true),
     zoomThreshold:
       typeof agg.zoomThreshold === "number"
         ? agg.zoomThreshold
@@ -181,6 +200,8 @@ export function aggregationFromSpec(spec: unknown): TileAggregation {
     gridSizePx:
       typeof agg.gridSizePx === "number" ? agg.gridSizePx : AGG_GRID_PX,
     colorByColumn,
+    kind,
+    rankByLength: kind === "lines",
   };
 }
 
@@ -279,7 +300,8 @@ export class PortalMapTileService {
     envelope: string,
     propertyColumns: string[],
     tolerance: number,
-    cap: number
+    cap: number,
+    rankByLength = false
   ): string {
     const geomExpr =
       tolerance > 0
@@ -290,12 +312,17 @@ export class PortalMapTileService {
     const propSelect = propertyColumns
       .map((c) => `src.${quoteIdentTile(c)}, `)
       .join("");
+    // #337: line layers rank by projected length so a capped tile keeps the
+    // longest (major) features — a legible skeleton, never an arbitrary subset.
+    const orderBy = rankByLength
+      ? `ORDER BY ST_Length(ST_Transform(src.geom, 3857)) DESC `
+      : ``;
     return (
       `WITH lim AS (` +
       `SELECT ${propSelect}ST_AsMVTGeom(ST_Transform(${geomExpr}, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom ` +
       `FROM (${pipelineSql}) src ` +
       `WHERE src.geom && ST_Transform(${envelope}, 4326) ` +
-      `LIMIT ${cap}` +
+      `${orderBy}LIMIT ${cap}` +
       `) SELECT ` +
       `(SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom') FROM lim q WHERE q.geom IS NOT NULL) AS mvt, ` +
       `(SELECT count(*) FROM lim WHERE geom IS NOT NULL)::int AS n, ` +
@@ -387,7 +414,8 @@ export class PortalMapTileService {
           envelope,
           propertyColumns,
           tolerance,
-          cap
+          cap,
+          aggregation.rankByLength
         );
 
     // Build the session-view DDL BEFORE opening the tile transaction.
