@@ -106,8 +106,17 @@ export const MapLayerAggregationSchema = z.object({
   enabled: z.boolean().optional(),
   gridSizePx: z.number().int().positive().max(128).optional(),
   zoomThreshold: z.number().int().min(0).max(22).optional(),
+  /**
+   * Low-zoom shape (#337). Absent ⇒ per-kind auto: `lines` → `"none"`,
+   * everything else → `"bins"`. `"bins"` draws square grid bins; `"none"`
+   * keeps raw features at all zooms (line layers are importance-ranked by
+   * length so the per-tile cap keeps the major features, not an arbitrary
+   * subset). A future `"density"` value would add a length-weighted surface.
+   */
+  treatment: z.enum(["bins", "none"]).optional(),
 });
 export type MapLayerAggregation = z.infer<typeof MapLayerAggregationSchema>;
+export type AggTreatment = NonNullable<MapLayerAggregation["treatment"]>;
 
 export const MapLayerSchema = z
   .object({
@@ -131,6 +140,23 @@ export const MapLayerSchema = z
     }
   });
 export type MapLayer = z.infer<typeof MapLayerSchema>;
+export type MapLayerKind = MapLayer["kind"];
+
+/**
+ * Resolve a layer's low-zoom aggregation treatment (#337) — the single source
+ * of truth shared by the server tile query (`aggregationFromSpec`) and the web
+ * paint (`layerToMapLibre`). An explicit `treatment` always wins; otherwise the
+ * per-kind default: `lines` render raw + importance-ranked (`"none"`), every
+ * other kind gets square grid bins (`"bins"`). Deterministic — the fail-safe
+ * never depends on an LLM guess.
+ */
+export function resolveAggTreatment(
+  kind: MapLayerKind,
+  treatment?: AggTreatment
+): AggTreatment {
+  if (treatment) return treatment;
+  return kind === "lines" ? "none" : "bins";
+}
 
 // ── Spec ─────────────────────────────────────────────────────────────
 
