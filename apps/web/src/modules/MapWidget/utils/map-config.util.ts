@@ -4,6 +4,8 @@ import {
   AGG_DENSITY_MAX,
 } from "@portalai/core/constants";
 
+import { resolveAggTreatment } from "@portalai/core/contracts";
+
 import type { MapBasemap, MapLayer, MapSpec } from "@portalai/core/contracts";
 
 /**
@@ -349,8 +351,12 @@ export function layerToMapLibre(
   // and add a bin fill below it — colored by the same colorBy `match` (dominant
   // category) when there's a colorBy, or a `_count` density ramp when there
   // isn't. Inline (non-tiled) layers are unaffected.
+  // #337: only "bins" kinds get square-grid aggregation. Line layers resolve to
+  // "none" — they render as raw (importance-ranked, server-side) lines at every
+  // zoom, so we skip the aggregate fill and don't zoom-gate the raw layer.
   const agg = layer.aggregation;
-  if (opts.tiled && agg?.enabled !== false) {
+  const treatment = resolveAggTreatment(layer.kind, agg?.treatment);
+  if (opts.tiled && agg?.enabled !== false && treatment === "bins") {
     const threshold = agg?.zoomThreshold ?? AGG_ZOOM_THRESHOLD;
     for (const l of layers) l.minzoom = threshold;
     layers.push({
