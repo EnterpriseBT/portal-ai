@@ -265,6 +265,16 @@ export const PACK_PROMPT_SECTIONS: Record<
           "column aliased `geom` when the result may be large."
       );
       lines.push("");
+      lines.push(
+        "Zoomed out, dense layers summarize automatically: polygon/point layers " +
+          "draw as grid bins, while **line layers stay a raw, importance-ranked " +
+          "network** (longest features first) — ideal for road networks, where " +
+          "bins would fragment the map. This is per-kind by default; override it " +
+          'per layer with `aggregation.treatment`: `"bins"` forces grid bins, ' +
+          '`"none"` keeps any layer raw at all zooms. Omit it to use the ' +
+          "per-kind default."
+      );
+      lines.push("");
       return lines;
     },
   },

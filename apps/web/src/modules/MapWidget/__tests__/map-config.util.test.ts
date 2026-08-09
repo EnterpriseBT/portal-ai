@@ -381,6 +381,44 @@ describe("layerToMapLibre aggregation (#330)", () => {
   });
 });
 
+describe("layerToMapLibre per-kind treatment (#337)", () => {
+  const lineLayer = {
+    kind: "lines",
+    source: { geometryColumn: "geom" },
+  } as MapLayer;
+  const polyLayer = {
+    kind: "polygons",
+    source: { geometryColumn: "geom" },
+    style: { colorBy: { column: "c_city", stops: [["SLC", "#111"]] } },
+  } as MapLayer;
+  const aggId = `${sourceIdFor(0)}-agg`;
+
+  it("tiled line layer → no -agg fill, raw line renders at all zoom (no minzoom)", () => {
+    const { layers } = layerToMapLibre(lineLayer, 0, [], { tiled: true });
+    expect(layers.some((l) => l.id === aggId)).toBe(false);
+    expect(layers.every((l) => l.minzoom === undefined)).toBe(true);
+  });
+
+  it("treatment:'bins' forces an -agg fill on a line layer", () => {
+    const layer = {
+      ...lineLayer,
+      aggregation: { treatment: "bins" },
+    } as MapLayer;
+    const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
+    expect(layers.some((l) => l.id === aggId)).toBe(true);
+  });
+
+  it("treatment:'none' opts a polygon out of bins (raw at all zoom)", () => {
+    const layer = {
+      ...polyLayer,
+      aggregation: { treatment: "none" },
+    } as MapLayer;
+    const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
+    expect(layers.some((l) => l.id === aggId)).toBe(false);
+    expect(layers.every((l) => l.minzoom === undefined)).toBe(true);
+  });
+});
+
 describe("buildLegend", () => {
   it("concatenates each layer's colorBy legend", () => {
     const spec = {

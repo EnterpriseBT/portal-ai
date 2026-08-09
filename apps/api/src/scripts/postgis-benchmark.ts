@@ -157,6 +157,51 @@ async function main() {
     });
   }
 
+  // 5. Importance-ranked raw line-tile latency at low zooms (#337). Line layers
+  //    stay raw (never binned) and rank by `ST_Length` DESC so a capped tile
+  //    keeps the longest features. This is the ORDER BY's cost ceiling — a
+  //    top-N sort over the GiST-bounded envelope at the lowest zooms — and must
+  //    stay under the 10 s tile statement-timeout (gates the "rank at all
+  //    zooms" decision, OQ4).
+  await sql.unsafe(`DROP TABLE IF EXISTS bench_lines`);
+  await sql.unsafe(`
+    CREATE TABLE bench_lines AS
+    SELECT id, ST_MakeLine(
+      ST_SetSRID(ST_MakePoint(rx, ry), 4326),
+      ST_SetSRID(ST_MakePoint(rx + dx, ry + dy), 4326)
+    ) AS geom
+    FROM (
+      SELECT g AS id, (random() * 40) AS rx, (random() * 40) AS ry,
+             (random() * 0.2) AS dx, (random() * 0.2) AS dy
+      FROM generate_series(1, ${rowCount}) g
+    ) s
+  `);
+  await sql.unsafe(
+    `CREATE INDEX bench_lines_gist ON bench_lines USING GIST (geom)`
+  );
+  await sql.unsafe(`ANALYZE bench_lines`);
+  const lineResults: Array<{ z: number; ms: number; bytes: number }> = [];
+  for (const z of [6, 9, 12]) {
+    const { x, y } = tileXY(10, 10, z);
+    const env = `ST_TileEnvelope(${z}, ${x}, ${y})`;
+    t = process.hrtime.bigint();
+    const line = (await sql.unsafe(
+      `SELECT ST_AsMVT(q, 'default', 4096, 'geom') AS mvt FROM (
+         SELECT ST_AsMVTGeom(ST_Transform(geom, 3857), ${env}, 4096, 64, true) AS geom
+         FROM bench_lines
+         WHERE geom && ST_Transform(${env}, 4326)
+         ORDER BY ST_Length(ST_Transform(geom, 3857)) DESC
+         LIMIT 10000
+       ) q WHERE q.geom IS NOT NULL`
+    )) as unknown as Array<{ mvt: Uint8Array | null }>;
+    lineResults.push({
+      z,
+      ms: ms(t),
+      bytes: line[0]?.mvt ? line[0].mvt.length : 0,
+    });
+  }
+  await sql.unsafe(`DROP TABLE IF EXISTS bench_lines`);
+
   await sql.unsafe(`DROP TABLE IF EXISTS bench_geo`);
 
   console.log(
@@ -176,6 +221,10 @@ async function main() {
   }
   console.log(`\naggregate tile render (grid bins, #330):`);
   for (const r of aggResults) {
+    console.log(`  z${r.z} : ${r.ms.toFixed(1)} ms  (${r.bytes} bytes)`);
+  }
+  console.log(`\nranked raw line tile render (ST_Length DESC, #337):`);
+  for (const r of lineResults) {
     console.log(`  z${r.z} : ${r.ms.toFixed(1)} ms  (${r.bytes} bytes)`);
   }
   console.log("");

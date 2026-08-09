@@ -121,16 +121,112 @@ describe("aggregationFromSpec + shouldAggregate (#330)", () => {
     ).toBeNull();
   });
 
+  // #337 — per-kind treatment folded into enabled + rankByLength.
+  it("a line layer defaults to raw (enabled:false) + rankByLength:true", () => {
+    const agg = aggregationFromSpec({
+      layers: [{ kind: "lines", source: { geometryColumn: "geom" } }],
+    });
+    expect(agg).toMatchObject({
+      enabled: false,
+      rankByLength: true,
+      kind: "lines",
+    });
+  });
+
+  it("a polygon layer stays binned (enabled:true) + rankByLength:false", () => {
+    const agg = aggregationFromSpec({
+      layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
+    });
+    expect(agg).toMatchObject({
+      enabled: true,
+      rankByLength: false,
+      kind: "polygons",
+    });
+  });
+
+  it("treatment:'bins' forces bins on a line (enabled:true)", () => {
+    const agg = aggregationFromSpec({
+      layers: [
+        {
+          kind: "lines",
+          source: { geometryColumn: "geom" },
+          aggregation: { treatment: "bins" },
+        },
+      ],
+    });
+    expect(agg.enabled).toBe(true);
+  });
+
+  it("treatment:'none' forces raw on a polygon (enabled:false)", () => {
+    const agg = aggregationFromSpec({
+      layers: [
+        {
+          kind: "polygons",
+          source: { geometryColumn: "geom" },
+          aggregation: { treatment: "none" },
+        },
+      ],
+    });
+    expect(agg.enabled).toBe(false);
+  });
+
+  it("an explicit enabled:false on a bins layer stays disabled", () => {
+    const agg = aggregationFromSpec({
+      layers: [
+        {
+          kind: "polygons",
+          source: { geometryColumn: "geom" },
+          aggregation: { enabled: false },
+        },
+      ],
+    });
+    expect(agg).toMatchObject({ enabled: false, rankByLength: false });
+  });
+
   it("shouldAggregate honours enabled + the zoom threshold", () => {
     const on = {
       enabled: true,
       zoomThreshold: 12,
       gridSizePx: 24,
       colorByColumn: null,
+      kind: null,
+      rankByLength: false,
     };
     expect(shouldAggregate(11, on)).toBe(true);
     expect(shouldAggregate(12, on)).toBe(false); // threshold is exclusive
     expect(shouldAggregate(5, { ...on, enabled: false })).toBe(false);
+  });
+});
+
+describe("buildRawTileSql — importance ranking (#337)", () => {
+  const base = () =>
+    PortalMapTileService.buildRawTileSql(
+      "SELECT geom FROM roads",
+      "ST_TileEnvelope(8, 48, 96)",
+      [],
+      0,
+      MAP_TILE_FEATURE_CAP,
+      false
+    );
+
+  it("omits ORDER BY when rankByLength is false (unchanged raw SQL)", () => {
+    expect(base()).not.toContain("ORDER BY");
+  });
+
+  it("orders by ST_Length DESC before LIMIT when rankByLength is true", () => {
+    const q = PortalMapTileService.buildRawTileSql(
+      "SELECT geom FROM roads",
+      "ST_TileEnvelope(8, 48, 96)",
+      [],
+      0,
+      MAP_TILE_FEATURE_CAP,
+      true
+    );
+    expect(q).toContain(
+      "ORDER BY ST_Length(ST_Transform(src.geom, 3857)) DESC"
+    );
+    // ranking sits inside the capped CTE — before the LIMIT.
+    expect(q.indexOf("ORDER BY")).toBeLessThan(q.indexOf("LIMIT"));
   });
 });
 

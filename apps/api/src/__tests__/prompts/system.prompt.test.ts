@@ -142,6 +142,17 @@ describe("buildSystemPrompt — tool-caller role (#146)", () => {
   });
 });
 
+describe("buildSystemPrompt — Mapping treatment guidance (#337)", () => {
+  it("teaches the agent that line layers stay raw + how treatment overrides it", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["data_query", "gis"] })
+    );
+    expect(prompt).toContain("### Mapping");
+    expect(prompt).toContain("aggregation.treatment");
+    expect(prompt).toContain("importance-ranked");
+  });
+});
+
 describe("buildSystemPrompt — entity management notes", () => {
   it('includes "Entity Management Notes" section when entity_management in toolPacks', () => {
     const prompt = buildSystemPrompt(

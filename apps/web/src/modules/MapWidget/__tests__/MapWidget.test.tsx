@@ -187,6 +187,36 @@ describe("MapWidgetUI", () => {
     expect(screen.getByTestId("map-widget-tile-timeout")).toBeInTheDocument();
   });
 
+  it("truncated line tile reads as ranked ('most prominent'), not arbitrary (#337)", () => {
+    const lineSpec = {
+      basemap: "carto-light",
+      initialView: "fit",
+      layers: [{ kind: "lines", source: { geometryColumn: "geom" } }],
+    } as unknown as MapSpec;
+    const tileProps = {
+      rows: [],
+      mode: "light" as const,
+      tileTemplate: "/api/portal-map/tiles/pin/p1/{z}/{x}/{y}.mvt",
+      getTileToken: async () => "tok",
+      tileStatus: {
+        simplified: false,
+        truncated: true,
+        timedOut: false,
+        aggregated: false,
+      },
+    };
+    // Line layer → "most prominent" copy.
+    const { rerender } = render(<MapWidgetUI {...tileProps} spec={lineSpec} />);
+    expect(screen.getByTestId("map-widget-tile-truncated")).toHaveTextContent(
+      /most prominent/i
+    );
+    // Polygon layer → the existing "partial / all features" copy (regression).
+    rerender(<MapWidgetUI {...tileProps} spec={polySpec} />);
+    expect(screen.getByTestId("map-widget-tile-truncated")).toHaveTextContent(
+      /all features/i
+    );
+  });
+
   it("renders the aggregated-overview notice, suppressing the truncated one (#330)", () => {
     render(
       <MapWidgetUI
