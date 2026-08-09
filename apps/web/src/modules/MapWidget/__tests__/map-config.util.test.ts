@@ -137,8 +137,12 @@ describe("resolveColorBy", () => {
       []
     );
     // `step` (ranges), NOT `match` (exact) — a continuous value like 152,397
-    // must land in a band, not fall to the grey fallback.
-    expect(expression).toEqual([
+    // must land in a band, not fall to the grey fallback. Wrapped in a `case`
+    // on `has` so a null/absent value doesn't make `step` throw → black.
+    const expr = expression as unknown[];
+    expect(expr[0]).toBe("case");
+    expect(expr[1]).toEqual(["has", "mkt_value"]);
+    expect(expr[2]).toEqual([
       "step",
       ["get", "mkt_value"],
       "#f7fbff",
@@ -147,7 +151,26 @@ describe("resolveColorBy", () => {
       300000,
       "#6baed6",
     ]);
+    expect(typeof expr[3]).toBe("string"); // no-data fallback colour
     expect(legend.map((l) => l.label)).toEqual(["0", "100000", "300000"]);
+  });
+
+  it("routes null/absent numeric values to a no-data colour (no step throw → black) (#330)", () => {
+    const { expression } = resolveColorBy(
+      {
+        column: "mkt_value",
+        stops: [
+          [0, "#a"],
+          [100000, "#b"],
+        ],
+      },
+      []
+    );
+    const expr = expression as unknown[];
+    // case( has(col), step, <no-data> ) — features lacking the key never reach step.
+    expect(expr[0]).toBe("case");
+    expect(expr[1]).toEqual(["has", "mkt_value"]);
+    expect((expr[2] as unknown[])[0]).toBe("step");
   });
 
   it("sorts numeric stops ascending before building the step scale", () => {
@@ -162,7 +185,8 @@ describe("resolveColorBy", () => {
       },
       []
     );
-    expect(expression).toEqual([
+    // The step (inside the null-guard `case`) is sorted ascending.
+    expect((expression as unknown[])[2]).toEqual([
       "step",
       ["get", "v"],
       "#0",

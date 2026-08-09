@@ -125,7 +125,7 @@ const UNMATCHED_COLOR = "#cfd8dc";
  * overview useful. Dataset-agnostic (applies to category and density bins) and
  * overridable per layer via `style.opacity`. The density ramp tops out here too.
  */
-const AGG_FILL_OPACITY = 0.5;
+const AGG_FILL_OPACITY = 0.35;
 
 export interface LegendEntry {
   label: string;
@@ -184,8 +184,14 @@ export function resolveColorBy(
     const step: unknown[] = ["step", ["get", colorBy.column], sorted[0][1]];
     for (let i = 1; i < sorted.length; i++)
       step.push(sorted[i][0], sorted[i][1]);
+    // Guard nulls: `step` (unlike `match`) THROWS on a null/absent input
+    // ("expected number, found null"), and MapLibre then paints the whole layer
+    // its default — black. ST_AsMVT omits null properties, so a feature with no
+    // value (e.g. a parcel with no assessed value) has no key at all. Route
+    // those to the neutral no-data colour instead of letting `step` error.
+    const expression = ["case", ["has", colorBy.column], step, UNMATCHED_COLOR];
     return {
-      expression: step,
+      expression,
       legend: sorted.map(([value, color]) => ({ label: String(value), color })),
     };
   }
