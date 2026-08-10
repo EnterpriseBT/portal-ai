@@ -499,6 +499,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
     error: refreshError,
     notRefreshable,
     refresh,
+    lastUpdatedAt,
   } = useWidgetRefresh(blockRef, dataUpdatedAt);
 
   const getTileToken = useMemo(
@@ -566,7 +567,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
       onRefresh={refresh}
       notRefreshable={notRefreshable}
       status={status}
-      lastUpdatedAt={dataUpdatedAt ?? null}
+      lastUpdatedAt={lastUpdatedAt}
       onHeight={onHeight}
     />
   );

@@ -15,7 +15,7 @@
 
 ## Decision — two props on `MapWidgetUI`, cues mirroring existing patterns
 
-- **#348 — freshness cue.** Add `lastUpdatedAt?: number | null`; render *"Updated ⟨relativeTime⟩"* in the header (mirror `D3Widget`, `DateFactory.relativeTime` from `@portalai/core/utils`). The container passes `dataUpdatedAt`.
+- **#348 — freshness cue.** Add `lastUpdatedAt?: number | null`; render *"Updated ⟨relativeTime⟩"* in the header (mirror `D3Widget`, `DateFactory.relativeTime` from `@portalai/core/utils`). The container passes the **`lastUpdatedAt` returned by `useWidgetRefresh`** (not the raw `dataUpdatedAt` prop) — the hook advances it on every successful refresh, so a manual/auto refresh flips the cue to "just now"; the raw prop never changes and would freeze the timestamp.
 - **#352 — tile-rendering cue.** Add internal `tilesLoading` state set from MapLibre `dataloading` → true / `idle` → false in the map effect (tile path only), plus a controlled `tilesLoading?` prop override (mirroring `tileStatus`) for tests/stories. Render a small spinner + *"Rendering…"* caption while busy. `idle` is the natural debounce (fires once tiles settle), so no manual throttling.
 
 Both are additive props; no container restructure, no change to the refresh mechanism or the existing notices.
@@ -23,7 +23,7 @@ Both are additive props; no container restructure, no change to the refresh mech
 ## Plan — 1 slice
 
 **Files**
-- Edit `apps/web/src/modules/MapWidget/MapWidget.component.tsx` — import `DateFactory`; add `lastUpdatedAt?` + `tilesLoading?` to `MapWidgetUIProps`; header "Updated X ago" cue; `internalTilesLoading` state + `m.on("dataloading"/"idle")` in the effect + a "Rendering…" caption (`data-testid="map-widget-tiles-loading"`); container passes `lastUpdatedAt={dataUpdatedAt ?? null}`.
+- Edit `apps/web/src/modules/MapWidget/MapWidget.component.tsx` — import `DateFactory`; add `lastUpdatedAt?` + `tilesLoading?` to `MapWidgetUIProps`; header "Updated X ago" cue; `internalTilesLoading` state + `m.on("dataloading"/"idle")` in the effect + a "Rendering…" caption (`data-testid="map-widget-tiles-loading"`); container passes `lastUpdatedAt={lastUpdatedAt}` from `useWidgetRefresh`.
 - Edit `apps/web/src/modules/MapWidget/__tests__/MapWidget.test.tsx` — tests below.
 
 **Tests** (`cd apps/web && npm run test:unit`)
