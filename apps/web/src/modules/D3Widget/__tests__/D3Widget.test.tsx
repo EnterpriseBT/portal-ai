@@ -101,6 +101,35 @@ describe("D3WidgetUI", () => {
     expect(screen.getByText(/Loading 2,250\+ rows/)).toBeInTheDocument();
   });
 
+  it("shows the true matched total, not the staged totalRows (#340)", () => {
+    render(
+      <D3WidgetUI
+        {...uiBase}
+        loading={false}
+        totalRows={100_000}
+        truncated
+        matchedCount={413_311}
+        matchedCountExact
+        batches={[{ rows: [{ x: 1 }], seq: 0, done: false }]}
+        receivedRows={5_000}
+      />
+    );
+    expect(
+      screen.getByText(/Rendering 5,000 of 413,311 rows/)
+    ).toBeInTheDocument();
+  });
+
+  it('renders matchedCount as "N+" when not exact (#340)', () => {
+    render(
+      <D3WidgetUI
+        {...uiBase}
+        matchedCount={413_311}
+        matchedCountExact={false}
+      />
+    );
+    expect(screen.getByText(/Loading 413,311\+ rows/)).toBeInTheDocument();
+  });
+
   it("shows a progress caption while batches are incomplete, gone when complete", () => {
     const batches = [{ rows: [{ x: 1 }], seq: 0, done: false }];
     const { rerender } = render(

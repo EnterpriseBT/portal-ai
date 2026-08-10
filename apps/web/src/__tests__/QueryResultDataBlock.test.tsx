@@ -222,3 +222,55 @@ describe("QueryResultDataBlockUI — row-cap notice (#277)", () => {
     ).toBeNull();
   });
 });
+
+describe("QueryResultDataBlockUI — matchedCount (#340)", () => {
+  beforeEach(() => {
+    capturedBlocks.length = 0;
+  });
+
+  // Staged 100k, but the query matched 413,311 — display the TRUE total.
+  const bigMatch = (overrides: Record<string, unknown> = {}) =>
+    render(
+      <QueryResultDataBlockUI
+        rowCount={100000}
+        truncated={true}
+        matchedCount={413311}
+        matchedCountExact={true}
+        rows={Array.from({ length: 5000 }, (_, i) => ({ id: i }))}
+        loading={false}
+        error={null}
+        {...overrides}
+      />
+    );
+
+  it("shows the true matched total, not the staged rowCount", () => {
+    const { container } = bigMatch();
+    const text = container.textContent ?? "";
+    expect(text).toContain("413,311");
+    expect(text).toContain("of 413,311"); // "…first 5,000 of 413,311 rows"
+  });
+
+  it("says analysis ran on the first HANDLE_ROW_CAP, not 'all were analysed'", () => {
+    const { container } = bigMatch();
+    const text = container.textContent ?? "";
+    expect(text).toMatch(/first 100,000/i); // analysis cap, honest
+    expect(text).not.toMatch(/all 413,311 were analysed/i);
+  });
+
+  it("renders matchedCount as a lower bound (N+) when not exact", () => {
+    const { container } = bigMatch({ matchedCountExact: false });
+    expect(container.textContent ?? "").toContain("413,311+");
+  });
+
+  it("falls back to rowCount when matchedCount is absent (pre-#340 block)", () => {
+    const { container } = render(
+      <QueryResultDataBlockUI
+        rowCount={10254}
+        rows={Array.from({ length: 5000 }, (_, i) => ({ id: i }))}
+        loading={false}
+        error={null}
+      />
+    );
+    expect(container.textContent ?? "").toContain("10,254");
+  });
+});
