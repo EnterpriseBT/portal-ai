@@ -6,7 +6,13 @@ import {
 
 import { resolveAggTreatment } from "@portalai/core/contracts";
 
-import type { MapBasemap, MapLayer, MapSpec } from "@portalai/core/contracts";
+import type {
+  GeoBlockContent,
+  MapBasemap,
+  MapLayer,
+  MapSpec,
+  WidgetRefreshResponse,
+} from "@portalai/core/contracts";
 
 /**
  * Pure translation from a declarative `MapSpec` (+ result rows) to the
@@ -19,6 +25,32 @@ import type { MapBasemap, MapLayer, MapSpec } from "@portalai/core/contracts";
 // ── GeoJSON shapes (structural; avoids a maplibre-gl type dependency) ──
 
 type Row = Record<string, unknown>;
+
+/**
+ * A single shared empty-rows reference (#341). The `MapWidget` container reads
+ * `rows` on every render; for a tiled/handle map there are no inline rows, and
+ * returning a fresh `[]` each render gave the map-lifecycle `useEffect` a new
+ * dependency identity every parent re-render — remounting (and re-fetching
+ * tiles for) every map whenever anything else in the chat re-rendered. A stable
+ * reference keeps that effect from re-running on unrelated re-renders.
+ */
+export const EMPTY_ROWS: Row[] = Object.freeze([]) as unknown as Row[];
+
+/**
+ * Resolve the rows a map renders from, with a **stable identity** (#341): a
+ * fresh inline refresh delivery's rows, else the block's own inline rows, else
+ * the shared `EMPTY_ROWS` (tiled/handle maps have none — they render via
+ * vector tiles, not inline rows). Pure so the container can memoize it.
+ */
+export function pickMapRows(
+  fresh: WidgetRefreshResponse | null,
+  content: GeoBlockContent
+): Row[] {
+  if (fresh?.kind === "inline") return fresh.rows as Row[];
+  if (fresh == null && "rows" in content) return content.rows as Row[];
+  return EMPTY_ROWS;
+}
+
 export interface GeoFeature {
   type: "Feature";
   geometry: Record<string, unknown>;
