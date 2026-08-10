@@ -386,3 +386,55 @@ describe("PortalSqlHandleService.streamHandle", () => {
     ).rejects.toMatchObject({ code: ApiCode.COMPUTE_INPUT_TOO_LARGE });
   });
 });
+
+describe("PortalSqlHandleService.produce — matchedCount (#340)", () => {
+  it("requests the exact total and reports it when present", async () => {
+    // Mock the probe as capped (totalCount 100_001) but the exact count as
+    // the true total — rowCount stays the probe, matchedCount is the truth.
+    mockRunSqlQuery.mockResolvedValueOnce({
+      rows: [{ x: 1 }],
+      totalCount: 100_001,
+      exactTotal: 413_311,
+    });
+    const { envelope } = await PortalSqlHandleService.produce({
+      stationId: "s",
+      organizationId: "o",
+      sql: "SELECT x FROM big",
+    });
+    expect(envelope.rowCount).toBe(100_001);
+    expect(envelope.truncated).toBe(true);
+    expect(envelope.matchedCount).toBe(413_311);
+    expect(envelope.matchedCountExact).toBe(true);
+    // It asked runSqlQuery for the exact count (sql is non-null).
+    expect(mockRunSqlQuery).toHaveBeenCalledWith(
+      expect.objectContaining({ computeExactTotal: true })
+    );
+  });
+
+  it("falls back to the rowCount lower bound when the exact count is null", async () => {
+    mockRunSqlQuery.mockResolvedValueOnce({
+      rows: [{ x: 1 }],
+      totalCount: 100_001,
+      exactTotal: null,
+    });
+    const { envelope } = await PortalSqlHandleService.produce({
+      stationId: "s",
+      organizationId: "o",
+      sql: "SELECT x FROM big",
+    });
+    expect(envelope.rowCount).toBe(100_001);
+    expect(envelope.matchedCount).toBe(100_001);
+    expect(envelope.matchedCountExact).toBe(false);
+  });
+
+  it("produceFromRows reports the handed count as the exact matched total", async () => {
+    const rows = Array.from({ length: 7 }, (_, i) => ({ x: i }));
+    const { envelope } = await PortalSqlHandleService.produceFromRows({
+      rows,
+      stationId: "s",
+      organizationId: "o",
+    });
+    expect(envelope.matchedCount).toBe(7);
+    expect(envelope.matchedCountExact).toBe(true);
+  });
+});

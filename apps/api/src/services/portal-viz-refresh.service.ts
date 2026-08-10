@@ -177,6 +177,9 @@ export class PortalVizRefreshService {
           ...content,
           rows,
           rowCount: total,
+          // #340: `total` here is the true snapshot total → exact matched count.
+          matchedCount: total,
+          matchedCountExact: true,
           truncated: total > rows.length,
         },
         snapshotUpdatedAt: new DateFactory("UTC").now().getTime(),
