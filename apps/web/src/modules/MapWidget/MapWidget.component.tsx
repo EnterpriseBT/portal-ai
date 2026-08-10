@@ -16,6 +16,7 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { GeoBlockContentSchema } from "@portalai/core/contracts";
+import { DateFactory } from "@portalai/core/utils";
 
 import { resolveApiUrl } from "../../utils/api.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
@@ -65,6 +66,11 @@ export interface MapWidgetUIProps {
   resolveTileUrl?: (path: string) => string;
   /** Controlled tile-notice state (tests/stories); otherwise managed live. */
   tileStatus?: TileStatus;
+  /** Epoch ms of the last hydration — drives the "Updated X ago" cue (#348). */
+  lastUpdatedAt?: number | null;
+  /** Controlled tile-rendering state (tests/stories); otherwise managed live
+   *  from the map's dataloading/idle events (#352). */
+  tilesLoading?: boolean;
   canRefresh?: boolean;
   isRefreshing?: boolean;
   onRefresh?: () => void;
@@ -94,6 +100,8 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   getTileToken,
   resolveTileUrl = (p) => p,
   tileStatus,
+  lastUpdatedAt = null,
+  tilesLoading,
   canRefresh = false,
   isRefreshing = false,
   onRefresh,
@@ -110,7 +118,11 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
     useState<TileStatus>(EMPTY_TILE_STATUS);
   // A style/expression error thrown by MapLibre at addLayer time (row 9).
   const [renderError, setRenderError] = useState<string | null>(null);
+  // Live tile-rendering flag from the map's dataloading/idle events (#352);
+  // a controlled prop overrides it for tests/stories.
+  const [internalTilesLoading, setInternalTilesLoading] = useState(false);
   const tiles = tileStatus ?? internalTileStatus;
+  const tilesRendering = tilesLoading ?? internalTilesLoading;
 
   const isTile = tileTemplate != null;
 
@@ -173,6 +185,10 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
         "top-right"
       );
       const m = map;
+      // #352: reflect tile fetch/render activity — busy on dataloading, clear
+      // when the map settles (`idle` is the natural debounce).
+      m.on("dataloading", () => setInternalTilesLoading(true));
+      m.on("idle", () => setInternalTilesLoading(false));
       const template = spec.popup?.template;
 
       m.on("load", () => {
@@ -258,7 +274,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
 
   const chip = status !== "ready" ? STATUS_CHIP[status] : null;
   const header =
-    title || canRefresh || chip ? (
+    title || canRefresh || chip || lastUpdatedAt != null ? (
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
         {title ? (
           <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
@@ -269,6 +285,15 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
         )}
         {chip ? (
           <Chip size="small" label={chip.label} color={chip.color} />
+        ) : null}
+        {lastUpdatedAt != null ? (
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            data-testid="map-widget-updated"
+          >
+            Updated {DateFactory.relativeTime(lastUpdatedAt)}
+          </Typography>
         ) : null}
         {canRefresh && onRefresh ? (
           <Tooltip
@@ -348,6 +373,18 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
             overflow: "hidden",
           }}
         />
+        {/* #352: tile fetch/render in progress (tile path only). */}
+        {isTile && tilesRendering ? (
+          <Box
+            sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+            data-testid="map-widget-tiles-loading"
+          >
+            <CircularProgress size={12} />
+            <Typography variant="caption" color="text.secondary">
+              Rendering…
+            </Typography>
+          </Box>
+        ) : null}
         {/* Visibility of limits — no quiet degradation (#314). */}
         {tiles.timedOut ? (
           <Typography
@@ -462,6 +499,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
     error: refreshError,
     notRefreshable,
     refresh,
+    lastUpdatedAt,
   } = useWidgetRefresh(blockRef, dataUpdatedAt);
 
   const getTileToken = useMemo(
@@ -529,6 +567,7 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
       onRefresh={refresh}
       notRefreshable={notRefreshable}
       status={status}
+      lastUpdatedAt={lastUpdatedAt}
       onHeight={onHeight}
     />
   );

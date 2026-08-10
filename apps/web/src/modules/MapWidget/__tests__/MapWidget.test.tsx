@@ -261,3 +261,37 @@ describe("registerMapBlockRenderer", () => {
     expect(hasBlockRenderer("geo")).toBe(true);
   });
 });
+
+describe("MapWidgetUI — status cues (#348, #352)", () => {
+  const tileProps = {
+    spec: pointsSpec,
+    rows: [],
+    mode: "light" as const,
+    tileTemplate: "/api/portal-map/tiles/pin/p1/{z}/{x}/{y}.mvt",
+    getTileToken: async () => "tok",
+  };
+
+  it("shows an 'Updated …' freshness cue when lastUpdatedAt is set (#348)", () => {
+    render(<MapWidgetUI {...tileProps} lastUpdatedAt={Date.now() - 60_000} />);
+    expect(screen.getByTestId("map-widget-updated")).toHaveTextContent(
+      /updated/i
+    );
+  });
+
+  it("omits the freshness cue when lastUpdatedAt is absent", () => {
+    render(<MapWidgetUI {...tileProps} />);
+    expect(screen.queryByTestId("map-widget-updated")).toBeNull();
+  });
+
+  it("shows a tile-rendering cue while tilesLoading (#352)", () => {
+    render(<MapWidgetUI {...tileProps} tilesLoading />);
+    expect(screen.getByTestId("map-widget-tiles-loading")).toHaveTextContent(
+      /rendering/i
+    );
+  });
+
+  it("omits the tile-rendering cue when not loading", () => {
+    render(<MapWidgetUI {...tileProps} />);
+    expect(screen.queryByTestId("map-widget-tiles-loading")).toBeNull();
+  });
+});
