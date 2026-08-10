@@ -2,7 +2,10 @@ import React from "react";
 import { Alert, Box, CircularProgress, Typography } from "@mui/material";
 
 import { ContentBlockRenderer } from "@portalai/core";
-import { TABLE_DISPLAY_ROW_LIMIT } from "@portalai/core/constants";
+import {
+  HANDLE_ROW_CAP,
+  TABLE_DISPLAY_ROW_LIMIT,
+} from "@portalai/core/constants";
 import type { PortalMessageBlock } from "@portalai/core/contracts";
 
 import { sdk } from "../api/sdk";
@@ -20,6 +23,11 @@ export interface QueryResultDataBlockContent {
   /** True when the staged result hit `HANDLE_ROW_CAP` — `rowCount` is then a
    *  lower bound, so the UI shows it as "N+" (#147). */
   truncated?: boolean;
+  /** True total the query matched — the value to display (#340). Absent on
+   *  pre-#340 blocks → fall back to `rowCount`. */
+  matchedCount?: number;
+  /** Whether `matchedCount` is exact (#340). */
+  matchedCountExact?: boolean;
   sampled?: boolean;
   samplePeek?: Array<Record<string, unknown>>;
   schema?: Array<{ name: string; type?: string }>;
@@ -31,6 +39,10 @@ export interface QueryResultDataBlockUIProps {
   rowCount: number;
   /** `rowCount` is a lower bound (staging hit the cap) — render it as "N+". */
   truncated?: boolean;
+  /** True total the query matched — the value to display (#340). */
+  matchedCount?: number;
+  /** Whether `matchedCount` is exact (#340). */
+  matchedCountExact?: boolean;
   rows: Array<Record<string, unknown>>;
   loading: boolean;
   error: string | null;
@@ -39,12 +51,17 @@ export interface QueryResultDataBlockUIProps {
 export const QueryResultDataBlockUI: React.FC<QueryResultDataBlockUIProps> = ({
   rowCount,
   truncated,
+  matchedCount,
+  matchedCountExact,
   rows,
   loading,
   error,
 }) => {
-  // "N+" when the true total is only a lower bound (#147).
-  const rowCountLabel = `${rowCount.toLocaleString()}${truncated ? "+" : ""}`;
+  // #340: display the TRUE matched total (falling back to rowCount for
+  // pre-#340 blocks). "N+" only when it's a lower bound, not exact.
+  const matched = matchedCount ?? rowCount;
+  const exact = matchedCountExact ?? !truncated;
+  const rowCountLabel = `${matched.toLocaleString()}${exact ? "" : "+"}`;
   /**
    * Capped when fewer rows arrived than were staged. Derived from the rows
    * ACTUALLY received rather than compared against `TABLE_DISPLAY_ROW_LIMIT`:
@@ -53,8 +70,8 @@ export const QueryResultDataBlockUI: React.FC<QueryResultDataBlockUIProps> = ({
    * constant would silently become wrong if either side changed.
    */
   const shownCount = rows.length;
-  const isCapped = shownCount > 0 && shownCount < rowCount;
-  const willCap = rowCount > TABLE_DISPLAY_ROW_LIMIT;
+  const isCapped = shownCount > 0 && shownCount < matched;
+  const willCap = matched > TABLE_DISPLAY_ROW_LIMIT;
   if (error) {
     return (
       <Box
@@ -113,11 +130,14 @@ export const QueryResultDataBlockUI: React.FC<QueryResultDataBlockUIProps> = ({
             Showing the first {shownCount.toLocaleString()} of {rowCountLabel}{" "}
             rows.
           </strong>{" "}
-          All {rowCountLabel} were analysed — but this table&apos;s sort and
-          search only cover the {shownCount.toLocaleString()} shown, so they
-          won&apos;t find or rank rows beyond them. To rank or filter across
-          everything, ask for it in the query (e.g. &ldquo;top 20 by
-          diameter&rdquo; or &ldquo;asteroids over 1&nbsp;km&rdquo;).
+          {matched > HANDLE_ROW_CAP
+            ? `Analysis ran on the first ${HANDLE_ROW_CAP.toLocaleString()}`
+            : `All ${rowCountLabel} were analysed`}{" "}
+          — but this table&apos;s sort and search only cover the{" "}
+          {shownCount.toLocaleString()} shown, so they won&apos;t find or rank
+          rows beyond them. To rank or filter across everything, ask for it in
+          the query (e.g. &ldquo;top 20 by diameter&rdquo; or &ldquo;asteroids
+          over 1&nbsp;km&rdquo;).
         </Alert>
       ) : null}
       <ContentBlockRenderer block={block} />
@@ -156,6 +176,8 @@ export const QueryResultDataBlock: React.FC<QueryResultDataBlockProps> = ({
     <QueryResultDataBlockUI
       rowCount={content.rowCount}
       truncated={content.truncated}
+      matchedCount={content.matchedCount}
+      matchedCountExact={content.matchedCountExact}
       rows={rows}
       loading={query.isLoading}
       error={error}

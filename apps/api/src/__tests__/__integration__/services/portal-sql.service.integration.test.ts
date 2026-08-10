@@ -789,6 +789,35 @@ describe("PortalSqlService integration tests", () => {
       expect(rows.every((r) => Number(r.c_age) > 30)).toBe(true);
     });
 
+    // #340: computeExactTotal reports the TRUE total via a same-txn COUNT(*),
+    // while rowCount/totalCount stay the capped `rowCap+1` staging probe.
+    it("#340: computeExactTotal returns the exact total beyond the row cap", async () => {
+      await seedContacts(7);
+      const res = await portalSql.runSqlQuery({
+        sql: `SELECT "c_email" FROM contacts`,
+        stationId,
+        organizationId: orgId,
+        computeExactTotal: true,
+        rowCap: 3,
+      });
+      expect((res as { exactTotal?: number | null }).exactTotal).toBe(7);
+      // The probe still caps at rowCap+1 = 4; the exact count is the truth.
+      expect("totalCount" in res ? res.totalCount : undefined).toBe(4);
+    });
+
+    it("#340: omitting computeExactTotal yields no exactTotal", async () => {
+      await seedContacts(5);
+      const res = await portalSql.runSqlQuery({
+        sql: `SELECT "c_email" FROM contacts`,
+        stationId,
+        organizationId: orgId,
+        rowCap: 3,
+      });
+      expect(
+        (res as { exactTotal?: number | null }).exactTotal
+      ).toBeUndefined();
+    });
+
     // #129 slice-2 caveat closer: the cursor tier wraps the retained query
     // as `SELECT * FROM (<sql>) _cur WHERE (orderBy, _record_id) > (…)
     // ORDER BY orderBy, _record_id LIMIT n` and runs it via runSqlQuery.

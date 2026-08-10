@@ -55,6 +55,11 @@ export interface D3WidgetUIProps {
   totalRows: number;
   /** `totalRows` is a lower bound (staging hit the cap) — render "N+". */
   truncated?: boolean;
+  /** True total the query matched — the value to display (#340). Absent on
+   *  pre-#340 blocks → fall back to `totalRows`. */
+  matchedCount?: number;
+  /** Whether `matchedCount` is exact (#340). */
+  matchedCountExact?: boolean;
   receivedRows: number;
   complete: boolean;
   loading: boolean;
@@ -98,6 +103,8 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
   batches,
   totalRows,
   truncated,
+  matchedCount,
+  matchedCountExact,
   receivedRows,
   complete,
   loading,
@@ -111,7 +118,11 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
   notRefreshable = false,
   status = "ready",
 }) => {
-  const totalLabel = `${totalRows.toLocaleString()}${truncated ? "+" : ""}`;
+  // #340: display the TRUE matched total (fallback to totalRows for pre-#340
+  // blocks); "N+" only when it's a lower bound, not exact.
+  const matched = matchedCount ?? totalRows;
+  const matchedExact = matchedCountExact ?? !truncated;
+  const totalLabel = `${matched.toLocaleString()}${matchedExact ? "" : "+"}`;
   const chip = status !== "ready" ? STATUS_CHIP[status] : null;
 
   const header =
@@ -330,6 +341,22 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
     : fresh
       ? false
       : (baseHandle?.truncated ?? false);
+  // #340: the true matched total (undefined on pre-#340 handles → UI falls
+  // back to totalRows). Inline results are their own exact total.
+  const matchedCount = freshHandle
+    ? freshHandle.matchedCount
+    : freshInlineRows
+      ? freshInlineRows.length
+      : baseHandle
+        ? baseHandle.matchedCount
+        : (baseInlineRows?.length ?? 0);
+  const matchedCountExact = freshHandle
+    ? freshHandle.matchedCountExact
+    : freshInlineRows
+      ? true
+      : baseHandle
+        ? baseHandle.matchedCountExact
+        : true;
 
   // While a refresh is in flight with nothing rendered yet, show loading (not
   // the possibly-expired original handle's error) — the fresh handle swaps in
@@ -363,6 +390,8 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
       batches={batches}
       totalRows={totalRows}
       truncated={truncated}
+      matchedCount={matchedCount}
+      matchedCountExact={matchedCountExact}
       receivedRows={
         isHandle ? progressive.receivedRows : (batches[0]?.rows.length ?? 0)
       }

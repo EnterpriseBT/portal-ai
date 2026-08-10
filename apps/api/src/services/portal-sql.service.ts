@@ -95,6 +95,10 @@ export interface PortalSqlParams {
    *  (#130 E1) to run a long scan off-thread at a higher budget. Defaults to
    *  `STATEMENT_TIMEOUT_MS` (30s). */
   statementTimeoutMs?: number;
+  /** Also run a `COUNT(*)` over the (unwrapped) query in the same txn and
+   *  return `exactTotal` (#340). Isolated: a count error/timeout yields
+   *  `exactTotal: null`, never failing the staging query. Off by default. */
+  computeExactTotal?: boolean;
 }
 
 interface PortalSqlServiceDeps {
@@ -335,7 +339,9 @@ export class PortalSqlServiceImpl {
    * Execute an LLM-supplied SELECT against the station's per-call
    * temp-view set. See the file header for the full pipeline.
    */
-  async runSqlQuery(params: PortalSqlParams): Promise<PortalSqlResponse> {
+  async runSqlQuery(
+    params: PortalSqlParams
+  ): Promise<PortalSqlResponse & { exactTotal?: number | null }> {
     const caps = {
       rowCap: params.rowCap ?? PORTAL_SQL_DEFAULTS.rowCap,
       cellCap: params.cellCap ?? PORTAL_SQL_DEFAULTS.cellCap,
@@ -390,6 +396,24 @@ export class PortalSqlServiceImpl {
           throw translateExecutionError(err);
         }
 
+        // #340: exact total via a same-txn COUNT(*) over the UNWRAPPED query
+        // (no LIMIT). The staged rows are already fetched above, so a count
+        // timeout/error is isolated to `exactTotal: null` and never loses the
+        // handle. This must be the LAST DB statement before the rollback
+        // sentinel — after an aborted-txn error no further statement runs.
+        let exactTotal: number | null = null;
+        if (params.computeExactTotal) {
+          try {
+            const counted = (await tx.execute(
+              sql.raw(`SELECT count(*)::bigint AS n FROM (${cleaned}) _c`)
+            )) as unknown as Array<{ n: string | number }>;
+            const n = Number(counted[0]?.n);
+            exactTotal = Number.isFinite(n) ? n : null;
+          } catch {
+            exactTotal = null;
+          }
+        }
+
         // 4. Envelope.
         const {
           rows: capped,
@@ -409,12 +433,14 @@ export class PortalSqlServiceImpl {
 
         // Force rollback so the session-scoped temp views are dropped
         // before the connection returns to the pool. The sentinel
-        // carries the response out through the surrounding catch.
-        throw new PortalSqlTxResult<PortalSqlResponse>(envelope);
+        // carries the response (+ #340 exactTotal) out through the catch.
+        throw new PortalSqlTxResult<
+          PortalSqlResponse & { exactTotal?: number | null }
+        >(params.computeExactTotal ? { ...envelope, exactTotal } : envelope);
       });
     } catch (err) {
       if (err instanceof PortalSqlTxResult) {
-        return err.value as PortalSqlResponse;
+        return err.value as PortalSqlResponse & { exactTotal?: number | null };
       }
       throw err;
     }

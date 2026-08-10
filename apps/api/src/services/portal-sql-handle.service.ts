@@ -25,24 +25,11 @@ import {
   SAMPLING_THRESHOLD,
   HANDLE_ROW_CAP,
 } from "@portalai/core/constants";
-// Inline the QueryHandleEnvelope type — the core barrel doesn't yet
-// export portal-sql.contract directly. Shape mirrors Phase 1 spec.
-export interface QueryHandleEnvelope {
-  queryHandle: string;
-  rowCount: number;
-  schema: Array<{ name: string; type: string }>;
-  sampled: boolean;
-  sampleSize?: number;
-  truncated: boolean;
-  samplePeek: Array<Record<string, unknown>>;
-  /** #129: the query retained for cursor-tier re-execution past the snapshot.
-   *  Streamability is decided at read time (`streamHandle` branches on
-   *  `rowCount > HANDLE_ROW_CAP`; the tool declares its order — decision B),
-   *  so the envelope carries no precomputed sort key / cursor flag. **Null**
-   *  for an externally-supplied-rows handle (`produceFromRows`, #124): no query
-   *  to re-execute, so it is always fully staged (≤ cap, snapshot only). */
-  sql: string | null;
-}
+// The canonical envelope type lives in `@portalai/core/contracts` (#340 added
+// `matchedCount`/`matchedCountExact` there); import + re-export it so this
+// module and its importers share the single source of truth, not a local copy.
+import type { QueryHandleEnvelope } from "@portalai/core/contracts";
+export type { QueryHandleEnvelope };
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
@@ -138,6 +125,8 @@ export class PortalSqlHandleService {
       rowCap: HANDLE_ROW_CAP,
       cellCap: Number.MAX_SAFE_INTEGER,
       payloadCap: Number.MAX_SAFE_INTEGER,
+      // #340: get the true total in the same txn (isolated — null on timeout).
+      computeExactTotal: true,
       ...(opts.statementTimeoutMs != null
         ? { statementTimeoutMs: opts.statementTimeoutMs }
         : {}),
@@ -191,9 +180,14 @@ export class PortalSqlHandleService {
     // snapshot. Streamability isn't precomputed here — `streamHandle` branches
     // on `rowCount > HANDLE_ROW_CAP` and the streaming tool supplies its order
     // column at read time (decision B).
+    // #340: `matchedCount` is the true total for display — the same-txn
+    // COUNT(*) when it succeeded, else the `rowCount` lower bound.
+    const exactTotal = (result as { exactTotal?: number | null }).exactTotal;
     const envelope: QueryHandleEnvelope = {
       queryHandle: handleId,
       rowCount: totalCount,
+      matchedCount: exactTotal ?? totalCount,
+      matchedCountExact: exactTotal != null,
       schema,
       sampled,
       ...(sampleSize ? { sampleSize } : {}),
@@ -254,6 +248,10 @@ export class PortalSqlHandleService {
     const envelope: QueryHandleEnvelope = {
       queryHandle: handleId,
       rowCount: totalCount,
+      // #340: the caller handed the full set, so its length IS the exact
+      // matched total — even when only ≤ cap are staged.
+      matchedCount: opts.rows.length,
+      matchedCountExact: true,
       schema,
       sampled,
       ...(sampleSize ? { sampleSize } : {}),
