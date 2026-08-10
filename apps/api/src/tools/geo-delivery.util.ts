@@ -14,6 +14,17 @@ const quoteIdent = (s: string) => `"${s.replace(/"/g, '""')}"`;
 const quoteLit = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 /**
+ * The reproject query is an INTERNAL render transform — its output goes to the
+ * map widget, not the model's context — so the LLM-facing response caps
+ * (`cellCap`/`payloadCap`/`rowCap`, meant to protect the context window) must
+ * not apply. Without this, `sqlQuery`'s 500-byte `cellCap` truncates each row's
+ * GeoJSON to a `…<truncated…>` marker string and the parse below throws (#343).
+ * The inline path is already bounded (≤ `INLINE_ROWS_THRESHOLD` rows), so
+ * lifting the caps here can't grow unbounded.
+ */
+const RAW_CAP = Number.MAX_SAFE_INTEGER;
+
+/**
  * Geometry-column names a MapSpec's layers bind to. A lat/lng source is plain
  * numbers the widget turns into Points — no conversion needed — so it is not
  * listed. Tolerant of an unvalidated spec, because the refresh path reads the
@@ -56,12 +67,23 @@ export async function geoInlineRows(
     sql: displaySql,
     stationId: ctx.stationId,
     organizationId: ctx.organizationId,
+    // Internal reproject — never LLM-facing; keep the caps out of it (#343).
+    rowCap: RAW_CAP,
+    cellCap: RAW_CAP,
+    payloadCap: RAW_CAP,
   })) as { rows?: Array<{ _row?: unknown }> };
   return (disp.rows ?? []).map((r) => {
     const v = r._row;
-    return (typeof v === "string" ? JSON.parse(v) : (v ?? {})) as Record<
-      string,
-      unknown
-    >;
+    if (typeof v === "string") {
+      // The driver can hand jsonb back as text; parse it. Defensive try/catch so
+      // a single unparseable cell degrades to an empty geometry rather than
+      // throwing and blanking the whole map (#343).
+      try {
+        return JSON.parse(v) as Record<string, unknown>;
+      } catch {
+        return {} as Record<string, unknown>;
+      }
+    }
+    return (v ?? {}) as Record<string, unknown>;
   });
 }
