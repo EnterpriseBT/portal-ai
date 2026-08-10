@@ -27,7 +27,7 @@ Options weighed: **(A)** memoize `rows` with a shared empty constant so the effe
 
 **Files**
 - Edit `apps/web/src/modules/MapWidget/utils/map-config.util.ts` — add `export const EMPTY_ROWS: Row[]` (frozen) and `export function pickMapRows(fresh, content): Row[]` (pure: inline-fresh rows → content rows → `EMPTY_ROWS`).
-- Edit `apps/web/src/modules/MapWidget/MapWidget.component.tsx` — replace the inline `rows` derivation (`:500-502`) with `const rows = useMemo(() => pickMapRows(fresh, parsedContent), [fresh, parsedContent])`.
+- Edit `apps/web/src/modules/MapWidget/MapWidget.component.tsx` — replace the inline `rows` derivation (`:500-502`) with `const rows = pickMapRows(fresh, parsedContent)`. A plain call suffices (and avoids a rules-of-hooks issue after the container's early return): `pickMapRows` returns only existing references — the shared `EMPTY_ROWS`, or `fresh.rows`/`content.rows` — never a fresh literal, so identity is already stable across renders.
 - Edit `apps/web/src/modules/MapWidget/__tests__/map-config.util.test.ts` — tests below.
 
 **Tests** (`cd apps/web && npm run test:unit`)

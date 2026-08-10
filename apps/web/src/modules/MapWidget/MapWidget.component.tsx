@@ -24,6 +24,7 @@ import {
   buildLegend,
   featuresForLayer,
   layerToMapLibre,
+  pickMapRows,
   resolveBasemapStyle,
 } from "./utils/map-config.util";
 import {
@@ -497,9 +498,11 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
     freshInlineRows == null &&
     (fresh?.kind === "handle" ||
       (fresh == null && "queryHandle" in parsedContent));
-  const rows =
-    freshInlineRows ??
-    (fresh == null && "rows" in parsedContent ? parsedContent.rows : []);
+  // Stable identity across renders (#341): the old inline `?? []` handed the
+  // map-lifecycle effect a new array every unrelated re-render, remounting every
+  // map. `pickMapRows` returns existing references only (shared `EMPTY_ROWS` for
+  // tiled/handle maps), so a plain call is stable — no memo needed.
+  const rows = pickMapRows(fresh, parsedContent);
 
   // Large result → vector tiles keyed to the block's own persisted ref.
   const tileTemplate = isHandle ? tilePath(blockRef) : null;
