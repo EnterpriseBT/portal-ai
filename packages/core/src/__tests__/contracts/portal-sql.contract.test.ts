@@ -98,6 +98,53 @@ describe("QueryHandleEnvelopeFieldsSchema", () => {
   });
 });
 
+// ── matchedCount / matchedCountExact (#340) ──────────────────────────
+
+describe("matchedCount / matchedCountExact (#340)", () => {
+  const base = {
+    queryHandle: "qh-340",
+    rowCount: 100_001,
+    schema: [{ name: "x", type: "numeric" }],
+    sampled: false,
+    truncated: true,
+    samplePeek: [],
+    sql: "SELECT x FROM big",
+  };
+
+  it("accepts the true total + exact flag", () => {
+    const parsed = QueryHandleEnvelopeFieldsSchema.parse({
+      ...base,
+      matchedCount: 413_311,
+      matchedCountExact: true,
+    });
+    expect(parsed.matchedCount).toBe(413_311);
+    expect(parsed.matchedCountExact).toBe(true);
+  });
+
+  it("is optional — a pre-#340 envelope without the fields still parses", () => {
+    const parsed = QueryHandleEnvelopeFieldsSchema.parse(base);
+    expect(parsed.matchedCount).toBeUndefined();
+    expect(parsed.matchedCountExact).toBeUndefined();
+  });
+
+  it("rejects a negative matchedCount", () => {
+    expect(
+      QueryHandleEnvelopeFieldsSchema.safeParse({ ...base, matchedCount: -1 })
+        .success
+    ).toBe(false);
+  });
+
+  it("rides the WidgetRefresh handle variant", () => {
+    const result = WidgetRefreshResponseSchema.safeParse({
+      kind: "handle",
+      ...base,
+      matchedCount: 413_311,
+      matchedCountExact: false,
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
 // ── WidgetRefreshResponseSchema (#270) ───────────────────────────────
 
 describe("WidgetRefreshResponseSchema (#270)", () => {

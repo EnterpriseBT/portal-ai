@@ -30,6 +30,15 @@ export const QueryHandleEnvelopeFieldsSchema = z.object({
    *  "N+" / "≥N" when truncated (#147). The #129 cursor still folds the
    *  true full set regardless. */
   rowCount: z.number().int().nonnegative(),
+  /** The true number of rows the query matched — the value to DISPLAY (#340).
+   *  EXACT when `matchedCountExact`; otherwise a lower bound equal to
+   *  `rowCount` (the `COUNT(*)` was skipped or timed out). **Absent** on
+   *  pre-#340 handles → consumers fall back to `rowCount`. Distinct from
+   *  `rowCount`, which stays the `cap+1` staging probe. */
+  matchedCount: z.number().int().nonnegative().optional(),
+  /** Whether `matchedCount` is an exact `COUNT(*)` (true) or the `rowCount`
+   *  lower bound (false). Absent ⇒ unknown (treat as not-exact). */
+  matchedCountExact: z.boolean().optional(),
   schema: z.array(
     z.object({
       name: z.string(),
