@@ -218,6 +218,45 @@ describe("resolveColorBy", () => {
     ]);
     expect(legend).toEqual([{ label: "vacant", color: "#ff8a00" }]);
   });
+
+  it("treats numeric-STRING stops as graduated → step with number breakpoints (#346)", () => {
+    // The server back-fill stores numeric column values as strings; they must
+    // still compile to a `step` (not a `match` that never hits a number feature).
+    const { expression, legend } = resolveColorBy(
+      {
+        column: "acres",
+        stops: [
+          ["640", "#a"],
+          ["480", "#b"],
+        ],
+      },
+      []
+    );
+    const expr = expression as unknown[];
+    expect(expr[0]).toBe("case");
+    const step = expr[2] as unknown[];
+    expect(step[0]).toBe("step");
+    expect(step[1]).toEqual(["to-number", ["get", "acres"], 0]);
+    // sorted ascending, breakpoints are NUMBERS (480 base, then 640) — not "640".
+    expect(step[2]).toBe("#b"); // base color (lowest)
+    expect(step[3]).toBe(640); // number breakpoint, not the string "640"
+    expect(step[4]).toBe("#a");
+    expect(legend.map((l) => l.label)).toEqual(["480", "640"]);
+  });
+
+  it("stays categorical (match) when stops are not all numeric (#346)", () => {
+    const { expression } = resolveColorBy(
+      {
+        column: "mixed",
+        stops: [
+          ["640", "#a"],
+          ["vacant", "#b"],
+        ],
+      },
+      []
+    );
+    expect((expression as unknown[])[0]).toBe("match");
+  });
 });
 
 describe("layerToMapLibre", () => {
