@@ -84,3 +84,70 @@ describe("fetchTile", () => {
     expect(out.data.byteLength).toBe(0);
   });
 });
+
+describe("fetchTile — concurrency cap (#350)", () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  // A harness whose `fetch` never resolves on its own — the test settles each
+  // call by hand, so it can observe how many are in flight at once.
+  function deferredHarness() {
+    const settlers: Array<(r: Response) => void> = [];
+    const registry = new Map<string, TileContext>();
+    registry.set("ctx1", { getToken: async () => "tok", onStatus: () => {} });
+    const fetchMock = jest.fn(
+      () => new Promise<Response>((resolve) => settlers.push(resolve))
+    ) as unknown as typeof globalThis.fetch;
+    const deps = { fetch: fetchMock, registry, resolveUrl: (p: string) => p };
+    return { settlers, fetchMock, deps };
+  }
+  const fire = (deps: FetchTileDepsLike, i: number, signal?: AbortSignal) =>
+    fetchTile(
+      protocolTileUrl("ctx1", `/api/portal-map/tiles/pin/p/2/0/${i}.mvt`),
+      signal,
+      deps as never
+    );
+  type FetchTileDepsLike = Parameters<typeof fetchTile>[2];
+
+  it("caps concurrent fetches at 6 and drains the queue in order", async () => {
+    const { settlers, fetchMock, deps } = deferredHarness();
+    const calls = Array.from({ length: 8 }, (_, i) =>
+      fire(deps, i).catch(() => {})
+    );
+    await tick();
+    expect(fetchMock).toHaveBeenCalledTimes(6); // only 6 in flight
+    settlers[0](mkRes(200));
+    await tick();
+    expect(fetchMock).toHaveBeenCalledTimes(7); // a slot freed → 7th starts
+    settlers[1](mkRes(200));
+    await tick();
+    expect(fetchMock).toHaveBeenCalledTimes(8); // 8th starts
+    settlers.forEach((s) => s(mkRes(200)));
+    await Promise.all(calls); // drain → state back to 0
+  });
+
+  it("a tile aborted while queued never fetches; a freed slot runs the next", async () => {
+    const { settlers, fetchMock, deps } = deferredHarness();
+    const active = Array.from({ length: 6 }, (_, i) =>
+      fire(deps, i).catch(() => {})
+    );
+    await tick();
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+
+    const ac = new AbortController();
+    const queued = fire(deps, 6, ac.signal); // queued (cap full)
+    const next = fire(deps, 7).catch(() => {}); // queued behind it
+    await tick();
+    expect(fetchMock).toHaveBeenCalledTimes(6); // both still queued
+
+    ac.abort();
+    await expect(queued).rejects.toMatchObject({ name: "AbortError" });
+    await tick();
+    expect(fetchMock).toHaveBeenCalledTimes(6); // aborted one never fetched
+
+    settlers[0](mkRes(200)); // free an active slot
+    await tick();
+    expect(fetchMock).toHaveBeenCalledTimes(7); // the non-aborted queued tile runs
+    settlers.forEach((s) => s(mkRes(200)));
+    await Promise.all([...active, next]);
+  });
+});
