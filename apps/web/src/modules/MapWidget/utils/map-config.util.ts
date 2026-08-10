@@ -229,11 +229,16 @@ export function resolveColorBy(
   // right band. A `match` (exact equality) would leave every non-breakpoint
   // value on the fallback colour — i.e. an all-grey map for "colour by value",
   // even though the legend renders. String stops stay categorical (`match`).
-  const graduated = pairs.every(([value]) => typeof value === "number");
+  // Numeric OR numeric-string stops are graduated (#346): the server back-fill
+  // stores numeric columns as strings (the pg driver returns numeric as text),
+  // so `"640"` must be treated as a breakpoint, not a category — else the
+  // `match` never hits a number-typed feature value and the layer paints grey.
+  // Coerce to real numbers so the `step` breakpoints are numeric.
+  const graduated = pairs.every(([value]) => toFiniteNum(value) != null);
   if (graduated) {
-    const sorted = [...pairs].sort(
-      (a, b) => (a[0] as number) - (b[0] as number)
-    );
+    const sorted = pairs
+      .map(([value, color]) => [toFiniteNum(value) as number, color] as const)
+      .sort((a, b) => a[0] - b[0]);
     // step(input, base, break1, c1, break2, c2, …): input < break1 → base.
     // Coerce the input with `to-number` (null/absent → 0): `step` THROWS on a
     // null input ("expected number, found null") and MapLibre then paints the
