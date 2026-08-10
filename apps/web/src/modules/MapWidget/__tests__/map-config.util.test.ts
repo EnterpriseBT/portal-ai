@@ -3,11 +3,18 @@ import { describe, it, expect } from "@jest/globals";
 import type { MapLayer, MapSpec } from "@portalai/core/contracts";
 import { AGG_ZOOM_THRESHOLD } from "@portalai/core/constants";
 
+import type {
+  GeoBlockContent,
+  WidgetRefreshResponse,
+} from "@portalai/core/contracts";
+
 import {
   boundsOf,
   buildLegend,
+  EMPTY_ROWS,
   featuresForLayer,
   layerToMapLibre,
+  pickMapRows,
   resolveBasemapStyle,
   resolveColorBy,
   sourceIdFor,
@@ -482,5 +489,48 @@ describe("resolveBasemapStyle", () => {
       "https://x/y.json"
     );
     expect(resolveBasemapStyle("osm", "light")).toMatchObject({ version: 8 });
+  });
+});
+
+describe("pickMapRows (#341 — stable rows identity)", () => {
+  const handleContent = {
+    spec: { layers: [] },
+    queryHandle: "qh_abc",
+    rowCount: 5,
+  } as unknown as GeoBlockContent;
+  const inlineContent = {
+    spec: { layers: [] },
+    rows: [{ a: 1 }],
+  } as unknown as GeoBlockContent;
+
+  it("returns the shared EMPTY_ROWS reference for a handle/no-rows content", () => {
+    expect(pickMapRows(null, handleContent)).toBe(EMPTY_ROWS);
+  });
+
+  it("returns the SAME reference across calls (stable across re-renders)", () => {
+    expect(pickMapRows(null, handleContent)).toBe(
+      pickMapRows(null, handleContent)
+    );
+  });
+
+  it("returns a fresh inline delivery's rows when present", () => {
+    const fresh = {
+      kind: "inline",
+      rows: [{ b: 2 }],
+    } as unknown as WidgetRefreshResponse;
+    expect(pickMapRows(fresh, handleContent)).toEqual([{ b: 2 }]);
+  });
+
+  it("returns the content's inline rows when there is no fresh delivery", () => {
+    expect(pickMapRows(null, inlineContent)).toEqual([{ a: 1 }]);
+  });
+
+  it("falls back to EMPTY_ROWS for a handle-kind fresh delivery with no inline rows", () => {
+    const fresh = { kind: "handle" } as unknown as WidgetRefreshResponse;
+    expect(pickMapRows(fresh, handleContent)).toBe(EMPTY_ROWS);
+  });
+
+  it("EMPTY_ROWS is empty", () => {
+    expect(EMPTY_ROWS).toHaveLength(0);
   });
 });
