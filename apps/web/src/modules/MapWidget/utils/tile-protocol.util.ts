@@ -44,10 +44,54 @@ interface FetchTileDeps {
 }
 
 /**
+ * Bound concurrent `portalmap://` tile fetches to the browser's ~per-host
+ * connection ceiling (#350). A max-zoom-out view asks MapLibre for many tiles
+ * at once, and each low-zoom aggregate tile is expensive; firing them all
+ * saturates the connection pool and stalls the view. Tiles past the cap queue
+ * and start as slots free; a superseded (aborted) *queued* tile is dropped
+ * without ever spending a connection.
+ */
+const MAX_CONCURRENT_TILE_FETCHES = 6;
+let activeTileFetches = 0;
+const tileFetchQueue: Array<() => void> = [];
+
+/** Acquire a fetch slot. Resolves immediately if under the cap, else waits in
+ *  the queue. Rejects with `AbortError` if `signal` fires while still queued —
+ *  a tile MapLibre no longer wants never starts a fetch. */
+function acquireFetchSlot(signal?: AbortSignal): Promise<void> {
+  if (activeTileFetches < MAX_CONCURRENT_TILE_FETCHES) {
+    activeTileFetches += 1;
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve, reject) => {
+    const grant = () => {
+      signal?.removeEventListener("abort", onAbort);
+      activeTileFetches += 1;
+      resolve();
+    };
+    const onAbort = () => {
+      const i = tileFetchQueue.indexOf(grant);
+      if (i >= 0) tileFetchQueue.splice(i, 1);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    tileFetchQueue.push(grant);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/** Release a held slot and hand it to the next queued tile, if any. */
+function releaseFetchSlot(): void {
+  activeTileFetches -= 1;
+  const next = tileFetchQueue.shift();
+  if (next) next();
+}
+
+/**
  * The protocol handler (extracted for testing). Splits the context id from the
  * real path, attaches the Bearer token, reports tile status, and returns the
  * bytes. 204/304/errors return empty bytes (the notice — timeout etc. — is
- * already reported via `onStatus`).
+ * already reported via `onStatus`). Concurrency is capped (#350) so a viewport
+ * burst can't saturate the connection pool.
  */
 export async function fetchTile(
   url: string,
@@ -67,16 +111,25 @@ export async function fetchTile(
   const ctx = deps.registry.get(ctxId);
 
   const token = ctx ? await ctx.getToken() : null;
-  const res = await deps.fetch(deps.resolveUrl(apiPath), {
-    signal,
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  ctx?.onStatus(readTileStatus(res.status, res.headers));
 
-  if (!res.ok || res.status === 204 || res.status === 304) {
-    return { data: new ArrayBuffer(0) };
+  // #350: gate the network fetch behind the concurrency cap. Token resolution
+  // stays outside so a slow first token doesn't hold a connection. Throws
+  // AbortError if this tile was superseded while queued.
+  await acquireFetchSlot(signal);
+  try {
+    const res = await deps.fetch(deps.resolveUrl(apiPath), {
+      signal,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    ctx?.onStatus(readTileStatus(res.status, res.headers));
+
+    if (!res.ok || res.status === 204 || res.status === 304) {
+      return { data: new ArrayBuffer(0) };
+    }
+    return { data: await res.arrayBuffer() };
+  } finally {
+    releaseFetchSlot();
   }
-  return { data: await res.arrayBuffer() };
 }
 
 let installed = false;
