@@ -1,5 +1,7 @@
 import { describe, it, expect, jest } from "@jest/globals";
 
+import { SEQUENTIAL_PALETTE } from "@portalai/core/constants";
+
 import {
   VisualizeMapTool,
   categoryColor,
@@ -164,6 +166,91 @@ describe("VisualizeMapTool.execute (#314)", () => {
     expect(displaySql).toContain('"c_geometry"');
     // The pipeline (tiles + refresh) exposes a raw `geom` column.
     expect((out.pipeline as { sql: string }).sql).toContain("AS geom");
+  });
+
+  const rampHandle = (col: string) => ({
+    kind: "handle" as const,
+    envelope: {
+      ...handleEnvelope,
+      schema: [
+        { name: "geom", type: "geometry" },
+        { name: col, type: "numeric" },
+      ],
+    },
+  });
+
+  it("colorBy.scale 'interpolate' → MIN/MAX back-fill into a sequential ramp, no GROUP BY (#336)", async () => {
+    const resolveSqlDelivery = jest.fn(async () => rampHandle("mkt"));
+    const sqlQuery = jest.fn(async ({ sql }: { sql: string }) => {
+      if (/\bMIN\(/i.test(sql)) return { rows: [{ lo: 0, hi: 500 }] };
+      throw new Error(`unexpected query: ${sql}`); // no GROUP BY for interpolate
+    });
+    const exec = buildTool({
+      resolveSqlDelivery: resolveSqlDelivery as never,
+      sqlQuery: sqlQuery as never,
+    });
+
+    const out = await exec({
+      sql: 'SELECT "geom", "mkt" FROM "parcels"',
+      spec: {
+        layers: [
+          {
+            kind: "polygons",
+            source: { geometryColumn: "geom" },
+            style: { colorBy: { column: "mkt", scale: "interpolate" } },
+          },
+        ],
+      },
+    });
+
+    const stops = (
+      out.spec as {
+        layers: Array<{
+          style: { colorBy: { stops: Array<[number, string]> } };
+        }>;
+      }
+    ).layers[0].style.colorBy.stops;
+    // One anchor per sequential-palette stop, ascending across [lo, hi].
+    expect(stops.length).toBe(SEQUENTIAL_PALETTE.length);
+    expect(stops[0][0]).toBe(0);
+    expect(stops[stops.length - 1][0]).toBe(500);
+    for (let i = 1; i < stops.length; i++)
+      expect(stops[i][0]).toBeGreaterThan(stops[i - 1][0]);
+    expect(stops.map((s) => s[1])).toEqual([...SEQUENTIAL_PALETTE]);
+    // The categorical distinct-value query was never run.
+    const ran = (sqlQuery.mock.calls as Array<[{ sql: string }]>).map(
+      (c) => c[0].sql
+    );
+    expect(ran.some((s) => /GROUP BY/i.test(s))).toBe(false);
+  });
+
+  it("colorBy.scale 'interpolate' on a non-numeric / empty column → no stops (falls back to solid)", async () => {
+    const resolveSqlDelivery = jest.fn(async () => rampHandle("name"));
+    const sqlQuery = jest.fn(async () => ({ rows: [{ lo: null, hi: null }] }));
+    const exec = buildTool({
+      resolveSqlDelivery: resolveSqlDelivery as never,
+      sqlQuery: sqlQuery as never,
+    });
+
+    const out = await exec({
+      sql: 'SELECT "geom", "name" FROM "parcels"',
+      spec: {
+        layers: [
+          {
+            kind: "polygons",
+            source: { geometryColumn: "geom" },
+            style: { colorBy: { column: "name", scale: "interpolate" } },
+          },
+        ],
+      },
+    });
+
+    const cb = (
+      out.spec as {
+        layers: Array<{ style: { colorBy: { stops?: unknown[] } } }>;
+      }
+    ).layers[0].style.colorBy;
+    expect(cb.stops ?? []).toEqual([]);
   });
 
   it("handle delivery (large result) → geo block carrying the envelope, no inline rows", async () => {

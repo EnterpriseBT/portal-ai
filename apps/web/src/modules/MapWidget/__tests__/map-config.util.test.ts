@@ -1,7 +1,10 @@
 import { describe, it, expect } from "@jest/globals";
 
 import type { MapLayer, MapSpec } from "@portalai/core/contracts";
-import { AGG_ZOOM_THRESHOLD } from "@portalai/core/constants";
+import {
+  AGG_ZOOM_THRESHOLD,
+  SEQUENTIAL_PALETTE,
+} from "@portalai/core/constants";
 
 import type {
   GeoBlockContent,
@@ -19,6 +22,12 @@ import {
   resolveColorBy,
   sourceIdFor,
 } from "../utils/map-config.util";
+import type { MapLegend } from "../utils/map-config.util";
+
+/** Swatch labels of a legend (or [] for null/gradient) — the discriminated
+ *  MapLegend replaced the flat LegendEntry[] in #336. */
+const swatchLabels = (l: MapLegend | null): string[] =>
+  l && l.kind === "swatches" ? l.entries.map((e) => e.label) : [];
 
 describe("featuresForLayer", () => {
   it("reads a geometry column as a GeoJSON geometry object", () => {
@@ -121,14 +130,14 @@ describe("resolveColorBy", () => {
     // vacant, <color>, improved, <color>, <fallback>
     expect(expr).toContain("vacant");
     expect(expr).toContain("improved");
-    expect(legend.map((l) => l.label)).toEqual(["vacant", "improved"]);
+    expect(swatchLabels(legend)).toEqual(["vacant", "improved"]);
   });
 
   it("returns a solid colour (not a zero-pair match) when no categories resolve", () => {
     // Tiled layer: no rows to derive categories from, no explicit stops.
     const { expression, legend } = resolveColorBy({ column: "klass" }, []);
     expect(typeof expression).toBe("string");
-    expect(legend).toEqual([]);
+    expect(legend).toBeNull();
   });
 
   it("compiles numeric (graduated) stops to a step scale, not an exact match (#330)", () => {
@@ -159,7 +168,7 @@ describe("resolveColorBy", () => {
       "#6baed6",
     ]);
     expect(typeof expr[3]).toBe("string"); // no-data fallback colour
-    expect(legend.map((l) => l.label)).toEqual(["0", "100000", "300000"]);
+    expect(swatchLabels(legend)).toEqual(["0", "100000", "300000"]);
   });
 
   it("routes null/absent numeric values to a no-data colour (no step throw → black) (#330)", () => {
@@ -216,7 +225,10 @@ describe("resolveColorBy", () => {
       "#ff8a00",
       expect.any(String),
     ]);
-    expect(legend).toEqual([{ label: "vacant", color: "#ff8a00" }]);
+    expect(legend).toEqual({
+      kind: "swatches",
+      entries: [{ label: "vacant", color: "#ff8a00" }],
+    });
   });
 
   it("treats numeric-STRING stops as graduated → step with number breakpoints (#346)", () => {
@@ -241,7 +253,7 @@ describe("resolveColorBy", () => {
     expect(step[2]).toBe("#b"); // base color (lowest)
     expect(step[3]).toBe(640); // number breakpoint, not the string "640"
     expect(step[4]).toBe("#a");
-    expect(legend.map((l) => l.label)).toEqual(["480", "640"]);
+    expect(swatchLabels(legend)).toEqual(["480", "640"]);
   });
 
   it("stays categorical (match) when stops are not all numeric (#346)", () => {
@@ -257,6 +269,121 @@ describe("resolveColorBy", () => {
     );
     expect((expression as unknown[])[0]).toBe("match");
   });
+
+  it("scale:'interpolate' + ≥2 numeric stops → a continuous interpolate expr + gradient legend (#336)", () => {
+    const { expression, legend } = resolveColorBy(
+      {
+        column: "mkt",
+        scale: "interpolate",
+        stops: [
+          [0, "#000000"],
+          [100, "#ffffff"],
+        ],
+      },
+      []
+    );
+    const expr = expression as unknown[];
+    // Same null-guard shape as step: case(has, interpolate(to-number …), no-data).
+    expect(expr[0]).toBe("case");
+    expect(expr[1]).toEqual(["has", "mkt"]);
+    const interp = expr[2] as unknown[];
+    expect(interp[0]).toBe("interpolate");
+    expect(interp[1]).toEqual(["linear"]);
+    expect(interp[2]).toEqual(["to-number", ["get", "mkt"], 0]);
+    expect(interp.slice(3)).toEqual([0, "#000000", 100, "#ffffff"]);
+    expect(typeof expr[3]).toBe("string"); // no-data colour, never black
+    expect(legend).toEqual({
+      kind: "gradient",
+      min: 0,
+      max: 100,
+      stops: [
+        { value: 0, color: "#000000" },
+        { value: 100, color: "#ffffff" },
+      ],
+    });
+  });
+
+  it("interpolate sorts + dedupes stops ascending (MapLibre requires strictly increasing) (#336)", () => {
+    const { legend } = resolveColorBy(
+      {
+        column: "v",
+        scale: "interpolate",
+        stops: [
+          [300, "#3"],
+          [0, "#0"],
+          [300, "#dup"],
+          [100, "#1"],
+        ],
+      },
+      []
+    );
+    expect(legend).toEqual({
+      kind: "gradient",
+      min: 0,
+      max: 300,
+      stops: [
+        { value: 0, color: "#0" },
+        { value: 100, color: "#1" },
+        { value: 300, color: "#3" },
+      ],
+    });
+  });
+
+  it("scale:'interpolate' with <2 distinct numeric stops → falls back to step, never a broken expr (#336)", () => {
+    const { expression, legend } = resolveColorBy(
+      { column: "mkt", scale: "interpolate", stops: [[42, "#abc"]] },
+      []
+    );
+    const expr = expression as unknown[];
+    expect(expr[0]).toBe("case");
+    expect((expr[2] as unknown[])[0]).toBe("step"); // not interpolate
+    expect(legend?.kind).toBe("swatches");
+  });
+
+  it("scale:'interpolate' with no stops derives min→max from rows using SEQUENTIAL_PALETTE (#336)", () => {
+    const rows = [{ v: 10 }, { v: 30 }, { v: 20 }];
+    const { expression, legend } = resolveColorBy(
+      { column: "v", scale: "interpolate" },
+      rows
+    );
+    const interp = (expression as unknown[])[2] as unknown[];
+    expect(interp[0]).toBe("interpolate");
+    const colors = interp.slice(3).filter((_, i) => i % 2 === 1);
+    for (const c of colors) expect(SEQUENTIAL_PALETTE).toContain(c);
+    expect(legend).toMatchObject({ kind: "gradient", min: 10, max: 30 });
+  });
+
+  it("scale:'categorical' forces a match even for numeric stops (#336)", () => {
+    const { expression } = resolveColorBy(
+      {
+        column: "code",
+        scale: "categorical",
+        stops: [
+          [1, "#a"],
+          [2, "#b"],
+        ],
+      },
+      []
+    );
+    expect((expression as unknown[])[0]).toBe("match");
+  });
+
+  it("scale:'step' keeps numeric stops as discrete bands (#336)", () => {
+    const { expression } = resolveColorBy(
+      {
+        column: "v",
+        scale: "step",
+        stops: [
+          [0, "#a"],
+          [100, "#b"],
+        ],
+      },
+      []
+    );
+    const expr = expression as unknown[];
+    expect(expr[0]).toBe("case");
+    expect((expr[2] as unknown[])[0]).toBe("step");
+  });
 });
 
 describe("layerToMapLibre", () => {
@@ -271,7 +398,7 @@ describe("layerToMapLibre", () => {
     expect(layers[0].type).toBe("circle");
     expect(layers[0].paint["circle-color"]).toBe("#123456");
     expect(layers[0].paint["circle-radius"]).toBe(8);
-    expect(legend).toEqual([]);
+    expect(legend).toBeNull();
   });
 
   it("polygons → a fill layer + an outline line layer", () => {
@@ -333,7 +460,7 @@ describe("layerToMapLibre", () => {
     const rows = [{ klass: "a" }, { klass: "b" }];
     const { layers, legend } = layerToMapLibre(layer, 0, rows);
     expect((layers[0].paint["fill-color"] as unknown[])[0]).toBe("match");
-    expect(legend.map((l) => l.label)).toEqual(["a", "b"]);
+    expect(swatchLabels(legend)).toEqual(["a", "b"]);
   });
 
   it("heatmap → a heatmap layer", () => {
@@ -476,7 +603,39 @@ describe("buildLegend", () => {
         },
       ],
     } as unknown as MapSpec;
-    expect(buildLegend(spec, [])).toEqual([{ label: "x", color: "#111" }]);
+    expect(buildLegend(spec, [])).toEqual([
+      { kind: "swatches", entries: [{ label: "x", color: "#111" }] },
+    ]);
+  });
+
+  it("returns a gradient legend for an interpolate layer alongside a swatch layer (#336)", () => {
+    const spec = {
+      layers: [
+        {
+          kind: "polygons",
+          source: { geometryColumn: "geom" },
+          style: { colorBy: { column: "klass", stops: [["x", "#111"]] } },
+        },
+        {
+          kind: "polygons",
+          source: { geometryColumn: "geom" },
+          style: {
+            colorBy: {
+              column: "v",
+              scale: "interpolate",
+              stops: [
+                [0, "#000"],
+                [9, "#fff"],
+              ],
+            },
+          },
+        },
+      ],
+    } as unknown as MapSpec;
+    expect(buildLegend(spec, []).map((l) => l.kind)).toEqual([
+      "swatches",
+      "gradient",
+    ]);
   });
 });
 

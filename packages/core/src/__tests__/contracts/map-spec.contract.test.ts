@@ -175,6 +175,27 @@ describe("MapLayerStyleSchema (via MapSpecSchema)", () => {
     ).toBe(true);
   });
 
+  it("accepts colorBy without a scale (absent ⇒ inferred — #336)", () => {
+    expect(withStyle({ colorBy: { column: "market_value" } }).success).toBe(
+      true
+    );
+  });
+
+  it("accepts each colorBy.scale enum value (#336)", () => {
+    for (const scale of ["categorical", "step", "interpolate"] as const) {
+      expect(
+        withStyle({ colorBy: { column: "market_value", scale } }).success
+      ).toBe(true);
+    }
+  });
+
+  it("rejects an unknown colorBy.scale (#336)", () => {
+    expect(
+      withStyle({ colorBy: { column: "market_value", scale: "gradient" } })
+        .success
+    ).toBe(false);
+  });
+
   it("accepts a MapLibre expression anywhere a literal style value is allowed", () => {
     expect(
       withStyle({
