@@ -159,6 +159,16 @@ describe("buildSystemPrompt — Mapping treatment guidance (#337)", () => {
     expect(prompt).toContain('colorBy.scale: "interpolate"');
     expect(prompt.toLowerCase()).toContain("smooth gradient");
   });
+
+  it("teaches geocoding for addresses without coordinates + the no-fabrication rule (#315)", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["data_query", "gis"] })
+    );
+    expect(prompt).toContain("geocode");
+    expect(prompt).toContain("bulk_geocode_records");
+    expect(prompt).toContain("acknowledgeCost: true");
+    expect(prompt.toLowerCase()).toContain("never fabricate coordinates");
+  });
 });
 
 describe("buildSystemPrompt — entity management notes", () => {

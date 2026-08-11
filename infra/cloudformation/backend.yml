@@ -59,6 +59,9 @@ Parameters:
   SecretArnTavilyApiKey:
     Type: String
     Description: Full ARN of portalai/{env}/tavily-api-key secret
+  SecretArnGeocodingApiKey:
+    Type: String
+    Description: Full ARN of portalai/{env}/geocoding-api-key secret
   SecretArnGoogleOauthClientSecret:
     Type: String
     Description: Full ARN of portalai/{env}/google-oauth-client-secret secret
@@ -245,6 +248,7 @@ Resources:
               - !Ref SecretArnAuth0WebhookSecret
               - !Ref SecretArnAnthropicApiKey
               - !Ref SecretArnTavilyApiKey
+              - !Ref SecretArnGeocodingApiKey
               - !Ref SecretArnGoogleOauthClientSecret
               - !Ref SecretArnMicrosoftOauthClientSecret
               - !Ref SecretArnOauthStateSecret
@@ -524,6 +528,8 @@ Resources:
               ValueFrom: !Ref SecretArnAnthropicApiKey
             - Name: TAVILY_API_KEY
               ValueFrom: !Ref SecretArnTavilyApiKey
+            - Name: GEOCODING_API_KEY
+              ValueFrom: !Ref SecretArnGeocodingApiKey
             - Name: GOOGLE_OAUTH_CLIENT_SECRET
               ValueFrom: !Ref SecretArnGoogleOauthClientSecret
             - Name: MICROSOFT_OAUTH_CLIENT_SECRET

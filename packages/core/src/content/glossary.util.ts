@@ -334,6 +334,15 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
       "“Show all vacant parcels on a map, colored by zoning” renders an interactive map you can pan and click; clicking a parcel shows its address and class.",
     relatedTerms: ["Geometry", "Visualization Widget", "Tool Pack"],
   },
+  {
+    term: "Geocoding",
+    category: GlossaryCategory.Analytics,
+    definition:
+      "Turning a text address into map coordinates (and the reverse — coordinates back into an address). When your data has addresses but no geometry, the assistant can geocode them into points so they can be mapped. A repeated address is served from a shared cache and costs nothing; a whole column is geocoded as a background job that writes a geometry column. Part of the GIS tool pack.",
+    example:
+      "A contacts entity has a “mailing address” column but no coordinates; geocoding it fills a geometry column with a point per contact, ready to plot.",
+    relatedTerms: ["Geometry", "Map Visualization", "Tool Pack"],
+  },
 
   // System
   {

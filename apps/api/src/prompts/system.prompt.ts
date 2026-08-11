@@ -282,6 +282,19 @@ export const PACK_PROMPT_SECTIONS: Record<
           "per-kind default."
       );
       lines.push("");
+      lines.push(
+        "When the rows carry **addresses but no coordinates**, turn them into " +
+          "geometry before mapping: **`geocode`** for a single address " +
+          "(→ `{lat, lng}`, a repeat is cache-served and free), or " +
+          "**`bulk_geocode_records`** to geocode a whole entity column into a " +
+          "GeoJSON Point column as a background job. `bulk_geocode_records` is " +
+          "**metered** — the first call is rejected with a cost; surface it to " +
+          "the user and only retry with `acknowledgeCost: true` after they " +
+          "reply. **Never fabricate coordinates** — if geocoding returns a " +
+          "typed error (provider down, address unresolved), relay it; do not " +
+          "guess a location."
+      );
+      lines.push("");
       return lines;
     },
   },
