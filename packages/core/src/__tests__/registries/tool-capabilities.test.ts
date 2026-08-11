@@ -43,15 +43,21 @@ describe("enablement/enforcement projections reproduce current behavior", () => 
     ]);
   });
 
-  it("write-gated == every entity_management tool (today's pack-level gate)", () => {
+  it("write-gated == every entity_management tool + the bulk geocode job", () => {
+    // Write-gating is per-tool (#121), keyed on writes[] — any pack. The
+    // entity_management tools plus bulk_geocode_records (#315), which writes
+    // GeoJSON Points into a geometry column, are the write-gated set.
     const em = BUILTIN_TOOLPACKS.find((p) => p.slug === "entity_management")!;
-    expect(writeGatedToolNames()).toEqual(em.tools.map((t) => t.name).sort());
+    expect(writeGatedToolNames()).toEqual(
+      [...em.tools.map((t) => t.name), "bulk_geocode_records"].sort()
+    );
   });
 
-  it("cost-gated == the transform write job + the bounded heavy-compute tools", () => {
+  it("cost-gated == the transform + geocode write jobs + the bounded heavy-compute tools", () => {
     // costHint: expensive on the two bounded reduce-tier tools (#130 E2b)
-    // alongside the transform write job. namesWhere() returns them sorted.
+    // alongside the two bulk write jobs. namesWhere() returns them sorted.
     expect(costGatedToolNames()).toEqual([
+      "bulk_geocode_records",
       "cluster",
       "logistic_regression",
       "transform_entity_records",
@@ -96,6 +102,11 @@ describe("costHint pin (#184)", () => {
     visualize_d3: "expensive",
     // free — the agent authors the MapSpec directly, no codegen sub-call (#314).
     visualize_map: "free",
+    // metered — external provider calls (Mapbox); a cache hit is charged 0 (#315).
+    geocode: "metered",
+    reverse_geocode: "metered",
+    // expensive — async bulk-column geocode job; bills on success (#315).
+    bulk_geocode_records: "expensive",
     // free — local/engine compute, pure math, entity writes, system tools.
     amortize: "free",
     bond_math: "free",

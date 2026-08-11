@@ -190,6 +190,7 @@ describe("filterGlossary", () => {
     expect(terms).toEqual(
       [
         "Custom Toolpack",
+        "Geocoding",
         "Map Visualization",
         "Pinned Result",
         // #284: plan entitlement is an Analytics concept — a tool pack can be

@@ -554,6 +554,13 @@
       "when": 1785965517906,
       "tag": "0078_geometry-audit-helper",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1786475597563,
+      "tag": "0079_add-bulk-geocode-job-type",
+      "breakpoints": true
     }
   ]
 }

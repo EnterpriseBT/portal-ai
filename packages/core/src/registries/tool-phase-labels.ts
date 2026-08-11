@@ -45,6 +45,10 @@ export const TOOL_PHASE_LABELS: Record<string, string> = {
 
   // gis (#314)
   visualize_map: "Drawing the map",
+  // gis geocoding (#315)
+  geocode: "Looking up coordinates",
+  reverse_geocode: "Looking up the address",
+  bulk_geocode_records: "Geocoding addresses",
 
   // statistics
   cluster: "Clustering records",
