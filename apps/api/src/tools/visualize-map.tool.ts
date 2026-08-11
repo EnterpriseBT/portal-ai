@@ -2,6 +2,7 @@ import { z } from "zod";
 import { tool } from "ai";
 
 import { MapSpecSchema } from "@portalai/core/contracts";
+import { SEQUENTIAL_PALETTE } from "@portalai/core/constants";
 
 import { Tool } from "../types/tools.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -219,6 +220,35 @@ export class VisualizeMapTool extends Tool<typeof InputSchema> {
         for (const layer of spec.layers) {
           const cb = layer.style?.colorBy;
           if (!cb || (cb.stops && cb.stops.length > 0)) continue;
+
+          // #336: a smooth gradient needs a continuous ramp, not one anchor per
+          // distinct value. Compute MIN/MAX and lay the sequential palette
+          // evenly across the range — one cheap aggregate, cheaper than the
+          // categorical GROUP BY. A non-numeric / empty / flat column yields no
+          // stops (the widget falls back to a solid colour).
+          if (cb.scale === "interpolate") {
+            const rampSql =
+              `SELECT MIN(_q.${quoteIdent(cb.column)}) AS lo, ` +
+              `MAX(_q.${quoteIdent(cb.column)}) AS hi FROM (${sql}) _q ` +
+              `WHERE _q.${quoteIdent(cb.column)} IS NOT NULL`;
+            const rres = (await sqlQuery({
+              sql: rampSql,
+              stationId,
+              organizationId,
+            })) as { rows?: Array<{ lo?: unknown; hi?: unknown }> };
+            const lo = Number(rres.rows?.[0]?.lo);
+            const hi = Number(rres.rows?.[0]?.hi);
+            if (Number.isFinite(lo) && Number.isFinite(hi) && hi > lo) {
+              const ramp = cb.palette?.length ? cb.palette : SEQUENTIAL_PALETTE;
+              const k = ramp.length;
+              cb.stops = ramp.map((color, i) => [
+                lo + ((hi - lo) * i) / (k - 1),
+                color,
+              ]);
+            }
+            continue;
+          }
+
           // Every distinct category gets a colour (no cap). Frequency order
           // just means that if the platform's row cap ever trims the list, the
           // most common values are kept.
