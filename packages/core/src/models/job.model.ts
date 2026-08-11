@@ -42,6 +42,7 @@ export const JobTypeEnum = z.enum([
   "file_upload_parse",
   "layout_plan_commit",
   "bulk_transform",
+  "bulk_geocode",
   "sql_query",
 ]);
 export type JobType = z.infer<typeof JobTypeEnum>;
@@ -395,6 +396,53 @@ export const BulkTransformResultSchema = z.object({
 export type BulkTransformResult = z.infer<typeof BulkTransformResultSchema>;
 
 /**
+ * Bulk-column geocode job (#315) — geocode every address in one entity column,
+ * writing GeoJSON Points into a geometry-role target column on the SAME entity.
+ * The entity is locked while the job is non-terminal (mutations 409); the
+ * processor bills on success, once per job.
+ */
+export const BulkGeocodeMetadataSchema = z.object({
+  /** The entity whose column is geocoded (source read + geometry write). */
+  connectorEntityId: z.string(),
+  /** Address column read (the geocode input). */
+  sourceColumnKey: z.string(),
+  /** Geometry-role column the GeoJSON Points are written to. */
+  targetColumnKey: z.string(),
+  /** Denormalized lock array (= `[connectorEntityId]`) — the field the lock
+   *  query matches by JSONB array-overlap, mirroring `bulk_transform`. */
+  targetConnectorEntityIds: z.array(z.string()).min(1),
+  /** Portal that dispatched the job — locks the chat input + scopes the ack. */
+  portalId: z.string(),
+  /** Row count at dispatch, for the progress block's ETA. */
+  expectedRecords: z.number().int().nonnegative(),
+  /** Required because the tool is `costHint: "expensive"` (server-enforced ack). */
+  acknowledgeCost: z.boolean().optional(),
+});
+export type BulkGeocodeMetadata = z.infer<typeof BulkGeocodeMetadataSchema>;
+
+export const BulkGeocodeResultSchema = z.object({
+  /** Rows attempted (= geocoded + cached + failed). Drives the progress
+   *  widget's "X / expected" count on a post-completion snapshot. */
+  recordsProcessed: z.number().int().nonnegative(),
+  /** Rows that failed (= `failed`). The widget's failure annotation. */
+  recordsFailed: z.number().int().nonnegative(),
+  /** Addresses resolved via a live provider call (the billable count). */
+  geocoded: z.number().int().nonnegative(),
+  /** Addresses served from the global cache — 0 units. */
+  cached: z.number().int().nonnegative(),
+  /** Addresses that could not be resolved. */
+  failed: z.number().int().nonnegative(),
+  durationMs: z.number().int().nonnegative(),
+  /** Per-row failures so the affected rows stay identifiable
+   *  (`BULK_JOB_PARTIAL_FAILURE`); the head is kept, the tail summarized. */
+  partialFailures: z
+    .array(z.object({ sourceKey: z.string(), error: ApiErrorSchema }))
+    .optional(),
+  partialFailuresOmitted: z.number().int().nonnegative().optional(),
+});
+export type BulkGeocodeResult = z.infer<typeof BulkGeocodeResultSchema>;
+
+/**
  * sql_query (#130 child E1) — the JOB-tier mode of `sql_query`. The runtime
  * escalates a long/expensive read here (see `TOOLPACK_TAXONOMY.spec.md` D8a):
  * it runs the validated portal SQL off the request thread at
@@ -446,6 +494,10 @@ export interface JobTypeMap {
     metadata: BulkTransformMetadata;
     result: BulkTransformResult;
   };
+  bulk_geocode: {
+    metadata: BulkGeocodeMetadata;
+    result: BulkGeocodeResult;
+  };
   sql_query: {
     metadata: SqlQueryJobMetadata;
     result: SqlQueryJobResult;
@@ -486,6 +538,10 @@ export const JOB_TYPE_SCHEMAS: {
     metadata: BulkTransformMetadataSchema,
     result: BulkTransformResultSchema,
   },
+  bulk_geocode: {
+    metadata: BulkGeocodeMetadataSchema,
+    result: BulkGeocodeResultSchema,
+  },
   sql_query: {
     metadata: SqlQueryJobMetadataSchema,
     result: SqlQueryJobResultSchema,
@@ -521,6 +577,10 @@ export const JOB_LOCK_KEYS: Partial<Record<JobType, JobLockKeys>> = {
   connector_sync: { connectorInstanceId: "connectorInstanceId" },
   layout_plan_commit: { connectorInstanceId: "connectorInstanceId" },
   bulk_transform: {
+    targetConnectorEntityIds: "targetConnectorEntityIds",
+    portalId: "portalId",
+  },
+  bulk_geocode: {
     targetConnectorEntityIds: "targetConnectorEntityIds",
     portalId: "portalId",
   },

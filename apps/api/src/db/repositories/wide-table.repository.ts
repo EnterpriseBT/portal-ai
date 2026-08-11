@@ -502,9 +502,20 @@ export class WideTableRepository {
         (c) => c.normalizedKey === normalizedKey
       );
       if (!cachedCol) continue;
-      setFragments.push(
-        sql`${sql.raw(`"${cachedCol.columnName}"`)} = ${value as never}`
-      );
+      // Geometry columns can't take a bound JSON param directly — a GeoJSON
+      // value is converted via ST_GeomFromGeoJSON and stamped to WGS84 (4326),
+      // matching the import write path (#316). Non-geometry columns bind as-is.
+      if (cachedCol.pgType.startsWith("geometry") && value != null) {
+        setFragments.push(
+          sql`${sql.raw(`"${cachedCol.columnName}"`)} = ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(
+            value
+          )}), 4326)`
+        );
+      } else {
+        setFragments.push(
+          sql`${sql.raw(`"${cachedCol.columnName}"`)} = ${value as never}`
+        );
+      }
     }
     if (metadataPatch.syncedAt !== undefined) {
       setFragments.push(sql`"synced_at" = ${metadataPatch.syncedAt}`);

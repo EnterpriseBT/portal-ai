@@ -23,6 +23,10 @@ import { DisplayEntityRecordsTool } from "../tools/display-entity-records.tool.j
 import { StationContextTool } from "../tools/station-context.tool.js";
 import { VisualizeD3Tool } from "../tools/visualize-d3.tool.js";
 import { VisualizeMapTool } from "../tools/visualize-map.tool.js";
+import { GeocodeTool } from "../tools/geocode.tool.js";
+import { ReverseGeocodeTool } from "../tools/reverse-geocode.tool.js";
+import { BulkGeocodeRecordsTool } from "../tools/bulk-geocode-records.tool.js";
+import { registerGeocodingCostResolvers } from "./geocoding/cost-resolvers.js";
 import { ResolveIdentityTool } from "../tools/resolve-identity.tool.js";
 import { ClusterTool } from "../tools/cluster.tool.js";
 import { HypothesisTestTool } from "../tools/hypothesis-test.tool.js";
@@ -168,6 +172,9 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "display_entity_records",
   "visualize_d3",
   "visualize_map",
+  "geocode",
+  "reverse_geocode",
+  "bulk_geocode_records",
   "resolve_identity",
   "cluster",
   "hypothesis_test",
@@ -531,6 +538,26 @@ export class ToolService {
         stationId,
         organizationId
       );
+      // Geocoding (#315) is metered and needs a provider key. Build the two
+      // geocode tools only when GEOCODING_API_KEY is configured — build() itself
+      // throws on a missing key (the web_search precedent), and the guard keeps
+      // a keyless env from taking down the free, keyless visualize_map. The
+      // zero-unit cache resolvers are registered idempotently.
+      if (environment.GEOCODING_API_KEY) {
+        registerGeocodingCostResolvers();
+        tools.geocode = new GeocodeTool().build();
+        tools.reverse_geocode = new ReverseGeocodeTool().build();
+        // Bulk-column geocode is an async job (ack + lock + progress); only
+        // wired when the portal is known (production always supplies it).
+        if (portalId) {
+          tools.bulk_geocode_records = new BulkGeocodeRecordsTool().build(
+            portalId,
+            stationId,
+            organizationId,
+            userId
+          );
+        }
+      }
     }
 
     // -------------------------------------------------------------------

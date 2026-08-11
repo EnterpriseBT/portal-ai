@@ -302,6 +302,75 @@ const GIS_PACK: BuiltinToolpackSpec = {
         },
       ],
     },
+    {
+      name: "geocode",
+      description:
+        "Convert an address or place name into latitude/longitude coordinates (WGS84). Use before visualize_map when the data has addresses but no coordinates. Never invent coordinates — relay a typed failure if the address can't be resolved.",
+      parameterSchema: objectSchema(
+        { address: stringField("The address or place to geocode.") },
+        ["address"]
+      ),
+      examples: [
+        {
+          title: "Geocode an address",
+          input: { address: "123 Main St, Salt Lake City, UT" },
+          output: { lat: 40.7, lng: -111.9, cached: false },
+        },
+      ],
+    },
+    {
+      name: "reverse_geocode",
+      description:
+        "Convert latitude/longitude coordinates (WGS84) into a human-readable address. Never invent an address — relay a typed failure if the coordinates can't be resolved.",
+      parameterSchema: objectSchema(
+        {
+          lat: numberField("Latitude in WGS84."),
+          lng: numberField("Longitude in WGS84."),
+        },
+        ["lat", "lng"]
+      ),
+      examples: [
+        {
+          title: "Reverse-geocode a coordinate",
+          input: { lat: 40.7, lng: -111.9 },
+          output: { address: "123 Main St, Salt Lake City, UT", cached: false },
+        },
+      ],
+    },
+    {
+      name: "bulk_geocode_records",
+      description:
+        "Geocode every address in an entity column into GeoJSON Point geometry, as an asynchronous job. Use for high-cardinality columns (≥100 rows) instead of calling geocode in a loop. Returns immediately with a jobId + a live progress widget; the target entity is locked from edits until it completes. Metered per uncached address — the first call is rejected with an estimate; surface the cost, then retry with acknowledgeCost: true after the user replies.",
+      parameterSchema: objectSchema(
+        {
+          connectorEntityId: stringField(
+            "The entity whose address column is geocoded."
+          ),
+          sourceColumnKey: stringField("The address column to read."),
+          targetColumnKey: stringField(
+            "The geometry-role column to write GeoJSON Points into."
+          ),
+          acknowledgeCost: {
+            type: "boolean",
+            description:
+              "Set true ONLY after surfacing the metered cost to the user and receiving a reply.",
+          },
+        },
+        ["connectorEntityId", "sourceColumnKey", "targetColumnKey"]
+      ),
+      examples: [
+        {
+          title: "Geocode a parcels address column (after cost ack)",
+          input: {
+            connectorEntityId: "ce_parcels",
+            sourceColumnKey: "c_address",
+            targetColumnKey: "c_geometry",
+            acknowledgeCost: true,
+          },
+          output: { jobId: "job_123", blockKind: "bulk-job-progress" },
+        },
+      ],
+    },
   ],
 };
 
@@ -1133,6 +1202,48 @@ const CAPABILITIES: Record<string, ToolCapability> = {
     locks: [],
     resultKind: "geo",
     production: { kind: "rows", onLarge: "handle" },
+    alwaysAvailable: false,
+  },
+  // geocode / reverse_geocode (#315): metered external-provider calls (Portal
+  // pays Mapbox), no dataset consumption, a scalar value the agent routes into
+  // a MapSpec. A cache hit is charged 0 via the registered cost resolver.
+  geocode: {
+    pure: false,
+    reads: [],
+    writes: [],
+    consumption: { mode: "none" },
+    computeShape: "map",
+    costHint: "metered",
+    locks: [],
+    resultKind: "scalar",
+    production: { kind: "value" },
+    alwaysAvailable: false,
+  },
+  reverse_geocode: {
+    pure: false,
+    reads: [],
+    writes: [],
+    consumption: { mode: "none" },
+    computeShape: "map",
+    costHint: "metered",
+    locks: [],
+    resultKind: "scalar",
+    production: { kind: "value" },
+    alwaysAvailable: false,
+  },
+  // bulk_geocode_records (#315): an async, expensive job that writes GeoJSON
+  // Points into a geometry column. `resultKind: "progress"` ⇒ the wrap defers
+  // the charge to the processor (bill-on-success); it locks its target entity.
+  bulk_geocode_records: {
+    pure: false,
+    reads: ["entity_records"],
+    writes: ["entity_records"],
+    consumption: { mode: "streaming" },
+    computeShape: "map",
+    costHint: "expensive",
+    locks: ["targetConnectorEntityIds"],
+    resultKind: "progress",
+    production: { kind: "value" },
     alwaysAvailable: false,
   },
   // resolve_identity returns a structured match set the agent consumes; not

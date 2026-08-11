@@ -128,6 +128,7 @@ jobs:
               SecretArnAuth0WebhookSecret=${{ secrets.DEV_SECRET_ARN_AUTH0_WEBHOOK_SECRET }} \
               SecretArnAnthropicApiKey=${{ secrets.DEV_SECRET_ARN_ANTHROPIC_API_KEY }} \
               SecretArnTavilyApiKey=${{ secrets.DEV_SECRET_ARN_TAVILY_API_KEY }} \
+              SecretArnGeocodingApiKey=${{ secrets.DEV_SECRET_ARN_GEOCODING_API_KEY }} \
               SecretArnGoogleOauthClientSecret=${{ secrets.DEV_SECRET_ARN_GOOGLE_OAUTH_CLIENT_SECRET }} \
               SecretArnMicrosoftOauthClientSecret=${{ secrets.DEV_SECRET_ARN_MICROSOFT_OAUTH_CLIENT_SECRET }} \
               SecretArnOauthStateSecret=${{ secrets.DEV_SECRET_ARN_OAUTH_STATE_SECRET }} \
