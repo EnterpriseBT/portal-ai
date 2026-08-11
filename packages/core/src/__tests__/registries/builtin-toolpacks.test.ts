@@ -143,6 +143,26 @@ describe("BUILTIN_TOOLPACKS", () => {
   });
 });
 
+// #336 — the visualize_map mirror documents the colorBy.scale gradient mode.
+describe("gis pack visualize_map colorBy.scale (#336)", () => {
+  const tool = BUILTIN_TOOLPACKS.flatMap((p) => p.tools).find(
+    (t) => t.name === "visualize_map"
+  );
+
+  it("spec description documents the colorBy.scale gradient mode", () => {
+    expect(tool).toBeDefined();
+    const specDesc =
+      (
+        tool!.parameterSchema.properties as Record<
+          string,
+          { description?: string }
+        >
+      ).spec.description ?? "";
+    expect(specDesc).toContain("scale");
+    expect(specDesc.toLowerCase()).toContain("gradient");
+  });
+});
+
 // #269 — the visualize pack + visualize_d3 tool contract.
 describe("visualize pack (#269)", () => {
   const pack = BUILTIN_TOOLPACKS.find((p) => p.slug === "visualize");

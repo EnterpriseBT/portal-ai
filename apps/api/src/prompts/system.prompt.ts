@@ -257,6 +257,13 @@ export const PACK_PROMPT_SECTIONS: Record<
       );
       lines.push("");
       lines.push(
+        "For a numeric measure, `colorBy` defaults to discrete bands. When the " +
+          "user asks for a **smooth gradient** (continuous shading), set " +
+          '`colorBy.scale: "interpolate"` — a continuous blend across the ' +
+          'value range; the banded default is `colorBy.scale: "step"`.'
+      );
+      lines.push("");
+      lines.push(
         "Expressions style features the data already has. Geometry the map " +
           "needs but the rows lack — origin→destination arcs, hexbins, polygon " +
           "label points, service-radius rings — is derived **upstream in SQL** " +

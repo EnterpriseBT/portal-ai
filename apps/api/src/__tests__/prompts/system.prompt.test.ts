@@ -151,6 +151,14 @@ describe("buildSystemPrompt — Mapping treatment guidance (#337)", () => {
     expect(prompt).toContain("aggregation.treatment");
     expect(prompt).toContain("importance-ranked");
   });
+
+  it("teaches colorBy.scale interpolate for a smooth gradient (#336)", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: ["data_query", "gis"] })
+    );
+    expect(prompt).toContain('colorBy.scale: "interpolate"');
+    expect(prompt.toLowerCase()).toContain("smooth gradient");
+  });
 });
 
 describe("buildSystemPrompt — entity management notes", () => {
