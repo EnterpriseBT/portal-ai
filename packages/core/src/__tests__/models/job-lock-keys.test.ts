@@ -17,15 +17,19 @@ describe("JOB_LOCK_KEYS / jobTypesLocking", () => {
     ]);
   });
 
-  it("portalId locks == bulk_transform", () => {
-    expect(types("portalId")).toEqual(["bulk_transform"]);
+  it("portalId locks == bulk_transform + bulk_geocode", () => {
+    expect(types("portalId").sort()).toEqual(
+      ["bulk_geocode", "bulk_transform"].sort()
+    );
   });
 
-  it("targetConnectorEntityIds locks == bulk_transform only", () => {
+  it("targetConnectorEntityIds locks == bulk_transform + bulk_geocode", () => {
     // connector_sync carries connectorInstanceId but NOT
     // targetConnectorEntityIds, so it must not appear here — this is the
     // false-lock avoidance the repository integration test relies on.
-    expect(types("targetConnectorEntityIds")).toEqual(["bulk_transform"]);
+    expect(types("targetConnectorEntityIds").sort()).toEqual(
+      ["bulk_geocode", "bulk_transform"].sort()
+    );
     expect(types("targetConnectorEntityIds")).not.toContain("connector_sync");
   });
 
