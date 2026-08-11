@@ -5,6 +5,7 @@ import { connectorSyncProcessor } from "./connector-sync.processor.js";
 import { fileUploadParseProcessor } from "./file-upload-parse.processor.js";
 import { layoutPlanCommitProcessor } from "./layout-plan-commit.processor.js";
 import { bulkTransformProcessor } from "./bulk-transform.processor.js";
+import { bulkGeocodeProcessor } from "./bulk-geocode.processor.js";
 import { sqlQueryProcessor } from "./sql-query.processor.js";
 
 /**
@@ -22,5 +23,6 @@ export const processors: Record<string, JobProcessor> = {
   file_upload_parse: fileUploadParseProcessor,
   layout_plan_commit: layoutPlanCommitProcessor,
   bulk_transform: bulkTransformProcessor,
+  bulk_geocode: bulkGeocodeProcessor,
   sql_query: sqlQueryProcessor,
 };

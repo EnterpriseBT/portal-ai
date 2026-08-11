@@ -106,7 +106,7 @@ export class BulkGeocodeRecordsTool extends Tool<typeof InputSchema> {
 
   build(
     portalId: string,
-    _stationId: string,
+    stationId: string,
     organizationId: string,
     userId: string,
     deps: BulkGeocodeToolDeps = {}
@@ -208,6 +208,11 @@ export class BulkGeocodeRecordsTool extends Tool<typeof InputSchema> {
               portalId,
               expectedRecords,
               acknowledgeCost,
+              // Threaded through the BullMQ payload (JobData spreads metadata)
+              // so the processor can scope SQL + attribute the charge.
+              organizationId,
+              userId,
+              stationId,
             },
           });
 
