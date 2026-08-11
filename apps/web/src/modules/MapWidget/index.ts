@@ -35,8 +35,10 @@ export {
 export type {
   GeoFeature,
   GeoFeatureCollection,
+  GradientStop,
   LayerData,
   LegendEntry,
+  MapLegend,
 } from "./utils/map-config.util";
 
 export {

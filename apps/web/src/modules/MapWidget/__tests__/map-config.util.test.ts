@@ -19,6 +19,12 @@ import {
   resolveColorBy,
   sourceIdFor,
 } from "../utils/map-config.util";
+import type { MapLegend } from "../utils/map-config.util";
+
+/** Swatch labels of a legend (or [] for null/gradient) — the discriminated
+ *  MapLegend replaced the flat LegendEntry[] in #336. */
+const swatchLabels = (l: MapLegend | null): string[] =>
+  l && l.kind === "swatches" ? l.entries.map((e) => e.label) : [];
 
 describe("featuresForLayer", () => {
   it("reads a geometry column as a GeoJSON geometry object", () => {
@@ -121,14 +127,14 @@ describe("resolveColorBy", () => {
     // vacant, <color>, improved, <color>, <fallback>
     expect(expr).toContain("vacant");
     expect(expr).toContain("improved");
-    expect(legend.map((l) => l.label)).toEqual(["vacant", "improved"]);
+    expect(swatchLabels(legend)).toEqual(["vacant", "improved"]);
   });
 
   it("returns a solid colour (not a zero-pair match) when no categories resolve", () => {
     // Tiled layer: no rows to derive categories from, no explicit stops.
     const { expression, legend } = resolveColorBy({ column: "klass" }, []);
     expect(typeof expression).toBe("string");
-    expect(legend).toEqual([]);
+    expect(legend).toBeNull();
   });
 
   it("compiles numeric (graduated) stops to a step scale, not an exact match (#330)", () => {
@@ -159,7 +165,7 @@ describe("resolveColorBy", () => {
       "#6baed6",
     ]);
     expect(typeof expr[3]).toBe("string"); // no-data fallback colour
-    expect(legend.map((l) => l.label)).toEqual(["0", "100000", "300000"]);
+    expect(swatchLabels(legend)).toEqual(["0", "100000", "300000"]);
   });
 
   it("routes null/absent numeric values to a no-data colour (no step throw → black) (#330)", () => {
@@ -216,7 +222,10 @@ describe("resolveColorBy", () => {
       "#ff8a00",
       expect.any(String),
     ]);
-    expect(legend).toEqual([{ label: "vacant", color: "#ff8a00" }]);
+    expect(legend).toEqual({
+      kind: "swatches",
+      entries: [{ label: "vacant", color: "#ff8a00" }],
+    });
   });
 
   it("treats numeric-STRING stops as graduated → step with number breakpoints (#346)", () => {
@@ -241,7 +250,7 @@ describe("resolveColorBy", () => {
     expect(step[2]).toBe("#b"); // base color (lowest)
     expect(step[3]).toBe(640); // number breakpoint, not the string "640"
     expect(step[4]).toBe("#a");
-    expect(legend.map((l) => l.label)).toEqual(["480", "640"]);
+    expect(swatchLabels(legend)).toEqual(["480", "640"]);
   });
 
   it("stays categorical (match) when stops are not all numeric (#346)", () => {
@@ -271,7 +280,7 @@ describe("layerToMapLibre", () => {
     expect(layers[0].type).toBe("circle");
     expect(layers[0].paint["circle-color"]).toBe("#123456");
     expect(layers[0].paint["circle-radius"]).toBe(8);
-    expect(legend).toEqual([]);
+    expect(legend).toBeNull();
   });
 
   it("polygons → a fill layer + an outline line layer", () => {
@@ -333,7 +342,7 @@ describe("layerToMapLibre", () => {
     const rows = [{ klass: "a" }, { klass: "b" }];
     const { layers, legend } = layerToMapLibre(layer, 0, rows);
     expect((layers[0].paint["fill-color"] as unknown[])[0]).toBe("match");
-    expect(legend.map((l) => l.label)).toEqual(["a", "b"]);
+    expect(swatchLabels(legend)).toEqual(["a", "b"]);
   });
 
   it("heatmap → a heatmap layer", () => {
@@ -476,7 +485,9 @@ describe("buildLegend", () => {
         },
       ],
     } as unknown as MapSpec;
-    expect(buildLegend(spec, [])).toEqual([{ label: "x", color: "#111" }]);
+    expect(buildLegend(spec, [])).toEqual([
+      { kind: "swatches", entries: [{ label: "x", color: "#111" }] },
+    ]);
   });
 });
 

@@ -186,6 +186,22 @@ export interface LegendEntry {
   color: string;
 }
 
+/** A single anchor of a continuous (interpolate) ramp — a numeric value and
+ *  the colour at it. The gradient legend draws a bar across these (#336). */
+export interface GradientStop {
+  value: number;
+  color: string;
+}
+
+/**
+ * A layer's legend — discriminated because a colorBy renders *either* discrete
+ * swatches (categorical `match` / banded `step`) *or* a continuous gradient bar
+ * (`interpolate`, #336). `buildLegend` returns one per colorBy layer.
+ */
+export type MapLegend =
+  | { kind: "swatches"; entries: LegendEntry[] }
+  | { kind: "gradient"; min: number; max: number; stops: GradientStop[] };
+
 /**
  * Compile a `colorBy` (categorical) into a MapLibre `match` expression plus the
  * legend the widget draws. Explicit `stops` win; otherwise the column's
@@ -194,7 +210,7 @@ export interface LegendEntry {
 export function resolveColorBy(
   colorBy: NonNullable<MapLayer["style"]>["colorBy"] & object,
   rows: Row[]
-): { expression: unknown; legend: LegendEntry[] } {
+): { expression: unknown; legend: MapLegend | null } {
   const palette =
     colorBy.palette && colorBy.palette.length
       ? colorBy.palette
@@ -221,7 +237,7 @@ export function resolveColorBy(
   // return a solid visible colour rather than a `["match", input, fallback]`
   // with zero pairs, which MapLibre rejects / paints as the invisible fallback.
   if (pairs.length === 0) {
-    return { expression: DEFAULT_COLOR, legend: [] };
+    return { expression: DEFAULT_COLOR, legend: null };
   }
 
   // Numeric stops are graduated breakpoints (value bands), not exact
@@ -257,7 +273,13 @@ export function resolveColorBy(
     const expression = ["case", ["has", colorBy.column], step, UNMATCHED_COLOR];
     return {
       expression,
-      legend: sorted.map(([value, color]) => ({ label: String(value), color })),
+      legend: {
+        kind: "swatches",
+        entries: sorted.map(([value, color]) => ({
+          label: String(value),
+          color,
+        })),
+      },
     };
   }
 
@@ -268,7 +290,10 @@ export function resolveColorBy(
   match.push(UNMATCHED_COLOR); // fallback for values not in the mapping
   return {
     expression: match,
-    legend: pairs.map(([value, color]) => ({ label: String(value), color })),
+    legend: {
+      kind: "swatches",
+      entries: pairs.map(([value, color]) => ({ label: String(value), color })),
+    },
   };
 }
 
@@ -297,10 +322,10 @@ export function layerToMapLibre(
   index: number,
   rows: Row[],
   opts: { tiled?: boolean } = {}
-): { layers: MapLibreLayer[]; legend: LegendEntry[] } {
+): { layers: MapLibreLayer[]; legend: MapLegend | null } {
   const source = sourceIdFor(index);
   const style = layer.style ?? {};
-  let legend: LegendEntry[] = [];
+  let legend: MapLegend | null = null;
 
   let color: unknown = style.color ?? DEFAULT_COLOR;
   if (style.colorBy) {
@@ -429,10 +454,11 @@ export function layerToMapLibre(
 }
 
 /** The legend for the whole spec — the concatenation of each layer's colorBy. */
-export function buildLegend(spec: MapSpec, rows: Row[]): LegendEntry[] {
-  const out: LegendEntry[] = [];
+export function buildLegend(spec: MapSpec, rows: Row[]): MapLegend[] {
+  const out: MapLegend[] = [];
   spec.layers.forEach((layer, i) => {
-    out.push(...layerToMapLibre(layer, i, rows).legend);
+    const legend = layerToMapLibre(layer, i, rows).legend;
+    if (legend) out.push(legend);
   });
   return out;
 }

@@ -44,7 +44,7 @@ import {
 
 import type { BlockRef } from "@portalai/core";
 import type { GeoBlockContent, MapSpec } from "@portalai/core/contracts";
-import type { LegendEntry } from "./utils/map-config.util";
+import type { MapLegend } from "./utils/map-config.util";
 
 const MAP_HEIGHT = 380;
 
@@ -137,7 +137,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
       const layers = spec.layers.flatMap(
         (l, i) => layerToMapLibre(l, i, rows, { tiled: isTile }).layers
       );
-      const lg: LegendEntry[] = buildLegend(spec, rows);
+      const lg: MapLegend[] = buildLegend(spec, rows);
       const truncated = data.filter((d) => d.truncated);
       const shown = data.reduce((n, d) => n + d.collection.features.length, 0);
       const notice =
@@ -435,25 +435,34 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
         ) : null}
         {legend.length > 0 ? (
           <Box
-            data-testid="map-widget-legend"
-            sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 0.5 }}
+            sx={{ display: "flex", flexDirection: "column", gap: 0.5, mt: 0.5 }}
           >
-            {legend.map((e) => (
-              <Box
-                key={e.label}
-                sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
-              >
+            {legend.map((lg, li) =>
+              lg.kind === "swatches" ? (
                 <Box
-                  sx={{
-                    width: 12,
-                    height: 12,
-                    borderRadius: "2px",
-                    bgcolor: e.color,
-                  }}
-                />
-                <Typography variant="caption">{e.label}</Typography>
-              </Box>
-            ))}
+                  key={li}
+                  data-testid="map-widget-legend"
+                  sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}
+                >
+                  {lg.entries.map((e) => (
+                    <Box
+                      key={e.label}
+                      sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+                    >
+                      <Box
+                        sx={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: "2px",
+                          bgcolor: e.color,
+                        }}
+                      />
+                      <Typography variant="caption">{e.label}</Typography>
+                    </Box>
+                  ))}
+                </Box>
+              ) : null
+            )}
           </Box>
         ) : null}
       </>
