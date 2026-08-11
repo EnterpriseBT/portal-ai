@@ -79,6 +79,10 @@ export const MapLayerStyleSchema = z.object({
       stops: z
         .array(z.tuple([z.union([z.string(), z.number()]), z.string()]))
         .optional(),
+      /** Colour scale (#336). Absent ⇒ inferred (string stops → categorical,
+       *  numeric → step). "interpolate" is a smooth continuous blend across the
+       *  value range; a present value forces that mode against the inference. */
+      scale: z.enum(["categorical", "step", "interpolate"]).optional(),
     })
     .optional(),
   opacity: styleValue(z.number().min(0).max(1)).optional(),

@@ -2,6 +2,7 @@ import {
   MAP_LAYER_FEATURE_CAP,
   AGG_ZOOM_THRESHOLD,
   AGG_DENSITY_MAX,
+  SEQUENTIAL_PALETTE,
 } from "@portalai/core/constants";
 
 import { resolveAggTreatment } from "@portalai/core/contracts";
@@ -186,6 +187,22 @@ export interface LegendEntry {
   color: string;
 }
 
+/** A single anchor of a continuous (interpolate) ramp — a numeric value and
+ *  the colour at it. The gradient legend draws a bar across these (#336). */
+export interface GradientStop {
+  value: number;
+  color: string;
+}
+
+/**
+ * A layer's legend — discriminated because a colorBy renders *either* discrete
+ * swatches (categorical `match` / banded `step`) *or* a continuous gradient bar
+ * (`interpolate`, #336). `buildLegend` returns one per colorBy layer.
+ */
+export type MapLegend =
+  | { kind: "swatches"; entries: LegendEntry[] }
+  | { kind: "gradient"; min: number; max: number; stops: GradientStop[] };
+
 /**
  * Compile a `colorBy` (categorical) into a MapLibre `match` expression plus the
  * legend the widget draws. Explicit `stops` win; otherwise the column's
@@ -194,11 +211,16 @@ export interface LegendEntry {
 export function resolveColorBy(
   colorBy: NonNullable<MapLayer["style"]>["colorBy"] & object,
   rows: Row[]
-): { expression: unknown; legend: LegendEntry[] } {
-  const palette =
+): { expression: unknown; legend: MapLegend | null } {
+  // A gradient needs a perceptually-ordered ramp, not the categorical Tableau-10
+  // — so an interpolate colorBy without an explicit palette defaults to the
+  // sequential ramp (#336). match/step keep the categorical default.
+  const palette: readonly string[] =
     colorBy.palette && colorBy.palette.length
       ? colorBy.palette
-      : DEFAULT_PALETTE;
+      : colorBy.scale === "interpolate"
+        ? SEQUENTIAL_PALETTE
+        : DEFAULT_PALETTE;
 
   let pairs: Array<[string | number, string]>;
   if (colorBy.stops && colorBy.stops.length) {
@@ -221,21 +243,67 @@ export function resolveColorBy(
   // return a solid visible colour rather than a `["match", input, fallback]`
   // with zero pairs, which MapLibre rejects / paints as the invisible fallback.
   if (pairs.length === 0) {
-    return { expression: DEFAULT_COLOR, legend: [] };
+    return { expression: DEFAULT_COLOR, legend: null };
+  }
+
+  // Effective scale (#336): `colorBy.scale` forces the mode; absent ⇒ inferred
+  // (numeric → step bands, else categorical match). Interpolate is *never*
+  // inferred — a smooth gradient is opt-in.
+  const scale = colorBy.scale;
+  // Numeric OR numeric-string stops are graduated (#346): the server back-fill
+  // stores numeric columns as strings (the pg driver returns numeric as text),
+  // so `"640"` must be treated as a number, not a category.
+  const allNumeric = pairs.every(([value]) => toFiniteNum(value) != null);
+
+  // Interpolate: a continuous blend across a strictly-ascending numeric ramp.
+  // MapLibre rejects duplicate/unsorted stops, so sort + dedupe; if fewer than
+  // two distinct anchors survive, fall through to step (never a broken expr).
+  if (scale === "interpolate" && allNumeric) {
+    const sorted = pairs
+      .map(([value, color]) => [toFiniteNum(value) as number, color] as const)
+      .sort((a, b) => a[0] - b[0]);
+    const deduped: Array<readonly [number, string]> = [];
+    for (const pair of sorted) {
+      if (deduped.length === 0 || deduped[deduped.length - 1][0] < pair[0]) {
+        deduped.push(pair);
+      }
+    }
+    if (deduped.length >= 2) {
+      // Same null-guard as step: `to-number` coerces null/absent → 0 so a
+      // present-but-null property can't make `interpolate` throw (→ black
+      // layer); the outer `case(has, …)` routes genuinely-absent values to the
+      // neutral no-data colour, not the ramp's low end.
+      const interp: unknown[] = [
+        "interpolate",
+        ["linear"],
+        ["to-number", ["get", colorBy.column], 0],
+      ];
+      for (const [value, color] of deduped) interp.push(value, color);
+      const expression = [
+        "case",
+        ["has", colorBy.column],
+        interp,
+        UNMATCHED_COLOR,
+      ];
+      return {
+        expression,
+        legend: {
+          kind: "gradient",
+          min: deduped[0][0],
+          max: deduped[deduped.length - 1][0],
+          stops: deduped.map(([value, color]) => ({ value, color })),
+        },
+      };
+    }
+    // <2 distinct anchors — fall through to the step branch below.
   }
 
   // Numeric stops are graduated breakpoints (value bands), not exact
   // categories: compile to a `step` scale so a *continuous* value lands in the
   // right band. A `match` (exact equality) would leave every non-breakpoint
-  // value on the fallback colour — i.e. an all-grey map for "colour by value",
-  // even though the legend renders. String stops stay categorical (`match`).
-  // Numeric OR numeric-string stops are graduated (#346): the server back-fill
-  // stores numeric columns as strings (the pg driver returns numeric as text),
-  // so `"640"` must be treated as a breakpoint, not a category — else the
-  // `match` never hits a number-typed feature value and the layer paints grey.
-  // Coerce to real numbers so the `step` breakpoints are numeric.
-  const graduated = pairs.every(([value]) => toFiniteNum(value) != null);
-  if (graduated) {
+  // value on the fallback colour — i.e. an all-grey map for "colour by value".
+  // `scale: "categorical"` forces the match path even for numeric stops.
+  if (allNumeric && scale !== "categorical") {
     const sorted = pairs
       .map(([value, color]) => [toFiniteNum(value) as number, color] as const)
       .sort((a, b) => a[0] - b[0]);
@@ -257,7 +325,13 @@ export function resolveColorBy(
     const expression = ["case", ["has", colorBy.column], step, UNMATCHED_COLOR];
     return {
       expression,
-      legend: sorted.map(([value, color]) => ({ label: String(value), color })),
+      legend: {
+        kind: "swatches",
+        entries: sorted.map(([value, color]) => ({
+          label: String(value),
+          color,
+        })),
+      },
     };
   }
 
@@ -268,7 +342,10 @@ export function resolveColorBy(
   match.push(UNMATCHED_COLOR); // fallback for values not in the mapping
   return {
     expression: match,
-    legend: pairs.map(([value, color]) => ({ label: String(value), color })),
+    legend: {
+      kind: "swatches",
+      entries: pairs.map(([value, color]) => ({ label: String(value), color })),
+    },
   };
 }
 
@@ -297,10 +374,10 @@ export function layerToMapLibre(
   index: number,
   rows: Row[],
   opts: { tiled?: boolean } = {}
-): { layers: MapLibreLayer[]; legend: LegendEntry[] } {
+): { layers: MapLibreLayer[]; legend: MapLegend | null } {
   const source = sourceIdFor(index);
   const style = layer.style ?? {};
-  let legend: LegendEntry[] = [];
+  let legend: MapLegend | null = null;
 
   let color: unknown = style.color ?? DEFAULT_COLOR;
   if (style.colorBy) {
@@ -429,10 +506,11 @@ export function layerToMapLibre(
 }
 
 /** The legend for the whole spec — the concatenation of each layer's colorBy. */
-export function buildLegend(spec: MapSpec, rows: Row[]): LegendEntry[] {
-  const out: LegendEntry[] = [];
+export function buildLegend(spec: MapSpec, rows: Row[]): MapLegend[] {
+  const out: MapLegend[] = [];
   spec.layers.forEach((layer, i) => {
-    out.push(...layerToMapLibre(layer, i, rows).legend);
+    const legend = layerToMapLibre(layer, i, rows).legend;
+    if (legend) out.push(legend);
   });
   return out;
 }
