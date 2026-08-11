@@ -615,6 +615,10 @@ export enum ApiCode {
   BULK_DISPATCH_COST_NOT_ACKNOWLEDGED = "BULK_DISPATCH_COST_NOT_ACKNOWLEDGED",
   /** rows-by-id request exceeded the per-call id-count cap. */
   BULK_DISPATCH_TOO_MANY_IDS = "BULK_DISPATCH_TOO_MANY_IDS",
+  /** Geocoding provider unreachable / errored — a typed result the agent relays, never fabricated coordinates (#315). */
+  GEOCODE_PROVIDER_UNAVAILABLE = "GEOCODE_PROVIDER_UNAVAILABLE",
+  /** The provider returned no match for the address / coordinates (#315). */
+  GEOCODE_ADDRESS_UNRESOLVED = "GEOCODE_ADDRESS_UNRESOLVED",
 
   // Subscription tiers (#172)
   /** The default subscription tier row is not seeded — a 500-class invariant
@@ -707,6 +711,10 @@ export const ApiCodeDefaultRecommendation: Partial<Record<ApiCode, string>> = {
     "The tool exists but isn't bulk-dispatchable. Add a `bulkDispatch` metadata block to its toolpack descriptor.",
   [ApiCode.BULK_DISPATCH_COST_NOT_ACKNOWLEDGED]:
     "This operation calls a costly tool. Confirm with the user, then retry with `acknowledgeCost: true`.",
+  [ApiCode.GEOCODE_PROVIDER_UNAVAILABLE]:
+    "The geocoding provider is unreachable right now. Relay this to the user and retry later — do not invent coordinates.",
+  [ApiCode.GEOCODE_ADDRESS_UNRESOLVED]:
+    "The provider found no match for that address or coordinate. Ask the user to refine it — do not invent coordinates.",
   [ApiCode.BULK_DISPATCH_TOO_MANY_IDS]:
     "Too many ids in one request. Split into multiple calls of ≤ 1000 ids each.",
   [ApiCode.COMPUTE_INPUT_TOO_LARGE]:

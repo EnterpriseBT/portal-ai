@@ -118,3 +118,10 @@ export const COMPUTE_MAX_ROWS = HANDLE_ROW_CAP;
 export const AGG_ZOOM_THRESHOLD = 14;
 export const AGG_GRID_PX = 24;
 export const AGG_DENSITY_MAX = 5000;
+
+/**
+ * Geocode address-cache TTL (#315). An address→coordinates mapping is
+ * effectively static public data, so the global Redis cache holds a hit for a
+ * long window — a repeat lookup never re-charges the org's quota. 30 days.
+ */
+export const GEOCODE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;

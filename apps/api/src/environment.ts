@@ -47,6 +47,7 @@ export const environment = {
     process.env.INTERPRET_AXIS_NAME_MODEL || "claude-haiku-4-5-20251001",
   // Tavily configuration
   TAVILY_API_KEY: process.env.TAVILY_API_KEY,
+  GEOCODING_API_KEY: process.env.GEOCODING_API_KEY,
   // Encryption key for securing sensitive data at rest (base64-encoded, 32 bytes)
   ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
   // ── Toolpack outbound webhook hardening (phase 6)
