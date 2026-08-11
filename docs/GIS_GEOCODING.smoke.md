@@ -41,7 +41,7 @@ Manual smoke test for [#315](https://github.com/EnterpriseBT/portal-ai/issues/31
 
 - [ ] After a fresh (uncached) successful geocode, confirm the usage ledger shows the `geocode` charge itemized (**1 unit**, tool `geocode`).
 - [ ] Prompt an unresolvable address: *"geocode qzxwv nonexistent place 99999"*
-- [ ] Expected: a **typed failure** (`GEOCODE_ADDRESS_UNRESOLVED`) the agent **relays to you** ("couldn't find that address") — it must **not** invent coordinates or plot a point.
+- [ ] Expected: a **typed failure** (`GEOCODE_ADDRESS_UNRESOLVED`) the agent **relays to you** ("couldn't find that address") — it must **not** invent coordinates or plot a point. Mapbox partial-matches garbage to a low-relevance result rather than returning empty; the provider rejects any match below `MAPBOX_MIN_RELEVANCE` (0.6) as unresolved, so a weak partial is a **typed failure**, not a low-confidence coordinate — and it is neither billed nor cached.
 - [ ] *(Provider-down is hard to force manually; if you can point `GEOCODING_API_KEY` at an invalid token briefly, a call returns `GEOCODE_PROVIDER_UNAVAILABLE`, again relayed, never fabricated.)*
 
 ## §4 — Bulk column geocode: ack gate → lock → GeoJSON Points → charge once (spec AC: the bulk criterion)

@@ -57,6 +57,18 @@ describe("MapboxGeocodingProvider (#315)", () => {
     });
   });
 
+  it("geocode → GEOCODE_ADDRESS_UNRESOLVED for a low-confidence partial match (#315 smoke)", async () => {
+    // Mapbox partial-matches garbage ("99999" → a postal fragment @ 0.5)
+    // rather than returning empty; a sub-threshold relevance is unresolved.
+    const fetchImpl = jest.fn(async () =>
+      okRes({ features: [{ ...FEATURE, relevance: 0.5 }] })
+    ) as unknown as typeof fetch;
+    const provider = new MapboxGeocodingProvider("key", fetchImpl);
+    await expect(provider.geocode("99999")).rejects.toMatchObject({
+      code: ApiCode.GEOCODE_ADDRESS_UNRESOLVED,
+    });
+  });
+
   it("geocode → GEOCODE_ADDRESS_UNRESOLVED when no feature matches", async () => {
     const fetchImpl = jest.fn(async () =>
       okRes({ features: [] })

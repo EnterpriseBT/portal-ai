@@ -9,6 +9,19 @@ const MAPBOX_BASE = "https://api.mapbox.com/geocoding/v5/mapbox.places";
  *  wrote under. */
 export const MAPBOX_PROVIDER_NAME = "mapbox";
 
+/**
+ * Minimum Mapbox `relevance` to trust a match (#315 smoke). Mapbox rarely
+ * returns *zero* features for garbage input — it partial-matches (e.g. "99999"
+ * → a postal fragment at relevance 0.5). Below this cutoff we treat the result
+ * as **unresolved** (a typed failure the agent relays) rather than returning —
+ * and billing + caching — a low-confidence coordinate. A well-formed address
+ * scores ≥ ~0.75; 0.6 rejects the observed partial-postal noise while keeping
+ * legitimate matches. Deliberately conservative — a valid-but-partial address
+ * near the cutoff may be rejected, which is safer than a confident-looking
+ * wrong coordinate.
+ */
+export const MAPBOX_MIN_RELEVANCE = 0.6;
+
 /** Mapbox feature shape (only the fields we read). */
 interface MapboxFeature {
   center: [number, number]; // [lng, lat]
@@ -71,6 +84,20 @@ export class MapboxGeocodingProvider implements GeocodingProvider {
         {
           recommendation:
             "The provider found no match. Ask the user to refine it — do not invent coordinates.",
+        }
+      );
+    }
+    // A low-relevance partial match is untrustworthy — treat it as unresolved
+    // so it surfaces as a typed failure the agent relays (never a
+    // confident-looking wrong coordinate; #315 smoke).
+    if ((feature.relevance ?? 0) < MAPBOX_MIN_RELEVANCE) {
+      throw new ApiError(
+        422,
+        ApiCode.GEOCODE_ADDRESS_UNRESOLVED,
+        `Only a low-confidence match (relevance ${feature.relevance ?? 0}) for "${query}" — treating as unresolved.`,
+        {
+          recommendation:
+            "The provider returned only a weak partial match. Ask the user to refine it — do not invent coordinates.",
         }
       );
     }
