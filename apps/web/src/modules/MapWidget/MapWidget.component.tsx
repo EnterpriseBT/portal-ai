@@ -461,7 +461,34 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
                     </Box>
                   ))}
                 </Box>
-              ) : null
+              ) : (
+                <Box
+                  key={li}
+                  data-testid="map-widget-legend-gradient"
+                  sx={{ display: "flex", alignItems: "center", gap: 0.75 }}
+                >
+                  <Typography variant="caption">{String(lg.min)}</Typography>
+                  <Box
+                    sx={{
+                      flexGrow: 1,
+                      maxWidth: 160,
+                      height: 10,
+                      borderRadius: "2px",
+                      background: `linear-gradient(to right, ${lg.stops
+                        .map(
+                          (s) =>
+                            `${s.color} ${
+                              lg.max > lg.min
+                                ? ((s.value - lg.min) / (lg.max - lg.min)) * 100
+                                : 0
+                            }%`
+                        )
+                        .join(", ")})`,
+                    }}
+                  />
+                  <Typography variant="caption">{String(lg.max)}</Typography>
+                </Box>
+              )
             )}
           </Box>
         ) : null}

@@ -125,6 +125,42 @@ describe("MapWidgetUI", () => {
     expect(legend).toHaveTextContent("improved");
   });
 
+  it("renders a gradient legend bar with min/max labels for an interpolate scale (#336)", () => {
+    const gradientSpec = {
+      basemap: "carto-light",
+      initialView: "fit",
+      layers: [
+        {
+          kind: "polygons",
+          source: { geometryColumn: "geom" },
+          style: {
+            colorBy: {
+              column: "value",
+              scale: "interpolate",
+              stops: [
+                [0, "#000000"],
+                [500, "#ffffff"],
+              ],
+            },
+          },
+        },
+      ],
+    } as unknown as MapSpec;
+    render(
+      <MapWidgetUI
+        spec={gradientSpec}
+        rows={[{ ...poly("a"), value: 250 }]}
+        mode="light"
+      />
+    );
+    const bar = screen.getByTestId("map-widget-legend-gradient");
+    expect(bar).toBeInTheDocument();
+    expect(bar).toHaveTextContent("0");
+    expect(bar).toHaveTextContent("500");
+    // The swatch legend is not used for a gradient layer.
+    expect(screen.queryByTestId("map-widget-legend")).not.toBeInTheDocument();
+  });
+
   it("renders the feature-cap notice when a layer is truncated (row 1)", () => {
     // Exceed the default per-layer cap so featuresForLayer flags truncation.
     const many = Array.from({ length: 10_001 }, (_, i) => ({

@@ -1,7 +1,10 @@
 import { describe, it, expect } from "@jest/globals";
 
 import type { MapLayer, MapSpec } from "@portalai/core/contracts";
-import { AGG_ZOOM_THRESHOLD } from "@portalai/core/constants";
+import {
+  AGG_ZOOM_THRESHOLD,
+  SEQUENTIAL_PALETTE,
+} from "@portalai/core/constants";
 
 import type {
   GeoBlockContent,
@@ -266,6 +269,121 @@ describe("resolveColorBy", () => {
     );
     expect((expression as unknown[])[0]).toBe("match");
   });
+
+  it("scale:'interpolate' + ≥2 numeric stops → a continuous interpolate expr + gradient legend (#336)", () => {
+    const { expression, legend } = resolveColorBy(
+      {
+        column: "mkt",
+        scale: "interpolate",
+        stops: [
+          [0, "#000000"],
+          [100, "#ffffff"],
+        ],
+      },
+      []
+    );
+    const expr = expression as unknown[];
+    // Same null-guard shape as step: case(has, interpolate(to-number …), no-data).
+    expect(expr[0]).toBe("case");
+    expect(expr[1]).toEqual(["has", "mkt"]);
+    const interp = expr[2] as unknown[];
+    expect(interp[0]).toBe("interpolate");
+    expect(interp[1]).toEqual(["linear"]);
+    expect(interp[2]).toEqual(["to-number", ["get", "mkt"], 0]);
+    expect(interp.slice(3)).toEqual([0, "#000000", 100, "#ffffff"]);
+    expect(typeof expr[3]).toBe("string"); // no-data colour, never black
+    expect(legend).toEqual({
+      kind: "gradient",
+      min: 0,
+      max: 100,
+      stops: [
+        { value: 0, color: "#000000" },
+        { value: 100, color: "#ffffff" },
+      ],
+    });
+  });
+
+  it("interpolate sorts + dedupes stops ascending (MapLibre requires strictly increasing) (#336)", () => {
+    const { legend } = resolveColorBy(
+      {
+        column: "v",
+        scale: "interpolate",
+        stops: [
+          [300, "#3"],
+          [0, "#0"],
+          [300, "#dup"],
+          [100, "#1"],
+        ],
+      },
+      []
+    );
+    expect(legend).toEqual({
+      kind: "gradient",
+      min: 0,
+      max: 300,
+      stops: [
+        { value: 0, color: "#0" },
+        { value: 100, color: "#1" },
+        { value: 300, color: "#3" },
+      ],
+    });
+  });
+
+  it("scale:'interpolate' with <2 distinct numeric stops → falls back to step, never a broken expr (#336)", () => {
+    const { expression, legend } = resolveColorBy(
+      { column: "mkt", scale: "interpolate", stops: [[42, "#abc"]] },
+      []
+    );
+    const expr = expression as unknown[];
+    expect(expr[0]).toBe("case");
+    expect((expr[2] as unknown[])[0]).toBe("step"); // not interpolate
+    expect(legend?.kind).toBe("swatches");
+  });
+
+  it("scale:'interpolate' with no stops derives min→max from rows using SEQUENTIAL_PALETTE (#336)", () => {
+    const rows = [{ v: 10 }, { v: 30 }, { v: 20 }];
+    const { expression, legend } = resolveColorBy(
+      { column: "v", scale: "interpolate" },
+      rows
+    );
+    const interp = (expression as unknown[])[2] as unknown[];
+    expect(interp[0]).toBe("interpolate");
+    const colors = interp.slice(3).filter((_, i) => i % 2 === 1);
+    for (const c of colors) expect(SEQUENTIAL_PALETTE).toContain(c);
+    expect(legend).toMatchObject({ kind: "gradient", min: 10, max: 30 });
+  });
+
+  it("scale:'categorical' forces a match even for numeric stops (#336)", () => {
+    const { expression } = resolveColorBy(
+      {
+        column: "code",
+        scale: "categorical",
+        stops: [
+          [1, "#a"],
+          [2, "#b"],
+        ],
+      },
+      []
+    );
+    expect((expression as unknown[])[0]).toBe("match");
+  });
+
+  it("scale:'step' keeps numeric stops as discrete bands (#336)", () => {
+    const { expression } = resolveColorBy(
+      {
+        column: "v",
+        scale: "step",
+        stops: [
+          [0, "#a"],
+          [100, "#b"],
+        ],
+      },
+      []
+    );
+    const expr = expression as unknown[];
+    expect(expr[0]).toBe("case");
+    expect((expr[2] as unknown[])[0]).toBe("step");
+  });
 });
 
 describe("layerToMapLibre", () => {
@@ -487,6 +605,36 @@ describe("buildLegend", () => {
     } as unknown as MapSpec;
     expect(buildLegend(spec, [])).toEqual([
       { kind: "swatches", entries: [{ label: "x", color: "#111" }] },
+    ]);
+  });
+
+  it("returns a gradient legend for an interpolate layer alongside a swatch layer (#336)", () => {
+    const spec = {
+      layers: [
+        {
+          kind: "polygons",
+          source: { geometryColumn: "geom" },
+          style: { colorBy: { column: "klass", stops: [["x", "#111"]] } },
+        },
+        {
+          kind: "polygons",
+          source: { geometryColumn: "geom" },
+          style: {
+            colorBy: {
+              column: "v",
+              scale: "interpolate",
+              stops: [
+                [0, "#000"],
+                [9, "#fff"],
+              ],
+            },
+          },
+        },
+      ],
+    } as unknown as MapSpec;
+    expect(buildLegend(spec, []).map((l) => l.kind)).toEqual([
+      "swatches",
+      "gradient",
     ]);
   });
 });
