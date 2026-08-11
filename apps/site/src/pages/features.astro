@@ -1,48 +1,62 @@
 ---
 import Page from "../layouts/Page.astro";
-import { GLOSSARY_ENTRIES, GlossaryCategory } from "@portalai/core/content";
+import { GLOSSARY_ENTRIES } from "@portalai/core/content";
 import { siteUrl } from "../lib/site-context.js";
 import { breadcrumbLd, definedTermSetLd, faqPageLd } from "../lib/jsonld.js";
 
 /**
- * Feature copy is organised around the product's OWN vocabulary
- * (`@portalai/core/content`) rather than a parallel marketing glossary, so
- * a term renamed in the product is renamed here on the next build.
+ * Four pillars, in the order a new user meets them (#360). Benefit-led copy —
+ * this page sells the product, it is not a glossary. (The in-app vocabulary
+ * lives in `@portalai/core/content`; it powers the DefinedTermSet JSON-LD below
+ * for SEO, but is deliberately not enumerated in the visible copy.)
  */
-const CATEGORY_COPY: Array<{
-  category: GlossaryCategory;
+const PILLARS: Array<{
+  id: string;
   heading: string;
   lede: string;
+  points: string[];
 }> = [
   {
-    category: GlossaryCategory.DataSources,
+    id: "connect",
     heading: "Connect anything you already have",
-    lede: "Spreadsheets, databases, REST APIs, Google Sheets, Excel on OneDrive. Each connection stays live — set a sync cadence and the data keeps up.",
+    lede: "Spreadsheets, databases, REST APIs, Google Sheets, Excel on OneDrive — bring in the data you already work with. Each connection stays live: set a sync cadence and it keeps up on its own.",
+    points: [
+      "Ready-made connectors for files, databases, and the tools your team already runs.",
+      "Scheduled syncs keep everything current — no manual re-uploads or stale exports.",
+      "Connect read-only or read-write per source; your data stays yours.",
+    ],
   },
   {
-    category: GlossaryCategory.DataModeling,
+    id: "normalize",
     heading: "Agree on what the fields mean",
-    lede: "Map every source onto shared column definitions with types, validation, and canonical formats, so three systems spelling a date three ways stop being three problems.",
+    lede: "Map every source onto a shared vocabulary — types, validation, and canonical formats — so three systems spelling a date three ways stop being three problems.",
+    points: [
+      "Define a field once; every source maps to the same shape.",
+      "Built-in validation catches bad values before they reach a report.",
+      "Bring sources together into one view without losing where each record came from.",
+    ],
   },
   {
-    category: GlossaryCategory.Organization,
-    heading: "Combine sources without merging them",
-    lede: "Group related entities, link them on shared fields, and tag what matters — then preview the overlap before you commit to it.",
-  },
-  {
-    category: GlossaryCategory.Analytics,
+    id: "ask",
     heading: "Ask, don't query",
-    lede: "Portals answer in tables, charts, and prose built from your live data. Pin the results worth keeping; extend the agent's reach with toolpacks.",
+    lede: "Open a portal and ask in plain language. It answers with tables, charts, maps, and prose built from your live data — and you pin the results worth keeping.",
+    points: [
+      "Chat with your data — no SQL, no dashboards to wire up first.",
+      "Answers arrive as tables, charts, and interactive maps you can explore.",
+      "Pin any result to keep it handy; it stays tied to live data.",
+    ],
   },
   {
-    category: GlossaryCategory.System,
-    heading: "Long work runs in the background",
-    lede: "Imports, syncs, and plan commits run as jobs you can watch, with the affected records locked until they finish.",
+    id: "extend",
+    heading: "Extend what the agent can do",
+    lede: "Start with a portal's built-in reasoning, then add more. Toolpacks give the agent new capabilities — turn them on per station and it uses whatever's available.",
+    points: [
+      "Statistics, forecasting, and financial models over your numbers.",
+      "Interactive maps and geocoding for anything with a location.",
+      "Live web search — or your own tools, wired in through a webhook.",
+    ],
   },
 ];
-
-const byCategory = (category: GlossaryCategory) =>
-  GLOSSARY_ENTRIES.filter((entry) => entry.category === category);
 
 const jsonLd = [
   breadcrumbLd(siteUrl, [
@@ -68,48 +82,35 @@ const jsonLd = [
 >
   <h1>What Portals AI does</h1>
   <p class="muted">
-    Five things, in the order you'll meet them. The terms below are the
-    product's own — you'll see the same words in the app.
+    Connect the data you already have, agree on what it means, ask it questions
+    in plain language, and extend how far the agent can go.
   </p>
 
   {
-    CATEGORY_COPY.map((section) => (
-      <section class="section" aria-labelledby={section.category}>
-        <h2 id={section.category}>{section.heading}</h2>
-        <p>{section.lede}</p>
-        <dl class="terms">
-          {byCategory(section.category).map((entry) => (
-            <div class="terms__item">
-              <dt>{entry.term}</dt>
-              <dd>{entry.definition}</dd>
-            </div>
+    PILLARS.map((pillar) => (
+      <section class="section" aria-labelledby={pillar.id}>
+        <h2 id={pillar.id}>{pillar.heading}</h2>
+        <p>{pillar.lede}</p>
+        <ul class="points">
+          {pillar.points.map((point) => (
+            <li>{point}</li>
           ))}
-        </dl>
+        </ul>
       </section>
     ))
   }
 
   <style>
-    .terms {
+    .points {
+      margin: 0;
+      padding-inline-start: calc(var(--space-unit) * 2.5);
       display: grid;
-      gap: calc(var(--space-unit) * 2);
-      grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-      margin: 0;
-    }
-
-    .terms__item {
-      padding: calc(var(--space-unit) * 2);
-      border-inline-start: 2px solid var(--color-divider);
-    }
-
-    .terms dt {
-      font-weight: var(--font-weight-bold);
-      margin-block-end: calc(var(--space-unit) * 0.5);
-    }
-
-    .terms dd {
-      margin: 0;
+      gap: calc(var(--space-unit) * 0.75);
       color: var(--color-text-secondary);
+    }
+
+    .points li {
+      max-width: 60ch;
     }
   </style>
 </Page>
