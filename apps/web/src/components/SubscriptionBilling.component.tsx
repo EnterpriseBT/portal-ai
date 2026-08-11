@@ -17,13 +17,18 @@ import type {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/** Column counts by breakpoint — fills the container, capped at 4 (#241). */
-const CARD_GRID_COLUMNS = {
-  xs: "1fr",
-  sm: "repeat(2, minmax(0, 1fr))",
-  md: "repeat(3, minmax(0, 1fr))",
-  lg: "repeat(4, minmax(0, 1fr))",
-} as const;
+/**
+ * Container-responsive card grid (#357): each card is at least ~16rem wide and
+ * the grid fits as many as the *container* allows, wrapping when they'd get
+ * skinnier. MUI's viewport breakpoints couldn't see the sidebar — at ~900px
+ * viewport with the sidebar expanded the container is far narrower yet still
+ * rendered 3 columns, squeezing the cards. `auto-fit` sizes to the real
+ * container width instead, so the sidebar no longer starves the cards. Still
+ * effectively capped at 4 (#241): the grid renders ≤4 cards (contact tiers
+ * collapse to one), so auto-fit never exceeds a 4-across row. `min(100%, …)`
+ * keeps a single card from overflowing a container narrower than 16rem.
+ */
+const CARD_GRID_COLUMNS = "repeat(auto-fit, minmax(min(100%, 16rem), 1fr))";
 
 /** Present a tier slug as a human label, e.g. "enterprise-acme" → "Enterprise Acme". */
 const formatTierSlug = (slug: string): string =>

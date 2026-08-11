@@ -142,7 +142,17 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
             />
           )}
 
-          <Stack direction="row" spacing={1} alignItems="center">
+          {/* Wrap so the "Current plan" chip drops below the title on a narrow
+              card (small screen / expanded sidebar) instead of clipping past
+              the right padding (#357). `useFlexGap` makes the spacing a `gap`,
+              which survives the wrap (margin-based spacing would not). */}
+          <Stack
+            direction="row"
+            spacing={1}
+            useFlexGap
+            flexWrap="wrap"
+            alignItems="center"
+          >
             <Typography variant="h3" sx={{ fontSize: "1.1rem" }}>
               {title}
             </Typography>
