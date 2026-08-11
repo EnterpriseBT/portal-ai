@@ -48,16 +48,30 @@ describe("runBulkGeocode (#315)", () => {
   it("writes a GeoJSON Point per success and bills only the uncached ones, once", async () => {
     const writeGeometry = jest.fn(async () => {});
     const commitCharge = jest.fn(async () => {});
+    const onProgress = jest.fn(async () => {});
     // r1 is a cache hit (free); r2 is a live provider hit (billable).
     const cacheGet = jest.fn(async (address: string) =>
       address === "123 Main" ? hit(1, 2) : null
     );
     const result = await runBulkGeocode(
       args,
-      baseDeps({ writeGeometry, commitCharge, cacheGet })
+      baseDeps({ writeGeometry, commitCharge, cacheGet, onProgress })
     );
 
-    expect(result).toMatchObject({ geocoded: 1, cached: 1, failed: 0 });
+    expect(result).toMatchObject({
+      geocoded: 1,
+      cached: 1,
+      failed: 0,
+      // Widget-count fields: 2 attempted, 0 failed (#315 smoke fix).
+      recordsProcessed: 2,
+      recordsFailed: 0,
+    });
+    // Progress reported per record with the running counts.
+    expect(onProgress).toHaveBeenCalledWith({
+      processed: 2,
+      failed: 0,
+      total: 2,
+    });
     // A Point ([lng, lat]) written for both records.
     expect(writeGeometry).toHaveBeenCalledTimes(2);
     expect(writeGeometry).toHaveBeenCalledWith(

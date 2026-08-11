@@ -4,6 +4,7 @@ import { ALL_TOOL_CAPABILITIES } from "@portalai/core/registries";
 import type { BulkGeocodeResult } from "@portalai/core/models";
 
 import { CostGateService } from "../../services/cost-gate.service.js";
+import { JobEventsService } from "../../services/job-events.service.js";
 import { wideTableRepo } from "../../db/repositories/wide-table.repository.js";
 import { MapboxGeocodingProvider } from "../../services/geocoding/mapbox.js";
 import type { GeocodingProvider } from "../../services/geocoding/provider.js";
@@ -53,7 +54,12 @@ interface RunDeps {
   ) => Promise<void>;
   /** Charge `units` on success (bill-on-success). */
   commitCharge: (units: number) => Promise<void>;
-  onProgress?: (done: number, total: number) => Promise<void> | void;
+  /** Live progress after each record — drives the bulk-job-progress widget. */
+  onProgress?: (p: {
+    processed: number;
+    failed: number;
+    total: number;
+  }) => Promise<void> | void;
 }
 
 /**
@@ -128,7 +134,7 @@ export async function runBulkGeocode(
         });
       }
     }
-    await deps.onProgress?.(i + 1, rows.length);
+    await deps.onProgress?.({ processed: i + 1, failed, total: rows.length });
   }
 
   // Bill-on-success: only the uncached provider hits cost units. A job that
@@ -136,6 +142,9 @@ export async function runBulkGeocode(
   await deps.commitCharge(geocoded);
 
   const result: BulkGeocodeResult = {
+    // Attempted vs failed for the progress widget's snapshot recovery.
+    recordsProcessed: geocoded + cached + failed,
+    recordsFailed: failed,
     geocoded,
     cached,
     failed,
@@ -176,6 +185,7 @@ export const bulkGeocodeProcessor: TypedJobProcessor<"bulk_geocode"> = async (
     "bulk_geocode started"
   );
 
+  let lastTick = Date.now();
   const result = await runBulkGeocode(
     {
       jobId,
@@ -214,9 +224,22 @@ export const bulkGeocodeProcessor: TypedJobProcessor<"bulk_geocode"> = async (
           stationId: data.stationId ?? "",
           portalId: data.portalId ?? null,
         }),
-      onProgress: async (done, total) => {
+      onProgress: async ({ processed, failed, total }) => {
+        // Feed the bulk-job-progress widget its record count. Geocode is one
+        // network call per row, so publishing every ~5 rows (and the last)
+        // bounds SSE volume without a visible stall.
+        if (processed % 5 === 0 || processed === total) {
+          const now = Date.now();
+          await JobEventsService.publishCustomEvent(jobId, "batch", {
+            recordsProcessed: processed,
+            totalRecords: total,
+            batchDurationMs: now - lastTick,
+            failureCount: failed,
+          });
+          lastTick = now;
+        }
         await bullJob.updateProgress(
-          total > 0 ? Math.round((done / total) * 100) : 100
+          total > 0 ? Math.round((processed / total) * 100) : 100
         );
       },
     }

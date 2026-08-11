@@ -421,6 +421,11 @@ export const BulkGeocodeMetadataSchema = z.object({
 export type BulkGeocodeMetadata = z.infer<typeof BulkGeocodeMetadataSchema>;
 
 export const BulkGeocodeResultSchema = z.object({
+  /** Rows attempted (= geocoded + cached + failed). Drives the progress
+   *  widget's "X / expected" count on a post-completion snapshot. */
+  recordsProcessed: z.number().int().nonnegative(),
+  /** Rows that failed (= `failed`). The widget's failure annotation. */
+  recordsFailed: z.number().int().nonnegative(),
   /** Addresses resolved via a live provider call (the billable count). */
   geocoded: z.number().int().nonnegative(),
   /** Addresses served from the global cache — 0 units. */
