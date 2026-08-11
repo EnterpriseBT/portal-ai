@@ -96,6 +96,9 @@ describe("costHint pin (#184)", () => {
     visualize_d3: "expensive",
     // free — the agent authors the MapSpec directly, no codegen sub-call (#314).
     visualize_map: "free",
+    // metered — external provider calls (Mapbox); a cache hit is charged 0 (#315).
+    geocode: "metered",
+    reverse_geocode: "metered",
     // free — local/engine compute, pure math, entity writes, system tools.
     amortize: "free",
     bond_math: "free",

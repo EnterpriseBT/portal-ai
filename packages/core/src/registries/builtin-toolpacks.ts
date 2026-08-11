@@ -302,6 +302,41 @@ const GIS_PACK: BuiltinToolpackSpec = {
         },
       ],
     },
+    {
+      name: "geocode",
+      description:
+        "Convert an address or place name into latitude/longitude coordinates (WGS84). Use before visualize_map when the data has addresses but no coordinates. Never invent coordinates — relay a typed failure if the address can't be resolved.",
+      parameterSchema: objectSchema(
+        { address: stringField("The address or place to geocode.") },
+        ["address"]
+      ),
+      examples: [
+        {
+          title: "Geocode an address",
+          input: { address: "123 Main St, Salt Lake City, UT" },
+          output: { lat: 40.7, lng: -111.9, cached: false },
+        },
+      ],
+    },
+    {
+      name: "reverse_geocode",
+      description:
+        "Convert latitude/longitude coordinates (WGS84) into a human-readable address. Never invent an address — relay a typed failure if the coordinates can't be resolved.",
+      parameterSchema: objectSchema(
+        {
+          lat: numberField("Latitude in WGS84."),
+          lng: numberField("Longitude in WGS84."),
+        },
+        ["lat", "lng"]
+      ),
+      examples: [
+        {
+          title: "Reverse-geocode a coordinate",
+          input: { lat: 40.7, lng: -111.9 },
+          output: { address: "123 Main St, Salt Lake City, UT", cached: false },
+        },
+      ],
+    },
   ],
 };
 
@@ -1133,6 +1168,33 @@ const CAPABILITIES: Record<string, ToolCapability> = {
     locks: [],
     resultKind: "geo",
     production: { kind: "rows", onLarge: "handle" },
+    alwaysAvailable: false,
+  },
+  // geocode / reverse_geocode (#315): metered external-provider calls (Portal
+  // pays Mapbox), no dataset consumption, a scalar value the agent routes into
+  // a MapSpec. A cache hit is charged 0 via the registered cost resolver.
+  geocode: {
+    pure: false,
+    reads: [],
+    writes: [],
+    consumption: { mode: "none" },
+    computeShape: "map",
+    costHint: "metered",
+    locks: [],
+    resultKind: "scalar",
+    production: { kind: "value" },
+    alwaysAvailable: false,
+  },
+  reverse_geocode: {
+    pure: false,
+    reads: [],
+    writes: [],
+    consumption: { mode: "none" },
+    computeShape: "map",
+    costHint: "metered",
+    locks: [],
+    resultKind: "scalar",
+    production: { kind: "value" },
     alwaysAvailable: false,
   },
   // resolve_identity returns a structured match set the agent consumes; not

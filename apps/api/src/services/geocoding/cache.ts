@@ -3,7 +3,7 @@ import type { Redis } from "ioredis";
 import { GEOCODE_CACHE_TTL_MS } from "@portalai/core/constants";
 
 import { getRedisClient } from "../../utils/redis.util.js";
-import type { GeocodeHit } from "./provider.js";
+import type { GeocodeHit, ReverseHit } from "./provider.js";
 
 /**
  * Global, zero-unit geocode address cache (#315). An address→coordinates
@@ -58,4 +58,48 @@ export async function cacheHas(
   redis: Redis = getRedisClient()
 ): Promise<boolean> {
   return (await redis.exists(geocodeCacheKey(provider, address))) === 1;
+}
+
+// ── Reverse geocode (coordinates → address) ──────────────────────────────
+// Coordinates round to 5 decimals (~1.1 m) so near-identical clicks share a
+// hit without collapsing distinct addresses.
+
+export const reverseCacheKey = (
+  provider: string,
+  lat: number,
+  lng: number
+): string => `reverse:v1:${provider}:${lat.toFixed(5)},${lng.toFixed(5)}`;
+
+export async function reverseCacheGet(
+  provider: string,
+  lat: number,
+  lng: number,
+  redis: Redis = getRedisClient()
+): Promise<ReverseHit | null> {
+  const raw = await redis.get(reverseCacheKey(provider, lat, lng));
+  return raw ? (JSON.parse(raw) as ReverseHit) : null;
+}
+
+export async function reverseCacheSet(
+  provider: string,
+  lat: number,
+  lng: number,
+  hit: ReverseHit,
+  redis: Redis = getRedisClient()
+): Promise<void> {
+  await redis.set(
+    reverseCacheKey(provider, lat, lng),
+    JSON.stringify(hit),
+    "EX",
+    ttlSeconds()
+  );
+}
+
+export async function reverseCacheHas(
+  provider: string,
+  lat: number,
+  lng: number,
+  redis: Redis = getRedisClient()
+): Promise<boolean> {
+  return (await redis.exists(reverseCacheKey(provider, lat, lng))) === 1;
 }

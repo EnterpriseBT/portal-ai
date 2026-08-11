@@ -4,6 +4,11 @@ import type { GeocodeHit, GeocodingProvider, ReverseHit } from "./provider.js";
 
 const MAPBOX_BASE = "https://api.mapbox.com/geocoding/v5/mapbox.places";
 
+/** Stable provider id — the cache-key namespace + the cost-resolver's cache
+ *  lookups both reference it, so a hit charges 0 for the same key the tool
+ *  wrote under. */
+export const MAPBOX_PROVIDER_NAME = "mapbox";
+
 /** Mapbox feature shape (only the fields we read). */
 interface MapboxFeature {
   center: [number, number]; // [lng, lat]
@@ -22,7 +27,7 @@ interface MapboxFeature {
  * without a live key.
  */
 export class MapboxGeocodingProvider implements GeocodingProvider {
-  readonly name = "mapbox";
+  readonly name = MAPBOX_PROVIDER_NAME;
 
   constructor(
     private readonly apiKey: string,
