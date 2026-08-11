@@ -25,6 +25,7 @@ import { VisualizeD3Tool } from "../tools/visualize-d3.tool.js";
 import { VisualizeMapTool } from "../tools/visualize-map.tool.js";
 import { GeocodeTool } from "../tools/geocode.tool.js";
 import { ReverseGeocodeTool } from "../tools/reverse-geocode.tool.js";
+import { BulkGeocodeRecordsTool } from "../tools/bulk-geocode-records.tool.js";
 import { registerGeocodingCostResolvers } from "./geocoding/cost-resolvers.js";
 import { ResolveIdentityTool } from "../tools/resolve-identity.tool.js";
 import { ClusterTool } from "../tools/cluster.tool.js";
@@ -173,6 +174,7 @@ export const BUILTIN_TOOL_NAMES = new Set<string>([
   "visualize_map",
   "geocode",
   "reverse_geocode",
+  "bulk_geocode_records",
   "resolve_identity",
   "cluster",
   "hypothesis_test",
@@ -545,6 +547,16 @@ export class ToolService {
         registerGeocodingCostResolvers();
         tools.geocode = new GeocodeTool().build();
         tools.reverse_geocode = new ReverseGeocodeTool().build();
+        // Bulk-column geocode is an async job (ack + lock + progress); only
+        // wired when the portal is known (production always supplies it).
+        if (portalId) {
+          tools.bulk_geocode_records = new BulkGeocodeRecordsTool().build(
+            portalId,
+            stationId,
+            organizationId,
+            userId
+          );
+        }
       }
     }
 

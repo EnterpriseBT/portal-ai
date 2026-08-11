@@ -337,6 +337,40 @@ const GIS_PACK: BuiltinToolpackSpec = {
         },
       ],
     },
+    {
+      name: "bulk_geocode_records",
+      description:
+        "Geocode every address in an entity column into GeoJSON Point geometry, as an asynchronous job. Use for high-cardinality columns (≥100 rows) instead of calling geocode in a loop. Returns immediately with a jobId + a live progress widget; the target entity is locked from edits until it completes. Metered per uncached address — the first call is rejected with an estimate; surface the cost, then retry with acknowledgeCost: true after the user replies.",
+      parameterSchema: objectSchema(
+        {
+          connectorEntityId: stringField(
+            "The entity whose address column is geocoded."
+          ),
+          sourceColumnKey: stringField("The address column to read."),
+          targetColumnKey: stringField(
+            "The geometry-role column to write GeoJSON Points into."
+          ),
+          acknowledgeCost: {
+            type: "boolean",
+            description:
+              "Set true ONLY after surfacing the metered cost to the user and receiving a reply.",
+          },
+        },
+        ["connectorEntityId", "sourceColumnKey", "targetColumnKey"]
+      ),
+      examples: [
+        {
+          title: "Geocode a parcels address column (after cost ack)",
+          input: {
+            connectorEntityId: "ce_parcels",
+            sourceColumnKey: "c_address",
+            targetColumnKey: "c_geometry",
+            acknowledgeCost: true,
+          },
+          output: { jobId: "job_123", blockKind: "bulk-job-progress" },
+        },
+      ],
+    },
   ],
 };
 
@@ -1194,6 +1228,21 @@ const CAPABILITIES: Record<string, ToolCapability> = {
     costHint: "metered",
     locks: [],
     resultKind: "scalar",
+    production: { kind: "value" },
+    alwaysAvailable: false,
+  },
+  // bulk_geocode_records (#315): an async, expensive job that writes GeoJSON
+  // Points into a geometry column. `resultKind: "progress"` ⇒ the wrap defers
+  // the charge to the processor (bill-on-success); it locks its target entity.
+  bulk_geocode_records: {
+    pure: false,
+    reads: ["entity_records"],
+    writes: ["entity_records"],
+    consumption: { mode: "streaming" },
+    computeShape: "map",
+    costHint: "expensive",
+    locks: ["targetConnectorEntityIds"],
+    resultKind: "progress",
     production: { kind: "value" },
     alwaysAvailable: false,
   },
