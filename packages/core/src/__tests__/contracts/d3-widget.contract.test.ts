@@ -2,7 +2,7 @@ import {
   D3BlockContentSchema,
   D3HandleContentSchema,
   D3InlineContentSchema,
-  D3PipelineSchema,
+  VizPipelineSchema,
 } from "../../contracts/d3-widget.contract.js";
 import {
   D3BlockContentSchema as BarrelD3BlockContentSchema,
@@ -121,18 +121,18 @@ describe("D3BlockContentSchema", () => {
   });
 });
 
-// ── D3PipelineSchema + durable pipeline field (#270) ─────────────────
+// ── VizPipelineSchema + durable pipeline field (#270) ─────────────────
 
-describe("D3PipelineSchema (#270)", () => {
+describe("VizPipelineSchema (#270)", () => {
   it("parses a full pipeline", () => {
-    const parsed = D3PipelineSchema.parse(pipeline);
+    const parsed = VizPipelineSchema.parse(pipeline);
     expect(parsed.sql).toBe("SELECT month, total FROM sales");
     expect(parsed.stationId).toBe("st-1");
     expect(parsed.organizationId).toBe("org-1");
   });
 
   it("accepts an optional transform descriptor", () => {
-    const parsed = D3PipelineSchema.parse({
+    const parsed = VizPipelineSchema.parse({
       ...pipeline,
       transform: { op: "aggregate", by: "month" },
     });
@@ -140,14 +140,14 @@ describe("D3PipelineSchema (#270)", () => {
   });
 
   it("rejects an empty sql / stationId / organizationId", () => {
-    expect(D3PipelineSchema.safeParse({ ...pipeline, sql: "" }).success).toBe(
+    expect(VizPipelineSchema.safeParse({ ...pipeline, sql: "" }).success).toBe(
       false
     );
     expect(
-      D3PipelineSchema.safeParse({ ...pipeline, stationId: "" }).success
+      VizPipelineSchema.safeParse({ ...pipeline, stationId: "" }).success
     ).toBe(false);
     expect(
-      D3PipelineSchema.safeParse({ ...pipeline, organizationId: "" }).success
+      VizPipelineSchema.safeParse({ ...pipeline, organizationId: "" }).success
     ).toBe(false);
   });
 });

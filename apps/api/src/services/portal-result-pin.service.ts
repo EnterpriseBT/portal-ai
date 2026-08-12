@@ -9,8 +9,8 @@
 import { z } from "zod";
 import {
   PINNED_CONTENT_SCHEMAS,
-  D3PipelineSchema,
-  type D3Pipeline,
+  VizPipelineSchema,
+  type VizPipeline,
 } from "@portalai/core/contracts";
 import type { PortalResultType } from "@portalai/core/models";
 import { PIN_SNAPSHOT_ROW_CAP } from "@portalai/core/constants";
@@ -56,8 +56,8 @@ function contentMismatch(type: PortalResultType): ApiError {
 function derivePipeline(
   source: Record<string, unknown>,
   scope: MaterializeScope
-): D3Pipeline | undefined {
-  const own = D3PipelineSchema.safeParse(source.pipeline);
+): VizPipeline | undefined {
+  const own = VizPipelineSchema.safeParse(source.pipeline);
   if (own.success) return own.data;
   if (typeof source.sql === "string" && source.sql.length > 0) {
     return {
@@ -73,7 +73,7 @@ function assemble(
   source: Record<string, unknown>,
   rows: Array<Record<string, unknown>>,
   total: number,
-  pipeline: D3Pipeline | undefined
+  pipeline: VizPipeline | undefined
 ): Record<string, unknown> {
   const schemaNames = Array.isArray(source.schema)
     ? (source.schema as Array<{ name?: unknown }>)

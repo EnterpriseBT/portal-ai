@@ -11,7 +11,7 @@
  */
 
 import type { WidgetRefreshResponse } from "@portalai/core/contracts";
-import { D3PipelineSchema, type D3Pipeline } from "@portalai/core/contracts";
+import { VizPipelineSchema, type VizPipeline } from "@portalai/core/contracts";
 import { PIN_SNAPSHOT_ROW_CAP } from "@portalai/core/constants";
 import { DateFactory } from "@portalai/core/utils";
 
@@ -104,7 +104,7 @@ export class PortalVizRefreshService {
     // envelope) rides under `content`, which is exactly what the web renderer
     // reads. Read the pipeline from there, not the wrapper's top level.
     const inner = (block.content ?? block) as Record<string, unknown>;
-    const parsed = D3PipelineSchema.safeParse(inner.pipeline);
+    const parsed = VizPipelineSchema.safeParse(inner.pipeline);
     if (!parsed.success) {
       throw new ApiError(
         422,
@@ -166,7 +166,7 @@ export class PortalVizRefreshService {
     }
 
     const content = (row.content ?? {}) as Record<string, unknown>;
-    const parsed = D3PipelineSchema.safeParse(content.pipeline);
+    const parsed = VizPipelineSchema.safeParse(content.pipeline);
     if (!parsed.success) {
       throw new ApiError(
         422,
@@ -225,7 +225,7 @@ export class PortalVizRefreshService {
    * to the refresh-response union.
    */
   private static async executePipeline(
-    pipeline: D3Pipeline,
+    pipeline: VizPipeline,
     organizationId: string,
     resolveSqlDelivery: typeof defaultResolveSqlDelivery,
     geometryColumns: string[] = [],

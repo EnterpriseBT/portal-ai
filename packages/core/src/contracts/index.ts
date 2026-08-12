@@ -73,6 +73,9 @@ export * from "./portal-sql.contract.js";
 /** D3 widget block contracts — schemas & types (#268) */
 export * from "./d3-widget.contract.js";
 
+/** Data-table block contracts — schemas & types (#349) */
+export * from "./data-table-widget.contract.js";
+
 export * from "./map-spec.contract.js";
 
 /** Pinned-result stored-content contracts — schemas & types (#312) */
