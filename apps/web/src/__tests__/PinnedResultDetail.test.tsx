@@ -192,8 +192,14 @@ describe("PinnedResultDetailUI", () => {
     expect(screen.getByText(/portal deleted/i)).toBeInTheDocument();
   });
 
-  it("renders the refresh control and fires onRefresh", () => {
-    const onRefresh = jest.fn();
+  /**
+   * #349: the page-level refresh control is gone. It existed only because
+   * `data-table` was the one pinnable type without widget-level refresh;
+   * now every refreshable type owns its own cue, button, and degraded state
+   * via the pin `blockRef`. Keeping both duplicated the chrome and
+   * double-fired the mount auto-refresh against the per-org rate cap.
+   */
+  it("renders no page-level refresh control — the widget owns it", () => {
     render(
       <PinnedResultDetailUI
         {...defaultProps}
@@ -201,36 +207,11 @@ describe("PinnedResultDetailUI", () => {
           type: "data-table",
           content: { columns: ["a"], rows: [{ a: 1 }] },
         })}
-        refresh={{
-          isRefreshing: false,
-          error: null,
-          lastUpdatedAt: Date.now(),
-          onRefresh,
-        }}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: /refresh data/i }));
-    expect(onRefresh).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps the stored table and shows a notice when a refresh fails", () => {
-    render(
-      <PinnedResultDetailUI
-        {...defaultProps}
-        result={makePinnedResult({
-          type: "data-table",
-          content: { columns: ["a"], rows: [{ a: 1 }] },
-        })}
-        refresh={{
-          isRefreshing: false,
-          error: { message: "source gone", code: "PORTAL_SQL_FORBIDDEN" },
-          lastUpdatedAt: 111,
-          onRefresh: jest.fn(),
-        }}
-      />
-    );
-    expect(screen.getByTestId("pinned-refresh-error")).toBeInTheDocument();
-    // The stored snapshot still renders.
+    expect(screen.queryByRole("button", { name: /refresh data/i })).toBeNull();
+    expect(screen.queryByTestId("pinned-refresh-error")).toBeNull();
+    // The stored snapshot still renders, threaded to the widget below.
     expect(screen.getByTestId("result-content")).toBeInTheDocument();
   });
 
@@ -351,8 +332,19 @@ describe("PinnedResultDetailView container — live refresh (#312)", () => {
       .mockResolvedValue({ kind: "inline", rows: [{ a: 2 }] });
   });
 
-  it("auto-refreshes a stale refreshable pin and invalidates its query", async () => {
-    // Unique id — the hook's session freshness map is module-level.
+  /**
+   * #349: the page no longer runs its own `useWidgetRefresh`. A stale pin used
+   * to fire the mount auto-refresh TWICE — once page-level, once inside the
+   * widget via the same pin `blockRef` — spending two calls of the per-org
+   * rate budget for one view. The widget is now the single refresher.
+   *
+   * Tradeoff recorded: the page-level hook also invalidated the pin's `get`
+   * query so the stored row refetched after a refresh. That invalidation is
+   * gone. It is not user-visible — the widget renders its own fresh delivery
+   * over the stored rows — but the page's cached row stays stale until the
+   * next natural refetch.
+   */
+  it("does not fire a page-level refresh for a stale pin", async () => {
     currentGetQuery = {
       data: {
         portalResult: makePinnedResult({
@@ -373,23 +365,16 @@ describe("PinnedResultDetailView container — live refresh (#312)", () => {
       isLoading: false,
       error: null,
     };
-    const queryClient = new QueryClient();
-    const invalidateSpy = jest.spyOn(queryClient, "invalidateQueries");
     render(
       <ToastContext.Provider value={mockToast}>
         <PinnedResultDetailView portalResultId="result-live-1" />
-      </ToastContext.Provider>,
-      { queryClient }
+      </ToastContext.Provider>
     );
 
     await waitFor(() =>
-      expect(mockPinRefresh).toHaveBeenCalledWith({ id: "result-live-1" })
+      expect(screen.getByTestId("result-content")).toBeInTheDocument()
     );
-    await waitFor(() =>
-      expect(invalidateSpy).toHaveBeenCalledWith({
-        queryKey: ["pr", "result-live-1"],
-      })
-    );
+    expect(mockPinRefresh).not.toHaveBeenCalled();
   });
 
   it("never wires page-level refresh for a pipeline-less pin", async () => {

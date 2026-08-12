@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback } from "react";
 
 import type { PortalResult } from "@portalai/core/models";
 import {
@@ -12,7 +12,7 @@ import {
   Stack,
 } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
-import { ContentBlockRenderer, WidgetFreshnessBar } from "@portalai/core/ui";
+import { ContentBlockRenderer } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
 import TextField from "@mui/material/TextField";
 import Dialog from "@mui/material/Dialog";
@@ -31,8 +31,6 @@ import DataResult from "../components/DataResult.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useToast } from "../utils/toast.context";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
-import { useWidgetRefresh } from "../utils/use-widget-refresh.util";
-import type { ServerError } from "../utils/api.util";
 import type { PortalResultPayload } from "../api/portal-results.api";
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -67,22 +65,6 @@ const isSnapshotless = (result: PortalResult): boolean => {
   return typeof c?.queryHandle === "string" && !Array.isArray(c?.rows);
 };
 
-/** A data-table pin refreshes page-level when it carries a pipeline —
- *  d3 pins self-refresh inside the widget via their pin blockRef. */
-const isPageRefreshable = (result: PortalResult): boolean => {
-  const c = result.content as { pipeline?: { sql?: unknown } };
-  return result.type === "data-table" && typeof c?.pipeline?.sql === "string";
-};
-
-/** Live-refresh state the container wires from `useWidgetRefresh` (#312).
- *  Presence of the prop = the refresh control renders. */
-export interface PinnedRefreshState {
-  isRefreshing: boolean;
-  error: ServerError | null;
-  lastUpdatedAt: number | null;
-  onRefresh: () => void;
-}
-
 // ── Pure UI ─────────────────────────────────────────────────────────
 
 export interface PinnedResultDetailUIProps {
@@ -93,8 +75,6 @@ export interface PinnedResultDetailUIProps {
   onOpenPortal: (portalId: string, messageId: string | null) => void;
   onNavigate: (href: string) => void;
   renamePending?: boolean;
-  /** Live-refresh wiring for refreshable pins (#312); absent → no control. */
-  refresh?: PinnedRefreshState;
 }
 
 export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
@@ -105,7 +85,6 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
   onOpenPortal,
   onNavigate,
   renamePending,
-  refresh,
 }) => {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState(result.name);
@@ -199,35 +178,10 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
         </PageHeader>
 
         <PageSection variant="outlined" data-testid="result-content">
-          {/* #349: the shared chrome, so the pin page reports freshness the
-              same way the embedded widgets do. `degraded` is deliberately NOT
-              passed — this page already has room for the richer Alert below,
-              which names the actual failure; a chip too would double-report. */}
-          {refresh ? (
-            <WidgetFreshnessBar
-              lastUpdatedAt={refresh.lastUpdatedAt}
-              isRefreshing={refresh.isRefreshing}
-              canRefresh
-              refreshLabel="Refresh data"
-              onRefresh={refresh.onRefresh}
-            />
-          ) : null}
-          {refresh?.error ? (
-            <Alert
-              severity="warning"
-              sx={{ mb: 1 }}
-              data-testid="pinned-refresh-error"
-            >
-              Refresh failed — showing the last saved data.{" "}
-              {refresh.error.message}
-            </Alert>
-          ) : null}
           {isSnapshotless(result) ? (
             <Alert severity="warning" data-testid="pinned-expired-notice">
-              The saved data for this result has expired.{" "}
-              {isPageRefreshable(result)
-                ? "Refresh to load live data."
-                : "Re-run the prompt and pin the fresh result."}
+              The saved data for this result has expired. Re-run the prompt and
+              pin the fresh result.
             </Alert>
           ) : (
             <Box sx={{ overflow: "auto" }}>
@@ -373,44 +327,17 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
     [navigate]
   );
 
-  // ── Live data (#312) ──
-  // The query is hoisted (no render-prop wrapper) so the refresh hook can
-  // run at the top level. Page-level refresh applies to refreshable
-  // data-table pins only — d3 pins self-refresh inside their widget via the
-  // pin blockRef the UI threads down.
+  // ── Live data (#312, simplified in #349) ──
+  // There is no page-level refresh any more. It existed because `data-table`
+  // was the one pinnable type with no widget-level refresh; #349 gave tables
+  // their own chrome, so every refreshable pin type (data-table / d3 / geo)
+  // now owns its cue, button, and degraded state via the pin `blockRef`
+  // threaded down below. Keeping a page-level control duplicated the chrome
+  // AND double-fired the mount auto-refresh against the per-org rate cap.
   const resultQuery = sdk.portalResults.get(portalResultId);
   const portalResult = (
     resultQuery.data as unknown as PortalResultPayload | undefined
   )?.portalResult as PortalResult | undefined;
-
-  const refreshable = portalResult != null && isPageRefreshable(portalResult);
-  const pinRef = useMemo(
-    () =>
-      refreshable ? ({ kind: "pin", portalResultId } as const) : undefined,
-    [refreshable, portalResultId]
-  );
-  const {
-    fresh,
-    isRefreshing,
-    error: refreshError,
-    lastUpdatedAt,
-    refresh,
-  } = useWidgetRefresh(
-    pinRef,
-    portalResult
-      ? (portalResult.snapshotUpdatedAt ?? portalResult.created)
-      : undefined
-  );
-
-  // A successful refresh persisted the snapshot back server-side — refetch
-  // the row so the stored (and rendered) data is the fresh data.
-  useEffect(() => {
-    if (fresh != null) {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.portalResults.get(portalResultId),
-      });
-    }
-  }, [fresh, queryClient, portalResultId]);
 
   return (
     <DataResult results={{ result: resultQuery }}>
@@ -425,16 +352,6 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
             onOpenPortal={handleOpenPortal}
             onNavigate={handleNavigate}
             renamePending={renameMutation.isPending}
-            refresh={
-              refreshable
-                ? {
-                    isRefreshing,
-                    error: refreshError,
-                    lastUpdatedAt,
-                    onRefresh: refresh,
-                  }
-                : undefined
-            }
           />
         );
       }}
