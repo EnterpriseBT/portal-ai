@@ -2,6 +2,8 @@
 
 **Issue:** [EnterpriseBT/portal-ai#169](https://github.com/EnterpriseBT/portal-ai/issues/169) · **Epic:** #177 · **Discovery:** `docs/TOOL_COST_GATE.discovery.md`
 
+> **Partially superseded by #183** (`docs/COST_GATE_CHARGE_TIMING.spec.md`) — read this as the historical #169 contract. `resolveCostGate` described throughout no longer exists: #183 split it into `CostGateService.checkAdmission` (pre-flight, no charge) + `CostGateService.commitCharge` (post-success), so a call is charged **on successful completion**, not on admission. Everything else here — the who-pays rule, units, atomic quota charge, Redis rate window, typed deny results, fail-open — still holds. See the "A failed tool call must not be billed" row in Risks below.
+
 Add the **enforcement half** of the tool cost contract: a `resolveCostGate` every tool call routes through at build time. On each call it resolves the org's `TierPolicy` (shipped #172), computes a per-call unit cost, **atomically charges the org's `usage` allocation** and **denies** (as a typed tool *result*, not a throw) when the quota or per-minute rate would be exceeded. Built on the seams #172 shipped (`TierService.resolveTier`, `UsageService`, the `usage` table); adds **no new table** (the per-call audit ledger is deferred to #179).
 
 Discovery decisions ratified here:

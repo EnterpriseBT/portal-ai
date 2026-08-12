@@ -147,19 +147,6 @@ export interface WebhookImplementation {
   signingSecret?: string;
 }
 
-/** All recognized tool pack names. */
-export const ALL_TOOL_PACKS = [
-  "station_context",
-  "data_query",
-  "statistics",
-  "regression",
-  "financial",
-  "web_search",
-  "entity_management",
-] as const;
-
-export type ToolPackName = (typeof ALL_TOOL_PACKS)[number];
-
 // ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------

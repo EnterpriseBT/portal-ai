@@ -717,8 +717,8 @@ describe("buildAnalyticsTools()", () => {
 
   // -----------------------------------------------------------------------
   // Cost gate wrap (#169) — the guard: EVERY built tool's execute must route
-  // through resolveCostGate. A new tool-construction path that bypasses the
-  // wrap fails here.
+  // through the cost gate, i.e. `checkAdmission` before the call (#183). A new
+  // tool-construction path that bypasses the wrap fails here.
   // -----------------------------------------------------------------------
 
   it("wraps every built tool's execute with the cost gate", async () => {
