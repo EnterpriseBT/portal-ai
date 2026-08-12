@@ -65,6 +65,13 @@ export interface VizRefreshParams {
   organizationId: string;
 }
 
+/**
+ * Block types backed by a durable pipeline and therefore refreshable. A block
+ * outside this set is 404 — it isn't a widget, as distinct from a widget that
+ * has no pipeline (422).
+ */
+const REFRESHABLE_BLOCK_TYPES = new Set(["d3", "geo", "data-table"]);
+
 function notFound(): ApiError {
   return new ApiError(
     404,
@@ -94,9 +101,14 @@ export class PortalVizRefreshService {
 
     const blocks = (message.blocks ?? []) as Array<Record<string, unknown>>;
     const block = blocks[params.blockIndex];
-    // Both durable widget kinds refresh through the same pipeline path (#314
-    // adds `geo` alongside `d3`); a non-widget block has no pipeline.
-    if (!block || (block.type !== "d3" && block.type !== "geo"))
+    // Every durable widget kind refreshes through the same pipeline path (#314
+    // added `geo`, #349 `data-table`); a block outside the set has no pipeline.
+    //
+    // Note the status consequence for tables: a pre-#349 data-table block used
+    // to fall out here as 404 and now reaches the pipeline check below as 422
+    // — the honest answer, and the one `useWidgetRefresh` renders as
+    // `notRefreshable`.
+    if (!block || !REFRESHABLE_BLOCK_TYPES.has(block.type as string))
       throw notFound();
 
     // Persisted display blocks are wrapped `{ type, content }` by
