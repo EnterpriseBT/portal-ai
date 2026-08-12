@@ -200,13 +200,36 @@ describe("VisualizeD3Tool.execute — durable pipeline (#270)", () => {
     expect(String(out.program)).not.toContain("```");
   });
 
-  it("the data-table fallback carries no pipeline (no widget to refresh)", async () => {
+  // #349 inverts #270's premise here. "No widget to refresh" was only true
+  // while tables were terminal snapshots; a degraded chart is still a
+  // query-backed table, and it refreshes like any other.
+  it("the inline data-table fallback carries the pipeline (#349)", async () => {
     const exec = buildTool({
       generateCode: (async () => "still )( broken") as never,
       resolveSqlDelivery: (async () => inlineDelivery) as never,
     });
     const out = await exec({ sql: "s", instruction: "i" });
     expect(out.type).toBe("data-table");
-    expect(out.pipeline).toBeUndefined();
+    expect(out.pipeline).toEqual({
+      sql: "s",
+      stationId: "station-1",
+      organizationId: "org-1",
+    });
+    expect(typeof out.message).toBe("string");
+  });
+
+  it("the handle data-table fallback carries the pipeline alongside the envelope (#349)", async () => {
+    const exec = buildTool({
+      generateCode: (async () => "still )( broken") as never,
+      resolveSqlDelivery: (async () => handleDelivery) as never,
+    });
+    const out = await exec({ sql: "s", instruction: "i" });
+    expect(out.type).toBe("data-table");
+    expect(out.queryHandle).toBeDefined();
+    expect(out.pipeline).toEqual({
+      sql: "s",
+      stationId: "station-1",
+      organizationId: "org-1",
+    });
   });
 });

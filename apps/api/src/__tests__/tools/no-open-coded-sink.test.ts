@@ -29,4 +29,34 @@ describe("output-sink consolidation guard", () => {
       expect(hasThreshold && stagesSqlHandle).toBe(false);
     }
   );
+
+  /**
+   * Guard (#349): a tool that calls `resolveSqlDelivery` **directly** — rather
+   * than going through `resolveResultSink`, which attaches one for free — is
+   * hand-wrapping a SQL delivery and must attach the durable `pipeline`
+   * itself, on every branch. Missing it mints a terminal snapshot, the exact
+   * defect #349 removes.
+   *
+   * Deliberately keyed on `resolveSqlDelivery` rather than on the presence of
+   * a `data-table` literal: tools with no originating SELECT to re-run
+   * (`display_entity_records` stages supplied rows; `technical_indicator`
+   * folds a transform handle) legitimately have no pipeline, and a blanket
+   * rule would flag them.
+   */
+  it.each(toolFiles)(
+    "%s attaches a pipeline when it wraps resolveSqlDelivery itself",
+    (file) => {
+      const src = readFileSync(join(toolsDir, file), "utf8");
+      if (!src.includes("resolveSqlDelivery")) return;
+      // Every `return { type: "…", … }` in the file must carry `pipeline` as a
+      // property (shorthand or keyed) — matching the bare word would also
+      // accept a passing mention in a comment.
+      const returns = src.matchAll(/return\s*\{[\s\S]*?\n\s*\};?/g);
+      const minted = [...returns].filter((m) => /\btype:\s*"/.test(m[0]));
+      expect(minted.length).toBeGreaterThan(0);
+      for (const [fragment] of minted) {
+        expect(fragment).toMatch(/\bpipeline[,:]/);
+      }
+    }
+  );
 });
