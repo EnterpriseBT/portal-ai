@@ -110,6 +110,9 @@ Closes the discovery's open question 6 — this needed no pin-side code, so a fa
 - [ ] It shows an **"Updated … ago"** note and a refresh button (tooltip **"Refresh data"**).
 - [ ] Click refresh. The rows reload and `snapshotUpdatedAt` on that row advances (`db:studio`).
 - [ ] Change the underlying data, refresh again — the pin's **stored** `content.rows` updates too (pins persist their fresh snapshot; message blocks deliberately do not).
+- [ ] **Exactly one** freshness cue and **one** refresh button on the page. The walk originally found two: the page-level control predated tables having their own chrome, and rendered alongside the widget's — which also double-fired the mount auto-refresh, spending two rate-budget calls per view. Fixed in `72b4ce7f`; the widget is now the single refresher.
+
+> **Known, filed separately — not a #349 defect.** A pinned **handle-backed map** (a map over 100 rows) renders "No mappable features in this result." until manually refreshed: materialization stores raw WKB where the inline mint path stores GeoJSON. Pre-existing #312/#314 behavior, tracked in [#371](https://github.com/EnterpriseBT/portal-ai/issues/371). Not a blocker for this PR.
 
 ---
 
