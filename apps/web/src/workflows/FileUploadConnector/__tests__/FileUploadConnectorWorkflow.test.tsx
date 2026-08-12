@@ -391,7 +391,9 @@ describe("FileUploadConnectorWorkflowUI — binding editor wiring", () => {
   });
 
   test("Apply in the popover fires onUpdateBinding with the normalizedKey patch", async () => {
-    const user = userEvent.setup();
+    // #362: `delay: null` keeps the interactions off the per-event timer so the
+    // test doesn't accumulate wall-clock past the timeout under CI load.
+    const user = userEvent.setup({ delay: null });
     const onUpdateBinding = jest.fn();
     render(
       <FileUploadConnectorWorkflowUI
