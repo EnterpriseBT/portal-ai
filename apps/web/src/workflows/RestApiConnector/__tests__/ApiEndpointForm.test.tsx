@@ -584,10 +584,13 @@ describe("ApiEndpointForm — Suggest button + onSuggest wiring", () => {
       ).toBeInTheDocument()
     );
 
-    // User edits the textarea — warning should clear.
+    // User edits the textarea — warning should clear. `delay: null` drops the
+    // per-keystroke event-loop yields so the typing doesn't push the test past
+    // the timeout under CI load (#362).
     await userEvent.type(
       screen.getByRole("textbox", { name: /transform expression/i }),
-      "_edited"
+      "_edited",
+      { delay: null }
     );
     await waitFor(() => {
       expect(

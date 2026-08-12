@@ -2,6 +2,12 @@ export default {
   // Use ts-jest preset for ESM
   preset: "ts-jest/presets/default-esm",
 
+  // Safety net for RTL/userEvent tests (#362): they do milliseconds of real
+  // work, but a contended CI worker running the suites in parallel can inflate
+  // wall-clock past Jest's 5s default and flake a deploy-gating run. 15s
+  // absorbs the contention without masking a genuine hang.
+  testTimeout: 15_000,
+
   // Set test environment to jsdom for React
   testEnvironment: "jest-environment-jsdom",
 
