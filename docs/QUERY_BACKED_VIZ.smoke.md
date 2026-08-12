@@ -2,7 +2,7 @@
 
 Manual smoke test for [#349](https://github.com/EnterpriseBT/portal-ai/issues/349) — every visualization is query-backed: the terminal inline snapshot is gone, tables carry a durable pipeline and refresh like charts and maps, and all four surfaces share one freshness chrome.
 
-**Branch under test:** `feat/query-backed-viz` (no PR open yet — open one before merging).
+**Branch under test:** `feat/query-backed-viz` (PR [#370](https://github.com/EnterpriseBT/portal-ai/pull/370)).
 
 Run **§Preflight** once before any section. The rest can be walked top-to-bottom; each section is independent after preflight.
 
@@ -107,7 +107,7 @@ Closes the discovery's open question 6 — this needed no pin-side code, so a fa
 - [ ] From §1's inline table, click the **pin** affordance and give it a name.
 - [ ] In `db:studio` → `portal_results`: the new row's `content` carries a **`pipeline`**.
 - [ ] Open the pinned result's detail page (`/portal-results/…`).
-- [ ] It shows an **"Updated … ago"** note and a refresh button (tooltip **"Refresh data"**).
+- [ ] It shows an **"Updated … ago"** note and a refresh button (tooltip **"Refresh table"** — the widget's own control; the page-level "Refresh data" button was removed in `72b4ce7f`).
 - [ ] Click refresh. The rows reload and `snapshotUpdatedAt` on that row advances (`db:studio`).
 - [ ] Change the underlying data, refresh again — the pin's **stored** `content.rows` updates too (pins persist their fresh snapshot; message blocks deliberately do not).
 - [ ] **Exactly one** freshness cue and **one** refresh button on the page. The walk originally found two: the page-level control predated tables having their own chrome, and rendered alongside the widget's — which also double-fired the mount auto-refresh, spending two rate-budget calls per view. Fixed in `72b4ce7f`; the widget is now the single refresher.
