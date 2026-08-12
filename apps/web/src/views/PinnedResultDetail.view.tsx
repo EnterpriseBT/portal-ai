@@ -12,12 +12,8 @@ import {
   Stack,
 } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
-import { ContentBlockRenderer } from "@portalai/core/ui";
+import { ContentBlockRenderer, WidgetFreshnessBar } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
-import CircularProgress from "@mui/material/CircularProgress";
-import IconButton from "@mui/material/IconButton";
-import Tooltip from "@mui/material/Tooltip";
-import Typography from "@mui/material/Typography";
 import TextField from "@mui/material/TextField";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
@@ -28,7 +24,6 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import PushPinIcon from "@mui/icons-material/PushPin";
-import RefreshIcon from "@mui/icons-material/Refresh";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -204,38 +199,18 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
         </PageHeader>
 
         <PageSection variant="outlined" data-testid="result-content">
+          {/* #349: the shared chrome, so the pin page reports freshness the
+              same way the embedded widgets do. `degraded` is deliberately NOT
+              passed — this page already has room for the richer Alert below,
+              which names the actual failure; a chip too would double-report. */}
           {refresh ? (
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "flex-end",
-                gap: 1,
-                mb: 1,
-              }}
-            >
-              {refresh.lastUpdatedAt != null ? (
-                <Typography variant="caption" color="text.secondary">
-                  Updated {DateFactory.relativeTime(refresh.lastUpdatedAt)}
-                </Typography>
-              ) : null}
-              <Tooltip title="Refresh data">
-                <span>
-                  <IconButton
-                    size="small"
-                    aria-label="Refresh data"
-                    disabled={refresh.isRefreshing}
-                    onClick={refresh.onRefresh}
-                  >
-                    {refresh.isRefreshing ? (
-                      <CircularProgress size={14} />
-                    ) : (
-                      <RefreshIcon fontSize="small" />
-                    )}
-                  </IconButton>
-                </span>
-              </Tooltip>
-            </Box>
+            <WidgetFreshnessBar
+              lastUpdatedAt={refresh.lastUpdatedAt}
+              isRefreshing={refresh.isRefreshing}
+              canRefresh
+              refreshLabel="Refresh data"
+              onRefresh={refresh.onRefresh}
+            />
           ) : null}
           {refresh?.error ? (
             <Alert

@@ -1,22 +1,12 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
-import {
-  Alert,
-  Box,
-  Chip,
-  CircularProgress,
-  IconButton,
-  Paper,
-  Tooltip,
-  Typography,
-} from "@mui/material";
-import RefreshIcon from "@mui/icons-material/Refresh";
+import { Alert, Box, CircularProgress, Paper, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useAuth0 } from "@auth0/auth0-react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { GeoBlockContentSchema } from "@portalai/core/contracts";
-import { DateFactory } from "@portalai/core/utils";
+import { WidgetFreshnessBar } from "@portalai/core";
 
 import { resolveApiUrl } from "../../utils/api.util";
 import { useWidgetRefresh } from "../../utils/use-widget-refresh.util";
@@ -75,18 +65,12 @@ export interface MapWidgetUIProps {
   isRefreshing?: boolean;
   onRefresh?: () => void;
   notRefreshable?: boolean;
+  /** The last refresh failed or was rate-limited (#349) — the freshness cue
+   *  flips to a degraded chip while the map keeps its last-good data. */
+  degraded?: boolean;
   status?: "loading" | "ready" | "error" | "refreshing";
   onHeight?: (height: number) => void;
 }
-
-const STATUS_CHIP: Record<
-  Exclude<NonNullable<MapWidgetUIProps["status"]>, "ready">,
-  { label: string; color: "default" | "info" | "error" }
-> = {
-  loading: { label: "Loading", color: "default" },
-  refreshing: { label: "Refreshing", color: "info" },
-  error: { label: "Error", color: "error" },
-};
 
 export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   spec,
@@ -106,6 +90,7 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
   isRefreshing = false,
   onRefresh,
   notRefreshable = false,
+  degraded = false,
   status = "ready",
   onHeight,
 }) => {
@@ -272,51 +257,21 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
     onHeight,
   ]);
 
-  const chip = status !== "ready" ? STATUS_CHIP[status] : null;
-  const header =
-    title || canRefresh || chip || lastUpdatedAt != null ? (
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
-        {title ? (
-          <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
-            {title}
-          </Typography>
-        ) : (
-          <Box sx={{ flexGrow: 1 }} />
-        )}
-        {chip ? (
-          <Chip size="small" label={chip.label} color={chip.color} />
-        ) : null}
-        {lastUpdatedAt != null ? (
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            data-testid="map-widget-updated"
-          >
-            Updated {DateFactory.relativeTime(lastUpdatedAt)}
-          </Typography>
-        ) : null}
-        {canRefresh && onRefresh ? (
-          <Tooltip
-            title={notRefreshable ? "This map can't refresh" : "Refresh map"}
-          >
-            <span>
-              <IconButton
-                size="small"
-                aria-label="Refresh map"
-                onClick={onRefresh}
-                disabled={isRefreshing || notRefreshable}
-              >
-                {isRefreshing ? (
-                  <CircularProgress size={16} />
-                ) : (
-                  <RefreshIcon fontSize="small" />
-                )}
-              </IconButton>
-            </span>
-          </Tooltip>
-        ) : null}
-      </Box>
-    ) : null;
+  // #349: the header is the shared WidgetFreshnessBar — d3, table, and the
+  // pin detail view render the identical chrome.
+  const header = (
+    <WidgetFreshnessBar
+      title={title}
+      lastUpdatedAt={lastUpdatedAt}
+      isRefreshing={isRefreshing}
+      canRefresh={canRefresh}
+      notRefreshable={notRefreshable}
+      degraded={degraded}
+      status={status}
+      refreshLabel="Refresh map"
+      onRefresh={onRefresh}
+    />
+  );
 
   let body: React.ReactNode;
   const effectiveError = error ?? renderError;
@@ -602,6 +557,9 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
       isRefreshing={isRefreshing}
       onRefresh={refresh}
       notRefreshable={notRefreshable}
+      // #349: only when the map still has rows to show — otherwise the failure
+      // already replaces the body and the chip would be noise.
+      degraded={refreshError != null && rows.length > 0}
       status={status}
       lastUpdatedAt={lastUpdatedAt}
       onHeight={onHeight}

@@ -1,18 +1,9 @@
 import React, { useMemo, useState } from "react";
-import {
-  Box,
-  Chip,
-  CircularProgress,
-  IconButton,
-  Paper,
-  Tooltip,
-  Typography,
-} from "@mui/material";
-import RefreshIcon from "@mui/icons-material/Refresh";
+import { Box, CircularProgress, Paper, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 
 import { D3BlockContentSchema } from "@portalai/core/contracts";
-import { DateFactory } from "@portalai/core/utils";
+import { WidgetFreshnessBar } from "@portalai/core";
 
 import { D3SandboxFrameUI } from "./D3SandboxFrame.component";
 import { useProgressiveHandleRows } from "./utils/progressive-rows.util";
@@ -78,22 +69,13 @@ export interface D3WidgetUIProps {
   lastUpdatedAt?: number | null;
   /** The widget predates durable pipelines — show a re-run note, no button. */
   notRefreshable?: boolean;
+  /** The last refresh failed or was rate-limited (#349) — the freshness cue
+   *  flips to a degraded chip while the chart keeps its last-good data. */
+  degraded?: boolean;
   /** Render/data status shown as a chip in the frame (#271). `ready` shows no
    *  chip (the chart speaks for itself); the rest surface attention states. */
   status?: "loading" | "rendering" | "ready" | "error" | "refreshing" | "stale";
 }
-
-/** Status chip label + MUI color. `ready` → no chip. */
-const STATUS_CHIP: Record<
-  Exclude<NonNullable<D3WidgetUIProps["status"]>, "ready">,
-  { label: string; color: "default" | "info" | "warning" | "error" }
-> = {
-  loading: { label: "Loading", color: "default" },
-  rendering: { label: "Rendering", color: "info" },
-  refreshing: { label: "Refreshing", color: "info" },
-  stale: { label: "Stale", color: "warning" },
-  error: { label: "Error", color: "error" },
-};
 
 export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
   program,
@@ -116,6 +98,7 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
   onRefresh,
   lastUpdatedAt = null,
   notRefreshable = false,
+  degraded = false,
   status = "ready",
 }) => {
   // #340: display the TRUE matched total (fallback to totalRows for pre-#340
@@ -123,60 +106,21 @@ export const D3WidgetUI: React.FC<D3WidgetUIProps> = ({
   const matched = matchedCount ?? totalRows;
   const matchedExact = matchedCountExact ?? !truncated;
   const totalLabel = `${matched.toLocaleString()}${matchedExact ? "" : "+"}`;
-  const chip = status !== "ready" ? STATUS_CHIP[status] : null;
-
-  const header =
-    title || canRefresh || lastUpdatedAt != null || chip ? (
-      <Box
-        sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}
-        data-testid="d3-widget-header"
-      >
-        {title ? (
-          <Typography variant="subtitle2" sx={{ flex: 1, minWidth: 0 }}>
-            {title}
-          </Typography>
-        ) : (
-          <Box sx={{ flex: 1, minWidth: 0 }} />
-        )}
-        {chip ? (
-          <Chip
-            size="small"
-            variant="outlined"
-            color={chip.color}
-            label={chip.label}
-            data-testid="d3-widget-status"
-          />
-        ) : null}
-        {lastUpdatedAt != null ? (
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            data-testid="d3-widget-updated"
-          >
-            Updated {DateFactory.relativeTime(lastUpdatedAt)}
-          </Typography>
-        ) : null}
-        {canRefresh ? (
-          <Tooltip title="Refresh chart">
-            <span>
-              <IconButton
-                size="small"
-                aria-label="Refresh chart"
-                disabled={isRefreshing}
-                onClick={onRefresh}
-                sx={{ flexShrink: 0 }}
-              >
-                {isRefreshing ? (
-                  <CircularProgress size={14} />
-                ) : (
-                  <RefreshIcon fontSize="small" />
-                )}
-              </IconButton>
-            </span>
-          </Tooltip>
-        ) : null}
-      </Box>
-    ) : null;
+  // #349: the header is the shared WidgetFreshnessBar — map, table, and the
+  // pin detail view render the identical chrome.
+  const header = (
+    <WidgetFreshnessBar
+      title={title}
+      lastUpdatedAt={lastUpdatedAt}
+      isRefreshing={isRefreshing}
+      canRefresh={canRefresh}
+      notRefreshable={notRefreshable}
+      degraded={degraded}
+      status={status}
+      refreshLabel="Refresh chart"
+      onRefresh={onRefresh}
+    />
+  );
 
   const note = notRefreshable ? (
     <Typography
@@ -405,6 +349,9 @@ export const D3Widget: React.FC<D3WidgetProps> = ({
       onRefresh={refresh}
       lastUpdatedAt={lastUpdatedAt}
       notRefreshable={notRefreshable}
+      // #349: only when the chart still has data to show — otherwise the
+      // failure already replaces the body above and the chip would be noise.
+      degraded={refreshError != null && hasData}
       status={status}
     />
   );
