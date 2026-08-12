@@ -13,10 +13,6 @@ import {
   BulkFailuresTableBlock,
   type BulkFailuresTableBlockContent,
 } from "./BulkFailuresTableBlock.component";
-import {
-  QueryResultDataBlock,
-  type QueryResultDataBlockContent,
-} from "./QueryResultDataBlock.component";
 import { MessageTimestamp } from "./MessageTimestamp.component";
 import { PinResultDialog } from "./PinResultDialog.component";
 
@@ -44,18 +40,6 @@ export function renderWebBlock(
         content={block.content as BulkFailuresTableBlockContent}
       />
     );
-  }
-  // data-table block carrying a queryHandle (#85 Phase 1 + Phase 3):
-  // the tool returned an envelope shape instead of inline rows. The
-  // QueryResultDataBlock fetches the snapshot from Redis and renders
-  // it as a tabular grid.
-  if (block.type === "data-table") {
-    const content = block.content as
-      | (QueryResultDataBlockContent & { queryHandle?: string })
-      | undefined;
-    if (content && typeof content.queryHandle === "string") {
-      return <QueryResultDataBlock content={content} />;
-    }
   }
   return null;
 }
@@ -103,15 +87,16 @@ const WEB_BLOCK_TYPES = new Set<string>([
   "bulk-failures-table",
 ]);
 
-/** True when a block needs the web layer rather than the core
- *  ContentBlockRenderer — either by type or by carrying a queryHandle. */
+/**
+ * True when a block needs the web layer rather than the core
+ * ContentBlockRenderer. Type alone decides it now: #349 removed the
+ * queryHandle-carrying data-table branch, which diverted handle-backed tables
+ * into `renderWebBlock` — a path that passed no render `ctx`, so a table never
+ * saw its own `BlockRef` and could never refresh. Tables go through the
+ * registry (TableWidget) like every other visualization.
+ */
 export function shouldRenderViaWeb(block: PortalMessageBlock): boolean {
-  if (WEB_BLOCK_TYPES.has(block.type as string)) return true;
-  if (block.type === "data-table") {
-    const c = block.content as { queryHandle?: unknown } | undefined;
-    return typeof c?.queryHandle === "string";
-  }
-  return false;
+  return WEB_BLOCK_TYPES.has(block.type as string);
 }
 
 // ── UI ────────────────────────────────────────────────────────────────

@@ -53,12 +53,25 @@ jest.unstable_mockModule("../api/sdk", () => ({
           .mockResolvedValue(undefined),
         isPending: false,
       }),
+      refresh: () => ({
+        mutateAsync: jest
+          .fn<() => Promise<unknown>>()
+          .mockResolvedValue(undefined),
+        isPending: false,
+      }),
     },
-    // Used by QueryResultDataBlock when a streaming or persisted
-    // chart/table block carries a queryHandle. Tests that exercise
-    // that path inject a `data` shape; the default returns nothing
-    // so untargeted tests are unaffected.
+    // Used by TableWidget when a streaming or persisted chart/table block
+    // carries a queryHandle. Tests that exercise that path inject a `data`
+    // shape; the default returns nothing so untargeted tests are unaffected.
     portalSql: {
+      // #349: TableWidget runs useWidgetRefresh, which resolves both
+      // addressers at render time even when there is no blockRef to refresh.
+      widgetRefresh: () => ({
+        mutateAsync: jest
+          .fn<() => Promise<unknown>>()
+          .mockResolvedValue(undefined),
+        isPending: false,
+      }),
       handleSnapshot: () => ({
         data: { rows: [{ x: 1 }, { x: 2 }], total: 2, offset: 0, limit: 5000 },
         isLoading: false,
@@ -107,6 +120,12 @@ const { PortalSessionUI } =
   await import("../components/PortalSession.component");
 const { CHAT_INPUT_PLACEHOLDER } =
   await import("../components/ChatWindow.component");
+
+// #349: handle-backed tables reach the snapshot fetch through the core
+// renderer registry now, not the retired `renderWebBlock` arm — so the test
+// has to perform the same registration `main.tsx` does at bootstrap.
+const { registerTableBlockRenderer } = await import("../modules/TableWidget");
+registerTableBlockRenderer();
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -354,11 +373,11 @@ describe("PortalSessionUI", () => {
     expect(screen.getByText("42")).toBeInTheDocument();
   });
 
-  // #109 / #85: streaming blocks carrying a queryHandle route through the
-  // same web/core dispatch (`renderWebBlock`) as persisted messages, so the
-  // streaming block fetches the Redis snapshot rather than rendering an
-  // empty table. (`sql_query` handle path.)
-  it("routes a streaming data-table handle block through QueryResultDataBlock", async () => {
+  // #109 / #85, rewired in #349: streaming blocks carrying a queryHandle now
+  // route through the core renderer registry (TableWidget) rather than the
+  // retired `renderWebBlock` data-table arm, so the streaming block still
+  // fetches the Redis snapshot rather than rendering an empty table.
+  it("routes a streaming data-table handle block through TableWidget", async () => {
     const streamingHandleBlock = {
       type: "data-table" as const,
       content: {

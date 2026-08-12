@@ -196,9 +196,9 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     relatedGlossaryTerms: ["Query Handle", "Portal Result"],
   },
   {
-    question: "How do I refresh a chart with the latest data?",
+    question: "How do I refresh a chart, map, or table with the latest data?",
     answer:
-      "You usually don't have to. A visualization widget remembers the query behind it, so when you reopen a session it reloads current data on its own instead of showing a stale snapshot — no need to ask the assistant again. If you want to be sure it's current right now, each chart has a “Refresh chart” button, and an “Updated … ago” note tells you how fresh the data is. Refreshing is always free — it never uses your usage allocation. (If a chart predates this feature, it'll say so and you can re-run the prompt to regenerate it.)",
+      "You usually don't have to. Every visualization — chart, map, or table, at any size — remembers the query behind it, so when you reopen a session it reloads current data on its own instead of showing a stale snapshot; no need to ask the assistant again. If you want to be sure it's current right now, each one has a refresh button, and an “Updated … ago” note tells you how fresh the data is. A refresh re-runs the whole query, so a “top 10” list picks up a new leader rather than just restating the old rows. If a refresh can't reach your data, the widget keeps showing the last good result and says so instead of going blank. Refreshing is always free — it never uses your usage allocation. (If a visualization predates this feature, it'll say so and you can re-run the prompt to regenerate it.)",
     category: FAQCategory.Analytics,
     relatedGlossaryTerms: ["Visualization Widget", "Portal Result"],
   },
