@@ -1551,6 +1551,79 @@ describe("resolveDisplayBlock → d3 (#269)", () => {
   });
 });
 
+// resolveDisplayBlock — the durable pipeline survives projection (#349)
+// ---------------------------------------------------------------------------
+//
+// d3 and geo results pass through whole, which is why only they kept their
+// pipeline. The data-table arms field-whitelist, and dropped it — making every
+// table block terminal at any size. These pin that the whitelist now carries it.
+
+describe("resolveDisplayBlock → data-table pipeline (#349)", () => {
+  const PIPELINE = {
+    sql: "SELECT name, acres FROM parcels ORDER BY acres DESC LIMIT 10",
+    stationId: "st-1",
+    organizationId: "org-1",
+  };
+
+  it("keeps the pipeline on an inline data-table block", () => {
+    const result = resolveDisplayBlock("sql_query", {
+      rows: [{ name: "North Ridge", acres: 412 }],
+      pipeline: PIPELINE,
+    });
+    expect(result?.block.type).toBe("data-table");
+    expect(result?.block.content).toMatchObject({
+      type: "data-table",
+      columns: ["name", "acres"],
+      pipeline: PIPELINE,
+    });
+    expect(result?.sseResult).toMatchObject({ pipeline: PIPELINE });
+  });
+
+  it("keeps the pipeline on a handle data-table block alongside the envelope fields", () => {
+    const result = resolveDisplayBlock("sql_query", {
+      type: "data-table",
+      queryHandle: "qh-1",
+      rowCount: 13_427,
+      schema: [{ name: "acres", type: "numeric" }],
+      samplePeek: [],
+      sampled: false,
+      pipeline: PIPELINE,
+    });
+    expect(result?.block.content).toMatchObject({
+      type: "data-table",
+      queryHandle: "qh-1",
+      rowCount: 13_427,
+      pipeline: PIPELINE,
+    });
+  });
+
+  // The contract field is `.optional()`, so a legacy result must yield content
+  // with the key ABSENT — not present-and-undefined, which would fail a strict
+  // equality check against a pre-#349 block and muddy the notRefreshable path.
+  it("omits the key entirely when the tool result carries no pipeline", () => {
+    const inline = resolveDisplayBlock("sql_query", {
+      rows: [{ name: "North Ridge" }],
+    });
+    expect(inline?.block.content).not.toHaveProperty("pipeline");
+
+    const handle = resolveDisplayBlock("sql_query", {
+      type: "data-table",
+      queryHandle: "qh-2",
+      rowCount: 5,
+      schema: [],
+      samplePeek: [],
+      sampled: false,
+    });
+    expect(handle?.block.content).not.toHaveProperty("pipeline");
+  });
+
+  it("still returns null for an empty result, pipeline or not (#120)", () => {
+    expect(
+      resolveDisplayBlock("sql_query", { rows: [], pipeline: PIPELINE })
+    ).toBeNull();
+  });
+});
+
 // resolveDisplayBlock — geo (#314)
 // ---------------------------------------------------------------------------
 

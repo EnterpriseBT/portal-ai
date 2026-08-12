@@ -104,6 +104,11 @@ export class VisualizeD3Tool extends Tool<typeof InputSchema> {
         );
         const { schema, samplePeek, rows } = deriveShape(delivery);
         const titleField = title ? { title } : {};
+        // #270: the durable, re-executable pipeline, so the widget can re-run
+        // its SQL for live data after the Redis handle expires. Hoisted above
+        // the codegen loop in #349 — the data-table fallback below needs it
+        // too; a degraded chart is still a query-backed table.
+        const pipeline = { sql, stationId, organizationId };
 
         let lastError: string | undefined;
         for (let attempt = 0; attempt <= MAX_CODEGEN_RETRIES; attempt++) {
@@ -135,9 +140,6 @@ export class VisualizeD3Tool extends Tool<typeof InputSchema> {
 
           const validation = validateProgram(program);
           if (validation.ok) {
-            // #270: embed the durable, re-executable pipeline so the widget
-            // can re-run its SQL for live data after the Redis handle expires.
-            const pipeline = { sql, stationId, organizationId };
             if (delivery.kind === "handle") {
               return {
                 type: "d3",
@@ -163,9 +165,14 @@ export class VisualizeD3Tool extends Tool<typeof InputSchema> {
         const message =
           "Couldn't generate the visualization; showing the query result as a table.";
         if (delivery.kind === "handle") {
-          return { type: "data-table", ...delivery.envelope, message };
+          return {
+            type: "data-table",
+            ...delivery.envelope,
+            pipeline,
+            message,
+          };
         }
-        return { type: "data-table", rows: rows ?? [], message };
+        return { type: "data-table", rows: rows ?? [], pipeline, message };
       },
     });
   }

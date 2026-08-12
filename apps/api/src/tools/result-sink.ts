@@ -161,15 +161,25 @@ export async function resolveResultSink(
     return sink.value;
   }
 
-  // sql — a cursor-backed SQL handle past the threshold (terminal result).
+  // sql — a cursor-backed SQL handle past the threshold.
   if ("sql" in sink) {
     const delivery = await resolveSqlDelivery(
       { sql: sink.sql, inlineThreshold: inlineThresholdOf(production) },
       ctx
     );
+    // #349: every SQL-backed result carries its re-executable pipeline, so a
+    // small result is a fast first paint — never a terminal snapshot. Only
+    // this arm gets one: `value`/`rows`/`transform` sinks have no originating
+    // SELECT to re-run, and claiming otherwise would make an un-refreshable
+    // result advertise itself as refreshable.
+    const pipeline = {
+      sql: sink.sql,
+      stationId: ctx.stationId,
+      organizationId: ctx.organizationId,
+    };
     return delivery.kind === "inline"
-      ? delivery.result
-      : { type: "data-table", ...delivery.envelope };
+      ? { ...(delivery.result as object), pipeline }
+      : { type: "data-table", ...delivery.envelope, pipeline };
   }
 
   const threshold = inlineThresholdOf(production);

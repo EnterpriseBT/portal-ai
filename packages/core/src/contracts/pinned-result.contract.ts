@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import {
   D3InlineContentSchema,
-  D3PipelineSchema,
+  VizPipelineSchema,
 } from "./d3-widget.contract.js";
 import { GeoInlineContentSchema } from "./map-spec.contract.js";
 import { WidgetRefreshResponseSchema } from "./portal-sql.contract.js";
@@ -28,7 +28,7 @@ export const PinnedDataTableContentSchema = z.object({
   truncated: z.boolean().optional(),
   /** Present ⇢ the pin is refreshable. Derived from the source handle
    *  envelope's retained `sql` (null for externally-supplied rows). */
-  pipeline: D3PipelineSchema.optional(),
+  pipeline: VizPipelineSchema.optional(),
 });
 export type PinnedDataTableContent = z.infer<
   typeof PinnedDataTableContentSchema

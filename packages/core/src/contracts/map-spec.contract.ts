@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { D3PipelineSchema } from "./d3-widget.contract.js";
+import { VizPipelineSchema } from "./d3-widget.contract.js";
 import { QueryHandleEnvelopeFieldsSchema } from "./portal-sql.contract.js";
 
 /**
@@ -184,7 +184,7 @@ const GeoBaseContentSchema = z.object({
   spec: MapSpecSchema,
   title: z.string().optional(),
   /** Durable re-executable pipeline (shared with d3). */
-  pipeline: D3PipelineSchema.optional(),
+  pipeline: VizPipelineSchema.optional(),
   /**
    * Reserved (contract seam, unused in #314). `visualize_map` never emits it
    * and the #314 renderer ignores it; reserving the field lets a future child

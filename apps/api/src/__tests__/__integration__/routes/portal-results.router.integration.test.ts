@@ -431,6 +431,74 @@ describe("Portal Results Router", () => {
       });
       expect(pr.content.queryHandle).toBeUndefined();
     });
+
+    /**
+     * #349: an INLINE table block now carries its own pipeline, so pinning one
+     * yields a refreshable pin. This needs no pin-side code — the pin service
+     * already prefers the source block's own `pipeline` — so a failure here
+     * points upstream at the sink or the block projection, not at
+     * `portal-result-pin.service.ts`.
+     */
+    it("an inline data-table pin is refreshable end to end", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const pipeline = {
+        sql: "SELECT 1 AS x",
+        stationId: station.id,
+        organizationId,
+      };
+      const assistantMsg = createPortalMessage(
+        organizationId,
+        portal.id,
+        "assistant",
+        [
+          {
+            type: "data-table",
+            content: {
+              type: "data-table",
+              columns: ["x"],
+              rows: [{ x: 999 }], // stale snapshot the refresh replaces
+              pipeline,
+            },
+          },
+        ]
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalMessages)
+        .values(assistantMsg as never);
+
+      const pinRes = await request(app)
+        .post("/api/portal-results")
+        .send({ portalId: portal.id, blockIndex: 0, name: "Inline Table" })
+        .expect(201);
+
+      const pin = pinRes.body.payload.portalResult;
+      expect(pin.type).toBe("data-table");
+      expect(pin.content.pipeline).toEqual(pipeline);
+
+      const refreshed = await request(app)
+        .post(`/api/portal-results/${pin.id}/refresh`)
+        .send()
+        .expect(200);
+
+      expect(refreshed.body.payload).toEqual({
+        kind: "inline",
+        rows: [{ x: 1 }],
+      });
+    });
   });
 
   // ── POST /api/portal-results/:id/refresh (#312) ───────────────────

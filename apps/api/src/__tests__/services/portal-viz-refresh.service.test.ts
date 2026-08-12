@@ -282,6 +282,176 @@ function pinDeps(over: Partial<PinRefreshDeps> = {}): PinRefreshDeps {
   };
 }
 
+// #349 — tables join d3/geo as a refreshable widget kind. Until now a
+// data-table block 404'd here: it wasn't "not refreshable", it wasn't a widget
+// at all as far as this service was concerned.
+describe("PortalVizRefreshService.refresh → data-table (#349)", () => {
+  function tableMessage(content: Record<string, unknown>) {
+    return {
+      id: "msg-1",
+      organizationId: "org-1",
+      portalId: "portal-1",
+      role: "assistant",
+      blocks: [{ type: "data-table", content }],
+    } as never;
+  }
+
+  const inlineTable = {
+    type: "data-table",
+    columns: ["month", "total"],
+    rows: [{ month: "Jan", total: 12 }],
+    pipeline: PIPELINE,
+  };
+
+  it("re-executes an inline data-table block's pipeline", async () => {
+    const resolveSqlDelivery = jest.fn(async () => inlineDelivery);
+    const out = await PortalVizRefreshService.refresh(
+      { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+      deps({
+        findMessageById: jest.fn(async () =>
+          tableMessage(inlineTable)
+        ) as never,
+        resolveSqlDelivery: resolveSqlDelivery as never,
+      })
+    );
+    expect(out).toEqual({
+      kind: "inline",
+      rows: [{ month: "Jan", total: 12 }],
+    });
+    expect(resolveSqlDelivery).toHaveBeenCalledWith(
+      { sql: PIPELINE.sql },
+      { stationId: "st-1", organizationId: "org-1" }
+    );
+  });
+
+  it("maps a large re-execution to the handle variant", async () => {
+    const out = await PortalVizRefreshService.refresh(
+      { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+      deps({
+        findMessageById: jest.fn(async () =>
+          tableMessage(inlineTable)
+        ) as never,
+        resolveSqlDelivery: jest.fn(async () => handleDelivery) as never,
+      })
+    );
+    expect(out).toMatchObject({ kind: "handle", queryHandle: "qh-fresh" });
+  });
+
+  it("refreshes a handle-backed data-table block", async () => {
+    const out = await PortalVizRefreshService.refresh(
+      { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+      deps({
+        findMessageById: jest.fn(async () =>
+          tableMessage({
+            type: "data-table",
+            queryHandle: "qh-old",
+            rowCount: 9000,
+            pipeline: PIPELINE,
+          })
+        ) as never,
+      })
+    );
+    expect(out).toMatchObject({ kind: "inline" });
+  });
+
+  /**
+   * The deliberate status change in #349: a pre-#349 table block used to 404
+   * (wrong block type) and now 422s (right type, no durable pipeline). 422 is
+   * the honest answer and the one `useWidgetRefresh` already renders as
+   * `notRefreshable`.
+   */
+  it("legacy data-table block without a pipeline → VIZ_WIDGET_NOT_REFRESHABLE (422, not 404)", async () => {
+    await expectApiCode(
+      PortalVizRefreshService.refresh(
+        { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+        deps({
+          findMessageById: jest.fn(async () =>
+            tableMessage({
+              type: "data-table",
+              columns: ["a"],
+              rows: [{ a: 1 }],
+            })
+          ) as never,
+        })
+      ),
+      ApiCode.VIZ_WIDGET_NOT_REFRESHABLE,
+      422
+    );
+  });
+
+  it("a block type outside the refreshable set still → VIZ_WIDGET_NOT_FOUND (404)", async () => {
+    const mutation = {
+      id: "msg-1",
+      organizationId: "org-1",
+      portalId: "portal-1",
+      role: "assistant",
+      blocks: [{ type: "mutation-result", content: { pipeline: PIPELINE } }],
+    } as never;
+    await expectApiCode(
+      PortalVizRefreshService.refresh(
+        { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+        deps({ findMessageById: jest.fn(async () => mutation) as never })
+      ),
+      ApiCode.VIZ_WIDGET_NOT_FOUND,
+      404
+    );
+  });
+
+  it("cross-org caller → VIZ_WIDGET_NOT_FOUND (404, no existence leak)", async () => {
+    await expectApiCode(
+      PortalVizRefreshService.refresh(
+        { messageId: "msg-1", blockIndex: 0, organizationId: "org-OTHER" },
+        deps({
+          findMessageById: jest.fn(async () =>
+            tableMessage(inlineTable)
+          ) as never,
+        })
+      ),
+      ApiCode.VIZ_WIDGET_NOT_FOUND,
+      404
+    );
+  });
+
+  /**
+   * The acceptance criterion that motivated the ticket: a "top N" table
+   * re-runs the FULL original SELECT, so the result *set* changes — a
+   * newly-largest row appears, rather than the existing rows merely restating
+   * themselves. Nothing is parameterized or replayed by id.
+   */
+  it("a top-N query re-runs the full SELECT, so the row SET can change", async () => {
+    const topN = {
+      ...inlineTable,
+      rows: [{ name: "Cedar Flat", acres: 388 }],
+      pipeline: {
+        ...PIPELINE,
+        sql: "SELECT name, acres FROM parcels ORDER BY acres DESC LIMIT 1",
+      },
+    };
+    const resolveSqlDelivery = jest.fn(async () => ({
+      kind: "inline" as const,
+      // A bigger parcel now exists — a different row, not an updated one.
+      result: { rows: [{ name: "New Burn", acres: 902 }] },
+    }));
+
+    const out = await PortalVizRefreshService.refresh(
+      { messageId: "msg-1", blockIndex: 0, organizationId: "org-1" },
+      deps({
+        findMessageById: jest.fn(async () => tableMessage(topN)) as never,
+        resolveSqlDelivery: resolveSqlDelivery as never,
+      })
+    );
+
+    expect(resolveSqlDelivery).toHaveBeenCalledWith(
+      { sql: topN.pipeline.sql },
+      { stationId: "st-1", organizationId: "org-1" }
+    );
+    expect(out).toEqual({
+      kind: "inline",
+      rows: [{ name: "New Burn", acres: 902 }],
+    });
+  });
+});
+
 describe("PortalVizRefreshService.refreshPinnedResult (#312)", () => {
   it("executes the row's pipeline and maps an inline delivery", async () => {
     const resolveSqlDelivery = jest.fn(async () => inlineDelivery);

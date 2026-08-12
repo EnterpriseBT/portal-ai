@@ -18,9 +18,9 @@ import crypto from "crypto";
 
 import { sql } from "drizzle-orm";
 import {
-  D3PipelineSchema,
+  VizPipelineSchema,
   resolveAggTreatment,
-  type D3Pipeline,
+  type VizPipeline,
   type MapLayerKind,
   type AggTreatment,
 } from "@portalai/core/contracts";
@@ -104,7 +104,7 @@ export interface RenderTileDeps {
   findMessageById?: (id: string) => Promise<unknown>;
   findPortalResultById?: (id: string) => Promise<unknown>;
   runTileQuery?: (args: {
-    pipeline: D3Pipeline;
+    pipeline: VizPipeline;
     propertyColumns: string[];
     organizationId: string;
     z: number;
@@ -236,7 +236,7 @@ export class PortalMapTileService {
     organizationId: string,
     deps: RenderTileDeps
   ): Promise<{
-    pipeline: D3Pipeline;
+    pipeline: VizPipeline;
     snapshotUpdatedAt: number | null;
     propertyColumns: string[];
     aggregation: TileAggregation;
@@ -259,7 +259,7 @@ export class PortalMapTileService {
       const block = blocks[ref.blockIndex];
       if (!block) throw notFound();
       const inner = (block.content ?? block) as Record<string, unknown>;
-      const parsed = D3PipelineSchema.safeParse(inner.pipeline);
+      const parsed = VizPipelineSchema.safeParse(inner.pipeline);
       if (!parsed.success) throw notFound();
       return {
         pipeline: parsed.data,
@@ -275,7 +275,7 @@ export class PortalMapTileService {
     > | null;
     if (!row || row.organizationId !== organizationId) throw notFound();
     const content = (row.content ?? {}) as Record<string, unknown>;
-    const parsed = D3PipelineSchema.safeParse(content.pipeline);
+    const parsed = VizPipelineSchema.safeParse(content.pipeline);
     if (!parsed.success) throw notFound();
     return {
       pipeline: parsed.data,
@@ -384,7 +384,7 @@ export class PortalMapTileService {
    * integers and every other interpolant is a server-computed number.
    */
   private static async defaultRunTileQuery(args: {
-    pipeline: D3Pipeline;
+    pipeline: VizPipeline;
     propertyColumns: string[];
     organizationId: string;
     z: number;

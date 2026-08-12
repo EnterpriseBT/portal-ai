@@ -249,6 +249,12 @@ export function resolveDisplayBlock(
         schema: toolResult.schema,
         samplePeek: toolResult.samplePeek,
         sampled: toolResult.sampled,
+        // #349: the durable pipeline must survive the whitelist — dropping it
+        // here is what made every table block terminal. Spread so a legacy
+        // result (no pipeline) leaves the key absent rather than undefined.
+        ...(toolResult.pipeline != null
+          ? { pipeline: toolResult.pipeline }
+          : {}),
       };
       return {
         block: { type: "data-table" as const, content: handleContent },
@@ -266,7 +272,16 @@ export function resolveDisplayBlock(
     // emit spurious empty widgets when they were in ROW_SET_TOOLS.
     if (rows.length === 0) return null;
     const columns = Object.keys(rows[0] as object);
-    const dataTableContent = { type: "data-table" as const, columns, rows };
+    const dataTableContent = {
+      type: "data-table" as const,
+      columns,
+      rows,
+      // #349: see the handle arm above — inline tables were the other half of
+      // the terminal-snapshot defect.
+      ...(toolResult?.pipeline != null
+        ? { pipeline: toolResult.pipeline }
+        : {}),
+    };
     return {
       block: { type: "data-table" as const, content: dataTableContent },
       sseResult: dataTableContent,

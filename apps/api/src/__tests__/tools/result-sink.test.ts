@@ -21,6 +21,12 @@ const mockRunSqlQuery = jest
 jest.unstable_mockModule("../../services/portal-sql.service.js", () => ({
   PortalSqlService: { runSqlQuery: mockRunSqlQuery },
 }));
+const mockSqlQuery = jest
+  .fn<() => Promise<unknown>>()
+  .mockResolvedValue({ rows: [] });
+jest.unstable_mockModule("../../services/analytics.service.js", () => ({
+  AnalyticsService: { sqlQuery: mockSqlQuery },
+}));
 
 const { resolveResultSink } = await import("../../tools/result-sink.js");
 const { PortalSqlHandleService } =
@@ -144,5 +150,121 @@ describe("resolveResultSink (#161)", () => {
     expect(out.type).toBe("data-table");
     expect(out.rowCount).toBe(28);
     expect(out.sql).toBeNull();
+  });
+});
+
+// ── The durable pipeline on SQL-backed results (#349) ────────────────
+//
+// Every `{ sql }` delivery — inline or handle — carries its re-executable
+// pipeline, so a small result is a fast first paint rather than a terminal
+// snapshot. Sinks with no originating SELECT stay pipeline-free.
+
+/** The fields these cases inspect — narrower than the sink's `unknown`. */
+type SinkOut = {
+  type?: string;
+  rows?: unknown[];
+  sample?: unknown[];
+  totalCount?: number;
+  truncated?: boolean;
+  queryHandle?: string;
+  pipeline?: { sql: string; stationId: string; organizationId: string };
+};
+
+describe("resolveResultSink { sql } → durable pipeline (#349)", () => {
+  const SQL = "SELECT name, acres FROM parcels ORDER BY acres DESC LIMIT 10";
+  const EXPECTED_PIPELINE = {
+    sql: SQL,
+    stationId: "s1",
+    organizationId: "o1",
+  };
+
+  it("inline { rows } carries the pipeline and preserves the rows", async () => {
+    mockSqlQuery.mockResolvedValueOnce({ rows: mkRows(3) });
+    const out = (await resolveResultSink(
+      rowsProd("handle"),
+      { sql: SQL },
+      CTX
+    )) as SinkOut;
+    expect(out.pipeline).toEqual(EXPECTED_PIPELINE);
+    expect(out.rows).toHaveLength(3);
+    expect(out.type).toBeUndefined();
+  });
+
+  it("inline { rows, truncated, totalCount } shape is preserved alongside the pipeline", async () => {
+    mockSqlQuery.mockResolvedValueOnce({
+      rows: mkRows(4),
+      truncated: false,
+      totalCount: 4,
+    });
+    const out = (await resolveResultSink(
+      rowsProd("handle"),
+      { sql: SQL },
+      CTX
+    )) as SinkOut;
+    expect(out.pipeline).toEqual(EXPECTED_PIPELINE);
+    expect(out.totalCount).toBe(4);
+    expect(out.truncated).toBe(false);
+    expect(out.rows).toHaveLength(4);
+  });
+
+  it("inline { sample, totalCount } shape is preserved alongside the pipeline", async () => {
+    mockSqlQuery.mockResolvedValueOnce({ sample: mkRows(2), totalCount: 2 });
+    const out = (await resolveResultSink(
+      rowsProd("handle"),
+      { sql: SQL },
+      CTX
+    )) as SinkOut;
+    expect(out.pipeline).toEqual(EXPECTED_PIPELINE);
+    expect(out.sample).toHaveLength(2);
+    expect(out.totalCount).toBe(2);
+  });
+
+  it("handle branch returns { type: data-table, ...envelope, pipeline }", async () => {
+    // 6 rows > the fixture threshold of 5 → the handle branch.
+    mockSqlQuery.mockResolvedValueOnce({ rows: mkRows(6) });
+    const produceSpy = jest
+      .spyOn(PortalSqlHandleService, "produce")
+      .mockResolvedValue({
+        envelope: {
+          queryHandle: "qh-1",
+          rowCount: 6,
+          schema: [],
+          sampled: false,
+          truncated: false,
+          samplePeek: [],
+          sql: SQL,
+        },
+      } as never);
+
+    const out = (await resolveResultSink(
+      rowsProd("handle"),
+      { sql: SQL },
+      CTX
+    )) as SinkOut;
+    expect(out.type).toBe("data-table");
+    expect(out.queryHandle).toBe("qh-1");
+    expect(out.pipeline).toEqual(EXPECTED_PIPELINE);
+    produceSpy.mockRestore();
+  });
+
+  // The over-reach guard: these sinks have no originating SELECT to re-run,
+  // so inventing a pipeline for them would make an un-refreshable result
+  // claim to be refreshable.
+  it("value sink attaches no pipeline", async () => {
+    const out = (await resolveResultSink(
+      { kind: "value" },
+      { value: { mape: 0.04 } },
+      CTX
+    )) as SinkOut;
+    expect(out.pipeline).toBeUndefined();
+  });
+
+  it("rows sink attaches no pipeline", async () => {
+    const out = (await resolveResultSink(
+      rowsProd("handle"),
+      { rows: asStream(mkRows(3)) },
+      CTX
+    )) as SinkOut;
+    expect(out.pipeline).toBeUndefined();
   });
 });

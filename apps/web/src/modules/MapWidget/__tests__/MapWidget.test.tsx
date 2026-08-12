@@ -309,14 +309,14 @@ describe("MapWidgetUI — status cues (#348, #352)", () => {
 
   it("shows an 'Updated …' freshness cue when lastUpdatedAt is set (#348)", () => {
     render(<MapWidgetUI {...tileProps} lastUpdatedAt={Date.now() - 60_000} />);
-    expect(screen.getByTestId("map-widget-updated")).toHaveTextContent(
+    expect(screen.getByTestId("widget-freshness-updated")).toHaveTextContent(
       /updated/i
     );
   });
 
   it("omits the freshness cue when lastUpdatedAt is absent", () => {
     render(<MapWidgetUI {...tileProps} />);
-    expect(screen.queryByTestId("map-widget-updated")).toBeNull();
+    expect(screen.queryByTestId("widget-freshness-updated")).toBeNull();
   });
 
   it("shows a tile-rendering cue while tilesLoading (#352)", () => {

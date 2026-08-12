@@ -307,12 +307,16 @@ describe("D3WidgetUI frame + status (#271)", () => {
     ["error", "Error"],
   ] as const)("shows the %s status chip", (status, label) => {
     render(<D3WidgetUI {...done} status={status} />);
-    expect(screen.getByTestId("d3-widget-status")).toHaveTextContent(label);
+    expect(screen.getByTestId("widget-freshness-status")).toHaveTextContent(
+      label
+    );
   });
 
   it("shows no status chip when ready", () => {
     render(<D3WidgetUI {...done} status="ready" />);
-    expect(screen.queryByTestId("d3-widget-status")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("widget-freshness-status")
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -352,7 +356,7 @@ describe("D3WidgetUI refresh affordance (#270)", () => {
 
   it("shows the 'Updated … ago' freshness cue", () => {
     render(<D3WidgetUI {...done} canRefresh lastUpdatedAt={Date.now()} />);
-    expect(screen.getByTestId("d3-widget-updated")).toHaveTextContent(
+    expect(screen.getByTestId("widget-freshness-updated")).toHaveTextContent(
       /Updated/
     );
   });

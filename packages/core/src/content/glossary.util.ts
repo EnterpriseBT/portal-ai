@@ -320,9 +320,9 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Visualization Widget",
     category: GlossaryCategory.Analytics,
     definition:
-      "A live chart the assistant builds from your data. It remembers the query behind it, so it can re-run for fresh data on its own when you come back to it — no need to ask again. You can also refresh it yourself any time with the refresh button.",
+      "A live chart, map, or table the assistant builds from your data. It remembers the query behind it, so it can re-run for fresh data on its own when you come back to it — no need to ask again. You can also refresh it yourself any time with the refresh button.",
     example:
-      "Reopen yesterday's session and its revenue chart quietly reloads with today's numbers; a “Refresh chart” button and an “Updated … ago” note let you force and confirm a refresh.",
+      "Reopen yesterday's session and its revenue chart quietly reloads with today's numbers; a “Refresh” button and an “Updated … ago” note let you force and confirm a refresh. A table of the ten largest parcels re-runs the whole query, so a newly-largest parcel appears.",
     relatedTerms: ["Portal Result", "Query Handle"],
   },
   {

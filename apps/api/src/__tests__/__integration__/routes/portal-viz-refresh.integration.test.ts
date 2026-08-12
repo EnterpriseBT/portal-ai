@@ -119,6 +119,25 @@ describe("POST /api/portal-sql/widget-refresh", () => {
             },
           },
         },
+        // #349: a query-backed table — index 2.
+        {
+          type: "data-table",
+          content: {
+            type: "data-table",
+            columns: ["n"],
+            rows: [{ n: 1 }],
+            pipeline: {
+              sql: PIPELINE_SQL,
+              stationId: station.id,
+              organizationId: orgId,
+            },
+          },
+        },
+        // #349: a pre-#349 table with no pipeline — index 3.
+        {
+          type: "data-table",
+          content: { type: "data-table", columns: ["n"], rows: [{ n: 1 }] },
+        },
       ],
     } as never);
 
@@ -166,6 +185,54 @@ describe("POST /api/portal-sql/widget-refresh", () => {
 
     expect(res.status).toBe(404);
     expect(res.body.code).toBe(ApiCode.VIZ_WIDGET_NOT_FOUND);
+  });
+
+  // ── data-table blocks (#349) ──────────────────────────────────────
+
+  it("re-executes a data-table block's pipeline and returns a fresh inline delivery", async () => {
+    const res = await request(app)
+      .post("/api/portal-sql/widget-refresh")
+      .send({ messageId, blockIndex: 2 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.payload).toEqual({ kind: "inline", rows: [{ n: 1 }] });
+  });
+
+  // The deliberate status change: before #349 this block type fell out of the
+  // type gate as 404. It is now recognised as a widget that simply has no
+  // durable pipeline — which is what the client renders as `notRefreshable`.
+  it("a pre-#349 data-table block with no pipeline → 422, not 404", async () => {
+    const res = await request(app)
+      .post("/api/portal-sql/widget-refresh")
+      .send({ messageId, blockIndex: 3 });
+
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe(ApiCode.VIZ_WIDGET_NOT_REFRESHABLE);
+  });
+
+  it("a member of another org gets 404 for a data-table block too", async () => {
+    currentAuth0Id = OTHER_AUTH0;
+    const res = await request(app)
+      .post("/api/portal-sql/widget-refresh")
+      .send({ messageId, blockIndex: 2 });
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(ApiCode.VIZ_WIDGET_NOT_FOUND);
+  });
+
+  it("data-table refreshes share the per-org rate limit → 429", async () => {
+    const minute = Math.floor(Date.now() / 60_000);
+    await getRedisClient().set(
+      `usage:rate:viz-refresh:${orgId}:${minute}`,
+      String(VIZ_REFRESH_RATE_PER_MIN)
+    );
+
+    const res = await request(app)
+      .post("/api/portal-sql/widget-refresh")
+      .send({ messageId, blockIndex: 2 });
+
+    expect(res.status).toBe(429);
+    expect(res.body.code).toBe(ApiCode.VIZ_REFRESH_RATE_LIMITED);
   });
 
   it("over the per-org rate limit → 429", async () => {

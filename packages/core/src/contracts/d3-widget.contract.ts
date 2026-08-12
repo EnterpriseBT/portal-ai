@@ -18,13 +18,18 @@ export const D3ProgramParamsSchema = z.record(z.string(), z.unknown());
 export type D3ProgramParams = z.infer<typeof D3ProgramParamsSchema>;
 
 /**
- * The durable, re-executable data pipeline of a `d3` widget (#270). Present on
- * every block minted by `visualize_d3` from #270 on, so a widget can re-run its
- * SQL for live data long after the ephemeral Redis handle expires. Optional so
- * pre-#270 blocks and mid-stream (unpersisted) blocks still parse and render
- * (fail-safe); refresh treats its absence as `VIZ_WIDGET_NOT_REFRESHABLE`.
+ * The durable, re-executable data pipeline behind a visualization (#270,
+ * widened in #349). Present on every block minted from a SQL-backed result —
+ * `d3`, `geo`, and (from #349) `data-table` alike — so a widget can re-run its
+ * SQL for live data long after the ephemeral Redis handle expires. Named for
+ * the concept, not the block type: it also governs pinned tables
+ * (`pinned-result.contract.ts`) and map tiles (`portal-map-tile.service.ts`).
+ *
+ * Optional wherever it appears so pre-#270/#349 blocks and mid-stream
+ * (unpersisted) blocks still parse and render (fail-safe); refresh treats its
+ * absence as `VIZ_WIDGET_NOT_REFRESHABLE`.
  */
-export const D3PipelineSchema = z.object({
+export const VizPipelineSchema = z.object({
   /** The originating SELECT — the authoritative durable copy (the handle
    *  envelope's own nullable `sql` serves the cursor tier separately). */
   sql: z.string().min(1),
@@ -35,15 +40,15 @@ export const D3PipelineSchema = z.object({
    *  the core layer. */
   transform: z.record(z.string(), z.unknown()).optional(),
 });
-export type D3Pipeline = z.infer<typeof D3PipelineSchema>;
+export type VizPipeline = z.infer<typeof VizPipelineSchema>;
 
 const D3BaseContentSchema = z.object({
   /** Function-body source (see module doc above). Never empty. */
   program: z.string().min(1),
   title: z.string().optional(),
   params: D3ProgramParamsSchema.optional(),
-  /** Durable re-executable pipeline (#270). Optional — see `D3PipelineSchema`. */
-  pipeline: D3PipelineSchema.optional(),
+  /** Durable re-executable pipeline (#270). Optional — see `VizPipelineSchema`. */
+  pipeline: VizPipelineSchema.optional(),
 });
 
 /**

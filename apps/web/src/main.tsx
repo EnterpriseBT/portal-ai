@@ -3,6 +3,7 @@ import { Application } from "./Application";
 
 import { registerD3BlockRenderer } from "./modules/D3Widget";
 import { registerMapBlockRenderer } from "./modules/MapWidget";
+import { registerTableBlockRenderer } from "./modules/TableWidget";
 
 import "@portalai/core/styles";
 
@@ -10,5 +11,6 @@ import "@portalai/core/styles";
 // and streamed `d3` / `geo` blocks dispatch from the start (#268, #314).
 registerD3BlockRenderer();
 registerMapBlockRenderer();
+registerTableBlockRenderer();
 
 createRoot(document.getElementById("root")!).render(<Application />);
