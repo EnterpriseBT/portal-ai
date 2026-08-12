@@ -64,6 +64,17 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
+/**
+ * The durable pipeline every SQL-backed result now carries (#349) — both
+ * helpers below build with the same station/org and run the same SQL, so the
+ * inline assertions expect exactly this alongside their rows.
+ */
+const INLINE_PIPELINE = {
+  sql: "SELECT * FROM things",
+  stationId: "station-1",
+  organizationId: "org-1",
+};
+
 /** Build with NO portal context → synchronous-only path (no escalation). */
 async function execSync(sql = "SELECT * FROM things") {
   const t = new SqlQueryTool().build("station-1", "org-1");
@@ -98,7 +109,7 @@ describe("SqlQueryTool — inline-vs-handle branch (Phase 3)", () => {
 
     const result = await execSync();
 
-    expect(result).toEqual({ rows });
+    expect(result).toEqual({ rows, pipeline: INLINE_PIPELINE });
     expect(mockProduce).not.toHaveBeenCalled();
   });
 
@@ -108,7 +119,7 @@ describe("SqlQueryTool — inline-vs-handle branch (Phase 3)", () => {
 
     const result = await execSync();
 
-    expect(result).toEqual({ rows });
+    expect(result).toEqual({ rows, pipeline: INLINE_PIPELINE });
     expect(mockProduce).not.toHaveBeenCalled();
   });
 
@@ -219,7 +230,7 @@ describe("SqlQueryTool — job-tier escalation (#130 E1b)", () => {
 
     const result = await execEsc();
 
-    expect(result).toEqual({ rows: [{ x: 1 }] });
+    expect(result).toEqual({ rows: [{ x: 1 }], pipeline: INLINE_PIPELINE });
     expect(mockRecordRejection).not.toHaveBeenCalled();
     expect(mockJobsCreate).not.toHaveBeenCalled();
   });
@@ -230,7 +241,7 @@ describe("SqlQueryTool — job-tier escalation (#130 E1b)", () => {
 
     const result = await execEsc();
 
-    expect(result).toEqual({ rows: [{ x: 1 }] });
+    expect(result).toEqual({ rows: [{ x: 1 }], pipeline: INLINE_PIPELINE });
     expect(mockRecordRejection).not.toHaveBeenCalled();
   });
 
