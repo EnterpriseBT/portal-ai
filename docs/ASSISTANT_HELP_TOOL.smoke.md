@@ -2,7 +2,7 @@
 
 Manual smoke test for [#367](https://github.com/EnterpriseBT/portal-ai/issues/367) — the `platform_help` system tool the agent routes platform questions to. Covers routing in both directions, the station-specific answers, free-immunity, tier-immunity, the Help links, and the pack-less station that used to fail outright.
 
-**Branch under test:** `feat/assistant-help-tool` — child of epic [#364](https://github.com/EnterpriseBT/portal-ai/issues/364), **PR base `epic/portal-guidance`, not `main`**. PR not yet opened when this doc was written; add the link when it is.
+**Branch under test:** `feat/assistant-help-tool` (PR [#375](https://github.com/EnterpriseBT/portal-ai/pull/375)) — child of epic [#364](https://github.com/EnterpriseBT/portal-ai/issues/364), **PR base `epic/portal-guidance`, not `main`**.
 
 **This walkthrough is mostly conversation.** You are judging whether the agent reaches for the right tool and whether the answer it relays is true of the app in front of you. Read the replies as a user would, not as the author of the copy.
 
