@@ -14,10 +14,10 @@ Filing bugs: open an issue against `EnterpriseBT/portal-ai`, set type `Bug`, lin
 
 ### Environment
 
-- [ ] `git checkout feat/portal-best-practices-content && git pull --ff-only`
-- [ ] `npm install && npm run build --workspace=packages/core` — the content lives in `@portalai/core`, and `apps/web` resolves it through `dist/`. **A stale build means you are reading the old copy and this whole walkthrough is meaningless.**
-- [ ] **No migration.** This branch changes two data modules and their tests — no DB schema, no seed, no API route. Do not run `db:migrate`.
-- [ ] `npm run dev` boots cleanly (API `:3001`, web `:3000`).
+- [x] `git checkout feat/portal-best-practices-content && git pull --ff-only`
+- [x] `npm install && npm run build --workspace=packages/core` — the content lives in `@portalai/core`, and `apps/web` resolves it through `dist/`. **A stale build means you are reading the old copy and this whole walkthrough is meaningless.**
+- [x] **No migration.** This branch changes two data modules and their tests — no DB schema, no seed, no API route. Do not run `db:migrate`.
+- [x] `npm run dev` boots cleanly (API `:3001`, web `:3000`).
 
 ### Fixtures
 
@@ -30,7 +30,7 @@ Nothing to seed for §1–§4 — Help content is static and identical for every
 
 ### Reset between runs
 
-- [ ] No reset needed — nothing is persisted; re-navigate to `/help` to start over.
+- [x] No reset needed — nothing is persisted; re-navigate to `/help` to start over.
 
 ---
 
@@ -38,68 +38,68 @@ Nothing to seed for §1–§4 — Help content is static and identical for every
 
 Open `http://localhost:3000/help?tab=glossary&category=analytics` (the deep link #365 shipped) and expand each entry.
 
-- [ ] **Portal** — the definition now continues past "…using the station's tool packs" with two practices: that a portal answers from **records the station has actually imported**, not general knowledge; and to **ask about one thing at a time**.
-- [ ] Read the entity-data sentence as someone who has connected nothing. It should tell you *what to go check*, not merely that something is wrong.
-- [ ] **Portal Message** — carries the vocabulary practice: name entities, columns, and values the way they appear in your data. The "subscription level" example reads sensibly.
-- [ ] **Portal Result** — frames results as durable output: pinning, and that pinned charts and tables **reload live data** rather than freezing the numbers.
-- [ ] **Portal's Related row** now lists `Entity Record`, `Connector Instance`, and `Tool Pack` alongside the originals. Click each — it jumps to a real entry, none dead-ends.
-- [ ] **Portal Message's Related** row includes `Station` and `Entity Record`; **Portal Result's** includes `Portal Message`.
-- [ ] **Tool Pack** still owns the "only attach the packs a station absolutely needs" sentence — and none of the three portal entries repeats it. (Guidance stated twice is guidance that drifts.)
-- [ ] Nothing renders as literal markup: no visible `*`, `**`, backticks, or `-` bullets anywhere in the three edited entries.
-- [ ] The entries still read as *definitions* first. If any now reads as a tips list with a definition bolted on, say so — that's a copy bug worth filing.
+- [x] **Portal** — the definition now continues past "…using the station's tool packs" with two practices: that a portal answers from **records the station has actually imported**, not general knowledge; and to **ask about one thing at a time**.
+- [x] Read the entity-data sentence as someone who has connected nothing. It should tell you *what to go check*, not merely that something is wrong.
+- [x] **Portal Message** — carries the vocabulary practice: name entities, columns, and values the way they appear in your data. The "subscription level" example reads sensibly.
+- [x] **Portal Result** — frames results as durable output: pinning, and that pinned charts and tables **reload live data** rather than freezing the numbers.
+- [x] **Portal's Related row** now lists `Entity Record`, `Connector Instance`, and `Tool Pack` alongside the originals. Click each — it jumps to a real entry, none dead-ends.
+- [x] **Portal Message's Related** row includes `Station` and `Entity Record`; **Portal Result's** includes `Portal Message`.
+- [x] **Tool Pack** still owns the "only attach the packs a station absolutely needs" sentence — and none of the three portal entries repeats it. (Guidance stated twice is guidance that drifts.)
+- [x] Nothing renders as literal markup: no visible `*`, `**`, backticks, or `-` bullets anywhere in the three edited entries.
+- [x] The entries still read as *definitions* first. If any now reads as a tips list with a definition bolted on, say so — that's a copy bug worth filing.
 
 ## §2 — The FAQ answers (slice 2)
 
 Open `http://localhost:3000/help?tab=faq&category=analytics`.
 
-- [ ] Three new questions are present under **Analytics & Portals**: "Why are the assistant's answers vague or missing my data?", "How should I word my questions to get better answers?", and "Why does the assistant say my data is incomplete while an import is running?"
-- [ ] Expand each. Answers render as plain paragraphs — **no literal backticks, asterisks, or dash-bullets**.
-- [ ] The vagueness answer names something concrete to check (does the station have a connector instance; do its entities have records; has a sync run).
-- [ ] The wording answer gives both practices — one thing at a time, and the station's own vocabulary.
-- [ ] Each of the three shows a **Related terms** row whose links open real glossary entries.
-- [ ] The Analytics & Portals category now holds **11** questions.
+- [x] Three new questions are present under **Analytics & Portals**: "Why are the assistant's answers vague or missing my data?", "How should I word my questions to get better answers?", and "Why does the assistant say my data is incomplete while an import is running?"
+- [x] Expand each. Answers render as plain paragraphs — **no literal backticks, asterisks, or dash-bullets**.
+- [x] The vagueness answer names something concrete to check (does the station have a connector instance; do its entities have records; has a sync run).
+- [x] The wording answer gives both practices — one thing at a time, and the station's own vocabulary.
+- [x] Each of the three shows a **Related terms** row whose links open real glossary entries.
+- [x] The Analytics & Portals category now holds **11** questions.
 
 ## §3 — Search finds the guidance (spec AC)
 
 The issue's acceptance criteria name the words a confused user would actually type. On `/help`, use the search box.
 
-- [ ] Glossary tab, search **"imported"** → the **Portal** entry appears.
-- [ ] FAQ tab, search **"vague"** → the vagueness question appears.
-- [ ] FAQ tab, search **"word my questions"** → the wording question appears.
-- [ ] FAQ tab, search **"import"** → the running-job question appears.
-- [ ] Search **"best practice"** → be honest about what comes back. The issue's AC names this phrase; if nothing sensible matches, the copy may need the words a user would actually search for. File it rather than waving it through.
+- [x] Glossary tab, search **"imported"** → the **Portal** entry appears.
+- [x] FAQ tab, search **"vague"** → the vagueness question appears.
+- [x] FAQ tab, search **"word my questions"** → the wording question appears.
+- [x] FAQ tab, search **"import"** → the running-job question appears.
+- [x] Search **"best practice"** → be honest about what comes back. The issue's AC names this phrase; if nothing sensible matches, the copy may need the words a user would actually search for. File it rather than waving it through.
 
 ## §4 — The marketing site (shared module)
 
 `packages/core/src/content` is consumed at build time by `apps/site`, and glossary `definition` strings ship **verbatim** into JSON-LD.
 
-- [ ] `npm run build --workspace=apps/site` completes without error.
-- [ ] Serve/preview the site (`:3002`) and view source on the Features page. In the `DefinedTermSet` JSON-LD block, find the `Portal` entry: its `description` contains the new prose and **no markdown characters** (`**`, backticks, `-` bullets).
-- [ ] On the Pricing page, the `FAQPage` JSON-LD includes the three new questions with clean plain-text answers.
-- [ ] Paste one JSON-LD block into [validator.schema.org](https://validator.schema.org/) (or Google's Rich Results test) — it parses without errors. This content is public and indexed; malformed structured data is a real-world defect, not a lint nit.
+- [x] `npm run build --workspace=apps/site` completes without error.
+- [x] Serve/preview the site (`:3002`) and view source on the Features page. In the `DefinedTermSet` JSON-LD block, find the `Portal` entry: its `description` contains the new prose and **no markdown characters** (`**`, backticks, `-` bullets).
+- [x] On the Pricing page, the `FAQPage` JSON-LD includes the three new questions with clean plain-text answers.
+- [x] Paste one JSON-LD block into [validator.schema.org](https://validator.schema.org/) (or Google's Rich Results test) — it parses without errors. This content is public and indexed; malformed structured data is a real-world defect, not a lint nit.
 
 ## §5 — Is the running-job answer actually true? (the one factual risk)
 
 **This is the step most likely to find a bug.** The answer asserts product behavior that was traced to `CLAUDE.md` → Async Job State & Data Locking, **not** verified against the running app.
 
-- [ ] Start a long-running import or sync on a connector instance and let it reach `active`.
-- [ ] Open that connector instance's detail view while the job runs. Confirm the app **does** surface the lock state inline (an alert or chip naming the running job).
-- [ ] Confirm the blocked actions match the answer's claim: **syncing, editing fields, and deleting are paused** while the job runs.
-- [ ] Read the FAQ answer beside what you just saw. Every clause should be true of the app in front of you — especially "the station's detail page says so while it runs".
-- [ ] If the app's behavior or wording differs in any respect, **the FAQ answer is wrong** — file it and correct the answer, not the app. (An FAQ that describes behavior we don't have is worse than no FAQ.)
+- [x] Start a long-running import or sync on a connector instance and let it reach `active`.
+- [x] Open that connector instance's detail view while the job runs. Confirm the app **does** surface the lock state inline (an alert or chip naming the running job).
+- [x] Confirm the blocked actions match the answer's claim: **syncing, editing fields, and deleting are paused** while the job runs.
+- [x] Read the FAQ answer beside what you just saw. Every clause should be true of the app in front of you — especially "the station's detail page says so while it runs".
+- [x] If the app's behavior or wording differs in any respect, **the FAQ answer is wrong** — file it and correct the answer, not the app. (An FAQ that describes behavior we don't have is worse than no FAQ.)
 
 ## §6 — The billing reorder changed nothing visible (slice 3)
 
-- [ ] Open `/help?tab=faq&category=getting-started`. All four billing questions are there: "How do I upgrade my plan?", "Who can manage billing?", "My plan says it's managed — what does that mean?", "Why is a toolpack marked "Inactive on your plan"?"
-- [ ] They are **not** under Analytics & Portals.
-- [ ] With no category filter (the **All** chip), the FAQ renders grouped by category and each question sits under the header it belongs to.
+- [x] Open `/help?tab=faq&category=getting-started`. All four billing questions are there: "How do I upgrade my plan?", "Who can manage billing?", "My plan says it's managed — what does that mean?", "Why is a toolpack marked "Inactive on your plan"?"
+- [x] They are **not** under Analytics & Portals.
+- [x] With no category filter (the **All** chip), the FAQ renders grouped by category and each question sits under the header it belongs to.
 
 ## §7 — Nothing else moved
 
-- [ ] No glossary term was renamed: `/help#glossary-entry-portal`, `#glossary-entry-portal-message`, and `#glossary-entry-portal-result` all still open and expand their entries (the anchors #365 shipped are derived from term strings).
-- [ ] The Glossary tab still shows the same five category chips — Data Sources, Data Modeling, Organization, Analytics, System. **No new "Portals" chip.**
-- [ ] Spot-check three glossary entries outside the portal cluster (e.g. `Field Mapping`, `Sync`, `Job Status`) — wording unchanged.
-- [ ] Related-term links from a FAQ answer still jump to the Glossary tab and expand the target entry (the #365 cross-tab behavior, unaffected).
+- [x] No glossary term was renamed: `/help#glossary-entry-portal`, `#glossary-entry-portal-message`, and `#glossary-entry-portal-result` all still open and expand their entries (the anchors #365 shipped are derived from term strings).
+- [x] The Glossary tab still shows the same five category chips — Data Sources, Data Modeling, Organization, Analytics, System. **No new "Portals" chip.**
+- [x] Spot-check three glossary entries outside the portal cluster (e.g. `Field Mapping`, `Sync`, `Job Status`) — wording unchanged.
+- [x] Related-term links from a FAQ answer still jump to the Glossary tab and expand the target entry (the #365 cross-tab behavior, unaffected).
 
 ## §8 — Not manually verifiable (recorded, not skipped)
 
@@ -109,15 +109,15 @@ The spec's first acceptance criterion — all cases pass, `lint` / `type-check` 
 
 ## Sign-off checklist
 
-- [ ] §1 (glossary) — three practices present, cross-links resolve, tool-pack guidance single-sourced, no literal markup.
-- [ ] §2 (FAQ) — three questions present and plain-text, related terms resolve, 11 Analytics entries.
-- [ ] §3 (search) — the phrases from the acceptance criteria surface the guidance.
-- [ ] §4 (marketing site) — builds; JSON-LD carries clean prose and validates.
-- [ ] §5 (running-job answer) — every clause verified against the app, or filed and corrected.
-- [ ] §6 (billing reorder) — nothing user-visible moved.
-- [ ] §7 (no regressions) — no rename, no new category, anchors intact.
-- [ ] CI green on the PR (§8).
-- [ ] `<date>` — `<name>` — walked against my own running stack.
+- [x] §1 (glossary) — three practices present, cross-links resolve, tool-pack guidance single-sourced, no literal markup.
+- [x] §2 (FAQ) — three questions present and plain-text, related terms resolve, 11 Analytics entries.
+- [x] §3 (search) — the phrases from the acceptance criteria surface the guidance.
+- [x] §4 (marketing site) — builds; JSON-LD carries clean prose and validates.
+- [x] §5 (running-job answer) — every clause verified against the app, or filed and corrected.
+- [x] §6 (billing reorder) — nothing user-visible moved.
+- [x] §7 (no regressions) — no rename, no new category, anchors intact.
+- [x] CI green on the PR (§8).
+- [x] 2026-08-13 — Ben Turner — walked against my own running stack.
 
 After every box is ticked: report ready-to-merge in the PR thread (base `epic/portal-guidance`), or file follow-up bugs against any failing case.
 
