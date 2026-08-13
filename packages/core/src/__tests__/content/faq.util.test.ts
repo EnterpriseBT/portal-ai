@@ -303,3 +303,42 @@ describe("portal best-practices FAQ", () => {
     expect(hits.map((e) => e.question)).toContain(question);
   });
 });
+
+// ── Source ordering (#366) ──────────────────────────────────────────
+
+describe("FAQ_ENTRIES source ordering", () => {
+  it("groups each category into one contiguous block", () => {
+    // Array order isn't semantic — both consumers bucket by `category` — but
+    // the source is organized in commented category blocks, and an entry
+    // filed under the wrong comment is how four billing questions ended up
+    // sitting inside "Analytics & Portals" while tagged Getting Started.
+    // Contiguity is what keeps the comments honest.
+    const seen = new Set<FAQCategory>();
+    let previous: FAQCategory | null = null;
+
+    for (const entry of FAQ_ENTRIES) {
+      if (entry.category !== previous) {
+        expect(seen.has(entry.category)).toBe(false);
+        seen.add(entry.category);
+        previous = entry.category;
+      }
+    }
+  });
+
+  it("keeps the billing questions tagged Getting Started", () => {
+    // The reorder is a move, not a retag: these render exactly where they
+    // did before. Retagging them into Analytics & Portals would file "How do
+    // I upgrade my plan?" under portals, which is wrong for the reader.
+    const billing = [
+      "How do I upgrade my plan?",
+      "Who can manage billing?",
+      "My plan says it's managed — what does that mean?",
+      "Why is a toolpack marked “Inactive on your plan”?",
+    ];
+    for (const question of billing) {
+      const entry = FAQ_ENTRIES.find((e) => e.question === question);
+      expect(entry).toBeDefined();
+      expect(entry!.category).toBe(FAQCategory.GettingStarted);
+    }
+  });
+});

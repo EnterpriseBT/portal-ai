@@ -66,6 +66,35 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     relatedGlossaryTerms: ["Portal", "Portal Message", "Pinned Result"],
   },
 
+  {
+    question: "How do I upgrade my plan?",
+    answer:
+      "Go to Settings → Subscription & Billing and pick a plan from the list — Subscribe takes you to Stripe's secure checkout. After you pay, your plan updates automatically within a few seconds (Stripe confirms the subscription to us directly). Your usage allocations reset on your new billing cycle from that point on. To change or cancel later, use Manage subscription on the same tab, which opens the Stripe billing portal.",
+    category: FAQCategory.GettingStarted,
+    relatedGlossaryTerms: ["Subscription Plan", "Billing Portal"],
+  },
+  {
+    question: "Who can manage billing?",
+    answer:
+      "Only the organization owner. Every member can see the available plans on Settings → Subscription & Billing, but Subscribe and Manage subscription are enabled only for the owner — the server enforces this too, so it isn't just hidden buttons.",
+    category: FAQCategory.GettingStarted,
+    relatedGlossaryTerms: ["Subscription Plan", "Organization"],
+  },
+  {
+    question: "My plan says it's managed — what does that mean?",
+    answer:
+      "Your organization is on a custom plan arranged with us directly rather than one of the self-serve plans, so the plan list and checkout are hidden. Contact us to make changes to a managed plan.",
+    category: FAQCategory.GettingStarted,
+    relatedGlossaryTerms: ["Subscription Plan"],
+  },
+  {
+    question: "Why is a toolpack marked “Inactive on your plan”?",
+    answer:
+      "Your organization's plan determines which toolpacks are available. Custom toolpacks registered while they were included stay saved when a plan stops including them — nothing is deleted — but their tools aren't offered in portal sessions and new registrations are blocked until you're on a plan that includes them again. Built-in toolpacks can also vary by plan. Everything reactivates automatically on upgrade; station setups are preserved exactly as you left them.",
+    category: FAQCategory.GettingStarted,
+    relatedGlossaryTerms: ["Subscription Plan", "Tool Pack"],
+  },
+
   // Working with Data
   {
     question: "What's the difference between a connector and an entity?",
@@ -247,35 +276,6 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     category: FAQCategory.Analytics,
     relatedGlossaryTerms: ["Job Status", "Portal", "Connector Instance"],
   },
-  {
-    question: "How do I upgrade my plan?",
-    answer:
-      "Go to Settings → Subscription & Billing and pick a plan from the list — Subscribe takes you to Stripe's secure checkout. After you pay, your plan updates automatically within a few seconds (Stripe confirms the subscription to us directly). Your usage allocations reset on your new billing cycle from that point on. To change or cancel later, use Manage subscription on the same tab, which opens the Stripe billing portal.",
-    category: FAQCategory.GettingStarted,
-    relatedGlossaryTerms: ["Subscription Plan", "Billing Portal"],
-  },
-  {
-    question: "Who can manage billing?",
-    answer:
-      "Only the organization owner. Every member can see the available plans on Settings → Subscription & Billing, but Subscribe and Manage subscription are enabled only for the owner — the server enforces this too, so it isn't just hidden buttons.",
-    category: FAQCategory.GettingStarted,
-    relatedGlossaryTerms: ["Subscription Plan", "Organization"],
-  },
-  {
-    question: "My plan says it's managed — what does that mean?",
-    answer:
-      "Your organization is on a custom plan arranged with us directly rather than one of the self-serve plans, so the plan list and checkout are hidden. Contact us to make changes to a managed plan.",
-    category: FAQCategory.GettingStarted,
-    relatedGlossaryTerms: ["Subscription Plan"],
-  },
-  {
-    question: "Why is a toolpack marked “Inactive on your plan”?",
-    answer:
-      "Your organization's plan determines which toolpacks are available. Custom toolpacks registered while they were included stay saved when a plan stops including them — nothing is deleted — but their tools aren't offered in portal sessions and new registrations are blocked until you're on a plan that includes them again. Built-in toolpacks can also vary by plan. Everything reactivates automatically on upgrade; station setups are preserved exactly as you left them.",
-    category: FAQCategory.GettingStarted,
-    relatedGlossaryTerms: ["Subscription Plan", "Tool Pack"],
-  },
-
   // Jobs & Background Tasks
   {
     question: "What do job statuses mean?",
