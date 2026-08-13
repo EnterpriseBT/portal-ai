@@ -2,7 +2,7 @@
 
 Manual smoke test for [#365](https://github.com/EnterpriseBT/portal-ai/issues/365) — Help sections are addressable by URL. Covers the `?tab=` / `?category=` search contract and its fail-open sanitization, `#<surface>-entry-<slug>` entry anchors, two-way URL sync (tabs push, chips replace, back button works), controlled accordion expansion, and the portal empty state's link landing on the portal FAQ instead of the onboarding checklist.
 
-**Branch under test:** `feat/help-url-addressable-sections` — child of epic [#364](https://github.com/EnterpriseBT/portal-ai/issues/364), **PR base `epic/portal-guidance`, not `main`**. PR not yet opened at the time this doc was written; add the link when it is.
+**Branch under test:** `feat/help-url-addressable-sections` (PR [#373](https://github.com/EnterpriseBT/portal-ai/pull/373)) — child of epic [#364](https://github.com/EnterpriseBT/portal-ai/issues/364), **PR base `epic/portal-guidance`, not `main`**.
 
 Run **§Preflight** once before any section. The rest can be walked top-to-bottom; each section is independent after preflight. Most of this is address-bar work — keep the browser URL bar visible throughout, and use a **normal (non-incognito) window with history**, since §4 exercises the back button.
 
