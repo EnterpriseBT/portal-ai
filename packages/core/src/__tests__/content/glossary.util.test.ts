@@ -293,3 +293,108 @@ describe("contentEntrySlug pins", () => {
     }
   });
 });
+
+// ── Portal best-practices guidance (#366) ───────────────────────────
+
+/**
+ * The portal cluster carries practices, not just definitions — the same
+ * pattern `Tool Pack` already follows. These assert the *guidance* is
+ * present and single-sourced; the exact wording lives in
+ * docs/PORTAL_BEST_PRACTICES_CONTENT.spec.md.
+ */
+describe("portal best-practices guidance", () => {
+  const portal = () => GLOSSARY_ENTRIES.find((e) => e.term === "Portal")!;
+  const portalMessage = () =>
+    GLOSSARY_ENTRIES.find((e) => e.term === "Portal Message")!;
+  const portalResult = () =>
+    GLOSSARY_ENTRIES.find((e) => e.term === "Portal Result")!;
+
+  it("Portal states the entity-data prerequisite in plain language", () => {
+    const def = portal().definition;
+    expect(def).toMatch(/only as good as the data behind it/i);
+    // The actionable half: it names what has to be true, not just that
+    // something is wrong.
+    expect(def).toMatch(/imported/i);
+    expect(def).toMatch(/connected source/i);
+  });
+
+  it("Portal tells the reader to ask about one thing at a time", () => {
+    expect(portal().definition).toMatch(/one thing at a time/i);
+  });
+
+  it("Portal Message tells the reader to use the station's vocabulary", () => {
+    const def = portalMessage().definition;
+    expect(def).toMatch(/vocabulary/i);
+    expect(def).toMatch(/columns/i);
+  });
+
+  it("Portal Result frames results as durable output worth pinning", () => {
+    const def = portalResult().definition;
+    expect(def).toMatch(/\bpin\b/i);
+    expect(def).toMatch(/live data/i);
+  });
+
+  it("keeps the tool-pack practice single-sourced on Tool Pack", () => {
+    // Cross-link, never repeat — two copies of a practice is two things to
+    // keep true. `Tool Pack` owns this sentence.
+    const toolPack = GLOSSARY_ENTRIES.find((e) => e.term === "Tool Pack")!;
+    expect(toolPack.definition).toMatch(/only attach the packs/i);
+
+    for (const entry of [portal(), portalMessage(), portalResult()]) {
+      expect(entry.definition).not.toMatch(/only attach the packs/i);
+    }
+    // …but Portal points at it.
+    expect(portal().relatedTerms).toContain("Tool Pack");
+  });
+
+  it("cross-links the terms the practices depend on", () => {
+    expect(portal().relatedTerms).toEqual(
+      expect.arrayContaining([
+        "Station",
+        "Portal Message",
+        "Portal Result",
+        "Entity Record",
+        "Connector Instance",
+        "Tool Pack",
+      ])
+    );
+    expect(portalMessage().relatedTerms).toEqual(
+      expect.arrayContaining(["Portal", "Station", "Entity Record"])
+    );
+    expect(portalResult().relatedTerms).toEqual(
+      expect.arrayContaining(["Portal", "Portal Message", "Pinned Result"])
+    );
+  });
+
+  it("extends the definitions rather than replacing them", () => {
+    // Each entry keeps the sentence it always had, and grows past it.
+    expect(portal().definition).toMatch(
+      /^A chat session where you ask questions about the data in a station/
+    );
+    expect(portalMessage().definition).toMatch(
+      /^A single user prompt or assistant reply within a portal session\./
+    );
+    expect(portalResult().definition).toMatch(/^A piece of structured output/);
+    for (const entry of [portal(), portalMessage(), portalResult()]) {
+      expect(typeof entry.definition).toBe("string");
+      expect(entry.definition.length).toBeGreaterThan(240);
+    }
+  });
+
+  it("uses no markdown lists or fenced code in the edited entries", () => {
+    // `GlossaryProse` styles p/code/pre/strong but not ul/li, and
+    // `definition` ships verbatim into the marketing site's JSON-LD — so a
+    // list renders unstyled in-app and as literal syntax in structured data.
+    for (const entry of [portal(), portalMessage(), portalResult()]) {
+      for (const source of [entry.definition, entry.example ?? ""]) {
+        expect(source).not.toMatch(/^\s*[-*]\s+/m);
+        expect(source).not.toMatch(/```/);
+      }
+    }
+  });
+
+  it("surfaces the guidance to a reader searching Help", () => {
+    const hits = filterGlossary(GLOSSARY_ENTRIES, { query: "imported" });
+    expect(hits.map((e) => e.term)).toContain("Portal");
+  });
+});
