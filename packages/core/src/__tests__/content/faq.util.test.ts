@@ -4,7 +4,10 @@ import {
   FAQCategory,
   filterFAQ,
 } from "../../content/faq.util.js";
-import { GLOSSARY_ENTRIES } from "../../content/glossary.util.js";
+import {
+  GLOSSARY_ENTRIES,
+  contentEntrySlug,
+} from "../../content/glossary.util.js";
 
 // ── 2.1 — Type and category enum ────────────────────────────────────
 
@@ -175,5 +178,49 @@ describe("filterFAQ", () => {
     expect(filterFAQ(FAQ_ENTRIES, { query: "zzz-no-such-term-zzz" })).toEqual(
       []
     );
+  });
+});
+
+// ── Entry slug (#365) ───────────────────────────────────────────────
+
+/**
+ * FAQ questions become `#faq-entry-<slug>` Help anchors. A duplicate or empty
+ * slug makes an anchor ambiguous or unresolvable, so both are pinned here
+ * rather than discovered when a link silently scrolls nowhere.
+ */
+describe("FAQ entry slugs", () => {
+  it("produces a non-empty slug for every question", () => {
+    for (const entry of FAQ_ENTRIES) {
+      expect(contentEntrySlug(entry.question)).not.toBe("");
+    }
+  });
+
+  it("produces a unique slug per question", () => {
+    const slugs = FAQ_ENTRIES.map((e) => contentEntrySlug(e.question));
+    expect(new Set(slugs).size).toBe(slugs.length);
+  });
+
+  it("produces a URL-safe slug for every question", () => {
+    for (const entry of FAQ_ENTRIES) {
+      expect(contentEntrySlug(entry.question)).toMatch(
+        /^[a-z0-9]+(-[a-z0-9]+)*$/
+      );
+    }
+  });
+
+  it("does not collide with any glossary term slug in a way that hides an entry", () => {
+    // The two surfaces are namespaced by prefix (`faq-entry-` /
+    // `glossary-entry-`), so an overlap is legal — this pins that the
+    // namespacing is what disambiguates, not luck.
+    const faqSlugs = new Set(
+      FAQ_ENTRIES.map((e) => contentEntrySlug(e.question))
+    );
+    const glossarySlugs = new Set(
+      GLOSSARY_ENTRIES.map((e) => contentEntrySlug(e.term))
+    );
+    for (const slug of faqSlugs) {
+      expect(`faq-entry-${slug}`).not.toBe(`glossary-entry-${slug}`);
+    }
+    expect(glossarySlugs.size).toBeGreaterThan(0);
   });
 });

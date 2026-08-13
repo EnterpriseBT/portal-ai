@@ -17,7 +17,10 @@ import type {
   PortalMessageBlock,
 } from "@portalai/core/contracts";
 
+import { FAQCategory } from "@portalai/core/content";
+
 import { sdk, queryKeys } from "../api/sdk";
+import { HelpTab } from "../utils/routes.util";
 import { usePortalStream } from "../utils/portal-stream.util";
 import { ChatWindowUI, type ChatWindowHandle } from "./ChatWindow.component";
 import { usePortalChatLock } from "../utils/portal-chat-lock.util";
@@ -156,14 +159,23 @@ const PortalSessionEmptyState: React.FC = () => (
       questions, generate charts, and create or modify records, entities, and
       field mappings, all in natural language.
     </Typography>
-    <MuiLink
-      component={Link}
+    {/* Deep-linked to the portal FAQ (#365): this link promises portal
+        material, so landing on the Getting Started checklist is a dead end.
+        The router `Link` is the anchor and `MuiLink component="span"` supplies
+        only the styling — `MuiLink component={Link}` erases TanStack's generic
+        and collapses `search` to `never`. `to` is the literal "/help", not
+        `ApplicationRoute.Help`, for the same reason. Both constraints are
+        recorded on `UpgradeLink.component.tsx`. */}
+    <Link
       to="/help"
-      variant="body2"
+      search={{ tab: HelpTab.Faq, category: FAQCategory.Analytics }}
+      style={{ textDecoration: "none" }}
       data-testid="portal-session-empty-help-link"
     >
-      Learn what portal sessions can do →
-    </MuiLink>
+      <MuiLink component="span" variant="body2" sx={{ cursor: "pointer" }}>
+        Learn what portal sessions can do →
+      </MuiLink>
+    </Link>
   </Box>
 );
 

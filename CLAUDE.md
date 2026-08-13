@@ -404,6 +404,27 @@ Concrete repositories extend `ListOptions` with `include?: string[]` and overrid
 
 TanStack Router with file-based routing in `apps/web/src/routes/`. Route tree auto-generates on save. Create routes with `createFileRoute`, protect them by nesting under `_authorized`.
 
+### Addressable sections (`?tab=` / `?category=` / `#…-entry-<slug>`)
+
+A view whose sections are linked to **from elsewhere** makes those sections addressable rather than holding them in component state. Two shapes exist, and the difference is deliberate:
+
+| | Settings (#284) | Help (#365) |
+|---|---|---|
+| Direction | **Read-once** — seeds the tab at mount; clicking a tab does not rewrite the URL | **Two-way** — the URL *is* the state; clicks rewrite it, the back button works |
+| Why | One inbound link (`UpgradeLink` → billing); nothing links *out of* a Settings tab | Help is linked to from the app, and #367's assistant cites specific entries |
+
+For a new addressable view, follow the Help shape (`utils/routes.util.ts` → `HelpTab` + `HELP_TAB_INDEX` + `normalizeHelpSearch`):
+
+- **One sanitizer owns the rules.** `validateSearch` on the route calls it, and the view calls it again on what it reads. Cross-field rules (a category that belongs to the *other* tab) live there, so there is one answer to "is this a valid address".
+- **Fail open, never throw.** An unknown tab, an unknown category, a mismatched pair, or an anchor naming a deleted entry degrades to the working default page. Stale links and content churn are normal, not exceptional.
+- **Read the location, not the match.** The container reads `useRouterState({select: s => s.location.search})`. `useSearch({from: …})` and `useSearch({strict: false})` both require a route match, so the view crashes anywhere it renders off-route — including the shared test router, which registers no file routes.
+- **`to` is a string literal, never the `ApplicationRoute` enum**, wherever a typed `search` is passed — the enum member type defeats TanStack's search-param inference. Pair a router `Link` with `MuiLink component="span"`; `component={Link}` erases the generic. Both recorded in `UpgradeLink.component.tsx`.
+- **History intent:** a tab/destination change **pushes**; an exploratory filter (category chip) **replaces**, so toggling doesn't bury the previous view behind repeated back presses.
+- **Entry anchors** are `#<surface>-entry-<slug>`, slugged by `contentEntrySlug` from `@portalai/core/content` — the same function the API uses to build Help links, because a slug in a URL is a contract, not a display detail. An anchor is the most specific address there is: it outranks both the tab param and any category filter that would hide its entry.
+- Sections reached by anchor must be **controlled** (`expanded` + `onToggle`), not `defaultExpanded` — an already-mounted accordion ignores a later expansion request, which reads as a link that scrolls to a closed entry.
+
+The Help **search box** is deliberately *not* in the URL: user-typed text brings debounce and history-spam decisions, and no user text, entity id, or org id belongs in a shareable address.
+
 ## Theming
 
 Two themes via `@portalai/core`: Brand (default, light) and Brand Dark. Persisted in localStorage under `portalai-theme` (JSON-encoded `"brand"` / `"brand.dark"`). Fonts: **Exo 2** (body), **Fraunces** (headings), **Space Grotesk** (secondary sans), **Space Mono** (monospace) — shipped as WOFF2 with TTF fallbacks (`packages/core` `build:fonts`).
