@@ -949,3 +949,47 @@ describe("buildSystemPrompt — geospatial SQL guidance (#316)", () => {
     expect(prompt).not.toContain("Geospatial is PostGIS-native");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Help section (#367)
+// ---------------------------------------------------------------------------
+
+describe("buildSystemPrompt — Help (#367)", () => {
+  it("renders the ## Help section", () => {
+    expect(buildSystemPrompt(makeContext())).toContain("## Help");
+  });
+
+  it("names platform_help as the destination for product questions", () => {
+    const prompt = buildSystemPrompt(makeContext());
+    expect(prompt).toContain("platform_help");
+    expect(prompt).toMatch(/product/i);
+  });
+
+  it("draws the boundary in both directions", () => {
+    // The routing risk this design takes on: without a trigger, the only
+    // things separating a product question from a data question are the
+    // tool's description and this section. It has to say both halves — where
+    // product questions go AND where data questions go — or the agent will
+    // reach for help mid-analysis.
+    const prompt = buildSystemPrompt(makeContext());
+    const help = prompt.slice(prompt.indexOf("## Help"));
+    expect(help).toMatch(/data tools|data in this station/i);
+  });
+
+  it("tells the agent to relay the tool's answer rather than rewrite it", () => {
+    // The tool composes because platform behavior is what a model states
+    // confidently and wrongly. The prompt is what keeps the relay honest.
+    const help = buildSystemPrompt(makeContext());
+    expect(help).toMatch(/relay/i);
+    expect(help).toMatch(/do not rewrite|don't rewrite/i);
+  });
+
+  it("renders ## Help even when no toolpacks are enabled", () => {
+    // A pack-less station is exactly the session where a user needs
+    // orientation — and since #367 that session exists instead of erroring.
+    const prompt = buildSystemPrompt(
+      makeContext({ effectiveToolPacks: [], entities: [] })
+    );
+    expect(prompt).toContain("## Help");
+  });
+});

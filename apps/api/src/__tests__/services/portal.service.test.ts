@@ -1486,6 +1486,59 @@ describe("PortalService", () => {
       expect(capturedTools).toBe(tools);
     });
 
+    it("passes the always-available help tool through to streamText (#367)", async () => {
+      // No trigger and no restricted run — platform_help rides the ordinary
+      // tool set, and the agent routes to it. The whole feature depends on it
+      // actually reaching the model, so pin the path rather than the builder.
+      mockBuildAnalyticsTools.mockResolvedValue({
+        sql_query: {},
+        current_time: {},
+        station_context: {},
+        platform_help: {},
+      });
+
+      let capturedTools: Record<string, unknown> = {};
+      (mockStreamText as any).mockImplementation((opts: any) => {
+        capturedTools = opts.tools;
+        return { fullStream: makeStream([{ type: "finish" }]) };
+      });
+
+      const sse = makeSse();
+      await PortalService.streamResponse({
+        portalId: PORTAL_ID,
+        messages: [],
+        stationContext,
+        organizationId: ORG_ID,
+        userId: "user-001",
+        sse: sse as any,
+      });
+
+      expect(Object.keys(capturedTools)).toContain("platform_help");
+    });
+
+    it("does not force a tool choice (#367)", async () => {
+      // The amended premise: there is no directive turn, so there is no turn
+      // on which forcing a call would be correct. The agent routes, as it
+      // does for every other tool.
+      let captured: Record<string, unknown> = {};
+      (mockStreamText as any).mockImplementation((opts: any) => {
+        captured = opts;
+        return { fullStream: makeStream([{ type: "finish" }]) };
+      });
+
+      const sse = makeSse();
+      await PortalService.streamResponse({
+        portalId: PORTAL_ID,
+        messages: [],
+        stationContext,
+        organizationId: ORG_ID,
+        userId: "user-001",
+        sse: sse as any,
+      });
+
+      expect(captured.toolChoice).toBeUndefined();
+    });
+
     it("throws PORTAL_NOT_FOUND when portal does not exist at persist time", async () => {
       mockStreamText.mockReturnValue({
         fullStream: makeStream([{ type: "finish" }]),

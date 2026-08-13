@@ -11,3 +11,4 @@
 
 export * from "./glossary.util.js";
 export * from "./faq.util.js";
+export * from "./help-url.util.js";
