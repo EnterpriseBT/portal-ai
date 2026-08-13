@@ -2,7 +2,7 @@
 
 Manual smoke test for [#366](https://github.com/EnterpriseBT/portal-ai/issues/366) — portal best-practices guidance in the glossary and FAQ. Covers the three rewritten glossary definitions and their cross-links, three new FAQ questions under Analytics & Portals, the markdown-rendering constraint on both surfaces, the public marketing site that consumes the same module, and the reordered billing questions.
 
-**Branch under test:** `feat/portal-best-practices-content` — child of epic [#364](https://github.com/EnterpriseBT/portal-ai/issues/364), **PR base `epic/portal-guidance`, not `main`**. PR not yet opened when this doc was written; add the link when it is.
+**Branch under test:** `feat/portal-best-practices-content` (PR [#374](https://github.com/EnterpriseBT/portal-ai/pull/374)) — child of epic [#364](https://github.com/EnterpriseBT/portal-ai/issues/364), **PR base `epic/portal-guidance`, not `main`**.
 
 This is a **reading** walkthrough — the point is whether the copy is true, actionable, and renders cleanly on all three surfaces. Read the new text as a user would, not as its author. Run **§Preflight** once; sections are independent after that.
 
