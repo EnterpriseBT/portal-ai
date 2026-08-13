@@ -19,8 +19,12 @@ const {
   RouterProvider,
   useSearch,
 } = await import("@tanstack/react-router");
-const { render, screen } = await import("@testing-library/react");
+const { render, screen, waitFor, within } =
+  await import("@testing-library/react");
+const userEvent = (await import("@testing-library/user-event")).default;
+const { ThemeProvider } = await import("@portalai/core/ui");
 const { Route: HelpRoute } = await import("../routes/help");
+const { HelpView } = await import("../views/Help.view");
 const { FAQCategory, GlossaryCategory } =
   await import("@portalai/core/content");
 const { HelpTab } = await import("../utils/routes.util");
@@ -99,6 +103,12 @@ describe("/help search contract", () => {
     expect(search()).toEqual({});
   });
 
+  it("resolves an anchor-only address", async () => {
+    const search = renderAt("/help#faq-entry-why-did-my-job-fail");
+    await screen.findByTestId("probe");
+    expect(search()).toEqual({});
+  });
+
   it("ignores foreign params without throwing, and leaves them intact", async () => {
     const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
     // TanStack replaces the keys the validator returns and passes every other
@@ -113,5 +123,133 @@ describe("/help search contract", () => {
     expect(resolved.utm_source).toBe("email");
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+});
+
+/**
+ * The round trip: the real route + the real container, driven through a memory
+ * router. No mocked `useNavigate` — clicking a tab has to actually change the
+ * address, and the back button has to actually work, or the feature doesn't.
+ */
+describe("Help view URL round trip", () => {
+  const renderHelpAt = (url: string) => {
+    const rootRoute = createRootRoute();
+    const helpRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/help",
+      validateSearch: HelpRoute.options.validateSearch,
+      component: HelpView,
+    });
+
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([helpRoute]),
+      history: createMemoryHistory({ initialEntries: [url] }),
+    });
+
+    render(
+      <ThemeProvider defaultTheme="brand">
+        <RouterProvider router={router} />
+      </ThemeProvider>
+    );
+    return router;
+  };
+
+  it("opens Getting Started for a bare /help", async () => {
+    renderHelpAt("/help");
+    expect(
+      await screen.findByRole("tab", { name: "Getting Started" })
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens the FAQ tab with the Analytics chip active from a deep link", async () => {
+    renderHelpAt("/help?tab=faq&category=analytics");
+
+    expect(await screen.findByRole("tab", { name: "FAQ" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    const filters = screen.getByTestId("faq-category-filters");
+    expect(
+      within(filters).getByText("Analytics & Portals").closest(".MuiChip-root")
+    ).toHaveClass("MuiChip-colorPrimary");
+  });
+
+  it("opens the Glossary tab with the Analytics chip active from a deep link", async () => {
+    renderHelpAt("/help?tab=glossary&category=analytics");
+
+    expect(
+      await screen.findByRole("tab", { name: "Glossary" })
+    ).toHaveAttribute("aria-selected", "true");
+    const filters = screen.getByTestId("glossary-category-filters");
+    expect(
+      within(filters).getByText("Analytics").closest(".MuiChip-root")
+    ).toHaveClass("MuiChip-colorPrimary");
+  });
+
+  it("opens Getting Started — not an error page — for a nonsense address", async () => {
+    renderHelpAt("/help?tab=nonsense&category=nonsense");
+
+    expect(
+      await screen.findByRole("tab", { name: "Getting Started" })
+    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { name: "Help" })).toBeInTheDocument();
+  });
+
+  it("opens the FAQ tab with no filter when the category belongs to the glossary", async () => {
+    renderHelpAt("/help?tab=faq&category=data-modeling");
+
+    expect(await screen.findByRole("tab", { name: "FAQ" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    const filters = screen.getByTestId("faq-category-filters");
+    expect(
+      within(filters).getByText("All").closest(".MuiChip-root")
+    ).toHaveClass("MuiChip-colorPrimary");
+  });
+
+  it("writes the tab to the address bar when the user switches tabs", async () => {
+    const user = userEvent.setup();
+    const router = renderHelpAt("/help");
+
+    await user.click(await screen.findByRole("tab", { name: "Glossary" }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({ tab: "glossary" });
+    });
+    expect(screen.getByRole("tab", { name: "Glossary" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+  });
+
+  it("pushes a tab change and replaces a category change, so back returns to the previous tab", async () => {
+    const user = userEvent.setup();
+    const router = renderHelpAt("/help");
+
+    // Push: /help -> /help?tab=glossary
+    await user.click(await screen.findByRole("tab", { name: "Glossary" }));
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({ tab: "glossary" });
+    });
+
+    // Replace: chip toggling must not accumulate history entries.
+    const filters = screen.getByTestId("glossary-category-filters");
+    await user.click(within(filters).getByText("Analytics"));
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({
+        tab: "glossary",
+        category: "analytics",
+      });
+    });
+
+    // One step back lands on the tab we came from, not the pre-chip URL.
+    router.history.back();
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({});
+    });
+    expect(
+      await screen.findByRole("tab", { name: "Getting Started" })
+    ).toHaveAttribute("aria-selected", "true");
   });
 });
