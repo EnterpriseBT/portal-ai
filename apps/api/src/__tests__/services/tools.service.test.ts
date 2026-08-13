@@ -1041,7 +1041,13 @@ describe("buildAnalyticsTools()", () => {
 // ---------------------------------------------------------------------------
 
 describe("built-in tool registry consistency (#115)", () => {
-  const SYSTEM_TOOLS = new Set(["current_time", "station_context"]);
+  const SYSTEM_TOOLS = new Set([
+    "current_time",
+    "station_context",
+    // #367 — in-session platform help. A system tool, not a pack, so it has
+    // no BUILTIN_TOOLPACKS descriptor and can never be entitlement-gated.
+    "platform_help",
+  ]);
   const descriptorNames = new Set(
     BUILTIN_TOOLPACKS.flatMap((p) => p.tools.map((t) => t.name))
   );

@@ -155,6 +155,7 @@ export interface WebhookImplementation {
 export const BUILTIN_TOOL_NAMES = new Set<string>([
   "current_time",
   "station_context",
+  "platform_help",
   "sql_query",
   "display_entity_records",
   "visualize_d3",
