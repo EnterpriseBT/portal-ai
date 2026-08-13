@@ -1,14 +1,24 @@
 import { jest } from "@jest/globals";
+import React from "react";
 import type { GettingStartedStep } from "../utils/getting-started.util";
 import type { GlossaryEntry } from "@portalai/core/content";
 import type { FAQEntry } from "@portalai/core/content";
+import type {
+  GlossaryCategory as GlossaryCategoryValue,
+  FAQCategory as FAQCategoryValue,
+} from "@portalai/core/content";
+import type {
+  HelpTab as HelpTabValue,
+  HelpAnchor as HelpAnchorValue,
+} from "../utils/routes.util";
 
 const { render, screen, within } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { HelpView, HelpViewUI } = await import("../views/Help.view");
 const { GlossaryCategory } = await import("@portalai/core/content");
 const { FAQCategory } = await import("@portalai/core/content");
-const { ApplicationRoute } = await import("../utils/routes.util");
+const { ApplicationRoute, HELP_TAB_INDEX, HelpTab } =
+  await import("../utils/routes.util");
 
 const stepsFixture: GettingStartedStep[] = [
   {
@@ -76,13 +86,92 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-const renderUI = (onNavigate = jest.fn()) =>
-  render(
+/**
+ * `HelpViewUI` is controlled by the URL since #365 — it renders the tab and
+ * category it is handed and reports changes back. This harness plays the part
+ * the container plays in the app (hold the value, feed it back), so the
+ * behavior tests below still describe what a user experiences end to end.
+ * Tests that care about the *reporting* half render the UI directly with
+ * fixed props and a spy.
+ */
+const ControlledHelpHarness: React.FC<{
+  onNavigate?: (route: string) => void;
+  initialTab?: HelpTabValue;
+  initialCategory?: GlossaryCategoryValue | FAQCategoryValue | null;
+}> = ({ onNavigate = jest.fn(), initialTab, initialCategory = null }) => {
+  const [tab, setTab] = React.useState<HelpTabValue>(
+    initialTab ?? HelpTab.GettingStarted
+  );
+  const [glossaryCategory, setGlossaryCategory] =
+    React.useState<GlossaryCategoryValue | null>(
+      initialTab === HelpTab.Glossary
+        ? (initialCategory as GlossaryCategoryValue | null)
+        : null
+    );
+  const [faqCategory, setFaqCategory] = React.useState<FAQCategoryValue | null>(
+    initialTab === HelpTab.Faq
+      ? (initialCategory as FAQCategoryValue | null)
+      : null
+  );
+  const [anchor, setAnchor] = React.useState<HelpAnchorValue | null>(null);
+
+  return (
     <HelpViewUI
       steps={stepsFixture}
       glossaryEntries={glossaryFixture}
       faqEntries={faqFixture}
       onNavigate={onNavigate}
+      tabIndex={HELP_TAB_INDEX[tab]}
+      glossaryCategory={glossaryCategory}
+      faqCategory={faqCategory}
+      onTabChange={(nextTab) => {
+        // Mirrors the container: a tab change drops the category param.
+        setTab(nextTab);
+        setGlossaryCategory(null);
+        setFaqCategory(null);
+      }}
+      anchor={anchor}
+      onNavigateToEntry={(next) => {
+        // Mirrors the container: navigating to an entry selects its surface,
+        // drops the category param, and sets the hash.
+        setTab(next.surface);
+        setGlossaryCategory(null);
+        setFaqCategory(null);
+        setAnchor(next);
+      }}
+      onCategoryChange={(nextTab, category) => {
+        setTab(nextTab);
+        if (nextTab === HelpTab.Glossary) {
+          setGlossaryCategory(category as GlossaryCategoryValue | null);
+        } else if (nextTab === HelpTab.Faq) {
+          setFaqCategory(category as FAQCategoryValue | null);
+        }
+      }}
+    />
+  );
+};
+
+const renderUI = (onNavigate = jest.fn()) =>
+  render(<ControlledHelpHarness onNavigate={onNavigate} />);
+
+/** Renders the pure UI with fixed props — for asserting what it reports. */
+const renderControlled = (
+  props: Partial<React.ComponentProps<typeof HelpViewUI>> = {}
+) =>
+  render(
+    <HelpViewUI
+      steps={stepsFixture}
+      glossaryEntries={glossaryFixture}
+      faqEntries={faqFixture}
+      onNavigate={jest.fn()}
+      tabIndex={0}
+      glossaryCategory={null}
+      faqCategory={null}
+      anchor={null}
+      onTabChange={jest.fn()}
+      onCategoryChange={jest.fn()}
+      onNavigateToEntry={jest.fn()}
+      {...props}
     />
   );
 
@@ -241,6 +330,128 @@ describe("HelpViewUI", () => {
   });
 });
 
+// ── 5.1b — HelpViewUI is driven by the URL (#365) ───────────────────
+
+describe("HelpViewUI (controlled by props)", () => {
+  it("renders the tab it is handed, with no Getting Started first paint", () => {
+    renderControlled({ tabIndex: HELP_TAB_INDEX[HelpTab.Faq] });
+
+    expect(screen.getByRole("tab", { name: "FAQ" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    expect(
+      screen.getByRole("tab", { name: "Getting Started" })
+    ).toHaveAttribute("aria-selected", "false");
+    // The FAQ panel's content is present on the very first render — a deep
+    // link must not flash the default tab on its way to the right one.
+    expect(
+      screen.getByTestId("faq-entry-how-do-i-connect-my-first-data-source")
+    ).toBeInTheDocument();
+  });
+
+  it("renders the FAQ category it is handed as the active chip, ungrouped", () => {
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Faq],
+      faqCategory: FAQCategory.Jobs,
+    });
+
+    const filters = screen.getByTestId("faq-category-filters");
+    expect(
+      within(filters)
+        .getByText("Jobs & Background Tasks")
+        .closest(".MuiChip-root")
+    ).toHaveClass("MuiChip-colorPrimary");
+    // A category filter flattens the grouped render.
+    expect(
+      screen.queryByTestId("faq-category-header-jobs")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("faq-entry-why-did-my-job-fail")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("faq-entry-how-do-i-connect-my-first-data-source")
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders the glossary category it is handed as the active chip", () => {
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Glossary],
+      glossaryCategory: GlossaryCategory.Analytics,
+    });
+
+    const filters = screen.getByTestId("glossary-category-filters");
+    expect(
+      within(filters).getByText("Analytics").closest(".MuiChip-root")
+    ).toHaveClass("MuiChip-colorPrimary");
+    expect(screen.getByTestId("glossary-entry-station")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("glossary-entry-connector-instance")
+    ).not.toBeInTheDocument();
+  });
+
+  it("reports a tab click without moving the tab itself", async () => {
+    const user = userEvent.setup();
+    const onTabChange = jest.fn();
+    renderControlled({ onTabChange });
+
+    await user.click(screen.getByRole("tab", { name: "FAQ" }));
+
+    expect(onTabChange).toHaveBeenCalledWith(HelpTab.Faq);
+    // The URL owns the tab — the UI must not move on its own.
+    expect(
+      screen.getByRole("tab", { name: "Getting Started" })
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("reports a category chip click with its tab", async () => {
+    const user = userEvent.setup();
+    const onCategoryChange = jest.fn();
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Glossary],
+      onCategoryChange,
+    });
+
+    const filters = screen.getByTestId("glossary-category-filters");
+    await user.click(within(filters).getByText("Analytics"));
+
+    expect(onCategoryChange).toHaveBeenCalledWith(
+      HelpTab.Glossary,
+      GlossaryCategory.Analytics
+    );
+  });
+
+  it("reports null when the active chip is clicked again", async () => {
+    const user = userEvent.setup();
+    const onCategoryChange = jest.fn();
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Faq],
+      faqCategory: FAQCategory.Jobs,
+      onCategoryChange,
+    });
+
+    const filters = screen.getByTestId("faq-category-filters");
+    await user.click(within(filters).getByText("Jobs & Background Tasks"));
+
+    expect(onCategoryChange).toHaveBeenCalledWith(HelpTab.Faq, null);
+  });
+
+  it("reports null when the All chip is clicked", async () => {
+    const user = userEvent.setup();
+    const onCategoryChange = jest.fn();
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Glossary],
+      glossaryCategory: GlossaryCategory.Analytics,
+      onCategoryChange,
+    });
+
+    const filters = screen.getByTestId("glossary-category-filters");
+    await user.click(within(filters).getByText("All"));
+
+    expect(onCategoryChange).toHaveBeenCalledWith(HelpTab.Glossary, null);
+  });
+});
+
 // ── 5.2 — HelpView container ────────────────────────────────────────
 
 describe("HelpView container", () => {
@@ -253,5 +464,110 @@ describe("HelpView container", () => {
     ).toHaveAttribute("aria-selected", "true");
     // Header.
     expect(screen.getByRole("heading", { name: "Help" })).toBeInTheDocument();
+  });
+});
+
+// ── 5.1c — Entry anchors (#365) ─────────────────────────────────────
+
+describe("HelpViewUI (entry anchors)", () => {
+  it("expands and scrolls to the anchored FAQ entry", () => {
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Faq],
+      anchor: { surface: HelpTab.Faq, slug: "why-did-my-job-fail" },
+    });
+
+    const entry = screen.getByTestId("faq-entry-why-did-my-job-fail");
+    expect(
+      within(entry).getByText("Open the job to see the error details.")
+    ).toBeVisible();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("expands and scrolls to the anchored glossary entry", () => {
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Glossary],
+      anchor: { surface: HelpTab.Glossary, slug: "station" },
+    });
+
+    const entry = screen.getByTestId("glossary-entry-station");
+    expect(
+      within(entry).getByText("A workspace bundling connectors and tool packs.")
+    ).toBeVisible();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("lets the anchor outrank a category filter that would hide the entry", () => {
+    // `Job Status` is a System term; the Analytics chip would filter it out.
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Glossary],
+      glossaryCategory: GlossaryCategory.Analytics,
+      anchor: { surface: HelpTab.Glossary, slug: "job-status" },
+    });
+
+    expect(screen.getByTestId("glossary-entry-job-status")).toBeInTheDocument();
+  });
+
+  it("is a silent no-op for an anchor that matches no entry", () => {
+    expect(() =>
+      renderControlled({
+        tabIndex: HELP_TAB_INDEX[HelpTab.Faq],
+        anchor: { surface: HelpTab.Faq, slug: "no-such-entry-here" },
+      })
+    ).not.toThrow();
+
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId("faq-entry-why-did-my-job-fail")
+    ).toBeInTheDocument();
+  });
+
+  it("keeps manual expansion working alongside an anchor", async () => {
+    const user = userEvent.setup();
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Faq],
+      anchor: { surface: HelpTab.Faq, slug: "why-did-my-job-fail" },
+    });
+
+    const other = screen.getByTestId(
+      "faq-entry-how-do-i-connect-my-first-data-source"
+    );
+    await user.click(
+      within(other).getByText("How do I connect my first data source?")
+    );
+
+    // Both open — the anchor seeded the set, the click added to it.
+    expect(
+      within(other).getByText(
+        "Open the Connectors page and pick a connector definition."
+      )
+    ).toBeVisible();
+    expect(
+      within(screen.getByTestId("faq-entry-why-did-my-job-fail")).getByText(
+        "Open the job to see the error details."
+      )
+    ).toBeVisible();
+  });
+
+  it("reports a related-term click as a navigation to that entry", async () => {
+    const user = userEvent.setup();
+    const onNavigateToEntry = jest.fn();
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Faq],
+      anchor: {
+        surface: HelpTab.Faq,
+        slug: "how-do-i-connect-my-first-data-source",
+      },
+      onNavigateToEntry,
+    });
+
+    const entry = screen.getByTestId(
+      "faq-entry-how-do-i-connect-my-first-data-source"
+    );
+    await user.click(within(entry).getByText("Station"));
+
+    expect(onNavigateToEntry).toHaveBeenCalledWith({
+      surface: HelpTab.Glossary,
+      slug: "station",
+    });
   });
 });

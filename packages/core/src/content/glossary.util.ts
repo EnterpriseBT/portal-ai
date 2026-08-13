@@ -13,6 +13,29 @@
  * by a static site with no bundler assumptions.
  */
 
+// ── Entry slug ──────────────────────────────────────────────────────
+
+/**
+ * The URL-safe slug for a glossary term or an FAQ question.
+ *
+ * This is a **contract**, not a display detail: it appears in the
+ * `#glossary-entry-<slug>` / `#faq-entry-<slug>` fragments that make a Help
+ * entry addressable (#365), in the `data-testid` of both Help lists, and in
+ * the Help links the assistant builds server-side (#367). Two copies of the
+ * rule that must agree byte-for-byte across a network boundary would be a bug
+ * waiting for the first term with punctuation in it, so it lives here beside
+ * the content it slugs.
+ *
+ * It supersedes the two private slugifiers that lived in `apps/web`'s
+ * `GlossaryList` and `FAQList` — the stricter FAQ rule, which every current
+ * glossary term already satisfies (pinned in the tests).
+ */
+export const contentEntrySlug = (text: string): string =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
 // ── Categories ──────────────────────────────────────────────────────
 
 export enum GlossaryCategory {

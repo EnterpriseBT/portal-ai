@@ -2,6 +2,7 @@ import {
   GLOSSARY_CATEGORY_LABELS,
   GLOSSARY_ENTRIES,
   GlossaryCategory,
+  contentEntrySlug,
   filterGlossary,
   type GlossaryEntry,
 } from "../../content/glossary.util.js";
@@ -228,5 +229,67 @@ describe("filterGlossary", () => {
     expect(
       filterGlossary(GLOSSARY_ENTRIES, { query: "zzz-no-such-term-zzz" })
     ).toEqual([]);
+  });
+});
+
+// ── Entry slug (#365) ───────────────────────────────────────────────
+
+describe("contentEntrySlug", () => {
+  it("lowercases and hyphenates a term", () => {
+    expect(contentEntrySlug("Portal Result")).toBe("portal-result");
+    expect(contentEntrySlug("Entity Record")).toBe("entity-record");
+  });
+
+  it("collapses runs of non-alphanumerics to a single hyphen", () => {
+    expect(contentEntrySlug("How do I connect?")).toBe("how-do-i-connect");
+    expect(contentEntrySlug("Jobs & Background   Tasks")).toBe(
+      "jobs-background-tasks"
+    );
+  });
+
+  it("trims leading and trailing hyphens", () => {
+    expect(contentEntrySlug("  Portal  ")).toBe("portal");
+    expect(contentEntrySlug("(Pinned Result)")).toBe("pinned-result");
+  });
+
+  it("is idempotent — slugging a slug changes nothing", () => {
+    const slug = contentEntrySlug("Field Mapping");
+    expect(contentEntrySlug(slug)).toBe(slug);
+  });
+});
+
+/**
+ * The slug is a contract, not a display detail: it appears in the
+ * `#glossary-entry-<slug>` / `#faq-entry-<slug>` Help fragments (#365), in
+ * both Help lists' `data-testid`s, and in the links the API-side assistant
+ * builds (#367). These pins are what let one function replace the two
+ * private slugifiers that used to live in apps/web.
+ */
+describe("contentEntrySlug pins", () => {
+  /** The rule `GlossaryList.component.tsx` used before #365 unified them. */
+  const legacyGlossarySlug = (term: string): string =>
+    term.toLowerCase().replace(/\s+/g, "-");
+
+  it("produces the pre-#365 slug for every glossary term", () => {
+    for (const entry of GLOSSARY_ENTRIES) {
+      expect(contentEntrySlug(entry.term)).toBe(legacyGlossarySlug(entry.term));
+    }
+  });
+
+  it("produces a non-empty slug for every glossary term", () => {
+    for (const entry of GLOSSARY_ENTRIES) {
+      expect(contentEntrySlug(entry.term)).not.toBe("");
+    }
+  });
+
+  it("produces a unique slug per glossary term", () => {
+    const slugs = GLOSSARY_ENTRIES.map((e) => contentEntrySlug(e.term));
+    expect(new Set(slugs).size).toBe(slugs.length);
+  });
+
+  it("produces a URL-safe slug for every glossary term", () => {
+    for (const entry of GLOSSARY_ENTRIES) {
+      expect(contentEntrySlug(entry.term)).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
+    }
   });
 });

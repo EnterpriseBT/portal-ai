@@ -11,6 +11,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 
 import {
   GLOSSARY_CATEGORY_LABELS,
+  contentEntrySlug,
   type GlossaryEntry,
 } from "@portalai/core/content";
 
@@ -68,19 +69,18 @@ const GlossaryProse: React.FC<{ source: string; italic?: boolean }> = ({
 export interface GlossaryListProps {
   entries: GlossaryEntry[];
   onSelectTerm?: (term: string) => void;
-  /** Slug of the entry whose accordion should be expanded by default. */
-  expandedTerm?: string | null;
-  /** Optional ref-attaching function so consumers can scroll to a specific entry. */
-  registerEntryRef?: (term: string, el: HTMLElement | null) => void;
+  /** Slugs whose accordion is open. Controlled — the consumer owns it (#365). */
+  expandedSlugs: ReadonlySet<string>;
+  onToggleEntry: (slug: string) => void;
+  /** Ref registry keyed by slug, so a `#glossary-entry-<slug>` anchor can scroll here. */
+  registerEntryRef?: (slug: string, el: HTMLElement | null) => void;
 }
-
-const slugifyTerm = (term: string): string =>
-  term.toLowerCase().replace(/\s+/g, "-");
 
 export const GlossaryList: React.FC<GlossaryListProps> = ({
   entries,
   onSelectTerm,
-  expandedTerm,
+  expandedSlugs,
+  onToggleEntry,
   registerEntryRef,
 }) => {
   if (entries.length === 0) {
@@ -96,19 +96,17 @@ export const GlossaryList: React.FC<GlossaryListProps> = ({
   return (
     <Stack spacing={1}>
       {entries.map((entry) => {
-        const slug = slugifyTerm(entry.term);
-        const expanded = expandedTerm
-          ? expandedTerm.toLowerCase() === entry.term.toLowerCase()
-          : undefined;
+        const slug = contentEntrySlug(entry.term);
 
         return (
           <Accordion
             key={slug}
             data-testid={`glossary-entry-${slug}`}
             ref={(el: HTMLElement | null) => {
-              registerEntryRef?.(entry.term, el);
+              registerEntryRef?.(slug, el);
             }}
-            defaultExpanded={expanded}
+            expanded={expandedSlugs.has(slug)}
+            onChange={() => onToggleEntry(slug)}
           >
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <Stack
