@@ -221,6 +221,33 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     category: FAQCategory.Analytics,
   },
   {
+    question: "Why are the assistant's answers vague or missing my data?",
+    answer:
+      "Almost always because the station has nothing to answer from. A portal answers from records that have actually been imported into the station's entities — not from general knowledge — so a station with no connected source, or one whose sync hasn't run yet, can only answer in generalities. Open the station and check that it has a connector instance and that its entities have records. If a source is connected but empty, run a sync and wait for the job to finish, then ask again.",
+    category: FAQCategory.Analytics,
+    relatedGlossaryTerms: [
+      "Portal",
+      "Entity Record",
+      "Connector Instance",
+      "Station",
+    ],
+  },
+  {
+    question: "How should I word my questions to get better answers?",
+    answer:
+      "Two things help more than anything else. Ask about one thing at a time — a narrow question routes cleanly to the right tool, while a compound one gives the assistant several jobs at once and no clear place to start. And use the station's own vocabulary: name entities, columns, and values the way they appear in your data, because that's what the assistant matches against. If your column is called subscription level, ask about subscription level rather than plan tier.",
+    category: FAQCategory.Analytics,
+    relatedGlossaryTerms: ["Portal", "Portal Message", "Station"],
+  },
+  {
+    question:
+      "Why does the assistant say my data is incomplete while an import is running?",
+    answer:
+      "Because it is, for now. While a background job is importing or syncing a connector instance, that data is still arriving and the records it owns are read-only — syncing, editing fields, and deleting are paused until the job finishes, and the station's detail page says so while it runs. Ask again once the job reaches a terminal state and the answer will reflect the full data. Checking for a running job is worth doing before you trust a number that looks off.",
+    category: FAQCategory.Analytics,
+    relatedGlossaryTerms: ["Job Status", "Portal", "Connector Instance"],
+  },
+  {
     question: "How do I upgrade my plan?",
     answer:
       "Go to Settings → Subscription & Billing and pick a plan from the list — Subscribe takes you to Stripe's secure checkout. After you pay, your plan updates automatically within a few seconds (Stripe confirms the subscription to us directly). Your usage allocations reset on your new billing cycle from that point on. To change or cancel later, use Manage subscription on the same tab, which opens the Stripe billing portal.",
