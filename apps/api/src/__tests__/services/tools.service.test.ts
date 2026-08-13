@@ -468,14 +468,65 @@ describe("buildAnalyticsTools()", () => {
   });
 
   // -----------------------------------------------------------------------
-  // Error: empty toolPacks
+  // Pack-less stations (#367)
+  //
+  // This used to throw "Station must have at least one tool pack enabled".
+  // That throw fired *before* the always-available block, so a station with
+  // no packs configured got no tools at all — not even current_time or
+  // station_context — and the session failed outright. It was also exactly
+  // the station whose user most needs orientation. The builder now falls
+  // through to the system tools, which is the same session shape the code
+  // already produced for a station whose every configured pack is unentitled.
   // -----------------------------------------------------------------------
 
-  it("should throw when no toolpacks are enabled on the station", async () => {
+  it("should build the system tools when no toolpacks are enabled", async () => {
     setupStationMocks([]);
-    await expect(
-      buildAnalyticsTools(ORG_ID, STATION_ID, "user-001")
-    ).rejects.toThrow("Station must have at least one tool pack enabled");
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    expect(Object.keys(tools).sort()).toEqual([
+      "current_time",
+      "platform_help",
+      "station_context",
+    ]);
+  });
+
+  it("should offer platform_help on an ordinary station", async () => {
+    setupStationMocks(["data_query"]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    // Always available, alongside the other two system tools — there is no
+    // trigger and no directive; the agent routes to it.
+    expect(tools.platform_help).toBeDefined();
+    expect(tools.current_time).toBeDefined();
+    expect(tools.station_context).toBeDefined();
+  });
+
+  it("should declare platform_help to the cost gate as free", async () => {
+    // Free is immune by contract — never charged, never denied, never
+    // rate-limited, even under an exhausted quota. That short-circuit lives
+    // inside CostGateService and is tested there; what this asserts is the
+    // half this file owns: the wrap tells the gate the tool is free. (Mocking
+    // checkAdmission to deny would bypass the very logic under test.)
+    setupStationMocks(["data_query"]);
+    const spy = jest.spyOn(CostGateService, "checkAdmission");
+
+    try {
+      const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+      await (
+        tools.platform_help as { execute: (i: unknown, o: unknown) => unknown }
+      ).execute({ question: "what can I do here" }, {});
+
+      const call = spy.mock.calls.find(
+        (args) =>
+          (args[0] as { toolName?: string })?.toolName === "platform_help"
+      );
+      expect(call).toBeDefined();
+      expect((call![0] as { costHint?: string }).costHint).toBe("free");
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   // -----------------------------------------------------------------------
@@ -1357,7 +1408,7 @@ describe("buildAnalyticsTools() tier entitlements (#214)", () => {
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
     expect(Object.keys(tools).sort()).toEqual(
-      ["current_time", "station_context"].sort()
+      ["current_time", "platform_help", "station_context"].sort()
     );
   });
 
@@ -1389,8 +1440,11 @@ describe("buildAnalyticsTools() tier entitlements (#214)", () => {
 
     // Enumeration by construction: any new tool-construction path that
     // bypasses the entitlement filter surfaces as an unexpected key here.
+    // All three are system tools, which are never entitlement-gated by
+    // design — `platform_help` joined them in #367 precisely so no tier's
+    // allowlist can withhold platform help.
     expect(Object.keys(tools).sort()).toEqual(
-      ["current_time", "station_context"].sort()
+      ["current_time", "platform_help", "station_context"].sort()
     );
   });
 
