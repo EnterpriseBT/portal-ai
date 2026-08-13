@@ -1,4 +1,5 @@
 import React from "react";
+import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { Tabs, Tab, TabPanel, useTabs } from "../../ui/Tabs";
 
@@ -189,6 +190,112 @@ describe("Tabs Components", () => {
       const tab = screen.getByText("Alpha").closest("button");
       expect(tab).toHaveAttribute("id", "tab-0");
       expect(tab).toHaveAttribute("aria-controls", "tabpanel-0");
+    });
+
+    it("should move the panel when setValue is called (uncontrolled)", () => {
+      const Example = () => {
+        const { getTabPanelProps, setValue } = useTabs();
+        return (
+          <>
+            <button onClick={() => setValue(1)}>Go Beta</button>
+            <TabPanel {...getTabPanelProps(0)}>Alpha Content</TabPanel>
+            <TabPanel {...getTabPanelProps(1)}>Beta Content</TabPanel>
+          </>
+        );
+      };
+
+      render(<Example />);
+      fireEvent.click(screen.getByText("Go Beta"));
+
+      expect(screen.queryByText("Alpha Content")).not.toBeVisible();
+      expect(screen.getByText("Beta Content")).toBeVisible();
+    });
+  });
+
+  /**
+   * Controlled mode (#365). Help drives its tabs from the URL, so the hook
+   * needs to render a value it does not own. Passing `options.value` switches
+   * the hook to controlled: it renders the caller's value and reports changes
+   * instead of applying them. Omitting `options` is the existing behavior,
+   * pinned by the uncontrolled tests above.
+   */
+  describe("useTabs (controlled)", () => {
+    const ControlledExample = ({
+      value,
+      onChange,
+    }: {
+      value: number;
+      onChange: (next: number) => void;
+    }) => {
+      const { tabsProps, getTabProps, getTabPanelProps, setValue } = useTabs(
+        0,
+        {
+          value,
+          onChange,
+        }
+      );
+      return (
+        <>
+          <Tabs {...tabsProps}>
+            <Tab label="Alpha" {...getTabProps(0)} />
+            <Tab label="Beta" {...getTabProps(1)} />
+          </Tabs>
+          <button onClick={() => setValue(0)}>Imperative Alpha</button>
+          <TabPanel {...getTabPanelProps(0)}>Alpha Content</TabPanel>
+          <TabPanel {...getTabPanelProps(1)}>Beta Content</TabPanel>
+        </>
+      );
+    };
+
+    it("should render the caller's value, not the initial value", () => {
+      render(<ControlledExample value={1} onChange={jest.fn()} />);
+
+      expect(screen.queryByText("Alpha Content")).not.toBeVisible();
+      expect(screen.getByText("Beta Content")).toBeVisible();
+    });
+
+    it("should report a tab click without moving the panel itself", () => {
+      const onChange = jest.fn();
+      render(<ControlledExample value={0} onChange={onChange} />);
+
+      fireEvent.click(screen.getByText("Beta"));
+
+      expect(onChange).toHaveBeenCalledWith(1);
+      // The caller owns the value — until it feeds a new one back in, the
+      // rendered tab must not move on its own.
+      expect(screen.getByText("Alpha Content")).toBeVisible();
+      expect(screen.queryByText("Beta Content")).not.toBeVisible();
+    });
+
+    it("should route imperative setValue through onChange", () => {
+      const onChange = jest.fn();
+      render(<ControlledExample value={1} onChange={onChange} />);
+
+      fireEvent.click(screen.getByText("Imperative Alpha"));
+
+      expect(onChange).toHaveBeenCalledWith(0);
+      expect(screen.getByText("Beta Content")).toBeVisible();
+    });
+
+    it("should follow the caller's value across re-renders", () => {
+      const { rerender } = render(
+        <ControlledExample value={0} onChange={jest.fn()} />
+      );
+      expect(screen.getByText("Alpha Content")).toBeVisible();
+
+      rerender(<ControlledExample value={1} onChange={jest.fn()} />);
+      expect(screen.getByText("Beta Content")).toBeVisible();
+    });
+
+    it("should keep the same aria id scheme as uncontrolled", () => {
+      render(<ControlledExample value={1} onChange={jest.fn()} />);
+
+      const tab = screen.getByText("Beta").closest("button");
+      expect(tab).toHaveAttribute("id", "tab-1");
+      expect(tab).toHaveAttribute("aria-controls", "tabpanel-1");
+      expect(
+        screen.getByText("Beta Content").closest("[role=tabpanel]")
+      ).toHaveAttribute("aria-labelledby", "tab-1");
     });
   });
 });

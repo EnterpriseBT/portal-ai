@@ -16,14 +16,44 @@ export interface TabPanelProps {
   [key: `data-${string}`]: string;
 }
 
-export function useTabs(initialValue = 0) {
-  const [value, setValue] = React.useState(initialValue);
+export interface UseTabsOptions {
+  /**
+   * When provided, the hook is **controlled**: this value is rendered and the
+   * hook's own state is not read. Omit for the existing uncontrolled
+   * behavior. Added for Help (#365), whose tab is addressable by URL and so
+   * cannot be owned by the component that renders it.
+   */
+  value?: number;
+  /** Called on tab change — and on imperative `setValue` — in controlled mode. */
+  onChange?: (value: number) => void;
+}
+
+export function useTabs(initialValue = 0, options?: UseTabsOptions) {
+  const [internalValue, setInternalValue] = React.useState(initialValue);
+
+  // Keyed on the presence of `value`, not on a separate flag, so a caller
+  // cannot claim to be controlled without supplying one. The state above is
+  // declared unconditionally either way — no conditional hook.
+  const isControlled = options?.value !== undefined;
+  const value = isControlled ? (options.value as number) : internalValue;
+  const onChange = options?.onChange;
+
+  const setValue = React.useCallback(
+    (newValue: number) => {
+      if (isControlled) {
+        onChange?.(newValue);
+        return;
+      }
+      setInternalValue(newValue);
+    },
+    [isControlled, onChange]
+  );
 
   const handleChange = React.useCallback(
     (_event: React.SyntheticEvent, newValue: number) => {
       setValue(newValue);
     },
-    []
+    [setValue]
   );
 
   const tabsProps = {
