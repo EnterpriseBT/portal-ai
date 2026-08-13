@@ -11,6 +11,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 
 import {
   GLOSSARY_CATEGORY_LABELS,
+  contentEntrySlug,
   type GlossaryEntry,
 } from "@portalai/core/content";
 
@@ -74,9 +75,6 @@ export interface GlossaryListProps {
   registerEntryRef?: (term: string, el: HTMLElement | null) => void;
 }
 
-const slugifyTerm = (term: string): string =>
-  term.toLowerCase().replace(/\s+/g, "-");
-
 export const GlossaryList: React.FC<GlossaryListProps> = ({
   entries,
   onSelectTerm,
@@ -96,7 +94,7 @@ export const GlossaryList: React.FC<GlossaryListProps> = ({
   return (
     <Stack spacing={1}>
       {entries.map((entry) => {
-        const slug = slugifyTerm(entry.term);
+        const slug = contentEntrySlug(entry.term);
         const expanded = expandedTerm
           ? expandedTerm.toLowerCase() === entry.term.toLowerCase()
           : undefined;

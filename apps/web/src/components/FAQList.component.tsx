@@ -10,6 +10,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import {
   FAQ_CATEGORY_LABELS,
   FAQCategory,
+  contentEntrySlug,
   type FAQEntry,
 } from "@portalai/core/content";
 
@@ -19,12 +20,6 @@ export interface FAQListProps {
   groupByCategory?: boolean;
   onSelectTerm?: (term: string) => void;
 }
-
-const slugifyQuestion = (question: string): string =>
-  question
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
 
 const groupEntries = (
   entries: FAQEntry[]
@@ -45,7 +40,7 @@ const FAQEntryAccordion: React.FC<{
   entry: FAQEntry;
   onSelectTerm?: (term: string) => void;
 }> = ({ entry, onSelectTerm }) => {
-  const slug = slugifyQuestion(entry.question);
+  const slug = contentEntrySlug(entry.question);
 
   return (
     <Accordion data-testid={`faq-entry-${slug}`}>
@@ -112,7 +107,7 @@ export const FAQList: React.FC<FAQListProps> = ({
       <Stack spacing={1}>
         {entries.map((entry) => (
           <FAQEntryAccordion
-            key={slugifyQuestion(entry.question)}
+            key={contentEntrySlug(entry.question)}
             entry={entry}
             onSelectTerm={onSelectTerm}
           />
@@ -135,7 +130,7 @@ export const FAQList: React.FC<FAQListProps> = ({
           <Stack spacing={1}>
             {categoryEntries.map((entry) => (
               <FAQEntryAccordion
-                key={slugifyQuestion(entry.question)}
+                key={contentEntrySlug(entry.question)}
                 entry={entry}
                 onSelectTerm={onSelectTerm}
               />
