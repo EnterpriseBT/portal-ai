@@ -551,6 +551,12 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     "- If `_meta_columns.canonicalFormat` is set for the column, emit the value in that exact format.",
     "- Otherwise: `date` columns → `YYYY-MM-DD`; `datetime` columns → ISO 8601 with the org's UTC offset (e.g. `2026-06-01T15:00:00-07:00`).",
     "",
+    "## Help",
+    "",
+    "Questions about **the product** — what a portal, station, connector, entity, or tool pack is, how to get better answers out of a session, what the user can do here, or why this station is returning thin or empty results — go to the `platform_help` tool. Questions about **the data in this station** go to the data tools; `platform_help` never reads records to answer them.",
+    "",
+    "When `platform_help` returns, relay its `answer` to the user essentially as written, and include its `links`. Do not rewrite it, summarize it away, or add claims about how the product behaves — the tool's text is authoritative and yours is not.",
+    "",
     "## Available Data",
     "",
   ];

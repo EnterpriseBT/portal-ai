@@ -26,7 +26,13 @@ const sourceFiles = fs
 
 describe("content module purity", () => {
   it("ships the expected data modules", () => {
-    expect(sourceFiles.sort()).toEqual(["faq.util.ts", "glossary.util.ts"]);
+    expect(sourceFiles.sort()).toEqual([
+      "faq.util.ts",
+      "glossary.util.ts",
+      // #367 — the writer for the #365 Help URL grammar. Pure string
+      // building, no imports, so it belongs to the same guarantee.
+      "help-url.util.ts",
+    ]);
   });
 
   it.each(sourceFiles)("%s imports nothing", (file) => {

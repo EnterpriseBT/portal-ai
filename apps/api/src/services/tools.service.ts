@@ -21,6 +21,7 @@ import type { CostHint } from "@portalai/core/models";
 import { SqlQueryTool } from "../tools/sql-query.tool.js";
 import { DisplayEntityRecordsTool } from "../tools/display-entity-records.tool.js";
 import { StationContextTool } from "../tools/station-context.tool.js";
+import { PlatformHelpTool } from "../tools/platform-help.tool.js";
 import { VisualizeD3Tool } from "../tools/visualize-d3.tool.js";
 import { VisualizeMapTool } from "../tools/visualize-map.tool.js";
 import { GeocodeTool } from "../tools/geocode.tool.js";
@@ -155,6 +156,7 @@ export interface WebhookImplementation {
 export const BUILTIN_TOOL_NAMES = new Set<string>([
   "current_time",
   "station_context",
+  "platform_help",
   "sql_query",
   "display_entity_records",
   "visualize_d3",
@@ -409,9 +411,12 @@ export class ToolService {
       .map((r) => r.organizationToolpackId)
       .filter((id): id is string => id !== null);
 
-    if (builtinSlugs.length === 0 && customPackIds.length === 0) {
-      throw new Error("Station must have at least one tool pack enabled");
-    }
+    // #367: a station with no packs configured is NOT an error. This used to
+    // throw here, before the always-available block below — so such a station
+    // got no tools at all, not even `current_time`, and the session failed
+    // outright. It is also exactly the station whose user needs orientation.
+    // Falling through yields the system-tools-only session the code already
+    // produces when every configured pack is unentitled (see the note below).
 
     // #214 tier entitlements: availability is a projection of the org's
     // tier row — resolved HERE, inside the builder, so every construction
@@ -419,9 +424,10 @@ export class ToolService {
     // tests). Fail-closed by shape: no resolvable policy ⇒ the builder
     // fails with the session (a DB outage already does); an org row that
     // can't be found falls back to the default tier's entitlements.
-    // Note: the "at least one pack" throw above keys off station
-    // *configuration* (pre-filter) — a station whose every configured pack
-    // is unentitled legitimately builds a session with system tools only.
+    // Note: a station whose every configured pack is unentitled legitimately
+    // builds a session with system tools only — as does a station with no
+    // packs configured at all (#367 removed the throw that used to reject
+    // that case before the system tools were even attached).
     const org = await repo.organizations.findById(organizationId);
     const policy = await TierService.resolveTier(org ?? { tier: "" });
     const entitledCustomPackIds = policy.entitlements.customToolpacks
@@ -473,6 +479,15 @@ export class ToolService {
     }
     if (SYSTEM_TOOL_CAPABILITIES.station_context?.alwaysAvailable) {
       tools.station_context = new StationContextTool().build(
+        stationId,
+        organizationId
+      );
+    }
+    //   - `platform_help` — in-session answers about the product itself, and
+    //     about why this station may be returning thin results (#367). A
+    //     system tool rather than a pack so no tier allowlist can remove it.
+    if (SYSTEM_TOOL_CAPABILITIES.platform_help?.alwaysAvailable) {
+      tools.platform_help = new PlatformHelpTool().build(
         stationId,
         organizationId
       );

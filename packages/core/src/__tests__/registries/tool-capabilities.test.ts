@@ -37,8 +37,10 @@ describe("ALL_TOOL_CAPABILITIES", () => {
 describe("enablement/enforcement projections reproduce current behavior", () => {
   it("always-available == today's SYSTEM_TOOL_PACKS expansion", () => {
     // tools.service.ts: SYSTEM_TOOL_PACKS = ["station_context"] → its tools.
+    // Sorted — `namesWhere` orders alphabetically.
     expect(alwaysAvailableToolNames()).toEqual([
       "current_time",
+      "platform_help",
       "station_context",
     ]);
   });
@@ -126,6 +128,9 @@ describe("costHint pin (#184)", () => {
     hypothesis_test: "free",
     irr: "free",
     npv: "free",
+    // free — platform help is never charged, never denied, never rate-limited
+    // (#367). The core portal loop is not a billable surface.
+    platform_help: "free",
     portfolio_metrics: "free",
     regression: "free",
     resolve_identity: "free",
@@ -154,5 +159,44 @@ describe("costHint pin (#184)", () => {
     for (const cap of Object.values(ALL_TOOL_CAPABILITIES)) {
       expect(["free", "metered", "expensive"]).toContain(cap.costHint);
     }
+  });
+});
+
+// ── platform_help (#367) ────────────────────────────────────────────
+
+/**
+ * In-session platform help is a **system tool**, not a pack. That is the
+ * whole point: a pack slug would be subject to the per-tier
+ * `builtinToolpacks` allowlists, which would make platform help
+ * entitlement-gateable. Help is never gated and never charged.
+ */
+describe("platform_help capability", () => {
+  const cap = SYSTEM_TOOL_CAPABILITIES.platform_help;
+
+  it("is declared as a system tool", () => {
+    expect(cap).toBeDefined();
+    expect(cap.alwaysAvailable).toBe(true);
+  });
+
+  it("is a valid capability", () => {
+    expect(ToolCapabilitySchema.safeParse(cap).success).toBe(true);
+  });
+
+  it("reads station data, so it cannot be pure", () => {
+    // `superRefine` rejects `pure` alongside any reads — the tool inspects
+    // the station to explain concrete problems, so it declares the read.
+    expect(cap.pure).toBe(false);
+    expect(cap.reads).toContain("entity_records");
+  });
+
+  it("writes nothing and holds no locks", () => {
+    expect(cap.writes).toEqual([]);
+    expect(cap.locks).toEqual([]);
+    expect(isWriteGated(cap)).toBe(false);
+  });
+
+  it("is free, so the cost gate can never deny it", () => {
+    expect(cap.costHint).toBe("free");
+    expect(isCostGated(cap)).toBe(false);
   });
 });

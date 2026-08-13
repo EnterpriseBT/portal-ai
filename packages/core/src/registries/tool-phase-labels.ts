@@ -34,6 +34,7 @@ export const TOOL_PHASE_LABELS: Record<string, string> = {
   // System tools — always attached, usually instant.
   current_time: "Checking the time",
   station_context: "Reading station context",
+  platform_help: "Looking up help",
 
   // data_query
   sql_query: "Querying your data",

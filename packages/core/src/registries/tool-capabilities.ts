@@ -53,6 +53,25 @@ export const SYSTEM_TOOL_CAPABILITIES: Record<string, ToolCapability> = {
     production: { kind: "value" },
     alwaysAvailable: true,
   },
+  // #367 — in-session platform help. A system tool rather than a pack on
+  // purpose: a pack slug would fall under the per-tier `builtinToolpacks`
+  // allowlists, making platform help entitlement-gateable. Help is never
+  // gated and never charged, so it lives here with the other two.
+  platform_help: {
+    // Not pure: it inspects the station (does it have records yet?) to
+    // explain concrete problems rather than answering only from static
+    // content. `superRefine` rejects `pure` alongside any reads.
+    pure: false,
+    reads: ["entity_records"],
+    writes: [],
+    consumption: { mode: "none" },
+    computeShape: "scan",
+    costHint: "free",
+    locks: [],
+    resultKind: "scalar",
+    production: { kind: "value" },
+    alwaysAvailable: true,
+  },
 };
 
 // ── Aggregate ───────────────────────────────────────────────────────
