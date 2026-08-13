@@ -1,11 +1,6 @@
 import React from "react";
 
 import { Box, PageSection, Stack, Typography } from "@portalai/core/ui";
-import Accordion from "@mui/material/Accordion";
-import AccordionDetails from "@mui/material/AccordionDetails";
-import AccordionSummary from "@mui/material/AccordionSummary";
-import Link from "@mui/material/Link";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 
 import {
   FAQ_CATEGORY_LABELS,
@@ -13,12 +8,17 @@ import {
   contentEntrySlug,
   type FAQEntry,
 } from "@portalai/core/content";
+import { FAQEntryAccordion } from "./FAQEntryAccordion.component";
 
 export interface FAQListProps {
   entries: FAQEntry[];
   /** When true, render section headers grouping entries by category. */
   groupByCategory?: boolean;
   onSelectTerm?: (term: string) => void;
+  /** Slugs whose accordion is open. Controlled — the consumer owns it (#365). */
+  expandedSlugs: ReadonlySet<string>;
+  onToggleEntry: (slug: string) => void;
+  registerEntryRef?: (slug: string, el: HTMLElement | null) => void;
 }
 
 const groupEntries = (
@@ -36,62 +36,28 @@ const groupEntries = (
   return seenOrder.map((cat) => [cat, buckets.get(cat)!]);
 };
 
-const FAQEntryAccordion: React.FC<{
-  entry: FAQEntry;
-  onSelectTerm?: (term: string) => void;
-}> = ({ entry, onSelectTerm }) => {
-  const slug = contentEntrySlug(entry.question);
-
-  return (
-    <Accordion data-testid={`faq-entry-${slug}`}>
-      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-          {entry.question}
-        </Typography>
-      </AccordionSummary>
-      <AccordionDetails>
-        <Stack spacing={1.5}>
-          <Typography variant="body2" sx={{ whiteSpace: "pre-line" }}>
-            {entry.answer}
-          </Typography>
-
-          {entry.relatedGlossaryTerms &&
-            entry.relatedGlossaryTerms.length > 0 && (
-              <Box>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ display: "block", fontWeight: 600 }}
-                >
-                  Related terms
-                </Typography>
-                <Stack direction="row" spacing={1} flexWrap="wrap">
-                  {entry.relatedGlossaryTerms.map((term) => (
-                    <Link
-                      key={term}
-                      component="button"
-                      type="button"
-                      variant="body2"
-                      onClick={() => onSelectTerm?.(term)}
-                      sx={{ cursor: "pointer" }}
-                    >
-                      {term}
-                    </Link>
-                  ))}
-                </Stack>
-              </Box>
-            )}
-        </Stack>
-      </AccordionDetails>
-    </Accordion>
-  );
-};
-
 export const FAQList: React.FC<FAQListProps> = ({
   entries,
   groupByCategory = false,
   onSelectTerm,
+  expandedSlugs,
+  onToggleEntry,
+  registerEntryRef,
 }) => {
+  const renderEntry = (entry: FAQEntry) => {
+    const slug = contentEntrySlug(entry.question);
+    return (
+      <FAQEntryAccordion
+        key={slug}
+        entry={entry}
+        expanded={expandedSlugs.has(slug)}
+        onToggle={() => onToggleEntry(slug)}
+        onSelectTerm={onSelectTerm}
+        registerEntryRef={registerEntryRef}
+      />
+    );
+  };
+
   if (entries.length === 0) {
     return (
       <Box data-testid="faq-empty" sx={{ py: 4, textAlign: "center" }}>
@@ -103,17 +69,7 @@ export const FAQList: React.FC<FAQListProps> = ({
   }
 
   if (!groupByCategory) {
-    return (
-      <Stack spacing={1}>
-        {entries.map((entry) => (
-          <FAQEntryAccordion
-            key={contentEntrySlug(entry.question)}
-            entry={entry}
-            onSelectTerm={onSelectTerm}
-          />
-        ))}
-      </Stack>
-    );
+    return <Stack spacing={1}>{entries.map(renderEntry)}</Stack>;
   }
 
   const grouped = groupEntries(entries);
@@ -127,15 +83,7 @@ export const FAQList: React.FC<FAQListProps> = ({
           variant="divider"
           data-testid={`faq-category-header-${category}`}
         >
-          <Stack spacing={1}>
-            {categoryEntries.map((entry) => (
-              <FAQEntryAccordion
-                key={contentEntrySlug(entry.question)}
-                entry={entry}
-                onSelectTerm={onSelectTerm}
-              />
-            ))}
-          </Stack>
+          <Stack spacing={1}>{categoryEntries.map(renderEntry)}</Stack>
         </PageSection>
       ))}
     </Stack>

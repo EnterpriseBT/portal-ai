@@ -7,7 +7,10 @@ import type {
   GlossaryCategory as GlossaryCategoryValue,
   FAQCategory as FAQCategoryValue,
 } from "@portalai/core/content";
-import type { HelpTab as HelpTabValue } from "../utils/routes.util";
+import type {
+  HelpTab as HelpTabValue,
+  HelpAnchor as HelpAnchorValue,
+} from "../utils/routes.util";
 
 const { render, screen, within } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
@@ -110,6 +113,7 @@ const ControlledHelpHarness: React.FC<{
       ? (initialCategory as FAQCategoryValue | null)
       : null
   );
+  const [anchor, setAnchor] = React.useState<HelpAnchorValue | null>(null);
 
   return (
     <HelpViewUI
@@ -125,6 +129,15 @@ const ControlledHelpHarness: React.FC<{
         setTab(nextTab);
         setGlossaryCategory(null);
         setFaqCategory(null);
+      }}
+      anchor={anchor}
+      onNavigateToEntry={(next) => {
+        // Mirrors the container: navigating to an entry selects its surface,
+        // drops the category param, and sets the hash.
+        setTab(next.surface);
+        setGlossaryCategory(null);
+        setFaqCategory(null);
+        setAnchor(next);
       }}
       onCategoryChange={(nextTab, category) => {
         setTab(nextTab);
@@ -154,8 +167,10 @@ const renderControlled = (
       tabIndex={0}
       glossaryCategory={null}
       faqCategory={null}
+      anchor={null}
       onTabChange={jest.fn()}
       onCategoryChange={jest.fn()}
+      onNavigateToEntry={jest.fn()}
       {...props}
     />
   );
@@ -449,5 +464,110 @@ describe("HelpView container", () => {
     ).toHaveAttribute("aria-selected", "true");
     // Header.
     expect(screen.getByRole("heading", { name: "Help" })).toBeInTheDocument();
+  });
+});
+
+// ── 5.1c — Entry anchors (#365) ─────────────────────────────────────
+
+describe("HelpViewUI (entry anchors)", () => {
+  it("expands and scrolls to the anchored FAQ entry", () => {
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Faq],
+      anchor: { surface: HelpTab.Faq, slug: "why-did-my-job-fail" },
+    });
+
+    const entry = screen.getByTestId("faq-entry-why-did-my-job-fail");
+    expect(
+      within(entry).getByText("Open the job to see the error details.")
+    ).toBeVisible();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("expands and scrolls to the anchored glossary entry", () => {
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Glossary],
+      anchor: { surface: HelpTab.Glossary, slug: "station" },
+    });
+
+    const entry = screen.getByTestId("glossary-entry-station");
+    expect(
+      within(entry).getByText("A workspace bundling connectors and tool packs.")
+    ).toBeVisible();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("lets the anchor outrank a category filter that would hide the entry", () => {
+    // `Job Status` is a System term; the Analytics chip would filter it out.
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Glossary],
+      glossaryCategory: GlossaryCategory.Analytics,
+      anchor: { surface: HelpTab.Glossary, slug: "job-status" },
+    });
+
+    expect(screen.getByTestId("glossary-entry-job-status")).toBeInTheDocument();
+  });
+
+  it("is a silent no-op for an anchor that matches no entry", () => {
+    expect(() =>
+      renderControlled({
+        tabIndex: HELP_TAB_INDEX[HelpTab.Faq],
+        anchor: { surface: HelpTab.Faq, slug: "no-such-entry-here" },
+      })
+    ).not.toThrow();
+
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId("faq-entry-why-did-my-job-fail")
+    ).toBeInTheDocument();
+  });
+
+  it("keeps manual expansion working alongside an anchor", async () => {
+    const user = userEvent.setup();
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Faq],
+      anchor: { surface: HelpTab.Faq, slug: "why-did-my-job-fail" },
+    });
+
+    const other = screen.getByTestId(
+      "faq-entry-how-do-i-connect-my-first-data-source"
+    );
+    await user.click(
+      within(other).getByText("How do I connect my first data source?")
+    );
+
+    // Both open — the anchor seeded the set, the click added to it.
+    expect(
+      within(other).getByText(
+        "Open the Connectors page and pick a connector definition."
+      )
+    ).toBeVisible();
+    expect(
+      within(screen.getByTestId("faq-entry-why-did-my-job-fail")).getByText(
+        "Open the job to see the error details."
+      )
+    ).toBeVisible();
+  });
+
+  it("reports a related-term click as a navigation to that entry", async () => {
+    const user = userEvent.setup();
+    const onNavigateToEntry = jest.fn();
+    renderControlled({
+      tabIndex: HELP_TAB_INDEX[HelpTab.Faq],
+      anchor: {
+        surface: HelpTab.Faq,
+        slug: "how-do-i-connect-my-first-data-source",
+      },
+      onNavigateToEntry,
+    });
+
+    const entry = screen.getByTestId(
+      "faq-entry-how-do-i-connect-my-first-data-source"
+    );
+    await user.click(within(entry).getByText("Station"));
+
+    expect(onNavigateToEntry).toHaveBeenCalledWith({
+      surface: HelpTab.Glossary,
+      slug: "station",
+    });
   });
 });
