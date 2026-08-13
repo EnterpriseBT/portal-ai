@@ -69,6 +69,8 @@ Layered: Zod schema (`CoreObjectSchema.extend`) → model class (`BaseModelClass
 
 TanStack Router, file-based in `src/routes/`. Route tree auto-generates. Use `createFileRoute`.
 
+**Addressable sections (#365).** A view linked to from elsewhere makes its sections addressable via `?tab=` / `?category=` / `#<surface>-entry-<slug>`, following Help (`utils/routes.util.ts`): one sanitizer (`normalizeHelpSearch`) shared by the route's `validateSearch` and the view; fail open on anything unrecognized; read `useRouterState({select: s => s.location.search})`, not `useSearch` (which needs a route match); `to` is a string literal, not the `ApplicationRoute` enum, wherever typed `search` is passed, with `MuiLink component="span"` inside a router `Link`; destinations push, filters replace; anchor slugs come from `contentEntrySlug` in `@portalai/core/content`; anchor-reachable accordions are controlled, never `defaultExpanded`. Settings (#284) is the older read-once shape and stays that way. User-typed search text never enters the URL.
+
 ## Themes
 
 Three MUI themes: Brand (default), Light, Dark. Persisted in localStorage via `@portalai/core`.

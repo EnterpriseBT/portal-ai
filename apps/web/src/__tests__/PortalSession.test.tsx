@@ -214,6 +214,15 @@ describe("PortalSessionUI", () => {
     expect(screen.getByTestId("portal-session-empty")).toBeInTheDocument();
   });
 
+  it("points the empty state's help link at the portal FAQ, not the Help front door (#365)", () => {
+    render(<PortalSessionUI {...defaultProps} />);
+
+    const link = screen.getByTestId("portal-session-empty-help-link");
+    // A reader who clicks "learn what portal sessions can do" must land on
+    // that material, not on the Getting Started onboarding checklist.
+    expect(link).toHaveAttribute("href", "/help?tab=faq&category=analytics");
+  });
+
   it("hides the empty state once messages are present", () => {
     const messages = [
       makeMessage({
