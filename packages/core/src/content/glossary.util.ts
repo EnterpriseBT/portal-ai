@@ -298,28 +298,35 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Portal",
     category: GlossaryCategory.Analytics,
     definition:
-      "A chat session where you ask questions about the data in a station; the assistant answers using the station's tool packs.",
+      "A chat session where you ask questions about the data in a station; the assistant answers using the station's tool packs. A portal is only as good as the data behind it: the assistant answers from the records a station has actually imported, not from general knowledge, so a station with no connected source — or one whose records haven't been imported yet — can only answer in generalities. Ask about one thing at a time, too. A narrow question routes cleanly to the right tool; a compound one gives the assistant several jobs at once and no clear place to start.",
     example:
       'Open a portal on the Sales station and ask, "What was last quarter\'s revenue by region?"',
-    relatedTerms: ["Station", "Portal Message", "Portal Result"],
+    relatedTerms: [
+      "Station",
+      "Portal Message",
+      "Portal Result",
+      "Entity Record",
+      "Connector Instance",
+      "Tool Pack",
+    ],
   },
   {
     term: "Portal Message",
     category: GlossaryCategory.Analytics,
     definition:
-      "A single user prompt or assistant reply within a portal session.",
+      "A single user prompt or assistant reply within a portal session. Word your prompts in the station's own vocabulary: name entities, columns, and values the way they appear in your data, because the assistant matches what you ask against the station's actual schema. Asking for \"churn by plan tier\" works when those are the real names; when the column is called subscription level, say that instead.",
     example:
       "Each question you type and each answer you receive is a portal message.",
-    relatedTerms: ["Portal", "Portal Result"],
+    relatedTerms: ["Portal", "Portal Result", "Station", "Entity Record"],
   },
   {
     term: "Portal Result",
     category: GlossaryCategory.Analytics,
     definition:
-      "A piece of structured output — a chart, table, or text block — produced by the assistant in a portal message.",
+      "A piece of structured output — a chart, table, or text block — produced by the assistant in a portal message. Treat the ones worth keeping as durable output rather than chat history: pin a result and it stays one click away from the dashboard, and pinned charts and tables reload live data when you open them instead of freezing the numbers from the day you asked.",
     example:
       "A revenue chart returned by the assistant is a portal result that you can pin for later.",
-    relatedTerms: ["Portal", "Pinned Result"],
+    relatedTerms: ["Portal", "Portal Message", "Pinned Result"],
   },
   {
     term: "Query Handle",
