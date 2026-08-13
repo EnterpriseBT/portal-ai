@@ -1,5 +1,19 @@
 import "@testing-library/jest-dom";
+import { configure } from "@testing-library/react";
 import { TextEncoder, TextDecoder } from "util";
+
+// Testing Library's async budget (#378). `waitFor` and friends default to
+// 1000 ms — a number sized for an idle machine, not for a 239-suite parallel
+// run. Under that contention a hook whose state settles in ~90 ms has been
+// observed taking past the second, failing as a timeout with nothing actually
+// broken.
+//
+// This is the missing half of #362/#363, which raised *Jest's* per-test
+// timeout to 15 s for the same reason and left this one at its default. 5 s
+// absorbs the contention while staying well inside that ceiling, so a genuine
+// hang still fails promptly — and fails as the test rather than as a
+// suite-level timeout.
+configure({ asyncUtilTimeout: 5_000 });
 
 // Polyfill for TextEncoder/TextDecoder (needed for Auth0)
 global.TextEncoder = TextEncoder;
