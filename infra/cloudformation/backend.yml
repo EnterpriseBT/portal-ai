@@ -499,10 +499,20 @@ Resources:
               Value: !Ref AWS::Region
             - Name: UPLOAD_S3_PREFIX
               Value: uploads
+            # The externally-reachable API origin, handed to webhook toolpack
+            # runtimes as the pull-on-read callback (#124). Unset, the app
+            # falls back to http://localhost:3001 and every third-party
+            # runtime is told to call back to its own loopback (#382).
+            - Name: PUBLIC_API_BASE_URL
+              Value: !Sub "https://${Subdomain}.${DomainName}"
+            # Derived from Subdomain, NOT Environment: the two coincide only
+            # because dev's subdomain happens to be api-dev. An environment
+            # whose subdomain isn't api-<env> — prod, at api.portalsai.io —
+            # would otherwise advertise a callback host that doesn't exist.
             - Name: GOOGLE_OAUTH_REDIRECT_URI
-              Value: !Sub "https://api-${Environment}.portalsai.io/api/connectors/google-sheets/callback"
+              Value: !Sub "https://${Subdomain}.${DomainName}/api/connectors/google-sheets/callback"
             - Name: MICROSOFT_OAUTH_REDIRECT_URI
-              Value: !Sub "https://api-${Environment}.portalsai.io/api/connectors/microsoft-excel/callback"
+              Value: !Sub "https://${Subdomain}.${DomainName}/api/connectors/microsoft-excel/callback"
             - Name: REDIS_URL
               Value: !Sub
                 - "redis://${Endpoint}:${Port}"
