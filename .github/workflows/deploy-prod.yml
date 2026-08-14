@@ -1,0 +1,408 @@
+name: Deploy Prod
+
+# The production pipeline for app.portalsai.io + api.portalsai.io (#383).
+#
+# Mirrors deploy-dev.yml, with four deliberate differences — each is asserted
+# by packages/devops-cli/src/__tests__/deploy-parity.test.ts, because an
+# omission is invisible in review and "restoring parity" between these two
+# files is the predictable mistake:
+#
+#   1. NO mail DNS stack. portalai-dns-email is domain-wide (one zone, one set
+#      of MX records) and is owned by the dev pipeline. A copy here would
+#      fight it over the same records.
+#   2. NO contact seeding. #319 leaves prod fail-closed on purpose; seeding
+#      would publish a qa@ placeholder on the public marketing site. Prod's
+#      addresses are provisioned by hand (docs/PROD_PROVISIONING.runbook.md).
+#   3. NO tag-deploy job. Under a release trigger the release tag is already
+#      the deployment marker.
+#   4. NO site stack. www.portalsai.io is deployed by deploy-site-prod.yml,
+#      which keys off the same release event.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  # A queued release WAITS. Cancelling mid-run could abort a database
+  # migration between statements.
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  # The wildcard *.portalsai.io certificate. It lives in the dev-named cert
+  # stack because the apex and wildcard share one DNS validation CNAME, so a
+  # second stack for the same names in the same zone collides. Moving it to a
+  # domain-level stack (as portalai-dns-email already is) is tracked
+  # separately; see docs/PROD_AWS_INFRA.discovery.md, Decision 2.
+  CERT_STACK: portalai-dev-dns-certs
+  CERT_EXPORT: dev-CertificateArn
+
+jobs:
+  # ── Tests ─────────────────────────────────────────────────
+  # A release is cut from an already-merged main, but "the tag came from a
+  # green commit" is an assumption, not a check. These are cheap relative to
+  # a bad production deploy.
+  unit-test:
+    uses: ./.github/workflows/unit-test.yml
+
+  integration-test:
+    uses: ./.github/workflows/integration-test.yml
+
+  # ── Infrastructure ────────────────────────────────────────
+  deploy-infra:
+    needs: [unit-test, integration-test]
+    runs-on: ubuntu-latest
+    environment: prod
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.PROD_AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve the wildcard certificate
+        id: cert
+        run: |
+          ARN=$(aws cloudformation describe-stacks \
+            --stack-name "$CERT_STACK" \
+            --query "Stacks[0].Outputs[?ExportName=='${{ env.CERT_EXPORT }}'].OutputValue" \
+            --output text)
+          if [ -z "$ARN" ] || [ "$ARN" = "None" ]; then
+            echo "::error::Could not resolve $CERT_EXPORT from $CERT_STACK"
+            exit 1
+          fi
+          echo "arn=$ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy network stack
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-prod-network \
+            --template-file infra/cloudformation/network.yml \
+            --parameter-overrides \
+              Environment=prod \
+              VpcCidr=10.1.0.0/16 \
+            --no-fail-on-empty-changeset
+
+      - name: Deploy database stack
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-prod-database \
+            --template-file infra/cloudformation/database.yml \
+            --parameter-overrides \
+              Environment=prod \
+              InstanceClass=db.t4g.small \
+              AllocatedStorage=100 \
+              MultiAZ=true \
+              BackupRetentionPeriod=14 \
+              DeletionProtection=true \
+            --no-fail-on-empty-changeset
+
+      - name: Deploy bastion stack
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-prod-bastion \
+            --template-file infra/cloudformation/bastion.yml \
+            --parameter-overrides Environment=prod \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
+
+      - name: Deploy cache stack
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-prod-cache \
+            --template-file infra/cloudformation/cache.yml \
+            --parameter-overrides \
+              Environment=prod \
+              ReplicationEnabled=true \
+              SnapshotRetentionLimit=7 \
+            --no-fail-on-empty-changeset
+
+      - name: Deploy frontend stack
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-prod-frontend \
+            --template-file infra/cloudformation/frontend.yml \
+            --parameter-overrides \
+              Environment=prod \
+              Subdomain=app \
+              CertificateArn="${{ steps.cert.outputs.arn }}" \
+              HostedZoneId=${{ secrets.PROD_HOSTED_ZONE_ID }} \
+            --no-fail-on-empty-changeset
+
+      # FIRST-DEPLOY BOOTSTRAP (#383).
+      #
+      # backend.yml creates the ECR repository AND the ECS service. On a fresh
+      # environment the repository is therefore empty when the service is
+      # created, the task cannot pull its image, the deployment circuit
+      # breaker trips, and CloudFormation rolls the stack back — so this job
+      # fails and deploy-backend, which would have PUSHED the image, never
+      # runs. The pipeline cannot bootstrap itself.
+      #
+      # So: no image in ECR ⇒ create the service with DesiredCount=0. The
+      # closing `cloudformation deploy` in deploy-backend restores it once the
+      # image exists. Every subsequent release takes the normal path.
+      - name: Resolve the desired task count
+        id: scale
+        run: |
+          if aws ecr describe-images \
+               --repository-name portalai-api-prod \
+               --max-items 1 >/dev/null 2>&1; then
+            echo "desired=2" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::First deploy — creating the ECS service with DesiredCount=0 (ECR is empty); deploy-backend will scale it up."
+            echo "desired=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy backend stack
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-prod-backend \
+            --template-file infra/cloudformation/backend.yml \
+            --parameter-overrides \
+              Environment=prod \
+              Subdomain=api \
+              CertificateArn="${{ steps.cert.outputs.arn }}" \
+              HostedZoneId=${{ secrets.PROD_HOSTED_ZONE_ID }} \
+              FrontendOrigin=https://app.portalsai.io \
+              DesiredCount=${{ steps.scale.outputs.desired }} \
+              SecretArnDatabaseUrl=${{ secrets.PROD_SECRET_ARN_DATABASE_URL }} \
+              SecretArnEncryptionKey=${{ secrets.PROD_SECRET_ARN_ENCRYPTION_KEY }} \
+              SecretArnAuth0WebhookSecret=${{ secrets.PROD_SECRET_ARN_AUTH0_WEBHOOK_SECRET }} \
+              SecretArnAnthropicApiKey=${{ secrets.PROD_SECRET_ARN_ANTHROPIC_API_KEY }} \
+              SecretArnTavilyApiKey=${{ secrets.PROD_SECRET_ARN_TAVILY_API_KEY }} \
+              SecretArnGeocodingApiKey=${{ secrets.PROD_SECRET_ARN_GEOCODING_API_KEY }} \
+              SecretArnGoogleOauthClientSecret=${{ secrets.PROD_SECRET_ARN_GOOGLE_OAUTH_CLIENT_SECRET }} \
+              SecretArnMicrosoftOauthClientSecret=${{ secrets.PROD_SECRET_ARN_MICROSOFT_OAUTH_CLIENT_SECRET }} \
+              SecretArnOauthStateSecret=${{ secrets.PROD_SECRET_ARN_OAUTH_STATE_SECRET }} \
+              SecretArnStripeSecretKey=${{ secrets.PROD_SECRET_ARN_STRIPE_SECRET_KEY }} \
+              SecretArnStripeWebhookSecret=${{ secrets.PROD_SECRET_ARN_STRIPE_WEBHOOK_SECRET }} \
+              SecretArnGithubDispatchToken=${{ secrets.PROD_SECRET_ARN_GITHUB_DISPATCH_TOKEN }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
+
+  # ── Frontend ──────────────────────────────────────────────
+  deploy-frontend:
+    needs: deploy-infra
+    runs-on: ubuntu-latest
+    environment: prod
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.PROD_AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Baked into the bundle at BUILD time, resolved from SSM — not repo
+      # secrets. Without this step the app advertises the qa@ fallback.
+      - name: Resolve contact addresses
+        id: contact
+        run: |
+          get() {
+            aws ssm get-parameter --name "$1" --query Parameter.Value --output text 2>/dev/null || true
+          }
+          echo "support=$(get /portalai/prod/support-email)" >> "$GITHUB_OUTPUT"
+          echo "sales=$(get /portalai/prod/sales-email)" >> "$GITHUB_OUTPUT"
+
+      - name: Build frontend
+        run: npx turbo run build --filter=@portalai/web
+        env:
+          VITE_APP_VERSION: ${{ github.event.release.tag_name || github.sha }}
+          VITE_APP_SHA: ${{ github.sha }}
+          VITE_AUTH0_DOMAIN: ${{ secrets.PROD_VITE_AUTH0_DOMAIN }}
+          VITE_AUTH0_CLIENT_ID: ${{ secrets.PROD_VITE_AUTH0_CLIENT_ID }}
+          VITE_AUTH0_AUDIENCE: ${{ secrets.PROD_VITE_AUTH0_AUDIENCE }}
+          VITE_API_BASE_URL: https://api.portalsai.io
+          VITE_SUPPORT_EMAIL: ${{ steps.contact.outputs.support }}
+          VITE_SALES_EMAIL: ${{ steps.contact.outputs.sales }}
+
+      - name: Get frontend outputs
+        id: fe
+        run: |
+          BUCKET=$(aws cloudformation describe-stacks \
+            --stack-name portalai-prod-frontend \
+            --query "Stacks[0].Outputs[?ExportName=='prod-FrontendBucketName'].OutputValue" \
+            --output text)
+          DIST=$(aws cloudformation describe-stacks \
+            --stack-name portalai-prod-frontend \
+            --query "Stacks[0].Outputs[?ExportName=='prod-CloudFrontDistributionId'].OutputValue" \
+            --output text)
+          echo "bucket=$BUCKET" >> "$GITHUB_OUTPUT"
+          echo "dist=$DIST" >> "$GITHUB_OUTPUT"
+
+      - name: Sync to S3
+        run: aws s3 sync apps/web/dist "s3://${{ steps.fe.outputs.bucket }}" --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ steps.fe.outputs.dist }} --paths "/*"
+
+  # ── Backend ───────────────────────────────────────────────
+  deploy-backend:
+    needs: deploy-infra
+    runs-on: ubuntu-latest
+    environment: prod
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.PROD_AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Get ECR repository URI
+        id: ecr
+        run: |
+          ECR_URI=$(aws cloudformation describe-stacks \
+            --stack-name portalai-prod-backend \
+            --query "Stacks[0].Outputs[?ExportName=='prod-EcrRepositoryUri'].OutputValue" \
+            --output text)
+          echo "uri=$ECR_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # No `:latest` tag in production — a mutable tag makes "what is running"
+      # unanswerable after the fact. The release tag and the sha are enough.
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.ecr.outputs.uri }}:prod-${{ github.sha }}
+          build-args: |
+            BUILD_VERSION=${{ github.event.release.tag_name || github.sha }}
+            BUILD_SHA=${{ github.sha }}
+          provenance: false
+
+      - name: Get ECS configuration
+        id: ecs
+        run: |
+          CLUSTER=$(aws cloudformation describe-stacks \
+            --stack-name portalai-prod-backend \
+            --query "Stacks[0].Outputs[?ExportName=='prod-EcsClusterName'].OutputValue" \
+            --output text)
+          SERVICE=$(aws cloudformation describe-stacks \
+            --stack-name portalai-prod-backend \
+            --query "Stacks[0].Outputs[?ExportName=='prod-EcsServiceName'].OutputValue" \
+            --output text)
+          ECS_SG=$(aws cloudformation describe-stacks \
+            --stack-name portalai-prod-backend \
+            --query "Stacks[0].Outputs[?ExportName=='prod-EcsSecurityGroupId'].OutputValue" \
+            --output text)
+          SUBNET1=$(aws cloudformation describe-stacks \
+            --stack-name portalai-prod-network \
+            --query "Stacks[0].Outputs[?ExportName=='prod-PrivateSubnet1'].OutputValue" \
+            --output text)
+          SUBNET2=$(aws cloudformation describe-stacks \
+            --stack-name portalai-prod-network \
+            --query "Stacks[0].Outputs[?ExportName=='prod-PrivateSubnet2'].OutputValue" \
+            --output text)
+          TASK_DEF=$(aws ecs describe-services \
+            --cluster "$CLUSTER" --services "$SERVICE" \
+            --query "services[0].taskDefinition" --output text)
+          echo "cluster=$CLUSTER" >> "$GITHUB_OUTPUT"
+          echo "task_def=$TASK_DEF" >> "$GITHUB_OUTPUT"
+          echo "network_config=awsvpcConfiguration={subnets=[$SUBNET1,$SUBNET2],securityGroups=[$ECS_SG],assignPublicIp=DISABLED}" >> "$GITHUB_OUTPUT"
+
+      # The deployment circuit breaker reverts the IMAGE on a bad rollout. It
+      # does not revert the SCHEMA — a migrated database with a rolled-back
+      # image is the dangerous state, and this snapshot is the way back.
+      # Migrations must also stay backward-compatible with the previous image.
+      - name: Snapshot the database before migrating
+        run: |
+          SNAP="portalai-prod-premigrate-${GITHUB_SHA::7}-$(date -u +%Y%m%d%H%M%S)"
+          aws rds create-db-snapshot \
+            --db-instance-identifier portalai-prod \
+            --db-snapshot-identifier "$SNAP"
+          echo "Waiting for snapshot $SNAP..."
+          aws rds wait db-snapshot-completed --db-snapshot-identifier "$SNAP"
+
+      - name: Run database migrations
+        run: |
+          TASK_ARN=$(aws ecs run-task \
+            --cluster ${{ steps.ecs.outputs.cluster }} \
+            --task-definition ${{ steps.ecs.outputs.task_def }} \
+            --launch-type FARGATE \
+            --network-configuration "${{ steps.ecs.outputs.network_config }}" \
+            --overrides '{"containerOverrides":[{"name":"api","command":["npm","run","db:migrate:ci"]}]}' \
+            --query 'tasks[0].taskArn' --output text)
+          aws ecs wait tasks-stopped \
+            --cluster ${{ steps.ecs.outputs.cluster }} --tasks "$TASK_ARN"
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster ${{ steps.ecs.outputs.cluster }} --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "::error::Migration failed with exit code $EXIT_CODE"
+            exit 1
+          fi
+
+      - name: Run database seed
+        run: |
+          TASK_ARN=$(aws ecs run-task \
+            --cluster ${{ steps.ecs.outputs.cluster }} \
+            --task-definition ${{ steps.ecs.outputs.task_def }} \
+            --launch-type FARGATE \
+            --network-configuration "${{ steps.ecs.outputs.network_config }}" \
+            --overrides '{"containerOverrides":[{"name":"api","command":["npm","run","db:seed:ci"]}]}' \
+            --query 'tasks[0].taskArn' --output text)
+          aws ecs wait tasks-stopped \
+            --cluster ${{ steps.ecs.outputs.cluster }} --tasks "$TASK_ARN"
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster ${{ steps.ecs.outputs.cluster }} --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "::error::Seed failed with exit code $EXIT_CODE"
+            exit 1
+          fi
+
+      # NOTE: deploy-dev.yml seeds create-if-absent contact parameters here.
+      # Prod does NOT — #319 leaves it fail-closed by design so a placeholder
+      # can never be published on the public site. Prod's addresses are
+      # provisioned by hand; see docs/PROD_PROVISIONING.runbook.md.
+
+      # Restores DesiredCount after a first-deploy bootstrap, and rolls the
+      # service onto the image pushed above.
+      - name: Update backend stack and deploy
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-prod-backend \
+            --template-file infra/cloudformation/backend.yml \
+            --parameter-overrides \
+              Environment=prod \
+              ImageTag=prod-${{ github.sha }} \
+              BuildVersion=${{ github.event.release.tag_name || github.sha }} \
+              BuildSha=${{ github.sha }} \
+              DesiredCount=2 \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
