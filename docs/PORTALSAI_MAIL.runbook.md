@@ -101,9 +101,27 @@ aws cloudformation deploy \
   --no-fail-on-empty-changeset
 ```
 
+> **The single quotes around `DkimValue` are load-bearing.** The value contains
+> spaces, `;` and the `"` characters Route53 requires, so an unquoted or
+> double-quoted form lets your shell split the command at the `;` and hand
+> CloudFormation a truncated `v=DKIM1` — which Route53 rejects with
+> `InvalidCharacterString`. For a chunked key, quote the whole thing once:
+> `DkimValue='"<chunk one>" "<chunk two>"'`.
+
 - [ ] `DkimConfigured` output now reads `"true"`.
 - [ ] Back in the Workspace console, click **Start authentication**.
-- [ ] Persist the value for CI so a future deploy does not drop the record: set the repository variable **`PORTALSAI_DKIM_VALUE`** (Settings → Secrets and variables → Actions → Variables) to the same string. `deploy-dev.yml` passes it on every infra deploy; leaving it unset would re-deploy the stack *without* DKIM.
+- [ ] Persist the value for CI so a future deploy does not drop the record: set the repository variable **`PORTALSAI_DKIM_VALUE`** (Settings → Secrets and variables → Actions → Variables) to the same string, **quotes and chunk split included** — store exactly what Route53 holds, and do not add quoting "for the shell". `deploy-dev.yml` passes it on every infra deploy; leaving it unset would re-deploy the stack *without* DKIM.
+
+> **How CI consumes it, and why you must not pre-quote.** `deploy-dev.yml` reads
+> the variable into an `env:` var and hands it to the CLI as JSON
+> (`--parameter-overrides file://…`), so the value is never re-parsed by bash
+> and never passes through the CLI's shorthand parser. Both hops preserve the
+> string byte-for-byte. This shape exists because the first version
+> interpolated `DkimValue="${{ vars.PORTALSAI_DKIM_VALUE }}"` straight into the
+> script: `${{ … }}` is a *textual* substitution that happens before bash
+> parses the line, bash split the command at the value's `;`, and
+> `Deploy mail DNS stack` failed on every push to `main`. If you ever change
+> that step, keep the value in `env:` and out of the command text.
 
 ## 7 — Correct the app-dev addresses
 
@@ -154,7 +172,7 @@ dig +short TXT google._domainkey.portalsai.io
 | Change | How |
 |---|---|
 | An address (e.g. prod `support@`) | `portalops vars set SUPPORT_EMAIL <addr> --env prod --yes`, then redeploy the app |
-| Rotate the DKIM key | Regenerate in the console, re-run step 6 with the new value, update `PORTALSAI_DKIM_VALUE` |
+| Rotate the DKIM key | Regenerate in the console, re-run step 6 with the new value, update `PORTALSAI_DKIM_VALUE` — store it exactly as Route53 holds it (quotes and chunk split, no shell escaping), per step 6's note |
 | Tighten DMARC | Re-deploy with `DmarcPolicy=quarantine` (then `reject`), reading reports between steps |
 | Add another alias | Workspace console only — no DNS change; aliases need no records |
 | A support *team* rather than one inbox | Aliases deliver to a single mailbox. A Google Group is the migration path, and it is a Workspace change, not a DNS one |
