@@ -79,12 +79,16 @@ Same client construction, `classify()` error handling and `EnvInfraError` semant
 `resolveBastionInstanceId` (`tunnel.ts:42-56`) already resolves a CloudFormation export via `ListExportsCommand`. Extract its lookup into a reusable, exported helper and re-implement the bastion resolver on top of it — no behavior change:
 
 ```ts
-/** Resolve one CloudFormation export by name, or throw ENV_NOT_CONFIGURED. */
+/** Resolve one CloudFormation export by name. `hint` is appended to the
+ *  not-found message so it says which stack to deploy. */
 export async function resolveExport(
   def: EnvironmentDefinition,
-  exportName: string
+  exportName: string,
+  hint?: string
 ): Promise<string>
 ```
+
+**Corrected during implementation.** This spec first said the missing-export case throws `ENV_NOT_CONFIGURED`; the existing bastion resolver throws **`EnvInfraError`** (`tunnel.ts:57-61`), and a missing export genuinely is an infrastructure state rather than a configuration one. Behavior is preserved rather than changed — altering the error type on a live path (`db tunnel` / `db psql`) is exactly what the regression pin exists to prevent. `ENV_NOT_CONFIGURED` is still thrown for an `aws: null` environment. The `hint` parameter is likewise an addition: without it the extraction would have flattened the bastion's operator guidance ("is the bastion stack deployed?") into a generic message.
 
 ### `infra/cloudformation/database.yml` — one new export
 
@@ -226,8 +230,8 @@ Ordered so each step's prerequisites already hold: vendor accounts → generated
 - A missing secret classifies to `EnvInfraError`, matching `getSecret`.
 
 `src/__tests__/tunnel.test.ts` (extend)
-- `resolveExport` returns the value for a present export and throws `ENV_NOT_CONFIGURED` naming the export when absent.
-- `resolveBastionInstanceId` still behaves identically after the extraction (regression pin).
+- `resolveExport` returns the value for a present export; throws `EnvInfraError` naming the export when absent; appends the caller's `hint`; maps a `ListExports` transport failure to `EnvInfraError`; throws `ENV_NOT_CONFIGURED` for an `aws: null` environment.
+- `resolveBastionInstanceId` still behaves identically after the extraction, **including keeping the bastion stack named in its message** (regression pin).
 
 ### `packages/devops-cli` — `npm run test:unit -w @portalai/devops-cli`
 
