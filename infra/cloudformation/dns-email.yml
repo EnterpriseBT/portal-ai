@@ -29,11 +29,27 @@ Parameters:
   HostedZoneId:
     Type: AWS::Route53::HostedZone::Id
 
+  GoogleSiteVerification:
+    Type: String
+    Default: 4-vMBuUrVJOdh1EjJkzmZqQWbDZbj0aj3vy-Bd8v1Mw
+    Description: >-
+      The token from Google's `google-site-verification=` TXT record, without
+      the prefix. Published on the apex TXT alongside SPF.
+  GoogleVerificationCnameName:
+    Type: String
+    Default: lmouyjpn2prj
+    Description: >-
+      Label for Google's alternative CNAME verification (empty to skip).
+  GoogleVerificationCnameValue:
+    Type: String
+    Default: gv-y4bkqeiivlu6i7.dv.googlehosted.com
+    Description: Target for the verification CNAME.
+
   DkimValue:
     Type: String
     Default: ""
     Description: >-
-      Google Workspace DKIM public key (the CNAME target, not the TXT record).
+      Google Workspace DKIM TXT value, e.g. `"v=DKIM1; k=rsa; p=…"` (quoted).
       Empty until the domain is verified — see the header note. Supplying it
       creates the DKIM record on the next deploy.
   DkimSelector:
@@ -57,6 +73,8 @@ Parameters:
 Conditions:
   # The DKIM record only exists once the key does. See header note 2.
   HasDkim: !Not [!Equals [!Ref DkimValue, ""]]
+  HasVerificationCname:
+    !Not [!Equals [!Ref GoogleVerificationCnameName, ""]]
 
 Resources:
   # ── Inbound mail — Google Workspace ────────────────────────────────
@@ -75,11 +93,18 @@ Resources:
         - "10 alt3.aspmx.l.google.com."
         - "10 alt4.aspmx.l.google.com."
 
-  # ── SPF — who may send as this domain ──────────────────────────────
-  # `~all` (softfail) rather than `-all`: nothing in the product sends mail
-  # today (#369 is receive-only), so a hard fail would only ever punish a
-  # legitimate sender we forgot about. Tighten when a sender is introduced.
-  SpfRecord:
+  # ── Apex TXT — SPF *and* domain verification, in ONE record set ────
+  #
+  # Route53 holds all TXT values for a name in a single record set: two
+  # RecordSet resources with the same Name+Type collide at deploy time. So
+  # SPF and Google's site-verification string live here together rather than
+  # as separate resources — adding another apex TXT means adding a line here,
+  # never a new resource.
+  #
+  # SPF uses `~all` (softfail) rather than `-all`: nothing in the product
+  # sends mail today (#369 is receive-only), so a hard fail could only ever
+  # punish a legitimate sender we forgot about. Tighten when a sender exists.
+  ApexTxtRecord:
     Type: AWS::Route53::RecordSet
     Properties:
       HostedZoneId: !Ref HostedZoneId
@@ -88,6 +113,7 @@ Resources:
       TTL: "3600"
       ResourceRecords:
         - '"v=spf1 include:_spf.google.com ~all"'
+        - !Sub '"google-site-verification=${GoogleSiteVerification}"'
 
   # ── DMARC — reporting, so the policy can be tightened on evidence ──
   DmarcRecord:
@@ -100,14 +126,37 @@ Resources:
       ResourceRecords:
         - !Sub '"v=DMARC1; p=${DmarcPolicy}; rua=mailto:${DmarcReportEmail}; fo=1"'
 
+  # ── Domain verification (CNAME method) ─────────────────────────────
+  # Google accepts either the apex TXT above or this CNAME. Both are
+  # published: they cost nothing, and whichever check Google runs will pass.
+  GoogleVerificationCname:
+    Type: AWS::Route53::RecordSet
+    Condition: HasVerificationCname
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "${GoogleVerificationCnameName}.${DomainName}."
+      Type: CNAME
+      TTL: "3600"
+      ResourceRecords:
+        - !Ref GoogleVerificationCnameValue
+
   # ── DKIM — created only once Google has generated the key ──────────
+  #
+  # A TXT record, NOT a CNAME. Google Workspace publishes DKIM as
+  # `google._domainkey` TXT `v=DKIM1; k=rsa; p=<key>`; the CNAME form belongs
+  # to Microsoft 365. Getting this wrong deploys cleanly and silently fails
+  # DKIM validation, which is why it is called out here.
+  #
+  # The key is long enough to exceed the 255-char limit for a single TXT
+  # string, so supply it already split into quoted chunks if needed — Route53
+  # concatenates multiple quoted strings within one value.
   DkimRecord:
     Type: AWS::Route53::RecordSet
     Condition: HasDkim
     Properties:
       HostedZoneId: !Ref HostedZoneId
       Name: !Sub "${DkimSelector}._domainkey.${DomainName}."
-      Type: CNAME
+      Type: TXT
       TTL: "3600"
       ResourceRecords:
         - !Ref DkimValue
