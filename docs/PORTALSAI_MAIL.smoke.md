@@ -108,10 +108,16 @@ The only part of the runbook not yet done. Requires the Workspace mailbox, which
 - [ ] Run an external validator ([mxtoolbox.com](https://mxtoolbox.com) or [dmarcian](https://dmarcian.com/domain-checker/)) against `portalsai.io` → **SPF, DKIM and DMARC all pass**.
 - [ ] In the Workspace console, DKIM status reads **authenticating** (after you clicked *Start authentication*).
 
-## §8 — The one foot-gun
+## §8 — The two foot-guns
 
-- [ ] Confirm the repository variable **`PORTALSAI_DKIM_VALUE`** is set (Settings → Secrets and variables → Actions → Variables) to the **chunked** value exactly as stored in Route53.
-- [ ] Understand why: `deploy-dev.yml` passes it on every infra deploy. **Unset, the next deploy re-deploys the stack with an empty `DkimValue` and deletes the DKIM record.** If §1's re-deploy check dropped DKIM, this is the cause.
+- [ ] Confirm the repository variable **`PORTALSAI_DKIM_VALUE`** is set (Settings → Secrets and variables → Actions → Variables) to the **chunked** value exactly as stored in Route53 — quotes included, and with **no** extra shell escaping added.
+- [ ] Understand why it must be set: `deploy-dev.yml` passes it on every infra deploy. **Unset, the next deploy re-deploys the stack with an empty `DkimValue` and deletes the DKIM record.** If §1's re-deploy check dropped DKIM, this is the cause.
+- [ ] Understand why it must not be pre-quoted, and confirm the pipeline still reads it safely: the value contains spaces, `;` and `"`, so it reaches the CLI as JSON (`--parameter-overrides file://…`) from an `env:` var, never interpolated into the command text. Check `.github/workflows/deploy-dev.yml` → *Deploy mail DNS stack* still has `DKIM_VALUE` under `env:`. **A `DkimValue="${{ vars.PORTALSAI_DKIM_VALUE }}"` inline in the `run:` block is the bug, not a style choice** — `${{ … }}` substitutes before bash parses, bash splits at the `;`, CloudFormation gets `v=DKIM1`, and Route53 fails the stack with `InvalidCharacterString`.
+- [ ] Confirm the last `Deploy Dev` run on `main` is **green through `deploy-infra`** — this step failing blocks `deploy-frontend`, `deploy-backend` and `tag-deploy`, so a red mail-DNS step silently stops shipping the app to dev:
+
+```bash
+gh run list --workflow=deploy-dev.yml --limit 1
+```
 
 ## §9 — Not manually verifiable (recorded, not skipped)
 
@@ -128,7 +134,7 @@ The spec's first criterion — all cases pass, `lint` / `type-check` / `format:c
 - [ ] §5 (endpoint) — no `contact` key, 200 not 503, price rule intact.
 - [ ] §6 (site) — legal pages show admin@, JSON-LD shows support@, unset vars fall back to qa@ with no empty mailto.
 - [ ] §7 (delivery) — all four addresses receive; a reply passes DKIM; external validator green.
-- [ ] §8 (foot-gun) — `PORTALSAI_DKIM_VALUE` set.
+- [ ] §8 (foot-guns) — `PORTALSAI_DKIM_VALUE` set and un-escaped; workflow reads it via `env:` + `file://`; `deploy-dev` green through `deploy-infra`.
 - [ ] CI green on the PR (§9).
 - [ ] `<date>` — `<name>` — walked against my own running stack.
 
