@@ -1,10 +1,9 @@
 ---
-/** Site-wide footer. Contact addresses come from the build snapshot, so
- *  `portalops vars set SUPPORT_EMAIL` reaches every page on the next
- *  rebuild — no address is hardcoded here. */
-import { siteConfig } from "../lib/site-context.js";
+/** Site-wide footer. Contact addresses are env-derived (#369), injected at
+ *  build time from SSM — so `portalops vars set SUPPORT_EMAIL` reaches every
+ *  page on the next rebuild and no address is hardcoded here. */
+import { supportEmail, salesEmail } from "../lib/site-context.js";
 
-const { supportEmail, salesEmail } = siteConfig.contact;
 const year = 2026;
 ---
 

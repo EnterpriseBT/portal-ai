@@ -1,13 +1,13 @@
 ---
 import Page from "../layouts/Page.astro";
-import { siteConfig, siteUrl } from "../lib/site-context.js";
+import { siteUrl, adminEmail } from "../lib/site-context.js";
 import { breadcrumbLd } from "../lib/jsonld.js";
 
 /**
  * STRUCTURE ONLY — see `privacy.astro`. Business-reviewed copy replaces
  * these sections before the production tag.
  */
-const { supportEmail } = siteConfig.contact;
+// Legal contact is the admin address (#369), not support.
 
 const SECTIONS = [
   { heading: "Agreement to these terms", prompt: "Who is bound, and when." },
@@ -75,8 +75,8 @@ const jsonLd = [
   }
 
   <p>
-    Questions about these terms: <a href={`mailto:${supportEmail}`}
-      >{supportEmail}</a
+    Questions about these terms: <a href={`mailto:${adminEmail}`}
+      >{adminEmail}</a
     >
   </p>
 

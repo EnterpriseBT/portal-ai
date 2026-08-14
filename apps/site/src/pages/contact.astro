@@ -1,12 +1,12 @@
 ---
 import Page from "../layouts/Page.astro";
-import { siteConfig, siteUrl } from "../lib/site-context.js";
+import { siteUrl, supportEmail, salesEmail } from "../lib/site-context.js";
 import { breadcrumbLd, organizationLd } from "../lib/jsonld.js";
 
 /** Addresses are operator-owned (`portalops vars set SUPPORT_EMAIL`) and
  *  arrive in the build snapshot — changing one is a config write plus the
  *  rebuild it dispatches, never a deploy. */
-const { supportEmail, salesEmail } = siteConfig.contact;
+// Addresses are env-derived (#369) — see lib/contact.ts.
 
 const jsonLd = [
   breadcrumbLd(siteUrl, [
