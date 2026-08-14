@@ -20,14 +20,39 @@ Express API server for the Portals AI application with Auth0 JWT authentication.
 
 ### Environment Variables
 
-Create a `.env` file in the API directory with the following variables:
-
-```env
-PORT=3000
-CORS_ORIGIN=http://localhost:5173
-AUTH0_AUDIENCE=your-auth0-audience
-AUTH0_DOMAIN=your-domain.us.auth0.com
+```bash
+cp .env.example .env
 ```
+
+**`.env.example` is the authoritative inventory** — every variable the API
+reads has a line in it, organized into four tiers by what you have to do
+about each one:
+
+| Tier | Shape in the file | What it means |
+|---|---|---|
+| **Required** | uncommented, with a working local value | the app doesn't run correctly without it |
+| **Capability** | present but empty | switches a feature on; absent, that feature degrades and the app still boots |
+| **Tunables** | commented, showing the real default | uncomment only to override |
+| **Test / dev** | commented | read by local tooling, never by the server |
+
+Fill in the Required tier (notably `ANTHROPIC_API_KEY`, `ENCRYPTION_KEY` and
+`OAUTH_STATE_SECRET`, which have no usable default) and you have a running
+API. Add Capability keys as you need the features behind them.
+
+This is enforced, not aspirational: `src/__tests__/env-example-parity.test.ts`
+fails if the code reads a variable with no line in `.env.example`, **and** if
+`.env.example` declares a name the code no longer reads — the second half
+exists because a renamed variable used to leave its old name documented, so
+setting it did nothing and said nothing about it. Genuine exceptions live on
+two short allow-lists in that test, each entry carrying its reason.
+
+**Deployed environments do not use this file.** Their values live in AWS
+Secrets Manager / SSM and are managed with `portalops vars` (see [Operator
+CLI](#operator-cli-portalops) below) — but the catalog covers only keys that
+are *operator-settable per environment*. Tunables and template-computed
+values (`REDIS_URL`, the `UPLOAD_S3_*` trio, the OAuth redirect URIs) are
+deliberately absent from it, and a matching guard in `@portalai/devops-cli`
+asserts every secret the ECS task definition consumes has a catalog entry.
 
 #### Custom toolpack outbound webhook hardening (phase 6)
 
@@ -42,7 +67,7 @@ without a redeploy if a regression surfaces in production.
 | `TOOLPACK_RUNTIME_MAX_RESPONSE_BYTES` | `1048576` (1 MB) | Streaming size cap on responses from a custom toolpack's `/runtime` endpoint. Schema/metadata responses stay capped at 256 KB. |
 | `TOOLPACK_DISABLE_SSRF_FILTER` | `false` | Set to `true` to bypass the call-time DNS-resolve-then-validate SSRF guard. Emergency rollback only — the static URL refinement at registration still runs. Note: when `NODE_ENV !== "production"` the guard already allows loopback (`127.0.0.1`, `::1`, `localhost`) so the dev workflow against the mock toolpack server works without flipping this flag. |
 | `TOOLPACK_DISABLE_SIGNING` | `false` | Set to `true` to stop appending `X-Portalai-Signature` / `-Timestamp` / `-Webhook-Id` headers on outbound calls. Emergency rollback only — toolpack servers that already verify signatures will reject every request after this is flipped. |
-| `MOCK_TOOLPACK_SIGNING_SECRET` | unset | Dev-only. When set, the mock toolpack server (`npm run mock-toolpack`) verifies the same three signing headers on every endpoint and returns 401 `SIGNATURE_MISSING` / `TIMESTAMP_STALE` / `SIGNATURE_INVALID` on failures. When unset, the mock warns and accepts unsigned requests — useful for early dev before a registration exists. |
+| `MOCK_TOOLPACK_SIGNING_SECRET` | unset | Dev-only. When set, the mock toolpack server (`npm run webhook:toolpack`) verifies the same three signing headers on every endpoint and returns 401 `SIGNATURE_MISSING` / `TIMESTAMP_STALE` / `SIGNATURE_INVALID` on failures. When unset, the mock warns and accepts unsigned requests — useful for early dev before a registration exists. |
 
 After applying migration 0051 on a non-empty `organization_toolpacks`
 table, run the one-shot backfill to replace the migration sentinels
