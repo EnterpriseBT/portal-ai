@@ -1,0 +1,121 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Portals AI — mail DNS for portalsai.io (MX, SPF, DMARC, DKIM)
+
+# ── Two things to know before editing this file (#369) ────────────────
+#
+# 1. MAIL IS A PROPERTY OF THE DOMAIN, NOT OF AN ENVIRONMENT.
+#    Every sibling stack takes `Environment` and is deployed once per env
+#    (portalai-dev-frontend, portalai-prod-frontend, …). This one is NOT:
+#    there is one `portalsai.io` zone and one set of MX records for it, so
+#    the stack is named `portalai-dns-email` with no environment segment and
+#    takes no `Environment` parameter. Per-environment *addresses* are a
+#    config concern (SSM `support-email` / `sales-email` / `admin-email`),
+#    not a DNS one — qa@ and support@ are aliases on the same mailbox and
+#    need no separate records.
+#
+# 2. THE DKIM VALUE CANNOT EXIST WHEN THIS STACK IS FIRST DEPLOYED.
+#    Google generates the DKIM public key only *after* the domain is verified
+#    in the Workspace console, which is a human step (see
+#    docs/PORTALSAI_MAIL.runbook.md). So `DkimValue` defaults to "" and the
+#    DKIM record is behind a Condition: the first deploy publishes MX, SPF
+#    and DMARC — enough to receive mail — and a second deploy adds DKIM once
+#    the key exists. Do not "fix" this by hardcoding the key or by splitting
+#    the stack; the ordering is inherent to the provider.
+
+Parameters:
+  DomainName:
+    Type: String
+    Default: portalsai.io
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+
+  DkimValue:
+    Type: String
+    Default: ""
+    Description: >-
+      Google Workspace DKIM public key (the CNAME target, not the TXT record).
+      Empty until the domain is verified — see the header note. Supplying it
+      creates the DKIM record on the next deploy.
+  DkimSelector:
+    Type: String
+    Default: google
+    Description: DKIM selector; Google's default is "google".
+
+  DmarcPolicy:
+    Type: String
+    Default: none
+    AllowedValues: [none, quarantine, reject]
+    Description: >-
+      Start at "none" — the mailbox is new and aggregate reports are the
+      evidence for tightening later. Moving to quarantine/reject before
+      reading a few weeks of reports risks silently dropping legitimate mail.
+  DmarcReportEmail:
+    Type: String
+    Default: admin@portalsai.io
+    Description: DMARC aggregate report destination (`rua=`).
+
+Conditions:
+  # The DKIM record only exists once the key does. See header note 2.
+  HasDkim: !Not [!Equals [!Ref DkimValue, ""]]
+
+Resources:
+  # ── Inbound mail — Google Workspace ────────────────────────────────
+  # The five hosts Google publishes, with their documented priorities.
+  MxRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "${DomainName}."
+      Type: MX
+      TTL: "3600"
+      ResourceRecords:
+        - "1 aspmx.l.google.com."
+        - "5 alt1.aspmx.l.google.com."
+        - "5 alt2.aspmx.l.google.com."
+        - "10 alt3.aspmx.l.google.com."
+        - "10 alt4.aspmx.l.google.com."
+
+  # ── SPF — who may send as this domain ──────────────────────────────
+  # `~all` (softfail) rather than `-all`: nothing in the product sends mail
+  # today (#369 is receive-only), so a hard fail would only ever punish a
+  # legitimate sender we forgot about. Tighten when a sender is introduced.
+  SpfRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "${DomainName}."
+      Type: TXT
+      TTL: "3600"
+      ResourceRecords:
+        - '"v=spf1 include:_spf.google.com ~all"'
+
+  # ── DMARC — reporting, so the policy can be tightened on evidence ──
+  DmarcRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "_dmarc.${DomainName}."
+      Type: TXT
+      TTL: "3600"
+      ResourceRecords:
+        - !Sub '"v=DMARC1; p=${DmarcPolicy}; rua=mailto:${DmarcReportEmail}; fo=1"'
+
+  # ── DKIM — created only once Google has generated the key ──────────
+  DkimRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasDkim
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "${DkimSelector}._domainkey.${DomainName}."
+      Type: CNAME
+      TTL: "3600"
+      ResourceRecords:
+        - !Ref DkimValue
+
+Outputs:
+  MailDomain:
+    Description: The domain these mail records serve.
+    Value: !Ref DomainName
+  DkimConfigured:
+    Description: Whether the DKIM record was created (false until verification).
+    Value: !If [HasDkim, "true", "false"]
