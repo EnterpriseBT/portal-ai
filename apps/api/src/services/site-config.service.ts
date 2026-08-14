@@ -25,7 +25,6 @@ import { TierCtaSchema } from "@portalai/core/models";
 
 import { DbService } from "./db.service.js";
 import { StripeService } from "./stripe.service.js";
-import { BusinessConfigService } from "./business-config.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -45,10 +44,10 @@ export class SiteConfigService {
   private static cache: SnapshotCacheEntry | null = null;
 
   /**
-   * The atomic snapshot: `{ tiers, contact, generatedAt }`. Throws
+   * The atomic snapshot: `{ tiers, generatedAt }`. Throws
    * `ApiError(503, SITE_CONFIG_PRICE_UNRESOLVED)` per the split rule;
    * every other upstream degradation is handled below this layer
-   * (BusinessConfigService fails soft; findPublic errors bubble as 500).
+   * (findPublic errors bubble as 500).
    */
   static async getSiteConfig(): Promise<PublicSiteConfigResponse> {
     const now = Date.now();
@@ -57,30 +56,7 @@ export class SiteConfigService {
       return cached.snapshot;
     }
 
-    const [rows, contact] = await Promise.all([
-      DbService.repository.tiers.findPublic(),
-      BusinessConfigService.getContact(),
-    ]);
-
-    // Fail closed on a missing address, symmetrical with the price rule
-    // below. `BusinessConfigService` degrades SSM → env → `""`, and an empty
-    // string is indistinguishable from "no support channel" once it is a
-    // `mailto:` href baked into every published page. Refuse to serve it.
-    const missingContact = (["supportEmail", "salesEmail"] as const).filter(
-      (field) => !contact[field]?.trim()
-    );
-    if (missingContact.length > 0) {
-      logger.error(
-        { missingContact },
-        "Public contact address unresolved; failing closed"
-      );
-      throw new ApiError(
-        503,
-        ApiCode.SITE_CONFIG_CONTACT_UNRESOLVED,
-        `Contact address(es) not configured: ${missingContact.join(", ")}. ` +
-          "Set them via `portalops vars set` (or SUPPORT_EMAIL/SALES_EMAIL locally)."
-      );
-    }
+    const rows = await DbService.repository.tiers.findPublic();
 
     const tiers = await Promise.all(
       rows.map(async (row) => {
@@ -120,7 +96,6 @@ export class SiteConfigService {
 
     const snapshot: PublicSiteConfigResponse = {
       tiers,
-      contact,
       generatedAt: new Date(now).toISOString(),
     };
     SiteConfigService.cache = {

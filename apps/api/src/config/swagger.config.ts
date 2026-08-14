@@ -45,7 +45,6 @@ import {
   MaintenanceStatusResponseSchema,
   PublicSitePriceSchema,
   PublicSiteTierSchema,
-  PublicSiteContactSchema,
   PublicSiteConfigResponseSchema,
   DeltaEventSchema,
   ToolCallEventSchema,
@@ -279,7 +278,6 @@ const usageLedgerSchemas: Record<string, unknown> = {
 const publicSiteSchemas: Record<string, unknown> = {
   PublicSitePrice: z.toJSONSchema(PublicSitePriceSchema, JSON_SCHEMA_OPTS),
   PublicSiteTier: z.toJSONSchema(PublicSiteTierSchema, JSON_SCHEMA_OPTS),
-  PublicSiteContact: z.toJSONSchema(PublicSiteContactSchema, JSON_SCHEMA_OPTS),
   PublicSiteConfigResponse: z.toJSONSchema(
     PublicSiteConfigResponseSchema,
     JSON_SCHEMA_OPTS

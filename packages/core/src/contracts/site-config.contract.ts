@@ -50,26 +50,10 @@ export const PublicSiteTierSchema = z.strictObject({
 });
 export type PublicSiteTier = z.infer<typeof PublicSiteTierSchema>;
 
-/** Operator-owned contact routes (`portalops vars` → SSM, env fallback).
- *
- *  `.min(1)` is load-bearing, not decoration. These addresses become
- *  `mailto:` hrefs baked into every published page, and an unset env var
- *  resolves to `""` — which sailed through a plain `z.string()` and shipped
- *  `<a href="mailto:"></a>` in every footer plus two dead CTAs on the contact
- *  page, with the build reporting success (found smoke-walking #311). Same
- *  fail-closed reasoning as the price rule above: refuse to describe a
- *  contact route we don't have. */
-export const PublicSiteContactSchema = z.strictObject({
-  supportEmail: z.string().min(1),
-  salesEmail: z.string().min(1),
-});
-export type PublicSiteContact = z.infer<typeof PublicSiteContactSchema>;
-
 /** The whole response payload — ONE atomic snapshot, fetched once per site
  *  build and threaded to every page so pages can never disagree. */
 export const PublicSiteConfigResponseSchema = z.strictObject({
   tiers: z.array(PublicSiteTierSchema),
-  contact: PublicSiteContactSchema,
   /** ISO timestamp of snapshot assembly — stamped into the site's
    *  `portal:build` meta tag for staleness forensics. */
   generatedAt: z.string(),

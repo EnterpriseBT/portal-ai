@@ -510,13 +510,6 @@ Resources:
                     Fn::Sub: "${Environment}-RedisEndpoint"
                   Port: !ImportValue
                     Fn::Sub: "${Environment}-RedisPort"
-            # #311: enables runtime business-config SSM reads
-            # (BusinessConfigService). Deliberately NOT a Secrets/ValueFrom
-            # entry — the contact params are read at request time, and a
-            # ValueFrom on a not-yet-provisioned parameter would block task
-            # startup on operator action.
-            - Name: BUSINESS_CONFIG_SSM_PREFIX
-              Value: !Sub "/portalai/${Environment}"
           Secrets:
             - Name: DATABASE_URL
               ValueFrom: !Ref SecretArnDatabaseUrl

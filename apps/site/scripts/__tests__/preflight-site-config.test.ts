@@ -5,7 +5,7 @@
  * exercised by the deploy smoke walk, not here.
  *
  * These cases mirror the endpoint's real envelopes: a 200 wraps the snapshot
- * as `{ success, payload: { tiers, contact, generatedAt } }`; a fail-closed
+ * as `{ success, payload: { tiers, generatedAt } }`; a fail-closed
  * 503 is `{ success:false, message, code }`.
  */
 
@@ -15,7 +15,7 @@ import { evaluate } from "../preflight-site-config.mjs";
 
 const ok200 = (tiers: unknown[]) => ({
   status: 200,
-  body: { success: true, payload: { tiers, contact: {}, generatedAt: "x" } },
+  body: { success: true, payload: { tiers, generatedAt: "x" } },
 });
 
 describe("evaluate", () => {
@@ -36,32 +36,32 @@ describe("evaluate", () => {
     expect(r.remediation).toContain("--env app-dev");
   });
 
-  // ── case 3 — 503 contact unresolved → both vars set lines ──────────
-  it("fails a 503 CONTACT_UNRESOLVED and names both contact vars", () => {
+  // ── case 3 — a 503 with no remediation branch still fails closed ───
+  //
+  // #369 removed SITE_CONFIG_CONTACT_UNRESOLVED: contact addresses are
+  // env-derived at build time now, so the endpoint has nothing to refuse.
+  // Any *other* 503 must still stop the build rather than publish.
+  it("fails an unrecognized 503 without remediation copy", () => {
     const r = evaluate({
       status: 503,
-      body: {
-        success: false,
-        code: "SITE_CONFIG_CONTACT_UNRESOLVED",
-        message: "…",
-      },
+      body: { success: false, code: "SOMETHING_ELSE", message: "…" },
       portalopsEnv: "app-dev",
     });
     expect(r.ok).toBe(false);
-    expect(r.remediation).toContain("vars set SUPPORT_EMAIL");
-    expect(r.remediation).toContain("vars set SALES_EMAIL");
-    expect(r.remediation).toContain("--env app-dev");
-    expect(r.remediation).not.toContain("--confirm-prod");
+    expect(r.reason).toContain("503");
   });
 
-  // ── case 4 — same, prod → --confirm-prod ───────────────────────────
+  // ── case 4 — prod remediation carries --confirm-prod ───────────────
+  //
+  // Re-pointed at the price code when the contact code was removed: the
+  // subject here is the prod guard flag, not which 503 produced it.
   it("adds --confirm-prod to the remediation when isProd", () => {
     const r = evaluate({
       status: 503,
       body: {
         success: false,
-        code: "SITE_CONFIG_CONTACT_UNRESOLVED",
-        message: "…",
+        code: "SITE_CONFIG_PRICE_UNRESOLVED",
+        message: "tier 'pro' price unresolvable",
       },
       portalopsEnv: "prod",
       isProd: true,

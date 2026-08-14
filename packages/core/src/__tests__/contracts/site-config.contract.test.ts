@@ -9,7 +9,6 @@ import { describe, it, expect } from "@jest/globals";
 
 import {
   PublicSiteTierSchema,
-  PublicSiteContactSchema,
   PublicSiteConfigResponseSchema,
 } from "../../contracts/site-config.contract";
 
@@ -27,10 +26,6 @@ const validTier = {
 
 const validSnapshot = {
   tiers: [validTier],
-  contact: {
-    supportEmail: "support@portalsai.io",
-    salesEmail: "sales@portalsai.io",
-  },
   generatedAt: "2026-08-03T00:00:00.000Z",
 };
 
@@ -38,7 +33,21 @@ describe("PublicSiteConfigResponseSchema (#311)", () => {
   it("parses a full snapshot", () => {
     const parsed = PublicSiteConfigResponseSchema.parse(validSnapshot);
     expect(parsed.tiers[0].slug).toBe("pro");
-    expect(parsed.contact.supportEmail).toBe("support@portalsai.io");
+    expect(parsed.generatedAt).toBeTruthy();
+  });
+
+  // #369: contact addresses left this contract. They are env-derived at build
+  // time now — SSM is the single write path — so the API no longer tells the
+  // site what its own support address is. `strictObject` is what makes the
+  // removal enforceable rather than merely intended.
+  it("rejects a contact block — addresses are env-derived since #369", () => {
+    const withContact = {
+      ...validSnapshot,
+      contact: { supportEmail: "support@portalsai.io", salesEmail: "s@x.io" },
+    };
+    expect(PublicSiteConfigResponseSchema.safeParse(withContact).success).toBe(
+      false
+    );
   });
 
   it("price is nullable (the contact card) and round-trips null", () => {
@@ -76,26 +85,4 @@ describe("PublicSiteConfigResponseSchema (#311)", () => {
       }).success
     ).toBe(false);
   });
-});
-
-// ── the contact rule (found smoke-walking #311) ──────────────────────
-
-describe("PublicSiteContactSchema", () => {
-  const valid = {
-    supportEmail: "support@portalsai.io",
-    salesEmail: "sales@portalsai.io",
-  };
-
-  it("accepts real addresses", () => {
-    expect(PublicSiteContactSchema.parse(valid)).toEqual(valid);
-  });
-
-  it.each(["supportEmail", "salesEmail"] as const)(
-    "rejects an empty %s — an unset env var must not become a mailto: href",
-    (field) => {
-      expect(
-        PublicSiteContactSchema.safeParse({ ...valid, [field]: "" }).success
-      ).toBe(false);
-    }
-  );
 });

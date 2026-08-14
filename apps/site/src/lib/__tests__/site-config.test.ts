@@ -30,10 +30,6 @@ const tier = (over: Record<string, unknown> = {}) => ({
 
 const payload = (over: Record<string, unknown> = {}) => ({
   tiers: [tier()],
-  contact: {
-    supportEmail: "support@portalsai.io",
-    salesEmail: "sales@portalsai.io",
-  },
   generatedAt: "2026-08-03T00:00:00.000Z",
   ...over,
 });
@@ -113,7 +109,7 @@ describe("fetchSiteConfig", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
     // Offline builds still need something to render.
     expect(config.tiers.length).toBeGreaterThan(0);
-    expect(config.contact.supportEmail).toBeTruthy();
+    expect(config.generatedAt).toBeTruthy();
   });
 });
 

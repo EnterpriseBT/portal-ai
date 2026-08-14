@@ -4,7 +4,7 @@
  * Runs before `Build site` in `deploy-static-site.yml`. The build fetches the
  * same endpoint and fails loud on a bad response — but that failure surfaces
  * as a raw thrown fetch, and you have to curl the API by hand to learn WHY
- * (contact unresolved? no public tiers? API still rolling?). This turns each
+ * (no public tiers? a price unresolvable? API still rolling?). This turns each
  * of those into an actionable `::error::` naming the exact `portalops` command
  * for the environment, before the build burns its minutes.
  *
@@ -17,7 +17,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** Must match `ApiCode` in `apps/api/src/constants/api-codes.constants.ts`. */
-const CONTACT_UNRESOLVED = "SITE_CONFIG_CONTACT_UNRESOLVED";
 const PRICE_UNRESOLVED = "SITE_CONFIG_PRICE_UNRESOLVED";
 
 /**
@@ -54,16 +53,6 @@ export function evaluate({ status, body, isProd = false, portalopsEnv }) {
 
   if (status === 503) {
     const code = body?.code;
-    if (code === CONTACT_UNRESOLVED) {
-      return {
-        ok: false,
-        reason:
-          "contact addresses are not configured (SITE_CONFIG_CONTACT_UNRESOLVED)",
-        remediation:
-          `portalops vars set SUPPORT_EMAIL <address> --env ${portalopsEnv} --yes${prod}\n` +
-          `portalops vars set SALES_EMAIL <address> --env ${portalopsEnv} --yes${prod}`,
-      };
-    }
     if (code === PRICE_UNRESOLVED) {
       const slug = String(body?.message ?? "").match(/tier '([^']+)'/)?.[1];
       return {
