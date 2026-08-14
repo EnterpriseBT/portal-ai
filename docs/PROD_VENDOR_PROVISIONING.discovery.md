@@ -2,7 +2,7 @@
 
 **Issue:** [EnterpriseBT/portal-ai#384](https://github.com/EnterpriseBT/portal-ai/issues/384) · child of epic [#83](https://github.com/EnterpriseBT/portal-ai/issues/83)
 
-**Why this exists.** The prod AWS stacks boot only if every managed config key resolves: `backend.yml` takes twelve secrets by ARN parameter and reads ten SSM parameters by convention path. Today `portalai/prod/*` and `/portalai/prod/*` are empty, and the upstream accounts those values come from — a production Auth0 tenant, Google and Microsoft Entra OAuth clients, and prod-only Anthropic / Tavily / Mapbox keys — do not exist. This is the ticket that creates the vendor identities and populates the catalog, and it is the hard prerequisite for every other child of the epic.
+**Why this exists.** The prod AWS stacks boot only if every managed config key resolves: `backend.yml` takes twelve secrets by ARN parameter and reads eight SSM parameters by convention path, out of a 24-key catalog. Today `portalai/prod/*` and `/portalai/prod/*` are empty, and the upstream accounts those values come from — a production Auth0 tenant, Google and Microsoft Entra OAuth clients, and prod-only Anthropic / Tavily / Mapbox keys — do not exist. This is the ticket that creates the vendor identities and populates the catalog, and it is the hard prerequisite for every other child of the epic.
 
 It is also the epic's most **unusual** child: most of the work happens in vendor consoles, not in this repo. The engineering question is therefore not "what code implements this" but "what does the repo need so that a production environment can be provisioned *safely* — guarded, audited, and without a production credential passing through a human's clipboard". Three things surfaced during the survey that change the plan.
 
@@ -23,7 +23,7 @@ Two properties of the override path matter enormously here. An override **may no
 
 | Piece | Location | Note |
 |---|---|---|
-| Catalog | `packages/devops-cli/src/catalog.ts` | 12 secrets + 10 SSM after #382 adds the Mapbox key |
+| Catalog | `packages/devops-cli/src/catalog.ts` | **24 keys** — 12 secrets + 12 SSM once #382 adds the Mapbox entry |
 | `vars set` | `commands/vars.ts:170-196` | one key; **`"-"` reads stdin**; refuses empty; guarded; audited |
 | `vars apply` | `commands/vars.ts:243-268` | batch from a `KEY=VALUE` file; validates wholesale before any write |
 | `vars template` | `commands/vars.ts:277-295` | writes a **plaintext** file (0600) of every catalog value |
