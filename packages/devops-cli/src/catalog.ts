@@ -67,11 +67,18 @@ export const CATALOG: CatalogEntry[] = [
   ssm("CORS_ORIGIN", "cors-origin"),
   ssm("NAMESPACE", "namespace"),
   ssm("SYSTEM_ID", "system-id"),
-  // #311: public site-config contact addresses — served by
-  // GET /api/public/site-config (runtime SSM read, env fallback) and baked
-  // into the marketing site at build time.
+  // #311/#369: the business contact addresses. Baked into the marketing site
+  // and the web app at build time — a `vars set` changes the stored value, and
+  // the next deploy (or the site-rebuild dispatch) is what publishes it.
+  //
+  // Same key set in every environment, differing only in value: qa@ serves all
+  // three roles outside prod so no non-prod surface can advertise a
+  // customer-facing inbox.
   { ...ssm("SUPPORT_EMAIL", "support-email"), siteConfig: true },
   { ...ssm("SALES_EMAIL", "sales-email"), siteConfig: true },
+  // #369: legal / data-controller contact — the site's terms and privacy
+  // pages, and the DMARC `rua=` reporting destination.
+  { ...ssm("ADMIN_EMAIL", "admin-email"), siteConfig: true },
 ];
 
 /** Resolve a catalog key or throw (typed) pointing at `vars describe`. */
