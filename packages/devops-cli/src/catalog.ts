@@ -47,6 +47,12 @@ export const CATALOG: CatalogEntry[] = [
   secret("AUTH0_WEBHOOK_SECRET", "auth0-webhook-secret"),
   secret("ANTHROPIC_API_KEY", "anthropic-api-key"),
   secret("TAVILY_API_KEY", "tavily-api-key"),
+  // #315: Mapbox access token behind geocode / reverse_geocode /
+  // bulk_geocode_records. Wired into backend.yml and deploy-dev.yml when GIS
+  // geocoding shipped, but missed here — so `vars apply` reported a complete
+  // environment while a required secret was absent (#382). A parity test now
+  // asserts every backend.yml secret has an entry.
+  secret("GEOCODING_API_KEY", "geocoding-api-key"),
   secret("GOOGLE_OAUTH_CLIENT_SECRET", "google-oauth-client-secret"),
   secret("MICROSOFT_OAUTH_CLIENT_SECRET", "microsoft-oauth-client-secret"),
   secret("OAUTH_STATE_SECRET", "oauth-state-secret"),
