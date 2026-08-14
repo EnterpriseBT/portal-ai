@@ -7,6 +7,7 @@ import {
   BUILTIN_ENVIRONMENTS,
   EnvConfirmationRequiredError,
   EnvInfraError,
+  EnvNotConfiguredError,
   type MockEnvDef,
 } from "./helpers/cli-env-mock.js";
 
@@ -18,7 +19,7 @@ jest.unstable_mockModule("../reset.js", () => ({ runReset: runResetMock }));
 const runSeedTaskMock = jest.fn<() => Promise<unknown>>();
 jest.unstable_mockModule("../ecs.js", () => ({ runSeedTask: runSeedTaskMock }));
 
-const { dbTunnel, dbPsql, dbSeed, dbResetSeed } =
+const { dbTunnel, dbPsql, dbSeed, dbResetSeed, dbUrl } =
   await import("../commands/db.js");
 
 type RunApiScript = (
@@ -205,5 +206,155 @@ describe("dbResetSeed", () => {
     );
     expect(runSeedTaskMock).not.toHaveBeenCalled();
     expect(runScript).not.toHaveBeenCalled();
+  });
+});
+
+// ── db url (#384) ────────────────────────────────────────────────────
+//
+// Composes the connection string from the database stack's exports and the
+// RDS-managed master secret, so the production DB password moves AWS-API to
+// AWS-API and is never rendered to a human. RDS creates no application
+// database (the template sets no DBName), so `portal_ai` is created by hand —
+// which is why --db-name exists as a bootstrap escape hatch.
+
+const prod = BUILTIN_ENVIRONMENTS["prod"];
+
+const stackExports = (
+  endpoint = "portalai-dev.abc.us-east-1.rds.amazonaws.com",
+  port = "5432",
+  arn = "arn:aws:secretsmanager:us-east-1:1:secret:rds!db-x-y2Ev1F"
+) => {
+  mocks.resolveExport.mockImplementation(async (_def, name) => {
+    if (name.endsWith("-DbEndpoint")) return endpoint;
+    if (name.endsWith("-DbPort")) return port;
+    if (name.endsWith("-DbMasterSecretArn")) return arn;
+    throw new EnvInfraError(`unexpected export ${name}`);
+  });
+};
+
+const master = (password: string, username = "portalai") =>
+  mocks.getSecretByArn.mockResolvedValue(
+    JSON.stringify({ username, password })
+  );
+
+describe("dbUrl (#384)", () => {
+  // Composition is only observable unredacted on the write path, so the
+  // shape tests below go through it.
+  beforeEach(() => mocks.putSecret.mockResolvedValue({ created: false }));
+
+  it("composes the default shape — pinned against dev's live value", async () => {
+    stackExports();
+    master("s3cret");
+    const out = await dbUrl(appDev, { write: true, yes: true });
+    expect(out.connectionString).toBe(
+      "postgresql://portalai:s3cret@portalai-dev.abc.us-east-1.rds.amazonaws.com:5432/portal_ai?sslmode=require"
+    );
+  });
+
+  it("reads the three exports for the env's AWS name", async () => {
+    stackExports();
+    master("p");
+    await dbUrl(prod, { write: true, yes: true, confirmProd: true });
+    const asked = mocks.resolveExport.mock.calls.map((c) => c[1]);
+    expect(asked).toEqual([
+      "prod-DbEndpoint",
+      "prod-DbPort",
+      "prod-DbMasterSecretArn",
+    ]);
+  });
+
+  it("--db-name reaches the maintenance database (the bootstrap escape hatch)", async () => {
+    stackExports();
+    master("p");
+    const out = await dbUrl(appDev, {
+      dbName: "postgres",
+      write: true,
+      yes: true,
+    });
+    expect(out.connectionString).toContain("/postgres?sslmode=require");
+  });
+
+  it("--ssl-mode overrides the query segment", async () => {
+    stackExports();
+    master("p");
+    const out = await dbUrl(appDev, {
+      sslMode: "disable",
+      write: true,
+      yes: true,
+    });
+    expect(out.connectionString).toContain("?sslmode=disable");
+  });
+
+  it("URL-encodes a password containing @ : / # ?", async () => {
+    stackExports();
+    master("p@ss:w/rd#1?x");
+    const out = await dbUrl(appDev, { write: true, yes: true });
+    // The bug this pins: an unencoded @ splits the authority and yields a
+    // string that parses to the wrong host without erroring.
+    expect(out.connectionString).toContain(
+      "postgresql://portalai:p%40ss%3Aw%2Frd%231%3Fx@"
+    );
+    expect(new URL(out.connectionString).password).toBe(
+      "p%40ss%3Aw%2Frd%231%3Fx"
+    );
+  });
+
+  it("REDACTS the password by default and writes nothing", async () => {
+    stackExports();
+    master("s3cret");
+    const out = await dbUrl(appDev);
+    expect(out.connectionString).toBe(
+      "postgresql://portalai:***@portalai-dev.abc.us-east-1.rds.amazonaws.com:5432/portal_ai?sslmode=require"
+    );
+    expect(out.connectionString).not.toContain("s3cret");
+    expect(out.written).toBe(false);
+    expect(mocks.putSecret).not.toHaveBeenCalled();
+    expect(mocks.assertOperationAllowed).not.toHaveBeenCalled();
+  });
+
+  it("--write stores it at database-url and reports `created`", async () => {
+    stackExports();
+    master("s3cret");
+    mocks.putSecret.mockResolvedValue({ created: true });
+    const out = await dbUrl(appDev, { write: true, yes: true });
+    expect(mocks.putSecret).toHaveBeenCalledWith(
+      appDev,
+      "database-url",
+      expect.stringContaining("s3cret")
+    );
+    expect(out).toMatchObject({ written: true, created: true });
+  });
+
+  it("guards BEFORE writing — a rejected guard never calls putSecret", async () => {
+    stackExports();
+    master("s3cret");
+    mocks.assertOperationAllowed.mockImplementation(() => {
+      throw new EnvConfirmationRequiredError("needs --confirm-prod");
+    });
+    await expect(
+      dbUrl(prod, { write: true, yes: true })
+    ).rejects.toBeInstanceOf(EnvConfirmationRequiredError);
+    // Asserting only "it throws" would pass on a compose-then-guard
+    // implementation that had already written.
+    expect(mocks.putSecret).not.toHaveBeenCalled();
+  });
+
+  it("audits the write without the password or the composed string", async () => {
+    stackExports();
+    master("s3cret");
+    mocks.putSecret.mockResolvedValue({ created: false });
+    await dbUrl(prod, { write: true, yes: true, confirmProd: true });
+    const entry = JSON.stringify(mocks.recordAudit.mock.calls[0][0]);
+    expect(entry).toContain("db url");
+    expect(entry).toContain("portalai-dev.abc.us-east-1.rds.amazonaws.com");
+    expect(entry).not.toContain("s3cret");
+    expect(entry).not.toContain("postgresql://");
+  });
+
+  it("throws ENV_NOT_CONFIGURED for a local env with no AWS", async () => {
+    mocks.resolveExport.mockRejectedValue(
+      new EnvNotConfiguredError('"local" has no AWS config')
+    );
+    await expect(dbUrl(local)).rejects.toBeInstanceOf(EnvNotConfiguredError);
   });
 });

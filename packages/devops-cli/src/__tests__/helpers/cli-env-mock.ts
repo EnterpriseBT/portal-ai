@@ -66,6 +66,14 @@ export const BUILTIN_ENVIRONMENTS: Record<string, MockEnvDef> = {
     apiBaseUrl: "https://api-dev.portalsai.io",
     aws: { region: "us-east-1", envName: "dev" },
   },
+  // #384 — mirrors the real registry entry so command suites can exercise
+  // the production barrier without reaching for a synthetic definition.
+  prod: {
+    name: "prod",
+    kind: "production",
+    apiBaseUrl: "https://api.portalsai.io",
+    aws: { region: "us-east-1", envName: "prod" },
+  },
 };
 
 const requireAws = (def: MockEnvDef) => {
@@ -91,6 +99,13 @@ export const mocks = {
       (def: MockEnvDef, name: string, v: string, t?: string) => Promise<void>
     >(),
   getDatabaseUrl: jest.fn<(def: MockEnvDef) => Promise<string>>(),
+  // #384 — `db url` reads the stack's exports and the RDS-managed master
+  // secret (whose name AWS chooses, hence by-ARN).
+  getSecretByArn: jest.fn<(def: MockEnvDef, arn: string) => Promise<string>>(),
+  resolveExport:
+    jest.fn<
+      (def: MockEnvDef, exportName: string, hint?: string) => Promise<string>
+    >(),
   openDbTunnel:
     jest.fn<
       (
