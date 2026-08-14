@@ -68,8 +68,21 @@ With the domain verified, add these as **aliases on the `admin@` user** (Workspa
 
 ## 5 — Turn on DKIM and get the key
 
+> **Google gates this for 24–72 hours after Gmail is enabled on the domain.**
+> Until then the console shows *"You must wait 24 to 72 hours after enabling
+> Gmail with a registered domain before you can create a DKIM record"* and the
+> host/value fields stay blank. This is not a misconfiguration and there is
+> nothing to retry — come back after the window.
+>
+> **Nothing else waits on it.** Mail already flows (MX is live, aliases exist),
+> and DKIM only signs *outbound* mail — which for a receive-only setup means
+> your own replies from webmail. Steps 7 and 8 can be done now; the rest of
+> #369 does not depend on this step.
+
 - [ ] Workspace console → Apps → Google Workspace → Gmail → **Authenticate email**.
-- [ ] Generate the key for `portalsai.io` (2048-bit if offered). Google shows a TXT value beginning `v=DKIM1; k=rsa; p=…`.
+- [ ] Click **Generate new record** — the host and value fields are blank until you do. Choose **2048-bit** and leave the prefix/selector at `google`.
+- [ ] **If you change the selector**, pass it as `DkimSelector=<prefix>` in step 6: the record name must match the selector Google checks, or authentication fails against a correctly-formed record at the wrong name.
+- [ ] Google shows a TXT value beginning `v=DKIM1; k=rsa; p=…`.
 - [ ] Copy the **whole value**. It is longer than 255 characters, so it may need splitting into quoted chunks — Route53 concatenates multiple quoted strings inside one record value.
 
 > **It is a TXT record, not a CNAME.** The CNAME form is Microsoft 365's. A CNAME here deploys cleanly and silently fails DKIM validation.
