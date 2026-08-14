@@ -35,14 +35,6 @@ import {
 // least one 429 even if a wall-clock minute boundary splits the flood.
 process.env.PUBLIC_SITE_RATE_LIMIT_PER_MIN = "30";
 
-// Contact addresses are REQUIRED: the endpoint fails closed with 503
-// SITE_CONFIG_CONTACT_UNRESOLVED rather than publishing empty `mailto:`
-// hrefs (found smoke-walking #311). No SSM in CI, so these env fallbacks
-// stand in. The unset-address 503 itself is covered in the service unit
-// suite, where the env can be varied per case.
-process.env.SUPPORT_EMAIL = "support@portalsai.test";
-process.env.SALES_EMAIL = "sales@portalsai.test";
-
 // The public route must never pass through jwtCheck — mock it to reject
 // EVERYTHING so any accidental routing through the protected router fails.
 jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
@@ -201,11 +193,10 @@ describe("GET /api/public/site-config (#311)", () => {
     const res = await request(app).get("/api/public/site-config");
     const payload = res.body.payload;
 
-    expect(Object.keys(payload).sort()).toEqual([
-      "contact",
-      "generatedAt",
-      "tiers",
-    ]);
+    // #369: `contact` left this contract. Business addresses are env-derived
+    // at build time now — the API serves no address at all, so there is
+    // nothing here to fail closed on.
+    expect(Object.keys(payload).sort()).toEqual(["generatedAt", "tiers"]);
     const priced = payload.tiers.find(
       (t: { slug: string }) => t.slug === pricedSlug
     );
@@ -225,11 +216,9 @@ describe("GET /api/public/site-config (#311)", () => {
     // The org id must appear nowhere in the serialized response.
     expect(JSON.stringify(res.body)).not.toContain(orgA);
 
-    // Contact addresses are served, non-empty (the fail-closed rule above).
-    expect(payload.contact).toEqual({
-      supportEmail: "support@portalsai.test",
-      salesEmail: "sales@portalsai.test",
-    });
+    // No contact block, and no address leaking through another field (#369).
+    expect(payload.contact).toBeUndefined();
+    expect(JSON.stringify(res.body)).not.toContain("@portalsai");
   });
 
   // ── case 3 — an org-private tier is provably absent ───────────────
