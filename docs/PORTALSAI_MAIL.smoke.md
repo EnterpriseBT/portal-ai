@@ -2,7 +2,7 @@
 
 Manual smoke test for [#369](https://github.com/EnterpriseBT/portal-ai/issues/369) — `portalsai.io` mail, and every business address in the app and site derived from one write path. Covers the four DNS records, the three env-injected addresses, the removal of the public `contact` contract, and the app repoint off a personal address.
 
-**Branch under test:** `feat/portalsai-mail`. PR not yet opened when this doc was written; add the link when it is.
+**Branch under test:** `feat/portalsai-mail` (PR [#380](https://github.com/EnterpriseBT/portal-ai/pull/380)).
 
 **Some of this is already done and verified — do not redo it.** The DNS half of the runbook (`docs/PORTALSAI_MAIL.runbook.md` steps 2, 6, 7) was executed during implementation against the live zone `Z0000108E4DFXWIOEOR7`. §1 re-checks it rather than performing it; §7 is the part still outstanding.
 
