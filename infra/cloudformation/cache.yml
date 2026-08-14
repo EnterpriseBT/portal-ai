@@ -12,6 +12,36 @@ Parameters:
   NumCacheNodes:
     Type: Number
     Default: 1
+    Description: >-
+      Single-node path only. NOT the redundancy knob — a Redis CacheCluster
+      must have exactly 1 node; use ReplicationEnabled instead (#383).
+  # ── #383 ─────────────────────────────────────────────────
+  # The Redis here is NOT a cache. It carries the BullMQ jobs queue, and there
+  # is no reconciliation of jobs left mid-flight: losing the node strands them
+  # in `active` in Postgres, and a non-terminal job holds an ENTITY_LOCKED_BY_JOB
+  # lock with no supported unlock path. A node replacement is therefore a
+  # data-availability incident, not a cache miss.
+  #
+  # A CacheCluster cannot have a replica at all, so prod switches resource type
+  # behind this condition. Dev keeps its CacheCluster — flipping the type would
+  # replace the resource and change the endpoint for no benefit.
+  ReplicationEnabled:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Prod runs "true" — a ReplicationGroup with automatic failover and
+      daily snapshots, instead of a single-node CacheCluster.
+  SnapshotRetentionLimit:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 35
+    Description: Daily snapshot retention in days; 0 disables snapshots.
+
+Conditions:
+  IsReplicated: !Equals [!Ref ReplicationEnabled, "true"]
+  IsSingleNode: !Not [!Equals [!Ref ReplicationEnabled, "true"]]
 
 Resources:
   # ── Cache Subnet Group ───────────────────────────────────
@@ -48,6 +78,7 @@ Resources:
   # ── Redis Cluster ────────────────────────────────────────
   RedisCluster:
     Type: AWS::ElastiCache::CacheCluster
+    Condition: IsSingleNode
     Properties:
       ClusterName: !Sub "portalai-${Environment}"
       Engine: redis
@@ -61,15 +92,44 @@ Resources:
         - Key: Name
           Value: !Sub "portalai-${Environment}-redis"
 
+  # Multi-AZ with automatic failover. Note the attribute names differ from
+  # CacheCluster's (PrimaryEndPoint vs RedisEndpoint) — the Outputs below
+  # branch on the same condition for exactly that reason.
+  RedisReplicationGroup:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Condition: IsReplicated
+    Properties:
+      ReplicationGroupId: !Sub "portalai-${Environment}"
+      ReplicationGroupDescription: !Sub "portalai-${Environment} redis (jobs queue)"
+      Engine: redis
+      EngineVersion: "7.1"
+      CacheNodeType: !Ref NodeType
+      NumCacheClusters: 2
+      AutomaticFailoverEnabled: true
+      MultiAZEnabled: true
+      SnapshotRetentionLimit: !Ref SnapshotRetentionLimit
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+      SecurityGroupIds:
+        - !Ref CacheSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-redis"
+
 # ── Exports ──────────────────────────────────────────────
 Outputs:
   RedisEndpoint:
-    Value: !GetAtt RedisCluster.RedisEndpoint.Address
+    Value: !If
+      - IsReplicated
+      - !GetAtt RedisReplicationGroup.PrimaryEndPoint.Address
+      - !GetAtt RedisCluster.RedisEndpoint.Address
     Export:
       Name: !Sub "${Environment}-RedisEndpoint"
 
   RedisPort:
-    Value: !GetAtt RedisCluster.RedisEndpoint.Port
+    Value: !If
+      - IsReplicated
+      - !GetAtt RedisReplicationGroup.PrimaryEndPoint.Port
+      - !GetAtt RedisCluster.RedisEndpoint.Port
     Export:
       Name: !Sub "${Environment}-RedisPort"
 

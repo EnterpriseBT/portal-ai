@@ -157,3 +157,39 @@ describe("every required SecretArn parameter is passed by each backend deploy (#
     expect(unpassed).toEqual([]);
   });
 });
+
+// #383: the ALB listener's certificate moved from an Fn::ImportValue to a
+// required, defaultless parameter, so frontend.yml, site.yml and backend.yml
+// all take it the same way. Defaultless is deliberate — a default would let a
+// genuinely missing value deploy the WRONG certificate silently — which makes
+// this assertion load-bearing: a workflow that never passes it cannot CREATE
+// that environment's backend stack.
+//
+// Scoped to the invocation, not the file: deploy-dev.yml passes CertificateArn
+// to the frontend and site stacks too, so a whole-file grep passes without
+// guarding anything.
+describe("every backend deploy passes the ALB certificate (#383)", () => {
+  it("declares CertificateArn as a required parameter", () => {
+    const tpl = loadTemplate();
+    expect(tpl.Parameters.CertificateArn).toBeDefined();
+    expect(tpl.Parameters.CertificateArn.Default).toBeUndefined();
+  });
+
+  it.each(backendDeployWorkflows())(
+    "%s supplies it where the backend stack is created",
+    (_file, body) => {
+      // `aws cloudformation deploy` reuses a stack's existing values for
+      // parameters it does not override, so only the CREATE invocation must
+      // carry it — hence "at least one", not "every".
+      const backendDeploys = body
+        .split("aws cloudformation deploy")
+        .slice(1)
+        .filter((chunk) => chunk.includes("infra/cloudformation/backend.yml"));
+
+      expect(backendDeploys.length).toBeGreaterThan(0);
+      expect(backendDeploys.some((c) => c.includes("CertificateArn="))).toBe(
+        true
+      );
+    }
+  );
+});

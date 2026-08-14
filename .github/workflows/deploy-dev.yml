@@ -147,13 +147,22 @@ jobs:
               HostedZoneId=${{ secrets.DEV_HOSTED_ZONE_ID }} \
             --no-fail-on-empty-changeset
 
+      # CertificateArn is a required, defaultless parameter (#383) — it used
+      # to be an Fn::ImportValue. `aws cloudformation deploy` reuses existing
+      # values for parameters it does not override, so only this CREATE path
+      # must supply it; the update in deploy-backend inherits it.
       - name: Deploy backend stack
         run: |
+          CERT_ARN=$(aws cloudformation describe-stacks \
+            --stack-name portalai-dev-dns-certs \
+            --query "Stacks[0].Outputs[?ExportName=='dev-CertificateArn'].OutputValue" \
+            --output text)
           aws cloudformation deploy \
             --stack-name portalai-dev-backend \
             --template-file infra/cloudformation/backend.yml \
             --parameter-overrides \
               Environment=dev \
+              CertificateArn="$CERT_ARN" \
               HostedZoneId=${{ secrets.DEV_HOSTED_ZONE_ID }} \
               FrontendOrigin=https://app-dev.portalsai.io \
               SecretArnDatabaseUrl=${{ secrets.DEV_SECRET_ARN_DATABASE_URL }} \

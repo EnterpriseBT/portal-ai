@@ -19,6 +19,22 @@ Parameters:
   MasterUsername:
     Type: String
     Default: portalai
+  # #383: both were fixed in the template — prod needs a longer window and
+  # protection from an accidental stack delete. Defaults preserve dev exactly.
+  BackupRetentionPeriod:
+    Type: Number
+    Default: 7
+    MinValue: 1
+    MaxValue: 35
+    Description: Automated backup retention in days. Prod runs >= 14.
+  DeletionProtection:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Blocks DeleteDBInstance outright. Independent of the stack's
+      DeletionPolicy/UpdateReplacePolicy Snapshot, which covers stack-level
+      deletion but not a direct API call.
 
 Resources:
   # ── DB Subnet Group ──────────────────────────────────────
@@ -74,7 +90,8 @@ Resources:
       DBSubnetGroupName: !Ref DBSubnetGroup
       VPCSecurityGroups:
         - !Ref DBSecurityGroup
-      BackupRetentionPeriod: 7
+      BackupRetentionPeriod: !Ref BackupRetentionPeriod
+      DeletionProtection: !Ref DeletionProtection
       AutoMinorVersionUpgrade: true
       PubliclyAccessible: false
       Tags:
