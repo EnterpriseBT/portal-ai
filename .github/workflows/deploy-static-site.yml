@@ -110,7 +110,7 @@ jobs:
 
       # Probe the endpoint before building. The build would fail on a bad
       # response anyway, but as a raw thrown fetch — this classifies it
-      # (contact unresolved / no public tiers / API still rolling) and prints
+      # (no public tiers / a price unresolvable / API still rolling) and prints
       # the exact `portalops` remediation for the environment. Bounded retry
       # tolerates an API mid-roll; a 503 (fail-closed config) is terminal.
       - name: Preflight site-config
@@ -123,12 +123,31 @@ jobs:
       # `SITE_CONFIG_URL` is set, so any failure to reach or parse the
       # endpoint fails this step. That is the intent: keep the last good
       # deploy live rather than publish a page with missing prices.
+      # Contact addresses are env-derived (#369): SSM is the single write
+      # path and the build bakes them in, so the site no longer asks the API
+      # what its own support address is. A missing parameter is not fatal —
+      # lib/contact.ts falls back to the QA inbox, an address we own, and
+      # verify-pages still fails an empty mailto:.
+      - name: Resolve contact addresses
+        id: contact
+        run: |
+          prefix="/portalai/${{ inputs.environment == 'prod' && 'prod' || 'dev' }}"
+          get() {
+            aws ssm get-parameter --name "$1" --query Parameter.Value --output text 2>/dev/null || true
+          }
+          echo "support=$(get "$prefix/support-email")" >> "$GITHUB_OUTPUT"
+          echo "sales=$(get "$prefix/sales-email")" >> "$GITHUB_OUTPUT"
+          echo "admin=$(get "$prefix/admin-email")" >> "$GITHUB_OUTPUT"
+
       - name: Build site
         env:
           SITE_URL: ${{ inputs.site-url }}
           SITE_CONFIG_URL: ${{ inputs.site-config-url }}
           SITE_APP_URL: ${{ inputs.app-url }}
           GITHUB_SHA: ${{ github.sha }}
+          SUPPORT_EMAIL: ${{ steps.contact.outputs.support }}
+          SALES_EMAIL: ${{ steps.contact.outputs.sales }}
+          ADMIN_EMAIL: ${{ steps.contact.outputs.admin }}
         run: npx turbo run build --filter=@portalai/site
 
       # Belt and braces over the build's own check: if the fixture ever

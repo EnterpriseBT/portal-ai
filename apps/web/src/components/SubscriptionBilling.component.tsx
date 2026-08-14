@@ -2,6 +2,9 @@ import React from "react";
 
 import Alert from "@mui/material/Alert";
 import { Box, Button, Stack, Tooltip, Typography } from "@portalai/core/ui";
+import Link from "@mui/material/Link";
+
+import { SALES_MAILTO } from "../utils/contact.util";
 
 import { sdk } from "../api/sdk";
 import { DataResult } from "./DataResult.component";
@@ -132,7 +135,10 @@ export const SubscriptionBillingUI: React.FC<SubscriptionBillingUIProps> = ({
 
       {state === "managed" && (
         <Alert severity="info">
-          Your plan is managed — contact us to make changes.
+          {/* #369: a managed-plan customer told to "contact us" with no
+              address is a dead end. Sales owns plan changes. */}
+          Your plan is managed — <Link href={SALES_MAILTO}>contact us</Link> to
+          make changes.
         </Alert>
       )}
 

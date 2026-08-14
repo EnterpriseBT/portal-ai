@@ -1,6 +1,11 @@
 ---
 import Page from "../layouts/Page.astro";
-import { siteConfig, siteUrl, appUrl } from "../lib/site-context.js";
+import {
+  siteConfig,
+  siteUrl,
+  appUrl,
+  supportEmail,
+} from "../lib/site-context.js";
 import {
   organizationLd,
   webSiteLd,
@@ -8,7 +13,7 @@ import {
 } from "../lib/jsonld.js";
 
 const jsonLd = [
-  organizationLd(siteUrl, siteConfig.contact.supportEmail),
+  organizationLd(siteUrl, supportEmail),
   webSiteLd(siteUrl),
   softwareApplicationLd(siteUrl, siteConfig),
 ];

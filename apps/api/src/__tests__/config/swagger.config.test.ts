@@ -27,7 +27,6 @@ import {
   LayoutPlanSchema,
   PatchApiEndpointRequestBodySchema,
   PublicSiteConfigResponseSchema,
-  PublicSiteContactSchema,
   PublicSitePriceSchema,
   PublicSiteTierSchema,
   RegionHintSchema,
@@ -493,7 +492,6 @@ describe("swagger spec — public site config (#311)", () => {
   const publicSitePairs: ReadonlyArray<readonly [string, z.ZodType]> = [
     ["PublicSitePrice", PublicSitePriceSchema],
     ["PublicSiteTier", PublicSiteTierSchema],
-    ["PublicSiteContact", PublicSiteContactSchema],
     ["PublicSiteConfigResponse", PublicSiteConfigResponseSchema],
   ];
 

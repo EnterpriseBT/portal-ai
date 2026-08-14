@@ -196,7 +196,7 @@ Document `tier create`/`tier update`/`tier description` (flags, exit codes, guar
   - `formatPerToolCaps(caps)` → list rows or `null`.
   - `entitlementPackNames(slugs)` → `slugs.map(s => BUILTIN_TOOLPACK_BY_SLUG[s]?.name ?? s)` (from `@portalai/core/registries`); `customToolpacks` → `"Custom toolpacks allowed / not allowed"`.
   - `formatPrice(price)` → existing helper, moved here (`"$49 / month"`, `null` → `"—"`).
-  - `SUPPORT_MAILTO = "mailto:ben.turner@btdev.io"` (shared with `Help.view` — extract the address to this one constant).
+  - `SUPPORT_MAILTO` (shared with `Help.view` — extract the address to this one constant). **Superseded by #369:** the address is env-derived and the constant now lives in `utils/contact.util.ts`.
 - **`apps/web/src/components/TierCard.component.tsx`** (new) — a **single pure UI component** `TierCardUI` (props-only):
 
 ```ts

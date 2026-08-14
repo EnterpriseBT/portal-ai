@@ -86,9 +86,5 @@
       "price": null
     }
   ],
-  "contact": {
-    "supportEmail": "support@example.invalid",
-    "salesEmail": "sales@example.invalid"
-  },
   "generatedAt": "1970-01-01T00:00:00.000Z"
 }

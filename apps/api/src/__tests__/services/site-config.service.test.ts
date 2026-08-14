@@ -31,23 +31,12 @@ jest.unstable_mockModule("../../services/stripe.service.js", () => ({
   StripeService: { getPrice: mockGetPrice },
 }));
 
-const mockGetContact =
-  jest.fn<() => Promise<{ supportEmail: string; salesEmail: string }>>();
-jest.unstable_mockModule("../../services/business-config.service.js", () => ({
-  BusinessConfigService: { getContact: mockGetContact },
-}));
-
 const { SiteConfigService } =
   await import("../../services/site-config.service.js");
 const { ApiError } = await import("../../services/http.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
-
-const CONTACT = {
-  supportEmail: "support@portalsai.io",
-  salesEmail: "sales@portalsai.io",
-};
 
 const publicRow = (over: Record<string, unknown> = {}) => ({
   id: "t1",
@@ -72,12 +61,11 @@ beforeEach(() => {
   SiteConfigService.clearCache();
   mockFindPublic.mockReset();
   mockGetPrice.mockReset();
-  mockGetContact.mockReset().mockResolvedValue(CONTACT);
 });
 
 // ── case 1 — the happy snapshot ──────────────────────────────────────
 
-it("assembles { tiers, contact, generatedAt } from public rows", async () => {
+it("assembles { tiers, generatedAt } from public rows", async () => {
   mockFindPublic.mockResolvedValue([
     publicRow(),
     publicRow({
@@ -97,7 +85,6 @@ it("assembles { tiers, contact, generatedAt } from public rows", async () => {
 
   const snapshot = await SiteConfigService.getSiteConfig();
 
-  expect(snapshot.contact).toEqual(CONTACT);
   expect(typeof snapshot.generatedAt).toBe("string");
   expect(snapshot.tiers).toHaveLength(2);
   const pro = snapshot.tiers[1];
@@ -162,7 +149,6 @@ it("caches the snapshot — a second call re-reads nothing", async () => {
   const second = await SiteConfigService.getSiteConfig();
   expect(second).toBe(first);
   expect(mockFindPublic).toHaveBeenCalledTimes(1);
-  expect(mockGetContact).toHaveBeenCalledTimes(1);
 });
 
 // ── case 6 — errors are never cached ─────────────────────────────────
@@ -181,57 +167,18 @@ it("does not cache a failure — the next call retries", async () => {
   expect(snapshot.tiers[0].price).toEqual(PRICE);
 });
 
-// ── the contact rule (found smoke-walking #311) ──────────────────────
+// ── contact addresses left this service (#369) ───────────────────────
 //
-// `BusinessConfigService` degrades SSM → env → `""`. An empty address is
-// indistinguishable from "no support channel" once it is a `mailto:` href in
-// published HTML: the endpoint served `""`, the site build succeeded, and
-// every page shipped `<a href="mailto:"></a>` with two dead CTAs on
-// /contact/. Fail closed, symmetrically with the price rule.
+// The fail-closed contact rule that lived here is gone with the field: the
+// site reads addresses from its build environment now, so there is nothing
+// for this service to resolve or refuse. The PRICE rule above is untouched —
+// that is the one that still keeps a Stripe outage from being published as a
+// pricing change.
 
-it.each(["supportEmail", "salesEmail"] as const)(
-  "throws 503 SITE_CONFIG_CONTACT_UNRESOLVED when %s is empty",
-  async (field) => {
-    mockFindPublic.mockResolvedValue([publicRow()]);
-    mockGetContact.mockResolvedValue({ ...CONTACT, [field]: "" });
-
-    const error = await SiteConfigService.getSiteConfig().catch((e) => e);
-
-    expect(error).toBeInstanceOf(ApiError);
-    expect(error.status).toBe(503);
-    expect(error.code).toBe(ApiCode.SITE_CONFIG_CONTACT_UNRESOLVED);
-    // The operator needs to know WHICH key to set.
-    expect(error.message).toContain(field);
-  }
-);
-
-it("treats a whitespace-only address as missing", async () => {
+it("serves no contact block", async () => {
   mockFindPublic.mockResolvedValue([publicRow()]);
-  mockGetContact.mockResolvedValue({ ...CONTACT, supportEmail: "   " });
 
-  await expect(SiteConfigService.getSiteConfig()).rejects.toThrow(
-    /not configured/i
-  );
-});
+  const snapshot = await SiteConfigService.getSiteConfig();
 
-it("names both addresses when both are missing", async () => {
-  mockFindPublic.mockResolvedValue([publicRow()]);
-  mockGetContact.mockResolvedValue({ supportEmail: "", salesEmail: "" });
-
-  const error = await SiteConfigService.getSiteConfig().catch((e) => e);
-
-  expect(error.message).toContain("supportEmail");
-  expect(error.message).toContain("salesEmail");
-});
-
-it("does not cache the contact failure", async () => {
-  mockFindPublic.mockResolvedValue([publicRow()]);
-  mockGetContact.mockResolvedValue({ ...CONTACT, supportEmail: "" });
-  await expect(SiteConfigService.getSiteConfig()).rejects.toThrow();
-
-  // An operator setting the var must not have to wait out a TTL.
-  mockGetContact.mockResolvedValue(CONTACT);
-  await expect(SiteConfigService.getSiteConfig()).resolves.toMatchObject({
-    contact: CONTACT,
-  });
+  expect((snapshot as { contact?: unknown }).contact).toBeUndefined();
 });

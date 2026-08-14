@@ -4,8 +4,13 @@
  * ES modules are evaluated once per build, so the top-level await below runs
  * exactly once no matter how many pages import it. That is the mechanism
  * behind the atomic-snapshot guarantee: every page renders from the SAME
- * `tiers`/`contact` object, so the pricing page and the home page cannot
- * disagree about what Pro costs.
+ * `tiers` object, so the pricing page and the home page cannot disagree about
+ * what Pro costs.
+ *
+ * Contact addresses do NOT come from that snapshot (#369). They are env-derived
+ * — SSM is the single place a value is written, and the deploy injects it as a
+ * build env var — so the site never asks the API what its own support address
+ * is.
  */
 
 import { fetchSiteConfig, type SiteConfigResult } from "./site-config.js";
@@ -51,3 +56,10 @@ export const appUrl =
 
 /** Canonical origin — mirrors `astro.config.mjs`'s `site`. */
 export const siteUrl = process.env.SITE_URL || "https://site-dev.portalsai.io";
+
+/**
+ * Business contact addresses (#369) — re-exported so a page needs one import.
+ * The resolution itself lives in `contact.ts`, which stays free of
+ * `import.meta` and the top-level await above so it can be unit-tested.
+ */
+export { supportEmail, salesEmail, adminEmail } from "./contact.js";

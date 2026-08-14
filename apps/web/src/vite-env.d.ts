@@ -7,6 +7,9 @@ interface ImportMetaEnv {
   readonly VITE_APP_VERSION: string;
   readonly VITE_APP_SHA: string;
   readonly VITE_API_BASE_URL: string;
+  /** Business contact addresses (#369) — injected at build time from SSM. */
+  readonly VITE_SUPPORT_EMAIL: string;
+  readonly VITE_SALES_EMAIL: string;
 }
 
 interface ImportMeta {

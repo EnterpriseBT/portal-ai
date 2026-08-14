@@ -1,6 +1,6 @@
 ---
 import Page from "../layouts/Page.astro";
-import { siteConfig, siteUrl } from "../lib/site-context.js";
+import { siteUrl, adminEmail } from "../lib/site-context.js";
 import { breadcrumbLd } from "../lib/jsonld.js";
 
 /**
@@ -9,7 +9,7 @@ import { breadcrumbLd } from "../lib/jsonld.js";
  * reviewed by the business before any production release. The marker in the
  * markup is what the prod pipeline greps for.
  */
-const { supportEmail } = siteConfig.contact;
+// Data-controller contact is the admin address (#369), not support.
 
 const SECTIONS = [
   {
@@ -78,8 +78,8 @@ const jsonLd = [
   }
 
   <p>
-    Questions about this policy: <a href={`mailto:${supportEmail}`}
-      >{supportEmail}</a
+    Questions about this policy: <a href={`mailto:${adminEmail}`}
+      >{adminEmail}</a
     >
   </p>
 
