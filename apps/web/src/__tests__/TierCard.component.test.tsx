@@ -9,6 +9,7 @@ import type { BillingTier } from "@portalai/core/contracts";
 const { render, screen, waitFor } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { TierCardUI } = await import("../components/TierCard.component");
+import { SUPPORT_MAILTO } from "../utils/contact.util";
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -171,7 +172,9 @@ describe("TierCardUI — contact (upgrade teaser)", () => {
     expect(screen.queryByText("Tailored to Acme.")).not.toBeInTheDocument();
 
     const link = screen.getByRole("link", { name: /^contact support$/i });
-    expect(link).toHaveAttribute("href", "mailto:ben.turner@btdev.io");
+    // #369: env-derived, so assert against the same source rather than a
+    // literal — the old pin was a personal address on an unrelated domain.
+    expect(link).toHaveAttribute("href", SUPPORT_MAILTO);
 
     // Grid is hidden for a teaser.
     expect(screen.queryByText(/Metered tools:/)).not.toBeInTheDocument();

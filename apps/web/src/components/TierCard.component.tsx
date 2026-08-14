@@ -14,8 +14,8 @@ import {
   Typography,
 } from "@portalai/core/ui";
 
+import { SUPPORT_MAILTO } from "../utils/contact.util";
 import {
-  SUPPORT_MAILTO,
   formatAllocation,
   formatOverage,
   formatPeriod,

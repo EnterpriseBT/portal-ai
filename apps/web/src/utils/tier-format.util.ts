@@ -12,9 +12,6 @@ import type { BillingTier } from "@portalai/core/contracts";
 type TierPolicy = BillingTier["policy"];
 type Allocation = TierPolicy["allocations"]["free"];
 
-/** The single shared support channel (also used by Help). */
-export const SUPPORT_MAILTO = "mailto:ben.turner@btdev.io";
-
 const nf = new Intl.NumberFormat();
 
 /** "$49 / month" from a live price; "—" when display-degraded (Stripe outage). */

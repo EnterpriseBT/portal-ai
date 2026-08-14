@@ -58,7 +58,7 @@ Create a custom tier scoped to **your** org, and one scoped to another org:
 
 - [ ] `DATABASE_URL=… npx portalops tier create --env local --slug test_acme_ent --display-name "Acme Enterprise" --visible-to-org <myOrg> --description "Tailored to your org — unlimited usage, priority support."` → exits `0`, prints the created row.
 - [ ] `DATABASE_URL=… npx portalops tier create --env local --slug test_other_ent --display-name "Other Co Enterprise" --visible-to-org <otherOrg>` → exits `0`.
-- [ ] Reload Settings → Subscription & Billing. A card labeled **"Enterprise"** appears (the **generic** teaser label — **not** the operator's specific "Acme Enterprise" name, and **no** client-specific blurb, since you're not on it) with a **"Contact support"** link (a `mailto:` — hover/inspect: `mailto:ben.turner@btdev.io`), **no Subscribe button**, and **no policy grid** (no "Metered tools:" row).
+- [ ] Reload Settings → Subscription & Billing. A card labeled **"Enterprise"** appears (the **generic** teaser label — **not** the operator's specific "Acme Enterprise" name, and **no** client-specific blurb, since you're not on it) with a **"Contact support"** link (a `mailto:` — hover/inspect: it must be the support address for this environment, `qa@portalsai.io` outside prod; #369), **no Subscribe button**, and **no policy grid** (no "Metered tools:" row).
 - [ ] The **Other Co Enterprise** card does **not** appear (it's scoped to `<otherOrg>` — multi-tenant isolation).
 
 ## §4 — On the custom plan: full grid + manage CTA (AC / D6)

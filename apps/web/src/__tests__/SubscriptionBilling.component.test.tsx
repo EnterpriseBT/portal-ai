@@ -7,6 +7,7 @@
 
 import { jest } from "@jest/globals";
 import type { BillingTier } from "@portalai/core/contracts";
+import { SUPPORT_MAILTO } from "../utils/contact.util";
 
 // ── Container mocks (case 32 only; UI cases never touch these) ────────
 
@@ -29,7 +30,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen, waitFor } = await import("./test-utils");
+const { render, screen, waitFor, within } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { SubscriptionBilling, SubscriptionBillingUI } =
   await import("../components/SubscriptionBilling.component");
@@ -172,7 +173,7 @@ describe("SubscriptionBillingUI — unsubscribed", () => {
 
     expect(
       screen.getByRole("link", { name: /^contact support$/i })
-    ).toHaveAttribute("href", "mailto:ben.turner@btdev.io");
+    ).toHaveAttribute("href", SUPPORT_MAILTO);
     // The current plan (standard) is chip-flagged.
     expect(screen.getByText("Current plan")).toBeInTheDocument();
   });
@@ -293,9 +294,15 @@ describe("SubscriptionBillingUI — managed", () => {
       screen.getByRole("heading", { name: "X Enterprise" })
     ).toBeInTheDocument();
     expect(screen.getByText(/Metered tools:/)).toBeInTheDocument();
-    // A synthesized `none`-cta card offers no action.
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    // A synthesized `none`-cta card offers no action. Scoped to the card:
+    // since #369 the managed *banner* above it carries a sales `mailto:`, so
+    // a document-wide query would now catch that instead of what this asserts.
+    const card = screen
+      .getByRole("heading", { name: "X Enterprise" })
+      .closest("[class*='MuiPaper'], [class*='MuiCard']") as HTMLElement;
+    expect(card).toBeTruthy();
+    expect(within(card).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(card).queryByRole("link")).not.toBeInTheDocument();
   });
 });
 

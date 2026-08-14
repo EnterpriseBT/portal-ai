@@ -19,6 +19,7 @@ const { GlossaryCategory } = await import("@portalai/core/content");
 const { FAQCategory } = await import("@portalai/core/content");
 const { ApplicationRoute, HELP_TAB_INDEX, HelpTab } =
   await import("../utils/routes.util");
+const { SUPPORT_EMAIL, SUPPORT_MAILTO } = await import("../utils/contact.util");
 
 const stepsFixture: GettingStartedStep[] = [
   {
@@ -322,11 +323,15 @@ describe("HelpViewUI", () => {
     expect(screen.getByRole("heading", { name: "Help" })).toBeInTheDocument();
   });
 
-  it("renders a contact caption with a mailto link to ben.turner@btdev.io", () => {
+  it("renders a contact caption linking the support address (#369)", () => {
+    // The address is env-derived and shown as the visible link text, so the
+    // test reads it from the same source rather than pinning a literal — the
+    // old pin asserted a personal address on an unrelated domain.
     renderUI();
-    const link = screen.getByRole("link", { name: "ben.turner@btdev.io" });
+    const link = screen.getByRole("link", { name: SUPPORT_EMAIL });
     expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute("href", "mailto:ben.turner@btdev.io");
+    expect(link).toHaveAttribute("href", SUPPORT_MAILTO);
+    expect(SUPPORT_EMAIL).toMatch(/@portalsai\.io$/);
   });
 });
 

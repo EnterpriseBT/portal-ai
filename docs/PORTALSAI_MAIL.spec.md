@@ -224,7 +224,7 @@ Mail delivery, SPF/DKIM/DMARC validation, and the CloudFormation deploy are **sm
 ## Acceptance criteria
 
 - [ ] All cases pass; `npm run test`, `type-check`, `lint`, `format:check` green at the root.
-- [ ] `grep -rn "btdev.io" apps/ packages/ docs/` returns nothing.
+- [ ] No **live or instructional** reference to the old address survives: `grep -rn "btdev.io" apps/*/src packages/*/src` returns nothing, and no doc *instructs* verifying it. (This ticket's own discovery/spec/plan describe the bug by name — that is a record, not a reference, and is expected to match a naive grep.)
 - [ ] No app or site surface renders an address outside `portalsai.io`.
 - [ ] Mail to `admin@`, `support@`, `sales@`, and `qa@portalsai.io` is delivered and readable.
 - [ ] SPF, DKIM, and DMARC pass an external validator.

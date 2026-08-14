@@ -30,7 +30,7 @@ Create a `.env` file in the web app directory (`apps/web/.env`) with the followi
 ```env
 VITE_AUTH0_CLIENT_ID=your-auth0-client-id
 VITE_AUTH0_DOMAIN=your-domain.auth0.com
-VITE_AUTH0_AUDIENCE=https://api.portalai.dev
+VITE_AUTH0_AUDIENCE=https://api-dev.portalsai.io
 ```
 
 > **Note:** All environment variables must be prefixed with `VITE_` to be accessible in the Vite application.
