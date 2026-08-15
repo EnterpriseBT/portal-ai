@@ -9,8 +9,11 @@ import { spawn } from "node:child_process";
 
 import {
   assertOperationAllowed,
+  getSecretByArn,
+  putSecret,
   recordAudit,
   resolveEnvConnection,
+  resolveExport,
   runApiScript,
   EnvConfirmationRequiredError,
   EnvInfraError,
@@ -57,6 +60,118 @@ export async function dbTunnel(
   return {
     connectionString: db.connectionString,
     dispose: () => conn.dispose(),
+  };
+}
+
+// ── url (#384) ───────────────────────────────────────────────────────
+
+export interface DbUrlOptions extends MutateOptions {
+  /** Database name. Defaults to `portal_ai` — dev's value, and the database
+   *  an operator must CREATE by hand since `database.yml` sets no DBName, so
+   *  RDS provisions only the `postgres` maintenance database. Pass `postgres`
+   *  to reach that one during bootstrap, before `portal_ai` exists. */
+  dbName?: string;
+  /** Appended as `?sslmode=<mode>`. Defaults to `require`, matching dev. */
+  sslMode?: string;
+  /** Store the composed value at the `database-url` secret. */
+  write?: boolean;
+}
+
+export interface DbUrlResult {
+  /** Password replaced by `***` unless `write` was requested. */
+  connectionString: string;
+  endpoint: string;
+  port: number;
+  written: boolean;
+  /** A NEW secret was created — its ARN must reach the deploy workflow. */
+  created: boolean;
+}
+
+const DEFAULT_DB_NAME = "portal_ai";
+const DEFAULT_SSL_MODE = "require";
+
+/**
+ * Compose the env's DATABASE_URL from the database stack's exports and the
+ * RDS-managed master credential.
+ *
+ * Why this exists: `ManageMasterUserPassword` has RDS mint the password into
+ * its own secret, so assembling the connection string by hand means routing a
+ * production database password through a console, a clipboard and a shell.
+ * Here it moves AWS-API to AWS-API and is never rendered — the default output
+ * redacts it, and `--write` sends it straight to Secrets Manager.
+ */
+export async function dbUrl(
+  def: EnvironmentDefinition,
+  opts: DbUrlOptions = {}
+): Promise<DbUrlResult> {
+  const envName = def.aws?.envName;
+  const endpoint = await resolveExport(
+    def,
+    `${envName}-DbEndpoint`,
+    `is the database stack deployed for "${def.name}"?`
+  );
+  const port = await resolveExport(def, `${envName}-DbPort`);
+  const masterArn = await resolveExport(
+    def,
+    `${envName}-DbMasterSecretArn`,
+    "redeploy the database stack; this export was added in #384"
+  );
+
+  const raw = await getSecretByArn(def, masterArn);
+  let master: { username?: string; password?: string };
+  try {
+    master = JSON.parse(raw) as typeof master;
+  } catch (err) {
+    throw new EnvInfraError(
+      `RDS master secret ${masterArn} is not JSON — cannot compose a connection string`,
+      { cause: err }
+    );
+  }
+  if (!master.username || !master.password) {
+    throw new EnvInfraError(
+      `RDS master secret ${masterArn} is missing username/password`
+    );
+  }
+
+  const dbName = opts.dbName ?? DEFAULT_DB_NAME;
+  const sslMode = opts.sslMode ?? DEFAULT_SSL_MODE;
+  // Both halves are encoded: a password containing @ : / # or ? would
+  // otherwise split the authority and silently yield a wrong-host URL.
+  const authority = `${encodeURIComponent(master.username)}:${encodeURIComponent(master.password)}`;
+  const compose = (auth: string) =>
+    `postgresql://${auth}@${endpoint}:${port}/${dbName}?sslmode=${sslMode}`;
+
+  if (!opts.write) {
+    return {
+      connectionString: compose(`${encodeURIComponent(master.username)}:***`),
+      endpoint,
+      port: Number(port),
+      written: false,
+      created: false,
+    };
+  }
+
+  // Guard BEFORE the write — never after composing.
+  assertOperationAllowed(def, {
+    destructive: false,
+    confirmed: !!opts.yes,
+    prodConfirmed: !!opts.confirmProd,
+  });
+  const { created } = await putSecret(def, "database-url", compose(authority));
+  await recordAudit({
+    env: def.name,
+    operator: "portalops",
+    command: "db url --write",
+    // Endpoint and created only: the value is the whole point of the command.
+    args: { endpoint, dbName, created },
+  });
+
+  return {
+    connectionString: compose(authority),
+    endpoint,
+    port: Number(port),
+    written: true,
+    created,
   };
 }
 

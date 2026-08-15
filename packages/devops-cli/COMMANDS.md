@@ -25,7 +25,7 @@ Machine-oriented reference: enough to operate the CLI without trial and error. H
 |---|---|---|---|
 | read | — | — | — |
 | connect (`db tunnel`, `db psql`) | — | — | `--confirm-prod` |
-| mutation (`vars set/apply`, `db seed`) | — | `--yes` | `--yes --confirm-prod` |
+| mutation (`vars set/apply`, `db seed`, `db url --write`) | — | `--yes` | `--yes --confirm-prod` |
 | destructive (`db reset`, `db reset-seed`) | — | `--yes` | **refused** (exit 6) |
 
 Every mutation/destructive command appends a JSONL audit entry to `~/.portalai/audit.log` (no secret values).
@@ -84,6 +84,22 @@ The `portalops` dispatch **never blocks the write**: the value is already commit
 
 ### `portalops db tunnel --env <env> [--local-port <n>] [--confirm-prod]`
 Connect. Opens the env's DB path — `local`: prints the `.env` connection string; AWS envs: SSM port-forward via the bastion (default local port 15432). Prints a `psql` hint on stderr and **stays attached** until Ctrl+C (signal hooks close the tunnel; no orphaned plugin).
+
+### `portalops db url --env <env> [--db-name <name>] [--ssl-mode <mode>] [--write] [--yes] [--confirm-prod] [--json]`
+Read by default; **mutation** with `--write`. Composes the env's `DATABASE_URL` from the database stack's `<envName>-Db{Endpoint,Port,MasterSecretArn}` exports and the RDS-managed master credential, so the password moves AWS-API to AWS-API and is never rendered.
+
+Without `--write` the password is **redacted** (`***`) — there is no flag that prints it. `--write` stores the real value at the `database-url` secret and is guarded like any other mutation (prod needs `--yes --confirm-prod`). Creating a **new** secret warns that its ARN must reach the deploy workflow.
+
+`--db-name` defaults to `portal_ai`. RDS creates only the `postgres` maintenance database (the template sets no `DBName`), so the application database is created by hand — pass `--db-name postgres` to reach the maintenance DB during that bootstrap:
+
+```bash
+# after the database stack exists, before the app database does
+portalops db url --env prod --db-name postgres --write --yes --confirm-prod
+portalops db psql --env prod --confirm-prod -- -c "CREATE DATABASE portal_ai"
+portalops db url --env prod --write --yes --confirm-prod   # the real value
+```
+
+`--json`: `{ "connectionString", "endpoint", "port", "written": bool, "created": bool }`
 
 ### `portalops db psql --env <env> [--confirm-prod] [-- <psql args…>]`
 Connect. psql against the env connection. No extra args → interactive REPL (inherited stdio). Args after `--` pass through for one-shot use:

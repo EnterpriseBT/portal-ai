@@ -114,3 +114,12 @@ Outputs:
     Value: !Ref DBSecurityGroup
     Export:
       Name: !Sub "${Environment}-DbSecurityGroupId"
+
+  # #384: ManageMasterUserPassword (above) has RDS mint its own secret for the
+  # master password, under a name AWS chooses (`rds!db-…`). Exporting the ARN
+  # is what lets `portalops db url` compose the connection string without the
+  # password ever being rendered to an operator.
+  DbMasterSecretArn:
+    Value: !GetAtt DBInstance.MasterUserSecret.SecretArn
+    Export:
+      Name: !Sub "${Environment}-DbMasterSecretArn"

@@ -29,7 +29,9 @@ import path from "node:path";
 
 import { parseDocument } from "yaml";
 
-import { CATALOG } from "../catalog.js";
+import { BUILTIN_ENVIRONMENTS } from "@portalai/cli-env";
+
+import { CATALOG, pathFor } from "../catalog.js";
 
 /** Walk up from cwd to the repo root — jest may run from either the package
  *  directory or the monorepo root depending on the invoking script. */
@@ -343,5 +345,46 @@ describe("workflows only read exports that templates declare (#383)", () => {
 
     const unknown = referenced.filter((s) => !declared.has(s));
     expect(unknown).toEqual([]);
+  });
+});
+
+// #384: prod coverage.
+//
+// The two suites above are environment-independent — they compare the catalog
+// against the template, and re-running them per environment would assert
+// nothing new. The risk prod actually introduces is different, and silent: an
+// environment's AWS paths come from `aws.envName`, so a registry entry with
+// the wrong envName would have prod reads and writes land on ANOTHER
+// environment's secrets, with no error at any layer. That is what this pins.
+describe("each environment's config paths are isolated (#384)", () => {
+  const awsEnvs = Object.values(BUILTIN_ENVIRONMENTS).filter((e) => e.aws);
+
+  it("includes prod among the environments under guard", () => {
+    expect(awsEnvs.map((e) => e.name)).toContain("prod");
+  });
+
+  it("resolves every catalog key for every environment", () => {
+    for (const env of awsEnvs) {
+      for (const entry of CATALOG) {
+        const resolved = pathFor(env, entry);
+        expect(resolved).toContain(`/${env.aws!.envName}/`);
+        expect(resolved.endsWith(entry.name)).toBe(true);
+      }
+    }
+  });
+
+  it("never resolves two environments to the same path", () => {
+    const seen = new Map<string, string>();
+    for (const env of awsEnvs) {
+      for (const entry of CATALOG) {
+        const resolved = pathFor(env, entry);
+        const owner = seen.get(resolved);
+        // A duplicate here means one env would read or WRITE another's
+        // secrets — the failure mode a typo'd envName produces.
+        expect(owner ?? env.name).toBe(env.name);
+        seen.set(resolved, env.name);
+      }
+    }
+    expect(seen.size).toBe(awsEnvs.length * CATALOG.length);
   });
 });

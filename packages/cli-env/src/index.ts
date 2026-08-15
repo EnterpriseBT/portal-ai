@@ -38,6 +38,7 @@ export {
 
 export {
   getSecret,
+  getSecretByArn,
   getParam,
   getDatabaseUrl,
   putSecret,
@@ -46,6 +47,7 @@ export {
 
 export {
   openDbTunnel,
+  resolveExport,
   TUNNEL_READY_MARKER,
   type Tunnel,
   type OpenDbTunnelOptions,

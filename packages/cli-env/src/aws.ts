@@ -96,6 +96,32 @@ export async function getSecret(
   }
 }
 
+/**
+ * Secrets Manager by full ARN (#384) — for secrets outside our naming
+ * convention, whose name AWS chooses. The only one today is the RDS-managed
+ * `rds!db-…` master credential that `portalops db url` composes from.
+ *
+ * Deliberately does NOT compose a path: passing an ARN through `getSecret`
+ * would look up `portalai/<env>/<arn>` and 404 confusingly.
+ */
+export async function getSecretByArn(
+  def: EnvironmentDefinition,
+  arn: string
+): Promise<string> {
+  const aws = requireAws(def);
+  const client = new SecretsManagerClient({ region: aws.region });
+  try {
+    const out = await client.send(new GetSecretValueCommand({ SecretId: arn }));
+    if (out.SecretString == null) {
+      throw new EnvInfraError(`Secret ${arn} has no string value`);
+    }
+    return out.SecretString;
+  } catch (err) {
+    if (err instanceof EnvInfraError) throw err;
+    classify(err, `secret ${arn}`);
+  }
+}
+
 /** SSM Parameter Store: `${ssmPrefix}/<name>`, e.g. /portalai/dev/auth0-domain. */
 export async function getParam(
   def: EnvironmentDefinition,
