@@ -3,7 +3,10 @@ import {
   EnvConfirmationRequiredError,
   EnvDestructiveBlockedError,
 } from "../errors.js";
-import type { EnvironmentDefinition } from "../registry.js";
+import {
+  BUILTIN_ENVIRONMENTS,
+  type EnvironmentDefinition,
+} from "../registry.js";
 
 const env = (kind: EnvironmentDefinition["kind"]): EnvironmentDefinition => ({
   name: `test-${kind}`,
@@ -86,6 +89,49 @@ describe("assertOperationAllowed", () => {
         "ENV_CONFIRMATION_REQUIRED"
       );
     }
+  });
+});
+
+// #384: the cases above prove the guard's logic against synthetic definitions.
+// These prove it against the REAL `prod` entry — the thing #194 wrote the
+// barriers for and that no environment has ever exercised. If the registry
+// entry were ever added with the wrong `kind`, every test above would still
+// pass and production would be unguarded.
+describe("the real prod environment (#384)", () => {
+  const prod = BUILTIN_ENVIRONMENTS["prod"];
+
+  it("blocks destructive operations unconditionally — exit 6", () => {
+    expect(() =>
+      assertOperationAllowed(prod, {
+        destructive: true,
+        confirmed: true,
+        prodConfirmed: true,
+      })
+    ).toThrow(EnvDestructiveBlockedError);
+  });
+
+  it("refuses a non-destructive mutation carrying only --yes — exit 5", () => {
+    expect(() =>
+      assertOperationAllowed(prod, {
+        destructive: false,
+        confirmed: true,
+        prodConfirmed: false,
+      })
+    ).toThrow(EnvConfirmationRequiredError);
+  });
+
+  it("allows a non-destructive mutation with both barriers", () => {
+    expect(() =>
+      assertOperationAllowed(prod, {
+        destructive: false,
+        confirmed: true,
+        prodConfirmed: true,
+      })
+    ).not.toThrow();
+  });
+
+  it("banners itself as production", () => {
+    expect(envBanner(prod)).toBe("[env: prod (production)]");
   });
 });
 

@@ -39,8 +39,14 @@ jest.unstable_mockModule("@aws-sdk/client-ssm", () => ({
   },
 }));
 
-const { getSecret, getParam, getDatabaseUrl, putSecret, putParam } =
-  await import("../aws.js");
+const {
+  getSecret,
+  getSecretByArn,
+  getParam,
+  getDatabaseUrl,
+  putSecret,
+  putParam,
+} = await import("../aws.js");
 const { BUILTIN_ENVIRONMENTS } = await import("../registry.js");
 const { EnvNotAuthorizedError, EnvInfraError, EnvNotConfiguredError } =
   await import("../errors.js");
@@ -88,6 +94,39 @@ describe("getSecret", () => {
       EnvNotConfiguredError
     );
     expect(secretsSend).not.toHaveBeenCalled();
+  });
+});
+
+// #384: secrets OUTSIDE our naming convention — specifically the RDS-managed
+// `rds!db-…` master credential, whose name AWS chooses. `db url` composes the
+// database connection string from it.
+describe("getSecretByArn", () => {
+  const RDS_ARN =
+    "arn:aws:secretsmanager:us-east-1:028987315524:secret:rds!db-d9ee21aa-y2Ev1F";
+
+  it("passes the ARN through verbatim — no prefix composition", async () => {
+    secretsSend.mockResolvedValue({
+      SecretString: '{"username":"portalai","password":"p"}',
+    });
+    await expect(getSecretByArn(appDev, RDS_ARN)).resolves.toBe(
+      '{"username":"portalai","password":"p"}'
+    );
+    const cmd = secretsSend.mock.calls[0][0] as { input: { SecretId: string } };
+    // The bug this pins: composing `portalai/dev/<arn>` would 404 confusingly.
+    expect(cmd.input.SecretId).toBe(RDS_ARN);
+  });
+
+  it("classifies failures exactly as getSecret does", async () => {
+    secretsSend.mockRejectedValue(new Error("socket hang up"));
+    await expect(getSecretByArn(appDev, RDS_ARN)).rejects.toBeInstanceOf(
+      EnvInfraError
+    );
+  });
+
+  it("throws ENV_NOT_CONFIGURED for an env without AWS config", async () => {
+    await expect(getSecretByArn(local, RDS_ARN)).rejects.toBeInstanceOf(
+      EnvNotConfiguredError
+    );
   });
 });
 

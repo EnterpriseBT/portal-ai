@@ -26,7 +26,8 @@ jest.unstable_mockModule("node:child_process", () => ({
   spawn: spawnMock,
 }));
 
-const { openDbTunnel, TUNNEL_READY_MARKER } = await import("../tunnel.js");
+const { openDbTunnel, resolveExport, TUNNEL_READY_MARKER } =
+  await import("../tunnel.js");
 const { BUILTIN_ENVIRONMENTS } = await import("../registry.js");
 const { EnvInfraError, EnvNotConfiguredError } = await import("../errors.js");
 
@@ -175,8 +176,61 @@ describe("openDbTunnel", () => {
     expect(spawnMock).not.toHaveBeenCalled();
   });
 
+  // #384 regression pin: resolveExport was extracted OUT of this path so
+  // `db url` could reuse it. The bastion's operator-facing guidance must
+  // survive the refactor — "export not found" alone doesn't tell you which
+  // stack to deploy.
+  it("still names the bastion stack in the missing-export message", async () => {
+    cfnSend.mockResolvedValue({ Exports: [] });
+    await expect(openDbTunnel(appDev, REMOTE)).rejects.toThrow(
+      /dev-BastionInstanceId/
+    );
+    await expect(openDbTunnel(appDev, REMOTE)).rejects.toThrow(
+      /bastion stack/i
+    );
+  });
+
   it("throws ENV_NOT_CONFIGURED for an env without AWS config", async () => {
     await expect(openDbTunnel(local, REMOTE)).rejects.toBeInstanceOf(
+      EnvNotConfiguredError
+    );
+  });
+});
+
+// #384: the generalized lookup, extracted from the bastion resolver so
+// `portalops db url` can read the database stack's endpoint, port and
+// RDS-managed master-secret ARN through the same path.
+describe("resolveExport", () => {
+  it("returns the value of a present export", async () => {
+    cfnSend.mockResolvedValue(bastionExport("dev-DbEndpoint", "db.host"));
+    await expect(resolveExport(appDev, "dev-DbEndpoint")).resolves.toBe(
+      "db.host"
+    );
+  });
+
+  it("throws ENV_INFRA_ERROR naming the export when it is absent", async () => {
+    cfnSend.mockResolvedValue({ Exports: [] });
+    const p = resolveExport(appDev, "dev-DbMasterSecretArn");
+    await expect(p).rejects.toBeInstanceOf(EnvInfraError);
+    await expect(p).rejects.toThrow(/dev-DbMasterSecretArn/);
+  });
+
+  it("appends the caller's hint so the message says which stack to deploy", async () => {
+    cfnSend.mockResolvedValue({ Exports: [] });
+    await expect(
+      resolveExport(appDev, "dev-DbEndpoint", "is the database stack deployed?")
+    ).rejects.toThrow(/is the database stack deployed\?/);
+  });
+
+  it("maps a ListExports transport failure to ENV_INFRA_ERROR", async () => {
+    cfnSend.mockRejectedValue(new Error("socket hang up"));
+    await expect(
+      resolveExport(appDev, "dev-DbEndpoint")
+    ).rejects.toBeInstanceOf(EnvInfraError);
+  });
+
+  it("throws ENV_NOT_CONFIGURED for an env without AWS config", async () => {
+    await expect(resolveExport(local, "x-Anything")).rejects.toBeInstanceOf(
       EnvNotConfiguredError
     );
   });

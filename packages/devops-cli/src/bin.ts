@@ -26,6 +26,8 @@ import {
   dbReset,
   dbSeed,
   dbResetSeed,
+  dbUrl,
+  type DbUrlResult,
 } from "./commands/db.js";
 import {
   tierApply,
@@ -43,6 +45,9 @@ interface GlobalOpts {
   confirmProd?: boolean;
   unmask?: boolean;
   localPort?: string;
+  dbName?: string;
+  sslMode?: string;
+  write?: boolean;
 }
 
 /** Shared flags on every leaf command — no implicit env, ever. */
@@ -193,6 +198,35 @@ export function buildProgram(): Command {
         return undefined;
       })
     );
+
+  common(
+    db
+      .command("url")
+      .description(
+        "compose DATABASE_URL from the stack's exports + the RDS master secret (password redacted unless --write)"
+      )
+      .option(
+        "--db-name <name>",
+        "database name (default portal_ai; use `postgres` to reach the maintenance DB during bootstrap)"
+      )
+      .option("--ssl-mode <mode>", "sslmode query value (default require)")
+      .option("--write", "store the composed value at the database-url secret")
+  ).action(async (o: GlobalOpts) =>
+    execute(
+      o,
+      (def) =>
+        dbUrl(def, {
+          ...flags(o),
+          dbName: o.dbName,
+          sslMode: o.sslMode,
+          write: o.write,
+        }),
+      (p: DbUrlResult) =>
+        p.written
+          ? `wrote database-url for ${p.endpoint}:${p.port}${p.created ? "\n  NOTE: secret CREATED — add its ARN to the deploy workflow" : ""}`
+          : `${p.connectionString}\n  (password redacted — re-run with --write to store the real value)`
+    )
+  );
 
   common(
     db
