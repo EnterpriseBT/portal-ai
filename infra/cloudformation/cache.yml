@@ -19,8 +19,8 @@ Parameters:
   # The Redis here is NOT a cache. It carries the BullMQ jobs queue, and there
   # is no reconciliation of jobs left mid-flight: losing the node strands them
   # in `active` in Postgres, and a non-terminal job holds an ENTITY_LOCKED_BY_JOB
-  # lock with no supported unlock path. A node replacement is therefore a
-  # data-availability incident, not a cache miss.
+  # lock until someone cancels it by hand (#391). A node replacement is
+  # therefore an operational incident, not a cache miss.
   #
   # A CacheCluster cannot have a replica at all, so prod switches resource type
   # behind this condition. Dev keeps its CacheCluster — flipping the type would

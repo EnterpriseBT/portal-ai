@@ -112,7 +112,7 @@ The pipeline itself, prod-only, unable to affect dev.
 - **Nothing here provisions anything.** Merging this PR creates no AWS resource; the first prod deploy is a published release, gated on #384's values existing.
 - **This ticket interleaves with #384**, as the epic records: database stack (slice 2's `deploy-infra`) → #384's `CREATE DATABASE portal_ai` + `db url --write` → backend stack. A prod release run before that bootstrap will fail at the migrate task.
 - **Doc surfaces in this PR:** the runbook (slice 3). `docs/AWS_CLI_OPS.md`'s "prod (pending #83)" section and `CLAUDE.md`'s "future `prod`" phrasing belong to **#387** — they describe the whole epic's outcome, not this slice's.
-- **A separate ticket to file**, surfaced by discovery and out of scope here: jobs stranded in `active` after a Redis loss hold entity locks with no supported unlock, and no reconciliation exists. It affects app-dev today.
+- **[#391](https://github.com/EnterpriseBT/portal-ai/issues/391)**, surfaced by discovery and out of scope here: jobs stranded in `active` after a Redis loss hold entity locks until cancelled by hand, and no reconciliation exists. It affects app-dev today.
 
 ## Next step
 

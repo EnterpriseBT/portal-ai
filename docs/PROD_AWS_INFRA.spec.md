@@ -6,7 +6,7 @@ Pins the contract for [#383](https://github.com/EnterpriseBT/portal-ai/issues/38
 
 1. **The first deploy bootstraps with `DesiredCount=0`.** `backend.yml` creates the ECR repository *and* an ECS service whose image does not exist yet; with the circuit breaker set to roll back, the stack create fails and the job that would push the image never runs. The workflow detects this and passes `0` for that run only.
 2. **`backend.yml` takes `CertificateArn` as a parameter**, matching `frontend.yml` and `site.yml`, and prod is passed the **existing** wildcard ARN. No second ACM certificate — the apex and wildcard share one validation CNAME and a second stack collides on it.
-3. **Prod's Redis is an `AWS::ElastiCache::ReplicationGroup` behind an `IsProd` condition.** The current `CacheCluster` cannot have a replica at all, and losing the node strands every in-flight job in `active` with its entity locked and no supported unlock.
+3. **Prod's Redis is an `AWS::ElastiCache::ReplicationGroup` behind an `IsProd` condition.** The current `CacheCluster` cannot have a replica at all, and losing the node strands every in-flight job in `active` holding its entity lock until someone cancels it by hand ([#391](https://github.com/EnterpriseBT/portal-ai/issues/391)).
 4. **Three dev-only steps are omitted deliberately**, and pinned by tests rather than only by comments: the domain-wide mail DNS stack, the create-if-absent contact seeding, and `tag-deploy`.
 5. **Prod's VPC gets its own CIDR** (`10.1.0.0/16`) — harmless today, and impossible to change later without rebuilding the VPC.
 6. **`deploy-prod.yml` runs the test suites** even though the release is cut from a merged `main`. "The tag came from a green commit" is an assumption, not a check.
@@ -27,7 +27,7 @@ Pins the contract for [#383](https://github.com/EnterpriseBT/portal-ai/issues/38
 
 - Vendor accounts and secret values (#384) — this ticket consumes ARNs it is handed.
 - Stripe (#385), `www` activation (#386), tier pricing (#325), CLI/doc sweep (#387).
-- **Reconciling jobs stranded in `active`** and releasing their entity locks — a real bug affecting app-dev today, to be filed separately. This ticket reduces how often it can trigger; it does not fix it.
+- **Reconciling jobs stranded in `active`** and releasing their entity locks — **[#391](https://github.com/EnterpriseBT/portal-ai/issues/391)**, a real bug affecting app-dev today. This ticket reduces how often it can trigger; it does not fix it.
 - Moving the certificate to a domain-level stack (discovery Decision 2, option C).
 - A least-privilege operator IAM role; multi-region; WAF; per-org RDS; apex redirect.
 - **No schema change: there is no migration and no seed change in this ticket.**
