@@ -82,7 +82,8 @@ The pipeline itself, prod-only, unable to affect dev.
 
 **Files**
 
-- Edit: `docs/PROD_PROVISIONING.runbook.md` — cutting a release, what the first deploy does differently, and how to roll back.
+- New: `docs/PROD_DEPLOY.runbook.md` — cutting a release, what the first deploy does differently, and how to roll back.
+  *(Split from #384's provisioning runbook during implementation — that file is on an unmerged branch, and the two have different audiences: once per environment vs. every release.)*
 
 **Steps**
 

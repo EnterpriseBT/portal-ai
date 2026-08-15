@@ -252,7 +252,8 @@ Template validity is checked with `aws cloudformation validate-template` during 
 - Edit: `.github/workflows/deploy-dev.yml` — pass `CertificateArn` in both backend deploys
 - New: `.github/workflows/deploy-prod.yml`
 - Edit: `packages/devops-cli/src/__tests__/deploy-parity.test.ts` — the nine cases
-- Edit: `docs/PROD_PROVISIONING.runbook.md` — cutting a release, the bootstrap, rollback
+- New: `docs/PROD_DEPLOY.runbook.md` — cutting a release, the first-deploy bootstrap, rollback and recovery.
+  *(Originally planned as an edit to `docs/PROD_PROVISIONING.runbook.md`. Split during implementation: that file belongs to #384's open branch, so editing it here would conflict between two in-flight PRs — and the two documents have genuinely different audiences and cadences. Provisioning happens once per environment; deploying happens every release.)*
 
 ## Next step
 
