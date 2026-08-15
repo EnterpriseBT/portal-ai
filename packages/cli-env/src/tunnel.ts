@@ -38,29 +38,54 @@ export interface OpenDbTunnelOptions {
   localPort?: number;
 }
 
-/** Resolve the bastion EC2 instance id via its CloudFormation export. */
-async function resolveBastionInstanceId(
-  def: EnvironmentDefinition
+/**
+ * Resolve one CloudFormation export by name (#384). Extracted from the
+ * bastion resolver below so `portalops db url` can read the database stack's
+ * endpoint, port and RDS-managed master-secret ARN through the same path.
+ *
+ * `hint` is appended to the not-found message — "export not found" alone
+ * doesn't tell an operator which stack to deploy.
+ */
+export async function resolveExport(
+  def: EnvironmentDefinition,
+  exportName: string,
+  hint?: string
 ): Promise<string> {
-  const exportName = bastionExportName(def); // throws ENV_NOT_CONFIGURED for aws:null
-  const region = def.aws!.region;
+  if (!def.aws) {
+    throw new EnvNotConfiguredError(
+      `Environment "${def.name}" has no AWS configuration (local-only)`
+    );
+  }
+  const region = def.aws.region;
   const client = new CloudFormationClient({ region });
   let exports;
   try {
     exports = (await client.send(new ListExportsCommand({}))).Exports ?? [];
   } catch (err) {
     throw new EnvInfraError(
-      `Failed to list CloudFormation exports while resolving the bastion: ${(err as Error)?.message}`,
+      `Failed to list CloudFormation exports while resolving "${exportName}": ${(err as Error)?.message}`,
       { cause: err }
     );
   }
   const match = exports.find((e) => e.Name === exportName);
   if (!match?.Value) {
     throw new EnvInfraError(
-      `Bastion export "${exportName}" not found in ${region} — is the bastion stack deployed for "${def.name}"?`
+      `CloudFormation export "${exportName}" not found in ${region}${hint ? ` — ${hint}` : ""}`
     );
   }
   return match.Value;
+}
+
+/** Resolve the bastion EC2 instance id via its CloudFormation export. */
+async function resolveBastionInstanceId(
+  def: EnvironmentDefinition
+): Promise<string> {
+  const exportName = bastionExportName(def); // throws ENV_NOT_CONFIGURED for aws:null
+  return resolveExport(
+    def,
+    exportName,
+    `is the bastion stack deployed for "${def.name}"?`
+  );
 }
 
 /**

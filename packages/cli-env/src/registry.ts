@@ -54,7 +54,18 @@ export const BUILTIN_ENVIRONMENTS: Record<string, EnvironmentDefinition> = {
     apiBaseUrl: "https://api-dev.portalsai.io",
     aws: { region: "us-east-1", envName: "dev" },
   },
-  // prod: added (kind "production", envName "prod") when #83 provisions it.
+  // #384 (epic #83). `kind: "production"` is the whole contract — every
+  // barrier in guard.ts keys on it, never on the name. It lives here rather
+  // than in an operator's ~/.portalai/environments.json because an override
+  // has its kind FORCED to "development" (below), so a prod entry that
+  // resolved from there would run production writes with no barrier at all.
+  // Refusing to shadow a built-in is what closes that hole.
+  prod: {
+    name: "prod",
+    kind: "production",
+    apiBaseUrl: "https://api.portalsai.io",
+    aws: { region: "us-east-1", envName: "prod" },
+  },
 };
 
 /** `~/.portalai` — PORTALAI_HOME overrides for tests/agents/CI. */

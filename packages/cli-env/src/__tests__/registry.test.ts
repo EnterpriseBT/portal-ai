@@ -46,6 +46,16 @@ describe("BUILTIN_ENVIRONMENTS", () => {
     expect(appDev.apiBaseUrl).toBe("https://api-dev.portalsai.io");
     expect(appDev.aws).toEqual({ region: "us-east-1", envName: "dev" });
   });
+
+  // #384: prod is the environment the production guards were written for in
+  // #194 and have never had. `kind` is the whole contract — every barrier in
+  // guard.ts keys on it, never on the name.
+  it("prod is production and maps to the AWS env name 'prod'", () => {
+    const prod = BUILTIN_ENVIRONMENTS["prod"];
+    expect(prod.kind).toBe("production");
+    expect(prod.apiBaseUrl).toBe("https://api.portalsai.io");
+    expect(prod.aws).toEqual({ region: "us-east-1", envName: "prod" });
+  });
 });
 
 describe("AWS naming helpers (mirror api-cli.sh conventions)", () => {
@@ -56,6 +66,16 @@ describe("AWS naming helpers (mirror api-cli.sh conventions)", () => {
     expect(ssmPrefix(appDev)).toBe("/portalai/dev");
     expect(clusterName(appDev)).toBe("portalai-dev");
     expect(bastionExportName(appDev)).toBe("dev-BastionInstanceId");
+  });
+
+  // #384: prod's AWS names come from the same formula, so nothing in the
+  // CLI, the runbooks or the AWS_CLI_OPS naming table needs a prod branch.
+  it("derives prod's names from the same formula", () => {
+    const prod = BUILTIN_ENVIRONMENTS["prod"];
+    expect(secretsPrefix(prod)).toBe("portalai/prod");
+    expect(ssmPrefix(prod)).toBe("/portalai/prod");
+    expect(clusterName(prod)).toBe("portalai-prod");
+    expect(bastionExportName(prod)).toBe("prod-BastionInstanceId");
   });
 
   it("throws ENV_NOT_CONFIGURED for an env without AWS config", () => {
@@ -112,6 +132,20 @@ describe("override file (~/.portalai/environments.json)", () => {
     expect(() => loadEnvironments()).toThrow(/app-dev/);
   });
 
+  // #384: this is what makes the production guards unbypassable. An override
+  // has its kind FORCED to development, so a `prod` override that resolved
+  // would run every production write with NO barrier — no --yes, no
+  // --confirm-prod, destructive ops permitted. Refusing to shadow a built-in
+  // is the only reason that attack doesn't exist, which is why the prod entry
+  // has to live in code rather than in an operator's home directory.
+  it("rejects an override that shadows prod — the guards' load-bearing rule", () => {
+    writeOverrides({
+      prod: { kind: "production", apiBaseUrl: "http://evil:1", aws: null },
+    });
+    expect(() => loadEnvironments()).toThrow(EnvNotConfiguredError);
+    expect(() => loadEnvironments()).toThrow(/prod/);
+  });
+
   it("rejects a malformed file, naming it", () => {
     writeOverrides("{ not json !!");
     expect(() => loadEnvironments()).toThrow(EnvNotConfiguredError);
@@ -120,6 +154,6 @@ describe("override file (~/.portalai/environments.json)", () => {
 
   it("returns only built-ins when no override file exists", () => {
     const envs = loadEnvironments();
-    expect(Object.keys(envs).sort()).toEqual(["app-dev", "local"]);
+    expect(Object.keys(envs).sort()).toEqual(["app-dev", "local", "prod"]);
   });
 });
