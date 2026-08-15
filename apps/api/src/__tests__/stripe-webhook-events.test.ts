@@ -17,6 +17,10 @@
  * instruction lists exactly what the code consumes.
  */
 
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, it, expect } from "@jest/globals";
 
 import { STRIPE_SUBSCRIPTION_EVENTS } from "../routes/webhook.router.js";
@@ -59,4 +63,24 @@ describe("Stripe webhook event contract (#385)", () => {
     ]);
     expect(union.size).toBe(6);
   });
+});
+
+// The half of the contract that lives outside the code. Slice 1 pinned what
+// the code consumes; this asserts the operator instruction covers it, which
+// is the only thing standing between "we added an event type" and "the live
+// endpoint silently never receives it".
+describe("the runbook documents the endpoint's full subscription (#385)", () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const runbook = path.resolve(
+    here,
+    "../../../../docs/PROD_STRIPE_LIVE.runbook.md"
+  );
+
+  it.each([...STRIPE_SUBSCRIPTION_EVENTS, ...STRIPE_PRICE_EVENTS])(
+    "names %s",
+    (eventType) => {
+      expect(fs.existsSync(runbook)).toBe(true);
+      expect(fs.readFileSync(runbook, "utf8")).toContain(eventType);
+    }
+  );
 });
