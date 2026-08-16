@@ -2,7 +2,7 @@
 
 The **agent- and human-operable runbook** for AWS **auditing, troubleshooting, and logging** on Portal.ai environments — the runbook the [CLI Operations Charter](./CLI_OPERATIONS_CHARTER.md)'s AWS table points at (#224, epic #222). Every command here is non-interactive and emits machine-readable output.
 
-**Boundary.** The AWS CLI's role here is **read/diagnostic** — logs, service health, resource inspection. **Infrastructure changes (provisioning, config, IaC) are not operated by hand — they run in CI** (see [Operator actions](#operator-actions-not-agent-auto) for the few mutating commands that exist, documented but never agent-auto). `local` has **no AWS surface** (it runs from `.env` / docker-compose); everything below applies to `app-dev` and, once provisioned (#83), `prod`.
+**Boundary.** The AWS CLI's role here is **read/diagnostic** — logs, service health, resource inspection. **Infrastructure changes (provisioning, config, IaC) are not operated by hand — they run in CI** (see [Operator actions](#operator-actions-not-agent-auto) for the few mutating commands that exist, documented but never agent-auto). `local` has **no AWS surface** (it runs from `.env` / docker-compose); everything below applies to `app-dev` and to `prod`.
 
 ## Auth setup
 
@@ -133,6 +133,10 @@ aws cloudtrail lookup-events \
   --start-time <iso8601> --output json
 ```
 
-## prod (pending #83)
+## prod
 
-`prod` is not yet provisioned. Its commands derive from the [naming formula](#invariants) with `envName=prod` (e.g. cluster `portalai-prod`, log group `/ecs/portalai-api-prod`, stack `portalai-prod-backend`). Read/diagnostic commands are safe; any mutation runs through CI. **Unexercised until #83 lands.**
+`prod` is a first-class environment: it is in the CLI registry, and its guards are enforced in code — destructive operations are refused outright (exit `6`), non-destructive mutations require `--yes --confirm-prod` (exit `5` without).
+
+Its commands derive from the [naming formula](#invariants) with `envName=prod` — cluster `portalai-prod`, log group `/ecs/portalai-api-prod`, stack `portalai-prod-backend`. Read/diagnostic commands are safe; **any mutation runs through CI**, never by hand.
+
+Commands that need resources only return data once those resources exist. Standing them up is an operator act, not a deploy: see `docs/PROD_PROVISIONING.runbook.md` (accounts, secrets, the database bootstrap) and `docs/PROD_DEPLOY.runbook.md` (cutting a release, the first-deploy path, rollback).

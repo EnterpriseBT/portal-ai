@@ -43,4 +43,4 @@
 
 - **Native command gap-fill** — charter is 14/14 operable; nothing to build.
 - **Audit-log query command** — declined (finding (b)); log stays write-only; centralized audit is #179.
-- **Vendor CLIs** (#224/#225/#226); **live `prod`** (#83).
+- **Vendor CLIs** (#224/#225/#226). `prod` is in the registry with its guards enforced in code; exercising commands against provisioned prod resources follows the epic's runbooks.

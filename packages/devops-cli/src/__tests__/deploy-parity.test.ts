@@ -432,3 +432,53 @@ describe("prod has no certificate stack of its own (#386)", () => {
     expect(code(caller)).toMatch(/cert-stack:\s*portalai-dev-dns-certs/);
   });
 });
+
+// #387: prod is no longer "pending a ticket" in the reference docs.
+//
+// The exclusions ARE the decision, not a convenience. `pending #83` also
+// appears in smoke docs — one signed off by name and date — and in the
+// discovery/spec/plan set. Those are not stale: they record what was walked,
+// or what was known, at a point in time. Rewriting them would falsify a
+// signed artifact and destroy the only evidence of what was actually
+// verified. Encoding that here means the next person to run the same grep
+// finds the distinction already made for them.
+describe("reference docs describe prod as real (#387)", () => {
+  /** Records of a past walkthrough or a past decision. Never swept. */
+  const isHistorical = (name: string): boolean =>
+    /\.(smoke|discovery|spec|plan)\.md$/.test(name);
+
+  /** Condensed tickets put design + smoke in one un-suffixed file, so they
+   *  cannot be recognised by name — enumerated, each with its reason. */
+  const DESIGN_DOCS: Record<string, string> = {
+    "PROD_CLI_ACTIVATION.md": "#387's own design doc — it explains the rule",
+    "PROD_MARKETING_SITE.md": "#386 condensed design + smoke",
+    "PROD_TIER_CATALOG.md": "#325 condensed design + smoke",
+    "DEPLOYED_ENV_CONFIG.md": "#382 condensed design + smoke",
+  };
+
+  const referenceDocs = (): Array<[string, string]> => {
+    const dir = path.join(ROOT, "docs");
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(".md"))
+      .filter((f) => !isHistorical(f) && !(f in DESIGN_DOCS))
+      .map(
+        (f) =>
+          [f, fs.readFileSync(path.join(dir, f), "utf8")] as [string, string]
+      );
+  };
+
+  it("finds a plausible number of reference docs", () => {
+    expect(referenceDocs().length).toBeGreaterThan(3);
+  });
+
+  it.each(referenceDocs())("%s does not defer prod to a ticket", (_f, body) => {
+    expect(body).not.toContain("pending #83");
+    expect(body).not.toMatch(/[Uu]nexercised until #83/);
+  });
+
+  it("CLAUDE.md does not describe prod as future", () => {
+    const claude = fs.readFileSync(path.join(ROOT, "CLAUDE.md"), "utf8");
+    expect(claude).not.toMatch(/future\s+`?prod`?/);
+  });
+});
