@@ -15,7 +15,9 @@ Use a **dedicated read-only restricted key** for inspection (distinct from the a
 
 > **Safety model — the credential is the gate, not the prompt.** A read-only restricted key **cannot** create prices or update subscriptions: Stripe rejects the write with a permissions error. That server-side rejection — **not** the `.claude` allowlist and **not** a Claude Code permission prompt — is the mutation-safety boundary. The allowlist only reduces prompts for *reads*, and whether an un-allowlisted command prompts depends on the session's mode (it is **not** a guarantee). Run the agent path with the read-only key; the config verbs below require a **write-capable** key and deliberate operator intent.
 
-**Per-env key source:** `local` reads `STRIPE_SECRET_KEY` from `.env`; AWS envs read the `stripe-secret-key` Secrets Manager entry (cross-ref charter finding (a): not yet wired into `backend.yml` for app-dev — set it via `portalops vars set STRIPE_SECRET_KEY … --env app-dev --yes`). `prod` uses a live-mode key with `--live`, gated.
+**Per-env key source:** `local` reads `STRIPE_SECRET_KEY` from `.env`; AWS envs read the `stripe-secret-key` Secrets Manager entry, which **is** wired into `backend.yml` (`SecretArnStripeSecretKey` / `SecretArnStripeWebhookSecret`) — an earlier note here said otherwise and was stale. `prod` uses a live-mode key with `--live`, gated.
+
+**Two keys per environment (#385).** The `stripe-secret-key` in the catalog is the **application's** key: Customers / Checkout Sessions / Billing Portal Sessions / Subscriptions write, Prices read. (Subscriptions is *write* — `cancelSubscription` runs on the org-delete path.) Operator and agent inspection uses a **separate read-only** restricted key, held outside the catalog because it is an operator credential rather than application config. That separation is what makes the safety note above true in practice: today `portalops tier apply` reads the application key, so anything borrowing it for inspection is borrowing write access. Provisioning both keys is `docs/PROD_STRIPE_LIVE.runbook.md` §2–3.
 
 ## Invariants
 

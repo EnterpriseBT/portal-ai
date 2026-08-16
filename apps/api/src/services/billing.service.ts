@@ -28,8 +28,14 @@ const logger = createLogger({ module: "billing-service" });
 /** Stripe price-catalog events (#311). Recorded `ignored` like any other
  *  unhandled type — they change no tier state — but they DO move amounts
  *  the marketing site has baked into static HTML, so each one first-delivery
- *  fires a site rebuild. */
-const STRIPE_PRICE_EVENTS = new Set([
+ *  fires a site rebuild.
+ *
+ *  Exported (#385) so the webhook-event guard can assert the runbook lists
+ *  these alongside the subscription types. They change no tier state, which
+ *  makes them the ones an operator is most likely to leave off the live
+ *  endpoint's subscription — and then the pricing page silently never
+ *  republishes. Do not un-export to "tidy up". */
+export const STRIPE_PRICE_EVENTS = new Set([
   "price.created",
   "price.updated",
   "price.deleted",
