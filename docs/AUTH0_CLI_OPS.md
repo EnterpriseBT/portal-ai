@@ -2,7 +2,7 @@
 
 The **agent- and human-operable runbook** for Auth0 **tenant inspection and management** on Portal.ai environments — the runbook the [CLI Operations Charter](./CLI_OPERATIONS_CHARTER.md)'s Auth0 table points at (#226, epic #222). Every inspection command is non-interactive and emits JSON.
 
-**Boundary.** This operates the Auth0 **tenants** (users, roles, applications, connections, logs). It is **not** the app's JWT runtime middleware, and **not** the `portalai` device-flow login (see below). `local`, `app-dev`, and future `prod` each have their **own Auth0 tenant** — tenant-scoped ids (application `client_id`s, role/connection ids, DB `auth0|…` user ids) do not cross tenants (see [Gotchas](#gotchas) for the social-id nuance).
+**Boundary.** This operates the Auth0 **tenants** (users, roles, applications, connections, logs). It is **not** the app's JWT runtime middleware, and **not** the `portalai` device-flow login (see below). `local`, `app-dev` and `prod` each have their **own Auth0 tenant** — tenant-scoped ids (application `client_id`s, role/connection ids, DB `auth0|…` user ids) do not cross tenants (see [Gotchas](#gotchas) for the social-id nuance).
 
 ## Two different logins (don't conflate them)
 
@@ -29,7 +29,7 @@ Two ways to authenticate the CLI to a tenant's Management API:
   ```bash
   auth0 login --domain <tenant> --client-id <m2m-client-id> --client-secret <m2m-secret>
   ```
-  Non-interactive. Store the secret per env (Secrets Manager, like other env secrets). `prod` uses its own tenant + credential (#83), gated.
+  Non-interactive. Store the secret per env (Secrets Manager, like other env secrets). `prod` uses its own tenant + credential, gated.
 
 > **Safety model — the credential is the gate, not the prompt.** A read-only M2M session literally **cannot** mutate the tenant: Auth0 rejects any `users update`/`delete`/`roles add`/`apps update` with a 403 (insufficient scope). That server-side rejection — **not** the `.claude` allowlist and **not** a Claude Code permission prompt — is the mutation-safety boundary. The allowlist only reduces prompts for *reads*, and whether an un-allowlisted command prompts depends on the session's permission mode (it is **not** a guarantee). So: run the agent path with the read-only M2M; the mutating ops below require a **write-capable** credential and deliberate operator intent.
 
@@ -105,6 +105,8 @@ Auth0 **roles/permissions are manageable here**, but the app does **not** enforc
 - **`--json` has a banner** — strip the header line before parsing.
 - **`tenants use` is sticky** — it silently redirects *all* subsequent commands to that tenant; re-confirm with `auth0 tenants list` if unsure.
 
-## prod (pending #83)
+## prod
 
-`prod` has its **own tenant** + credential, gated. Its commands are identical with `auth0 tenants use <prod-tenant>` selected. **Unexercised until #83.**
+`prod` has its **own tenant** and credential, gated. Its commands are identical to the above with `auth0 tenants use <prod-tenant>` selected — per-env tenant separation is settled practice, so nothing about the command surface changes.
+
+The tenant itself, its SPA and API applications, the post-login Action and the device-flow app for `portalai login` are created by an operator: `docs/PROD_PROVISIONING.runbook.md` §2.

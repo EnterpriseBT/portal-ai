@@ -85,6 +85,10 @@ See the charter's "Add a subscription tier" / "Update a tier's price" recipes fo
 - **No `--json` flag** — JSON is the default; adding `--json` errors.
 - **Test-mode data is disposable; prod is real billing** — always confirm mode (`--live` is opt-in) before any config verb.
 
-## prod (pending #83)
+## prod
 
-`prod` uses a **live-mode** key (`--live`) and is gated. Its account is separate from test-mode; lookup keys are declared the same way but resolve to prod-account price ids. **Unexercised until #83.**
+`prod` uses a **live-mode** key (`--live`) and is gated. Its account is entirely separate from test mode; lookup keys are declared the same way but resolve to that account's price ids — the lookup key is the only handle that crosses environments.
+
+Two keys, per the two-key model above: the application's restricted key, and a **separate read-only** key for inspection. Run agent and operator reads with the read-only one — the credential is the mutation boundary, not the prompt.
+
+Standing up the live account, its keys, products, webhook and tax configuration is `docs/PROD_STRIPE_LIVE.runbook.md`. Note its §6: `automatic_tax` collects nothing without an active registration and raises no error while doing so, which is why that runbook treats tax as a gate.
