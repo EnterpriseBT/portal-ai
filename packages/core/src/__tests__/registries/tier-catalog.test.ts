@@ -39,7 +39,7 @@ describe("TIER_CATALOG (#218)", () => {
       // #263: modest entry allocations (ascending lineup).
       meteredUnitsPerPeriod: 500,
       meteredRatePerMin: 10,
-      expensiveUnitsPerPeriod: 20,
+      expensiveUnitsPerPeriod: 100,
       expensiveRatePerMin: 2,
       perToolCaps: null,
       selectable: true,
@@ -57,7 +57,7 @@ describe("TIER_CATALOG (#218)", () => {
       slug: "plus",
       displayName: "Plus",
       meteredUnitsPerPeriod: 5_000,
-      expensiveUnitsPerPeriod: 200,
+      expensiveUnitsPerPeriod: 2_000,
       selectable: true,
       builtinToolpacks: [
         "data_query",
@@ -89,7 +89,7 @@ describe("TIER_CATALOG (#218)", () => {
     ]);
   });
 
-  it("pro is a selectable purchasable tier — everything + generous (#263)", () => {
+  it("pro is a selectable purchasable tier — everything, with ceilings (#263, #325)", () => {
     const pro = TIER_CATALOG_BY_SLUG.get("pro");
     expect(pro).toBeDefined();
     expect(pro).toMatchObject({
@@ -100,10 +100,10 @@ describe("TIER_CATALOG (#218)", () => {
       overage: "hard-deny",
       freeUnitsPerPeriod: null,
       freeRatePerMin: null,
-      meteredUnitsPerPeriod: null,
-      meteredRatePerMin: null,
-      expensiveUnitsPerPeriod: 1_000_000,
-      expensiveRatePerMin: 10_000,
+      meteredUnitsPerPeriod: 50_000,
+      meteredRatePerMin: 120,
+      expensiveUnitsPerPeriod: 20_000,
+      expensiveRatePerMin: 30,
       perToolCaps: null,
       selectable: true,
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
@@ -171,5 +171,52 @@ describe("TierCatalogEntrySchema ↔ TierSchema field mirror (#218)", () => {
     for (const field of catalogFields) {
       expect(tierFields).toContain(field);
     }
+  });
+});
+
+// #325: the catalog shipped with test-grade magnitudes — `pro` had a null
+// (unlimited) metered allocation "so no denial interrupts manual testing".
+// That is an unbounded vendor bill against a fixed monthly price. These pin
+// the production shape as an invariant rather than as four separate numbers,
+// so a fifth tier inherits it and a revert is loud.
+describe("no self-serve tier has an unlimited allocation (#325)", () => {
+  const selfServe = TIER_CATALOG.filter(
+    (t) => t.selectable && t.cta === "subscribe"
+  );
+  const free = TIER_CATALOG.filter((t) => t.cta === "none");
+
+  it("covers the paid tiers and the free default", () => {
+    expect(selfServe.map((t) => t.slug).sort()).toEqual(["plus", "pro"]);
+    expect(free.map((t) => t.slug)).toEqual(["standard"]);
+  });
+
+  it.each([...selfServe, ...free])(
+    "$slug bounds every cost class it can consume",
+    (tier) => {
+      // `null` means unlimited. A tier anyone can reach without a negotiated
+      // contract must bound both the period quota AND the burst rate: the
+      // quota caps the monthly bill, the rate caps how fast it is run up.
+      expect(tier.meteredUnitsPerPeriod).not.toBeNull();
+      expect(tier.meteredRatePerMin).not.toBeNull();
+      expect(tier.expensiveUnitsPerPeriod).not.toBeNull();
+      expect(tier.expensiveRatePerMin).not.toBeNull();
+    }
+  );
+
+  it("scales the expensive class strictly with tier", () => {
+    // The Portal-paid class (Tavily, Mapbox). Ascending is what makes the
+    // ladder meaningful; equal or inverted would be a copy-paste slip.
+    const by = (slug: string) =>
+      TIER_CATALOG_BY_SLUG.get(slug)!.expensiveUnitsPerPeriod!;
+    expect(by("standard")).toBeLessThan(by("plus"));
+    expect(by("plus")).toBeLessThan(by("pro"));
+  });
+
+  it("leaves enterprise unlimited — it is a contact card, not a self-serve tier", () => {
+    // Deliberate: a real enterprise deal gets an org-scoped custom tier
+    // (#241) with negotiated numbers. Pinned so the exception stays visible.
+    const ent = TIER_CATALOG_BY_SLUG.get("enterprise")!;
+    expect(ent.cta).toBe("contact");
+    expect(ent.meteredUnitsPerPeriod).toBeNull();
   });
 });
