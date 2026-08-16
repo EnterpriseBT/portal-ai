@@ -1,6 +1,6 @@
 # Portal.ai CLI Operations Charter
 
-The standing **operation → CLI index** for maintaining, inspecting, and configuring Portal.ai environments (`local`, `app-dev`, and future `prod`), usable by a **human or a Claude agent**. Every relevant maintenance, logging, and configuration task appears once, mapped to its owning CLI, rated operable or not, and pointed at the per-surface guide that carries the full runbook.
+The standing **operation → CLI index** for maintaining, inspecting, and configuring Portal.ai environments (`local`, `app-dev` and `prod`), usable by a **human or a Claude agent**. Every relevant maintenance, logging, and configuration task appears once, mapped to its owning CLI, rated operable or not, and pointed at the per-surface guide that carries the full runbook.
 
 This charter is a **thin index**, not a runbook. It answers *"which CLI, and roughly how"* and reports coverage; the exact commands, flags, examples, auth setup, and allowlists live in the four per-surface guides:
 
@@ -53,7 +53,7 @@ The [Coverage](#coverage) section reports `N/D` as a fraction and percent, the l
 
 > **Out-of-band, runbook-driven (#369).** Two operations below have no CLI at all: they happen in a vendor console, behind a paid account we hold no API credential for. They are *classified*, not omitted — an operation a human performs by hand is still an operation, and leaving it off the charter is how the next one also goes unrecorded. Their `Guide ref` points at a runbook rather than an issue, and the runbook is the executable artifact.
 
-_Auth: ambient AWS credentials (SSO / `AWS_PROFILE` / CI OIDC); per-env scoping is the identity's ability to act on that env's resources. `local` has **no** AWS surface (it runs from `.env` / docker-compose), so these operations apply to `app-dev` (and future `prod`). Region `us-east-1`. Resource names follow `portalai-${env}` (`app-dev` → `dev`); exact identifiers and full flag sets are pinned in [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) — the `Command` here is the canonical starting point._
+_Auth: ambient AWS credentials (SSO / `AWS_PROFILE` / CI OIDC); per-env scoping is the identity's ability to act on that env's resources. `local` has **no** AWS surface (it runs from `.env` / docker-compose), so these operations apply to `app-dev` and `prod`. Region `us-east-1`. Resource names follow `portalai-${env}` (`app-dev` → `dev`); exact identifiers and full flag sets are pinned in [#224](https://github.com/EnterpriseBT/portal-ai/issues/224) — the `Command` here is the canonical starting point._
 
 | Operation | Category | Envs | Owning CLI | Command | Operable? | Guide ref | Disposition |
 |---|---|---|---|---|---|---|---|
@@ -78,7 +78,7 @@ _Auth: ambient AWS credentials (SSO / `AWS_PROFILE` / CI OIDC); per-env scoping 
 
 ## Auth0
 
-_Auth: `auth0` CLI, authenticated per-tenant (`auth0 login`). **Each environment has its own Auth0 tenant — `local` and `app-dev` are separate** (`app-dev` → `portalsai-staging.us.auth0.com`); select the target tenant with `auth0 tenants use <tenant>` before running directory ops, and never assume a change in one tenant reflects in the other. Future `prod` gets its own tenant (#83). The `auth0` CLI is non-interactive with a global `--json` flag; exact subcommand syntax is pinned in [#226](https://github.com/EnterpriseBT/portal-ai/issues/226)._
+_Auth: `auth0` CLI, authenticated per-tenant (`auth0 login`). **Each environment has its own Auth0 tenant — `local` and `app-dev` are separate** (`app-dev` → `portalsai-staging.us.auth0.com`); select the target tenant with `auth0 tenants use <tenant>` before running directory ops, and never assume a change in one tenant reflects in the other. `prod` has its own tenant. The `auth0` CLI is non-interactive with a global `--json` flag; exact subcommand syntax is pinned in [#226](https://github.com/EnterpriseBT/portal-ai/issues/226)._
 
 | Operation | Category | Envs | Owning CLI | Command | Operable? | Guide ref | Disposition |
 |---|---|---|---|---|---|---|---|
@@ -99,7 +99,7 @@ _Auth: `auth0` CLI, authenticated per-tenant (`auth0 login`). **Each environment
 
 ## Stripe
 
-_Auth: `stripe` CLI with a per-env (restricted) key — test-mode for `local`/`app-dev`, live-mode for future `prod` (#83). Prices are the source of truth in Stripe (no amounts in code — the app resolves by **lookup key** only); creating/updating prices is an operator act here, the app never creates them. Full runbook: [#225](https://github.com/EnterpriseBT/portal-ai/issues/225)._
+_Auth: `stripe` CLI with a per-env (restricted) key — test-mode for `local`/`app-dev`, live-mode for `prod`. Prices are the source of truth in Stripe (no amounts in code — the app resolves by **lookup key** only); creating/updating prices is an operator act here, the app never creates them. Full runbook: [#225](https://github.com/EnterpriseBT/portal-ai/issues/225)._
 
 | Operation | Category | Envs | Owning CLI | Command | Operable? | Guide ref | Disposition |
 |---|---|---|---|---|---|---|---|
