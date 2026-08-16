@@ -169,7 +169,11 @@ webhookRouter.post(
 
 /** Subscription lifecycle events the tier writer handles (#176 D3); every
  *  other verified type is recorded as `ignored`. */
-const STRIPE_SUBSCRIPTION_EVENTS = new Set([
+/** The event types this endpoint acts on. Exported (#385) so
+ *  `stripe-webhook-events.test.ts` can pin it against the runbook that tells
+ *  an operator which types to subscribe the live endpoint to — the two have
+ *  no other connection. Do not un-export to "tidy up". */
+export const STRIPE_SUBSCRIPTION_EVENTS = new Set([
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
