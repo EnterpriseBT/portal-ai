@@ -40,6 +40,16 @@ on:
           inputs on purpose.
         required: true
         type: string
+      cert-stack:
+        description: >-
+          CloudFormation stack that OWNS the wildcard certificate. Defaults to
+          the environment's own `portalai-<env>-dns-certs`. Prod passes the
+          dev-owned stack deliberately: the apex and the wildcard share one DNS
+          validation CNAME, so a second stack for the same names in the same
+          hosted zone collides in Route 53 (#383, #386). One certificate, one
+          owner — a guard test asserts no workflow creates a prod cert stack.
+        type: string
+        required: false
       gh-environment:
         description: >-
           GitHub Environment to run under, for its protection rules. A caller
@@ -79,25 +89,16 @@ jobs:
           role-to-assume: ${{ secrets.aws-role-arn }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # Prod has no network/database/backend stack of its own yet, so it
-      # needs dns-certs deployed here. Dev already gets it from deploy-dev.
-      - name: Deploy DNS & certs stack (prod only)
-        if: inputs.environment == 'prod'
-        run: |
-          aws cloudformation deploy \
-            --stack-name portalai-prod-dns-certs \
-            --template-file infra/cloudformation/dns-certs.yml \
-            --parameter-overrides \
-              Environment=prod \
-              HostedZoneId=${{ secrets.hosted-zone-id }} \
-            --no-fail-on-empty-changeset
-
       - name: Deploy site stack
         run: |
           CERT_ARN=$(aws cloudformation describe-stacks \
-            --stack-name portalai-${{ inputs.environment }}-dns-certs \
-            --query "Stacks[0].Outputs[?ExportName=='${{ inputs.environment }}-CertificateArn'].OutputValue" \
+            --stack-name "${{ inputs.cert-stack || format('portalai-{0}-dns-certs', inputs.environment) }}" \
+            --query "Stacks[0].Outputs[?ends_with(ExportName, '-CertificateArn')].OutputValue | [0]" \
             --output text)
+          if [ -z "$CERT_ARN" ] || [ "$CERT_ARN" = "None" ]; then
+            echo "::error::No -CertificateArn output on ${{ inputs.cert-stack || format('portalai-{0}-dns-certs', inputs.environment) }}"
+            exit 1
+          fi
           aws cloudformation deploy \
             --stack-name portalai-${{ inputs.environment }}-site \
             --template-file infra/cloudformation/site.yml \

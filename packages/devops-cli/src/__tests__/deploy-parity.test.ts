@@ -388,3 +388,47 @@ describe("each environment's config paths are isolated (#384)", () => {
     expect(seen.size).toBe(awsEnvs.length * CATALOG.length);
   });
 });
+
+// #386: prod owns no ACM certificate stack.
+//
+// #383 decided this: the apex and the wildcard share one DNS validation
+// CNAME, so a second stack requesting the same names in the same hosted zone
+// collides in Route 53 — dns-certs.yml's own comment records that collision
+// biting one level down, at DomainValidationOptions. Prod therefore threads
+// the EXISTING wildcard ARN into every stack that needs it.
+//
+// This is pinned rather than merely decided because deploy-static-site.yml
+// carried a prod-only step creating exactly that second stack. It predated
+// the decision and was justified by "prod has no stacks of its own yet",
+// which #383 made false. Nothing but this test stops it coming back.
+describe("prod has no certificate stack of its own (#386)", () => {
+  const allWorkflows = (): Array<[string, string]> => {
+    const dir = path.join(ROOT, ".github/workflows");
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
+      .map(
+        (f) =>
+          [f, fs.readFileSync(path.join(dir, f), "utf8")] as [string, string]
+      );
+  };
+
+  /** Comments name the omission to explain it; only executable text counts. */
+  const code = (body: string): string =>
+    body
+      .split("\n")
+      .filter((line) => !/^\s*#/.test(line))
+      .join("\n");
+
+  it.each(allWorkflows())("%s never deploys a prod cert stack", (_f, body) => {
+    expect(code(body)).not.toMatch(/--stack-name\s+portalai-prod-dns-certs/);
+  });
+
+  it("the prod site caller points at the stack that owns the certificate", () => {
+    const caller = fs.readFileSync(
+      path.join(ROOT, ".github/workflows/deploy-site-prod.yml"),
+      "utf8"
+    );
+    expect(code(caller)).toMatch(/cert-stack:\s*portalai-dev-dns-certs/);
+  });
+});

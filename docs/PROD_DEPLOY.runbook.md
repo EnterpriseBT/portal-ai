@@ -17,7 +17,7 @@ One published release fires two workflows off the same event:
 | Workflow | Deploys | Notes |
 |---|---|---|
 | `deploy-prod.yml` | `app.portalsai.io` + `api.portalsai.io` | the stacks, the web bundle, the API image |
-| `deploy-site-prod.yml` | `www.portalsai.io` | gated on the `PROD_SITE_CONFIG_URL` variable (#386) |
+| `deploy-site-prod.yml` | `www.portalsai.io` | gated on the `PROD_SITE_CONFIG_URL` variable — see § *Activating www.portalsai.io* |
 
 Both run in the **`prod` GitHub Environment**, so both pause for approval.
 
@@ -58,6 +58,39 @@ Notice: First deploy — creating the ECS service with DesiredCount=0 (ECR is em
 
 **The database must already have been bootstrapped.** RDS creates only the `postgres` maintenance database; nothing in the repo creates `portal_ai`. The provisioning runbook's step 10 does it, and it has to happen **after** `deploy-infra` creates the database stack and **before** `deploy-backend` migrates. In practice the first release is run twice: once to create the stacks (it will fail at the migrate step), then the bootstrap, then again.
 
+## Activating `www.portalsai.io` (once, #386)
+
+The marketing site rides the same release event, through `deploy-site-prod.yml`. Until the **`PROD_SITE_CONFIG_URL` repository variable** is set, that workflow exits cleanly with a notice and publishes nothing — a deliberate gate so a fixture build can never reach the public site.
+
+**Set that variable last.** It is a switch, not a prerequisite. Setting it early does not accelerate anything: the build's preflight fail-closes on unresolved contacts or empty tiers, so an early switch converts a clean no-op into a failing deploy.
+
+Everything below must be true before you flip it:
+
+- [ ] **The prod API answers.** `curl https://api.portalsai.io/api/public/site-config` returns 200 with the live tiers. That means the backend stack is deployed and the database bootstrapped (§ *The first deploy is different*).
+- [ ] **The contact addresses are set** — `/portalai/prod/{support,sales,admin}-email`. The build bakes them in; the preflight fail-closes without them. Prod is deliberately not auto-seeded (#319), so these are the manual step in `docs/PROD_PROVISIONING.runbook.md`.
+- [ ] **The paid tiers resolve.** `portalops tier apply --env prod --yes --confirm-prod` has run against the live Stripe prices (`docs/PROD_STRIPE_LIVE.runbook.md`), so the pricing page has figures to render. An empty tier list fail-closes the preflight.
+
+Then:
+
+```bash
+gh variable set PROD_SITE_CONFIG_URL \
+  --repo EnterpriseBT/portal-ai \
+  --body 'https://api.portalsai.io/api/public/site-config'
+```
+
+- [ ] Publish a release. `deploy-site-prod` now runs: it deploys `portalai-prod-site`, preflights the config, builds, **refuses to publish if the built HTML carries the fixture stamp**, syncs to S3 and invalidates CloudFront.
+- [ ] Confirm `https://www.portalsai.io` serves, `/pricing/` shows live amounts, and the footer and contact page show `support@` / `sales@` / `admin@portalsai.io` — **no `qa@` anywhere**. A `qa@` address on the public site means the SSM values were not set and the build silently used its fallback.
+
+### The rebuild loop
+
+A prod config change republishes the site with no code change: `portalops vars set` on a `siteConfig` key — or `tier apply` — fires a `site-config-changed` repository dispatch, which re-runs `deploy-site-prod` against the latest release tag.
+
+- [ ] Prove it: `portalops vars set SUPPORT_EMAIL … --env prod --yes --confirm-prod`, then watch for the dispatched run. This needs the prod `github-dispatch-token`, and that path had never executed in **any** environment as of #384 — so prove it in app-dev first if you have not already.
+
+### One certificate, not two
+
+`deploy-static-site.yml` used to create `portalai-prod-dns-certs` on a prod run. It no longer does (#386): prod passes `cert-stack: portalai-dev-dns-certs` and shares the one wildcard certificate — see § *Notes on the certificate*. **If a `portalai-prod-dns-certs` stack ever appears, something regressed**; a guard test asserts no workflow creates one.
+
 ## Rollback
 
 **Re-run the workflow of the previous release.** GitHub → Actions → `Deploy Prod` → the previous successful run → *Re-run all jobs*. It rebuilds that release's ref and rolls the service back to it.
@@ -77,6 +110,10 @@ Notice: First deploy — creating the ECS service with DesiredCount=0 (ECR is em
 | Migrate task exits non-zero otherwise | a real migration failure | Do **not** re-run blindly. Read the task logs; the pre-migration snapshot is the way back |
 | `s3 sync` succeeds but the site is stale | CloudFront cache | The invalidation step runs automatically; check it, then wait for propagation |
 | A release deploys nothing | it was not *published* (still a draft) | Publish it |
+| `deploy-site-prod` exits with a notice and publishes nothing | `PROD_SITE_CONFIG_URL` is unset | Intended until activation — see § *Activating www.portalsai.io* |
+| The site preflight fails the deploy | contacts unresolved or the tier list is empty | `portalops vars set {SUPPORT,SALES,ADMIN}_EMAIL --env prod`; `portalops tier apply --env prod`. The last good site stays live — that is the point of failing closed |
+| The public site shows `qa@portalsai.io` | the SSM contacts were unset at build time, so the build used its fallback | Set them, then re-run the deploy (or let a `vars set` dispatch do it) |
+| A price changed in Stripe but `/pricing/` is stale | the live webhook endpoint is not subscribed to `price.*` | Add the three `price.*` events — `docs/PROD_STRIPE_LIVE.runbook.md` §5 |
 
 ## What `deploy-prod.yml` deliberately does not do
 
@@ -92,4 +129,6 @@ Each omission is asserted by a test in `packages/devops-cli/src/__tests__/deploy
 
 Prod reads the wildcard `*.portalsai.io` certificate from the **`portalai-dev-dns-certs`** stack, which reads oddly and is deliberate: the apex and the wildcard share one DNS validation CNAME, so a second cert stack for the same names in the same hosted zone collides. Moving the certificate to a domain-level stack — as `portalai-dns-email` already is — is the correct end state and is tracked separately; see `docs/PROD_AWS_INFRA.discovery.md`, Decision 2.
 
-**Do not delete or recreate `portalai-dev-dns-certs`.** It is load-bearing for production.
+**Do not delete or recreate `portalai-dev-dns-certs`.** It is load-bearing for production — `app`, `api` **and `www`** all present the certificate it owns.
+
+`deploy-static-site.yml` used to create a second, prod-owned cert stack; #386 removed that and made the owning stack a workflow input instead. A guard test asserts no workflow creates `portalai-prod-dns-certs`, so the regression cannot return quietly.
