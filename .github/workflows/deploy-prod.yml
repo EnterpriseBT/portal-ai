@@ -91,6 +91,12 @@ jobs:
               VpcCidr=10.1.0.0/16 \
             --no-fail-on-empty-changeset
 
+      # Sizing: the cheapest class that works, and the minimum storage —
+      # storage can grow but never shrink, so small is the reversible
+      # direction. MultiAZ stays ON deliberately (#383): it roughly doubles
+      # the cost, and it is the one durability property that is painful to
+      # add during an incident rather than before one. Revisit the class
+      # against real traffic, not against a guess.
       - name: Deploy database stack
         run: |
           aws cloudformation deploy \
@@ -98,8 +104,8 @@ jobs:
             --template-file infra/cloudformation/database.yml \
             --parameter-overrides \
               Environment=prod \
-              InstanceClass=db.t4g.small \
-              AllocatedStorage=100 \
+              InstanceClass=db.t4g.micro \
+              AllocatedStorage=20 \
               MultiAZ=true \
               BackupRetentionPeriod=14 \
               DeletionProtection=true \
