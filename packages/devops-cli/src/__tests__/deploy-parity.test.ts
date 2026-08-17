@@ -252,13 +252,22 @@ describe("deploy-prod.yml invariants (#383)", () => {
     expect(deploysOf("backend.yml").join()).toContain("Subdomain=api");
   });
 
-  it("hardens the database: MultiAZ, retention >= 14, deletion protection", () => {
+  it("hardens the database: retention >= 14, deletion protection", () => {
     const db = deploysOf("database.yml").join();
-    expect(db).toContain("MultiAZ=true");
     expect(db).toContain("DeletionProtection=true");
     const retention = /BackupRetentionPeriod=(\d+)/.exec(db);
     expect(retention).not.toBeNull();
     expect(Number(retention![1])).toBeGreaterThanOrEqual(14);
+  });
+
+  it("sets MultiAZ explicitly rather than inheriting the template default", () => {
+    // Deliberately not pinned to `true`. #383's spec specified Multi-AZ; the
+    // launch deploy runs single-AZ as a recorded cost deviation, and it is
+    // expected to flip back before real traffic. What must NOT happen is the
+    // parameter being dropped — `database.yml` defaults MultiAZ to "false",
+    // so an omission silently reads as a deliberate choice. Forcing it to be
+    // stated keeps the decision visible in the diff either way.
+    expect(deploysOf("database.yml").join()).toMatch(/MultiAZ=(true|false)/);
   });
 
   it("gives prod a replicated Redis, not a single node", () => {
