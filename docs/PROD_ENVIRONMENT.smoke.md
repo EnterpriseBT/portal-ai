@@ -55,7 +55,8 @@ Manual smoke for epic [#83](https://github.com/EnterpriseBT/portal-ai/issues/83)
 - [ ] **Expect the first release to get as far as the backend stack and stop.** `DATABASE_URL` does not exist yet, so its ARN secret is empty and the backend stack cannot create. Network, database, bastion, cache and frontend all succeed. That is the point at which you go to §3 — this is a **two-release** first deploy, not a failure
 - [ ] ⚠️ **ONE-SHOT — the first-deploy bootstrap.** `deploy-infra` logs `::notice::First deploy — creating the ECS service with DesiredCount=0 (ECR is empty)`. If that notice is absent on a first run, stop and read the log before continuing: the alternative is the backend stack rolling back
 - [ ] Stacks exist: `portalai-prod-{network,database,bastion,cache,frontend,backend}`
-- [ ] `aws rds describe-db-instances --db-instance-identifier portalai-prod` reports `MultiAZ: true`, `BackupRetentionPeriod >= 14`, `DeletionProtection: true`
+- [ ] `aws rds describe-db-instances --db-instance-identifier portalai-prod` reports `BackupRetentionPeriod >= 14` and `DeletionProtection: true`
+- [ ] `MultiAZ: false` — **a deliberate launch-cost deviation from #383**, which specified `true`. Reversible with a modify + brief failover. Until then an AZ or instance failure is downtime plus a restore, not an automatic failover, so retention and the pre-migration snapshot carry the recovery story. Worth a calendar reminder to revisit before real traffic
 - [ ] The prod cache is an **ElastiCache ReplicationGroup** with `AutomaticFailoverEnabled` and non-zero snapshot retention — *not* a single-node CacheCluster
 - [ ] The prod VPC CIDR is `10.1.0.0/16` *(irreversible — changing it means rebuilding the VPC)*
 - [ ] **No `portalai-prod-dns-certs` stack exists.** One wildcard certificate, owned by `portalai-dev-dns-certs`, fronts app + api + www

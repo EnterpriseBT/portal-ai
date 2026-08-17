@@ -93,10 +93,18 @@ jobs:
 
       # Sizing: the cheapest class that works, and the minimum storage —
       # storage can grow but never shrink, so small is the reversible
-      # direction. MultiAZ stays ON deliberately (#383): it roughly doubles
-      # the cost, and it is the one durability property that is painful to
-      # add during an incident rather than before one. Revisit the class
-      # against real traffic, not against a guess.
+      # direction.
+      #
+      # MultiAZ=false is a DELIBERATE deviation from #383, which specified
+      # true. Multi-AZ roughly doubles the cost by running a standby, and at
+      # launch volume that is not yet worth paying. It is reversible: enabling
+      # it later is a modify with a brief failover, not a rebuild.
+      #
+      # What single-AZ costs until then: an AZ or instance failure means real
+      # downtime and a restore from snapshot rather than an automatic
+      # failover, and maintenance windows are disruptive. BackupRetentionPeriod
+      # below and the pre-migration snapshot in deploy-backend are what make
+      # that recoverable. Flip this to true before it matters.
       - name: Deploy database stack
         run: |
           aws cloudformation deploy \
@@ -106,7 +114,7 @@ jobs:
               Environment=prod \
               InstanceClass=db.t4g.micro \
               AllocatedStorage=20 \
-              MultiAZ=true \
+              MultiAZ=false \
               BackupRetentionPeriod=14 \
               DeletionProtection=true \
             --no-fail-on-empty-changeset
