@@ -161,6 +161,19 @@ jobs:
           fi
           echo "No fixture stamp found; build used live configuration."
 
+      # Microsoft publisher verification reads
+      # /.well-known/microsoft-identity-association.json. Publishing it with the
+      # placeholder still in place fails verification in a way that looks like a
+      # Microsoft problem rather than ours, so refuse — same posture as the
+      # fixture-stamp check above.
+      - name: Refuse to publish an unfilled identity association
+        run: |
+          F=apps/site/dist/.well-known/microsoft-identity-association.json
+          if [ -f "$F" ] && grep -q 'REPLACE_WITH' "$F"; then
+            echo "::error::$F still carries its placeholder applicationId. Fill in the Entra application (client) id before publishing."
+            exit 1
+          fi
+
       - name: Resolve stack outputs
         id: stack
         run: |
@@ -189,13 +202,21 @@ jobs:
         run: |
           aws s3 sync apps/site/dist/ "s3://${{ steps.stack.outputs.bucket }}/" \
             --exclude "*.html" --exclude "*.xml" --exclude "*.txt" \
+            --exclude "*.json" \
             --cache-control "public, max-age=31536000, immutable"
 
+      # The two passes MUST stay symmetric: every extension included here is
+      # excluded above. `s3 sync` skips objects whose size and mtime already
+      # match, so a file uploaded by the first pass would NOT be re-uploaded by
+      # this one — it would keep the immutable header. An `--include` here
+      # without the matching `--exclude` above is therefore a silent no-op.
+      # A guard test asserts the symmetry.
       - name: Sync HTML and machine-readable files
         run: |
           aws s3 sync apps/site/dist/ "s3://${{ steps.stack.outputs.bucket }}/" \
             --exclude "*" \
             --include "*.html" --include "*.xml" --include "*.txt" \
+            --include "*.json" \
             --cache-control "public, max-age=0, must-revalidate" \
             --delete
 
