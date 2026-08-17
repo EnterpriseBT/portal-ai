@@ -482,3 +482,70 @@ describe("reference docs describe prod as real (#387)", () => {
     expect(claude).not.toMatch(/future\s+`?prod`?/);
   });
 });
+
+// #386: the static-site sync's two cache-control passes must stay symmetric.
+//
+// `aws s3 sync` skips objects whose size and mtime already match the local
+// file. So if an extension is short-cached in the second pass but NOT excluded
+// from the first, the first pass uploads it with `immutable` and the second
+// pass silently declines to re-upload it — the `--include` is a no-op and the
+// file is cached for a year. That is not a hypothetical: it is how
+// /.well-known/microsoft-identity-association.json would have shipped.
+describe("static-site sync passes are symmetric (#386)", () => {
+  const body = (): string =>
+    fs.readFileSync(
+      path.join(ROOT, ".github/workflows/deploy-static-site.yml"),
+      "utf8"
+    );
+
+  /** Extensions named by `--include "*.ext"` / `--exclude "*.ext"`.
+   *  Scanned as plain strings — a constructed RegExp here needs three layers
+   *  of escaping and gets it wrong silently. */
+  const globbed = (flag: "include" | "exclude", text: string): string[] => {
+    const needle = `--${flag} "*`;
+    const found = new Set<string>();
+    for (
+      let i = text.indexOf(needle);
+      i !== -1;
+      i = text.indexOf(needle, i + 1)
+    ) {
+      const start = i + needle.length;
+      const end = text.indexOf('"', start);
+      if (end !== -1) found.add(text.slice(start, end));
+    }
+    return [...found];
+  };
+
+  const passes = (): { immutable: string; revalidate: string } => {
+    const chunks = body().split("aws s3 sync");
+    // Matched on the cache-control VALUE, not the words "immutable" /
+    // "must-revalidate": those appear in the surrounding comments too, and
+    // matching prose made this select the file preamble instead of a command.
+    const immutable = chunks.find((c) => c.includes("max-age=31536000"));
+    const revalidate = chunks.find((c) => c.includes("max-age=0"));
+    expect(immutable).toBeDefined();
+    expect(revalidate).toBeDefined();
+    return { immutable: immutable!, revalidate: revalidate! };
+  };
+
+  it("finds both passes", () => {
+    const { immutable, revalidate } = passes();
+    expect(globbed("exclude", immutable).length).toBeGreaterThan(0);
+    expect(globbed("include", revalidate).length).toBeGreaterThan(0);
+  });
+
+  it("every short-cached extension is excluded from the immutable pass", () => {
+    const { immutable, revalidate } = passes();
+    const shortCached = globbed("include", revalidate);
+    const excludedFromImmutable = globbed("exclude", immutable);
+
+    const wouldBeStuckImmutable = shortCached.filter(
+      (ext) => !excludedFromImmutable.includes(ext)
+    );
+    expect(wouldBeStuckImmutable).toEqual([]);
+  });
+
+  it("short-caches .json — the identity-association file lives there", () => {
+    expect(globbed("include", passes().revalidate)).toContain(".json");
+  });
+});

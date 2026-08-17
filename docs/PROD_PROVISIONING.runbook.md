@@ -69,7 +69,39 @@ Each environment has its own tenant; `app-dev` is `portalsai-staging.us.auth0.co
 - [ ] **SPA application.** Allowed Callback URLs, Logout URLs, Web Origins and CORS Origins all `https://app.portalsai.io`.
 - [ ] **API** with identifier (audience) `https://api.portalsai.io`.
 - [ ] **Connections** mirroring whatever dev has today — Google, Microsoft, username-password. ([#199](https://github.com/EnterpriseBT/portal-ai/issues/199) is independent; don't wait for it.)
-- [ ] **Post-login Action** posting to `https://api.portalsai.io/api/webhooks/auth0`, signed with the `AUTH0_WEBHOOK_SECRET` from step 1.
+- [ ] **Post-login Action** posting to **`https://api.portalsai.io/api/webhooks/auth0/sync`** — note the `/sync` suffix; the bare `/api/webhooks/auth0` is a 404. Signed with the `AUTH0_WEBHOOK_SECRET` from step 1.
+
+  The signing contract, from `apps/api/src/middleware/webhook-auth.middleware.ts`:
+
+  | | |
+  |---|---|
+  | Header | `X-Auth0-Webhook-Signature` |
+  | Value | **bare lowercase hex** — no `sha256=` prefix |
+  | Algorithm | HMAC-SHA256 over the **exact raw request body** |
+  | Key | the secret as a **literal string** (do not base64-decode it) |
+
+  ```js
+  exports.onExecutePostLogin = async (event, api) => {
+    const crypto = require("crypto");
+    const body = JSON.stringify({ /* Auth0PostLoginWebhookPayloadSchema */ });
+    const signature = crypto
+      .createHmac("sha256", event.secrets.WEBHOOK_SECRET)
+      .update(body)
+      .digest("hex");
+    await fetch("https://api.portalsai.io/api/webhooks/auth0/sync", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-auth0-webhook-signature": signature,
+      },
+      body,
+    });
+  };
+  ```
+
+  ⚠️ **Send bare hex, not `sha256=<hex>`.** The middleware compares with `crypto.timingSafeEqual`, which **throws on a length mismatch** rather than returning false — so a prefixed signature surfaces as a **500**, not the `401 WEBHOOK_INVALID_SIGNATURE` you would expect, and looks like a server fault instead of a signing mismatch. The middleware's own doc-comment claims the `sha256=` format; the comment is wrong and the code is the contract.
+
+  ⚠️ **Sign the exact bytes you send.** The verifier hashes `req.rawBody`. Build the JSON string once, sign that string, and send that same string as the body — re-serializing between signing and sending changes the bytes and breaks verification.
 - [ ] **Machine-to-machine app for the device flow** ([#194](https://github.com/EnterpriseBT/portal-ai/issues/194)) — this is what `portalai login --env $ENV` uses.
 
 ```bash
@@ -85,6 +117,7 @@ printf '%s' '<m2m client id>'            | portalops vars set AUTH0_CLI_CLIENT_I
 - [ ] Google Cloud Console → Credentials → **OAuth client ID → Web application**. A new client for this environment; do not add prod URIs to dev's client.
 - [ ] Authorized redirect URI, exactly: `https://api.portalsai.io/api/connectors/google-sheets/callback`
 - [ ] Enable the **Google Sheets API** and **Google Drive API** on the project.
+- [ ] **Publish the consent screen.** An external-user app needs an app logo plus terms-of-service and privacy-policy URLs, and unverified apps are user-capped and show a warning interstitial in the middle of the connector's auth popup. The legal pages live on `www.portalsai.io` — so this step depends on the marketing site being live (#386). Start the verification submission early; it is reviewed by Google, not instant.
 
 ```bash
 printf '%s' '<client id>'     | portalops vars set GOOGLE_OAUTH_CLIENT_ID - --env $ENV $GUARD
@@ -99,14 +132,16 @@ printf '%s' '<client secret>' | portalops vars set GOOGLE_OAUTH_CLIENT_SECRET - 
 - [ ] Redirect URI, exactly: `https://api.portalsai.io/api/connectors/microsoft-excel/callback`
 - [ ] Delegated permissions: `openid`, `profile`, `email`, `offline_access`, `User.Read`, `Files.Read.All`.
 - [ ] Create a client secret and note its **expiry** — Entra secrets expire, and nothing in the app warns you.
+- [ ] **Publisher verification** (removes the "unverified" warning on the consent prompt): associate the app with an MPN / Partner ID and verify the publisher domain.
 
-```bash
-printf '%s' '<application (client) id>' | portalops vars set MICROSOFT_OAUTH_CLIENT_ID - --env $ENV $GUARD
-printf '%s' '<client secret VALUE>'     | portalops vars set MICROSOFT_OAUTH_CLIENT_SECRET - --env $ENV $GUARD
-printf '%s' 'common'                    | portalops vars set MICROSOFT_OAUTH_TENANT - --env $ENV $GUARD
-```
-
-`common` accepts personal and work/school accounts. Use a tenant id only for a single-tenant deployment.
+> **Verified by hosting the association file, not by DNS.** The file lives at `apps/site/public/.well-known/microsoft-identity-association.json` and is served from `https://www.portalsai.io/.well-known/microsoft-identity-association.json`. Set the app's **publisher domain to `www.portalsai.io`** — the apex serves nothing (its redirect is out of scope for epic #83), so the claimed domain has to be the one that actually answers.
+>
+> Two pipeline details make this work, both of which were wrong before #386 and are now guarded:
+>
+> - **The file is short-cached.** `deploy-static-site.yml` uploads in two passes; anything not excluded from the first gets `max-age=31536000, immutable`. Because `s3 sync` skips objects whose size and mtime already match, an `--include` in the second pass without the matching `--exclude` in the first is a silent no-op — the file would keep a year-long immutable header, so a later change to it would be invisible. A guard test asserts the two passes stay symmetric.
+> - **A placeholder cannot ship.** The deploy refuses to publish while the file still contains `REPLACE_WITH`, on the same fail-closed footing as the fixture-stamp check. Fill in the Entra **application (client) id** — it is a public identifier, so it belongs in the repo.
+>
+> *(The DNS-TXT alternative would have had to go into `dns-email.yml`'s `ApexTxtRecord`, since Route53 keeps all TXT values for a name in one record set and a console edit is reverted by the next mail-DNS deploy. Not the chosen route, recorded so nobody re-derives it.)*
 
 ## 5 — Metered vendor keys
 
@@ -148,11 +183,18 @@ printf '%s' 'https://app.portalsai.io' | portalops vars set CORS_ORIGIN - --env 
 > **Order matters beyond CORS.** `billing.service.ts` derives Stripe checkout `success_url` / `cancel_url` and the billing-portal `return_url` from **the first entry** of `CORS_ORIGIN`. If you ever add origins, the app URL stays first.
 
 ```bash
-printf '%s' 'portalsai-prod'  | portalops vars set NAMESPACE - --env $ENV $GUARD
-openssl rand -hex 16          | portalops vars set SYSTEM_ID - --env $ENV $GUARD
+# A real UUID, not a word. See the note below.
+node -e "console.log(require('crypto').randomUUID())" | portalops vars set NAMESPACE - --env $ENV $GUARD
+node -e "console.log(require('crypto').randomUUID())" | portalops vars set SYSTEM_ID - --env $ENV $GUARD
 ```
 
-> **These two are write-once.** Both seed deterministic uuidv5 generation. Changing either after the environment holds data orphans every id already generated, and nothing detects it — there is no migration back. Confirm the values before you press enter. They must also differ from every other environment, so a deterministic id can never collide across environments.
+> **`NAMESPACE` must be a valid UUID, and in dev it is not.** `SystemUtilities.id.v5` builds a `UUIDv5Factory(environment.NAMESPACE)`, and the `uuid` package throws `Invalid UUID` unless the namespace is UUID-shaped. `app-dev` carries `portalai-dev-namespace`, so **`id.v5.generate()` throws there** — it has never been noticed because every call site uses `id.v4` and `id.v5` appears only in doc comments. Write a UUID here so prod is not carrying the same latent trap.
+>
+> **These are less irreversible than earlier drafts of this runbook claimed.** They were described as write-once because they seed deterministic uuidv5 generation — but nothing consumes either value today (`id.v5` and `id.system` have no call sites), so changing them changes nothing. That stops being true the moment v5 is used to mint persisted ids, so treat them as write-once *in intent* and verify with a readback:
+>
+> ```bash
+> aws ssm get-parameter --name /portalai/$ENV/namespace --query Parameter.Value --output text
+> ```
 
 ## 8 — Contact addresses
 
