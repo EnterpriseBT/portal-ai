@@ -303,8 +303,12 @@ describe("deploy-prod.yml invariants (#383)", () => {
     // the ECS service, so on a fresh environment the service starts against
     // an empty registry, the circuit breaker rolls the stack back, and the
     // job that would have pushed the image never runs.
-    expect(body()).toContain("DesiredCount=");
-    expect(body()).toMatch(/ecr describe-images/);
+    //
+    // The signal is whether the STACK exists. It used to probe ECR for any
+    // image, which is a different question: the service starts the tag the
+    // task definition names, and deploy-infra never sets ImageTag.
+    expect(code()).toContain("DesiredCount=0");
+    expect(code()).toMatch(/describe-stacks[\s\S]{0,120}portalai-prod-backend/);
   });
 });
 
@@ -604,6 +608,37 @@ describe("prod deploy: release-only, and one-off tasks run the new image (#83)",
       expect(t).toContain("steps.migtd.outputs.arn");
       expect(t).not.toContain("steps.ecs.outputs.task_def");
     }
+  });
+
+  it("never scales the service from deploy-infra", () => {
+    // deploy-infra does not set ImageTag, so the task definition keeps
+    // whatever tag it had — `latest` on a fresh stack, which prod never
+    // publishes. Scaling up from here means starting tasks against a tag that
+    // may not exist: one run spent an hour failing to pull before rolling back.
+    // Only deploy-backend, which has just pushed an image and sets ImageTag,
+    // may set DesiredCount.
+    const infra = code().slice(
+      code().indexOf("deploy-infra:"),
+      code().indexOf("deploy-frontend:")
+    );
+    expect(infra).not.toMatch(/DesiredCount=[1-9]/);
+    // And it must not use "is there any image in ECR" as the signal — the
+    // question is whether the stack exists, not whether a tag happens to be
+    // present under some other name.
+    expect(infra).not.toMatch(/ecr describe-images/);
+  });
+
+  it("sets image tag and scale together, after the seed", () => {
+    const backend = code().slice(code().indexOf("deploy-backend:"));
+    const finalDeploy = backend.slice(
+      backend.lastIndexOf("aws cloudformation deploy")
+    );
+    expect(finalDeploy).toContain("ImageTag=prod-${{ github.sha }}");
+    expect(finalDeploy).toMatch(/DesiredCount=[1-9]/);
+    // The seed must precede it: code never rolls onto an un-migrated schema.
+    expect(backend.indexOf("db:seed:ci")).toBeLessThan(
+      backend.lastIndexOf("aws cloudformation deploy")
+    );
   });
 
   it("prints stoppedReason when a one-off task fails", () => {
