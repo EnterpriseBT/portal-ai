@@ -9,7 +9,10 @@
         "SITE_CONFIG_URL",
         "SITE_APP_URL",
         "GITHUB_SHA",
-        "BUILD_SHA"
+        "BUILD_SHA",
+        "SUPPORT_EMAIL",
+        "SALES_EMAIL",
+        "ADMIN_EMAIL"
       ]
     }
   }

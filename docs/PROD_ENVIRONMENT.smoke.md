@@ -48,39 +48,45 @@ Manual smoke for epic [#83](https://github.com/EnterpriseBT/portal-ai/issues/83)
 
 ## §2 — First deploy: infrastructure (`PROD_DEPLOY.runbook.md`)
 
-- [ ] The **`prod` GitHub Environment exists with required reviewers**, and `PROD_AWS_ROLE_ARN`'s OIDC trust policy is scoped to it. *(Before this, the gate `deploy-site-prod.yml` has claimed since #311 is fictional — a referenced-but-missing environment is auto-created unprotected.)*
-- [ ] `PROD_HOSTED_ZONE_ID` and `PROD_VITE_AUTH0_{DOMAIN,CLIENT_ID,AUDIENCE}` set as repository secrets
-- [ ] **Capture every existing secret's ARN into `PROD_SECRET_ARN_*`.** The ARN carries a random suffix Secrets Manager assigns, so it cannot be reconstructed from the name — and `backend.yml` takes secrets *by ARN*, not by path. `gh secret list | grep -c PROD_SECRET_ARN_` should reach **11** before the backend stack can create (12 with the optional dispatch token)
-- [ ] Publish a GitHub release from `main`. The run **pauses for approval** rather than proceeding
-- [ ] **Expect the first release to get as far as the backend stack and stop.** `DATABASE_URL` does not exist yet, so its ARN secret is empty and the backend stack cannot create. Network, database, bastion, cache and frontend all succeed. That is the point at which you go to §3 — this is a **two-release** first deploy, not a failure
+- [x] The **`prod` GitHub Environment exists with required reviewers**, and `PROD_AWS_ROLE_ARN`'s OIDC trust policy is scoped to it. *(Before this, the gate `deploy-site-prod.yml` has claimed since #311 is fictional — a referenced-but-missing environment is auto-created unprotected.)*
+- [x] `PROD_HOSTED_ZONE_ID` and `PROD_VITE_AUTH0_{DOMAIN,CLIENT_ID,AUDIENCE}` set as repository secrets
+- [x] **Capture every existing secret's ARN into `PROD_SECRET_ARN_*`.** The ARN carries a random suffix Secrets Manager assigns, so it cannot be reconstructed from the name — and `backend.yml` takes secrets *by ARN*, not by path. `gh secret list | grep -c PROD_SECRET_ARN_` should reach **11** before the backend stack can create (12 with the optional dispatch token)
+- [x] Publish a GitHub release from `main`. The run **pauses for approval** rather than proceeding
+- [x] **Expect the first release to get as far as the backend stack and stop.** `DATABASE_URL` does not exist yet, so its ARN secret is empty and the backend stack cannot create. Network, database, bastion, cache and frontend all succeed. That is the point at which you go to §3 — this is a **two-release** first deploy, not a failure
 - [ ] ⚠️ **ONE-SHOT — the first-deploy bootstrap.** `deploy-infra` logs `::notice::First deploy — creating the ECS service with DesiredCount=0 (ECR is empty)`. If that notice is absent on a first run, stop and read the log before continuing: the alternative is the backend stack rolling back
-- [ ] Stacks exist: `portalai-prod-{network,database,bastion,cache,frontend,backend}`
-- [ ] `aws rds describe-db-instances --db-instance-identifier portalai-prod` reports `BackupRetentionPeriod >= 14` and `DeletionProtection: true`
-- [ ] `MultiAZ: false` — **a deliberate launch-cost deviation from #383**, which specified `true`. Reversible with a modify + brief failover. Until then an AZ or instance failure is downtime plus a restore, not an automatic failover, so retention and the pre-migration snapshot carry the recovery story. Worth a calendar reminder to revisit before real traffic
-- [ ] The prod cache is an **ElastiCache ReplicationGroup** with `AutomaticFailoverEnabled` and non-zero snapshot retention — *not* a single-node CacheCluster
-- [ ] The prod VPC CIDR is `10.0.0.0/16` — **the same block as dev**, and deliberately so. #383 recommended a distinct one; the first deploy proved `VpcCidr` is a parameter in name only, since the four subnets are hardcoded to `10.0.x.0/24` and a `10.1.0.0/16` VPC rejects every one. Separate VPCs may overlap; the only thing given up is future dev↔prod peering, which is not wanted
-- [ ] **No `portalai-prod-dns-certs` stack exists.** One wildcard certificate, owned by `portalai-dev-dns-certs`, fronts app + api + www
-- [ ] The release **did not** deploy `portalai-dns-email` and **did not** write any `/portalai/prod/*-email` placeholder
+
+  **Left unchecked deliberately — this did not hold on the real first run.** The bootstrap keyed on *"does ECR hold any image"*, found the `prod-<sha>` tag pushed moments earlier, and scaled to `DesiredCount=2` while `ImageTag` was still `latest` — a tag prod never publishes. Result: an hour of `ECSService NotStabilized`. [#402](https://github.com/EnterpriseBT/portal-ai/issues/402) changed the signal to **stack existence** and stopped `deploy-infra` scaling up at all, so the notice text above is now stale as well. **Only re-verifiable on the next environment built from scratch** — do not check it against this one
+- [x] Stacks exist: `portalai-prod-{network,database,bastion,cache,frontend,backend}`
+- [x] `aws rds describe-db-instances --db-instance-identifier portalai-prod` reports `BackupRetentionPeriod >= 14` and `DeletionProtection: true`
+- [x] `MultiAZ: false` — **a deliberate launch-cost deviation from #383**, which specified `true`. Reversible with a modify + brief failover. Until then an AZ or instance failure is downtime plus a restore, not an automatic failover, so retention and the pre-migration snapshot carry the recovery story. Worth a calendar reminder to revisit before real traffic
+- [x] The prod cache is an **ElastiCache ReplicationGroup** with `AutomaticFailoverEnabled` and non-zero snapshot retention — *not* a single-node CacheCluster
+- [x] The prod VPC CIDR is `10.0.0.0/16` — **the same block as dev**, and deliberately so. #383 recommended a distinct one; the first deploy proved `VpcCidr` is a parameter in name only, since the four subnets are hardcoded to `10.0.x.0/24` and a `10.1.0.0/16` VPC rejects every one. Separate VPCs may overlap; the only thing given up is future dev↔prod peering, which is not wanted
+- [x] **No `portalai-prod-dns-certs` stack exists.** One wildcard certificate, owned by `portalai-dev-dns-certs`, fronts app + api + www
+- [x] The release **did not** deploy `portalai-dns-email` and **did not** write any `/portalai/prod/*-email` placeholder
 
 ## §3 — First deploy: the database (`PROD_PROVISIONING.runbook.md` §10)
 
 ⚠️ **ONE-SHOT, and it sits between two halves of the same release.** RDS creates only the `postgres` maintenance database; nothing in the repo creates `portal_ai`. The first release **will fail at the migrate step** until this is done — that is expected, not a defect.
 
-- [ ] `portalops db url --env prod --db-name postgres --write --yes --confirm-prod`
-- [ ] `portalops db psql --env prod --confirm-prod -- -c "CREATE DATABASE portal_ai"`
-- [ ] `portalops db url --env prod --write --yes --confirm-prod` *(the real value)*
-- [ ] `portalops db psql --env prod --confirm-prod -- -c "\l"` lists `portal_ai`
-- [ ] `portalops db url --env prod` (no `--write`) prints the password as `***`. **There is no flag that prints it**
-- [ ] Re-run the release: an **RDS snapshot** named `portalai-prod-premigrate-…` exists from immediately before the migrate task, and migrate then seed both exit `0`
-- [ ] The seed left exactly the catalog tiers + connector definitions — **no fixture orgs**
+- [x] `portalops db url --env prod --db-name postgres --write --yes --confirm-prod`
+- [x] `portalops db psql --env prod --confirm-prod -- -c "CREATE DATABASE portal_ai"`
+- [x] `portalops db url --env prod --write --yes --confirm-prod` *(the real value)*
+- [x] `portalops db psql --env prod --confirm-prod -- -c "\l"` lists `portal_ai`
+- [x] `portalops db url --env prod` (no `--write`) prints the password as `***`. **There is no flag that prints it**
+- [x] Re-run the release: an **RDS snapshot** named `portalai-prod-premigrate-…` exists from immediately before the migrate task, and migrate then seed both exit `0`
+- [x] The seed left exactly the catalog tiers + connector definitions — **no fixture orgs**
+
+  Verified: `connector_definitions` = 5, `tiers` = 1, `organizations` = 1. **Read the tier count correctly** — seed writes only `standard` (`is_public = false`), not the four-tier catalog; `plus` / `pro` / `enterprise` arrive with `portalops tier apply`, which is §6's prerequisite and had not run yet. The single org is `My Organization` / `admin@portalsai.io`, created by the **first Auth0 login**, not by seed — its existence is the positive proof the post-login webhook verified (§4)
 
 ## §4 — API and app are live
 
-- [ ] `curl https://api.portalsai.io/api/health` → 200
-- [ ] No ECS task stopped with `ResourceNotFoundException` — that would be an unresolved secret ARN
-- [ ] `https://app.portalsai.io` loads; Auth0 login succeeds; the post-login webhook verifies against the prod secret
-- [ ] `grep -r "api-dev\|app-dev" ` over the served bundle finds **nothing**
-- [ ] The app's Help view shows `support@portalsai.io` — **not `qa@`**. A `qa@` here means the SSM contacts were unset at build time and the build used its fallback
+- [x] `curl https://api.portalsai.io/api/health` → 200
+- [x] No ECS task stopped with `ResourceNotFoundException` — that would be an unresolved secret ARN
+- [x] `https://app.portalsai.io` loads; Auth0 login succeeds; the post-login webhook verifies against the prod secret
+- [x] `grep -r "api-dev\|app-dev" ` over the served bundle finds **nothing**
+- [x] The app's Help view shows `support@portalsai.io` — **not `qa@`**. A `qa@` here means the SSM contacts were unset at build time and the build used its fallback
+
+  ⚠️ **This check was wrong as written — a bare `grep qa@` flags a *correct* build.** `QA_EMAIL` (`apps/web/src/utils/contact.util.ts:24`) is the fallback *constant* and is always present in the bundle, because the fallback helper that references it survives minification. What matters is which value the helper *returned*. In the shipped bundle it reads `XY("support@portalsai.io")` / `XY("sales@portalsai.io")` — real values passed, so the fallback is never selected. **The correct assertion:** the bundle contains the helper called with the real addresses — `grep -c '("support@portalsai.io")'` returns `1`. Note `mailto:` is **not** greppable either way: it is built from a template literal (`` `mailto:${…}` ``), so both `mailto:support@…` and `mailto:qa@…` return `0` on a correct build. Verified on `index-JbOwZ_DK.js`; the visual confirmation in the Help view remains the definitive check
 - [ ] Google Sheets **and** Microsoft Excel OAuth each round-trip against the prod callback URLs
 - [ ] A public-REST-API connector syncs end to end
 - [ ] **A geocode call succeeds, and a `bulk_geocode_records` job completes.** This is the only check that proves `GEOCODING_API_KEY` resolved — it fails *open*, so nothing else will tell you
@@ -103,15 +109,17 @@ Manual smoke for epic [#83](https://github.com/EnterpriseBT/portal-ai/issues/83)
 
 - [ ] **Before** setting the variable: publish a release → `deploy-site-prod` exits with a notice and publishes nothing
 - [ ] `curl https://api.portalsai.io/api/public/site-config` → 200 with the live tiers
-- [ ] Set `PROD_SITE_CONFIG_URL`, publish a release → the run is green, the preflight **passes**, and the fixture-stamp check finds nothing
-- [ ] `https://www.portalsai.io` serves over the wildcard cert; `/pricing/` shows live amounts
+- [x] Set `PROD_SITE_CONFIG_URL`, publish a release → the run is green, the preflight **passes**, and the fixture-stamp check finds nothing
+- [x] `https://www.portalsai.io` serves over the wildcard cert; `/pricing/` shows live amounts
 - [ ] Footer and contact page show `support@` / `sales@` / `admin@portalsai.io` — **no `qa@` anywhere**
+
+  ❌ **FAILED — [#405](https://github.com/EnterpriseBT/portal-ai/issues/405).** The live site rendered `qa@portalsai.io` on every page, 14 occurrences, zero real addresses. Cause: Turbo 2 runs tasks in a strict environment and `apps/site/turbo.json`'s `passThroughEnv` allowlist omitted `SUPPORT_EMAIL` / `SALES_EMAIL` / `ADMIN_EMAIL`, so the build never saw them and `contact.ts` fell back to `QA_EMAIL`. Prices were correct because `SITE_CONFIG_URL` **is** allowlisted — that split is the tell. **This step is the only thing that caught it:** the unit tests set `process.env` directly and never exercise the plumbing, the preflight checks tiers, and `verify-pages`' empty-`mailto:` gate is satisfied because `qa@` is a valid address. Re-verify after the fix republishes
 - [ ] `portalops vars set SUPPORT_EMAIL … --env prod --yes --confirm-prod` fires the `site-config-changed` dispatch and republishes with **no code change**
 - [ ] Change a price amount in Stripe → `price.updated` is recorded `ignored` → the site republishes and `/pricing/` updates
 
 ## §7 — Tier allocations and the cost gate
 
-- [ ] `/api/public/site-config` returns the production allocations (`pro` metered **50,000**, not `null`)
+- [x] `/api/public/site-config` returns the production allocations (`pro` metered **50,000**, not `null`)
 - [ ] Settings plan cards on `app.portalsai.io` render the live tiers and amounts
 - [ ] On a `standard` org, exhaust `expensive` (101 geocoded rows) → the tool returns a **typed `TOOL_USAGE_QUOTA_EXCEEDED` result the agent relays** — not a crash, not a thrown error
 - [ ] A `free`-class tool still works on that exhausted org — `free` is never charged and never denied
