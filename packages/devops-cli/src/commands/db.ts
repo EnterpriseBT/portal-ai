@@ -78,7 +78,9 @@ export interface DbUrlOptions extends MutateOptions {
 }
 
 export interface DbUrlResult {
-  /** Password replaced by `***` unless `write` was requested. */
+  /** ALWAYS password-redacted (`***`). There is no flag that returns the real
+   *  value: it exists only in Secrets Manager. `--json` serializes this whole
+   *  object, so anything carried here is published to stdout. */
   connectionString: string;
   endpoint: string;
   port: number;
@@ -166,8 +168,12 @@ export async function dbUrl(
     args: { endpoint, dbName, created },
   });
 
+  // The REDACTED form, even on the write path. The caller has no use for the
+  // real value — it went to Secrets Manager — and `--json` prints whatever is
+  // returned, so returning it here published the production database password
+  // to stdout and into any CI log that ran this command.
   return {
-    connectionString: compose(authority),
+    connectionString: compose(`${encodeURIComponent(master.username)}:***`),
     endpoint,
     port: Number(port),
     written: true,
