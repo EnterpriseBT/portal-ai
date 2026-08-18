@@ -18,10 +18,14 @@ name: Deploy Prod
 #   4. NO site stack. www.portalsai.io is deployed by deploy-site-prod.yml,
 #      which keys off the same release event.
 
+# Releases ONLY. No workflow_dispatch: a dispatch runs against a branch ref,
+# so "what is in production" becomes "whatever main happened to be at that
+# moment" — which defeats the point of tagging a release. Rollback does not
+# need it either: re-running a previous release's workflow run replays that
+# release's tag.
 on:
   release:
     types: [published]
-  workflow_dispatch:
 
 concurrency:
   group: deploy-prod
@@ -363,6 +367,44 @@ jobs:
           echo "task_def=$TASK_DEF" >> "$GITHUB_OUTPUT"
           echo "network_config=awsvpcConfiguration={subnets=[$SUBNET1,$SUBNET2],securityGroups=[$ECS_SG],assignPublicIp=DISABLED}" >> "$GITHUB_OUTPUT"
 
+      # The one-off migrate/seed tasks must run the image just built — they
+      # execute migration files baked into it. But they must NOT roll the
+      # service onto new code before the schema is migrated, so updating the
+      # stack here is not an option.
+      #
+      # Dev sidesteps this by re-pointing `:latest`, which its task definition
+      # references; prod pins the immutable prod-<sha> instead, so that
+      # mechanism does not exist here. Without this step the migrate task runs
+      # whatever the SERVICE points at: on a first deploy a tag with no image
+      # (the failure that produced "Migration failed with exit code None"), and
+      # on later deploys the PREVIOUS image — applying last release's
+      # migrations, one release behind, silently.
+      #
+      # So: register a revision pointing at the new image, use it for the
+      # one-off tasks only, and leave the service alone until after the seed.
+      - name: Register a migration task definition
+        id: migtd
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ steps.ecs.outputs.task_def }} \
+            --query 'taskDefinition' --output json > /tmp/td.json
+          python3 - <<'PY'
+          import json
+          td = json.load(open('/tmp/td.json'))
+          for k in ("taskDefinitionArn", "revision", "status", "requiresAttributes",
+                    "compatibilities", "registeredAt", "registeredBy", "deregisteredAt"):
+              td.pop(k, None)
+          td["containerDefinitions"][0]["image"] = (
+              "${{ steps.ecr.outputs.uri }}:prod-${{ github.sha }}"
+          )
+          json.dump(td, open('/tmp/td-new.json', 'w'))
+          PY
+          ARN=$(aws ecs register-task-definition \
+            --cli-input-json file:///tmp/td-new.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "Migration task definition: $ARN"
+          echo "arn=$ARN" >> "$GITHUB_OUTPUT"
+
       # The deployment circuit breaker reverts the IMAGE on a bad rollout. It
       # does not revert the SCHEMA — a migrated database with a rolled-back
       # image is the dangerous state, and this snapshot is the way back.
@@ -380,18 +422,25 @@ jobs:
         run: |
           TASK_ARN=$(aws ecs run-task \
             --cluster ${{ steps.ecs.outputs.cluster }} \
-            --task-definition ${{ steps.ecs.outputs.task_def }} \
+            --task-definition ${{ steps.migtd.outputs.arn }} \
             --launch-type FARGATE \
             --network-configuration "${{ steps.ecs.outputs.network_config }}" \
             --overrides '{"containerOverrides":[{"name":"api","command":["npm","run","db:migrate:ci"]}]}' \
             --query 'tasks[0].taskArn' --output text)
           aws ecs wait tasks-stopped \
             --cluster ${{ steps.ecs.outputs.cluster }} --tasks "$TASK_ARN"
-          EXIT_CODE=$(aws ecs describe-tasks \
+          # Read the WHOLE task, not just the exit code. A container that never
+          # started reports a null exit code ("None") and the actual cause lives
+          # in stoppedReason — and the task record ages out within the hour, so
+          # printing it here is the only chance to capture it.
+          aws ecs describe-tasks \
             --cluster ${{ steps.ecs.outputs.cluster }} --tasks "$TASK_ARN" \
-            --query 'tasks[0].containers[0].exitCode' --output text)
+            --query 'tasks[0].{exit:containers[0].exitCode,reason:containers[0].reason,stopped:stoppedReason,code:stopCode}' \
+            --output json > /tmp/task.json
+          cat /tmp/task.json
+          EXIT_CODE=$(python3 -c "import json;print(json.load(open('/tmp/task.json')).get('exit'))")
           if [ "$EXIT_CODE" != "0" ]; then
-            echo "::error::Migration failed with exit code $EXIT_CODE"
+            echo "::error::Migration task did not succeed (exit=$EXIT_CODE). See stoppedReason above."
             exit 1
           fi
 
@@ -399,18 +448,25 @@ jobs:
         run: |
           TASK_ARN=$(aws ecs run-task \
             --cluster ${{ steps.ecs.outputs.cluster }} \
-            --task-definition ${{ steps.ecs.outputs.task_def }} \
+            --task-definition ${{ steps.migtd.outputs.arn }} \
             --launch-type FARGATE \
             --network-configuration "${{ steps.ecs.outputs.network_config }}" \
             --overrides '{"containerOverrides":[{"name":"api","command":["npm","run","db:seed:ci"]}]}' \
             --query 'tasks[0].taskArn' --output text)
           aws ecs wait tasks-stopped \
             --cluster ${{ steps.ecs.outputs.cluster }} --tasks "$TASK_ARN"
-          EXIT_CODE=$(aws ecs describe-tasks \
+          # Read the WHOLE task, not just the exit code. A container that never
+          # started reports a null exit code ("None") and the actual cause lives
+          # in stoppedReason — and the task record ages out within the hour, so
+          # printing it here is the only chance to capture it.
+          aws ecs describe-tasks \
             --cluster ${{ steps.ecs.outputs.cluster }} --tasks "$TASK_ARN" \
-            --query 'tasks[0].containers[0].exitCode' --output text)
+            --query 'tasks[0].{exit:containers[0].exitCode,reason:containers[0].reason,stopped:stoppedReason,code:stopCode}' \
+            --output json > /tmp/task.json
+          cat /tmp/task.json
+          EXIT_CODE=$(python3 -c "import json;print(json.load(open('/tmp/task.json')).get('exit'))")
           if [ "$EXIT_CODE" != "0" ]; then
-            echo "::error::Seed failed with exit code $EXIT_CODE"
+            echo "::error::Seed task did not succeed (exit=$EXIT_CODE). See stoppedReason above."
             exit 1
           fi
 

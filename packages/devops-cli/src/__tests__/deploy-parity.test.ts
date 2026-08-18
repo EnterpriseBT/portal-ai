@@ -558,3 +558,58 @@ describe("static-site sync passes are symmetric (#386)", () => {
     expect(globbed("include", passes().revalidate)).toContain(".json");
   });
 });
+
+// #83: two invariants the first production deploy taught us.
+describe("prod deploy: release-only, and one-off tasks run the new image (#83)", () => {
+  const prod = (): string =>
+    fs.readFileSync(
+      path.join(ROOT, ".github/workflows/deploy-prod.yml"),
+      "utf8"
+    );
+  const code = (): string =>
+    prod()
+      .split("\n")
+      .filter((l) => !/^\s*#/.test(l))
+      .join("\n");
+
+  it("triggers on published releases only", () => {
+    // A workflow_dispatch runs against a branch ref, so "what is in
+    // production" degrades to "whatever main was at that moment" — which is
+    // exactly what the release tag exists to pin down. Rollback re-runs a
+    // previous release's run and does not need dispatch either.
+    expect(code()).toMatch(/release:\s*\n\s*types:\s*\[published\]/);
+    expect(code()).not.toMatch(/^\s*workflow_dispatch:/m);
+  });
+
+  it("registers a task definition carrying the freshly-built image", () => {
+    const step = code().slice(code().indexOf("Register a migration task"));
+    const body = step.slice(0, step.indexOf("- name: Snapshot"));
+    expect(body).toContain("register-task-definition");
+    // The image it registers must be the tag this run just pushed.
+    expect(body).toContain('["image"]');
+    expect(body).toContain(":prod-${{ github.sha }}");
+  });
+
+  it("runs every one-off task on that revision, never the service's", () => {
+    // The bug this pins: migrate/seed used steps.ecs.outputs.task_def — the
+    // SERVICE's current definition. On a first deploy that is a tag with no
+    // image; on later deploys it is the PREVIOUS image, which carries the
+    // previous release's migration files. Both fail quietly.
+    const runTasks = code()
+      .split("aws ecs run-task")
+      .slice(1)
+      .map((c) => c.slice(0, c.indexOf("--query")));
+    expect(runTasks.length).toBeGreaterThanOrEqual(2);
+    for (const t of runTasks) {
+      expect(t).toContain("steps.migtd.outputs.arn");
+      expect(t).not.toContain("steps.ecs.outputs.task_def");
+    }
+  });
+
+  it("prints stoppedReason when a one-off task fails", () => {
+    // "Migration failed with exit code None" said nothing, and the task record
+    // ages out within the hour — so the reason must be captured in the log at
+    // failure time or it is lost.
+    expect(code()).toContain("stoppedReason");
+  });
+});
