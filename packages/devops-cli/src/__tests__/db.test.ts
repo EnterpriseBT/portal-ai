@@ -242,13 +242,27 @@ describe("dbUrl (#384)", () => {
   // shape tests below go through it.
   beforeEach(() => mocks.putSecret.mockResolvedValue({ created: false }));
 
+  // Composition is asserted on the value handed to putSecret, never on the
+  // return value: dbUrl redacts unconditionally, because `--json` serializes
+  // whatever it returns and that published the production password once.
+  const written = (): string =>
+    mocks.putSecret.mock.calls[0][2] as unknown as string;
+
   it("composes the default shape — pinned against dev's live value", async () => {
     stackExports();
     master("s3cret");
-    const out = await dbUrl(appDev, { write: true, yes: true });
-    expect(out.connectionString).toBe(
+    await dbUrl(appDev, { write: true, yes: true });
+    expect(written()).toBe(
       "postgresql://portalai:s3cret@portalai-dev.abc.us-east-1.rds.amazonaws.com:5432/portal_ai?sslmode=require"
     );
+  });
+
+  it("never returns the password, even on the write path", async () => {
+    stackExports();
+    master("s3cret");
+    const out = await dbUrl(appDev, { write: true, yes: true });
+    expect(out.connectionString).toContain(":***@");
+    expect(JSON.stringify(out)).not.toContain("s3cret");
   });
 
   it("reads the three exports for the env's AWS name", async () => {
@@ -288,15 +302,13 @@ describe("dbUrl (#384)", () => {
   it("URL-encodes a password containing @ : / # ?", async () => {
     stackExports();
     master("p@ss:w/rd#1?x");
-    const out = await dbUrl(appDev, { write: true, yes: true });
+    await dbUrl(appDev, { write: true, yes: true });
     // The bug this pins: an unencoded @ splits the authority and yields a
     // string that parses to the wrong host without erroring.
-    expect(out.connectionString).toContain(
+    expect(written()).toContain(
       "postgresql://portalai:p%40ss%3Aw%2Frd%231%3Fx@"
     );
-    expect(new URL(out.connectionString).password).toBe(
-      "p%40ss%3Aw%2Frd%231%3Fx"
-    );
+    expect(new URL(written()).password).toBe("p%40ss%3Aw%2Frd%231%3Fx");
   });
 
   it("REDACTS the password by default and writes nothing", async () => {
