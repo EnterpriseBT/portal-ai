@@ -58,7 +58,7 @@ Manual smoke for epic [#83](https://github.com/EnterpriseBT/portal-ai/issues/83)
 - [ ] `aws rds describe-db-instances --db-instance-identifier portalai-prod` reports `BackupRetentionPeriod >= 14` and `DeletionProtection: true`
 - [ ] `MultiAZ: false` — **a deliberate launch-cost deviation from #383**, which specified `true`. Reversible with a modify + brief failover. Until then an AZ or instance failure is downtime plus a restore, not an automatic failover, so retention and the pre-migration snapshot carry the recovery story. Worth a calendar reminder to revisit before real traffic
 - [ ] The prod cache is an **ElastiCache ReplicationGroup** with `AutomaticFailoverEnabled` and non-zero snapshot retention — *not* a single-node CacheCluster
-- [ ] The prod VPC CIDR is `10.1.0.0/16` *(irreversible — changing it means rebuilding the VPC)*
+- [ ] The prod VPC CIDR is `10.0.0.0/16` — **the same block as dev**, and deliberately so. #383 recommended a distinct one; the first deploy proved `VpcCidr` is a parameter in name only, since the four subnets are hardcoded to `10.0.x.0/24` and a `10.1.0.0/16` VPC rejects every one. Separate VPCs may overlap; the only thing given up is future dev↔prod peering, which is not wanted
 - [ ] **No `portalai-prod-dns-certs` stack exists.** One wildcard certificate, owned by `portalai-dev-dns-certs`, fronts app + api + www
 - [ ] The release **did not** deploy `portalai-dns-email` and **did not** write any `/portalai/prod/*-email` placeholder
 

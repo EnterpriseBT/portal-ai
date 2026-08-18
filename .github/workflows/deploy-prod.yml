@@ -81,6 +81,21 @@ jobs:
           fi
           echo "arn=$ARN" >> "$GITHUB_OUTPUT"
 
+      # NO VpcCidr override: prod uses the template default (10.0.0.0/16),
+      # the same block as dev.
+      #
+      # #383's discovery recommended a distinct CIDR so the two could peer
+      # later. That was wrong, and the first prod deploy proved it: the four
+      # subnets are HARDCODED to 10.0.x.0/24, so a 10.1.0.0/16 VPC rejected
+      # every one of them ("The CIDR '10.0.1.0/24' is invalid"). VpcCidr is a
+      # parameter in name only.
+      #
+      # Deriving the subnets with Fn::Cidr would fix that, but CloudFormation
+      # does not resolve Fn::Cidr when building a change set, so it reports
+      # every subnet as replaced even where the resolved value is identical —
+      # against app-dev that means rebuilding the subnets, the NAT gateway,
+      # and everything inside them. Not worth it for a peering option we do
+      # not need; separate VPCs may overlap freely.
       - name: Deploy network stack
         run: |
           aws cloudformation deploy \
@@ -88,7 +103,6 @@ jobs:
             --template-file infra/cloudformation/network.yml \
             --parameter-overrides \
               Environment=prod \
-              VpcCidr=10.1.0.0/16 \
             --no-fail-on-empty-changeset
 
       # Sizing: the cheapest class that works, and the minimum storage —
