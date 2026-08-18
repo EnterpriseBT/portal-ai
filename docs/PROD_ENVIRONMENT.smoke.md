@@ -38,7 +38,7 @@ Manual smoke for epic [#83](https://github.com/EnterpriseBT/portal-ai/issues/83)
 - [ ] **Google consent screen is publishable**: app logo uploaded, and the terms-of-service and privacy-policy URLs point at live pages on `www.portalsai.io`. An unverified external-user app is capped and shows a warning interstitial mid-connector-auth
 - [ ] **Microsoft publisher verification**: MPN / Partner ID associated with the app registration, and the publisher domain verified by **hosting the association file** — `apps/site/public/.well-known/microsoft-identity-association.json`, served at `https://www.portalsai.io/.well-known/microsoft-identity-association.json`. Set the app's publisher domain to `www.portalsai.io` (not the apex — the apex serves nothing, and its redirect is out of scope for this epic)
 - [ ] The file's `applicationId` is the real Entra **application (client) id**, not the placeholder. The deploy **fails closed** if `REPLACE_WITH` survives, so a wrong file cannot publish
-- [ ] After the site is live (§6): `curl -sI https://www.portalsai.io/.well-known/microsoft-identity-association.json` returns 200 with `content-type: application/json` **and `cache-control: public, max-age=0, must-revalidate`** — not `immutable`, or a later change to the file would be invisible for a year
+- [x] After the site is live (§6): `curl -sI https://www.portalsai.io/.well-known/microsoft-identity-association.json` returns 200 with `content-type: application/json` **and `cache-control: public, max-age=0, must-revalidate`** — not `immutable`, or a later change to the file would be invisible for a year
 - [ ] Anthropic, Tavily and Mapbox keys are **prod-only**, each with an account-level spend cap set
 - [x] **`NAMESPACE` and `SYSTEM_ID` written as real UUIDs** and read back. Not the `portalsai-prod` string the earlier draft specified: `UUIDv5Factory` throws `Invalid UUID` on a non-UUID namespace, so the string form is a latent trap that app-dev still carries. Neither value is consumed today (`id.v5` / `id.system` have no call sites), so the earlier "irreversible" warning was overstated — verified by `v5()` succeeding against the written namespace
 - [x] `support@`, `sales@` and `admin@portalsai.io` all **deliver** (send a test to each) *before* their SSM values are written
@@ -94,26 +94,62 @@ Manual smoke for epic [#83](https://github.com/EnterpriseBT/portal-ai/issues/83)
 
 ## §5 — Stripe live mode (`PROD_STRIPE_LIVE.runbook.md`)
 
-- [ ] Tax Settings status reads **`active`**, not `pending`
-- [ ] At least one tax registration shows as **Collecting**
-- [ ] Each product carries an explicit tax code, and none is `txcd_00000000` (Nontaxable)
+- [x] Tax Settings status reads **`active`**, not `pending`
+
+  `status: active`, `status_details: {"active": {}}`. Head office Provo, UT, US. Account defaults: `tax_behavior=inferred_by_currency`, `tax_code=txcd_10000000`
+- [x] At least one tax registration shows as **Collecting**
+
+  One: `taxreg_1U4roA…`, `US` / **Utah**, `type: state_sales_tax`, `status: active`. **Utah only** — see the tax-line check below, which cannot pass on a non-Utah billing address
+- [x] Each product carries an explicit tax code, and none is `txcd_00000000` (Nontaxable)
+
+  ✅ **Set 2026-08-18:** both active products carry **`txcd_10103001`** (*Software as a service (SaaS) — business use*) — prewritten software accessed over the internet, no download, sold to organizations. Utah taxes remotely-accessed prewritten software, so this is the code that makes the non-zero tax line below reachable; an exempt code would have produced a $0.00 invoice indistinguishable from a misconfiguration.
+
+  Previously **not met** — `Plus` (`prod_UwKax8…`) and `Pro` (`prod_UvuEDE…`) both report `tax_code: null`, so both inherit the account default `txcd_10000000` (*General — Electronically Supplied Services*). **Not** the `txcd_00000000` failure this check guards against, and tax will still calculate — but it is inherited rather than declared, which is what the check asks for and what `PROD_STRIPE_LIVE.runbook.md` §6b means by *never guessed*. Setting it is a Stripe-side write; the inspection key is deliberately read-only.
+
+  Also noted: six **inactive** leftovers rode along from the sandbox migration — `Standard (tax smoke #217)`, `Standard (smoke #218)`, `Portal Pro (smoke)` ×2, `myproduct` ×2. Harmless (inactive, no prices in use) but they are clutter in a live account
 - [ ] The app's key is a **restricted** key (`rk_live_…`) with `subscriptions` **write** — verify by deleting a test org with a live subscription and confirming no 403
+
+  **Destructive test waived** by the operator: the org-delete → `subscriptions.cancel` path was exercised in app-dev when Stripe was first integrated and the logic is unchanged. Reasonable — and it would have meant deleting the only prod org, which now carries the live subscription.
+
+  ⚠️ **But note what the waiver does and does not cover.** app-dev proves the *code path*; this check's actual subject is whether **prod's restricted key was granted `subscriptions: write`**, which is a per-key scope decision made in the live dashboard and cannot be inferred from app-dev. The failure mode is a 403 that surfaces only when a paying customer's org is deleted. The non-destructive substitute is to read the key's permissions in the dashboard (Developers → API keys → the `rk_live_` key) and confirm Subscriptions is **write**, not read
 - [ ] A **separate read-only** key exists for prod *and* app-dev, and `stripe` CLI inspection uses it
-- [ ] The webhook endpoint subscribes to **all six** events — the three `customer.subscription.*` **and** the three `price.*`
-- [ ] `portalops tier apply --env prod --yes --confirm-prod` reports the paid rows converged onto **live-mode** price ids
-- [ ] ⚠️ **ONE-SHOT — the first live charge.** Full round-trip: checkout → `customer.subscription.created` verified against the prod signing secret → the org's tier advances → the billing portal opens **with plan switching available** → returns to `https://app.portalsai.io`
-- [ ] **The invoice carries a non-zero tax line**, and the Checkout Session's `taxability_reason` is **not** `not_collecting` *(retrieve with `expand[]=line_items.data.taxes`)*. **Every other check in this section passes in a world where you collect nothing** — and completed transactions cannot be corrected through Stripe
-- [ ] `stripe_events` holds a row per delivered event, including the `ignored` ones
+
+  **Prod: done.** `rk_live_***IezNnT`, and `stripe` CLI inspection uses it — proven, not assumed: `customers update` against a non-existent id returns `more_permissions_required` (*"Enabling \"Customers Write\"…"*) while reads succeed. The probe mutates nothing because the target id cannot exist.
+
+  **app-dev: deferred** by the operator. Until it exists, app-dev inspection borrows the application's write-capable key
+- [x] The webhook endpoint subscribes to **all six** events — the three `customer.subscription.*` **and** the three `price.*`
+
+  `we_1U5W0n…` → `https://api.portalsai.io/api/webhooks/stripe`, `status: enabled`, exactly six: `customer.subscription.{created,deleted,updated}` + `price.{created,deleted,updated}`
+- [x] `portalops tier apply --env prod --yes --confirm-prod` reports the paid rows converged onto **live-mode** price ids
+
+  Converged 2026-08-18: `plus` → `price_1U4rmx…`, `pro` → `price_1U4rmw…`, resolved by lookup key (`plus_monthly` / `pro_monthly`) through prod's live restricted key — a test-mode price cannot resolve through a live key. `standard` and `enterprise` carry no price by design (`cta: none` / `contact`). The published site renders $19 / $49 from these rows
+- [x] ⚠️ **ONE-SHOT — the first live charge.** Full round-trip: checkout → `customer.subscription.created` verified against the prod signing secret → the org's tier advances → the billing portal opens **with plan switching available** → returns to `https://app.portalsai.io`
+
+  Completed 2026-08-18. Checkout paid ($53.14 incl. tax), `evt_1U5tHP…` verified and applied, `My Organization` advanced `standard` → `pro`, billing portal opened with plan switching and returned to the app. Confirmed by the operator for the browser-side legs
+- [x] **The invoice carries a non-zero tax line**, and the Checkout Session's `taxability_reason` is **not** `not_collecting` *(retrieve with `expand[]=line_items.data.taxes`)*.
+
+  Invoice `in_1U5tHL…`, status `paid`: subtotal **$49.00**, tax **$4.14** (8.45%), total **$53.14**. `total_taxes[0] = {taxability_reason: "standard_rated", tax_behavior: "exclusive", taxable_amount: 4900}` — **not** `not_collecting`. Billing address Salt Lake City, UT, inside the sole registration. `automatic_tax.status: complete`.
+
+  Two notes for whoever reads this next. The field is **`total_taxes`** (an array), *not* `total_tax` — reading the singular returns nothing and looks exactly like zero tax collected. And `tax_behavior` resolved to **`exclusive`** even though both prices carry `tax_behavior: unspecified`, because the account default is `inferred_by_currency`; the prices are fine as they are. **Every other check in this section passes in a world where you collect nothing** — and completed transactions cannot be corrected through Stripe
+- [x] `stripe_events` holds a row per delivered event, including the `ignored` ones
+
+  Complete, not merely non-empty: of the 30 most recent live events exactly **one** matched the endpoint's six subscriptions (`customer.subscription.created`, `evt_1U5tHP…`), and `stripe_events` holds exactly that one — `outcome: applied`, `resulting_tier: pro`. Everything else Stripe emitted (invoice, charge, payment_intent, customer, and the two `product.updated` from the tax-code edits) is deliberately unsubscribed.
+
+  ⚠️ **The `ignored` outcome is still unexercised** — it requires a `price.*` event, which §6's price-change check produces. This box is green for delivery completeness only.
 
 ## §6 — Marketing site (`PROD_DEPLOY.runbook.md` → Activating www)
 
-- [ ] **Before** setting the variable: publish a release → `deploy-site-prod` exits with a notice and publishes nothing
-- [ ] `curl https://api.portalsai.io/api/public/site-config` → 200 with the live tiers
+- [x] **Before** setting the variable: publish a release → `deploy-site-prod` exits with a notice and publishes nothing
+
+  Observed across five runs (`v1.0.0`, `v1.0.1`, `v1.0.2` and two dispatches), each completing green in ~10s with `resolve` reporting `ready=false` and no deploy job. The gate behaved exactly as designed — a green run that published nothing
+- [x] `curl https://api.portalsai.io/api/public/site-config` → 200 with the live tiers
 - [x] Set `PROD_SITE_CONFIG_URL`, publish a release → the run is green, the preflight **passes**, and the fixture-stamp check finds nothing
 - [x] `https://www.portalsai.io` serves over the wildcard cert; `/pricing/` shows live amounts
-- [ ] Footer and contact page show `support@` / `sales@` / `admin@portalsai.io` — **no `qa@` anywhere**
+- [x] Footer and contact page show `support@` / `sales@` / `admin@portalsai.io` — **no `qa@` anywhere**
 
-  ❌ **FAILED — [#405](https://github.com/EnterpriseBT/portal-ai/issues/405).** The live site rendered `qa@portalsai.io` on every page, 14 occurrences, zero real addresses. Cause: Turbo 2 runs tasks in a strict environment and `apps/site/turbo.json`'s `passThroughEnv` allowlist omitted `SUPPORT_EMAIL` / `SALES_EMAIL` / `ADMIN_EMAIL`, so the build never saw them and `contact.ts` fell back to `QA_EMAIL`. Prices were correct because `SITE_CONFIG_URL` **is** allowlisted — that split is the tell. **This step is the only thing that caught it:** the unit tests set `process.env` directly and never exercise the plumbing, the preflight checks tiers, and `verify-pages`' empty-`mailto:` gate is satisfied because `qa@` is a valid address. Re-verify after the fix republishes
+  ✅ **Passes as of `v1.0.3`.** Across home / contact / pricing / terms / privacy: 14 `support@`, 12 `sales@`, 4 `admin@`, **zero `qa@`**; every `mailto:` resolves to a real address. `admin@` appears only on terms and privacy, which is its documented role (legal / data-controller contact). Prices unchanged at $19 / $49 and the build stamp reads `b883c496`, so the republish did not regress config resolution.
+
+  ❌ **FAILED on first publish — [#405](https://github.com/EnterpriseBT/portal-ai/issues/405).** The live site rendered `qa@portalsai.io` on every page, 14 occurrences, zero real addresses. Cause: Turbo 2 runs tasks in a strict environment and `apps/site/turbo.json`'s `passThroughEnv` allowlist omitted `SUPPORT_EMAIL` / `SALES_EMAIL` / `ADMIN_EMAIL`, so the build never saw them and `contact.ts` fell back to `QA_EMAIL`. Prices were correct because `SITE_CONFIG_URL` **is** allowlisted — that split is the tell. **This step is the only thing that caught it:** the unit tests set `process.env` directly and never exercise the plumbing, the preflight checks tiers, and `verify-pages`' empty-`mailto:` gate is satisfied because `qa@` is a valid address. Re-verify after the fix republishes
 - [ ] `portalops vars set SUPPORT_EMAIL … --env prod --yes --confirm-prod` fires the `site-config-changed` dispatch and republishes with **no code change**
 - [ ] Change a price amount in Stripe → `price.updated` is recorded `ignored` → the site republishes and `/pricing/` updates
 
