@@ -6,8 +6,13 @@
  * the API what its own support address is.
  */
 import { jest, describe, it, expect } from "@jest/globals";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const QA = "qa@portalsai.io";
+
+const read = (relative: string): string =>
+  readFileSync(fileURLToPath(new URL(relative, import.meta.url)), "utf8");
 
 /** Import `contact` fresh under a given environment. */
 const load = async (env: Record<string, string | undefined>) => {
@@ -68,5 +73,35 @@ describe("contact addresses (#369)", () => {
     for (const value of [c.supportEmail, c.salesEmail, c.adminEmail]) {
       expect(value.trim()).not.toBe("");
     }
+  });
+});
+
+describe("turbo passes the contact vars through to the build", () => {
+  // Every test above sets `process.env` directly, so all of them passed while
+  // production served `qa@` on every page: they exercise `contact.ts`'s logic
+  // and never the plumbing that feeds it. Turbo 2 runs tasks in a STRICT
+  // environment — a variable absent from `passThroughEnv` is stripped before
+  // the build starts, so `process.env.SUPPORT_EMAIL` was simply `undefined`
+  // and the fallback did exactly what it promises. Nothing failed: the deploy
+  // was green, the preflight passed, and `verify-pages` was satisfied because
+  // `qa@portalsai.io` is a perfectly valid address.
+  //
+  // The required list is derived from `contact.ts` rather than hardcoded, so a
+  // NEW contact address is covered by this guard the day it is added.
+  const declared: string[] = JSON.parse(read("../../../turbo.json")).tasks.build
+    .passThroughEnv;
+
+  const required = [
+    ...read("../contact.ts").matchAll(/process\.env\.([A-Z0-9_]+)/g),
+  ].map((m) => m[1]);
+
+  it("reads at least one variable from the environment", () => {
+    // Guards the guard: a refactor that stops using `process.env` would
+    // otherwise make every assertion below vacuously true.
+    expect(required.length).toBeGreaterThan(0);
+  });
+
+  it.each(required)("declares %s in passThroughEnv", (name) => {
+    expect(declared).toContain(name);
   });
 });
