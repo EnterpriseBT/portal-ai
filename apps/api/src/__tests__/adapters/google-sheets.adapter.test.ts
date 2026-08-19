@@ -5,7 +5,7 @@ describe("googleSheetsAdapter.toPublicAccountInfo", () => {
   it("projects only googleAccountEmail into identity (refresh_token + scopes never leak)", () => {
     const out = googleSheetsAdapter.toPublicAccountInfo!({
       refresh_token: "1//super-secret-refresh-token",
-      scopes: ["drive.readonly", "spreadsheets.readonly"],
+      scopes: ["https://www.googleapis.com/auth/drive.file"],
       googleAccountEmail: "alice@example.com",
     });
     expect(out).toEqual({

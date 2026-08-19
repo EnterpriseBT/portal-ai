@@ -383,7 +383,7 @@ describe("GoogleSheetsConnectorService.handleCallback", () => {
   const stubTokens = {
     accessToken: "ya29.access",
     refreshToken: "1//refresh",
-    scope: "openid email drive.readonly spreadsheets.readonly",
+    scope: "openid email https://www.googleapis.com/auth/drive.file",
   };
   const stubDefinition = {
     id: "def-gs",

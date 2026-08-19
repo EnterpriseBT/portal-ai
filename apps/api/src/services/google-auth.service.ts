@@ -14,17 +14,34 @@ import { environment } from "../environment.js";
 import { signState } from "../utils/oauth-state.util.js";
 
 /**
+ * The complete scope set, and it is exactly these three (#408).
+ *
  * `openid` + `email` are required so the access token can call
  * `oauth2/v3/userinfo` for the authenticated email — without one of
  * these, Google returns 401 "Invalid Credentials" on userinfo even
- * though the Drive / Sheets scopes are working. They're treated as
- * non-sensitive scopes by Google and don't require app verification.
+ * though the Drive / Sheets scopes are working.
+ *
+ * `drive.file` grants access only to files the user picks through the
+ * Google Picker, per file. It replaced `drive.readonly` (restricted) and
+ * `spreadsheets.readonly` (sensitive), which between them required a CASA
+ * security assessment, showed an unverified-app interstitial mid-connect,
+ * and capped the app at 100 users until Google finished reviewing it.
+ *
+ * **All three scopes here are non-sensitive, so the app needs no Google
+ * verification at all.** Adding a single sensitive or restricted scope
+ * brings the assessment, the interstitial and the user cap straight back —
+ * it is not a small change, whatever the calling code makes it look like.
+ * An exhaustive test in `google-auth.service.test.ts` fails if this list
+ * grows; that failure is the warning, not an obstacle to route around.
+ *
+ * The list must stay in step with the scopes configured on the OAuth
+ * consent screen in each GCP project — verification keys off what the
+ * client declares there, not off what a given request asks for.
  */
 export const GOOGLE_OAUTH_SCOPES = [
   "openid",
   "email",
-  "https://www.googleapis.com/auth/drive.readonly",
-  "https://www.googleapis.com/auth/spreadsheets.readonly",
+  "https://www.googleapis.com/auth/drive.file",
 ] as const;
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";

@@ -317,7 +317,7 @@ describe("Google Sheets Connector Router — GET /callback", () => {
       accessToken: "ya29.access",
       refreshToken: "1//refresh",
       expiresIn: 3599,
-      scope: "https://www.googleapis.com/auth/drive.readonly",
+      scope: "https://www.googleapis.com/auth/drive.file",
     });
     fetchUserEmailMock.mockRejectedValueOnce(
       Object.assign(new Error("userinfo failed"), {
@@ -351,8 +351,7 @@ describe("Google Sheets Connector Router — GET /callback", () => {
       accessToken: "ya29.access",
       refreshToken: "1//refresh-token-A",
       expiresIn: 3599,
-      scope:
-        "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/spreadsheets.readonly",
+      scope: "https://www.googleapis.com/auth/drive.file",
     });
     fetchUserEmailMock.mockResolvedValueOnce("alice@example.com");
     const state = signState({ userId, organizationId });
@@ -400,7 +399,7 @@ describe("Google Sheets Connector Router — GET /callback", () => {
       accessToken: "ya29.first",
       refreshToken: "1//refresh-A",
       expiresIn: 3599,
-      scope: "https://www.googleapis.com/auth/drive.readonly",
+      scope: "https://www.googleapis.com/auth/drive.file",
     });
     fetchUserEmailMock.mockResolvedValueOnce("alice@example.com");
     const state1 = signState({ userId, organizationId });
@@ -422,7 +421,7 @@ describe("Google Sheets Connector Router — GET /callback", () => {
       accessToken: "ya29.second",
       refreshToken: "1//refresh-B",
       expiresIn: 3599,
-      scope: "https://www.googleapis.com/auth/drive.readonly",
+      scope: "https://www.googleapis.com/auth/drive.file",
     });
     fetchUserEmailMock.mockResolvedValueOnce("alice@example.com");
     const state2 = signState({ userId, organizationId });
@@ -453,7 +452,7 @@ describe("Google Sheets Connector Router — GET /callback", () => {
       accessToken: "ya29.first",
       refreshToken: "1//refresh-A",
       expiresIn: 3599,
-      scope: "https://www.googleapis.com/auth/drive.readonly",
+      scope: "https://www.googleapis.com/auth/drive.file",
     });
     fetchUserEmailMock.mockResolvedValueOnce("alice@example.com");
     const state1 = signState({ userId, organizationId });
@@ -475,7 +474,7 @@ describe("Google Sheets Connector Router — GET /callback", () => {
       accessToken: "ya29.second",
       refreshToken: "1//refresh-B",
       expiresIn: 3599,
-      scope: "https://www.googleapis.com/auth/drive.readonly",
+      scope: "https://www.googleapis.com/auth/drive.file",
     });
     fetchUserEmailMock.mockResolvedValueOnce("alice@example.com");
     const state2 = signState({
@@ -537,7 +536,7 @@ async function insertGoogleSheetsInstance(
     config: null,
     credentials: encryptCredentials({
       refresh_token: "1//refresh-token",
-      scopes: ["drive.readonly"],
+      scopes: ["https://www.googleapis.com/auth/drive.file"],
       googleAccountEmail: email,
     }),
     lastSyncAt: null,
