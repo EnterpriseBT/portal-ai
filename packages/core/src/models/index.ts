@@ -19,6 +19,9 @@ export * from "./connector-instance.model.js";
 /** Async job model schema & type */
 export * from "./job.model.js";
 
+/** Batch job outcome accounting + terminal-status classifier (#410) */
+export * from "./batch-outcome.util.js";
+
 /** Column definition model schema & type */
 export * from "./column-definition.model.js";
 
