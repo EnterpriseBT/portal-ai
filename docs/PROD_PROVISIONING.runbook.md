@@ -67,8 +67,20 @@ Each environment has its own tenant; `app-dev` is `portalsai-staging.us.auth0.co
 
 - [ ] Create the tenant.
 - [ ] **SPA application.** Allowed Callback URLs, Logout URLs, Web Origins and CORS Origins all `https://app.portalsai.io`.
-- [ ] **API** with identifier (audience) `https://api.portalsai.io`.
+- [ ] **API** with identifier (audience) `https://api.portalsai.io`. **No trailing slash** — Auth0 treats `…/io` and `…/io/` as different resource servers, and the mismatch reports as `Service not found`, not as a typo.
+- [ ] ⚠️ **Authorize the SPA against the API.** Applications → the SPA → **APIs** tab → enable the API you just created. **Creating both halves is not enough — they must be linked**, and nothing else in this runbook or in the app will tell you otherwise.
+
+  Without it, `/authorize` rejects the request and **302s straight back to the app** with `?error=invalid_request&error_description=Client "…" is not authorized to access resource server "…"`. No Auth0 page ever renders, so it presents as a **Sign-in button that does nothing** — which points at the frontend, where nothing is wrong. The only visible evidence is the query string in the address bar.
+
+  If the APIs toggle already looks enabled, the same error is produced by an application registered as **third-party**: first-party apps get implicit access to first-party APIs, third-party ones require an explicit grant.
 - [ ] **Connections** mirroring whatever dev has today — Google, Microsoft, username-password. ([#199](https://github.com/EnterpriseBT/portal-ai/issues/199) is independent; don't wait for it.)
+
+  **Only Google is reachable from the app today.** `apps/web/src/api/auth.api.ts` exposes a single login method, hardcoding `connection: "google-oauth2"` — there is no universal-login page and no email/password path in the UI. Enabling the other connections here is harmless and forward-looking, but do not read this line as "three ways to sign in work"; until #199 lands, Google is the only one a user can actually reach. It is therefore the only connection whose credentials matter for launch.
+- [ ] ⚠️ **Give each social connection its own OAuth credentials — never Auth0's developer keys.** A connection left on the shared dev keys still *works*, which is why this is easy to miss: it is rate-limited, it can be throttled by the provider without notice, and it shows your customers an **Auth0-branded** consent screen.
+
+  **How to tell, without guessing:** the probe below returns `redirect_uri=https://login.us.auth0.com/login/callback` on dev keys, versus `https://<your-tenant>/login/callback` on real ones. **The redirect host is the reliable signal — not the client id**, which looks equally plausible either way.
+
+  For Google, the login client needs `https://<tenant>/login/callback` as an authorized redirect URI, and its **consent screen must be published to "In production"** — Testing mode admits only listed test users and expires refresh tokens after 7 days. Login-only scopes (`openid email profile`) are non-sensitive and publish without Google review, so keep the login client in a **separate GCP project** from the Sheets/Drive connector — otherwise login availability inherits that project's verification queue (see [#408](https://github.com/EnterpriseBT/portal-ai/issues/408)).
 - [ ] **Post-login Action** posting to **`https://api.portalsai.io/api/webhooks/auth0/sync`** — note the `/sync` suffix; the bare `/api/webhooks/auth0` is a 404. Signed with the `AUTH0_WEBHOOK_SECRET` from step 1.
 
   The signing contract, from `apps/api/src/middleware/webhook-auth.middleware.ts`:
@@ -111,6 +123,50 @@ printf '%s' '<m2m client id>'            | portalops vars set AUTH0_CLI_CLIENT_I
 ```
 
 - [ ] The **SPA** client id, domain and audience also go into GitHub Actions secrets — `${PREFIX}_VITE_AUTH0_CLIENT_ID`, `${PREFIX}_VITE_AUTH0_DOMAIN`, `${PREFIX}_VITE_AUTH0_AUDIENCE`. They are build-time inputs to the web bundle, not runtime config, which is why they are repo secrets rather than catalog keys.
+
+### Verify §2 from a terminal, before anything is deployed
+
+**Do this before you build or deploy anything.** Every fault above is visible from a single `curl`, and each has a distinct signature — so a failure names itself instead of presenting as a dead button in a browser hours later.
+
+```bash
+TENANT=your-tenant.us.auth0.com
+CLIENT=<spa client id>
+ORIGIN=https://app.portalsai.io
+AUD=https://api.portalsai.io
+
+probe () {  # $1 = label, rest = extra query string
+  L=$(curl -s -o /dev/null -D - \
+    "https://$TENANT/authorize?client_id=$CLIENT&redirect_uri=$ORIGIN\
+&response_type=code&scope=openid%20profile%20email\
+&state=p&nonce=p&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM\
+&code_challenge_method=S256$2" | grep -i '^location:')
+  printf '%-22s %s\n' "$1" "$L"
+}
+
+probe "with audience"   "&audience=$AUD&connection=google-oauth2"
+probe "no audience"     "&connection=google-oauth2"
+probe "trailing slash"  "&audience=$AUD/&connection=google-oauth2"
+```
+
+Read the `location:` header — that is the whole test:
+
+| Probe | `location:` says | Meaning |
+|---|---|---|
+| with audience | → `accounts.google.com` | **§2 is correct.** Client, callback, API grant and connection all good |
+| with audience | back to your app, `error_description=…not authorized to access resource server…` | **The SPA↔API authorization is missing** (or the app is third-party) |
+| with audience | back to your app, `Service not found` | The **audience does not match** the API identifier |
+| trailing slash | `Service not found` | Expected — confirms the identifier carries no trailing slash |
+| no audience | → `accounts.google.com` | The **connection** is healthy, so any failure above is the audience alone |
+| any probe | Auth0 renders its **own** error page | A **callback URL** problem. Auth0 only redirects *back* to an allowlisted URL — so a redirect back is proof the callback is fine |
+
+Then confirm the connection is not on Auth0's developer keys, by reading `redirect_uri` out of the Google URL the first probe redirects to:
+
+```bash
+# dev keys  -> redirect_uri=https://login.us.auth0.com/login/callback
+# real keys -> redirect_uri=https://$TENANT/login/callback
+```
+
+**If login later appears to do nothing, look at the address bar first.** `?error=` in the query string means `/authorize` rejected the request and bounced straight back; the browser never showed you an Auth0 page.
 
 ## 3 — Google OAuth client (Sheets connector)
 
