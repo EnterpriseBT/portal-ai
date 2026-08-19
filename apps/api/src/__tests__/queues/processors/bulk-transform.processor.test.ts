@@ -583,3 +583,62 @@ describe("bulkTransformProcessor — charge on job success (#183)", () => {
     expect(mockCommitCharge).not.toHaveBeenCalled();
   });
 });
+
+// #410 — bulk_transform shares bulk_geocode's defect: its only throws are
+// pre-flight, so a run where every record failed still returned normally and
+// the worker transitioned it to `completed`. The worker now classifies from
+// `recordsSucceeded` via `classifyBatchOutcome`, so the processor must report
+// it. Note `recordsProcessed` here means rows COMMITTED (unlike geocode, where
+// it means attempted) — which is exactly why the classifier does not infer
+// success from that field.
+describe("bulkTransformProcessor reports recordsSucceeded (#410)", () => {
+  beforeEach(() => {
+    mockCountSourceRows.mockReset().mockResolvedValue(0);
+    mockRunBatch.mockReset().mockResolvedValue({ rowsCommitted: 0, rows: [] });
+    mockPublishCustomEvent.mockReset().mockResolvedValue(undefined);
+    // Reset the tool-path mocks back to their module defaults too: the
+    // preceding suite reconfigures them, and jest does not isolate module
+    // mocks per describe. Without this an SQL-path job here inherits that
+    // suite's fan-out behavior and reports failures it never had.
+    mockFetchSourceBatch.mockReset().mockResolvedValue([]);
+    mockUpsertSuccesses
+      .mockReset()
+      .mockResolvedValue({ rowsUpserted: 0, droppedKeys: [] });
+  });
+
+  it("reports committed rows as successes", async () => {
+    mockCountSourceRows.mockResolvedValue(2_000);
+    const rows = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ id: `r-${i}` }));
+    mockRunBatch
+      .mockResolvedValueOnce({ rowsCommitted: 1_000, rows: rows(1_000) })
+      .mockResolvedValueOnce({ rowsCommitted: 1_000, rows: rows(1_000) });
+
+    const result = await bulkTransformProcessor(makeJob());
+
+    expect(result.recordsProcessed).toBe(2_000);
+    expect(result.recordsSucceeded).toBe(2_000);
+    expect(result.recordsFailed).toBe(0);
+  });
+
+  it("reports 0 successes when no batch commits anything", async () => {
+    // The shape that must now classify as `failed` rather than `completed`.
+    mockCountSourceRows.mockResolvedValue(500);
+    mockRunBatch.mockResolvedValue({ rowsCommitted: 0, rows: [] });
+
+    const result = await bulkTransformProcessor(makeJob());
+
+    expect(result.recordsSucceeded).toBe(0);
+  });
+
+  it("reports 0/0 for an empty source rather than omitting the field", async () => {
+    // The early return when the source has no rows. Must classify as
+    // completed — a filter matching nothing is not a broken job.
+    mockCountSourceRows.mockResolvedValue(0);
+
+    const result = await bulkTransformProcessor(makeJob());
+
+    expect(result.recordsSucceeded).toBe(0);
+    expect(result.recordsFailed).toBe(0);
+  });
+});

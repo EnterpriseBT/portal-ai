@@ -3,6 +3,7 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 import { ApiErrorSchema } from "../contracts/api.contract.js";
 import { QueryHandleEnvelopeSchema } from "../contracts/portal-sql.contract.js";
 import { DEFAULT_BULK_BATCH } from "../constants/large-data-ops.constants.js";
+import { BatchOutcomeFieldsSchema } from "./batch-outcome.util.js";
 
 /**
  * Async job model.
@@ -351,9 +352,11 @@ export const BulkTransformMetadataSchema = z.object({
 export type BulkTransformMetadata = z.infer<typeof BulkTransformMetadataSchema>;
 
 export const BulkTransformResultSchema = z.object({
-  /** Rows actually written to a target's wide table. */
-  recordsProcessed: z.number().int().nonnegative(),
-  recordsFailed: z.number().int().nonnegative(),
+  // Shared batch accounting (#410) — `recordsProcessed`, `recordsFailed`,
+  // `recordsSucceeded?`, `partialFailuresOmitted?`. Here `recordsProcessed`
+  // counts rows *committed* to a target's wide table (failures excluded),
+  // which is NOT what `bulk_geocode` means by it; see the field's own note.
+  ...BatchOutcomeFieldsSchema.shape,
   durationMs: z.number().int().nonnegative(),
   partialFailures: z
     .array(
@@ -390,8 +393,7 @@ export const BulkTransformResultSchema = z.object({
    *  array at a fixed size (see `MAX_PARTIAL_FAILURES`); when a
    *  pathological run produces more, the head is kept and the tail
    *  is summarized as a count here. `recordsFailed` always carries
-   *  the true total. */
-  partialFailuresOmitted: z.number().int().nonnegative().optional(),
+   *  the true total. (Declared by `BatchOutcomeFieldsSchema` above.) */
 });
 export type BulkTransformResult = z.infer<typeof BulkTransformResultSchema>;
 
@@ -421,11 +423,13 @@ export const BulkGeocodeMetadataSchema = z.object({
 export type BulkGeocodeMetadata = z.infer<typeof BulkGeocodeMetadataSchema>;
 
 export const BulkGeocodeResultSchema = z.object({
-  /** Rows attempted (= geocoded + cached + failed). Drives the progress
-   *  widget's "X / expected" count on a post-completion snapshot. */
-  recordsProcessed: z.number().int().nonnegative(),
-  /** Rows that failed (= `failed`). The widget's failure annotation. */
-  recordsFailed: z.number().int().nonnegative(),
+  // Shared batch accounting (#410) — `recordsProcessed`, `recordsFailed`,
+  // `recordsSucceeded?`, `partialFailuresOmitted?`. Here `recordsProcessed`
+  // counts rows *attempted* (`geocoded + cached + failed`) and drives the
+  // progress widget's "X / expected" count on a post-completion snapshot —
+  // which is NOT what `bulk_transform` means by it; see the field's own note.
+  // `recordsSucceeded` is `geocoded + cached`.
+  ...BatchOutcomeFieldsSchema.shape,
   /** Addresses resolved via a live provider call (the billable count). */
   geocoded: z.number().int().nonnegative(),
   /** Addresses served from the global cache — 0 units. */
@@ -438,7 +442,6 @@ export const BulkGeocodeResultSchema = z.object({
   partialFailures: z
     .array(z.object({ sourceKey: z.string(), error: ApiErrorSchema }))
     .optional(),
-  partialFailuresOmitted: z.number().int().nonnegative().optional(),
 });
 export type BulkGeocodeResult = z.infer<typeof BulkGeocodeResultSchema>;
 

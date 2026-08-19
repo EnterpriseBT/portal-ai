@@ -144,3 +144,86 @@ describe("runBulkGeocode (#315)", () => {
     expect(commitCharge).toHaveBeenCalledWith(0);
   });
 });
+
+// #410 — the job's terminal status is classified from `recordsSucceeded` by
+// `classifyBatchOutcome` at the worker. The processor's job is to report it
+// truthfully; a processor that forgets to set it silently keeps the old
+// "always completed" behavior, so these are the tests that would notice.
+describe("runBulkGeocode reports recordsSucceeded (#410)", () => {
+  it("counts a live provider hit and a cache hit as successes", async () => {
+    const result = await runBulkGeocode(
+      args,
+      baseDeps({
+        cacheGet: async (address: string) =>
+          address === "123 Main" ? hit(1, 2) : null,
+      })
+    );
+    // 1 cached + 1 geocoded = 2 succeeded. A cache hit is free, not absent.
+    expect(result).toMatchObject({ geocoded: 1, cached: 1, failed: 0 });
+    expect(result.recordsSucceeded).toBe(2);
+  });
+
+  it("reports 0 successes when the provider is down for every row", async () => {
+    // The exact production shape that reported `Completed`: a 403 on every
+    // address. This is what now classifies as `failed`.
+    const result = await runBulkGeocode(
+      args,
+      baseDeps({
+        provider: {
+          name: "mapbox",
+          geocode: async () => {
+            throw new ApiError(
+              502,
+              ApiCode.GEOCODE_PROVIDER_UNAVAILABLE,
+              "Geocoding provider returned 403."
+            );
+          },
+          reverseGeocode: async () => {
+            throw new Error("unused");
+          },
+        },
+      })
+    );
+    expect(result).toMatchObject({ geocoded: 0, cached: 0, failed: 2 });
+    expect(result.recordsSucceeded).toBe(0);
+  });
+
+  it("keeps recordsSucceeded and recordsFailed consistent on a partial run", async () => {
+    const result = await runBulkGeocode(
+      args,
+      baseDeps({
+        provider: {
+          name: "mapbox",
+          geocode: async (address: string) => {
+            if (address === "456 Oak") {
+              throw new ApiError(
+                422,
+                ApiCode.GEOCODE_ADDRESS_UNRESOLVED,
+                "Only a low-confidence match."
+              );
+            }
+            return hit(40, -111);
+          },
+          reverseGeocode: async () => {
+            throw new Error("unused");
+          },
+        },
+      })
+    );
+    expect(result.recordsSucceeded).toBe(1);
+    expect(result.recordsFailed).toBe(1);
+    // Attempted stays the sum — the two fields must not double-count.
+    expect(result.recordsProcessed).toBe(2);
+  });
+
+  it("reports 0 successes and 0 failures for an empty batch", async () => {
+    // Must classify as completed, not failed: a filter matching no rows is
+    // not a broken job.
+    const result = await runBulkGeocode(
+      args,
+      baseDeps({ fetchAddresses: async () => [] })
+    );
+    expect(result.recordsSucceeded).toBe(0);
+    expect(result.recordsFailed).toBe(0);
+  });
+});
