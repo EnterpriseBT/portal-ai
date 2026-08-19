@@ -845,12 +845,17 @@ describe("Google Sheets Connector Router — POST /instances/:id/select-sheet", 
       "alice@example.com"
     );
 
-    fetchMock.mockResolvedValueOnce(
+    // Twice: a 404 on a Sheets read is retried once (#408) in case a
+    // freshly Picker-granted file has not propagated. A genuinely missing
+    // spreadsheet 404s on both attempts and still surfaces as a 502.
+    const notFound = () =>
       mockDriveFetch({
         status: 404,
         body: { error: { message: "Requested entity was not found" } },
-      })
-    );
+      });
+    fetchMock
+      .mockResolvedValueOnce(notFound())
+      .mockResolvedValueOnce(notFound());
 
     const res = await request(app)
       .post(`/api/connectors/google-sheets/instances/${id}/select-sheet`)

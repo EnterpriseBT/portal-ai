@@ -24,7 +24,7 @@ Sequencing rationale — the risky assumption is validated while the cost of bei
 - **Slice 1** — the scope constant and its tests, nothing else. At this point rollback is a single line, which is exactly the position the spec wants to be in when **G1** runs.
 - **G1** — the empirical bridge test in dev: does a grant created **browser-side** survive to a **server-side** read? Discovery's harness supplies the browser half, so this does not wait on the app's Picker; that keeps slice 1 the only landed commit at the moment of truth. **If G1 fails, the ticket stops here** (spec → Risks, row 1).
 - **G2** — the dev console scope removal (user action), immediately after G1 so criteria 1–2 become observable for the smoke walk.
-- **Slice 2** — `GoogleAuthError.status` + the bounded 404 retry. Pure api, no web dependency, and it wants to exist *before* the real Picker flow is exercised, since non-instant grant propagation is exactly what it absorbs.
+- **Slice 2** — `GoogleAuthError.status` + the bounded 404 retry. Pure api, no web dependency. G1 saw no propagation delay, so this is **insurance on an unobserved case**, kept because the failure it prevents is a dead sync job rather than a retryable click.
 - **Slice 3** — the Picker util + token client: leaf browser code with no app wiring, testable against mocks.
 - **Slice 4** — the step rewrite + container wiring + account-match guard. First slice where a user can pick a sheet in the app.
 - **Slice 5** — delete the proxy end to end (core contract → api route/service → web SDK → the tests covering all four). Deliberately last of the code slices: nothing is deleted until the replacement works.
@@ -71,6 +71,8 @@ Procedure:
 4. Trigger a **real sync** in the app for that instance and confirm the rows land.
 
 **Done when:** the sync reads the harness-picked spreadsheet successfully.
+
+> **PASSED.** Run against the local stack on `da24cd6b`. The connector instance held `drive.file openid userinfo.email` and nothing broader, so no wide grant could have carried the read; `spreadsheets.get` returned **200 on the first attempt** for a spreadsheet granted only by a Picker selection made in the browser. Two findings carried into the spec: Google expands the requested `email` scope to `userinfo.email` in the grant (so never compare granted-vs-requested scope strings), and **no propagation delay was observed**, which makes slice 2's retry precautionary rather than corrective.
 
 **If it fails:** stop. Revert the one line, and re-open the CASA-vs-Picker decision on #408 (spec → Risks, row 1). Do not proceed to slice 2. A 404 on the *first* read only is not a failure — that is the propagation case slice 2 handles; retry the sync once before concluding.
 

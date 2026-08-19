@@ -59,14 +59,23 @@ export type GoogleAuthErrorKind =
 export class GoogleAuthError extends Error {
   override readonly name = "GoogleAuthError" as const;
   readonly kind: GoogleAuthErrorKind;
+  /**
+   * Upstream HTTP status, when the failure came from a Google response.
+   *
+   * Callers need to tell a 404 from a 403 without parsing `message`: a 404
+   * on a freshly Picker-granted file can be a race worth one retry, while a
+   * 403 is a rejected scope and retrying it only slows the failure down.
+   */
+  readonly status?: number;
 
   constructor(
     kind: GoogleAuthErrorKind,
     message?: string,
-    options?: ErrorOptions
+    options?: ErrorOptions & { status?: number }
   ) {
     super(message ?? kind, options);
     this.kind = kind;
+    if (options?.status !== undefined) this.status = options.status;
   }
 }
 

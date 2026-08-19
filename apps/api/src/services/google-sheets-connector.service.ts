@@ -698,11 +698,31 @@ async function safeReadText(res: Response): Promise<string> {
 }
 
 /**
+ * A spreadsheet the user has just granted through the Picker can, in
+ * principle, 404 on the very first read while the per-file grant
+ * propagates. G1 (#408) never saw it — the first server-side read of a
+ * browser-granted file returned 200 — so this is insurance, not a fix for
+ * an observed fault. It stays because the two call sites differ in cost: a
+ * premature read on the sync path fails a background job, which the user
+ * cannot simply repeat.
+ *
+ * One extra attempt, and only for 404. A 403 is an insufficient scope,
+ * which no amount of waiting repairs; retrying it would double the latency
+ * of the one failure a developer most needs to see quickly.
+ */
+const SHEETS_READ_RETRY_DELAY_MS = 1_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Hit `spreadsheets.get?includeGridData=true` for the given
  * spreadsheetId and return the mapped `WorkbookData` plus the workbook's
  * title from `properties.title`. Shared by `selectSheet` (caches the
  * workbook + persists the title to instance.config) and
- * `fetchWorkbookForSync` (does neither — sync uses fresh data each run).
+ * `fetchWorkbookForSync` (does neither — sync uses fresh data each run),
+ * so both inherit the bounded 404 retry described above.
  */
 async function fetchSpreadsheet(
   accessToken: string,
@@ -719,22 +739,31 @@ async function fetchSpreadsheet(
     "properties.title,sheets.properties(title,gridProperties),sheets.data(startRow,startColumn,rowData.values(userEnteredValue,effectiveValue,formattedValue,effectiveFormat.numberFormat))"
   );
 
-  const res = await fetchFn(url.toString(), {
-    method: "GET",
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetchFn(url.toString(), {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (res.ok) {
+      const json = (await res.json()) as Record<string, unknown>;
+      const workbook = googleSheetsToWorkbook(
+        json as Parameters<typeof googleSheetsToWorkbook>[0]
+      );
+      const title = (json.properties as { title?: string } | undefined)?.title;
+      return { workbook, title };
+    }
+
+    if (res.status === 404 && attempt === 0) {
+      await sleep(SHEETS_READ_RETRY_DELAY_MS);
+      continue;
+    }
+
     const body = await safeReadText(res);
     throw new GoogleAuthError(
       "fetchSheet_failed",
-      `Sheets API spreadsheets.get failed (${res.status}): ${body}`
+      `Sheets API spreadsheets.get failed (${res.status}): ${body}`,
+      { status: res.status }
     );
   }
-
-  const json = (await res.json()) as Record<string, unknown>;
-  const workbook = googleSheetsToWorkbook(
-    json as Parameters<typeof googleSheetsToWorkbook>[0]
-  );
-  const title = (json.properties as { title?: string } | undefined)?.title;
-  return { workbook, title };
 }
