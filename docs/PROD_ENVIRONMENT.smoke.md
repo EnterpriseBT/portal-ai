@@ -193,32 +193,70 @@ Manual smoke for epic [#83](https://github.com/EnterpriseBT/portal-ai/issues/83)
 
 - [x] `/api/public/site-config` returns the production allocations (`pro` metered **50,000**, not `null`)
 - [ ] Settings plan cards on `app.portalsai.io` render the live tiers and amounts
+
+  **Out of scope for this walk (operator decision).** This exercises *application logic*, which is covered in app-dev. A production smoke verifies that **vendor integrations and environment configuration** work — the things that can only differ in prod. Re-testing tier arithmetic here would cost real Mapbox spend against a live card (the only prod org is `pro`: 20,000 expensive units) and prove nothing app-dev has not already proven.
 - [ ] On a `standard` org, exhaust `expensive` (101 geocoded rows) → the tool returns a **typed `TOOL_USAGE_QUOTA_EXCEEDED` result the agent relays** — not a crash, not a thrown error
+
+  **Out of scope for this walk (operator decision).** This exercises *application logic*, which is covered in app-dev. A production smoke verifies that **vendor integrations and environment configuration** work — the things that can only differ in prod. Re-testing tier arithmetic here would cost real Mapbox spend against a live card (the only prod org is `pro`: 20,000 expensive units) and prove nothing app-dev has not already proven.
 - [ ] A `free`-class tool still works on that exhausted org — `free` is never charged and never denied
+
+  **Out of scope for this walk (operator decision).** This exercises *application logic*, which is covered in app-dev. A production smoke verifies that **vendor integrations and environment configuration** work — the things that can only differ in prod. Re-testing tier arithmetic here would cost real Mapbox spend against a live card (the only prod org is `pro`: 20,000 expensive units) and prove nothing app-dev has not already proven.
 
 ## §8 — CLI guards and audit (live, first time)
 
-- [ ] `portalai login --env prod` completes the device flow
-- [ ] `portalops db tunnel --env prod --confirm-prod` connects through the bastion
-- [ ] A **destructive** op against prod is refused with exit **`6`**: `npx portalops db reset --env prod --yes --confirm-prod; echo $?`
-- [ ] A **non-destructive mutation without `--confirm-prod`** is refused with exit **`5`**
-- [ ] `portalops vars list --env prod` and `portalai org list --env prod` return real prod data
-- [ ] `~/.portalai/audit.log` has a line per mutating op, and **no line contains a secret value**
-- [ ] `grep -rn "pending #83" docs/` returns only `*.smoke.md` / `*.discovery.md` / `*.spec.md` / `*.plan.md` — historical records, correctly untouched
+- [x] `portalai login --env prod` completes the device flow
+
+  Proven transitively: `portalai org list --env prod` returned real data (exit 0), which is only reachable with a valid device-flow token.
+- [x] `portalops db tunnel --env prod --confirm-prod` connects through the bastion
+
+  Proven by use rather than in isolation: every `portalops db psql --env prod` in this walk — the tier rows, the connector instances, the job errors, the geocoded records — connected through the bastion tunnel.
+- [x] A **destructive** op against prod is refused with exit **`6`**: `npx portalops db reset --env prod --yes --confirm-prod; echo $?`
+
+  Exit **6**, `Destructive operations are never allowed against production environment "prod"`. Run only after confirming statically that `reset.ts:84` calls `assertOperationAllowed({destructive: true})` as its **first statement**, before `resolveEnvConnection` and any SQL — a live destructive test against production is worth taking on faith from nobody. Verified after: 34 tables still present.
+- [x] A **non-destructive mutation without `--confirm-prod`** is refused with exit **`5`**
+
+  Exit **5** via `vars set CORS_ORIGIN` with its existing value, so even a guard failure would have been a no-op write.
+
+  ⚠️ **A first attempt used `tier apply --env prod --yes` and exited 0, which looked like a guard failure and was not.** `tier.ts:339` guards inside `if (dirty.length > 0)`, so a fully-converged run never reaches it. The command was chosen *because* it was idempotent and safe — which is exactly why it could not exercise a guard on the write path. Pick a command that actually reaches the mutation.
+- [x] `portalops vars list --env prod` and `portalai org list --env prod` return real prod data
+
+  `vars list` returns the 24-key catalog with secrets masked; `org list` returns `My Organization` at tier `pro`.
+- [x] `~/.portalai/audit.log` has a line per mutating op, and **no line contains a secret value**
+
+  31 `"env":"prod"` lines covering every `tier apply` change and each `vars set`. `vars set MICROSOFT_OAUTH_CLIENT_ID` records the **key and `kind`, never the value**. No `whsec_` / `rk_live` / `sk_live` / `pk.` / PEM material anywhere in the file.
+- [x] `grep -rn "pending #83" docs/` returns only `*.smoke.md` / `*.discovery.md` / `*.spec.md` / `*.plan.md` — historical records, correctly untouched
+
+  Returns 11 files: the smoke/discovery/spec/plan set plus `PROD_CLI_ACTIVATION.md`, which is a **condensed** doc — design + smoke in one un-suffixed file. `deploy-parity.test.ts:463` excludes exactly that case, so it is expected rather than a miss.
 
 ## §9 — Dev is unaffected (regression)
 
-- [ ] An app-dev deploy after all this is green
-- [ ] The ECS task's rendered `GOOGLE_OAUTH_REDIRECT_URI` / `MICROSOFT_OAUTH_REDIRECT_URI` are byte-identical to before
-- [ ] `portalai-dev-cache` is still a single-node `CacheCluster` — **not replaced**
-- [ ] `site-dev.portalsai.io` still deploys and still resolves its own cert stack
+- [x] An app-dev deploy after all this is green
+
+  The four most recent `Deploy Dev` runs are `push` on `main`, all `success`. `api-dev.portalsai.io/api/health` → 200.
+- [x] The ECS task's rendered `GOOGLE_OAUTH_REDIRECT_URI` / `MICROSOFT_OAUTH_REDIRECT_URI` are byte-identical to before
+
+  Read from the running task definitions. dev renders `https://api-dev.portalsai.io/api/connectors/{google-sheets,microsoft-excel}/callback`; prod renders the `api.portalsai.io` equivalents. **Scope note:** no pre-#383 snapshot exists to diff against, so this confirms the values are *correct for each environment* rather than literally unchanged — which is what the check is protecting against, since #383 switched these from `${Environment}` to `Subdomain` derivation.
+- [x] `portalai-dev-cache` is still a single-node `CacheCluster` — **not replaced**
+
+  `portalai-dev` — engine `redis`, `NumCacheNodes: 1`, `ReplicationGroupId: None`. Prod's conditional replication group did not disturb it.
+- [x] `site-dev.portalsai.io` still deploys and still resolves its own cert stack
+
+  `https://site-dev.portalsai.io` → 200, unaffected by prod's site stack sharing the wildcard certificate.
 
 ## §10 — Error & edge cases
 
-- [ ] A plain push to `main` deploys **only** to dev and never touches prod
-- [ ] A release published while `PROD_SITE_CONFIG_URL` is unset publishes nothing rather than failing
+- [x] A plain push to `main` deploys **only** to dev and never touches prod
+
+  `deploy-prod.yml` is `on: release: types: [published]` and nothing else; `deploy-dev.yml` is `on: push`. Run history agrees — every `Deploy Prod` run fired from a `release`, never a push. (The `workflow_dispatch` entries in the history predate making it release-only.)
+- [x] A release published while `PROD_SITE_CONFIG_URL` is unset publishes nothing rather than failing
+
+  Observed five times before the switch was set — `v1.0.0`, `v1.0.1`, `v1.0.2` and two dispatches — each green in ~10s with `resolve` reporting `ready=false` and no deploy job.
 - [ ] Rollback: re-running the previous release's workflow restores the previous image. **Confirm you understand it does not revert the schema** — migrations must stay backward-compatible with the previous image
-- [ ] No dev credential appears in any `portalai/prod/*` path
+
+  **Not exercised.** Deliberately untested: proving it means rolling production back, and the value is low next to the risk on a live environment carrying a paying subscription. The mechanism is understood and recorded — re-running a prior release redeploys that release's immutable `prod-<sha>` image, and **migrations are not reverted**, so backward compatibility with the previous image is a standing requirement on every migration.
+- [x] No dev credential appears in any `portalai/prod/*` path
+
+  Verified by comparing SHA-256 digests of every same-named secret across environments — values were hashed, never printed. All 11 shared names (`anthropic-api-key`, `auth0-webhook-secret`, `database-url`, `encryption-key`, `geocoding-api-key`, `google-oauth-client-secret`, `microsoft-oauth-client-secret`, `oauth-state-secret`, `stripe-secret-key`, `stripe-webhook-secret`, `tavily-api-key`) are **distinct** between prod and dev.
 
 ## Sign-off
 
