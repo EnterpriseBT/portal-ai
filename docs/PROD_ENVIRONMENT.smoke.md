@@ -87,10 +87,46 @@ Manual smoke for epic [#83](https://github.com/EnterpriseBT/portal-ai/issues/83)
 - [x] The app's Help view shows `support@portalsai.io` — **not `qa@`**. A `qa@` here means the SSM contacts were unset at build time and the build used its fallback
 
   ⚠️ **This check was wrong as written — a bare `grep qa@` flags a *correct* build.** `QA_EMAIL` (`apps/web/src/utils/contact.util.ts:24`) is the fallback *constant* and is always present in the bundle, because the fallback helper that references it survives minification. What matters is which value the helper *returned*. In the shipped bundle it reads `XY("support@portalsai.io")` / `XY("sales@portalsai.io")` — real values passed, so the fallback is never selected. **The correct assertion:** the bundle contains the helper called with the real addresses — `grep -c '("support@portalsai.io")'` returns `1`. Note `mailto:` is **not** greppable either way: it is built from a template literal (`` `mailto:${…}` ``), so both `mailto:support@…` and `mailto:qa@…` return `0` on a correct build. Verified on `index-JbOwZ_DK.js`; the visual confirmation in the Help view remains the definitive check
-- [ ] Google Sheets **and** Microsoft Excel OAuth each round-trip against the prod callback URLs
-- [ ] A public-REST-API connector syncs end to end
-- [ ] **A geocode call succeeds, and a `bulk_geocode_records` job completes.** This is the only check that proves `GEOCODING_API_KEY` resolved — it fails *open*, so nothing else will tell you
-- [ ] A custom webhook toolpack receives a `readUrl`/`writeUrl` pointing at `https://api.portalsai.io/api/webhook/handle/…` — **not `localhost`**
+- [x] Google Sheets **and** Microsoft Excel OAuth each round-trip against the prod callback URLs
+
+  Both authorized and synced against prod callbacks. Server-side: credentials stored as an AES-GCM envelope (`{"iv":…,"authTag":…}`) with no plaintext token, so `ENCRYPTION_KEY` resolved; `layout_plan_commit` and `connector_sync` both reached `completed`, which is the first thing in this walk to exercise **prod Redis / BullMQ**; 2 entities and 61 records materialized.
+
+  Excel is the first real exercise of the Microsoft client id corrected during this walk — token exchange succeeding proves the id and secret are a matching pair. Three job failures along the way were all benign: two `CONNECTOR_ENTITY_KEY_IN_USE_BY_OTHER_CONNECTOR` (the duplicate-entity-key guard working) and one sync against an instance deleted in between.
+
+  ⚠️ **Both consent screens still show the *unverified app* warning** — Google verification for the Sheets/Drive sensitive scopes, and Microsoft publisher verification. See §1
+- [x] A public-REST-API connector syncs end to end
+- [x] **A geocode call succeeds, and a `bulk_geocode_records` job completes.** This is the only check that proves `GEOCODING_API_KEY` resolved — it fails *open*, so nothing else will tell you
+
+  ❌ **FAILED.** Job `ce6c6931…` reported **`Completed`** with `geocoded: 0, failed: 10` — every record `GEOCODE_PROVIDER_UNAVAILABLE / "Geocoding provider returned 403"`. **The check earned its place:** the per-record errors are typed and honest, but the *job status* is not, so anything reading job status alone would call this a success.
+
+  **Root cause: the token carries a Mapbox URL restriction, and the caller is server-side.** Mapbox enforces URL restrictions against the HTTP `Referer` header, which only browsers send. Geocoding runs in `bulk-geocode.processor.ts` on the API, where Node sends no `Referer` — so a URL-restricted token can never work from the backend, whatever URL is listed.
+
+  Proven by varying only the `Referer` against the prod key (read into a variable, never printed):
+
+  | `Referer` sent | result |
+  |---|---|
+  | *(none — what the server actually sends)* | **403** |
+  | `https://api.portalsai.io` | **200** |
+  | `https://app.portalsai.io/` | 403 |
+
+  **`dev` is restricted the same way and is equally broken** — 403 with no `Referer`, 200 with `https://api-dev.portalsai.io`. app-dev geocoding has therefore never worked server-side; it fails open, so nothing ever said so. Do not treat app-dev as the working reference here.
+
+  **Fix: remove the URL restriction on both tokens — do not add scopes.** Scopes are not involved. The restriction protects nothing: the token lives in Secrets Manager and never reaches a browser (the served bundle contains no `pk.` token and no `api.mapbox.com` reference), so its protection is secrecy, not referrer.
+
+  A wrong turn worth recording: this was first diagnosed as *"the Mapbox account has no activated payment method"*, on the basis that a free endpoint returned 200 while every metered one returned 403. That split was real but coincidental — the URL-restriction test behind it had only tried `app.` and `www.` referers, never `api.`, so it could not have found the actual cause. Vary one input at a time, and make sure the negative test could have succeeded.
+
+  ✅ **Passes after removing the URL restrictions.** Re-run: `geocoded: 8`, and **all 10 records carry correct GeoJSON** — Eiffel Tower `[2.294501, 48.85826]`, Colosseum `[12.49427, 41.889955]`, Liberty Island `[-74.044809, 40.689203]`, Taj Mahal `[78.04348, 27.16675]`. Verified in `entity_records.data->>'geocode'`, not from job status.
+
+  ⚠️ **But the job's result summary is not trustworthy, and that is a separate defect.** The same run reported `failed: 2` — Sagrada Família (`GEOCODE_PROVIDER_UNAVAILABLE`) and Bennelong Point (`GEOCODE_ADDRESS_UNRESOLVED`, relevance 0.596) — yet **both records hold correct coordinates**. A record cannot be geocoded by an unavailable provider, so a retry is likely succeeding without clearing its failure entry. Together with the first run reporting **`Completed`** while geocoding 0 of 10, the summary both over- and under-reports. Anything alerting on job status or `failed` counts will be wrong in both directions
+- [x] A custom webhook toolpack receives a `readUrl`/`writeUrl` pointing at `https://api.portalsai.io/api/webhook/handle/…` — **not `localhost`**
+
+  Verified against a purpose-built ephemeral endpoint (AWS Lambda behind API Gateway) registered as a real toolpack. `ephemeral_stage_rows` — declaring `production: {kind: "rows", onLarge: "handle"}` to *earn* the write-grant — received `https://api.portalsai.io/api/webhook/handle/55ba62e1…` and `…/0cee963e…` on two separate invocations. **`PUBLIC_API_BASE_URL` (#383) is therefore resolving correctly in prod**, which nothing else in this walk exercised.
+
+  Negative control in the same log: every `ephemeral_echo` call (`production: {kind: "value"}`) received **no** write grant, so the grant is earned by the declaration rather than issued to every custom tool.
+
+  **Signing verified too.** Real calls carried all three `x-portalai-*` headers and the HMAC validated over the raw body inside the freshness window (`ok: true`, `age: 0`). The verifier was itself proven first against three cases — valid, unsigned, tampered-body — so a `false` verdict could only have meant Portal's signing, not the test endpoint's.
+
+  ⚠️ **Lambda Function URLs do not work in this AWS account.** `AuthType: NONE` with a textbook resource policy returns `AccessDeniedException` on every public request while direct invoke succeeds, and the account is in no organization so no SCP explains it. API Gateway works. Worth knowing before reaching for Function URLs in real infrastructure
 
 ## §5 — Stripe live mode (`PROD_STRIPE_LIVE.runbook.md`)
 
