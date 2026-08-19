@@ -648,3 +648,59 @@ describe("prod deploy: release-only, and one-off tasks run the new image (#83)",
     expect(code()).toContain("stoppedReason");
   });
 });
+
+// #403: §2 of the provisioning runbook creates the Auth0 SPA and the API as two
+// independent checklist items and — until this ticket — never linked them, nor
+// said that a social connection must carry its own OAuth credentials. Both gaps
+// are invisible until a real user tries to log in, and both cost a production
+// incident during #83's walk. Prose is the deliverable here, so prose is what
+// gets pinned: an operator following the file must be told to authorize the
+// pair, and told not to ship on Auth0's shared developer keys.
+describe("provisioning runbook covers the Auth0 wiring (#403)", () => {
+  const auth0Section = (): string => {
+    const body = fs.readFileSync(
+      path.join(ROOT, "docs/PROD_PROVISIONING.runbook.md"),
+      "utf8"
+    );
+    const start = body.indexOf("## 2 — Auth0 tenant");
+    expect(start).toBeGreaterThan(-1);
+    const end = body.indexOf("\n## ", start + 1);
+    return body.slice(start, end === -1 ? undefined : end);
+  };
+
+  it("tells the operator to authorize the SPA against the API", () => {
+    // Creating both halves is not enough; the grant is a separate act.
+    expect(auth0Section()).toMatch(/Authorize the SPA against the API/i);
+  });
+
+  it("names the error that a missing grant produces", () => {
+    // The symptom is a dead Sign-in button, which points at the frontend. The
+    // runbook has to connect that symptom to this cause or the next operator
+    // debugs the wrong layer.
+    const s = auth0Section();
+    expect(s).toContain("not authorized to access resource server");
+    expect(s).toMatch(/does nothing|address bar/i);
+  });
+
+  it("warns against Auth0's shared developer keys", () => {
+    expect(auth0Section()).toMatch(/developer keys/i);
+  });
+
+  it("gives the redirect-host tell for developer keys", () => {
+    // The client id looks equally plausible either way; the callback host is
+    // the only reliable discriminator, so it must be spelled out.
+    expect(auth0Section()).toContain("login.us.auth0.com/login/callback");
+  });
+
+  it("ships a terminal probe that runs before any deploy", () => {
+    const body = fs.readFileSync(
+      path.join(ROOT, "docs/PROD_PROVISIONING.runbook.md"),
+      "utf8"
+    );
+    expect(body).toMatch(/Verify §2 from a terminal/i);
+    // The probe's value is that each fault has a DISTINCT signature; a probe
+    // that cannot separate them is the mistake this replaces.
+    expect(body).toContain("Service not found");
+    expect(body).toContain("code_challenge_method=S256");
+  });
+});
