@@ -187,6 +187,10 @@ async function runToolDispatchLoop(
     return {
       recordsProcessed: 0,
       recordsFailed: 0,
+      // #410: 0 succeeded AND 0 failed classifies as `completed` — a source
+      // matching no rows is not a broken job. Stated rather than omitted so
+      // the field is never accidentally absent on a live path.
+      recordsSucceeded: 0,
       durationMs: Date.now() - startedAt,
     };
   }
@@ -334,6 +338,10 @@ async function runSqlBatchLoop(
     return {
       recordsProcessed: 0,
       recordsFailed: 0,
+      // #410: 0 succeeded AND 0 failed classifies as `completed` — a source
+      // matching no rows is not a broken job. Stated rather than omitted so
+      // the field is never accidentally absent on a live path.
+      recordsSucceeded: 0,
       durationMs: Date.now() - startedAt,
     };
   }
@@ -655,6 +663,12 @@ function finalize(args: {
   return {
     recordsProcessed: args.recordsProcessed,
     recordsFailed: totalFailed,
+    // #410: the worker classifies the terminal status from this. Here
+    // `recordsProcessed` already counts only rows COMMITTED, so successes and
+    // attempts coincide — unlike bulk_geocode, where recordsProcessed counts
+    // attempts. That divergence is why the classifier reads this field and
+    // never infers success from recordsProcessed.
+    recordsSucceeded: args.recordsProcessed,
     durationMs: Date.now() - args.startedAt,
     ...(partialFailures.length > 0 ? { partialFailures } : {}),
     ...(partialFailuresOmitted > 0 ? { partialFailuresOmitted } : {}),

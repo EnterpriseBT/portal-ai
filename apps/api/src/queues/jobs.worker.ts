@@ -1,6 +1,7 @@
 import { Worker, Job as BullJob } from "bullmq";
 
 import type { JobType, JobTypeMap } from "@portalai/core/models";
+import { classifyBatchOutcome } from "@portalai/core/models";
 
 import { environment } from "../environment.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -79,6 +80,20 @@ const getJobEventsService = async () => {
  * the portal-events SSE. Failures are logged but do not bubble — the
  * job's primary result is already persisted.
  */
+/**
+ * The `error` message for a batch job classified as failed (#410).
+ *
+ * Nothing threw — every item failed inside its own try/catch — so there is no
+ * exception to format. Without a message the job row reads `failed` with an
+ * empty reason, which is its own debugging dead end. Points at
+ * `partialFailures`, which carries the per-row cause.
+ */
+function totalFailureMessage(result: unknown): string {
+  const failed = (result as { recordsFailed?: unknown } | null)?.recordsFailed;
+  const count = typeof failed === "number" ? failed : 0;
+  return `Every record failed (${count} of ${count}). See partialFailures in the job result for the per-row reason.`;
+}
+
 async function runBulkTransformTerminalHook(
   jobId: string,
   data: JobData<"bulk_transform">,
@@ -132,9 +147,28 @@ export const createJobsWorker = (
       await JobEventsService.transition(jobId, "active", { progress: 0 });
       try {
         const result = await processor(bullJob);
-        await JobEventsService.transition(jobId, "completed", {
+        // #410: a batch job whose every item failed must not report
+        // `completed`. Every item's work sits inside a per-item try/catch, so
+        // reaching here only means the loop did not throw — a total provider
+        // outage looked identical to complete success, which is how app-dev's
+        // geocoding stayed broken with nobody noticing.
+        //
+        // The classifier reads the result's shape, so the seven all-or-nothing
+        // job types are unaffected and a future batch type is covered without
+        // registering anything here.
+        const outcome = classifyBatchOutcome(result);
+        await JobEventsService.transition(jobId, outcome, {
           progress: 100,
+          // The result is persisted on BOTH outcomes: a failed batch's
+          // `partialFailures` is the only record of WHY each row failed, and
+          // the job-details view renders on the result's presence rather than
+          // on status, so it survives.
           result: result as Record<string, unknown>,
+          // Nothing threw, so there is no error to format — synthesize one, or
+          // the job reads as failed with no stated reason.
+          ...(outcome === "failed"
+            ? { error: totalFailureMessage(result) }
+            : {}),
         });
         // Terminal hook: bulk_transform jobs notify their portal so
         // the chat-input lock can release + the assistant message
@@ -145,7 +179,11 @@ export const createJobsWorker = (
             jobId,
             bullJob.data as JobData<"bulk_transform">,
             result as JobTypeMap["bulk_transform"]["result"],
-            "completed"
+            // Classified, not hardcoded: the hook drives the portal's
+            // chat-input lock release and the assistant message, so telling it
+            // `completed` while the job row says `failed` would put the two
+            // surfaces in disagreement.
+            outcome
           );
         }
         return result;

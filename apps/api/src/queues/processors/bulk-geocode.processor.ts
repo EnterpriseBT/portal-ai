@@ -145,6 +145,12 @@ export async function runBulkGeocode(
     // Attempted vs failed for the progress widget's snapshot recovery.
     recordsProcessed: geocoded + cached + failed,
     recordsFailed: failed,
+    // #410: the worker classifies the job's terminal status from this via
+    // `classifyBatchOutcome`. A cache hit IS a success — it resolved, it just
+    // cost nothing — so both counts contribute. Without this the job reports
+    // `completed` even when the provider failed on every row, which is how
+    // app-dev's geocoding stayed broken unnoticed.
+    recordsSucceeded: geocoded + cached,
     geocoded,
     cached,
     failed,
