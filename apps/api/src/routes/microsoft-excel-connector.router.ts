@@ -257,6 +257,11 @@ function mapMicrosoftGraphError(err: unknown): ApiError {
           message,
           details
         );
+      // A precondition on the connected account, not an upstream fault:
+      // 4xx so the client doesn't read it as our server breaking, and the
+      // message (owned by the Graph service, one copy) names the remedy.
+      case "no_drive":
+        return new ApiError(409, ApiCode.MICROSOFT_EXCEL_NO_ONEDRIVE, message);
       case "search_failed":
         return new ApiError(502, ApiCode.MICROSOFT_EXCEL_LIST_FAILED, message);
       case "head_failed":
@@ -280,7 +285,7 @@ function parseIntStrict(value: unknown): number | undefined {
  * /api/connectors/microsoft-excel/workbooks:
  *   get:
  *     tags: [Microsoft Excel Connector]
- *     summary: List the user's .xlsx workbooks via Graph search
+ *     summary: List the user's .xlsx workbooks by walking the drive
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -296,6 +301,7 @@ function parseIntStrict(value: unknown): number | undefined {
  *       400: { description: connectorInstanceId missing }
  *       403: { description: Instance belongs to a different organization }
  *       404: { description: Instance not found }
+ *       409: { description: Connected Microsoft account has no OneDrive (MICROSOFT_EXCEL_NO_ONEDRIVE) }
  *       502: { description: Graph rejected the listing or refresh }
  */
 microsoftExcelConnectorRouter.get(
@@ -360,6 +366,7 @@ microsoftExcelConnectorRouter.get(
  *       400: { description: Missing driveItemId }
  *       403: { description: Instance belongs to a different organization }
  *       404: { description: Connector instance not found }
+ *       409: { description: Connected Microsoft account has no OneDrive (MICROSOFT_EXCEL_NO_ONEDRIVE) }
  *       413: { description: Workbook exceeds the configured byte cap }
  *       415: { description: Only .xlsx workbooks are supported }
  *       502: { description: Microsoft Graph fetch failed }

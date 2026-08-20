@@ -335,6 +335,15 @@ export enum ApiCode {
   MICROSOFT_EXCEL_INVALID_PAYLOAD = "MICROSOFT_EXCEL_INVALID_PAYLOAD",
   MICROSOFT_EXCEL_FILE_TOO_LARGE = "MICROSOFT_EXCEL_FILE_TOO_LARGE",
   MICROSOFT_EXCEL_UNSUPPORTED_FORMAT = "MICROSOFT_EXCEL_UNSUPPORTED_FORMAT",
+  /**
+   * The connected Microsoft account has no OneDrive — its Entra tenant
+   * carries no SharePoint Online license, or the identity is a guest
+   * (`#EXT#`) with no drive provisioned. An eligibility gate on the
+   * connection rather than an upstream fault, in the same family as
+   * `REST_API_MISSING_CREDENTIALS`: 409, and remediable by the user
+   * reconnecting a different account.
+   */
+  MICROSOFT_EXCEL_NO_ONEDRIVE = "MICROSOFT_EXCEL_NO_ONEDRIVE",
 
   // Sync (Phase D)
   /**
