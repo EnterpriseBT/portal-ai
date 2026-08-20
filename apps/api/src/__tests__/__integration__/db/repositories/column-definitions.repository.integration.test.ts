@@ -187,32 +187,66 @@ describe("ColumnDefinitionsRepository Integration Tests", () => {
       expect(count).toBe(1);
     });
 
-    it("does not flip a custom row's `system` flag on upsert", async () => {
-      // Insert a non-system (custom) row directly.
+    // #414: this previously asserted the opposite — that `system` was never
+    // in the SET clause, so an upsert could not change it. That made the seed
+    // unable to converge the fields #316 added, which is the bug this ticket
+    // fixes. `system` and `geoRole` now follow the payload *when it carries
+    // them*; the guard below covers the case where it doesn't. The only caller
+    // is `seedSystemColumnDefinitions`, so no user input reaches this clause.
+    it("converges `system` and `geoRole` when the payload carries them", async () => {
       const data = makeColumnDef({
         key: "custom_col",
         label: "Custom",
         system: false,
+        geoRole: null,
       } as Partial<ColumnDefinitionInsert>);
       await repo.upsertByKey(data, db);
 
-      // Re-upsert with system: true in the payload. The update path must
-      // NOT include `system` in its SET clause — the row stays custom.
       const reUpserted = await repo.upsertByKey(
         {
           ...data,
           id: generateId(),
           label: "Custom Updated",
           system: true,
+          geoRole: "lat",
         } as ColumnDefinitionInsert,
         db
       );
 
       expect(reUpserted.label).toBe("Custom Updated");
-      expect(reUpserted.system).toBe(false);
+      expect(reUpserted.system).toBe(true);
+      expect(reUpserted.geoRole).toBe("lat");
 
       const persisted = await repo.findByKey(orgId, "custom_col", db);
-      expect(persisted?.system).toBe(false);
+      expect(persisted?.system).toBe(true);
+      expect(persisted?.geoRole).toBe("lat");
+    });
+
+    it("leaves `system` and `geoRole` alone when the payload omits them", async () => {
+      // Seed a row that is system + lat-roled.
+      const data = makeColumnDef({
+        key: "seeded_col",
+        label: "Seeded",
+        system: true,
+        geoRole: "lat",
+      } as Partial<ColumnDefinitionInsert>);
+      await repo.upsertByKey(data, db);
+
+      // Re-upsert without either field — `makeColumnDef` carries neither. An
+      // absent key must not be read as an instruction to reset the column to
+      // its default / null.
+      const reUpserted = await repo.upsertByKey(
+        makeColumnDef({ key: "seeded_col", label: "Seeded Updated" }),
+        db
+      );
+
+      expect(reUpserted.label).toBe("Seeded Updated");
+      expect(reUpserted.system).toBe(true);
+      expect(reUpserted.geoRole).toBe("lat");
+
+      const persisted = await repo.findByKey(orgId, "seeded_col", db);
+      expect(persisted?.system).toBe(true);
+      expect(persisted?.geoRole).toBe("lat");
     });
   });
 
