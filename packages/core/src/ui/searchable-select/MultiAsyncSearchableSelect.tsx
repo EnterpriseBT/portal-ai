@@ -10,6 +10,12 @@ export interface MultiAsyncSearchableSelectProps extends SelectBaseProps {
   onChange: (values: string[]) => void;
   onSearch: (query: string) => Promise<SelectOption[]>;
   debounceMs?: number;
+  /**
+   * Called when `onSearch` rejects. Options are cleared on rejection
+   * whether or not this is supplied. See `AsyncSearchableSelect` for why
+   * it's optional.
+   */
+  onSearchError?: (error: unknown) => void;
 }
 
 export const MultiAsyncSearchableSelect: React.FC<
@@ -28,6 +34,7 @@ export const MultiAsyncSearchableSelect: React.FC<
   size = "small",
   fullWidth,
   inputRef,
+  onSearchError,
 }) => {
   const [options, setOptions] = useState<SelectOption[]>([]);
   const [selectedOptions, setSelectedOptions] = useState<SelectOption[]>([]);
@@ -53,6 +60,11 @@ export const MultiAsyncSearchableSelect: React.FC<
       .then((results) => {
         if (!cancelled) setOptions(results);
       })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setOptions([]);
+        onSearchError?.(err);
+      })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -70,6 +82,10 @@ export const MultiAsyncSearchableSelect: React.FC<
       try {
         const results = await onSearch(inputValue);
         setOptions(results);
+      } catch (err: unknown) {
+        // Drop the previous results: they no longer describe this query.
+        setOptions([]);
+        onSearchError?.(err);
       } finally {
         setLoading(false);
       }
@@ -78,7 +94,7 @@ export const MultiAsyncSearchableSelect: React.FC<
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [inputValue, onSearch, debounceMs]);
+  }, [inputValue, onSearch, debounceMs, onSearchError]);
 
   // Merge fetched options with selected options so selected chips always resolve
   const mergedOptions = [

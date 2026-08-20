@@ -32,6 +32,7 @@ import {
   useMicrosoftExcelWorkflow,
 } from "./utils/microsoft-excel-workflow.util";
 import type { MicrosoftExcelWorkflowCallbacks } from "./utils/microsoft-excel-workflow.util";
+import { toServerErrorFromUnknown } from "../_shared/spreadsheet/use-spreadsheet-workflow.util";
 import { useOAuthPopupAuthorize } from "../../utils/oauth-popup.util";
 import { apiOrigin } from "../../utils/api-origin.util";
 import {
@@ -273,16 +274,31 @@ export const MicrosoftExcelConnectorWorkflow: React.FC<
     async (query: string): Promise<SelectOption[]> => {
       const ciId = workflow.connectorInstanceId;
       if (!ciId) return [];
-      const res = await searchWorkbooksMutate({
-        connectorInstanceId: ciId,
-        search: query,
-      });
-      return res.items.map((item) => ({
-        value: item.driveItemId,
-        label: item.name,
-      }));
+      try {
+        const res = await searchWorkbooksMutate({
+          connectorInstanceId: ciId,
+          search: query,
+        });
+        workflow.setServerError(null);
+        return res.items.map((item) => ({
+          value: item.driveItemId,
+          label: item.name,
+        }));
+      } catch (err) {
+        // Report it so the step's FormAlert names the cause (e.g. a
+        // Microsoft account with no OneDrive), then re-throw: the select
+        // has to learn the search failed so it clears stale options and
+        // stops claiming "no workbooks found".
+        workflow.setServerError(toServerErrorFromUnknown(err));
+        throw err;
+      }
     },
-    [searchWorkbooksMutate, workflow.connectorInstanceId]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      searchWorkbooksMutate,
+      workflow.connectorInstanceId,
+      workflow.setServerError,
+    ]
   );
 
   const handleSelectWorkbook = useCallback(

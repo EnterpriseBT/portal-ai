@@ -37,6 +37,50 @@ function mockJsonResponse({ status = 200, body = {} }: MockResponseInit) {
   } as unknown as Response;
 }
 
+const REQUEST_ID = "70b8fc83-f668-4a90-93c5-a4b047468145";
+
+/**
+ * Microsoft Graph's error envelope. `innerError.request-id` is the field
+ * that must never reach a user-facing message — every no-drive assertion
+ * below checks for its absence.
+ */
+function graphErrorBody(code: string, message: string) {
+  return {
+    error: {
+      code,
+      message,
+      innerError: {
+        date: "2026-08-20T16:06:06",
+        "request-id": REQUEST_ID,
+        "client-request-id": REQUEST_ID,
+      },
+    },
+  };
+}
+
+/** The exact 400 an Entra tenant with no SharePoint Online license returns. */
+const SPO_LICENSE_BODY = graphErrorBody(
+  "BadRequest",
+  "Tenant does not have a SPO license."
+);
+
+/** Asserts a thrown error leaks neither the Graph body nor its request id. */
+function expectNoLeakedBody(err: unknown) {
+  const { message } = err as MicrosoftGraphError;
+  expect(message).not.toContain(REQUEST_ID);
+  expect(message).not.toContain('{"error"');
+  expect(message).not.toContain("innerError");
+}
+
+async function captureThrow(fn: () => Promise<unknown>): Promise<unknown> {
+  try {
+    await fn();
+  } catch (err) {
+    return err;
+  }
+  throw new Error("expected throw");
+}
+
 describe("MicrosoftGraphService.searchWorkbooks", () => {
   /** Build a fetch mock that returns a different body per URL. */
   function mockChildren(byUrl: Record<string, unknown>) {
@@ -250,6 +294,157 @@ describe("MicrosoftGraphService.searchWorkbooks", () => {
       expect((err as MicrosoftGraphError).kind).toBe("search_failed");
     }
   });
+
+  /**
+   * No-drive classification. The root `/children` probe is the only
+   * request that can distinguish "this account has no drive" from
+   * "that folder is gone", so rules keyed on 404/403 apply here and
+   * nowhere else.
+   */
+  describe("no-drive classification", () => {
+    function mockRootError(status: number, body: unknown) {
+      return jest
+        .fn<typeof fetch>()
+        .mockResolvedValue(mockJsonResponse({ status, body }));
+    }
+
+    it("classifies the SPO-license 400 at the drive root as no_drive", async () => {
+      const err = await captureThrow(() =>
+        MicrosoftGraphService.searchWorkbooks(
+          "token-x",
+          "",
+          mockRootError(400, SPO_LICENSE_BODY)
+        )
+      );
+      expect(err).toBeInstanceOf(MicrosoftGraphError);
+      expect((err as MicrosoftGraphError).kind).toBe("no_drive");
+    });
+
+    it("carries remedy copy and leaks neither the Graph body nor its request id", async () => {
+      const err = await captureThrow(() =>
+        MicrosoftGraphService.searchWorkbooks(
+          "token-x",
+          "",
+          mockRootError(400, SPO_LICENSE_BODY)
+        )
+      );
+      const { message } = err as MicrosoftGraphError;
+      expect(message).toContain("no OneDrive");
+      expect(message).toContain("Reconnect");
+      expectNoLeakedBody(err);
+    });
+
+    it("classifies a 404 ResourceNotFound at the drive root as no_drive", async () => {
+      const err = await captureThrow(() =>
+        MicrosoftGraphService.searchWorkbooks(
+          "token-x",
+          "",
+          mockRootError(
+            404,
+            graphErrorBody("ResourceNotFound", "User's mysite not found.")
+          )
+        )
+      );
+      expect((err as MicrosoftGraphError).kind).toBe("no_drive");
+    });
+
+    it("classifies a 403 accessDenied at the drive root as no_drive", async () => {
+      const err = await captureThrow(() =>
+        MicrosoftGraphService.searchWorkbooks(
+          "token-x",
+          "",
+          mockRootError(
+            403,
+            graphErrorBody("accessDenied", "Access denied to the drive.")
+          )
+        )
+      );
+      expect((err as MicrosoftGraphError).kind).toBe("no_drive");
+    });
+
+    it("does NOT classify a 404 on a descended folder as no_drive", async () => {
+      // Root lists one folder successfully; the subfolder 404s. The account
+      // demonstrably HAS a drive — only that folder is gone.
+      const fetchMock = jest
+        .fn<typeof fetch>()
+        .mockImplementation(async (url) => {
+          if (String(url).includes("/items/root/children")) {
+            return mockJsonResponse({
+              body: {
+                value: [
+                  { id: "FOLDER1", name: "Reports", folder: { childCount: 1 } },
+                ],
+              },
+            });
+          }
+          return mockJsonResponse({
+            status: 404,
+            body: graphErrorBody("ResourceNotFound", "Item not found."),
+          });
+        });
+      const err = await captureThrow(() =>
+        MicrosoftGraphService.searchWorkbooks("token-x", "", fetchMock)
+      );
+      expect((err as MicrosoftGraphError).kind).toBe("search_failed");
+    });
+
+    it("fails open on a 400 with a different error.code", async () => {
+      const err = await captureThrow(() =>
+        MicrosoftGraphService.searchWorkbooks(
+          "token-x",
+          "",
+          mockRootError(
+            400,
+            graphErrorBody(
+              "invalidRequest",
+              "Tenant does not have a SPO license."
+            )
+          )
+        )
+      );
+      expect((err as MicrosoftGraphError).kind).toBe("search_failed");
+    });
+
+    it("fails open on a BadRequest 400 whose message is unrelated", async () => {
+      const err = await captureThrow(() =>
+        MicrosoftGraphService.searchWorkbooks(
+          "token-x",
+          "",
+          mockRootError(
+            400,
+            graphErrorBody("BadRequest", "Invalid $select clause.")
+          )
+        )
+      );
+      expect((err as MicrosoftGraphError).kind).toBe("search_failed");
+    });
+
+    it("fails open on a non-JSON body without throwing from the parser", async () => {
+      const err = await captureThrow(() =>
+        MicrosoftGraphService.searchWorkbooks(
+          "token-x",
+          "",
+          mockRootError(400, "<html>502 Bad Gateway</html>")
+        )
+      );
+      expect(err).toBeInstanceOf(MicrosoftGraphError);
+      expect((err as MicrosoftGraphError).kind).toBe("search_failed");
+    });
+
+    it("omits the response body from a search_failed message", async () => {
+      const err = await captureThrow(() =>
+        MicrosoftGraphService.searchWorkbooks(
+          "token-x",
+          "",
+          mockRootError(500, graphErrorBody("internalError", "Whoops."))
+        )
+      );
+      expect((err as MicrosoftGraphError).message).toBe(
+        "Microsoft Graph children failed (500)"
+      );
+      expectNoLeakedBody(err);
+    });
+  });
 });
 
 describe("MicrosoftGraphService.headWorkbook", () => {
@@ -289,15 +484,62 @@ describe("MicrosoftGraphService.headWorkbook", () => {
       expect((err as MicrosoftGraphError).kind).toBe("head_failed");
     }
   });
+
+  it("classifies the SPO-license 400 as no_drive", async () => {
+    const fetchMock = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        mockJsonResponse({ status: 400, body: SPO_LICENSE_BODY })
+      );
+    const err = await captureThrow(() =>
+      MicrosoftGraphService.headWorkbook("token-x", "01ABC", fetchMock)
+    );
+    expect((err as MicrosoftGraphError).kind).toBe("no_drive");
+  });
+
+  it("does NOT classify an item-level 404 as no_drive — that workbook is simply gone", async () => {
+    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
+      mockJsonResponse({
+        status: 404,
+        body: graphErrorBody(
+          "itemNotFound",
+          "The resource could not be found."
+        ),
+      })
+    );
+    const err = await captureThrow(() =>
+      MicrosoftGraphService.headWorkbook("token-x", "01ABC", fetchMock)
+    );
+    expect((err as MicrosoftGraphError).kind).toBe("head_failed");
+  });
+
+  it("omits the response body from a head_failed message", async () => {
+    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
+      mockJsonResponse({
+        status: 500,
+        body: graphErrorBody("internalError", "Whoops."),
+      })
+    );
+    const err = await captureThrow(() =>
+      MicrosoftGraphService.headWorkbook("token-x", "01ABC", fetchMock)
+    );
+    expect((err as MicrosoftGraphError).message).toBe(
+      "Microsoft Graph head failed (500)"
+    );
+    expectNoLeakedBody(err);
+  });
 });
 
 describe("MicrosoftGraphService.downloadWorkbook", () => {
   function streamResponse({
     status = 200,
     contentLength,
+    errorBody,
   }: {
     status?: number;
     contentLength?: string;
+    /** Graph error envelope for the non-ok cases; defaults to `<binary>`. */
+    errorBody?: unknown;
   }): { res: Response; cancelMock: jest.Mock } {
     const cancelMock = jest.fn();
     const stream = new ReadableStream<Uint8Array>({
@@ -314,7 +556,8 @@ describe("MicrosoftGraphService.downloadWorkbook", () => {
         contentLength === undefined ? {} : { "Content-Length": contentLength }
       ),
       body: stream,
-      text: async () => "<binary>",
+      text: async () =>
+        errorBody === undefined ? "<binary>" : JSON.stringify(errorBody),
     } as unknown as Response;
     return { res, cancelMock };
   }
@@ -372,5 +615,47 @@ describe("MicrosoftGraphService.downloadWorkbook", () => {
       expect(err).toBeInstanceOf(MicrosoftGraphError);
       expect((err as MicrosoftGraphError).kind).toBe("download_failed");
     }
+  });
+
+  it("classifies the SPO-license 400 as no_drive", async () => {
+    const { res } = streamResponse({
+      status: 400,
+      contentLength: "100",
+      errorBody: SPO_LICENSE_BODY,
+    });
+    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(res);
+    const err = await captureThrow(() =>
+      MicrosoftGraphService.downloadWorkbook("token-x", "01ABC", fetchMock)
+    );
+    expect((err as MicrosoftGraphError).kind).toBe("no_drive");
+  });
+
+  it("does NOT classify an item-level 403 as no_drive", async () => {
+    const { res } = streamResponse({
+      status: 403,
+      contentLength: "100",
+      errorBody: graphErrorBody("accessDenied", "Access denied to the item."),
+    });
+    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(res);
+    const err = await captureThrow(() =>
+      MicrosoftGraphService.downloadWorkbook("token-x", "01ABC", fetchMock)
+    );
+    expect((err as MicrosoftGraphError).kind).toBe("download_failed");
+  });
+
+  it("omits the response body from a download_failed message", async () => {
+    const { res } = streamResponse({
+      status: 500,
+      contentLength: "100",
+      errorBody: graphErrorBody("internalError", "Whoops."),
+    });
+    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(res);
+    const err = await captureThrow(() =>
+      MicrosoftGraphService.downloadWorkbook("token-x", "01ABC", fetchMock)
+    );
+    expect((err as MicrosoftGraphError).message).toBe(
+      "Microsoft Graph download failed (500)"
+    );
+    expectNoLeakedBody(err);
   });
 });

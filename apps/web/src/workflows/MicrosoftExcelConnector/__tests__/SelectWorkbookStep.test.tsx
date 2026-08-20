@@ -74,4 +74,47 @@ describe("SelectWorkbookStep", () => {
     const alert = screen.getByRole("alert");
     expect(alert.textContent ?? "").toMatch(/workbook fetch failed/i);
   });
+
+  it("surfaces the no-OneDrive remedy and its code in the alert", async () => {
+    render(
+      <SelectWorkbookStep
+        {...makeProps({
+          serverError: {
+            message:
+              "This Microsoft account has no OneDrive. Reconnect with a " +
+              "personal Microsoft account, or a work account whose tenant " +
+              "has OneDrive or SharePoint enabled.",
+            code: "MICROSOFT_EXCEL_NO_ONEDRIVE",
+          },
+        })}
+      />
+    );
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent ?? "").toMatch(/no OneDrive/i);
+    expect(alert.textContent ?? "").toMatch(/reconnect/i);
+    expect(alert.textContent ?? "").toContain("MICROSOFT_EXCEL_NO_ONEDRIVE");
+  });
+
+  it("stops claiming 'no workbooks found' once a search has failed", async () => {
+    // The dropdown cannot assert the drive is empty when the lookup itself
+    // errored — that sentence sent users hunting for the wrong problem.
+    const searchFn = jest.fn(async () => []);
+    render(
+      <SelectWorkbookStep
+        {...makeProps({
+          searchFn,
+          serverError: {
+            message: "This Microsoft account has no OneDrive.",
+            code: "MICROSOFT_EXCEL_NO_ONEDRIVE",
+          },
+        })}
+      />
+    );
+    const combobox = await screen.findByRole("combobox");
+    await userEvent.click(combobox);
+    expect(
+      await screen.findByText(/workbook search failed/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/no workbooks found/i)).not.toBeInTheDocument();
+  });
 });

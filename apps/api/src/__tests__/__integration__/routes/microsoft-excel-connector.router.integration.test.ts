@@ -126,7 +126,7 @@ const originalGetOrRefresh = MicrosoftAccessTokenCacheService.getOrRefresh.bind(
 MicrosoftAccessTokenCacheService.getOrRefresh =
   getOrRefreshMock as unknown as typeof MicrosoftAccessTokenCacheService.getOrRefresh;
 
-const { MicrosoftGraphService } =
+const { MicrosoftGraphService, MicrosoftGraphError } =
   await import("../../../services/microsoft-graph.service.js");
 const searchWorkbooksMock = jest.fn<
   (
@@ -698,6 +698,106 @@ describe("Microsoft Excel Connector Router — GET /workbooks", () => {
     });
     expect(searchWorkbooksMock).toHaveBeenCalledWith("access-token-x", "Q3");
   });
+
+  it("returns 409 MICROSOFT_EXCEL_NO_ONEDRIVE when the account has no drive", async () => {
+    const { organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const definitionId = await insertMicrosoftExcelDefinition(
+      db as ReturnType<typeof drizzle>
+    );
+    const id = await insertMicrosoftExcelInstance(
+      db as ReturnType<typeof drizzle>,
+      organizationId,
+      definitionId,
+      "guest@contoso.com",
+      "tenant-A"
+    );
+
+    searchWorkbooksMock.mockRejectedValueOnce(
+      new MicrosoftGraphError(
+        "no_drive",
+        "This Microsoft account has no OneDrive. Reconnect with a personal " +
+          "Microsoft account, or a work account whose tenant has OneDrive or " +
+          "SharePoint enabled."
+      )
+    );
+
+    const res = await request(app)
+      .get(
+        `/api/connectors/microsoft-excel/workbooks?connectorInstanceId=${id}`
+      )
+      .set("Authorization", "Bearer test-token");
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe(ApiCode.MICROSOFT_EXCEL_NO_ONEDRIVE);
+    expect(res.body.message).toContain("no OneDrive");
+    expect(res.body.message).toContain("Reconnect");
+  });
+
+  it("still returns 502 MICROSOFT_EXCEL_LIST_FAILED for an unrecognized Graph failure", async () => {
+    const { organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const definitionId = await insertMicrosoftExcelDefinition(
+      db as ReturnType<typeof drizzle>
+    );
+    const id = await insertMicrosoftExcelInstance(
+      db as ReturnType<typeof drizzle>,
+      organizationId,
+      definitionId,
+      "alice@contoso.com",
+      "tenant-A"
+    );
+
+    searchWorkbooksMock.mockRejectedValueOnce(
+      new MicrosoftGraphError(
+        "search_failed",
+        "Microsoft Graph children failed (500)"
+      )
+    );
+
+    const res = await request(app)
+      .get(
+        `/api/connectors/microsoft-excel/workbooks?connectorInstanceId=${id}`
+      )
+      .set("Authorization", "Bearer test-token");
+    expect(res.status).toBe(502);
+    expect(res.body.code).toBe(ApiCode.MICROSOFT_EXCEL_LIST_FAILED);
+  });
+
+  it("leaks no Graph request id in either failure response", async () => {
+    const { organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const definitionId = await insertMicrosoftExcelDefinition(
+      db as ReturnType<typeof drizzle>
+    );
+    const id = await insertMicrosoftExcelInstance(
+      db as ReturnType<typeof drizzle>,
+      organizationId,
+      definitionId,
+      "alice@contoso.com",
+      "tenant-A"
+    );
+
+    searchWorkbooksMock.mockRejectedValueOnce(
+      new MicrosoftGraphError(
+        "no_drive",
+        "This Microsoft account has no OneDrive."
+      )
+    );
+
+    const res = await request(app)
+      .get(
+        `/api/connectors/microsoft-excel/workbooks?connectorInstanceId=${id}`
+      )
+      .set("Authorization", "Bearer test-token");
+    expect(JSON.stringify(res.body)).not.toContain("request-id");
+    expect(JSON.stringify(res.body)).not.toContain("innerError");
+  });
 });
 
 // ── POST /instances/:id/select-workbook + GET /sheet-slice ───────────
@@ -775,6 +875,41 @@ describe("Microsoft Excel Connector Router — POST /instances/:id/select-workbo
     expect(res.body.code).toBe(ApiCode.MICROSOFT_EXCEL_FILE_TOO_LARGE);
     expect(res.body.details?.sizeBytes).toBe(600 * 1024 * 1024);
     expect(typeof res.body.details?.capBytes).toBe("number");
+    expect(downloadWorkbookMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 MICROSOFT_EXCEL_NO_ONEDRIVE when the head reveals no drive", async () => {
+    const { organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const definitionId = await insertMicrosoftExcelDefinition(
+      db as ReturnType<typeof drizzle>
+    );
+    const id = await insertMicrosoftExcelInstance(
+      db as ReturnType<typeof drizzle>,
+      organizationId,
+      definitionId,
+      "guest@contoso.com",
+      "tenant-A"
+    );
+
+    headWorkbookMock.mockRejectedValueOnce(
+      new MicrosoftGraphError(
+        "no_drive",
+        "This Microsoft account has no OneDrive. Reconnect with a personal " +
+          "Microsoft account, or a work account whose tenant has OneDrive or " +
+          "SharePoint enabled."
+      )
+    );
+
+    const res = await request(app)
+      .post(`/api/connectors/microsoft-excel/instances/${id}/select-workbook`)
+      .set("Authorization", "Bearer test-token")
+      .send({ driveItemId: "01ABC" });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe(ApiCode.MICROSOFT_EXCEL_NO_ONEDRIVE);
+    expect(res.body.message).toContain("no OneDrive");
     expect(downloadWorkbookMock).not.toHaveBeenCalled();
   });
 

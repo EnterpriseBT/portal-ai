@@ -348,6 +348,55 @@ describe("MultiAsyncSearchableSelect", () => {
     // Input must not be reset by MUI's internal "reset" event when options load
     expect(input).toHaveValue("ban");
   });
+
+  describe("search failure", () => {
+    async function renderAndFailSearch(onSearchError: (e: unknown) => void) {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const boom = new Error("no drive");
+      let callCount = 0;
+      const onSearch = jest
+        .fn<() => Promise<SelectOption[]>>()
+        .mockImplementation(async () => {
+          callCount++;
+          if (callCount === 1) return [{ value: "banana", label: "Banana" }];
+          throw boom;
+        });
+
+      await act(async () => {
+        render(
+          <MultiAsyncSearchableSelect
+            label="Fruits"
+            value={[]}
+            onChange={() => {}}
+            onSearch={onSearch}
+            debounceMs={300}
+            onSearchError={onSearchError}
+          />
+        );
+      });
+
+      const input = screen.getByRole("combobox");
+      await user.type(input, "b");
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      return { boom };
+    }
+
+    it("calls onSearchError once with the rejection", async () => {
+      const onSearchError = jest.fn();
+      const { boom } = await renderAndFailSearch(
+        onSearchError as (e: unknown) => void
+      );
+      expect(onSearchError).toHaveBeenCalledTimes(1);
+      expect(onSearchError).toHaveBeenCalledWith(boom);
+    });
+
+    it("clears stale options on rejection", async () => {
+      await renderAndFailSearch(jest.fn() as (e: unknown) => void);
+      expect(screen.queryByText("Banana")).not.toBeInTheDocument();
+    });
+  });
 });
 
 // ── MultiInfiniteScrollSelect ────────────────────────────────────────────────

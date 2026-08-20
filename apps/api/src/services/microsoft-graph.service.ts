@@ -2,8 +2,9 @@
  * Microsoft Graph client for the microsoft-excel connector.
  *
  * Three responsibilities, each independently unit-tested:
- *   - `searchWorkbooks` — `/me/drive/search(q='…')` (or `/me/drive/recent`
- *     when the query is empty), post-filtered to `.xlsx` mime+extension.
+ *   - `searchWorkbooks` — a recursive `/me/drive/items/{id}/children`
+ *     walk (see the method's own docs for why not `/search`),
+ *     post-filtered to `.xlsx` mime+extension.
  *   - `headWorkbook` — read `{ size, name }` BEFORE the download so we
  *     can refuse oversized files cheaply.
  *   - `downloadWorkbook` — stream `/me/drive/items/{id}/content`. If
@@ -20,6 +21,9 @@ import type { Readable } from "stream";
 import { Readable as NodeReadable } from "stream";
 
 import { environment } from "../environment.js";
+import { createLogger } from "../utils/logger.util.js";
+
+const logger = createLogger({ module: "microsoft-graph" });
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 const GRAPH_PAGE_SIZE = 200;
@@ -46,7 +50,16 @@ export type MicrosoftGraphErrorKind =
   | "search_failed"
   | "head_failed"
   | "download_failed"
-  | "file_too_large";
+  | "file_too_large"
+  /**
+   * The connected account has no OneDrive at all — its Entra tenant
+   * carries no SharePoint Online license, or the identity is a guest
+   * (`#EXT#`) with no drive provisioned in the host tenant. Every
+   * `/me/drive/*` call fails for such an account, so this is a
+   * precondition on the connection rather than an upstream fault, and
+   * the user can fix it by reconnecting a different account.
+   */
+  | "no_drive";
 
 export class MicrosoftGraphError extends Error {
   override readonly name = "MicrosoftGraphError" as const;
@@ -131,6 +144,143 @@ async function safeReadText(res: Response): Promise<string> {
   }
 }
 
+/**
+ * The single user-facing message for every `no_drive` throw, on all
+ * three endpoints. Defined once here — the router passes it through
+ * unchanged, so there is exactly one place to reword it.
+ */
+const NO_DRIVE_MESSAGE =
+  "This Microsoft account has no OneDrive. Reconnect with a personal " +
+  "Microsoft account, or a work account whose tenant has OneDrive or " +
+  "SharePoint enabled.";
+
+interface ParsedGraphError {
+  code: string | null;
+  message: string | null;
+  requestId: string | null;
+}
+
+const UNPARSED_GRAPH_ERROR: ParsedGraphError = {
+  code: null,
+  message: null,
+  requestId: null,
+};
+
+/**
+ * Parse Graph's error envelope — `{ error: { code, message, innerError:
+ * { request-id, … } } }` — out of a response body. Total: any body that
+ * isn't that shape (HTML from a proxy, an empty string, `{"error":"…"}`
+ * with a bare string) yields all-nulls rather than throwing, which is
+ * what makes the classification below fail open.
+ */
+function parseGraphError(body: string): ParsedGraphError {
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return UNPARSED_GRAPH_ERROR;
+  }
+  const error = (json as { error?: unknown } | null)?.error;
+  if (!error || typeof error !== "object") return UNPARSED_GRAPH_ERROR;
+
+  const { code, message, innerError } = error as {
+    code?: unknown;
+    message?: unknown;
+    innerError?: unknown;
+  };
+  const inner =
+    innerError && typeof innerError === "object"
+      ? (innerError as Record<string, unknown>)
+      : undefined;
+  const requestId = inner?.["request-id"] ?? inner?.["client-request-id"];
+
+  return {
+    code: typeof code === "string" ? code : null,
+    message: typeof message === "string" ? message : null,
+    requestId: typeof requestId === "string" ? requestId : null,
+  };
+}
+
+/**
+ * Does this failure mean "the account has no drive", as opposed to
+ * "that item is gone" or "Graph is unwell"?
+ *
+ * Keyed on `error.code` first — a vendor's prose can be reworded, and a
+ * message-only match would silently regress. The license string only
+ * refines the 400 rule; it is never a key on its own.
+ *
+ * `atDriveRoot` gates the 404/403 rules and MUST be false for
+ * item-scoped requests: at `/me/drive/items/{id}` a 404 means the
+ * workbook was deleted and a 403 means that one item is unreadable.
+ * Calling either "you have no OneDrive" would be a worse lie than the
+ * generic upstream error it replaces. Only the drive-root probe can
+ * tell the two apart.
+ *
+ * Anything unrecognized returns false, so the caller keeps its existing
+ * error kind — failing open to today's behavior. The cost of a false
+ * positive is a user re-authorizing a perfectly good account on our
+ * bad advice; the cost of a false negative is the status quo.
+ */
+function isNoDriveError(
+  status: number,
+  parsed: ParsedGraphError,
+  atDriveRoot: boolean
+): boolean {
+  if (
+    status === 400 &&
+    parsed.code === "BadRequest" &&
+    /SPO license/i.test(parsed.message ?? "")
+  ) {
+    return true;
+  }
+  if (!atDriveRoot) return false;
+  if (
+    status === 404 &&
+    (parsed.code === "ResourceNotFound" || parsed.code === "itemNotFound")
+  ) {
+    return true;
+  }
+  return status === 403 && parsed.code === "accessDenied";
+}
+
+/**
+ * Build the error for a non-ok Graph response: classify it, log the
+ * upstream detail, and return either a `no_drive` or the caller's own
+ * kind.
+ *
+ * The raw body and Graph's `request-id` are logged here and deliberately
+ * kept OUT of the thrown message — those ids are useless to the user
+ * they'd otherwise be shown to, and necessary to the operator reading
+ * the logs.
+ */
+function graphFailure(
+  fallbackKind: "search_failed" | "head_failed" | "download_failed",
+  label: "children" | "head" | "download",
+  status: number,
+  body: string,
+  atDriveRoot: boolean
+): MicrosoftGraphError {
+  const parsed = parseGraphError(body);
+  const noDrive = isNoDriveError(status, parsed, atDriveRoot);
+  logger.warn(
+    {
+      status,
+      endpoint: label,
+      graphCode: parsed.code,
+      requestId: parsed.requestId,
+      kind: noDrive ? "no_drive" : fallbackKind,
+      body,
+    },
+    "Microsoft Graph request failed"
+  );
+  return noDrive
+    ? new MicrosoftGraphError("no_drive", NO_DRIVE_MESSAGE)
+    : new MicrosoftGraphError(
+        fallbackKind,
+        `Microsoft Graph ${label} failed (${status})`
+      );
+}
+
 export class MicrosoftGraphService {
   /**
    * List the user's `.xlsx` workbooks, optionally filtered by a
@@ -188,9 +338,15 @@ export class MicrosoftGraphService {
         });
         if (!res.ok) {
           const body = await safeReadText(res);
-          throw new MicrosoftGraphError(
+          // Only the root probe can distinguish "no drive" from "that
+          // folder is gone" — a descended folder's 404 proves the drive
+          // exists.
+          throw graphFailure(
             "search_failed",
-            `Microsoft Graph children failed (${res.status}): ${body}`
+            "children",
+            res.status,
+            body,
+            folderId === "root" && depth === 0
           );
         }
         const json = (await res.json()) as GraphChildrenResponse;
@@ -231,10 +387,7 @@ export class MicrosoftGraphService {
     });
     if (!res.ok) {
       const body = await safeReadText(res);
-      throw new MicrosoftGraphError(
-        "head_failed",
-        `Microsoft Graph head failed (${res.status}): ${body}`
-      );
+      throw graphFailure("head_failed", "head", res.status, body, false);
     }
     const json = (await res.json()) as { size?: number; name?: string };
     return {
@@ -268,9 +421,12 @@ export class MicrosoftGraphService {
       } catch {
         /* ignore */
       }
-      throw new MicrosoftGraphError(
+      throw graphFailure(
         "download_failed",
-        `Microsoft Graph download failed (${res.status}): ${body}`
+        "download",
+        res.status,
+        body,
+        false
       );
     }
 
