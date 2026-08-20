@@ -46,7 +46,7 @@ The `§Slice N` / `Phase A–E` coordinates are dropped wholesale — they addre
 
 **Prevention:** a root `scripts/check-doc-pointers.mjs` + `npm run lint:doc-pointers`, wired as a step in `unit-test.yml`. It greps `apps/*/src` and `packages/*/src` for `docs/…​.md` pointers and exits non-zero listing any that don't resolve, so the *deleting* commit is what fails next time. Brace forms (`phase-{B,C}`) are expanded before the existence test.
 
-**Ordering dependency (deliberate, per #417's scope):** the 3 Microsoft pointers stay out of scope here — they're fixed on `fix/microsoft-excel-no-onedrive` (#416). The new check therefore fails on this branch until **#416 merges and this branch rebases onto `main`**. #416 must merge first.
+**Ordering dependency (resolved):** the 3 Microsoft pointers were out of scope here — #416 owned them. The check failed on this branch until #416 merged; after rebasing onto `main` (now `b25d966d`) it exits 0 across all 1698 source files.
 
 ## Plan — 2 slices
 
@@ -63,11 +63,11 @@ The `§Slice N` / `Phase A–E` coordinates are dropped wholesale — they addre
 Comment-only, so there is no runtime behavior to exercise; the walk verifies the gate and that the docblocks still read correctly.
 
 1. `npm run lint:doc-pointers` — exits **1**, listing exactly the 3 Microsoft sites and nothing else. Confirms the 43 are gone and the check actually detects a dead pointer.
-2. `git stash` the branch's changes to a scratch copy, or check out `main`, and run it there — exits **1** with all 46. Confirms the check isn't vacuously passing.
+2. Confirm the check isn't vacuously passing: `git stash push -u -m scratch-417` (then `git stash apply <sha>` to restore — never bare `git stash pop`, the stack is shared across worktrees), or point it at a scratch worktree of the pre-fix commit. It must exit **1** and list the sites.
 3. `npm run format:check && npm run lint && npm run type-check && npm run test:unit` — all green.
 4. Open three of the reworded docblocks — `apps/api/src/db/schema/connector-entities.table.ts`, `apps/api/src/services/sync-eligibility.util.ts`, `apps/api/src/adapters/adapter.interface.ts` — and read each top to bottom. Each should state its invariant and *why* without a dangling reference or an orphaned `C2` / `§Slice` coordinate.
 5. `CLAUDE.md` → "Module Pattern → Reference Implementation" names `modules/RegionEditor/` with no dead `docs/` link.
-6. After #416 merges: `git pull --ff-only origin main && git rebase main`, then step 1 again — now exits **0**. This is the merge gate for this PR.
+6. Done: rebased onto `main` after #416 merged, and step 1 exits **0**. Also confirm no `MICROSOFT_EXCEL_CONNECTOR` pointer survived the replay in `environment.ts`, `microsoft-excel-connector.router.ts`, or `microsoft-auth.service.ts`.
 
 ## Out of scope
 
