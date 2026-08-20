@@ -8,8 +8,6 @@
  * (`connector_sync`), the BullMQ metadata, and the response shape are
  * uniform across every sync-capable connector — gsheets today, plus
  * future Microsoft Excel, SQL/database, and others.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 5.
  */
 
 import { and, eq, inArray } from "drizzle-orm";

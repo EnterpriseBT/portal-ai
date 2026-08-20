@@ -16,9 +16,6 @@ import { connectorInstances } from "./connector-instances.table.js";
  * `revisionTag` is used by cloud-spreadsheet connectors (Google Sheets,
  * Excel Online) to pin a plan to a remote revision identifier; null for
  * file-upload / snapshot consumers.
- *
- * See `docs/SPREADSHEET_PARSING.backend.spec.md` §"New table:
- * connector_instance_layout_plans".
  */
 export const connectorInstanceLayoutPlans = pgTable(
   "connector_instance_layout_plans",

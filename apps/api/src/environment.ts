@@ -71,7 +71,7 @@ export const environment = {
   TOOLPACK_DISABLE_SSRF_FILTER:
     process.env.TOOLPACK_DISABLE_SSRF_FILTER === "true",
   TOOLPACK_DISABLE_SIGNING: process.env.TOOLPACK_DISABLE_SIGNING === "true",
-  // ── Google OAuth (Phase A: docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md)
+  // ── Google OAuth
   //    Per-env Google OAuth2 client used by the google-sheets connector.
   //    OAUTH_STATE_SECRET is a separate HMAC key used only to sign the
   //    short-lived `state` token that binds the OAuth callback to its
@@ -127,7 +127,6 @@ export const environment = {
     10
   ),
   // ── S3 streaming upload pipeline
-  //    (see docs/LARGE_WORKBOOK_STREAMING.plan.md §Phase 0).
   UPLOAD_S3_BUCKET: process.env.UPLOAD_S3_BUCKET || "",
   UPLOAD_S3_REGION: process.env.UPLOAD_S3_REGION || "us-east-1",
   UPLOAD_S3_PREFIX: process.env.UPLOAD_S3_PREFIX || "uploads",

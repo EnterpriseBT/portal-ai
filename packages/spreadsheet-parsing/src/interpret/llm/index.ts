@@ -4,8 +4,7 @@
  *
  * The parser module itself never calls a model, never touches the network,
  * and never imports an AI SDK. Consumers own model selection, API keys,
- * retries, timeouts, and logging. See Phase 4 of
- * `docs/SPREADSHEET_PARSING.backend.plan.md`.
+ * retries, timeouts, and logging.
  */
 
 export {

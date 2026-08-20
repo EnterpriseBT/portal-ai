@@ -281,8 +281,7 @@ export class EntityRecordsRepository extends Repository<
    * as the "X removed" half of the sync result.
    *
    * Uses `entity_records_entity_synced_at_idx (connector_entity_id,
-   * synced_at)` for the index scan. See
-   * `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 1.
+   * synced_at)` for the index scan.
    */
   async softDeleteBeforeWatermark(
     connectorEntityId: string,

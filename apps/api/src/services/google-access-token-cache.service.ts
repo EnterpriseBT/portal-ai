@@ -13,8 +13,6 @@
  * On refresh failure (`invalid_grant` etc.), marks the instance
  * `status="error"` with `lastErrorMessage` so Phase E's reconnect flow
  * can surface a Reconnect button.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-B.plan.md` §Slice 3.
  */
 
 import { DbService } from "./db.service.js";

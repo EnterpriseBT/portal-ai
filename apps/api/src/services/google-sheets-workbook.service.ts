@@ -9,8 +9,6 @@
  * `effectiveFormat.numberFormat.type` is `DATE` or `DATE_TIME` become
  * JS `Date` objects rather than raw numbers, so a date imported from a
  * Sheets tab matches the same date imported from an uploaded XLSX.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-B.plan.md` §Slice 6.
  */
 
 import type {

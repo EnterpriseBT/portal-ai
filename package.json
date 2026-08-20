@@ -8,6 +8,7 @@
 		"storybook": "turbo run storybook",
 		"lint": "turbo run lint",
 		"lint:fix": "turbo run lint:fix",
+		"lint:doc-pointers": "node scripts/check-doc-pointers.mjs",
 		"format": "turbo run format",
 		"format:check": "turbo run format:check",
 		"type-check": "turbo run type-check",

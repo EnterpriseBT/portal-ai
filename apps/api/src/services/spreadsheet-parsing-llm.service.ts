@@ -7,8 +7,6 @@
  * hand them to `interpret()` via the parser's `ClassifierFn` /
  * `AxisNameRecommenderFn` DI slots. Swapping provider, tuning retries,
  * changing the logger, or switching model families is a one-file change here.
- *
- * See Phase 4 of `docs/SPREADSHEET_PARSING.backend.plan.md`.
  */
 
 import { generateObject as defaultGenerateObject } from "ai";

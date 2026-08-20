@@ -1221,8 +1221,8 @@ describe("Connector Instance Layout Plans Router", () => {
 
     it("rejects plans where two regions share a targetEntityDefinitionId (C1)", async () => {
       // Historical semantic: regions sharing a target merged into a single
-      // entity. Under C1 (see docs/REGION_CONFIG.c1_one_region_per_entity.spec.md)
-      // each target must map to exactly one region — so the commit service
+      // entity. Under C1 — one region per target entity — each target must
+      // map to exactly one region, so the commit service
       // rejects the plan up-front with LAYOUT_PLAN_DUPLICATE_ENTITY before
       // touching the DB.
       const colEmailId = await seedColumnDefinition(

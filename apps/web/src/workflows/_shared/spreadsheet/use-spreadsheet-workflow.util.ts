@@ -21,8 +21,6 @@
  * connectors do not have workbooks, regions, or LayoutPlans. They get
  * their own peer hook (e.g. `_shared/sql/use-sql-connector-workflow.util.ts`)
  * with a different state shape; do not bend this hook to fit them.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-C.plan.md` §Slice 7.
  */
 
 import { useCallback, useRef, useState } from "react";

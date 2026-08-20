@@ -64,8 +64,6 @@ function extractRecordCounts(
  * `syncEligible` is *not* an argument — the caller has it from the
  * connector instance's GET response and passes it directly to the
  * trigger UI. The hook owns only the dynamic sync state.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 6.
  */
 export const useConnectorInstanceSync = (
   connectorInstanceId: string

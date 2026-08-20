@@ -6,8 +6,6 @@
  *     `signState` for the embedded `state`).
  *   - `exchangeCode` (POST to oauth2.googleapis.com/token).
  *   - `fetchUserEmail` (GET userinfo with the access token).
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md` §Slices 3-5.
  */
 
 import { environment } from "../environment.js";
