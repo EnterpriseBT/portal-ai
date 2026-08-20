@@ -382,6 +382,8 @@ export class FieldMappingsRepository extends Repository<
   ): Promise<number> {
     if (connectorEntityIds.length === 0) return 0;
     const now = Date.now();
+    // #423: count from the driver — `RETURNING` here streamed every
+    // matched row (with its payload) into Node just to call `.length`.
     const result = await (client as typeof db)
       .update(this.table)
       .set({ deleted: now, deletedBy } as any)
@@ -390,9 +392,8 @@ export class FieldMappingsRepository extends Repository<
           inArray(fieldMappings.connectorEntityId, connectorEntityIds),
           this.notDeleted()
         )
-      )
-      .returning();
-    return result.length;
+      );
+    return result.count;
   }
 }
 

@@ -4,6 +4,14 @@
  * Phase D's `softDeleteBeforeWatermark` is the load-bearing primitive for
  * the disappeared-records reconciliation; the watermark semantics demand
  * real SQL behavior, not a mocked repository.
+ *
+ * `softDeleteByConnectorEntityId(s)` are covered here for the same reason
+ * plus one more (#423): they must report the affected-row count WITHOUT
+ * `RETURNING *`. Streaming every matched row — each carrying its `data`
+ * JSONB — back into Node to compute `result.length` OOM-killed the API
+ * task on a 200K-record entity. Only real SQL can prove the driver's
+ * affected-row count is what these methods return, so the count
+ * assertions below are what pin that behavior.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
@@ -291,6 +299,125 @@ describe("EntityRecordsRepository Integration Tests", () => {
         db
       );
       expect(affected).toHaveLength(0);
+    });
+  });
+
+  // ── softDeleteByConnectorEntityIds (#423) ──────────────────────────
+
+  describe("softDeleteByConnectorEntityIds", () => {
+    it("reports the affected-row count and soft-deletes every matched row", async () => {
+      const ids = await Promise.all(
+        Array.from({ length: 5 }, async () => {
+          const r = makeRecord(entityAId);
+          await insertRecord(r);
+          return r.id!;
+        })
+      );
+
+      const affected = await repo.softDeleteByConnectorEntityIds(
+        [entityAId],
+        "user-1",
+        db
+      );
+
+      // A number, not a row array — the whole point of the fix.
+      expect(affected).toBe(5);
+      for (const id of ids) {
+        const row = await readRow(id);
+        expect(row?.deleted).not.toBeNull();
+        expect(row?.deletedBy).toBe("user-1");
+      }
+    });
+
+    it("spans every supplied entity and counts them together", async () => {
+      for (const _ of [0, 1, 2]) await insertRecord(makeRecord(entityAId));
+      for (const _ of [0, 1]) await insertRecord(makeRecord(entityBId));
+
+      const affected = await repo.softDeleteByConnectorEntityIds(
+        [entityAId, entityBId],
+        "user-1",
+        db
+      );
+      expect(affected).toBe(5);
+    });
+
+    it("only touches the supplied entity, not siblings", async () => {
+      const target = makeRecord(entityAId);
+      const sibling = makeRecord(entityBId);
+      await insertRecord(target);
+      await insertRecord(sibling);
+
+      const affected = await repo.softDeleteByConnectorEntityIds(
+        [entityAId],
+        "user-1",
+        db
+      );
+      expect(affected).toBe(1);
+      expect((await readRow(target.id!))?.deleted).not.toBeNull();
+      expect((await readRow(sibling.id!))?.deleted).toBeNull();
+    });
+
+    it("excludes already-deleted rows — a second call reports 0", async () => {
+      for (const _ of [0, 1, 2]) await insertRecord(makeRecord(entityAId));
+
+      expect(
+        await repo.softDeleteByConnectorEntityIds([entityAId], "user-1", db)
+      ).toBe(3);
+      expect(
+        await repo.softDeleteByConnectorEntityIds([entityAId], "user-2", db)
+      ).toBe(0);
+    });
+
+    it("returns 0 when the entity holds no live rows", async () => {
+      expect(
+        await repo.softDeleteByConnectorEntityIds([entityAId], "user-1", db)
+      ).toBe(0);
+    });
+
+    it("returns 0 for an empty id list without issuing a statement", async () => {
+      await insertRecord(makeRecord(entityAId));
+      expect(await repo.softDeleteByConnectorEntityIds([], "user-1", db)).toBe(
+        0
+      );
+    });
+  });
+
+  // ── softDeleteByConnectorEntityId — singular variant (#423) ────────
+
+  describe("softDeleteByConnectorEntityId", () => {
+    it("reports the affected-row count and soft-deletes every matched row", async () => {
+      const ids = await Promise.all(
+        Array.from({ length: 4 }, async () => {
+          const r = makeRecord(entityAId);
+          await insertRecord(r);
+          return r.id!;
+        })
+      );
+
+      const affected = await repo.softDeleteByConnectorEntityId(
+        entityAId,
+        "user-1",
+        db
+      );
+
+      expect(affected).toBe(4);
+      for (const id of ids) {
+        expect((await readRow(id))?.deleted).not.toBeNull();
+      }
+    });
+
+    it("only touches the supplied entity, and is idempotent", async () => {
+      await insertRecord(makeRecord(entityAId));
+      const sibling = makeRecord(entityBId);
+      await insertRecord(sibling);
+
+      expect(
+        await repo.softDeleteByConnectorEntityId(entityAId, "user-1", db)
+      ).toBe(1);
+      expect(
+        await repo.softDeleteByConnectorEntityId(entityAId, "user-1", db)
+      ).toBe(0);
+      expect((await readRow(sibling.id!))?.deleted).toBeNull();
     });
   });
 });
