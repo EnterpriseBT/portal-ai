@@ -12,7 +12,8 @@
  *                                                 wide table if absent
  *   - `reconcileEntity(entityId, client?)`     — diff + apply for one entity
  *   - `reconcileAll()`                         — boot drift check
- *   - `dropTable(entityId, client?)`           — test cleanup helper
+ *   - `dropTable(entityId, client?)`           — drop the table + its
+ *                                                 catalog rows (delete paths)
  *
  * Phase 1: detect-and-refuse on type changes; retire columns are NOT
  * physically dropped (`retired_at` is set, the Postgres column stays
@@ -279,7 +280,12 @@ export class WideTableReconcilerService {
 
   /**
    * Hard-drop the `er__<entityId>` table and its metadata rows.
-   * Phase-1 caller: tests only.
+   *
+   * Callers: organization delete, org reset, and connector-instance delete
+   * (#423). The wide table is created by this reconciler rather than by a
+   * migration, so leaving it behind orphans it the moment its entity row
+   * goes — and soft-deleting the transactional rows cannot reclaim it,
+   * because the `ON DELETE CASCADE` only fires on a hard delete.
    */
   async dropTable(
     connectorEntityId: string,

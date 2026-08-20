@@ -11,12 +11,13 @@ import crypto from "crypto";
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq as eqRaw } from "drizzle-orm";
+import { eq as eqRaw, sql as sqlRaw } from "drizzle-orm";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import { environment } from "../../../environment.js";
+import { wideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
 import {
   generateId,
   createUser,
@@ -932,6 +933,62 @@ describe("Connector Instance Router", () => {
         (ci: { name: string }) => ci.name
       );
       expect(names).not.toContain("Soon Gone");
+    });
+
+    it("drops each entity's er__ wide table and its catalog rows (#423)", async () => {
+      const { organizationId: orgId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const seeded = await seedInstanceWithRelatedData(orgId, userId);
+
+      // The wide table is created by the reconciler, never by a migration.
+      await wideTableReconcilerService.ensureTable(seeded.entity.id, db);
+      const wideTable = `er__${seeded.entity.id}`;
+
+      const tableExists = async (): Promise<boolean> => {
+        const rows = (await (db as ReturnType<typeof drizzle>).execute(
+          sqlRaw`SELECT to_regclass(${wideTable}) IS NOT NULL AS present`
+        )) as unknown as Array<{ present: boolean }>;
+        return rows[0]?.present === true;
+      };
+
+      expect(await tableExists()).toBe(true);
+
+      const res = await request(app)
+        .delete(`/api/connector-instances/${seeded.instance.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.id).toBe(seeded.instance.id);
+
+      // The physical projection is gone, not merely orphaned.
+      expect(await tableExists()).toBe(false);
+
+      // …along with the entity's metadata catalog rows.
+      const catalogRows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.wideTableColumns)
+        .where(
+          eqRaw(schema.wideTableColumns.connectorEntityId, seeded.entity.id)
+        );
+      expect(catalogRows).toHaveLength(0);
+    });
+
+    it("still succeeds for an entity that never had a wide table (#423)", async () => {
+      const { organizationId: orgId, userId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const seeded = await seedInstanceWithRelatedData(orgId, userId);
+
+      // No ensureTable call — `dropTable` must be a no-op, not a failure.
+      const res = await request(app)
+        .delete(`/api/connector-instances/${seeded.instance.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
     });
   });
 
