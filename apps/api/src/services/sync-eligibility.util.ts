@@ -11,8 +11,8 @@
  * opted into the trade-off when committing the plan.
  *
  * Prior versions of this helper returned `ok: false` for `rowPosition` and
- * the sync route 409'd. The hard gate moved to an advisory in Phase B of
- * `docs/RECORD_IDENTITY_REVIEW.spec.md`.
+ * the sync route 409'd; that hard gate was deliberately replaced by the
+ * advisory above.
  */
 
 import type { LayoutPlan } from "@portalai/core/contracts";

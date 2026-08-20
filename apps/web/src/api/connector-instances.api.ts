@@ -188,8 +188,6 @@ export const connectorInstances = {
    * On 409 `SYNC_ALREADY_RUNNING`, the in-flight jobId is returned in
    * `error.details.jobId` — UIs should latch onto that stream rather
    * than show an error to the user.
-   *
-   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 6.
    */
   sync: (id: string) =>
     useAuthMutation<ConnectorInstanceSyncResponsePayload, void>({

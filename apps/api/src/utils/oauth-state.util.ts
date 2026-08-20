@@ -3,8 +3,6 @@
  *
  * Binds the consent redirect to its requester so a redirect can't be
  * replayed by another user or org. Format: `<base64url(payload)>.<base64url(hmac)>`.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md` §Slice 2.
  */
 
 import crypto from "crypto";

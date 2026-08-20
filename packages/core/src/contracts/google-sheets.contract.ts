@@ -12,8 +12,6 @@ import {
  * `parseSession` response (sheets + optional sliced flag), and the
  * sheet-slice response is byte-identical. Aliased rather than redefined
  * so RegionEditor consumes the same shape regardless of source.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-{B,C}.plan.md`.
  */
 
 // ── POST /api/connectors/google-sheets/authorize ─────────────────────

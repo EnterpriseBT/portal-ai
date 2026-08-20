@@ -9,8 +9,7 @@
  * and dispatches the eligibility gate + sync pipeline here. The only
  * gsheets-specific blocking case is missing layout plan; `rowPosition`
  * regions sync (with reap-and-recreate semantics) and surface as
- * `identityWarnings` for the UI banner. See
- * `docs/RECORD_IDENTITY_REVIEW.spec.md` for the advisory model.
+ * `identityWarnings` for the UI banner.
  */
 
 import {

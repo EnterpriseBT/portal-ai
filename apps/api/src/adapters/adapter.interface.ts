@@ -148,8 +148,6 @@ export interface ConnectorAdapter {
    * only need the credentials may ignore it; the REST API adapter
    * reads `instance.config.baseUrl` since its non-OAuth auth modes
    * carry no account identity.
-   *
-   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md` §Slice 9.
    */
   toPublicAccountInfo?(
     credentials: Record<string, unknown> | null,
@@ -171,8 +169,6 @@ export interface ConnectorAdapter {
    * `progress?: (percent) => void` is the BullMQ processor's
    * `bullJob.updateProgress` callback — fans out to SSE consumers.
    * Optional so unit tests can call `syncInstance` directly.
-   *
-   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 4.
    */
   syncInstance?(
     instance: ConnectorInstance,

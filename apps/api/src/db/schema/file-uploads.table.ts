@@ -14,8 +14,6 @@ import { organizations } from "./organizations.table.js";
  *               row is linked to an `uploadSessionId`
  *   committed — /layout-plans/commit succeeded; S3 object deleted
  *   failed    — upload abandoned or parse/commit errored; swept later
- *
- * See `docs/LARGE_WORKBOOK_STREAMING.plan.md` §Phase 0 for the full design.
  */
 export const fileUploads = pgTable(
   "file_uploads",

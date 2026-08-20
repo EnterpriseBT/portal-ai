@@ -14,8 +14,6 @@
  *     pipeline (see workbook-cache.service.ts and
  *     docs/LARGE_FILE_PARSE_STREAMING.plan.md). Bounded memory regardless
  *     of total workbook size.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-B.plan.md` §Slice 7.
  */
 
 import type {

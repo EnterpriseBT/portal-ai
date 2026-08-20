@@ -16,8 +16,6 @@ import {
  * fields the detail view renders generically. Primitive-only values in
  * `metadata` so the UI can humanize keys + stringify values without
  * recursion.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md` §Slice 9.
  */
 export const PublicAccountInfoSchema = z.object({
   identity: z.string().nullable(),
@@ -60,8 +58,7 @@ export const ConnectorInstanceApiSchema = ConnectorInstanceSchema.omit({
    * correctly but produce reap-and-recreate deltas on structural sheet
    * changes, so the UI renders an advisory tooltip on the Sync button.
    * Empty array when no advisories apply; `undefined` on list endpoints
-   * (skipped to avoid n+1 plan lookups). See
-   * `docs/RECORD_IDENTITY_REVIEW.spec.md`.
+   * (skipped to avoid n+1 plan lookups).
    */
   identityWarnings: z.array(z.object({ regionId: z.string() })).optional(),
 });

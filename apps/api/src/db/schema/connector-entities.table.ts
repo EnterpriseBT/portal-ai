@@ -12,7 +12,7 @@ import { connectorInstances } from "./connector-instances.table.js";
  * C2: `key` is unique per organization (not per connector instance), so
  * `FieldMapping.refEntityKey` resolves to exactly one entity org-wide.
  * The partial index lets a soft-deleted key be reused by a different
- * connector. See `docs/REGION_CONFIG.c2_org_unique_entity_key.spec.md`.
+ * connector.
  */
 export const connectorEntities = pgTable(
   "connector_entities",

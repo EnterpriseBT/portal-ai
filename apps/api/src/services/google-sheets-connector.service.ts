@@ -5,8 +5,6 @@
  * - Exchanges the auth code for a refresh token.
  * - Fetches the authenticated user's email (used as the account identity).
  * - Find-or-update the per-(org, googleAccountEmail) ConnectorInstance.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md` §Slice 8.
  */
 
 import {
@@ -175,8 +173,6 @@ export class GoogleSheetsConnectorService {
    * inline-or-sliced preview shape the file-upload `parseSession`
    * returns so the RegionEditor (Phase C) treats both pipelines the
    * same.
-   *
-   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-B.plan.md` §Slice 7.
    */
   static async selectSheet(
     input: SelectSheetInput,
@@ -354,8 +350,6 @@ export class GoogleSheetsConnectorService {
    * caller-supplied id. Does **not** write to the workbook cache:
    * sync wants fresh Google data on every run, and the cache is
    * scoped to the interactive editor session.
-   *
-   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 3.
    */
   static async fetchWorkbookForSync(
     connectorInstanceId: string,
@@ -456,8 +450,6 @@ export class GoogleSheetsConnectorService {
    * Cell-rectangle endpoint backed by the chunked workbook cache. Same
    * contract as `FileUploadSessionService.sheetSlice` so the editor's
    * slice loader is pipeline-agnostic.
-   *
-   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-B.plan.md` §Slice 8.
    */
   static async sheetSlice(input: {
     connectorInstanceId: string;

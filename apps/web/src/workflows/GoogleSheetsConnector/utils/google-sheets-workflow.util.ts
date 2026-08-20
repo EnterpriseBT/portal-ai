@@ -11,8 +11,6 @@
  *   step 1 — Select sheet        (connectorInstanceId set, no workbook)
  *   step 2 — Draw regions        (core.phase === "draw")
  *   step 3 — Review              (core.phase === "review")
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-C.plan.md` §Slice 7.
  */
 
 import { useCallback, useState } from "react";
