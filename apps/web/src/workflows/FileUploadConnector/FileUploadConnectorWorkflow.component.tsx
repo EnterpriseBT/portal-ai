@@ -615,12 +615,10 @@ export const FileUploadConnectorWorkflow: React.FC<
   // The interpret endpoint returns column bindings keyed by columnDefinitionId
   // — opaque UUIDs. Fetch the org's ColumnDefinition catalog so the review and
   // region-editor panels can show the human label on each binding chip.
-  const columnDefinitionsQuery = sdk.columnDefinitions.list({
-    limit: 1000,
-    offset: 0,
-    sortBy: "label",
-    sortOrder: "asc",
-  });
+  // #414: `listAll` pages to exhaustion. `limit: 1000` was clamped to 100 by
+  // the pagination contract, so a binding whose definition sorted past the cap
+  // showed a bare UUID with no way for the user to recover it.
+  const columnDefinitionsQuery = sdk.columnDefinitions.listAll();
   const columnDefinitionsById = useMemo(() => {
     const map = new Map<
       string,

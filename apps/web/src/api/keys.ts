@@ -68,6 +68,8 @@ export const queryKeys = {
     root: ["columnDefinitions"] as const,
     list: (params?: ColumnDefinitionListRequestQuery) =>
       [...queryKeys.columnDefinitions.root, "list", params] as const,
+    /** #414: the whole catalog, paged to exhaustion — see `listAll`. */
+    listAll: () => [...queryKeys.columnDefinitions.root, "listAll"] as const,
     get: (id: string) =>
       [...queryKeys.columnDefinitions.root, "get", id] as const,
     impact: (id: string) =>

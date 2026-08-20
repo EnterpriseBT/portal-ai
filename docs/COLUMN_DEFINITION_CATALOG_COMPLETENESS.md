@@ -1,0 +1,63 @@
+# Column definition catalog completeness — Condensed design (#414)
+
+**Issue:** [EnterpriseBT/portal-ai#414](https://github.com/EnterpriseBT/portal-ai/issues/414) · Bug · **small / condensed** (discovery + spec + plan + smoke in one doc).
+
+**Why.** #316 added three system column definitions — `geometry`, `latitude`, `longitude` — but `seedSystemColumnDefinitions` runs only at org provisioning, and migration `0077` backfilled no rows. Every org that already existed kept its pre-#316 catalog: all four app-dev orgs hold 26 of 29 definitions, missing exactly those three, so nothing there can be bound to a geometry column and the whole geospatial feature is unreachable. Prod (one org, created 2026-08-18) and local are verified complete, which is what masked it. Two smaller defects ride along: the pickers order by `created asc`, so the trio sorts outside the default 20-row window and reads as absent even where it exists; and the frontend's hand-maintained column-type maps never gained a `geometry` entry, so a geometry column renders with a default chip and is offered a regex-validation and string-canonical-format form. Touches `apps/api` (migration, repository, JSDoc/OpenAPI) and `apps/web` (picker sort, label maps, type maps).
+
+## Current shape
+
+| Piece | Location | Note |
+|---|---|---|
+| `SYSTEM_COLUMN_DEFINITIONS` | `apps/api/src/services/seed.service.ts:34-332` | 29 entries; #316 geospatial block at `:297-331` |
+| `seedSystemColumnDefinitions` | `seed.service.ts:546-567` | JSDoc at `:542-545` claims deterministic v5 ids; `:554` calls `v4.generate()` |
+| Only non-destructive caller | `apps/api/src/services/application.service.ts:296-303` | Org creation. `ResetService` (`reset.service.ts:241-247`) is the only re-seed path and deletes first |
+| `upsertByKey` | `apps/api/src/db/repositories/column-definitions.repository.ts:68-94` | `set` clause (`:81-90`) omits `geoRole` and `system` |
+| Schema-only migration | `apps/api/drizzle/0077_add-geometry-column-type.sql` | Enum value + `geo_role` column, no rows |
+| Backfill precedent | `apps/api/drizzle/0066_add_org_tier.sql:1-17` | Idempotent `INSERT … ON CONFLICT DO NOTHING`, `gen_random_uuid()::text` ids, epoch-ms timestamps, `created_by = 'SYSTEM'` |
+| List search | `apps/api/src/routes/column-definition.router.ts:121-128` | Case-insensitive `ILIKE '%q%'` over `label` **and** `key`, applied before pagination |
+| Picker query | `apps/web/src/api/column-definitions.api.ts:92-141` | `{...defaultParams, search}` — no `limit`, so `limit: 20, sortBy: created` (`packages/core/src/contracts/pagination.contract.ts:6-18`) |
+| Pickers (6) | `BindingEditorPopover.component.tsx:289`, `InferredColumnsTable.component.tsx:153`, and the `columnDefinitionSearch` hooks in the GoogleSheets `:339` / MicrosoftExcel `:341` / FileUpload `:667` / RestApi `:332` workflows | All `AsyncSearchableSelect` with a text input |
+| Label maps | `GoogleSheetsConnectorWorkflow.component.tsx:296`, `MicrosoftExcelConnectorWorkflow.component.tsx:298`, `FileUploadConnectorWorkflow.component.tsx:619` | Ask `limit: 1000`, receive 100 (`pagination.contract.ts:14` clamps); no user typing to recover a miss |
+| Hand-maintained type maps | `ColumnDefinition.component.tsx:50-64`, `ColumnDefinitionDetail.view.tsx:53-67`, `column-definition-form.util.ts:62-142`, `EditColumnDefinitionDialog.component.tsx:47-59` | First three omit `geometry`; `getTypeConfig` (`:173-175`) falls through to `DEFAULT_TYPE_CONFIG` (`:144-148`) |
+
+## Decision — backfill by migration; keep the async-search pickers as they are
+
+**Backfill: a one-shot migration, not tooling.** A hand-written idempotent migration inserts the three rows for every existing org in the `0066` shape. `ON CONFLICT DO NOTHING` makes it a verified no-op on prod and local. A `portalai` re-seed subcommand was considered and rejected: additions to `SYSTEM_COLUMN_DEFINITIONS` are rare, shipping a backfill migration alongside one is understood to be part of adding it, and a command surface maintained for a once-a-year event isn't worth its upkeep. The migration duplicates three rows into SQL — the same shape that rotted in `0036` (a frozen 26-key list) — and that cost is accepted knowingly. What the migration can't do is tell the *next* author the requirement exists, so the rule is written onto `SYSTEM_COLUMN_DEFINITIONS` and into `CLAUDE.md`'s schema-workflow section.
+
+**Pickers: the 20-row window stays.** Server-side search already reaches every definition — `ILIKE` over both `label` and `key`, org-scoped, independent of pagination — and every picker has a text input wired to it. So the window is a browsing limit, not a reachability one, and the existing async-search pattern is the intended shape; the limit-less `search` template shared with `entity-tags.api.ts` and `connector-entities.api.ts` is endorsed, not a defect. Migrating to core's paged `InfiniteScrollSelect` was considered and rejected: it would buy browsing convenience at the price of a core-component change, since that component resolves its selected option from loaded pages only (`InfiniteScrollSelect.tsx:136`, no `loadSelectedOption`) and would need preselect hydration to render a stored binding. What *does* change is the sort — `label asc`, so the window is alphabetical rather than chronological — and the label maps, which page against `total` because no user is typing there to recover a truncation.
+
+**Type maps: exhaustive, not patched.** The maps become `Record<ColumnDataType, …>` so a future `ColumnDataTypeEnum` member is a compile error, extending the principle #316 established for `pgTypeForColumnDefinitionType` ("guarantees no type can be added without a storage decision", `docs/POSTGIS_FOUNDATION.plan.md:54`) to the web package.
+
+## Plan — 3 slices
+
+**Slice 1 — backfill the rows.** The bug fix; everything after is polish on rows that finally exist.
+- **Files:** new `apps/api/drizzle/00XX_backfill-geospatial-column-definitions.sql` (hand-written, cross-joins `organizations` with the three literal rows, `ON CONFLICT DO NOTHING`, comment naming #316 and #414) + `apps/api/drizzle/meta/_journal.json` via `npm run db:generate -- --name backfill-geospatial-column-definitions`; edit `apps/api/src/db/repositories/column-definitions.repository.ts:81-90` (add `geoRole`, `system` to the `set` clause); edit `apps/api/src/services/seed.service.ts:34` (convention note) and `:542-545` (JSDoc: v4 ids, upsert-derived idempotency); edit `CLAUDE.md` → "Adding a new table"/schema-workflow section.
+- **Tests:** `apps/api/src/__tests__/__integration__/services/seed.service.integration.test.ts` — rewrite `:380-388` ("should use deterministic IDs") to assert what actually holds, that re-seeding neither duplicates nor renumbers; add a case that an org missing the geo trio gains exactly three rows with correct `geoRole`, and that an already-complete org is unchanged. `apps/api/src/__tests__/services/seed.service.test.ts` — extend the `upsertByKey` payload assertion (`:96`) to cover the widened `set` clause. Run `npm run test:unit` then `npm run test:integration` in `apps/api`.
+
+**Slice 2 — make the window predictable and the label maps honest.**
+- **Files:** edit the six picker call sites to pass `sortBy: "label", sortOrder: "asc"` in `defaultParams` (`BindingEditorPopover.component.tsx:289`, `InferredColumnsTable.component.tsx:153`, and the four workflow `columnDefinitionSearch` hooks); edit the three label-map fetches (`GoogleSheetsConnectorWorkflow.component.tsx:296`, `MicrosoftExcelConnectorWorkflow.component.tsx:298`, `FileUploadConnectorWorkflow.component.tsx:619`) to page against the response's `total` rather than asking for `limit: 1000`.
+- **Tests:** `apps/web/src/__tests__/api/column-definitions.api.test.ts` — first coverage for `search` (none exists today): assert the emitted query string carries `sortBy=label&sortOrder=asc`, and that a `total` exceeding the page size drives a second request. Run `npm run test:unit` in `apps/web`.
+
+**Slice 3 — render geometry correctly, and make the next type a compile error.**
+- **Files:** edit `apps/web/src/components/ColumnDefinition.component.tsx:50-64` and `apps/web/src/views/ColumnDefinitionDetail.view.tsx:53-67` (`Record<ColumnDataType, ChipColor>`, `geometry` included); edit `apps/web/src/utils/column-definition-form.util.ts:62-142` (`Record<ColumnDataType, TypeFieldConfig>`, real `geometry` entry — no format, no validation, no canonical format). `getTypeConfig` (`:173-175`) takes `type: string` and has six call sites, two of which pass `string`-typed props (`CreateFieldMappingDialog.component.tsx:121`, `EditFieldMappingDialog.component.tsx:139`, both from `columnDefinitionType: string`) — so narrowing the parameter to `ColumnDataType` means narrowing those props too. **Do the record first and keep the `?? DEFAULT_TYPE_CONFIG` fallback**; the exhaustive record is what catches a new enum member, and the parameter narrowing is a separable follow-on if it drags in more prop churn than it's worth; edit `apps/web/src/components/EditColumnDefinitionDialog.component.tsx:47-59` (derive `ALL_TYPES` from `ColumnDataTypeEnum.options`); edit `apps/api/src/routes/column-definition.router.ts:81` (add `geometry` to the OpenAPI `type` filter description).
+- **Tests:** `apps/web/src/__tests__/CreateColumnDefinitionDialog.test.tsx` — selecting `geometry` shows no format/validation/canonical-format controls. `apps/web/src/__tests__/ColumnDefinition.component.test.tsx` and `ColumnDefinitionDetailView.test.tsx` — a `geometry` definition renders its own chip colour. `apps/web/src/__tests__/EditColumnDefinitionDialog.test.tsx` — the type list still offers every enum member. Run `npm run test:unit` in `apps/web`, then `npm run type-check` and `npm run lint` at the root (the exhaustive records are the point — type-check is the real assertion).
+
+## Smoke (manual, against your dev stack)
+
+1. **Reproduce first.** Against app-dev (`portalops db psql --env app-dev -- -tAc "select count(*) from column_definitions where type='geometry' or geo_role is not null;"`) confirm `0`. This is the pre-state; without it the rest proves nothing.
+2. Apply the migration to your local stack (`cd apps/api && npm run db:migrate`), then re-run the count locally — it should be unchanged, because local is already complete. **This is the idempotency check**, and it is the one that protects prod.
+3. On a local org, open **Column Definitions**, filter **Type → geometry**. Expect exactly one result, `Geometry`, with its own chip colour (not the grey default).
+4. Open it. Confirm the detail view shows type `geometry` and no canonical-format value.
+5. Click **Create Column Definition**, choose type `geometry`. Confirm the form offers **no** format field, **no** validation pattern, and **no** canonical format.
+6. Open a connector workflow's binding editor (GoogleSheets or FileUpload region editor). With the dropdown untouched, confirm the options are **alphabetical** — `Address`, `Array`, `Boolean`… — not creation-ordered.
+7. In that same dropdown type `geo` → `Geometry` appears; clear it and type `lat` → `Latitude`; clear and type `long` → `Longitude`. (`lng` matches nothing — substring search over `label`/`key`, expected.) This is the reachability guarantee the 20-row window rests on.
+8. Pick `Geometry` for a binding, apply, and reopen the popover. Confirm the chip still reads `Geometry` and not a bare UUID — the preselect path must survive the sort change.
+9. **Then app-dev.** After deploy, re-run step 1's query: expect `12` (4 orgs × 3 rows). Repeat steps 3, 6 and 7 in the app-dev UI.
+
+## Out of scope
+
+- **Moving any picker to core's paged `InfiniteScrollSelect`**, and the preselect-hydration prop that first consumer would need. Rejected above; the pieces stay in core for a picker that genuinely needs browsing over searching.
+- **A non-destructive per-org re-seed command.** Rejected above; `org reset` covers the emergency case at a price the operator can see.
+- **Deploy-time reconcile of every org's catalog.** The structurally correct end state and the right answer once org count grows; disproportionate for five orgs and it needs a deploy-pipeline change.
+- **`geoRole` authoring in the UI.** `CreateColumnDefinitionDialog` hardcodes `geoRole: null` on submit (`:171-175`), so no lat/lng-role column can be created from the app at all. Real gap, separate ticket — this one is about the catalog being complete and correctly rendered.
+- **Search over `description` or aliases.** Substring matching over `label`/`key` is accepted as the reachability guarantee; step 7 verifies it rather than assuming it.

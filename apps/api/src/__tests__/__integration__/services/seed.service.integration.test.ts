@@ -9,6 +9,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { sql } from "drizzle-orm";
+import { readFile } from "fs/promises";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { Repository } from "../../../db/repositories/base.repository.js";
@@ -377,14 +381,48 @@ describe("SeedService Integration Tests", () => {
       expect(geoKeys).toEqual(["geometry", "latitude", "longitude"]);
     });
 
-    it("should use deterministic IDs — running twice produces the same IDs", async () => {
+    // #414: this previously read "should use deterministic IDs". It passed
+    // vacuously — ids are v4 (`seed.service.ts` calls `id.v4.generate()`), and
+    // the id survives a re-seed only because `upsertByKey`'s ON CONFLICT never
+    // lands the second insert. What actually holds is stability, not
+    // derivation, so that is what is asserted.
+    it("should neither duplicate nor renumber rows when re-seeded", async () => {
       await seedService.seedSystemColumnDefinitions(organizationId, db);
       const first = await columnDefsRepo.findByKey(organizationId, "uuid", db);
 
       await seedService.seedSystemColumnDefinitions(organizationId, db);
       const second = await columnDefsRepo.findByKey(organizationId, "uuid", db);
 
-      expect(first?.id).toBe(second?.id);
+      expect(second?.id).toBe(first?.id);
+
+      const rows = await columnDefsRepo.findByOrganizationId(
+        organizationId,
+        db
+      );
+      expect(rows).toHaveLength(29);
+    });
+
+    // #414: `upsertByKey`'s `set` clause omitted `geoRole` and `system`, so a
+    // re-seed could not converge the two fields #316 added. Corrupt them on a
+    // live row, re-seed, and require the seeded values back.
+    it("should converge geoRole and system on an existing row", async () => {
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+
+      await db.execute(sql`
+        UPDATE column_definitions
+        SET geo_role = NULL, system = false
+        WHERE organization_id = ${organizationId} AND key = 'latitude'
+      `);
+
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+
+      const latitude = await columnDefsRepo.findByKey(
+        organizationId,
+        "latitude",
+        db
+      );
+      expect(latitude?.geoRole).toBe("lat");
+      expect(latitude?.system).toBe(true);
     });
 
     it("should scope definitions to the given organization", async () => {
@@ -426,6 +464,125 @@ describe("SeedService Integration Tests", () => {
       );
 
       expect(rows).toHaveLength(0);
+    });
+  });
+
+  /**
+   * #414: the 0080 backfill migration. The migration runner applies it before
+   * the suite truncates, so by the time a test runs there are no organizations
+   * for it to have touched — the only way to cover its INSERT is to apply the
+   * SQL directly against an org staged to look pre-#316.
+   */
+  describe("0080 geospatial backfill migration", () => {
+    const GEO_KEYS = ["geometry", "latitude", "longitude"] as const;
+    let organizationId: string;
+    let migrationSql: string;
+
+    beforeEach(async () => {
+      const seed = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        "auth0|seed-backfill-test"
+      );
+      organizationId = seed.organizationId;
+
+      const here = dirname(fileURLToPath(import.meta.url));
+      migrationSql = await readFile(
+        join(
+          here,
+          "../../../../drizzle/0080_backfill-geospatial-column-definitions.sql"
+        ),
+        "utf-8"
+      );
+
+      // Stage a pre-#316 catalog: seed all 29, then remove the geo trio.
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+      await db.execute(sql`
+        DELETE FROM column_definitions
+        WHERE organization_id = ${organizationId}
+          AND key IN ('geometry', 'latitude', 'longitude')
+      `);
+      const staged = await columnDefsRepo.findByOrganizationId(
+        organizationId,
+        db
+      );
+      expect(staged).toHaveLength(26);
+    });
+
+    it("should insert the three geospatial definitions with the right type and role", async () => {
+      await db.execute(sql.raw(migrationSql));
+
+      const rows = await columnDefsRepo.findByOrganizationId(
+        organizationId,
+        db
+      );
+      expect(rows).toHaveLength(29);
+
+      const byKey = new Map(rows.map((r) => [r.key, r]));
+
+      expect(byKey.get("geometry")).toMatchObject({
+        type: "geometry",
+        geoRole: null,
+        system: true,
+      });
+      expect(byKey.get("latitude")).toMatchObject({
+        type: "number",
+        geoRole: "lat",
+        system: true,
+      });
+      expect(byKey.get("longitude")).toMatchObject({
+        type: "number",
+        geoRole: "lng",
+        system: true,
+      });
+    });
+
+    it("should be a no-op on an organization that already has them", async () => {
+      await db.execute(sql.raw(migrationSql));
+      const first = await columnDefsRepo.findByOrganizationId(
+        organizationId,
+        db
+      );
+      const firstIds = first
+        .filter((r) => GEO_KEYS.includes(r.key as (typeof GEO_KEYS)[number]))
+        .map((r) => r.id)
+        .sort();
+
+      // Re-applying is what happens on any environment already complete —
+      // prod and local both were when this shipped.
+      await db.execute(sql.raw(migrationSql));
+
+      const second = await columnDefsRepo.findByOrganizationId(
+        organizationId,
+        db
+      );
+      expect(second).toHaveLength(29);
+
+      const secondIds = second
+        .filter((r) => GEO_KEYS.includes(r.key as (typeof GEO_KEYS)[number]))
+        .map((r) => r.id)
+        .sort();
+      expect(secondIds).toEqual(firstIds);
+    });
+
+    it("should skip soft-deleted organizations", async () => {
+      const seedB = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        "auth0|seed-backfill-deleted-org"
+      );
+      await db.execute(sql`
+        DELETE FROM column_definitions WHERE organization_id = ${seedB.organizationId}
+      `);
+      await db.execute(sql`
+        UPDATE organizations SET deleted = 1 WHERE id = ${seedB.organizationId}
+      `);
+
+      await db.execute(sql.raw(migrationSql));
+
+      const rowsB = await columnDefsRepo.findByOrganizationId(
+        seedB.organizationId,
+        db
+      );
+      expect(rowsB).toHaveLength(0);
     });
   });
 });

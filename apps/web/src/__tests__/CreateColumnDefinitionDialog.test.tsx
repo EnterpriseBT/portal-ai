@@ -402,6 +402,39 @@ describe("CreateColumnDefinitionDialog", () => {
     });
   });
 
+  // #414 — geometry had no TYPE_FIELD_CONFIG entry, so it fell through to
+  // DEFAULT_TYPE_CONFIG and offered a regex validation pattern and the *string*
+  // canonical-format list on a PostGIS column. (There is no Format field in
+  // this dialog at all — see the "removed fields" test above.)
+  it("should offer no validation or canonical format for geometry", async () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
+    fireEvent.mouseDown(screen.getByLabelText(/^Type/));
+    fireEvent.click(screen.getByRole("option", { name: "geometry" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^Canonical Format/)).toHaveAttribute(
+        "aria-disabled",
+        "true"
+      );
+      expect(screen.getByLabelText(/^Validation Preset/)).toHaveAttribute(
+        "aria-disabled",
+        "true"
+      );
+      expect(screen.getByLabelText(/^Validation Pattern/)).toBeDisabled();
+      expect(screen.getByLabelText(/^Validation Message/)).toBeDisabled();
+    });
+  });
+
+  // #414 — the type dropdown derives from ColumnDataTypeEnum, so geometry is
+  // offerable; before this it was offerable *and* misconfigured.
+  it("should offer geometry in the type select", () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
+    fireEvent.mouseDown(screen.getByLabelText(/^Type/));
+    expect(
+      screen.getByRole("option", { name: "geometry" })
+    ).toBeInTheDocument();
+  });
+
   // #31 — contextual helper text
   it("should show 'Not applicable' helper text for disabled validation fields", async () => {
     render(<CreateColumnDefinitionDialog {...defaultProps} />);

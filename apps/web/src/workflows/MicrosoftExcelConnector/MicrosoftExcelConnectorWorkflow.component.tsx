@@ -310,12 +310,9 @@ export const MicrosoftExcelConnectorWorkflow: React.FC<
 
   // ── Column definitions for binding labels (shared with file-upload) ─
 
-  const columnDefinitionsQuery = sdk.columnDefinitions.list({
-    limit: 1000,
-    offset: 0,
-    sortBy: "label",
-    sortOrder: "asc",
-  });
+  // #414: `listAll` pages to exhaustion — see the note in the Google Sheets
+  // workflow. `limit: 1000` was silently clamped to 100.
+  const columnDefinitionsQuery = sdk.columnDefinitions.listAll();
   const columnDefinitionsById = useMemo(() => {
     const map = new Map<
       string,

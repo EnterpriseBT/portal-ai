@@ -155,6 +155,35 @@ describe("ColumnDefinitionDetailView", () => {
     expect(screen.getByText("^.+@.+$")).toBeInTheDocument();
   });
 
+  // #414: this view carried its own byte-identical copy of TYPE_COLOR, also
+  // missing `geometry`. Both now import the one exhaustive map.
+  it("should render a geometry type chip with a mapped colour", () => {
+    const cd = makeColumnDefinition({
+      label: "Boundary",
+      key: "boundary",
+      type: "geometry",
+    });
+    currentGetQuery = {
+      data: { columnDefinition: cd },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<GetQuery>;
+    currentFieldMappingListQuery = {
+      data: { fieldMappings: [], total: 0, limit: 10, offset: 0 },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<ListQuery>;
+
+    render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+    const chip = screen.getByText("geometry").closest(".MuiChip-root");
+    expect(chip).toBeInTheDocument();
+    expect(chip?.className).not.toContain("colorDefault");
+    expect(chip?.className).toContain("colorSuccess");
+  });
+
   it("should display field mappings table with mock data", () => {
     const cd = makeColumnDefinition();
     const fm1 = makeFieldMapping({

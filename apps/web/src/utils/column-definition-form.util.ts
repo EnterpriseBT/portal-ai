@@ -1,4 +1,40 @@
+import type { ColumnDataType } from "@portalai/core/models";
 import type { SelectOption } from "@portalai/core/ui";
+
+// ── Type Chip Colors ────────────────────────────────────────────────
+
+export type ColumnTypeChipColor =
+  | "primary"
+  | "secondary"
+  | "success"
+  | "warning"
+  | "error"
+  | "info"
+  | "default";
+
+/**
+ * Chip color per column data type.
+ *
+ * #414: keyed as an exhaustive `Record<ColumnDataType, …>` on purpose. This was
+ * two byte-identical hand-maintained maps (the list card and the detail view),
+ * neither of which gained a `geometry` entry when #316 added the type — so a
+ * geometry column rendered with the fallback grey. Being total means the next
+ * `ColumnDataTypeEnum` member is a compile error here, which is the same
+ * guarantee `pgTypeForColumnDefinitionType` gives on the API side.
+ */
+export const TYPE_COLOR: Record<ColumnDataType, ColumnTypeChipColor> = {
+  string: "primary",
+  number: "info",
+  boolean: "success",
+  date: "warning",
+  datetime: "warning",
+  enum: "secondary",
+  json: "default",
+  array: "default",
+  reference: "error",
+  "reference-array": "error",
+  geometry: "success",
+};
 
 // ── Canonical Format Options ────────────────────────────────────────
 
@@ -59,7 +95,16 @@ export interface TypeFieldConfig {
   canonicalFormat: { enabled: boolean; options: SelectOption[] };
 }
 
-export const TYPE_FIELD_CONFIG: Record<string, TypeFieldConfig> = {
+/**
+ * Which form controls each column data type offers.
+ *
+ * #414: exhaustive over `ColumnDataType` for the same reason as `TYPE_COLOR`.
+ * When this was `Record<string, …>` the missing `geometry` key fell through to
+ * `DEFAULT_TYPE_CONFIG`, which offered a free-text format, a regex validation
+ * pattern, and the *string* canonical-format list on a PostGIS column — a
+ * silently wrong form rather than a visible gap.
+ */
+export const TYPE_FIELD_CONFIG: Record<ColumnDataType, TypeFieldConfig> = {
   string: {
     format: { enabled: false, helperText: "Not used for string columns" },
     validation: { enabled: true },
@@ -139,6 +184,17 @@ export const TYPE_FIELD_CONFIG: Record<string, TypeFieldConfig> = {
     validation: { enabled: false },
     canonicalFormat: { enabled: false, options: [] },
   },
+  // #316 geometry, spelled out by #414. Values are GeoJSON normalized to
+  // EPSG:4326 by the import path — there is no delimiter to configure, no
+  // regex that means anything against a shape, and no string canonicalization.
+  geometry: {
+    format: {
+      enabled: false,
+      helperText: "Not used for geometry columns",
+    },
+    validation: { enabled: false },
+    canonicalFormat: { enabled: false, options: [] },
+  },
 };
 
 export const DEFAULT_TYPE_CONFIG: TypeFieldConfig = {
@@ -169,7 +225,16 @@ export function validateRegex(pattern: string): string | null {
   }
 }
 
-/** Get the type field config for a given column data type. */
+/**
+ * Get the type field config for a given column data type.
+ *
+ * Takes a `string` rather than a `ColumnDataType` because two callers hand it a
+ * loosely-typed prop (`CreateFieldMappingDialog`, `EditFieldMappingDialog` both
+ * carry `columnDefinitionType: string`). The cast is that boundary, and the
+ * fallback covers a value the client doesn't recognise — e.g. an API that has
+ * shipped a new type ahead of this bundle. The exhaustiveness that matters is
+ * on `TYPE_FIELD_CONFIG` itself, where a missing key is now a compile error.
+ */
 export function getTypeConfig(type: string): TypeFieldConfig {
-  return TYPE_FIELD_CONFIG[type] ?? DEFAULT_TYPE_CONFIG;
+  return TYPE_FIELD_CONFIG[type as ColumnDataType] ?? DEFAULT_TYPE_CONFIG;
 }

@@ -4,6 +4,7 @@ import {
   ColumnDefinitionUpdateRequestBodySchema,
   type ColumnDefinitionUpdateRequestBody,
 } from "@portalai/core/contracts";
+import { ColumnDataTypeEnum } from "@portalai/core/models";
 import type { ColumnDefinition, ColumnDataType } from "@portalai/core/models";
 import { Button, Modal, Stack, Typography, Select } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
@@ -44,19 +45,10 @@ const ALLOWED_TYPE_TRANSITIONS: Record<string, string[]> = {
 
 const BLOCKED_TYPES = new Set(["reference", "reference-array"]);
 
-const ALL_TYPES = [
-  "string",
-  "number",
-  "boolean",
-  "date",
-  "datetime",
-  "enum",
-  "json",
-  "array",
-  "reference",
-  "reference-array",
-  "geometry",
-] as const;
+// #414: derived, not hand-listed. A literal array here is a copy of the enum
+// that has to be remembered — the same class of omission that left `geometry`
+// out of the type maps in `column-definition-form.util.ts`.
+const ALL_TYPES: readonly ColumnDataType[] = ColumnDataTypeEnum.options;
 
 export interface EditColumnDefinitionDialogProps {
   open: boolean;

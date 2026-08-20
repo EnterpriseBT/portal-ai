@@ -105,4 +105,35 @@ describe("SeedService.seedSystemColumnDefinitions", () => {
       expect((arg as { system: boolean }).system).toBe(true);
     }
   });
+
+  // #414: the geospatial trio is the set that stranded on pre-#316 orgs, and
+  // `geoRole` is the field `upsertByKey` used to drop. Pin the payload here;
+  // the `set`-clause convergence is covered in the integration suite.
+  it("sends an explicit geoRole on every definition, keyed correctly for the geo trio", async () => {
+    await seedService.seedSystemColumnDefinitions("org-123", fakeDb);
+
+    const payloads = mockUpsertByKey.mock.calls.map(
+      ([arg]) => arg as { key: string; type: string; geoRole: string | null }
+    );
+    const byKey = new Map(payloads.map((p) => [p.key, p]));
+
+    // Never undefined — an absent key and an explicit null are different
+    // instructions to the upsert.
+    for (const p of payloads) {
+      expect(p.geoRole === null || typeof p.geoRole === "string").toBe(true);
+    }
+
+    expect(byKey.get("geometry")).toMatchObject({
+      type: "geometry",
+      geoRole: null,
+    });
+    expect(byKey.get("latitude")).toMatchObject({
+      type: "number",
+      geoRole: "lat",
+    });
+    expect(byKey.get("longitude")).toMatchObject({
+      type: "number",
+      geoRole: "lng",
+    });
+  });
 });

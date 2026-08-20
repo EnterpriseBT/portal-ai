@@ -331,6 +331,17 @@ This project enforces a dual-schema approach — Zod models in `@portalai/core` 
 
 If either side is updated without the other, **the build fails**.
 
+### Adding a system column definition (or any per-org seeded row)
+
+`SYSTEM_COLUMN_DEFINITIONS` (`apps/api/src/services/seed.service.ts`) is seeded by `SeedService.seedSystemColumnDefinitions`, which runs **only at org provisioning and after a reset**. Nothing re-runs it for an organization that already exists, so **an entry added to that array reaches new orgs only** — every existing org keeps the catalog it was provisioned with.
+
+A new entry therefore ships with **two** things:
+
+1. The array entry, and
+2. a **data migration that inserts it for every existing organization** — `apps/api/drizzle/0080_backfill-geospatial-column-definitions.sql` is the template. Cross-join `organizations`, and repeat the partial unique index's `WHERE deleted IS NULL` inside the `ON CONFLICT` (a partial index is only matched by an `ON CONFLICT` that restates its predicate) so the migration is a safe no-op on orgs that already hold the key.
+
+This is not hypothetical bookkeeping: #316 added three geospatial definitions with a schema-only migration and stranded four app-dev orgs, which is what #414 had to repair. The same rule applies to any table seeded per-organization rather than globally — global seeds (tiers, connector definitions) are covered by `SeedService.seed()` and `portalops db seed`, which are safe to re-run.
+
 ### Adding a new repository
 
 Extend `Repository<TTable, TSelect, TInsert>` in `apps/api/src/db/repositories/`. The base class provides `findById`, `findMany`, `count`, `create`, `createMany`, `update`, `updateWhere`, `updateMany`, `softDelete`, `softDeleteMany`, `hardDelete`, `hardDeleteMany`. All reads/updates automatically skip soft-deleted rows (`deleted IS NOT NULL`).
