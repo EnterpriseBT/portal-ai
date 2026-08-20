@@ -27,14 +27,22 @@ Parameters:
     Type: String
     Default: https://app-dev.portalsai.io
     Description: Origin allowed to PUT to the upload bucket (browser CORS)
+  # SIZING IS PER-ENVIRONMENT AND MUST BE PASSED EXPLICITLY (#424).
+  # These defaults describe prod. They are NOT what every environment runs:
+  # `aws cloudformation deploy` reuses whatever a stack was created with, so
+  # a deploy that omits these inherits the stack's original values and a
+  # raised default silently never lands — app-dev sat at 256/512 for four
+  # months that way. Every workflow deploying this template states both, and
+  # a guard test asserts it.
   Cpu:
     Type: Number
     Default: 1024
-    Description: Fargate task vCPU units. 1024 = 1 vCPU. Sized to give the synchronous XLSX parse path enough headroom under the 250 MB upload cap.
+    Description: Fargate task vCPU units. 1024 = 1 vCPU. Prod default; app-dev deliberately runs 512 as a recorded cost choice. Sized to give the synchronous XLSX parse path enough headroom under the 250 MB upload cap.
   Memory:
     Type: Number
     Default: 8192
-    Description: Fargate task memory (MB). 8192 = 8 GB. The CSV/XLSX adapters currently buffer the entire decoded workbook in memory before caching; a 40 MB CSV (5–20M cells) blew the previous 2 GB cap with exit code 137. Stop-gap until parse becomes streaming (see docs/LARGE_FILE_PARSE_STREAMING.plan.md). Valid Fargate combos for 1 vCPU run 2–8 GB.
+    AllowedValues: [512, 1024, 2048, 3072, 4096, 8192]
+    Description: Fargate task memory (MB). Prod default 8192 = 8 GB; app-dev deliberately runs 4096. The CSV/XLSX adapters currently buffer the entire decoded workbook in memory before caching; a 40 MB CSV (5–20M cells) blew the previous 2 GB cap with exit code 137. Stop-gap until parse becomes streaming (see docs/LARGE_FILE_PARSE_STREAMING.plan.md). Valid Fargate combos for 1 vCPU run 2–8 GB. Constrained to the values NodeHeapByMemory maps, so the V8 heap can never outrun the container.
   DesiredCount:
     Type: Number
     Default: 1
@@ -95,6 +103,33 @@ Parameters:
       request a marketing-site rebuild after a Stripe price change. Optional:
       empty leaves the container var unset, which makes the dispatch a no-op
       and lets the nightly scheduled rebuild carry the change instead.
+
+# ── V8 heap ceiling, derived from the task's memory (#424) ──────────────
+#
+# CloudFormation has no arithmetic intrinsic, so the "~85% of Memory" rule
+# is a table rather than a multiplication. That is the stronger form:
+# !FindInMap FAILS THE DEPLOY on a Memory value with no entry, so a sizing
+# whose heap nobody considered cannot ship. `Memory`'s AllowedValues is
+# pinned to these keys so the two cannot disagree, and a guard test asserts
+# every mapped heap is strictly below its container.
+#
+# The bug this replaces: a hardcoded --max-old-space-size=7000 inside a
+# 512 MB task. V8 never felt pressure, never threw, and the kernel SIGKILLed
+# the container instead (exit 137 → a bare 502, no stack trace).
+Mappings:
+  NodeHeapByMemory:
+    "512":
+      HeapMb: 435
+    "1024":
+      HeapMb: 870
+    "2048":
+      HeapMb: 1740
+    "3072":
+      HeapMb: 2611
+    "4096":
+      HeapMb: 3481
+    "8192":
+      HeapMb: 6963
 
 Conditions:
   # #311: the site-rebuild PAT is optional. Without it the container var is
@@ -489,10 +524,15 @@ Resources:
               Value: production
             # Node defaults its old-space heap to roughly 1.5 GB regardless of
             # container memory, so the CSV/XLSX parsers can OOM the V8 heap
-            # well before the cgroup limit fires. Pin the heap below the task
-            # ceiling (8 GB → 7 GB) so we use the headroom we paid for.
+            # well before the cgroup limit fires — and a heap ABOVE the cgroup
+            # is worse still, since the kernel kills the task before V8 ever
+            # throws. Derived from Memory (see NodeHeapByMemory) so the ceiling
+            # tracks whatever sizing the environment actually runs.
             - Name: NODE_OPTIONS
-              Value: --max-old-space-size=7000
+              Value: !Sub
+                - "--max-old-space-size=${HeapMb}"
+                - HeapMb:
+                    !FindInMap [NodeHeapByMemory, !Ref Memory, HeapMb]
             - Name: LOG_LEVEL
               Value: info
             - Name: LOG_FORMAT
