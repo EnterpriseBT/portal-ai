@@ -12,8 +12,6 @@
  *   - `fetchUserProfile` (GET /me on Microsoft Graph; tenantId comes
  *     from the call site since the id-token claim is the canonical
  *     source).
- *
- * See `docs/MICROSOFT_EXCEL_CONNECTOR.phase-A.spec.md`.
  */
 
 import { environment } from "../environment.js";

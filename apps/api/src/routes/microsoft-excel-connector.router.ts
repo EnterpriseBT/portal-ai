@@ -6,8 +6,6 @@
  * redirect doesn't carry a Bearer token; the signed `state` token is
  * the security boundary instead. Two routers in this file mirror the
  * google-sheets pattern.
- *
- * See `docs/MICROSOFT_EXCEL_CONNECTOR.phase-A.plan.md` §Slice 7.
  */
 
 import {
