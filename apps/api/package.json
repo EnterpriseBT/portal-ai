@@ -12,7 +12,7 @@
     "start": "dotenv -e .env -- node dist/index.js",
     "clean": "rm -rf dist .turbo node_modules",
     "type-check": "tsc --noEmit",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src --ext .ts --report-unused-disable-directives --max-warnings 0",
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.{ts,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,json}\"",

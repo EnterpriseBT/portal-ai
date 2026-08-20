@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 
 import { TiersRepository } from "../../../db/repositories/tiers.repository.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";

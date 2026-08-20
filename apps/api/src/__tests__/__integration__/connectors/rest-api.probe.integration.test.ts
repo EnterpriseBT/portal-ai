@@ -65,7 +65,7 @@ const { configureRestApiAdapterDeps, __resetRestApiAdapterDepsForTests } =
   await import("../../../adapters/rest-api/rest-api.adapter.js");
 const { ProbeCache } =
   await import("../../../adapters/rest-api/probe-cache.util.js");
-const { createStubClassifier, createThrowingClassifier } =
+const { createThrowingClassifier } =
   await import("../../../adapters/rest-api/classifier.stub.js");
 const { SystemUtilities } = await import("../../../utils/system.util.js");
 

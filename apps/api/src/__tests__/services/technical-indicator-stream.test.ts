@@ -50,8 +50,15 @@ async function collect(
 // Map an array-path value + a streamed row to a comparable numeric tuple.
 // (The handle output uses its own lower-cased column names; we compare the
 //  numeric content, in a fixed field order, not the key spelling.)
+// The `any`s here are the point, not laziness: each indicator emits a different
+// shape (scalar for SMA/RSI/…, named fields for MACD/BB/Stochastic) under two
+// different key spellings, and this map exists precisely to erase that so the
+// numeric content can be compared in a fixed field order. Typing the union
+// would push a cast into all 13 lambdas — `as number` in place of `any`, no
+// safer and considerably noisier. Scoped to this declaration only (#427).
 const EXTRACTORS: Record<
   IndicatorName,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   { arr: (v: any) => number[]; row: (r: any) => number[] }
 > = {
   SMA: { arr: (v) => [v], row: (r) => [r.value] },
@@ -123,8 +130,8 @@ describe("technicalIndicatorStream — equals the array path row-for-row", () =>
 
       const ex = EXTRACTORS[indicator];
       whole.values.forEach((v, i) => {
-        const a = ex.arr(v as any);
-        const b = ex.row(streamed[i] as any);
+        const a = ex.arr(v);
+        const b = ex.row(streamed[i]);
         expect(b).toHaveLength(a.length);
         a.forEach((av, j) => closeEq(b[j], av));
       });

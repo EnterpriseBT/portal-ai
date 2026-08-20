@@ -1078,6 +1078,13 @@ const pureMath = (resultKind: ResultKind = "scalar"): ToolCapability => ({
 /** Pure compute consumer over a handed-in dataset. Today the runtime
  *  materializes the handle up to COMPUTE_MAX_ROWS and hard-errors past it
  *  (#114) — i.e. bounded(100k) + onOverflow:error. */
+// No tool claims this shape yet, but it is not dead: docs/GIS_TOOLPACK.discovery.md
+// names it as the capability shape the spatial tools take, and it sits with its
+// siblings (`pureMath`, `streamingReduce`) documenting the
+// bounded(100k)+onOverflow:error contract from #114. Deleting it to satisfy a
+// linter would drop that design record — attach it to a tool or remove it
+// deliberately, not incidentally (#427).
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const pureReduce = (
   resultKind: ResultKind,
   costHint: CostHint = "free"
