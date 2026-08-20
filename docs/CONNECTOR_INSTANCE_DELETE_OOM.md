@@ -58,14 +58,19 @@ The drop is physical while the instance is only soft-deleted. Accepted: there is
 
 Both slices: `npm run test:unit`, `npm run type-check`, `npm run lint` from `apps/api`.
 
-## Smoke (manual, against your dev stack)
+## Smoke (manual, in app-dev)
 
-1. Stand up a local REST connector entity at **200K+ records** so the walk reproduces the reported scale rather than a proxy for it (provisioning that dataset is handled at smoke time — a bulk seed or a paginated sync against a generator endpoint). Note the record count from `GET /api/connector-instances/:id/impact`.
-2. Watch the API process's memory (`docker stats`, or the task's RSS) and delete the instance. **Expect:** `200 { success: true }`, no memory spike tracking the record count, and the process still alive.
-3. Confirm the cascade: the instance, its entities and its records all read as soft-deleted (`deleted IS NOT NULL`), and `er__<entityId>` is gone (`\dt er__*` in `portalops db psql`).
-4. Delete a single connector *entity* (the second caller) and confirm the response's cascade counts still report the real numbers — not `0`, not `undefined`.
-5. Delete an instance with **zero** records and confirm it still returns `200` and reports `0` counts.
-6. With a running job on the instance, confirm the delete still refuses with `409 ENTITY_LOCKED_BY_JOB`.
+**Why not local.** The failure is volume-dependent and the only entity at reported scale — `parcels`, 200K+ records — lives in app-dev. `main` auto-deploys there, so this walk runs post-merge against the deployed stack rather than a local one. app-dev is also the *harshest* available test: its task runs at 512 MB with `--max-old-space-size=7000` (#424), so a pass there is stronger evidence than a local pass with 8 GB would be.
+
+1. Record the pre-state: `aws ecs describe-tasks` for the running `portalai-api-dev` task — note its `startedAt`, so a restart during the walk is unambiguous. Note the record count from `GET /api/connector-instances/:id/impact`.
+2. Delete the large instance. **Expect:** `200 { success: true }` — no 502, no app-wide failure, and **no new task**: the `startedAt` from step 1 is unchanged and no task carries `exitCode: 137` / `OutOfMemoryError`. This is the acceptance criterion; everything else is corroboration.
+3. Check `AWS/ECS MemoryUtilization` across the delete. **Expect:** no spike tracking the record count — the pre-fix signature was a sharp inflection in the crash minute (38.9% → 52.5% on the last sample before the kill).
+4. Confirm the cascade in `portalops db psql --env app-dev`: the instance, its entities and its records all read `deleted IS NOT NULL`, and `\dt er__*` no longer lists the deleted entities' tables.
+5. Delete a single connector *entity* (the second caller of the same cascade) and confirm the response's counts report real numbers — not `0`, not `undefined`.
+6. Delete an instance with **zero** records: still `200`, counts `0`.
+7. With a running job on an instance, confirm the delete still refuses with `409 ENTITY_LOCKED_BY_JOB`.
+
+Steps 5–7 are cheap to run against small instances and are the regression surface for the count contract; step 2 is the bug itself.
 
 ## Out of scope
 
