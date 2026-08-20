@@ -11,6 +11,10 @@ Description: Portals AI — S3 + CloudFront (public marketing site, #311)
 #     honestly answer every URL because its router decides; this site cannot,
 #     and a soft 200 would get every typo'd URL indexed.
 #   * No COOP header: there are no OAuth popups on a marketing page.
+#   * The same function canonicalizes the HOST: prod also answers on the bare
+#     `portalsai.io` and 301s it to `www` (#404), so the bare domain people
+#     type and print resolves without the content being indexable twice.
+#     Apex is conditional — dev has none.
 #
 # Physical resource names are discriminated with `-site-` because CloudFront
 # OAC and response-headers-policy names are account-global and would
@@ -34,6 +38,20 @@ Parameters:
   HostedZoneId:
     Type: AWS::Route53::HostedZone::Id
     Description: Route 53 hosted zone for DomainName
+  ApexDomain:
+    Type: String
+    Default: ""
+    Description: >-
+      Bare domain to serve at, redirected to the canonical host — e.g.
+      `portalsai.io`. Empty (the default) means this environment has no apex,
+      which is the case for dev: `site-dev` is not anybody's bare domain.
+
+Conditions:
+  # The apex is a property of production, not of every environment. An
+  # UNCONDITIONAL apex alias would be actively harmful: CloudFront allows one
+  # distribution per alias, so the dev stack would claim `portalsai.io` and
+  # prod's deploy would be the thing that fails.
+  HasApex: !Not [!Equals [!Ref ApexDomain, ""]]
 
 Resources:
   # ── S3 Access Logs Bucket ────────────────────────────────────────────────
@@ -142,7 +160,11 @@ Resources:
             IncludeSubdomains: true
             Override: true
 
-  # ── CloudFront Function: directory-index rewrite ─────────────────────────
+  # ── CloudFront Function: host canonicalization + directory-index rewrite ─
+  #
+  # TWO responsibilities in one function, and that is forced rather than
+  # chosen: CloudFront permits exactly one function per event type per cache
+  # behavior, so the apex redirect (#404) cannot be a second association.
   # Astro is configured `trailingSlash: "always"` + `build.format: directory`,
   # so every route is `<route>/index.html` in S3. Viewer requests arrive as
   # `/features/` (or `/features`), which S3 cannot resolve on its own.
@@ -163,12 +185,36 @@ Resources:
       Name: !Sub "portalai-${Environment}-site-index-rewrite"
       AutoPublish: true
       FunctionConfig:
-        Comment: "Rewrites directory-style URIs to their index.html object."
+        Comment: "301s non-canonical hosts, then rewrites directory URIs to index.html."
         Runtime: cloudfront-js-2.0
-      FunctionCode: |
+      FunctionCode: !Sub |
+        var CANONICAL_HOST = "${Subdomain}.${DomainName}";
+
         function handler(event) {
           var request = event.request;
           var uri = request.uri;
+
+          // ── Canonicalize the host, BEFORE touching the URI (#404) ──────
+          // CloudFront only routes hosts listed in Aliases, so the only way
+          // to arrive on a non-canonical host is the apex. Order matters: a
+          // URI rewritten first would put /index.html in the Location
+          // header. Function-generated responses are produced before the
+          // cache lookup, so this 301 is per-request and can never be
+          // served from cache against the wrong host.
+          //
+          // In dev there is no apex alias, so this branch is unreachable.
+          var host = request.headers.host && request.headers.host.value;
+          if (host && host !== CANONICAL_HOST) {
+            return {
+              statusCode: 301,
+              statusDescription: "Moved Permanently",
+              headers: {
+                location: {
+                  value: "https://" + CANONICAL_HOST + redirectTarget(request)
+                }
+              }
+            };
+          }
 
           if (uri.endsWith("/")) {
             request.uri = uri + "index.html";
@@ -185,6 +231,44 @@ Resources:
           return request;
         }
 
+        // Path + query for the redirect Location.
+        function redirectTarget(request) {
+          var uri = request.uri;
+
+          // Strip a trailing index.html. Whether DefaultRootObject has
+          // already substituted it by the time this function runs is not
+          // something to bet the Location header on — normalizing makes the
+          // redirect read as the clean canonical URL either way.
+          if (uri === "/index.html") {
+            uri = "/";
+          } else if (uri.endsWith("/index.html")) {
+            uri = uri.slice(0, uri.length - "index.html".length);
+          }
+
+          // `querystring` is a MAP, not a raw string. A repeated key keeps
+          // its first value in `.value` and all of them in `.multiValue`, so
+          // reading only `.value` would silently drop duplicates and mangle
+          // campaign links.
+          var qs = request.querystring || {};
+          var parts = [];
+          Object.keys(qs).forEach(function (key) {
+            var entry = qs[key];
+            if (entry.multiValue) {
+              entry.multiValue.forEach(function (each) {
+                parts.push(queryPair(key, each.value));
+              });
+            } else {
+              parts.push(queryPair(key, entry.value));
+            }
+          });
+
+          return parts.length > 0 ? uri + "?" + parts.join("&") : uri;
+        }
+
+        function queryPair(key, value) {
+          return value ? key + "=" + value : key;
+        }
+
   # ── CloudFront Distribution ──────────────────────────────────────────────
   SiteDistribution:
     Type: AWS::CloudFront::Distribution
@@ -192,8 +276,11 @@ Resources:
       DistributionConfig:
         Enabled: true
         Comment: !Sub "Portals AI ${Environment} marketing site"
-        Aliases:
-          - !Sub "${Subdomain}.${DomainName}"
+        Aliases: !If
+          - HasApex
+          - - !Sub "${Subdomain}.${DomainName}"
+            - !Ref ApexDomain
+          - - !Sub "${Subdomain}.${DomainName}"
         DefaultRootObject: index.html
         # A missing page is a REAL 404 with a branded body. Deliberately
         # unlike frontend.yml's SPA rewrite: mapping misses to 200 would
@@ -238,6 +325,27 @@ Resources:
     Properties:
       HostedZoneId: !Ref HostedZoneId
       Name: !Sub "${Subdomain}.${DomainName}"
+      Type: A
+      AliasTarget:
+        HostedZoneId: Z2FDTNDATAQYW2
+        DNSName: !GetAtt SiteDistribution.DomainName
+        EvaluateTargetHealth: false
+
+  # ── Route 53 apex A-record (alias → the SAME distribution) ──────────────
+  #
+  # A distinct record TYPE on the apex name. The apex MX/TXT and _dmarc are
+  # owned by the domain-level `portalai-dns-email` stack (dns-email.yml) and
+  # are untouched by this: Route 53 collides on same-name-AND-same-type, and
+  # nothing else here is an A record. Mail keeps working.
+  #
+  # The apex serves no content of its own — the edge function 301s it to the
+  # canonical host, so there is one indexable address, not two.
+  ApexDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasApex
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref ApexDomain
       Type: A
       AliasTarget:
         HostedZoneId: Z2FDTNDATAQYW2

@@ -704,3 +704,81 @@ describe("provisioning runbook covers the Auth0 wiring (#403)", () => {
     expect(body).toContain("code_challenge_method=S256");
   });
 });
+
+// #404: the apex (`portalsai.io`) is a PROD-ONLY concept, gated by a condition.
+//
+// Two failure modes are pinned here, and neither announces itself at deploy
+// time. First, an unconditional apex alias would make the DEV distribution
+// claim `portalsai.io` — CloudFront allows one distribution per alias, so dev
+// would hold the production apex hostage and prod's deploy would be the thing
+// that fails. Second, the apex redirect lives inside the SAME viewer-request
+// function as the index rewrite (CloudFront permits one function per event
+// type per behavior), so the two responsibilities are one edit away from
+// being ordered wrongly — and a URI rewritten before the redirect puts
+// `/index.html` in the Location header.
+describe("the apex serves prod only, behind a condition (#404)", () => {
+  const SITE_YML = path.join(ROOT, "infra/cloudformation/site.yml");
+
+  const siteTemplate = (): {
+    Parameters: Record<string, { Default?: string }>;
+    Conditions?: Record<string, unknown>;
+    Resources: Record<string, Record<string, never>>;
+  } => {
+    const doc = parseDocument(fs.readFileSync(SITE_YML, "utf8"), {
+      logLevel: "silent",
+    });
+    expect(doc.errors).toHaveLength(0);
+    return doc.toJS({ maxAliasCount: -1 });
+  };
+
+  const workflow = (f: string): string =>
+    fs.readFileSync(path.join(ROOT, ".github/workflows", f), "utf8");
+
+  /** Comments name the omission to explain it; only executable text counts. */
+  const code = (body: string): string =>
+    body
+      .split("\n")
+      .filter((line) => !/^\s*#/.test(line))
+      .join("\n");
+
+  it("the prod caller claims the apex", () => {
+    expect(code(workflow("deploy-site-prod.yml"))).toMatch(
+      /apex-domain:\s*portalsai\.io/
+    );
+  });
+
+  it("the dev caller does not — dev has no apex", () => {
+    expect(code(workflow("deploy-site-dev.yml"))).not.toMatch(/apex-domain:/);
+  });
+
+  it("ApexDomain defaults to empty, so a caller that says nothing gets none", () => {
+    // The dev caller passes no apex-domain at all (asserted above), so the
+    // default IS the dev behavior. A non-empty default would silently give
+    // dev an apex.
+    const param = siteTemplate().Parameters.ApexDomain;
+    expect(param).toBeDefined();
+    expect(param.Default).toBe("");
+  });
+
+  it("the apex record set exists only under the condition", () => {
+    const tpl = siteTemplate();
+    expect(tpl.Conditions?.HasApex).toBeDefined();
+    const record = tpl.Resources.ApexDnsRecord;
+    expect(record).toBeDefined();
+    expect(record.Condition).toBe("HasApex");
+  });
+
+  it("the apex alias is conditional, never a second unconditional entry", () => {
+    const aliases =
+      siteTemplate().Resources.SiteDistribution.Properties.DistributionConfig
+        .Aliases;
+    // `!If [HasApex, …]` parses to an array carrying the condition name.
+    expect(JSON.stringify(aliases)).toContain("HasApex");
+  });
+
+  // The function BEHAVIOR — the redirect target, the query string, the
+  // ordering against the index rewrite — is covered by executing the real
+  // extracted code in apps/site/scripts/__tests__/cloudfront-rewrite.test.ts,
+  // which is that function's test home. What belongs HERE is the deploy
+  // wiring above: which environment gets an apex at all.
+});

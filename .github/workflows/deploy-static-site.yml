@@ -50,6 +50,16 @@ on:
           owner — a guard test asserts no workflow creates a prod cert stack.
         type: string
         required: false
+      apex-domain:
+        description: >-
+          Bare domain this environment also answers on, e.g. `portalsai.io`.
+          The site stack adds it to the distribution's aliases and 301s it to
+          the canonical host. Omit it (the default) for any environment that
+          has no bare domain — dev does not, and an apex claimed by the dev
+          distribution would block prod from claiming it (#404).
+        required: false
+        type: string
+        default: ""
       gh-environment:
         description: >-
           GitHub Environment to run under, for its protection rules. A caller
@@ -107,6 +117,7 @@ jobs:
               Subdomain=${{ inputs.subdomain }} \
               CertificateArn="$CERT_ARN" \
               HostedZoneId=${{ secrets.hosted-zone-id }} \
+              ApexDomain="${{ inputs.apex-domain }}" \
             --no-fail-on-empty-changeset
 
       # Probe the endpoint before building. The build would fail on a bad

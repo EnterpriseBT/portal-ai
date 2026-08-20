@@ -85,6 +85,11 @@ jobs:
       # the `prod` environment are the human gate on a public deploy.
       gh-environment: prod
       subdomain: www
+      # The bare domain people type, link, and print. Redirected to `www`,
+      # which is already the canonical host baked into every built page
+      # (`SITE_URL` → canonical/og:url/sitemap), so this must not be flipped
+      # without rebuilding the site (#404).
+      apex-domain: portalsai.io
       # The wildcard cert lives in the dev-named stack and is shared; prod
       # deliberately has none of its own (#383, #386).
       cert-stack: portalai-dev-dns-certs

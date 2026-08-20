@@ -17,7 +17,7 @@ One published release fires two workflows off the same event:
 | Workflow | Deploys | Notes |
 |---|---|---|
 | `deploy-prod.yml` | `app.portalsai.io` + `api.portalsai.io` | the stacks, the web bundle, the API image |
-| `deploy-site-prod.yml` | `www.portalsai.io` | gated on the `PROD_SITE_CONFIG_URL` variable — see § *Activating www.portalsai.io* |
+| `deploy-site-prod.yml` | `www.portalsai.io` **and the bare `portalsai.io`** | gated on the `PROD_SITE_CONFIG_URL` variable — see § *Activating www.portalsai.io*. The apex is an alias on the same distribution and 301s to `www` (#404) |
 
 Both run in the **`prod` GitHub Environment**, so both pause for approval.
 
@@ -112,6 +112,8 @@ A prod config change republishes the site with no code change: `portalops vars s
 | A release deploys nothing | it was not *published* (still a draft) | Publish it |
 | `deploy-site-prod` exits with a notice and publishes nothing | `PROD_SITE_CONFIG_URL` is unset | Intended until activation — see § *Activating www.portalsai.io* |
 | The site preflight fails the deploy | contacts unresolved or the tier list is empty | `portalops vars set {SUPPORT,SALES,ADMIN}_EMAIL --env prod`; `portalops tier apply --env prod`. The last good site stays live — that is the point of failing closed |
+| `portalsai.io` does not resolve, but `www` does | the site stack was deployed without `ApexDomain` | Confirm `deploy-site-prod.yml` passes `apex-domain: portalsai.io`, then re-run. The apex record and alias are both conditional on it (#404) |
+| `portalsai.io` serves the site instead of redirecting | the apex reached an origin — the edge function did not run | Check the distribution's `viewer-request` function association. Two hosts serving one site is the duplicate-content case #404 exists to avoid |
 | The public site shows `qa@portalsai.io` | the SSM contacts were unset at build time, so the build used its fallback | Set them, then re-run the deploy (or let a `vars set` dispatch do it) |
 | A price changed in Stripe but `/pricing/` is stale | the live webhook endpoint is not subscribed to `price.*` | Add the three `price.*` events — `docs/PROD_STRIPE_LIVE.runbook.md` §5 |
 
