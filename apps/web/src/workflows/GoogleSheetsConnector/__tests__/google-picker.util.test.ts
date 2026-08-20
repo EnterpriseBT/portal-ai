@@ -107,8 +107,13 @@ function clearGoogleGlobals(): void {
  * jsdom parses injected <script> tags but never fetches them, so nothing
  * ever fires load or error on its own. This watches for the injection and
  * fires the outcome the test wants.
+ *
+ * The restore is registered for afterEach rather than returned, because a
+ * failing test would never reach a manual restore call — the patch would
+ * then leak into the next test and answer *its* script loads too, turning
+ * one red into several unrelated ones.
  */
-function autoResolveScripts(outcome: "load" | "error"): () => void {
+function autoResolveScripts(outcome: "load" | "error"): void {
   const original = document.head.appendChild.bind(document.head);
   const patched = ((node: Node) => {
     const result = original(node as never);
@@ -130,10 +135,12 @@ function autoResolveScripts(outcome: "load" | "error"): () => void {
     return result;
   }) as typeof document.head.appendChild;
   document.head.appendChild = patched;
-  return () => {
+  restoreAppendChild = () => {
     document.head.appendChild = original;
   };
 }
+
+let restoreAppendChild: (() => void) | null = null;
 
 const SCOPES = "openid email https://www.googleapis.com/auth/drive.file";
 
@@ -175,12 +182,14 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  restoreAppendChild?.();
+  restoreAppendChild = null;
   jest.restoreAllMocks();
 });
 
 describe("loadPicker", () => {
   it("injects the api.js script and resolves once the picker module is ready", async () => {
-    const restore = autoResolveScripts("load");
+    autoResolveScripts("load");
     const { loadPicker } = await import("../utils/google-picker.util");
 
     await loadPicker();
@@ -188,26 +197,57 @@ describe("loadPicker", () => {
     const scripts = document.head.querySelectorAll("script");
     expect(scripts).toHaveLength(1);
     expect(scripts[0]?.src).toContain("apis.google.com/js/api.js");
-    restore();
   });
 
   it("is idempotent — a second call injects no second script", async () => {
-    const restore = autoResolveScripts("load");
+    autoResolveScripts("load");
     const { loadPicker } = await import("../utils/google-picker.util");
 
     await loadPicker();
     await loadPicker();
 
     expect(document.head.querySelectorAll("script")).toHaveLength(1);
-    restore();
+  });
+
+  it("raises the Picker above MUI's modal layer", async () => {
+    // The Picker appends its dialog to <body> at z-index ~1000, which puts it
+    // under the AppBar (1100) and under the workflow's own Modal (1300) —
+    // visible but unreachable. MUI's highest default layer is the tooltip at
+    // 1500, so the override has to clear that.
+    autoResolveScripts("load");
+    const { loadPicker } = await import("../utils/google-picker.util");
+
+    await loadPicker();
+
+    const style = document.head.querySelector(
+      'style[data-portalai="google-picker"]'
+    );
+    expect(style).not.toBeNull();
+    const css = style?.textContent ?? "";
+    expect(css).toContain(".picker-dialog");
+    expect(css).toContain(".picker-dialog-bg");
+    for (const zIndex of css.matchAll(/z-index:\s*(\d+)/g)) {
+      expect(Number(zIndex[1])).toBeGreaterThan(1500);
+    }
+  });
+
+  it("injects the z-index override only once", async () => {
+    autoResolveScripts("load");
+    const { loadPicker } = await import("../utils/google-picker.util");
+
+    await loadPicker();
+    await loadPicker();
+
+    expect(
+      document.head.querySelectorAll('style[data-portalai="google-picker"]')
+    ).toHaveLength(1);
   });
 
   it("rejects when the script cannot load", async () => {
-    const restore = autoResolveScripts("error");
+    autoResolveScripts("error");
     const { loadPicker } = await import("../utils/google-picker.util");
 
     await expect(loadPicker()).rejects.toThrow(/picker/i);
-    restore();
   });
 });
 
@@ -321,7 +361,7 @@ describe("requestBrowserToken", () => {
   it("loads the GIS script when it is not already on the page", async () => {
     // Nothing else pulls accounts.google.com/gsi/client in — before #408 the
     // app had no browser-side Google SDK at all, so the util must fetch it.
-    const restore = autoResolveScripts("load");
+    autoResolveScripts("load");
     gisResponder = (cfg) => cfg.callback({ access_token: "ya29.token" });
     global.fetch = jest.fn(async () => ({
       ok: true,
@@ -339,7 +379,6 @@ describe("requestBrowserToken", () => {
     expect(srcs.some((s) => s.includes("accounts.google.com/gsi/client"))).toBe(
       true
     );
-    restore();
   });
 
   it("rejects when the user closes the popup or denies access", async () => {

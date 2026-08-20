@@ -127,8 +127,34 @@ function loadScript(src: string): Promise<void> {
   return pending;
 }
 
+/**
+ * The Picker appends its dialog to `<body>` at z-index ~1000, which is
+ * below MUI's AppBar (1100) and below the workflow's own Modal (1300) — it
+ * renders, but behind the navbar and the dialog that opened it, so the user
+ * cannot reach it. MUI's highest default layer is the tooltip at 1500, so
+ * the override clears that.
+ *
+ * A stylesheet rather than a theme token because the Picker's markup is
+ * Google's, injected outside React entirely; there is no component here to
+ * pass an `sx` to.
+ */
+const PICKER_Z_INDEX_CSS = `
+.picker-dialog-bg { z-index: 1600 !important; }
+.picker-dialog { z-index: 1601 !important; }
+`;
+
+function injectPickerStyles(): void {
+  const marker = "google-picker";
+  if (document.head.querySelector(`style[data-portalai="${marker}"]`)) return;
+  const style = document.createElement("style");
+  style.setAttribute("data-portalai", marker);
+  style.textContent = PICKER_Z_INDEX_CSS;
+  document.head.appendChild(style);
+}
+
 /** Loads `gapi` + the picker module once, idempotently. */
 export async function loadPicker(): Promise<void> {
+  injectPickerStyles();
   if (googleGlobal()?.picker) return;
 
   await loadScript(API_JS_SRC);

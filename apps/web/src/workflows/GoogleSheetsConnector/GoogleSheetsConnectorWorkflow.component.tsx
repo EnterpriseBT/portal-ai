@@ -470,6 +470,11 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
       title="Connect Google Sheets"
       defaultMaximized
       maximizable
+      // Google's picker renders its own dialog outside this Modal's DOM, so
+      // MUI's focus trap treats it as "outside" and pulls focus back on every
+      // interaction — the picker appears but cannot be typed into. Relaxed
+      // only while the picker is open.
+      disableEnforceFocus={picker.pickerLoading}
     >
       <Stack spacing={2} sx={{ minWidth: 0 }}>
         <Stepper
