@@ -28,19 +28,59 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Need the pushed range available locally to diff it below.
+          fetch-depth: 0
+
+      # A docs-only push cannot affect this suite, and the suite is the most
+      # expensive thing in CI (~6 min of docker compose + Postgres/Redis).
+      #
+      # This is deliberately NOT `paths-ignore` on the trigger: "Integration
+      # Tests" is a REQUIRED status check on main, and a required check that
+      # never runs never reports — GitHub then blocks the PR indefinitely,
+      # waiting for a status that will never arrive. Filtering inside the job
+      # keeps the check reporting success while skipping the work (#427).
+      #
+      # Fails safe: any doubt about the diff (new branch, force-push, base not
+      # fetched, workflow_call with no push range) runs the suite.
+      - name: Does anything outside docs/ change?
+        id: changes
+        run: |
+          set -euo pipefail
+          run_tests() { echo "run=true" >>"$GITHUB_OUTPUT"; echo "$1 — running the suite"; exit 0; }
+
+          base="${{ github.event.before }}"
+          head="${{ github.sha }}"
+
+          [ -n "$base" ] || run_tests "no base SHA"
+          case "$base" in *[!0]*) ;; *) run_tests "all-zero base (new branch)" ;; esac
+          git cat-file -e "$base^{commit}" 2>/dev/null || run_tests "base $base not present"
+
+          changed="$(git diff --name-only "$base" "$head")" || run_tests "diff failed"
+          [ -n "$changed" ] || run_tests "empty diff"
+
+          if printf '%s\n' "$changed" | grep -qvE '^docs/|\.md$'; then
+            run_tests "code changed"
+          fi
+          echo "run=false" >>"$GITHUB_OUTPUT"
+          echo "docs-only push — skipping the integration suite:"
+          printf '  %s\n' $changed
 
       - name: Start test services
+        if: steps.changes.outputs.run == 'true'
         run: docker compose up -d postgres-test redis --wait
 
       - name: Setup
+        if: steps.changes.outputs.run == 'true'
         uses: ./.github/actions/setup
 
       - name: Run integration tests
+        if: steps.changes.outputs.run == 'true'
         env:
           INTEGRATION_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5433/portal_ai_test
           REDIS_URL: redis://localhost:6380
         run: npm run test:integration
 
       - name: Stop test services
-        if: always()
+        if: always() && steps.changes.outputs.run == 'true'
         run: docker compose down
