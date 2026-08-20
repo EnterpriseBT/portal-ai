@@ -26,6 +26,8 @@ import GoogleIcon from "@mui/icons-material/Google";
 import { OAuthAuthorizeStep } from "../../components/OAuthAuthorizeStep.component";
 import type { OAuthAuthorizeStepState } from "../../components/OAuthAuthorizeStep.component";
 import { SelectSheetStep } from "./SelectSheetStep.component";
+import { usePickerSelection } from "./utils/use-picker-selection.util";
+import type { PickedSheet } from "./utils/google-picker.util";
 import { GoogleSheetsRegionDrawingStep } from "./GoogleSheetsRegionDrawingStep.component";
 import { GoogleSheetsReviewStep } from "./GoogleSheetsReviewStep.component";
 import {
@@ -77,7 +79,6 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
   const navigate = useNavigate();
 
   const { mutateAsync: authorizeMutate } = sdk.googleSheets.authorize();
-  const { mutateAsync: searchSheetsMutate } = sdk.googleSheets.searchSheets();
   const { mutateAsync: selectSheetMutate } = sdk.googleSheets.selectSheet();
   const { mutateAsync: sheetSliceMutate } = sdk.googleSheets.sheetSlice();
   const { mutateAsync: interpretMutate } = sdk.layoutPlans.interpret();
@@ -115,6 +116,8 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
 
   // Staged entities created via "+ Create new entity" in the editor.
   const [stagedEntities, setStagedEntities] = useState<EntityOption[]>([]);
+  /** The picked spreadsheet's name, shown while its contents load. */
+  const [pickedLabel, setPickedLabel] = useState<string | null>(null);
   const handleCreateEntity = useCallback(
     (key: string, label: string): string => {
       setStagedEntities((prev) => {
@@ -234,6 +237,7 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
     workbookRef.current = null;
     connectorInstanceIdRef.current = null;
     spreadsheetTitleRef.current = "Google Sheets";
+    setPickedLabel(null);
     setStagedEntities([]);
     workflow.reset();
     onClose();
@@ -265,30 +269,26 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
     }
   }, [authorizeMutate, popup, workflow]);
 
-  // ── Select-sheet step search ───────────────────────────────────────
+  // ── Select-sheet step: the Google Picker ───────────────────────────
+  //
+  // There is no search here any more (#408). Under `drive.file` the app
+  // cannot list a user's spreadsheets — access is granted one file at a
+  // time, through Google's own Picker, which carries its own search.
 
-  const handleSearchSheets = useCallback(
-    async (query: string): Promise<SelectOption[]> => {
-      const ciId = workflow.connectorInstanceId;
-      if (!ciId) return [];
-      const res = await searchSheetsMutate({
-        connectorInstanceId: ciId,
-        search: query,
-      });
-      return res.items.map((item) => ({
-        value: item.spreadsheetId,
-        label: item.name,
-      }));
-    },
-    [searchSheetsMutate, workflow.connectorInstanceId]
-  );
-
-  const handleSelectSheet = useCallback(
-    (spreadsheetId: string) => {
-      void workflow.selectSpreadsheet(spreadsheetId);
+  const handlePicked = useCallback(
+    (sheet: PickedSheet) => {
+      // The Picker already knows the name; showing it immediately means the
+      // selection is visible while the workbook is still being fetched.
+      setPickedLabel(sheet.name);
+      void workflow.selectSpreadsheet(sheet.spreadsheetId);
     },
     [workflow]
   );
+
+  const picker = usePickerSelection({
+    linkedEmail: workflow.accountInfo?.identity ?? null,
+    onPicked: handlePicked,
+  });
 
   // ── Column definitions for binding labels (shared with file-upload) ─
 
@@ -486,16 +486,19 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
               }}
               providerLabel="Google Sheets"
               providerIcon={<GoogleIcon />}
-              scopesDescription="Authorize Portals AI to read your Google Drive and Sheets. We only ever request read access — no writes, no deletions."
+              scopesDescription="Authorize Portals AI to see your name and email, and to open only the spreadsheets you choose in the next step. We cannot see anything else in your Drive."
             />
           </StepPanel>
 
           <StepPanel index={1} activeStep={workflow.step}>
             <SelectSheetStep
               value={workflow.spreadsheetId}
-              onSelect={handleSelectSheet}
-              searchFn={handleSearchSheets}
+              valueLabel={pickedLabel}
+              onOpenPicker={picker.openPicker}
+              pickerLoading={picker.pickerLoading}
               loading={workflow.isLoadingSheet}
+              pickerUnavailable={picker.pickerUnavailable}
+              accountMismatch={picker.accountMismatch}
               serverError={workflow.serverError}
             />
           </StepPanel>
