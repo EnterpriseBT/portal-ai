@@ -35,6 +35,7 @@ import {
 import { encryptCredentials } from "../utils/crypto.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { JobLockService } from "../services/job-lock.service.js";
+import { wideTableReconcilerService } from "../services/wide-table-reconciler.service.js";
 import {
   computeIdentityWarnings,
   computeSyncEligible,
@@ -1313,6 +1314,19 @@ connectorInstanceRouter.delete(
               tx
             ),
           ]);
+
+          // #423: the cascade above is an UPDATE, so the
+          // `entity_records → er__<id>` ON DELETE CASCADE never fires and the
+          // wide table keeps a full projected copy of an instance that is
+          // gone — 200K rows for the entity that surfaced this. Every other
+          // delete path already cleans the wide side (#327); this one did not.
+          // `dropTable` also clears the entity's `wide_table_columns` catalog
+          // rows and invalidates its cached statement. Ordering is free here,
+          // unlike reset/organization-delete where the FK parents are
+          // hard-deleted — this cascade only soft-deletes them.
+          for (const entityId of entityIds) {
+            await wideTableReconcilerService.dropTable(entityId, tx);
+          }
 
           await DbService.repository.connectorEntities.softDeleteByConnectorInstanceId(
             id,
