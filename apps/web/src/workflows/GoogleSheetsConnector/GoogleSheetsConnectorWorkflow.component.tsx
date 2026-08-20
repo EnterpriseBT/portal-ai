@@ -292,12 +292,10 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
 
   // ── Column definitions for binding labels (shared with file-upload) ─
 
-  const columnDefinitionsQuery = sdk.columnDefinitions.list({
-    limit: 1000,
-    offset: 0,
-    sortBy: "label",
-    sortOrder: "asc",
-  });
+  // #414: `listAll` pages to exhaustion. The previous `limit: 1000` was clamped
+  // to 100 by the pagination contract, so a binding whose column definition
+  // sorted past the cap rendered with no label at all.
+  const columnDefinitionsQuery = sdk.columnDefinitions.listAll();
   const columnDefinitionsById = useMemo(() => {
     const map = new Map<
       string,

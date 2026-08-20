@@ -1,6 +1,11 @@
 import { useState } from "react";
 
-import { useMutation } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  type QueryKey,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import type {
   ApiSuccessResponse,
   ColumnDefinitionCreateRequestBody,
@@ -26,6 +31,27 @@ import type { QueryOptions, SearchHookOptions, SearchResult } from "./types";
 
 const COLUMN_DEFINITIONS_URL = "/api/column-definitions";
 
+/**
+ * #414: the catalog's natural order for a human picking from it.
+ *
+ * The pagination contract defaults to `sortBy: created` (`pagination.contract.ts`),
+ * which ordered every picker chronologically — so the #316 geospatial definitions,
+ * appended last to `SYSTEM_COLUMN_DEFINITIONS`, fell outside the default 20-row
+ * window and read as missing. Alphabetical makes the window predictable instead of
+ * an accident of insertion order. Overridable via `defaultParams`.
+ */
+const CATALOG_ORDER = { sortBy: "label", sortOrder: "asc" } as const;
+
+/**
+ * The server clamps `limit` to 100 (`PaginationRequestQuerySchema`), so a caller
+ * asking for more is silently answered with less. `listAll` pages instead of
+ * guessing; this is the per-request page size it uses.
+ */
+const CATALOG_PAGE_SIZE = 100;
+
+/** Guard against an unbounded loop if `total` and the returned rows disagree. */
+const CATALOG_MAX_PAGES = 50;
+
 const defaultMapItem = (cd: ColumnDefinition): SelectOption => ({
   value: cd.id,
   label: cd.label,
@@ -42,6 +68,70 @@ export const columnDefinitions = {
       undefined,
       options
     ),
+
+  /**
+   * #414: the org's entire column-definition catalog, label-ordered.
+   *
+   * For the `columnDefinitionId → label` maps that render binding chips. Those
+   * callers previously asked for `limit: 1000` and were silently answered with
+   * 100, so a binding whose definition sorted past the cap rendered with no
+   * label — and unlike a picker there is no user typing to recover the miss.
+   *
+   * Pages to exhaustion against the response's `total` rather than guessing a
+   * limit. `useAuthQuery` takes a fixed URL and cannot loop, hence the local
+   * `useQuery`; every request still goes through `fetchWithAuth`.
+   */
+  listAll: (
+    options?: QueryOptions<ColumnDefinitionListResponsePayload>
+  ): UseQueryResult<ColumnDefinitionListResponsePayload, ApiError> => {
+    const { fetchWithAuth } = useAuthFetch();
+
+    return useQuery<
+      ColumnDefinitionListResponsePayload,
+      ApiError,
+      ColumnDefinitionListResponsePayload,
+      QueryKey
+    >({
+      queryKey: queryKeys.columnDefinitions.listAll(),
+      queryFn: async () => {
+        const collected: ColumnDefinition[] = [];
+        let total = 0;
+        let limit = CATALOG_PAGE_SIZE;
+        let offset = 0;
+
+        for (let page = 0; page < CATALOG_MAX_PAGES; page++) {
+          const res = await fetchWithAuth<
+            ApiSuccessResponse<ColumnDefinitionListResponsePayload>
+          >(
+            buildUrl(COLUMN_DEFINITIONS_URL, {
+              ...CATALOG_ORDER,
+              limit: CATALOG_PAGE_SIZE,
+              offset,
+            })
+          );
+
+          collected.push(...res.payload.columnDefinitions);
+          total = res.payload.total;
+          // Echoed back post-clamp, so this is the page size actually served.
+          limit = res.payload.limit;
+
+          // Stop on a short page as well as on the count: a page shorter than
+          // the served limit means the server has nothing left, and trusting
+          // that too is what keeps a stale `total` from spinning the loop.
+          if (
+            collected.length >= total ||
+            res.payload.columnDefinitions.length < limit
+          ) {
+            break;
+          }
+          offset += limit;
+        }
+
+        return { columnDefinitions: collected, total, limit, offset };
+      },
+      ...options,
+    });
+  },
 
   get: (
     id: string,
@@ -100,7 +190,10 @@ export const columnDefinitions = {
 
     const searchMutation = useMutation<TOption[], ApiError, string>({
       mutationFn: async (query: string) => {
-        const params: Record<string, string> = { ...options?.defaultParams };
+        const params: Record<string, string> = {
+          ...CATALOG_ORDER,
+          ...options?.defaultParams,
+        };
         if (query) params.search = query;
         const res = await fetchWithAuth<
           ApiSuccessResponse<ColumnDefinitionListResponsePayload>
