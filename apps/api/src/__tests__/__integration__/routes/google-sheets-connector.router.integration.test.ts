@@ -502,9 +502,12 @@ describe("Google Sheets Connector Router — GET /callback", () => {
   });
 });
 
-// ── GET /sheets ────────────────────────────────────────────────────
+// ── Shared fixtures for the instance-scoped routes ─────────────────
+//
+// `mockDriveFetch` predates #408 and its name outlived the Drive proxy it
+// was written for; every surviving caller mocks a *Sheets* response.
 
-function mockDriveFetch({
+function mockGoogleFetch({
   status = 200,
   body = {},
 }: {
@@ -552,7 +555,9 @@ async function insertGoogleSheetsInstance(
   return id;
 }
 
-describe("Google Sheets Connector Router — GET /sheets", () => {
+// ── The removed Drive proxy ────────────────────────────────────────
+
+describe("Google Sheets Connector Router — GET /sheets is gone (#408)", () => {
   let connection!: ReturnType<typeof postgres>;
   let db!: DbClient;
 
@@ -561,178 +566,22 @@ describe("Google Sheets Connector Router — GET /sheets", () => {
     connection = postgres(process.env.DATABASE_URL, { max: 1 });
     db = drizzle(connection, { schema });
     await teardownOrg(db as ReturnType<typeof drizzle>);
-
-    fetchMock.mockReset();
-    getOrRefreshMock.mockReset();
-    getOrRefreshMock.mockResolvedValue("ya29.access");
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
   });
 
   afterEach(async () => {
     await connection.end();
-    globalThis.fetch = originalFetch;
   });
 
-  it("returns 400 GOOGLE_SHEETS_INVALID_INSTANCE_ID when connectorInstanceId is missing", async () => {
+  it("no longer routes, because drive.file cannot list a user's files at all", async () => {
     await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
     const res = await request(app)
       .get("/api/connectors/google-sheets/sheets")
-      .set("Authorization", "Bearer test-token");
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe(ApiCode.GOOGLE_SHEETS_INVALID_INSTANCE_ID);
-  });
+      .set("Authorization", "Bearer test-token")
+      .query({ connectorInstanceId: "whatever" });
 
-  it("returns 404 CONNECTOR_INSTANCE_NOT_FOUND when the id doesn't exist", async () => {
-    await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
-    const res = await request(app)
-      .get(
-        "/api/connectors/google-sheets/sheets?connectorInstanceId=nonexistent"
-      )
-      .set("Authorization", "Bearer test-token");
+    // 404 from the router itself: no handler is mounted at this path.
     expect(res.status).toBe(404);
-    expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
-  });
-
-  it("returns 403 when the instance belongs to a different organization", async () => {
-    const { organizationId: ourOrg } = await seedUserAndOrg(
-      db as ReturnType<typeof drizzle>,
-      AUTH0_ID
-    );
-    const definitionId = await insertGoogleSheetsDefinition(
-      db as ReturnType<typeof drizzle>
-    );
-    // Insert an instance under a DIFFERENT org id.
-    const id = await insertGoogleSheetsInstance(
-      db as ReturnType<typeof drizzle>,
-      crypto.randomUUID(),
-      definitionId,
-      "stranger@example.com"
-    );
-    void ourOrg;
-    const res = await request(app)
-      .get(`/api/connectors/google-sheets/sheets?connectorInstanceId=${id}`)
-      .set("Authorization", "Bearer test-token");
-    expect(res.status).toBe(403);
-  });
-
-  it("returns 200 with mapped items + nextPageToken on the happy path", async () => {
-    const { organizationId } = await seedUserAndOrg(
-      db as ReturnType<typeof drizzle>,
-      AUTH0_ID
-    );
-    const definitionId = await insertGoogleSheetsDefinition(
-      db as ReturnType<typeof drizzle>
-    );
-    const id = await insertGoogleSheetsInstance(
-      db as ReturnType<typeof drizzle>,
-      organizationId,
-      definitionId,
-      "alice@example.com"
-    );
-
-    fetchMock.mockResolvedValueOnce(
-      mockDriveFetch({
-        body: {
-          files: [
-            {
-              id: "sheet-1",
-              name: "Q3 Forecast",
-              modifiedTime: "2026-04-29T10:00:00Z",
-              owners: [{ emailAddress: "alice@example.com" }],
-            },
-            {
-              id: "sheet-2",
-              name: "Headcount",
-              modifiedTime: "2026-04-28T10:00:00Z",
-              owners: [{ emailAddress: "alice@example.com" }],
-            },
-          ],
-          nextPageToken: "page-2",
-        },
-      })
-    );
-
-    const res = await request(app)
-      .get(
-        `/api/connectors/google-sheets/sheets?connectorInstanceId=${id}&search=forecast`
-      )
-      .set("Authorization", "Bearer test-token");
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.payload.items).toHaveLength(2);
-    expect(res.body.payload.items[0]).toEqual({
-      spreadsheetId: "sheet-1",
-      name: "Q3 Forecast",
-      modifiedTime: "2026-04-29T10:00:00Z",
-      ownerEmail: "alice@example.com",
-    });
-    expect(res.body.payload.nextPageToken).toBe("page-2");
-    expect(getOrRefreshMock).toHaveBeenCalledWith(id);
-    // Verify the upstream URL carried the search filter.
-    const calledUrl = (fetchMock.mock.calls[0] as [string, RequestInit])[0];
-    const calledQ = new URL(calledUrl).searchParams.get("q") ?? "";
-    expect(calledQ).toContain("name contains 'forecast'");
-  });
-
-  it("returns 502 GOOGLE_OAUTH_REFRESH_FAILED when refresh_token is revoked", async () => {
-    const { organizationId } = await seedUserAndOrg(
-      db as ReturnType<typeof drizzle>,
-      AUTH0_ID
-    );
-    const definitionId = await insertGoogleSheetsDefinition(
-      db as ReturnType<typeof drizzle>
-    );
-    const id = await insertGoogleSheetsInstance(
-      db as ReturnType<typeof drizzle>,
-      organizationId,
-      definitionId,
-      "alice@example.com"
-    );
-
-    getOrRefreshMock.mockRejectedValueOnce(
-      Object.assign(new Error("Token has been expired"), {
-        name: "GoogleAuthError",
-        kind: "refresh_failed",
-      })
-    );
-
-    const res = await request(app)
-      .get(`/api/connectors/google-sheets/sheets?connectorInstanceId=${id}`)
-      .set("Authorization", "Bearer test-token");
-
-    expect(res.status).toBe(502);
-    expect(res.body.code).toBe(ApiCode.GOOGLE_OAUTH_REFRESH_FAILED);
-  });
-
-  it("returns 502 GOOGLE_SHEETS_LIST_FAILED on a Drive 4xx", async () => {
-    const { organizationId } = await seedUserAndOrg(
-      db as ReturnType<typeof drizzle>,
-      AUTH0_ID
-    );
-    const definitionId = await insertGoogleSheetsDefinition(
-      db as ReturnType<typeof drizzle>
-    );
-    const id = await insertGoogleSheetsInstance(
-      db as ReturnType<typeof drizzle>,
-      organizationId,
-      definitionId,
-      "alice@example.com"
-    );
-
-    fetchMock.mockResolvedValueOnce(
-      mockDriveFetch({
-        status: 403,
-        body: { error: { message: "Insufficient Permission" } },
-      })
-    );
-
-    const res = await request(app)
-      .get(`/api/connectors/google-sheets/sheets?connectorInstanceId=${id}`)
-      .set("Authorization", "Bearer test-token");
-
-    expect(res.status).toBe(502);
-    expect(res.body.code).toBe(ApiCode.GOOGLE_SHEETS_LIST_FAILED);
   });
 });
 
@@ -849,7 +698,7 @@ describe("Google Sheets Connector Router — POST /instances/:id/select-sheet", 
     // freshly Picker-granted file has not propagated. A genuinely missing
     // spreadsheet 404s on both attempts and still surfaces as a 502.
     const notFound = () =>
-      mockDriveFetch({
+      mockGoogleFetch({
         status: 404,
         body: { error: { message: "Requested entity was not found" } },
       });
@@ -888,7 +737,7 @@ describe("Google Sheets Connector Router — POST /instances/:id/select-sheet", 
     );
 
     fetchMock.mockResolvedValueOnce(
-      mockDriveFetch({
+      mockGoogleFetch({
         body: buildSheetsApiResponse({
           title: "Q3 Forecast",
           sheets: [
@@ -953,7 +802,7 @@ describe("Google Sheets Connector Router — POST /instances/:id/select-sheet", 
 
     fetchMock
       .mockResolvedValueOnce(
-        mockDriveFetch({
+        mockGoogleFetch({
           body: buildSheetsApiResponse({
             title: "First Workbook",
             sheets: [{ name: "S", rows: 1, cols: 1, cell: { value: "x" } }],
@@ -961,7 +810,7 @@ describe("Google Sheets Connector Router — POST /instances/:id/select-sheet", 
         })
       )
       .mockResolvedValueOnce(
-        mockDriveFetch({
+        mockGoogleFetch({
           body: buildSheetsApiResponse({
             title: "Second Workbook",
             sheets: [{ name: "T", rows: 1, cols: 1, cell: { value: "y" } }],
@@ -1005,7 +854,7 @@ async function selectSmallSheet(
     email
   );
   fetchMock.mockResolvedValueOnce(
-    mockDriveFetch({
+    mockGoogleFetch({
       body: buildSheetsApiResponse({
         title: "Small Workbook",
         sheets: [

@@ -53,7 +53,6 @@ export type GoogleAuthErrorKind =
   | "no_refresh_token"
   | "userinfo_failed"
   | "refresh_failed"
-  | "listSheets_failed"
   | "fetchSheet_failed";
 
 export class GoogleAuthError extends Error {

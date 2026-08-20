@@ -41,9 +41,6 @@ import {
 } from "../utils/workbook-preview.util.js";
 import { makeLazyWorkbookFromCache } from "../utils/lazy-workbook.util.js";
 
-const DRIVE_FILES_LIST_URL = "https://www.googleapis.com/drive/v3/files";
-const DRIVE_PAGE_SIZE = 25;
-const SPREADSHEET_MIME_TYPE = "application/vnd.google-apps.spreadsheet";
 const SHEETS_GET_URL_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
 
 type FetchFn = typeof fetch;
@@ -59,43 +56,6 @@ export interface SelectSheetResult {
   title: string;
   sheets: PreviewSheet[];
   sliced?: true;
-}
-
-export interface ListSheetsInput {
-  connectorInstanceId: string;
-  search?: string;
-  pageToken?: string;
-}
-
-export interface ListSheetsItem {
-  spreadsheetId: string;
-  name: string;
-  modifiedTime: string;
-  ownerEmail: string | null;
-}
-
-export interface ListSheetsResult {
-  items: ListSheetsItem[];
-  nextPageToken?: string;
-}
-
-interface DriveFilesListResponse {
-  files?: {
-    id?: string;
-    name?: string;
-    modifiedTime?: string;
-    owners?: { emailAddress?: string; displayName?: string }[];
-  }[];
-  nextPageToken?: string;
-}
-
-/**
- * Drive's `q` syntax escapes single-quote literals with a backslash.
- * Without this, a search term containing `'` (e.g. "O'Brien") corrupts
- * the query and Drive returns 400.
- */
-function escapeForDriveQ(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
 const GOOGLE_SHEETS_SLUG = "google-sheets";
@@ -207,63 +167,6 @@ export class GoogleSheetsConnectorService {
       EMPTY_ACCOUNT_INFO;
 
     return { connectorInstanceId, accountInfo };
-  }
-
-  /**
-   * Drive `files.list` proxy. Returns spreadsheets the authenticated
-   * user can read, optionally filtered by name. Pagination via
-   * `pageToken`. The slim response maps Drive's `id` → `spreadsheetId`
-   * to match the connector's vocabulary.
-   *
-   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-B.plan.md` §Slice 4.
-   */
-  static async listSheets(
-    input: ListSheetsInput,
-    fetchFn: FetchFn = fetch
-  ): Promise<ListSheetsResult> {
-    const accessToken = await GoogleAccessTokenCacheService.getOrRefresh(
-      input.connectorInstanceId
-    );
-
-    let q = `mimeType='${SPREADSHEET_MIME_TYPE}' and trashed=false`;
-    if (input.search && input.search.trim().length > 0) {
-      q += ` and name contains '${escapeForDriveQ(input.search.trim())}'`;
-    }
-
-    const url = new URL(DRIVE_FILES_LIST_URL);
-    url.searchParams.set("q", q);
-    url.searchParams.set("pageSize", String(DRIVE_PAGE_SIZE));
-    url.searchParams.set(
-      "fields",
-      "files(id,name,modifiedTime,owners(emailAddress,displayName)),nextPageToken"
-    );
-    if (input.pageToken) url.searchParams.set("pageToken", input.pageToken);
-
-    const res = await fetchFn(url.toString(), {
-      method: "GET",
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-
-    if (!res.ok) {
-      const body = await safeReadText(res);
-      throw new GoogleAuthError(
-        "listSheets_failed",
-        `Drive files.list failed (${res.status}): ${body}`
-      );
-    }
-
-    const json = (await res.json()) as DriveFilesListResponse;
-    const items: ListSheetsItem[] = (json.files ?? [])
-      .filter((f) => typeof f.id === "string" && typeof f.name === "string")
-      .map((f) => ({
-        spreadsheetId: f.id as string,
-        name: f.name as string,
-        modifiedTime: f.modifiedTime ?? "",
-        ownerEmail: f.owners?.[0]?.emailAddress ?? null,
-      }));
-    const result: ListSheetsResult = { items };
-    if (json.nextPageToken) result.nextPageToken = json.nextPageToken;
-    return result;
   }
 
   /**
