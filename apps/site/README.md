@@ -1,7 +1,8 @@
 # @portalai/site
 
-The public marketing site — `site-dev.portalsai.io` today, `www.portalsai.io`
-at launch. Astro, fully static, no client framework.
+The public marketing site — `site-dev.portalsai.io` in dev, `www.portalsai.io`
+in production, with the bare `portalsai.io` 301ing to it (#404). Astro, fully
+static, no client framework.
 
 Everything here follows from one constraint: **a published page is a durable
 artifact seen by strangers on unknown networks**. That is why prices are baked

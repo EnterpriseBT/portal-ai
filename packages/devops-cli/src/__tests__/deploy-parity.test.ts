@@ -26,6 +26,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import vm from "node:vm";
 
 import { parseDocument } from "yaml";
 
@@ -702,5 +703,181 @@ describe("provisioning runbook covers the Auth0 wiring (#403)", () => {
     // that cannot separate them is the mistake this replaces.
     expect(body).toContain("Service not found");
     expect(body).toContain("code_challenge_method=S256");
+  });
+});
+
+// #404: the apex (`portalsai.io`) is a PROD-ONLY concept, gated by a condition.
+//
+// Two failure modes are pinned here, and neither announces itself at deploy
+// time. First, an unconditional apex alias would make the DEV distribution
+// claim `portalsai.io` — CloudFront allows one distribution per alias, so dev
+// would hold the production apex hostage and prod's deploy would be the thing
+// that fails. Second, the apex redirect lives inside the SAME viewer-request
+// function as the index rewrite (CloudFront permits one function per event
+// type per behavior), so the two responsibilities are one edit away from
+// being ordered wrongly — and a URI rewritten before the redirect puts
+// `/index.html` in the Location header.
+describe("the apex serves prod only, behind a condition (#404)", () => {
+  const SITE_YML = path.join(ROOT, "infra/cloudformation/site.yml");
+
+  const siteTemplate = (): {
+    Parameters: Record<string, { Default?: string }>;
+    Conditions?: Record<string, unknown>;
+    Resources: Record<string, Record<string, never>>;
+  } => {
+    const doc = parseDocument(fs.readFileSync(SITE_YML, "utf8"), {
+      logLevel: "silent",
+    });
+    expect(doc.errors).toHaveLength(0);
+    return doc.toJS({ maxAliasCount: -1 });
+  };
+
+  const workflow = (f: string): string =>
+    fs.readFileSync(path.join(ROOT, ".github/workflows", f), "utf8");
+
+  /** Comments name the omission to explain it; only executable text counts. */
+  const code = (body: string): string =>
+    body
+      .split("\n")
+      .filter((line) => !/^\s*#/.test(line))
+      .join("\n");
+
+  it("the prod caller claims the apex", () => {
+    expect(code(workflow("deploy-site-prod.yml"))).toMatch(
+      /apex-domain:\s*portalsai\.io/
+    );
+  });
+
+  it("the dev caller does not — dev has no apex", () => {
+    expect(code(workflow("deploy-site-dev.yml"))).not.toMatch(/apex-domain:/);
+  });
+
+  it("ApexDomain defaults to empty, so a caller that says nothing gets none", () => {
+    // The dev caller passes no apex-domain at all (asserted above), so the
+    // default IS the dev behavior. A non-empty default would silently give
+    // dev an apex.
+    const param = siteTemplate().Parameters.ApexDomain;
+    expect(param).toBeDefined();
+    expect(param.Default).toBe("");
+  });
+
+  it("the apex record set exists only under the condition", () => {
+    const tpl = siteTemplate();
+    expect(tpl.Conditions?.HasApex).toBeDefined();
+    const record = tpl.Resources.ApexDnsRecord;
+    expect(record).toBeDefined();
+    expect(record.Condition).toBe("HasApex");
+  });
+
+  it("the apex alias is conditional, never a second unconditional entry", () => {
+    const aliases =
+      siteTemplate().Resources.SiteDistribution.Properties.DistributionConfig
+        .Aliases;
+    // `!If [HasApex, …]` parses to an array carrying the condition name.
+    expect(JSON.stringify(aliases)).toContain("HasApex");
+  });
+
+  // The function is EXECUTED rather than grepped. A text assertion ("contains
+  // 301") passes on code that redirects to the wrong place, drops the query
+  // string, or throws — and the only other place this runs is production.
+  describe("the edge function, executed", () => {
+    const CANONICAL = "www.portalsai.io";
+    const APEX = "portalsai.io";
+
+    type Entry = { value: string; multiValue?: Array<{ value: string }> };
+    type EdgeResult = {
+      uri?: string;
+      statusCode?: number;
+      headers?: { location: { value: string } };
+    };
+    type EdgeHandler = (event: {
+      request: {
+        uri: string;
+        querystring: Record<string, Entry>;
+        headers: { host?: { value: string } };
+      };
+    }) => EdgeResult;
+
+    /** The real FunctionCode, with CFN's !Sub resolved as prod resolves it. */
+    const handler = (): EdgeHandler => {
+      const code = (
+        siteTemplate().Resources.SiteIndexRewrite.Properties
+          .FunctionCode as unknown as string
+      ).replace(/\$\{Subdomain\}\.\$\{DomainName\}/g, CANONICAL);
+      return vm.runInNewContext(code + "\nhandler;") as EdgeHandler;
+    };
+
+    const run = (
+      host: string,
+      uri: string,
+      query: Record<string, string[]> = {}
+    ): EdgeResult => {
+      const querystring: Record<string, Entry> = {};
+      for (const [key, values] of Object.entries(query)) {
+        querystring[key] =
+          values.length > 1
+            ? {
+                value: values[0],
+                multiValue: values.map((v) => ({ value: v })),
+              }
+            : { value: values[0] };
+      }
+      return handler()({
+        request: { uri, querystring, headers: { host: { value: host } } },
+      });
+    };
+
+    const location = (r: EdgeResult): string => {
+      expect(r.statusCode).toBe(301);
+      return r.headers!.location.value;
+    };
+
+    it("301s the apex root to the canonical host", () => {
+      expect(location(run(APEX, "/"))).toBe("https://www.portalsai.io/");
+    });
+
+    it("preserves the path and every repeated query parameter", () => {
+      // The acceptance criterion. `x` appears twice on purpose: querystring is
+      // a map, so reading only `.value` would drop the second one.
+      expect(
+        location(run(APEX, "/pricing/", { x: ["1", "2"], y: ["3"] }))
+      ).toBe("https://www.portalsai.io/pricing/?x=1&x=2&y=3");
+    });
+
+    it("keeps a valueless flag parameter as a bare key", () => {
+      expect(location(run(APEX, "/", { debug: [""] }))).toBe(
+        "https://www.portalsai.io/?debug"
+      );
+    });
+
+    it.each([
+      ["/index.html", "https://www.portalsai.io/"],
+      ["/pricing/index.html", "https://www.portalsai.io/pricing/"],
+    ])("normalizes %s out of the Location header", (uri, expected) => {
+      // Whether DefaultRootObject substitutes before this function runs is not
+      // worth betting the canonical URL on, so the redirect normalizes either
+      // way. Without this, the apex 301s to a URL no page links to.
+      expect(location(run(APEX, uri))).toBe(expected);
+    });
+
+    it("redirects rather than rewriting — order inside the function", () => {
+      // A URI rewritten before the host check lands in Location as
+      // /pricing/index.html. Passes only because the redirect comes first.
+      expect(location(run(APEX, "/pricing"))).toBe(
+        "https://www.portalsai.io/pricing"
+      );
+    });
+
+    it.each([
+      ["/", "/index.html"],
+      ["/pricing/", "/pricing/index.html"],
+      ["/pricing", "/pricing/index.html"],
+      ["/styles.css", "/styles.css"],
+    ])("still index-rewrites %s on the canonical host", (uri, expected) => {
+      // The function's original job, unbroken by the redirect sharing it.
+      const result = run(CANONICAL, uri);
+      expect(result.statusCode).toBeUndefined();
+      expect(result.uri).toBe(expected);
+    });
   });
 });
