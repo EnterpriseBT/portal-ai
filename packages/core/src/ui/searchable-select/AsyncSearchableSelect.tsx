@@ -21,6 +21,18 @@ export interface AsyncSearchableSelectProps extends SelectBaseProps {
   loadSelectedOption?: (value: string) => Promise<SelectOption | null>;
   /** Override the empty-results message; passed through to MUI Autocomplete. */
   noOptionsText?: React.ReactNode;
+  /**
+   * Called when `onSearch` or `loadSelectedOption` rejects. Options are
+   * cleared on rejection whether or not this is supplied — a stale list
+   * behind a failed search is indistinguishable from real results, which
+   * is exactly how a hard failure can look like "no matches".
+   *
+   * Optional on purpose: a consumer with nowhere to render the error must
+   * not be forced to invent a surface, and a missing error channel must
+   * never break the feature that raised it. Consumers that own an error
+   * surface (a `FormAlert`, a toast) route it there.
+   */
+  onSearchError?: (error: unknown) => void;
 }
 
 export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
@@ -39,6 +51,7 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
   inputRef,
   loadSelectedOption,
   noOptionsText,
+  onSearchError,
 }) => {
   const [options, setOptions] = useState<SelectOption[]>([]);
   const [selectedOption, setSelectedOption] = useState<SelectOption | null>(
@@ -59,6 +72,11 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
           if (cancelled) return;
           setSelectedOption(opt);
         })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          setSelectedOption(null);
+          onSearchError?.(err);
+        })
         .finally(() => {
           if (!cancelled) setLoading(false);
         });
@@ -68,6 +86,11 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
       onSearch("")
         .then((results) => {
           if (!cancelled) setOptions(results);
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          setOptions([]);
+          onSearchError?.(err);
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -88,6 +111,10 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
         setLoading(true);
         const results = await onSearch(searchQuery);
         setOptions(results);
+      } catch (err: unknown) {
+        // Drop the previous results: they no longer describe this query.
+        setOptions([]);
+        onSearchError?.(err);
       } finally {
         setLoading(false);
       }
@@ -96,7 +123,7 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [searchQuery, onSearch, debounceMs]);
+  }, [searchQuery, onSearch, debounceMs, onSearchError]);
 
   // --- Handlers ---
   const handleSelect = (

@@ -488,6 +488,123 @@ describe("AsyncSearchableSelect", () => {
     // Should have called default onSearch('') instead
     expect(onSearch).toHaveBeenCalledWith("");
   });
+
+  /**
+   * A rejected search used to surface as an unhandled rejection while the
+   * component kept rendering its previous options — so a failed search was
+   * indistinguishable from an empty one. Options are now cleared on every
+   * rejection, and `onSearchError` lets the owner say why.
+   */
+  describe("search failure", () => {
+    async function renderAndFailSearch(
+      onSearchError?: (error: unknown) => void
+    ) {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const boom = new Error("no drive");
+      let callCount = 0;
+      const onSearch = jest
+        .fn<() => Promise<SelectOption[]>>()
+        .mockImplementation(async () => {
+          callCount++;
+          // Mount load succeeds so there ARE stale options to clear.
+          if (callCount === 1) return [{ value: "banana", label: "Banana" }];
+          throw boom;
+        });
+
+      await act(async () => {
+        render(
+          <AsyncSearchableSelect
+            label="Fruit"
+            value={null}
+            onChange={() => {}}
+            onSearch={onSearch}
+            debounceMs={300}
+            {...(onSearchError ? { onSearchError } : {})}
+          />
+        );
+      });
+
+      const input = screen.getByRole("combobox");
+      await user.type(input, "b");
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      return { boom, onSearch };
+    }
+
+    it("calls onSearchError once with the rejection", async () => {
+      const onSearchError = jest.fn();
+      const { boom } = await renderAndFailSearch(
+        onSearchError as (error: unknown) => void
+      );
+      expect(onSearchError).toHaveBeenCalledTimes(1);
+      expect(onSearchError).toHaveBeenCalledWith(boom);
+    });
+
+    it("clears stale options so a failed search never reads as results", async () => {
+      await renderAndFailSearch(jest.fn() as (error: unknown) => void);
+      expect(screen.queryByText("Banana")).not.toBeInTheDocument();
+    });
+
+    it("clears the loading state on rejection", async () => {
+      await renderAndFailSearch(jest.fn() as (error: unknown) => void);
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    });
+
+    it("swallows the rejection when no onSearchError is given, still clearing options", async () => {
+      // No callback passed: a missing error channel must never break the
+      // feature that raised it.
+      await expect(renderAndFailSearch()).resolves.toBeDefined();
+      expect(screen.queryByText("Banana")).not.toBeInTheDocument();
+    });
+
+    it("reports a rejected initial onSearch('')", async () => {
+      const onSearchError = jest.fn();
+      const onSearch = jest
+        .fn<() => Promise<SelectOption[]>>()
+        .mockRejectedValue(new Error("boom"));
+
+      await act(async () => {
+        render(
+          <AsyncSearchableSelect
+            label="Fruit"
+            value={null}
+            onChange={() => {}}
+            onSearch={onSearch}
+            onSearchError={onSearchError as (error: unknown) => void}
+          />
+        );
+      });
+
+      expect(onSearchError).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    });
+
+    it("reports a rejected loadSelectedOption", async () => {
+      const onSearchError = jest.fn();
+      const loadSelectedOption = jest
+        .fn<() => Promise<SelectOption | null>>()
+        .mockRejectedValue(new Error("boom"));
+
+      await act(async () => {
+        render(
+          <AsyncSearchableSelect
+            label="Fruit"
+            value="banana"
+            onChange={() => {}}
+            onSearch={jest
+              .fn<() => Promise<SelectOption[]>>()
+              .mockResolvedValue([])}
+            loadSelectedOption={loadSelectedOption}
+            onSearchError={onSearchError as (error: unknown) => void}
+          />
+        );
+      });
+
+      expect(onSearchError).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    });
+  });
 });
 
 // ── InfiniteScrollSelect (search + paginated scroll) ──────────────────────────
