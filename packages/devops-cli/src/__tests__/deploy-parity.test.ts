@@ -722,7 +722,13 @@ describe("the apex serves prod only, behind a condition (#404)", () => {
   const siteTemplate = (): {
     Parameters: Record<string, { Default?: string }>;
     Conditions?: Record<string, unknown>;
-    Resources: Record<string, Record<string, never>>;
+    // `Record<string, never>` made every nested read `never`, so any access
+    // past a resource's first level was a type error waiting to be noticed —
+    // which nothing did, because no CI job ran type-check until #427.
+    Resources: Record<
+      string,
+      { Condition?: string; Properties?: Record<string, unknown> }
+    >;
   } => {
     const doc = parseDocument(fs.readFileSync(SITE_YML, "utf8"), {
       logLevel: "silent",
@@ -769,9 +775,9 @@ describe("the apex serves prod only, behind a condition (#404)", () => {
   });
 
   it("the apex alias is conditional, never a second unconditional entry", () => {
-    const aliases =
-      siteTemplate().Resources.SiteDistribution.Properties.DistributionConfig
-        .Aliases;
+    const { DistributionConfig } = siteTemplate().Resources.SiteDistribution
+      .Properties as { DistributionConfig: { Aliases: unknown } };
+    const aliases = DistributionConfig.Aliases;
     // `!If [HasApex, …]` parses to an array carrying the condition name.
     expect(JSON.stringify(aliases)).toContain("HasApex");
   });
