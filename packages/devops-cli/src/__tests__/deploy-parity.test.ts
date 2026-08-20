@@ -26,7 +26,6 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import vm from "node:vm";
 
 import { parseDocument } from "yaml";
 
@@ -777,107 +776,9 @@ describe("the apex serves prod only, behind a condition (#404)", () => {
     expect(JSON.stringify(aliases)).toContain("HasApex");
   });
 
-  // The function is EXECUTED rather than grepped. A text assertion ("contains
-  // 301") passes on code that redirects to the wrong place, drops the query
-  // string, or throws — and the only other place this runs is production.
-  describe("the edge function, executed", () => {
-    const CANONICAL = "www.portalsai.io";
-    const APEX = "portalsai.io";
-
-    type Entry = { value: string; multiValue?: Array<{ value: string }> };
-    type EdgeResult = {
-      uri?: string;
-      statusCode?: number;
-      headers?: { location: { value: string } };
-    };
-    type EdgeHandler = (event: {
-      request: {
-        uri: string;
-        querystring: Record<string, Entry>;
-        headers: { host?: { value: string } };
-      };
-    }) => EdgeResult;
-
-    /** The real FunctionCode, with CFN's !Sub resolved as prod resolves it. */
-    const handler = (): EdgeHandler => {
-      const code = (
-        siteTemplate().Resources.SiteIndexRewrite.Properties
-          .FunctionCode as unknown as string
-      ).replace(/\$\{Subdomain\}\.\$\{DomainName\}/g, CANONICAL);
-      return vm.runInNewContext(code + "\nhandler;") as EdgeHandler;
-    };
-
-    const run = (
-      host: string,
-      uri: string,
-      query: Record<string, string[]> = {}
-    ): EdgeResult => {
-      const querystring: Record<string, Entry> = {};
-      for (const [key, values] of Object.entries(query)) {
-        querystring[key] =
-          values.length > 1
-            ? {
-                value: values[0],
-                multiValue: values.map((v) => ({ value: v })),
-              }
-            : { value: values[0] };
-      }
-      return handler()({
-        request: { uri, querystring, headers: { host: { value: host } } },
-      });
-    };
-
-    const location = (r: EdgeResult): string => {
-      expect(r.statusCode).toBe(301);
-      return r.headers!.location.value;
-    };
-
-    it("301s the apex root to the canonical host", () => {
-      expect(location(run(APEX, "/"))).toBe("https://www.portalsai.io/");
-    });
-
-    it("preserves the path and every repeated query parameter", () => {
-      // The acceptance criterion. `x` appears twice on purpose: querystring is
-      // a map, so reading only `.value` would drop the second one.
-      expect(
-        location(run(APEX, "/pricing/", { x: ["1", "2"], y: ["3"] }))
-      ).toBe("https://www.portalsai.io/pricing/?x=1&x=2&y=3");
-    });
-
-    it("keeps a valueless flag parameter as a bare key", () => {
-      expect(location(run(APEX, "/", { debug: [""] }))).toBe(
-        "https://www.portalsai.io/?debug"
-      );
-    });
-
-    it.each([
-      ["/index.html", "https://www.portalsai.io/"],
-      ["/pricing/index.html", "https://www.portalsai.io/pricing/"],
-    ])("normalizes %s out of the Location header", (uri, expected) => {
-      // Whether DefaultRootObject substitutes before this function runs is not
-      // worth betting the canonical URL on, so the redirect normalizes either
-      // way. Without this, the apex 301s to a URL no page links to.
-      expect(location(run(APEX, uri))).toBe(expected);
-    });
-
-    it("redirects rather than rewriting — order inside the function", () => {
-      // A URI rewritten before the host check lands in Location as
-      // /pricing/index.html. Passes only because the redirect comes first.
-      expect(location(run(APEX, "/pricing"))).toBe(
-        "https://www.portalsai.io/pricing"
-      );
-    });
-
-    it.each([
-      ["/", "/index.html"],
-      ["/pricing/", "/pricing/index.html"],
-      ["/pricing", "/pricing/index.html"],
-      ["/styles.css", "/styles.css"],
-    ])("still index-rewrites %s on the canonical host", (uri, expected) => {
-      // The function's original job, unbroken by the redirect sharing it.
-      const result = run(CANONICAL, uri);
-      expect(result.statusCode).toBeUndefined();
-      expect(result.uri).toBe(expected);
-    });
-  });
+  // The function BEHAVIOR — the redirect target, the query string, the
+  // ordering against the index rewrite — is covered by executing the real
+  // extracted code in apps/site/scripts/__tests__/cloudfront-rewrite.test.ts,
+  // which is that function's test home. What belongs HERE is the deploy
+  // wiring above: which environment gets an apex at all.
 });
