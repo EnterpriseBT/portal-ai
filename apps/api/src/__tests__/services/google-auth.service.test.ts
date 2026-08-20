@@ -67,30 +67,48 @@ describe("GoogleAuthService.buildConsentUrl", () => {
     expect(url.searchParams.get("include_granted_scopes")).toBe("true");
   });
 
-  it("requests both drive.readonly and spreadsheets.readonly scopes", () => {
+  it("requests exactly openid, email and drive.file — nothing else", () => {
     const url = new URL(
       GoogleAuthService.buildConsentUrl({
         userId: "u1",
         organizationId: "o1",
       })
     );
-    const scope = url.searchParams.get("scope") ?? "";
-    const scopeSet = new Set(scope.split(/\s+/));
+    expect(url.searchParams.get("scope")).toBe(
+      "openid email https://www.googleapis.com/auth/drive.file"
+    );
+  });
+
+  it("never requests drive.readonly or spreadsheets.readonly", () => {
+    const url = new URL(
+      GoogleAuthService.buildConsentUrl({
+        userId: "u1",
+        organizationId: "o1",
+      })
+    );
+    const scopeSet = new Set(
+      (url.searchParams.get("scope") ?? "").split(/\s+/)
+    );
     expect(scopeSet.has("https://www.googleapis.com/auth/drive.readonly")).toBe(
-      true
+      false
     );
     expect(
       scopeSet.has("https://www.googleapis.com/auth/spreadsheets.readonly")
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("exposes the GOOGLE_OAUTH_SCOPES array as a constant", () => {
-    expect(GOOGLE_OAUTH_SCOPES).toContain(
-      "https://www.googleapis.com/auth/drive.readonly"
-    );
-    expect(GOOGLE_OAUTH_SCOPES).toContain(
-      "https://www.googleapis.com/auth/spreadsheets.readonly"
-    );
+  /**
+   * Exhaustive and order-sensitive on purpose (#408): every scope here is
+   * non-sensitive, which is what keeps the app out of Google verification,
+   * the unverified interstitial and the 100-user cap. This test exists to
+   * fail loudly if anything is ever appended.
+   */
+  it("exposes GOOGLE_OAUTH_SCOPES as an exhaustive constant", () => {
+    expect(GOOGLE_OAUTH_SCOPES).toEqual([
+      "openid",
+      "email",
+      "https://www.googleapis.com/auth/drive.file",
+    ]);
   });
 
   it("attaches a signed state that verifies back to the supplied identity", () => {
@@ -163,7 +181,7 @@ describe("GoogleAuthService.exchangeCode", () => {
           access_token: "ya29.access",
           refresh_token: "1//refresh",
           expires_in: 3599,
-          scope: "https://www.googleapis.com/auth/drive.readonly",
+          scope: "https://www.googleapis.com/auth/drive.file",
           token_type: "Bearer",
         },
       })
@@ -194,7 +212,7 @@ describe("GoogleAuthService.exchangeCode", () => {
           access_token: "ya29.access",
           refresh_token: "1//refresh",
           expires_in: 3599,
-          scope: "https://www.googleapis.com/auth/drive.readonly",
+          scope: "https://www.googleapis.com/auth/drive.file",
           token_type: "Bearer",
         },
       })
@@ -204,7 +222,7 @@ describe("GoogleAuthService.exchangeCode", () => {
       accessToken: "ya29.access",
       refreshToken: "1//refresh",
       expiresIn: 3599,
-      scope: "https://www.googleapis.com/auth/drive.readonly",
+      scope: "https://www.googleapis.com/auth/drive.file",
     });
   });
 
@@ -230,7 +248,7 @@ describe("GoogleAuthService.exchangeCode", () => {
         body: {
           access_token: "ya29.access",
           expires_in: 3599,
-          scope: "https://www.googleapis.com/auth/drive.readonly",
+          scope: "https://www.googleapis.com/auth/drive.file",
           token_type: "Bearer",
         },
       })
@@ -256,7 +274,7 @@ describe("GoogleAuthService.refreshAccessToken", () => {
         body: {
           access_token: "ya29.refreshed",
           expires_in: 3599,
-          scope: "https://www.googleapis.com/auth/drive.readonly",
+          scope: "https://www.googleapis.com/auth/drive.file",
           token_type: "Bearer",
         },
       })
@@ -285,7 +303,7 @@ describe("GoogleAuthService.refreshAccessToken", () => {
         body: {
           access_token: "ya29.refreshed",
           expires_in: 3599,
-          scope: "https://www.googleapis.com/auth/drive.readonly",
+          scope: "https://www.googleapis.com/auth/drive.file",
           token_type: "Bearer",
         },
       })

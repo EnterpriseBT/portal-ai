@@ -172,13 +172,32 @@ Then confirm the connection is not on Auth0's developer keys, by reading `redire
 
 - [ ] Google Cloud Console → Credentials → **OAuth client ID → Web application**. A new client for this environment; do not add prod URIs to dev's client.
 - [ ] Authorized redirect URI, exactly: `https://api.portalsai.io/api/connectors/google-sheets/callback`
-- [ ] Enable the **Google Sheets API** and **Google Drive API** on the project.
-- [ ] **Publish the consent screen.** An external-user app needs an app logo plus terms-of-service and privacy-policy URLs, and unverified apps are user-capped and show a warning interstitial in the middle of the connector's auth popup. The legal pages live on `www.portalsai.io` — so this step depends on the marketing site being live (#386). Start the verification submission early; it is reviewed by Google, not instant.
+- [ ] **Authorized JavaScript origin:** `https://app.portalsai.io`. The file picker mints its own token in the browser, which fails without this.
+- [ ] Enable the **Google Sheets API**, the **Google Drive API**, and the **Google Picker API** on the project. The Picker API is separate from the other two; with it off the picker simply never opens, which reads as a bad API key.
+- [ ] **Scopes: `openid`, `email`, `drive.file` — nothing else.** Add no sensitive or restricted scope to the consent screen. This is what the app requests (`GOOGLE_OAUTH_SCOPES` in `google-auth.service.ts`), and the two lists must agree: verification keys off what the *client declares here*, not off what a given request asks for.
+- [ ] **Publish the consent screen.** An external-user app needs an app logo plus terms-of-service and privacy-policy URLs, hosted on `www.portalsai.io` — so this step depends on the marketing site being live (#386).
+- [ ] **Create a browser API key** (Credentials → Create credentials → API key) and restrict it: *Application restrictions → Websites* → `https://app.portalsai.io/*`; *API restrictions* → **Google Picker API**. This key is browser-exposed by design, which is why the referrer restriction is the control. Restrictions take a few minutes to propagate — a picker that refuses right after you save them is usually that, not a bad key.
+
+> **There is nothing to submit for verification, and that is deliberate (#408).** Every scope the app requests is non-sensitive, so Google requires no verification, shows no unverified-app interstitial, and applies no 100-user cap. The connector reads only the spreadsheets a user picks through Google's own file picker, one file at a time.
+>
+> **Adding a single sensitive or restricted scope reverses all three** and pulls in a CASA security assessment on top. `drive.readonly` and `spreadsheets.readonly` are the two that look tempting — they are exactly what #408 removed. If a future feature seems to need one, that is a product decision with a recurring cost, not a configuration tweak.
 
 ```bash
 printf '%s' '<client id>'     | portalops vars set GOOGLE_OAUTH_CLIENT_ID - --env $ENV $GUARD
 printf '%s' '<client secret>' | portalops vars set GOOGLE_OAUTH_CLIENT_SECRET - --env $ENV $GUARD
 ```
+
+The web build needs three of these values too, as `${PREFIX}_VITE_*` **GitHub Actions secrets** (they are baked into the bundle at build time, not read from SSM):
+
+| Secret | Value |
+|---|---|
+| `PROD_VITE_GOOGLE_OAUTH_CLIENT_ID` | the same client id as above — a different client mints a grant the server's token cannot see |
+| `PROD_VITE_GOOGLE_PICKER_API_KEY` | the browser API key |
+| `PROD_VITE_GOOGLE_CLOUD_PROJECT_NUMBER` | the numeric prefix of the client id, passed to the picker as `setAppId` |
+
+`setAppId` is load-bearing: without it the picker creates no per-file grant and the first Sheets read fails with a **404** — not a 403 — which reads as a rejected scope and sends you hunting in the wrong place.
+
+> **Nothing fails loudly if these secrets are missing.** Every test still passes and the deploy still succeeds; the connector's picker step just reports itself unavailable. Set them before the first prod deploy that includes the connector.
 
 ## 4 — Microsoft Entra ID app (Excel connector)
 

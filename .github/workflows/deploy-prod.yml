@@ -270,6 +270,9 @@ jobs:
           VITE_API_BASE_URL: https://api.portalsai.io
           VITE_SUPPORT_EMAIL: ${{ steps.contact.outputs.support }}
           VITE_SALES_EMAIL: ${{ steps.contact.outputs.sales }}
+          VITE_GOOGLE_PICKER_API_KEY: ${{ secrets.PROD_VITE_GOOGLE_PICKER_API_KEY }}
+          VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.PROD_VITE_GOOGLE_OAUTH_CLIENT_ID }}
+          VITE_GOOGLE_CLOUD_PROJECT_NUMBER: ${{ secrets.PROD_VITE_GOOGLE_CLOUD_PROJECT_NUMBER }}
 
       - name: Get frontend outputs
         id: fe

@@ -41,9 +41,6 @@ import {
 } from "../utils/workbook-preview.util.js";
 import { makeLazyWorkbookFromCache } from "../utils/lazy-workbook.util.js";
 
-const DRIVE_FILES_LIST_URL = "https://www.googleapis.com/drive/v3/files";
-const DRIVE_PAGE_SIZE = 25;
-const SPREADSHEET_MIME_TYPE = "application/vnd.google-apps.spreadsheet";
 const SHEETS_GET_URL_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
 
 type FetchFn = typeof fetch;
@@ -59,43 +56,6 @@ export interface SelectSheetResult {
   title: string;
   sheets: PreviewSheet[];
   sliced?: true;
-}
-
-export interface ListSheetsInput {
-  connectorInstanceId: string;
-  search?: string;
-  pageToken?: string;
-}
-
-export interface ListSheetsItem {
-  spreadsheetId: string;
-  name: string;
-  modifiedTime: string;
-  ownerEmail: string | null;
-}
-
-export interface ListSheetsResult {
-  items: ListSheetsItem[];
-  nextPageToken?: string;
-}
-
-interface DriveFilesListResponse {
-  files?: {
-    id?: string;
-    name?: string;
-    modifiedTime?: string;
-    owners?: { emailAddress?: string; displayName?: string }[];
-  }[];
-  nextPageToken?: string;
-}
-
-/**
- * Drive's `q` syntax escapes single-quote literals with a backslash.
- * Without this, a search term containing `'` (e.g. "O'Brien") corrupts
- * the query and Drive returns 400.
- */
-function escapeForDriveQ(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
 const GOOGLE_SHEETS_SLUG = "google-sheets";
@@ -207,63 +167,6 @@ export class GoogleSheetsConnectorService {
       EMPTY_ACCOUNT_INFO;
 
     return { connectorInstanceId, accountInfo };
-  }
-
-  /**
-   * Drive `files.list` proxy. Returns spreadsheets the authenticated
-   * user can read, optionally filtered by name. Pagination via
-   * `pageToken`. The slim response maps Drive's `id` → `spreadsheetId`
-   * to match the connector's vocabulary.
-   *
-   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-B.plan.md` §Slice 4.
-   */
-  static async listSheets(
-    input: ListSheetsInput,
-    fetchFn: FetchFn = fetch
-  ): Promise<ListSheetsResult> {
-    const accessToken = await GoogleAccessTokenCacheService.getOrRefresh(
-      input.connectorInstanceId
-    );
-
-    let q = `mimeType='${SPREADSHEET_MIME_TYPE}' and trashed=false`;
-    if (input.search && input.search.trim().length > 0) {
-      q += ` and name contains '${escapeForDriveQ(input.search.trim())}'`;
-    }
-
-    const url = new URL(DRIVE_FILES_LIST_URL);
-    url.searchParams.set("q", q);
-    url.searchParams.set("pageSize", String(DRIVE_PAGE_SIZE));
-    url.searchParams.set(
-      "fields",
-      "files(id,name,modifiedTime,owners(emailAddress,displayName)),nextPageToken"
-    );
-    if (input.pageToken) url.searchParams.set("pageToken", input.pageToken);
-
-    const res = await fetchFn(url.toString(), {
-      method: "GET",
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-
-    if (!res.ok) {
-      const body = await safeReadText(res);
-      throw new GoogleAuthError(
-        "listSheets_failed",
-        `Drive files.list failed (${res.status}): ${body}`
-      );
-    }
-
-    const json = (await res.json()) as DriveFilesListResponse;
-    const items: ListSheetsItem[] = (json.files ?? [])
-      .filter((f) => typeof f.id === "string" && typeof f.name === "string")
-      .map((f) => ({
-        spreadsheetId: f.id as string,
-        name: f.name as string,
-        modifiedTime: f.modifiedTime ?? "",
-        ownerEmail: f.owners?.[0]?.emailAddress ?? null,
-      }));
-    const result: ListSheetsResult = { items };
-    if (json.nextPageToken) result.nextPageToken = json.nextPageToken;
-    return result;
   }
 
   /**
@@ -698,11 +601,31 @@ async function safeReadText(res: Response): Promise<string> {
 }
 
 /**
+ * A spreadsheet the user has just granted through the Picker can, in
+ * principle, 404 on the very first read while the per-file grant
+ * propagates. G1 (#408) never saw it — the first server-side read of a
+ * browser-granted file returned 200 — so this is insurance, not a fix for
+ * an observed fault. It stays because the two call sites differ in cost: a
+ * premature read on the sync path fails a background job, which the user
+ * cannot simply repeat.
+ *
+ * One extra attempt, and only for 404. A 403 is an insufficient scope,
+ * which no amount of waiting repairs; retrying it would double the latency
+ * of the one failure a developer most needs to see quickly.
+ */
+const SHEETS_READ_RETRY_DELAY_MS = 1_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Hit `spreadsheets.get?includeGridData=true` for the given
  * spreadsheetId and return the mapped `WorkbookData` plus the workbook's
  * title from `properties.title`. Shared by `selectSheet` (caches the
  * workbook + persists the title to instance.config) and
- * `fetchWorkbookForSync` (does neither — sync uses fresh data each run).
+ * `fetchWorkbookForSync` (does neither — sync uses fresh data each run),
+ * so both inherit the bounded 404 retry described above.
  */
 async function fetchSpreadsheet(
   accessToken: string,
@@ -719,22 +642,31 @@ async function fetchSpreadsheet(
     "properties.title,sheets.properties(title,gridProperties),sheets.data(startRow,startColumn,rowData.values(userEnteredValue,effectiveValue,formattedValue,effectiveFormat.numberFormat))"
   );
 
-  const res = await fetchFn(url.toString(), {
-    method: "GET",
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetchFn(url.toString(), {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (res.ok) {
+      const json = (await res.json()) as Record<string, unknown>;
+      const workbook = googleSheetsToWorkbook(
+        json as Parameters<typeof googleSheetsToWorkbook>[0]
+      );
+      const title = (json.properties as { title?: string } | undefined)?.title;
+      return { workbook, title };
+    }
+
+    if (res.status === 404 && attempt === 0) {
+      await sleep(SHEETS_READ_RETRY_DELAY_MS);
+      continue;
+    }
+
     const body = await safeReadText(res);
     throw new GoogleAuthError(
       "fetchSheet_failed",
-      `Sheets API spreadsheets.get failed (${res.status}): ${body}`
+      `Sheets API spreadsheets.get failed (${res.status}): ${body}`,
+      { status: res.status }
     );
   }
-
-  const json = (await res.json()) as Record<string, unknown>;
-  const workbook = googleSheetsToWorkbook(
-    json as Parameters<typeof googleSheetsToWorkbook>[0]
-  );
-  const title = (json.properties as { title?: string } | undefined)?.title;
-  return { workbook, title };
 }
