@@ -1,4 +1,11 @@
-import { jest, describe, it, expect, beforeEach } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
 
 const getOrRefreshMock = jest.fn<(id: string) => Promise<string>>();
 
@@ -12,9 +19,16 @@ jest.unstable_mockModule(
 class MockGoogleAuthError extends Error {
   override readonly name = "GoogleAuthError" as const;
   readonly kind: string;
-  constructor(kind: string, message?: string) {
-    super(message ?? kind);
+  /** Mirrors the real class — the retry branches on it (#408). */
+  readonly status?: number;
+  constructor(
+    kind: string,
+    message?: string,
+    options?: ErrorOptions & { status?: number }
+  ) {
+    super(message ?? kind, options);
     this.kind = kind;
+    if (options?.status !== undefined) this.status = options.status;
   }
 }
 
@@ -82,13 +96,24 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
-// Mock the workbook cache too — selectSheet writes to it; in tests we
-// only care that it gets called, not what it does.
+// The chunked-session API `selectSheet` writes through. `set`/`get`/`delete`
+// predate it and are kept for the callers that still use them; the session
+// members were missing until #408 needed a selectSheet path under test.
+// `getSessionMeta` returns a workbook with no sheets so the preview loop is
+// a no-op — these tests are about the fetch, not about inflation.
 jest.unstable_mockModule("../../services/workbook-cache.service.js", () => ({
   WorkbookCacheService: {
     set: jest.fn(async () => undefined),
     get: jest.fn(async () => null),
     delete: jest.fn(async () => undefined),
+    deleteSession: jest.fn(async () => undefined),
+    beginSession: jest.fn(async () => ({
+      appendRows: jest.fn(async () => undefined),
+      finishSheet: jest.fn(async () => undefined),
+      finalize: jest.fn(async () => undefined),
+      fail: jest.fn(async () => undefined),
+    })),
+    getSessionMeta: jest.fn(async () => ({ sheets: [] })),
   },
 }));
 
@@ -108,145 +133,6 @@ function mockFetchResponse({ status = 200, body = {} }: MockResponseInit) {
     text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
   } as unknown as Response;
 }
-
-describe("GoogleSheetsConnectorService.listSheets", () => {
-  beforeEach(() => {
-    getOrRefreshMock.mockReset();
-    getOrRefreshMock.mockResolvedValue("ya29.access");
-  });
-
-  it("calls Drive files.list with the spreadsheet mimeType filter and Bearer auth", async () => {
-    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
-      mockFetchResponse({
-        body: { files: [], nextPageToken: undefined },
-      })
-    );
-
-    await GoogleSheetsConnectorService.listSheets(
-      { connectorInstanceId: "ci-1", search: "", pageToken: undefined },
-      fetchMock
-    );
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [calledUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const url = new URL(calledUrl);
-    expect(url.host).toBe("www.googleapis.com");
-    expect(url.pathname).toBe("/drive/v3/files");
-    const q = url.searchParams.get("q") ?? "";
-    expect(q).toContain("mimeType='application/vnd.google-apps.spreadsheet'");
-    expect(q).toContain("trashed=false");
-    expect(q).not.toContain("name contains");
-    expect(url.searchParams.get("pageSize")).toBe("25");
-    expect(url.searchParams.get("fields")).toContain("files");
-    expect(url.searchParams.get("fields")).toContain("nextPageToken");
-    expect((init.headers as Record<string, string>).Authorization).toBe(
-      "Bearer ya29.access"
-    );
-  });
-
-  it("appends a name-contains clause when search is non-empty", async () => {
-    const fetchMock = jest
-      .fn<typeof fetch>()
-      .mockResolvedValue(mockFetchResponse({ body: { files: [] } }));
-    await GoogleSheetsConnectorService.listSheets(
-      { connectorInstanceId: "ci-1", search: "Q3 forecast" },
-      fetchMock
-    );
-    const url = new URL((fetchMock.mock.calls[0] as [string, RequestInit])[0]);
-    const q = url.searchParams.get("q") ?? "";
-    expect(q).toContain("name contains 'Q3 forecast'");
-  });
-
-  it("escapes single quotes in the search term", async () => {
-    const fetchMock = jest
-      .fn<typeof fetch>()
-      .mockResolvedValue(mockFetchResponse({ body: { files: [] } }));
-    await GoogleSheetsConnectorService.listSheets(
-      { connectorInstanceId: "ci-1", search: "O'Brien" },
-      fetchMock
-    );
-    const url = new URL((fetchMock.mock.calls[0] as [string, RequestInit])[0]);
-    const q = url.searchParams.get("q") ?? "";
-    // Drive's `q` syntax escapes single-quote with backslash.
-    expect(q).toContain(`name contains 'O\\'Brien'`);
-  });
-
-  it("forwards pageToken on subsequent pages", async () => {
-    const fetchMock = jest
-      .fn<typeof fetch>()
-      .mockResolvedValue(mockFetchResponse({ body: { files: [] } }));
-    await GoogleSheetsConnectorService.listSheets(
-      {
-        connectorInstanceId: "ci-1",
-        search: "",
-        pageToken: "next-page-token-abc",
-      },
-      fetchMock
-    );
-    const url = new URL((fetchMock.mock.calls[0] as [string, RequestInit])[0]);
-    expect(url.searchParams.get("pageToken")).toBe("next-page-token-abc");
-  });
-
-  it("maps Drive's `id` to `spreadsheetId` and surfaces ownerEmail in the slim shape", async () => {
-    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
-      mockFetchResponse({
-        body: {
-          files: [
-            {
-              id: "1abcXYZ",
-              name: "Q3 Forecast",
-              modifiedTime: "2026-04-29T10:00:00Z",
-              owners: [
-                {
-                  emailAddress: "alice@example.com",
-                  displayName: "Alice Example",
-                },
-              ],
-            },
-          ],
-          nextPageToken: "next-page-789",
-        },
-      })
-    );
-
-    const out = await GoogleSheetsConnectorService.listSheets(
-      { connectorInstanceId: "ci-1", search: "" },
-      fetchMock
-    );
-
-    expect(out).toEqual({
-      items: [
-        {
-          spreadsheetId: "1abcXYZ",
-          name: "Q3 Forecast",
-          modifiedTime: "2026-04-29T10:00:00Z",
-          ownerEmail: "alice@example.com",
-        },
-      ],
-      nextPageToken: "next-page-789",
-    });
-  });
-
-  it("throws GoogleAuthError('listSheets_failed') on a Drive 4xx", async () => {
-    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
-      mockFetchResponse({
-        status: 403,
-        body: { error: { message: "Insufficient Permission" } },
-      })
-    );
-
-    try {
-      await GoogleSheetsConnectorService.listSheets(
-        { connectorInstanceId: "ci-1", search: "" },
-        fetchMock
-      );
-      throw new Error("expected throw");
-    } catch (err) {
-      expect((err as MockGoogleAuthError).name).toBe("GoogleAuthError");
-      expect((err as MockGoogleAuthError).kind).toBe("listSheets_failed");
-    }
-  });
-});
 
 // ── fetchWorkbookForSync (Phase D Slice 3) ─────────────────────────
 
@@ -377,13 +263,157 @@ describe("GoogleSheetsConnectorService.fetchWorkbookForSync", () => {
   });
 });
 
+// ── The bounded 404 retry (#408 slice 2) ───────────────────────────
+//
+// A freshly Picker-granted spreadsheet is readable server-side — G1 proved
+// that on the first attempt, with no propagation delay observed. This retry
+// is insurance on the unobserved case: on the sync path the cost of a
+// too-early read is a dead job, not a click the user can repeat. Bounded to
+// one extra attempt and to 404 alone, because a 403 is a rejected scope and
+// retrying it only doubles the latency of the failure that matters most.
+
+describe("GoogleSheetsConnectorService — 404 retry on the Sheets read", () => {
+  const OK_BODY = {
+    properties: { title: "Q3 Forecast" },
+    sheets: [
+      {
+        properties: {
+          title: "Sheet1",
+          gridProperties: { rowCount: 1, columnCount: 1 },
+        },
+        data: [
+          {
+            startRow: 0,
+            startColumn: 0,
+            rowData: [
+              {
+                values: [
+                  {
+                    effectiveValue: { stringValue: "alpha" },
+                    formattedValue: "alpha",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    getOrRefreshMock.mockReset();
+    getOrRefreshMock.mockResolvedValue("ya29.access");
+    findInstanceMock.mockReset();
+    findInstanceMock.mockResolvedValue({
+      id: "ci-1",
+      organizationId: "org-1",
+      config: { spreadsheetId: "1abc", title: "x" },
+    });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("retries a 404 once and succeeds", async () => {
+    const fetchMock = jest
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        mockFetchResponse({ status: 404, body: { error: { message: "gone" } } })
+      )
+      .mockResolvedValueOnce(mockFetchResponse({ body: OK_BODY }));
+
+    const promise = GoogleSheetsConnectorService.fetchWorkbookForSync(
+      "ci-1",
+      "org-1",
+      fetchMock
+    );
+    await jest.advanceTimersByTimeAsync(1_000);
+    const out = await promise;
+
+    expect(out.sheets).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after exactly two attempts when the 404 persists", async () => {
+    const fetchMock = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        mockFetchResponse({ status: 404, body: { error: { message: "gone" } } })
+      );
+
+    const promise = GoogleSheetsConnectorService.fetchWorkbookForSync(
+      "ci-1",
+      "org-1",
+      fetchMock
+    );
+    const assertion = expect(promise).rejects.toMatchObject({
+      name: "GoogleAuthError",
+      kind: "fetchSheet_failed",
+      status: 404,
+    });
+    await jest.advanceTimersByTimeAsync(1_000);
+    await assertion;
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("never retries a 403 — a rejected scope is not a race", async () => {
+    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
+      mockFetchResponse({
+        status: 403,
+        body: { error: { message: "insufficient scope" } },
+      })
+    );
+
+    await expect(
+      GoogleSheetsConnectorService.fetchWorkbookForSync(
+        "ci-1",
+        "org-1",
+        fetchMock
+      )
+    ).rejects.toMatchObject({
+      name: "GoogleAuthError",
+      kind: "fetchSheet_failed",
+      status: 403,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies on the selectSheet path too, not only sync", async () => {
+    const fetchMock = jest
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        mockFetchResponse({ status: 404, body: { error: { message: "gone" } } })
+      )
+      .mockResolvedValueOnce(mockFetchResponse({ body: OK_BODY }));
+
+    const promise = GoogleSheetsConnectorService.selectSheet(
+      {
+        connectorInstanceId: "ci-1",
+        spreadsheetId: "1abc",
+        organizationId: "org-1",
+        userId: "u-1",
+      },
+      fetchMock
+    );
+    await jest.advanceTimersByTimeAsync(1_000);
+    await promise;
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
 // ── handleCallback (Phase E Slice 1: reconnect resets error state) ─
 
 describe("GoogleSheetsConnectorService.handleCallback", () => {
   const stubTokens = {
     accessToken: "ya29.access",
     refreshToken: "1//refresh",
-    scope: "openid email drive.readonly spreadsheets.readonly",
+    scope: "openid email https://www.googleapis.com/auth/drive.file",
   };
   const stubDefinition = {
     id: "def-gs",

@@ -25,35 +25,6 @@ export type GoogleSheetsAuthorizeResponsePayload = z.infer<
   typeof GoogleSheetsAuthorizeResponsePayloadSchema
 >;
 
-// ── GET /api/connectors/google-sheets/sheets ─────────────────────────
-
-export const GoogleSheetsListSheetsRequestQuerySchema = z.object({
-  connectorInstanceId: z.string().min(1),
-  search: z.string().optional(),
-  pageToken: z.string().optional(),
-});
-export type GoogleSheetsListSheetsRequestQuery = z.infer<
-  typeof GoogleSheetsListSheetsRequestQuerySchema
->;
-
-export const GoogleSheetsListSheetsItemSchema = z.object({
-  spreadsheetId: z.string().min(1),
-  name: z.string().min(1),
-  modifiedTime: z.string(),
-  ownerEmail: z.string().nullable(),
-});
-export type GoogleSheetsListSheetsItem = z.infer<
-  typeof GoogleSheetsListSheetsItemSchema
->;
-
-export const GoogleSheetsListSheetsResponsePayloadSchema = z.object({
-  items: z.array(GoogleSheetsListSheetsItemSchema),
-  nextPageToken: z.string().optional(),
-});
-export type GoogleSheetsListSheetsResponsePayload = z.infer<
-  typeof GoogleSheetsListSheetsResponsePayloadSchema
->;
-
 // ── POST /api/connectors/google-sheets/instances/:id/select-sheet ─────
 
 export const GoogleSheetsSelectSheetRequestBodySchema = z.object({

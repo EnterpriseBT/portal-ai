@@ -88,6 +88,13 @@ export interface UseMicrosoftExcelWorkflowReturn {
   selectedRegionId: string | null;
   activeSheetId: string | null;
   serverError: ServerError | null;
+  /**
+   * The workbook-search GET is an imperative per-keystroke read owned by
+   * the container, not a step action owned by this hook — so the setter
+   * has to be exposed for a failed search to reach the same
+   * `<FormAlert>` the step already renders.
+   */
+  setServerError: (err: ServerError | null) => void;
   isInterpreting: boolean;
   isCommitting: boolean;
   plan: LayoutPlan | null;
@@ -269,6 +276,13 @@ export function useMicrosoftExcelWorkflow(
     selectedRegionId: core.selectedRegionId,
     activeSheetId: core.activeSheetId,
     serverError: core.serverError,
+    /**
+     * Exposed because the workbook-search GET lives in the container
+     * (it's an imperative per-keystroke read, not a step action), so the
+     * container needs to report its failures into the same state the
+     * step's `<FormAlert>` renders.
+     */
+    setServerError: core.setServerError,
     isInterpreting: core.isInterpreting,
     isCommitting: core.isCommitting,
     plan: core.plan,

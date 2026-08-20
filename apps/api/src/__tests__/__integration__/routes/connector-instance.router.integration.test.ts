@@ -1424,7 +1424,7 @@ describe("Connector Instance Router", () => {
         await import("../../../utils/crypto.util.js");
       const credentialsBlob = encryptCredentials({
         refresh_token: "1//super-secret-refresh-token",
-        scopes: ["drive.readonly"],
+        scopes: ["https://www.googleapis.com/auth/drive.file"],
         googleAccountEmail: "alice@example.com",
       });
       const instanceId = generateId();

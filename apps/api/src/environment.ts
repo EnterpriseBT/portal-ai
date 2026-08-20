@@ -80,7 +80,7 @@ export const environment = {
   GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET || "",
   GOOGLE_OAUTH_REDIRECT_URI: process.env.GOOGLE_OAUTH_REDIRECT_URI || "",
   OAUTH_STATE_SECRET: process.env.OAUTH_STATE_SECRET || "",
-  // ── Microsoft OAuth (Phase A: docs/MICROSOFT_EXCEL_CONNECTOR.phase-A.plan.md)
+  // ── Microsoft OAuth
   //    Per-env Microsoft identity-platform v2.0 client for the
   //    microsoft-excel connector. `MICROSOFT_OAUTH_TENANT` defaults to
   //    `common` (personal MSAs + work/school accounts); single-tenant

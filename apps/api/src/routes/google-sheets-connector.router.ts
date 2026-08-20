@@ -236,8 +236,6 @@ function mapGoogleAuthError(err: unknown): ApiError {
     switch (kind) {
       case "refresh_failed":
         return new ApiError(502, ApiCode.GOOGLE_OAUTH_REFRESH_FAILED, message);
-      case "listSheets_failed":
-        return new ApiError(502, ApiCode.GOOGLE_SHEETS_LIST_FAILED, message);
       case "fetchSheet_failed":
         return new ApiError(502, ApiCode.GOOGLE_SHEETS_FETCH_FAILED, message);
       case "userinfo_failed":
@@ -254,78 +252,6 @@ function mapGoogleAuthError(err: unknown): ApiError {
     err instanceof Error ? err.message : "Unknown error"
   );
 }
-
-/**
- * @openapi
- * /api/connectors/google-sheets/sheets:
- *   get:
- *     tags: [Google Sheets Connector]
- *     summary: List the user's spreadsheets via Drive's files.list
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: connectorInstanceId
- *         required: true
- *         schema: { type: string }
- *       - in: query
- *         name: search
- *         schema: { type: string }
- *       - in: query
- *         name: pageToken
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Sheets listed
- *       400:
- *         description: connectorInstanceId missing
- *       403:
- *         description: Instance belongs to a different organization
- *       404:
- *         description: Instance not found
- *       502:
- *         description: Google rejected the listing or refresh
- */
-googleSheetsConnectorRouter.get(
-  "/sheets",
-  getApplicationMetadata,
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const organizationId = req.application?.metadata.organizationId as string;
-      const connectorInstanceId =
-        typeof req.query.connectorInstanceId === "string"
-          ? req.query.connectorInstanceId
-          : "";
-      if (!connectorInstanceId) {
-        return next(
-          new ApiError(
-            400,
-            ApiCode.GOOGLE_SHEETS_INVALID_INSTANCE_ID,
-            "connectorInstanceId query parameter is required"
-          )
-        );
-      }
-      const search =
-        typeof req.query.search === "string" ? req.query.search : "";
-      const pageToken =
-        typeof req.query.pageToken === "string"
-          ? req.query.pageToken
-          : undefined;
-
-      await resolveOwnedInstance(connectorInstanceId, organizationId);
-
-      const result = await GoogleSheetsConnectorService.listSheets({
-        connectorInstanceId,
-        search,
-        pageToken,
-      });
-
-      return HttpService.success(res, result);
-    } catch (err) {
-      return next(mapGoogleAuthError(err));
-    }
-  }
-);
 
 /**
  * @openapi
