@@ -21,8 +21,7 @@ const s3Client = new S3Client({
 
 /**
  * Thin wrapper over the AWS S3 SDK for the upload-streaming pipeline.
- * Reinstated as part of `docs/LARGE_WORKBOOK_STREAMING.plan.md` Phase 0;
- * every method is keyed by `s3Key` so the caller owns the namespace.
+ * Every method is keyed by `s3Key` so the caller owns the namespace.
  */
 export class S3Service {
   /**

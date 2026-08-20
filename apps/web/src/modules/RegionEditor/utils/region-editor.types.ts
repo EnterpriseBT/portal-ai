@@ -120,9 +120,8 @@ export type ColumnBindingDraft = {
   rationale?: string;
 
   // ── User overrides (mirror ColumnBindingSchema) ──────────────────
-  // See `docs/BINDING_OVERRIDES.spec.md`. All optional; commit falls back
-  // to catalog defaults when unset, and the review-step binding editor
-  // writes these through `onUpdateBinding`.
+  // All optional; commit falls back to catalog defaults when unset, and
+  // the review-step binding editor writes these through `onUpdateBinding`.
   excluded?: boolean;
   normalizedKey?: string;
   required?: boolean;

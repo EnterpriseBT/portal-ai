@@ -43,8 +43,6 @@ export interface ConnectorInstanceReconnectButtonUIProps {
  * State is owned upstream via `useReconnectConnectorInstance` so this
  * component can be placed in different layout slots (page header
  * primary action, inline in the sync-failure alert) and stay in sync.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-E.plan.md` §Slice 2.
  */
 export const ConnectorInstanceReconnectButtonUI = ({
   status,

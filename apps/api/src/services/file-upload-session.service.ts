@@ -1,6 +1,5 @@
 /**
- * Orchestrates the presigned-URL streaming upload pipeline
- * (see docs/LARGE_WORKBOOK_STREAMING.plan.md §Phase 1–3b).
+ * Orchestrates the presigned-URL streaming upload pipeline.
  *
  * Owns:
  *   - `presign` — mints uploadIds + presigned PUT URLs, creates `file_uploads`

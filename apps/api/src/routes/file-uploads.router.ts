@@ -21,7 +21,6 @@ import { ApiError, HttpService } from "../services/http.service.js";
 export const fileUploadsRouter = Router();
 
 // ── Streaming pipeline ────────────────────────────────────────────────
-// (docs/LARGE_WORKBOOK_STREAMING.plan.md §Phase 1–3b)
 
 /**
  * @openapi

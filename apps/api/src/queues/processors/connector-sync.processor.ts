@@ -16,8 +16,6 @@ const logger = createLogger({ module: "connector-sync-processor" });
  * The adapter reports progress through the supplied callback; this
  * processor forwards each tick to BullMQ so SSE consumers see live
  * progress.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 5.
  */
 export const connectorSyncProcessor: TypedJobProcessor<
   "connector_sync"

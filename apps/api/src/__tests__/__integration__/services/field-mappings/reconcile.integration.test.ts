@@ -1,7 +1,7 @@
 /**
  * Integration tests for `reconcileFieldMappings`.
  *
- * Covers the binding-override surface added by `docs/BINDING_OVERRIDES.spec.md`:
+ * Covers the binding-override surface:
  * excluded bindings are dropped, per-binding overrides (`normalizedKey`,
  * `required`, `defaultValue`, `format`, `enumValues`) land on the materialised
  * `FieldMapping` row, normalized-key regex + uniqueness are enforced, and

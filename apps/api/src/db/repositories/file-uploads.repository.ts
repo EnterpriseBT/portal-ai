@@ -1,7 +1,6 @@
 /**
  * Repository for the `file_uploads` table — audit + state tracking for the
- * presigned-upload lifecycle introduced by
- * `docs/LARGE_WORKBOOK_STREAMING.plan.md` Phase 0.
+ * presigned-upload lifecycle.
  */
 
 import { and, eq, inArray } from "drizzle-orm";

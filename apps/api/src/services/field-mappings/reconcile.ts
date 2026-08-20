@@ -15,7 +15,7 @@
  *   by its source-derived normalizedKey.
  * - Honors per-binding overrides (`normalizedKey`, `required`, `defaultValue`,
  *   `format`, `enumValues`, `refEntityKey`, `refNormalizedKey`) with catalog
- *   fallbacks. See `docs/BINDING_OVERRIDES.spec.md`.
+ *   fallbacks.
  * - Validates normalized-key regex on explicit overrides
  *   (`LAYOUT_PLAN_INVALID_PAYLOAD`).
  * - Validates reference-typed bindings against the caller-supplied set of
@@ -296,8 +296,7 @@ export async function reconcileFieldMappings(
  *
  * Under C2 `(organization_id, key)` is unique (partial index on `deleted
  * IS NULL`), so at most one entity matches — `.limit(1)` is a
- * belt-and-braces guard, not a disambiguator. See
- * `docs/REGION_CONFIG.c2_org_unique_entity_key.spec.md`.
+ * belt-and-braces guard, not a disambiguator.
  */
 async function lookupDbEntityNormalizedKeys(
   client: DbClient,

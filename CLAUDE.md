@@ -315,7 +315,7 @@ modules/
 
 ### Reference Implementation
 
-`modules/RegionEditor/` — spreadsheet region-drawing editor embedded by file-upload and cloud-spreadsheet connector workflows (see `docs/SPREADSHEET_PARSING.frontend.spec.md`).
+`modules/RegionEditor/` — spreadsheet region-drawing editor embedded by file-upload and cloud-spreadsheet connector workflows.
 
 ## Database Schema Workflow (Dual-Schema)
 

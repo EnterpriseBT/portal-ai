@@ -11,8 +11,6 @@
  * boundary instead. Hence two routers in this file: `googleSheetsConnectorRouter`
  * (mounted under `protectedRouter`) and `googleSheetsConnectorPublicRouter`
  * (mounted directly on the app).
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md` §Slices 7-8.
  */
 
 import {

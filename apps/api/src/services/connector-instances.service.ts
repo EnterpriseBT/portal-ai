@@ -6,8 +6,6 @@
  * connector-defined public projection (`accountInfo`) instead. Centralized
  * here so any new connector-instance route inherits the redaction by
  * default and the security review surface stays one file.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md` §Slice 9.
  */
 
 import {

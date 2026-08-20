@@ -218,7 +218,7 @@ export function regionsWithErrors(
 }
 
 // ---------------------------------------------------------------------------
-// Binding-level validation (overrides — see docs/BINDING_OVERRIDES.spec.md)
+// Binding-level validation (overrides)
 // ---------------------------------------------------------------------------
 
 const NORMALIZED_KEY_PATTERN = /^[a-z][a-z0-9_]*$/;
