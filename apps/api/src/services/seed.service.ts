@@ -31,6 +31,23 @@ interface SystemColumnDefinitionSpec {
   geoRole?: GeoRole | null;
 }
 
+/**
+ * The org-level catalog of system column definitions.
+ *
+ * **Adding an entry here reaches new organizations only.**
+ * `seedSystemColumnDefinitions` runs at org provisioning (and after a reset) —
+ * nothing re-runs it for an organization that already exists. An entry added
+ * without a backfill migration is therefore invisible to every existing org,
+ * which is what happened to the #316 geospatial rows: they shipped with a
+ * schema-only migration (`0077`) and stranded four app-dev orgs until #414
+ * backfilled them in `0080_backfill-geospatial-column-definitions.sql`.
+ *
+ * So: a new entry ships with a data migration that inserts it for every
+ * existing organization. Use `0080` as the template — it cross-joins
+ * `organizations` and repeats the partial unique index's `WHERE deleted IS
+ * NULL` in its `ON CONFLICT`, which is what makes it a safe no-op on orgs that
+ * already hold the key.
+ */
 export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
   {
     key: "uuid",
@@ -540,8 +557,16 @@ export class SeedService {
   }
 
   /**
-   * Seeds a core set of system column definitions for an organization.
-   * Uses deterministic v5 UUIDs and upsertByKey so calls are idempotent.
+   * Seeds the system column definitions for one organization.
+   *
+   * Idempotent, but not because ids are derived — each call mints a fresh v4
+   * id and `upsertByKey` conflicts on `(organization_id, key)`, so a re-seed
+   * updates the existing row and the original id survives. (An earlier version
+   * of this comment claimed deterministic v5 UUIDs; it never did that.)
+   *
+   * Only reaches the org it is given, and is only called at provisioning — see
+   * the note on {@link SYSTEM_COLUMN_DEFINITIONS} for why a new entry needs a
+   * backfill migration to reach organizations that already exist.
    */
   async seedSystemColumnDefinitions(organizationId: string, db: DbClient) {
     const factory = new ColumnDefinitionModelFactory();

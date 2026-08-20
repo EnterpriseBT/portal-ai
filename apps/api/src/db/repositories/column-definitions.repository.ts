@@ -85,6 +85,14 @@ export class ColumnDefinitionsRepository extends Repository<
           validationPattern: data.validationPattern,
           validationMessage: data.validationMessage,
           canonicalFormat: data.canonicalFormat,
+          // #414: `geoRole` and `system` were absent here, so an upsert onto an
+          // existing row silently left them at whatever the row already held —
+          // meaning a re-seed could not converge the two fields #316 added.
+          // Spread conditionally: both are optional on the insert type, and an
+          // explicit `undefined` in a `set` clause must not be mistaken for an
+          // instruction to null the column.
+          ...(data.geoRole !== undefined ? { geoRole: data.geoRole } : {}),
+          ...(data.system !== undefined ? { system: data.system } : {}),
           updated: data.updated ?? Date.now(),
           updatedBy: data.updatedBy,
         } as never,
