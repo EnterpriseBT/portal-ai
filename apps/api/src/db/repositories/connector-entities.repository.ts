@@ -202,6 +202,8 @@ export class ConnectorEntitiesRepository extends Repository<
     client: DbClient = db
   ): Promise<number> {
     const now = Date.now();
+    // #423: count from the driver — `RETURNING` here streamed every
+    // matched row (with its payload) into Node just to call `.length`.
     const result = await (client as typeof db)
       .update(this.table)
       .set({ deleted: now, deletedBy } as any)
@@ -210,9 +212,8 @@ export class ConnectorEntitiesRepository extends Repository<
           eq(connectorEntities.connectorInstanceId, connectorInstanceId),
           this.notDeleted()
         )
-      )
-      .returning();
-    return result.length;
+      );
+    return result.count;
   }
 
   /**
