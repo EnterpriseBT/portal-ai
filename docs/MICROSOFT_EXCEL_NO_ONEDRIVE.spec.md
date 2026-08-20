@@ -24,7 +24,7 @@ One discovery lean is **dropped as a no-op**: "abort the BFS walk on `no_drive`"
 1. `no_drive` member on `MicrosoftGraphErrorKind` + a Graph-error envelope parser + the classification predicate (`apps/api/src/services/microsoft-graph.service.ts`).
 2. Raw Graph response bodies removed from all four thrown messages; logged at the service layer instead.
 3. `MICROSOFT_EXCEL_NO_ONEDRIVE` in `ApiCode`; `no_drive` → 409 in `mapMicrosoftGraphError`.
-4. `409` added to the `@openapi` responses of `GET /workbooks`, `POST /instances/:id/select-workbook`, and `GET /instances/:id/sheet-slice` — the last of which has no `responses:` section at all today, so it gains one.
+4. `409` added to the `@openapi` responses of `GET /workbooks` and `POST /instances/:id/select-workbook`. **Not** `sheet-slice` — see the correction below.
 5. No-retry-on-4xx in the react-query default options (`apps/web/src/client.ts`).
 6. Optional `onSearchError` on `AsyncSearchableSelect` + `MultiAsyncSearchableSelect`, with a `catch` on all three promise paths.
 7. Search failures routed into the Microsoft Excel workflow's existing `serverError` → `<FormAlert>` seam, and an error-aware empty state on the select-workbook step.
@@ -142,9 +142,12 @@ The message passes through unchanged — the service owns the copy, so all three
 |---|---|---|
 | `GET /workbooks` | `:279-302` | `409: { description: Connected Microsoft account has no OneDrive }` |
 | `POST /instances/:id/select-workbook` | `:337-368` | same |
-| `GET /instances/:id/sheet-slice` | `:403-435` | **the whole `responses:` section** — see below |
+| `GET /instances/:id/sheet-slice` | — | **nothing** — see the correction below |
 
-`GET /instances/:id/sheet-slice`'s block ends after its `parameters:` list (`:435`) with **no `responses:` section at all** — so it currently documents no status codes, success included. Per the API style guide ("a route without `@openapi` … is a missing-docs bug, not 'deferred'") that gap is in scope here rather than deferred, since this ticket is the thing adding a status code to it. The slice adds `200` (referencing the same sheet-slice payload component the handler returns), `400`, `404`, `409`, and `502`, matching the shape of the two sibling blocks. This is a docs-only addition — no handler change.
+**Correction, made during implementation.** This spec originally put a `409` on `sheet-slice` and pulled its missing `responses:` section into scope. Both were wrong:
+
+- **`sheet-slice` cannot return `no_drive`.** `MicrosoftExcelConnectorService.sheetSlice` (`apps/api/src/services/microsoft-excel-connector.service.ts:361-380`) reads only from the workbook cache and 404s on a miss — it never calls `/me/drive`. Its `mapMicrosoftGraphError` catch is defensive. Declaring a 409 there would document a response the route cannot produce, so the route is left alone and test case 16 is dropped.
+- **Its missing `responses:` section is a bigger, separate job.** Writing it correctly needs a registered swagger component for the `SliceResult` payload (`apps/api/src/utils/workbook-preview.util.ts:128-132`), which **three** routes return — microsoft-excel, google-sheets, and file-uploads all end their `@openapi` blocks at `colEnd` with no `responses:` at all. That's a `swagger.config.ts` + three-route change well outside a no-OneDrive bugfix. Filed as **#420**.
 
 ### React-query retry policy — `apps/web/src/client.ts`
 
@@ -250,7 +253,7 @@ The container passes `onSearchError={undefined}` — the re-throw from `handleSe
 
 14. `GET /workbooks` against an SPO-license 400 → `409`, `code === "MICROSOFT_EXCEL_NO_ONEDRIVE"`, remedy copy in `message`.
 15. Same for `POST /instances/:id/select-workbook`.
-16. Same for `GET /instances/:id/sheet-slice`.
+16. ~~Same for `GET /instances/:id/sheet-slice`.~~ **Dropped** — the route is cache-only and cannot produce `no_drive` (see the Surface correction).
 17. `GET /workbooks` against an unrecognized Graph 500 → still `502 MICROSOFT_EXCEL_LIST_FAILED` (fail-open, end to end).
 18. The 409 response body carries no Graph `request-id`.
 
@@ -285,12 +288,12 @@ The container passes `onSearchError={undefined}` — the re-throw from `handleSe
 33. `retry` returns `true` (under 3 failures) for a 502 `ApiError`.
 34. `retry` still returns `false` for 401 and for `ORGANIZATION_USER_NOT_FOUND`.
 
-**Totals ≈ 34 cases** — 18 `apps/api`, 8 `packages/core`, 8 `apps/web`. No migration test (no schema change). Run per package via `npm run test:unit`; `apps/api` integration cases via `npm run test:integration`. Never invoke `jest`/`npx` directly — the ESM `NODE_OPTIONS` live in the npm scripts.
+**Totals ≈ 34 cases planned; 37 landed** — `apps/api` 15 unit + 3 integration (case 16 dropped), `packages/core` 8 (`MultiAsyncSearchableSelect` has two promise paths, not three, so five catches total rather than six), `apps/web` 3 step/hook + 5 `client.ts` + the pre-existing regression guards. No migration test (no schema change). Run per package via `npm run test:unit`; `apps/api` integration cases via `npm run test:integration`. Never invoke `jest`/`npx` directly — the ESM `NODE_OPTIONS` live in the npm scripts.
 
 ## Acceptance criteria
 
 - [ ] A workbook search on an account whose tenant has no SPO license returns `409 MICROSOFT_EXCEL_NO_ONEDRIVE`, not `502 MICROSOFT_EXCEL_LIST_FAILED`.
-- [ ] `select-workbook` and `sheet-slice` return the same 409 for the same account.
+- [ ] `select-workbook` returns the same 409 for the same account. (`sheet-slice` is excluded — cache-only, cannot produce the condition.)
 - [ ] No response body from any of the three routes contains a Graph `request-id`, `client-request-id`, or raw `{"error":…}` JSON.
 - [ ] The Graph status, `error.code`, and `request-id` appear in the API logs for every failed `/me/drive` call.
 - [ ] On the select-workbook step, the user sees an alert naming the cause and the remedy — not an empty dropdown.
