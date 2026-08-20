@@ -14,6 +14,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 
 import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
+import { TYPE_COLOR } from "../utils/column-definition-form.util";
 
 // ── Data Components ─────────────────────────────────────────────────
 
@@ -46,22 +47,6 @@ export const ColumnDefinitionDataItem = (
 };
 
 // ── Card UI ─────────────────────────────────────────────────────────
-
-const TYPE_COLOR: Record<
-  string,
-  "primary" | "secondary" | "success" | "warning" | "error" | "info" | "default"
-> = {
-  string: "primary",
-  number: "info",
-  boolean: "success",
-  date: "warning",
-  datetime: "warning",
-  enum: "secondary",
-  json: "default",
-  array: "default",
-  reference: "error",
-  "reference-array": "error",
-};
 
 export interface ColumnDefinitionCardUIProps {
   columnDefinition: ColumnDefinition;
@@ -112,7 +97,7 @@ export const ColumnDefinitionCardUI: React.FC<ColumnDefinitionCardUIProps> = ({
               <Chip
                 label={cd.type}
                 size="small"
-                color={TYPE_COLOR[cd.type] ?? "default"}
+                color={TYPE_COLOR[cd.type]}
                 variant="outlined"
               />
             ),

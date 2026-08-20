@@ -78,7 +78,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         name: type
  *         schema:
  *           type: string
- *         description: Comma-separated list of column data types to filter by (string, number, boolean, date, datetime, enum, json, array, reference, reference-array)
+ *         description: Comma-separated list of column data types to filter by (string, number, boolean, date, datetime, enum, json, array, reference, reference-array, geometry)
  *       - in: query
  *         name: system
  *         schema:

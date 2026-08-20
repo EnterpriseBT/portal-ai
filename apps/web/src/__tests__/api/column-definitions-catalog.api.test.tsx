@@ -18,7 +18,7 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-const mockFetchWithAuth = jest.fn();
+const mockFetchWithAuth = jest.fn<(url: string) => Promise<unknown>>();
 
 jest.unstable_mockModule("../../utils/api.util", () => ({
   useAuthQuery: jest.fn(),

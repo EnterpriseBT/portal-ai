@@ -35,6 +35,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
+import { TYPE_COLOR } from "../utils/column-definition-form.util";
 import { useStorage } from "../utils/storage.util";
 import { ColumnDefinitionDataItem } from "../components/ColumnDefinition.component";
 import { CreateFieldMappingDialog } from "../components/CreateFieldMappingDialog.component";
@@ -49,22 +50,6 @@ import {
   usePagination,
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
-
-const TYPE_COLOR: Record<
-  string,
-  "primary" | "secondary" | "success" | "warning" | "error" | "info" | "default"
-> = {
-  string: "primary",
-  number: "info",
-  boolean: "success",
-  date: "warning",
-  datetime: "warning",
-  enum: "secondary",
-  json: "default",
-  array: "default",
-  reference: "error",
-  "reference-array": "error",
-};
 
 interface ColumnDefinitionDetailViewProps {
   columnDefinitionId: string;
@@ -276,7 +261,7 @@ export const ColumnDefinitionDetailView: React.FC<
                               <Chip
                                 label={cd.type}
                                 size="small"
-                                color={TYPE_COLOR[cd.type] ?? "default"}
+                                color={TYPE_COLOR[cd.type]}
                                 variant="outlined"
                               />
                             </Box>

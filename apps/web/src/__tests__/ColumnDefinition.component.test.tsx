@@ -121,6 +121,19 @@ describe("ColumnDefinitionCardUI", () => {
     expect(screen.getByText("string")).toBeInTheDocument();
   });
 
+  // #414: TYPE_COLOR had no `geometry` key, so a geometry column fell back to
+  // the neutral grey chip every other unmapped type would have got. The chip
+  // must now carry a real colour class, the same as any mapped type.
+  it("should render a geometry type chip with a mapped colour", () => {
+    const cd = makeColumnDefinition({ label: "Boundary", type: "geometry" });
+    render(<ColumnDefinitionCardUI columnDefinition={cd} />);
+
+    const chip = screen.getByText("geometry").closest(".MuiChip-root");
+    expect(chip).toBeInTheDocument();
+    expect(chip?.className).not.toContain("colorDefault");
+    expect(chip?.className).toContain("colorSuccess");
+  });
+
   it("should render key in monospace and description", () => {
     const cd = makeColumnDefinition({
       key: "email_address",

@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import { ColumnDataTypeEnum } from "@portalai/core/models";
 import type { ColumnDefinition } from "@portalai/core/models";
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
@@ -107,6 +108,25 @@ describe("EditColumnDefinitionDialog", () => {
     expect(
       screen.queryByRole("option", { name: "currency" })
     ).not.toBeInTheDocument();
+  });
+
+  // #414: ALL_TYPES derives from ColumnDataTypeEnum instead of being a literal
+  // copy of it, so a type added to the enum cannot go missing from this list.
+  it("offers every column data type in the enum", () => {
+    render(<EditColumnDefinitionDialog {...defaultProps} />);
+    fireEvent.mouseDown(screen.getByLabelText(/^Type/));
+
+    // Compare the whole option set — a per-type regex would conflate
+    // date/datetime and reference/reference-array. The option for the
+    // definition's current type carries a "current" chip; strip it so the
+    // comparison stays an exact match rather than a prefix one.
+    const offered = screen
+      .getAllByRole("option")
+      .map((o) => o.textContent?.trim().replace(/current$/, ""));
+
+    for (const type of ColumnDataTypeEnum.options) {
+      expect(offered).toContain(type);
+    }
   });
 
   it("should disable types not in ALLOWED_TYPE_TRANSITIONS", () => {
