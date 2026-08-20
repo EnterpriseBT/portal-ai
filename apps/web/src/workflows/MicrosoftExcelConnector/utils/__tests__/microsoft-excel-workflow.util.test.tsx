@@ -150,4 +150,31 @@ describe("useMicrosoftExcelWorkflow", () => {
     });
     expect(result.current.serverError?.message).toMatch(/graph rejected/i);
   });
+
+  it("exposes setServerError so the container can report a failed workbook search", async () => {
+    // The workbook-search GET lives in the container, not this hook, so the
+    // hook has to hand out the setter for the search error to reach the
+    // step's FormAlert.
+    const { result } = renderHook(() =>
+      useMicrosoftExcelWorkflow(makeCallbacks())
+    );
+    expect(typeof result.current.setServerError).toBe("function");
+
+    act(() => {
+      result.current.setServerError({
+        message: "This Microsoft account has no OneDrive.",
+        code: "MICROSOFT_EXCEL_NO_ONEDRIVE",
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.serverError?.code).toBe(
+        "MICROSOFT_EXCEL_NO_ONEDRIVE"
+      );
+    });
+
+    act(() => {
+      result.current.setServerError(null);
+    });
+    await waitFor(() => expect(result.current.serverError).toBeNull());
+  });
 });

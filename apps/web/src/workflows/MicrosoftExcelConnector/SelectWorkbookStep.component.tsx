@@ -30,6 +30,14 @@ export interface SelectWorkbookStepUIProps {
 const NO_OPTIONS_LABEL =
   "No workbooks found — make sure the right Microsoft account is connected.";
 
+/**
+ * Shown instead of `NO_OPTIONS_LABEL` once a search has failed. An empty
+ * dropdown after an error is not evidence the drive is empty, and saying
+ * so sent users looking for a workbook problem when the real cause — an
+ * account with no OneDrive, say — is already named in the alert above.
+ */
+const SEARCH_FAILED_LABEL = "Workbook search failed — see the message above.";
+
 export const SelectWorkbookStep: React.FC<SelectWorkbookStepUIProps> = ({
   value,
   onSelect,
@@ -60,7 +68,7 @@ export const SelectWorkbookStep: React.FC<SelectWorkbookStepUIProps> = ({
         placeholder="Start typing a workbook name…"
         disabled={loading}
         fullWidth
-        noOptionsText={NO_OPTIONS_LABEL}
+        noOptionsText={serverError ? SEARCH_FAILED_LABEL : NO_OPTIONS_LABEL}
       />
 
       {loading && (
