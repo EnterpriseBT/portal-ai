@@ -5,7 +5,6 @@ import type {
   VizRefreshDeps,
   PinRefreshDeps,
 } from "../../services/portal-viz-refresh.service.js";
-import { ApiError } from "../../services/http.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 
 // The service loads the persisted message + re-executes its pipeline. Both the

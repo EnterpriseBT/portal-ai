@@ -47,7 +47,6 @@ const PARAM_SCHEMA = {
   properties: { factor: { type: "number" } },
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function exec(t: any, input: Record<string, unknown>) {
   return t.execute(input, {
     toolCallId: "t",

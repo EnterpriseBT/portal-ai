@@ -54,9 +54,15 @@ jobs:
   integration-test:
     uses: ./.github/workflows/integration-test.yml
 
+  # Prod gates on at least as much as a PR does (#427). Unconditional, for the
+  # same reason the suites above are: a release tag can be cut from any commit,
+  # so "this tree already passed" is an assumption here, not a fact.
+  static-checks:
+    uses: ./.github/workflows/static-checks.yml
+
   # ── Infrastructure ────────────────────────────────────────
   deploy-infra:
-    needs: [unit-test, integration-test]
+    needs: [unit-test, integration-test, static-checks]
     runs-on: ubuntu-latest
     environment: prod
     permissions:
