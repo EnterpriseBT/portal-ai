@@ -190,6 +190,14 @@ jobs:
               CertificateArn="$CERT_ARN" \
               HostedZoneId=${{ secrets.DEV_HOSTED_ZONE_ID }} \
               FrontendOrigin=https://app-dev.portalsai.io \
+              # Stated, never inherited (#424). app-dev runs HALF of prod
+              # (prod is 1024/8192) as a deliberate cost choice: ~$28/mo
+              # instead of ~$55. Consequence to keep in mind — app-dev memory
+              # and latency results do NOT transfer to prod in either
+              # direction. Omitting these is how the stack sat at 256/512 for
+              # four months while the template said 8 GB.
+              Cpu=512 \
+              Memory=4096 \
               SecretArnDatabaseUrl=${{ secrets.DEV_SECRET_ARN_DATABASE_URL }} \
               SecretArnEncryptionKey=${{ secrets.DEV_SECRET_ARN_ENCRYPTION_KEY }} \
               SecretArnAuth0WebhookSecret=${{ secrets.DEV_SECRET_ARN_AUTH0_WEBHOOK_SECRET }} \

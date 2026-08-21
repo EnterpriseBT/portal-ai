@@ -789,6 +789,109 @@ describe("the apex serves prod only, behind a condition (#404)", () => {
   // wiring above: which environment gets an apex at all.
 });
 
+// #424: the deployed task sizing must be STATED, and the V8 heap must be
+// derived from it.
+//
+// app-dev ran at Cpu=256/Memory=512 for four months while backend.yml said
+// 1024/8192. Neither backend deploy passed either parameter, and
+// `aws cloudformation deploy` reuses whatever the stack was created with, so
+// both template bumps were no-ops for that environment. Prod escaped only by
+// timing — its stack was created after the defaults rose — which means prod
+// carries the same latent bug, not an immunity.
+//
+// The compounding half is that `--max-old-space-size` was a LITERAL in the
+// template body, so it deployed immediately and could not adapt: V8 was
+// authorised to grow ~14x past a 512 MB cgroup, which turns a catchable heap
+// error into a SIGKILL (exit 137, a bare 502 with no stack trace).
+//
+// Scoped deliberately to Cpu/Memory rather than "every parameter": omitting
+// DesiredCount is INTENTIONAL on the prod create path (deploy-prod.yml's
+// `scale` step, so a redeploy cannot scale the service down mid-flight).
+describe("task sizing is stated, and the heap follows it (#424)", () => {
+  const BACKEND_TEMPLATE = "infra/cloudformation/backend.yml";
+
+  /** Each `aws cloudformation deploy` chunk that targets backend.yml. */
+  const backendDeploys = (body: string): string[] =>
+    body
+      .split("aws cloudformation deploy")
+      .slice(1)
+      .filter((chunk) => chunk.includes(BACKEND_TEMPLATE));
+
+  const template = (): {
+    Parameters: Record<string, { Default?: unknown; AllowedValues?: number[] }>;
+    Mappings?: Record<string, Record<string, { HeapMb?: number }>>;
+    Resources: Record<string, never>;
+  } => {
+    const doc = parseDocument(fs.readFileSync(BACKEND_YML, "utf8"), {
+      logLevel: "silent",
+    });
+    expect(doc.errors).toHaveLength(0);
+    return doc.toJS({ maxAliasCount: -1 });
+  };
+
+  it.each(backendDeployWorkflows())(
+    "%s states Cpu and Memory where the service is created",
+    (_file, body) => {
+      // "at least one", not "every" — `deploy` reuses recorded values, so only
+      // the CREATE invocation must carry them. Same rule as CertificateArn.
+      const chunks = backendDeploys(body);
+      expect(chunks.length).toBeGreaterThan(0);
+      expect(chunks.some((c) => /\bCpu=/.test(c))).toBe(true);
+      expect(chunks.some((c) => /\bMemory=/.test(c))).toBe(true);
+    }
+  );
+
+  it("guards more than one environment", () => {
+    // The precedent this extends (MultiAZ, :263) is prod-only, which is how
+    // app-dev drifted unnoticed. If this ever sees one workflow, the guard has
+    // silently narrowed back to where it started.
+    expect(backendDeployWorkflows().length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("derives the heap ceiling from Memory instead of hardcoding it", () => {
+    // A literal cannot be wrong at deploy time the way a parameter can drift,
+    // which is exactly how the two silently disagreed for four months.
+    // Comment-stripped, per this file's convention: the Mappings comment
+    // NAMES the old `7000` to explain what went wrong, and that history is
+    // worth keeping. Only executable text counts.
+    const yaml = fs
+      .readFileSync(BACKEND_YML, "utf8")
+      .split("\n")
+      .filter((line) => !/^\s*#/.test(line))
+      .join("\n");
+    expect(yaml).not.toMatch(/--max-old-space-size=\d+/);
+    expect(yaml).toMatch(/max-old-space-size=\$\{[A-Za-z]/);
+  });
+
+  it("maps every allowed Memory value to a heap", () => {
+    // CloudFormation has no arithmetic intrinsic, so the relationship is a
+    // Mapping. !FindInMap FAILS the deploy on an unmapped size, so a sizing
+    // whose heap nobody considered cannot ship — but only if AllowedValues
+    // and the Mapping agree, which is what this asserts.
+    const tpl = template();
+    const allowed = tpl.Parameters.Memory.AllowedValues;
+    expect(allowed).toBeDefined();
+    expect(allowed!.length).toBeGreaterThan(0);
+
+    const map = tpl.Mappings?.NodeHeapByMemory;
+    expect(map).toBeDefined();
+    for (const value of allowed!) {
+      expect(map![String(value)]).toBeDefined();
+      expect(typeof map![String(value)].HeapMb).toBe("number");
+    }
+  });
+
+  it("keeps every mapped heap below its container", () => {
+    // The invariant the bug violated: 7000 MB of heap inside 512 MB of
+    // container. A heap at or above the ceiling is a SIGKILL waiting to
+    // happen, so this is the assertion that must never go green while wrong.
+    const map = template().Mappings!.NodeHeapByMemory;
+    for (const [memory, entry] of Object.entries(map)) {
+      expect(entry.HeapMb!).toBeLessThan(Number(memory));
+    }
+  });
+});
+
 /**
  * Skip-propagation guard (regression from #427).
  *
