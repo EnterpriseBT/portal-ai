@@ -66,6 +66,18 @@ export const entityRecords = pgTable(
       table.connectorEntityId,
       table.syncedAt
     ),
+    // #433: the list endpoint's default sort. `created` is `usePagination`'s
+    // `defaultSortBy` for every paginated view, and nothing indexed it — so
+    // `WHERE connector_entity_id = ? AND deleted IS NULL ORDER BY created`
+    // hash-joined the whole wide table and spilled to disk before taking ten
+    // rows. Scope column first (one contiguous range per entity), then the
+    // sort key, then `id` as the unique tiebreaker that makes pagination
+    // deterministic over ties and lets a keyset cursor seek past a position.
+    // Partial on `deleted IS NULL` to match the soft-delete guard every read
+    // carries.
+    index("entity_records_entity_created_id_idx")
+      .on(table.connectorEntityId, table.created, table.id)
+      .where(sql`deleted IS NULL`),
     index("entity_records_entity_is_valid_idx").on(
       table.connectorEntityId,
       table.isValid

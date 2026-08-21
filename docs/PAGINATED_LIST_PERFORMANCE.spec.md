@@ -243,17 +243,19 @@ One migration, index only — no schema change:
 cd apps/api && npm run db:generate -- --name entity-records-created-sort-index
 ```
 
-The generated SQL is hand-edited to `CREATE INDEX CONCURRENTLY IF NOT EXISTS` and the migration marked non-transactional, since `CONCURRENTLY` cannot run inside a transaction block:
-
 ```sql
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "entity_records_entity_created_id_idx"
-  ON "entity_records" ("connector_entity_id", "created", "id")
+CREATE INDEX IF NOT EXISTS "entity_records_entity_created_id_idx"
+  ON "entity_records" USING btree ("connector_entity_id","created","id")
   WHERE deleted IS NULL;
 ```
 
 The matching `index(...)` entry is added to `apps/api/src/db/schema/entity-records.table.ts:62-75` so the Drizzle schema and the DB stay in step.
 
-**Ordering:** index-only and additive; safe to apply before or after the code deploy. `CONCURRENTLY` keeps writes unblocked during the ~283K-row build on app-dev.
+**Not `CONCURRENTLY` — corrected during slice 1.** An earlier draft of this spec called for `CREATE INDEX CONCURRENTLY` with the migration marked non-transactional. That is not achievable here: drizzle's migrator runs **every** migration inside one transaction (`drizzle-orm/pg-core/dialect.js:60` → `session.transaction`), with no per-migration opt-out, and `CONCURRENTLY` cannot run in a transaction block. It would fail both `npm run db:migrate` and the integration-test `globalSetup`.
+
+A plain build takes a SHARE lock: reads continue, writes to `entity_records` block until it completes. Measured at **~6s on a 1.6M-row local database**, so seconds at current volumes. `IF NOT EXISTS` preserves the escape hatch — an operator can pre-create the index `CONCURRENTLY` out-of-band on a table large enough that blocking writes is unacceptable, and the migration then no-ops, the same pattern `0076_enable-postgis.sql` documents for the extension.
+
+**Ordering:** index-only and additive; safe to apply before or after the code deploy.
 
 ## Seed
 

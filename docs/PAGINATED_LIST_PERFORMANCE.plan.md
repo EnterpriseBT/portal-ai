@@ -27,19 +27,21 @@ Adds the composite partial index that turns the default sort from a spilling has
 
 **Files**
 
-- New: `apps/api/drizzle/00XX_entity-records-created-sort-index.sql` — hand-edited to `CREATE INDEX CONCURRENTLY IF NOT EXISTS`, migration marked non-transactional.
+- New: `apps/api/drizzle/0081_entity-records-created-sort-index.sql` — plain `CREATE INDEX IF NOT EXISTS` (see the risk note).
 - New: `apps/api/src/__tests__/__integration__/db/entity-records-indexes.integration.test.ts`.
 - Edit: `apps/api/src/db/schema/entity-records.table.ts:62-75` — matching `index(...)` entry so Drizzle and the DB stay in step.
 
 **Steps**
 
-1. **Tests.** Assert `pg_indexes` contains `entity_records_entity_created_id_idx` on `entity_records`, and that its `indexdef` carries all three columns in order plus the `WHERE deleted IS NULL` predicate. Run; fail.
-2. **Implement** the schema entry, generate the migration (`npm run db:generate -- --name entity-records-created-sort-index`), hand-edit to `CONCURRENTLY`, apply. Green.
+1. **Tests.** Assert `pg_indexes` contains `entity_records_entity_created_id_idx` on `entity_records`, and that its `indexdef` carries all three columns in order, the `WHERE deleted IS NULL` predicate, and `USING btree`. Run; fail.
+2. **Implement** the schema entry, generate the migration (`npm run db:generate -- --name entity-records-created-sort-index`), apply. Green.
 3. Lint + type-check.
 
 **Done when:** the index exists and is asserted; no query yet references it explicitly — the planner picks it up for free.
 
-**Risk:** `CONCURRENTLY` cannot run inside a transaction block; the generated migration must be marked non-transactional or it fails on apply. A failed concurrent build leaves an `INVALID` index — `DROP INDEX` and re-run. Index-only, so no data risk.
+**Risk:** ~~`CONCURRENTLY` needs a non-transactional migration~~ — **corrected during implementation.** `CONCURRENTLY` is not achievable: drizzle's migrator runs every migration inside one transaction (`drizzle-orm/pg-core/dialect.js:60`), with no opt-out, and `CONCURRENTLY` cannot run in a transaction block. The migration is a plain `CREATE INDEX IF NOT EXISTS`, which takes a SHARE lock — reads continue, writes block for the build (~6s measured on a 1.6M-row local database). `IF NOT EXISTS` keeps the out-of-band `CONCURRENTLY` escape hatch open for a future table where blocking writes would matter. Index-only, so no data risk; `DROP INDEX` reverts it.
+
+**Verified:** on the local 397K-row entity the planner switches to `Index Scan using entity_records_entity_created_id_idx` inside a nested loop — **4.2ms** for page 1, against the 14,635ms hash-join-and-spill plan measured on app-dev.
 
 ---
 

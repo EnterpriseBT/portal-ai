@@ -1,0 +1,29 @@
+-- #433: index the list endpoint's default sort.
+--
+-- `created` is `usePagination`'s `defaultSortBy` for every paginated view in
+-- the app, and no table in the schema indexed it. On `entity_records` that
+-- made `WHERE connector_entity_id = ? AND deleted IS NULL ORDER BY created
+-- LIMIT 10` unstreamable: Postgres hash-joined all 283K rows of the entity
+-- against its wide table and spilled to 64 batches before discarding all but
+-- ten (14,635ms measured on app-dev; 86ms once an index-ordered scan was
+-- possible).
+--
+-- Column order is load-bearing: the scope column leads so one entity's rows
+-- are a single contiguous range, then the sort key, then `id` as a unique
+-- tiebreaker. The tiebreaker is not decoration — without it, pagination over
+-- a tied sort key repeats and skips rows, and a keyset cursor cannot seek
+-- past a position it can't uniquely identify.
+--
+-- Partial on `deleted IS NULL` to match the soft-delete guard every read
+-- carries, and to keep the index off tombstoned rows.
+--
+-- NOT `CONCURRENTLY`, deliberately: drizzle's migrator runs every migration
+-- inside one transaction (`drizzle-orm/pg-core/dialect.js` → `session
+-- .transaction`), and `CREATE INDEX CONCURRENTLY` cannot run in a
+-- transaction block. A plain build takes a SHARE lock — reads continue,
+-- writes to `entity_records` block until it completes (seconds at current
+-- volumes). Should a future table be large enough that blocking writes is
+-- unacceptable, an operator can pre-create the index CONCURRENTLY
+-- out-of-band; `IF NOT EXISTS` then makes this migration a no-op, the same
+-- escape hatch 0076 documents for the PostGIS extension.
+CREATE INDEX IF NOT EXISTS "entity_records_entity_created_id_idx" ON "entity_records" USING btree ("connector_entity_id","created","id") WHERE deleted IS NULL;
