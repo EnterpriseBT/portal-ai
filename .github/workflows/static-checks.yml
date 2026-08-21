@@ -17,9 +17,11 @@ on:
       - main
   workflow_call:
 
-# See unit-test.yml for why the group narrows to non-main branch pushes.
+# Leads with the literal "static-checks", not `github.workflow` — see unit-test.yml:
+# inside a reusable workflow the context resolves to the caller, so siblings
+# would share a group and cancel each other.
 concurrency:
-  group: "${{ github.workflow }}-${{ github.ref }}-${{ (github.event_name == 'push' && github.ref != 'refs/heads/main') && 'branch' || github.run_id }}"
+  group: "static-checks-${{ github.ref }}-${{ (github.event_name == 'push' && github.ref != 'refs/heads/main') && 'branch' || github.run_id }}"
   cancel-in-progress: true
 
 jobs:

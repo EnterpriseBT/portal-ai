@@ -9,15 +9,19 @@ on:
 # A new push to the same branch makes the in-flight run obsolete — cancel it
 # rather than paying for a full cycle on a superseded commit (#427).
 #
-# The group is only shared for pushes to a NON-main branch; everything else
-# falls back to `github.run_id`, which is unique per run and therefore never
-# cancels anything. That fallback matters because this workflow is also
-# `workflow_call`-ed by deploy-dev / deploy-prod, where `github.workflow`
-# resolves to the CALLER's name — a shared group there would let one deploy
-# cancel another's tests, the exact thing deploy-dev's own
-# `cancel-in-progress: false` exists to prevent.
+# The group leads with the LITERAL "unit-test", never `github.workflow`. Inside a
+# reusable workflow every `github.*` context resolves to the CALLER, so all
+# three suites invoked from one deploy run would share
+# "Deploy Dev-<ref>-<run_id>" and — with `cancel-in-progress: true` — cancel
+# each other. That is exactly what happened on the first manual dispatch: two
+# of three suites cancelled, one survived.
+#
+# `github.run_id` is still the fallback for anything that is not a non-main
+# branch push. It is unique per RUN, which stops runs cancelling each other;
+# the literal is what stops SIBLINGS within a run from colliding. Both parts
+# are needed.
 concurrency:
-  group: "${{ github.workflow }}-${{ github.ref }}-${{ (github.event_name == 'push' && github.ref != 'refs/heads/main') && 'branch' || github.run_id }}"
+  group: "unit-test-${{ github.ref }}-${{ (github.event_name == 'push' && github.ref != 'refs/heads/main') && 'branch' || github.run_id }}"
   cancel-in-progress: true
 
 jobs:
