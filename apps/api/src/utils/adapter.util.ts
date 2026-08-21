@@ -102,6 +102,8 @@ export async function importModeQueryRows(
     entityRecordsRepo.findHydratedMany(entity.id, {
       limit: query.limit,
       offset: query.offset,
+      // #433: rows are mapped to `normalizedData` below and nothing else.
+      includeData: false,
     }),
     entityRecordsRepo.countByConnectorEntityId(entity.id),
   ]);

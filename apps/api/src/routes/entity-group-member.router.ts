@@ -736,9 +736,12 @@ entityGroupMemberRouter.get(
       // unreconciled). The key here is the column definition's `key`,
       // matching the existing JSONB convention; the Phase-2 wide table
       // exposes the same keys via the field-mapping's normalized_key.
+      // #433: unlimited read of a whole entity, and only `normalizedData` is
+      // used — the raw `data` blob per row is pure OOM risk here.
       const targetValues =
         await DbService.repository.entityRecords.findHydratedMany(
-          targetConnectorEntityId
+          targetConnectorEntityId,
+          { includeData: false }
         );
       const targetFieldKey = targetColDef.key;
       const targetSet = new Set(
@@ -766,7 +769,8 @@ entityGroupMemberRouter.get(
         const sourceFieldKey = member.columnDefinition!.key;
         const records =
           await DbService.repository.entityRecords.findHydratedMany(
-            member.connectorEntityId
+            member.connectorEntityId,
+            { includeData: false }
           );
         for (const r of records) {
           const val = (r.normalizedData as Record<string, unknown>)[
