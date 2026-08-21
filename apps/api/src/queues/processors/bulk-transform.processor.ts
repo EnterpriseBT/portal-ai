@@ -390,7 +390,6 @@ async function runSqlBatchLoop(
         const sourceRow =
           (row["__source_row"] as Record<string, unknown> | undefined) ?? {};
         // Strip the framing keys; the rest is the projection's aliases.
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { __src_key, __source_row, ...aliasValues } = row;
         return {
           sourceKey: String(row["__src_key"]),
@@ -413,7 +412,6 @@ async function runSqlBatchLoop(
 
     // SSE rows: just the projection aliases (drop the framing keys).
     const sseRows = rows.map((row) => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { __src_key, __source_row, ...aliasValues } = row;
       return aliasValues;
     });

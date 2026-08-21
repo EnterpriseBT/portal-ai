@@ -32,6 +32,16 @@ npm run storybook        # Storybook (core :7006, web :6007)
 
 Prettier is enforced, not advisory: a husky pre-commit hook (installed by `npm install` via the `prepare` script) runs lint-staged, formatting staged files over the same `src/**` globs the per-package `format` scripts cover, and CI runs `format:check` in the unit-test workflow. `apps/web/src/routeTree.gen.ts` is excluded (the TanStack Router generator owns its formatting — never hand-format it), and markdown (`docs/*.md`, skills) is deliberately unformatted. `--no-verify` is the escape hatch for the hook; CI still catches it.
 
+### CI gating
+
+`build`, `type-check` and `lint` gate every PR through the **Static Checks** workflow (#427). Before it existed none of the three ran in CI at all — the only build lived inside the API Docker image at deploy time, so a type error could not fail a PR: it landed on `main` and broke the app-dev deploy instead. If `npm run build`, `npm run type-check` or `npm run lint` fails locally, it will fail the PR.
+
+`lint` is a **zero-warning** gate in every package: `apps/web` and `apps/site` always were, and `apps/api` + `packages/core` joined them (`--report-unused-disable-directives --max-warnings 0`). A warning is a failure, so suppressing one is a deliberate act — an `eslint-disable` **carries its reason in-file**, or the finding gets fixed.
+
+The suites do **not** re-run when a PR merges. `main` requires branches to be up to date and the convention is squash, so the merged commit's *tree* is identical to the branch tree the checks just passed against — re-running it tests nothing. `deploy-dev` therefore runs the suites only for `workflow_dispatch`, which has no PR behind it. **This depends on "require branches to be up to date" staying on**; if it is ever disabled, `deploy-dev.yml`'s test jobs must go back to unconditional (the file says so too).
+
+A push to a branch cancels that branch's in-flight run, and a docs-only push skips the integration suite while still reporting its check — filtering happens *inside* the job, never via `paths-ignore`, because a required check that never runs never reports and GitHub blocks the PR forever waiting for it.
+
 ### API Database Scripts (run from `apps/api/`)
 
 ```bash
@@ -610,10 +620,20 @@ A PR merges only when **both** hold: CI is green, **and** the user has walked th
 
 ### Branch protection on `main`
 
-These are the protection rules `main` should carry. They are settings on the repo, not code in this branch — apply them via **Settings → Branches → Branch protection rules** on GitHub. Listing them here so the convention is documented and the rules can be re-applied if the repo is ever recreated.
+These are the protection rules `main` should carry. They are settings on the repo, not code in this branch — apply them via **Settings → Branches → Branch protection rules** on GitHub, or through the API. Listing them here so the convention is documented and the rules can be re-applied if the repo is ever recreated.
+
+To read the live rules, or change just the required checks without disturbing the rest:
+
+```bash
+gh api repos/EnterpriseBT/portal-ai/branches/main/protection
+gh api --method PATCH repos/EnterpriseBT/portal-ai/branches/main/protection/required_status_checks \
+  --input - <<< '{"strict": true, "contexts": ["Unit Tests", "Integration Tests", "Static Checks"]}'
+```
+
+Use that `required_status_checks` sub-resource, **not** `PUT …/protection`: the latter replaces the entire protection object, so every rule you do not resend is silently dropped. Resend `strict` with the contexts — omitting it would clear "require branches to be up to date", which `deploy-dev`'s skipped test suites depend on.
 
 - **Require a pull request before merging.** Direct pushes to `main` blocked.
-- **Require status checks to pass before merging** — at minimum `unit-test` and `integration-test` (from `.github/workflows/`). Add new required checks as they're added to CI.
+- **Require status checks to pass before merging** — currently `Unit Tests`, `Integration Tests`, `Static Checks`. These are **job names** (the `name:` on the job), not workflow filenames: the context GitHub matches is what the job reports as. Renaming a job silently un-gates it *and* wedges every PR, which then waits forever on a context that never reports. Add new required checks as they're added to CI.
 - **Require branches to be up to date before merging.** Prevents merging a PR that hasn't seen the latest `main`.
 - **Require linear history.** Matches the squash convention; no merge commits on `main`.
 - **Do not allow bypassing the above settings** — applies to administrators too. Force-push and deletion are off by default once protection is enabled.

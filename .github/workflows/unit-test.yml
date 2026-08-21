@@ -6,6 +6,20 @@ on:
       - main
   workflow_call:
 
+# A new push to the same branch makes the in-flight run obsolete — cancel it
+# rather than paying for a full cycle on a superseded commit (#427).
+#
+# The group is only shared for pushes to a NON-main branch; everything else
+# falls back to `github.run_id`, which is unique per run and therefore never
+# cancels anything. That fallback matters because this workflow is also
+# `workflow_call`-ed by deploy-dev / deploy-prod, where `github.workflow`
+# resolves to the CALLER's name — a shared group there would let one deploy
+# cancel another's tests, the exact thing deploy-dev's own
+# `cancel-in-progress: false` exists to prevent.
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}-${{ (github.event_name == 'push' && github.ref != 'refs/heads/main') && 'branch' || github.run_id }}"
+  cancel-in-progress: true
+
 jobs:
   test-unit:
     name: Unit Tests

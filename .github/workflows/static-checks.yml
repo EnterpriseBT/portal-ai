@@ -1,0 +1,49 @@
+name: Static Checks
+
+# Build, type-check and lint (#427). Until this existed, nothing in CI ran any
+# of the three: the only build was inside the API Docker image at deploy time,
+# so a type error could not fail a PR — it landed on main and broke the app-dev
+# deploy instead. A separate workflow rather than extra steps in unit-test.yml
+# so it runs in parallel (a lint failure does not mask test results) and so the
+# deploy workflows can reuse it by `workflow_call`.
+#
+# NOTE: this job's name — "Static Checks" — is a required status check on main.
+# Renaming the job silently un-gates it: the required check would sit forever
+# "expected, waiting for status to be reported" and block every PR instead.
+
+on:
+  push:
+    branches-ignore:
+      - main
+  workflow_call:
+
+# See unit-test.yml for why the group narrows to non-main branch pushes.
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}-${{ (github.event_name == 'push' && github.ref != 'refs/heads/main') && 'branch' || github.run_id }}"
+  cancel-in-progress: true
+
+jobs:
+  static-checks:
+    name: Static Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      # `build` first: turbo's `lint` and `type-check` tasks both declare
+      # `dependsOn: ["^build"]`, so dependency dist has to exist either way —
+      # running it explicitly makes a build break report as a build break
+      # rather than as a confusing cascade of type errors in files that merely
+      # import the unbuilt package.
+      - name: Build
+        run: npm run build
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Lint
+        run: npm run lint

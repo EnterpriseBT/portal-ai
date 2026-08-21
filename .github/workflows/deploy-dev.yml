@@ -14,15 +14,40 @@ env:
 
 jobs:
   # ── Tests ─────────────────────────────────────────────────
+  # A push to main arrived through a PR whose required checks — Unit Tests,
+  # Integration Tests, Static Checks — already ran against this exact tree.
+  # main's protection sets `required_status_checks.strict = true` ("branch must
+  # be up to date before merging") and the merge convention is squash, so the
+  # merged commit's TREE is identical to the branch tree that just went green.
+  # Re-running it tests nothing and cost a full cycle on every merge (#427).
+  #
+  # `workflow_dispatch` has no PR behind it, so a manual deploy still runs
+  # everything.
+  #
+  # ⚠ IF `strict` IS EVER DISABLED ON main, REVERT THIS. The entire argument
+  # rests on the deployed tree being the tree that was tested.
   unit-test:
+    if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/unit-test.yml
 
   integration-test:
+    if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/integration-test.yml
+
+  static-checks:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/static-checks.yml
 
   # ── Infrastructure ────────────────────────────────────────
   deploy-infra:
-    needs: [unit-test, integration-test]
+    needs: [unit-test, integration-test, static-checks]
+    # A skipped `needs` job skips its dependents by default, so the deploy has
+    # to opt in explicitly: proceed when the gates were skipped (push to main)
+    # or succeeded (manual dispatch) — never when one actually failed.
+    if: >-
+      always()
+      && !contains(needs.*.result, 'failure')
+      && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     permissions:
       id-token: write

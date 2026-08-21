@@ -50,6 +50,25 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
+/**
+ * The envelope surface these tests assert on. `resolveResultSink` returns
+ * `Promise<unknown>` by design — its shape varies by sink — so the tests name
+ * the subset they pin rather than widening to `any`. Declared here, above
+ * every use, so all sites share one record of that surface (#427).
+ */
+type SinkOut = {
+  type?: string;
+  rows?: unknown[];
+  sample?: unknown[];
+  totalCount?: number;
+  truncated?: boolean;
+  queryHandle?: string;
+  pipeline?: { sql: string; stationId: string; organizationId: string };
+  rowCount?: number;
+  sampled?: boolean;
+  sql?: string | null;
+};
+
 describe("resolveResultSink (#161)", () => {
   it("value → returned inline as-is", async () => {
     const out = await resolveResultSink(
@@ -61,26 +80,27 @@ describe("resolveResultSink (#161)", () => {
   });
 
   it("rows ≤ threshold → inline { rows }", async () => {
-    const out: any = await resolveResultSink(
+    const out = (await resolveResultSink(
       rowsProd("handle"),
       { rows: asStream(mkRows(5)) },
       CTX
-    );
+    )) as SinkOut;
     expect(out.type).toBeUndefined();
     expect(out.rows).toHaveLength(5);
   });
 
   it("rows > threshold + onLarge:handle → transform-free handle envelope", async () => {
-    const out: any = await resolveResultSink(
+    const out = (await resolveResultSink(
       rowsProd("handle"),
       { rows: asStream(mkRows(40)) },
       CTX
-    );
+    )) as SinkOut;
     expect(out.type).toBe("data-table");
     expect(out.rowCount).toBe(40);
     expect(out.sql).toBeNull();
     // Round-trips: the staged handle reads back the full set.
-    const snap = await PortalSqlHandleService.getSnapshot(out.queryHandle, {
+    expect(out.queryHandle).toBeDefined();
+    const snap = await PortalSqlHandleService.getSnapshot(out.queryHandle!, {
       offset: 0,
       limit: 5_000,
     });
@@ -94,11 +114,11 @@ describe("resolveResultSink (#161)", () => {
   });
 
   it("rows > threshold + onLarge:sample → flagged sample of threshold size", async () => {
-    const out: any = await resolveResultSink(
+    const out = (await resolveResultSink(
       rowsProd("sample"),
       { rows: asStream(mkRows(40)) },
       CTX
-    );
+    )) as SinkOut;
     expect(out.sampled).toBe(true);
     expect(out.rows).toHaveLength(5);
     expect(out.type).toBeUndefined(); // inline, not a handle
@@ -130,23 +150,23 @@ describe("resolveResultSink (#161)", () => {
 
   it("transform, small source → folded inline { rows }", async () => {
     const h = await source();
-    const out: any = await resolveResultSink(
+    const out = (await resolveResultSink(
       { kind: "rows", onLarge: "handle" }, // default threshold 100 > 30
       { transform: smaTransform(h) },
       CTX
-    );
+    )) as SinkOut;
     expect(out.type).toBeUndefined();
     expect(out.rows).toHaveLength(30 - 2); // SMA(3) warmup drops 2
-    expect(out.rows[0]).toHaveProperty("value");
+    expect(out.rows![0]).toHaveProperty("value");
   });
 
   it("transform, source > threshold → transform handle (sql null, re-foldable)", async () => {
     const h = await source();
-    const out: any = await resolveResultSink(
+    const out = (await resolveResultSink(
       rowsProd("handle"), // threshold 5 < 30
       { transform: smaTransform(h) },
       CTX
-    );
+    )) as SinkOut;
     expect(out.type).toBe("data-table");
     expect(out.rowCount).toBe(28);
     expect(out.sql).toBeNull();
@@ -160,16 +180,6 @@ describe("resolveResultSink (#161)", () => {
 // snapshot. Sinks with no originating SELECT stay pipeline-free.
 
 /** The fields these cases inspect — narrower than the sink's `unknown`. */
-type SinkOut = {
-  type?: string;
-  rows?: unknown[];
-  sample?: unknown[];
-  totalCount?: number;
-  truncated?: boolean;
-  queryHandle?: string;
-  pipeline?: { sql: string; stationId: string; organizationId: string };
-};
-
 describe("resolveResultSink { sql } → durable pipeline (#349)", () => {
   const SQL = "SELECT name, acres FROM parcels ORDER BY acres DESC LIMIT 10";
   const EXPECTED_PIPELINE = {

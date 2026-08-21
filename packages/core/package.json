@@ -68,7 +68,7 @@
     "build:assets": "cp -r src/assets/fonts dist/fonts && cp -r src/assets/themes dist/themes && mkdir -p dist/assets/icons && cp -r src/assets/icons dist/assets/",
     "storybook": "storybook dev -p 7006 --no-open",
     "build-storybook": "storybook build",
-    "lint": "eslint src --ext .ts,.tsx",
+    "lint": "eslint src --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,json,css,scss}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,json,css,scss}\"",
