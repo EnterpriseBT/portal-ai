@@ -816,4 +816,104 @@ describe("Repository Integration Tests", () => {
       expect(found2?.name).not.toBe("Name 2");
     });
   });
+
+  // ── #433: ORDER BY tiebreaker ─────────────────────────────────────
+
+  describe("findMany ORDER BY tiebreaker (#433)", () => {
+    /**
+     * `ORDER BY <key>` with no unique tiebreaker leaves Postgres free to
+     * order ties however it likes, and paginating over an undefined order
+     * repeats and skips rows. Every paginated list in the app defaults to
+     * `sortBy=created`, and low-cardinality sort keys are common — so this
+     * is a correctness guarantee, not a nicety.
+     */
+    async function seedTiedUsers(count: number): Promise<string[]> {
+      const tied = Date.now();
+      const ids: string[] = [];
+      for (let i = 0; i < count; i++) {
+        const user = createTestUser({ created: tied });
+        await usersRepo.create(user, db);
+        ids.push(user.id);
+      }
+      return ids;
+    }
+
+    it("pages tied rows in id order, exactly once each", async () => {
+      const ids = await seedTiedUsers(7);
+
+      const seen: string[] = [];
+      for (let offset = 0; offset < 7; offset += 2) {
+        const page = await usersRepo.findMany(
+          undefined,
+          {
+            limit: 2,
+            offset,
+            orderBy: { column: users.created, direction: "asc" },
+          },
+          db
+        );
+        seen.push(...page.map((u) => u.id));
+      }
+
+      expect(seen).toHaveLength(7);
+      expect(new Set(seen).size).toBe(7); // no duplicates
+      expect(new Set(seen)).toEqual(new Set(ids)); // no gaps
+      // The assertion that actually gates the fix. "Exactly once" alone
+      // passes without a tiebreaker — at this scale Postgres returns a seq
+      // scan in insertion order, so the undefined order looks stable. Ids
+      // are UUIDs, so insertion order is not id order: requiring the sorted
+      // sequence is what proves the tiebreaker is in the clause.
+      expect(seen).toEqual([...ids].sort());
+    });
+
+    it("returns tied rows in id order, not insertion order", async () => {
+      const ids = await seedTiedUsers(6);
+
+      const rows = await usersRepo.findMany(
+        undefined,
+        {
+          limit: 6,
+          offset: 0,
+          orderBy: { column: users.created, direction: "asc" },
+        },
+        db
+      );
+
+      expect(rows.map((u) => u.id)).toEqual([...ids].sort());
+    });
+
+    it("orders tied rows by id, ascending and descending", async () => {
+      await seedTiedUsers(5);
+
+      const asc = await usersRepo.findMany(
+        undefined,
+        { orderBy: { column: users.created, direction: "asc" } },
+        db
+      );
+      const desc = await usersRepo.findMany(
+        undefined,
+        { orderBy: { column: users.created, direction: "desc" } },
+        db
+      );
+
+      const ascIds = asc.map((u) => u.id);
+      expect(ascIds).toEqual([...ascIds].sort());
+      // Descending must reverse the tiebreaker too, or one index scan
+      // cannot serve the ordering.
+      expect(desc.map((u) => u.id)).toEqual([...ascIds].reverse());
+    });
+
+    it("does not duplicate the clause when already ordering by id", async () => {
+      await seedTiedUsers(3);
+
+      const rows = await usersRepo.findMany(
+        undefined,
+        { orderBy: { column: users.id, direction: "asc" } },
+        db
+      );
+
+      const ids = rows.map((u) => u.id);
+      expect(ids).toEqual([...ids].sort());
+    });
+  });
 });

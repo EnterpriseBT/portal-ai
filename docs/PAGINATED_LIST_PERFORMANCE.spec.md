@@ -126,12 +126,15 @@ Two implementations, same rules.
 - The clause always ends with `, "entity_records".id <direction>` as a unique tiebreaker.
 
 ```ts
-function buildOrderByClause(opts: {
+export function buildOrderByClause(opts: {
   column: Column | SQL;
   direction?: "asc" | "desc";
-  nullable?: boolean;   // default false — omit NULLS LAST
+  /** Only consulted for raw SQL expressions; defaults to `true`. */
+  nullable?: boolean;
 }): SQL;
 ```
+
+**Nullability is derived, not declared — refined during slice 2.** A Drizzle `Column` carries `notNull`, so the clause reads it directly and no caller has to pass anything; `SORTABLE_COLUMNS` (`created`, `syncedAt`, `sourceId`) are all `Column`s and all `NOT NULL`. Only a raw `SQL` expression — a typed wide-table `c_*` column via `buildSortExpression` — has no such metadata, and there the default is **`true`**, not `false`: every wide-table data column is nullable, so `true` is both correct and preserves the previous behavior for any caller that doesn't declare it. The function is exported for unit test, because on a `NOT NULL` column the two spellings return identical rows and only the plan differs.
 
 **`apps/api/src/db/repositories/base.repository.ts:152-165`** — the `Column` branch already emits no nulls clause (Drizzle `asc()`/`desc()`), which is index-compatible; the raw-SQL branch's `NULLS LAST` is unreachable from every current caller (Key decision 5). Both branches gain the trailing `id` tiebreaker whenever `opts.orderBy` is supplied. Ordering by `id` alone stays un-duplicated.
 

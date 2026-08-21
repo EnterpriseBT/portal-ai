@@ -151,17 +151,25 @@ export class Repository<
       .$dynamic();
     if (opts.orderBy) {
       const { column: orderCol, direction = "asc" } = opts.orderBy;
+      const orderFn = direction === "desc" ? desc : asc;
+      const clauses: (SQL | ReturnType<typeof asc>)[] = [];
       if (orderCol instanceof Column) {
-        const orderFn = direction === "desc" ? desc : asc;
-        query = query.orderBy(orderFn(orderCol));
+        clauses.push(orderFn(orderCol));
       } else {
         // Raw SQL expression — wrap with direction and push NULLs to end
-        query = query.orderBy(
+        clauses.push(
           direction === "desc"
             ? sql`${orderCol} DESC NULLS LAST`
             : sql`${orderCol} ASC NULLS LAST`
         );
       }
+      // #433: a unique trailing tiebreaker. Without it, ties come back in an
+      // undefined order and paginating over an undefined order repeats and
+      // skips rows — every list here defaults to `sortBy=created`, and
+      // low-cardinality sort keys (status, type, name) are common.
+      const idCol = this.cols.id;
+      if (idCol && orderCol !== idCol) clauses.push(orderFn(idCol));
+      query = query.orderBy(...clauses);
     }
     if (opts.limit !== undefined) query = query.limit(opts.limit);
     if (opts.offset !== undefined) query = query.offset(opts.offset);

@@ -16,8 +16,6 @@ import {
   isNull,
   type SQL,
   Column,
-  asc,
-  desc,
 } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
@@ -535,18 +533,51 @@ function rowsToHydrated(
   }));
 }
 
-function buildOrderByClause(opts: {
+/**
+ * Build the list ORDER BY clause (#433).
+ *
+ * Two rules, both load-bearing:
+ *
+ * - **A unique trailing `id`.** `ORDER BY <key>` alone leaves ties in an
+ *   undefined order, and paginating over an undefined order repeats and
+ *   skips rows. Ties are routine here — a sync stamps thousands of rows with
+ *   the same `synced_at`, and on app-dev that column has exactly one distinct
+ *   value across 283K rows. The tiebreaker is also what lets a keyset cursor
+ *   seek past a position it can uniquely identify.
+ * - **`NULLS LAST` only when the column is nullable.** A plain btree serves
+ *   `ASC NULLS LAST` and `DESC NULLS FIRST`, never `DESC NULLS LAST`. On a
+ *   NOT NULL column the clause changes no rows and costs the index — 3,294ms
+ *   vs 15.7ms for the same query on app-dev.
+ *
+ * Nullability is read off Drizzle `Column`s directly. A raw `SQL` expression
+ * (a typed wide-table `c_*` column, via `buildSortExpression`) carries no
+ * such metadata, so the caller declares it; the default is `true`, which
+ * preserves the previous behavior for any caller that doesn't.
+ *
+ * Exported for unit test — rule 2 is invisible behaviorally on a NOT NULL
+ * column, where both spellings return identical rows and only the plan
+ * differs.
+ */
+export function buildOrderByClause(opts: {
   column: Column | SQL;
   direction?: "asc" | "desc";
+  nullable?: boolean;
 }): SQL {
   const { column: col, direction = "asc" } = opts;
-  if (col instanceof Column) {
-    const fn = direction === "desc" ? desc : asc;
-    return sql` ORDER BY ${fn(col)} NULLS LAST`;
+  const dir = direction === "desc" ? sql`DESC` : sql`ASC`;
+
+  // Already ordering by the tiebreaker — don't repeat it.
+  if (col instanceof Column && col === entityRecords.id) {
+    return sql` ORDER BY ${col} ${dir}`;
   }
-  return direction === "desc"
-    ? sql` ORDER BY ${col} DESC NULLS LAST`
-    : sql` ORDER BY ${col} ASC NULLS LAST`;
+
+  const nullable =
+    col instanceof Column ? !col.notNull : (opts.nullable ?? true);
+  const nulls = nullable ? sql` NULLS LAST` : sql``;
+
+  // The tiebreaker takes the same direction as the sort key: mismatched
+  // directions cannot be served by a single index scan.
+  return sql` ORDER BY ${col} ${dir}${nulls}, ${entityRecords.id} ${dir}`;
 }
 
 /** Singleton instance. */
