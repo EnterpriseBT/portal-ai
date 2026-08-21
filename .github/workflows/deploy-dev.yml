@@ -182,6 +182,19 @@ jobs:
             --stack-name portalai-dev-dns-certs \
             --query "Stacks[0].Outputs[?ExportName=='dev-CertificateArn'].OutputValue" \
             --output text)
+          # Cpu/Memory are stated, never inherited (#424). app-dev runs HALF of
+          # prod (prod is 1024/8192) as a deliberate cost choice: ~$28/mo
+          # instead of ~$55. Consequence to keep in mind — app-dev memory and
+          # latency results do NOT transfer to prod in either direction.
+          # Omitting these is how the stack sat at 256/512 for four months
+          # while the template said 8 GB.
+          #
+          # This note lives ABOVE the command on purpose: a `#` line inside a
+          # `\`-continued argument list is joined onto the previous line and
+          # comments out the REST of it — which silently truncated this
+          # invocation before `--capabilities`, so every deploy failed with
+          # InsufficientCapabilitiesException and neither Cpu nor Memory was
+          # ever passed.
           aws cloudformation deploy \
             --stack-name portalai-dev-backend \
             --template-file infra/cloudformation/backend.yml \
@@ -190,12 +203,6 @@ jobs:
               CertificateArn="$CERT_ARN" \
               HostedZoneId=${{ secrets.DEV_HOSTED_ZONE_ID }} \
               FrontendOrigin=https://app-dev.portalsai.io \
-              # Stated, never inherited (#424). app-dev runs HALF of prod
-              # (prod is 1024/8192) as a deliberate cost choice: ~$28/mo
-              # instead of ~$55. Consequence to keep in mind — app-dev memory
-              # and latency results do NOT transfer to prod in either
-              # direction. Omitting these is how the stack sat at 256/512 for
-              # four months while the template said 8 GB.
               Cpu=512 \
               Memory=4096 \
               SecretArnDatabaseUrl=${{ secrets.DEV_SECRET_ARN_DATABASE_URL }} \
