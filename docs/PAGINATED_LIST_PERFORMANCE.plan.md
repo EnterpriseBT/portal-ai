@@ -75,20 +75,22 @@ Drops the raw `data` JSONB from the list projection. It is the sole reason the h
 
 - Edit: `packages/core/src/models/entity-record.model.ts` — `EntityRecordListItemSchema = EntityRecordSchema.omit({ data: true })`.
 - Edit: `packages/core/src/contracts/entity-record.contract.ts:57` — list payload uses the narrowed item.
-- New: `packages/core/src/__tests__/contracts/pagination.contract.test.ts` — the list-item half of spec Layer 1.
-- Edit: `apps/api/src/db/repositories/entity-records.repository.ts:429` — remove `data` from the SELECT; return type narrows to `EntityRecordListItem[]`. `findHydratedById` (`:478`) untouched.
-- Edit: `apps/api/src/config/swagger.config.ts:1186`, `:1254` — register `EntityRecordListItem`, point the list response `items.$ref` at it.
+- Edit: `packages/core/src/__tests__/models/entity-record.model.test.ts` — the schema lives in the model, so its tests do too (not the new contract test file, which slice 4's cursor work creates).
+- Edit: `apps/api/src/db/repositories/entity-records.repository.ts` — `includeData` option + `rowToListItem`. `findHydratedById` untouched.
+- Edit: `apps/api/src/routes/entity-record.router.ts:238` — list route passes `includeData: false`.
 - Edit: `apps/api/src/__tests__/__integration__/db/repositories/entity-records.repository.integration.test.ts`.
 
 **Steps**
 
-1. **Tests (spec Layer 1 + Layer 2 projection cases).** `EntityRecordListItemSchema` rejects nothing `EntityRecordSchema` accepts minus `data`; `EntityRecordSchema` still requires `data`. `findHydratedMany` results have no `data` key; `findHydratedById` still does. Run; fail.
-2. **Implement** the schema, the projection change, and the swagger component. Green.
-3. Lint + type-check — `type-check` is the tool that finds any unsurveyed consumer, which is why this is a narrowed schema rather than an optional field.
+1. **Tests (spec Layer 1 + Layer 2 projection cases).** `EntityRecordListItemSchema` accepts a record with no `data` and still requires everything else; `EntityRecordSchema` still requires `data`. `findHydratedMany` with `includeData: false` returns rows with no `data` key, the default still includes it, and `findHydratedById` still does. Run; fail.
+2. **Implement** the schema, the contract, and the opt-in projection. Green.
+3. Lint + type-check — run `type-check` at the **monorepo** root, not just `apps/api`: the narrowed payload type is what surfaces any web consumer.
 
-**Done when:** list responses carry no `data`; the record detail view still shows the raw payload; the OpenAPI document reflects the narrower list item.
+**Done when:** list responses carry no `data`; the record detail view still shows the raw payload; every other `findHydratedMany` caller is unchanged.
 
-**Risk:** low. If an unsurveyed consumer surfaces, restoring the column in the projection is a one-line revert.
+**Risk:** ~~low, one consumer~~ — **corrected during implementation.** `findHydratedMany` has **six** production consumers, and `entity-group.router.ts:970` returns its rows to the client under an OpenAPI component that declares `data` required. Narrowing globally would have silently changed that endpoint's contract, so the drop is opt-in (`includeData: false`) and only the list route passes it. Monorepo `type-check` clean; full `apps/api` integration suite re-run (112 suites / 1364 tests).
+
+**No swagger change in this slice.** The plan cited `swagger.config.ts:1254`, but that `$ref: EntityRecord` belongs to `EntityGroupResolveResult` — an endpoint that still returns `data`, correctly unchanged. There is no registered component for the entity-record list response because **the list route has no `@openapi` block at all**; slice 4 writes it, registering `EntityRecordListItem` then.
 
 ---
 

@@ -484,6 +484,43 @@ describe("EntityRecordsRepository Integration Tests", () => {
       expect(seen).toEqual([...ids].sort());
     });
 
+    it("omits the raw `data` payload when includeData is false", async () => {
+      await seedTiedRecords(2);
+
+      const rows = await repo.findHydratedMany(
+        entityAId,
+        { includeData: false },
+        db
+      );
+
+      expect(rows).toHaveLength(2);
+      for (const row of rows) {
+        expect(row).not.toHaveProperty("data");
+        // Everything the table actually renders from is still there.
+        expect(row).toHaveProperty("normalizedData");
+        expect(row).toHaveProperty("isValid");
+        expect(row.id).toBeDefined();
+      }
+    });
+
+    it("keeps `data` by default, so other callers are unaffected", async () => {
+      await seedTiedRecords(1);
+
+      const [row] = await repo.findHydratedMany(entityAId, {}, db);
+
+      expect(row).toHaveProperty("data");
+    });
+
+    it("still returns `data` from findHydratedById", async () => {
+      const [id] = await seedTiedRecords(1);
+
+      const row = await repo.findHydratedById(id, entityAId, db);
+
+      // The detail view is why `data` is kept on the record at all.
+      expect(row).toBeDefined();
+      expect(row).toHaveProperty("data");
+    });
+
     it("reverses the tiebreaker when sorting descending", async () => {
       const ids = await seedTiedRecords(5);
 

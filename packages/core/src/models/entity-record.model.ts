@@ -33,6 +33,26 @@ export const EntityRecordSchema = CoreSchema.extend({
 
 export type EntityRecord = z.infer<typeof EntityRecordSchema>;
 
+/**
+ * The list projection (#433) — every field except the raw `data` payload.
+ *
+ * `data` is the connector's pre-mapping payload, preserved as the audit
+ * trail and read by the record-detail view. In a *list* it is dead weight:
+ * the table renders from `normalizedData`, yet `data` made the list query's
+ * hash side 1101 bytes wide and spilled it to 64 disk batches before
+ * discarding all but ten rows.
+ *
+ * Narrowing the list schema rather than making `data` optional on
+ * `EntityRecordSchema` is deliberate: the detail path keeps its guarantee,
+ * and `tsc` names every call site that would lose the field instead of
+ * letting one silently read `undefined`.
+ */
+export const EntityRecordListItemSchema = EntityRecordSchema.omit({
+  data: true,
+});
+
+export type EntityRecordListItem = z.infer<typeof EntityRecordListItemSchema>;
+
 // ── Model class ──────────────────────────────────────────────────────
 
 export class EntityRecordModel extends CoreModel<EntityRecord> {

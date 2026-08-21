@@ -43,6 +43,12 @@ export type EntityRecordHydrated = EntityRecordSelect & {
 };
 
 /**
+ * A hydrated record without the raw `data` payload (#433) — what the list
+ * endpoint projects. See `findHydratedMany`'s `includeData` option.
+ */
+export type EntityRecordHydratedListItem = Omit<EntityRecordHydrated, "data">;
+
+/**
  * Per-statement row cap for the bulk methods. Sized to stay well under
  * Postgres' 65,535 parameter limit (entity_records insert binds ~16
  * params/row → 1000 × 16 = 16,000) and to keep the Drizzle SQL builder
@@ -382,15 +388,44 @@ export class EntityRecordsRepository extends Repository<
    * `normalizedDataProjection` lets the caller narrow the rebuilt blob
    * to a subset of keys — used by the `?columns=` REST parameter so the
    * server doesn't ship every column when the client wants two.
+   *
+   * `includeData: false` drops the raw `data` payload from the projection
+   * (#433). It is the connector's pre-mapping blob — ~2KB/row — and
+   * selecting it made the hashed side of this join 1101 bytes wide, which
+   * spilled it to 64 disk batches (19.9s of temp I/O) before the LIMIT
+   * discarded all but ten rows. The list endpoint passes `false` because
+   * the table renders from `normalizedData`; the default stays `true` so
+   * the other callers — which load whole entities for cross-entity
+   * comparison, and the entity-group resolve endpoint, which returns
+   * `data` in its response — are unaffected.
    */
   async findHydratedMany(
     connectorEntityId: string,
     opts: ListOptions & {
       where?: SQL;
       normalizedDataProjection?: SQL;
+      includeData: false;
+    },
+    client?: DbClient
+  ): Promise<EntityRecordHydratedListItem[]>;
+  async findHydratedMany(
+    connectorEntityId: string,
+    opts?: ListOptions & {
+      where?: SQL;
+      normalizedDataProjection?: SQL;
+      includeData?: true;
+    },
+    client?: DbClient
+  ): Promise<EntityRecordHydrated[]>;
+  async findHydratedMany(
+    connectorEntityId: string,
+    opts: ListOptions & {
+      where?: SQL;
+      normalizedDataProjection?: SQL;
+      includeData?: boolean;
     } = {},
     client: DbClient = db
-  ): Promise<EntityRecordHydrated[]> {
+  ): Promise<EntityRecordHydrated[] | EntityRecordHydratedListItem[]> {
     const stmt = await wideTableStatementCache.get(connectorEntityId, client);
     const tableName = `er__${connectorEntityId}`;
     const rehydrationExpr =
@@ -418,13 +453,18 @@ export class EntityRecordsRepository extends Repository<
     const offsetClause =
       opts.offset !== undefined ? sql` OFFSET ${opts.offset}` : sql``;
 
+    const includeData = opts.includeData ?? true;
+    // Omitting `data` is what keeps the hashed side narrow — see the doc
+    // comment. Everything else in the projection is fixed-width metadata.
+    const dataColumn = includeData ? sql`"entity_records".data,` : sql``;
+
     const rows = await (client as typeof db).execute(sql`
       SELECT
         "entity_records".id, "entity_records".organization_id,
         "entity_records".connector_entity_id, "entity_records".source_id,
         "entity_records".checksum, "entity_records".synced_at,
         "entity_records".origin, "entity_records".validation_errors,
-        "entity_records".is_valid, "entity_records".data,
+        "entity_records".is_valid, ${dataColumn}
         "entity_records".created, "entity_records".created_by,
         "entity_records".updated, "entity_records".updated_by,
         "entity_records".deleted, "entity_records".deleted_by,
@@ -437,7 +477,10 @@ export class EntityRecordsRepository extends Repository<
       ${limitClause}
       ${offsetClause}
     `);
-    return rowsToHydrated(rows as unknown as Record<string, unknown>[]);
+    const typedRows = rows as unknown as Record<string, unknown>[];
+    return includeData
+      ? rowsToHydrated(typedRows)
+      : typedRows.map(rowToListItem);
   }
 
   /**
@@ -508,10 +551,10 @@ export class EntityRecordsRepository extends Repository<
  * Convert raw rows from `client.execute` (snake_case columns) into the
  * camelCased `EntityRecordHydrated` shape Drizzle returns elsewhere.
  */
-function rowsToHydrated(
-  rows: Record<string, unknown>[]
-): EntityRecordHydrated[] {
-  return rows.map((r) => ({
+function rowToListItem(
+  r: Record<string, unknown>
+): EntityRecordHydratedListItem {
+  return {
     id: r.id as string,
     organizationId: r.organization_id as string,
     connectorEntityId: r.connector_entity_id as string,
@@ -522,7 +565,6 @@ function rowsToHydrated(
     validationErrors:
       r.validation_errors as EntityRecordSelect["validationErrors"],
     isValid: r.is_valid as boolean,
-    data: (r.data ?? {}) as Record<string, unknown>,
     normalizedData: (r.normalized_data ?? {}) as Record<string, unknown>,
     created: r.created as number,
     createdBy: r.created_by as string,
@@ -530,6 +572,15 @@ function rowsToHydrated(
     updatedBy: r.updated_by as string | null,
     deleted: r.deleted as number | null,
     deletedBy: r.deleted_by as string | null,
+  };
+}
+
+function rowsToHydrated(
+  rows: Record<string, unknown>[]
+): EntityRecordHydrated[] {
+  return rows.map((r) => ({
+    ...rowToListItem(r),
+    data: (r.data ?? {}) as Record<string, unknown>,
   }));
 }
 

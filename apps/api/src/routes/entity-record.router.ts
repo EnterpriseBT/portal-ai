@@ -241,6 +241,9 @@ entityRecordRouter.get(
           offset,
           orderBy: { column: orderByExpr, direction: sortOrder },
           normalizedDataProjection,
+          // #433: the table renders from `normalizedData`; shipping the raw
+          // payload cost ~2KB/row and spilled the join to disk.
+          includeData: false,
         }),
         DbService.repository.entityRecords.countHydrated(
           connectorEntityId,

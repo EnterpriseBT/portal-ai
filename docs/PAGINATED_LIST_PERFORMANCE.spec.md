@@ -169,7 +169,20 @@ async findHydratedMany(
 ): Promise<EntityRecordListItem[]>
 ```
 
-Changes: `"entity_records".data` is **removed** from the SELECT list (`:429`); the return type narrows to `EntityRecordListItem[]`; `opts.keyset` appends the keyset predicate to the WHERE and suppresses `OFFSET`. `findHydratedById` (`:478`) is **unchanged** and still projects `data`.
+Changes: `opts.keyset` appends the keyset predicate to the WHERE and suppresses `OFFSET`. `findHydratedById` (`:478`) is **unchanged** and still projects `data`.
+
+**Dropping `data` is opt-in, not unconditional — corrected during slice 3.** This spec assumed the list route was the only caller. It is not: `findHydratedMany` has **six** production consumers. Five read only `normalizedData` (`adapter.util.ts:102`, `field-mapping.router.ts:1175`/`:1178`, `entity-group-member.router.ts:740`/`:768`), but `entity-group.router.ts:970` **returns the records to the client**, and `EntityGroupResolveResult`'s OpenAPI component declares `data` required. Narrowing globally would have silently changed a different endpoint's response contract — out of scope here.
+
+The method therefore takes `includeData?: boolean`, defaulting to `true`, with overloads so the return type is honest:
+
+```ts
+findHydratedMany(id, opts: … & { includeData: false }, client?): Promise<EntityRecordHydratedListItem[]>
+findHydratedMany(id, opts?: … & { includeData?: true }, client?): Promise<EntityRecordHydrated[]>
+```
+
+The list route passes `includeData: false`; every other caller is untouched.
+
+**Noted, not fixed:** three of those callers (`field-mapping.router.ts:1175`/`:1178`, `entity-group-member.router.ts:740`/`:768`) invoke `findHydratedMany(entityId)` with **no limit**, loading an entire entity — every row carrying `data`. On a 283K-record entity that is the same latent OOM shape as #423/#425. Out of scope for this ticket; worth its own.
 
 ### `EntityRecordCountCache` (`apps/api/src/services/entity-record-count.cache.ts`, new)
 
