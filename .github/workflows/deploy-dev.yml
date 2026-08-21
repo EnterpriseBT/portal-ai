@@ -216,6 +216,18 @@ jobs:
   # ── Frontend ──────────────────────────────────────────────
   deploy-frontend:
     needs: deploy-infra
+    # `deploy-infra` carries `always()` so it can run past the intentionally
+    # skipped test jobs (#427). GitHub then propagates that skip state to
+    # everything downstream — even though deploy-infra SUCCEEDS — so this job
+    # must opt in too, or the deploy silently no-ops and app-dev stops
+    # receiving code while the run still reports green (regression from #427).
+    #
+    # `!cancelled()` overrides the propagation; the explicit result check keeps
+    # the real requirement. Deliberately NOT the permissive
+    # `always() && !contains(needs.*.result, 'failure')`: on a manual dispatch
+    # with a failing suite, deploy-infra would be *skipped* rather than failed,
+    # and that form would happily deploy anyway.
+    if: ${{ !cancelled() && needs.deploy-infra.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -286,6 +298,18 @@ jobs:
   # ── Backend ───────────────────────────────────────────────
   deploy-backend:
     needs: deploy-infra
+    # `deploy-infra` carries `always()` so it can run past the intentionally
+    # skipped test jobs (#427). GitHub then propagates that skip state to
+    # everything downstream — even though deploy-infra SUCCEEDS — so this job
+    # must opt in too, or the deploy silently no-ops and app-dev stops
+    # receiving code while the run still reports green (regression from #427).
+    #
+    # `!cancelled()` overrides the propagation; the explicit result check keeps
+    # the real requirement. Deliberately NOT the permissive
+    # `always() && !contains(needs.*.result, 'failure')`: on a manual dispatch
+    # with a failing suite, deploy-infra would be *skipped* rather than failed,
+    # and that form would happily deploy anyway.
+    if: ${{ !cancelled() && needs.deploy-infra.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -449,6 +473,11 @@ jobs:
   # ── Tag ───────────────────────────────────────────────────
   tag-deploy:
     needs: [deploy-frontend, deploy-backend]
+    # Same propagation applies two hops down — see deploy-frontend.
+    if: >-
+      ${{ !cancelled()
+      && needs.deploy-frontend.result == 'success'
+      && needs.deploy-backend.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
