@@ -52,7 +52,9 @@ import {
   ToolResultEventSchema,
   DoneEventSchema,
   StreamErrorEventSchema,
+  EntityRecordListResponsePayloadSchema,
 } from "@portalai/core/contracts";
+import { EntityRecordListItemSchema } from "@portalai/core/models";
 import {
   ApiAuthConfigSchema,
   ApiCredentialsSchema,
@@ -385,6 +387,16 @@ const options: swaggerJsdoc.Options = {
           },
           description: "Number of items to skip",
         },
+        cursorParam: {
+          in: "query",
+          name: "cursor",
+          schema: { type: "string" },
+          description:
+            "Opaque keyset cursor from a previous response's `nextCursor` (#433). " +
+            "Takes precedence over `offset` when present. A cursor minted under a " +
+            "different `sortBy`/`sortOrder`, or one that fails to decode, is ignored " +
+            "and the first page is served — it is a stale address, not an error.",
+        },
         sortByParam: {
           in: "query",
           name: "sortBy",
@@ -690,6 +702,14 @@ const options: swaggerJsdoc.Options = {
               type: "integer",
               description: "Offset used for this request",
               example: 0,
+            },
+            nextCursor: {
+              type: "string",
+              nullable: true,
+              description:
+                "Keyset cursor for the following page (#433), or null at the end " +
+                "of the result set. Optional — only lists that have adopted cursor " +
+                "pagination emit it.",
             },
           },
         },
@@ -1237,6 +1257,20 @@ const options: swaggerJsdoc.Options = {
             deletedBy: { type: "string", nullable: true },
           },
         },
+        /**
+         * #433. Generated from the contract rather than hand-written: the
+         * list item is `EntityRecord` *minus* `data`, and JSON Schema has no
+         * subtraction — an `allOf` against EntityRecord would still require
+         * the field it exists to drop.
+         */
+        EntityRecordListItem: z.toJSONSchema(
+          EntityRecordListItemSchema,
+          JSON_SCHEMA_OPTS
+        ),
+        EntityRecordListResponse: z.toJSONSchema(
+          EntityRecordListResponsePayloadSchema,
+          JSON_SCHEMA_OPTS
+        ),
         EntityGroupResolveResult: {
           type: "object",
           required: [

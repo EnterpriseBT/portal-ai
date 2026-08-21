@@ -72,6 +72,19 @@ export interface ListOptions {
   includeDeleted?: boolean;
   organizationId?: string;
   orderBy?: { column: Column | SQL; direction?: "asc" | "desc" };
+  /**
+   * Keyset anchor (#433). When set, the query seeks past this position
+   * instead of counting rows to skip, and `offset` is ignored. `value` is
+   * the sort key at the anchor row and `id` its unique tiebreaker; `null`
+   * means the anchor sits in a nullable column's NULL region, which the
+   * predicate treats differently.
+   */
+  keyset?: {
+    column: Column | SQL;
+    value: string | number | null;
+    id: string;
+    nullable: boolean;
+  };
 }
 
 /** Payload shape for bulk-updating records with per-row data. */

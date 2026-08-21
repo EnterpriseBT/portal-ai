@@ -28,6 +28,11 @@ export default [
         clearTimeout: "readonly",
         setInterval: "readonly",
         clearInterval: "readonly",
+        // Base64 for the keyset cursor codec (#433). Standard in browsers
+        // and in Node since 16 — this package is bundled for both, which is
+        // why the codec uses these rather than `Buffer`.
+        btoa: "readonly",
+        atob: "readonly",
       },
     },
     plugins: {

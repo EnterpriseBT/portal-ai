@@ -433,12 +433,22 @@ export class EntityRecordsRepository extends Repository<
       sql.raw(stmt.normalizedDataJsonbExpr("w"));
 
     // Soft-delete guard on entity_records (the wide table has no `deleted` column).
-    const baseWhere = opts.where
+    const filters = opts.where
       ? and(opts.where, this.notDeleted())
       : and(
           eq(entityRecords.connectorEntityId, connectorEntityId),
           this.notDeleted()
         );
+    // #433: a keyset anchor narrows the WHERE instead of skipping rows.
+    const baseWhere = opts.keyset
+      ? and(
+          filters,
+          buildKeysetPredicate({
+            ...opts.keyset,
+            direction: opts.orderBy?.direction,
+          })
+        )
+      : filters;
 
     // We build the SELECT manually because Drizzle's typed builder
     // doesn't model dynamically-named tables (the wide table is per
@@ -450,8 +460,12 @@ export class EntityRecordsRepository extends Repository<
       : sql``;
     const limitClause =
       opts.limit !== undefined ? sql` LIMIT ${opts.limit}` : sql``;
+    // A keyset seek already encodes the position, so OFFSET would skip a
+    // second time on top of it.
     const offsetClause =
-      opts.offset !== undefined ? sql` OFFSET ${opts.offset}` : sql``;
+      opts.offset !== undefined && !opts.keyset
+        ? sql` OFFSET ${opts.offset}`
+        : sql``;
 
     const includeData = opts.includeData ?? true;
     // Omitting `data` is what keeps the hashed side narrow — see the doc
@@ -609,6 +623,53 @@ function rowsToHydrated(
  * column, where both spellings return identical rows and only the plan
  * differs.
  */
+/**
+ * Build the "seek past this row" predicate for keyset pagination (#433).
+ *
+ * For a NOT NULL sort column this is the textbook row-value comparison:
+ * `(col, id) > (value, id)` ascending, `<` descending.
+ *
+ * For a **nullable** column it cannot be. Row-value comparison propagates
+ * NULL — `(NULL, 'x') > ('Boston', 'y')` evaluates to NULL, not true or
+ * false — so every row in the NULL region fails the predicate and silently
+ * disappears from the walk. Since `buildOrderByClause` places NULLs last in
+ * *both* directions, the ordering is "all non-null values, then all NULLs",
+ * and seeking has to be spelled out against that:
+ *
+ * - anchored on a real value → the rest of the non-null run, then the whole
+ *   NULL region;
+ * - anchored inside the NULL region → only the NULL region, by tiebreaker.
+ *
+ * `c_city` on app-dev is the shape this exists for: 19 distinct values and
+ * 3,914 NULLs across 283,000 rows.
+ *
+ * Exported for unit test.
+ */
+export function buildKeysetPredicate(opts: {
+  column: Column | SQL;
+  value: string | number | null;
+  id: string;
+  direction?: "asc" | "desc";
+  nullable: boolean;
+}): SQL {
+  const { column: col, value, id, direction = "asc", nullable } = opts;
+  const ahead = direction === "desc" ? sql`<` : sql`>`;
+  const tiebreak = sql`${entityRecords.id} ${ahead} ${id}`;
+
+  if (!nullable) {
+    // NULL never reaches here, so the row-value form is safe and lets the
+    // planner drive the composite index directly.
+    return sql`(${col}, ${entityRecords.id}) ${ahead} (${value}, ${id})`;
+  }
+
+  if (value === null) {
+    // Already past every non-null value; only the NULL region remains.
+    return sql`(${col} IS NULL AND ${tiebreak})`;
+  }
+
+  return sql`(${col} ${ahead} ${value} OR (${col} = ${value} AND ${tiebreak}) OR ${col} IS NULL)`;
+}
+
 export function buildOrderByClause(opts: {
   column: Column | SQL;
   direction?: "asc" | "desc";
