@@ -972,3 +972,80 @@ describe("conditional jobs do not silently skip their dependents (regression fro
     }
   });
 });
+
+/**
+ * Shell line-continuation guard (#424 fallout).
+ *
+ * #429 documented the Cpu/Memory choice by putting a `#` comment block in the
+ * middle of a `\`-continued `aws cloudformation deploy` argument list. bash
+ * joins a continued line before parsing, so the `#` commented out the REST of
+ * that logical line — truncating the invocation before `--capabilities` and
+ * before Cpu/Memory were ever passed. Every deploy then failed with
+ * `InsufficientCapabilitiesException`, and #429's own sizing fix never
+ * reached app-dev. The same shape was in deploy-prod.yml, waiting for the
+ * next release.
+ *
+ * It reviews as correct — the flag is right there in the file, three lines
+ * below the comment. Only the shell disagrees. So it gets a test.
+ */
+describe("no shell comment sits inside a line continuation (#424)", () => {
+  const WORKFLOW_DIR = path.join(ROOT, ".github/workflows");
+
+  const offendersIn = (file: string): string[] => {
+    const out: string[] = [];
+    const lines = fs
+      .readFileSync(path.join(WORKFLOW_DIR, file), "utf8")
+      .split("\n");
+    let continued = false;
+    lines.forEach((line, i) => {
+      const t = line.trim();
+      if (continued && t.startsWith("#")) out.push(`${file}:${i + 1} ${t}`);
+      continued = t.endsWith("\\");
+    });
+    return out;
+  };
+
+  it("holds for every workflow", () => {
+    const files = fs
+      .readdirSync(WORKFLOW_DIR)
+      .filter((f) => f.endsWith(".yml"));
+    expect(files.length).toBeGreaterThan(0);
+    expect(files.flatMap(offendersIn)).toEqual([]);
+  });
+
+  it.each([
+    ["deploy-dev.yml", "portalai-dev-backend"],
+    ["deploy-prod.yml", "portalai-prod-backend"],
+  ])("%s still passes --capabilities after line-joining", (file, stack) => {
+    // Join continuations the way bash does, then look at the invocations that
+    // actually target the backend stack — not every chunk that merely mentions
+    // the word, which includes prose and the network/frontend stacks.
+    const invocations = fs
+      .readFileSync(path.join(WORKFLOW_DIR, file), "utf8")
+      .replace(/\\\n\s*/g, " ")
+      .split("aws cloudformation deploy")
+      // Each chunk runs to the NEXT invocation, so its tail can mention other
+      // stacks — deploy-prod.yml's frontend deploy is followed by a
+      // `describe-stacks --stack-name portalai-prod-backend` guard. Anchor on
+      // what the chunk STARTS with (the first flag after the command) rather
+      // than on a substring anywhere inside it. `.slice(1)` drops the text
+      // before the first invocation.
+      .slice(1)
+      .filter((c) => new RegExp(`^\\s*--stack-name ${stack}\\s`).test(c));
+    expect(invocations.length).toBeGreaterThan(0);
+
+    // Truncation drops the tail of the command, so `--capabilities` is the
+    // canary: every backend deploy must still carry it.
+    for (const inv of invocations) {
+      expect(inv).toContain("--capabilities CAPABILITY_NAMED_IAM");
+    }
+
+    // Exactly one of them declares the sizing (the other inherits it while
+    // rolling the image), and it must appear before the flags that follow it.
+    const sizing = invocations.filter((inv) =>
+      inv.split("--capabilities")[0].includes("Cpu=")
+    );
+    expect(sizing).toHaveLength(1);
+    expect(sizing[0].split("--capabilities")[0]).toContain("Memory=");
+  });
+});
