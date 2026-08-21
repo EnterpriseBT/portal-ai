@@ -972,3 +972,73 @@ describe("conditional jobs do not silently skip their dependents (regression fro
     }
   });
 });
+
+/**
+ * Concurrency-group collision guard (regression from #427).
+ *
+ * The three test workflows are reachable two ways: directly on a branch push,
+ * and by `workflow_call` from deploy-dev / deploy-prod. Inside a reusable
+ * workflow every `github.*` context resolves to the CALLER — so a group built
+ * from `github.workflow` + `github.run_id` is *identical* for all three suites
+ * invoked by one deploy run. With `cancel-in-progress: true` they cancel each
+ * other: the first manual dispatch cancelled Integration Tests and Static
+ * Checks and left only Unit Tests standing.
+ *
+ * The fix is to lead the group with a per-workflow literal. These assertions
+ * pin both halves of it, because the failure is invisible on the path people
+ * actually exercise (branch pushes work fine either way) and only shows up on
+ * a manual deploy or a prod release.
+ */
+describe("test workflows cannot cancel each other (regression from #427)", () => {
+  const SUITES = ["unit-test", "integration-test", "static-checks"] as const;
+
+  const concurrencyOf = (file: string): { group: string; cancel: unknown } => {
+    const doc = parseDocument(
+      fs.readFileSync(path.join(ROOT, ".github/workflows", file), "utf8"),
+      { logLevel: "silent" }
+    );
+    expect(doc.errors).toHaveLength(0);
+    const parsed = doc.toJS({ maxAliasCount: -1 }) as {
+      concurrency: { group: string; "cancel-in-progress": unknown };
+    };
+    return {
+      group: parsed.concurrency.group,
+      cancel: parsed.concurrency["cancel-in-progress"],
+    };
+  };
+
+  it.each(SUITES)(
+    "%s.yml leads its group with its own literal name",
+    (name) => {
+      const { group, cancel } = concurrencyOf(`${name}.yml`);
+      expect(cancel).toBe(true);
+      expect(group.startsWith(`${name}-`)).toBe(true);
+      // `github.workflow` is the caller's name in a reusable workflow, so it
+      // cannot distinguish siblings — that is the bug this guards.
+      expect(group).not.toContain("github.workflow");
+    }
+  );
+
+  it("the three groups are pairwise distinct for a single caller run", () => {
+    // Resolve the expression the way a `workflow_call` from one deploy run
+    // would: same ref, same run_id, non-push event.
+    const resolved = SUITES.map((name) =>
+      concurrencyOf(`${name}.yml`)
+        .group.replace(
+          /\$\{\{ \(github\.event_name == 'push'.*?\}\}/,
+          "RUN_ID_7"
+        )
+        .replace(/\$\{\{ github\.ref \}\}/, "refs/heads/main")
+    );
+    expect(new Set(resolved).size).toBe(SUITES.length);
+  });
+
+  it("still shares a group across runs of the same workflow on a branch", () => {
+    // The cancellation this exists to deliver: same workflow, same ref, two
+    // pushes. Nothing run-scoped may appear in that branch of the expression.
+    const { group } = concurrencyOf("unit-test.yml");
+    const branchArm = group.split("-${{ github.ref }}-")[1] ?? "";
+    expect(branchArm).toContain("'branch'");
+    expect(branchArm).toContain("github.run_id");
+  });
+});
