@@ -788,3 +788,84 @@ describe("the apex serves prod only, behind a condition (#404)", () => {
   // which is that function's test home. What belongs HERE is the deploy
   // wiring above: which environment gets an apex at all.
 });
+
+/**
+ * Skip-propagation guard (regression from #427).
+ *
+ * #427 made deploy-dev's test jobs conditional (a push to main was already
+ * gated by the PR's checks against an identical tree) and gave `deploy-infra`
+ * an `always()` so it could run past them. That worked. What it did not
+ * anticipate: GitHub propagates the skip state *past* an `always()` job to
+ * everything downstream, even though that job succeeds. `deploy-frontend`,
+ * `deploy-backend` and `tag-deploy` were all skipped on the first real merge —
+ * and the run still reported **success**. app-dev simply stopped receiving
+ * code, with nothing red anywhere to say so.
+ *
+ * That is the worst shape a CI bug can take, so it gets a test rather than a
+ * comment: in any workflow where some job is conditional, every job downstream
+ * of it must state its own `if`. Inheriting the default is the bug.
+ */
+describe("conditional jobs do not silently skip their dependents (regression from #427)", () => {
+  const DEPLOY_WORKFLOWS = ["deploy-dev.yml", "deploy-prod.yml"] as const;
+
+  interface JobShape {
+    needs?: string | string[];
+    if?: unknown;
+  }
+
+  const jobsOf = (file: string): Record<string, JobShape> => {
+    const doc = parseDocument(
+      fs.readFileSync(path.join(ROOT, ".github/workflows", file), "utf8"),
+      { logLevel: "silent" }
+    );
+    expect(doc.errors).toHaveLength(0);
+    const parsed = doc.toJS({ maxAliasCount: -1 }) as {
+      jobs: Record<string, JobShape>;
+    };
+    return parsed.jobs;
+  };
+
+  const needsOf = (job: JobShape): string[] =>
+    job.needs === undefined
+      ? []
+      : Array.isArray(job.needs)
+        ? job.needs
+        : [job.needs];
+
+  it.each(DEPLOY_WORKFLOWS)(
+    "%s — every job downstream of a conditional job states its own `if`",
+    (file) => {
+      const jobs = jobsOf(file);
+      const conditional = new Set(
+        Object.entries(jobs)
+          .filter(([, j]) => j.if !== undefined)
+          .map(([name]) => name)
+      );
+      if (conditional.size === 0) return; // nothing conditional, nothing to leak
+
+      // Walk the graph to a fixed point: a job is "tainted" when any job in its
+      // transitive `needs` closure is conditional.
+      const tainted = new Set<string>(conditional);
+      for (let pass = 0; pass < Object.keys(jobs).length; pass++) {
+        for (const [name, job] of Object.entries(jobs)) {
+          if (needsOf(job).some((n) => tainted.has(n))) tainted.add(name);
+        }
+      }
+
+      const unguarded = [...tainted].filter((n) => jobs[n]?.if === undefined);
+      expect(unguarded).toEqual([]);
+    }
+  );
+
+  it("deploy-dev's deploy jobs require deploy-infra to have SUCCEEDED", () => {
+    const jobs = jobsOf("deploy-dev.yml");
+    for (const name of ["deploy-frontend", "deploy-backend"]) {
+      const cond = String(jobs[name]?.if ?? "");
+      // The permissive `!contains(needs.*.result, 'failure')` form is wrong
+      // here: on a dispatch with a failing suite, deploy-infra is *skipped*
+      // rather than failed, and that form would deploy anyway.
+      expect(cond).toContain("needs.deploy-infra.result == 'success'");
+      expect(cond).not.toContain("contains(needs.*.result");
+    }
+  });
+});
