@@ -34,7 +34,7 @@
 
 **Slice 2 — exemplars out, gate narrowed.** `git mv` 5 exemplars to `.claude/skills/discovery/EXAMPLE.discovery.md`, `.../discovery/EXAMPLE.condensed.md`, `.../spec/EXAMPLE.spec.md`, `.../plan/EXAMPLE.plan.md`, `.../smoke/EXAMPLE.smoke.md`; repoint the citing lines in the four `SKILL.md` files. Narrow `scripts/check-doc-pointers.mjs` to skip ephemeral-suffixed targets. *Tests:* `npm run lint:doc-pointers` exits 0 (it must, before and after).
 
-**Slice 3 — the deletion.** `git rm` 322 files: the 282 phase artifacts plus the ~40 spent condensed write-ups. *Tests:* `npm run lint:doc-pointers` exits 0; `npm run format:check`, `npm run lint`, `npm run type-check`, `npm run build` unaffected.
+**Slice 3 — the deletion.** `git rm` 317 files: the 282 phase artifacts (less the 5 that became skill exemplars in slice 2) plus the ~35 spent condensed write-ups. Also repairs 5 links *inside* the surviving docs that pointed at deleted phase docs — those are kept references someone reads, so a dead link there is still worth fixing. Leaves `docs/` at 14 files / 208K, down from 335 / 5.8M. *Tests:* `npm run lint:doc-pointers` exits 0; `npm run format:check`, `npm run lint`, `npm run type-check`, `npm run build` unaffected.
 
 **Slice 4 — the rule.** `CLAUDE.md` ("Issue → PR Workflow", condensed-path section) + `.github/copilot-instructions.md:85` record the sweep rule and the `.condensed.md` suffix; `/discovery` gains the sweep step (features only) and the renamed condensed output; `/spec`, `/plan`, `/smoke` update their condensed-doc detection glob. *Tests:* none automated — the smoke walk covers it.
 
