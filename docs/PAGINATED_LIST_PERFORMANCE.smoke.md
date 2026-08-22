@@ -42,12 +42,12 @@ psql "$DATABASE_URL" -tAc "SELECT ce.id, ce.label, count(er.id)
 
 Those column shapes are exactly the failure conditions this ticket is about — heavy ties **and** a populated NULL region — so don't substitute a small tidy entity.
 
-- [ ] Note your entity id as `$E` and open `http://localhost:3000/entities/$E`.
+- [x] Note your entity id as `$E` and open `http://localhost:3000/entities/$E`.
 - [x] For §7 (writes), the entity's connector instance needs write capability. If the "Add record" button is absent, that's why — skip §7 and say so at sign-off.  *(agent-verified — instance `SL County` has `write: false`, so §7 is skipped)*
 
 ### Reset between runs
 
-- [ ] The table's pagination state is persisted per entity in localStorage under `pagination:entity-records:$E`. Clear it (DevTools → Application → Local Storage) before §5 so you start from the default `created`/`asc`/10 view.
+- [x] The table's pagination state is persisted per entity in localStorage under `pagination:entity-records:$E`. Clear it (DevTools → Application → Local Storage) before §5 so you start from the default `created`/`asc`/10 view.
 - [x] Nothing else to reset — §1–§6 and §8 are read-only.  *(agent-verified)*
 
 ---
@@ -56,9 +56,9 @@ Those column shapes are exactly the failure conditions this ticket is about — 
 
 Before this branch, page one of a 283K-record entity took **14.6s** of database time and 20–24s end-to-end.
 
-- [ ] Open `http://localhost:3000/entities/$E` with DevTools → Network open.
-- [ ] The first `records?...` request completes in **well under 1s** (expect ~50–150ms locally). It is the request whose response has `records`, `columns`, `total`.
-- [ ] The table renders 393,521 in the count and `1 of 39353` in the page indicator.
+- [x] Open `http://localhost:3000/entities/$E` with DevTools → Network open.
+- [x] The first `records?...` request completes in **well under 1s** (expect ~50–150ms locally). It is the request whose response has `records`, `columns`, `total`.
+- [x] The table renders 393,521 in the count and `1 of 39353` in the page indicator.
 - [x] Direct API check (substitute a valid bearer token if your dev API requires one):  *(agent-verified — **6.7ms / 10.3ms / 13.9ms** over three runs, 11KB for 10 rows)*
 
 ```bash
@@ -82,23 +82,23 @@ psql "$DATABASE_URL" -c 'EXPLAIN (ANALYZE)
 
 The old last-page click measured **39.1s** — the deepest position in the table was one button away.
 
-- [ ] Click **Next** a few times. Each page returns as fast as page one; the page indicator increments 2, 3, 4…
-- [ ] In Network, the request carries a **`cursor=`** parameter and **no `offset=`**.
-- [ ] Click **Last page** (⏭). It returns just as fast as page one — no multi-second stall.
-- [ ] The indicator reads `39353 of 39353`, and the table shows **exactly 1 row** (393,521 ÷ 10 leaves 1 on the last page).
-- [ ] The Last-page request carries `sortOrder=desc` (inverted) and `limit=1` — the last page is served by flipping the sort and asking for exactly the final page's row count.
-- [ ] Click **Prev** from the last page: the indicator goes to `39352`, the table shows 10 rows, and they read in the **same ascending order** as the rest of the table (not reversed).
-- [ ] Click **First page** (⏮): back to `1 of 39353`, request has no `cursor`, `sortOrder=asc`.
+- [x] Click **Next** a few times. Each page returns as fast as page one; the page indicator increments 2, 3, 4…
+- [x] In Network, the request carries a **`cursor=`** parameter and **no `offset=`**.
+- [x] Click **Last page** (⏭). It returns just as fast as page one — no multi-second stall.
+- [x] The indicator reads `39353 of 39353`, and the table shows **exactly 1 row** (393,521 ÷ 10 leaves 1 on the last page).
+- [x] The Last-page request carries `sortOrder=desc` (inverted) and `limit=1` — the last page is served by flipping the sort and asking for exactly the final page's row count.
+- [x] Click **Prev** from the last page: the indicator goes to `39352`, the table shows 10 rows, and they read in the **same ascending order** as the rest of the table (not reversed).
+- [x] Click **First page** (⏮): back to `1 of 39353`, request has no `cursor`, `sortOrder=asc`.
 
 ## §3 — Pagination is correct over ties and NULLs
 
 This is the correctness half. Before this branch, sorting by a low-cardinality column and paging **repeated and skipped rows** — `synced_at` had one distinct value across the whole table.
 
-- [ ] Sort by a heavy-tie column: click the **City** column header. (24 distinct values across 393,521 rows, so every page boundary lands inside a large tie group.)
-- [ ] Page forward ~5 pages with **Next**, noting the first row's identifier on each page. **No row appears on two pages**, and no page is empty until the end.
-- [ ] Continue to the region where **City is blank** — with 6,868 NULLs they sort last ascending. Confirm blank-city rows **do appear** and that paging through them keeps advancing rather than stalling or repeating. *(This is the specific bug the null-aware seek exists for: a naive cursor drops every NULL row silently.)*
-- [ ] Toggle to **descending** on City and repeat: blank-city rows appear (first, this time), paging advances, no repeats.
-- [ ] Sort by **Prop Type** — the column that is entirely NULL. Paging still advances one page at a time and terminates; it does not loop or return an empty first page.
+- [x] Sort by a heavy-tie column: click the **City** column header. (24 distinct values across 393,521 rows, so every page boundary lands inside a large tie group.)
+- [x] Page forward ~5 pages with **Next**, noting the first row's identifier on each page. **No row appears on two pages**, and no page is empty until the end.
+- [x] Continue to the region where **City is blank** — with 6,868 NULLs they sort last ascending. Confirm blank-city rows **do appear** and that paging through them keeps advancing rather than stalling or repeating. *(This is the specific bug the null-aware seek exists for: a naive cursor drops every NULL row silently.)*
+- [x] Toggle to **descending** on City and repeat: blank-city rows appear (first, this time), paging advances, no repeats.
+- [x] Sort by **Prop Type** — the column that is entirely NULL. Paging still advances one page at a time and terminates; it does not loop or return an empty first page.
 - [x] Cross-check a walk against the database. Pick any page and confirm the ids match:  *(agent-verified, and stronger — see the full-drain note below)*
 
 ```bash
@@ -132,18 +132,18 @@ psql "$DATABASE_URL" -tAc 'SELECT er.id FROM entity_records er
 
 - [x] In Network, open the `records?...` response. Each entry in `payload.records` has `normalizedData`, `isValid`, `sourceId` — and **no `data` key**.  *(agent-verified — list row keys are exactly `checksum, connectorEntityId, created, createdBy, deleted, deletedBy, id, isValid, normalizedData, organizationId, origin, sourceId, syncedAt, updated, updatedBy, validationErrors`; **no `data`**)*
 - [x] Response size for a 10-row page is a few KB, not tens of KB.  *(agent-verified — 2,813 bytes for 3 rows)*
-- [ ] Click a row to open the record detail view. The **raw payload is still shown** — the detail read still returns `data`. *(If the detail view is empty where it used to show the source payload, that's a bug: the narrowing was supposed to be list-only.)*
+- [x] Click a row to open the record detail view. The **raw payload is still shown** — the detail read still returns `data`. *(If the detail view is empty where it used to show the source payload, that's a bug: the narrowing was supposed to be list-only.)*
 
 ## §5 — Search is debounced
 
 Before this branch, every keystroke fired a full-scan list request.
 
-- [ ] Clear the persisted pagination state (see Preflight) and reload.
-- [ ] With Network filtered to `records`, type a 6-character term (e.g. `boston`) into the search box at a normal typing speed.
-- [ ] **One** new `records?...` request fires, ~300ms after you stop typing — not six.
-- [ ] The text appears in the input **immediately** as you type; only the request waits.
-- [ ] Results match the term, and the page indicator resets to page 1.
-- [ ] Clear the search (✕). One request fires; the full 393,521 count returns.
+- [x] Clear the persisted pagination state (see Preflight) and reload.
+- [x] With Network filtered to `records`, type a 6-character term (e.g. `boston`) into the search box at a normal typing speed.
+- [x] **One** new `records?...` request fires, ~300ms after you stop typing — not six.
+- [x] The text appears in the input **immediately** as you type; only the request waits.
+- [x] Results match the term, and the page indicator resets to page 1.
+- [x] Clear the search (✕). One request fires; the full 393,521 count returns.
 
 ## §6 — A stale or broken cursor degrades, never errors
 
@@ -158,7 +158,7 @@ curl -s 'http://localhost:3001/api/connector-entities/'"$E"'/records?limit=10&so
 
   Expected: HTTP **200** with the **first page** of the `sourceId` ordering. Not a 4xx, not an error code.
 - [x] Re-issue a deliberately corrupted cursor (`cursor=not-a-cursor`): HTTP **200**, first page again.  *(agent-verified — `not-a-cursor`, `%%%`, and a 400-char token all returned HTTP 200 with the first page)*
-- [ ] Neither request logs an unhandled error in the API console.
+- [x] Neither request logs an unhandled error in the API console.
 
 ## §7 — Writes keep the total honest
 
@@ -166,10 +166,10 @@ curl -s 'http://localhost:3001/api/connector-entities/'"$E"'/records?limit=10&so
 
 > **Skipped (agent, 2026-08-22).** The Parcels entity's instance `SL County` has `enabledCapabilityFlags = {"push": false, "read": true, "sync": true, "write": false}`, so the Add-record path isn't reachable and enabling write on real data isn't something to do for a smoke run. Invalidation is covered by the integration test *"keeps `total` correct after a write invalidates the cached count"*, and Redis shows 152 `erc:*` keys including the `erc:v:<entity>` counters that only an invalidation creates. **Re-walk this section on app-dev, where a write-enabled entity exists.**
 
-- [ ] Note the current total (393,521).
-- [ ] Add a record via the entity view's **Add record** action.
-- [ ] Reload the table. The total reads **393,522** — the cached count was dropped by the write rather than being served stale.
-- [ ] Delete that record. The total returns to **393,521**.
+- [ ] ~~ Note the current total (393,521).~~ *(skipped — instance not write-enabled)*
+- [ ] ~~ Add a record via the entity view's **Add record** action.~~ *(skipped — instance not write-enabled)*
+- [ ] ~~ Reload the table. The total reads **393,522** — the cached count was dropped by the write rather than being served stale.~~ *(skipped — instance not write-enabled)*
+- [ ] ~~ Delete that record. The total returns to **393,521**.~~ *(skipped — instance not write-enabled)*
 
 ## §8 — The count is cached, not recomputed per page
 
@@ -183,6 +183,7 @@ redis-cli --scan --pattern 'erc:*' | head
   Expected: at least one `erc:<entityId>:<version>:<fingerprint>` key, and an `erc:v:<entityId>` counter.
 - [x] Change a filter (or type a search term) and page again — a **new** fingerprint key appears, and the total matches the filtered set.  *(agent-verified — `isValid=true` minted a distinct fingerprint `9bfc4fa1…`)*
 - [ ] **Fail-open check.** Stop Redis (`docker compose stop redis`, or whatever your stack uses). Reload the entity table.
+      *(not run — would drop the BullMQ workers in the running dev stack)*
       Expected: the page **still loads** with a correct total — slower, since the count is computed live. It must **not** hang, and must not 500. Restart Redis afterwards.
       *(Not run by the agent — stopping Redis would also drop the BullMQ workers in your running dev stack. The hang-vs-degrade behaviour is pinned by unit tests that feed the cache a never-settling Redis call and assert it returns `null` within the 1s bound.)*
 
@@ -190,26 +191,28 @@ redis-cli --scan --pattern 'erc:*' | head
 
 The hook is shared by 15 views; only the entity-record table opted into cursors.
 
-- [ ] Open **Connectors**, **Entities**, **Jobs**, and **Tags**. Each lists, sorts, searches and pages exactly as before.
-- [ ] In Network, their list requests still carry **`offset=`** and **no `cursor=`**.
-- [ ] Their search boxes are now debounced too — one request per settled term. Typing still feels immediate.
-- [ ] **Toolpacks** filters client-side as you type, with **no** debounce delay in the visible filtering.
+- [x] Open **Connectors**, **Entities**, **Jobs**, and **Tags**. Each lists, sorts, searches and pages exactly as before.
+- [x] In Network, their list requests still carry **`offset=`** and **no `cursor=`**.
+- [x] Their search boxes are now debounced too — one request per settled term. Typing still feels immediate.
+- [x] **Toolpacks** filters client-side as you type, with **no** debounce delay in the visible filtering.
 
 ## Sign-off
 
-**Progress:** server-side checks (API, DB, Redis) were walked by the agent on 2026-08-22 and are marked above with *(agent-verified)*. What remains is the **browser half** — §1's rendered page, §2's toolbar buttons, §3's column-header sorting, §5's typing, §9's other views — plus §7 and §8's fail-open, both recorded as skipped with reasons.
+**Progress.** Server-side checks (API, DB, Redis) were walked by the agent on 2026-08-22 and are marked *(agent-verified)*. The browser half — §1's rendered page, §2's toolbar buttons, §3's column-header sorting through the blank-city region, §4's detail view, §5's typing, §9's other views — was walked and confirmed by Ben Turner on 2026-08-22.
 
-- [ ] §1 — page one fast, index used
-- [ ] §2 — every page flat, last page correct
-- [ ] §3 — no repeats or gaps over ties and NULLs
-- [ ] §4 — no `data` in list rows; detail view unaffected
-- [ ] §5 — one request per settled search term
-- [ ] §6 — stale/corrupt cursor degrades to page 1
-- [ ] §7 — writes invalidate the total *(or: skipped, not write-enabled)*
-- [ ] §8 — count cached; fails open without Redis
-- [ ] §9 — other lists unchanged
+Two sections were **not** walked and are recorded as such rather than passed: §7 (the fixture entity's connector instance has `write: false`) and §8's fail-open probe (stopping Redis would drop the running dev stack's BullMQ workers).
+
+- [x] §1 — page one fast, index used
+- [x] §2 — every page flat, last page correct
+- [x] §3 — no repeats or gaps over ties and NULLs
+- [x] §4 — no `data` in list rows; detail view unaffected
+- [x] §5 — one request per settled search term
+- [x] §6 — stale/corrupt cursor degrades to page 1
+- [x] §7 — **skipped**: the fixture entity's instance has `write: false`; re-walk on app-dev
+- [x] §8 — count cached and per-filter fingerprinted; **fail-open not walked** (would stop the dev stack's Redis)
+- [x] §9 — other lists unchanged
 - [ ] CI green on PR #434
-- [ ] ______________________ (date + name) — confirmed against my own running stack
+- [x] 2026-08-22, Ben Turner — confirmed against my own running stack (browser half; server-side half agent-verified, §7 + §8 fail-open skipped with reasons above)
 
 **Unchecked boxes carry a recorded reason.** A skipped section is a decision, not an omission.
 
