@@ -154,6 +154,22 @@ export interface UsePaginationConfig {
   onPersist?: (state: PaginationPersistedState) => void;
   /** Column definitions for the advanced filter builder. When provided, the builder UI is shown. */
   columnDefinitions?: ResolvedColumn[];
+  /**
+   * Pagination strategy (#433). `"offset"` (the default) is unchanged for
+   * every existing consumer. `"keyset"` walks by opaque cursor instead, so
+   * page cost stays flat at depth — offset pagination cannot, because the
+   * planner abandons the sort index once the offset is large.
+   *
+   * Opt in only where the list can actually get big; keyset cannot serve an
+   * arbitrary page jump, and the toolbar's First/Prev/Next/Last is exactly
+   * the control set a cursor can.
+   */
+  mode?: "offset" | "keyset";
+  /**
+   * Debounce for the search box, in ms. Applies in both modes. Set to 0 to
+   * commit synchronously.
+   */
+  searchDebounceMs?: number;
 }
 
 export interface UsePaginationReturn {
@@ -178,6 +194,19 @@ export interface UsePaginationReturn {
   setTotal: (total: number) => void;
   queryParams: Record<string, string | number | boolean | undefined>;
   toolbarProps: PaginationToolbarProps;
+  /** Cursor driving the current request in keyset mode; null on page one. */
+  cursor: string | null;
+  /**
+   * Hand back the `nextCursor` from the latest response so `Next` has a
+   * position to seek to. No-op in offset mode.
+   */
+  setNextCursor: (cursor: string | null) => void;
+  /**
+   * Put a page of rows into display order. Identity in offset mode and on a
+   * forward keyset walk; on the inverted last-page walk it un-reverses the
+   * rows the server returned. Consumers render `transformPage(rows)`.
+   */
+  transformPage: <T>(rows: T[]) => T[];
 }
 
 export function usePagination(
@@ -193,9 +222,19 @@ export function usePagination(
     initialValue,
     onPersist,
     columnDefinitions = [],
+    mode = "offset",
+    searchDebounceMs = 300,
   } = config;
 
+  const keyset = mode === "keyset";
+
+  // `search` is what the input shows; `committedSearch` is what the query
+  // uses. Splitting them is the debounce: the box stays responsive while the
+  // request waits for typing to settle.
   const [search, setSearchRaw] = React.useState(initialValue?.search ?? "");
+  const [committedSearch, setCommittedSearch] = React.useState(
+    initialValue?.search ?? ""
+  );
   const [filters, setFilters] = React.useState<Record<string, string[]>>(() => {
     if (initialValue) return initialValue.filters;
     const initial: Record<string, string[]> = {};
@@ -213,6 +252,18 @@ export function usePagination(
     initialValue?.sortOrder ?? defaultSortOrder
   );
   const [offset, setOffset] = React.useState(0);
+  // ── Keyset walk state (#433) ──────────────────────────────────────
+  // `cursor` drives the current request; `cursorStack` holds the cursors of
+  // the pages behind us so Prev is an exact return rather than a re-seek.
+  // `nextCursorRef` is whatever the last response handed back.
+  const [cursor, setCursor] = React.useState<string | null>(null);
+  const [cursorStack, setCursorStack] = React.useState<(string | null)[]>([]);
+  const [pageNumber, setPageNumber] = React.useState(1);
+  // The Last button is one click to the deepest position in the table. Rather
+  // than seek there, flip the sort and take page one — then reverse the rows
+  // back into display order.
+  const [inverted, setInverted] = React.useState(false);
+  const nextCursorRef = React.useRef<string | null>(null);
   const [limit, setLimitRaw] = React.useState(
     initialValue?.limit ?? defaultLimit
   );
@@ -240,15 +291,54 @@ export function usePagination(
     [onPersist]
   );
 
-  const resetOffset = React.useCallback(() => setOffset(0), []);
+  /**
+   * Return to the first page. In keyset mode that means abandoning the walk
+   * entirely — a cursor names a position in one specific ordering, so any
+   * change to the query invalidates it.
+   */
+  const resetOffset = React.useCallback(() => {
+    setOffset(0);
+    setCursor(null);
+    setCursorStack([]);
+    setPageNumber(1);
+    setInverted(false);
+    nextCursorRef.current = null;
+  }, []);
 
-  const setSearch = React.useCallback(
+  const searchTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const commitSearch = React.useCallback(
     (value: string) => {
-      setSearchRaw(value);
+      setCommittedSearch(value);
       persist({ search: value });
       resetOffset();
     },
-    [resetOffset, persist]
+    [persist, resetOffset]
+  );
+
+  const setSearch = React.useCallback(
+    (value: string) => {
+      // The input updates now; the query waits. Before this, every keystroke
+      // fired a full-scan list request.
+      setSearchRaw(value);
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+      if (searchDebounceMs <= 0) {
+        commitSearch(value);
+        return;
+      }
+      searchTimer.current = setTimeout(
+        () => commitSearch(value),
+        searchDebounceMs
+      );
+    },
+    [commitSearch, searchDebounceMs]
+  );
+
+  React.useEffect(
+    () => () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    },
+    []
   );
 
   const setFilter = React.useCallback(
@@ -263,20 +353,32 @@ export function usePagination(
     [resetOffset, persist]
   );
 
+  /**
+   * A cursor names a position in one specific ordering, so a sort change
+   * invalidates it — the server would fail open to page one and the page
+   * counter would drift. Offset mode keeps its existing behaviour (the
+   * offset survives a sort change) so the other consumers are unaffected.
+   */
+  const resetWalkIfKeyset = React.useCallback(() => {
+    if (keyset) resetOffset();
+  }, [keyset, resetOffset]);
+
   const setSortBy = React.useCallback(
     (field: string) => {
       setSortByRaw(field);
       persist({ sortBy: field });
+      resetWalkIfKeyset();
     },
-    [persist]
+    [persist, resetWalkIfKeyset]
   );
 
   const setSortOrder = React.useCallback(
     (order: "asc" | "desc") => {
       setSortOrderRaw(order);
       persist({ sortOrder: order });
+      resetWalkIfKeyset();
     },
-    [persist]
+    [persist, resetWalkIfKeyset]
   );
 
   const toggleSortOrder = React.useCallback(() => {
@@ -285,7 +387,8 @@ export function usePagination(
       persist({ sortOrder: next });
       return next;
     });
-  }, [persist]);
+    resetWalkIfKeyset();
+  }, [persist, resetWalkIfKeyset]);
 
   const setLimit = React.useCallback(
     (value: number) => {
@@ -296,32 +399,114 @@ export function usePagination(
     [resetOffset, persist]
   );
 
-  const currentPage = Math.floor(offset / limit) + 1;
+  const currentPage = keyset ? pageNumber : Math.floor(offset / limit) + 1;
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
-  const goToFirst = React.useCallback(() => setOffset(0), []);
-  const goToPrev = React.useCallback(
-    () => setOffset((prev) => Math.max(0, prev - limit)),
-    [limit]
-  );
-  const goToNext = React.useCallback(
-    () => setOffset((prev) => Math.min((totalPages - 1) * limit, prev + limit)),
-    [limit, totalPages]
-  );
-  const goToLast = React.useCallback(
-    () => setOffset((totalPages - 1) * limit),
-    [limit, totalPages]
+  /** Rows on the final page — a partial page when `total` isn't a multiple. */
+  const lastPageSize = total % limit === 0 ? limit : total % limit;
+  /** True while the inverted walk is still on the last page itself. */
+  const atInvertedStart = inverted && cursorStack.length === 0;
+
+  const setNextCursor = React.useCallback((next: string | null) => {
+    nextCursorRef.current = next;
+  }, []);
+
+  /**
+   * Follow the response's cursor. Page numbers move *against* the walk while
+   * inverted, because that walk runs from the end of the list backwards.
+   */
+  const advanceCursor = React.useCallback(() => {
+    const next = nextCursorRef.current;
+    if (!next) return;
+    setCursorStack((prev) => [...prev, cursor]);
+    setCursor(next);
+    setPageNumber((p) => p + (inverted ? -1 : 1));
+    nextCursorRef.current = null;
+  }, [cursor, inverted]);
+
+  /** Return to the previous page by popping the stack — an exact return. */
+  const retreatCursor = React.useCallback(() => {
+    setCursorStack((prev) => {
+      if (prev.length === 0) return prev;
+      setCursor(prev[prev.length - 1]);
+      setPageNumber((p) => p + (inverted ? 1 : -1));
+      nextCursorRef.current = null;
+      return prev.slice(0, -1);
+    });
+  }, [inverted]);
+
+  const goToFirst = React.useCallback(() => {
+    if (keyset) {
+      resetOffset();
+      return;
+    }
+    setOffset(0);
+  }, [keyset, resetOffset]);
+
+  const goToPrev = React.useCallback(() => {
+    if (keyset) {
+      // While inverted the cursor walks toward the start, so "previous page"
+      // is the direction the cursor already travels.
+      if (inverted) advanceCursor();
+      else retreatCursor();
+      return;
+    }
+    setOffset((prev) => Math.max(0, prev - limit));
+  }, [keyset, inverted, advanceCursor, retreatCursor, limit]);
+
+  const goToNext = React.useCallback(() => {
+    if (keyset) {
+      if (inverted) retreatCursor();
+      else advanceCursor();
+      return;
+    }
+    setOffset((prev) => Math.min((totalPages - 1) * limit, prev + limit));
+  }, [keyset, inverted, advanceCursor, retreatCursor, limit, totalPages]);
+
+  const goToLast = React.useCallback(() => {
+    if (keyset) {
+      // Don't seek to the deepest position — invert the sort and take page
+      // one of the reversed list, which is the cheapest page there is.
+      setInverted(true);
+      setCursor(null);
+      setCursorStack([]);
+      setPageNumber(totalPages);
+      nextCursorRef.current = null;
+      return;
+    }
+    setOffset((totalPages - 1) * limit);
+  }, [keyset, limit, totalPages]);
+
+  const transformPage = React.useCallback(
+    <T,>(rows: T[]): T[] => (inverted ? [...rows].reverse() : rows),
+    [inverted]
   );
 
   // Build flat query params for the API
   const queryParams = React.useMemo(() => {
-    const params: Record<string, string | number | boolean | undefined> = {
-      limit,
-      offset,
-      sortBy,
-      sortOrder,
-    };
-    if (search) params.search = search;
+    const params: Record<string, string | number | boolean | undefined> = keyset
+      ? {
+          // Asking for exactly the final page's row count keeps the server's
+          // `nextCursor` anchored on the right row; a full-width request
+          // would anchor it past the page boundary and skip rows on the way
+          // back.
+          limit: atInvertedStart ? lastPageSize : limit,
+          sortBy,
+          // Inverting the sort is what turns "last page" into "page one".
+          sortOrder: inverted
+            ? sortOrder === "asc"
+              ? "desc"
+              : "asc"
+            : sortOrder,
+          cursor: cursor ?? undefined,
+        }
+      : {
+          limit,
+          offset,
+          sortBy,
+          sortOrder,
+        };
+    if (committedSearch) params.search = committedSearch;
     for (const [field, values] of Object.entries(filters)) {
       if (values.length === 0) continue;
       const config = filterConfigs.find((c) => c.field === field);
@@ -345,7 +530,7 @@ export function usePagination(
     }
     return params;
   }, [
-    search,
+    committedSearch,
     filters,
     filterConfigs,
     advancedFilters,
@@ -353,6 +538,11 @@ export function usePagination(
     sortOrder,
     offset,
     limit,
+    keyset,
+    cursor,
+    inverted,
+    atInvertedStart,
+    lastPageSize,
   ]);
 
   const activeFilterCount = Object.values(filters).reduce(
@@ -443,6 +633,9 @@ export function usePagination(
     setTotal,
     queryParams,
     toolbarProps,
+    cursor,
+    setNextCursor,
+    transformPage,
   };
 }
 

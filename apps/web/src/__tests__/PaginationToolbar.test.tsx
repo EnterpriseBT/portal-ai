@@ -144,6 +144,12 @@ describe("usePagination", () => {
   });
 
   describe("search", () => {
+    // #433 made the search debounced: the input updates immediately, the
+    // query waits for typing to settle. These two assert the same behaviour
+    // as before, once the debounce has elapsed.
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
     it("should update search and reset offset", () => {
       const { result } = renderHook(() => usePagination());
 
@@ -152,6 +158,8 @@ describe("usePagination", () => {
 
       act(() => result.current.setSearch("test"));
       expect(result.current.search).toBe("test");
+
+      act(() => jest.advanceTimersByTime(300));
       expect(result.current.offset).toBe(0);
     });
 
@@ -161,6 +169,7 @@ describe("usePagination", () => {
       expect(result.current.queryParams.search).toBeUndefined();
 
       act(() => result.current.setSearch("hello"));
+      act(() => jest.advanceTimersByTime(300));
       expect(result.current.queryParams.search).toBe("hello");
     });
   });
@@ -937,5 +946,255 @@ describe("PaginationToolbar", () => {
       );
       expect(container.firstChild).toMatchSnapshot();
     });
+  });
+});
+
+// =============================================================================
+// #433 — debounced search + keyset mode
+// =============================================================================
+
+describe("usePagination — debounced search (#433)", () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it("updates the input immediately but the query only after the delay", () => {
+    // The input must stay responsive; it is the *query* that waits. Before
+    // this, every keystroke fired a full-scan list request — typing a
+    // 6-character term queued six multi-second queries against a pool of 10.
+    const { result } = renderHook(() => usePagination());
+
+    act(() => result.current.setSearch("bos"));
+    expect(result.current.search).toBe("bos");
+    expect(result.current.queryParams.search).toBeUndefined();
+
+    act(() => jest.advanceTimersByTime(300));
+    expect(result.current.queryParams.search).toBe("bos");
+  });
+
+  it("collapses rapid keystrokes into a single query change", () => {
+    const { result } = renderHook(() => usePagination());
+
+    for (const term of ["b", "bo", "bos", "bost", "bosto", "boston"]) {
+      act(() => {
+        result.current.setSearch(term);
+        jest.advanceTimersByTime(50);
+      });
+      // Still nothing committed — each keystroke restarted the timer.
+      expect(result.current.queryParams.search).toBeUndefined();
+    }
+
+    act(() => jest.advanceTimersByTime(300));
+    expect(result.current.queryParams.search).toBe("boston");
+  });
+
+  it("resets to the first page when the search commits, not per keystroke", () => {
+    const { result } = renderHook(() => usePagination());
+
+    act(() => result.current.setOffset(40));
+    act(() => result.current.setSearch("test"));
+    // Resetting the offset before the term commits would refetch page 1 of
+    // the *previous* search — a wasted request per keystroke.
+    expect(result.current.offset).toBe(40);
+
+    act(() => jest.advanceTimersByTime(300));
+    expect(result.current.offset).toBe(0);
+  });
+
+  it("honours a custom debounce interval", () => {
+    const { result } = renderHook(() =>
+      usePagination({ searchDebounceMs: 1000 })
+    );
+
+    act(() => result.current.setSearch("x"));
+    act(() => jest.advanceTimersByTime(500));
+    expect(result.current.queryParams.search).toBeUndefined();
+
+    act(() => jest.advanceTimersByTime(500));
+    expect(result.current.queryParams.search).toBe("x");
+  });
+
+  it("commits synchronously when the debounce is disabled", () => {
+    const { result } = renderHook(() => usePagination({ searchDebounceMs: 0 }));
+
+    act(() => result.current.setSearch("now"));
+    expect(result.current.queryParams.search).toBe("now");
+  });
+});
+
+describe("usePagination — offset mode is unchanged (#433)", () => {
+  // The regression guard for the 14 consumers that did not opt into keyset.
+  it("emits offset and never a cursor by default", () => {
+    const { result } = renderHook(() => usePagination());
+
+    expect(result.current.queryParams.offset).toBe(0);
+    expect(result.current.queryParams.cursor).toBeUndefined();
+
+    act(() => result.current.setOffset(20));
+    expect(result.current.queryParams.offset).toBe(20);
+    expect(result.current.queryParams.cursor).toBeUndefined();
+  });
+
+  it("still paginates by offset through the toolbar handlers", () => {
+    const { result } = renderHook(() => usePagination({ limit: 10 }));
+    act(() => result.current.setTotal(35));
+
+    act(() => result.current.toolbarProps.onNext());
+    expect(result.current.offset).toBe(10);
+    expect(result.current.toolbarProps.currentPage).toBe(2);
+
+    act(() => result.current.toolbarProps.onLast());
+    expect(result.current.offset).toBe(30);
+  });
+});
+
+describe("usePagination — keyset mode (#433)", () => {
+  const setup = (total = 35, limit = 10) => {
+    const view = renderHook(() => usePagination({ mode: "keyset", limit }));
+    act(() => view.result.current.setTotal(total));
+    return view;
+  };
+
+  it("emits a cursor instead of an offset", () => {
+    const { result } = setup();
+
+    expect(result.current.queryParams.offset).toBeUndefined();
+    expect(result.current.queryParams.cursor).toBeUndefined(); // page 1
+
+    act(() => result.current.setNextCursor("cur-1"));
+    act(() => result.current.toolbarProps.onNext());
+
+    expect(result.current.queryParams.cursor).toBe("cur-1");
+    expect(result.current.queryParams.offset).toBeUndefined();
+  });
+
+  it("counts pages forward and back across a cursor walk", () => {
+    const { result } = setup();
+
+    act(() => result.current.setNextCursor("cur-1"));
+    act(() => result.current.toolbarProps.onNext());
+    expect(result.current.toolbarProps.currentPage).toBe(2);
+
+    act(() => result.current.setNextCursor("cur-2"));
+    act(() => result.current.toolbarProps.onNext());
+    expect(result.current.toolbarProps.currentPage).toBe(3);
+    expect(result.current.queryParams.cursor).toBe("cur-2");
+  });
+
+  it("returns to the exact previous page by popping the cursor stack", () => {
+    const { result } = setup();
+
+    act(() => result.current.setNextCursor("cur-1"));
+    act(() => result.current.toolbarProps.onNext());
+    act(() => result.current.setNextCursor("cur-2"));
+    act(() => result.current.toolbarProps.onNext());
+
+    act(() => result.current.toolbarProps.onPrev());
+    expect(result.current.toolbarProps.currentPage).toBe(2);
+    expect(result.current.queryParams.cursor).toBe("cur-1");
+
+    act(() => result.current.toolbarProps.onPrev());
+    expect(result.current.toolbarProps.currentPage).toBe(1);
+    expect(result.current.queryParams.cursor).toBeUndefined();
+  });
+
+  it("clears the walk when jumping to the first page", () => {
+    const { result } = setup();
+
+    act(() => result.current.setNextCursor("cur-1"));
+    act(() => result.current.toolbarProps.onNext());
+    act(() => result.current.toolbarProps.onFirst());
+
+    expect(result.current.toolbarProps.currentPage).toBe(1);
+    expect(result.current.queryParams.cursor).toBeUndefined();
+  });
+
+  it("serves the last page by inverting the sort rather than seeking to it", () => {
+    // The Last button is one click to the deepest offset in the table — the
+    // 39s measurement on app-dev. Inverting the sort makes it page one.
+    const { result } = setup(35, 10);
+
+    act(() => result.current.toolbarProps.onLast());
+
+    expect(result.current.toolbarProps.currentPage).toBe(4);
+    expect(result.current.queryParams.cursor).toBeUndefined();
+    expect(result.current.queryParams.sortOrder).toBe("desc"); // flipped
+    // 35 rows, 10 per page → the last page holds 5. Asking for exactly that
+    // many keeps the server's nextCursor anchored on the right row.
+    expect(result.current.queryParams.limit).toBe(5);
+  });
+
+  it("reverses the inverted page back into display order", () => {
+    const { result } = setup(35, 10);
+
+    expect(result.current.transformPage([1, 2, 3])).toEqual([1, 2, 3]);
+
+    act(() => result.current.toolbarProps.onLast());
+    expect(result.current.transformPage([35, 34, 33, 32, 31])).toEqual([
+      31, 32, 33, 34, 35,
+    ]);
+  });
+
+  it("walks backward from the last page and keeps page numbers right", () => {
+    const { result } = setup(35, 10);
+
+    act(() => result.current.toolbarProps.onLast());
+    expect(result.current.toolbarProps.currentPage).toBe(4);
+
+    act(() => result.current.setNextCursor("inv-1"));
+    act(() => result.current.toolbarProps.onPrev());
+
+    expect(result.current.toolbarProps.currentPage).toBe(3);
+    expect(result.current.queryParams.cursor).toBe("inv-1");
+    expect(result.current.queryParams.sortOrder).toBe("desc"); // still inverted
+    expect(result.current.queryParams.limit).toBe(10); // full page now
+  });
+
+  it("leaves the inverted walk when returning to the first page", () => {
+    const { result } = setup(35, 10);
+
+    act(() => result.current.toolbarProps.onLast());
+    act(() => result.current.toolbarProps.onFirst());
+
+    expect(result.current.toolbarProps.currentPage).toBe(1);
+    expect(result.current.queryParams.sortOrder).toBe("asc");
+    expect(result.current.queryParams.limit).toBe(10);
+    expect(result.current.transformPage([1, 2, 3])).toEqual([1, 2, 3]);
+  });
+
+  it("keeps the total and page count reading exactly as before", () => {
+    const { result } = setup(35, 10);
+
+    expect(result.current.total).toBe(35);
+    expect(result.current.toolbarProps.totalPages).toBe(4);
+  });
+
+  it.each([
+    [
+      "sort field",
+      (r: ReturnType<typeof usePagination>) => r.setSortBy("name"),
+    ],
+    [
+      "sort order",
+      (r: ReturnType<typeof usePagination>) => r.setSortOrder("desc"),
+    ],
+    ["page size", (r: ReturnType<typeof usePagination>) => r.setLimit(25)],
+    [
+      "filter",
+      (r: ReturnType<typeof usePagination>) => r.setFilter("status", ["open"]),
+    ],
+  ])("restarts the walk when the %s changes", (_label, mutate) => {
+    const { result } = setup();
+
+    act(() => result.current.setNextCursor("cur-1"));
+    act(() => result.current.toolbarProps.onNext());
+    expect(result.current.toolbarProps.currentPage).toBe(2);
+
+    act(() => mutate(result.current));
+
+    // A cursor names a position in one ordering; carrying it across a change
+    // would be meaningless. The server would fail open to page 1 anyway, so
+    // the page counter has to follow.
+    expect(result.current.toolbarProps.currentPage).toBe(1);
+    expect(result.current.queryParams.cursor).toBeUndefined();
   });
 });
