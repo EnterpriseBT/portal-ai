@@ -1,6 +1,6 @@
 # Stripe live mode — Runbook
 
-**Issue:** [EnterpriseBT/portal-ai#385](https://github.com/EnterpriseBT/portal-ai/issues/385) (epic [#83](https://github.com/EnterpriseBT/portal-ai/issues/83)) · Spec: `docs/PROD_STRIPE_LIVE.spec.md`
+**Issue:** [EnterpriseBT/portal-ai#385](https://github.com/EnterpriseBT/portal-ai/issues/385) (epic [#83](https://github.com/EnterpriseBT/portal-ai/issues/83))
 
 Standing up a **live-mode** Stripe account. Every Portal environment is a separate Stripe account — `local` is test mode, `app-dev` is its own Sandbox — and nothing crosses environments except lookup keys.
 

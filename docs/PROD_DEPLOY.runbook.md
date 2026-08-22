@@ -1,6 +1,6 @@
 # Production deploys — Runbook
 
-**Issue:** [EnterpriseBT/portal-ai#383](https://github.com/EnterpriseBT/portal-ai/issues/383) (epic [#83](https://github.com/EnterpriseBT/portal-ai/issues/83)) · Spec: `docs/PROD_AWS_INFRA.spec.md`
+**Issue:** [EnterpriseBT/portal-ai#383](https://github.com/EnterpriseBT/portal-ai/issues/383) (epic [#83](https://github.com/EnterpriseBT/portal-ai/issues/83))
 
 How production gets deployed, what the *first* deploy does differently, and how to get back.
 
@@ -129,7 +129,7 @@ Each omission is asserted by a test in `packages/devops-cli/src/__tests__/deploy
 
 ## Notes on the certificate
 
-Prod reads the wildcard `*.portalsai.io` certificate from the **`portalai-dev-dns-certs`** stack, which reads oddly and is deliberate: the apex and the wildcard share one DNS validation CNAME, so a second cert stack for the same names in the same hosted zone collides. Moving the certificate to a domain-level stack — as `portalai-dns-email` already is — is the correct end state and is tracked separately; see `docs/PROD_AWS_INFRA.discovery.md`, Decision 2.
+Prod reads the wildcard `*.portalsai.io` certificate from the **`portalai-dev-dns-certs`** stack, which reads oddly and is deliberate: the apex and the wildcard share one DNS validation CNAME, so a second cert stack for the same names in the same hosted zone collides. Moving the certificate to a domain-level stack — as `portalai-dns-email` already is — is the correct end state and is tracked separately.
 
 **Do not delete or recreate `portalai-dev-dns-certs`.** It is load-bearing for production — `app`, `api` **and `www`** all present the certificate it owns.
 

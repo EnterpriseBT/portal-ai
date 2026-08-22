@@ -17,13 +17,13 @@ Invoked as `/smoke [issue-number]`. The number is optional — derive it from th
 
 ```bash
 git branch --show-current            # must be the feature branch, NOT main
-ls docs/*.spec.md docs/*.md          # find the spec or condensed doc
+ls docs/*.spec.md docs/*.condensed.md   # find the spec or condensed doc
 git log --oneline main..HEAD         # implementation commits must exist
 ```
 
 - **Implementation must be present.** If the branch has only docs commits, stop — the smoke doc verifies built behavior; scaffolding it early produces fiction. Tell the user to finish the plan's slices first.
 - **A spec (or condensed doc) must be present.** No spec → stop with the right next command (`/spec <N>`, or `/discovery <N> condensed` for small tickets).
-- **Condensed branch?** If the branch carries `docs/<SLUG>.md` (header says **small / condensed**), don't create a `.smoke.md` — append or refresh that doc's `## Smoke (manual, against your dev stack)` section using the same rules below, and skip to the hand-off.
+- **Condensed branch?** If the branch carries `docs/<SLUG>.condensed.md`, do not create a `.smoke.md` — append or refresh that doc's `## Smoke (manual, against your dev stack)` section using the same rules below, and skip to the hand-off.
 
 ### 2. Collect the three inputs
 
@@ -33,7 +33,7 @@ git log --oneline main..HEAD         # implementation commits must exist
 
 ### 3. Read one reference smoke doc
 
-Default to `docs/BULK_AGGREGATE.smoke.md` — preflight + sectioned walkthrough + sign-off + bug template, with sections independent after preflight. Prefer another (e.g. `docs/DEVOPS_CLI.smoke.md` for CLI-shaped work) if it's closer to the ticket.
+Default to `.claude/skills/smoke/EXAMPLE.smoke.md` — preflight + sectioned walkthrough + sign-off + bug template, with sections independent after preflight. The exemplar lives beside this skill because phase docs in `docs/` are ephemeral — swept by the next feature ticket — so it can't be kept there.
 
 ### 4. Write `docs/<SLUG>.smoke.md`
 

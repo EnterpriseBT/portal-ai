@@ -1,6 +1,6 @@
 # Environment provisioning — Runbook
 
-**Issue:** [EnterpriseBT/portal-ai#384](https://github.com/EnterpriseBT/portal-ai/issues/384) (epic [#83](https://github.com/EnterpriseBT/portal-ai/issues/83)) · Spec: `docs/PROD_VENDOR_PROVISIONING.spec.md`
+**Issue:** [EnterpriseBT/portal-ai#384](https://github.com/EnterpriseBT/portal-ai/issues/384) (epic [#83](https://github.com/EnterpriseBT/portal-ai/issues/83))
 
 The half of #384 that cannot be code. Creating an Auth0 tenant, a Google OAuth client or a Mapbox token needs a console and a human — the charter classifies these as **out-of-band, runbook-driven** (`docs/CLI_OPERATIONS_CHARTER.md`), and this is the executable artifact behind that classification.
 
