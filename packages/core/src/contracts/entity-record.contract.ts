@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 import { ColumnDataTypeEnum } from "../models/column-definition.model.js";
-import { EntityRecordSchema } from "../models/entity-record.model.js";
+import {
+  EntityRecordSchema,
+  EntityRecordListItemSchema,
+} from "../models/entity-record.model.js";
 import {
   PaginatedResponsePayloadSchema,
   PaginationRequestQuerySchema,
@@ -56,7 +59,12 @@ export type EntityRecordListRequestQuery = z.infer<
 
 export const EntityRecordListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    records: z.array(EntityRecordSchema),
+    /**
+     * List items omit the raw `data` payload (#433) — the table renders from
+     * `normalizedData`, and shipping `data` cost ~2KB/row on the wire and a
+     * disk-spilling hash join in the query. Fetch a single record for it.
+     */
+    records: z.array(EntityRecordListItemSchema),
     columns: z.array(ResolvedColumnSchema),
     source: z.enum(["cache", "live"]),
   });

@@ -6,7 +6,7 @@
  */
 
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, sql, type SQL } from "drizzle-orm";
+import { eq, and, sql, inArray, type SQL } from "drizzle-orm";
 
 import { EntityRecordModelFactory } from "@portalai/core/models";
 import { UUIDv4Factory } from "@portalai/core/utils";
@@ -23,6 +23,8 @@ import {
   type EntityRecordPatchResponsePayload,
   type EntityRecordDeleteOneResponsePayload,
   type EntityRecordDeleteResponsePayload,
+  encodeCursor,
+  decodeCursor,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import {
@@ -34,13 +36,15 @@ import {
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
-import { entityRecords } from "../db/schema/index.js";
+import { entityRecords, columnDefinitions } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { fieldMappingsRepo } from "../db/repositories/field-mappings.repository.js";
 import { columnDefinitionsRepo } from "../db/repositories/column-definitions.repository.js";
+import { EntityRecordCountCache } from "../services/entity-record-count.cache.js";
+import type { EntityRecordHydratedListItem } from "../db/repositories/entity-records.repository.js";
 import {
   buildJsonbObjectExpr,
   wideTableStatementCache,
@@ -75,15 +79,14 @@ async function resolveColumns(
   if (mappings.length === 0) return [];
 
   const colDefIds = [...new Set(mappings.map((m) => m.columnDefinitionId))];
-  const colDefs = await Promise.all(
-    colDefIds.map((id) => columnDefinitionsRepo.findById(id))
+  // #433: one statement, not one per column. This ran on every list request —
+  // 14 round-trips for a 13-column entity, against a pool of 10, so a handful
+  // of concurrent list requests could starve unrelated queries of connections.
+  const colDefs = await columnDefinitionsRepo.findMany(
+    inArray(columnDefinitions.id, colDefIds)
   );
 
-  const colDefMap = new Map(
-    colDefs
-      .filter((cd): cd is NonNullable<typeof cd> => cd != null)
-      .map((cd) => [cd.id, cd])
-  );
+  const colDefMap = new Map(colDefs.map((cd) => [cd.id, cd]));
 
   return mappings.reduce<ResolvedColumn[]>((acc, m) => {
     const cd = colDefMap.get(m.columnDefinitionId);
@@ -102,6 +105,36 @@ async function resolveColumns(
     });
     return acc;
   }, []);
+}
+
+/**
+ * Read the sort key's value off a returned row, for minting a cursor (#433).
+ *
+ * Returns `null` when the value cannot be resolved — which is not the same
+ * as a value of `null`. A `?columns=` request can narrow `normalizedData` so
+ * it no longer carries the sort key at all, and minting `value: null` there
+ * would seek into the NULL region and skip the rest of the result set. When
+ * the value is unresolvable the response carries no `nextCursor` and the
+ * client stays on offset paging.
+ */
+function readSortValue(
+  row: EntityRecordHydratedListItem,
+  sortBy: string
+): { value: string | number | null } | null {
+  const raw = SORTABLE_COLUMNS[sortBy]
+    ? (row as unknown as Record<string, unknown>)[sortBy]
+    : (() => {
+        const normalized = row.normalizedData as
+          | Record<string, unknown>
+          | undefined;
+        if (!normalized || !(sortBy in normalized)) return undefined;
+        return normalized[sortBy];
+      })();
+
+  if (raw === undefined) return null;
+  if (raw === null) return { value: null };
+  if (typeof raw === "string" || typeof raw === "number") return { value: raw };
+  return null;
 }
 
 async function resolveEntityOrThrow(
@@ -125,6 +158,71 @@ async function resolveEntityOrThrow(
 
 // ── GET / — List records ────────────────────────────────────────────
 
+/**
+ * @openapi
+ * /api/connector-entities/{connectorEntityId}/records:
+ *   get:
+ *     summary: List an entity's records
+ *     description: >
+ *       Server-paginated records for one connector entity, with the mapped
+ *       column definitions that describe them. Rows omit the raw `data`
+ *       payload — fetch a single record for that.
+ *
+ *
+ *       Supports both `offset` and keyset `cursor` pagination (#433). Prefer
+ *       `cursor`: offset cost grows with depth (the planner abandons the sort
+ *       index once the offset is large), while a cursor seek is flat. Pass the
+ *       previous response's `nextCursor`; it is `null` at the end of the
+ *       result set.
+ *     tags: [Entity Records]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorEntityId
+ *         required: true
+ *         schema: { type: string }
+ *       - $ref: '#/components/parameters/limitParam'
+ *       - $ref: '#/components/parameters/offsetParam'
+ *       - $ref: '#/components/parameters/cursorParam'
+ *       - $ref: '#/components/parameters/sortByParam'
+ *       - $ref: '#/components/parameters/sortOrderParam'
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *         description: >
+ *           Case-insensitive substring match across the entity's text-shaped
+ *           columns.
+ *       - in: query
+ *         name: columns
+ *         schema: { type: string }
+ *         description: >
+ *           Comma-separated column keys to narrow the returned
+ *           `normalizedData`. Narrowing away the active sort key suppresses
+ *           `nextCursor`, since the cursor's anchor value can no longer be
+ *           read from the row.
+ *       - in: query
+ *         name: filters
+ *         schema: { type: string }
+ *         description: Base64-encoded JSON FilterExpression.
+ *       - in: query
+ *         name: isValid
+ *         schema: { type: string, enum: ["true", "false"] }
+ *         description: Filter by validation status.
+ *     responses:
+ *       200:
+ *         description: A page of records
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/EntityRecordListResponse'
+ *       400:
+ *         description: Invalid filter expression (ENTITY_RECORD_INVALID_FILTER)
+ *       404:
+ *         description: Connector entity not found (CONNECTOR_ENTITY_NOT_FOUND)
+ *       500:
+ *         description: Failed to list records (ENTITY_RECORD_FETCH_FAILED)
+ */
 entityRecordRouter.get(
   "/",
   getApplicationMetadata,
@@ -143,6 +241,7 @@ entityRecordRouter.get(
         search,
         filters,
         isValid,
+        cursor,
       } = EntityRecordListRequestQuerySchema.parse(req.query);
 
       // Resolve column definitions and the wide-table statement cache up
@@ -203,12 +302,43 @@ entityRecordRouter.get(
       // keys → typed wide-table column. Unknown sort keys fall back to
       // `created` (existing behaviour).
       let orderByExpr: Column | SQL;
+      // The key the sort actually resolved to. An unknown `sortBy` falls
+      // back to `created`, and a cursor has to be minted against the key
+      // that was really used, not the one that was asked for.
+      let effectiveSortBy = sortBy;
+      // Wide-table data columns are always nullable; the transactional
+      // sort columns are all NOT NULL. This drives both the ORDER BY's
+      // NULLS handling and the keyset predicate's shape.
+      let sortNullable = false;
       if (SORTABLE_COLUMNS[sortBy]) {
         orderByExpr = SORTABLE_COLUMNS[sortBy];
       } else {
         const typed = buildSortExpression(stmt, sortBy);
-        orderByExpr = typed ?? SORTABLE_COLUMNS.created;
+        if (typed) {
+          orderByExpr = typed;
+          sortNullable = true;
+        } else {
+          orderByExpr = SORTABLE_COLUMNS.created;
+          effectiveSortBy = "created";
+        }
       }
+
+      // #433: a cursor names a position in one specific ordering. Decode it,
+      // then discard it unless it was minted under the ordering now being
+      // requested — a cursor carried across a sort change is meaningless,
+      // not an error, so it degrades to the first page.
+      const decodedCursor = cursor ? decodeCursor(cursor) : null;
+      const keysetAnchor =
+        decodedCursor &&
+        decodedCursor.sortBy === effectiveSortBy &&
+        decodedCursor.sortOrder === sortOrder
+          ? {
+              column: orderByExpr,
+              value: decodedCursor.value,
+              id: decodedCursor.id,
+              nullable: sortNullable,
+            }
+          : undefined;
 
       // Narrow the rehydration projection if the caller asked for a
       // subset of columns. Building the per-request `jsonb_build_object`
@@ -234,18 +364,54 @@ entityRecordRouter.get(
         normalizedDataProjection = sql.raw(buildJsonbObjectExpr(pairs));
       }
 
-      const [records, total] = await Promise.all([
+      // #433: the exact total costs a full count — 3,472ms over 283K rows on
+      // app-dev — and it was recomputed on every page. Cache it per
+      // (entity, filter set): paging hits the cache the first page populated,
+      // and only a filter change or a write pays for it again.
+      const countFingerprint = EntityRecordCountCache.fingerprint({
+        search,
+        filters,
+        isValid,
+      });
+      const cachedTotal = await EntityRecordCountCache.get(
+        connectorEntityId,
+        countFingerprint
+      );
+
+      // Only search and the advanced filters reference the wide table; an
+      // unfiltered count doesn't need the JOIN at all.
+      const countRequiresWideTable = Boolean(search || filters);
+
+      const [probedRecords, total] = await Promise.all([
         DbService.repository.entityRecords.findHydratedMany(connectorEntityId, {
           where,
-          limit,
           offset,
           orderBy: { column: orderByExpr, direction: sortOrder },
           normalizedDataProjection,
+          // #433: the table renders from `normalizedData`; shipping the raw
+          // payload cost ~2KB/row and spilled the join to disk.
+          includeData: false,
+          keyset: keysetAnchor,
+          // One row past the page, to tell "exactly a full page" from "a
+          // full page with more behind it". The probe row is dropped before
+          // responding; without it the final page would hand back a cursor
+          // that leads nowhere.
+          limit: limit + 1,
         }),
-        DbService.repository.entityRecords.countHydrated(
-          connectorEntityId,
-          where
-        ),
+        cachedTotal !== null
+          ? Promise.resolve(cachedTotal)
+          : DbService.repository.entityRecords
+              .countHydrated(connectorEntityId, where, undefined, {
+                requiresWideTable: countRequiresWideTable,
+              })
+              .then(async (computed) => {
+                await EntityRecordCountCache.set(
+                  connectorEntityId,
+                  countFingerprint,
+                  computed
+                );
+                return computed;
+              }),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(
@@ -255,6 +421,25 @@ entityRecordRouter.get(
         );
       });
 
+      // #433: drop the probe row, then mint the cursor for the following
+      // page from the last row actually returned. No probe row means the
+      // result set is exhausted, so there is no next position to name.
+      const hasMore = probedRecords.length > limit;
+      const records = hasMore ? probedRecords.slice(0, limit) : probedRecords;
+      const lastRow = hasMore ? records[records.length - 1] : undefined;
+      const anchorValue = lastRow
+        ? readSortValue(lastRow, effectiveSortBy)
+        : null;
+      const nextCursor =
+        lastRow && anchorValue
+          ? encodeCursor({
+              sortBy: effectiveSortBy,
+              sortOrder,
+              value: anchorValue.value,
+              id: lastRow.id,
+            })
+          : null;
+
       return HttpService.success<EntityRecordListResponsePayload>(res, {
         records:
           records as unknown as EntityRecordListResponsePayload["records"],
@@ -263,6 +448,7 @@ entityRecordRouter.get(
         total,
         limit,
         offset,
+        nextCursor,
       });
     } catch (error) {
       logger.error(
@@ -509,6 +695,9 @@ entityRecordRouter.post(
           parsed_,
           tx
         );
+        // #433: `create`/`update`/`softDelete` are generic base methods, so
+        // the repository's own invalidation hook doesn't see them.
+        await EntityRecordCountCache.invalidate(connectorEntityId);
         const stmt = await wideTableStatementCache.get(connectorEntityId, tx);
         const mappings = buildMappingsForProjection(stmt.columns);
         await DbService.repository.wideTable.upsertMany(
@@ -896,6 +1085,9 @@ entityRecordRouter.patch(
           },
           tx
         );
+        // A patch can flip `isValid`, which is part of the count
+        // fingerprint — so the validity-filtered totals move too.
+        await EntityRecordCountCache.invalidate(connectorEntityId);
         // Partial-merge into the wide table: only the keys present in
         // the patch are written. Unknown keys (no field mapping) are
         // silently dropped by `updatePartial`.
@@ -1048,6 +1240,7 @@ entityRecordRouter.delete(
           userId,
           tx
         );
+        await EntityRecordCountCache.invalidate(connectorEntityId);
         await DbService.repository.wideTable.softDeleteByEntityRecordIds(
           connectorEntityId,
           [recordId],

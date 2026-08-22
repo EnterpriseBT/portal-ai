@@ -7,6 +7,7 @@ import { DbService } from "../../services/db.service.js";
 import { NormalizationService } from "../../services/normalization.service.js";
 import { fieldMappings } from "../../db/schema/index.js";
 import { createLogger } from "../../utils/logger.util.js";
+import { EntityRecordCountCache } from "../../services/entity-record-count.cache.js";
 
 const logger = createLogger({ module: "revalidation-processor" });
 
@@ -120,6 +121,11 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
     const progress = Math.round(20 + ((i + batch.length) / total) * 70);
     await bullJob.updateProgress(progress);
   }
+
+  // #433: revalidation changes no row count, but it flips `is_valid` — and
+  // `isValid` is part of the count-cache fingerprint, so the validity-filtered
+  // totals move. One bump at the end covers the whole run.
+  await EntityRecordCountCache.invalidate(connectorEntityId);
 
   logger.info(
     { jobId, connectorEntityId, total, valid, invalid },

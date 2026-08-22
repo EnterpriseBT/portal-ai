@@ -16,10 +16,12 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import postgres from "postgres";
 
 import { EntityRecordsRepository } from "../../../../db/repositories/entity-records.repository.js";
+import { WideTableReconcilerService } from "../../../../services/wide-table-reconciler.service.js";
+import { wideTableStatementCache } from "../../../../services/wide-table-statement.cache.js";
 import type { DbClient } from "../../../../db/repositories/base.repository.js";
 import * as schema from "../../../../db/schema/index.js";
 import type { EntityRecordInsert } from "../../../../db/schema/zod.js";
@@ -418,6 +420,119 @@ describe("EntityRecordsRepository Integration Tests", () => {
         await repo.softDeleteByConnectorEntityId(entityAId, "user-1", db)
       ).toBe(0);
       expect((await readRow(sibling.id!))?.deleted).toBeNull();
+    });
+  });
+
+  // ── #433: findHydratedMany ORDER BY tiebreaker ────────────────────
+
+  describe("findHydratedMany ORDER BY tiebreaker (#433)", () => {
+    /**
+     * The list endpoint's read path. `created` is the UI's default sort and
+     * ties are routine — a connector sync can stamp thousands of rows in the
+     * same millisecond — so without a unique tiebreaker the page boundaries
+     * fall at arbitrary points and rows repeat or vanish between pages.
+     */
+    const reconciler = new WideTableReconcilerService();
+
+    beforeEach(async () => {
+      // Metadata-only wide table: findHydratedMany JOINs it, but this slice
+      // needs no typed data columns.
+      await reconciler.ensureTable(entityAId, db);
+    });
+
+    afterEach(async () => {
+      await reconciler.dropTable(entityAId, db).catch(() => undefined);
+      wideTableStatementCache.clear();
+    });
+
+    /** Insert `count` records that all share one `created` value. */
+    async function seedTiedRecords(count: number): Promise<string[]> {
+      const tied = Date.now();
+      const ids: string[] = [];
+      for (let i = 0; i < count; i++) {
+        const record = makeRecord(entityAId, { created: tied });
+        await insertRecord(record);
+        await (db as ReturnType<typeof drizzle>).execute(
+          sql`INSERT INTO ${sql.identifier(`er__${entityAId}`)}
+              ("entity_record_id", "organization_id", "synced_at", "is_valid", "source_id")
+              VALUES (${record.id!}, ${orgId}, ${record.syncedAt!}, true, ${record.sourceId!})`
+        );
+        ids.push(record.id!);
+      }
+      return ids;
+    }
+
+    it("pages tied rows in id order, exactly once each", async () => {
+      const ids = await seedTiedRecords(7);
+
+      const seen: string[] = [];
+      for (let offset = 0; offset < 7; offset += 2) {
+        const page = await repo.findHydratedMany(
+          entityAId,
+          {
+            limit: 2,
+            offset,
+            orderBy: { column: schema.entityRecords.created, direction: "asc" },
+          },
+          db
+        );
+        seen.push(...page.map((r) => r.id));
+      }
+
+      expect(seen).toHaveLength(7);
+      expect(new Set(seen).size).toBe(7);
+      expect(seen).toEqual([...ids].sort());
+    });
+
+    it("omits the raw `data` payload when includeData is false", async () => {
+      await seedTiedRecords(2);
+
+      const rows = await repo.findHydratedMany(
+        entityAId,
+        { includeData: false },
+        db
+      );
+
+      expect(rows).toHaveLength(2);
+      for (const row of rows) {
+        expect(row).not.toHaveProperty("data");
+        // Everything the table actually renders from is still there.
+        expect(row).toHaveProperty("normalizedData");
+        expect(row).toHaveProperty("isValid");
+        expect(row.id).toBeDefined();
+      }
+    });
+
+    it("keeps `data` by default, so other callers are unaffected", async () => {
+      await seedTiedRecords(1);
+
+      const [row] = await repo.findHydratedMany(entityAId, {}, db);
+
+      expect(row).toHaveProperty("data");
+    });
+
+    it("still returns `data` from findHydratedById", async () => {
+      const [id] = await seedTiedRecords(1);
+
+      const row = await repo.findHydratedById(id, entityAId, db);
+
+      // The detail view is why `data` is kept on the record at all.
+      expect(row).toBeDefined();
+      expect(row).toHaveProperty("data");
+    });
+
+    it("reverses the tiebreaker when sorting descending", async () => {
+      const ids = await seedTiedRecords(5);
+
+      const rows = await repo.findHydratedMany(
+        entityAId,
+        {
+          orderBy: { column: schema.entityRecords.created, direction: "desc" },
+        },
+        db
+      );
+
+      expect(rows.map((r) => r.id)).toEqual([...ids].sort().reverse());
     });
   });
 });

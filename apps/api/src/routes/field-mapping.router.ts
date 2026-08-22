@@ -1171,12 +1171,18 @@ fieldMappingRouter.get(
 
       // 6. Load all records from both entities with rehydrated
       //    normalizedData (via the wide-table JOIN).
+      // #433: both sides read `normalizedData` and `sourceId` only, and
+      // neither is limited — an entity of any size is loaded whole. Fetching
+      // the raw `data` blob per row on top of that is the #423/#425 OOM
+      // shape; drop it from the projection.
       const [recordsA, recordsB] = await Promise.all([
         DbService.repository.entityRecords.findHydratedMany(
-          mapping.connectorEntityId
+          mapping.connectorEntityId,
+          { includeData: false }
         ),
         DbService.repository.entityRecords.findHydratedMany(
-          counterpart.connectorEntityId
+          counterpart.connectorEntityId,
+          { includeData: false }
         ),
       ]);
 

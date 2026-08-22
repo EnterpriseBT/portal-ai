@@ -41,6 +41,7 @@ import { CreateEntityRecordDialog } from "../components/CreateEntityRecordDialog
 import type { EntityRecordCreateRequestBody } from "@portalai/core/contracts";
 import { BidirectionalConsistencyBanner } from "../components/BidirectionalConsistencyBanner.component";
 import { SyncTotal } from "../components/SyncTotal.component";
+import { SyncNextCursor } from "../components/SyncNextCursor.component";
 import { SyncColumns } from "../components/SyncColumns.component";
 import {
   usePagination,
@@ -241,6 +242,10 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
     initialValue: cleanedInitialValue,
     onPersist: persistPagination,
     columnDefinitions: columnDefs,
+    // #433: this is the one list that reaches hundreds of thousands of rows,
+    // where offset pagination stops being flat — the deepest page measured
+    // 39s on app-dev. Cursors keep every page the same cost.
+    mode: "keyset",
   });
 
   const handleSort = (column: string) => {
@@ -409,59 +414,71 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
               query={pagination.queryParams as EntityRecordListRequestQuery}
             >
               {(listResult) => (
-                <SyncTotal
-                  total={listResult.data?.total}
-                  setTotal={pagination.setTotal}
+                <SyncNextCursor
+                  nextCursor={listResult.data?.nextCursor}
+                  setNextCursor={pagination.setNextCursor}
                 >
-                  <DataResult results={{ records: listResult }}>
-                    {({
-                      records,
-                    }: {
-                      records: EntityRecordListResponsePayload;
-                    }) => {
-                      const rowRecordId = new Map<
-                        Record<string, unknown>,
-                        string
-                      >();
-                      const rows = records.records.map((r) => {
-                        const row = {
-                          ...(r.normalizedData ?? {}),
-                          isValid: r.isValid,
-                        } as Record<string, unknown>;
-                        rowRecordId.set(row, r.id);
-                        return row;
-                      });
-                      const handleRowClick = (row: Record<string, unknown>) => {
-                        const recordId = rowRecordId.get(row);
-                        if (!recordId) return;
-                        if (onRecordClick) {
-                          onRecordClick(recordId);
-                        } else {
-                          void navigate({
-                            to: `/entities/${entity.id}/records/${recordId}`,
+                  <SyncTotal
+                    total={listResult.data?.total}
+                    setTotal={pagination.setTotal}
+                  >
+                    <DataResult results={{ records: listResult }}>
+                      {({
+                        records,
+                      }: {
+                        records: EntityRecordListResponsePayload;
+                      }) => {
+                        const rowRecordId = new Map<
+                          Record<string, unknown>,
+                          string
+                        >();
+                        // #433: the last page is served by inverting the sort
+                        // and taking page one, so its rows arrive reversed —
+                        // transformPage puts them back into display order.
+                        const rows = pagination
+                          .transformPage(records.records)
+                          .map((r) => {
+                            const row = {
+                              ...(r.normalizedData ?? {}),
+                              isValid: r.isValid,
+                            } as Record<string, unknown>;
+                            rowRecordId.set(row, r.id);
+                            return row;
                           });
-                        }
-                      };
-                      return (
-                        <SyncColumns
-                          columns={records.columns}
-                          setColumns={setColumnDefs}
-                        >
-                          <EntityRecordDataTableUI
-                            connectorEntityId={entity.id}
-                            rows={rows}
+                        const handleRowClick = (
+                          row: Record<string, unknown>
+                        ) => {
+                          const recordId = rowRecordId.get(row);
+                          if (!recordId) return;
+                          if (onRecordClick) {
+                            onRecordClick(recordId);
+                          } else {
+                            void navigate({
+                              to: `/entities/${entity.id}/records/${recordId}`,
+                            });
+                          }
+                        };
+                        return (
+                          <SyncColumns
                             columns={records.columns}
-                            source={records.source}
-                            sortColumn={pagination.sortBy}
-                            sortDirection={pagination.sortOrder}
-                            onSort={handleSort}
-                            onRowClick={handleRowClick}
-                          />
-                        </SyncColumns>
-                      );
-                    }}
-                  </DataResult>
-                </SyncTotal>
+                            setColumns={setColumnDefs}
+                          >
+                            <EntityRecordDataTableUI
+                              connectorEntityId={entity.id}
+                              rows={rows}
+                              columns={records.columns}
+                              source={records.source}
+                              sortColumn={pagination.sortBy}
+                              sortDirection={pagination.sortOrder}
+                              onSort={handleSort}
+                              onRowClick={handleRowClick}
+                            />
+                          </SyncColumns>
+                        );
+                      }}
+                    </DataResult>
+                  </SyncTotal>
+                </SyncNextCursor>
               )}
             </EntityRecordDataTable>
           </Box>

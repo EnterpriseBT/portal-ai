@@ -72,6 +72,19 @@ export interface ListOptions {
   includeDeleted?: boolean;
   organizationId?: string;
   orderBy?: { column: Column | SQL; direction?: "asc" | "desc" };
+  /**
+   * Keyset anchor (#433). When set, the query seeks past this position
+   * instead of counting rows to skip, and `offset` is ignored. `value` is
+   * the sort key at the anchor row and `id` its unique tiebreaker; `null`
+   * means the anchor sits in a nullable column's NULL region, which the
+   * predicate treats differently.
+   */
+  keyset?: {
+    column: Column | SQL;
+    value: string | number | null;
+    id: string;
+    nullable: boolean;
+  };
 }
 
 /** Payload shape for bulk-updating records with per-row data. */
@@ -151,17 +164,25 @@ export class Repository<
       .$dynamic();
     if (opts.orderBy) {
       const { column: orderCol, direction = "asc" } = opts.orderBy;
+      const orderFn = direction === "desc" ? desc : asc;
+      const clauses: (SQL | ReturnType<typeof asc>)[] = [];
       if (orderCol instanceof Column) {
-        const orderFn = direction === "desc" ? desc : asc;
-        query = query.orderBy(orderFn(orderCol));
+        clauses.push(orderFn(orderCol));
       } else {
         // Raw SQL expression — wrap with direction and push NULLs to end
-        query = query.orderBy(
+        clauses.push(
           direction === "desc"
             ? sql`${orderCol} DESC NULLS LAST`
             : sql`${orderCol} ASC NULLS LAST`
         );
       }
+      // #433: a unique trailing tiebreaker. Without it, ties come back in an
+      // undefined order and paginating over an undefined order repeats and
+      // skips rows — every list here defaults to `sortBy=created`, and
+      // low-cardinality sort keys (status, type, name) are common.
+      const idCol = this.cols.id;
+      if (idCol && orderCol !== idCol) clauses.push(orderFn(idCol));
+      query = query.orderBy(...clauses);
     }
     if (opts.limit !== undefined) query = query.limit(opts.limit);
     if (opts.offset !== undefined) query = query.offset(opts.offset);

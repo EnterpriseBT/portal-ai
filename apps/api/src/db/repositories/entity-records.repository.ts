@@ -16,8 +16,6 @@ import {
   isNull,
   type SQL,
   Column,
-  asc,
-  desc,
 } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
@@ -30,6 +28,7 @@ import {
 } from "./base.repository.js";
 import type { EntityRecordSelect, EntityRecordInsert } from "../schema/zod.js";
 import { wideTableStatementCache } from "../../services/wide-table-statement.cache.js";
+import { EntityRecordCountCache } from "../../services/entity-record-count.cache.js";
 
 /**
  * Repository read shape after Phase 2: same transactional fields plus
@@ -43,6 +42,12 @@ import { wideTableStatementCache } from "../../services/wide-table-statement.cac
 export type EntityRecordHydrated = EntityRecordSelect & {
   normalizedData: Record<string, unknown>;
 };
+
+/**
+ * A hydrated record without the raw `data` payload (#433) — what the list
+ * endpoint projects. See `findHydratedMany`'s `includeData` option.
+ */
+export type EntityRecordHydratedListItem = Omit<EntityRecordHydrated, "data">;
 
 /**
  * Per-statement row cap for the bulk methods. Sized to stay well under
@@ -123,6 +128,7 @@ export class EntityRecordsRepository extends Repository<
         } as never,
       })
       .returning();
+    await invalidateCounts([data.connectorEntityId]);
     return row as EntityRecordSelect;
   }
 
@@ -171,6 +177,7 @@ export class EntityRecordsRepository extends Repository<
       for (const r of rows) out.push(r as EntityRecordSelect);
       onChunkComplete?.(batch.length);
     }
+    await invalidateCounts(data.map((d) => d.connectorEntityId));
     return out;
   }
 
@@ -266,6 +273,7 @@ export class EntityRecordsRepository extends Repository<
           this.notDeleted()
         )
       );
+    await invalidateCounts([connectorEntityId]);
     return result.count;
   }
 
@@ -302,6 +310,7 @@ export class EntityRecordsRepository extends Repository<
         )
       )
       .returning({ id: entityRecords.id });
+    await invalidateCounts([connectorEntityId]);
     return (result as Array<{ id: string }>).map((r) => r.id);
   }
 
@@ -327,6 +336,7 @@ export class EntityRecordsRepository extends Repository<
           this.notDeleted()
         )
       );
+    await invalidateCounts(connectorEntityIds);
     return result.count;
   }
 
@@ -384,15 +394,44 @@ export class EntityRecordsRepository extends Repository<
    * `normalizedDataProjection` lets the caller narrow the rebuilt blob
    * to a subset of keys — used by the `?columns=` REST parameter so the
    * server doesn't ship every column when the client wants two.
+   *
+   * `includeData: false` drops the raw `data` payload from the projection
+   * (#433). It is the connector's pre-mapping blob — ~2KB/row — and
+   * selecting it made the hashed side of this join 1101 bytes wide, which
+   * spilled it to 64 disk batches (19.9s of temp I/O) before the LIMIT
+   * discarded all but ten rows. The list endpoint passes `false` because
+   * the table renders from `normalizedData`; the default stays `true` so
+   * the other callers — which load whole entities for cross-entity
+   * comparison, and the entity-group resolve endpoint, which returns
+   * `data` in its response — are unaffected.
    */
   async findHydratedMany(
     connectorEntityId: string,
     opts: ListOptions & {
       where?: SQL;
       normalizedDataProjection?: SQL;
+      includeData: false;
+    },
+    client?: DbClient
+  ): Promise<EntityRecordHydratedListItem[]>;
+  async findHydratedMany(
+    connectorEntityId: string,
+    opts?: ListOptions & {
+      where?: SQL;
+      normalizedDataProjection?: SQL;
+      includeData?: true;
+    },
+    client?: DbClient
+  ): Promise<EntityRecordHydrated[]>;
+  async findHydratedMany(
+    connectorEntityId: string,
+    opts: ListOptions & {
+      where?: SQL;
+      normalizedDataProjection?: SQL;
+      includeData?: boolean;
     } = {},
     client: DbClient = db
-  ): Promise<EntityRecordHydrated[]> {
+  ): Promise<EntityRecordHydrated[] | EntityRecordHydratedListItem[]> {
     const stmt = await wideTableStatementCache.get(connectorEntityId, client);
     const tableName = `er__${connectorEntityId}`;
     const rehydrationExpr =
@@ -400,12 +439,22 @@ export class EntityRecordsRepository extends Repository<
       sql.raw(stmt.normalizedDataJsonbExpr("w"));
 
     // Soft-delete guard on entity_records (the wide table has no `deleted` column).
-    const baseWhere = opts.where
+    const filters = opts.where
       ? and(opts.where, this.notDeleted())
       : and(
           eq(entityRecords.connectorEntityId, connectorEntityId),
           this.notDeleted()
         );
+    // #433: a keyset anchor narrows the WHERE instead of skipping rows.
+    const baseWhere = opts.keyset
+      ? and(
+          filters,
+          buildKeysetPredicate({
+            ...opts.keyset,
+            direction: opts.orderBy?.direction,
+          })
+        )
+      : filters;
 
     // We build the SELECT manually because Drizzle's typed builder
     // doesn't model dynamically-named tables (the wide table is per
@@ -417,8 +466,17 @@ export class EntityRecordsRepository extends Repository<
       : sql``;
     const limitClause =
       opts.limit !== undefined ? sql` LIMIT ${opts.limit}` : sql``;
+    // A keyset seek already encodes the position, so OFFSET would skip a
+    // second time on top of it.
     const offsetClause =
-      opts.offset !== undefined ? sql` OFFSET ${opts.offset}` : sql``;
+      opts.offset !== undefined && !opts.keyset
+        ? sql` OFFSET ${opts.offset}`
+        : sql``;
+
+    const includeData = opts.includeData ?? true;
+    // Omitting `data` is what keeps the hashed side narrow — see the doc
+    // comment. Everything else in the projection is fixed-width metadata.
+    const dataColumn = includeData ? sql`"entity_records".data,` : sql``;
 
     const rows = await (client as typeof db).execute(sql`
       SELECT
@@ -426,7 +484,7 @@ export class EntityRecordsRepository extends Repository<
         "entity_records".connector_entity_id, "entity_records".source_id,
         "entity_records".checksum, "entity_records".synced_at,
         "entity_records".origin, "entity_records".validation_errors,
-        "entity_records".is_valid, "entity_records".data,
+        "entity_records".is_valid, ${dataColumn}
         "entity_records".created, "entity_records".created_by,
         "entity_records".updated, "entity_records".updated_by,
         "entity_records".deleted, "entity_records".deleted_by,
@@ -439,7 +497,10 @@ export class EntityRecordsRepository extends Repository<
       ${limitClause}
       ${offsetClause}
     `);
-    return rowsToHydrated(rows as unknown as Record<string, unknown>[]);
+    const typedRows = rows as unknown as Record<string, unknown>[];
+    return includeData
+      ? rowsToHydrated(typedRows)
+      : typedRows.map(rowToListItem);
   }
 
   /**
@@ -447,12 +508,21 @@ export class EntityRecordsRepository extends Repository<
    * `findHydratedMany` uses. Required because `where` may reference
    * the `w` alias (typed wide-table columns) for filter / search,
    * which the base `count` doesn't know about.
+   *
+   * `requiresWideTable: false` drops the JOIN (#433). Only search and the
+   * advanced filters reference `w`; an unfiltered count doesn't, and joining
+   * the whole wide table to count rows it cannot exclude is pure work — it
+   * doubled the scan on app-dev (3,780ms with the join, 3,472ms without,
+   * both against 283K rows). The caller knows which conditions it built, so
+   * it declares this rather than having the SQL inspected.
    */
   async countHydrated(
     connectorEntityId: string,
     where?: SQL,
-    client: DbClient = db
+    client: DbClient = db,
+    opts: { requiresWideTable?: boolean } = {}
   ): Promise<number> {
+    const { requiresWideTable = true } = opts;
     const tableName = `er__${connectorEntityId}`;
     const baseWhere = where
       ? and(where, this.notDeleted())
@@ -460,11 +530,14 @@ export class EntityRecordsRepository extends Repository<
           eq(entityRecords.connectorEntityId, connectorEntityId),
           this.notDeleted()
         );
+    const joinClause = requiresWideTable
+      ? sql`JOIN ${sql.raw(`"${tableName}"`)} w
+        ON w."entity_record_id" = "entity_records".id`
+      : sql``;
     const result = (await (client as typeof db).execute(sql`
       SELECT count(*) AS count
       FROM ${entityRecords}
-      JOIN ${sql.raw(`"${tableName}"`)} w
-        ON w."entity_record_id" = "entity_records".id
+      ${joinClause}
       WHERE ${baseWhere}
     `)) as unknown as Array<{ count: number | string }>;
     return Number(result[0]?.count ?? 0);
@@ -510,10 +583,27 @@ export class EntityRecordsRepository extends Repository<
  * Convert raw rows from `client.execute` (snake_case columns) into the
  * camelCased `EntityRecordHydrated` shape Drizzle returns elsewhere.
  */
-function rowsToHydrated(
-  rows: Record<string, unknown>[]
-): EntityRecordHydrated[] {
-  return rows.map((r) => ({
+/**
+ * Drop cached list totals for every entity a write touched (#433).
+ *
+ * Placed in the repository rather than at the ~15 call sites that write
+ * records — adapters, agent tools, the commit and import services, the
+ * routes. Scattering it is precisely what the next writer would miss, and a
+ * miss is silent.
+ *
+ * Best-effort by design: `EntityRecordCountCache.invalidate` swallows its own
+ * failures, and a total that outlives its invalidation is wrong for at most
+ * the cache TTL — a wrong page count, never wrong rows.
+ */
+async function invalidateCounts(connectorEntityIds: string[]): Promise<void> {
+  const unique = [...new Set(connectorEntityIds.filter(Boolean))];
+  await Promise.all(unique.map((id) => EntityRecordCountCache.invalidate(id)));
+}
+
+function rowToListItem(
+  r: Record<string, unknown>
+): EntityRecordHydratedListItem {
+  return {
     id: r.id as string,
     organizationId: r.organization_id as string,
     connectorEntityId: r.connector_entity_id as string,
@@ -524,7 +614,6 @@ function rowsToHydrated(
     validationErrors:
       r.validation_errors as EntityRecordSelect["validationErrors"],
     isValid: r.is_valid as boolean,
-    data: (r.data ?? {}) as Record<string, unknown>,
     normalizedData: (r.normalized_data ?? {}) as Record<string, unknown>,
     created: r.created as number,
     createdBy: r.created_by as string,
@@ -532,21 +621,110 @@ function rowsToHydrated(
     updatedBy: r.updated_by as string | null,
     deleted: r.deleted as number | null,
     deletedBy: r.deleted_by as string | null,
+  };
+}
+
+function rowsToHydrated(
+  rows: Record<string, unknown>[]
+): EntityRecordHydrated[] {
+  return rows.map((r) => ({
+    ...rowToListItem(r),
+    data: (r.data ?? {}) as Record<string, unknown>,
   }));
 }
 
-function buildOrderByClause(opts: {
+/**
+ * Build the list ORDER BY clause (#433).
+ *
+ * Two rules, both load-bearing:
+ *
+ * - **A unique trailing `id`.** `ORDER BY <key>` alone leaves ties in an
+ *   undefined order, and paginating over an undefined order repeats and
+ *   skips rows. Ties are routine here — a sync stamps thousands of rows with
+ *   the same `synced_at`, and on app-dev that column has exactly one distinct
+ *   value across 283K rows. The tiebreaker is also what lets a keyset cursor
+ *   seek past a position it can uniquely identify.
+ * - **`NULLS LAST` only when the column is nullable.** A plain btree serves
+ *   `ASC NULLS LAST` and `DESC NULLS FIRST`, never `DESC NULLS LAST`. On a
+ *   NOT NULL column the clause changes no rows and costs the index — 3,294ms
+ *   vs 15.7ms for the same query on app-dev.
+ *
+ * Nullability is read off Drizzle `Column`s directly. A raw `SQL` expression
+ * (a typed wide-table `c_*` column, via `buildSortExpression`) carries no
+ * such metadata, so the caller declares it; the default is `true`, which
+ * preserves the previous behavior for any caller that doesn't.
+ *
+ * Exported for unit test — rule 2 is invisible behaviorally on a NOT NULL
+ * column, where both spellings return identical rows and only the plan
+ * differs.
+ */
+/**
+ * Build the "seek past this row" predicate for keyset pagination (#433).
+ *
+ * For a NOT NULL sort column this is the textbook row-value comparison:
+ * `(col, id) > (value, id)` ascending, `<` descending.
+ *
+ * For a **nullable** column it cannot be. Row-value comparison propagates
+ * NULL — `(NULL, 'x') > ('Boston', 'y')` evaluates to NULL, not true or
+ * false — so every row in the NULL region fails the predicate and silently
+ * disappears from the walk. Since `buildOrderByClause` places NULLs last in
+ * *both* directions, the ordering is "all non-null values, then all NULLs",
+ * and seeking has to be spelled out against that:
+ *
+ * - anchored on a real value → the rest of the non-null run, then the whole
+ *   NULL region;
+ * - anchored inside the NULL region → only the NULL region, by tiebreaker.
+ *
+ * `c_city` on app-dev is the shape this exists for: 19 distinct values and
+ * 3,914 NULLs across 283,000 rows.
+ *
+ * Exported for unit test.
+ */
+export function buildKeysetPredicate(opts: {
+  column: Column | SQL;
+  value: string | number | null;
+  id: string;
+  direction?: "asc" | "desc";
+  nullable: boolean;
+}): SQL {
+  const { column: col, value, id, direction = "asc", nullable } = opts;
+  const ahead = direction === "desc" ? sql`<` : sql`>`;
+  const tiebreak = sql`${entityRecords.id} ${ahead} ${id}`;
+
+  if (!nullable) {
+    // NULL never reaches here, so the row-value form is safe and lets the
+    // planner drive the composite index directly.
+    return sql`(${col}, ${entityRecords.id}) ${ahead} (${value}, ${id})`;
+  }
+
+  if (value === null) {
+    // Already past every non-null value; only the NULL region remains.
+    return sql`(${col} IS NULL AND ${tiebreak})`;
+  }
+
+  return sql`(${col} ${ahead} ${value} OR (${col} = ${value} AND ${tiebreak}) OR ${col} IS NULL)`;
+}
+
+export function buildOrderByClause(opts: {
   column: Column | SQL;
   direction?: "asc" | "desc";
+  nullable?: boolean;
 }): SQL {
   const { column: col, direction = "asc" } = opts;
-  if (col instanceof Column) {
-    const fn = direction === "desc" ? desc : asc;
-    return sql` ORDER BY ${fn(col)} NULLS LAST`;
+  const dir = direction === "desc" ? sql`DESC` : sql`ASC`;
+
+  // Already ordering by the tiebreaker — don't repeat it.
+  if (col instanceof Column && col === entityRecords.id) {
+    return sql` ORDER BY ${col} ${dir}`;
   }
-  return direction === "desc"
-    ? sql` ORDER BY ${col} DESC NULLS LAST`
-    : sql` ORDER BY ${col} ASC NULLS LAST`;
+
+  const nullable =
+    col instanceof Column ? !col.notNull : (opts.nullable ?? true);
+  const nulls = nullable ? sql` NULLS LAST` : sql``;
+
+  // The tiebreaker takes the same direction as the sort key: mismatched
+  // directions cannot be served by a single index scan.
+  return sql` ORDER BY ${col} ${dir}${nulls}, ${entityRecords.id} ${dir}`;
 }
 
 /** Singleton instance. */

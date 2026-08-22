@@ -623,9 +623,19 @@ describe("Portal Results Router", () => {
         await import("@portalai/core/constants");
       // Exhaust the shared viz-refresh window (same budget as the
       // message-block addresser). The 429 fires before row lookup.
-      for (let i = 0; i <= VIZ_REFRESH_RATE_PER_MIN; i++) {
-        await incrementRateWindow(`viz-refresh:${organizationId}`);
-      }
+      //
+      // The window is a wall-clock minute (`floor(now / 60_000)`), so a loop
+      // that straddles a boundary leaves its increments split across two
+      // windows and the request below sees a fresh one. Re-exhaust until the
+      // whole loop lands inside a single minute.
+      const currentMinute = () => Math.floor(Date.now() / 60_000);
+      let minute: number;
+      do {
+        minute = currentMinute();
+        for (let i = 0; i <= VIZ_REFRESH_RATE_PER_MIN; i++) {
+          await incrementRateWindow(`viz-refresh:${organizationId}`);
+        }
+      } while (currentMinute() !== minute);
 
       const res = await request(app)
         .post(`/api/portal-results/${generateId()}/refresh`)

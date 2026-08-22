@@ -352,6 +352,17 @@ A new entry therefore ships with **two** things:
 
 This is not hypothetical bookkeeping: #316 added three geospatial definitions with a schema-only migration and stranded four app-dev orgs, which is what #414 had to repair. The same rule applies to any table seeded per-organization rather than globally — global seeds (tiers, connector definitions) are covered by `SeedService.seed()` and `portalops db seed`, which are safe to re-run.
 
+### Indexing and ordering a table that will grow (#433)
+
+`created` is the default `sortBy` for **every** paginated list in the app (`usePagination`'s `defaultSortBy`), and before #433 **no table in the schema indexed it**. Every list endpoint was doing a full sort; it was only visible on `entity_records` because that was the only large table. Two rules follow, and they apply to any table that can grow:
+
+- **Index the scope + sort key + tiebreaker**, partial on the soft-delete guard: `(<scope>, created, id) WHERE deleted IS NULL`. Scope column first so one tenant/parent is a contiguous range, then the sort key, then `id`. Without it, `WHERE scope = ? ORDER BY created LIMIT 10` cannot stream — Postgres materializes every matching row and sorts. On 283K rows that measured **14,635ms vs 86ms**.
+- **Every paginated `ORDER BY` ends in a unique tiebreaker.** Ties otherwise come back in an undefined order, and paginating over an undefined order **repeats and skips rows**. This is not exotic: `synced_at` had exactly *one* distinct value across 283K rows. `base.repository.findMany` and `entity-records.repository`'s clause builder both append `id` automatically — a hand-rolled `ORDER BY` must too.
+
+Related: `NULLS LAST` is emitted **only for nullable sort columns**. A plain btree serves `ASC NULLS LAST` and `DESC NULLS FIRST` but never `DESC NULLS LAST`, so adding it to a `NOT NULL` column changes no rows and costs the index (3,294ms vs 15.7ms).
+
+**Deep pagination cannot be fixed by indexing.** The planner abandons the sort index once `OFFSET` is large and falls back to a spilling hash join — measured 21ms (keyset seek) vs 24,457ms (`OFFSET`) at the same position, *both* ordering by an indexed column. A list that can get big pages by keyset cursor (`usePagination`'s `mode: "keyset"`); `offset` stays valid and is fine while a table is small.
+
 ### Adding a new repository
 
 Extend `Repository<TTable, TSelect, TInsert>` in `apps/api/src/db/repositories/`. The base class provides `findById`, `findMany`, `count`, `create`, `createMany`, `update`, `updateWhere`, `updateMany`, `softDelete`, `softDeleteMany`, `hardDelete`, `hardDeleteMany`. All reads/updates automatically skip soft-deleted rows (`deleted IS NOT NULL`).

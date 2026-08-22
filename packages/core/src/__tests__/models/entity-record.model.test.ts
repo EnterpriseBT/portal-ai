@@ -2,6 +2,7 @@ import {
   EntityRecordModel,
   EntityRecordModelFactory,
   EntityRecordSchema,
+  EntityRecordListItemSchema,
 } from "../../models/entity-record.model.js";
 import {
   UUID_REGEX,
@@ -289,5 +290,66 @@ describe("EntityRecordSchema — validation fields", () => {
     if (result.success) {
       expect(result.data.validationErrors).toBeNull();
     }
+  });
+});
+
+// ── EntityRecordListItemSchema (#433) ────────────────────────────────
+
+/**
+ * The list projection. `data` is the raw pre-mapping payload — ~2KB/row on
+ * a real dataset, and the sole reason the list query's hash side was 1101
+ * bytes wide and spilled to 64 disk batches. No list consumer reads it: the
+ * table renders from `normalizedData`.
+ *
+ * Narrowing the schema rather than making `data` optional is deliberate —
+ * it keeps the detail path's guarantee intact and makes `tsc` name every
+ * call site that would lose the field.
+ */
+describe("EntityRecordListItemSchema", () => {
+  const fullRecord = {
+    id: "rec-1",
+    organizationId: "org-1",
+    connectorEntityId: "ce-1",
+    data: { "First Name": "Jane" },
+    normalizedData: { first_name: "Jane" },
+    sourceId: "row-0",
+    checksum: "abc123",
+    syncedAt: Date.now(),
+    validationErrors: null,
+    isValid: true,
+    created: Date.now(),
+    createdBy: "user-1",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  };
+  const { data: _data, ...listItem } = fullRecord;
+
+  it("accepts a record with no `data` key", () => {
+    const result = EntityRecordListItemSchema.safeParse(listItem);
+    expect(result.success).toBe(true);
+  });
+
+  it("still requires every other field EntityRecordSchema requires", () => {
+    const { sourceId: _sourceId, ...missingSourceId } = listItem;
+    expect(EntityRecordListItemSchema.safeParse(missingSourceId).success).toBe(
+      false
+    );
+    const { normalizedData: _nd, ...missingNormalized } = listItem;
+    expect(
+      EntityRecordListItemSchema.safeParse(missingNormalized).success
+    ).toBe(false);
+  });
+
+  it("accepts anything EntityRecordSchema accepts, minus `data`", () => {
+    expect(EntityRecordSchema.safeParse(fullRecord).success).toBe(true);
+    expect(EntityRecordListItemSchema.safeParse(fullRecord).success).toBe(true);
+  });
+
+  it("leaves EntityRecordSchema still requiring `data`", () => {
+    // The detail path keeps its guarantee — this is a narrowing of the list
+    // projection, not a weakening of the model.
+    expect(EntityRecordSchema.safeParse(listItem).success).toBe(false);
   });
 });
