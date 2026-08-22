@@ -88,7 +88,7 @@ describe("GET /api/connector-entities/:id/records — cursors (#433)", () => {
       category: "crm",
       authType: "none",
       configSchema: {},
-      capabilityFlags: { sync: true },
+      capabilityFlags: { sync: true, write: true },
       isActive: true,
       version: "1.0.0",
       iconUrl: null,
@@ -111,7 +111,8 @@ describe("GET /api/connector-entities/:id/records — cursors (#433)", () => {
       credentials: null,
       lastSyncAt: null,
       lastErrorMessage: null,
-      enabledCapabilityFlags: null,
+      // Write-enabled so the create route can exercise count invalidation.
+      enabledCapabilityFlags: { write: true },
       created: now,
       createdBy: "test",
       updated: null,
@@ -300,6 +301,25 @@ describe("GET /api/connector-entities/:id/records — cursors (#433)", () => {
         baseline.body.payload.records.map((r: { id: string }) => r.id)
       );
     }
+  });
+
+  it("keeps `total` correct after a write invalidates the cached count", async () => {
+    // The count is cached per (entity, filter set) so paging doesn't re-run a
+    // full count. A write has to drop it, or the toolbar would report a stale
+    // page count for up to the TTL.
+    const before = await request(app)
+      .get(url())
+      .query({ limit: 3 })
+      .expect(200);
+    expect(before.body.payload.total).toBe(RECORD_COUNT);
+
+    const created = await request(app)
+      .post(url())
+      .send({ normalizedData: {}, sourceId: "src-new" });
+    expect(created.body.success).toBe(true);
+
+    const after = await request(app).get(url()).query({ limit: 3 }).expect(200);
+    expect(after.body.payload.total).toBe(RECORD_COUNT + 1);
   });
 
   it("still serves offset pagination unchanged", async () => {

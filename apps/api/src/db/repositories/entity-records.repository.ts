@@ -28,6 +28,7 @@ import {
 } from "./base.repository.js";
 import type { EntityRecordSelect, EntityRecordInsert } from "../schema/zod.js";
 import { wideTableStatementCache } from "../../services/wide-table-statement.cache.js";
+import { EntityRecordCountCache } from "../../services/entity-record-count.cache.js";
 
 /**
  * Repository read shape after Phase 2: same transactional fields plus
@@ -127,6 +128,7 @@ export class EntityRecordsRepository extends Repository<
         } as never,
       })
       .returning();
+    await invalidateCounts([data.connectorEntityId]);
     return row as EntityRecordSelect;
   }
 
@@ -175,6 +177,7 @@ export class EntityRecordsRepository extends Repository<
       for (const r of rows) out.push(r as EntityRecordSelect);
       onChunkComplete?.(batch.length);
     }
+    await invalidateCounts(data.map((d) => d.connectorEntityId));
     return out;
   }
 
@@ -270,6 +273,7 @@ export class EntityRecordsRepository extends Repository<
           this.notDeleted()
         )
       );
+    await invalidateCounts([connectorEntityId]);
     return result.count;
   }
 
@@ -306,6 +310,7 @@ export class EntityRecordsRepository extends Repository<
         )
       )
       .returning({ id: entityRecords.id });
+    await invalidateCounts([connectorEntityId]);
     return (result as Array<{ id: string }>).map((r) => r.id);
   }
 
@@ -331,6 +336,7 @@ export class EntityRecordsRepository extends Repository<
           this.notDeleted()
         )
       );
+    await invalidateCounts(connectorEntityIds);
     return result.count;
   }
 
@@ -502,12 +508,21 @@ export class EntityRecordsRepository extends Repository<
    * `findHydratedMany` uses. Required because `where` may reference
    * the `w` alias (typed wide-table columns) for filter / search,
    * which the base `count` doesn't know about.
+   *
+   * `requiresWideTable: false` drops the JOIN (#433). Only search and the
+   * advanced filters reference `w`; an unfiltered count doesn't, and joining
+   * the whole wide table to count rows it cannot exclude is pure work — it
+   * doubled the scan on app-dev (3,780ms with the join, 3,472ms without,
+   * both against 283K rows). The caller knows which conditions it built, so
+   * it declares this rather than having the SQL inspected.
    */
   async countHydrated(
     connectorEntityId: string,
     where?: SQL,
-    client: DbClient = db
+    client: DbClient = db,
+    opts: { requiresWideTable?: boolean } = {}
   ): Promise<number> {
+    const { requiresWideTable = true } = opts;
     const tableName = `er__${connectorEntityId}`;
     const baseWhere = where
       ? and(where, this.notDeleted())
@@ -515,11 +530,14 @@ export class EntityRecordsRepository extends Repository<
           eq(entityRecords.connectorEntityId, connectorEntityId),
           this.notDeleted()
         );
+    const joinClause = requiresWideTable
+      ? sql`JOIN ${sql.raw(`"${tableName}"`)} w
+        ON w."entity_record_id" = "entity_records".id`
+      : sql``;
     const result = (await (client as typeof db).execute(sql`
       SELECT count(*) AS count
       FROM ${entityRecords}
-      JOIN ${sql.raw(`"${tableName}"`)} w
-        ON w."entity_record_id" = "entity_records".id
+      ${joinClause}
       WHERE ${baseWhere}
     `)) as unknown as Array<{ count: number | string }>;
     return Number(result[0]?.count ?? 0);
@@ -565,6 +583,23 @@ export class EntityRecordsRepository extends Repository<
  * Convert raw rows from `client.execute` (snake_case columns) into the
  * camelCased `EntityRecordHydrated` shape Drizzle returns elsewhere.
  */
+/**
+ * Drop cached list totals for every entity a write touched (#433).
+ *
+ * Placed in the repository rather than at the ~15 call sites that write
+ * records — adapters, agent tools, the commit and import services, the
+ * routes. Scattering it is precisely what the next writer would miss, and a
+ * miss is silent.
+ *
+ * Best-effort by design: `EntityRecordCountCache.invalidate` swallows its own
+ * failures, and a total that outlives its invalidation is wrong for at most
+ * the cache TTL — a wrong page count, never wrong rows.
+ */
+async function invalidateCounts(connectorEntityIds: string[]): Promise<void> {
+  const unique = [...new Set(connectorEntityIds.filter(Boolean))];
+  await Promise.all(unique.map((id) => EntityRecordCountCache.invalidate(id)));
+}
+
 function rowToListItem(
   r: Record<string, unknown>
 ): EntityRecordHydratedListItem {

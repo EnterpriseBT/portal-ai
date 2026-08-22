@@ -6,7 +6,7 @@
  */
 
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, sql, type SQL } from "drizzle-orm";
+import { eq, and, sql, inArray, type SQL } from "drizzle-orm";
 
 import { EntityRecordModelFactory } from "@portalai/core/models";
 import { UUIDv4Factory } from "@portalai/core/utils";
@@ -36,13 +36,14 @@ import {
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
-import { entityRecords } from "../db/schema/index.js";
+import { entityRecords, columnDefinitions } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { fieldMappingsRepo } from "../db/repositories/field-mappings.repository.js";
 import { columnDefinitionsRepo } from "../db/repositories/column-definitions.repository.js";
+import { EntityRecordCountCache } from "../services/entity-record-count.cache.js";
 import type { EntityRecordHydratedListItem } from "../db/repositories/entity-records.repository.js";
 import {
   buildJsonbObjectExpr,
@@ -78,15 +79,14 @@ async function resolveColumns(
   if (mappings.length === 0) return [];
 
   const colDefIds = [...new Set(mappings.map((m) => m.columnDefinitionId))];
-  const colDefs = await Promise.all(
-    colDefIds.map((id) => columnDefinitionsRepo.findById(id))
+  // #433: one statement, not one per column. This ran on every list request —
+  // 14 round-trips for a 13-column entity, against a pool of 10, so a handful
+  // of concurrent list requests could starve unrelated queries of connections.
+  const colDefs = await columnDefinitionsRepo.findMany(
+    inArray(columnDefinitions.id, colDefIds)
   );
 
-  const colDefMap = new Map(
-    colDefs
-      .filter((cd): cd is NonNullable<typeof cd> => cd != null)
-      .map((cd) => [cd.id, cd])
-  );
+  const colDefMap = new Map(colDefs.map((cd) => [cd.id, cd]));
 
   return mappings.reduce<ResolvedColumn[]>((acc, m) => {
     const cd = colDefMap.get(m.columnDefinitionId);
@@ -364,6 +364,24 @@ entityRecordRouter.get(
         normalizedDataProjection = sql.raw(buildJsonbObjectExpr(pairs));
       }
 
+      // #433: the exact total costs a full count — 3,472ms over 283K rows on
+      // app-dev — and it was recomputed on every page. Cache it per
+      // (entity, filter set): paging hits the cache the first page populated,
+      // and only a filter change or a write pays for it again.
+      const countFingerprint = EntityRecordCountCache.fingerprint({
+        search,
+        filters,
+        isValid,
+      });
+      const cachedTotal = await EntityRecordCountCache.get(
+        connectorEntityId,
+        countFingerprint
+      );
+
+      // Only search and the advanced filters reference the wide table; an
+      // unfiltered count doesn't need the JOIN at all.
+      const countRequiresWideTable = Boolean(search || filters);
+
       const [probedRecords, total] = await Promise.all([
         DbService.repository.entityRecords.findHydratedMany(connectorEntityId, {
           where,
@@ -380,10 +398,20 @@ entityRecordRouter.get(
           // that leads nowhere.
           limit: limit + 1,
         }),
-        DbService.repository.entityRecords.countHydrated(
-          connectorEntityId,
-          where
-        ),
+        cachedTotal !== null
+          ? Promise.resolve(cachedTotal)
+          : DbService.repository.entityRecords
+              .countHydrated(connectorEntityId, where, undefined, {
+                requiresWideTable: countRequiresWideTable,
+              })
+              .then(async (computed) => {
+                await EntityRecordCountCache.set(
+                  connectorEntityId,
+                  countFingerprint,
+                  computed
+                );
+                return computed;
+              }),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(
@@ -667,6 +695,9 @@ entityRecordRouter.post(
           parsed_,
           tx
         );
+        // #433: `create`/`update`/`softDelete` are generic base methods, so
+        // the repository's own invalidation hook doesn't see them.
+        await EntityRecordCountCache.invalidate(connectorEntityId);
         const stmt = await wideTableStatementCache.get(connectorEntityId, tx);
         const mappings = buildMappingsForProjection(stmt.columns);
         await DbService.repository.wideTable.upsertMany(
@@ -1054,6 +1085,9 @@ entityRecordRouter.patch(
           },
           tx
         );
+        // A patch can flip `isValid`, which is part of the count
+        // fingerprint — so the validity-filtered totals move too.
+        await EntityRecordCountCache.invalidate(connectorEntityId);
         // Partial-merge into the wide table: only the keys present in
         // the patch are written. Unknown keys (no field mapping) are
         // silently dropped by `updatePartial`.
@@ -1206,6 +1240,7 @@ entityRecordRouter.delete(
           userId,
           tx
         );
+        await EntityRecordCountCache.invalidate(connectorEntityId);
         await DbService.repository.wideTable.softDeleteByEntityRecordIds(
           connectorEntityId,
           [recordId],

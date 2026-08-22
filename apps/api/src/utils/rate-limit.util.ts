@@ -22,45 +22,15 @@
  */
 
 import { getRedisClient } from "./redis.util.js";
+import { withRedisTimeout, REDIS_OP_TIMEOUT_MS } from "./redis-timeout.util.js";
 
 const WINDOW_TTL_SECONDS = 120; // covers the current minute + boundary slack
 
 /**
- * Ceiling for a single Redis round-trip. A healthy `INCR` is sub-millisecond;
- * anything approaching this is an outage, not load. Deliberately short — the
- * cost of giving up early is one unmetered call, and the cost of waiting is a
- * held connection on a public endpoint.
+ * Re-exported so this module's existing callers and tests keep one name for
+ * the bound. The helper itself lives in `redis-timeout.util.ts`.
  */
-export const REDIS_OP_TIMEOUT_MS = 1_000;
-
-/** Reject if `operation` hasn't settled within `REDIS_OP_TIMEOUT_MS`. */
-async function bounded<T>(operation: Promise<T>, label: string): Promise<T> {
-  // Observe the abandoned command so a late failure can't surface as an
-  // unhandled rejection (which would take the process down).
-  void operation.catch(() => {});
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      operation,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () =>
-            reject(
-              new Error(
-                `Redis ${label} timed out after ${REDIS_OP_TIMEOUT_MS}ms`
-              )
-            ),
-          REDIS_OP_TIMEOUT_MS
-        );
-        // Don't hold the event loop open on shutdown.
-        timer.unref?.();
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
+export { REDIS_OP_TIMEOUT_MS };
 
 /**
  * Increment the counter for `key` in the current wall-clock-minute window and
@@ -78,9 +48,12 @@ export async function incrementRateWindow(
 ): Promise<number> {
   const redis = getRedisClient();
   const windowKey = `usage:rate:${key}:${Math.floor(now / 60_000)}`;
-  const count = await bounded(redis.incr(windowKey), "INCR");
+  const count = await withRedisTimeout(redis.incr(windowKey), "INCR");
   if (count === 1) {
-    await bounded(redis.expire(windowKey, WINDOW_TTL_SECONDS), "EXPIRE");
+    await withRedisTimeout(
+      redis.expire(windowKey, WINDOW_TTL_SECONDS),
+      "EXPIRE"
+    );
   }
   return count;
 }
