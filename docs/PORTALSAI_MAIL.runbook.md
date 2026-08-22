@@ -1,6 +1,6 @@
 # portalsai.io mail — Runbook
 
-**Issue:** [EnterpriseBT/portal-ai#369](https://github.com/EnterpriseBT/portal-ai/issues/369) · Spec: `docs/PORTALSAI_MAIL.spec.md`
+**Issue:** [EnterpriseBT/portal-ai#369](https://github.com/EnterpriseBT/portal-ai/issues/369)
 
 The half of #369 that cannot be code. Creating a Google Workspace tenant needs a paid seat, console access, and a human — there is no API we hold a credential for. The charter classifies these steps as **out-of-band, runbook-driven** (`docs/CLI_OPERATIONS_CHARTER.md` → AWS), and this file is the executable artifact behind that classification.
 

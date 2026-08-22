@@ -530,7 +530,8 @@ Notes:
 - **Skip or condense artifacts when proportionate.** A one-line typo fix or a localized bug with a clear reproduction goes straight to implementation — no docs at all. A small-but-real ticket takes the **condensed path** (one combined doc — see below). Anything that touches more than one package, introduces a new pattern, or changes a contract produces all five artifacts. The call is made at ticket time (`## Sizing`) and revisited at discovery if it was wrong.
 - **Phase = commit, not PR.** The phases exist to (a) break work into single testable units and (b) keep each commit reviewable on its own. They do **not** mean separate PRs.
 - **When to split a feature across multiple PRs.** Only when context-window management forces it — features so large that a single AI-assisted session can't hold the implementation in context end-to-end. Each split PR ships a complete, testable slice (its own branch off `main`, its own ticket reference, `Closes #N` on the final slice). For human-driven work, "too big" is rarely the reason — prefer one PR.
-- **Doc artifacts live in `docs/`** with the existing suffix convention (`.discovery.md`, `.spec.md`, `.plan.md`). For multi-PR features, the plan doc names the slices and the slice mapping appears in each PR's body.
+- **Doc artifacts live in `docs/`** with the existing suffix convention (`.discovery.md`, `.spec.md`, `.plan.md`, `.smoke.md`, `.condensed.md`). For multi-PR features, the plan doc names the slices and the slice mapping appears in each PR's body.
+- **Phase docs are ephemeral, and the suffix is what says so (#419).** Those five suffixes mark a per-ticket working artifact; a doc with **no** suffix is a durable reference (the CLI operations charter, the custom-toolpack contract, `LOCAL_DEVELOPMENT.md`, the runbooks) and is maintained indefinitely. **Starting a feature ticket sweeps `docs/` of leftover phase docs** — `/discovery` does it as its first action when the Issue Type is `Feature`, so the tree never accumulates. Bugfixes don't sweep; their write-ups live until the next feature. Nothing is lost: `git log --diff-filter=D -- docs/` finds a deleted doc and `git show <sha>:<path>` reads it, with the ticket, branch and PR carrying the context. This is why **a stale `docs/` citation in a source comment is acceptable** and `lint:doc-pointers` exempts ephemeral suffixes — it gates the durable set only. `docs/` was 335 files / 5.8 MB before this rule existed.
 - **The issue body holds the index.** As each doc commits, edit the issue to append the link. The issue is the canonical entry point for anyone catching up on the work.
 - **Project-board card movement.** `Todo` → `In Progress` when the first commit lands on the branch (whichever phase it is). `Done` is set automatically when the PR with `Closes #N` merges.
 
@@ -548,7 +549,7 @@ Feature PRDs are elicited against the **PRD dimension checklist** in `.claude/sk
 
 ### Condensed path for small tickets
 
-When sizing chose `condensed`, `/discovery <N> condensed` writes a single `docs/<SLUG>.md` covering discovery + spec + plan + smoke (exemplar: `docs/PORTAL_MESSAGE_TIMESTAMPS.md`): `**Why.**` → `## Current shape` → `## Decision — <name>` → `## Plan — <n> slice(s)` → `## Smoke (manual, against your dev stack)` → `## Out of scope`, ≤ ~80 lines. `/spec` and `/plan` are not run on a condensed branch (they detect the single doc and defer to it); `/smoke` refreshes the embedded Smoke section, which is the ticket's merge gate.
+When sizing chose `condensed`, `/discovery <N> condensed` writes a single `docs/<SLUG>.condensed.md` covering discovery + spec + plan + smoke (exemplar: `.claude/skills/discovery/EXAMPLE.condensed.md`). The `.condensed.md` suffix is load-bearing — it is what makes the sweep above mechanical, since a bare `<SLUG>.md` is indistinguishable from a durable reference. Shape: `**Why.**` → `## Current shape` → `## Decision — <name>` → `## Plan — <n> slice(s)` → `## Smoke (manual, against your dev stack)` → `## Out of scope`, ≤ ~80 lines. `/spec` and `/plan` are not run on a condensed branch (they detect the single doc and defer to it); `/smoke` refreshes the embedded Smoke section, which is the ticket's merge gate.
 
 ### Enterprise-scale considerations in discovery
 
@@ -566,7 +567,7 @@ Portals AI is an enterprise, multi-tenant, billing-facing product — a discover
 
 ### Filing an issue
 
-- File on GitHub (`gh issue create --repo EnterpriseBT/portal-ai`), not in `docs/`. The `docs/` tree is reserved for design specs / plans / smoke checklists.
+- File on GitHub (`gh issue create --repo EnterpriseBT/portal-ai`), not in `docs/`. The `docs/` tree carries durable references plus the in-flight ticket's phase docs — nothing else.
 - Set the **Issue Type** (`Bug` / `Feature` / `Task` / `Epic`) — this is GitHub's structured type field, not a label. There's no `gh issue edit --type` shortcut yet; set it via GraphQL:
   ```bash
   gh api graphql -f query='mutation($id:ID!,$typeId:ID!){updateIssue(input:{id:$id,issueTypeId:$typeId}){issue{number}}}' -f id=<issueNodeId> -f typeId=<IT_…>
@@ -674,7 +675,7 @@ Use that `required_status_checks` sub-resource, **not** `PUT …/protection`: th
 
 **Developer-facing docs**
 - `README.md` (root), `apps/web/README.md`, `apps/api/README.md`, `packages/core/README.md`, `packages/spreadsheet-parsing/README.md`
-- `docs/*.md` design specs/plans, where they describe **shipped** behavior
+- The **durable** (unsuffixed) `docs/` set — `CLI_OPERATIONS_CHARTER.md`, `LOCAL_DEVELOPMENT.md`, the `*.runbook.md` files, the vendor CLI ops guides. Phase docs (`.discovery`/`.spec`/`.plan`/`.smoke`/`.condensed`) are **not** on this list: they describe a decision at a point in time and get swept, so they are never updated to match later behavior
 - `docs/CUSTOM_TOOLPACK_INTEGRATION.md` — the custom-tool author contract
 - `CLAUDE.md` itself, when a change alters a documented convention (and its mirror, `.github/copilot-instructions.md`)
 

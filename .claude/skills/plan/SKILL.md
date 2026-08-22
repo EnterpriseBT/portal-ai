@@ -21,10 +21,10 @@ The plan builds directly on the spec. Confirm setup:
 
 ```bash
 git branch --show-current          # must be the feature branch, NOT main
-ls docs/*.spec.md docs/*.discovery.md
+ls docs/*.spec.md docs/*.discovery.md docs/*.condensed.md
 ```
 
-- **Condensed-path detection.** If the branch carries a condensed single doc — `docs/<SLUG>.md` whose header says **small / condensed** — and no `docs/<SLUG>.discovery.md`, stop: this ticket took the condensed path (`/discovery <N> condensed`), and the contract + plan live in that single doc. Offer to extend the condensed doc instead; do not scaffold a separate plan.
+- **Condensed-path detection.** If the branch carries a condensed single doc — `docs/<SLUG>.condensed.md` — and no `docs/<SLUG>.discovery.md`, stop: this ticket took the condensed path (`/discovery <N> condensed`), and the contract + plan live in that single doc. Offer to extend the condensed doc instead; do not scaffold a separate plan.
 - **The spec doc is a prerequisite.** If there is no `docs/<SLUG>.spec.md` on this branch, stop and tell the user to run `/spec <N>` first. The plan sequences the spec's surface + test plan; without a pinned contract there's nothing to slice.
 - If you're on `main` or a branch with no spec, stop and ask. **Never create a new branch** — the plan commits to the *same* branch discovery/spec used.
 - Derive `<SLUG>` from the spec file name.
@@ -32,7 +32,7 @@ ls docs/*.spec.md docs/*.discovery.md
 ### 2. Read the spec (+ discovery) + one reference plan
 
 - Read `docs/<SLUG>.spec.md` in full — its **Surface**, **TDD test plan** (case counts), and **Files touched** are the raw material you sequence. Skim `docs/<SLUG>.discovery.md` for the sequencing rationale (which decisions unblock which).
-- Read **one** existing plan to anchor the house style. Default to `docs/TOOL_COST_GATE.plan.md` (clear slice shape + sequencing rationale) or `docs/SUBSCRIPTION_TIER_POLICY.plan.md`. If the issue resembles another, prefer it.
+- Read **one** plan to anchor the house style. Default to `.claude/skills/plan/EXAMPLE.plan.md` (clear slice shape + sequencing rationale). The exemplar lives beside this skill because phase docs in `docs/` are ephemeral — swept by the next feature ticket — so it can't be kept there.
 
 ### 3. Decide the slice boundaries
 
