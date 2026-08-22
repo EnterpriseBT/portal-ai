@@ -54,6 +54,23 @@ git checkout -b <prefix>/<slug>
 
 If a branch by that name already exists locally or remotely, stop and ask the user how to proceed (extend the existing branch vs. pick a new name). The branch is shared with later phases (spec, plan, implementation) — don't create a new branch when those commit.
 
+### 4a. Sweep spent phase docs (features only)
+
+**Only when the Issue Type is `Feature`.** Bugfixes skip this step entirely — their write-ups live until the next feature sweeps them.
+
+Phase docs are per-ticket working artifacts, not a library (`CLAUDE.md` → "Issue → PR Workflow"). A feature starts by clearing the ones prior tickets left behind, so `docs/` never accumulates:
+
+```bash
+git rm -q docs/*.discovery.md docs/*.spec.md docs/*.plan.md docs/*.smoke.md docs/*.condensed.md 2>/dev/null || true
+git status --short docs/
+```
+
+The glob is the whole rule — an **unsuffixed** doc is a durable reference (charter, integration contract, runbook, `LOCAL_DEVELOPMENT.md`) and is never swept. Commit the sweep on its own (`chore: sweep spent phase docs (#<N>)`) before the discovery doc lands, so the deletion is one reviewable commit rather than noise in the design diff.
+
+Nothing is lost — `git log --diff-filter=D -- docs/` finds any swept doc and `git show <sha>:<path>` reads it, with the ticket and branch carrying the context. Do **not** hunt down source comments that cited a swept doc; a stale `docs/` citation is acceptable by design and `lint:doc-pointers` exempts these suffixes.
+
+If the sweep would delete a doc the user is still working from (another in-flight branch), say so and ask before committing.
+
 ### 5. Survey the codebase
 
 Use the **Explore agent** with a structured prompt — do NOT do this serially with Read/Grep yourself, you will waste context. The prompt template:
@@ -165,9 +182,11 @@ Do **not** stage, commit, push, or open the PR. The user reads the draft, refine
 
 ## Condensed mode (`/discovery <N> condensed`)
 
-For small tickets (single-package, no new pattern, no contract change — the sizing `/ticket` recorded), the four docs collapse into **one** `docs/<SLUG>.md` covering discovery + spec + plan + smoke. Reference exemplar: `docs/PORTAL_MESSAGE_TIMESTAMPS.md`.
+For small tickets (single-package, no new pattern, no contract change — the sizing `/ticket` recorded), the four docs collapse into **one** `docs/<SLUG>.condensed.md` covering discovery + spec + plan + smoke. Reference exemplar: `.claude/skills/discovery/EXAMPLE.condensed.md`.
 
-Steps 1–4 (fetch issue, PRD completeness gate, derive slug, create branch) are identical to full mode — the gate applies to condensed features too. The survey (step 5) shrinks to **targeted reads** of the files the issue names — reach for an Explore agent only if you genuinely don't know where the change lives. Then write `docs/<SLUG>.md` (not `.discovery.md`):
+The `.condensed.md` suffix is required, not cosmetic: it is what marks the doc ephemeral so step 4a's sweep can find it. A bare `docs/<SLUG>.md` is indistinguishable from a durable reference and would survive forever.
+
+Steps 1–4a (fetch issue, PRD completeness gate, derive slug, create branch, sweep) are identical to full mode — the gate and the sweep both apply to condensed features too. The survey (step 5) shrinks to **targeted reads** of the files the issue names — reach for an Explore agent only if you genuinely don't know where the change lives. Then write `docs/<SLUG>.condensed.md`:
 
 ```markdown
 # <Feature name> — Condensed design (#<N>)
