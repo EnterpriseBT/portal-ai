@@ -620,6 +620,34 @@ portalRouter.patch(
 
 // ── DELETE /api/portals/:id ───────────────────────────────────────────────
 
+/**
+ * @openapi
+ * /api/portals/{id}:
+ *   delete:
+ *     tags: [Portals]
+ *     summary: Delete a portal
+ *     description: >
+ *       Cascades to the portal's results. Clients invalidate both `portals` and
+ *       `portalResults` query keys on success.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Deleted; echoes the id
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id: { type: string }
+ *       404:
+ *         description: No such portal (`PORTAL_NOT_FOUND`)
+ */
 portalRouter.delete(
   "/:id",
   getApplicationMetadata,

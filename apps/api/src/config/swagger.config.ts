@@ -54,6 +54,10 @@ import {
   StreamErrorEventSchema,
   EntityRecordListResponsePayloadSchema,
   ConnectorInstanceCreateResponseSchema,
+  EntityRecordCountResponsePayloadSchema,
+  EntityRecordGetResponsePayloadSchema,
+  EntityRecordImportRequestBodySchema,
+  EntityRecordImportResponsePayloadSchema,
   ConnectorInstanceGetResponseSchema,
   ConnectorInstanceListResponsePayloadSchema,
   FileUploadSheetSliceResponsePayloadSchema,
@@ -259,6 +263,30 @@ const domainModelSchemas: Record<string, unknown> = {
 const sheetSliceSchemas: Record<string, unknown> = {
   SheetSliceResponse: z.toJSONSchema(
     FileUploadSheetSliceResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+};
+
+/**
+ * Entity-record payloads referenced by the count / get / import routes, which
+ * carried no `@openapi` block at all until #420. Registered rather than spelled
+ * inline because more than one route names them.
+ */
+const entityRecordSchemas: Record<string, unknown> = {
+  EntityRecordCountResponsePayload: z.toJSONSchema(
+    EntityRecordCountResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  EntityRecordGetResponsePayload: z.toJSONSchema(
+    EntityRecordGetResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  EntityRecordImportRequestBody: z.toJSONSchema(
+    EntityRecordImportRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  EntityRecordImportResponsePayload: z.toJSONSchema(
+    EntityRecordImportResponsePayloadSchema,
     JSON_SCHEMA_OPTS
   ),
 };
@@ -1781,6 +1809,7 @@ const options: swaggerJsdoc.Options = {
         ...connectorInstanceSchemas,
         ...domainModelSchemas,
         ...sheetSliceSchemas,
+        ...entityRecordSchemas,
         ...tierSchemas,
         ...orgSwitcherSchemas,
         ...orgDeleteSchemas,

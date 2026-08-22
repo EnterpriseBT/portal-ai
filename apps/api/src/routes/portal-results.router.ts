@@ -443,6 +443,31 @@ portalResultsRouter.get(
 
 // ── GET /api/portal-results/:id ───────────────────────────────────────────
 
+/**
+ * @openapi
+ * /api/portal-results/{id}:
+ *   get:
+ *     tags: [Portal Results]
+ *     summary: Fetch a single portal result
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: The portal result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 portalResult: { $ref: '#/components/schemas/PortalResult' }
+ *       404:
+ *         description: No such portal result (`PORTAL_RESULT_NOT_FOUND`)
+ */
 portalResultsRouter.get(
   "/:id",
   getApplicationMetadata,

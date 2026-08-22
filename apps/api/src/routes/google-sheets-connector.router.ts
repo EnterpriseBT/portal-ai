@@ -353,6 +353,26 @@ googleSheetsConnectorRouter.post(
  *         name: colEnd
  *         required: true
  *         schema: { type: integer, minimum: 0 }
+ *     responses:
+ *       200:
+ *         description: The requested cell rectangle, clamped to the sheet
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SheetSliceResponse'
+ *       400:
+ *         description: Malformed or missing query params (`GOOGLE_SHEETS_INVALID_PAYLOAD`)
+ *       403:
+ *         description: Connector instance belongs to another organization (`CONNECTOR_INSTANCE_NOT_FOUND`)
+ *       404:
+ *         description: >
+ *           Unknown connector instance (`CONNECTOR_INSTANCE_NOT_FOUND`), no cached
+ *           workbook (`FILE_UPLOAD_SESSION_NOT_FOUND`), or the rectangle falls
+ *           outside the sheet (`FILE_UPLOAD_SLICE_OUT_OF_BOUNDS`)
+ *       500:
+ *         description: Unclassified failure from the Google auth/sheets mapper
+ *       502:
+ *         description: Upstream Google call failed (`GOOGLE_SHEETS_FETCH_FAILED`)
  */
 googleSheetsConnectorRouter.get(
   "/instances/:id/sheet-slice",
