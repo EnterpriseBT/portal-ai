@@ -11,7 +11,7 @@ npm run dev          # all dev servers — web :3000, api :3001
 
 ## Local Stripe webhook loop
 
-Forward live test-mode Stripe events to your local webhook endpoint and fire test events (see the [Stripe billing spec](./STRIPE_SUBSCRIPTION_BILLING.spec.md)):
+Forward live test-mode Stripe events to your local webhook endpoint and fire test events:
 
 ```bash
 # 1. Forward events → local endpoint. Prints a whsec_… signing secret —
