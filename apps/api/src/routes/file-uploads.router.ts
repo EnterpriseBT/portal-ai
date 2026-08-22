@@ -269,6 +269,23 @@ fileUploadsRouter.post(
  *         name: colEnd
  *         required: true
  *         schema: { type: integer, minimum: 0 }
+ *     responses:
+ *       200:
+ *         description: The requested cell rectangle, clamped to the sheet
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SheetSliceResponse'
+ *       400:
+ *         description: Malformed or missing query params (`FILE_UPLOAD_PARSE_INVALID_PAYLOAD`)
+ *       403:
+ *         description: Upload session belongs to another organization (`FILE_UPLOAD_FORBIDDEN`)
+ *       404:
+ *         description: >
+ *           No cached session for this id (`FILE_UPLOAD_SESSION_NOT_FOUND`), or the
+ *           rectangle falls outside the sheet (`FILE_UPLOAD_SLICE_OUT_OF_BOUNDS`)
+ *       500:
+ *         description: Slice read failed (`FILE_UPLOAD_PARSE_FAILED`)
  */
 fileUploadsRouter.get(
   "/sheet-slice",

@@ -439,6 +439,29 @@ microsoftExcelConnectorRouter.post(
  *         name: colEnd
  *         required: true
  *         schema: { type: integer, minimum: 0 }
+ *     responses:
+ *       200:
+ *         description: The requested cell rectangle, clamped to the sheet
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SheetSliceResponse'
+ *       400:
+ *         description: Malformed or missing query params (`MICROSOFT_EXCEL_INVALID_PAYLOAD`)
+ *       403:
+ *         description: Connector instance belongs to another organization (`CONNECTOR_INSTANCE_NOT_FOUND`)
+ *       404:
+ *         description: >
+ *           Unknown connector instance (`CONNECTOR_INSTANCE_NOT_FOUND`), no cached
+ *           workbook (`FILE_UPLOAD_SESSION_NOT_FOUND`), or the rectangle falls
+ *           outside the sheet (`FILE_UPLOAD_SLICE_OUT_OF_BOUNDS`)
+ *       502:
+ *         description: Upstream Graph call failed (`MICROSOFT_EXCEL_FETCH_FAILED`)
+ *
+ *         # Deliberately absent: 409 MICROSOFT_EXCEL_NO_ONEDRIVE and 413
+ *         # MICROSOFT_EXCEL_FILE_TOO_LARGE. Both come from mapMicrosoftGraphError,
+ *         # but sheetSlice reads the chunk cache and never calls /me/drive or
+ *         # downloads a workbook, so neither condition can arise here.
  */
 microsoftExcelConnectorRouter.get(
   "/instances/:id/sheet-slice",

@@ -1,4 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { z } from "zod";
 
 import {
@@ -530,5 +533,103 @@ describe("swagger spec — public site config (#311)", () => {
       "500",
       "503",
     ]);
+  });
+});
+
+// Document-wide completeness guards (#420). The three defects this closes were
+// each introduced by a commit that added a route or a $ref and nobody noticed:
+// 3 operations declared no responses at all, 10 $refs pointed at components
+// that were never registered, and 7 routes carried no @openapi block. The
+// per-feature describes above spot-check individual routes; these assert
+// properties of the whole document, so the next omission fails at its commit.
+describe("swagger spec — document completeness (#420)", () => {
+  const spec = swaggerSpec as OpenApiSchemaBag;
+  const HTTP_METHODS = ["get", "post", "put", "patch", "delete"] as const;
+
+  /** Every (method, path) operation in the document. */
+  const operations = Object.entries(spec.paths ?? {}).flatMap(([path, item]) =>
+    Object.entries(item as Record<string, unknown>)
+      .filter(([method]) =>
+        (HTTP_METHODS as readonly string[]).includes(method)
+      )
+      .map(([method, operation]) => ({
+        label: `${method.toUpperCase()} ${path}`,
+        operation: operation as { responses?: Record<string, unknown> },
+      }))
+  );
+
+  it("documents a non-trivial number of operations", () => {
+    // Guards the guards: if the spec ever fails to build, `operations` goes
+    // empty and every assertion below passes vacuously.
+    expect(operations.length).toBeGreaterThan(100);
+  });
+
+  it("declares at least one response on every operation", () => {
+    const undeclared = operations
+      .filter(({ operation }) => {
+        const responses = operation.responses ?? {};
+        return Object.keys(responses).length === 0;
+      })
+      .map(({ label }) => label);
+
+    expect(undeclared).toEqual([]);
+  });
+
+  it("resolves every $ref against the document", () => {
+    const refs = new Set<string>();
+    JSON.stringify(spec, (_key, value) => {
+      const ref = (value as { $ref?: unknown } | null)?.$ref;
+      if (typeof ref === "string") refs.add(ref);
+      return value;
+    });
+
+    const dangling = [...refs].filter((ref) => {
+      let cursor: unknown = spec;
+      for (const segment of ref.replace(/^#\//, "").split("/")) {
+        cursor = (cursor as Record<string, unknown> | undefined)?.[segment];
+        if (cursor === undefined) return true;
+      }
+      return false;
+    });
+
+    expect(dangling.sort()).toEqual([]);
+  });
+  // Routes registered on a router vs. @openapi blocks in the same file. This is
+  // a per-file count, not a path-by-path match: matching paths would mean
+  // booting the Express app and walking its router stack, which drags env and
+  // DB setup into a docs test. The count catches the defect that actually
+  // happened — a route added with no block at all — and the per-feature
+  // describes above cover path strings for the surfaces they own.
+  it("gives every registered route an @openapi block", () => {
+    const routesDir = join(process.cwd(), "src", "routes");
+    const files = readdirSync(routesDir).filter((f) =>
+      f.endsWith(".router.ts")
+    );
+
+    // Fail loudly rather than pass on an empty directory (wrong cwd).
+    expect(files.length).toBeGreaterThan(10);
+
+    // swagger.router.ts serves the spec document itself; documenting the
+    // documentation endpoints in the documentation is circular, so it is
+    // excluded by design rather than by oversight.
+    const ALLOW_LISTED = new Set(["swagger.router.ts"]);
+    const ROUTE_REGISTRATION =
+      /^[A-Za-z_][A-Za-z0-9_]*(?:Router)?\.(?:get|post|patch|put|delete)\(/gm;
+
+    const gaps = files
+      .filter((file) => !ALLOW_LISTED.has(file))
+      .map((file) => {
+        const contents = readFileSync(join(routesDir, file), "utf8");
+        const routes = contents.match(ROUTE_REGISTRATION)?.length ?? 0;
+        const blocks = contents.match(/@openapi/g)?.length ?? 0;
+        return { file, routes, blocks };
+      })
+      .filter(({ routes, blocks }) => routes > blocks)
+      .map(
+        ({ file, routes, blocks }) =>
+          `${file}: ${routes} routes, ${blocks} @openapi`
+      );
+
+    expect(gaps).toEqual([]);
   });
 });

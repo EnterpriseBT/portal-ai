@@ -472,6 +472,29 @@ entityRecordRouter.get(
 
 // ── GET /count — Record count ───────────────────────────────────────
 
+/**
+ * @openapi
+ * /api/connector-entities/{connectorEntityId}/records/count:
+ *   get:
+ *     tags: [Entity Records]
+ *     summary: Count the records materialized for a connector entity
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorEntityId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: The record count
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/EntityRecordCountResponsePayload'
+ *       500:
+ *         description: Count failed (`ENTITY_RECORD_FETCH_FAILED`)
+ */
 entityRecordRouter.get(
   "/count",
   getApplicationMetadata,
@@ -518,6 +541,35 @@ entityRecordRouter.get(
 
 // ── GET /:recordId — Get single record ──────────────────────────────
 
+/**
+ * @openapi
+ * /api/connector-entities/{connectorEntityId}/records/{recordId}:
+ *   get:
+ *     tags: [Entity Records]
+ *     summary: Fetch a single entity record
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorEntityId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: recordId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: The record
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/EntityRecordGetResponsePayload'
+ *       404:
+ *         description: No such record on this entity (`ENTITY_RECORD_NOT_FOUND`)
+ *       500:
+ *         description: Fetch failed (`ENTITY_RECORD_FETCH_FAILED`)
+ */
 entityRecordRouter.get(
   "/:recordId",
   getApplicationMetadata,
@@ -767,6 +819,37 @@ entityRecordRouter.post(
 
 // ── POST /import — Bulk import ──────────────────────────────────────
 
+/**
+ * @openapi
+ * /api/connector-entities/{connectorEntityId}/records/import:
+ *   post:
+ *     tags: [Entity Records]
+ *     summary: Bulk-import records onto a connector entity
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorEntityId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/EntityRecordImportRequestBody'
+ *     responses:
+ *       200:
+ *         description: Per-row import outcome
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/EntityRecordImportResponsePayload'
+ *       400:
+ *         description: Body failed schema validation (`ENTITY_RECORD_INVALID_PAYLOAD`)
+ *       500:
+ *         description: Import failed (`ENTITY_RECORD_IMPORT_FAILED`)
+ */
 entityRecordRouter.post(
   "/import",
   getApplicationMetadata,
@@ -899,6 +982,39 @@ entityRecordRouter.post(
 
 // ── POST /revalidate — Trigger async re-validation ─────────────────
 
+/**
+ * @openapi
+ * /api/connector-entities/{connectorEntityId}/records/revalidate:
+ *   post:
+ *     tags: [Entity Records]
+ *     summary: Enqueue a revalidation job for the entity's records
+ *     description: >
+ *       Asynchronous. Returns 202 with the job to observe via
+ *       `/api/sse/jobs/{id}/events`. Idempotent while a revalidation is already
+ *       active — the in-flight job is returned rather than a second one enqueued.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorEntityId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       202:
+ *         description: Revalidation enqueued (or the active job returned)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 job: { $ref: '#/components/schemas/Job' }
+ *       404:
+ *         description: Unknown connector entity (`CONNECTOR_ENTITY_NOT_FOUND`)
+ *       409:
+ *         description: A non-terminal job already locks the connector instance (`ENTITY_LOCKED_BY_JOB`)
+ *       500:
+ *         description: Enqueue failed (`ENTITY_RECORD_FETCH_FAILED`)
+ */
 entityRecordRouter.post(
   "/revalidate",
   getApplicationMetadata,

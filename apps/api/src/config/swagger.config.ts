@@ -53,8 +53,25 @@ import {
   DoneEventSchema,
   StreamErrorEventSchema,
   EntityRecordListResponsePayloadSchema,
+  ConnectorInstanceCreateResponseSchema,
+  EntityRecordCountResponsePayloadSchema,
+  EntityRecordGetResponsePayloadSchema,
+  EntityRecordImportRequestBodySchema,
+  EntityRecordImportResponsePayloadSchema,
+  ConnectorInstanceGetResponseSchema,
+  ConnectorInstanceListResponsePayloadSchema,
+  FileUploadSheetSliceResponsePayloadSchema,
+  PreviewEndpointPageRequestBodySchema,
+  PreviewEndpointPageResponseSchema,
+  ProbeEndpointDraftRequestBodySchema,
+  SuggestTransformRequestBodySchema,
+  SuggestTransformResponseSchema,
 } from "@portalai/core/contracts";
-import { EntityRecordListItemSchema } from "@portalai/core/models";
+import {
+  EntityRecordListItemSchema,
+  EntityTagAssignmentSchema,
+  OrganizationSchema,
+} from "@portalai/core/models";
 import {
   ApiAuthConfigSchema,
   ApiCredentialsSchema,
@@ -124,6 +141,29 @@ const spreadsheetParsingSchemas: Record<string, unknown> = {
  * reference one canonical schema per shape.
  */
 const restApiConnectorSchemas: Record<string, unknown> = {
+  // Referenced by connector-instance.router.ts's probe / preview / transform
+  // routes. These were $ref'd before they were registered (#420), so Swagger UI
+  // rendered an empty schema where the body and payload should be.
+  ProbeEndpointDraftRequestBody: z.toJSONSchema(
+    ProbeEndpointDraftRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  PreviewEndpointPageRequestBody: z.toJSONSchema(
+    PreviewEndpointPageRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  PreviewEndpointPageResponse: z.toJSONSchema(
+    PreviewEndpointPageResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  SuggestTransformRequestBody: z.toJSONSchema(
+    SuggestTransformRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  SuggestTransformResponse: z.toJSONSchema(
+    SuggestTransformResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
   ApiAuthConfig: z.toJSONSchema(ApiAuthConfigSchema, JSON_SCHEMA_OPTS),
   ApiCredentials: z.toJSONSchema(ApiCredentialsSchema, JSON_SCHEMA_OPTS),
   PaginationConfig: z.toJSONSchema(PaginationConfigSchema, JSON_SCHEMA_OPTS),
@@ -175,6 +215,78 @@ const restApiConnectorSchemas: Record<string, unknown> = {
   ),
   TestConnectionResult: z.toJSONSchema(
     TestConnectionResultSchema,
+    JSON_SCHEMA_OPTS
+  ),
+};
+
+/**
+ * Connector-instance response shapes. The `$ref`s in
+ * `connector-instance.router.ts` predated any registration (#420); the list
+ * component drops the contract's `Payload` suffix because that is the name the
+ * route JSDoc already uses.
+ */
+const connectorInstanceSchemas: Record<string, unknown> = {
+  ConnectorInstanceCreateResponse: z.toJSONSchema(
+    ConnectorInstanceCreateResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  ConnectorInstanceGetResponse: z.toJSONSchema(
+    ConnectorInstanceGetResponseSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  ConnectorInstanceListResponse: z.toJSONSchema(
+    ConnectorInstanceListResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+};
+
+/**
+ * Domain models a route returns directly, rather than wrapped in a
+ * feature-specific payload. Both were `$ref`'d without being registered (#420).
+ */
+const domainModelSchemas: Record<string, unknown> = {
+  EntityTagAssignment: z.toJSONSchema(
+    EntityTagAssignmentSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  Organization: z.toJSONSchema(OrganizationSchema, JSON_SCHEMA_OPTS),
+};
+
+/**
+ * The sheet-slice rectangle (#420). All three sheet-slice routes — file-upload,
+ * google-sheets and microsoft-excel — return the identical shape, and the
+ * google-sheets/microsoft-excel contracts already alias
+ * `FileUploadSheetSliceResponsePayloadSchema` rather than redeclaring it. One
+ * component keeps the three route blocks from drifting; the name is
+ * provider-neutral because all three reference it.
+ */
+const sheetSliceSchemas: Record<string, unknown> = {
+  SheetSliceResponse: z.toJSONSchema(
+    FileUploadSheetSliceResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+};
+
+/**
+ * Entity-record payloads referenced by the count / get / import routes, which
+ * carried no `@openapi` block at all until #420. Registered rather than spelled
+ * inline because more than one route names them.
+ */
+const entityRecordSchemas: Record<string, unknown> = {
+  EntityRecordCountResponsePayload: z.toJSONSchema(
+    EntityRecordCountResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  EntityRecordGetResponsePayload: z.toJSONSchema(
+    EntityRecordGetResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  EntityRecordImportRequestBody: z.toJSONSchema(
+    EntityRecordImportRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  EntityRecordImportResponsePayload: z.toJSONSchema(
+    EntityRecordImportResponsePayloadSchema,
     JSON_SCHEMA_OPTS
   ),
 };
@@ -1694,6 +1806,10 @@ const options: swaggerJsdoc.Options = {
         },
         ...spreadsheetParsingSchemas,
         ...restApiConnectorSchemas,
+        ...connectorInstanceSchemas,
+        ...domainModelSchemas,
+        ...sheetSliceSchemas,
+        ...entityRecordSchemas,
         ...tierSchemas,
         ...orgSwitcherSchemas,
         ...orgDeleteSchemas,

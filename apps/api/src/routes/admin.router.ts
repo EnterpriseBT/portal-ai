@@ -31,6 +31,33 @@ export const adminRouter = Router();
  * picked up. The fan-out itself is fast (just enqueues); per-instance
  * progress is observable via the existing job dashboard / SSE stream.
  */
+/**
+ * @openapi
+ * /api/admin/wide-table/resync:
+ *   post:
+ *     tags: [Admin]
+ *     summary: Fan out a wide-table resync across every connector instance
+ *     description: >
+ *       Enqueues per-instance resync work and returns immediately with a
+ *       per-instance report; progress is observed through the job dashboard /
+ *       SSE stream rather than this response.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Fan-out report
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 triggered: { type: array, items: { type: string } }
+ *                 skippedInFlight: { type: array, items: { type: string } }
+ *                 skippedUnsupported: { type: array, items: { type: string } }
+ *                 failed: { type: array, items: { type: string } }
+ *       500:
+ *         description: Fan-out failed before any instance was enqueued
+ */
 adminRouter.post(
   "/wide-table/resync",
   getApplicationMetadata,
