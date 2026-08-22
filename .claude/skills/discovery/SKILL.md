@@ -72,7 +72,9 @@ Use the **Explore agent** with a structured prompt — do NOT do this serially w
 
 ### 6. Read one reference discovery doc
 
-Read **one** existing discovery doc to anchor the style. Default to `docs/SPREADSHEET_PARSER_ROW_ASYNC.discovery.md` — it's compact and shows the full structure. If the issue clearly resembles another existing doc, prefer that one.
+Read **one** discovery doc to anchor the style. Default to `.claude/skills/discovery/EXAMPLE.discovery.md` — it's compact and shows the full structure. If a discovery doc for an in-flight ticket in `docs/` clearly resembles this issue, prefer that one.
+
+The exemplar lives beside this skill rather than in `docs/` on purpose: phase docs in `docs/` are ephemeral and get swept by the next feature (step 4a), so an exemplar kept there would eventually be deleted out from under this instruction.
 
 ### 7. Write `docs/<SLUG>.discovery.md`
 

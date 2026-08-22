@@ -37,7 +37,7 @@ gh issue view <N> --repo EnterpriseBT/portal-ai --json number,title,body,state,i
 ### 2. Read the discovery doc + one reference spec
 
 - Read `docs/<SLUG>.discovery.md` in full. Its **Recommendation** and resolved **Open questions** are the decisions the spec turns into a contract. If any open question is still unresolved (no confirmed answer), **stop and surface it** — the spec can't pin a contract over an open decision.
-- Read **one** existing spec to anchor the house style. Default to `docs/SUBSCRIPTION_TIER_POLICY.spec.md` (layered surface + per-layer test plan) or `docs/TOOL_COST_GATE.spec.md` (service-shaped). If the issue resembles another, prefer that one.
+- Read **one** spec to anchor the house style. Default to `.claude/skills/spec/EXAMPLE.spec.md` (layered surface + per-layer test plan). The exemplar lives beside this skill because phase docs in `docs/` are ephemeral — swept by the next feature ticket — so it can't be kept there.
 
 ### 3. Pin exact current signatures (targeted, not a re-survey)
 

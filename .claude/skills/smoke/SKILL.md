@@ -33,7 +33,7 @@ git log --oneline main..HEAD         # implementation commits must exist
 
 ### 3. Read one reference smoke doc
 
-Default to `docs/BULK_AGGREGATE.smoke.md` — preflight + sectioned walkthrough + sign-off + bug template, with sections independent after preflight. Prefer another (e.g. `docs/DEVOPS_CLI.smoke.md` for CLI-shaped work) if it's closer to the ticket.
+Default to `.claude/skills/smoke/EXAMPLE.smoke.md` — preflight + sectioned walkthrough + sign-off + bug template, with sections independent after preflight. The exemplar lives beside this skill because phase docs in `docs/` are ephemeral — swept by the next feature ticket — so it can't be kept there.
 
 ### 4. Write `docs/<SLUG>.smoke.md`
 

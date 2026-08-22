@@ -1,14 +1,23 @@
 #!/usr/bin/env node
 /**
- * Fails when a source comment cites a `docs/*.md` file that doesn't exist.
+ * Fails when a source comment cites a *durable* `docs/*.md` file that doesn't
+ * exist.
  *
  * These pointers read as authoritative design references, so a dangling one
  * sends the next contributor — human or agent — chasing rationale that isn't
  * there (#417). The failure is cheapest at the commit that *deletes* the doc,
  * which is what this gate makes possible.
  *
- * Scope is source only (`apps/*` + `packages/*`, ts/tsx). Doc-to-doc pointers
- * are #419.
+ * Ephemeral phase artifacts are exempt (#419). `docs/*.{discovery,spec,plan,
+ * smoke,condensed}.md` are per-ticket working files that the next feature
+ * ticket sweeps, so a comment citing one goes stale *by design* — and that is
+ * acceptable, because the ticket, branch and doc are all recoverable from git
+ * history (`git log --diff-filter=D -- docs/`). Gating on them would mean
+ * either never deleting a phase doc or rewriting comments on every sweep.
+ * What stays gated is the unsuffixed durable set — charters, integration
+ * contracts, runbooks — where a dead pointer is still a real defect.
+ *
+ * Scope is source only (`apps/*` + `packages/*`, ts/tsx).
  *
  * Usage: npm run lint:doc-pointers
  */
@@ -22,6 +31,13 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Matches `docs/…​.md`, including brace forms like `phase-{B,C}`. */
 const POINTER = /docs\/[A-Za-z0-9_.,{}-]+\.md/g;
+
+/**
+ * Per-ticket working artifacts, exempt per the header. The suffix is the whole
+ * signal: a durable reference carries none, so `docs/CLI_OPERATIONS_CHARTER.md`
+ * stays gated while `docs/ANY_TICKET.plan.md` does not.
+ */
+const EPHEMERAL = /\.(discovery|spec|plan|smoke|condensed)\.md$/;
 
 /**
  * Expand a single brace group — `phase-{B,C}.plan.md` becomes two candidates.
@@ -61,7 +77,8 @@ for (const file of sourceFiles) {
   contents.split("\n").forEach((line, index) => {
     for (const pointer of line.match(POINTER) ?? []) {
       const missing = expandBraces(pointer).filter(
-        (candidate) => !existsSync(join(repoRoot, candidate))
+        (candidate) =>
+          !EPHEMERAL.test(candidate) && !existsSync(join(repoRoot, candidate))
       );
       if (missing.length > 0) {
         dead.push({ file, line: index + 1, pointer, missing });
@@ -72,13 +89,13 @@ for (const file of sourceFiles) {
 
 if (dead.length === 0) {
   console.log(
-    `check-doc-pointers: every docs/*.md pointer across ${sourceFiles.length} source files resolves.`
+    `check-doc-pointers: every durable docs/*.md pointer across ${sourceFiles.length} source files resolves.`
   );
   process.exit(0);
 }
 
 console.error(
-  `check-doc-pointers: ${dead.length} source comment(s) cite a docs/*.md file that does not exist.\n`
+  `check-doc-pointers: ${dead.length} source comment(s) cite a durable docs/*.md file that does not exist.\n`
 );
 for (const { file, line, pointer, missing } of dead) {
   const detail =
@@ -90,6 +107,8 @@ for (const { file, line, pointer, missing } of dead) {
 console.error(
   "\nFix each site: repoint it at the surviving doc, inline the rationale it was standing in for,\n" +
     "or drop the pointer when the surrounding prose already stands on its own.\n" +
-    "See docs/DEAD_DOC_POINTERS.md."
+    "Only unsuffixed durable docs are gated — phase artifacts\n" +
+    "(.discovery/.spec/.plan/.smoke/.condensed) are exempt, so a citation of one is never\n" +
+    "the cause of this failure."
 );
 process.exit(1);

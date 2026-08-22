@@ -32,7 +32,7 @@ ls docs/*.spec.md docs/*.discovery.md
 ### 2. Read the spec (+ discovery) + one reference plan
 
 - Read `docs/<SLUG>.spec.md` in full — its **Surface**, **TDD test plan** (case counts), and **Files touched** are the raw material you sequence. Skim `docs/<SLUG>.discovery.md` for the sequencing rationale (which decisions unblock which).
-- Read **one** existing plan to anchor the house style. Default to `docs/TOOL_COST_GATE.plan.md` (clear slice shape + sequencing rationale) or `docs/SUBSCRIPTION_TIER_POLICY.plan.md`. If the issue resembles another, prefer it.
+- Read **one** plan to anchor the house style. Default to `.claude/skills/plan/EXAMPLE.plan.md` (clear slice shape + sequencing rationale). The exemplar lives beside this skill because phase docs in `docs/` are ephemeral — swept by the next feature ticket — so it can't be kept there.
 
 ### 3. Decide the slice boundaries
 
