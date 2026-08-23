@@ -1,7 +1,4 @@
 import { describe, it, expect } from "@jest/globals";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { z } from "zod";
 
 import {
@@ -51,7 +48,12 @@ import {
   RestApiInstanceConfigSchema,
 } from "@portalai/core/models";
 
+import { app } from "../../app.js";
 import { swaggerSpec } from "../../config/swagger.config.js";
+import {
+  documentedOperations,
+  registeredRoutes,
+} from "./express-route-inventory.util.js";
 
 const REQUIRED_SCHEMA_NAMES = [
   "LayoutPlan",
@@ -594,42 +596,90 @@ describe("swagger spec — document completeness (#420)", () => {
 
     expect(dangling.sort()).toEqual([]);
   });
-  // Routes registered on a router vs. @openapi blocks in the same file. This is
-  // a per-file count, not a path-by-path match: matching paths would mean
-  // booting the Express app and walking its router stack, which drags env and
-  // DB setup into a docs test. The count catches the defect that actually
-  // happened — a route added with no block at all — and the per-feature
-  // describes above cover path strings for the surfaces they own.
-  it("gives every registered route an @openapi block", () => {
-    const routesDir = join(process.cwd(), "src", "routes");
-    const files = readdirSync(routesDir).filter((f) =>
-      f.endsWith(".router.ts")
-    );
+  // Route parity, compared as sets against the app's real routing table (#443).
+  //
+  // This replaced a per-file count of `@openapi` blocks, which could only ever
+  // catch an omitted block: a block declaring a path the app does not serve was
+  // counted and passed, and so was a block whose body was malformed. Both
+  // happened — the second one during #420's own implementation. Comparing the
+  // registered `(method, path)` set against `spec.paths` closes the first;
+  // the schema-shape case below closes the second.
+  //
+  // Importing the app costs nothing here: `setupFiles` (src/__tests__/setup.ts)
+  // already sets AUTH0_AUDIENCE/AUTH0_DOMAIN before any module loads, which is
+  // what `auth.middleware.ts` needs at import time.
+  describe("route parity", () => {
+    // The two spec-serving endpoints. Documenting the documentation endpoints
+    // inside the documentation is circular, so they are excluded by design.
+    const ALLOW_LISTED = new Set(["GET /api/docs", "GET /api/docs/spec"]);
 
-    // Fail loudly rather than pass on an empty directory (wrong cwd).
-    expect(files.length).toBeGreaterThan(10);
+    const registered = registeredRoutes(app);
+    const documented = documentedOperations(swaggerSpec);
 
-    // swagger.router.ts serves the spec document itself; documenting the
-    // documentation endpoints in the documentation is circular, so it is
-    // excluded by design rather than by oversight.
-    const ALLOW_LISTED = new Set(["swagger.router.ts"]);
-    const ROUTE_REGISTRATION =
-      /^[A-Za-z_][A-Za-z0-9_]*(?:Router)?\.(?:get|post|patch|put|delete)\(/gm;
+    it("enumerates the routing table at all", () => {
+      // Guards the guard: the enumerator reads Express 4 internals, so an
+      // upgrade that moves them yields an empty set — and every assertion
+      // below would pass vacuously at the moment it stopped working.
+      expect(registered.size).toBeGreaterThan(100);
+    });
 
-    const gaps = files
-      .filter((file) => !ALLOW_LISTED.has(file))
-      .map((file) => {
-        const contents = readFileSync(join(routesDir, file), "utf8");
-        const routes = contents.match(ROUTE_REGISTRATION)?.length ?? 0;
-        const blocks = contents.match(/@openapi/g)?.length ?? 0;
-        return { file, routes, blocks };
-      })
-      .filter(({ routes, blocks }) => routes > blocks)
-      .map(
-        ({ file, routes, blocks }) =>
-          `${file}: ${routes} routes, ${blocks} @openapi`
-      );
+    it("documents every registered route", () => {
+      const undocumented = [...registered]
+        .filter((route) => !ALLOW_LISTED.has(route))
+        .filter((route) => !documented.has(route))
+        .sort();
 
-    expect(gaps).toEqual([]);
+      expect(undocumented).toEqual([]);
+    });
+
+    it("registers every documented path", () => {
+      // The direction a per-file count could never check: an `@openapi` block
+      // whose path string does not match where the router is actually mounted.
+      const phantom = [...documented]
+        .filter((operation) => !registered.has(operation))
+        .sort();
+
+      expect(phantom).toEqual([]);
+    });
+  });
+
+  // The malformed-annotation case (#443). A YAML flow map written `{{ x }}`
+  // instead of `{ x }` parses into a property literally named "{ x }" whose
+  // value is null, so the operation claims a documented shape and delivers
+  // gibberish — while every presence-based assertion above still passes.
+  //
+  // This is a targeted invariant, not schema validation. A real OpenAPI
+  // validator is not usable on this document: it declares 3.0.0 while its
+  // z.toJSONSchema components embed `$schema` draft/2020-12 and `type: "null"`,
+  // neither valid in 3.0. Fixing that is a 3.1 migration, not this ticket.
+  it("carries no garbled keys or stray nulls", () => {
+    const badKeys: string[] = [];
+    const strayNulls: string[] = [];
+
+    const walk = (node: unknown, path: string, inPathsMap: boolean): void => {
+      if (node === null) {
+        // `default: null` is legitimate on a nullable field; anything else null
+        // is a YAML flow map that collapsed.
+        if (!path.endsWith(".default")) strayNulls.push(path);
+        return;
+      }
+      if (typeof node !== "object") return;
+      if (Array.isArray(node)) {
+        node.forEach((item, index) => walk(item, `${path}[${index}]`, false));
+        return;
+      }
+      for (const [key, value] of Object.entries(node)) {
+        // Top-level `paths` keys are path templates — braces are correct there.
+        if (!inPathsMap && (/[{}]/.test(key) || key.includes(": "))) {
+          badKeys.push(`${path}.${key}`);
+        }
+        walk(value, `${path}.${key}`, path === "" && key === "paths");
+      }
+    };
+
+    walk(swaggerSpec, "", false);
+
+    expect(badKeys).toEqual([]);
+    expect(strayNulls).toEqual([]);
   });
 });
