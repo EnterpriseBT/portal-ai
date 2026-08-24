@@ -18,6 +18,7 @@ import StreamArray from "stream-json/streamers/stream-array.js";
 
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { ApiError } from "../../services/http.service.js";
+import { networkFailure } from "./cause.util.js";
 import { extractUserMessage, readErrorBody } from "./error-body.util.js";
 
 export const DEFAULT_MAX_RECORD_BYTES = 50 * 1024 * 1024;
@@ -73,7 +74,8 @@ export interface StreamFetchResult {
  *
  * Throws — never returns — on:
  *   - 4xx / 5xx response → `REST_API_FETCH_FAILED` (before the consumer pulls).
- *   - Network failure / DNS / timeout → `REST_API_FETCH_FAILED`.
+ *   - Network failure / DNS / timeout → `REST_API_FETCH_FAILED`, carrying the
+ *     real reason in `details.cause` + the chain in `details.causeChain` (#435).
  *
  * Lazily throws inside `for await`:
  *   - Malformed JSON anywhere in the stream → `REST_API_INVALID_JSON`.
@@ -95,12 +97,7 @@ export async function streamFetchRecords(
   try {
     response = await fetchImpl(url, init);
   } catch (err) {
-    throw new ApiError(
-      502,
-      ApiCode.REST_API_FETCH_FAILED,
-      `Fetch failed: ${(err as Error).message}`,
-      { url, cause: (err as Error).message }
-    );
+    throw networkFailure(url, err, { phase: "connect" });
   }
 
   const headers = collectHeaders(response.headers);
