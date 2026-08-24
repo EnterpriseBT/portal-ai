@@ -69,6 +69,10 @@ const upsertWideManyMock = jest.fn<
     rejected: Array<{ sourceId: string; reason: string }>;
   }>
 >();
+const selectMissingWideRowIdsMock =
+  jest.fn<
+    (entityId: string, ids: ReadonlyArray<string>) => Promise<string[]>
+  >();
 const transactionMock =
   jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>();
 
@@ -83,7 +87,10 @@ jest.unstable_mockModule("../../../services/db.service.js", () => ({
         upsertBySourceId: upsertBySourceIdMock,
         bulkUpdateSyncedAt: bulkUpdateSyncedAtMock,
       },
-      wideTable: { upsertMany: upsertWideManyMock },
+      wideTable: {
+        upsertMany: upsertWideManyMock,
+        selectMissingWideRowIds: selectMissingWideRowIdsMock,
+      },
     },
   },
 }));
@@ -150,6 +157,7 @@ beforeEach(() => {
   }));
   bulkUpdateSyncedAtMock.mockResolvedValue(0);
   upsertWideManyMock.mockResolvedValue({ repaired: 0, rejected: [] });
+  selectMissingWideRowIdsMock.mockResolvedValue([]);
   transactionMock.mockImplementation((fn) => fn("tx"));
 });
 
@@ -500,5 +508,73 @@ describe("counts contract — batched writer vs upsertRecord", () => {
     const viaPerRecord = await drive("perRecord");
     expect(viaWriter.recordIndex).toBe(viaPerRecord.recordIndex);
     expect(viaWriter.recordIndex).toBe(3);
+  });
+});
+
+// ── Unchanged path does no no-op work (slice 3) ───────────────────────
+
+describe("createSyncRecordWriter — unchanged rows skip no-op work (#440)", () => {
+  /** Prime the bulk read so both records classify as unchanged. */
+  async function twoUnchanged(ctx: unknown) {
+    const sums = (
+      await import("../../../adapters/rest-api/rest-api.adapter.js")
+    ).checksumRecord;
+    findBySourceIdsForSyncMock.mockResolvedValueOnce([
+      {
+        id: "r1",
+        sourceId: "p1",
+        checksum: sums({ pid: "p1", v: "p1" }),
+        created: 1,
+        createdBy: "u0",
+      },
+      {
+        id: "r2",
+        sourceId: "p2",
+        checksum: sums({ pid: "p2", v: "p2" }),
+        created: 1,
+        createdBy: "u0",
+      },
+    ]);
+    const w = createSyncRecordWriter(ctx as never);
+    await w.add(rec("p1"));
+    await w.add(rec("p2"));
+    await w.flush();
+  }
+
+  it("does NOT re-upsert the mirror when no wide row is missing", async () => {
+    selectMissingWideRowIdsMock.mockResolvedValue([]);
+    await twoUnchanged(makeCtx());
+
+    expect(selectMissingWideRowIdsMock).toHaveBeenCalledTimes(1);
+    expect(selectMissingWideRowIdsMock.mock.calls[0][1]).toEqual(["r1", "r2"]);
+    expect(upsertWideManyMock).not.toHaveBeenCalled();
+  });
+
+  it("mirrors ONLY the rows the anti-join reports missing", async () => {
+    selectMissingWideRowIdsMock.mockResolvedValue(["r2"]);
+    await twoUnchanged(makeCtx());
+
+    expect(upsertWideManyMock).toHaveBeenCalledTimes(1);
+    expect(upsertWideManyMock.mock.calls[0][1]).toHaveLength(1);
+  });
+
+  it("does not consult the anti-join when there is no wide projection", async () => {
+    await twoUnchanged(makeCtx({ withWideProjection: false }));
+
+    expect(selectMissingWideRowIdsMock).not.toHaveBeenCalled();
+    expect(upsertWideManyMock).not.toHaveBeenCalled();
+  });
+
+  it("still mirrors changed rows unconditionally", async () => {
+    selectMissingWideRowIdsMock.mockResolvedValue([]);
+    const w = createSyncRecordWriter(makeCtx());
+    await w.add(rec("new1")); // absent from the bulk read -> created
+    await w.flush();
+
+    // The anti-join is for unchanged rows only; a changed row is always
+    // written, because its projected values are what changed.
+    expect(upsertWideManyMock).toHaveBeenCalledTimes(1);
+    expect(upsertWideManyMock.mock.calls[0][1]).toHaveLength(1);
+    expect(selectMissingWideRowIdsMock).not.toHaveBeenCalled();
   });
 });

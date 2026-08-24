@@ -642,15 +642,16 @@ export function createSyncRecordWriter(ctx: UpsertContext): SyncRecordWriter {
 
     const changed: EntityRecordInsertLike[] = [];
     const unchangedIds: string[] = [];
-    // Mirror targets are collected for both branches this slice, because the
-    // per-record path mirrored both. Slice 3 narrows this to changed rows.
+    /** Unchanged records, keyed by row id, in case a backfill needs them. */
+    const unchangedByRecordId = new Map<string, PendingRecord>();
+    /** Changed rows always mirror — their projected values are what changed. */
     const mirror: Array<{ recordId: string; p: PendingRecord }> = [];
 
     for (const p of batch) {
       const prior = priorBySourceId.get(p.sourceId);
       if (prior && prior.checksum === p.checksum) {
         unchangedIds.push(prior.id);
-        mirror.push({ recordId: prior.id, p });
+        unchangedByRecordId.set(prior.id, p);
         ctx.counts.unchanged++;
         continue;
       }
@@ -692,6 +693,23 @@ export function createSyncRecordWriter(ctx: UpsertContext): SyncRecordWriter {
         unchangedIds,
         ctx.runStartedAt
       );
+
+      // #440: an unchanged record's wide row is already correct, so
+      // re-projecting and re-upserting it — and re-running the geometry audit
+      // inside that upsert — is pure waste. The per-record path did it anyway
+      // to backfill rows missing from the mirror. One anti-join finds those
+      // directly instead of paying ~398,000 speculative upserts per sync.
+      if (ctx.wideProjection) {
+        const missing =
+          await DbService.repository.wideTable.selectMissingWideRowIds(
+            ctx.endpoint.entity.id,
+            unchangedIds
+          );
+        for (const recordId of missing) {
+          const p = unchangedByRecordId.get(recordId);
+          if (p) mirror.push({ recordId, p });
+        }
+      }
     }
 
     if (ctx.wideProjection && mirror.length > 0) {
