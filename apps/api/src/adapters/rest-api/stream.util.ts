@@ -82,7 +82,9 @@ export interface StreamFetchResult {
  *   - `recordsPath` doesn't exist in the document → `REST_API_RECORDS_PATH_NOT_FOUND`.
  *   - `recordsPath` resolves to a non-array → `REST_API_RECORDS_PATH_NOT_ARRAY`.
  *   - Any single record's serialized JSON exceeds `maxRecordBytes` → `REST_API_RECORD_TOO_LARGE`.
- *   - Upstream reader rejects mid-stream → the underlying error.
+ *   - Upstream reader rejects mid-stream (dropped socket) →
+ *     `REST_API_FETCH_FAILED` with `details.phase: "stream"` and the real
+ *     cause chain — not `REST_API_INVALID_JSON` (#435).
  */
 export async function streamFetchRecords(
   url: string,
@@ -130,7 +132,8 @@ export async function streamFetchRecords(
   const recordsStream = buildRecordsStream(
     response.body,
     recordsPath,
-    maxRecordBytes
+    maxRecordBytes,
+    url
   );
 
   return { status, headers, recordsStream };
@@ -160,7 +163,9 @@ function collectHeaders(h: Headers): Record<string, string> {
 function buildRecordsStream(
   body: ReadableStream<Uint8Array>,
   recordsPath: string,
-  maxRecordBytes: number
+  maxRecordBytes: number,
+  /** Only for error reporting — see the `nodeBody` error handler. */
+  url: string
 ): RecordsStream {
   let consumed = false;
   // Lives in the AsyncIterable closure so `getBytesObserved` reads the
@@ -224,7 +229,15 @@ function buildRecordsStream(
         }
       });
 
-      nodeBody.on("error", (err) => parser.destroy(err));
+      // #435: a body-stream failure and a parser failure arrive at the
+      // same place, and `translateParseError` maps anything untyped to
+      // REST_API_INVALID_JSON — so a dropped socket used to be reported as
+      // malformed data. Tag it here, where the origin is still known;
+      // `translateParseError` passes `ApiError`s through unchanged, so the
+      // parser's own errors keep their INVALID_JSON mapping.
+      nodeBody.on("error", (err) =>
+        parser.destroy(networkFailure(url, err, { phase: "stream" }))
+      );
       byteCounter.on("error", (err) => parser.destroy(err));
       parser.on("error", (err) => arrayStream.destroy(err));
       pick.on("error", (err) => arrayStream.destroy(err));

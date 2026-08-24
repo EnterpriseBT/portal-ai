@@ -12,6 +12,8 @@
 | `cause` stored as the *message* | `fetch.util.ts:57-58` | `cause: (err as Error).message` — records `"fetch failed"`, discards `err.cause` |
 | **Body read NOT wrapped** | `fetch.util.ts:95` → `readBodyWithCap:140-176` | `await reader.read()` rejects raw; escapes as `TypeError: terminated` |
 | Same discard, streaming path | `adapters/rest-api/stream.util.ts:96-104` | identical `cause:` bug |
+| Body-stream error enters the parser untagged | `stream.util.ts:227` | `nodeBody.on("error", (err) => parser.destroy(err))` |
+| …then gets called invalid JSON | `stream.util.ts:387-400` | `translateParseError` maps anything untyped to `REST_API_INVALID_JSON` |
 | Non-`ApiError` → immediate throw | `adapters/rest-api/retry.util.ts:57` | kills the body-read failure before the status gate |
 | Statusless → immediate throw | `retry.util.ts:61-64` | `status === undefined` ⇒ no retry; budget only ever serves 429/502/503/504 |
 | Retry policy | `retry.util.ts:34-39` | `maxRetries: 5`, exp backoff 250ms→8s |
@@ -29,6 +31,8 @@ Two code paths produce the same physical failure and neither retries: a rejected
 
 **Why not classify by cause code** (retry `UND_ERR_SOCKET`, not `ENOTFOUND`): all three observed failures were `UND_ERR_SOCKET: other side closed`, and a wrong classification fails closed in the worst way — an unretried transient. A genuinely permanent fault (bad host) simply exhausts the 5-attempt budget in <10s of backoff and reports the same error it does today, now with the real cause attached.
 
+**Same defect on the streaming path.** A socket dropped mid-body reaches the `stream-json` pipeline via `stream.util.ts:227` and is funnelled through `translateParseError`, which reports it as `REST_API_INVALID_JSON` — blaming the upstream's *data* for a *network* fault. Tag it where its origin is still known: `translateParseError` already passes `ApiError`s through (`:390`), so wrapping the body error as a typed network failure at the `nodeBody` handler is enough, and the parser's own errors keep mapping to `REST_API_INVALID_JSON`. Diagnosis only — `withRetry` wraps just the initial fetch on this path (`fetch-first-page.util.ts:220`), so a mid-stream drop still fails the sync; resumable streaming stays out of scope.
+
 **Accepted assumption:** the sync's page fetch is replayed regardless of `endpoint.config.method`, including a `POST` used to carry a cursor in `bodyTemplate`. A connector endpoint is a data read by contract, and `UND_ERR_SOCKET` on a stale pooled socket means the request never reached a live connection. Recorded here rather than guarded, because guarding on method would leave cursor-in-body pagination permanently fragile.
 
 ## Decision 2 — key the synthetic source id by `jobId`, not `runStartedAt`
@@ -45,7 +49,7 @@ So full-replacement-per-*sync* is intended. The defect is narrower than it first
 
 **What this therefore does not fix:** a keyless endpoint on a schedule still fully replaces its dataset every run — ~400K inserts plus a ~400K reap per sync. #436 (chunked `IN(…)`) stays load-bearing, and #442's tombstone growth continues. Called out so nobody reads #439 as having solved reap-set size.
 
-## Plan — 3 slices
+## Plan — 4 slices
 
 **Slice 1 — preserve the cause chain; wrap the body read.**
 Files: `adapters/rest-api/fetch.util.ts` (new `describeCause()` walking `err.cause` to depth ~8 collecting `{name, code, errno, syscall, message}`; use it in the `fetch()` catch; wrap `readBodyWithCap` in try/catch throwing `REST_API_FETCH_FAILED` with `url` + chain), `adapters/rest-api/stream.util.ts` (same helper in its `fetch()` catch).
@@ -68,6 +72,10 @@ Tests: `__tests__/adapters/rest-api/rest-api.adapter.test.ts` — same id for th
 
 All three: `npm run test:unit` (apps/api), `npm run type-check`, `npm run lint`.
 
+**Slice 4 — stop calling a dropped socket invalid JSON.**
+Files: `adapters/rest-api/stream.util.ts` — thread `url` into `buildRecordsStream`; wrap the `nodeBody` error as `networkFailure(url, err, { phase: "stream" })` before `parser.destroy`; refresh the lazy-throw list in the `streamFetchRecords` docstring.
+Tests: `__tests__/adapters/rest-api/stream.util.test.ts` — a body stream that errors mid-read surfaces `REST_API_FETCH_FAILED` with the cause chain, **not** `REST_API_INVALID_JSON`; genuinely malformed JSON still surfaces `REST_API_INVALID_JSON`; the `recordsPath` guards (`NOT_FOUND` / `NOT_ARRAY`) are unaffected.
+
 ## Smoke (manual, against your dev stack)
 
 1. **Cause chain is visible.** Create a REST API connector whose `baseUrl` host does not resolve. Sync it. → The job error carries the real reason (`ENOTFOUND` / `getaddrinfo`), not `cause: "fetch failed"`, and `details.attempts` shows the budget was spent.
@@ -82,3 +90,4 @@ All three: `npm run test:unit` (apps/api), `npm run type-check`, `npm run lint`.
 - **Making `idField` required**, and composite keys — product decisions raised in #439, deliberately not pre-decided.
 - **Chunking the wide-table `IN(…)` cascade** (#436) and the per-record write-path cost (#440) — epic children, unaffected by this branch.
 - `undici` dispatcher tuning (keep-alive timeouts, a custom `Agent`). The fix is to tolerate a closed socket, not to try to prevent one.
+- **Retrying** a mid-stream failure on the streaming path. Slice 4 corrects the *label*; the read stays single-attempt because a partially-consumed stream cannot be replayed without a resume mechanism.
