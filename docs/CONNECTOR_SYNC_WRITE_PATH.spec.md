@@ -108,6 +108,16 @@ Chunked at `WIDE_TABLE_CHUNK_SIZE` (`:61`) — same reason as #436.
 ### Unchanged contracts
 
 - `wideTable.upsertMany` return shape `{ repaired: number; rejected: Array<{sourceId, reason}> }` (`:40-42`) is consumed as today; geometry tallies accumulate into `ctx.counts` with the existing `GEOMETRY_REJECTED_SAMPLE_CAP = 20` (`:575`).
+
+### Changed contract — the `geometry` block on an all-unchanged sync
+
+`SyncInstanceResult.geometry` is emitted only when `repaired > 0 || rejected > 0` (`rest-api.adapter.ts:325`). Because the unchanged path no longer writes wide rows, it no longer audits their geometry, so **an all-unchanged re-sync now returns no `geometry` block at all.**
+
+This is intended. `repaired` counts rows whose invalid geometry `ST_MakeValid` fixed **on write** (`wide-table.repository.ts:32-38`). The pre-change path re-mirrored every unchanged record, so the same geometries were re-repaired and re-reported on every run despite the wide table already holding the repaired value — a number describing work that was pure waste. Writing nothing means repairing nothing.
+
+**It is nonetheless user-visible**: the geometry summary disappears from re-sync results reaching the API response and the SSE consumer. `recordCounts` is unaffected and stays byte-identical, which is what AC 2 pins. A sync that actually writes rows — a full replacement, or any run with real changes — still reports the block normally.
+
+Found during the #440 smoke walk, where the walkthrough had predicted the old value; the prediction was wrong, not the behaviour.
 - The mirror stays **best-effort**: a failed wide-table write logs `rest-api.sync.wide-table-mirror-failed` and does not fail the sync (`:787-799`). Batching widens the granularity from one record to one batch — stated explicitly, and the log gains the batch's `sourceId` range instead of a single `sourceId`.
 - `syncOneEndpoint`'s watermark reap and `reportPage` calls are untouched.
 

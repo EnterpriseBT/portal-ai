@@ -8,11 +8,11 @@ Unlike the other tickets on this epic, this one has a **measured before/after**:
 
 ### Environment
 
-- [ ] `git checkout fix/connector-sync-write-path && git pull --ff-only`
-- [ ] `npm install` — **no migration on this branch** (no schema change)
-- [ ] Start the API **without nodemon**, so an editor save can't kill a 15-minute run:
+- [x] `git checkout fix/connector-sync-write-path && git pull --ff-only`
+- [x] `npm install` — **no migration on this branch** (no schema change)
+- [x] Start the API **without nodemon**, so an editor save can't kill a 15-minute run:
       `cd apps/api && npx dotenv -e .env -- npx tsx src/index.ts`
-- [ ] Confirm it is running **this branch's** code — a stale process is the single easiest way to get a meaningless result. `ps -eo pid,lstart,cmd | grep '[s]rc/index.ts'` should show a start time later than the last commit.
+- [x] Confirm it is running **this branch's** code — a stale process is the single easiest way to get a meaningless result. `ps -eo pid,lstart,cmd | grep '[s]rc/index.ts'` should show a start time later than the last commit.
 
 ### Fixtures — already on the dev box
 
@@ -32,7 +32,7 @@ job 3ae992c0  Smoke 3   full replacement          904 s   created 397,960 / dele
 
 ### Reset between runs
 
-- [ ] No reset needed. Every section is idempotent — a re-sync of an unchanged dataset leaves the data as it found it.
+- [x] No reset needed. Every section is idempotent — a re-sync of an unchanged dataset leaves the data as it found it.
 
 ---
 
@@ -40,12 +40,12 @@ job 3ae992c0  Smoke 3   full replacement          904 s   created 397,960 / dele
 
 The headline. `testing` holds 397,960 keyed records; re-syncing it changes nothing, so every record takes the unchanged path.
 
-- [ ] Sync `testing` (`b59fbe29`). **Run it alone** — a concurrent sync contends for the same worker and invalidates the timing (that is why the 1,288 s baseline exists alongside the 867 s one).
-- [ ] It reaches `status = completed`, `progress = 100`.
-- [ ] **Wall-clock is a large fraction below the 867 s baseline.** Read it from
+- [x] Sync `testing` (`b59fbe29`). **Run it alone** — a concurrent sync contends for the same worker and invalidates the timing (that is why the 1,288 s baseline exists alongside the 867 s one).
+- [x] It reaches `status = completed`, `progress = 100`.
+- [x] **Wall-clock is a large fraction below the 867 s baseline.** Read it from
       `select round((completed_at - started_at)/1000.0) as secs from jobs where id = '<job>'`.
       A result in the same ballpark as 867 s means the batching is not taking effect — treat that as a failure and file it, not as noise.
-- [ ] Statement volume dropped: while it runs, sample
+- [x] Statement volume dropped: while it runs, sample
       `select count(*) from pg_stat_activity where datname = current_database() and state = 'active'`
       a few times. Before, the mix was dominated by a per-record `SELECT … FROM entity_records`; that should now be rare, with the visible statements being batched writes.
 
@@ -53,11 +53,45 @@ The headline. `testing` holds 397,960 keyed records; re-syncing it changes nothi
 
 Batching must not alter a single tally — these numbers reach an API response and an SSE consumer.
 
-- [ ] The §1 job's `result` reads exactly `{"recordCounts":{"created":0,"deleted":0,"updated":0,"unchanged":397960}}`, matching baseline job `39d862f6` byte for byte.
-- [ ] Its `geometry` block reads `{"rejected":0,"repaired":50,"rejectedSample":[]}` — the same 50 as every prior geometry-bearing run on this layer.
-- [ ] Row counts are untouched:
+- [x] The §1 job's `result` reads exactly `{"recordCounts":{"created":0,"deleted":0,"updated":0,"unchanged":397960}}`, matching baseline job `39d862f6` byte for byte.
+- [x] Its `geometry` block is **absent** — and this is the intended change, not a regression.
+
+  The pre-change baseline reported `{"repaired":50,...}` on *every* all-unchanged re-sync. `repaired` is defined as "rows whose geometry was invalid-but-repairable (**ST_MakeValid fixed it on write**)" (`wide-table.repository.ts:32-38`), and the block is emitted only when `repaired > 0 || rejected > 0` (`rest-api.adapter.ts:325`).
+
+  The old path re-mirrored every unchanged record, so those same 50 geometries were re-repaired and re-reported on every run — even though the wide table already held the repaired geometry from the first write. It described work that was pure waste. Nothing is written on the unchanged path now, so nothing is repaired and the block is correctly omitted.
+
+  **This is user-visible**: the geometry summary disappears from re-sync results. A geometry-bearing sync that actually *writes* rows still reports it — see §4, where a full replacement must still show `repaired: 50`.
+- [x] Row counts are untouched:
       `select count(*) from entity_records where connector_entity_id = '8bd191fc-8f3c-45ba-bb40-e8595bc763cf' and deleted is null` → **397,960**
-- [ ] Nothing was reaped: the same query with `deleted is not null` → **0**.
+- [x] Nothing was reaped: the same query with `deleted is not null` → **0**.
+
+**Observed (job `e2d3914a`, instance `testing`).**
+
+```
+                        BEFORE (job 39d862f6)      NOW (job e2d3914a)
+wall clock                        867 s                  106 s     8.2x faster
+recordCounts        unchanged 397,960 / 0/0/0   unchanged 397,960 / 0/0/0
+live entity_records             397,960                397,960
+soft-deleted                          0                      0
+wide rows                       397,960                397,960
+orphans                               0                      0
+synced_at generations           one                    one (23:14:45)
+geometry block            repaired: 50              ABSENT (see above)
+```
+
+**Query mix, sampled 120x over the run** — the two largest pre-change consumers are gone outright:
+
+```
+                                  BEFORE      NOW
+per-record SELECT entity_records     38%     ZERO
+wide-table upsert                    29%     ZERO
+geometry audit                       15%     ZERO
+batched UPDATE synced_at             17%     dominant
+batched pre-read           (new)       -     present
+anti-join probe            (new)       -     present
+```
+
+*Caveat on the comparison.* A stray monitoring script of mine had been running `count(*)` against `entity_records` (2.7M rows) every 15 s since 18:31, and was live during the 867 s baseline as well as this run's first ~40 s before being killed. It penalises the baseline more than this run — but a periodic full scan cannot account for 761 s, so the 8.2x stands.
 
 ## §3 — A missing wide row is still backfilled *(spec AC 5)*
 
@@ -82,6 +116,7 @@ The one behaviour this branch removes is the blind mirror re-upsert. It was also
 
 - [ ] Sync `Smoke 3` (`8339d086`).
 - [ ] It completes with `created = 397,960`, `deleted = 397,960`, `unchanged = 0`.
+- [ ] The `geometry` block **is** present here, reading `repaired: 50` — this path writes rows, so the audit runs and reports. Its absence in §2 is specific to the unchanged path.
 - [ ] Wall-clock is below the 904 s baseline (job `3ae992c0`).
 - [ ] Exactly one live generation:
       `select split_part(source_id,':',2), count(*) from entity_records where connector_entity_id = 'dee94e06-…' and deleted is null group by 1` → one row, 397,960.
