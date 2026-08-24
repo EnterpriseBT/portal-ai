@@ -42,14 +42,6 @@ export interface WideTableUpsertResult {
 }
 
 /**
- * Chunk size for `upsertMany`. A single 13k-row INSERT builds a Drizzle
- * `sql` AST whose join tree is deep enough to overflow V8's call stack
- * when the template is recursively flattened at execute time. 500 rows
- * keeps each statement's AST shallow + the parameter count comfortably
- * under PostgreSQL's 65k bind limit (500 rows × ~50 cols = 25k params
- * worst-case, well under the cap).
- */
-/**
  * Rows / ids per statement for every chunked wide-table builder.
  *
  * Named for the table rather than for `upsertMany` because #436 extended it
@@ -57,6 +49,9 @@ export interface WideTableUpsertResult {
  * AST node per element and Drizzle flattens that chain recursively when the
  * statement is serialised, so any unbounded list overflows the V8 stack.
  * Keeping each statement's AST shallow is the remedy in all four cases.
+ *
+ * 500 also keeps the bind count comfortably under PostgreSQL's 65k limit —
+ * 500 rows × ~50 columns = 25k params worst-case on the `upsertMany` path.
  */
 export const WIDE_TABLE_CHUNK_SIZE = 500;
 
