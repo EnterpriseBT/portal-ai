@@ -125,12 +125,27 @@ pagination  pageOffset · offset · resultOffset · resultRecordCount=1000 · st
 
 ### §2 — A transient socket close no longer kills the run (slices 1+2)
 
-- [ ] Create the fixture connector above with **`idField = PARCEL_ID`**. Sync it.
-- [ ] It reaches `status = completed`, `progress = 100`. (Before this branch, three separate attempts died at 80%, 60% and 96%.)
-- [ ] Result counts sum to the layer total: `created + updated + unchanged = 397,960`.
-- [ ] `select count(*) from entity_records where connector_entity_id = '<id>' and deleted is null` → **397,960**.
+- [x] Create the fixture connector above with **`idField = PARCEL_ID`**. Sync it.
+- [x] It reaches `status = completed`, `progress = 100`. (Before this branch, three separate attempts died at 80%, 60% and 96%.)
+- [x] Result counts sum to the layer total: `created + updated + unchanged = 397,960`.
+- [x] `select count(*) from entity_records where connector_entity_id = '<id>' and deleted is null` → **397,960**.
 - [ ] If the log shows a mid-run `UND_ERR_SOCKET`, it appears as a **retry** that the sync recovered from, not as a job failure. (You may not hit one — observed rate was ~1 per 330 requests.)
-- [ ] `details.attempts` is absent on success, and a bad-host job from §1 shows `attempts: 6`.
+- [x] `details.attempts` is absent on success, and a bad-host job from §1 shows `attempts: 6`.
+
+**Observed (job `3609760f`, instance `smoke 2`, 1,234 s):**
+
+```
+recordCounts   created 397,960 · updated 0 · unchanged 0 · deleted 0
+
+live 397,960 · distinct source_id 397,960 · synthetic src ids 0
+wide 397,960 · orphaned 0 · soft-deleted 0
+```
+
+Ran to completion with **zero** socket errors on the endpoint that day, so this section confirms the keyed fresh-insert path is intact but does **not** demonstrate a transient being absorbed — a clean run would have completed before this branch too. The retry mechanism's live evidence is §1's `attempts: 6`; its behaviour on `UND_ERR_SOCKET` specifically is covered by `retry.util.test.ts`.
+
+`smoke 2`'s transform omits `geometry`, so no `geometry` block in the result and the PostGIS path is untouched here — that path is exercised by §4 and by the geometry-bearing run below.
+
+The mid-run socket-close box is left unchecked: no transient occurred, so there was nothing to observe.
 
 ### §3 — A retry converges instead of duplicating (slice 3, #439)
 
