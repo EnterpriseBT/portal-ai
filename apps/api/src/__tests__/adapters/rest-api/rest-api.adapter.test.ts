@@ -247,23 +247,49 @@ describe("buildUrl", () => {
 
 describe("deriveSourceId", () => {
   it("uses record[idField] when set and non-empty", () => {
-    expect(deriveSourceId({ id: "abc" }, "id", 1, 0)).toBe("abc");
+    expect(deriveSourceId({ id: "abc" }, "id", "gen-1", 0)).toBe("abc");
   });
 
   it("coerces numeric idField to string", () => {
-    expect(deriveSourceId({ id: 42 }, "id", 1, 0)).toBe("42");
+    expect(deriveSourceId({ id: 42 }, "id", "gen-1", 0)).toBe("42");
   });
 
   it("falls back to synthetic when idField is unset", () => {
-    expect(deriveSourceId({ id: "abc" }, null, 1234, 5)).toBe("api:1234:5");
+    expect(deriveSourceId({ id: "abc" }, null, "gen-1", 5)).toBe("api:gen-1:5");
   });
 
   it("falls back to synthetic when record[idField] is null", () => {
-    expect(deriveSourceId({ id: null }, "id", 1234, 5)).toBe("api:1234:5");
+    expect(deriveSourceId({ id: null }, "id", "gen-1", 5)).toBe("api:gen-1:5");
   });
 
   it("falls back to synthetic when record[idField] is empty string", () => {
-    expect(deriveSourceId({ id: "" }, "id", 1234, 5)).toBe("api:1234:5");
+    expect(deriveSourceId({ id: "" }, "id", "gen-1", 5)).toBe("api:gen-1:5");
+  });
+
+  // ── #439: the generation key must be stable across BullMQ attempts ──
+  //
+  // It used to be `runStartedAt`, re-minted per attempt, so attempt 2 of
+  // one sync shared no source ids with attempt 1 and inserted a second
+  // full copy of the dataset (observed: 714,960 live rows for a 397,960
+  // -feature source, which then overflowed the stack in #436).
+
+  it("is stable for the same (generationKey, index) regardless of wall clock", () => {
+    const first = deriveSourceId({}, null, "job-abc", 7);
+    const second = deriveSourceId({}, null, "job-abc", 7);
+    expect(first).toBe(second);
+    expect(first).toBe("api:job-abc:7");
+  });
+
+  it("separates generations so a genuinely new sync still fully replaces", () => {
+    expect(deriveSourceId({}, null, "job-abc", 7)).not.toBe(
+      deriveSourceId({}, null, "job-def", 7)
+    );
+  });
+
+  it("keeps indexes distinct within one generation", () => {
+    expect(deriveSourceId({}, null, "job-abc", 7)).not.toBe(
+      deriveSourceId({}, null, "job-abc", 8)
+    );
   });
 });
 
@@ -708,7 +734,7 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
       .mockResolvedValueOnce(okResponse([]));
 
     const progress = jest.fn<(percent: number) => void>();
-    await restApiAdapter.syncInstance!(INSTANCE, "u1", progress);
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
 
     // Per-page ticks lift the call count above the old start+end pair.
     const calls = progress.mock.calls.map((c) => c[0]);

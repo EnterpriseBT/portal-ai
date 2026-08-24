@@ -632,9 +632,9 @@ describe("microsoftExcelAdapter.syncInstance", () => {
     );
 
     const calls: number[] = [];
-    await microsoftExcelAdapter.syncInstance!(instance, userId, (p) =>
-      calls.push(p)
-    );
+    await microsoftExcelAdapter.syncInstance!(instance, userId, {
+      progress: (p: number) => calls.push(p),
+    });
     expect(calls[0]).toBe(0);
     expect(calls[calls.length - 1]).toBe(100);
     for (let i = 1; i < calls.length; i++) {

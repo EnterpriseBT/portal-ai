@@ -19,6 +19,7 @@ import { ApiCode } from "../../constants/api-codes.constants.js";
 import {
   ConnectorAdapter,
   SyncEligibility,
+  SyncInstanceOptions,
   SyncInstanceResult,
 } from "../adapter.interface.js";
 import { ApiError } from "../../services/http.service.js";
@@ -88,8 +89,9 @@ export const microsoftExcelAdapter: ConnectorAdapter = {
   async syncInstance(
     instance: ConnectorInstance,
     userId: string,
-    progress?: (percent: number) => void
+    opts?: SyncInstanceOptions
   ): Promise<SyncInstanceResult> {
+    const progress = opts?.progress;
     const runStartedAt = Date.now();
     progress?.(0);
 

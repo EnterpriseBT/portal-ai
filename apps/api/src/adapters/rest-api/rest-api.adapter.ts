@@ -35,6 +35,7 @@ import {
   EntityDataQuery,
   EntityDataResult,
   SyncEligibility,
+  SyncInstanceOptions,
   SyncInstanceResult,
   TestConnectionParams,
   TestConnectionResult,
@@ -144,21 +145,31 @@ export function buildUrl(
  * Compute the per-record `sourceId` for upsert.
  * - `idField` set: coerce record[idField] to string; missing/null
  *   falls back to synthetic to avoid clobbering.
- * - `idField` unset: synthetic `api:<runStartedAt>:<index>`. Every
- *   sync produces fresh synthetics, which yields a full replacement
+ * - `idField` unset: synthetic `api:<generationKey>:<index>`. Every
+ *   *sync* produces a fresh generation, which yields a full replacement
  *   diff (all prior deleted + all current created) by design.
+ *
+ * `generationKey` used to be `runStartedAt`, which is re-minted on every
+ * BullMQ **attempt** — so a retried sync shared no source ids with the
+ * attempt it was retrying and inserted a second full copy of the dataset
+ * instead of converging (#439; observed 714,960 live rows for a 397,960
+ * -feature source, which then overflowed the stack in #436). The caller
+ * now passes the job id, which is stable across attempts of one sync.
+ *
+ * Full replacement per sync is unchanged and still intentional; whether
+ * that is the right semantic for a keyless endpoint is #442's question.
  */
 export function deriveSourceId(
   record: Record<string, unknown>,
   idField: string | null | undefined,
-  runStartedAt: number,
+  generationKey: string,
   index: number
 ): string {
   if (idField) {
     const raw = record[idField];
     if (raw !== null && raw !== undefined && raw !== "") return String(raw);
   }
-  return `api:${runStartedAt}:${index}`;
+  return `api:${generationKey}:${index}`;
 }
 
 // ── Adapter implementation ────────────────────────────────────────────
@@ -205,9 +216,15 @@ async function assertSyncEligibility(
 async function syncInstance(
   instance: ConnectorInstance,
   userId: string,
-  progress?: (percent: number) => void
+  opts?: SyncInstanceOptions
 ): Promise<SyncInstanceResult> {
+  const progress = opts?.progress;
   const runStartedAt = Date.now();
+  // #439: identity generation is keyed by the job, not the attempt, so a
+  // BullMQ retry updates the previous attempt's rows in place. Falls back
+  // to `runStartedAt` for direct invocations (unit tests), which have no
+  // job and no retry to converge with.
+  const generationKey = opts?.jobId ?? String(runStartedAt);
   progress?.(0);
 
   const endpoints = await DbService.repository.apiEndpoints.findByInstance(
@@ -253,6 +270,7 @@ async function syncInstance(
       credentials,
       userId,
       runStartedAt,
+      generationKey,
       progress
         ? (pagesEmitted: number) => {
             const intra = 1 - Math.exp(-pagesEmitted / 20);
@@ -324,6 +342,8 @@ async function syncOneEndpoint(
   credentials: ApiCredentials | null,
   userId: string,
   runStartedAt: number,
+  /** Job-scoped identity generation for synthetic source ids (#439). */
+  generationKey: string,
   // Per-page progress reporter. Called with the running count of
   // "pages" emitted for this endpoint (1, 2, …). Caller maps that
   // count onto the meter via an asymptotic curve so the bar advances
@@ -406,6 +426,7 @@ async function syncOneEndpoint(
     endpoint,
     instance,
     runStartedAt,
+    generationKey,
     userId,
     mappingsForNormalize,
     wideProjection,
@@ -517,6 +538,13 @@ export interface UpsertContext {
   endpoint: ApiEndpoint;
   instance: ConnectorInstance;
   runStartedAt: number;
+  /**
+   * Identity generation for synthetic source ids — the job id, so it is
+   * stable across BullMQ attempts of one sync (#439). Distinct from
+   * `runStartedAt`, which is the watermark and *must* stay per-attempt so
+   * the reaper only spares rows this attempt touched.
+   */
+  generationKey: string;
   userId: string;
   /**
    * Field mappings + their column-definition joins, pre-fetched once
@@ -584,7 +612,7 @@ export async function upsertRecord(
   const sourceId = deriveSourceId(
     recordObj,
     ctx.endpoint.config.idField,
-    ctx.runStartedAt,
+    ctx.generationKey,
     ctx.counts.recordIndex
   );
   ctx.counts.recordIndex++;

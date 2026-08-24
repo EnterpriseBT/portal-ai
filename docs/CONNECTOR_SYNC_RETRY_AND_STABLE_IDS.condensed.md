@@ -56,8 +56,15 @@ Files: `adapters/rest-api/retry.util.ts` — before the status gate, treat `err.
 Tests: `__tests__/adapters/rest-api/retry.util.test.ts` — a statusless `REST_API_FETCH_FAILED` retries and succeeds on attempt 3; exhausting the budget rethrows with `attempts: 6`; a non-`ApiError` still throws immediately (unchanged); a 400 still throws immediately (unchanged).
 
 **Slice 3 — thread `jobId`; key synthetic ids by it.**
-Files: `adapters/adapter.interface.ts` (add `jobId: string` to `syncInstance`), `queues/processors/connector-sync.processor.ts:49` (pass `jobId`), `adapters/rest-api/rest-api.adapter.ts` (`syncInstance` → `syncOneEndpoint` → `UpsertContext.jobId` → `deriveSourceId`; replace `runStartedAt` param with `jobId`; update the JSDoc at `:144-150` to state the attempt-stability guarantee), `adapters/google-sheets/google-sheets.adapter.ts:85` + `adapters/microsoft-excel/microsoft-excel.adapter.ts:88` (signature only).
-Tests: `__tests__/adapters/rest-api/rest-api.adapter.test.ts` — `deriveSourceId` returns the same id for the same `(jobId, index)` across two calls with different wall-clock times, and different ids across different `jobId`s; `idField` set still wins; empty/null `idField` value still falls back.
+
+Signature became an **options bag**, not a 4th positional param: `syncInstance(instance, userId, opts?: SyncInstanceOptions)` with `{ progress?, jobId? }`. Rationale — ~40 test call sites pass `(instance, userId)` and stay valid, while only 4 passed `progress` positionally and needed touching; a bag also absorbs the next added field without re-churning every adapter.
+
+`jobId` is **optional with a `runStartedAt` fallback** rather than required. Making it required would have broken all ~40 sites for no safety gain, and the real risk — production silently losing it — is covered where it belongs, by a processor test. Direct/unit invocations keep exactly the pre-#439 behaviour.
+
+`runStartedAt` stays per-attempt: it is the reap watermark and *must* only spare rows the current attempt touched. Only the identity generation moves to the job.
+
+Files: `adapters/adapter.interface.ts` (new `SyncInstanceOptions`; `syncInstance` takes the bag), `queues/processors/connector-sync.processor.ts:49` (pass `{ progress, jobId }`), `adapters/rest-api/rest-api.adapter.ts` (`syncInstance` derives `generationKey = opts?.jobId ?? String(runStartedAt)` → `syncOneEndpoint` → `UpsertContext.generationKey` → `deriveSourceId`, whose 3rd param becomes `generationKey: string`), `adapters/google-sheets/google-sheets.adapter.ts:85` + `adapters/microsoft-excel/microsoft-excel.adapter.ts:88` (bag + `const progress = opts?.progress`).
+Tests: `__tests__/adapters/rest-api/rest-api.adapter.test.ts` — same id for the same `(generationKey, index)` regardless of wall clock; different generations stay distinct; indexes stay distinct within a generation; existing `idField` precedence + empty-value fallback cases retargeted to string keys. New `__tests__/queues/processors/connector-sync.processor.test.ts` — the processor passes `jobId`, still forwards `progress`, and passes instance/userId unchanged. This is the guard that stops the fallback quietly becoming the production path.
 
 All three: `npm run test:unit` (apps/api), `npm run type-check`, `npm run lint`.
 

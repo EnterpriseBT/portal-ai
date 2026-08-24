@@ -474,9 +474,9 @@ describe("googleSheetsAdapter.syncInstance", () => {
     );
 
     const calls: number[] = [];
-    await googleSheetsAdapter.syncInstance!(instance, userId, (p) =>
-      calls.push(p)
-    );
+    await googleSheetsAdapter.syncInstance!(instance, userId, {
+      progress: (p: number) => calls.push(p),
+    });
 
     expect(calls.length).toBeGreaterThan(2);
     expect(calls[0]).toBe(0);

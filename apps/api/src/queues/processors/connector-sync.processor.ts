@@ -46,8 +46,14 @@ export const connectorSyncProcessor: TypedJobProcessor<
     );
   }
 
-  const result = await adapter.syncInstance(instance, userId, (percent) => {
-    void bullJob.updateProgress(percent);
+  const result = await adapter.syncInstance(instance, userId, {
+    progress: (percent) => {
+      void bullJob.updateProgress(percent);
+    },
+    // #439: BullMQ attempts of one sync must share a record-identity
+    // generation. Without this the adapter falls back to a per-run value
+    // and a retry inserts a second full copy of the dataset.
+    jobId,
   });
 
   logger.info(
