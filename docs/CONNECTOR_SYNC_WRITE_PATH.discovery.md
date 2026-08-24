@@ -4,7 +4,9 @@
 
 **Why this exists.** A connector sync writes records one at a time, costing three to four sequential DB round-trips each. On a 397,960-record ArcGIS layer that is a 15–25 minute operation whose duration is almost entirely round-trip latency and a bad query plan, not work. The duration is also the *exposure window* for #435: a transient socket close kills the run, and the chance of hitting one scales with how long the run stays open — three separate runs died at 80%, 60% and 96% before #435 landed.
 
-The survey found the important thing: **the batched write pattern already exists in this codebase, twice.** `record-import.util.ts`'s `importRows` and `layout-plan-commit.service.ts`'s `writeRecords` both do exactly what the sync loop should — one bulk lookup, in-memory classification, one bulk upsert, one bulk mirror. Every primitive they use is batch-capable. The REST/Sheets/Excel sync loop is the outlier that calls all of them with arrays of length one. So this is not "introduce batching as a pattern" (as the ticket's sizing says) — it is **make the sync loop use the pattern already in production next to it**.
+The survey found the important thing: **the batched write pattern already exists in this codebase, twice.** `record-import.util.ts`'s `importRows` and `layout-plan-commit.service.ts`'s `writeRecords` both do exactly what the sync loop should — one bulk lookup, in-memory classification, one bulk upsert, one bulk mirror. Every primitive they use is batch-capable. So this is not "introduce batching as a pattern" (as the ticket's sizing says) — it is **make the REST sync loop use the pattern already in production next to it**.
+
+And the blast radius is narrower than the ticket assumed: the Google Sheets and Microsoft Excel adapters delegate record writing to `LayoutPlanCommitService.commit` → `writeRecords`, so they are *already* batched and already skip unchanged rows. `rest-api`'s `upsertRecord` is the only per-record write loop in the codebase. This is a single-adapter fix, not a cross-cutting one.
 
 ## The current shape
 
@@ -74,19 +76,31 @@ The batched form binds `connector_entity_id` *and* `source_id = ANY(…)` in the
 
 ### Decision 1 — where the batching lives
 
-**A. Port `flushBatch`'s shape into `syncOneEndpoint`.** Accumulate a page's records, flush per page (~1000).
-**B. Extract a shared `SyncRecordWriter` used by all three adapters** (`rest-api`, `google-sheets`, `microsoft-excel`), replacing each one's per-record call.
-**C. Batch inside `upsertRecord`** — keep the call-per-record signature and buffer internally.
+**Corrected after surveying the sibling adapters.** The first draft leaned toward a shared writer across `rest-api`, `google-sheets` and `microsoft-excel` on the assumption that all three had the same per-record loop. They do not:
 
-| | A: in the REST loop | B: shared writer | C: buffer inside |
+| Adapter | Record write path | Batched today? |
+|---|---|---|
+| `rest-api` | `upsertRecord` per record (`rest-api.adapter.ts:588`) | **no** — the defect |
+| `google-sheets` | delegates to `LayoutPlanCommitService.commit` (`google-sheets.adapter.ts:136`) → `writeRecords` | **yes** |
+| `microsoft-excel` | delegates to `LayoutPlanCommitService.commit` (`microsoft-excel.adapter.ts:154`) → `writeRecords` | **yes** |
+
+Sheets and Excel have no per-record write loop at all. Their only per-record-shaped code was the reap cascade (`google-sheets.adapter.ts:159`), which #436 already fixed. So `rest-api` is the sole consumer that needs this.
+
+**A. Port `flushBatch`'s shape into the REST sync loop.** One consumer, proven shape, no new abstraction.
+**B. Extract one writer shared by all three *writers*** — `rest-api`, `record-import.util.ts`, `layout-plan-commit.service.ts`. The real consolidation, since `flushBatch` and `writeRecords` are already near-duplicate logic.
+**C. Batch inside `upsertRecord`** — keep the per-record signature, buffer internally.
+
+| | A: REST loop only | B: consolidate all writers | C: buffer inside |
 |---|---|---|---|
-| Fixes REST sync | yes | yes | yes |
-| Fixes Sheets / Excel | no | yes | yes |
-| New abstraction | none | one module | hidden state in a helper |
-| Reviewability | high — mirrors `flushBatch` | medium | low — implicit flush points |
-| Risk of divergence later | three loops drift | one place | one place |
+| Fixes the measured defect | yes | yes | yes |
+| Touches a working path | no | **yes** — Sheets/Excel sync + imports | no |
+| New abstraction | none | one module, 3 consumers | hidden flush points |
+| Reviewability | high — mirrors `flushBatch` | medium | low |
+| Removes existing duplication | no | yes | no |
 
-**Lean: B.** All three adapters have the same per-record loop and the same reap/mirror tail, and #436 just demonstrated what happens when a shared primitive is fixed in one place and the others are assumed fine. C hides flush timing from the caller, which makes error attribution and progress reporting worse.
+**Lean: A.** Every measurement justifying this ticket (36 ms → 0.001 ms, 93% no-op cost) comes from the REST loop; none argues for touching `writeRecords`. B is the tidier end state and the duplication is real, but doing it inside a bug ticket means risking the live Sheets/Excel sync path to fix a REST-only defect. C hides flush timing from the caller, which worsens error attribution.
+
+**Follow-up to file:** consolidate `flushBatch` and `writeRecords` (and the new REST writer) into one batched record writer. A refactor ticket, not part of this fix.
 
 ### Decision 2 — the redundant pre-read
 
@@ -128,7 +142,7 @@ Page-sized batches (~1000) fall out naturally on the buffered path. The streamin
 
 ## Recommendation
 
-1. Extract a shared batched record writer used by the `rest-api`, `google-sheets` and `microsoft-excel` adapters, modelled on `record-import.util.ts:97` `flushBatch`.
+1. Batch the `rest-api` sync loop's record writes, modelled on `record-import.util.ts:97` `flushBatch`. **Scoped to `rest-api` only** — Sheets and Excel already route through the batched `writeRecords` and have no per-record loop.
 2. Keep the pre-read and batch it — one `findBySourceIds` per batch of 1000. Do **not** fold the checksum into `ON CONFLICT`; the measurement removed the justification.
 3. Classify created / updated / unchanged in memory from the batch's `existingMap`, preserving today's counts exactly.
 4. Write changed rows with `upsertManyBySourceId` + one `wideTable.upsertMany`, in one transaction per batch.
@@ -141,7 +155,7 @@ Page-sized batches (~1000) fall out naturally on the buffered path. The streamin
 1. **Does the batched pre-read stay well-planned when statistics go stale?** Measured at 1.108 ms/1000 with `n_mod_since_analyze = 167`. Both columns are in the `Index Cond`, so there is no residual filter to degrade — but this was not measured against a deliberately stale table. **Lean: verify with an explicit stale-stats measurement in the spec's test plan rather than assuming.**
 2. **Per-batch transaction, or per-page?** `importRows` wraps each flush in `DbService.transaction`. A failure mid-run then leaves earlier batches committed. **Lean: per-batch, matching `importRows`** — the watermark reaper already makes a partially-written sync recoverable, and a run-long transaction on 398K rows is worse.
 3. **Does progress reporting still work?** The meter currently ticks per page via `reportPage`. Count-based flushing decouples batches from pages. **Lean: keep ticking on pages** — progress is #441's problem and should not be entangled here.
-4. **Do the Sheets/Excel adapters have the same unchanged-path waste?** Their reap/mirror tail is shared, but their write loops were not surveyed line-by-line. **Lean: survey them in the spec; if their shape differs materially, scope this to `rest-api` and file the others separately rather than half-migrating three adapters.**
+4. ~~**Do the Sheets/Excel adapters have the same unchanged-path waste?**~~ **Resolved during discovery: no.** Both delegate record writing to `LayoutPlanCommitService.commit` → `writeRecords`, which is already batched and already skips unchanged rows. Neither has a per-record loop. This resolved Decision 1 to option A — see the table there.
 
 ## Enterprise-scale considerations
 
@@ -163,4 +177,4 @@ Page-sized batches (~1000) fall out naturally on the buffered path. The streamin
 
 ## Next step
 
-`docs/CONNECTOR_SYNC_WRITE_PATH.spec.md` fixes the writer's surface — its input shape, the counts contract, and the batch/transaction boundary — then `docs/CONNECTOR_SYNC_WRITE_PATH.plan.md` slices it. The natural slicing is: (1) extract the shared writer with the batched pre-read and classification, behind a regression test that pins the counts; (2) batch the changed-row write and the mirror; (3) skip the unchanged path's no-op work and add the anti-join backfill; (4) migrate `google-sheets` and `microsoft-excel` onto the writer, or descope them per open question 4. Each slice is independently revertable and each keeps the counts contract intact.
+`docs/CONNECTOR_SYNC_WRITE_PATH.spec.md` fixes the writer's surface — its input shape, the counts contract, and the batch/transaction boundary — then `docs/CONNECTOR_SYNC_WRITE_PATH.plan.md` slices it. The natural slicing is: (1) introduce the batched writer in the REST sync loop with the batched pre-read and in-memory classification, behind a regression test that pins the counts; (2) batch the changed-row write and the mirror; (3) skip the unchanged path's no-op work and add the anti-join backfill. Each slice is independently revertable and each keeps the counts contract intact. There is no adapter-migration slice — Sheets and Excel are already batched.
