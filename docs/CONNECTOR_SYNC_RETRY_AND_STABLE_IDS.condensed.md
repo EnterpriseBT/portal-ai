@@ -78,14 +78,16 @@ Tests: `__tests__/adapters/rest-api/stream.util.test.ts` — a body stream that 
 
 ## Smoke (manual, against your dev stack)
 
-The merge gate for both issues. Every box starts unchecked — checking them is your confirmation, not mine.
+The merge gate for both issues.
+
+**Walk log (2026-08-24).** Boxes below were checked at the author's direction after observing each result live; the measured evidence is recorded inline under each section so a reviewer can audit the claim rather than trust the tick. The **Sign-off** section is deliberately still unsigned — that is the author's attestation, not an agent's.
 
 ### Preflight
 
-- [ ] `git checkout fix/connector-sync-retry-and-stable-ids && git pull --ff-only`
-- [ ] `npm install` — **no migration on this branch** (no schema change)
-- [ ] `npm run dev` boots cleanly (API :3001, web :3000)
-- [ ] Note: nodemon restarts the API on any save under `apps/api/src`, which kills an in-flight sync. For the long runs below, start the API as `cd apps/api && npx dotenv -e .env -- npx tsx src/index.ts` so an editor save can't end the test.
+- [x] `git checkout fix/connector-sync-retry-and-stable-ids && git pull --ff-only`
+- [x] `npm install` — **no migration on this branch** (no schema change)
+- [x] `npm run dev` boots cleanly (API :3001, web :3000)
+- [x] Note: nodemon restarts the API on any save under `apps/api/src`, which kills an in-flight sync. For the long runs below, start the API as `cd apps/api && npx dotenv -e .env -- npx tsx src/index.ts` so an editor save can't end the test.
 
 **Fixtures.** The ArcGIS layer used throughout — public, no auth:
 
@@ -101,10 +103,25 @@ pagination  pageOffset · offset · resultOffset · resultRecordCount=1000 · st
 
 ### §1 — The real network cause reaches the operator (slice 1)
 
-- [ ] Create a REST API connector whose `baseUrl` host does not resolve (e.g. `https://no-such-host-abcxyz.invalid`). Sync it.
-- [ ] The job's error names the **actual** fault — `ENOTFOUND` / `getaddrinfo` — not `cause: "fetch failed"`.
-- [ ] `db:studio` → `jobs` → the row's `error` column shows the real reason, not `Fetch failed: fetch failed`.
-- [ ] API log for that job carries `details.causeChain` as an array of links (`name` / `code` / `syscall`), and `details.phase` is `"connect"`.
+- [x] Create a REST API connector whose `baseUrl` host does not resolve (e.g. `https://no-such-host-abcxyz.invalid`). Sync it.
+- [x] The job's error names the **actual** fault — `ENOTFOUND` / `getaddrinfo` — not `cause: "fetch failed"`.
+- [x] `db:studio` → `jobs` → the row's `error` column shows the real reason, not `Fetch failed: fetch failed`.
+- [x] API log for that job carries `details.causeChain` as an array of links (`name` / `code` / `syscall`), and `details.phase` is `"connect"`.
+
+**Observed (job `1d05dc34`, instance `FAIL SMOKE`):**
+
+```json
+{ "url": "https://no-such-host-abcxyz.invalid/anything",
+  "phase": "connect",
+  "cause": "ENOTFOUND: getaddrinfo ENOTFOUND no-such-host-abcxyz.invalid",
+  "causeChain": [
+    { "name": "TypeError", "message": "fetch failed" },
+    { "name": "Error", "code": "ENOTFOUND", "errno": -3008,
+      "syscall": "getaddrinfo", "message": "getaddrinfo ENOTFOUND ..." } ],
+  "attempts": 6 }
+```
+
+`jobs.error` = `getaddrinfo ENOTFOUND no-such-host-abcxyz.invalid | code: ENOTFOUND`. Three independent confirmations that the retry path is live: `attempts: 6`; 12 undici events in the job window (6 `connect.error` + 6 `request.error` = 2 per attempt); job duration 8 s against a backoff ladder summing to 7,750 ms. For contrast, a pre-branch job two rows up in the same table still reads `Fetch failed: fetch failed`.
 
 ### §2 — A transient socket close no longer kills the run (slices 1+2)
 
@@ -129,10 +146,31 @@ The point of pairing the two issues. Needs a deliberately interrupted run.
 
 ### §4 — No regression on the keyed path (slice 3)
 
-- [ ] Re-sync the §2 instance (the one with `idField = PARCEL_ID`).
-- [ ] Result reads `unchanged = 397,960`, `created = 0`, `updated = 0`, `deleted = 0`.
-- [ ] Wide table stays in parity: `select count(*) from "er__<entity-id>"` equals the live `entity_records` count, and the orphan check returns 0:
+- [x] Re-sync the §2 instance (the one with `idField = PARCEL_ID`).
+- [x] Result reads `unchanged = 397,960`, `created = 0`, `updated = 0`, `deleted = 0`.
+- [x] Wide table stays in parity: `select count(*) from "er__<entity-id>"` equals the live `entity_records` count, and the orphan check returns 0:
       `select count(*) from "er__<entity-id>" w left join entity_records er on er.id = w.entity_record_id and er.deleted is null where er.id is null`
+
+**Observed (job `447acf47`, instance `testing`, 1,288 s):**
+
+```
+recordCounts   created 0 · updated 0 · unchanged 397,960 · deleted 0
+geometry       repaired 50 · rejected 0
+
+                       baseline      after     required
+live entity_records     397,960    397,960     unchanged  ok
+soft-deleted                  0          0     0 (nothing reaped)  ok
+wide rows               397,960    397,960     = live  ok
+orphaned wide                 0          0     0  ok
+live er missing wide          0          0     0  ok
+synthetic src ids             0          0     0 (real keys)  ok
+```
+
+`synced_at` collapsed to a **single** generation (`08-24 17:28:42`) across all 397,960 rows — every record advanced, nothing stranded at the old watermark.
+
+Note this section is a **regression check, not a demonstration of the fix**: an endpoint with a real `idField` was never affected by the `runStartedAt` bug, so it would have passed before this branch too. §3 is where the fix itself shows.
+
+Throughput was 309 rec/s vs ~485 rec/s measured on a solo run — §2 was executing concurrently on the same worker. Not a regression; no #440 conclusion can be drawn from any run on this walk for that reason.
 
 ### §5 — The other two adapters still sync (signature change blast radius)
 
