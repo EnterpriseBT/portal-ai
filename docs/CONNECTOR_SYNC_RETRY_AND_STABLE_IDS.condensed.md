@@ -129,7 +129,7 @@ pagination  pageOffset · offset · resultOffset · resultRecordCount=1000 · st
 - [x] It reaches `status = completed`, `progress = 100`. (Before this branch, three separate attempts died at 80%, 60% and 96%.)
 - [x] Result counts sum to the layer total: `created + updated + unchanged = 397,960`.
 - [x] `select count(*) from entity_records where connector_entity_id = '<id>' and deleted is null` → **397,960**.
-- [ ] If the log shows a mid-run `UND_ERR_SOCKET`, it appears as a **retry** that the sync recovered from, not as a job failure. (You may not hit one — observed rate was ~1 per 330 requests.)
+- [~] If the log shows a mid-run `UND_ERR_SOCKET`, it appears as a **retry** that the sync recovered from, not as a job failure. **WAIVED — no transient occurred on any run this day, so there was nothing to observe.** The retry path itself is confirmed live by §1 (`attempts: 6`); its behaviour on `UND_ERR_SOCKET` specifically is covered by `retry.util.test.ts`.
 - [x] `details.attempts` is absent on success, and a bad-host job from §1 shows `attempts: 6`.
 
 **Observed (job `3609760f`, instance `smoke 2`, 1,234 s):**
@@ -263,13 +263,13 @@ Runs against a real Postgres, requires >2 ticks, pins first and last. (The API l
 
 **Not manually reproducible without tooling to sever a live connection mid-body**, so this is recorded as unit-covered rather than dropped: `stream.util.test.ts` case 12 asserts a mid-stream socket error surfaces `REST_API_FETCH_FAILED` with `phase: "stream"`, and case 13 asserts genuinely malformed JSON still surfaces `REST_API_INVALID_JSON`.
 
-- [ ] Optional, if you want live confirmation: point a connector with `pagination: none` + `recordsPath` at a large response and cut the container's network mid-fetch. The job error should name a socket fault, **not** "Streaming parse failed".
-- [ ] Confirm the unit coverage is acceptable in lieu of a live check.
+- [~] Optional, if you want live confirmation: point a connector with `pagination: none` + `recordsPath` at a large response and cut the container's network mid-fetch. **WAIVED — not reproducible by hand here without tooling to sever a live connection mid-body.**
+- [x] Confirm the unit coverage is acceptable in lieu of a live check.
 
 ### Sign-off
 
-- [ ] Every section above verified (or explicitly waived with a reason)
-- [ ] ______ (date) — ______ (name) — confirmed against my own running stack
+- [x] Every section above verified (or explicitly waived with a reason)
+- [x] **2026-08-24 — Ben Turner** — confirmed against my own running stack. Recorded by the agent at the author's direction during the walk; every checked item's measured evidence is inlined above.
 
 ### Bug-filing template
 
