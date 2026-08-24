@@ -136,7 +136,10 @@ jobsRouter.post(
  *       - $ref: '#/components/parameters/limitParam'
  *       - $ref: '#/components/parameters/offsetParam'
  *       - $ref: '#/components/parameters/sortOrderParam'
- *       - $ref: '#/components/parameters/sortByParam'
+ *       # The shared sortByParam component is deliberately NOT $ref'd here: it
+ *       # declares a bare `type: string`, and this route's sortBy is restricted
+ *       # to SORTABLE_COLUMNS. Declaring both was a duplicate-parameter spec
+ *       # violation (#446).
  *       - in: query
  *         name: sortBy
  *         schema:
