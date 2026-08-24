@@ -34,6 +34,7 @@ import {
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import { db } from "../db/client.js";
+import { WIDE_TABLE_CHUNK_SIZE } from "../db/repositories/wide-table.repository.js";
 import { connectorInstances, fieldMappings } from "../db/schema/index.js";
 import type {
   ColumnDefinitionSelect,
@@ -837,13 +838,21 @@ export class LayoutPlanCommitService {
         // Wide rows need their `synced_at` bumped to the run's watermark
         // too, otherwise a downstream watermark sweep that consults the
         // wide table (phase 3+) would treat them as stale.
-        const idList = sql.join(
-          unchangedIds.map((id) => sql`${id}`),
-          sql`, `
-        );
-        await (locked as typeof db).execute(
-          sql`UPDATE ${sql.raw(`"er__${connectorEntityId}"`)} SET "synced_at" = ${syncedAt} WHERE "entity_record_id" IN (${idList})`
-        );
+        //
+        // Chunked (#436): `unchangedIds` grows with the entity, and an
+        // unbounded `IN (…)` built by `sql.join` overflows the V8 stack when
+        // Drizzle serialises it. Same remedy as `wideTable.upsertMany` and
+        // `softDeleteByEntityRecordIds`.
+        for (let i = 0; i < unchangedIds.length; i += WIDE_TABLE_CHUNK_SIZE) {
+          const chunk = unchangedIds.slice(i, i + WIDE_TABLE_CHUNK_SIZE);
+          const idList = sql.join(
+            chunk.map((id) => sql`${id}`),
+            sql`, `
+          );
+          await (locked as typeof db).execute(
+            sql`UPDATE ${sql.raw(`"er__${connectorEntityId}"`)} SET "synced_at" = ${syncedAt} WHERE "entity_record_id" IN (${idList})`
+          );
+        }
       }
     });
 
