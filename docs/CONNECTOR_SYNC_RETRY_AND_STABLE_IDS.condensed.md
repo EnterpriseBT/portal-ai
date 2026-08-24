@@ -78,10 +78,86 @@ Tests: `__tests__/adapters/rest-api/stream.util.test.ts` — a body stream that 
 
 ## Smoke (manual, against your dev stack)
 
-1. **Cause chain is visible.** Create a REST API connector whose `baseUrl` host does not resolve. Sync it. → The job error carries the real reason (`ENOTFOUND` / `getaddrinfo`), not `cause: "fetch failed"`, and `details.attempts` shows the budget was spent.
-2. **A transient close no longer kills the run.** Sync the 397,960-feature layer (`services1.arcgis.com/.../Parcels_SaltLake/FeatureServer/0`, `resultOffset`/`resultRecordCount=1000`) with `idField = PARCEL_ID`. → It completes: `created + updated + unchanged = 397,960`, `status = completed`. Any mid-run socket close appears in the logs as a retry, not a failure.
-3. **A retry no longer duplicates.** New instance against the same layer with `idField` **left empty**. Start the sync, let it write a few pages, then stop the API process so BullMQ re-delivers it. → After the retry completes, `select split_part(source_id,':',2), count(*) from entity_records where connector_entity_id = '<id>' and deleted is null group by 1` returns **exactly one** generation, and the live row count equals the layer count — not a multiple of it.
-4. **No regression on the keyed path.** Re-sync the instance from step 2. → `unchanged = 397,960`, `created = updated = deleted = 0`, and `select count(*) from "er__<entity-id>"` still equals the live `entity_records` count with zero orphans.
+The merge gate for both issues. Every box starts unchecked — checking them is your confirmation, not mine.
+
+### Preflight
+
+- [ ] `git checkout fix/connector-sync-retry-and-stable-ids && git pull --ff-only`
+- [ ] `npm install` — **no migration on this branch** (no schema change)
+- [ ] `npm run dev` boots cleanly (API :3001, web :3000)
+- [ ] Note: nodemon restarts the API on any save under `apps/api/src`, which kills an in-flight sync. For the long runs below, start the API as `cd apps/api && npx dotenv -e .env -- npx tsx src/index.ts` so an editor save can't end the test.
+
+**Fixtures.** The ArcGIS layer used throughout — public, no auth:
+
+```
+baseUrl  https://services1.arcgis.com/99lidPhWCzftIe9K/arcgis/rest/services/Parcels_SaltLake/FeatureServer/0
+path     /query?where=1%3D1&outFields=%2A&outSR=4326&f=json
+pagination  pageOffset · offset · resultOffset · resultRecordCount=1000 · startPage 0
+```
+
+397,960 features → 398 pages. A full run is ~15–25 min.
+
+**Reset between runs.** Each `§` below is independent. Delete the instance you created, or leave it — nothing here depends on a clean DB.
+
+### §1 — The real network cause reaches the operator (slice 1)
+
+- [ ] Create a REST API connector whose `baseUrl` host does not resolve (e.g. `https://no-such-host-abcxyz.invalid`). Sync it.
+- [ ] The job's error names the **actual** fault — `ENOTFOUND` / `getaddrinfo` — not `cause: "fetch failed"`.
+- [ ] `db:studio` → `jobs` → the row's `error` column shows the real reason, not `Fetch failed: fetch failed`.
+- [ ] API log for that job carries `details.causeChain` as an array of links (`name` / `code` / `syscall`), and `details.phase` is `"connect"`.
+
+### §2 — A transient socket close no longer kills the run (slices 1+2)
+
+- [ ] Create the fixture connector above with **`idField = PARCEL_ID`**. Sync it.
+- [ ] It reaches `status = completed`, `progress = 100`. (Before this branch, three separate attempts died at 80%, 60% and 96%.)
+- [ ] Result counts sum to the layer total: `created + updated + unchanged = 397,960`.
+- [ ] `select count(*) from entity_records where connector_entity_id = '<id>' and deleted is null` → **397,960**.
+- [ ] If the log shows a mid-run `UND_ERR_SOCKET`, it appears as a **retry** that the sync recovered from, not as a job failure. (You may not hit one — observed rate was ~1 per 330 requests.)
+- [ ] `details.attempts` is absent on success, and a bad-host job from §1 shows `attempts: 6`.
+
+### §3 — A retry converges instead of duplicating (slice 3, #439)
+
+The point of pairing the two issues. Needs a deliberately interrupted run.
+
+- [ ] New instance against the same layer with **`idField` left empty**.
+- [ ] Start the sync; let it write a few pages (watch the record count climb).
+- [ ] Kill the API process so BullMQ re-delivers the job. Restart the API and let the retry finish.
+- [ ] Exactly **one** id generation exists:
+      `select split_part(source_id,':',2) as generation, count(*) from entity_records where connector_entity_id = '<id>' and deleted is null group by 1` → **one row**.
+- [ ] The live row count equals the layer total, **not** a multiple of it.
+- [ ] `select count(*) from entity_records where connector_entity_id = '<id>' and deleted is not null` → 0 from the retry (nothing was reaped, because nothing was orphaned).
+
+### §4 — No regression on the keyed path (slice 3)
+
+- [ ] Re-sync the §2 instance (the one with `idField = PARCEL_ID`).
+- [ ] Result reads `unchanged = 397,960`, `created = 0`, `updated = 0`, `deleted = 0`.
+- [ ] Wide table stays in parity: `select count(*) from "er__<entity-id>"` equals the live `entity_records` count, and the orphan check returns 0:
+      `select count(*) from "er__<entity-id>" w left join entity_records er on er.id = w.entity_record_id and er.deleted is null where er.id is null`
+
+### §5 — The other two adapters still sync (signature change blast radius)
+
+`syncInstance` moved to an options bag, so Google Sheets and Microsoft Excel changed too. Neither uses synthetic ids, but both must still run and still report progress.
+
+- [ ] Sync an existing **Google Sheets** connector → completes, counts look right.
+- [ ] Its progress bar advances (0 → 100), i.e. `progress` still reaches BullMQ through the bag.
+- [ ] Sync an existing **Microsoft Excel** connector → same two checks.
+- [ ] If you have neither configured, say so at sign-off — the unit + integration suites cover both, but a live run is the real check.
+
+### §6 — Streaming-path error label (slice 4)
+
+**Not manually reproducible without tooling to sever a live connection mid-body**, so this is recorded as unit-covered rather than dropped: `stream.util.test.ts` case 12 asserts a mid-stream socket error surfaces `REST_API_FETCH_FAILED` with `phase: "stream"`, and case 13 asserts genuinely malformed JSON still surfaces `REST_API_INVALID_JSON`.
+
+- [ ] Optional, if you want live confirmation: point a connector with `pagination: none` + `recordsPath` at a large response and cut the container's network mid-fetch. The job error should name a socket fault, **not** "Streaming parse failed".
+- [ ] Confirm the unit coverage is acceptable in lieu of a live check.
+
+### Sign-off
+
+- [ ] Every section above verified (or explicitly waived with a reason)
+- [ ] ______ (date) — ______ (name) — confirmed against my own running stack
+
+### Bug-filing template
+
+Section: · Expected: · Got: · Repro: · Identifiers (job id / instance id / entity id):
 
 ## Out of scope
 
