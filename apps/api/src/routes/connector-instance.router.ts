@@ -600,11 +600,9 @@ connectorInstanceRouter.get(
  *               name:
  *                 type: string
  *               config:
- *                 type: object
- *                 nullable: true
+ *                 type: [object, "null"]
  *               credentials:
- *                 type: object
- *                 nullable: true
+ *                 type: [object, "null"]
  *     responses:
  *       201:
  *         description: Connector instance created
@@ -1395,8 +1393,7 @@ connectorInstanceRouter.delete(
  *                 type: string
  *                 minLength: 1
  *               enabledCapabilityFlags:
- *                 type: object
- *                 nullable: true
+ *                 type: [object, "null"]
  *                 properties:
  *                   read:
  *                     type: boolean

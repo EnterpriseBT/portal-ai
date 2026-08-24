@@ -341,8 +341,7 @@ entityGroupRouter.get(
  *                 type: string
  *                 minLength: 1
  *               description:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *     responses:
  *       201:
  *         description: Entity group created
@@ -491,8 +490,7 @@ entityGroupRouter.post(
  *                 type: string
  *                 minLength: 1
  *               description:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *     responses:
  *       200:
  *         description: Entity group updated

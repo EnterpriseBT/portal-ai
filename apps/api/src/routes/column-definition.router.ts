@@ -318,17 +318,13 @@ columnDefinitionRouter.get(
  *                 type: string
  *                 enum: [string, number, boolean, date, datetime, enum, json, array, reference, reference-array]
  *               description:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *               validationPattern:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *               validationMessage:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *               canonicalFormat:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *     responses:
  *       201:
  *         description: Column definition created
@@ -471,17 +467,13 @@ columnDefinitionRouter.post(
  *                 type: string
  *                 enum: [string, number, boolean, date, datetime, enum, json, array, reference, reference-array]
  *               description:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *               validationPattern:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *               validationMessage:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *               canonicalFormat:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *     responses:
  *       200:
  *         description: Column definition updated. May include a `warnings` array when enum values are removed.

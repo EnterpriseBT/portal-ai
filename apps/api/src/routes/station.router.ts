@@ -362,8 +362,7 @@ stationRouter.get(
  *                 type: string
  *                 example: Sales Analytics
  *               description:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *               toolPacks:
  *                 type: array
  *                 items:
@@ -555,8 +554,7 @@ stationRouter.post(
  *               name:
  *                 type: string
  *               description:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *               toolPacks:
  *                 type: array
  *                 items:

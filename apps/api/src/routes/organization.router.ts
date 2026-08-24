@@ -92,8 +92,7 @@ export const organizationRouter = Router();
  *             type: object
  *             properties:
  *               defaultStationId:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *     responses:
  *       200:
  *         description: Organization updated
