@@ -49,7 +49,16 @@ export interface WideTableUpsertResult {
  * under PostgreSQL's 65k bind limit (500 rows × ~50 cols = 25k params
  * worst-case, well under the cap).
  */
-const WIDE_TABLE_UPSERT_CHUNK_SIZE = 500;
+/**
+ * Rows / ids per statement for every chunked wide-table builder.
+ *
+ * Named for the table rather than for `upsertMany` because #436 extended it
+ * to the DELETE, SELECT and UPDATE id-list builders: `sql.join` allocates one
+ * AST node per element and Drizzle flattens that chain recursively when the
+ * statement is serialised, so any unbounded list overflows the V8 stack.
+ * Keeping each statement's AST shallow is the remedy in all four cases.
+ */
+export const WIDE_TABLE_CHUNK_SIZE = 500;
 
 /**
  * Per-row sidecar key carrying a geometry column's source SRID from
@@ -164,6 +173,12 @@ export class WideTableRepository {
    * Read specific rows by `entity_record_id`. Order of the input ids
    * is not preserved — Postgres decides.
    */
+  /**
+   * Chunked at `WIDE_TABLE_CHUNK_SIZE` for the same reason as
+   * `softDeleteByEntityRecordIds` (#436). Every chunk's rows are
+   * accumulated before returning, so the caller still sees one complete
+   * result set — a partial read would be wrong, not merely slower.
+   */
   async selectByEntityRecordIds(
     connectorEntityId: string,
     ids: ReadonlyArray<string>,
@@ -171,14 +186,19 @@ export class WideTableRepository {
   ): Promise<Record<string, unknown>[]> {
     if (ids.length === 0) return [];
     const stmt = await this.statementCache.get(connectorEntityId, client);
-    const idList = sql.join(
-      ids.map((id) => sql`${id}`),
-      sql`, `
-    );
-    const rows = await (client as typeof db).execute(
-      sql`${sql.raw(stmt.selectAllSql)} WHERE "entity_record_id" IN (${idList})`
-    );
-    return rows as unknown as Record<string, unknown>[];
+    const out: Record<string, unknown>[] = [];
+    for (let i = 0; i < ids.length; i += WIDE_TABLE_CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + WIDE_TABLE_CHUNK_SIZE);
+      const idList = sql.join(
+        chunk.map((id) => sql`${id}`),
+        sql`, `
+      );
+      const rows = await (client as typeof db).execute(
+        sql`${sql.raw(stmt.selectAllSql)} WHERE "entity_record_id" IN (${idList})`
+      );
+      out.push(...(rows as unknown as Record<string, unknown>[]));
+    }
+    return out;
   }
 
   /**
@@ -188,7 +208,7 @@ export class WideTableRepository {
    * by the cache's column-name set; missing columns bind `NULL`,
    * unknown keys are silently dropped.
    *
-   * Large batches are chunked into `WIDE_TABLE_UPSERT_CHUNK_SIZE`-row
+   * Large batches are chunked into `WIDE_TABLE_CHUNK_SIZE`-row
    * statements. A single 13k-row INSERT builds a `sql` AST whose join
    * chain is deep enough to overflow the V8 call stack when Drizzle
    * recursively flattens the template chunks; chunking keeps each
@@ -265,8 +285,8 @@ export class WideTableRepository {
       .map((c) => `"${c}" = EXCLUDED."${c}"`)
       .join(", ");
 
-    for (let i = 0; i < rows.length; i += WIDE_TABLE_UPSERT_CHUNK_SIZE) {
-      const chunk = rows.slice(i, i + WIDE_TABLE_UPSERT_CHUNK_SIZE);
+    for (let i = 0; i < rows.length; i += WIDE_TABLE_CHUNK_SIZE) {
+      const chunk = rows.slice(i, i + WIDE_TABLE_CHUNK_SIZE);
       const tuples = chunk.map((row) => {
         const valueExprs = colsInOrder.map((col) => {
           const v = row[col];
@@ -546,6 +566,23 @@ export class WideTableRepository {
    *
    * Caller is expected to hold the per-entity advisory lock.
    */
+  /**
+   * Delete the wide rows for the given `entity_records` ids — the #327
+   * cascade, since soft-deleting a record is an UPDATE and never fires
+   * `ON DELETE CASCADE`.
+   *
+   * Chunked at `WIDE_TABLE_CHUNK_SIZE` (#436). `sql.join` allocates
+   * one AST node per id and Drizzle flattens that chain recursively when the
+   * statement is serialised, so a single unbounded `IN (…)` overflows the V8
+   * stack — a 317,000-id reap did exactly that, *after* the `entity_records`
+   * half had committed, stranding 317,000 orphaned wide rows.
+   *
+   * The chunks run on whatever client is passed and are deliberately NOT
+   * wrapped in a new transaction: `softDeleteBeforeWatermark` has already
+   * committed by the time a reap caller gets here, so atomicity across the
+   * two was never available. A partial cascade leaves orphans the next reap
+   * re-attempts, matching this mirror's documented best-effort posture.
+   */
   async softDeleteByEntityRecordIds(
     connectorEntityId: string,
     ids: ReadonlyArray<string>,
@@ -553,13 +590,16 @@ export class WideTableRepository {
   ): Promise<void> {
     if (ids.length === 0) return;
     const tableName = `"${this.tableName(connectorEntityId)}"`;
-    const idList = sql.join(
-      ids.map((id) => sql`${id}`),
-      sql`, `
-    );
-    await (client as typeof db).execute(
-      sql`DELETE FROM ${sql.raw(tableName)} WHERE "entity_record_id" IN (${idList})`
-    );
+    for (let i = 0; i < ids.length; i += WIDE_TABLE_CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + WIDE_TABLE_CHUNK_SIZE);
+      const idList = sql.join(
+        chunk.map((id) => sql`${id}`),
+        sql`, `
+      );
+      await (client as typeof db).execute(
+        sql`DELETE FROM ${sql.raw(tableName)} WHERE "entity_record_id" IN (${idList})`
+      );
+    }
   }
 }
 
