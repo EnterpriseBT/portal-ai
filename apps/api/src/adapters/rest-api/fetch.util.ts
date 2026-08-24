@@ -16,6 +16,7 @@
 
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { ApiError } from "../../services/http.service.js";
+import { networkFailure } from "./cause.util.js";
 import { extractUserMessage, readErrorBody } from "./error-body.util.js";
 
 export const MAX_RESPONSE_BYTES = 500 * 1024 * 1024; // 500 MB
@@ -37,8 +38,10 @@ export interface FetchJsonResult {
  *     once the running counter trips the cap (for chunked responses
  *     without `Content-Length`).
  *   - Body isn't valid JSON → REST_API_INVALID_JSON.
- *   - Network error / DNS / timeout → REST_API_FETCH_FAILED with the
- *     underlying cause in `details.cause`.
+ *   - Network error / DNS / timeout → REST_API_FETCH_FAILED with the real
+ *     reason in `details.cause` + the walked chain in `details.causeChain`
+ *     (#435). Applies to a body dropped mid-read, not just a refused
+ *     connect; `details.phase` says which.
  *
  * `fetchImpl` is injectable for tests; defaults to `globalThis.fetch`.
  */
@@ -51,12 +54,7 @@ export async function fetchJson(
   try {
     response = await fetchImpl(url, init);
   } catch (err) {
-    throw new ApiError(
-      502,
-      ApiCode.REST_API_FETCH_FAILED,
-      `Fetch failed: ${(err as Error).message}`,
-      { url, cause: (err as Error).message }
-    );
+    throw networkFailure(url, err, { phase: "connect" });
   }
 
   const headers = collectHeaders(response.headers);
@@ -92,7 +90,24 @@ export async function fetchJson(
   }
 
   // Slow path: stream the body, abort if the running total trips the cap.
-  const text = await readBodyWithCap(response, url);
+  //
+  // #435: the read is wrapped because the headers arriving does not mean
+  // the body will. A socket dropped mid-body rejects here with a bare
+  // `TypeError: terminated`, and an untyped throw bypasses `withRetry`
+  // entirely — it discards non-`ApiError`s before it ever reaches the
+  // status gate. `readBodyWithCap`'s own `REST_API_RESPONSE_TOO_LARGE`
+  // is already typed and passes through untouched.
+  let text: string;
+  try {
+    text = await readBodyWithCap(response, url);
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    // Deliberately no `status`, even though we have one: `withRetry`
+    // keys "network failure, safe to replay" off its absence, and a 200
+    // here would route this to the non-retryable branch. The HTTP status
+    // is not the interesting part of a dropped body anyway.
+    throw networkFailure(url, err, { phase: "body" });
+  }
 
   let body: unknown;
   try {

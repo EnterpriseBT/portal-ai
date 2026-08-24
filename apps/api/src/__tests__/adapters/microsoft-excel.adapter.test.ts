@@ -217,7 +217,7 @@ describe("microsoftExcelAdapter.syncInstance", () => {
     const result = await microsoftExcelAdapter.syncInstance!(
       INSTANCE as never,
       "user-1",
-      progress
+      { progress }
     );
 
     expect(result.recordCounts).toEqual({

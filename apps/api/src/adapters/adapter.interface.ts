@@ -122,6 +122,29 @@ export type TestConnectionResult =
 
 // ── Adapter interface ───────────────────────────────────────────────
 
+/**
+ * Options bag for `syncInstance`. A bag rather than positional params so
+ * a future addition doesn't re-churn every adapter + test call site.
+ */
+export interface SyncInstanceOptions {
+  /**
+   * The BullMQ processor's `bullJob.updateProgress` callback — fans out
+   * to SSE consumers.
+   */
+  progress?: (percent: number) => void;
+  /**
+   * The app-level job id (#439). Stable across BullMQ *attempts* of one
+   * sync, which is what lets an adapter keep synthetic record identity
+   * stable across a retry instead of minting a fresh generation and
+   * inserting a duplicate copy of the dataset.
+   *
+   * Absent for direct / unit invocations; an adapter that needs a
+   * generation key falls back to its own per-run value, preserving
+   * pre-#439 behaviour outside the queue.
+   */
+  jobId?: string;
+}
+
 export interface ConnectorAdapter {
   queryRows(
     instance: ConnectorInstance,
@@ -166,14 +189,13 @@ export interface ConnectorAdapter {
    * `lastSyncAt` + clear `lastErrorMessage`. Returns the tally for
    * the SSE consumer's success toast.
    *
-   * `progress?: (percent) => void` is the BullMQ processor's
-   * `bullJob.updateProgress` callback — fans out to SSE consumers.
-   * Optional so unit tests can call `syncInstance` directly.
+   * See `SyncInstanceOptions` for `progress` + `jobId`. The bag is
+   * optional so unit tests can call `syncInstance` directly.
    */
   syncInstance?(
     instance: ConnectorInstance,
     userId: string,
-    progress?: (percent: number) => void
+    opts?: SyncInstanceOptions
   ): Promise<SyncInstanceResult>;
 
   /**

@@ -362,3 +362,123 @@ describe("fetchJson — response too large (slow path)", () => {
     });
   });
 });
+
+// ── #435: the real network cause must survive ──────────────────────────
+//
+// undici's message for every network-level failure is the useless string
+// "fetch failed"; the actionable reason (UND_ERR_SOCKET, ECONNRESET,
+// ETIMEDOUT …) lives on `err.cause`. Production logs showed
+// `details.cause: "fetch failed"` — the message stored a second time —
+// so an operator could not tell which fault they had hit.
+
+/** Shape undici actually throws: a bare TypeError wrapping a SocketError. */
+function undiciSocketFailure(): TypeError {
+  const inner = Object.assign(new Error("other side closed"), {
+    name: "SocketError",
+    code: "UND_ERR_SOCKET",
+  });
+  return new TypeError("fetch failed", { cause: inner });
+}
+
+describe("fetchJson — cause preservation (#435)", () => {
+  it("records the underlying code:message on details.cause, not 'fetch failed'", async () => {
+    const fakeFetch = jest
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(undiciSocketFailure());
+    await expect(
+      fetchJson("https://x.test", {}, fakeFetch)
+    ).rejects.toMatchObject({
+      code: ApiCode.REST_API_FETCH_FAILED,
+      details: expect.objectContaining({
+        url: "https://x.test",
+        cause: "UND_ERR_SOCKET: other side closed",
+      }),
+    });
+  });
+
+  it("records the full chain on details.causeChain", async () => {
+    const fakeFetch = jest
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(undiciSocketFailure());
+    const err = await fetchJson("https://x.test", {}, fakeFetch).catch(
+      (e: unknown) => e
+    );
+    const chain = (err as { details: { causeChain: unknown[] } }).details
+      .causeChain;
+    expect(chain).toEqual([
+      expect.objectContaining({ name: "TypeError", message: "fetch failed" }),
+      expect.objectContaining({
+        name: "SocketError",
+        code: "UND_ERR_SOCKET",
+        message: "other side closed",
+      }),
+    ]);
+  });
+
+  it("sets the original error as ApiError.cause so formatJobError can walk it", async () => {
+    const original = undiciSocketFailure();
+    const fakeFetch = jest.fn<typeof fetch>().mockRejectedValueOnce(original);
+    const err = await fetchJson("https://x.test", {}, fakeFetch).catch(
+      (e: unknown) => e
+    );
+    expect((err as { cause?: unknown }).cause).toBe(original);
+  });
+
+  it("still reports a plain Error's message when there is no nested cause", async () => {
+    const fakeFetch = jest
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    await expect(
+      fetchJson("https://x.test", {}, fakeFetch)
+    ).rejects.toMatchObject({
+      details: expect.objectContaining({ cause: "ECONNREFUSED" }),
+    });
+  });
+});
+
+describe("fetchJson — body-read failure is typed (#435)", () => {
+  /** A 200 whose body stream errors after the headers already arrived. */
+  function bodyThatFailsMidRead(err: unknown): Response {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('[{"id":1}'));
+        controller.error(err);
+      },
+    });
+    return new Response(stream, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("throws REST_API_FETCH_FAILED — not a raw TypeError — when the socket dies mid-body", async () => {
+    const fakeFetch = jest
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(bodyThatFailsMidRead(undiciSocketFailure()));
+    await expect(
+      fetchJson("https://x.test", {}, fakeFetch)
+    ).rejects.toMatchObject({
+      code: ApiCode.REST_API_FETCH_FAILED,
+      details: expect.objectContaining({
+        url: "https://x.test",
+        cause: "UND_ERR_SOCKET: other side closed",
+      }),
+    });
+  });
+
+  it("carries no `status`, so withRetry classifies it as a network failure", async () => {
+    const fakeFetch = jest
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(bodyThatFailsMidRead(undiciSocketFailure()));
+    const err = await fetchJson("https://x.test", {}, fakeFetch).catch(
+      (e: unknown) => e
+    );
+    expect(
+      (err as { details: Record<string, unknown> }).details.status
+    ).toBeUndefined();
+  });
+
+  // The size cap is guarded by the existing slow-path test above: it must keep
+  // throwing REST_API_RESPONSE_TOO_LARGE, not be remapped to
+  // REST_API_FETCH_FAILED by the new body-read wrapper.
+});

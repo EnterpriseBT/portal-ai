@@ -341,4 +341,51 @@ describe("streamFetchRecords — error cases", () => {
 
     await expect(iter.next()).rejects.toThrow(/socket reset/);
   });
+  // ── #435: a dropped socket is not malformed data ──────────────────────
+  //
+  // Body-stream failures reach the stream-json pipeline through the same
+  // handler as parser failures, so `translateParseError` used to label a
+  // dead connection `REST_API_INVALID_JSON` — "Streaming parse failed" —
+  // blaming the upstream's payload for a network fault.
+
+  it("case 12: a socket dropped mid-stream is REST_API_FETCH_FAILED, not INVALID_JSON", async () => {
+    const ctrl = makeControlledFetch();
+    const result = await streamFetchRecords("https://x.test", {}, "items", {
+      fetchImpl: ctrl.fetch,
+    });
+    const iter = result.recordsStream[Symbol.asyncIterator]();
+
+    ctrl.push('{"items":[{"id":1}');
+    await iter.next();
+
+    const socketErr = Object.assign(new Error("other side closed"), {
+      name: "SocketError",
+      code: "UND_ERR_SOCKET",
+    });
+    ctrl.error(socketErr);
+
+    await expect(iter.next()).rejects.toMatchObject({
+      code: ApiCode.REST_API_FETCH_FAILED,
+      details: expect.objectContaining({
+        url: "https://x.test",
+        phase: "stream",
+        cause: "UND_ERR_SOCKET: other side closed",
+      }),
+    });
+  });
+
+  it("case 13: genuinely malformed JSON still surfaces REST_API_INVALID_JSON", async () => {
+    const ctrl = makeControlledFetch();
+    const result = await streamFetchRecords("https://x.test", {}, "items", {
+      fetchImpl: ctrl.fetch,
+    });
+    const iter = result.recordsStream[Symbol.asyncIterator]();
+
+    ctrl.push('{"items":[{"id":1},,,]}');
+    ctrl.close();
+
+    await expect(iter.next()).rejects.toMatchObject({
+      code: ApiCode.REST_API_INVALID_JSON,
+    });
+  });
 });

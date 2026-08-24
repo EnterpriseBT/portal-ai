@@ -18,6 +18,7 @@ import StreamArray from "stream-json/streamers/stream-array.js";
 
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import { ApiError } from "../../services/http.service.js";
+import { networkFailure } from "./cause.util.js";
 import { extractUserMessage, readErrorBody } from "./error-body.util.js";
 
 export const DEFAULT_MAX_RECORD_BYTES = 50 * 1024 * 1024;
@@ -73,14 +74,17 @@ export interface StreamFetchResult {
  *
  * Throws — never returns — on:
  *   - 4xx / 5xx response → `REST_API_FETCH_FAILED` (before the consumer pulls).
- *   - Network failure / DNS / timeout → `REST_API_FETCH_FAILED`.
+ *   - Network failure / DNS / timeout → `REST_API_FETCH_FAILED`, carrying the
+ *     real reason in `details.cause` + the chain in `details.causeChain` (#435).
  *
  * Lazily throws inside `for await`:
  *   - Malformed JSON anywhere in the stream → `REST_API_INVALID_JSON`.
  *   - `recordsPath` doesn't exist in the document → `REST_API_RECORDS_PATH_NOT_FOUND`.
  *   - `recordsPath` resolves to a non-array → `REST_API_RECORDS_PATH_NOT_ARRAY`.
  *   - Any single record's serialized JSON exceeds `maxRecordBytes` → `REST_API_RECORD_TOO_LARGE`.
- *   - Upstream reader rejects mid-stream → the underlying error.
+ *   - Upstream reader rejects mid-stream (dropped socket) →
+ *     `REST_API_FETCH_FAILED` with `details.phase: "stream"` and the real
+ *     cause chain — not `REST_API_INVALID_JSON` (#435).
  */
 export async function streamFetchRecords(
   url: string,
@@ -95,12 +99,7 @@ export async function streamFetchRecords(
   try {
     response = await fetchImpl(url, init);
   } catch (err) {
-    throw new ApiError(
-      502,
-      ApiCode.REST_API_FETCH_FAILED,
-      `Fetch failed: ${(err as Error).message}`,
-      { url, cause: (err as Error).message }
-    );
+    throw networkFailure(url, err, { phase: "connect" });
   }
 
   const headers = collectHeaders(response.headers);
@@ -133,7 +132,8 @@ export async function streamFetchRecords(
   const recordsStream = buildRecordsStream(
     response.body,
     recordsPath,
-    maxRecordBytes
+    maxRecordBytes,
+    url
   );
 
   return { status, headers, recordsStream };
@@ -163,7 +163,9 @@ function collectHeaders(h: Headers): Record<string, string> {
 function buildRecordsStream(
   body: ReadableStream<Uint8Array>,
   recordsPath: string,
-  maxRecordBytes: number
+  maxRecordBytes: number,
+  /** Only for error reporting — see the `nodeBody` error handler. */
+  url: string
 ): RecordsStream {
   let consumed = false;
   // Lives in the AsyncIterable closure so `getBytesObserved` reads the
@@ -227,7 +229,15 @@ function buildRecordsStream(
         }
       });
 
-      nodeBody.on("error", (err) => parser.destroy(err));
+      // #435: a body-stream failure and a parser failure arrive at the
+      // same place, and `translateParseError` maps anything untyped to
+      // REST_API_INVALID_JSON — so a dropped socket used to be reported as
+      // malformed data. Tag it here, where the origin is still known;
+      // `translateParseError` passes `ApiError`s through unchanged, so the
+      // parser's own errors keep their INVALID_JSON mapping.
+      nodeBody.on("error", (err) =>
+        parser.destroy(networkFailure(url, err, { phase: "stream" }))
+      );
       byteCounter.on("error", (err) => parser.destroy(err));
       parser.on("error", (err) => arrayStream.destroy(err));
       pick.on("error", (err) => arrayStream.destroy(err));

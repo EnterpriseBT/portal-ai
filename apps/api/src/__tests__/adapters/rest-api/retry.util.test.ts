@@ -192,3 +192,115 @@ describe("withRetry — error paths", () => {
     expect(onRetry).toHaveBeenCalledWith(1, 16_000, 429);
   });
 });
+
+// ── #435: statusless (network-level) failures must retry ────────────────
+//
+// A dropped socket never produces an HTTP response, so the ApiError
+// carries no `status`. The original gate read `status === undefined` as
+// "not retryable" and threw on the first attempt — meaning the 5-retry
+// budget only ever served failures that *did* get a response (429/5xx),
+// while the failure mode actually seen in production (UND_ERR_SOCKET,
+// "other side closed", ~1 per 330 requests) was always fatal.
+
+/** What fetch.util throws when the connection drops: no `status`. */
+function networkFailedError(cause = "UND_ERR_SOCKET: other side closed") {
+  return new ApiError(
+    502,
+    ApiCode.REST_API_FETCH_FAILED,
+    `Fetch failed: ${cause}`,
+    {
+      url: "https://x.test",
+      cause,
+      causeChain: [{ name: "SocketError", code: "UND_ERR_SOCKET" }],
+    }
+  );
+}
+
+describe("withRetry — statusless network failures (#435)", () => {
+  it("retries a statusless REST_API_FETCH_FAILED and succeeds on the 3rd attempt", async () => {
+    const fn = jest
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(networkFailedError())
+      .mockRejectedValueOnce(networkFailedError())
+      .mockResolvedValueOnce("ok");
+
+    const promise = withRetry(fn, DEFAULT_RETRY_POLICY);
+    await jest.advanceTimersByTimeAsync(250);
+    await jest.advanceTimersByTimeAsync(500);
+
+    await expect(promise).resolves.toBe("ok");
+    expect(fn).toHaveBeenCalledTimes(3);
+  });
+
+  it("reports the retry through onRetry with no status", async () => {
+    const fn = jest
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(networkFailedError())
+      .mockResolvedValueOnce("ok");
+
+    const onRetry = jest.fn();
+    const promise = withRetry(fn, DEFAULT_RETRY_POLICY, { onRetry });
+    await jest.advanceTimersByTimeAsync(250);
+    await expect(promise).resolves.toBe("ok");
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onRetry).toHaveBeenNthCalledWith(1, 1, 250, undefined);
+  });
+
+  it("rethrows with details.attempts after the budget is exhausted", async () => {
+    const fn = jest
+      .fn<() => Promise<string>>()
+      .mockRejectedValue(networkFailedError());
+
+    const promise = withRetry(fn, DEFAULT_RETRY_POLICY);
+    const assertion = expect(promise).rejects.toMatchObject({
+      code: ApiCode.REST_API_FETCH_FAILED,
+      details: expect.objectContaining({
+        attempts: 6,
+        cause: "UND_ERR_SOCKET: other side closed",
+      }),
+    });
+    // 250 + 500 + 1000 + 2000 + 4000 = 7750ms of backoff across 5 retries.
+    await jest.advanceTimersByTimeAsync(10_000);
+    await assertion;
+    expect(fn).toHaveBeenCalledTimes(6);
+  });
+
+  it("preserves the cause chain through the rethrow so the log stays diagnostic", async () => {
+    const fn = jest
+      .fn<() => Promise<string>>()
+      .mockRejectedValue(networkFailedError());
+    const promise = withRetry(fn, DEFAULT_RETRY_POLICY);
+    const captured = promise.catch((e: unknown) => e);
+    await jest.advanceTimersByTimeAsync(10_000);
+    const err = await captured;
+    expect(
+      (err as { details: { causeChain: unknown[] } }).details.causeChain
+    ).toEqual([expect.objectContaining({ code: "UND_ERR_SOCKET" })]);
+  });
+
+  it("carries ApiError.cause across the exhausted rethrow (formatJobError reads it)", async () => {
+    const original = new TypeError("fetch failed");
+    const err = networkFailedError();
+    err.cause = original;
+    const fn = jest.fn<() => Promise<string>>().mockRejectedValue(err);
+
+    const promise = withRetry(fn, DEFAULT_RETRY_POLICY);
+    const captured = promise.catch((e: unknown) => e);
+    await jest.advanceTimersByTimeAsync(10_000);
+
+    expect(((await captured) as { cause?: unknown }).cause).toBe(original);
+  });
+
+  it("does NOT retry a statusless error of a different code", async () => {
+    const fn = jest.fn<() => Promise<string>>().mockRejectedValue(
+      new ApiError(500, ApiCode.REST_API_TRANSFORM_FAILED, "bad jsonata", {
+        url: "https://x.test",
+      })
+    );
+    await expect(withRetry(fn, DEFAULT_RETRY_POLICY)).rejects.toMatchObject({
+      code: ApiCode.REST_API_TRANSFORM_FAILED,
+    });
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
