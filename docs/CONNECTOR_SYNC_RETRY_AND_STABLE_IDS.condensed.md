@@ -151,13 +151,49 @@ The mid-run socket-close box is left unchecked: no transient occurred, so there 
 
 The point of pairing the two issues. Needs a deliberately interrupted run.
 
-- [ ] New instance against the same layer with **`idField` left empty**.
-- [ ] Start the sync; let it write a few pages (watch the record count climb).
-- [ ] Kill the API process so BullMQ re-delivers the job. Restart the API and let the retry finish.
-- [ ] Exactly **one** id generation exists:
+- [x] New instance against the same layer with **`idField` left empty**.
+- [x] Start the sync; let it write a few pages (watch the record count climb).
+- [x] Kill the API process so BullMQ re-delivers the job. Restart the API and let the retry finish.
+- [x] Exactly **one** id generation exists:
       `select split_part(source_id,':',2) as generation, count(*) from entity_records where connector_entity_id = '<id>' and deleted is null group by 1` → **one row**.
-- [ ] The live row count equals the layer total, **not** a multiple of it.
-- [ ] `select count(*) from entity_records where connector_entity_id = '<id>' and deleted is not null` → 0 from the retry (nothing was reaped, because nothing was orphaned).
+- [x] The live row count equals the layer total, **not** a multiple of it.
+- [x] `select count(*) from entity_records where connector_entity_id = '<id>' and deleted is not null` → 0 from the retry (nothing was reaped, because nothing was orphaned).
+
+**Observed (job `683869f6`, instance `Smoke 3`, `idField` EMPTY, geometry in the transform).**
+
+The generation key is visibly the job id, not a timestamp — `source_id` = `api:683869f6-f125-40ec-beea-c0951a326c4c:0`, matching the job id exactly. Pre-fix these were epoch millis.
+
+Phase 1 wrote 53,869 records, then the API was SIGKILLed. BullMQ re-delivered ~40 s later and the retry's record count traced the signature of convergence:
+
+```
+18:02:04  live=53,869   <- retry starts (progress resets 84 -> 33)
+18:02:20  live=53,869
+18:02:36  live=53,869      re-walking indices 0..53,868,
+18:02:52  live=53,869      every one recognised, none inserted
+18:03:07  live=53,869
+          ----------  crosses index 53,868  ----------
+18:03:23  live=58,838   <- now genuinely new records
+18:03:55  live=76,032
+```
+
+A ~60 s plateau at exactly the phase-1 count, *then* growth. With the bug the count would have climbed immediately from 53,869 toward ~450K with two generations.
+
+```
+recordCounts   created 344,091 · unchanged 53,869 · updated 0 · deleted 0
+               53,869 + 344,091 = 397,960 exactly
+geometry       repaired 50 · rejected 0   (matches `testing`; c_geometry materialised)
+
+generations              1   (= the job id)
+live               397,960   = layer total, not a multiple
+soft-deleted             0   nothing orphaned
+distinct source_id 397,960
+index range      0..397,959  contiguous, no gaps
+wide rows          397,960 · orphaned 0
+```
+
+`unchanged` matching the phase-1 count to the row is the assertion that matters: the retry identified precisely the work already done and did only the remainder.
+
+**Against the pre-fix run on this same layer (Aug 22):** 2 generations, peak 714,960 live rows, 317,000 reaped, 317,000 orphaned wide rows, and a `RangeError` in the cascade (#436). All of that is now zero.
 
 ### §4 — No regression on the keyed path (slice 3)
 
