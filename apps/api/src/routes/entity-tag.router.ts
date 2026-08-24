@@ -275,11 +275,9 @@ entityTagRouter.get(
  *                 type: string
  *                 minLength: 1
  *               color:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *               description:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *     responses:
  *       201:
  *         description: Entity tag created
@@ -426,11 +424,9 @@ entityTagRouter.post(
  *                 type: string
  *                 minLength: 1
  *               color:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *               description:
- *                 type: string
- *                 nullable: true
+ *                 type: [string, "null"]
  *     responses:
  *       200:
  *         description: Entity tag updated

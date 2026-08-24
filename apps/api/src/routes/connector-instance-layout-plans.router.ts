@@ -67,8 +67,7 @@ export const connectorInstanceLayoutPlansRouter = Router();
  *                     plan:
  *                       $ref: '#/components/schemas/LayoutPlan'
  *                     interpretationTrace:
- *                       type: object
- *                       nullable: true
+ *                       type: [object, "null"]
  *       400:
  *         description: Invalid request body
  *         content:
@@ -194,8 +193,7 @@ connectorInstanceLayoutPlansRouter.post(
  *                     plan:
  *                       $ref: '#/components/schemas/LayoutPlan'
  *                     interpretationTrace:
- *                       type: object
- *                       nullable: true
+ *                       type: [object, "null"]
  *       404:
  *         description: No plan exists for this connector instance
  *         content:
@@ -296,13 +294,11 @@ connectorInstanceLayoutPlansRouter.get(
  *                     connectorDefinitionSlug:
  *                       type: string
  *                     workbookPreview:
- *                       type: object
- *                       nullable: true
+ *                       type: [object, "null"]
  *                     editable:
  *                       type: boolean
  *                     reason:
- *                       type: object
- *                       nullable: true
+ *                       type: [object, "null"]
  *       404:
  *         description: |
  *           Either the connector instance is not visible to this organization
@@ -400,8 +396,7 @@ connectorInstanceLayoutPlansRouter.get(
  *                     plan:
  *                       $ref: '#/components/schemas/LayoutPlan'
  *                     interpretationTrace:
- *                       type: object
- *                       nullable: true
+ *                       type: [object, "null"]
  *       400:
  *         description: Merged plan failed schema validation
  *         content:
