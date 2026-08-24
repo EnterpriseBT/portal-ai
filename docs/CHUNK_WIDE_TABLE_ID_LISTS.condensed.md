@@ -103,13 +103,36 @@ The chunked cascade was caught landing in real time. Two consecutive samples whi
 
 **Against the same operation pre-fix (Aug 22):** `RangeError: Maximum call stack size exceeded`, job `failed` after the data had landed, 317,000 orphaned wide rows requiring manual repair. Now: completes, `deleted: 397,960`, zero orphans.
 
-### §2 — The delete-all route no longer crashes
+### §2 — The delete-all route no longer crashes — **WAIVED**
 
-The route's id materialisation is **out of scope** here — split to #451. Chunking the builder still fixes its crash, so verify that much:
+- [~] Delete all records for a ~400K-record entity. **WAIVED — the route has no caller.**
+- [~] It succeeds rather than 500-ing with a `RangeError`. **WAIVED.**
+- [~] Both `entity_records` (live) and the `er__<entity>` table end at 0 rows. **WAIVED.**
 
-- [ ] Delete all records for a ~400K-record entity (`smoke 2`, entity `0e416ba5`) through the UI or its route.
-- [ ] It succeeds rather than 500-ing with a `RangeError`. (It will issue ~800 chunked statements inside one transaction — slow, and #451's problem, not this ticket's.)
-- [ ] Both `entity_records` (live) and the `er__<entity>` table end at 0 rows for that entity.
+**Why waived, and a correction to this doc's own claim.**
+
+This doc originally called `entity-record.router.ts:1482` "the most reachable instance of the bug". That was wrong. Verified during the walk:
+
+```
+apps/api  DELETE /api/connector-entities/{id}/records   route exists
+apps/web  sdk.entityRecords.clear()                     SDK wraps it
+apps/web  callers of sdk.entityRecords.clear()          ZERO
+```
+
+No user can reach it. Exercising it would mean minting a token and curling a code path the product never invokes.
+
+**And the reachable delete path was never vulnerable.** A connector-instance delete (`DELETE /api/connector-instances/{id}`, run against `smoke 2` during this walk) does **not** build an id list at all:
+
+```
+entityRecords.softDeleteByConnectorEntityIds(...)      WHERE-based, no IN list
+wideTableReconcilerService.dropTable(entityId, tx)     connector-instance.router.ts:1326
+```
+
+Observed: 397,960 records soft-deleted, `er__0e416ba5…` **dropped** (`relation does not exist`). So instance delete sidesteps `softDeleteByEntityRecordIds` entirely.
+
+The remaining unbounded id-list callers are the three watermark reaps (`rest-api`, `google-sheets`, `microsoft-excel` adapters) plus `layout-plan-draft.service.ts:547` — all of which are the *same method* §1 drove with 397,960 ids to zero orphans, and which the unit guard covers at 317,000.
+
+Follow-up: #451's impact section overstates this the same way and is being amended.
 
 ### §3 — Nothing regressed on the small path
 
