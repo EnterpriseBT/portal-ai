@@ -227,10 +227,37 @@ Throughput was 309 rec/s vs ~485 rec/s measured on a solo run — §2 was execut
 
 `syncInstance` moved to an options bag, so Google Sheets and Microsoft Excel changed too. Neither uses synthetic ids, but both must still run and still report progress.
 
-- [ ] Sync an existing **Google Sheets** connector → completes, counts look right.
-- [ ] Its progress bar advances (0 → 100), i.e. `progress` still reaches BullMQ through the bag.
-- [ ] Sync an existing **Microsoft Excel** connector → same two checks.
-- [ ] If you have neither configured, say so at sign-off — the unit + integration suites cover both, but a live run is the real check.
+- [x] Sync an existing **Google Sheets** connector → completes, counts look right.
+- [x] Its progress bar advances (0 → 100), i.e. `progress` still reaches BullMQ through the bag.
+- [~] Sync an existing **Microsoft Excel** connector → same two checks. **WAIVED — no `microsoft-excel` instance exists on this stack.**
+- [x] If you have neither configured, say so at sign-off — the unit + integration suites cover both, but a live run is the real check.
+
+**Observed (instance `Google Sheets (admin@portalsai.io)`, entity `smoke_4`):**
+
+```
+5354948b  layout_plan_commit  completed  0.212s  created 19
+ff8a4689  connector_sync      completed  0.457s  unchanged 19
+12763c16  connector_sync      completed  0.279s  unchanged 19
+entity smoke_4 -> 19 live records
+```
+
+The adapter survived the options-bag signature change: both syncs completed and recognised all 19 plan-committed records as `unchanged`.
+
+**On the progress ladder — what was and wasn't observed.** These syncs ran in 279–457 ms, so neither a 0.4 s DB poller nor a human watching the bar could sample the intermediate rungs; no live observation of 0→10→40→80→95→100 is claimed. The assertion is instead satisfied by `google-sheets-sync.integration.test.ts:477`, which was edited to the options bag as part of this change and passed CI:
+
+```ts
+await googleSheetsAdapter.syncInstance!(instance, userId, {
+  progress: (p: number) => calls.push(p),
+});
+expect(calls.length).toBeGreaterThan(2);
+expect(calls[0]).toBe(0);
+expect(calls[calls.length - 1]).toBe(100);
+// ...and monotonically non-decreasing
+```
+
+Runs against a real Postgres, requires >2 ticks, pins first and last. (The API log shows no progress events, but `updateProgress` does not log, so that absence is not evidence either way.)
+
+**Microsoft Excel: waived.** No `microsoft-excel` instance exists on this stack. Its identical signature change is covered by `microsoft-excel.adapter.test.ts` (unit) and `microsoft-excel-sync.integration.test.ts` (integration, also edited to the bag, also green in CI).
 
 ### §6 — Streaming-path error label (slice 4)
 
