@@ -63,18 +63,45 @@ Every box starts unchecked.
 
 ### Preflight
 
-- [ ] `git checkout fix/chunk-wide-table-id-lists && git pull --ff-only` — branched off `epic/connector-sync-at-scale`
-- [ ] `npm install` — **no migration** (no schema change)
-- [ ] Start the API **without nodemon**: `cd apps/api && npx dotenv -e .env -- npx tsx src/index.ts`
+- [x] `git checkout fix/chunk-wide-table-id-lists && git pull --ff-only` — branched off `epic/connector-sync-at-scale`
+- [x] `npm install` — **no migration** (no schema change)
+- [x] Start the API **without nodemon**: `cd apps/api && npx dotenv -e .env -- npx tsx src/index.ts`
 
 **Fixtures — already present on the dev box.** `Smoke 3` (instance `8339d086`) is a keyless REST instance holding 397,960 records with synthetic source ids, so its next sync reaps all 397,960 straight into the cascade. `testing` and `smoke 2` each hold 397,960 keyed records for the delete-all case.
 
 ### §1 — The reap cascade survives a full-dataset generation
 
-- [ ] Re-sync `Smoke 3`. Because it has no `idField`, a new sync mints a new generation and reaps all 397,960 prior rows.
-- [ ] The job reaches `status = completed` — **on `main` today this raises `RangeError: Maximum call stack size exceeded`**.
-- [ ] `select count(*) from "er__dee94e06-7f24-4861-8b72-825fc86b3731"` equals the live `entity_records` count for that entity.
-- [ ] Orphan check returns 0: `select count(*) from "er__<entity>" w left join entity_records er on er.id = w.entity_record_id and er.deleted is null where er.id is null`
+- [x] Re-sync `Smoke 3`. Because it has no `idField`, a new sync mints a new generation and reaps all 397,960 prior rows.
+- [x] The job reaches `status = completed` — **on `main` today this raises `RangeError: Maximum call stack size exceeded`**.
+- [x] `select count(*) from "er__dee94e06-7f24-4861-8b72-825fc86b3731"` equals the live `entity_records` count for that entity.
+- [x] Orphan check returns 0: `select count(*) from "er__<entity>" w left join entity_records er on er.id = w.entity_record_id and er.deleted is null where er.id is null`
+
+**Observed (job `3ae992c0`, instance `Smoke 3`, 904 s):**
+
+```
+recordCounts   created 397,960 · deleted 397,960 · updated 0 · unchanged 0
+geometry       repaired 50 · rejected 0
+
+live entity_records   397,960     wide rows          397,960
+soft-deleted          397,960     ORPHANED wide            0
+                                  live missing wide        0
+RangeError occurrences       0
+
+generation                              live      reaped
+3ae992c0-...  (this sync)            397,960           0
+683869f6-...  (previous)                   0     397,960
+```
+
+The chunked cascade was caught landing in real time. Two consecutive samples while the job was still `active`:
+
+```
+19:11:26   live=793,099   gens=2   wide=794,777   <- peak
+19:12:04   live=795,920   gens=2   wide=752,420   <- wide falling mid-reap
+```
+
+`live` peaked at exactly 795,920 = 397,960 x 2 (both generations fully present) while `wide` was already dropping from its peak — the ~796 chunked DELETEs executing. On the epic base this is the moment that raises `RangeError`.
+
+**Against the same operation pre-fix (Aug 22):** `RangeError: Maximum call stack size exceeded`, job `failed` after the data had landed, 317,000 orphaned wide rows requiring manual repair. Now: completes, `deleted: 397,960`, zero orphans.
 
 ### §2 — The delete-all route no longer crashes
 
