@@ -136,13 +136,40 @@ Follow-up: #451's impact section overstates this the same way and is being amend
 
 ### §3 — Nothing regressed on the small path
 
-- [ ] Delete a **single** record from an entity → still works, wide row goes with it (this path passed one id and was never affected).
-- [ ] Sync `testing` (keyed, `idField = PARCEL_ID`) → `unchanged = 397,960`, reap set 0, wide parity intact — same result as #435/#439's §4.
+- [~] Delete a **single** record from an entity → still works, wide row goes with it. **WAIVED — no instance in the environment has write capability.**
+- [x] Sync `testing` (keyed, `idField = PARCEL_ID`) → `unchanged = 397,960`, reap set 0, wide parity intact — same result as #435/#439's §4.
+
+**Observed.**
+
+*Re-sync (job `39d862f6`, instance `testing`, 867 s):*
+
+```
+recordCounts   created 0 · updated 0 · unchanged 397,960 · deleted 0
+geometry       repaired 50 · rejected 0
+```
+
+Identical to #435/#439's §4 — the chunking change did not disturb the keyed path, and the reap set stayed empty so the cascade was never invoked.
+
+*Single-record delete — waived.* `DELETE /api/connector-entities/{entity}/records/{recordId}` returns **422 `CONNECTOR_INSTANCE_WRITE_DISABLED`**:
+
+```
+instance                              enabled_capability_flags
+Google Sheets (admin@portalsai.io)    write: false
+Smoke 3 / smoke 2 / FAIL SMOKE        write: false
+testing                               write: false
+Sandbox x2                            write: true  — but have no entities
+```
+
+Every connector that holds records has `write: false`; the only `write: true` instances have no entities at all. So this path is unreachable without flipping a capability flag, which would be changing the environment to satisfy a checkbox rather than testing the change.
+
+It is also the path least at risk: `ids.length === 1` produces exactly one chunk and therefore the identical single statement emitted before this change — pinned by the unit case *"still issues a single statement for a small list (scope of the change)"*.
+
+**Consequence for #453:** the clear-records route is gated by the same `write` capability, and no REST or Sheets connector currently has it. A "Delete records" button would be disabled for every connector that exists today, which is a design question that ticket has to answer before the affordance is worth building.
 
 ### Sign-off
 
-- [ ] Every section verified (or explicitly waived with a reason)
-- [ ] ______ (date) — ______ (name) — confirmed against my own running stack
+- [x] Every section verified (or explicitly waived with a reason)
+- [x] **2026-08-24 — Ben Turner** — confirmed against my own running stack. Recorded by the agent at the author's direction; measured evidence inlined per section.
 
 ### Bug-filing template
 
