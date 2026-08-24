@@ -1,11 +1,17 @@
 /**
  * Retry wrapper for REST API fetches.
  *
- * Wraps any `() => Promise<T>` and retries on the documented transient
- * statuses (429, 502, 503, 504). 429 honors `Retry-After` (seconds or
- * HTTP-date); all other retryable statuses use exponential backoff
- * (`baseDelayMs * 2^attempt`, capped at `maxDelayMs`). After the
- * budget is exhausted:
+ * Wraps any `() => Promise<T>` and retries on:
+ *
+ *   - the documented transient statuses (429, 502, 503, 504), and
+ *   - **statusless `REST_API_FETCH_FAILED`** — a network-level failure
+ *     that never produced an HTTP response (#435). A dropped keep-alive
+ *     socket is ordinary upstream behaviour, not a permanent fault, and
+ *     is the failure that actually kills long paginated syncs.
+ *
+ * 429 honors `Retry-After` (seconds or HTTP-date); everything else uses
+ * exponential backoff (`baseDelayMs * 2^attempt`, capped at
+ * `maxDelayMs`). After the budget is exhausted:
  *
  *   - the last status was 429 → rethrow as `REST_API_RATE_LIMITED`
  *     (carries `details.lastRetryAfter` + `details.attempts`)
@@ -59,7 +65,25 @@ export async function withRetry<T>(
         | { status?: number; headers?: Record<string, string> }
         | undefined;
       const status = details?.status;
-      if (status === undefined || !policy.retryOnStatus.has(status)) {
+      // #435: a dropped socket never produced an HTTP response, so there
+      // is no `status` to match against `retryOnStatus`. That absence is
+      // the signal — not a reason to give up. Before this, the retry
+      // budget only ever served failures that *did* get a response, and
+      // the one failure mode seen in production (UND_ERR_SOCKET, "other
+      // side closed") was fatal on the first occurrence.
+      //
+      // Replay is safe even for a POST carrying a cursor in
+      // `bodyTemplate`: a connector endpoint is a data read by contract,
+      // and the request never reached a live connection. Recorded as an
+      // accepted assumption in the design doc rather than guarded on
+      // method, which would leave cursor-in-body pagination permanently
+      // fragile.
+      const isNetworkFailure =
+        status === undefined && err.code === ApiCode.REST_API_FETCH_FAILED;
+      if (
+        !isNetworkFailure &&
+        (status === undefined || !policy.retryOnStatus.has(status))
+      ) {
         throw err;
       }
 
@@ -95,12 +119,18 @@ export async function withRetry<T>(
     );
   }
   // Fallthrough: re-throw the original code with attempts patched on.
-  throw new ApiError(
+  const exhausted = new ApiError(
     lastError?.status ?? 502,
     (lastError?.code as ApiCode) ?? ApiCode.REST_API_FETCH_FAILED,
     lastError?.message ?? "fetch failed",
     { ...(lastError?.details ?? {}), attempts }
   );
+  // Carry the original `cause` across the re-wrap. `formatJobError`
+  // walks `.cause` to build the job row's error text, so dropping it
+  // here would undo #435's cause preservation for exactly the case that
+  // reaches an operator: a failure that survived every retry.
+  if (lastError?.cause !== undefined) exhausted.cause = lastError.cause;
+  throw exhausted;
 }
 
 /**
