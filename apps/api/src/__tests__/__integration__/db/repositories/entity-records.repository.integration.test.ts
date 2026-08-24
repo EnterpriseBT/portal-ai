@@ -535,4 +535,119 @@ describe("EntityRecordsRepository Integration Tests", () => {
       expect(rows.map((r) => r.id)).toEqual([...ids].sort().reverse());
     });
   });
+  // ── #440 slice 1: the batched change-detection read ──────────────────
+  //
+  // The sync loop's per-record lookup degrades quadratically once
+  // statistics go stale: the planner abandons
+  // `entity_records_entity_source_unique` for the non-covering
+  // `entity_records_entity_is_valid_idx` and filters every row already
+  // inserted for the entity (measured 36.0ms/record vs 0.45ms). The whole
+  // premise of batching the read rather than folding the checksum into
+  // `ON CONFLICT` is that a multi-id `= ANY(...)` cannot degrade that way,
+  // because both columns land in the index condition and no residual
+  // `Filter` remains.
+  //
+  // These cases are the gate on that premise. If the plan below ever shows
+  // a `Filter` on `source_id`, the contract in
+  // `docs/CONNECTOR_SYNC_WRITE_PATH.spec.md` (Key decision 2) is wrong.
+  describe("findBySourceIdsForSync", () => {
+    it("excludes soft-deleted rows (no resurrection)", async () => {
+      const live = makeRecord(entityAId, { sourceId: "keep-me" });
+      const gone = makeRecord(entityAId, {
+        sourceId: "reaped",
+        deleted: Date.now(),
+        deletedBy: "test",
+      });
+      await db.insert(schema.entityRecords).values([live, gone] as never);
+
+      const rows = await repo.findBySourceIdsForSync(
+        entityAId,
+        ["keep-me", "reaped"],
+        db
+      );
+
+      expect(rows.map((r) => r.sourceId)).toEqual(["keep-me"]);
+    });
+
+    it("returns one row per matching source id, projected", async () => {
+      const recs = Array.from({ length: 25 }, (_, i) =>
+        makeRecord(entityAId, { sourceId: `s-${i}`, checksum: `c-${i}` })
+      );
+      await db.insert(schema.entityRecords).values(recs as never);
+
+      const rows = await repo.findBySourceIdsForSync(
+        entityAId,
+        recs.map((r) => r.sourceId as string),
+        db
+      );
+
+      expect(rows).toHaveLength(25);
+      expect(Object.keys(rows[0]).sort()).toEqual([
+        "checksum",
+        "created",
+        "createdBy",
+        "id",
+        "sourceId",
+      ]);
+    });
+
+    it("returns exactly the requested rows from a 1000-id batch", async () => {
+      // The batched read is the shape the sync writer will issue. Assert its
+      // CORRECTNESS here; the query *plan* is deliberately not asserted —
+      // see the note below.
+      const recs = Array.from({ length: 2_000 }, (_, i) =>
+        makeRecord(entityAId, { sourceId: `bulk-${i}`, checksum: `c-${i}` })
+      );
+      for (let i = 0; i < recs.length; i += 500) {
+        await db
+          .insert(schema.entityRecords)
+          .values(recs.slice(i, i + 500) as never);
+      }
+      // A row on another entity with a colliding source id — must not leak.
+      await db
+        .insert(schema.entityRecords)
+        .values([makeRecord(entityBId, { sourceId: "bulk-0" })] as never);
+
+      const probe = recs.slice(0, 1_000).map((r) => r.sourceId as string);
+      const rows = await repo.findBySourceIdsForSync(entityAId, probe, db);
+
+      expect(rows).toHaveLength(1_000);
+      expect(new Set(rows.map((r) => r.sourceId))).toEqual(new Set(probe));
+      // Checksums come back paired with their own source id.
+      const byId = new Map(rows.map((r) => [r.sourceId, r.checksum]));
+      expect(byId.get("bulk-7")).toBe("c-7");
+    });
+
+    // ── Why there is no query-plan assertion here ────────────────────────
+    //
+    // The premise behind batching the read rather than folding the checksum
+    // into `ON CONFLICT` (spec Key decision 2) is that a multi-id
+    // `= ANY(...)` puts both columns in the index condition and leaves no
+    // residual `Filter` to degrade. That was measured on the dev database at
+    // production scale — 2.7M rows, ~400K for the entity — where a 1000-id
+    // batch planned as:
+    //
+    //   Index Scan using entity_records_entity_source_unique
+    //     Index Cond: ((connector_entity_id = ...) AND (source_id = ANY (...)))
+    //   Execution Time: 1.108 ms   (vs 36.015 ms PER RECORD for the
+    //                               single-id form on stale statistics)
+    //
+    // An assertion on that plan was written here first and removed, because
+    // this suite's table is ~2,000 rows: both before and after `ANALYZE` the
+    // planner correctly prefers a sequential scan with `source_id` as a
+    // filter, since scanning 2,000 rows beats 1,000 index probes. The plan
+    // is therefore size-dependent, and pinning it in a fixture three orders
+    // of magnitude smaller than production would assert the planner's
+    // behaviour on data that does not resemble the case it matters for — it
+    // would fail permanently while proving nothing.
+    //
+    // The premise consequently rests on a production-scale measurement, not
+    // on a test. Its known limit: it was taken with reasonably fresh
+    // statistics, so "batched reads never degrade on stale statistics at
+    // scale" is supported but not proven. If it ever does degrade, the
+    // robust fix is to make `entity_records_entity_source_unique` covering
+    // (INCLUDE checksum, created, created_by) so the planner prefers it
+    // regardless of estimates — a migration, deliberately not in this
+    // ticket's scope.
+  });
 });

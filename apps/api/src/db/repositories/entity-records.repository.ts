@@ -379,6 +379,77 @@ export class EntityRecordsRepository extends Repository<
     return out;
   }
 
+  /**
+   * Change-detection read for the sync writer (#440).
+   *
+   * `findBySourceIds` above does `.select()` — the whole row, including the
+   * `data` jsonb and any geometry. The sync writer batches 1000 source ids
+   * per read and needs exactly five columns to classify a record: the
+   * primary key, the source id, the checksum to compare, and the
+   * `created` / `createdBy` pair it must preserve on an update. Projecting
+   * those instead of the row keeps roughly a megabyte per batch off the
+   * wire.
+   *
+   * Soft-deleted rows are excluded. `layout-plan-commit`'s `writeRecords`
+   * reads with `includeDeleted: true` and revives prior rows through
+   * `bulkResurrect`; `record-import`'s `flushBatch` does not, and neither
+   * does the REST sync path this serves. Resurrection is deliberately not
+   * introduced here — it would silently change what a sync does to
+   * previously-reaped rows.
+   *
+   * Chunked at `BULK_CHUNK_SIZE` for the same reason as its siblings: a
+   * single unbounded `inArray` builds a Drizzle AST deep enough to overflow
+   * the V8 stack when serialised.
+   */
+  async findBySourceIdsForSync(
+    connectorEntityId: string,
+    sourceIds: string[],
+    client: DbClient = db
+  ): Promise<
+    Array<
+      Pick<
+        EntityRecordSelect,
+        "id" | "sourceId" | "checksum" | "created" | "createdBy"
+      >
+    >
+  > {
+    if (sourceIds.length === 0) return [];
+    const out: Array<
+      Pick<
+        EntityRecordSelect,
+        "id" | "sourceId" | "checksum" | "created" | "createdBy"
+      >
+    > = [];
+    for (let i = 0; i < sourceIds.length; i += BULK_CHUNK_SIZE) {
+      const chunk = sourceIds.slice(i, i + BULK_CHUNK_SIZE);
+      const rows = await (client as typeof db)
+        .select({
+          id: entityRecords.id,
+          sourceId: entityRecords.sourceId,
+          checksum: entityRecords.checksum,
+          created: entityRecords.created,
+          createdBy: entityRecords.createdBy,
+        })
+        .from(this.table)
+        .where(
+          and(
+            eq(entityRecords.connectorEntityId, connectorEntityId),
+            inArray(entityRecords.sourceId, chunk),
+            this.notDeleted()
+          )
+        );
+      for (const r of rows) {
+        out.push(
+          r as Pick<
+            EntityRecordSelect,
+            "id" | "sourceId" | "checksum" | "created" | "createdBy"
+          >
+        );
+      }
+    }
+    return out;
+  }
+
   // ── Hydrated reads (Phase 2 slice 3) ───────────────────────────
 
   /**
