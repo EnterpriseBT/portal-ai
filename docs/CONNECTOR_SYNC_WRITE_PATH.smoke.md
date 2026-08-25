@@ -97,18 +97,32 @@ anti-join probe            (new)       -     present
 
 The one behaviour this branch removes is the blind mirror re-upsert. It was also the accidental backfill mechanism, so this is the section that matters most.
 
-- [ ] Delete one wide row behind the sync's back:
+- [x] Delete one wide row behind the sync's back:
       ```sql
       delete from "er__8bd191fc-8f3c-45ba-bb40-e8595bc763cf"
       where entity_record_id = (
         select entity_record_id from "er__8bd191fc-8f3c-45ba-bb40-e8595bc763cf" limit 1
       ) returning entity_record_id;   -- keep this id
       ```
-- [ ] Confirm the gap: wide count is now **397,959** while live `entity_records` is **397,960**.
-- [ ] Re-sync `testing`.
-- [ ] The deleted row is back: wide count returns to **397,960**, and the id you kept is present again.
-- [ ] Orphan check still clean:
+- [x] Confirm the gap: wide count is now **397,959** while live `entity_records` is **397,960**.
+- [x] Re-sync `testing`.
+- [x] The deleted row is back: wide count returns to **397,960**, and the id you kept is present again.
+- [x] Orphan check still clean:
       `select count(*) from "er__…" w left join entity_records er on er.id = w.entity_record_id and er.deleted is null where er.id is null` → **0**
+
+**Observed (job `5227a0dc`, 82 s).** Deleted wide row `0fe0d15b-7eb0-4f4d-ba4d-9935765db5c9` (`source_id 22203040590000`), then re-synced with unchanged data so every record classified `unchanged` and the old blind re-upsert would not have fired.
+
+```
+wide rows        397,960   restored
+victim row             1   present again, populated (source_id + synced_at set)
+remaining gaps         0
+orphans                0
+recordCounts     unchanged 397,960 / 0/0/0
+```
+
+The anti-join found the single gap among 397,960 unchanged records and mirrored only that row. This is the behaviour the blind re-upsert used to provide by brute force.
+
+**Unrelated observation, recorded because the walk surfaced it.** Every row in this wide table carries `is_valid = f` while every corresponding `entity_records` row carries `is_valid = t`. The backfilled row matches its 397,959 peers, so this is **not** introduced by #440 — `entity_records.is_valid` is hard-coded `true` by the sync writer (as it was by `upsertRecord` before it), whereas the wide row stores whatever `NormalizationService.normalizeWithMappings` computed, and this instance's transform emits upper-case keys that its field mapping does not match. The two columns therefore disagree by construction on every synced entity. Out of scope here; worth its own ticket.
 
 ## §4 — A full replacement still works *(spec AC 1, 2)*
 
@@ -126,9 +140,37 @@ The one behaviour this branch removes is the blind mirror re-upsert. It was also
 
 This branch scoped itself to `rest-api` after finding Sheets and Excel already batch through `LayoutPlanCommitService`. Confirm that reasoning held.
 
-- [ ] Sync the **Google Sheets** connector (`32f8b058`) → completes, `unchanged = 19`.
-- [ ] `git diff epic/connector-sync-at-scale...HEAD --stat` shows **no** change to `google-sheets.adapter.ts`, `microsoft-excel.adapter.ts`, or `layout-plan-commit.service.ts`.
-- [ ] No Microsoft Excel instance exists on this box — waive that half with that reason, as in #435's §5.
+- [x] Sync the **Google Sheets** connector (`32f8b058`) → completes, `unchanged = 19`.
+- [x] `git diff epic/connector-sync-at-scale...HEAD --stat` shows **no** change to `google-sheets.adapter.ts`, `microsoft-excel.adapter.ts`, or `layout-plan-commit.service.ts`.
+- [~] No Microsoft Excel instance exists on this box — **WAIVED** with that reason, as in #435's §5. Its adapter is untouched by this branch (verified by the diff above) and covered by `microsoft-excel.adapter.test.ts` + `microsoft-excel-sync.integration.test.ts`, both green in CI.
+
+**Observed (job `05555725`).**
+
+```
+git diff epic/connector-sync-at-scale...HEAD --stat -- adapters/google-sheets/ \
+    adapters/microsoft-excel/ services/layout-plan-commit.service.ts \
+    services/record-import.util.ts
+  (empty — untouched)
+
+source files changed by this branch, in full:
+  adapters/rest-api/rest-api.adapter.ts        +257
+  db/repositories/entity-records.repository.ts  +71
+  db/repositories/wide-table.repository.ts      +56
+```
+
+The discovery claim that this is a single-adapter change holds: three files, none of them another adapter.
+
+Sync result: `completed`, `unchanged: 19`, 19 live records — unchanged from before the branch.
+
+**The run also caught a genuine transient, worth recording.** Attempt 1 hit a real Google 503 (`spreadsheets.get`); BullMQ retried 3 s later and attempt 2 succeeded:
+
+```
+01:37:11  attempt 1  -> Sheets API 503  -> job failed
+01:37:14  attempt 2  (BullMQ retry)
+01:37:15  completed, unchanged 19
+```
+
+Two notes. This is BullMQ's **job-level** retry, not #435's `withRetry` — a different mechanism on a different adapter, and evidence the queue absorbs upstream outages when the attempt budget is not voided. And the job row shows `status: completed` while still carrying attempt 1's `error` text: another live instance of #441's stale-error-on-a-succeeded-job, already filed.
 
 ## §6 — Error & edge cases *(spec AC 6, and the Risks table)*
 
