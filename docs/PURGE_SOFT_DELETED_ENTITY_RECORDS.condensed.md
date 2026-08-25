@@ -170,22 +170,50 @@ Preflight: `git checkout chore/purge-soft-deleted-entity-records && npm install 
 
    The `connector_entities` side of the `EXISTS` is a seq scan on a 20-row table, which is correct and not worth an index.
 
-3. **Run it out of schedule.** Enqueue the job by name on the maintenance queue (don't wait for 04:30). Watch `pino` for start/finish and read the summary at `GET /api/admin/maintenance` → `recentRuns[].returnvalue`.
+3. [x] **Run it out of schedule.** Enqueued by name on the maintenance queue (job 686). Completed, summary read back from BullMQ:
 
-4. **Only *eligible* tombstones go, and no live record does.** **Corrected during the walk — the original expectation here was wrong.** It assumed the 2.33M orphans were "far older than 7 days". They are not: they were produced by the #435/#439/#440 smoke runs over the preceding week, and their ages are 0.2–5.8 days. Measured eligibility under the default windows:
-
-   ```
-   orphan, deleted < now-7d      12,340
-   live-parent, deleted < now-30d     0
+   ```json
+   {"purgedOrphan":12340,"purgedLive":0,"batches":2,
+    "orphanCutoff":"2026-08-18T20:18:18.795Z","liveCutoff":"2026-07-26T20:18:18.795Z"}
    ```
 
-   So a default-window run purges **12,340 rows and nothing else**. That is the correct expectation, and the live count (1,193,068) must not move. Expecting 2.33M would have failed the step for the wrong reason and hidden whether the purge worked at all.
+   Matches the measured eligibility exactly, and 2 batches is 10,000 + 2,340 as expected. Both cutoffs land 7 and 30 days back, so each window paired with the scope it belongs to.
 
-   **What this step therefore does and does not prove.** It proves selection, the cascade, and idempotence against a real 8 GB table. It does *not* exercise the multi-batch drain at volume, because the data isn't old enough. Draining the full 2.33M requires overriding `ENTITY_RECORD_ORPHAN_RETENTION_DAYS` — and that is a deliberate decision, not a step to take casually: those tombstones are the evidence trail for this epic's investigations, and #441, #451 and #456 are still open against it. Recorded as a **conscious gap** rather than silently skipped or silently forced.
-5. **Wide tables shrank with it.** For an entity that had orphaned tombstones, confirm the `er__<id>` row count dropped in step with them — the FK cascade, not application code.
-6. **Disk is reclaimed as reusable space.** `pg_total_relation_size` will *not* drop much without a `VACUUM FULL`; confirm `n_dead_tup` rose and autovacuum reclaimed it for reuse. State the distinction in the result rather than reporting "disk didn't shrink" as a failure.
-7. **A sync afterwards plans correctly.** Re-sync one connector and confirm throughput sits in the fast band (#440 measured 485 rec/s fresh vs 92 stale), which is the second-order effect this ticket exists to buy.
-8. **Idempotent.** Run it twice; the second run reports `purged: 0, batches: 0` and changes nothing.
+   The **preflight** for this step was the part that mattered. The API answered `/api/health` with 200 from a worker started before the code commits, and a restart could not take because the stale tree still held :3001. Verified the third attempt by pid time *and* functionally — the new scheduler registered in Redis at `30 4 * * *` — rather than trusting the health check, which was green throughout while serving the wrong build.
+
+4. [x] **Only *eligible* tombstones go, and no live record does.** **The expectation here was corrected mid-walk; the original was wrong.** It assumed the 2.33M orphans were "far older than 7 days". They are 0.2–5.8 days old, produced by the #435/#439/#440 smoke runs the week before. Measured eligibility was 12,340 orphan / 0 live-parent, and that is what ran:
+
+   ```
+                    before        after      delta
+   total          5,115,688    5,103,348   -12,340
+   live           1,193,068    1,193,068         0   ← AC 3, the number that must not move
+   tombstoned     3,922,620    3,910,280   -12,340
+     orphan       2,330,780    2,318,440   -12,340
+     live-parent  1,591,840    1,591,840         0
+   ```
+
+   Remaining eligible under the same windows: 0. Had the step kept its original expectation it would have failed for the wrong reason and sent me looking for a bug in working code.
+
+   **What this proves and what it doesn't.** It proves selection, the cascade and idempotence against a real 8 GB table. It does *not* exercise the multi-batch drain at volume — two batches is not a drain. Draining the full 2.33M needs `ENTITY_RECORD_ORPHAN_RETENTION_DAYS` overridden, and that is deferred by decision, not oversight: those tombstones are the evidence trail for this epic's investigations, and #441, #451 and #456 are still open against it. Recorded as a **conscious gap**, to be closed once the epic does.
+
+5. [x] **Wide tables shrank with it — via the FK, not application code.** A correction to this doc's own "Current shape" table: it said instance-delete drops `er__<id>`, implying orphans never have a wide table. Only the *instance*-delete path drops it. 13 of 16 soft-deleted entities still have theirs, because `connector-entity-validation.service.ts` soft-deletes entities without dropping anything. So the cascade is observable on real data:
+
+   - The FK is present on the live tables: `FOREIGN KEY (entity_record_id) REFERENCES entity_records(id) ON DELETE CASCADE`.
+   - `er__f98c71d6…` (Asteroids), which held 10,238 of the purged rows, is now at 0 rows with `n_tup_del = 10,238`.
+   - **Zero orphaned wide rows** across all 17 wide tables, checked directly.
+
+   **Attribution limit, stated rather than glossed:** that `n_tup_del = 10,238` cannot be pinned on *this* purge alone, because the watermark reaper also hard-deletes wide rows (`softDeleteByEntityRecordIds` deletes despite its name), and it would leave an identical counter. The causal proof that the cascade fires is the integration test, which observes a wide row before and after a purge in one transaction. What this step adds is that the invariant holds on production-shaped data.
+
+6. [x] **Disk is reclaimed as reusable space, not returned.** `pg_total_relation_size` sat at 8,029 MB across the purge, exactly as predicted — the pages are freed for reuse, not handed back to the filesystem. `n_dead_tup` is 804,869. Note that figure is **not** attributable to the purge: every soft delete is an `UPDATE`, so it produces dead tuples too, and the counter is cumulative. Returning the space needs `VACUUM FULL` / `pg_repack`, which is an operator action under an exclusive lock and out of scope.
+
+7. [ ] **A sync afterwards plans correctly.** **Expected not to demonstrate anything at this volume, and that is the honest reading:** 12,340 rows is 0.24% of the table, which moves `reltuples` far too little to shift the autoanalyze threshold or the planner's index choice. Running a 400K sync here would produce a throughput number the purge cannot be credited for. The evidence for the second-order effect belongs to the deferred 2.33M drain, and is recorded there rather than manufactured here.
+
+8. [x] **Idempotent.** Second run (job 687) returned `{"purgedOrphan":0,"purgedLive":0,"batches":0}` and changed no counts — one probe per scope, no retry storm.
+
+## Sign-off
+
+- [ ] Every section above verified (or explicitly waived with a reason)
+- [ ] ______ (date) — ______ (name) — confirmed against my own running stack
 
 ## Out of scope
 
