@@ -148,10 +148,40 @@ The ticket's AC 4 requires the rule to live where the next contributor finds it.
 
 Preflight: `git checkout chore/purge-soft-deleted-entity-records && npm install && cd apps/api && npm run db:migrate` (one new index migration), then `npm run dev`. **Check the API process actually restarted on this branch** — a stale orphan served pre-branch code twice during #436/#440.
 
-1. **Baseline.** Record `SELECT count(*) FROM entity_records`, the tombstoned count, the orphan/live split, and `pg_total_relation_size` — the four numbers in the table at the top of this doc.
-2. **The index is used.** `EXPLAIN` the purge predicate and confirm an Index Scan on `entity_records_deleted_purge_idx` where the measurement above showed a Seq Scan. Then re-run the *tail* case (`deleted < 1`, matches nothing): expect single-digit ms against the recorded **1,664 ms**.
+**Preflight result.** The stale-process check earned its place: the API was answering `/api/health` with a worker started at 17:29, before all three code commits (18:30, 19:01, 19:11). It had none of this branch's code. Restarted before step 3.
+
+1. [x] **Baseline.** Measured:
+
+   ```
+   total          5,115,688     disk  8,029 MB
+   live           1,193,068
+   tombstoned     3,922,620
+     orphan       2,330,780
+     live-parent  1,591,840
+   ```
+
+2. [x] **The index is used.** Confirmed on both the synthetic tail case and the statement the purge actually issues:
+
+   ```
+   tail case (matches nothing)      Index Scan  0.034 ms   (was 1,664 ms, Parallel Seq Scan)
+   real orphan-scope batch, LIMIT 10000
+                                    Index Scan  16.9 ms
+   ```
+
+   The `connector_entities` side of the `EXISTS` is a seq scan on a 20-row table, which is correct and not worth an index.
+
 3. **Run it out of schedule.** Enqueue the job by name on the maintenance queue (don't wait for 04:30). Watch `pino` for start/finish and read the summary at `GET /api/admin/maintenance` → `recentRuns[].returnvalue`.
-4. **Orphans are gone, live records are not.** Re-run step 1's counts. Expect the orphan bucket at 0 (all 2.33M are far older than 7 days) and the **live count unchanged** — that is ticket AC 3 and the one number that must not move.
+
+4. **Only *eligible* tombstones go, and no live record does.** **Corrected during the walk — the original expectation here was wrong.** It assumed the 2.33M orphans were "far older than 7 days". They are not: they were produced by the #435/#439/#440 smoke runs over the preceding week, and their ages are 0.2–5.8 days. Measured eligibility under the default windows:
+
+   ```
+   orphan, deleted < now-7d      12,340
+   live-parent, deleted < now-30d     0
+   ```
+
+   So a default-window run purges **12,340 rows and nothing else**. That is the correct expectation, and the live count (1,193,068) must not move. Expecting 2.33M would have failed the step for the wrong reason and hidden whether the purge worked at all.
+
+   **What this step therefore does and does not prove.** It proves selection, the cascade, and idempotence against a real 8 GB table. It does *not* exercise the multi-batch drain at volume, because the data isn't old enough. Draining the full 2.33M requires overriding `ENTITY_RECORD_ORPHAN_RETENTION_DAYS` — and that is a deliberate decision, not a step to take casually: those tombstones are the evidence trail for this epic's investigations, and #441, #451 and #456 are still open against it. Recorded as a **conscious gap** rather than silently skipped or silently forced.
 5. **Wide tables shrank with it.** For an entity that had orphaned tombstones, confirm the `er__<id>` row count dropped in step with them — the FK cascade, not application code.
 6. **Disk is reclaimed as reusable space.** `pg_total_relation_size` will *not* drop much without a `VACUUM FULL`; confirm `n_dead_tup` rose and autovacuum reclaimed it for reuse. State the distinction in the result rather than reporting "disk didn't shrink" as a failure.
 7. **A sync afterwards plans correctly.** Re-sync one connector and confirm throughput sits in the fast band (#440 measured 485 rec/s fresh vs 92 stale), which is the second-order effect this ticket exists to buy.
