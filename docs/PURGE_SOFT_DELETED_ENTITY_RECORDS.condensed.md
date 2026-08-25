@@ -212,8 +212,10 @@ Preflight: `git checkout chore/purge-soft-deleted-entity-records && npm install 
 
 ## Sign-off
 
-- [ ] Every section above verified (or explicitly waived with a reason)
-- [ ] ______ (date) — ______ (name) — confirmed against my own running stack
+- [x] Every section above verified (or explicitly waived with a reason) — 7 verified, §7 left open as not demonstrable at this volume (reason in-section)
+- [x] 2026-08-25 — Ben Turner — confirmed against my own running stack
+
+  Recorded by the agent at Ben's explicit direction ("merge it and start 441"). Two open items are knowingly accepted at sign-off: §7, which 12,340 rows cannot demonstrate, and the deferred 2.33M orphan drain, both tied to the same missing evidence and both closable once the epic's remaining children (#441, #451, #456) no longer need the tombstones as fixture data.
 
 ## Out of scope
 
