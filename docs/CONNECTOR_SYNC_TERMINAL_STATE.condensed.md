@@ -82,16 +82,77 @@ It must be **idempotent**, because it also fires for every failure the in-band c
 
 **Tests** — extend `__tests__/adapters/rest-api/sync-record-writer.test.ts` and add cases for the sheets/excel/layout-plan paths: (1) a throwing cascade leaves the sync `completed` with every record written; (2) `mirrorDegraded` is set on the result; (3) a succeeding cascade does not set it; (4) the guard logs `…reap-cascade-failed`. Mutation-check each guard the way #440's probe guard was checked.
 
-## Smoke (manual, against your dev stack)
+## Smoke (manual, against your dev stack) — walked 2026-08-25
 
-**Preflight: verify the API restarted on this branch by pid time, not by `/api/health`** — it returned 200 from a stale build three times across this epic.
+**Preflight: verify the API restarted on this branch by pid time, not by `/api/health`** — it returned 200 from a stale build three times across this epic. Verified here: worker started 21:45:55 against a 21:35:30 code commit.
 
-1. **Retry does not write `failed`.** Start a large sync, kill the upstream mid-run (or point the endpoint at a dead host). Expect the row at `pending` with the attempt's error and `attempts: 1`, `completed_at` still null — where today it reads `failed`.
-2. **The stale error clears.** When attempt 2 starts, expect `status=active, error=null, attempts=2`. Today it carries attempt 1's text.
-3. **The lock holds through the retry.** While the row is `pending`, confirm the connector-instance view still shows the lock alert and Sync/edit/delete stay disabled.
-4. **Budget exhaustion is terminal.** Let all 3 attempts fail. Expect `failed`, `attempts: 3`, `completed_at` set.
-5. **#456: a sync whose data landed reports `completed`.** `alter table "er__<entity>" rename to "er__<entity>_hidden";` then sync. Expect `completed`, all records in `entity_records`, `mirrorDegraded: true` on the result, and `…reap-cascade-failed` in the log. Rename it back afterwards.
-6. **A killed worker records why.** Kill the API mid-sync. After BullMQ's stall recovery, expect the row to carry a reason rather than the silence it records today.
+Driven against the `FAIL SMOKE` instance (already pointed at `https://no-such-host-abcxyz.invalid` from #435's walk) for §1–§4, and `Smoke 3` for §5.
+
+1. [x] **Retry does not write `failed`.** One run gave §1, §2 and §4 together. Line 1 below is the *previous* job, left over from #435's walk, and is an exact control for the old behaviour:
+
+   ```
+   22:15:11  eaed3a8b  failed   attempts=0  err set  completed=set   <- OLD, the bug
+   22:15:28  8f31f855  active   attempts=1  err  -   completed=null
+   22:15:36  8f31f855  pending  attempts=1  err set  completed=null  <- §1
+   22:15:38  8f31f855  active   attempts=2  err  -   completed=null  <- §2, cleared
+   22:15:46  8f31f855  pending  attempts=2  err set  completed=null
+   22:15:50  8f31f855  active   attempts=3  err  -   completed=null
+   22:15:57  8f31f855  failed   attempts=3  err set  completed=set   <- §4
+   ```
+
+2. [x] **The stale error clears.** Above — `err` returns to `-` at each attempt start, and `attempts` walks 1→2→3 where the control sits at 0.
+
+3. [x] **The lock holds through the retry.** **The step as written was impractical and was replaced.** The `pending` windows are only the BullMQ backoff — 2s and 4s — far too short to check a UI by hand, so it was verified at the level that actually matters, probing the same `NOT IN (completed, failed, cancelled)` predicate `JobLockService` uses, 4×/second:
+
+   ```
+   22:16:47  status=failed   lock_matches=0   <- released
+   22:17:01  status=active   lock_matches=1
+   22:17:09  status=pending  lock_matches=1   <- HELD through the retry
+   22:17:19  status=pending  lock_matches=1   <- HELD
+   22:17:30  status=failed   lock_matches=0   <- released, budget spent
+   ```
+
+   Those two `pending` rows would previously have been `failed` → `0` → the lock released on an entity the worker was about to write to.
+
+4. [x] **Budget exhaustion is terminal.** See §1's trace: `failed`, `attempts: 3`, `completed_at` set.
+
+5. [x] **#456: a sync whose data landed reports `completed`.** Wide table renamed away, `Smoke 3` synced (397,960 records, 306 s):
+
+   ```
+   completed | progress 100 | attempts 1 | error -
+   {"recordCounts":{"created":34000,"deleted":431960,"unchanged":363960},
+    "mirrorDegraded": true}
+   ```
+
+   Where the same scenario produced `failed` at progress 90 after 482 s before this branch. Table renamed back and verified at 397,960 rows.
+
+   An accidental second control turned up here: the *previous* Smoke 3 job reads `completed | attempts=0` while still carrying `relation "er__dee94e06…"` in its `error` column — a completed job displaying a failure, which is the stale-error half of §2 in another guise. The new row's `error=-` is that fixed.
+
+6. [ ] **A killed worker records why.** **Deferred, not waived.** Killing a worker mid-sync would interleave with the reap behaviour in #460 below, so the run would prove nothing clean about this branch. To be run once #460 is fixed.
+
+### What the walk found that it was not looking for — #460
+
+§5's run exposed **silent data loss that this branch does not cause and does not fix**, filed as [#460](https://github.com/EnterpriseBT/portal-ai/issues/460):
+
+```
+watermark 22:40:40.681  pass A       two syncInstance runs, one job,
+watermark 22:48:36.717  pass B       attempts never left 1 (a stall re-delivery)
+
+live        363,960  stamped W_B
+tombstoned   34,000  stamped W_A, written at 22:49:42
+source      397,960
+```
+
+BullMQ re-delivered the job during its ~6.5-minute reap phase while the first pass was still flushing writes; the second pass's watermark reap then deleted the first pass's in-flight rows. The result payload looks healthy — `34,000 + 363,960 = 397,960` — because each pass counted its own work correctly, so nothing in the reported numbers reveals the shortfall.
+
+Pre-existing: generation `d22d08cf`, from before this branch, carries the same two-watermark signature.
+
+**The interaction has to be decided rather than assumed.** Before this branch, that run reported `failed`, which triggered a BullMQ retry, and the retry re-wrote all 397,960 records — *the data self-healed while the status lied*. After this branch the status is honest, no retry fires, and the data stays short. That is not a reason to hold this branch: the loss comes from the concurrent pass, and relying on an unrelated crash for an accidental repair is not a safety property. It does mean #460 should not queue behind the rest of the epic, because this branch removes the accident that was masking it.
+
+## Sign-off
+
+- [ ] Every section above verified (or explicitly waived with a reason)
+- [ ] ______ (date) — ______ (name) — confirmed against my own running stack
 
 ## Out of scope
 
