@@ -52,6 +52,26 @@ const findBySourceIdsMock = jest.fn<
   >
 >();
 const upsertBySourceIdMock = jest.fn<(data: unknown) => Promise<unknown>>();
+// #440: the sync loop now batches — it reads through the narrow projection
+// and writes through the bulk upsert.
+const findBySourceIdsForSyncMock = jest.fn<
+  (
+    connectorEntityId: string,
+    sourceIds: string[]
+  ) => Promise<
+    Array<{
+      id: string;
+      sourceId: string;
+      checksum: string;
+      createdBy: string;
+      created: number;
+    }>
+  >
+>();
+const upsertManyBySourceIdMock =
+  jest.fn<(rows: unknown[], client?: unknown) => Promise<unknown[]>>();
+const transactionMock =
+  jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>();
 const bulkUpdateSyncedAtMock =
   jest.fn<(ids: string[], syncedAt: number) => Promise<number>>();
 const softDeleteBeforeWatermarkMock =
@@ -80,6 +100,7 @@ const upsertWideManyMock = jest.fn<() => Promise<void>>();
 
 jest.unstable_mockModule("../../../services/db.service.js", () => ({
   DbService: {
+    transaction: transactionMock,
     repository: {
       apiEndpoints: {
         findByInstance: findByInstanceMock,
@@ -87,7 +108,9 @@ jest.unstable_mockModule("../../../services/db.service.js", () => ({
       },
       entityRecords: {
         findBySourceIds: findBySourceIdsMock,
+        findBySourceIdsForSync: findBySourceIdsForSyncMock,
         upsertBySourceId: upsertBySourceIdMock,
+        upsertManyBySourceId: upsertManyBySourceIdMock,
         bulkUpdateSyncedAt: bulkUpdateSyncedAtMock,
         softDeleteBeforeWatermark: softDeleteBeforeWatermarkMock,
       },
@@ -167,8 +190,32 @@ beforeEach(() => {
   // Default upsertBySourceId returns a stub row carrying the input id —
   // the adapter consumes `upserted.id` for the wide-table mirror write.
   upsertBySourceIdMock.mockImplementation(async (input: unknown) => input);
+  // #440: the batched writer's collaborators. An empty prior-row set means
+  // every record classifies as `created`, which is what these suites assert
+  // (they exercise auth/pagination/templating, not change detection).
+  findBySourceIdsForSyncMock.mockReset();
+  findBySourceIdsForSyncMock.mockResolvedValue([]);
+  upsertManyBySourceIdMock.mockReset();
+  upsertManyBySourceIdMock.mockResolvedValue([]);
+  transactionMock.mockReset();
+  transactionMock.mockImplementation((fn) => fn("tx"));
   __resetRestApiAdapterDepsForTests();
 });
+
+/**
+ * Total records handed to the batched writer (#440).
+ *
+ * These suites used to count `upsertBySourceId` calls, one per record. The
+ * sync loop now writes in batches, so the equivalent assertion is the number
+ * of rows across every `upsertManyBySourceId` call — same intent (N records
+ * written), current mechanism.
+ */
+function recordsWritten(): number {
+  return upsertManyBySourceIdMock.mock.calls.reduce(
+    (n, call) => n + (call[0] as unknown[]).length,
+    0
+  );
+}
 
 // ── Pure helpers ─────────────────────────────────────────────────────
 
@@ -699,7 +746,7 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
     expect(new URL(urls[0]).searchParams.get("page")).toBe("1");
     expect(new URL(urls[1]).searchParams.get("page")).toBe("2");
     expect(new URL(urls[2]).searchParams.get("page")).toBe("3");
-    expect(upsertBySourceIdMock).toHaveBeenCalledTimes(4);
+    expect(recordsWritten()).toBe(4);
   });
 
   // Regression for #94. Before the per-page progress wiring, a
@@ -963,7 +1010,7 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
     // Two outbound requests (page 1 with records, page 2 empty → stop).
     expect(fetchMock).toHaveBeenCalledTimes(2);
     // The reconciler saw the flat records — assert via upsert calls.
-    expect(upsertBySourceIdMock).toHaveBeenCalledTimes(2);
+    expect(recordsWritten()).toBe(2);
     const upsertedDatas = upsertBySourceIdMock.mock.calls.map(
       (call) => (call[0] as { data: Record<string, unknown> }).data
     );
@@ -2084,7 +2131,7 @@ describe("restApiAdapter.syncInstance — streaming branch", () => {
     const result = await restApiAdapter.syncInstance!(INSTANCE, "u1");
 
     // Three records → three upserts (none had a prior; all created).
-    expect(upsertBySourceIdMock).toHaveBeenCalledTimes(3);
+    expect(recordsWritten()).toBe(3);
     expect(result.recordCounts).toEqual({
       created: 3,
       updated: 0,

@@ -42,14 +42,6 @@ export interface WideTableUpsertResult {
 }
 
 /**
- * Chunk size for `upsertMany`. A single 13k-row INSERT builds a Drizzle
- * `sql` AST whose join tree is deep enough to overflow V8's call stack
- * when the template is recursively flattened at execute time. 500 rows
- * keeps each statement's AST shallow + the parameter count comfortably
- * under PostgreSQL's 65k bind limit (500 rows × ~50 cols = 25k params
- * worst-case, well under the cap).
- */
-/**
  * Rows / ids per statement for every chunked wide-table builder.
  *
  * Named for the table rather than for `upsertMany` because #436 extended it
@@ -57,6 +49,9 @@ export interface WideTableUpsertResult {
  * AST node per element and Drizzle flattens that chain recursively when the
  * statement is serialised, so any unbounded list overflows the V8 stack.
  * Keeping each statement's AST shallow is the remedy in all four cases.
+ *
+ * 500 also keeps the bind count comfortably under PostgreSQL's 65k limit —
+ * 500 rows × ~50 columns = 25k params worst-case on the `upsertMany` path.
  */
 export const WIDE_TABLE_CHUNK_SIZE = 500;
 
@@ -172,8 +167,7 @@ export class WideTableRepository {
   /**
    * Read specific rows by `entity_record_id`. Order of the input ids
    * is not preserved — Postgres decides.
-   */
-  /**
+   *
    * Chunked at `WIDE_TABLE_CHUNK_SIZE` for the same reason as
    * `softDeleteByEntityRecordIds` (#436). Every chunk's rows are
    * accumulated before returning, so the caller still sees one complete
@@ -583,6 +577,48 @@ export class WideTableRepository {
    * two was never available. A partial cascade leaves orphans the next reap
    * re-attempts, matching this mirror's documented best-effort posture.
    */
+  /**
+   * Of the given `entity_records` ids, which have **no** row in `er__<id>`
+   * (#440).
+   *
+   * Replaces the sync loop's blind per-record mirror re-upsert. That existed
+   * to backfill rows present in `entity_records` but missing from the wide
+   * table — common right after landing field mappings on an already-synced
+   * entity — but it paid ~398,000 speculative upserts, each carrying a
+   * geometry audit, on every sync to catch a handful of gaps. One anti-join
+   * per batch locates them directly.
+   *
+   * Chunked at `WIDE_TABLE_CHUNK_SIZE` (#436), accumulating across chunks:
+   * a partial answer would silently skip a backfill.
+   */
+  async selectMissingWideRowIds(
+    connectorEntityId: string,
+    entityRecordIds: ReadonlyArray<string>,
+    client: DbClient = db
+  ): Promise<string[]> {
+    if (entityRecordIds.length === 0) return [];
+    const tableName = `"${this.tableName(connectorEntityId)}"`;
+    const missing: string[] = [];
+    for (let i = 0; i < entityRecordIds.length; i += WIDE_TABLE_CHUNK_SIZE) {
+      const chunk = entityRecordIds.slice(i, i + WIDE_TABLE_CHUNK_SIZE);
+      const idList = sql.join(
+        chunk.map((id) => sql`${id}`),
+        sql`, `
+      );
+      // Ask which of the chunk's ids ARE present and diff in memory. A
+      // SQL-side anti-join would need the requested ids as a VALUES relation;
+      // the chunk is capped at WIDE_TABLE_CHUNK_SIZE, so the set difference is
+      // trivial here and the statement stays a plain indexed lookup.
+      const found = (await (client as typeof db).execute(
+        sql`SELECT "entity_record_id" AS id FROM ${sql.raw(tableName)}
+            WHERE "entity_record_id" IN (${idList})`
+      )) as unknown as Array<{ id: string }>;
+      const present = new Set(found.map((r) => r.id));
+      for (const id of chunk) if (!present.has(id)) missing.push(id);
+    }
+    return missing;
+  }
+
   async softDeleteByEntityRecordIds(
     connectorEntityId: string,
     ids: ReadonlyArray<string>,

@@ -159,3 +159,22 @@ describe("selectByEntityRecordIds — chunking (#436)", () => {
     expect(statements.length).toBe(0);
   });
 });
+
+describe("selectMissingWideRowIds — chunking (#440)", () => {
+  it("chunks a large id list at CHUNK", async () => {
+    const { client, statements } = fakeClient();
+    await repo().selectMissingWideRowIds(ENTITY, ids(2_500), client);
+    expect(statements.length).toBe(5);
+    expect(Math.max(...statements.map((s) => s.params))).toBeLessThanOrEqual(
+      CHUNK
+    );
+  });
+
+  it("issues nothing and returns [] for an empty id list", async () => {
+    const { client, statements } = fakeClient();
+    await expect(
+      repo().selectMissingWideRowIds(ENTITY, [], client)
+    ).resolves.toEqual([]);
+    expect(statements.length).toBe(0);
+  });
+});
