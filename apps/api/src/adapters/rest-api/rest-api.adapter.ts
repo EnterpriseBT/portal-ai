@@ -434,6 +434,10 @@ async function syncOneEndpoint(
   };
 
   let pagesEmitted = 0;
+  // #440: records are buffered and written in batches. `flush()` MUST run
+  // before the watermark reap below — an unflushed record would have no
+  // advanced `syncedAt` and the reaper would soft-delete it.
+  const writer = createSyncRecordWriter(ctx);
   if (isStreamingEligible(endpoint)) {
     const streamStartedAt = Date.now();
     const page = await streamFetchOnePage(endpoint, baseUrl, auth, credentials);
@@ -441,8 +445,9 @@ async function syncOneEndpoint(
     reportPage?.(pagesEmitted);
     try {
       for await (const record of page.recordsStream) {
-        await upsertRecord(record, ctx);
+        await writer.add(record);
       }
+      await writer.flush();
     } finally {
       logger.info(
         {
@@ -471,13 +476,14 @@ async function syncOneEndpoint(
       );
 
       for (const record of fetched.records) {
-        await upsertRecord(record, ctx);
+        await writer.add(record);
       }
 
       pagesEmitted++;
       reportPage?.(pagesEmitted);
       next = await iterator.next(fetched);
     }
+    await writer.flush();
   }
 
   // Watermark reap runs once per endpoint, AFTER all pages have synced.
@@ -573,6 +579,271 @@ export interface UpsertContext {
 
 /** Cap on the number of rejected geometry sourceIds surfaced (bounded growth). */
 const GEOMETRY_REJECTED_SAMPLE_CAP = 20;
+
+/**
+ * Records buffered before a flush (#440). Matches the repositories'
+ * `BULK_CHUNK_SIZE`, so one buffered batch is one statement per primitive
+ * rather than a chunk boundary landing mid-batch.
+ *
+ * Flushing on a record count rather than on a page boundary keeps the
+ * streaming branch's memory bounded by the buffer instead of by whatever
+ * page size the upstream happens to serve.
+ */
+export const SYNC_WRITE_BATCH_SIZE = 1000;
+
+/** One buffered record, with its identity and checksum already derived. */
+interface PendingRecord {
+  sourceId: string;
+  checksum: string;
+  recordObj: Record<string, unknown>;
+}
+
+export interface SyncRecordWriter {
+  /** Buffer one upstream record; flushes automatically at the batch size. */
+  add(record: unknown): Promise<void>;
+  /** Flush the remainder. MUST be called before the watermark reap. */
+  flush(): Promise<void>;
+}
+
+/**
+ * Batched replacement for `upsertRecord` (#440).
+ *
+ * The per-record path cost 3–4 sequential round-trips each: a change-detection
+ * read, an upsert or a watermark bump, a wide-row mirror, and the geometry
+ * audit inside it. On a ~400K-record layer that is ~1.2M round-trips, and the
+ * read degraded quadratically once statistics went stale (36ms/record vs
+ * 0.45ms). This buffers records and does one bulk read, in-memory
+ * classification, and one bulk write per batch — the shape
+ * `record-import.util.ts`'s `flushBatch` already uses.
+ *
+ * Deliberately behaviour-preserving for now: unchanged records still get their
+ * wide-row mirror re-upserted, exactly as the per-record path did. Removing
+ * that no-op work is the next slice, so a reviewer can check "same tallies,
+ * fewer statements" without also reasoning about skipped work.
+ *
+ * Identity and checksum are derived at `add` time, not at flush time, so
+ * `recordIndex` advances in upstream order and synthetic source ids stay
+ * aligned with the per-record path.
+ */
+export function createSyncRecordWriter(ctx: UpsertContext): SyncRecordWriter {
+  let pending: PendingRecord[] = [];
+
+  async function flush(): Promise<void> {
+    if (pending.length === 0) return;
+    const batch = pending;
+    pending = [];
+
+    const existing =
+      await DbService.repository.entityRecords.findBySourceIdsForSync(
+        ctx.endpoint.entity.id,
+        batch.map((p) => p.sourceId)
+      );
+    const priorBySourceId = new Map(existing.map((r) => [r.sourceId, r]));
+
+    const changed: EntityRecordInsertLike[] = [];
+    const unchangedIds: string[] = [];
+    /** Unchanged records, keyed by row id, in case a backfill needs them. */
+    const unchangedByRecordId = new Map<string, PendingRecord>();
+    /** Changed rows always mirror — their projected values are what changed. */
+    const mirror: Array<{ recordId: string; p: PendingRecord }> = [];
+
+    for (const p of batch) {
+      const prior = priorBySourceId.get(p.sourceId);
+      if (prior && prior.checksum === p.checksum) {
+        unchangedIds.push(prior.id);
+        unchangedByRecordId.set(prior.id, p);
+        ctx.counts.unchanged++;
+        continue;
+      }
+      const rowId = prior?.id ?? SystemUtilities.id.v4.generate();
+      changed.push({
+        id: rowId,
+        organizationId: ctx.instance.organizationId,
+        connectorEntityId: ctx.endpoint.entity.id,
+        sourceId: p.sourceId,
+        data: p.recordObj,
+        checksum: p.checksum,
+        syncedAt: ctx.runStartedAt,
+        origin: "sync",
+        isValid: true,
+        validationErrors: null,
+        created: prior?.created ?? Date.now(),
+        createdBy: prior?.createdBy ?? ctx.userId,
+        updated: Date.now(),
+        updatedBy: ctx.userId,
+        deleted: null,
+        deletedBy: null,
+      });
+      mirror.push({ recordId: rowId, p });
+      if (prior) ctx.counts.updated++;
+      else ctx.counts.created++;
+    }
+
+    if (changed.length > 0) {
+      await DbService.transaction(async (tx) => {
+        await DbService.repository.entityRecords.upsertManyBySourceId(
+          changed as never,
+          tx
+        );
+      });
+    }
+
+    if (unchangedIds.length > 0) {
+      await DbService.repository.entityRecords.bulkUpdateSyncedAt(
+        unchangedIds,
+        ctx.runStartedAt
+      );
+
+      // #440: an unchanged record's wide row is already correct, so
+      // re-projecting and re-upserting it — and re-running the geometry audit
+      // inside that upsert — is pure waste. The per-record path did it anyway
+      // to backfill rows missing from the mirror. One anti-join finds those
+      // directly instead of paying ~398,000 speculative upserts per sync.
+      //
+      // Guarded for the same reason `mirrorBatchToWideTable` is: the wide
+      // table is a best-effort mirror and must never fail a sync whose
+      // `entity_records` writes succeeded. This probe was unguarded when first
+      // written, and the #440 smoke walk caught it — with the wide table
+      // renamed away, every per-batch mirror degraded gracefully and then this
+      // read threw and killed the run, which is precisely the regression the
+      // mirror's best-effort contract exists to prevent.
+      if (ctx.wideProjection) {
+        try {
+          const missing =
+            await DbService.repository.wideTable.selectMissingWideRowIds(
+              ctx.endpoint.entity.id,
+              unchangedIds
+            );
+          for (const recordId of missing) {
+            const p = unchangedByRecordId.get(recordId);
+            if (p) mirror.push({ recordId, p });
+          }
+        } catch (err) {
+          logger.error(
+            {
+              event: "rest-api.sync.wide-table-backfill-probe-failed",
+              connectorEntityId: ctx.endpoint.entity.id,
+              batchSize: unchangedIds.length,
+              cause: err instanceof Error ? err.message : String(err),
+            },
+            "Missing-wide-row probe failed for batch — entity_records rows are intact; the next reconcile will backfill"
+          );
+        }
+      }
+    }
+
+    if (ctx.wideProjection && mirror.length > 0) {
+      await mirrorBatchToWideTable(mirror, ctx);
+    }
+  }
+
+  return {
+    async add(record: unknown): Promise<void> {
+      if (record === null || typeof record !== "object") {
+        ctx.counts.recordIndex++;
+        return;
+      }
+      // Same defensive prototype normalization as the per-record path: a
+      // null-prototype sub-object makes Drizzle's `is(v, SQL)` throw.
+      const recordObj = { ...(record as Record<string, unknown>) };
+      const sourceId = deriveSourceId(
+        recordObj,
+        ctx.endpoint.config.idField,
+        ctx.generationKey,
+        ctx.counts.recordIndex
+      );
+      ctx.counts.recordIndex++;
+      pending.push({
+        sourceId,
+        checksum: checksumRecord(recordObj),
+        recordObj,
+      });
+      if (pending.length >= SYNC_WRITE_BATCH_SIZE) await flush();
+    },
+    flush,
+  };
+}
+
+/** Row shape handed to `upsertManyBySourceId`; matches `EntityRecordInsert`. */
+type EntityRecordInsertLike = Record<string, unknown>;
+
+/**
+ * Mirror a whole batch into the wide table in one `upsertMany` (#440).
+ *
+ * Best-effort, as the per-record mirror was: a failure leaves the
+ * `entity_records` rows intact and the next reconcile backfills. Batching
+ * widens the blast radius of one bad row from its own mirror to its batch's
+ * mirror — accepted, and the reason the log records the batch's size and
+ * source-id range rather than a single id.
+ */
+async function mirrorBatchToWideTable(
+  mirror: Array<{ recordId: string; p: PendingRecord }>,
+  ctx: UpsertContext
+): Promise<void> {
+  try {
+    const rows = mirror.map(({ recordId, p }) => {
+      const normalized = NormalizationService.normalizeWithMappings(
+        ctx.mappingsForNormalize as never,
+        p.recordObj
+      );
+      return projectToWideRow(
+        {
+          id: recordId,
+          organizationId: ctx.instance.organizationId,
+          sourceId: p.sourceId,
+          syncedAt: ctx.runStartedAt,
+          isValid: normalized.isValid,
+          normalizedData: normalized.normalizedData,
+        },
+        ctx.wideProjection as ReadonlyMap<string, string>
+      );
+    });
+
+    const result = await DbService.repository.wideTable.upsertMany(
+      ctx.endpoint.entity.id,
+      rows
+    );
+
+    // #316: surface the fail-closed geometry outcome so it's never silent.
+    if (result.repaired > 0 || result.rejected.length > 0) {
+      ctx.counts.geometryRepaired += result.repaired;
+      ctx.counts.geometryRejected += result.rejected.length;
+      for (const r of result.rejected) {
+        if (
+          ctx.counts.geometryRejectedSample.length <
+          GEOMETRY_REJECTED_SAMPLE_CAP
+        ) {
+          ctx.counts.geometryRejectedSample.push(r.sourceId);
+        }
+      }
+      logger.warn(
+        {
+          event: "rest-api.sync.geometry-audit",
+          connectorEntityId: ctx.endpoint.entity.id,
+          batchSize: mirror.length,
+          repaired: result.repaired,
+          rejected: result.rejected,
+        },
+        "Geometry audit repaired or rejected values on import"
+      );
+    }
+  } catch (err) {
+    logger.error(
+      {
+        event: "rest-api.sync.wide-table-mirror-failed",
+        connectorEntityId: ctx.endpoint.entity.id,
+        batchSize: mirror.length,
+        sourceIdRange:
+          mirror.length > 0
+            ? `${mirror[0].p.sourceId}..${mirror[mirror.length - 1].p.sourceId}`
+            : undefined,
+        cause: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      },
+      "Wide-table mirror failed for batch — entity_records rows are intact; next reconcile will backfill"
+    );
+  }
+}
 
 /**
  * Upsert a single record into `entity_records` and mirror into the
@@ -799,7 +1070,7 @@ async function mirrorRecordToWideTable(
   }
 }
 
-function checksumRecord(record: Record<string, unknown>): string {
+export function checksumRecord(record: Record<string, unknown>): string {
   // Stable stringification (sorted keys) → SHA-1-equivalent via simple
   // hash. The existing entity_records.checksum is a string; we mirror
   // the spreadsheet pipeline's "any stable hash" approach.

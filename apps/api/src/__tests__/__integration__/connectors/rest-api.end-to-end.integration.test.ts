@@ -421,4 +421,124 @@ describe("REST API connector — end-to-end sync", () => {
     // the fix it stays at the current run's 2.
     expect(await wideCount()).toBe(2);
   });
+  it("backfills a wide row that went missing, without the blind re-upsert (#440)", async () => {
+    // The per-record path re-upserted EVERY unchanged record's wide row on
+    // every sync, which incidentally backfilled rows missing from the mirror.
+    // The batched writer stops doing that — ~398,000 speculative upserts per
+    // sync on a large layer, each carrying a geometry audit — and instead asks
+    // which unchanged records have no wide row.
+    //
+    // This is the guard on that swap. It needs a *keyed* endpoint: with
+    // `idField: null` every sync mints a fresh generation, nothing is ever
+    // classified unchanged, and the anti-join path never runs at all (which is
+    // precisely what the #327 case above exercises).
+    //
+    // A regression here is silent, unbounded wide-table drift — the failure
+    // #327 exists to prevent.
+    const created = await request(app)
+      .post(`/api/connector-instances/${instanceId}/api-endpoints`)
+      .send({
+        key: "keyed_widgets",
+        label: "Keyed Widgets",
+        config: {
+          path: "/keyed-widgets",
+          method: "GET",
+          recordsPath: "",
+          idField: "name", // stable identity → resync classifies as unchanged
+          pagination: { strategy: "none" },
+        },
+      })
+      .expect(201);
+    const entityId: string = created.body.payload.entity.id;
+
+    const colDefId = generateId();
+    await db.insert(schema.columnDefinitions).values({
+      id: colDefId,
+      organizationId: orgId,
+      key: "keyed_widget_name",
+      label: "Name",
+      type: "string",
+      description: null,
+      validationPattern: null,
+      validationMessage: null,
+      canonicalFormat: null,
+      system: false,
+      created: Date.now(),
+      createdBy: userId,
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    await db.insert(schema.fieldMappings).values({
+      id: generateId(),
+      organizationId: orgId,
+      connectorEntityId: entityId,
+      columnDefinitionId: colDefId,
+      sourceField: "name",
+      isPrimaryKey: false,
+      normalizedKey: "name",
+      required: false,
+      defaultValue: null,
+      format: null,
+      enumValues: null,
+      refNormalizedKey: null,
+      refEntityKey: null,
+      created: Date.now(),
+      createdBy: userId,
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    await wideTableReconcilerService.reconcileEntity(entityId);
+
+    const wideCount = async (): Promise<number> => {
+      const r = (await db.execute(
+        sql.raw(`SELECT count(*)::int AS n FROM "er__${entityId}"`)
+      )) as unknown as Array<{ n: number }>;
+      return r[0].n;
+    };
+
+    // First sync → 2 records, 2 wide rows.
+    stubFetchOnce([{ name: "x" }, { name: "y" }]);
+    const first = await restApiAdapter.syncInstance!(
+      (await loadInstance()) as never,
+      userId
+    );
+    expect(first.recordCounts.created).toBe(2);
+    expect(await wideCount()).toBe(2);
+
+    // Delete one wide row behind the sync's back.
+    const rows = (await db.execute(
+      sql.raw(
+        `SELECT "entity_record_id" AS id FROM "er__${entityId}" ORDER BY "entity_record_id" LIMIT 1`
+      )
+    )) as unknown as Array<{ id: string }>;
+    const victim = rows[0].id;
+    await db.execute(
+      sql.raw(
+        `DELETE FROM "er__${entityId}" WHERE "entity_record_id" = '${victim}'`
+      )
+    );
+    expect(await wideCount()).toBe(1);
+
+    // Resync with IDENTICAL data → both records unchanged, so the blind
+    // re-upsert would no longer run. The anti-join must find the gap.
+    stubFetchOnce([{ name: "x" }, { name: "y" }]);
+    const second = await restApiAdapter.syncInstance!(
+      (await loadInstance()) as never,
+      userId
+    );
+    expect(second.recordCounts.unchanged).toBe(2);
+    expect(second.recordCounts.created).toBe(0);
+
+    expect(await wideCount()).toBe(2);
+    const restored = (await db.execute(
+      sql.raw(
+        `SELECT "entity_record_id" AS id FROM "er__${entityId}" WHERE "entity_record_id" = '${victim}'`
+      )
+    )) as unknown as Array<{ id: string }>;
+    expect(restored).toHaveLength(1);
+  });
 });
