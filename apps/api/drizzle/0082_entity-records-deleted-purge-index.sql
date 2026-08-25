@@ -1,0 +1,27 @@
+-- #442: index the tombstone side of `entity_records` for the retention purge.
+--
+-- Every other index on this table is partial on `deleted IS NULL`, so they
+-- exclude exactly the rows a purge reads. Without this index the purge is a
+-- sequential scan that gets SLOWER as it drains — surviving matches thin out,
+-- so each `LIMIT` batch scans further for its rows. Measured on a 5.1M-row /
+-- 8 GB table:
+--
+--   tail batch (matches exhausted, LIMIT unsatisfiable)
+--     before: Parallel Seq Scan, 1,664 ms, Rows Removed by Filter 1,705,229
+--     after:  Index Scan,            0.089 ms
+--
+-- The dense head of the drain is deliberately NOT improved: with 77% of rows
+-- tombstoned, a seq scan that finds 10,000 matches immediately beats an index
+-- scan plus 10,000 heap fetches, and the planner correctly keeps choosing it
+-- (~29-64 ms either way). The index exists for the tail, which is where the
+-- drain spent its time.
+--
+-- NOT `CONCURRENTLY`, deliberately. `PgDialect.migrate` wraps ALL pending
+-- migrations in a single `session.transaction`, and `CREATE INDEX
+-- CONCURRENTLY` cannot run inside a transaction block — so it is not
+-- available through this runner at all, rather than merely awkward. The
+-- ACCESS EXCLUSIVE lock was measured at 3.4 s to build this index over
+-- 3.9M tombstones on the 8 GB table above, which is acceptable at deploy
+-- time. If `entity_records` grows another order of magnitude, revisit by
+-- running the index build as an operator step outside the migration.
+CREATE INDEX "entity_records_deleted_purge_idx" ON "entity_records" USING btree ("deleted") WHERE deleted IS NOT NULL;

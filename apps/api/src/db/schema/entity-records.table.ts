@@ -82,5 +82,17 @@ export const entityRecords = pgTable(
       table.connectorEntityId,
       table.isValid
     ),
+    // #442: the retention purge's predicate — the mirror image of every
+    // other index here, which are all partial on `deleted IS NULL` and so
+    // exclude precisely the rows a purge reads. Without this the purge is a
+    // sequential scan that gets *slower* as it drains: surviving matches
+    // thin out, so each `LIMIT` batch scans further for its rows. Measured
+    // on a 5.1M-row / 8 GB table at 29ms for the first batch against
+    // 1,664ms for a tail batch that scanned everything for a LIMIT it could
+    // never satisfy. Partial, so it covers only the tombstones and stays
+    // out of the way of live reads.
+    index("entity_records_deleted_purge_idx")
+      .on(table.deleted)
+      .where(sql`deleted IS NOT NULL`),
   ]
 );

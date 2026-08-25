@@ -104,7 +104,7 @@ adminRouter.post(
  *     tags:
  *       - Admin
  *     summary: Maintenance-queue status (schedulers + recent runs)
- *     description: Operator visibility into the internal maintenance queue (#179) — registered repeatable-job schedulers and the most recent completed/failed runs, read straight from BullMQ state. The ledger retention purge's run summary ({ purged, batches, cutoff }) appears as a run's returnvalue.
+ *     description: Operator visibility into the internal maintenance queue (#179) — registered repeatable-job schedulers and the most recent completed/failed runs, read straight from BullMQ state. Each purge's run summary appears as that run's returnvalue — the ledger retention purge reports { purged, batches, cutoff }, and the entity-record retention purge (#442) reports { purgedOrphan, purgedLive, batches, orphanCutoff, liveCutoff }, the two cutoffs naming the windows actually in effect for that run.
  *     security:
  *       - bearerAuth: []
  *     responses:

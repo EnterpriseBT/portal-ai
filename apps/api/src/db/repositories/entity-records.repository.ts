@@ -14,12 +14,14 @@ import {
   sql,
   inArray,
   isNull,
+  isNotNull,
+  exists,
   type SQL,
   Column,
 } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
-import { entityRecords } from "../schema/index.js";
+import { entityRecords, connectorEntities } from "../schema/index.js";
 import { db } from "../client.js";
 import {
   Repository,
@@ -312,6 +314,86 @@ export class EntityRecordsRepository extends Repository<
       .returning({ id: entityRecords.id });
     await invalidateCounts([connectorEntityId]);
     return (result as Array<{ id: string }>).map((r) => r.id);
+  }
+
+  /**
+   * Hard-delete one batch of soft-deleted rows older than `cutoffMs` — the
+   * retention purge's batch seam (#442). Returns the rows deleted, so the
+   * processor's drain loop terminates on 0.
+   *
+   * `scope` selects the retention class by **whether the parent
+   * `connector_entity` is soft-deleted**:
+   *
+   *  - `"orphan"` — parent gone. Nothing can ever reference these rows
+   *    again (the instance-delete path also drops the whole `er__<id>`
+   *    table), so they get the short window.
+   *  - `"live"`   — parent still there. Covers both the watermark reaper's
+   *    tombstones and a user's direct delete, which are deliberately *not*
+   *    distinguished from each other: separating them would need a
+   *    `deleted_reason` column that cannot be backfilled, since nothing
+   *    recorded why the rows already on disk died.
+   *
+   * The two scopes are complementary and exhaustive over tombstones, so the
+   * windows together can neither strand a row nor delete one twice — pinned
+   * by `entity-records-purge.integration.test.ts`.
+   *
+   * Deletes by `IN (<subquery>)`, never by an id list marshalled through
+   * Node: the ids stay server-side, so this is immune to the unbounded
+   * `sql.join` stack overflow #436 fixed elsewhere, and the batch bounds
+   * each statement's lock rather than its parameter count.
+   *
+   * The `er__<id>` projection is reclaimed by the FK's `ON DELETE CASCADE`
+   * (`wide-table-reconciler.service.ts:186`) — there is no application-level
+   * cascade here because the schema already does it. That also means each
+   * batch does wide-table work, which is what bounds the batch size.
+   *
+   * Deliberately does **not** invalidate the record-count cache: counts only
+   * ever include live rows, so purging a tombstone cannot change one.
+   *
+   * Served by `entity_records_deleted_purge_idx (deleted) WHERE deleted IS
+   * NOT NULL`. Without it this is a sequential scan that gets *slower* as it
+   * drains — measured 29ms for the first batch against 1,664ms for a tail
+   * batch that scanned all 5.1M rows for a LIMIT it could never satisfy.
+   */
+  async purgeTombstonedBefore(
+    cutoffMs: number,
+    batchSize: number,
+    scope: "orphan" | "live",
+    client: DbClient = db
+  ): Promise<number> {
+    const typed = client as typeof db;
+
+    const parentDeleted = exists(
+      typed
+        .select({ one: sql`1` })
+        .from(connectorEntities)
+        .where(
+          and(
+            eq(connectorEntities.id, entityRecords.connectorEntityId),
+            scope === "orphan"
+              ? isNotNull(connectorEntities.deleted)
+              : isNull(connectorEntities.deleted)
+          )
+        )
+    );
+
+    const batch = typed
+      .select({ id: entityRecords.id })
+      .from(entityRecords)
+      .where(
+        and(
+          isNotNull(entityRecords.deleted),
+          lt(entityRecords.deleted, cutoffMs),
+          parentDeleted
+        )
+      )
+      .limit(batchSize);
+
+    const result = await typed
+      .delete(entityRecords)
+      .where(inArray(entityRecords.id, batch));
+
+    return result.count;
   }
 
   /**
