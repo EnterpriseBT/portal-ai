@@ -565,6 +565,40 @@ describe("createSyncRecordWriter — unchanged rows skip no-op work (#440)", () 
     expect(upsertWideManyMock).not.toHaveBeenCalled();
   });
 
+  it("a failing missing-row probe does not fail the sync", async () => {
+    // Regression: this probe was unguarded when slice 3 was written, and the
+    // #440 smoke walk caught it. With the wide table renamed away, every
+    // per-batch mirror degraded gracefully and then this read threw, killing
+    // a sync whose entity_records writes had all succeeded. The wide table is
+    // a best-effort mirror; nothing in it may fail the run.
+    selectMissingWideRowIdsMock.mockRejectedValue(
+      new Error('relation "er__x" does not exist')
+    );
+    const sums = (
+      await import("../../../adapters/rest-api/rest-api.adapter.js")
+    ).checksumRecord;
+    findBySourceIdsForSyncMock.mockResolvedValueOnce([
+      {
+        id: "r1",
+        sourceId: "p1",
+        checksum: sums({ pid: "p1", v: "p1" }),
+        created: 1,
+        createdBy: "u0",
+      },
+    ]);
+
+    const ctx = makeCtx();
+    const w = createSyncRecordWriter(ctx);
+    await w.add(rec("p1"));
+
+    await expect(w.flush()).resolves.toBeUndefined();
+    // The watermark bump still happened — the record is not left to be reaped.
+    expect(bulkUpdateSyncedAtMock).toHaveBeenCalledTimes(1);
+    expect(
+      (ctx as unknown as { counts: { unchanged: number } }).counts.unchanged
+    ).toBe(1);
+  });
+
   it("still mirrors changed rows unconditionally", async () => {
     selectMissingWideRowIdsMock.mockResolvedValue([]);
     const w = createSyncRecordWriter(makeCtx());

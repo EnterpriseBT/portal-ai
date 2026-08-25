@@ -699,15 +699,35 @@ export function createSyncRecordWriter(ctx: UpsertContext): SyncRecordWriter {
       // inside that upsert — is pure waste. The per-record path did it anyway
       // to backfill rows missing from the mirror. One anti-join finds those
       // directly instead of paying ~398,000 speculative upserts per sync.
+      //
+      // Guarded for the same reason `mirrorBatchToWideTable` is: the wide
+      // table is a best-effort mirror and must never fail a sync whose
+      // `entity_records` writes succeeded. This probe was unguarded when first
+      // written, and the #440 smoke walk caught it — with the wide table
+      // renamed away, every per-batch mirror degraded gracefully and then this
+      // read threw and killed the run, which is precisely the regression the
+      // mirror's best-effort contract exists to prevent.
       if (ctx.wideProjection) {
-        const missing =
-          await DbService.repository.wideTable.selectMissingWideRowIds(
-            ctx.endpoint.entity.id,
-            unchangedIds
+        try {
+          const missing =
+            await DbService.repository.wideTable.selectMissingWideRowIds(
+              ctx.endpoint.entity.id,
+              unchangedIds
+            );
+          for (const recordId of missing) {
+            const p = unchangedByRecordId.get(recordId);
+            if (p) mirror.push({ recordId, p });
+          }
+        } catch (err) {
+          logger.error(
+            {
+              event: "rest-api.sync.wide-table-backfill-probe-failed",
+              connectorEntityId: ctx.endpoint.entity.id,
+              batchSize: unchangedIds.length,
+              cause: err instanceof Error ? err.message : String(err),
+            },
+            "Missing-wide-row probe failed for batch — entity_records rows are intact; the next reconcile will backfill"
           );
-        for (const recordId of missing) {
-          const p = unchangedByRecordId.get(recordId);
-          if (p) mirror.push({ recordId, p });
         }
       }
     }

@@ -128,13 +128,41 @@ The anti-join found the single gap among 397,960 unchanged records and mirrored 
 
 `Smoke 3` is keyless, so a sync mints a fresh generation: every record is created and the previous generation is reaped. Exercises the changed-row path and the reap cascade together.
 
-- [ ] Sync `Smoke 3` (`8339d086`).
-- [ ] It completes with `created = 397,960`, `deleted = 397,960`, `unchanged = 0`.
-- [ ] The `geometry` block **is** present here, reading `repaired: 50` — this path writes rows, so the audit runs and reports. Its absence in §2 is specific to the unchanged path.
-- [ ] Wall-clock is below the 904 s baseline (job `3ae992c0`).
-- [ ] Exactly one live generation:
+- [x] Sync `Smoke 3` (`8339d086`).
+- [x] It completes with `created = 397,960`, `deleted = 397,960`, `unchanged = 0`.
+- [x] The `geometry` block **is** present here, reading `repaired: 50` — this path writes rows, so the audit runs and reports. Its absence in §2 is specific to the unchanged path.
+- [x] Wall-clock is below the 904 s baseline (job `3ae992c0`).
+- [x] Exactly one live generation:
       `select split_part(source_id,':',2), count(*) from entity_records where connector_entity_id = 'dee94e06-…' and deleted is null group by 1` → one row, 397,960.
-- [ ] Wide parity holds: wide row count equals live `entity_records`, orphan check returns 0.
+- [x] Wide parity holds: wide row count equals live `entity_records`, orphan check returns 0.
+
+**Observed (job `f69a9a33`, instance `Smoke 3`, 424 s vs the 904 s baseline — 2.1x).**
+
+```
+recordCounts   created 397,960 · deleted 397,960 · updated 0 · unchanged 0
+geometry       repaired 50 · rejected 0 · rejectedSample []   <- PRESENT
+
+live er        397,960      wide rows   397,960
+orphans              0      gaps              0
+
+generation                              live      reaped
+f69a9a33  (this sync)               397,960           0
+683869f6  (earlier)                       0     397,960
+3ae992c0  (earlier)                       0     397,960
+```
+
+The geometry block being **present** here is the direct counter-test to §2's absence: skipped on the unchanged path because nothing is written, reported normally when 397,960 rows are. The explanation in §2 holds.
+
+#436's chunked cascade also handled the 397,960-row reap without incident — zero orphans.
+
+**On the asymmetry between the two speedups**, since it is the honest read of the whole ticket:
+
+```
+§1  all-unchanged    867 s -> 106 s    8.2x
+§4  full replacement 904 s -> 424 s    2.1x
+```
+
+The unchanged path got faster because work was **eliminated** — no mirror, no geometry audit, no per-record read. The full-replacement path got faster only because the same work is now **batched**: it still writes 397,960 rows, mirrors them, audits their geometry and reaps 397,960 wide rows. 2.1x is batching alone; 8.2x is batching plus removing no-op work.
 
 ## §5 — The other adapters are untouched *(spec AC 7)*
 
@@ -174,13 +202,25 @@ Two notes. This is BullMQ's **job-level** retry, not #435's `withRetry` — a di
 
 ## §6 — Error & edge cases *(spec AC 6, and the Risks table)*
 
-- [ ] **A wide-table failure must not fail the sync.** Simulate by renaming the wide table mid-run:
-      `alter table "er__dee94e06-…" rename to "er__dee94e06-…_hidden";` then sync `Smoke 3`.
-      Expect: the job still reaches `completed`, `entity_records` still receives its rows, and the API log carries
-      `rest-api.sync.wide-table-mirror-failed` with a `batchSize` and a `sourceIdRange`.
-      Rename it back afterwards.
-- [ ] **Batch failure granularity.** Note in the log that the failure names a *batch*, not a single `sourceId` — that is the accepted widening recorded in the spec's Risks table, not a defect.
+**AC 6's real claim** is narrow and worth quoting: *"a record whose wide-table **write** fails still lands in `entity_records`, and the sync completes."* The wide table is a best-effort mirror; nothing in it may fail a run whose `entity_records` writes succeeded.
+
+The first version of this section renamed the whole wide table away, which is a **harsher** fault than AC 6 describes — it breaks the reap cascade too, and that path fails loudly by pre-existing design (#456). Rewritten below to test the mirror contract, with the reap behaviour recorded separately rather than conflated with it.
+
+- [x] **Per-batch mirror writes degrade, they do not throw.** With the wide table renamed away, sync `Smoke 3`. The log fills with `rest-api.sync.wide-table-mirror-failed`, each carrying a `batchSize` and a `sourceIdRange`, and **all 397,960 records still land in `entity_records`** under a fresh generation.
+- [x] **The missing-row backfill probe also degrades.** Same run: `rest-api.sync.wide-table-backfill-probe-failed` appears per batch rather than throwing.
+- [x] **Batch failure granularity.** Both log lines name a *batch* (`batchSize`, `sourceIdRange`), not a single `sourceId` — the accepted widening recorded in the spec's Risks table, not a defect.
+- [x] **Restore the table** afterwards: `alter table "er__<entity>_hidden" rename to "er__<entity>";` — verify the row count is unchanged.
 - [ ] **Streaming path memory.** Sync any `pagination: none` + `recordsPath` endpoint and watch the API's RSS. The writer buffers 1000 records where the stream back-pressures at 64, so the buffer is the high-water mark. Bounded by *count*, not bytes — an endpoint serving very large records is the case to watch.
+
+**Observed — and this section found a regression, which is why it exists.**
+
+*First run (job `d22d08cf`)*: `failed` at **progress 0**, 0 s. The throw was `selectMissingWideRowIds` — the anti-join added in slice 3, which sat **outside** the try/catch that makes the mirror best-effort. Every per-batch mirror degraded gracefully and then this read killed a sync whose `entity_records` writes had all succeeded. A direct violation of AC 6, introduced by this branch.
+
+*Fixed*: the probe moved inside the same guard, with a `rest-api.sync.wide-table-backfill-probe-failed` log. The regression test was verified non-vacuous by mutation — removing the guard makes exactly that one case fail.
+
+*Second run (job `e0b7dfac`)*: `failed` at **progress 90**, 482 s. Both guarded degradations observed working; all 397,960 records written; previous generation reaped from `entity_records`. The remaining throw is `softDeleteByEntityRecordIds` at `rest-api.adapter.ts:502` — the **reap cascade**, which `git show epic/connector-sync-at-scale:…` confirms is unguarded on the base branch too.
+
+So AC 6's mirror contract **holds**; the whole-table-missing scenario still cannot complete, for a pre-existing reason outside this branch's scope. **Filed as #456** rather than fixed here, because it carries a genuine design question — failing loudly when the cascade cannot run is defensible (silence would hide the drift #327 exists to prevent), and the answer should cover all four call sites, not just the REST one.
 
 ### Not manually verifiable
 
