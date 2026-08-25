@@ -16,6 +16,11 @@ export const MAINTENANCE_QUEUE_NAME = "maintenance";
  *  and the admin read. */
 export const LEDGER_RETENTION_PURGE_JOB = "ledger-retention-purge";
 
+/** Job name AND scheduler id for the daily soft-deleted `entity_records`
+ *  retention purge (#442). Same one-const contract as the ledger purge. */
+export const ENTITY_RECORD_RETENTION_PURGE_JOB =
+  "entity-record-retention-purge";
+
 let _maintenanceQueue: Queue | null = null;
 
 /**
@@ -61,5 +66,13 @@ export const registerMaintenanceSchedulers = async (): Promise<void> => {
     LEDGER_RETENTION_PURGE_JOB,
     { pattern: "0 4 * * *" }, // daily 04:00 UTC
     { name: LEDGER_RETENTION_PURGE_JOB }
+  );
+  await getMaintenanceQueue().upsertJobScheduler(
+    ENTITY_RECORD_RETENTION_PURGE_JOB,
+    // Daily 04:30 UTC — half an hour after the ledger purge, so the two
+    // never contend for the worker's single slot. This one can run for
+    // minutes on a large backlog; the ledger purge is short.
+    { pattern: "30 4 * * *" },
+    { name: ENTITY_RECORD_RETENTION_PURGE_JOB }
   );
 };
