@@ -583,6 +583,28 @@ export const foosRepo = new FoosRepository();
 
 The singleton inherits all base methods (`findById`, `findMany`, `count`, `create`, `createMany`, `update`, `updateWhere`, `updateMany`, `softDelete`, `softDeleteMany`, `hardDelete`, `hardDeleteMany`) with full type safety.
 
+### Soft-delete retention (#442)
+
+Everything above soft-deletes, so tombstones accumulate and nothing removes them unless something is written to. That is not only a disk question: tombstones count toward `reltuples`, which sets the autoanalyze threshold at `50 + 0.1 × reltuples`, so a table thick with them raises its own analyze threshold and leaves large writes planning against stale statistics. `entity_records` reached **3.92M tombstones of 5.12M rows (77%, 8 GB)** on one dev box before this existed.
+
+**`entity_records` retention rule.** A daily maintenance job (`entity-record-retention-purge.processor.ts`, 04:30 UTC) hard-deletes soft-deleted rows past their window. There are two windows, chosen by whether the row's parent `connector_entity` is *also* soft-deleted:
+
+| Class | Discriminator | Env var | Default |
+|---|---|---|---|
+| Orphaned — parent entity deleted | `connector_entities.deleted IS NOT NULL` | `ENTITY_RECORD_ORPHAN_RETENTION_DAYS` | 7 days |
+| Everything else — parent entity live | parent's `deleted IS NULL` | `ENTITY_RECORD_RETENTION_DAYS` | 30 days |
+
+Orphans get the short window because nothing can ever reference them again — the instance-delete path drops the whole `er__<id>` table alongside them. The long window covers both the watermark reaper's tombstones and a user's direct delete, which are deliberately *not* distinguished from each other: separating them would need a `deleted_reason` column, and that cannot be backfilled since nothing recorded why the rows already on disk died.
+
+Neither window is 0. Recovery from a tombstone is a manual SQL operation today (there is no restore feature), but it is a real one, and a same-day purge would remove the evidence trail for a bad sync.
+
+Two implementation notes that generalize to any purge here:
+
+- **The `er__<id>` projection is reclaimed by the FK, not by code.** The wide table's PK is `REFERENCES entity_records(id) ON DELETE CASCADE`, so a hard delete cascades. The soft-delete paths bypass it precisely because an `UPDATE` never fires a delete cascade (#423).
+- **The purge is served by `entity_records_deleted_purge_idx (deleted) WHERE deleted IS NOT NULL`.** Every other index on the table is partial on `deleted IS NULL`, so between them they exclude exactly the rows a purge reads. Without this index the drain gets *slower* as it runs — measured 1,664 ms for a tail batch versus 0.089 ms with it.
+
+Run summaries (`purgedOrphan`, `purgedLive`, `batches`, and both cutoffs) surface at `GET /api/admin/maintenance` as the run's `returnvalue`.
+
 ## S3 bucket setup (streaming upload pipeline)
 
 The `FileUploadConnector` pipeline uploads raw bytes directly to S3 via presigned PUT URLs, then streams them back server-side during parse/interpret/commit. The frontend never ships workbook JSON over HTTP.

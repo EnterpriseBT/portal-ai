@@ -3,10 +3,12 @@ import { Worker } from "bullmq";
 import { environment } from "../environment.js";
 import { createLogger } from "../utils/logger.util.js";
 import {
+  ENTITY_RECORD_RETENTION_PURGE_JOB,
   LEDGER_RETENTION_PURGE_JOB,
   MAINTENANCE_QUEUE_NAME,
 } from "./maintenance.queue.js";
 import { ledgerRetentionPurgeProcessor } from "./processors/ledger-retention-purge.processor.js";
+import { entityRecordRetentionPurgeProcessor } from "./processors/entity-record-retention-purge.processor.js";
 
 const logger = createLogger({ module: "maintenance-worker" });
 
@@ -22,6 +24,9 @@ export const createMaintenanceWorker = (): Worker => {
     async (job) => {
       if (job.name === LEDGER_RETENTION_PURGE_JOB) {
         return ledgerRetentionPurgeProcessor();
+      }
+      if (job.name === ENTITY_RECORD_RETENTION_PURGE_JOB) {
+        return entityRecordRetentionPurgeProcessor();
       }
       throw new Error(`Unknown maintenance job: ${job.name}`);
     },

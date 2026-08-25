@@ -113,6 +113,27 @@ export const environment = {
     process.env.LEDGER_RETENTION_MONTHS || "24",
     10
   ),
+  // Retention windows for soft-deleted `entity_records` (#442). Two, split
+  // by whether the row's parent `connector_entity` is itself deleted:
+  //
+  //  - ORPHAN: the parent is gone, so nothing can ever reference the row
+  //    again (instance-delete also drops the whole `er__<id>` table). Short.
+  //  - the default: the parent is live, so the row covers both the watermark
+  //    reaper's tombstones and a user's direct delete. Long, because hand
+  //    recovery from these is real — it is what the #439 investigation used.
+  //
+  // Neither is 0: a same-day purge would destroy the evidence trail for the
+  // sync failures this epic exists to fix, and a week of disk costs nothing.
+  // Deliberately env-level, not per-org — per-org retention is a surface
+  // (see docs/PURGE_SOFT_DELETED_ENTITY_RECORDS.condensed.md, Decision 1).
+  ENTITY_RECORD_RETENTION_DAYS: parseInt(
+    process.env.ENTITY_RECORD_RETENTION_DAYS || "30",
+    10
+  ),
+  ENTITY_RECORD_ORPHAN_RETENTION_DAYS: parseInt(
+    process.env.ENTITY_RECORD_ORPHAN_RETENTION_DAYS || "7",
+    10
+  ),
   // Size cap for the legacy multipart POST /api/file-uploads/parse path.
   // The streaming pipeline (presigned-URL → S3 → server-side stream) does
   // not consult this; see UPLOAD_MAX_FILE_SIZE_BYTES instead.
