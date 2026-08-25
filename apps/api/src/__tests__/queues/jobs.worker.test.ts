@@ -24,6 +24,9 @@ jest.unstable_mockModule("bullmq", () => ({
     }
   },
   Job: class {},
+  // #441: the worker imports this to exempt stall-limit exhaustion from the
+  // retry-aware terminal decision, so the mock has to provide it.
+  UnrecoverableError: class UnrecoverableError extends Error {},
 }));
 
 const mockTransition = jest.fn<

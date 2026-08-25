@@ -1,7 +1,10 @@
-import { Worker, Job as BullJob } from "bullmq";
+import { Worker, Job as BullJob, UnrecoverableError } from "bullmq";
 
-import type { JobType, JobTypeMap } from "@portalai/core/models";
-import { classifyBatchOutcome } from "@portalai/core/models";
+import type { JobType, JobTypeMap, JobStatus } from "@portalai/core/models";
+import {
+  classifyBatchOutcome,
+  TERMINAL_JOB_STATUSES,
+} from "@portalai/core/models";
 
 import { environment } from "../environment.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -74,6 +77,13 @@ const getJobEventsService = async () => {
   return JobEventsService;
 };
 
+/** Same lazy-import rationale as above — the DB service pulls the repository
+ *  graph, which the worker must not drag in at module load. */
+const getDbService = async () => {
+  const { DbService } = await import("../services/db.service.js");
+  return DbService;
+};
+
 /**
  * Best-effort terminal-status hook for `bulk_transform` jobs (#85
  * Phase 2 slice 3). Persists the synthetic assistant message + emits
@@ -130,6 +140,35 @@ async function runBulkTransformTerminalHook(
   }
 }
 
+/**
+ * Where an attempt's failure should leave the app job row (#441).
+ *
+ * The worker writes the row and then rethrows so BullMQ can retry. Both
+ * halves used to run unconditionally, so the row went terminal while attempts
+ * remained — observed as `failed` at 18:35 with the worker writing ~400K more
+ * rows after BullMQ re-delivered at 18:50. Worse than misleading: the entity
+ * lock keys on `NON_TERMINAL_JOB_STATUSES`, so a premature `failed` unlocks an
+ * entity whose worker is about to write to it.
+ *
+ * `pending` rather than a dedicated `retrying` status: it is non-terminal (so
+ * the lock holds), it reads as "queued" which is exactly what BullMQ has done
+ * with it, and it needs no enum change — a `pgEnum` + Zod enum + migration for
+ * a wording improvement is not the trade.
+ *
+ * `UnrecoverableError` is exempt. BullMQ throws it on stall-limit exhaustion,
+ * which VOIDS the remaining budget rather than consuming one attempt, so it is
+ * final on arrival however low `attemptsMade` is.
+ */
+function statusForFailedAttempt(
+  bullJob: BullJob,
+  err: unknown
+): Extract<JobStatus, "failed" | "pending"> {
+  if (err instanceof UnrecoverableError) return "failed";
+  const max = bullJob.opts?.attempts ?? 1;
+  const thisAttempt = (bullJob.attemptsMade ?? 0) + 1;
+  return thisAttempt >= max ? "failed" : "pending";
+}
+
 export const createJobsWorker = (
   processors: Record<string, JobProcessor>
 ): Worker => {
@@ -144,7 +183,17 @@ export const createJobsWorker = (
 
       const JobEventsService = await getJobEventsService();
 
-      await JobEventsService.transition(jobId, "active", { progress: 0 });
+      await JobEventsService.transition(jobId, "active", {
+        progress: 0,
+        // Explicit null CLEARS the previous attempt's message. Omitting the
+        // key leaves it, which is how a retry came to read
+        // `status=active, progress=88, error="Fetch failed: fetch failed"`
+        // while it was running perfectly well (#441).
+        error: null,
+        // 1-based, so a first run reads 1. Nothing wrote this before, so
+        // `jobs.attempts` sat at 0 through every retry in the evidence.
+        attempts: (bullJob.attemptsMade ?? 0) + 1,
+      });
       try {
         const result = await processor(bullJob);
         // #410: a batch job whose every item failed must not report
@@ -189,9 +238,24 @@ export const createJobsWorker = (
         return result;
       } catch (err) {
         const message = formatJobError(err);
-        logger.error({ jobId, err }, "Job failed");
-        await JobEventsService.transition(jobId, "failed", { error: message });
-        if (type === "bulk_transform") {
+        const status = statusForFailedAttempt(bullJob, err);
+        logger.error(
+          {
+            jobId,
+            err,
+            status,
+            attempt: (bullJob.attemptsMade ?? 0) + 1,
+            maxAttempts: bullJob.opts?.attempts ?? 1,
+          },
+          status === "failed"
+            ? "Job failed — retry budget spent"
+            : "Job attempt failed — retrying"
+        );
+        await JobEventsService.transition(jobId, status, { error: message });
+        // The hook releases the portal's chat-input lock and posts the
+        // assistant message, so it is genuinely terminal-only — firing it on
+        // an attempt that is about to retry would unlock the input mid-run.
+        if (type === "bulk_transform" && status === "failed") {
           await runBulkTransformTerminalHook(
             jobId,
             bullJob.data as JobData<"bulk_transform">,
@@ -224,8 +288,42 @@ export const createJobsWorker = (
     }
   });
 
-  worker.on("failed", (job, err) => {
-    logger.error({ jobId: job?.data?.jobId, err }, "Job failed");
+  // A death that never reaches the in-band catch — process kill, container
+  // suspend, BullMQ stall recovery — recorded nothing at all before this
+  // (#441 defect 4). This handler is the only hook that still fires.
+  //
+  // It ALSO fires for every failure the catch already handled, so it must be
+  // idempotent: read the row, and write only when the catch demonstrably did
+  // not run. `pending` counts as "handled" — the catch chose it deliberately,
+  // and stomping it with a vaguer message would undo the point of slice 2.
+  worker.on("failed", async (job, err) => {
+    const jobId = job?.data?.jobId;
+    logger.error({ jobId, err }, "Job failed");
+    if (!jobId) return;
+    try {
+      const DbService = await getDbService();
+      const row = await DbService.repository.jobs.findById(jobId);
+      if (!row) return;
+      const handled =
+        TERMINAL_JOB_STATUSES.includes(row.status) || row.status === "pending";
+      if (handled) return;
+
+      const JobEventsService = await getJobEventsService();
+      await JobEventsService.transition(
+        jobId,
+        statusForFailedAttempt(job as BullJob, err),
+        {
+          error: `Attempt ended without recording a reason (${formatJobError(err)})`,
+        }
+      );
+    } catch (recordErr) {
+      // Best-effort by construction: this runs after the attempt is already
+      // lost, so failing here must not mask the original failure.
+      logger.error(
+        { jobId, err: recordErr },
+        "Failed to record an out-of-band job death"
+      );
+    }
   });
 
   worker.on("completed", (job) => {
