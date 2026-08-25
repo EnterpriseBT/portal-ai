@@ -575,6 +575,13 @@
       "when": 1787342955728,
       "tag": "0081_entity-records-created-sort-index",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1787681876825,
+      "tag": "0082_entity-records-deleted-purge-index",
+      "breakpoints": true
     }
   ]
 }

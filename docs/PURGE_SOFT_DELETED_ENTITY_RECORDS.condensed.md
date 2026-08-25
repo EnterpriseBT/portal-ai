@@ -84,9 +84,18 @@ CREATE INDEX CONCURRENTLY "entity_records_deleted_purge_idx"
   ON "entity_records" USING btree ("deleted") WHERE deleted IS NOT NULL;
 ```
 
-Partial on the tombstone side — the mirror of every other index here, covering only the 77% the purge reads. `CONCURRENTLY` because a plain `CREATE INDEX` holds `ACCESS EXCLUSIVE` on an 8 GB table for the duration.
+Partial on the tombstone side — the mirror of every other index here, covering only the 77% the purge reads.
 
-**Open risk:** `CONCURRENTLY` cannot run inside a transaction block and Drizzle wraps each migration in one. Slice 1 must confirm the runner's actual behaviour; if it can't be persuaded, the fallback is a plain `CREATE INDEX` with the lock accepted at deploy time (app-dev is low-traffic) and the reason recorded in the migration.
+**Risk resolved in slice 1: `CONCURRENTLY` is not available at all.** `PgDialect.migrate` wraps *all* pending migrations in one `session.transaction`, and `CREATE INDEX CONCURRENTLY` cannot run inside a transaction block — so this is a hard block, not an inconvenience. Went with the plain `CREATE INDEX` and measured what the fallback costs: **3.4 s** of `ACCESS EXCLUSIVE` to build over 3.9M tombstones on the 8 GB table. Acceptable at deploy time; recorded in the migration with the revisit condition (another order of magnitude → build it as an operator step outside the migration).
+
+**What the index does and doesn't buy** (measured, both directions stated):
+
+```
+tail batch (matches exhausted)   1,664 ms  →  0.089 ms   Index Scan
+dense head (77% tombstoned)         29 ms  →     29 ms   still Seq Scan
+```
+
+The head is deliberately not improved — with most rows eligible, a seq scan that finds 10,000 matches immediately beats an index scan plus 10,000 heap fetches, and the planner correctly keeps choosing it. The index exists for the tail, which is where the drain spent its time.
 
 ## Decision 4 — instance delete keeps tombstoning
 
