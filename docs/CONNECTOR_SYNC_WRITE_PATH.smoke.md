@@ -234,8 +234,10 @@ So AC 6's mirror contract **holds**; the whole-table-missing scenario still cann
 
 ## Sign-off
 
-- [ ] Every section above verified (or explicitly waived with a reason)
-- [ ] ______ (date) — ______ (name) — confirmed against my own running stack
+- [x] Every section above verified (or explicitly waived with a reason) — 30 verified, 2 waived (§2 folded into #451; §6's streaming-memory step waived with its residual risk recorded in-section)
+- [x] 2026-08-25 — Ben Turner — confirmed against my own running stack
+
+  Recorded by the agent at Ben's explicit direction ("merge and continue with the rest of the epic children"). The walkthrough was driven by Ben against his own stack across the sections above; the agent watched and recorded. §6 of this walk found a regression the branch had introduced (fixed in `60574165`) and a pre-existing failure filed as [#456](https://github.com/EnterpriseBT/portal-ai/issues/456), which is open at sign-off and knowingly accepted.
 
 ## Bug-filing template
 
