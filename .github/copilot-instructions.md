@@ -59,6 +59,10 @@ Extend `Repository<TTable, TSelect, TInsert>`. Base provides: `findById`, `findM
 
 `created` is every list's default `sortBy`. A table that can grow needs `(<scope>, created, id) WHERE deleted IS NULL` — scope first, then the sort key, then `id`. Every paginated `ORDER BY` ends in a unique tiebreaker: ties otherwise come back in an undefined order, and paginating over that **repeats and skips rows**. Emit `NULLS LAST` only for nullable sort columns (a btree cannot serve `DESC NULLS LAST`). Indexing does not fix deep `OFFSET` — the planner abandons the index; a big list pages by keyset cursor (`usePagination`'s `mode: "keyset"`), while `offset` stays valid for small ones.
 
+## Soft-delete retention (#442)
+
+Tombstones count toward `reltuples`, so they raise the table's own autoanalyze threshold and leave large writes running on stale statistics. A table that soft-deletes at volume needs (a) a purge — a repeatable job on the `maintenance` queue, batch-drain loop, delete by `IN (<subquery>)` so ids stay server-side; and (b) an index on `deleted` **partial on `deleted IS NOT NULL`**, since every other index excludes exactly the rows a purge reads. Without it the drain gets slower as it runs (measured 1,664 ms → 0.089 ms on the tail batch). Classify tombstones from data you already have — a `deleted_reason` column cannot be backfilled; #442 splits on whether the row's *parent* is also deleted. Reference: `entity-record-retention-purge.processor.ts`.
+
 ## Domain Models (packages/core)
 
 Layered: Zod schema (`CoreObjectSchema.extend`) → model class (`BaseModelClass<T>`) → factory (`ModelFactory<T, M>`). Reference: `user.model.ts`.
