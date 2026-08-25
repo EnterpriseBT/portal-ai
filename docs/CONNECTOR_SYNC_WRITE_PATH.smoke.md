@@ -210,7 +210,13 @@ The first version of this section renamed the whole wide table away, which is a 
 - [x] **The missing-row backfill probe also degrades.** Same run: `rest-api.sync.wide-table-backfill-probe-failed` appears per batch rather than throwing.
 - [x] **Batch failure granularity.** Both log lines name a *batch* (`batchSize`, `sourceIdRange`), not a single `sourceId` — the accepted widening recorded in the spec's Risks table, not a defect.
 - [x] **Restore the table** afterwards: `alter table "er__<entity>_hidden" rename to "er__<entity>";` — verify the row count is unchanged.
-- [ ] **Streaming path memory.** Sync any `pagination: none` + `recordsPath` endpoint and watch the API's RSS. The writer buffers 1000 records where the stream back-pressures at 64, so the buffer is the high-water mark. Bounded by *count*, not bytes — an endpoint serving very large records is the case to watch.
+- [~] **Streaming path memory.** **WAIVED.** The writer buffers 1000 records where `stream.util.ts` back-pressures its parser at 64/32, so the buffer becomes the streaming path's high-water mark.
+
+  Waived rather than run because no fixture here exercises it meaningfully: every endpoint on this box is `pageOffset`-paginated (so it takes the buffered branch, not the streaming one), and none serves records large enough for 1000 of them to matter. Syncing a small streaming endpoint would produce a green box that tested nothing.
+
+  What stands in its place: the buffer is **bounded by construction**, asserted by `sync-record-writer.test.ts` — 3,007 records flush in exactly 4 batches and no batch exceeds `SYNC_WRITE_BATCH_SIZE`. `scripts/rest-api-stream-memory-smoke.ts` passes under `--max-old-space-size=256`, but note it drains `streamFetchRecords` through a bare `for await` and **never reaches the writer**, so it does not cover this.
+
+  **The residual risk is stated, not closed:** the bound is on *count*, not bytes. A streaming endpoint serving large records (the per-record cap is 50 MB) could hold 1000 of them at once. If that endpoint appears, the remedy recorded in the plan is to lower `SYNC_WRITE_BATCH_SIZE` for the streaming branch rather than revert the batching.
 
 **Observed — and this section found a regression, which is why it exists.**
 
