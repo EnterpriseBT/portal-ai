@@ -842,7 +842,7 @@ export class LayoutPlanCommitService {
         // Chunked (#436): `unchangedIds` grows with the entity, and an
         // unbounded `IN (…)` built by `sql.join` overflows the V8 stack when
         // Drizzle serialises it. Same remedy as `wideTable.upsertMany` and
-        // `softDeleteByEntityRecordIds`.
+        // `deleteByEntityRecordIds`.
         for (let i = 0; i < unchangedIds.length; i += WIDE_TABLE_CHUNK_SIZE) {
           const chunk = unchangedIds.slice(i, i + WIDE_TABLE_CHUNK_SIZE);
           const idList = sql.join(

@@ -248,6 +248,9 @@ async function syncInstance(
   let totalGeometryRepaired = 0;
   let totalGeometryRejected = 0;
   const geometryRejectedSample: string[] = [];
+  // #441/#456: set when any endpoint's reap cascade degraded. Sticky across
+  // endpoints — one stale mirror is the whole run's mirror being stale.
+  let mirrorDegraded = false;
 
   // The 0-90% band is split evenly across endpoints. For each
   // endpoint we hand `syncOneEndpoint` a per-page reporter that ticks
@@ -284,6 +287,7 @@ async function syncInstance(
     totalDeleted += counts.deleted;
     totalGeometryRepaired += counts.geometryRepaired;
     totalGeometryRejected += counts.geometryRejected;
+    if (counts.mirrorDegraded) mirrorDegraded = true;
     for (const sid of counts.geometryRejectedSample) {
       if (geometryRejectedSample.length < GEOMETRY_REJECTED_SAMPLE_CAP) {
         geometryRejectedSample.push(sid);
@@ -311,6 +315,7 @@ async function syncInstance(
         unchanged: totalUnchanged,
         deleted: totalDeleted,
       },
+      mirrorDegraded,
     },
     "REST API sync completed"
   );
@@ -322,6 +327,7 @@ async function syncInstance(
       unchanged: totalUnchanged,
       deleted: totalDeleted,
     },
+    ...(mirrorDegraded ? { mirrorDegraded: true as const } : {}),
     ...(totalGeometryRepaired > 0 || totalGeometryRejected > 0
       ? {
           geometry: {
@@ -359,6 +365,8 @@ async function syncOneEndpoint(
   geometryRepaired: number;
   geometryRejected: number;
   geometryRejectedSample: string[];
+  /** #441/#456: this endpoint's reap cascade degraded rather than throwing. */
+  mirrorDegraded: boolean;
 }> {
   const pagination = reconstructPagination(
     endpoint.config.pagination,
@@ -498,18 +506,22 @@ async function syncOneEndpoint(
   // delete the reaped rows' `er__<id>` rows too — otherwise every re-sync of a
   // synthetic-sourceId connector orphans them and the wide table grows
   // unbounded. Mirrors the Google Sheets / Excel / layout-plan adapters.
-  if (reaped.length > 0) {
-    await DbService.repository.wideTable.softDeleteByEntityRecordIds(
+  // Best-effort (#441/#456): this used to throw, which reported a sync that
+  // had written all 397,960 of its records as `failed`. Every other
+  // wide-table write on this path already degrades; this was the one that
+  // did not. The staleness rides out on `mirrorDegraded` instead.
+  const cascade =
+    await DbService.repository.wideTable.deleteByEntityRecordIdsBestEffort(
       endpoint.entity.id,
       reaped
     );
-  }
 
   return {
     created: counts.created,
     updated: counts.updated,
     unchanged: counts.unchanged,
     deleted: reaped.length,
+    mirrorDegraded: cascade.degraded,
     geometryRepaired: counts.geometryRepaired,
     geometryRejected: counts.geometryRejected,
     geometryRejectedSample: counts.geometryRejectedSample,

@@ -9,7 +9,7 @@
  * `WIDE_TABLE_CHUNK_SIZE`; three sibling builders never got it.
  *
  * On 2026-08-22 a REST sync reaped 317,000 rows and handed them straight to
- * `softDeleteByEntityRecordIds`. It raised `RangeError: Maximum call stack
+ * `deleteByEntityRecordIds`. It raised `RangeError: Maximum call stack
  * size exceeded` *after* the `entity_records` reap had committed, leaving
  * 317,000 wide rows pointing at soft-deleted records — the unbounded growth
  * #327 exists to prevent.
@@ -80,11 +80,11 @@ function repo() {
 const ids = (n: number) => Array.from({ length: n }, (_, i) => `id-${i}`);
 const ENTITY = "11111111-2222-3333-4444-555555555555";
 
-describe("softDeleteByEntityRecordIds — chunking (#436)", () => {
+describe("deleteByEntityRecordIds — chunking (#436)", () => {
   it("does not throw on the 317k array that overflowed the stack in production", async () => {
     const { client, statements } = fakeClient();
     await expect(
-      repo().softDeleteByEntityRecordIds(ENTITY, ids(317_000), client)
+      repo().deleteByEntityRecordIds(ENTITY, ids(317_000), client)
     ).resolves.toBeUndefined();
     expect(statements.length).toBe(Math.ceil(317_000 / CHUNK));
     // Every statement stayed shallow enough to serialise, and none carried
@@ -96,31 +96,31 @@ describe("softDeleteByEntityRecordIds — chunking (#436)", () => {
 
   it("issues ceil(n / CHUNK) statements", async () => {
     const { client, statements } = fakeClient();
-    await repo().softDeleteByEntityRecordIds(ENTITY, ids(50_000), client);
+    await repo().deleteByEntityRecordIds(ENTITY, ids(50_000), client);
     expect(statements.length).toBe(100);
   });
 
   it("issues exactly one statement at the chunk boundary", async () => {
     const { client, statements } = fakeClient();
-    await repo().softDeleteByEntityRecordIds(ENTITY, ids(CHUNK), client);
+    await repo().deleteByEntityRecordIds(ENTITY, ids(CHUNK), client);
     expect(statements.length).toBe(1);
   });
 
   it("issues two statements one past the boundary", async () => {
     const { client, statements } = fakeClient();
-    await repo().softDeleteByEntityRecordIds(ENTITY, ids(CHUNK + 1), client);
+    await repo().deleteByEntityRecordIds(ENTITY, ids(CHUNK + 1), client);
     expect(statements.length).toBe(2);
   });
 
   it("still issues a single statement for a small list (scope of the change)", async () => {
     const { client, statements } = fakeClient();
-    await repo().softDeleteByEntityRecordIds(ENTITY, ids(3), client);
+    await repo().deleteByEntityRecordIds(ENTITY, ids(3), client);
     expect(statements.length).toBe(1);
   });
 
   it("issues nothing for an empty list", async () => {
     const { client, statements } = fakeClient();
-    await repo().softDeleteByEntityRecordIds(ENTITY, [], client);
+    await repo().deleteByEntityRecordIds(ENTITY, [], client);
     expect(statements.length).toBe(0);
   });
 });
