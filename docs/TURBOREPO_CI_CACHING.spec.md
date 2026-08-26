@@ -5,7 +5,7 @@ Pins the contract for [#454](https://github.com/EnterpriseBT/portal-ai/issues/45
 ## Key decisions (flag for review)
 
 1. **Suites first, deploys second.** The three PR suites get the cache; the deploy workflows opt in only after the env declarations land. The measured 14–17 job-minutes are in the suites.
-2. **`apps/site#build` is never cached.** Its output is a function of a live price fetch, and its env is invisible to the hash. Declared env is added anyway, as documentation for any future re-enable.
+2. **`apps/site#build` stays never-cached.** Already true in `apps/site/turbo.json`; what this ticket adds is the guard rule that pins it and the in-file rationale that was missing. Its env is invisible to the hash by design (`passThroughEnv`), which is exactly why a flip to `cache: true` is unsafe.
 3. **`version.json` becomes deterministic**, derived from `VITE_APP_SHA` (which both deploys already pass). This also fixes a pre-existing user-facing bug.
 4. **CI is the only cache writer.** Developer machines are not linked by default; read-only at most.
 5. **Artifact signing is on** (`remoteCache.signature`). Fail-open on cache *availability*, fail-closed on cache *integrity*.
@@ -20,7 +20,7 @@ Pins the contract for [#454](https://github.com/EnterpriseBT/portal-ai/issues/45
 | Does the web build rewrite the tracked `routeTree.gen.ts`? | **No.** Identical `sha256` before/after a forced build; `git diff --exit-code` clean. No `inputs` exclusion needed. |
 | Is `packages/core`'s `build:fonts` deterministic? | **Yes.** Two runs produced identical output digests. No exclusion needed. |
 | Is the `version.json` UUID actually unstable? | **Yes.** Two forced builds of the same commit: `c10a2478-…` then `3d9c812e-…`. |
-| Does `apps/site`'s env reach the build but miss the hash? | **Yes — both.** A sentinel `SITE_URL` appeared in `dist/index.html` while the task hash stayed `0e93daf1a79163a4`. This is the cache-poisoning path. |
+| Does `apps/site`'s env reach the build but miss the hash? | **Yes — both**, via `passThroughEnv`. A sentinel `SITE_URL` appeared in `dist/index.html` while the task hash stayed `0e93daf1a79163a4`. **Latent, not active** — the task has been `cache: false` since Aug 2026, so the exposure is a `cache: true` flip, which rule 5 now blocks. |
 | Does `apps/web`'s env enter the hash? | **Yes.** `framework: vite` inference is prefix-based, not usage-based; dev vs prod API URLs hash differently (`0bf8916c` / `5d6b0896`). |
 
 ## Scope
@@ -72,7 +72,9 @@ Three additions and one flip, against the current file (nine tasks, no global ke
 
 **Note on `globalDependencies`.** `docker-compose.yml` carries both the test services (`postgres-test`, `redis` — including their image tags) and the devcontainer's own `dev` service. A devcontainer-only edit therefore invalidates every cached task in the monorepo. Accepted: the file changes rarely, and a full invalidation is a performance event, not a correctness one.
 
-### 3. New `apps/site/turbo.json`
+### 3. `apps/site/turbo.json` — existing file, pinned and documented
+
+**This file already exists** (tracked since Aug 2026) and already carries the operative guarantee:
 
 ```jsonc
 {
@@ -80,16 +82,21 @@ Three additions and one flip, against the current file (nine tasks, no global ke
   "tasks": {
     "build": {
       "cache": false,
-      "env": [
-        "SITE_URL", "SITE_CONFIG_URL", "SITE_APP_URL",
-        "GITHUB_SHA", "SUPPORT_EMAIL", "SALES_EMAIL", "ADMIN_EMAIL"
+      "passThroughEnv": [
+        "SITE_URL", "SITE_CONFIG_URL", "SITE_APP_URL", "GITHUB_SHA",
+        "BUILD_SHA", "SUPPORT_EMAIL", "SALES_EMAIL", "ADMIN_EMAIL"
       ]
     }
   }
 }
 ```
 
-The seven names are exactly those `deploy-static-site.yml:156-162` sets. `cache: false` is the operative guarantee; the `env` list documents the hash inputs a future re-enable would need, so the poisoning path cannot be silently reintroduced. A file comment states both reasons.
+Eight names, not seven — `BUILD_SHA` is declared here but not set by `deploy-static-site.yml`. `passThroughEnv` (not `env`) is the correct key while the task is uncached: under the default `strict` envMode an undeclared var never reaches the build at all, and hashing names that nothing caches buys nothing.
+
+The change here is therefore **not** the config — it is the two things that were missing:
+
+1. **The rationale, in-file.** A comment stating both reasons the task must stay uncached, and stating that moving these names from `passThroughEnv` to `env` is the prerequisite for any future re-enable, not an afterthought.
+2. **Mechanical enforcement** — guard rule 5 (§9), because a comment does not stop a flag flip.
 
 ### 4. `apps/web` build-version identity
 
@@ -190,7 +197,7 @@ A guard in the shape of the existing `scripts/check-doc-pointers.mjs`, wired int
 2. A `uses: ./.github/workflows/<suite>.yml` call site omits the `secrets:` map for a secret that suite declares.
 3. Any of the three required-check job names drifts from `Unit Tests` / `Integration Tests` / `Static Checks`.
 4. A `concurrency.group` in those three workflows starts with `${{ github.workflow` instead of a literal.
-5. `apps/site`'s `build` task does not resolve to `cache: false`, or declares an empty `env`. This is the mechanical guarantee behind Key decision 2 — the proven cache-poisoning path (§Resolved by measurement) must not be silently reopened by a later edit.
+5. `apps/site`'s `build` task does not declare `cache: false`, or declares nothing in either `env` or `passThroughEnv` (under `strict` envMode an undeclared var never reaches the build, so the site would silently render fallback values). This is the mechanical guarantee behind Key decision 2 — the proven cache-poisoning path (§Resolved by measurement) must not be silently reopened by a later edit.
 
 Rules 3 and 4 guard pre-existing invariants that this ticket must not break and that nothing currently tests. Rule 5 guards this ticket's own most important correctness decision.
 
@@ -219,8 +226,8 @@ There is **no root jest config**, and `npm run test:unit` is `turbo run test:uni
 5. Call site passing it → clean.
 6. Job renamed from `Static Checks` → violation.
 7. `concurrency.group` starting with `${{ github.workflow` → violation.
-8. `apps/site` `build` with `cache` absent or `true`, or an empty `env` → violation.
-9. `apps/site` `build` with `cache: false` and a populated `env` → clean.
+8. `apps/site/turbo.json` absent, `cache` absent, `cache: true`, or nothing declared in either env key → violation (four fixtures).
+9. `cache: false` with `env` populated → clean; `cache: false` with `passThroughEnv` populated (**the real shape**) → clean.
 10. The real `.github/` tree + `apps/site/turbo.json` → clean.
 
 Case 10 is the one that would have caught this ticket's own wiring mistakes.
@@ -240,7 +247,7 @@ Run via `npm run test:unit` from `apps/web`:
 
 Cache hit/miss behavior, the live-dispatch secret check, the deliberate red-then-green, and the before/after timings. These are `docs/TURBOREPO_CI_CACHING.smoke.md`'s job.
 
-**Totals ≈ 16 cases** — 6 jest cases (`apps/web`, via `npm run test:unit`) + 10 guard fixture cases (via `npm run lint:ci-cache`).
+**Totals ≈ 17 cases** — 6 jest cases (`apps/web`, via `npm run test:unit`) + 11 guard fixture cases (via `npm run lint:ci-cache`).
 
 ## Acceptance criteria
 
@@ -273,9 +280,9 @@ Every element is independently revertible; nothing here changes application beha
 
 ## Files touched
 
-**New** — `apps/site/turbo.json`; `apps/web/src/utils/build-version.util.ts`; `apps/web/src/__tests__/build-version.util.test.ts`; `scripts/check-ci-cache.mjs` (guard + embedded self-check fixtures).
+**New** — `apps/web/src/utils/build-version.util.ts`; `apps/web/src/__tests__/build-version.util.test.ts`; `scripts/check-ci-cache.mjs` (guard + embedded self-check fixtures).
 
-**Edit** — `turbo.json`; `package.json` (`lint:ci-cache` script, `yaml` devDependency); `apps/web/vite.config.ts`; `.github/workflows/unit-test.yml`, `integration-test.yml`, `static-checks.yml`, `deploy-dev.yml`, `deploy-prod.yml`, `deploy-static-site.yml`; `Dockerfile`; `docs/LOCAL_DEVELOPMENT.md`; `CLAUDE.md` (+ `.github/copilot-instructions.md` mirror).
+**Edit** — `turbo.json`; `apps/site/turbo.json` (comment only); `package.json` (`lint:ci-cache` script, `yaml` + `jsonc-parser` devDependencies); `apps/web/vite.config.ts`; `.github/workflows/unit-test.yml`, `integration-test.yml`, `static-checks.yml`, `deploy-dev.yml`, `deploy-prod.yml`, `deploy-static-site.yml`; `Dockerfile`; `docs/LOCAL_DEVELOPMENT.md`; `CLAUDE.md` (+ `.github/copilot-instructions.md` mirror).
 
 ## Next step
 

@@ -23,7 +23,8 @@
  * `docs/TURBOREPO_CI_CACHING.plan.md`:
  *   - rule 3: required-check job names are exactly the three gated on `main`
  *   - rule 4: those workflows' `concurrency.group` leads with a literal
- * Rules 1-2 (credentials) and rule 5 (`apps/site` uncached) arrive later.
+ *   - rule 5: `apps/site`'s build stays uncached, with its env declared
+ * Rules 1-2 (credentials) arrive with slice 4.
  *
  * Usage: npm run lint:ci-cache [-- --self-test]
  */
@@ -32,6 +33,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
+import { parse as parseJsonc } from "jsonc-parser";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WORKFLOW_DIR = path.join(REPO_ROOT, ".github", "workflows");
@@ -52,10 +54,15 @@ const REQUIRED_CHECK_JOB_NAMES = {
  * filesystem, so the fixtures below and the real tree run through the exact
  * same code path.
  *
- * @param {{workflows?: Array<{file: string, doc: any}>}} input
+ * `siteTurbo` distinguishes three states deliberately: `undefined` means the
+ * caller is not exercising rule 5 (so a rules-3/4 fixture stays focused),
+ * `null` means the file is genuinely absent, and an object is its parsed
+ * contents.
+ *
+ * @param {{workflows?: Array<{file: string, doc: any}>, siteTurbo?: any}} input
  * @returns {Array<{rule: number, file: string, message: string}>}
  */
-export function findViolations({ workflows = [] } = {}) {
+export function findViolations({ workflows = [], siteTurbo } = {}) {
   const violations = [];
 
   for (const { file, doc } of workflows) {
@@ -108,6 +115,61 @@ export function findViolations({ workflows = [] } = {}) {
     }
   }
 
+  // Rule 5 — `apps/site`'s build must stay uncached, with its env declared.
+  //
+  // Its output is a function of a live `GET /api/public/site-config` fetch that
+  // bakes prices into static HTML, so a byte-identical source tree can still
+  // need a fresh build. `cache: false` has been the answer since Aug 2026.
+  //
+  // Why this needs a GUARD rather than just a comment: those vars are declared
+  // under `passThroughEnv`, which passes them to the build while deliberately
+  // keeping them OUT of the task hash. Measured on #454 — a sentinel SITE_URL
+  // landed in dist/index.html while the hash did not move. That is safe only
+  // while nothing caches. Anyone who flips `cache: true` (a reasonable-looking
+  // "why isn't this cached?" edit) reopens a cross-environment bleed in which
+  // a prod deploy can restore dev's artifact, with no other signal that it
+  // happened. This rule is that signal.
+  if (siteTurbo !== undefined) {
+    const build = siteTurbo?.tasks?.build;
+
+    if (!siteTurbo || !build) {
+      violations.push({
+        rule: 5,
+        file: SITE_TURBO_PATH,
+        message:
+          "missing, or declares no `build` task. apps/site's build must be " +
+          "explicitly uncached — its output depends on a live price fetch.",
+      });
+    } else {
+      if (build.cache !== false) {
+        violations.push({
+          rule: 5,
+          file: SITE_TURBO_PATH,
+          message:
+            `build.cache is ${JSON.stringify(build.cache)}, expected false. Its ` +
+            `output depends on a live site-config fetch, and its env is invisible ` +
+            `to the task hash — caching it lets a prod deploy restore dev's artifact.`,
+        });
+      }
+
+      const declared = [
+        ...(Array.isArray(build.env) ? build.env : []),
+        ...(Array.isArray(build.passThroughEnv) ? build.passThroughEnv : []),
+      ];
+
+      if (declared.length === 0) {
+        violations.push({
+          rule: 5,
+          file: SITE_TURBO_PATH,
+          message:
+            "neither build.env nor build.passThroughEnv declares anything. Under " +
+            "the default strict envMode an undeclared var never reaches the build " +
+            "at all, so the site would silently render its fallback values.",
+        });
+      }
+    }
+  }
+
   return violations;
 }
 
@@ -155,7 +217,50 @@ jobs:
         run: npm run test:unit
 `;
 
+const SITE_TURBO_PATH = "apps/site/turbo.json";
+
+const siteTurbo = (build) => ({ extends: ["//"], tasks: { build } });
+
+const SITE_ENV = ["SITE_URL", "SITE_CONFIG_URL"];
+
 const FIXTURES = [
+  {
+    name: "rule 5 — apps/site/turbo.json missing entirely",
+    files: {},
+    siteTurbo: null,
+    expectRule: 5,
+  },
+  {
+    name: "rule 5 — site build declares no cache flag",
+    files: {},
+    siteTurbo: siteTurbo({ env: SITE_ENV }),
+    expectRule: 5,
+  },
+  {
+    name: "rule 5 — site build is explicitly cacheable",
+    files: {},
+    siteTurbo: siteTurbo({ cache: true, env: SITE_ENV }),
+    expectRule: 5,
+  },
+  {
+    name: "rule 5 — site build uncached but no vars declared at all",
+    files: {},
+    siteTurbo: siteTurbo({ cache: false, env: [], passThroughEnv: [] }),
+    expectRule: 5,
+  },
+  {
+    name: "rule 5 — site build uncached with env declared",
+    files: {},
+    siteTurbo: siteTurbo({ cache: false, env: SITE_ENV }),
+    expectRule: null,
+  },
+  {
+    name: "rule 5 — site build uncached with passThroughEnv declared (the real shape)",
+    files: {},
+    siteTurbo: siteTurbo({ cache: false, passThroughEnv: SITE_ENV }),
+    expectRule: null,
+  },
+
   {
     name: "rule 3 — a required-check job renamed",
     files: { "static-checks.yml": staticChecks({ jobName: "Static Analysis" }) },
@@ -203,7 +308,10 @@ function runSelfTest() {
   const failures = [];
 
   for (const fixture of FIXTURES) {
-    const found = findViolations({ workflows: toWorkflows(fixture.files) });
+    const found = findViolations({
+      workflows: toWorkflows(fixture.files),
+      ...("siteTurbo" in fixture ? { siteTurbo: fixture.siteTurbo } : {}),
+    });
 
     if (fixture.expectRule === null) {
       if (found.length > 0) {
@@ -242,7 +350,17 @@ function runRealTree() {
     doc: parse(readFileSync(path.join(WORKFLOW_DIR, file), "utf8")),
   }));
 
-  const found = findViolations({ workflows });
+  // turbo.json is JSONC — it carries `//` comments, and those comments are
+  // load-bearing documentation here. JSON.parse would throw on them, and
+  // stripping `//` with a regex would corrupt the `$schema` URL.
+  let siteTurbo = null;
+  try {
+    siteTurbo = parseJsonc(readFileSync(path.join(REPO_ROOT, SITE_TURBO_PATH), "utf8"));
+  } catch {
+    siteTurbo = null; // absent or unparseable — rule 5 reports it
+  }
+
+  const found = findViolations({ workflows, siteTurbo });
 
   if (found.length) {
     console.error(`\n.github/workflows: ${found.length} violation(s)\n`);

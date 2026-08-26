@@ -1,6 +1,21 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
+  // Artifacts round-trip through a third party and are then executed and
+  // deployed, so turbo HMAC-signs them and rejects any that fail verification
+  // (#454). The policy is split on purpose: fail-OPEN on cache availability
+  // (an unreachable cache just runs the work), fail-CLOSED on cache integrity.
+  // A blanket fail-open on integrity is what turns a poisoned artifact into a
+  // green required check. Needs TURBO_REMOTE_CACHE_SIGNATURE_KEY in CI.
+  "remoteCache": { "signature": true },
+  // Root files outside every package that still change task results. The test
+  // services' image tags live here, so `test:integration` must hash this file
+  // (#454). Known cost: the devcontainer's own `dev` service lives here too,
+  // so a purely local devcontainer edit invalidates every cached task. Accepted
+  // — the file changes rarely, and a full invalidation is a performance event,
+  // not a correctness one. The escalation, if it ever bites, is splitting the
+  // test services into their own compose file.
+  "globalDependencies": ["docker-compose.yml"],
   "tasks": {
     "build": {
       "dependsOn": [

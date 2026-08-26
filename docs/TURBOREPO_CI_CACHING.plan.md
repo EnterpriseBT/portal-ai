@@ -73,7 +73,7 @@ Close the cache-poisoning path **before** any credential exists to exploit it. A
 **Files**
 
 - Edit: `turbo.json` — `remoteCache: { signature: true }`; `globalDependencies: ["docker-compose.yml"]`. (`test:integration` is **not** touched here — that is slice 5.)
-- New: `apps/site/turbo.json` — `extends: ["//"]`, `build.cache: false`, `build.env` with the seven names from `deploy-static-site.yml:156-162`, plus the in-file comment explaining both.
+- Edit: `apps/site/turbo.json` — **the file already exists** with `cache: false` and eight `passThroughEnv` names; this slice adds only the in-file rationale. The enforcement is rule 5.
 - Edit: `scripts/check-ci-cache.mjs` — **new rule 5**.
 
 **Steps**
