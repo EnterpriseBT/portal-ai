@@ -583,6 +583,20 @@ export const foosRepo = new FoosRepository();
 
 The singleton inherits all base methods (`findById`, `findMany`, `count`, `create`, `createMany`, `update`, `updateWhere`, `updateMany`, `softDelete`, `softDeleteMany`, `hardDelete`, `hardDeleteMany`) with full type safety.
 
+### The sync ownership lock (#460)
+
+Any operation that reaps by watermark must first hold `SyncLockService.withInstanceLock(connectorInstanceId, …)`.
+
+The job-level entity lock is not enough: it keys on the job *row*, so it cannot see a BullMQ **stall re-delivery**, which runs a second pass of the *same* job without incrementing `attemptsMade`. Both passes then soft-delete "everything older than my watermark", and the later one deletes the earlier one's still-in-flight writes — measured at 34,000 records lost from a 397,960-record layer, on a job reporting `completed` with counts that added up.
+
+It is a **session-scoped Postgres advisory lock** on a connection from `reserveConnection()`, not a Redis TTL lease. BullMQ re-delivered the job precisely *because it guessed wrong* about whether the first pass was alive — its lock renewal was starved by a long reap — and a TTL lease answers the same question with the same kind of timer, starved the same way. A session lock lets the database answer: the holder's connection is open or it is not, and if the process dies the lock is gone with no renewal and no operator action.
+
+A pass that cannot acquire does **no work** and returns `superseded: true` (plus a best-effort `supersededBy`). It does not fail — nothing went wrong, there was simply nothing for it to do, and failing would have BullMQ retry it into the same wall.
+
+**No reap predicate is an alternative.** "Rows this pass did not touch" is correct from each pass's own point of view; scoping the reap to a generation does not help either, since both passes of one job share a generation key (#439) and write identical `source_id`s. The premise that one pass is the only writer is what is wrong.
+
+`layout_plan_commit` also reaps and is **not yet wrapped** — see #461 for why (its result schema's required fields make a superseded pass report a false result rather than an absent one).
+
 ### Soft-delete retention (#442)
 
 Everything above soft-deletes, so tombstones accumulate and nothing removes them unless something is written to. That is not only a disk question: tombstones count toward `reltuples`, which sets the autoanalyze threshold at `50 + 0.1 × reltuples`, so a table thick with them raises its own analyze threshold and leaves large writes planning against stale statistics. `entity_records` reached **3.92M tombstones of 5.12M rows (77%, 8 GB)** on one dev box before this existed.

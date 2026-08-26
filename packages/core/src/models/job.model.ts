@@ -103,6 +103,35 @@ export const ConnectorSyncResultSchema = z.object({
     unchanged: z.number().int().nonnegative(),
     deleted: z.number().int().nonnegative(),
   }),
+  /**
+   * #316: geometry audit outcome. Omitted when the sync touched no geometry
+   * columns. Declared here as of #460 — it has been returned and persisted
+   * since #316 without appearing in this schema.
+   */
+  geometry: z
+    .object({
+      repaired: z.number().int().nonnegative(),
+      rejected: z.number().int().nonnegative(),
+      rejectedSample: z.array(z.string()),
+    })
+    .optional(),
+  /**
+   * #441/#456: the records landed but the `er__<id>` mirror could not be kept
+   * in step. Status reflects the data; this reflects the mirror. Same drift as
+   * `geometry` — returned and persisted since #441, declared as of #460.
+   */
+  mirrorDegraded: z.literal(true).optional(),
+  /**
+   * #460: this pass did no work because another live session held the
+   * instance's sync lock. Not a failure — nothing went wrong, there was simply
+   * nothing for this pass to do.
+   */
+  superseded: z.literal(true).optional(),
+  /**
+   * Best-effort id of the job that held the lock. Absent when no
+   * distinguishable holder could be identified; never guessed.
+   */
+  supersededBy: z.string().optional(),
 });
 export type ConnectorSyncResult = z.infer<typeof ConnectorSyncResultSchema>;
 
