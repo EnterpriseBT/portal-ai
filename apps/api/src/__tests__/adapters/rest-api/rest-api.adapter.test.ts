@@ -117,7 +117,15 @@ jest.unstable_mockModule("../../../services/db.service.js", () => ({
       connectorInstances: { update: updateInstanceMock },
       columnDefinitions: { findByOrganizationId: findColumnDefinitionsMock },
       fieldMappings: { findMany: findFieldMappingsMock },
-      wideTable: { upsertMany: upsertWideManyMock },
+      wideTable: {
+        upsertMany: upsertWideManyMock,
+        // #441/#456: the reap cascade is best-effort; a clean run reports
+        // `degraded: false`.
+        deleteByEntityRecordIdsBestEffort: jest.fn(async () => ({
+          degraded: false,
+        })),
+        selectMissingWideRowIds: jest.fn(async () => []),
+      },
     },
   },
 }));

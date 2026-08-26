@@ -54,6 +54,18 @@ export interface SyncInstanceResult {
     rejected: number;
     rejectedSample: string[];
   };
+  /**
+   * #441/#456: true when the run's data landed but the `er__<id>` mirror could
+   * not be kept in step — the reap cascade failed and was degraded rather than
+   * throwing. The status then reflects the DATA (completed, because every
+   * record was written) while this field reflects the MIRROR, which is stale
+   * until the next reconcile.
+   *
+   * Omitted on a clean run. Present so the staleness is visible on the job
+   * result rather than only in a log line: a wide table holding rows that
+   * point at deleted records is the unbounded growth #327 exists to prevent.
+   */
+  mirrorDegraded?: true;
 }
 
 /**

@@ -543,8 +543,12 @@ export class LayoutPlanDraftService {
           watermark,
           userId
         );
+      // Best-effort (#441/#456). This helper returns void and its caller's
+      // result shape has no mirror field, so the degradation is recorded by
+      // the repository's `wide-table.reap-cascade-failed` log only — noted
+      // here so the asymmetry with the sync adapters is deliberate.
       if (reaped.length > 0) {
-        await DbService.repository.wideTable.softDeleteByEntityRecordIds(
+        await DbService.repository.wideTable.deleteByEntityRecordIdsBestEffort(
           connectorEntityId,
           reaped
         );

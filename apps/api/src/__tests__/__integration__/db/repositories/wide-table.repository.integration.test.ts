@@ -3,7 +3,7 @@
  *
  * Each test reconciles a connector entity (the only DDL path) so the
  * `er__<id>` table is created with the expected columns, then exercises
- * the new write surface (`upsertMany`, `softDeleteByEntityRecordIds`,
+ * the new write surface (`upsertMany`, `deleteByEntityRecordIds`,
  * `selectByEntityRecordIds`) and asserts on what landed on disk.
  *
  * `entity_records` rows are inserted by hand because the wide-table FK
@@ -471,9 +471,9 @@ describe("WideTableRepository integration tests", () => {
     expect(rows[0]!.c_stage).toBe(stageDate.toISOString());
   });
 
-  // ── Case 6 — softDeleteByEntityRecordIds removes wide rows ───────
+  // ── Case 6 — deleteByEntityRecordIds removes wide rows ───────
 
-  it("softDeleteByEntityRecordIds hard-deletes wide rows", async () => {
+  it("deleteByEntityRecordIds hard-deletes wide rows", async () => {
     const r1 = generateId();
     const r2 = generateId();
     await insertEntityRecord(r1, "src-1");
@@ -496,7 +496,7 @@ describe("WideTableRepository integration tests", () => {
       },
     ]);
 
-    await repo.softDeleteByEntityRecordIds(entityId, [r1]);
+    await repo.deleteByEntityRecordIds(entityId, [r1]);
     const rows = (await repo.selectAll(entityId, db)) as Array<
       Record<string, unknown>
     >;
@@ -504,11 +504,11 @@ describe("WideTableRepository integration tests", () => {
     expect(rows[0]!.entity_record_id).toBe(r2);
   });
 
-  // ── Case 7 — softDeleteByEntityRecordIds handles missing ids ─────
+  // ── Case 7 — deleteByEntityRecordIds handles missing ids ─────
 
-  it("softDeleteByEntityRecordIds is a no-op for missing ids", async () => {
+  it("deleteByEntityRecordIds is a no-op for missing ids", async () => {
     await expect(
-      repo.softDeleteByEntityRecordIds(entityId, ["does-not-exist"])
+      repo.deleteByEntityRecordIds(entityId, ["does-not-exist"])
     ).resolves.toBeUndefined();
   });
 
