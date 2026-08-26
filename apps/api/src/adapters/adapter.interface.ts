@@ -66,6 +66,13 @@ export interface SyncInstanceResult {
    * point at deleted records is the unbounded growth #327 exists to prevent.
    */
   mirrorDegraded?: true;
+  // #460 deliberately does NOT add a `superseded` field here. A pass that
+  // cannot take the instance's sync lock never reaches an adapter at all —
+  // the lock is held in `connector-sync.processor.ts`, the single call site
+  // for all three sync adapters — so the outcome belongs to the job result
+  // (`ConnectorSyncResultSchema`), not to the adapter contract. The asymmetry
+  // with `mirrorDegraded` above is intentional: that one IS an adapter
+  // observation, because only the adapter can see its mirror fail.
 }
 
 /**
