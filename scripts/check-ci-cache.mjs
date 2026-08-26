@@ -24,7 +24,8 @@
  *   - rule 3: required-check job names are exactly the three gated on `main`
  *   - rule 4: those workflows' `concurrency.group` leads with a literal
  *   - rule 5: `apps/site`'s build stays uncached, with its env declared
- * Rules 1-2 (credentials) arrive with slice 4.
+ *   - rule 1: a workflow that runs turbo carries the cache credentials
+ *   - rule 2: a workflow_call site passes every secret the callee declares
  *
  * Usage: npm run lint:ci-cache [-- --self-test]
  */
@@ -49,6 +50,43 @@ const REQUIRED_CHECK_JOB_NAMES = {
   "static-checks.yml": "Static Checks",
 };
 
+/** The three vars every turbo invocation in CI needs. */
+const CACHE_ENV_VARS = ["TURBO_TOKEN", "TURBO_TEAM", "TURBO_REMOTE_CACHE_SIGNATURE_KEY"];
+
+/**
+ * Workflows that run turbo but have NOT opted into the remote cache yet.
+ *
+ * This is a shrinking list, not a permanent exemption: the deploy workflows opt
+ * in at slice 6 of #454, at which point this set is emptied and rule 1 covers
+ * every turbo invocation in the repo unconditionally. It exists so rule 1 can
+ * land with the suites (slice 4) without the deploy workflows making the gate
+ * red at that slice boundary — an exemption that is listed and dated beats a
+ * rule that only checks a hardcoded subset, because the listing is visible.
+ */
+const PENDING_CACHE_OPT_IN = new Set([
+  "deploy-dev.yml",
+  "deploy-prod.yml",
+  "deploy-static-site.yml",
+]);
+
+/** Env keys declared on a workflow/job/step, or [] when absent. */
+function envKeys(env) {
+  return env && typeof env === "object" && !Array.isArray(env) ? Object.keys(env) : [];
+}
+
+/**
+ * Does this `run:` invoke turbo — directly, or through a root npm script that
+ * is a turbo passthrough? `npm run lint:doc-pointers` must NOT match `lint`,
+ * so script names are compared as whole tokens.
+ */
+function invokesTurbo(run, turboScripts) {
+  if (typeof run !== "string") return false;
+  if (/\bturbo\s+run\b/.test(run)) return true;
+  return [...run.matchAll(/\bnpm\s+run\s+([A-Za-z0-9:_.-]+)/g)].some((m) =>
+    turboScripts.includes(m[1])
+  );
+}
+
 /**
  * Finds every rule violation. Pure: takes already-parsed inputs, touches no
  * filesystem, so the fixtures below and the real tree run through the exact
@@ -59,10 +97,14 @@ const REQUIRED_CHECK_JOB_NAMES = {
  * `null` means the file is genuinely absent, and an object is its parsed
  * contents.
  *
- * @param {{workflows?: Array<{file: string, doc: any}>, siteTurbo?: any}} input
+ * `turboScripts` is the set of root npm scripts that are turbo passthroughs,
+ * passed in rather than read from package.json so this stays pure and cannot
+ * drift from the real script list.
+ *
+ * @param {{workflows?: Array<{file: string, doc: any}>, siteTurbo?: any, turboScripts?: string[]}} input
  * @returns {Array<{rule: number, file: string, message: string}>}
  */
-export function findViolations({ workflows = [], siteTurbo } = {}) {
+export function findViolations({ workflows = [], siteTurbo, turboScripts = [] } = {}) {
   const violations = [];
 
   for (const { file, doc } of workflows) {
@@ -112,6 +154,82 @@ export function findViolations({ workflows = [], siteTurbo } = {}) {
           `three suites in one deploy run would share a group and cancel each other. ` +
           `Lead with the literal workflow name instead.`,
       });
+    }
+  }
+
+  // Rule 1 — a workflow that runs turbo must carry the cache credentials.
+  //
+  // The failure is silent: without them turbo caches nothing, reports success,
+  // and CI is simply slow again. Nothing in the diff or the check result says
+  // so. TURBO_REMOTE_CACHE_SIGNATURE_KEY is required alongside the token
+  // because turbo.json sets `remoteCache.signature`.
+  for (const { file, doc } of workflows) {
+    if (PENDING_CACHE_OPT_IN.has(file)) continue;
+
+    const workflowEnv = envKeys(doc?.env);
+
+    for (const [jobId, job] of Object.entries(doc?.jobs ?? {})) {
+      const jobEnv = envKeys(job?.env);
+
+      // One report per JOB, not per step: several steps in a job typically run
+      // turbo and the remedy is a single env block, so per-step reporting would
+      // just repeat the same instruction.
+      for (const step of job?.steps ?? []) {
+        if (!invokesTurbo(step?.run, turboScripts)) continue;
+
+        const available = new Set([...workflowEnv, ...jobEnv, ...envKeys(step?.env)]);
+        const missing = CACHE_ENV_VARS.filter((v) => !available.has(v));
+
+        if (missing.length) {
+          violations.push({
+            rule: 1,
+            file,
+            message:
+              `job "${jobId}" runs turbo but ${missing.join(", ")} ` +
+              `${missing.length === 1 ? "is" : "are"} not in scope. Without the ` +
+              `credentials turbo silently caches nothing and still reports success.`,
+          });
+          break;
+        }
+      }
+    }
+  }
+
+  // Rule 2 — a workflow_call site must pass every secret the callee declares.
+  //
+  // Inside a reusable workflow, an unpassed secret is simply empty. Combined
+  // with rule 1's silent-degradation property that means a deploy run can look
+  // entirely healthy while caching nothing. Declared-but-unpassed is checked
+  // regardless of `required:`, because `required: false` exists so a
+  // push-triggered run (which has no caller) stays legal — it is not licence
+  // for a caller to omit it.
+  const docByFile = new Map(workflows.map((w) => [w.file, w.doc]));
+
+  for (const { file, doc } of workflows) {
+    for (const [jobId, job] of Object.entries(doc?.jobs ?? {})) {
+      const localCall = typeof job?.uses === "string" && job.uses.match(/^\.\/\.github\/workflows\/(.+)$/);
+      if (!localCall) continue;
+
+      const calleeDoc = docByFile.get(localCall[1]);
+      if (!calleeDoc) continue; // callee outside the provided set — nothing to compare
+
+      const declared = Object.keys(calleeDoc?.on?.workflow_call?.secrets ?? {});
+      if (declared.length === 0) continue;
+      if (job.secrets === "inherit") continue;
+
+      const passed = envKeys(job?.secrets);
+      const missing = declared.filter((d) => !passed.includes(d));
+
+      if (missing.length) {
+        violations.push({
+          rule: 2,
+          file,
+          message:
+            `job "${jobId}" calls ${localCall[1]} without passing ${missing.join(", ")}. ` +
+            `An unpassed secret is empty inside the callee, so the run looks healthy ` +
+            `while doing nothing. Pass it explicitly, or use \`secrets: inherit\`.`,
+        });
+      }
     }
   }
 
@@ -217,6 +335,50 @@ jobs:
         run: npm run test:unit
 `;
 
+const CACHE_ENV = `
+env:
+  TURBO_TOKEN: \${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: \${{ vars.TURBO_TEAM }}
+  TURBO_REMOTE_CACHE_SIGNATURE_KEY: \${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
+`;
+
+const runsTurbo = ({ env = "", command = "npx turbo run build" } = {}) => `
+name: Some Workflow
+on:
+  push: {}
+${env}
+jobs:
+  work:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Do it
+        run: ${command}
+`;
+
+const calleeDeclaring = (secretName) => `
+name: Callee
+on:
+  workflow_call:
+    secrets:
+      ${secretName}:
+        required: false
+jobs:
+  work:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
+`;
+
+const callerPassing = (mapping) => `
+name: Caller
+on:
+  workflow_dispatch: {}
+jobs:
+  call-it:
+    uses: ./.github/workflows/callee.yml
+${mapping}
+`;
+
 const SITE_TURBO_PATH = "apps/site/turbo.json";
 
 const siteTurbo = (build) => ({ extends: ["//"], tasks: { build } });
@@ -224,6 +386,56 @@ const siteTurbo = (build) => ({ extends: ["//"], tasks: { build } });
 const SITE_ENV = ["SITE_URL", "SITE_CONFIG_URL"];
 
 const FIXTURES = [
+  {
+    name: "rule 1 — runs turbo with no credentials",
+    files: { "some.yml": runsTurbo() },
+    turboScripts: ["build"],
+    expectRule: 1,
+  },
+  {
+    name: "rule 1 — runs turbo with credentials in workflow-level env",
+    files: { "some.yml": runsTurbo({ env: CACHE_ENV }) },
+    turboScripts: ["build"],
+    expectRule: null,
+  },
+  {
+    name: "rule 1 — runs a turbo npm script with no credentials",
+    files: { "some.yml": runsTurbo({ command: "npm run build" }) },
+    turboScripts: ["build"],
+    expectRule: 1,
+  },
+  {
+    name: "rule 1 — runs a NON-turbo npm script, no credentials needed",
+    files: { "some.yml": runsTurbo({ command: "npm run lint:doc-pointers" }) },
+    turboScripts: ["build", "lint"],
+    expectRule: null,
+  },
+  {
+    name: "rule 2 — call site omits a secret the callee declares",
+    files: {
+      "callee.yml": calleeDeclaring("TURBO_TOKEN"),
+      "caller.yml": callerPassing(""),
+    },
+    expectRule: 2,
+  },
+  {
+    name: "rule 2 — call site passes the declared secret",
+    files: {
+      "callee.yml": calleeDeclaring("TURBO_TOKEN"),
+      "caller.yml": callerPassing(
+        "    secrets:\n      TURBO_TOKEN: \${{ secrets.TURBO_TOKEN }}\n"
+      ),
+    },
+    expectRule: null,
+  },
+  {
+    name: "rule 2 — call site uses secrets: inherit",
+    files: {
+      "callee.yml": calleeDeclaring("TURBO_TOKEN"),
+      "caller.yml": callerPassing("    secrets: inherit\n"),
+    },
+    expectRule: null,
+  },
   {
     name: "rule 5 — apps/site/turbo.json missing entirely",
     files: {},
@@ -311,6 +523,7 @@ function runSelfTest() {
     const found = findViolations({
       workflows: toWorkflows(fixture.files),
       ...("siteTurbo" in fixture ? { siteTurbo: fixture.siteTurbo } : {}),
+      ...(fixture.turboScripts ? { turboScripts: fixture.turboScripts } : {}),
     });
 
     if (fixture.expectRule === null) {
@@ -360,7 +573,14 @@ function runRealTree() {
     siteTurbo = null; // absent or unparseable — rule 5 reports it
   }
 
-  const found = findViolations({ workflows, siteTurbo });
+  // Derived, never hardcoded: any root script whose body starts with `turbo run`
+  // is a turbo passthrough, so the list cannot drift from package.json.
+  const rootPkg = JSON.parse(readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
+  const turboScripts = Object.entries(rootPkg.scripts ?? {})
+    .filter(([, body]) => /^turbo run /.test(body))
+    .map(([name]) => name);
+
+  const found = findViolations({ workflows, siteTurbo, turboScripts });
 
   if (found.length) {
     console.error(`\n.github/workflows: ${found.length} violation(s)\n`);

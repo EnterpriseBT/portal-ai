@@ -129,6 +129,8 @@ Attach the three env vars and make the reusable-workflow secret contract explici
 3. Green: `npm run lint:ci-cache` passes fixtures **and** the real tree.
 4. Lint + type-check.
 
+**Sequencing detail resolved during implementation.** Rule 1 flags *every* workflow that runs turbo, and the three deploy workflows do not opt in until slice 6 — so a naive rule 1 would leave this slice's boundary red. Resolved with an explicit `PENDING_CACHE_OPT_IN` set in the guard listing those three files, which **slice 6 empties**. A dated, listed exemption beats a rule that quietly checks only a subset, because the list is visible in the diff and its removal is a deliverable.
+
 **Done when:** all ten guard cases pass; the three suites report cache hits on a second push of an unchanged tree; removing `TURBO_TOKEN` leaves every suite passing (fail-open on availability).
 
 **Risk:** the silent-no-op failure mode. `required: false` on the declared secrets is deliberate (a `push` run has no caller) and is exactly why this cannot be verified by reading the diff — a live `workflow_dispatch` of `deploy-dev` is required, and it is an acceptance criterion.
@@ -170,7 +172,7 @@ The remaining surfaces, none of which gate the measured win.
 
 **Steps**
 
-1. **Tests.** Guard rules 1–2 (from slice 4) now cover the deploy workflows too — confirm `npm run lint:ci-cache` stays green as the env blocks are added. No new rule.
+1. **Tests.** Empty the guard's `PENDING_CACHE_OPT_IN` set **first** — that turns rule 1 red for the three deploy workflows — then add their env blocks to green it. No new rule, but a real red-then-green: after this slice rule 1 covers every turbo invocation in the repo with no exemptions.
 2. **Implement** the workflow env blocks, the `Dockerfile` symlink, and the doc updates.
 3. **Verify the devcontainer by hand** (recorded in the smoke doc — it cannot be checked in CI): rebuild the container, then `which turbo` resolves through `/workspace/node_modules/.bin` and `turbo --version` matches the lockfile.
 4. Lint + type-check.
