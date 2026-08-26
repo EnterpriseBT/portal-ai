@@ -14,7 +14,7 @@ Pins the ownership seam that makes the watermark reap safe. Discovery: `docs/CON
 
 ### In scope
 - A session-scoped advisory-lock primitive on a reserved Postgres connection.
-- Wiring it into `connector-sync.processor.ts` and `layout-plan-commit.processor.ts`.
+- Wiring it into `connector-sync.processor.ts`. **`layout-plan-commit.processor.ts` was split out to #461 during slice 2** — see below.
 - A `superseded` outcome on the job result, and its `ConnectorSyncResult` declaration.
 - Chunking `softDeleteBeforeWatermark` so the reap yields (trigger reduction, explicitly not the fix).
 - Closing the pre-existing drift between `SyncInstanceResult` and `ConnectorSyncResultSchema` (below).
@@ -89,9 +89,13 @@ return outcome.value;
 
 `otherJobId` comes from the existing `jobs` lookup for a non-terminal `connector_sync` on the same instance with a different id; omitted when none is found (a holder can exist without a distinguishable job row).
 
-### `apps/api/src/queues/processors/layout-plan-commit.processor.ts`
+### `apps/api/src/queues/processors/layout-plan-commit.processor.ts` — **deferred to #461**
 
-Same wrapper around the commit, keyed by the metadata's `connectorInstanceId`. On `acquired: false` the commit is not attempted and the result carries `superseded: true`.
+The spec originally called for the same wrapper here. Slice 2 found that it is not the same: `LayoutPlanCommitJobResultSchema` (`job.model.ts:249`) requires `connectorInstanceId`, `planId`, `connectorEntityIds` **and** `recordCounts` — every field. A superseded pass has none of them, so it would report `connectorEntityIds: []` with zeroed counts, which is not an *absence* of a result but a **false one**: a user watching the import wizard would be told their commit finished and produced nothing.
+
+The sync path has no such problem — nobody is blocked on a live wizard reading its counts. Since the two passes also share one job row, a superseded pass finishing *after* the real one would overwrite a good result with an empty one; for a sync that costs a misreported count, for a commit it erases the entity ids the frontend needs.
+
+That is a result-shape design decision, not a wiring one, so it is [#461](https://github.com/EnterpriseBT/portal-ai/issues/461) rather than a rushed wrap here. The exposure is real and is stated in that ticket; it is not being quietly dropped.
 
 ### `packages/core/src/models/job.model.ts`
 

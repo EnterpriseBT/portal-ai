@@ -48,7 +48,7 @@ The behaviour change. A pass that cannot acquire does no work and says so.
 **Files**
 
 - Edit: `apps/api/src/queues/processors/connector-sync.processor.ts` — wrap the `adapter.syncInstance` call (`:49`); on refusal return zeroed counts + `superseded: true` (+ `supersededBy` when a sibling running job is found).
-- Edit: `apps/api/src/queues/processors/layout-plan-commit.processor.ts` — same wrapper keyed by the metadata's `connectorInstanceId`.
+- ~~Edit: `apps/api/src/queues/processors/layout-plan-commit.processor.ts`~~ — **split to #461 during this slice.** Its result schema has all-required fields, so a superseded pass would have to report a false result rather than an absent one, and a user is actively blocked on it. A design decision, not a wrap.
 - Edit: `packages/core/src/models/job.model.ts` — declare `superseded` / `supersededBy`, **and close the pre-existing drift**: `geometry` (#316) and `mirrorDegraded` (#441) are returned and persisted but undeclared.
 - Edit: `apps/api/src/adapters/adapter.interface.ts` — comment only, recording why `SyncInstanceResult` is deliberately *not* extended (a superseded pass never reaches an adapter).
 
@@ -59,7 +59,7 @@ The behaviour change. A pass that cannot acquire does no work and says so.
 3. **Mutation-check the guard**: make `withInstanceLock` always report acquired and confirm cases 11–12 fail. A lock that cannot refuse is the whole bug back.
 4. Lint + type-check. `packages/core` changes mean building core before the API type-checks — `project_stale_core_dist_after_branch_switch`.
 
-**Done when:** cases 10–13 pass, `ConnectorSyncResultSchema` declares every field the sync actually returns, and both reapers are wrapped.
+**Done when:** cases 10–13 pass, `ConnectorSyncResultSchema` declares every field the sync actually returns, and the sync reaper is wrapped. The second reaper is #461, with its blocker recorded there.
 
 **Risk:** the `supersededBy` lookup runs on the refusal path only, so a slow query there delays nothing that matters. If it throws, the field is omitted rather than the pass failing — assert that.
 
