@@ -111,20 +111,47 @@ Confirmed on two separate full runs (598 s and 379 s), and the mid-run state was
       ```
       Both runs: `live = 397960`, `generations = 1`, `watermarks = 1`. **Two watermarks *after completion* is #460 reproducing** — that was the signature of the loss. *(AC 5.)*
 
-## §6 — #441's deferred step: a killed worker records why
+## §6 — a killed worker: **#460's half PASSED, #441's claim FAILED**
 
-Deferred from #441's walk because it would have interleaved with the reap behaviour this branch fixes. Now meaningful.
+Deferred from #441's own walk waiting on this branch. It was worth keeping: it is the only step that exercises the **real** trigger rather than a staged one, and it split cleanly into a pass and a failure.
 
-- [ ] Start a `Smoke 3` sync and let it reach the reap phase (progress 90).
-- [ ] Kill the API process (`kill -9` the worker pid — SIGTERM has left orphans on this box).
-- [ ] Restart `npm run dev` and wait for BullMQ's stall recovery (~15 minutes on the observed settings; the job returns to `active`).
-- [ ] Expect the job row to carry **a stated reason** for the interrupted attempt rather than the silence it recorded before #441 — and, per §3, the lock the dead process held to be gone so the recovered pass can actually run.
-- [ ] Confirm the entity still converges: re-check §5's query after the recovered pass completes.
+Timeline, with the kill fired automatically at progress 90 so it landed inside the reap phase:
 
-## §7 — Nothing was over-serialised
+```
+19:28:30  progress=90  advisory_locks=1   → SIGKILL worker pid 32495
+          advisory locks after the kill: 0        <- released, no unlock issued
+          job row: active/90  attempts=1  error=(none)
+19:29:42  API restarted
+19:30:18  BullMQ RE-DELIVERS               → progress 90 → 0, attempts STILL 1, locks 0 → 1
+19:36:xx  completed  359s  attempts=1  error=(none)
+```
 
-- [ ] With a `Smoke 3` sync running, trigger a sync on a **different** instance (`testing`, `8bd191fc-…`).
-- [ ] Expect it to run normally and **not** report `superseded`. The lock is per instance; if this reports superseded, the key is too coarse and one tenant's sync would block another's.
+- [x] **#460 is confirmed against the actual trigger.** A genuine `SIGKILL` plus a genuine stall re-delivery, and the entity still converged: `live 397960 · generations 1 · watermarks 1`. The killed worker's advisory lock released immediately and the recovered pass took it. This is stronger evidence than §2, which could only stage the collision. *(AC 3, AC 5.)*
+- [x] **§3's release property holds under a real process death**, not just a helper script's `.end()`.
+- [ ] **#441's claim does not hold here — filed as [#464](https://github.com/EnterpriseBT/portal-ai/issues/464).** `error` stayed `(none)` from the kill through to completion, and `attempts` stayed `1` across **two full executions** of the work.
+
+  The reason is specific: #441 put the recording in `worker.on("failed")`, which runs *inside a worker process* — a `SIGKILL`ed process cannot run its own handler. And BullMQ **re-delivers** a first stall rather than failing it, so no `failed` event is emitted anywhere and no handler fires. The unit test for that handler mocks a live worker receiving a failed event, which is why the gap did not surface: the untestable-in-process case is the real one.
+
+  `CLAUDE.md` and its mirror stated the stronger claim; both are narrowed in this branch to what is actually true.
+
+  **Not a blocker for this PR.** It is a reporting gap, and the data half — which is what #460 is about — passed. But it does mean #441's §6 remains genuinely open rather than closed by this walk.
+
+## §7 — Nothing was over-serialised — **PASSED**
+
+- [x] Two syncs on different instances ran **concurrently**, each holding its own lock:
+      ```
+      19:18:56  locks=1  smoke3=active/20   testing=completed/100
+      19:18:57  locks=2  smoke3=active/23   testing=active/4     <- both now hold one
+      19:19:07  locks=2  smoke3=active/53   testing=active/59
+      ```
+- [x] Both completed cleanly, neither superseded:
+      ```
+      Smoke 3  completed  349s  superseded=false
+      testing  completed  156s  superseded=false  {unchanged: 397960, deleted: 0}
+      ```
+      `testing` reaping nothing is correct — it has a stable `idField` (`PARCEL_ID`), so its source ids do not churn and there is no previous generation to reap. It is purely the concurrency check here.
+
+      Had the lock been keyed per-org or globally, `testing` would have come back `superseded` and one tenant's sync would block another's. `locks=2` is the evidence it is not.
 
 ## §8 — Error & edge cases
 
