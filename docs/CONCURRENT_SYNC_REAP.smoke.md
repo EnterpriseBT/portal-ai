@@ -175,8 +175,15 @@ Timeline, with the kill fired automatically at progress 90 so it landed inside t
 
 ## Sign-off
 
-- [ ] Every section above verified (or explicitly waived with a reason)
-- [ ] ______ (date) — ______ (name) — confirmed against my own running stack
+- [x] Every section above verified (or explicitly waived with a reason) — 30 verified, §4 verified indirectly with its method's limits stated, one step known-failing and filed
+- [x] 2026-08-26 — Ben Turner — confirmed against my own running stack
+
+  Recorded by the agent at Ben's explicit direction ("confirm successful smoke"). Two items knowingly accepted as open:
+
+  - **[#464](https://github.com/EnterpriseBT/portal-ai/issues/464)** — §6 showed that a killed attempt records no reason and `attempts` does not count the lost execution. This narrows a claim #441 made (and that I wrote into `CLAUDE.md`); both the doc and its mirror are corrected in this branch. Non-blocking: it is reporting, and #460's data half passed against the real trigger.
+  - **§4** — verified indirectly. A 1 Hz `pg_stat_activity` sampler saw no long-running reap statement across a 5-minute reap phase, which is evidence only because the previous implementation was one statement lasting minutes. `pg_stat_statements` is not installed here; the direct proof is the statement-counting integration test.
+
+  The result the walk exists for: **#460 confirmed against the actual trigger** — a real `SIGKILL` mid-reap plus a real BullMQ stall re-delivery, after which the entity still converged to 397,960 live rows in one generation at one watermark.
 
 ## Bug-filing template
 
