@@ -42,5 +42,14 @@ jobs:
       - name: Check docs/*.md pointers in source resolve
         run: npm run lint:doc-pointers
 
+      # Guards the CI remote-cache wiring and two invariants that nothing else
+      # tests (#454): the required-check job names, and the concurrency-group
+      # literal prefix. Both fail SILENTLY when broken — a renamed job un-gates
+      # its required check, and a missing TURBO_TOKEN just stops caching while
+      # still reporting success. The script self-tests its rules against
+      # embedded fixtures before checking the real tree.
+      - name: Check CI cache wiring and required-check invariants
+        run: npm run lint:ci-cache
+
       - name: Run unit tests
         run: npm run test:unit

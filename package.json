@@ -9,6 +9,7 @@
 		"lint": "turbo run lint",
 		"lint:fix": "turbo run lint:fix",
 		"lint:doc-pointers": "node scripts/check-doc-pointers.mjs",
+		"lint:ci-cache": "node scripts/check-ci-cache.mjs",
 		"format": "turbo run format",
 		"format:check": "turbo run format:check",
 		"type-check": "turbo run type-check",
@@ -28,7 +29,8 @@
 		"prettier": "^3.8.1",
 		"turbo": "^2.3.3",
 		"typescript": "^5.7.2",
-		"wait-on": "^9.0.4"
+		"wait-on": "^9.0.4",
+		"yaml": "^2.9.0"
 	},
 	"packageManager": "npm@10.9.2",
 	"workspaces": [
