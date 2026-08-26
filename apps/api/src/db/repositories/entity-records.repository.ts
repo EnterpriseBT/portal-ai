@@ -61,6 +61,11 @@ export type EntityRecordHydratedListItem = Omit<EntityRecordHydrated, "data">;
  */
 const BULK_CHUNK_SIZE = 1000;
 
+/** Rows soft-deleted per statement by the watermark reap (#460). Bounds how
+ *  long a single statement can hold the event loop, which is what starved
+ *  BullMQ's lock renewal and produced two concurrent passes. */
+export const REAP_CHUNK_SIZE = 5_000;
+
 export class EntityRecordsRepository extends Repository<
   typeof entityRecords,
   EntityRecordSelect,
@@ -293,27 +298,68 @@ export class EntityRecordsRepository extends Repository<
    *
    * Uses `entity_records_entity_synced_at_idx (connector_entity_id,
    * synced_at)` for the index scan.
+   *
+   * **Chunked at `REAP_CHUNK_SIZE` (#460) — this is trigger reduction, NOT the
+   * fix.** One `UPDATE … RETURNING id` over 431,960 rows held the event loop
+   * long enough that the worker could not renew its BullMQ lock, so BullMQ
+   * concluded the job had stalled and re-delivered it. Two passes then ran
+   * concurrently and the later one's reap deleted the earlier one's in-flight
+   * writes — 34,000 records lost from a 397,960-record layer, on a job
+   * reporting `completed`.
+   *
+   * Chunking shrinks that window; it does not close it. The actual fix is
+   * `SyncLockService.withInstanceLock`, taken in the sync processor. **If this
+   * is ever mistaken for the fix and that lock is dropped, the loss returns
+   * under any slower reap** — a bigger dataset, a loaded box, a broken wide
+   * table making every mirror write fail.
+   *
+   * `opts.chunkSize` is a test seam; production uses `REAP_CHUNK_SIZE`.
    */
   async softDeleteBeforeWatermark(
     connectorEntityId: string,
     watermarkMs: number,
     deletedBy: string,
-    client: DbClient = db
+    client: DbClient = db,
+    opts?: { chunkSize?: number }
   ): Promise<string[]> {
+    const chunkSize = opts?.chunkSize ?? REAP_CHUNK_SIZE;
     const now = Date.now();
-    const result = await (client as typeof db)
-      .update(this.table)
-      .set({ deleted: now, deletedBy } as never)
-      .where(
-        and(
-          eq(entityRecords.connectorEntityId, connectorEntityId),
-          lt(entityRecords.syncedAt, watermarkMs),
-          this.notDeleted()
+    const typed = client as typeof db;
+    const reaped: string[] = [];
+
+    for (;;) {
+      // The candidate set is re-evaluated each pass, and that is what makes
+      // the loop terminate: every chunk sets `deleted`, and the predicate
+      // requires `deleted IS NULL`, so each pass strictly shrinks what is
+      // left. Termination follows from the predicate, not from a count —
+      // unlike #440's chunk loop, whose unordered LIMIT kept re-selecting
+      // rows it had already handled and exited early at 316,805 of 317,000.
+      const candidates = typed
+        .select({ id: entityRecords.id })
+        .from(entityRecords)
+        .where(
+          and(
+            eq(entityRecords.connectorEntityId, connectorEntityId),
+            lt(entityRecords.syncedAt, watermarkMs),
+            this.notDeleted()
+          )
         )
-      )
-      .returning({ id: entityRecords.id });
+        .limit(chunkSize);
+
+      const result = (await typed
+        .update(this.table)
+        .set({ deleted: now, deletedBy } as never)
+        .where(inArray(entityRecords.id, candidates))
+        .returning({ id: entityRecords.id })) as Array<{ id: string }>;
+
+      if (result.length === 0) break;
+      for (const r of result) reaped.push(r.id);
+      // A short chunk means the candidate set is exhausted; no extra probe.
+      if (result.length < chunkSize) break;
+    }
+
     await invalidateCounts([connectorEntityId]);
-    return (result as Array<{ id: string }>).map((r) => r.id);
+    return reaped;
   }
 
   /**
