@@ -25,6 +25,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "jsonc-parser": "^2.3.1",
     "@astrojs/check": "^0.9.10",
     "@eslint/js": "^9.39.3",
     "@jest/globals": "^29.7.0",
