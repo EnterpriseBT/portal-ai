@@ -151,8 +151,17 @@ Pre-existing: generation `d22d08cf`, from before this branch, carries the same t
 
 ## Sign-off
 
-- [ ] Every section above verified (or explicitly waived with a reason)
-- [ ] ______ (date) — ______ (name) — confirmed against my own running stack
+- [x] Every section above verified (or explicitly waived with a reason) — §1–§5 verified, §6 deferred behind #460 with its reason in-section
+- [x] 2026-08-25 — Ben Turner — confirmed against my own running stack
+
+  Recorded by the agent at Ben's explicit direction ("confirm successful smoke test"). Two items knowingly accepted as open at sign-off:
+
+  - **§6** (a killed worker records why) — deferred, not waived. Killing a worker mid-sync would interleave with #460's reap behaviour and prove nothing clean about this branch. To be run once #460 is fixed.
+  - **#460** — the silent data loss the walk uncovered. Pre-existing and independently filed; this branch neither causes nor fixes it, but it removes the accidental retry that was masking it, which is why #460 is being taken next rather than queued behind the rest of the epic.
+
+  A follow-up re-sync confirmed §5's **negative** case, which the walk had not covered: with the wide table restored, `mirrorDegraded` was absent and the run completed in 260 s with 397,960 live rows in a single generation and a single watermark. That run also did **not** reproduce #460, which is a second data point for its mechanism — the trigger is a long reap phase blocking BullMQ's lock renewal, not the dataset itself.
+
+  Known residue, deliberately left: 397,960 orphaned rows in `er__dee94e06…` pointing at tombstoned records, created by §5's rename experiment rather than by any defect. #442's retention purge hard-deletes those tombstones after the 30-day window and the FK cascade takes the wide rows with them — left in place as a live demonstration that the purge closes exactly this loop.
 
 ## Out of scope
 
