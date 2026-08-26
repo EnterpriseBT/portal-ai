@@ -63,6 +63,10 @@ Extend `Repository<TTable, TSelect, TInsert>`. Base provides: `findById`, `findM
 
 Tombstones count toward `reltuples`, so they raise the table's own autoanalyze threshold and leave large writes running on stale statistics. A table that soft-deletes at volume needs (a) a purge — a repeatable job on the `maintenance` queue, batch-drain loop, delete by `IN (<subquery>)` so ids stay server-side; and (b) an index on `deleted` **partial on `deleted IS NOT NULL`**, since every other index excludes exactly the rows a purge reads. Without it the drain gets slower as it runs (measured 1,664 ms → 0.089 ms on the tail batch). Classify tombstones from data you already have — a `deleted_reason` column cannot be backfilled; #442 splits on whether the row's *parent* is also deleted. Reference: `entity-record-retention-purge.processor.ts`.
 
+## Async job state (#441)
+
+Terminal status reflects whether the **work** succeeded. A failed attempt is **not** terminal while BullMQ holds retry budget — the worker writes the row then rethrows, so an unconditional `failed` releases the entity lock on a job that is about to write again (`statusForFailedAttempt` in `jobs.worker.ts`; `pending` while `attemptsMade + 1 < opts.attempts`). `UnrecoverableError` is exempt — stall exhaustion voids the budget rather than consuming an attempt. A sync whose records landed but whose best-effort mirror cascade failed reports `completed` with `mirrorDegraded: true` on the result, not `failed`. Guard best-effort side tasks in the repository, not per-caller, and surface the degradation on a rendered field. Clear a stale error with an explicit `null` (Drizzle drops `undefined` from a `SET`). `worker.on("failed")` records deaths that skip the in-band catch, and must be idempotent because it fires for handled failures too.
+
 ## Domain Models (packages/core)
 
 Layered: Zod schema (`CoreObjectSchema.extend`) → model class (`BaseModelClass<T>`) → factory (`ModelFactory<T, M>`). Reference: `user.model.ts`.

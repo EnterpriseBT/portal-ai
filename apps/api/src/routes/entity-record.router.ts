@@ -1357,7 +1357,7 @@ entityRecordRouter.delete(
           tx
         );
         await EntityRecordCountCache.invalidate(connectorEntityId);
-        await DbService.repository.wideTable.softDeleteByEntityRecordIds(
+        await DbService.repository.wideTable.deleteByEntityRecordIds(
           connectorEntityId,
           [recordId],
           tx
@@ -1479,7 +1479,7 @@ entityRecordRouter.delete(
           userId,
           tx
         );
-        await DbService.repository.wideTable.softDeleteByEntityRecordIds(
+        await DbService.repository.wideTable.deleteByEntityRecordIds(
           connectorEntityId,
           ids,
           tx

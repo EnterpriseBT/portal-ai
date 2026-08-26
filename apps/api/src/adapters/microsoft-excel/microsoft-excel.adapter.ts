@@ -151,6 +151,9 @@ export const microsoftExcelAdapter: ConnectorAdapter = {
     //    on `entity_records` and hard-delete the matching `er__<id>`
     //    rows so analytic SELECTs no longer see them.
     let deleted = 0;
+    // #441/#456: sticky across entities — one stale mirror makes the run's
+    // mirror stale.
+    let mirrorDegraded = false;
     for (const connectorEntityId of commitResult.connectorEntityIds) {
       const reaped =
         await DbService.repository.entityRecords.softDeleteBeforeWatermark(
@@ -158,11 +161,15 @@ export const microsoftExcelAdapter: ConnectorAdapter = {
           runStartedAt,
           userId
         );
+      // Best-effort (#441/#456): a failed mirror cascade must not fail a sync
+      // whose records already landed.
       if (reaped.length > 0) {
-        await DbService.repository.wideTable.softDeleteByEntityRecordIds(
-          connectorEntityId,
-          reaped
-        );
+        const cascade =
+          await DbService.repository.wideTable.deleteByEntityRecordIdsBestEffort(
+            connectorEntityId,
+            reaped
+          );
+        if (cascade.degraded) mirrorDegraded = true;
       }
       deleted += reaped.length;
     }
@@ -193,6 +200,7 @@ export const microsoftExcelAdapter: ConnectorAdapter = {
         unchanged: commitResult.recordCounts.unchanged,
         deleted,
       },
+      ...(mirrorDegraded ? { mirrorDegraded: true as const } : {}),
     };
   },
 

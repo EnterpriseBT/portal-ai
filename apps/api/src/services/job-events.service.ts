@@ -65,8 +65,22 @@ export class JobEventsService {
     status: JobStatus,
     patch: Partial<{
       progress: number;
-      error: string;
+      /**
+       * `null` **clears** a stale error; omitting the key leaves the column
+       * untouched. The distinction is load-bearing (#441): Drizzle drops
+       * `undefined` from a `SET`, so a retry that meant to clear the previous
+       * attempt's message silently kept it — which is how a row came to read
+       * `status=active, progress=88, error="Fetch failed: fetch failed"`
+       * while attempt 2 was running fine.
+       */
+      error: string | null;
       result: Record<string, unknown>;
+      /**
+       * Which attempt this is, 1-based (#441). Nothing could write this
+       * before, so `jobs.attempts` sat at 0 through every retry and the DB
+       * held no record that a job had been retried at all.
+       */
+      attempts: number;
     }> = {}
   ): Promise<void> {
     const now = SystemUtilities.utc.now().getTime();

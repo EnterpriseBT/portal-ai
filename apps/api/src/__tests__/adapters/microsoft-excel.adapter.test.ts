@@ -17,10 +17,12 @@ const softDeleteBeforeWatermarkMock =
       userId: string
     ) => Promise<string[]>
   >();
-const wideTableSoftDeleteMock =
-  jest.fn<
-    (connectorEntityId: string, ids: ReadonlyArray<string>) => Promise<void>
-  >();
+const wideTableSoftDeleteMock = jest.fn<
+  (
+    connectorEntityId: string,
+    ids: ReadonlyArray<string>
+  ) => Promise<{ degraded: boolean }>
+>(async () => ({ degraded: false }));
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -33,7 +35,10 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
         softDeleteBeforeWatermark: softDeleteBeforeWatermarkMock,
       },
       wideTable: {
-        softDeleteByEntityRecordIds: wideTableSoftDeleteMock,
+        // #441/#456: the adapter's reap cascade is best-effort now, so the
+        // mock exposes the wrapper the adapter actually calls. Resolving
+        // `degraded: false` is the clean-run contract.
+        deleteByEntityRecordIdsBestEffort: wideTableSoftDeleteMock,
       },
     },
   },
@@ -111,7 +116,10 @@ beforeEach(() => {
   updateInstanceMock.mockReset();
   softDeleteBeforeWatermarkMock.mockReset();
   wideTableSoftDeleteMock.mockReset();
-  wideTableSoftDeleteMock.mockResolvedValue(undefined);
+  // #441/#456: the best-effort cascade resolves `{degraded}`, so the reset has
+  // to restore that shape — `undefined` made the adapter read `.degraded` off
+  // nothing, which is a mock artefact rather than a real failure mode.
+  wideTableSoftDeleteMock.mockResolvedValue({ degraded: false });
   fetchWorkbookForSyncMock.mockReset();
   commitMock.mockReset();
   assertSyncEligibleIdentityMock.mockReset();

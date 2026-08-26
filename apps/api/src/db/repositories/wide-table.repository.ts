@@ -28,6 +28,9 @@ import {
   type GeometryAuditRow,
 } from "../../services/geometry-audit.service.js";
 import { ApiCode } from "../../constants/api-codes.constants.js";
+import { createLogger } from "../../utils/logger.util.js";
+
+const logger = createLogger({ module: "wide-table-repository" });
 
 /**
  * Outcome of a wide-table upsert (#316). `repaired` counts rows whose geometry
@@ -169,7 +172,7 @@ export class WideTableRepository {
    * is not preserved — Postgres decides.
    *
    * Chunked at `WIDE_TABLE_CHUNK_SIZE` for the same reason as
-   * `softDeleteByEntityRecordIds` (#436). Every chunk's rows are
+   * `deleteByEntityRecordIds` (#436). Every chunk's rows are
    * accumulated before returning, so the caller still sees one complete
    * result set — a partial read would be wrong, not merely slower.
    */
@@ -619,7 +622,59 @@ export class WideTableRepository {
     return missing;
   }
 
-  async softDeleteByEntityRecordIds(
+  /**
+   * Best-effort reap cascade (#441 / #456) — delete the wide rows, and report
+   * rather than throw if that cannot be done.
+   *
+   * Every other wide-table write on the sync path is already best-effort:
+   * `mirrorBatchToWideTable` and the missing-row probe both log and continue,
+   * leaving the `entity_records` rows intact for the next reconcile. The reap
+   * cascade was the one operation that could still fail a sync — and it did,
+   * on a run that had already written all 397,960 of its records. A sync whose
+   * data landed has not failed.
+   *
+   * `degraded: true` is the caller's signal to surface the staleness on its
+   * result rather than swallow it: the wide table now holds rows pointing at
+   * deleted records, which is exactly the unbounded growth #327 exists to
+   * prevent, so it must not become invisible.
+   *
+   * **Only batch paths should use this.** The request paths in
+   * `entity-record.router.ts` keep the strict method below: a request can
+   * report failure honestly to a caller who can retry, where a sync that has
+   * already committed its rows cannot un-write them.
+   */
+  async deleteByEntityRecordIdsBestEffort(
+    connectorEntityId: string,
+    ids: ReadonlyArray<string>,
+    client: DbClient = db
+  ): Promise<{ degraded: boolean }> {
+    if (ids.length === 0) return { degraded: false };
+    try {
+      await this.deleteByEntityRecordIds(connectorEntityId, ids, client);
+      return { degraded: false };
+    } catch (err) {
+      logger.error(
+        {
+          event: "wide-table.reap-cascade-failed",
+          connectorEntityId,
+          idCount: ids.length,
+          cause: err instanceof Error ? err.message : String(err),
+        },
+        "Reap cascade failed — entity_records rows are already deleted, so the wide table now holds rows pointing at them until the next reconcile"
+      );
+      return { degraded: true };
+    }
+  }
+
+  /**
+   * Hard-delete the wide rows for the given entity-record ids, chunked (#436).
+   *
+   * Named `delete`, not `softDelete`: it issues `DELETE FROM`. It was called
+   * `softDeleteByEntityRecordIds` and that cost real time during #435-#442 —
+   * it is why the wide table was believed to carry tombstones it never had.
+   * Throws on failure; batch callers wanting degradation use the wrapper above.
+   */
+  async deleteByEntityRecordIds(
     connectorEntityId: string,
     ids: ReadonlyArray<string>,
     client: DbClient = db
