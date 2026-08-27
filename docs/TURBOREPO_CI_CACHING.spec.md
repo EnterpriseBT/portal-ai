@@ -58,7 +58,7 @@ Three additions and one flip, against the current file (nine tasks, no global ke
   "tasks": {
     "test:integration": {
       "dependsOn": ["^build"],
-      "outputs": ["coverage-integration/**"],
+      // `outputs` REMOVED — see note below
       "cache": true,                              // WAS false
       "env": ["INTEGRATION_TEST_DATABASE_URL", "REDIS_URL"]   // unchanged
     }
@@ -67,6 +67,8 @@ Three additions and one flip, against the current file (nine tasks, no global ke
 ```
 
 `envMode` stays at its default (`strict`) — unchanged and not declared.
+
+**`outputs` removed from both test tasks.** `test:unit` and `test:integration` run `jest` *without* `--coverage`, so the configured `coverageDirectory` is never written and turbo warns `no output files found` on every cache miss. With `cache: false` that was invisible; the moment `test:integration` becomes cacheable it warns on every miss. A test task's cacheable result is its **log and exit status**, which turbo stores regardless of `outputs`. `test:unit`'s declaration was equally wrong and pre-existing — fixed in the same slice, because leaving it would emit a CI warning a reader would attribute to this ticket. Re-add the glob only if a script starts passing `--coverage`.
 
 **Deliberately NOT added:** `inputs` for `apps/api/drizzle/**`. Turbo's default inputs already cover every tracked file inside a package, and the migrations live at `apps/api/drizzle/`, so they are hashed today. Declaring an explicit `inputs` array would *narrow* the default and is the wrong direction.
 

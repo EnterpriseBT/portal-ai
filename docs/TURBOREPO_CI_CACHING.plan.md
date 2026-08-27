@@ -143,7 +143,8 @@ The biggest remaining win (~6 min, the most expensive job) and the highest risk 
 
 **Files**
 
-- Edit: `turbo.json` — `test:integration.cache: false` → `true`. Nothing else; `globalDependencies` already landed in slice 2 and the default inputs already cover `apps/api/drizzle/`.
+- Edit: `turbo.json` — `test:integration.cache: false` → `true`; `globalDependencies` already landed in slice 2 and the default inputs already cover `apps/api/drizzle/`.
+- Edit: `turbo.json` — also removes the false `outputs` globs on **both** `test:unit` and `test:integration`. Neither script passes `--coverage`, so the coverage directory is never written; `cache: false` hid the resulting `no output files found` warning on `test:integration`, and enabling the cache surfaces it on every miss.
 
 **Steps**
 
