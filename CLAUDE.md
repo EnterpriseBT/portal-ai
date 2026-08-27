@@ -42,6 +42,22 @@ The suites do **not** re-run when a PR merges. `main` requires branches to be up
 
 A push to a branch cancels that branch's in-flight run, and a docs-only push skips the integration suite while still reporting its check — filtering happens *inside* the job, never via `paths-ignore`, because a required check that never runs never reports and GitHub blocks the PR forever waiting for it.
 
+#### Turborepo remote caching (#454)
+
+Every turbo invocation in CI reads and writes a shared **Vercel Remote Cache**, so a suite skips work an earlier run already did. Measured on the implementing branch: Static Checks 3.8m → 1.6m, Unit Tests 5–7m → 1.1m, Integration Tests 6.4m → 1.5m, with the remaining time dominated by `npm ci` rather than by builds.
+
+The wiring is **guarded, not documented-and-hoped**: `npm run lint:ci-cache` (`scripts/check-ci-cache.mjs`, run in `unit-test.yml`) fails the build on five rules, and self-tests those rules against embedded fixtures before checking the real tree. It exists because every failure mode here is silent:
+
+- **Credentials (rules 1–2).** A workflow that runs turbo carries `TURBO_TOKEN` + `TURBO_TEAM` + `TURBO_REMOTE_CACHE_SIGNATURE_KEY` in scope, and a `workflow_call` site passes every secret the callee declares. **Without the token turbo caches nothing and still reports success** — there is no error to notice, and an unpassed secret is simply empty inside a reusable workflow.
+- **Required-check names and concurrency literals (rules 3–4).** Pre-existing invariants that previously lived only in comments.
+- **`apps/site` stays uncached (rule 5).** Its build bakes live prices into static HTML, and its env vars are `passThroughEnv` — they reach the build but are *deliberately* absent from the task hash. Flipping `cache: true` there would let a prod deploy restore dev's artifact, with nothing to indicate it happened.
+
+Two properties worth internalising: the policy is **fail-open on cache availability, fail-closed on cache integrity** (artifacts are HMAC-signed via `remoteCache.signature`; an unreachable cache just runs the work), and **a cache hit can never turn a red check green** — a failing task is never written to the cache at all. `apps/web#build` misses on every new commit by design, because the commit SHA reaches its hash through `VITE_APP_SHA`.
+
+`globalDependencies` includes `docker-compose.yml` (the test services' image tags live there), so editing it — including for devcontainer reasons — invalidates every cached task. That is a performance event, not a correctness one.
+
+**Developer machines do not write to this cache.** `turbo` is on the devcontainer PATH as a symlink to `node_modules/.bin/turbo` (never `npm install -g`, since a different CLI version computes different hashes), and the container is not linked to the remote cache — see `docs/LOCAL_DEVELOPMENT.md`.
+
 ### API Database Scripts (run from `apps/api/`)
 
 ```bash

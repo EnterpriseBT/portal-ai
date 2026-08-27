@@ -47,5 +47,7 @@ jobs:
       app-url: https://app-dev.portalsai.io
       portalops-env: app-dev
     secrets:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
       aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
       hosted-zone-id: ${{ secrets.DEV_HOSTED_ZONE_ID }}

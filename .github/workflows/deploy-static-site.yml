@@ -69,6 +69,12 @@ on:
         type: string
         default: ""
     secrets:
+      # Optional so a caller that predates the cache still works; rule 2 of
+      # lint:ci-cache is what actually requires callers to pass them (#454).
+      TURBO_TOKEN:
+        required: false
+      TURBO_REMOTE_CACHE_SIGNATURE_KEY:
+        required: false
       aws-role-arn:
         required: true
       hosted-zone-id:
@@ -151,6 +157,11 @@ jobs:
           echo "sales=$(get "$prefix/sales-email")" >> "$GITHUB_OUTPUT"
           echo "admin=$(get "$prefix/admin-email")" >> "$GITHUB_OUTPUT"
 
+      # Turborepo remote cache (#454). apps/site#build is deliberately UNCACHED
+      # (apps/site/turbo.json — its output depends on a live site-config fetch),
+      # so this buys nothing for the site build itself. It is here so this job's
+      # DEPENDENCY builds (@portalai/core) hit the cache instead of rebuilding
+      # from cold. Do not "fix" the apparent contradiction by caching the site.
       - name: Build site
         env:
           SITE_URL: ${{ inputs.site-url }}
@@ -160,6 +171,9 @@ jobs:
           SUPPORT_EMAIL: ${{ steps.contact.outputs.support }}
           SALES_EMAIL: ${{ steps.contact.outputs.sales }}
           ADMIN_EMAIL: ${{ steps.contact.outputs.admin }}
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+          TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
         run: npx turbo run build --filter=@portalai/site
 
       # Belt and braces over the build's own check: if the fixture ever

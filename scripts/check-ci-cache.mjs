@@ -54,20 +54,15 @@ const REQUIRED_CHECK_JOB_NAMES = {
 const CACHE_ENV_VARS = ["TURBO_TOKEN", "TURBO_TEAM", "TURBO_REMOTE_CACHE_SIGNATURE_KEY"];
 
 /**
- * Workflows that run turbo but have NOT opted into the remote cache yet.
+ * Workflows that run turbo but have NOT opted into the remote cache.
  *
- * This is a shrinking list, not a permanent exemption: the deploy workflows opt
- * in at slice 6 of #454, at which point this set is emptied and rule 1 covers
- * every turbo invocation in the repo unconditionally. It exists so rule 1 can
- * land with the suites (slice 4) without the deploy workflows making the gate
- * red at that slice boundary — an exemption that is listed and dated beats a
- * rule that only checks a hardcoded subset, because the listing is visible.
+ * EMPTY, and meant to stay that way. It briefly held the three deploy
+ * workflows so rule 1 could land with the suites (#454 slice 4) without making
+ * the gate red at that boundary; slice 6 opted them in and emptied it. Adding a
+ * name here silently gives up caching for that workflow, so treat it as a
+ * last resort with a dated reason, not a convenient escape hatch.
  */
-const PENDING_CACHE_OPT_IN = new Set([
-  "deploy-dev.yml",
-  "deploy-prod.yml",
-  "deploy-static-site.yml",
-]);
+const PENDING_CACHE_OPT_IN = new Set([]);
 
 /** Env keys declared on a workflow/job/step, or [] when absent. */
 function envKeys(env) {
