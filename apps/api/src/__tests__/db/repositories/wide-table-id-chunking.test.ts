@@ -9,10 +9,10 @@
  * `WIDE_TABLE_CHUNK_SIZE`; three sibling builders never got it.
  *
  * On 2026-08-22 a REST sync reaped 317,000 rows and handed them straight to
- * `deleteByEntityRecordIds`. It raised `RangeError: Maximum call stack
- * size exceeded` *after* the `entity_records` reap had committed, leaving
- * 317,000 wide rows pointing at soft-deleted records — the unbounded growth
- * #327 exists to prevent.
+ * the id-list mark (`markDeletedByEntityRecordIds`, #450 — then a DELETE). It
+ * raised `RangeError: Maximum call stack size exceeded` *after* the
+ * `entity_records` reap had committed, leaving 317,000 wide rows pointing at
+ * soft-deleted records — the unbounded growth #327 exists to prevent.
  *
  * The overflow happens **client-side**, while the statement is serialised —
  * not when `sql.join` is called. The fake client below therefore runs the
@@ -80,47 +80,56 @@ function repo() {
 const ids = (n: number) => Array.from({ length: n }, (_, i) => `id-${i}`);
 const ENTITY = "11111111-2222-3333-4444-555555555555";
 
-describe("deleteByEntityRecordIds — chunking (#436)", () => {
+const TS = 1_700_000_000_000;
+
+describe("markDeletedByEntityRecordIds — chunking (#436, #450)", () => {
   it("does not throw on the 317k array that overflowed the stack in production", async () => {
     const { client, statements } = fakeClient();
     await expect(
-      repo().deleteByEntityRecordIds(ENTITY, ids(317_000), client)
+      repo().markDeletedByEntityRecordIds(ENTITY, ids(317_000), TS, client)
     ).resolves.toBeUndefined();
     expect(statements.length).toBe(Math.ceil(317_000 / CHUNK));
     // Every statement stayed shallow enough to serialise, and none carried
-    // more than one chunk's worth of bound parameters.
+    // more than one chunk's worth of ids. The mark UPDATE binds one extra
+    // scalar (the `deletedAt` timestamp), so the ceiling is CHUNK + 1 — the
+    // id list, which is what recursed, never exceeds CHUNK.
     expect(Math.max(...statements.map((s) => s.params))).toBeLessThanOrEqual(
-      CHUNK
+      CHUNK + 1
     );
   });
 
   it("issues ceil(n / CHUNK) statements", async () => {
     const { client, statements } = fakeClient();
-    await repo().deleteByEntityRecordIds(ENTITY, ids(50_000), client);
+    await repo().markDeletedByEntityRecordIds(ENTITY, ids(50_000), TS, client);
     expect(statements.length).toBe(100);
   });
 
   it("issues exactly one statement at the chunk boundary", async () => {
     const { client, statements } = fakeClient();
-    await repo().deleteByEntityRecordIds(ENTITY, ids(CHUNK), client);
+    await repo().markDeletedByEntityRecordIds(ENTITY, ids(CHUNK), TS, client);
     expect(statements.length).toBe(1);
   });
 
   it("issues two statements one past the boundary", async () => {
     const { client, statements } = fakeClient();
-    await repo().deleteByEntityRecordIds(ENTITY, ids(CHUNK + 1), client);
+    await repo().markDeletedByEntityRecordIds(
+      ENTITY,
+      ids(CHUNK + 1),
+      TS,
+      client
+    );
     expect(statements.length).toBe(2);
   });
 
   it("still issues a single statement for a small list (scope of the change)", async () => {
     const { client, statements } = fakeClient();
-    await repo().deleteByEntityRecordIds(ENTITY, ids(3), client);
+    await repo().markDeletedByEntityRecordIds(ENTITY, ids(3), TS, client);
     expect(statements.length).toBe(1);
   });
 
   it("issues nothing for an empty list", async () => {
     const { client, statements } = fakeClient();
-    await repo().deleteByEntityRecordIds(ENTITY, [], client);
+    await repo().markDeletedByEntityRecordIds(ENTITY, [], TS, client);
     expect(statements.length).toBe(0);
   });
 });

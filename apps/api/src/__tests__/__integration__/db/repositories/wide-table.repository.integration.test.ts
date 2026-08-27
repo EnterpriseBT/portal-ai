@@ -3,8 +3,9 @@
  *
  * Each test reconciles a connector entity (the only DDL path) so the
  * `er__<id>` table is created with the expected columns, then exercises
- * the new write surface (`upsertMany`, `deleteByEntityRecordIds`,
- * `selectByEntityRecordIds`) and asserts on what landed on disk.
+ * the new write surface (`upsertMany`, `markDeletedByEntityRecordIds`,
+ * `markDeletedFromRecords`, `selectByEntityRecordIds`) and asserts on what
+ * landed on disk.
  *
  * `entity_records` rows are inserted by hand because the wide-table FK
  * (`entity_record_id REFERENCES entity_records(id) ON DELETE CASCADE`)
@@ -471,12 +472,22 @@ describe("WideTableRepository integration tests", () => {
     expect(rows[0]!.c_stage).toBe(stageDate.toISOString());
   });
 
-  // ── Case 6 — deleteByEntityRecordIds removes wide rows ───────
+  /** Read the raw `deleted` column for one wide row (selectAll doesn't project it). */
+  async function readDeleted(recordId: string): Promise<number | null> {
+    const rows = (await db.execute(
+      sql`SELECT "deleted" FROM ${sql.raw(`"er__${entityId}"`)} WHERE "entity_record_id" = ${recordId}`
+    )) as unknown as Array<{ deleted: number | string | null }>;
+    // postgres-js returns bigint columns as strings.
+    const v = rows[0]?.deleted;
+    return v == null ? null : Number(v);
+  }
 
-  it("deleteByEntityRecordIds hard-deletes wide rows", async () => {
-    const r1 = generateId();
-    const r2 = generateId();
-    await insertEntityRecord(r1, "src-1");
+  async function seedTwoWideRows(
+    r1: string,
+    r2: string,
+    r1Extra: Partial<Record<string, unknown>> = {}
+  ) {
+    await insertEntityRecord(r1, "src-1", r1Extra);
     await insertEntityRecord(r2, "src-2");
     const now = Date.now();
     await repo.upsertMany(entityId, [
@@ -495,21 +506,78 @@ describe("WideTableRepository integration tests", () => {
         source_id: "src-2",
       },
     ]);
+  }
 
-    await repo.deleteByEntityRecordIds(entityId, [r1]);
+  // ── Case 6 — markDeletedByEntityRecordIds marks (persists) rows (#450) ──
+
+  it("markDeletedByEntityRecordIds marks the row deleted without removing it", async () => {
+    const r1 = generateId();
+    const r2 = generateId();
+    await seedTwoWideRows(r1, r2);
+
+    const ts = Date.now();
+    await repo.markDeletedByEntityRecordIds(entityId, [r1], ts);
+
+    // Row persists (both still on disk) — a tombstone, not a hard delete.
     const rows = (await repo.selectAll(entityId, db)) as Array<
       Record<string, unknown>
     >;
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.entity_record_id).toBe(r2);
+    expect(rows).toHaveLength(2);
+    // r1 carries the deleted timestamp; r2 stays live.
+    expect(await readDeleted(r1)).toBe(ts);
+    expect(await readDeleted(r2)).toBeNull();
   });
 
-  // ── Case 7 — deleteByEntityRecordIds handles missing ids ─────
+  // ── Case 7 — markDeletedByEntityRecordIds handles missing ids ──
 
-  it("deleteByEntityRecordIds is a no-op for missing ids", async () => {
+  it("markDeletedByEntityRecordIds is a no-op for missing ids", async () => {
     await expect(
-      repo.deleteByEntityRecordIds(entityId, ["does-not-exist"])
+      repo.markDeletedByEntityRecordIds(
+        entityId,
+        ["does-not-exist"],
+        Date.now()
+      )
     ).resolves.toBeUndefined();
+  });
+
+  // ── Case 6b — upsertMany clears deleted on resurrection (#450) ──
+
+  it("upsertMany clears deleted when a marked source_id is re-upserted", async () => {
+    const r1 = generateId();
+    const r2 = generateId();
+    await seedTwoWideRows(r1, r2);
+    await repo.markDeletedByEntityRecordIds(entityId, [r1], Date.now());
+    expect(await readDeleted(r1)).not.toBeNull();
+
+    // Resurrection: the same PK is re-upserted (findBySourceIds reuses it).
+    await repo.upsertMany(entityId, [
+      {
+        entity_record_id: r1,
+        organization_id: orgId,
+        synced_at: Date.now(),
+        is_valid: true,
+        source_id: "src-1",
+      },
+    ]);
+
+    expect(await readDeleted(r1)).toBeNull();
+  });
+
+  // ── Case 6c — markDeletedFromRecords self-heals orphans (#450) ──
+
+  it("markDeletedFromRecords marks wide rows whose record is soft-deleted", async () => {
+    const r1 = generateId();
+    const r2 = generateId();
+    // r1's entity_record is soft-deleted, but its wide row is still unmarked
+    // (the orphan state a failed best-effort cascade would leave).
+    await seedTwoWideRows(r1, r2, { deleted: Date.now() });
+    expect(await readDeleted(r1)).toBeNull();
+
+    const marked = await repo.markDeletedFromRecords(entityId, db);
+
+    expect(marked).toBe(1);
+    expect(await readDeleted(r1)).not.toBeNull();
+    expect(await readDeleted(r2)).toBeNull();
   });
 
   // ── Case 8 — selectByEntityRecordIds returns the requested set ───

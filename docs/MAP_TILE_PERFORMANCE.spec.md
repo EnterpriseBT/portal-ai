@@ -5,7 +5,7 @@ Pins the contract for #450 cause 1: carry soft-delete state on the wide table so
 ## Key decisions (flag for review)
 
 1. **`deleted` column on the wide table, atomic (Decision 1A).** A `deleted bigint` metadata column on every `er__<id>` table, set in the **same transaction** as the `entity_records` soft-delete, mirroring `entity_records.deleted`. The session view + `fetchProjectedRows` then filter `w.deleted IS NULL` locally — no join.
-2. **The atomic mark eliminates the best-effort orphan class (#441/#456).** Today the wide row is *physically deleted* in a separate, failable step after the record soft-delete, so a failed cascade strands orphaned wide rows the join then hides. Replacing DELETE with an `UPDATE … SET deleted = <ts>` done **server-side by subquery, in the record-soft-delete transaction**, means record and wide state commit together — no orphan can exist, and no ids marshal through Node (sidesteps the #436 `sql.join` overflow by construction, per #442's pattern).
+2. **The mark is self-healing on the reap path; atomic on the small paths (refined during slice 2).** The sync reap can soft-delete 100Ks of rows, and #440/#441/#456 deliberately split that from the cascade to avoid a giant transaction — so the reap does **not** wrap the wide mark in the soft-delete tx. Instead the reap runs a **server-side, chunked, self-healing** UPDATE: `UPDATE er__<id> w SET deleted = er.deleted FROM entity_records er WHERE er.id = w.entity_record_id AND er.deleted IS NOT NULL AND w.deleted IS NULL`. It marks *every* unmarked orphan each run (not just this pass's ids), so a failure converges on the next reap; no ids marshal through Node. Residual window: sub-second within the reap flow (vs. today's "until next reconcile"). The **small, bounded delete paths** (UI delete, layout) do wrap record-soft-delete + wide mark in one transaction (truly atomic — zero window). Either way the #441/#456 orphan class is gone: a present wide row whose record is deleted is always reconciled to `deleted` set.
 3. **Cause 2 stays conditional; cause 3 is split (#472).** Measure per-zoom after cause 1; add a work-bound only if a zoom is still red. Choropleth low-zoom treatment is #472.
 4. **Wide tombstones join the #442 retention purge.** Soft-deleted wide rows now persist, so the entity-record retention purge must also drain wide `deleted` rows.
 
@@ -32,12 +32,13 @@ Pins the contract for #450 cause 1: carry soft-delete state on the wide table so
 
 ### Soft-delete paths → atomic `deleted` mark
 - **`apps/api/src/db/repositories/wide-table.repository.ts`**:
-  - `deleteByEntityRecordIds` (`:677`) and `deleteByEntityRecordIdsBestEffort` (`:646`): change the chunked `DELETE` to `UPDATE <t> SET "deleted" = <ts> WHERE "entity_record_id" = ANY(<chunk>) AND "deleted" IS NULL`. Signature gains a `deletedAt: number` param (the record's `deleted` timestamp) so wide + record share one value.
-  - New `markDeletedByRecordSubquery(connectorEntityId, subquery, deletedAt, client)` — `UPDATE <t> SET deleted = <ts> WHERE entity_record_id IN (<record-id subquery>) AND deleted IS NULL`, ids never leaving Postgres (the reap path; #442 pattern).
-  - `upsertMany` (`:217`) / `updatePartial` (`:504`): a live upsert sets `deleted = NULL` (resurrection of a previously-deleted `source_id`), in the same statement as the row write.
-- **Callers converted from delete-to-mark, atomic with the record soft-delete** (same transaction):
-  - Reap: `rest-api.adapter.ts:514`, `google-sheets.adapter.ts:165`, `microsoft-excel.adapter.ts:168` — the watermark soft-delete + wide mark become one tx via `markDeletedByRecordSubquery`.
-  - UI delete: `entity-record.router.ts:1360,:1482` — wide mark in the same tx as the record soft-delete.
+  - `deleteByEntityRecordIds` (`:677`) → `markDeletedByEntityRecordIds(connectorEntityId, ids, deletedAt, client)`: chunked `UPDATE <t> SET "deleted" = <deletedAt> WHERE "entity_record_id" IN (<chunk>) AND "deleted" IS NULL`. Throws on failure (request paths). Used by the small, bounded delete paths inside their tx.
+  - New `markDeletedFromRecords(connectorEntityId, client)` — the **self-healing** reap mark: a chunked server-side `UPDATE <t> w SET deleted = er.deleted FROM entity_records er WHERE er.id = w.entity_record_id AND er.deleted IS NOT NULL AND w.deleted IS NULL` (loop until 0 rows), returning the marked count. Ids never leave Postgres; re-marks any prior orphan.
+  - `markDeletedFromRecordsBestEffort` — wraps the above, returns `{ degraded }` (the reap must not fail the sync; #441/#456 posture kept).
+  - `upsertMany` (`:217`) / `updatePartial` (`:504`): a live write sets `"deleted" = NULL` in the `ON CONFLICT DO UPDATE SET` (resurrection of a previously-marked `source_id`). Since `deleted` is not an inserted column, the SET is a literal `"deleted" = NULL`, added in the statement-cache builders (`wide-table-statement.cache.ts` `build` `:365` + `buildBulkInsertSql` `:282`).
+- **Callers:**
+  - Reap (best-effort, self-healing): `rest-api.adapter.ts:514`, `google-sheets.adapter.ts:165`, `microsoft-excel.adapter.ts:168` — replace `deleteByEntityRecordIdsBestEffort(entityId, reaped)` with `markDeletedFromRecordsBestEffort(entityId)`.
+  - UI delete (atomic, in the record-soft-delete tx): `entity-record.router.ts:1360,:1482` — `markDeletedByEntityRecordIds`.
   - Layout: `layout-plan-draft.service.ts:551`, `layout-plan-commit.service.ts:845`.
 
 ### Session view + read path — drop the join

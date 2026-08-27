@@ -18,11 +18,8 @@ const softDeleteBeforeWatermarkMock =
     ) => Promise<string[]>
   >();
 const wideTableSoftDeleteMock = jest.fn<
-  (
-    connectorEntityId: string,
-    ids: ReadonlyArray<string>
-  ) => Promise<{ degraded: boolean }>
->(async () => ({ degraded: false }));
+  (connectorEntityId: string) => Promise<{ degraded: boolean; marked: number }>
+>(async () => ({ degraded: false, marked: 0 }));
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -35,10 +32,10 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
         softDeleteBeforeWatermark: softDeleteBeforeWatermarkMock,
       },
       wideTable: {
-        // #441/#456: the adapter's reap cascade is best-effort now, so the
-        // mock exposes the wrapper the adapter actually calls. Resolving
-        // `degraded: false` is the clean-run contract.
-        deleteByEntityRecordIdsBestEffort: wideTableSoftDeleteMock,
+        // #441/#456/#450: the adapter's reap mark is best-effort + self-healing
+        // now (marks by entity, not by id list). Resolving `degraded: false` is
+        // the clean-run contract.
+        markDeletedFromRecordsBestEffort: wideTableSoftDeleteMock,
       },
     },
   },
@@ -119,7 +116,7 @@ beforeEach(() => {
   // #441/#456: the best-effort cascade resolves `{degraded}`, so the reset has
   // to restore that shape — `undefined` made the adapter read `.degraded` off
   // nothing, which is a mock artefact rather than a real failure mode.
-  wideTableSoftDeleteMock.mockResolvedValue({ degraded: false });
+  wideTableSoftDeleteMock.mockResolvedValue({ degraded: false, marked: 0 });
   fetchWorkbookForSyncMock.mockReset();
   commitMock.mockReset();
   assertSyncEligibleIdentityMock.mockReset();
@@ -235,13 +232,11 @@ describe("microsoftExcelAdapter.syncInstance", () => {
       deleted: 3,
     });
 
-    // Wide-table cascade fires per entity with the reaped ids.
+    // Wide-table reap mark fires per entity (self-healing: marks by entity,
+    // not by id list — #450).
     expect(wideTableSoftDeleteMock).toHaveBeenCalledTimes(2);
-    expect(wideTableSoftDeleteMock).toHaveBeenNthCalledWith(1, "ce-1", [
-      "r1",
-      "r2",
-    ]);
-    expect(wideTableSoftDeleteMock).toHaveBeenNthCalledWith(2, "ce-2", ["r3"]);
+    expect(wideTableSoftDeleteMock).toHaveBeenNthCalledWith(1, "ce-1");
+    expect(wideTableSoftDeleteMock).toHaveBeenNthCalledWith(2, "ce-2");
     expect(fetchWorkbookForSyncMock).toHaveBeenCalledWith(
       INSTANCE.id,
       INSTANCE.organizationId
