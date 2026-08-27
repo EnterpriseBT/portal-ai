@@ -143,6 +143,33 @@ describe("JobDetailView", () => {
     expect(screen.getByText("1 / 3")).toBeInTheDocument();
   });
 
+  it("should display lost executions when nonzero (#464)", () => {
+    const job = makeJob({ lostExecutions: 2 });
+    currentGetQuery = {
+      data: { job },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<GetQuery>;
+
+    render(<JobDetailView jobId="job-1" />);
+    expect(screen.getByText("Lost executions")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+  });
+
+  it("should not display lost executions when zero (#464)", () => {
+    const job = makeJob({ lostExecutions: 0 });
+    currentGetQuery = {
+      data: { job },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<GetQuery>;
+
+    render(<JobDetailView jobId="job-1" />);
+    expect(screen.queryByText("Lost executions")).not.toBeInTheDocument();
+  });
+
   it("should not show Cancel button for terminal jobs", () => {
     const job = makeJob({ status: "completed" });
     currentGetQuery = {

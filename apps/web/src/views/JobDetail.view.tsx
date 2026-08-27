@@ -109,6 +109,17 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                             label: "Attempts",
                             value: `${job.attempts} / ${job.maxAttempts}`,
                           },
+                          // Shown only when nonzero (#464): zero is the common
+                          // case, so a row that appears at all IS the signal
+                          // that an execution was killed and redone.
+                          ...(job.lostExecutions > 0
+                            ? [
+                                {
+                                  label: "Lost executions",
+                                  value: String(job.lostExecutions),
+                                },
+                              ]
+                            : []),
                         ]}
                       />
                     </PageHeader>
