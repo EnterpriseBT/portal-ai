@@ -66,19 +66,35 @@
       "dependsOn": [
         "^build"
       ],
-      "outputs": [
-        "coverage/**"
-      ],
+      // No `outputs`: these scripts run `jest` WITHOUT `--coverage`, so the
+      // coverageDirectory is never written and turbo warns "no output files
+      // found" on every cache miss (#454). A test task's cacheable result is
+      // its log and exit status, which turbo stores regardless. Re-add the
+      // coverage glob only if the script starts passing `--coverage`.
       "cache": true
     },
     "test:integration": {
       "dependsOn": [
         "^build"
       ],
-      "outputs": [
-        "coverage-integration/**"
-      ],
-      "cache": false,
+      // Cacheable as of #454 — the most expensive job in CI (~6m) and the one
+      // that most often re-runs against an unchanged tree.
+      //
+      // What makes this safe is that every input that can change the result is
+      // hashed: the package's own source and its drizzle/ migrations (turbo's
+      // default inputs), its dependencies (dependsOn ^build), the two env vars
+      // below, and — via globalDependencies — docker-compose.yml, which is
+      // where the postgres/redis image tags live. Change any of them and this
+      // misses and genuinely re-runs.
+      //
+      // Known limits, both accepted: a mutable image tag can move underneath a
+      // pinned tag string, and caching a pass means a FLAKY test stops
+      // re-rolling the dice for that exact input hash. Neither can turn a real
+      // failure green — a failing task is never written to the cache at all.
+      //
+      // Revert path if this ever misleads: set `cache` back to false. It is a
+      // one-line change with no other moving parts.
+      "cache": true,
       "env": [
         "INTEGRATION_TEST_DATABASE_URL",
         "REDIS_URL"
