@@ -189,6 +189,7 @@ describe("MapWidgetUI", () => {
           truncated: false,
           timedOut: false,
           aggregated: false,
+          failed: false,
         }}
       />
     );
@@ -204,6 +205,7 @@ describe("MapWidgetUI", () => {
           truncated: true,
           timedOut: false,
           aggregated: false,
+          failed: false,
         }}
       />
     );
@@ -217,10 +219,25 @@ describe("MapWidgetUI", () => {
           truncated: false,
           timedOut: true,
           aggregated: false,
+          failed: false,
         }}
       />
     );
     expect(screen.getByTestId("map-widget-tile-timeout")).toBeInTheDocument();
+
+    rerender(
+      <MapWidgetUI
+        {...tileProps}
+        tileStatus={{
+          simplified: false,
+          truncated: false,
+          timedOut: false,
+          aggregated: false,
+          failed: true,
+        }}
+      />
+    );
+    expect(screen.getByTestId("map-widget-tile-failed")).toBeInTheDocument();
   });
 
   it("truncated line tile reads as ranked ('most prominent'), not arbitrary (#337)", () => {
@@ -239,6 +256,7 @@ describe("MapWidgetUI", () => {
         truncated: true,
         timedOut: false,
         aggregated: false,
+        failed: false,
       },
     };
     // Line layer → "most prominent" copy.
@@ -266,6 +284,7 @@ describe("MapWidgetUI", () => {
           truncated: true, // even with truncated set …
           timedOut: false,
           aggregated: true, // … the aggregate notice wins
+          failed: false,
         }}
       />
     );

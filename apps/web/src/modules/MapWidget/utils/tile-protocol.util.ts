@@ -89,9 +89,10 @@ function releaseFetchSlot(): void {
 /**
  * The protocol handler (extracted for testing). Splits the context id from the
  * real path, attaches the Bearer token, reports tile status, and returns the
- * bytes. 204/304/errors return empty bytes (the notice — timeout etc. — is
- * already reported via `onStatus`). Concurrency is capped (#350) so a viewport
- * burst can't saturate the connection pool.
+ * bytes. 204/304 return empty bytes (a legitimately-empty tile); a failure
+ * (timeout/4xx/5xx) throws so MapLibre retries rather than caching it empty,
+ * with the notice already reported via `onStatus` (#449). Concurrency is capped
+ * (#350) so a viewport burst can't saturate the connection pool.
  */
 export async function fetchTile(
   url: string,
@@ -123,8 +124,18 @@ export async function fetchTile(
     });
     ctx?.onStatus(readTileStatus(res.status, res.headers));
 
-    if (!res.ok || res.status === 204 || res.status === 304) {
+    // 204/304 are legitimately empty — return empty bytes so MapLibre caches an
+    // (correctly) empty tile.
+    if (res.status === 204 || res.status === 304) {
       return { data: new ArrayBuffer(0) };
+    }
+    // A genuine failure (timeout, 5xx, 4xx) must NOT be returned as empty bytes:
+    // MapLibre would cache it as a valid empty tile and never retry, so the map
+    // stays blank with no recovery. Throwing errors the tile, which MapLibre
+    // retries on re-render (pan/zoom). The notice is already reported via
+    // onStatus above. (#449)
+    if (!res.ok) {
+      throw new Error(`Tile fetch failed (${res.status})`);
     }
     return { data: await res.arrayBuffer() };
   } finally {

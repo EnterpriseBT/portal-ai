@@ -350,6 +350,15 @@ export const MapWidgetUI: React.FC<MapWidgetUIProps> = ({
             A map tile timed out — pan or zoom to retry.
           </Typography>
         ) : null}
+        {tiles.failed ? (
+          <Typography
+            variant="caption"
+            color="error"
+            data-testid="map-widget-tile-failed"
+          >
+            A map tile failed to load — pan or zoom to retry.
+          </Typography>
+        ) : null}
         {tiles.simplified ? (
           <Typography
             variant="caption"
