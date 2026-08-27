@@ -7,7 +7,7 @@ Pins the contract for #450 cause 1: carry soft-delete state on the wide table so
 1. **`deleted` column on the wide table, atomic (Decision 1A).** A `deleted bigint` metadata column on every `er__<id>` table, set in the **same transaction** as the `entity_records` soft-delete, mirroring `entity_records.deleted`. The session view + `fetchProjectedRows` then filter `w.deleted IS NULL` locally — no join.
 2. **The mark is self-healing on the reap path; atomic on the small paths (refined during slice 2).** The sync reap can soft-delete 100Ks of rows, and #440/#441/#456 deliberately split that from the cascade to avoid a giant transaction — so the reap does **not** wrap the wide mark in the soft-delete tx. Instead the reap runs a **server-side, chunked, self-healing** UPDATE: `UPDATE er__<id> w SET deleted = er.deleted FROM entity_records er WHERE er.id = w.entity_record_id AND er.deleted IS NOT NULL AND w.deleted IS NULL`. It marks *every* unmarked orphan each run (not just this pass's ids), so a failure converges on the next reap; no ids marshal through Node. Residual window: sub-second within the reap flow (vs. today's "until next reconcile"). The **small, bounded delete paths** (UI delete, layout) do wrap record-soft-delete + wide mark in one transaction (truly atomic — zero window). Either way the #441/#456 orphan class is gone: a present wide row whose record is deleted is always reconciled to `deleted` set.
 3. **Cause 2 stays conditional; cause 3 is split (#472).** Measure per-zoom after cause 1; add a work-bound only if a zoom is still red. Choropleth low-zoom treatment is #472.
-4. **Wide tombstones join the #442 retention purge.** Soft-deleted wide rows now persist, so the entity-record retention purge must also drain wide `deleted` rows.
+4. **Wide tombstones are drained by the #442 purge via the FK cascade (refined in slice 4).** Soft-deleted wide rows now persist, but the wide table's `entity_record_id` FK is `ON DELETE CASCADE`, and the purge *hard-deletes* the parent `entity_records` tombstone — so the wide tombstone is removed with it, sharing one retention window. No separate wide-table purge or `deleted` index is needed.
 
 ## Scope
 
@@ -46,7 +46,7 @@ Pins the contract for #450 cause 1: carry soft-delete state on the wide table so
 - **`apps/api/src/db/repositories/wide-table.repository.ts:158-166`** (`fetchProjectedRows`): same — drop the join, filter `w."deleted" IS NULL`.
 
 ### Retention
-- Extend the entity-record retention purge (`entity-record-retention-purge.processor.ts`, per #442) to hard-delete wide rows where `deleted IS NOT NULL` past the window — by `IN (<subquery>)`, ids server-side.
+- **No new purge code.** The entity-record retention purge (`entity-record-retention-purge.processor.ts`, #442) hard-deletes `entity_records` tombstones; the wide table's `ON DELETE CASCADE` FK removes the wide tombstone with its parent, so both share one window. Slice 4 adds an integration guard (purge → cascade → wide row gone) and documents the mechanism in the processor; no wide `deleted` index (nothing scans it — the reap self-heal drives off `entity_records.deleted`, already indexed).
 
 ## Migration
 `apps/api/drizzle/00NN_wide-table-deleted-column.sql` — **hand-written** (wide tables are dynamic, not in the drizzle schema, so `db:generate` cannot emit this). A `DO $$` loop over `information_schema.tables WHERE table_name LIKE 'er\_\_%' ESCAPE '\'`:

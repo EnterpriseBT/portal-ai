@@ -42,6 +42,13 @@ export interface EntityRecordRetentionPurgeSummary {
  * Each drains independently, so a huge orphan backlog cannot starve the live
  * scope of its run.
  *
+ * #450 makes this the drain for wide-table tombstones too. Since #450 the wide
+ * row is soft-deleted in place (`er__<id>."deleted"`) rather than physically
+ * removed, so it persists until this purge hard-deletes its parent
+ * `entity_records` row — the wide table's `ON DELETE CASCADE` then removes the
+ * wide tombstone with it. No separate wide-table purge is needed; the two
+ * share one retention window by construction.
+ *
  * A pure DELETE loop — safe to double-run by construction, so scheduler
  * concurrency needs no guard beyond the maintenance worker's `concurrency: 1`.
  */

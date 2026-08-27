@@ -580,6 +580,43 @@ describe("WideTableRepository integration tests", () => {
     expect(await readDeleted(r2)).toBeNull();
   });
 
+  // ── Case 6d — retention purge cascade-drains wide tombstones (#450) ──
+
+  it("retention purge cascade-drains wide tombstones past the window", async () => {
+    const r1 = generateId();
+    // An entity_records tombstone deleted long ago (past any window).
+    await insertEntityRecord(r1, "src-1", { deleted: 1000, deletedBy: "test" });
+    await repo.upsertMany(entityId, [
+      {
+        entity_record_id: r1,
+        organization_id: orgId,
+        synced_at: Date.now(),
+        is_valid: true,
+        source_id: "src-1",
+      },
+    ]);
+    await repo.markDeletedByEntityRecordIds(entityId, [r1], 1000);
+    expect(await readDeleted(r1)).not.toBeNull();
+
+    // The #442 purge hard-deletes the entity_records tombstone; the wide
+    // table's ON DELETE CASCADE removes the wide tombstone with it — so wide
+    // tombstones are governed by the same retention window, no separate purge.
+    const { entityRecordsRepo } =
+      await import("../../../../db/repositories/entity-records.repository.js");
+    const purged = await entityRecordsRepo.purgeTombstonedBefore(
+      Date.now(),
+      100,
+      "live",
+      db
+    );
+    expect(purged).toBeGreaterThanOrEqual(1);
+
+    const rows = (await repo.selectAll(entityId, db)) as Array<
+      Record<string, unknown>
+    >;
+    expect(rows.find((row) => row.entity_record_id === r1)).toBeUndefined();
+  });
+
   // ── Case 8 — selectByEntityRecordIds returns the requested set ───
 
   it("selectByEntityRecordIds returns one row per requested id", async () => {
