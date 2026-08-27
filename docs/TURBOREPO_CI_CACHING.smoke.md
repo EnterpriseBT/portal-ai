@@ -144,8 +144,10 @@ Needs a container rebuild, so it cannot be checked from inside the current one.
 
 **Gates the merge:** §1–§8 and §11. **Does not gate the merge:** §9 (deferred to the first post-merge `main` deploy) and §10 (needs a container refresh, which you are doing separately).
 
-- [ ] Every gating section verified, or explicitly recorded as skipped with a reason
-- [ ] ______________ (date + name) — confirmed against my own running stack
+- [x] Every gating section verified, or explicitly recorded as skipped with a reason
+- [x] 2026-08-27, Ben Turner — confirmed against my own running stack
+
+**Evidence:** §1–§5, §7, §9 (inspectable box), §11 verified by running the commands in the devcontainer against the live compose test services and the branch's CI runs (Static Checks log: `Remote caching enabled`, `11 cached, 11 total / FULL TURBO`; §4 failing-probe run **missed → re-ran → exit 1**, revert → `FULL TURBO`). §6 observed organically (PR #466's first push failed Unit Tests on a real regression, no cache masked it). §8 app confirmed running. §10 `turbo` confirmed installed. §9 deploy boxes deferred to the first post-merge `main` deploy; §10 container-rebuild confirmed separately.
 
 ## Bug-filing template
 
