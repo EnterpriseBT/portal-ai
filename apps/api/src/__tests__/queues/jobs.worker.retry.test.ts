@@ -228,6 +228,24 @@ describe("jobs worker — retry-aware terminal state (#441)", () => {
     expect(String(call![2]?.error)).toMatch(/stalled/i);
   });
 
+  it("records a stall-limit failure with its plain reason, not the out-of-band wrapper (#468)", async () => {
+    // UnrecoverableError = BullMQ stall-limit exhaustion: the reason IS known
+    // and specific. The handler used to wrap it into the self-contradictory
+    // "Attempt ended without recording a reason (job stalled more than
+    // allowable limit)". It must record the reason verbatim instead.
+    build(async () => "ok");
+    mockFindById.mockResolvedValue({ id: "job-1", status: "active" });
+    const stalled = new UnrecoverableError(
+      "job stalled more than allowable limit"
+    );
+
+    await listeners.get("failed")!(job(0), stalled);
+
+    const patch = lastNonActive()![2];
+    expect(patch?.error).toBe("job stalled more than allowable limit");
+    expect(String(patch?.error)).not.toMatch(/without recording a reason/i);
+  });
+
   it("writes nothing when the row is already terminal", async () => {
     // The handler fires for every failure, including ones the catch just
     // recorded. Without the guard it overwrites a specific error with a
