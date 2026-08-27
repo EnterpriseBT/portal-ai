@@ -7,6 +7,7 @@ import {
   tileSimplifyTolerance,
   aggregationFromSpec,
   shouldAggregate,
+  mapTileError,
   type RenderTileDeps,
   type TileQueryResult,
 } from "../../services/portal-map-tile.service.js";
@@ -51,6 +52,38 @@ async function expectNotFound(p: Promise<unknown>) {
     code: ApiCode.MAP_TILE_NOT_FOUND,
   });
 }
+
+describe("mapTileError (#449)", () => {
+  it("maps a Drizzle-wrapped 57014 to a 504 MAP_TILE_TIMEOUT", () => {
+    // The real failure: Drizzle wraps the pg error, so reading err.code missed
+    // the 57014 and the timeout escaped as 500 UNKNOWN.
+    const wrapped = {
+      message: "Failed query: SELECT ST_AsMVT(...)",
+      cause: {
+        code: "57014",
+        message: "canceling statement due to statement timeout",
+      },
+    };
+    const mapped = mapTileError(wrapped);
+    expect(mapped).toBeInstanceOf(ApiError);
+    expect(mapped).toMatchObject({
+      status: 504,
+      code: ApiCode.MAP_TILE_TIMEOUT,
+    });
+  });
+
+  it("maps a raw (unwrapped) 57014 to a 504 as well", () => {
+    expect(mapTileError({ code: "57014" })).toMatchObject({
+      status: 504,
+      code: ApiCode.MAP_TILE_TIMEOUT,
+    });
+  });
+
+  it("returns undefined for a non-timeout error (so it rethrows as-is)", () => {
+    expect(mapTileError({ cause: { code: "42P01" } })).toBeUndefined();
+    expect(mapTileError(new Error("boom"))).toBeUndefined();
+  });
+});
 
 describe("tileSimplifyTolerance", () => {
   it("is 0 at high zoom (>= 15)", () => {

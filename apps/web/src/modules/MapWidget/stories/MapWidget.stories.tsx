@@ -159,6 +159,7 @@ export const LargeResultVectorTiles: Story = {
       truncated: false,
       timedOut: false,
       aggregated: false,
+      failed: false,
     },
   },
 };
