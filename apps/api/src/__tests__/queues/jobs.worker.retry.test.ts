@@ -257,4 +257,71 @@ describe("jobs worker — retry-aware terminal state (#441)", () => {
 
     await expect(listeners.get("failed")!(job(0), boom)).resolves.not.toThrow();
   });
+
+  // ── 5. lost-execution recording (#464) ────────────────────────────
+  //
+  // A row still `active` at the top of a NEW execution means a prior execution
+  // set it active and died without a terminal/pending transition — a BullMQ
+  // stall re-delivery, which does not increment `attemptsMade` and fires no
+  // `failed` event. The resuming execution is the only place this is knowable.
+
+  it("increments lostExecutions when it resumes a still-active row", async () => {
+    build(async () => "ok");
+    mockFindById.mockResolvedValue({
+      id: "job-1",
+      status: "active",
+      lostExecutions: 0,
+    });
+
+    await captured!(job(0));
+
+    expect(openingCall()![2]?.lostExecutions).toBe(1);
+  });
+
+  it("carries a prior lostExecutions count forward", async () => {
+    build(async () => "ok");
+    mockFindById.mockResolvedValue({
+      id: "job-1",
+      status: "active",
+      lostExecutions: 2,
+    });
+
+    await captured!(job(0));
+
+    expect(openingCall()![2]?.lostExecutions).toBe(3);
+  });
+
+  it("does not increment for a fresh pending row", async () => {
+    build(async () => "ok");
+    mockFindById.mockResolvedValue({
+      id: "job-1",
+      status: "pending",
+      lostExecutions: 0,
+    });
+
+    await captured!(job(0));
+
+    expect(openingCall()![2]).not.toHaveProperty("lostExecutions");
+  });
+
+  it("does not increment when the row is not found", async () => {
+    build(async () => "ok");
+    mockFindById.mockResolvedValue(undefined);
+
+    await captured!(job(0));
+
+    expect(openingCall()![2]).not.toHaveProperty("lostExecutions");
+  });
+
+  it("fails open: a pre-read failure does not sink the execution", async () => {
+    build(async () => "ok");
+    mockFindById.mockRejectedValue(new Error("db unreachable"));
+
+    // The execution still runs and the opening active transition still fires;
+    // only the diagnostic increment is skipped.
+    await expect(captured!(job(0))).resolves.toBe("ok");
+
+    expect(openingCall()).toBeDefined();
+    expect(openingCall()![2]).not.toHaveProperty("lostExecutions");
+  });
 });

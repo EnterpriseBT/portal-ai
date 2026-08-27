@@ -183,6 +183,28 @@ export const createJobsWorker = (
 
       const JobEventsService = await getJobEventsService();
 
+      // A row still `active` at the top of a NEW execution means a prior
+      // execution set it active (JobEventsService stamps `startedAt` on the
+      // `active` transition) and then died without any terminal or `pending`
+      // transition — a BullMQ stall re-delivery (#464). A re-delivery neither
+      // increments `attemptsMade` nor fires a `failed` event, so this is the
+      // only place a lost execution is knowable. Fail-open: a failed read must
+      // never sink a real execution, so a missing/unreadable row just skips
+      // the diagnostic increment.
+      let lostExecutionsPatch: { lostExecutions?: number } = {};
+      try {
+        const DbService = await getDbService();
+        const prior = await DbService.repository.jobs.findById(jobId);
+        if (prior?.status === "active") {
+          lostExecutionsPatch = { lostExecutions: prior.lostExecutions + 1 };
+        }
+      } catch (readErr) {
+        logger.error(
+          { jobId, err: readErr },
+          "Lost-execution pre-read failed; proceeding without incrementing"
+        );
+      }
+
       await JobEventsService.transition(jobId, "active", {
         progress: 0,
         // Explicit null CLEARS the previous attempt's message. Omitting the
@@ -193,6 +215,7 @@ export const createJobsWorker = (
         // 1-based, so a first run reads 1. Nothing wrote this before, so
         // `jobs.attempts` sat at 0 through every retry in the evidence.
         attempts: (bullJob.attemptsMade ?? 0) + 1,
+        ...lostExecutionsPatch,
       });
       try {
         const result = await processor(bullJob);

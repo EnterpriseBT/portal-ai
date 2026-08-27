@@ -81,6 +81,14 @@ export class JobEventsService {
        * held no record that a job had been retried at all.
        */
       attempts: number;
+      /**
+       * Count of executions lost to process death and re-delivered by BullMQ
+       * (#464). Set by the worker on the opening `active` transition when it
+       * detects it is resuming a row that was already `active` — the one path
+       * where a lost execution is knowable, since a stall re-delivery neither
+       * increments `attempts` nor fires a `failed` event.
+       */
+      lostExecutions: number;
     }> = {}
   ): Promise<void> {
     const now = SystemUtilities.utc.now().getTime();
