@@ -331,13 +331,23 @@ export const createJobsWorker = (
         TERMINAL_JOB_STATUSES.includes(row.status) || row.status === "pending";
       if (handled) return;
 
+      const reason = formatJobError(err);
+      // A stall-limit exhaustion (UnrecoverableError) carries a specific,
+      // self-explanatory reason ("job stalled more than allowable limit"), so
+      // record it verbatim. Wrapping it produced the self-contradictory
+      // "Attempt ended without recording a reason (job stalled more than
+      // allowable limit)" (#468). A genuinely unexplained out-of-band death
+      // (process kill with no useful err) keeps a factual, non-contradictory
+      // frame instead of claiming no reason exists.
+      const message =
+        err instanceof UnrecoverableError
+          ? reason
+          : `Attempt ended out-of-band (${reason})`;
       const JobEventsService = await getJobEventsService();
       await JobEventsService.transition(
         jobId,
         statusForFailedAttempt(job as BullJob, err),
-        {
-          error: `Attempt ended without recording a reason (${formatJobError(err)})`,
-        }
+        { error: message }
       );
     } catch (recordErr) {
       // Best-effort by construction: this runs after the attempt is already
