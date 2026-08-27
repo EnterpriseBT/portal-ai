@@ -55,6 +55,10 @@ export class JobsService {
       completedAt: null,
       bullJobId: null,
       attempts: 0,
+      // A newly created job has lost no executions. The DB column defaults to
+      // 0, but this model is validated against the full JobSchema (#464) before
+      // the insert, so the field must be set here too (#464).
+      lostExecutions: 0,
       maxAttempts,
     });
 
