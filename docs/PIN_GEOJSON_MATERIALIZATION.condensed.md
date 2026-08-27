@@ -14,19 +14,22 @@
 | Working precedent | `apps/api/src/services/portal-viz-refresh.service.ts:194,265` | refresh reprojects via `geoInlineRows(pipeline.sql, geometryColumnsFromSpec(spec), rows, scope)` — why refresh fixes it |
 | Empty-map symptom | `apps/web/.../MapWidget.component.tsx` `hasFeatures` | WKB → no features |
 
-## Decision — reproject at materialization, in `assemble`, mirroring the refresh path
+## Decision — re-encode the snapshot's geometry values in place (not re-run the SQL)
 
-All three handle-materialization returns funnel through `assemble`. Make `assemble` **async** and, when the content is geo (`geometryColumnsFromSpec(source.spec)` non-empty) **and** a `pipeline.sql` exists **and** there are rows, reproject via `geoInlineRows(pipeline.sql, geomCols, rows, scope)` before building the snapshot. For a non-geo pin (`geometryColumnsFromSpec` → `[]`) or a static pin with no pipeline, it's a no-op — so the inline path (already GeoJSON at mint) and data-table pins are untouched. Add a `geoInlineRows?` seam to `MaterializeDeps` for unit testing (mirrors `geoInlineRows`'s own `sqlQuery` seam).
+**Why not `geoInlineRows`:** it *re-runs* the pipeline SQL, and `resolveSqlDelivery` returns a **handle** for > `INLINE_ROWS_THRESHOLD` (100) rows — which every handle-backed map is (up to the 5,000 `PIN_SNAPSHOT_ROW_CAP`). So the re-run's GeoJSON-conversion branch never fires for the exact case #371 is about, and re-running is uncapped. The ticket's evidence is the tell: *"only the value encoding differs"* — the rows are right, only the geometry column's encoding is WKB.
 
-Rejected: converting in the general `materialize` (would double-run the SQL for already-GeoJSON inline pins); a bespoke WKB→GeoJSON parse in Node (duplicates the `geoInlineRows` transform the other two paths already own — the drift this shared util exists to prevent).
+**Fix:** a new `geoReencodeRows(rows, geometryColumns, deps?)` in `geo-delivery.util.ts` converts each row's geometry value **EWKB hex → GeoJSON** via one batch `SELECT ST_AsGeoJSON(ST_GeomFromEWKB(decode(hex,'hex')))` (bound as `unnest($hex[], $idx[])`, so no id-list AST overflow and no re-run). It preserves the exact ≤cap snapshot — count, order, every other column. Values that aren't WKB-hex strings (already GeoJSON objects, or null) pass through untouched, so it's idempotent and safe on the inline/static paths.
+
+Make `assemble` **async**; when `geometryColumnsFromSpec(source.spec)` is non-empty and there are rows, run `geoReencodeRows` before building the snapshot. `MaterializeDeps` gains a `geoReencodeRows?` seam (unit tests inject a fake; the default binds `db.execute`).
+
+Rejected: `geoInlineRows` (re-runs → handle for the large case, uncapped); a Node-side WKB parser (new dependency; the DB already has `ST_AsGeoJSON`).
 
 ## Plan — 1 slice
 
-- **Files.** Edit `apps/api/src/services/portal-result-pin.service.ts`: `MaterializeDeps` gains `geoInlineRows?`; `assemble` becomes `async`, takes `(…, scope, deps)`, reprojects geo rows; the 3 call sites `await assemble(…, scope, deps)`.
-- **Tests** (`npm run test:unit`): extend `apps/api/src/__tests__/services/portal-result-pin.service.test.ts`:
-  - a handle-backed **geo** pin (spec with a `geometryColumn`, `pipeline.sql` present, `getSnapshot` → rows with WKB) calls the injected `geoInlineRows` with `(pipeline.sql, [geomCol], rows, scope)` and the materialized `content.rows` are its GeoJSON output.
-  - a **non-geo** (data-table) pin does **not** call `geoInlineRows` (rows pass through).
-  - a geo pin with **no pipeline** (static) passes rows through unchanged (no throw).
+- **Files.** New: `geoReencodeRows` in `apps/api/src/tools/geo-delivery.util.ts` (EWKB-hex → GeoJSON batch re-encode, `db.execute` seam). Edit `apps/api/src/services/portal-result-pin.service.ts`: `MaterializeDeps` gains `geoReencodeRows?`; `assemble` becomes `async`, takes `(…, deps)`, re-encodes geo rows; the 3 call sites `await assemble(…, deps)`.
+- **Tests** (`npm run test:unit`):
+  - New `geo-delivery.util` unit test: `geoReencodeRows` converts WKB-hex geometry values to the executor's GeoJSON output; leaves non-hex/null values and non-geometry columns untouched; a no-op for `[]` columns or `[]` rows.
+  - Extend `portal-result-pin.service.test.ts`: a handle-backed **geo** pin (spec with a `geometryColumn`, `getSnapshot` → rows with WKB) has its `content.rows[].<geom>` re-encoded via the injected `geoReencodeRows`; a **non-geo** (data-table) pin does **not** call it (rows pass through); a geo pin still materializes when there are no rows (no-op).
 
 ## Smoke (manual, against your dev stack)
 
