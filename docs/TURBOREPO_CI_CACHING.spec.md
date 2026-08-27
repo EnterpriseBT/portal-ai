@@ -263,7 +263,7 @@ Cache hit/miss behavior, the live-dispatch secret check, the deliberate red-then
 - `apps/site`'s build reports as uncached in every run.
 - Two builds of the same commit produce the **same** `version.json`; two different commits produce different ones.
 - A rebuilt devcontainer has `turbo` on PATH resolving through `/workspace/node_modules/.bin`, at the lockfile's version.
-- `npm run lint:ci-cache` passes, and fails if any of its four rules is violated.
+- `npm run lint:ci-cache` passes, and fails if any of its five rules is violated.
 - The API image build is unchanged and uncached.
 - Before/after wall-clock and job-minutes recorded on the PR.
 
