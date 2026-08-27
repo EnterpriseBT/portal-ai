@@ -50,15 +50,24 @@ jobs:
   # a bad production deploy.
   unit-test:
     uses: ./.github/workflows/unit-test.yml
+    secrets:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
 
   integration-test:
     uses: ./.github/workflows/integration-test.yml
+    secrets:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
 
   # Prod gates on at least as much as a PR does (#427). Unconditional, for the
   # same reason the suites above are: a release tag can be cut from any commit,
   # so "this tree already passed" is an assumption here, not a fact.
   static-checks:
     uses: ./.github/workflows/static-checks.yml
+    secrets:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
 
   # ── Infrastructure ────────────────────────────────────────
   deploy-infra:
@@ -275,6 +284,15 @@ jobs:
           echo "support=$(get /portalai/prod/support-email)" >> "$GITHUB_OUTPUT"
           echo "sales=$(get /portalai/prod/sales-email)" >> "$GITHUB_OUTPUT"
 
+        # Turborepo remote cache (#454). Step-level rather than workflow-level so
+        # the token is not in scope for deploy-backend, which builds inside
+        # Docker and cannot use it anyway.
+        #
+        # Expect @portalai/web#build itself to MISS on every new commit: turbo's
+        # framework inference hashes VITE_* and VITE_APP_SHA/VITE_APP_VERSION
+        # carry the commit SHA. That is inherent, not a misconfiguration — the
+        # SHA is rendered in the app's sidebar. The win here is the dependency
+        # builds (@portalai/core and friends) and same-commit re-runs.
       - name: Build frontend
         run: npx turbo run build --filter=@portalai/web
         env:
@@ -289,6 +307,9 @@ jobs:
           VITE_GOOGLE_PICKER_API_KEY: ${{ secrets.PROD_VITE_GOOGLE_PICKER_API_KEY }}
           VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.PROD_VITE_GOOGLE_OAUTH_CLIENT_ID }}
           VITE_GOOGLE_CLOUD_PROJECT_NUMBER: ${{ secrets.PROD_VITE_GOOGLE_CLOUD_PROJECT_NUMBER }}
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+          TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
 
       - name: Get frontend outputs
         id: fe

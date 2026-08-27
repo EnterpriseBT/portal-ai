@@ -43,6 +43,22 @@ npm run tunnel               # from apps/api — dotenv -e .env -- ngrok http 30
 ```
 Set `NGROK_AUTHTOKEN` in `apps/api/.env`. Point the provider's redirect/webhook URL at the ngrok host (matching `*_OAUTH_REDIRECT_URI`). `npm run dev` already starts a tunnel; `tunnel` is the standalone form.
 
+## Turborepo cache on your machine
+
+`turbo` is on your PATH in the devcontainer — a symlink to `node_modules/.bin/turbo`, so it is always exactly the version in the lockfile. Two turbo versions compute different task hashes, which is why this is a symlink and not `npm install -g turbo`.
+
+Your container is **not** linked to the shared remote cache, and that is deliberate. CI is the only writer. A developer machine is not a reproducible build environment — uncommitted edits, a local `apps/api/.env` that the API build reads through `dotenv-cli`, whatever happens to be in `node_modules` — so an artifact it uploaded would later be consumed by CI on trust. Keeping provenance inside CI is also what makes the artifact signing meaningful.
+
+Your local `.turbo/` cache still works normally and gives you the same skipping between local runs.
+
+If you ever want to *read* the shared cache (e.g. to skip building dependencies you have not touched), do it read-only and per-shell, never by linking the repo:
+
+```bash
+TURBO_TOKEN=<token> TURBO_TEAM=<slug> npx turbo run build --cache=remote:r,local:rw
+```
+
+The guard (`npm run lint:ci-cache`) enforces the CI half of this; nothing enforces the local half, so it is on you.
+
 ## Smoke (manual, against your dev stack)
 
 1. `npm run dev` boots cleanly — web on `:3000`, api on `:3001` (health: `curl localhost:3001/api/health` → 200).

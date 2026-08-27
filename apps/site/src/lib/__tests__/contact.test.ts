@@ -9,6 +9,8 @@ import { jest, describe, it, expect } from "@jest/globals";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { parse as parseJsonc } from "jsonc-parser";
+
 const QA = "qa@portalsai.io";
 
 const read = (relative: string): string =>
@@ -88,7 +90,11 @@ describe("turbo passes the contact vars through to the build", () => {
   //
   // The required list is derived from `contact.ts` rather than hardcoded, so a
   // NEW contact address is covered by this guard the day it is added.
-  const declared: string[] = JSON.parse(read("../../../turbo.json")).tasks.build
+  // Parsed as JSONC, not JSON: `turbo.json` carries `//` comments (turbo
+  // supports them), and the ones on this task explain why the build must stay
+  // uncached — deleting them to keep `JSON.parse` happy would trade the
+  // explanation for the parser (#454).
+  const declared: string[] = parseJsonc(read("../../../turbo.json")).tasks.build
     .passThroughEnv;
 
   const required = [

@@ -3,6 +3,23 @@
   "extends": ["//"],
   "tasks": {
     "build": {
+      // DO NOT make this cacheable. Two independent reasons (#454):
+      //
+      // 1. The build fetches `GET /api/public/site-config` once and bakes the
+      //    resulting prices/tiers into static HTML, so a byte-identical source
+      //    tree can still legitimately need a fresh build. Turbo cannot see
+      //    that upstream change at all.
+      // 2. The vars below are `passThroughEnv`, which reaches the build but is
+      //    deliberately NOT part of the task hash. Measured: a sentinel
+      //    SITE_URL landed in dist/index.html while the task hash did not move.
+      //    With caching on, a prod deploy could therefore restore dev's
+      //    artifact — dev canonical URLs and dev-priced tiers on the public
+      //    site — with nothing to indicate it happened.
+      //
+      // `npm run lint:ci-cache` (rule 5) enforces both this flag and the
+      // declaration below. If caching is ever genuinely wanted here, moving
+      // these names from `passThroughEnv` to `env` is the prerequisite, not an
+      // afterthought — that is what puts them in the hash.
       "cache": false,
       "passThroughEnv": [
         "SITE_URL",

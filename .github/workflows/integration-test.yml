@@ -5,6 +5,33 @@ on:
     branches-ignore:
       - main
   workflow_call:
+    # Declared so a caller that forgets to pass them is visible HERE, in the
+    # workflow that needs them (#454). `required: false` because a
+    # push-triggered run has no caller at all — it is not licence for a
+    # caller to omit them, and lint:ci-cache rule 2 enforces that.
+    secrets:
+      TURBO_TOKEN:
+        required: false
+      TURBO_REMOTE_CACHE_SIGNATURE_KEY:
+        required: false
+
+# Turborepo remote cache (#454). A workflow-level block so every turbo call in
+# this file inherits it, including ones added later.
+#
+# TURBO_TEAM is a repo VARIABLE, not a secret — it is an account slug, and
+# repo variables reach reusable workflows without being declared below.
+# TURBO_REMOTE_CACHE_SIGNATURE_KEY is required because turbo.json sets
+# `remoteCache.signature`: artifacts are HMAC-verified on download and
+# rejected on mismatch. Fail-OPEN on cache availability, fail-CLOSED on
+# cache integrity.
+#
+# If the token is absent, turbo caches NOTHING and still reports success —
+# there is no error to notice. `npm run lint:ci-cache` (rule 1) is what
+# catches that, and a live workflow_dispatch is what proves it.
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+  TURBO_REMOTE_CACHE_SIGNATURE_KEY: ${{ secrets.TURBO_REMOTE_CACHE_SIGNATURE_KEY }}
 
 # Leads with the literal "integration-test", not `github.workflow` — see unit-test.yml:
 # inside a reusable workflow the context resolves to the caller, so siblings

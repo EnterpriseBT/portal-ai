@@ -67,14 +67,25 @@ RUN curl -sSfL https://raw.githubusercontent.com/auth0/auth0-cli/main/install.sh
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"
 
-# Put the Portal operator CLIs on PATH so developers run `portalops` /
-# `portalai` directly instead of `npx portalops` / `npx portalai`. The two
-# bins are workspace symlinks npm creates under the root node_modules/.bin on
-# `npm i`; the repo is bind-mounted at /workspace at runtime, so these links
-# are dangling at image-build time and resolve once onCreateCommand's install
+# Put the Portal operator CLIs and turbo on PATH so developers run `portalops`
+# / `portalai` / `turbo` directly instead of `npx <tool>`. The bins are
+# workspace symlinks npm creates under the root node_modules/.bin on `npm i`;
+# the repo is bind-mounted at /workspace at runtime, so these links are
+# dangling at image-build time and resolve once onCreateCommand's install
 # populates node_modules/.bin. /usr/local/bin is already on PATH.
+#
+# turbo is symlinked rather than `npm install -g turbo` on purpose (#454): a
+# globally pinned version could differ from the lockfile's, and two turbo
+# versions compute DIFFERENT task hashes — so a developer and CI would silently
+# disagree about what is cached. The symlink makes the CLI *be* the lockfile's
+# turbo, so drift is structurally impossible.
+#
+# No cache credentials are baked into the image, and the devcontainer is not
+# linked to the remote cache. See docs/LOCAL_DEVELOPMENT.md for why a developer
+# machine reads at most, and never writes.
 RUN ln -sf /workspace/node_modules/.bin/portalops /usr/local/bin/portalops \
-    && ln -sf /workspace/node_modules/.bin/portalai /usr/local/bin/portalai
+    && ln -sf /workspace/node_modules/.bin/portalai /usr/local/bin/portalai \
+    && ln -sf /workspace/node_modules/.bin/turbo /usr/local/bin/turbo
 
 # Enable bash completion (git completion is included automatically)
 RUN printf 'if [ -f /usr/share/bash-completion/bash_completion ]; then\n  . /usr/share/bash-completion/bash_completion\nfi\n' >> ~/.bashrc

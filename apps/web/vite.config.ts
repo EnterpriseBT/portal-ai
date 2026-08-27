@@ -1,10 +1,11 @@
 import fs from "fs";
 import path from "path";
-import crypto from "crypto";
 import { defineConfig, PluginOption } from "vite";
 import react from "@vitejs/plugin-react";
 import svgr from "vite-plugin-svgr";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
+
+import { resolveBuildVersion } from "./src/utils/build-version.util";
 
 /**
  * Dev-only plugin that serves catalog packages from source.
@@ -28,11 +29,17 @@ function serveCatalogs(): PluginOption {
 }
 
 /**
- * Generates a `version.json` file in the build output with a unique hash.
- * The frontend polls this file to detect new deployments and prompt a reload.
+ * Generates a `version.json` file in the build output carrying the build
+ * identity. The frontend polls it to detect new deployments and prompt a
+ * reload.
+ *
+ * The value is DETERMINISTIC — the commit SHA, or "dev" locally (#454). It was
+ * `crypto.randomUUID()`, which changed on every build of the same commit and
+ * so prompted a reload for a bundle the user already had. See
+ * `src/utils/build-version.util.ts`.
  */
 function versionJson(): PluginOption {
-  const buildHash = crypto.randomUUID();
+  const buildHash = resolveBuildVersion(process.env);
 
   return {
     name: "version-json",
