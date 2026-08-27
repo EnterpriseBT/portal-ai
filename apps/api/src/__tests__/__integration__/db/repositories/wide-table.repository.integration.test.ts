@@ -923,13 +923,16 @@ describe("WideTableRepository integration tests", () => {
         c_amount: 100,
       },
     ]);
-    // Soft-delete the entity_records row.
+    // Soft-delete the entity_records row AND mark the wide row (#450: the real
+    // delete paths do both, so fetchProjectedRows filters the wide row locally
+    // without joining entity_records).
     const { entityRecords: entityRecordsTable } =
       await import("../../../../db/schema/index.js");
     const drizzleSql = (await import("drizzle-orm")).sql;
     await db.execute(
       drizzleSql`UPDATE ${entityRecordsTable} SET deleted = ${now}, deleted_by = 'test' WHERE id = ${r1}`
     );
+    await repo.markDeletedByEntityRecordIds(entityId, [r1], now);
 
     const rows = await repo.fetchProjectedRows(entityId, ["amount"], {
       organizationId: orgId,

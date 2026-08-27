@@ -155,12 +155,14 @@ export class WideTableRepository {
       opts.limit !== undefined ? sql` LIMIT ${opts.limit}` : sql``;
     const whereExtra = opts.where ? sql` AND (${opts.where})` : sql``;
 
+    // #450: filter on the wide row's own `deleted` — no `JOIN entity_records`
+    // (see buildSessionViews). Every delete path marks it atomically with the
+    // record soft-delete.
     const rows = await (client as typeof db).execute(sql`
       SELECT ${sql.raw(colList)}
       FROM ${sql.raw(tableName)} w
-      JOIN entity_records er ON er.id = w."entity_record_id"
       WHERE w."organization_id" = ${opts.organizationId}
-        AND er.deleted IS NULL
+        AND w."deleted" IS NULL
         ${whereExtra}
       ${limitClause}
     `);

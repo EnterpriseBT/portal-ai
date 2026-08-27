@@ -209,13 +209,17 @@ export class PortalSqlServiceImpl {
 
       const viewName = entityKey;
       const tableName = `er__${entity.id}`;
+      // #450: filter soft-deletes on the wide row's own `deleted` column — no
+      // `JOIN entity_records` (which was ~93% of aggregate-tile query cost;
+      // z11 measured 23,124ms → 1,584ms without it). Every delete path now
+      // marks `er__<id>."deleted"` atomically with the `entity_records`
+      // soft-delete, so the local filter is equivalent.
       const ddl =
         `CREATE OR REPLACE TEMP VIEW "${viewName}" AS\n` +
         `  SELECT ${projections.join(", ")}\n` +
         `  FROM "${tableName}" w\n` +
-        `  JOIN entity_records er ON er.id = w."entity_record_id"\n` +
         `  WHERE w."organization_id" = '${organizationId}'\n` +
-        `    AND er.deleted IS NULL`;
+        `    AND w."deleted" IS NULL`;
 
       views.push(ddl);
       viewMap.set(entityKey, viewName);
