@@ -37,6 +37,7 @@ function buildValidJob(overrides: Partial<Job> = {}): Partial<Job> {
     bullJobId: null,
     attempts: 0,
     maxAttempts: 3,
+    lostExecutions: 0,
     ...overrides,
   };
 }
@@ -94,6 +95,17 @@ describe("JobSchema", () => {
       buildValidJob({ metadata: { connectorId: "c-1", batch: 5 } })
     );
     expect(result.success).toBe(true);
+  });
+
+  it("should accept a nonzero lostExecutions (#464)", () => {
+    const result = JobSchema.safeParse(buildValidJob({ lostExecutions: 2 }));
+    expect(result.success).toBe(true);
+  });
+
+  it("should reject a job missing lostExecutions (#464)", () => {
+    const { lostExecutions: _omit, ...withoutLostExecutions } = buildValidJob();
+    const result = JobSchema.safeParse(withoutLostExecutions);
+    expect(result.success).toBe(false);
   });
 });
 
@@ -263,6 +275,7 @@ describe("JobModelFactory", () => {
         bullJobId: null,
         attempts: 0,
         maxAttempts: 3,
+        lostExecutions: 0,
         updated: null,
         updatedBy: null,
         deleted: null,
