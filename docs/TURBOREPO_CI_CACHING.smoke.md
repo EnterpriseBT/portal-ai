@@ -96,13 +96,11 @@ Requires pushing a knowingly-broken commit to this branch, then reverting.
 
 ## §7 — Degradation when the cache is unavailable
 
-Fail-open on availability is deliberate: an unreachable cache must slow CI, never break it. **This briefly affects other branches' runs**, so pick a quiet moment.
+Fail-open on availability is deliberate: an unusable cache must slow CI, never break it. **Verifiable locally — no need to touch a live repo secret.**
 
-- [ ] Note the current token, then set an invalid one: `gh secret set TURBO_TOKEN --repo EnterpriseBT/portal-ai --body "invalid-token-smoke-test"`
-- [ ] Push any trivial commit → **all three suites still complete and still report accurate results** (slower, no hits)
-- [ ] Restore the real token: `gh secret set TURBO_TOKEN --repo EnterpriseBT/portal-ai` (paste when prompted — never inline it)
-- [ ] Push again → hits return
-- [ ] If you would rather not touch a live secret, say so and leave this box unchecked with that reason recorded — do not check it unverified
+- [ ] `TURBO_TOKEN=invalid-token-probe TURBO_TEAM=some-team npx turbo run build --filter=@portalai/cli-env --force` → the build **succeeds, exit 0**, `0 cached`, and turbo does not error on the bad credentials
+- [ ] The same run warns `signing artifact failed: signature secret key not found`. This is the documented nuance: a **missing** signature key does not fail the build, it uploads unsigned. What guarantees the key is present in CI is `lint:ci-cache` rule 1, not turbo — confirm rule 1 lists `TURBO_REMOTE_CACHE_SIGNATURE_KEY` among the vars it requires
+- [ ] Optional, only if you want the CI-side proof too: set an invalid `TURBO_TOKEN` repo secret, push, confirm all three suites still pass, then restore it. **This briefly affects other branches' runs** — skipping it is reasonable, and the local check above covers the property
 
 ## §8 — The reload prompt in the running app
 
@@ -110,14 +108,19 @@ Fail-open on availability is deliberate: an unreachable cache must slow CI, neve
 - [ ] The sidebar footer shows a version/SHA (locally `dev (local)`) — unchanged behavior
 - [ ] No spurious "update available" prompt appears while the app sits idle on an unchanged build
 
-## §9 — The deploy path (cannot be verified from a branch)
+## §9 — The deploy path — **deferred to the first post-merge `main` deploy**
 
-`deploy-dev` runs on push to `main` or `workflow_dispatch`, and dispatching one **deploys to app-dev**. These are the items nothing on this branch could prove.
+Deployment caching is explicitly **not** what this ticket is being judged on: the value is in the suites and static checks (§5). `deploy-dev` only runs on push to `main` or a dispatch that would really deploy app-dev, so this section does not gate the merge.
 
-- [ ] `gh workflow run deploy-dev.yml --repo EnterpriseBT/portal-ai` (only if you are content to deploy app-dev), then confirm its called suites log `Remote caching enabled` and show cache hits
-- [ ] In that run, `deploy-frontend`'s `Build frontend` step logs `Remote caching enabled`; `@portalai/web#build` itself **misses** (expected — the commit SHA is in its hash via `VITE_APP_SHA`) while its dependency builds hit
-- [ ] `deploy-backend` is unchanged: it still builds via `docker/build-push-action`, and nothing claims a cache hit for `@portalai/api#build`. Confirm by inspection too — `git diff main...HEAD -- apps/api/Dockerfile` is empty
-- [ ] Alternatively defer §9 to the first post-merge `main` deploy and record that choice here
+Checkable now, by inspection:
+
+- [ ] `git diff main...HEAD -- apps/api/Dockerfile` is **empty** — the API image build is untouched, and `deploy-backend` still builds via `docker/build-push-action` with no host-side turbo, so nothing claims a cache hit for `@portalai/api#build`
+
+Confirm after the merge, on the first `main` deploy (no action needed before merging):
+
+- [ ] `deploy-frontend`'s `Build frontend` step logs `Remote caching enabled`
+- [ ] `@portalai/web#build` itself **misses** — expected, the commit SHA is in its hash via `VITE_APP_SHA` — while its dependency builds hit
+- [ ] The deploy completes normally; if anything about deploy caching proves annoying, the revert is removing the three `TURBO_*` vars from the deploy workflows' build steps and re-adding those filenames to the guard's `PENDING_CACHE_OPT_IN` set
 
 ## §10 — Devcontainer `turbo` on PATH
 
@@ -139,7 +142,9 @@ Needs a container rebuild, so it cannot be checked from inside the current one.
 
 ## Sign-off
 
-- [ ] Every section above verified, or explicitly recorded as skipped with a reason
+**Gates the merge:** §1–§8 and §11. **Does not gate the merge:** §9 (deferred to the first post-merge `main` deploy) and §10 (needs a container refresh, which you are doing separately).
+
+- [ ] Every gating section verified, or explicitly recorded as skipped with a reason
 - [ ] ______________ (date + name) — confirmed against my own running stack
 
 ## Bug-filing template

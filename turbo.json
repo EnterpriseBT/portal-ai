@@ -6,7 +6,14 @@
   // (#454). The policy is split on purpose: fail-OPEN on cache availability
   // (an unreachable cache just runs the work), fail-CLOSED on cache integrity.
   // A blanket fail-open on integrity is what turns a poisoned artifact into a
-  // green required check. Needs TURBO_REMOTE_CACHE_SIGNATURE_KEY in CI.
+  // green required check.
+  //
+  // Careful: "fail-closed" describes VERIFICATION. A *missing*
+  // TURBO_REMOTE_CACHE_SIGNATURE_KEY does NOT fail — turbo warns
+  // ("signing artifact failed: signature secret key not found") and uploads
+  // UNSIGNED, exit 0. So the key being present in CI is guaranteed by
+  // `npm run lint:ci-cache` rule 1, not by turbo. Do not drop that rule and
+  // assume this flag still protects you.
   "remoteCache": { "signature": true },
   // Root files outside every package that still change task results. The test
   // services' image tags live here, so `test:integration` must hash this file
