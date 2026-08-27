@@ -29,6 +29,7 @@ import { AGG_ZOOM_THRESHOLD, AGG_GRID_PX } from "@portalai/core/constants";
 import { db } from "../db/client.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { unwrapPgError } from "../utils/pg-error.util.js";
 import { PortalSqlService } from "./portal-sql.service.js";
 import { portalMessagesRepo } from "../db/repositories/portal-messages.repository.js";
 import { portalResultsRepo } from "../db/repositories/portal-results.repository.js";
@@ -49,6 +50,24 @@ const logger = createLogger({ module: "portal-map-tile" });
 export const MAP_TILE_FEATURE_CAP = 10_000;
 /** Statement-timeout budget for a single tile query. */
 const TILE_STATEMENT_TIMEOUT_MS = 10_000;
+
+/**
+ * Map a tile-query error to a typed `504 MAP_TILE_TIMEOUT`, or `undefined` if
+ * it is not a statement timeout (caller rethrows as-is). The pg `57014` code
+ * arrives wrapped in Drizzle's `DrizzleQueryError`, so it must be read via
+ * `unwrapPgError` (`.cause`) — reading `err.code` directly returned the timeout
+ * as `500 UNKNOWN`, leaving the map blank with no explanation (#449).
+ */
+export function mapTileError(err: unknown): ApiError | undefined {
+  if (unwrapPgError(err).code === "57014") {
+    return new ApiError(
+      504,
+      ApiCode.MAP_TILE_TIMEOUT,
+      "Map tile query timed out"
+    );
+  }
+  return undefined;
+}
 /** MVT tile extent (standard 4096-unit grid). */
 const TILE_EXTENT = 4096;
 /** MapLibre renders vector tiles at 512 screen px by default — grid cells per
@@ -462,14 +481,11 @@ export class PortalMapTileService {
         };
       });
     } catch (err) {
-      const code = (err as { code?: string })?.code;
-      if (code === "57014") {
-        throw new ApiError(
-          504,
-          ApiCode.MAP_TILE_TIMEOUT,
-          "Map tile query timed out"
-        );
-      }
+      // `statement_timeout` (57014) arrives wrapped in Drizzle's
+      // DrizzleQueryError, so its code is on `.cause` — reading `err.code`
+      // directly missed it and the timeout escaped as 500 UNKNOWN (#449).
+      const mapped = mapTileError(err);
+      if (mapped) throw mapped;
       throw err;
     }
   }

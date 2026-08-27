@@ -41,6 +41,17 @@ app.use(express.json({ limit: environment.REQUEST_JSON_LIMIT_BYTES }));
 app.use(
   cors({
     origin: environment.CORS_ORIGIN,
+    // The web app is cross-origin from the API in every deployed env, so tile
+    // degradation notices are unreadable unless explicitly exposed — without
+    // this, `readTileStatus` sees null for all three and a degraded/aggregated
+    // tile explains nothing outside the local same-origin proxy (#449, #314).
+    // ETag is exposed so the client can honour tile caching cross-origin too.
+    exposedHeaders: [
+      "X-Portal-Tile-Simplified",
+      "X-Portal-Tile-Truncated",
+      "X-Portal-Tile-Aggregated",
+      "ETag",
+    ],
   })
 );
 

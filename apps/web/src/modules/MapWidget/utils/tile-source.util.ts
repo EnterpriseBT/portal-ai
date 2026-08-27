@@ -19,6 +19,10 @@ export interface TileStatus {
   timedOut: boolean;
   /** The tile is a low-zoom aggregate (grid bins), not raw features (#330). */
   aggregated: boolean;
+  /** A non-timeout tile failure (4xx/5xx other than 504) — distinct from an
+   *  empty (204/304) tile, so the widget can report it and MapLibre can
+   *  retry rather than caching it empty (#449). */
+  failed: boolean;
 }
 
 export const EMPTY_TILE_STATUS: TileStatus = {
@@ -26,6 +30,7 @@ export const EMPTY_TILE_STATUS: TileStatus = {
   truncated: false,
   timedOut: false,
   aggregated: false,
+  failed: false,
 };
 
 /**
@@ -53,6 +58,9 @@ export function readTileStatus(
     truncated: headers.get("X-Portal-Tile-Truncated") != null,
     timedOut: status === 504,
     aggregated: headers.get("X-Portal-Tile-Aggregated") != null,
+    // A 504 is the timeout case above; 204/304 are legitimately empty. Anything
+    // else >= 400 is a genuine failure the widget should report (#449).
+    failed: status >= 400 && status !== 504,
   };
 }
 

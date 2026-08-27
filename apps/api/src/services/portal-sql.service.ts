@@ -32,6 +32,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
+import { unwrapPgError } from "../utils/pg-error.util.js";
 import { connectorEntitiesRepo } from "../db/repositories/connector-entities.repository.js";
 import {
   wideTableStatementCache,
@@ -571,17 +572,11 @@ function parseExplainEstimate(result: unknown): {
  * pipeline handles it.
  */
 function translateExecutionError(err: unknown): unknown {
-  // Drizzle wraps the postgres-js error in `DrizzleQueryError` whose
-  // `cause` is the original pg error. The pg `code` / `message` we want
-  // live on the cause; the wrapper's `message` is the formatted "Failed
-  // query: …" string.
-  const cause = (err as { cause?: unknown } | undefined)?.cause;
-  const inner = (cause ?? err) as {
-    code?: string;
-    message?: string;
-  };
-  const code = inner.code;
-  const message = inner.message ?? "";
+  // Drizzle wraps the postgres-js error in `DrizzleQueryError` whose `cause` is
+  // the original pg error; the code/message we want live on the cause. Shared
+  // with the map-tile service so the unwrap can't drift (#449).
+  const { code, message: rawMessage } = unwrapPgError(err);
+  const message = rawMessage ?? "";
 
   if (code === "42P01") {
     const match = /relation "([^"]+)" does not exist/i.exec(message);

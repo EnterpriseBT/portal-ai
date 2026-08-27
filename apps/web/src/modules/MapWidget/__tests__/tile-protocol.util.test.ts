@@ -63,19 +63,43 @@ describe("fetchTile", () => {
     expect(statuses[0]).toMatchObject({ simplified: true, truncated: true });
   });
 
-  it("reports a timeout and returns empty bytes on 504", async () => {
+  it("reports a timeout and throws on 504 so MapLibre retries, not caches empty (#449)", async () => {
     const { statuses, deps } = harness(mkRes(504));
+    await expect(
+      fetchTile(
+        protocolTileUrl("ctx1", "/api/portal-map/tiles/pin/p1/5/1/1.mvt"),
+        undefined,
+        deps
+      )
+    ).rejects.toThrow();
+    // The notice is still reported before the throw.
+    expect(statuses[0]).toMatchObject({ timedOut: true });
+  });
+
+  it("reports failed and throws on a non-timeout error (500) (#449)", async () => {
+    const { statuses, deps } = harness(mkRes(500));
+    await expect(
+      fetchTile(
+        protocolTileUrl("ctx1", "/api/portal-map/tiles/pin/p1/5/1/1.mvt"),
+        undefined,
+        deps
+      )
+    ).rejects.toThrow();
+    expect(statuses[0]).toMatchObject({ failed: true, timedOut: false });
+  });
+
+  it("returns empty bytes for an empty (204) tile, without throwing", async () => {
+    const { deps } = harness(mkRes(204));
     const out = await fetchTile(
       protocolTileUrl("ctx1", "/api/portal-map/tiles/pin/p1/5/1/1.mvt"),
       undefined,
       deps
     );
-    expect(statuses[0]).toMatchObject({ timedOut: true });
     expect(out.data.byteLength).toBe(0);
   });
 
-  it("returns empty bytes for an empty (204) tile", async () => {
-    const { deps } = harness(mkRes(204));
+  it("returns empty bytes for a not-modified (304) tile, without throwing", async () => {
+    const { deps } = harness(mkRes(304));
     const out = await fetchTile(
       protocolTileUrl("ctx1", "/api/portal-map/tiles/pin/p1/5/1/1.mvt"),
       undefined,
