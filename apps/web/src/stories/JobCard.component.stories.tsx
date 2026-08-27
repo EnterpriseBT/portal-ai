@@ -17,6 +17,7 @@ const baseJob: Job = {
   bullJobId: "bull-1",
   attempts: 0,
   maxAttempts: 3,
+  lostExecutions: 0,
   created: 1710000000000,
   createdBy: "user-1",
   updated: 1710000000000,

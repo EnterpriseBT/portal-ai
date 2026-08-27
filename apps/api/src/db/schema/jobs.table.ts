@@ -51,4 +51,10 @@ export const jobs = pgTable("jobs", {
   bullJobId: text("bull_job_id"),
   attempts: integer("attempts").notNull().default(0),
   maxAttempts: integer("max_attempts").notNull().default(3),
+  // Executions lost to process death and silently re-delivered by BullMQ
+  // (#464). BullMQ does not increment `attempts` on a stall re-delivery, so a
+  // job that ran twice would otherwise read `attempts: 1` with no other trace
+  // an execution was redone. The resuming execution detects a still-`active`
+  // row at its start and increments this.
+  lostExecutions: integer("lost_executions").notNull().default(0),
 });

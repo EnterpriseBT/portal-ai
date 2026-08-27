@@ -643,6 +643,10 @@ export const JobSchema = CoreSchema.extend({
   bullJobId: z.string().nullable(),
   attempts: z.number(),
   maxAttempts: z.number(),
+  // Count of executions lost to process death and re-delivered by BullMQ
+  // (#464). No Zod default — mirrors `attempts`: the DB column's default fills
+  // inserts, and every selected row carries a concrete value.
+  lostExecutions: z.number(),
 });
 
 export type Job = z.infer<typeof JobSchema>;

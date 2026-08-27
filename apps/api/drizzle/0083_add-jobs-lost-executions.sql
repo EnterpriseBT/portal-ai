@@ -1,0 +1,1 @@
+ALTER TABLE "jobs" ADD COLUMN "lost_executions" integer DEFAULT 0 NOT NULL;
