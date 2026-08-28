@@ -2,40 +2,39 @@
 
 Pins the contract for #472. Discovery: `docs/PRECOMPUTED_POLYGON_DISSOLVE.discovery.md`. Issue: [#472](https://github.com/EnterpriseBT/portal-ai/issues/472) (was epic #470; per-tile dissolve #475 reverted). Branch: `fix/precomputed-polygon-dissolve`.
 
-**What ships:** a low-zoom polygon **choropleth** renders as real, colored polygons — not centroid bins — served from a **sync-time precomputed, per-zoom-simplified, dissolved-by-colorBy geometry**, with a **raw-simplified real-polygon fallback** whenever no precompute exists (so the visible bug is fixed even before the first precompute lands).
+**What ships:** a low-zoom polygon **choropleth** renders as real, colored polygons — not centroid bins — served from a **per-pin precomputed, per-zoom-simplified, dissolved-by-colorBy geometry**, computed from the pin's durable `pipeline` at **pin create + refresh** (so joined/aggregated multi-source choropleths work), with a **raw-simplified real-polygon fallback** whenever no precompute exists (so the bug is fixed even before the first precompute lands, and for unpinned maps).
 
-## Key decisions (confirm before implementation)
+## Key decisions (ratified from discovery)
 
-1. **D1 — precompute every categorical column ≤ ceiling, discovered at sync** (no author-time coupling). Ceiling `DISSOLVE_CARDINALITY_CEILING = 64`.
-2. **D2 — a dedicated `dissolve_precompute` job**, enqueued on `connector_sync` success, run under `SyncLockService.withInstanceLock`; failure non-fatal (`dissolveDegraded`).
-3. **D3 — static `map_dissolve_geometries` table**, keyed `(organizationId, connectorEntityId, columnName, value, zoomBand)`.
-4. **D4 — 3 fixed zoom bands below the z14 raw handoff**, each with a simplify tolerance.
-5. **D5 — `AggTreatment` gains `"dissolve"`**; `resolveAggTreatment(kind, treatment?, { hasColorBy })` routes `polygons + colorBy → "dissolve"`, else unchanged. Serve clips precompute on hit, **raw-simplify on miss** — polygons never render as centroid bins again.
-6. **D6 (⚠ confirm) — the map→entity link.** The serve path must resolve `connectorEntityId` + colorBy column to find the precompute, but `VizPipeline` carries no entity id and view names are the entity `key`. **Lean: add optional `connectorEntityId` to `MapGeometrySourceSchema`** — the map tool sets it, serve reads it, maps authored before this fall back to raw-simplify. Alternative (no author-path change): match the pipeline's `FROM` against the station's known entity keys. Flagged because it decides whether this ticket touches the map-authoring path.
+1. **D1 — keyed by the pipeline, materialized per pinned result** (`portalResultId`), not per entity. Dissolves the pin's actual `SELECT` output → multi-source/aggregated choropleths work; no `connectorEntityId` coupling.
+2. **D2 — a `dissolve_precompute` job**, enqueued on geo-pin **create** and every **refresh**, under an advisory lock on `portalResultId`; runs the pin's `pipeline.sql` once; failure non-fatal (`degraded`).
+3. **D3 — static `map_dissolve_geometries` table**, keyed `(portalResultId, columnName, value, zoomBand)`, FK → `portal_results` `ON DELETE CASCADE`.
+4. **D4 — 3 fixed zoom bands below z14**, each a simplify tolerance.
+5. **D5 — `AggTreatment` gains `"dissolve"`**; `resolveAggTreatment(kind, treatment?, { hasColorBy })` routes `polygons + colorBy → "dissolve"`. Serve (pin refs) clips precompute on hit, **raw-simplify on miss**; polygons never render as centroid bins again.
+6. **Dissolve only for categorical colorBy** — gated by `COUNT(DISTINCT) ≤ DISSOLVE_CARDINALITY_CEILING` (64); numeric/continuous falls back to raw-simplify.
 
 ## Scope
 
 ### In scope
 - `map_dissolve_geometries` table (dual-schema) + migration + type-checks.
 - `AggTreatment` `"dissolve"` + `resolveAggTreatment` signature change (shared server/client).
-- `connectorEntityId` on the geo layer source + the map tool setting it (D6 lean).
-- `dissolve_precompute` job type (metadata/result schemas + JOB_TYPE_SCHEMAS entry), processor, and its enqueue on sync success.
-- The precompute SQL (subdivide → two-phase union → simplify per value/band), under the instance lock.
-- Tile serve branch (clip precompute) + raw-simplify fallback; wire `connectorEntityId` through `resolvePipeline`/`TileAggregation`.
+- `dissolve_precompute` job type (metadata/result schemas + `JOB_TYPE_SCHEMAS` entry), processor, advisory lock on `portalResultId`.
+- Precompute SQL: run the pin's `pipeline.sql` once → subdivide → two-phase union → simplify per (value, band).
+- Enqueue at pin **create** (`POST /api/portal-results`) and **refresh** (`POST /api/portal-results/:id/refresh`), best-effort.
+- Tile serve branch for **pin refs** (clip precompute) + raw-simplify fallback; `TileAggregation.treatment`.
 - Client paint: polygons below threshold render real geometry with `resolveColorBy`, not the bin fill.
-- Backfill fan-out for existing geometry entities.
 
 ### Out of scope
-- Numeric/`step`/`interpolate` colorBy low-zoom dissolve (no discrete value) — falls back to raw-simplify (Open Q2).
-- Change-detection skip of needless recompute (Open Q5) — recompute runs every sync.
-- Offline vector-tile pyramids (tippecanoe) — separate infra track.
-- Line/point low-zoom treatment — unchanged (`none` / `bins`).
+- Numeric/continuous colorBy low-zoom dissolve (Open Q2) — raw-simplify fallback.
+- Unpinned/message-ref low-zoom dissolve (Open Q3) — raw-simplify fallback; no lazy per-tile compute.
+- Snapshot-version recompute skip (Open Q5) — recompute on every refresh.
+- Offline tile pyramids; line/point low-zoom treatment (unchanged).
 
 ## Surface
 
 ### 1. `map_dissolve_geometries` table
 
-**File: `apps/api/src/db/schema/map-dissolve-geometries.table.ts`** (new) — static, mirrors `wide-table-columns.table.ts`. The `geometry` column is added by DDL after `pgTable` (Drizzle has no PostGIS type), following how `WideTableReconcilerService` emits `geometry(Geometry,4326)` + GiST.
+**File: `apps/api/src/db/schema/map-dissolve-geometries.table.ts`** (new) — static, mirrors `wide-table-columns.table.ts`. The `geom` column is added by migration DDL (Drizzle has no PostGIS type), following how `WideTableReconcilerService` emits `geometry(…,4326)` + GiST.
 
 ```ts
 export const mapDissolveGeometries = pgTable(
@@ -43,25 +42,25 @@ export const mapDissolveGeometries = pgTable(
   {
     ...baseColumns,
     organizationId: text("organization_id").notNull().references(() => organizations.id),
-    connectorEntityId: text("connector_entity_id").notNull().references(() => connectorEntities.id),
-    columnName: text("column_name").notNull(),      // the wide-table colorBy column, e.g. c_own_type
-    value: text("value").notNull(),                 // one categorical value (text-cast)
-    zoomBand: integer("zoom_band").notNull(),       // 0|1|2 — index into DISSOLVE_ZOOM_BANDS
-    // geom geometry(MultiPolygon,4326) — added by migration DDL, not Drizzle
+    portalResultId: text("portal_result_id").notNull().references(() => portalResults.id, { onDelete: "cascade" }),
+    columnName: text("column_name").notNull(),   // the pin's colorBy column, e.g. c_own_type
+    value: text("value").notNull(),              // one categorical value (text-cast)
+    zoomBand: integer("zoom_band").notNull(),    // 0|1|2 — index into DISSOLVE_ZOOM_BANDS
     featureCount: integer("feature_count").notNull(), // source polygons dissolved (audit)
+    // geom geometry(MultiPolygon,4326) — added by migration DDL, not Drizzle
   },
   (t) => [
     uniqueIndex("map_dissolve_geometries_key_unique")
-      .on(t.connectorEntityId, t.columnName, t.value, t.zoomBand)
+      .on(t.portalResultId, t.columnName, t.value, t.zoomBand)
       .where(sql`deleted IS NULL`),
-    index("map_dissolve_geometries_entity_idx").on(t.connectorEntityId),
+    index("map_dissolve_geometries_pin_idx").on(t.portalResultId),
     // + GiST on geom, created in the migration DDL
   ]
 );
 ```
 
-- Core Zod model `packages/core/src/models/map-dissolve-geometry.model.ts` (mirrors an existing `*.model.ts`); the `geom` value is GeoJSON (`z.record`/`z.unknown`) at the model boundary — the geometry column is not round-tripped through drizzle-zod (as `er__` geometry isn't). drizzle-zod select/insert in `zod.ts` **omit** `geom` (same treatment the wide-table geometry column gets); type-checks assert the non-geometry columns bidirectionally.
-- FK `ON DELETE CASCADE` from `connectorEntities` so dropping an entity purges its dissolve rows.
+- Core Zod model `packages/core/src/models/map-dissolve-geometry.model.ts`; drizzle-zod select/insert in `zod.ts` **omit** `geom` (same treatment the wide-table geometry column gets — it is not round-tripped through drizzle-zod). Type-checks assert the non-`geom` columns bidirectionally.
+- FK `ON DELETE CASCADE` from `portal_results` so unpinning purges its dissolve rows.
 
 ### 2. `AggTreatment` + `resolveAggTreatment`
 
@@ -84,70 +83,57 @@ export function resolveAggTreatment(
 }
 ```
 
-Both callers already have colorBy in hand: server `aggregationFromSpec` (`portal-map-tile.service.ts:203`) passes `{ hasColorBy: colorByColumn != null }`; client `layerToMapLibre` (`map-config.util.ts:495`) passes `{ hasColorBy: !!style.colorBy }`. `AGG_ZOOM_THRESHOLD` stays the band boundary (z14).
+Both callers already have colorBy in hand: server `aggregationFromSpec` (`portal-map-tile.service.ts:203`) passes `{ hasColorBy: colorByColumn != null }`; client `layerToMapLibre` (`map-config.util.ts:495`) passes `{ hasColorBy: !!style.colorBy }`. `AGG_ZOOM_THRESHOLD` (z14) stays the band boundary. **No change to `MapGeometrySourceSchema`** — the serve path uses the pin ref, not an entity id on the source.
 
-### 3. `connectorEntityId` on the geo source (D6 lean)
-
-**File: `packages/core/src/contracts/map-spec.contract.ts`** — extend `MapGeometrySourceSchema` (`:36`):
-
-```ts
-z.object({ geometryColumn: z.string().min(1), connectorEntityId: z.string().optional() }),
-```
-
-Optional so existing specs still parse (they fall back to raw-simplify). The map-authoring tool sets it when it resolves the layer's entity. **File to update:** the geo/map tool that builds the `MapSpec` (`apps/api/src/tools/*map*.tool.ts`) — resolve the source entity's id onto the layer source. (If confirm on D6 goes the other way, this section is replaced by an entity-key-match helper in `portal-map-tile.service.ts` and the tool is untouched.)
-
-### 4. Zoom bands (constants)
+### 3. Zoom bands + ceiling (constants)
 
 **File: `packages/core/src/constants/*` (alongside `AGG_ZOOM_THRESHOLD`)**
 
 ```ts
-// [minZoomInclusive, simplifyToleranceDegrees] — bands below the z14 raw handoff
 export const DISSOLVE_ZOOM_BANDS = [
-  { band: 0, maxZoomExclusive: 8,  tolerance: /* ~z6 px */ },
-  { band: 1, maxZoomExclusive: 11, tolerance: /* ~z9 px */ },
-  { band: 2, maxZoomExclusive: 14, tolerance: /* ~z12 px */ },
+  { band: 0, maxZoomExclusive: 8,  representativeZoom: 6 },
+  { band: 1, maxZoomExclusive: 11, representativeZoom: 9 },
+  { band: 2, maxZoomExclusive: 14, representativeZoom: 12 },
 ] as const;
 export const DISSOLVE_CARDINALITY_CEILING = 64;
 ```
 
-Tolerances reuse the `tileSimplifyTolerance(z)` formula (`portal-map-tile.service.ts:245`) at each band's representative zoom.
+Tolerance per band = `tileSimplifyTolerance(representativeZoom)` (`portal-map-tile.service.ts:245`). `bandForZoom(z)` helper maps a zoom to its band (or null at z≥14).
 
-### 5. `dissolve_precompute` job
+### 4. `dissolve_precompute` job
 
 **File: `packages/core/src/models/job.model.ts`** — new type + schemas + registry entries (`JobTypeEnum:39`, `JobTypeMap:510`, `JOB_TYPE_SCHEMAS:543`):
 
 ```ts
 // JobTypeEnum: add "dissolve_precompute"
+/** dissolve_precompute — off-request dissolve of a pinned map's polygon
+ *  choropleth. Locks `portalResultId` (advisory) so two refreshes can't race. */
 export const DissolvePrecomputeMetadataSchema = z.object({
-  connectorInstanceId: z.string(),   // the entity the job locks (via its instance)
+  portalResultId: z.string(),
   organizationId: z.string(),
-  connectorEntityId: z.string(),
 });
 export const DissolvePrecomputeResultSchema = z.object({
-  columnsProcessed: z.number().int().nonnegative(),
+  columnName: z.string().nullable(),          // null ⇒ nothing to dissolve (non-categorical/over ceiling)
   valuesDissolved: z.number().int().nonnegative(),
   rowsWritten: z.number().int().nonnegative(),
-  skippedHighCardinality: z.array(z.string()),   // columns over the ceiling
-  degraded: z.literal(true).optional(),          // a column/band failed; non-fatal
+  skipped: z.enum(["over-cardinality", "non-polygon", "no-colorby", "none"]).optional(),
+  degraded: z.literal(true).optional(),       // a band failed; non-fatal
 });
 ```
 
-The metadata's JSDoc declares it **locks `connectorInstanceId`** (per the async-job locking rules in CLAUDE.md).
+### 5. Precompute processor
 
-**File: `packages/core/src/models/job.model.ts`** — add `dissolveDegraded: z.literal(true).optional()` to `ConnectorSyncResultSchema` (mirror of `mirrorDegraded:123`) for when the *enqueue* of the follow-up fails (best-effort).
+**File: `apps/api/src/queues/processors/dissolve-precompute.processor.ts`** (new). Under an advisory lock on `portalResultId` (reuse `SyncLockService`'s `pg_try_advisory_lock` pattern with a new namespace constant — factor a `withAdvisoryLock(namespace, key, fn)` if clean; returns `superseded`-style no-op if not acquired):
 
-### 6. Precompute processor
-
-**File: `apps/api/src/queues/processors/dissolve-precompute.processor.ts`** (new). Runs under `SyncLockService.withInstanceLock(connectorInstanceId, …)` (returns `superseded` if not acquired — same shape as connector-sync). For the entity's `er__<id>` table:
-
-1. Resolve the geometry column + candidate categorical columns from `wide_table_columns` (`pgType = 'text'`); for each, `SELECT count(DISTINCT c_col)` — keep those ≤ `DISSOLVE_CARDINALITY_CEILING`, record the rest in `skippedHighCardinality`.
-2. Per kept column × zoom band, dissolve **bounded** (the shape that must not repeat #475's >90s):
+1. Load the `portal_results` row; parse `content.spec`. If not a polygon layer with a `colorBy`, return `{ skipped: "non-polygon" | "no-colorby" }`.
+2. Resolve `pipeline` (`content.pipeline`) + the colorBy column. Build session views (`PortalSqlService.buildSessionViews(pipeline.stationId, organizationId)`), then in a read-only tx run `SELECT count(DISTINCT <colorBy>) FROM (<pipeline.sql>) src WHERE geom IS NOT NULL`. If `> DISSOLVE_CARDINALITY_CEILING`, return `{ skipped: "over-cardinality" }`.
+3. Per zoom band, dissolve **bounded** (the shape that must not repeat #475's >90s):
 
 ```sql
--- two-phase, subdivided union → simplify, per (value, band)
-WITH parts AS (
-  SELECT c_col AS value, ST_Subdivide(c_geometry, 256) AS g
-  FROM "er__<id>" WHERE deleted IS NULL AND c_geometry IS NOT NULL
+WITH src AS (<pipeline.sql>),                         -- join/aggregation runs ONCE
+parts AS (
+  SELECT (<colorBy>)::text AS value, ST_Subdivide(geom, 256) AS g
+  FROM src WHERE geom IS NOT NULL
 ),
 gridded AS (   -- phase 1: union within a coarse grid bucket (bounds each union)
   SELECT value, ST_SnapToGrid(ST_Centroid(g), <cell>) AS bucket, ST_Union(g) AS g
@@ -155,42 +141,45 @@ gridded AS (   -- phase 1: union within a coarse grid bucket (bounds each union)
 )
 SELECT value,
        ST_Multi(ST_CollectionExtract(
-         ST_SimplifyPreserveTopology(ST_Union(g), <band tolerance>), 3)) AS geom
-FROM gridded GROUP BY value;   -- phase 2: union the bucket unions
+         ST_SimplifyPreserveTopology(ST_Union(g), <band tolerance>), 3)) AS geom,
+       count(*) AS feature_count
+FROM gridded GROUP BY value;
 ```
 
-3. Replace the entity's rows for the processed columns **transactionally** (delete-then-insert within one tx → readers never see a half-built dimension), writing `geom` via `ST_MakeValid(ST_SetSRID(…,4326))` and `featureCount`.
-4. Run with a **job-level `statement_timeout`** far above the tile budget (a constant, e.g. `DISSOLVE_STATEMENT_TIMEOUT_MS`), since this is off-request. A per-column/band failure is caught, flags `degraded`, and does not abort the rest.
+4. **Replace** the pin's rows transactionally (delete `WHERE portal_result_id = $1` then insert the new band rows in one tx → readers never see a half-built dimension), writing `geom` via `ST_GeomFromGeoJSON`/`ST_Multi` (or directly from the SQL above) + `ST_MakeValid(ST_SetSRID(…,4326))`.
+5. Off-request `statement_timeout` (`DISSOLVE_STATEMENT_TIMEOUT_MS`, a large constant). A per-band failure is caught → `degraded`, other bands still written.
 
-**Enqueue:** in `apps/api/src/queues/processors/connector-sync.processor.ts` after a successful non-superseded sync (`return result`), enqueue one `dissolve_precompute` job per geometry-bearing entity of the instance (best-effort — a failed enqueue sets `dissolveDegraded` on the sync result, never throws). Registered in `jobs.worker.ts`'s dispatch.
+**Registered** in `jobs.worker.ts` dispatch.
+
+### 6. Enqueue at pin create + refresh
+
+- **`apps/api/src/routes/portal-results.router.ts`** `POST /` (after the `portalResults.create`, before the 201): if the pinned block is a geo polygon-with-colorBy, enqueue one `dissolve_precompute` job for the new `portalResult.id`. Best-effort — a failed enqueue is logged, never fails the pin.
+- **`apps/api/src/routes/portal-results.router.ts`** `POST /:id/refresh` (after the refresh persists the fresh snapshot): re-enqueue for the same `portalResultId` (recompute over the refreshed data).
+
+No change to `connector-sync.processor.ts` — the precompute is decoupled from connector sync.
 
 ### 7. Tile serve branch + fallback
 
 **File: `apps/api/src/services/portal-map-tile.service.ts`**
 
-- `TileAggregation` (`:168`) gains `treatment: AggTreatment` and `connectorEntityId: string | null` (resolved per D6). `aggregationFromSpec` populates them.
-- `resolvePipeline` (`:253`) returns `connectorEntityId` (from the layer source, D6 lean).
+- `TileAggregation` (`:168`) gains `treatment: AggTreatment`. `aggregationFromSpec` populates it (`resolveAggTreatment(kind, agg.treatment, { hasColorBy: colorByColumn != null })`).
+- `resolvePipeline` already returns the pin's `portalResultId` context (the ref carries it for `kind === "pin"`); thread it (or the `ref`) into `defaultRunTileQuery`.
 - `defaultRunTileQuery` (`:405`): when `treatment === "dissolve" && z < zoomThreshold`:
-  - **Hit** (`connectorEntityId` + `colorByColumn` known, ≥1 `map_dissolve_geometries` row for the band): `ST_AsMVT(ST_AsMVTGeom(ST_Transform(geom,3857), envelope, …))` over the stored rows filtered `geom && envelope`, emitting `value AS <colorByColumn>` so the client `["get", col]` colorBy matches. No `pipeline.sql` run.
-  - **Miss** (no rows / no entity id / non-categorical): `buildRawTileSql` with the band tolerance — real simplified polygons. Sets the `X-Portal-Tile-Simplified` degradation header (#449).
-- Band selection: map `z` → `DISSOLVE_ZOOM_BANDS[].band`.
+  - **Pin ref + hit** (≥1 `map_dissolve_geometries` row for `(portalResultId, colorByColumn, bandForZoom(z))`): `ST_AsMVT(ST_AsMVTGeom(ST_Transform(geom,3857), envelope, …))` over the stored rows filtered `geom && ST_Transform(envelope,4326)`, emitting `value AS <colorByColumn>` so client `["get", col]` colorBy matches. **The pipeline SQL is not run.**
+  - **Miss** (no rows / message ref / non-categorical): `buildRawTileSql` with the band tolerance — real simplified polygons; set `X-Portal-Tile-Simplified` (#449).
 - Never `buildAggregateTileSql` for a polygon dissolve layer.
 
 ### 8. Client paint
 
-**File: `apps/web/src/modules/MapWidget/utils/map-config.util.ts`** — `layerToMapLibre` (`:494`). For `treatment === "dissolve"` (tiled): set raw layers `minzoom = threshold` and push a `-agg` **fill of real geometry** painted with the `resolveColorBy` expression (`:504` branch), **not** the density ramp and **not** a centroid layer. The tile source already yields the colorBy column as a feature property (§7), so `resolveColorBy` keyed on `["get", col]` colors it. The `"bins"` branch is unchanged for points.
+**File: `apps/web/src/modules/MapWidget/utils/map-config.util.ts`** — `layerToMapLibre` (`:494`). For `treatment === "dissolve"` (tiled): set raw layers `minzoom = threshold` and push a `-agg` **fill of real geometry** painted with the `resolveColorBy` expression (`:504` branch) — **not** the density ramp, **no** centroid layer. The tile source yields the colorBy column as a property (§7), so `resolveColorBy` on `["get", col]` colors it. `"bins"` branch unchanged for points/no-colorBy polygons.
 
 ## Migration
 
-`cd apps/api && npm run db:generate -- --name add_map_dissolve_geometries`. Hand-add to the generated SQL (Drizzle can't emit PostGIS): `ALTER TABLE map_dissolve_geometries ADD COLUMN geom geometry(MultiPolygon,4326);` + `CREATE INDEX … USING GIST (geom);`. No backfill in the migration — existing entities are backfilled by the fan-out job (§ below), not DDL. No production data at risk (project memory).
+`cd apps/api && npm run db:generate -- --name add_map_dissolve_geometries`. Hand-add to the generated SQL: `ALTER TABLE map_dissolve_geometries ADD COLUMN geom geometry(MultiPolygon,4326);` + `CREATE INDEX … USING GIST (geom);`. No backfill (existing pins get precompute on their next refresh; a one-shot enqueue-for-all-geo-pins is a trivial admin action, noted not built). No production data at risk (project memory).
 
 ## Seed
 
-None — the table is populated by the precompute job, not seeded.
-
-## Backfill
-
-**File: `apps/api/src/services/dissolve-precompute-resync.service.ts`** (new, mirrors `wide-table-resync.service.ts`) — enqueue one `dissolve_precompute` job per existing geometry-bearing connector entity, so already-synced layers get precompute without a re-sync. Triggered once (admin/CLI or a one-shot on deploy).
+None — populated by the job.
 
 ## TDD test plan
 
@@ -198,70 +187,70 @@ Run via npm scripts (`feedback_use_npm_test_scripts`): `cd packages/core && npm 
 
 ### Layer 1 — core contract (`packages/core`)
 1. `AggTreatment` accepts `"dissolve"`; `MapLayerAggregationSchema` round-trips it.
-2. `resolveAggTreatment`: polygons + `hasColorBy` → `"dissolve"`; polygons without colorBy → `"bins"`; lines → `"none"`; explicit treatment always wins.
-3. `MapGeometrySourceSchema` accepts an optional `connectorEntityId`; a spec without it still parses (fallback path).
-4. `DissolvePrecomputeMetadataSchema`/`ResultSchema` parse; `JOB_TYPE_SCHEMAS.dissolve_precompute` present (registry completeness compile check).
-5. `ConnectorSyncResultSchema` accepts `dissolveDegraded: true`.
-6. `MapDissolveGeometry` model round-trips (non-geom fields).
+2. `resolveAggTreatment`: polygons + `hasColorBy` → `"dissolve"`; polygons without colorBy → `"bins"`; lines → `"none"`; explicit wins.
+3. `DissolvePrecomputeMetadataSchema`/`ResultSchema` parse; `JOB_TYPE_SCHEMAS.dissolve_precompute` present (registry completeness compile check).
+4. `MapDissolveGeometry` model round-trips (non-geom fields).
+5. `bandForZoom` maps representative zooms to the right band and returns null at z≥14.
 
 ### Layer 2 — DB / type-checks (integration)
-7. `map_dissolve_geometries` insert + the geometry DDL: a GeoJSON MultiPolygon round-trips in→out via `ST_GeomFromGeoJSON`/`ST_AsGeoJSON`; GiST index present; a spatial `&&` predicate is index-usable (mirrors `wide-table-geometry.integration.test.ts`).
-8. Unique key `(connectorEntityId, columnName, value, zoomBand)` rejects a duplicate live row.
-9. FK `ON DELETE CASCADE`: deleting the connector entity purges its rows.
-10. Dual-schema guards compile (`type-check`); a deliberate mismatch fails.
+6. `map_dissolve_geometries` insert + geometry DDL: a GeoJSON MultiPolygon round-trips in→out; GiST present; `&&` predicate index-usable (mirrors `wide-table-geometry.integration.test.ts`).
+7. Unique key `(portalResultId, columnName, value, zoomBand)` rejects a duplicate live row.
+8. FK `ON DELETE CASCADE`: deleting the `portal_results` row purges its dissolve rows.
+9. Dual-schema guards compile; a deliberate mismatch fails `type-check`.
 
 ### Layer 3 — precompute processor (integration, real PostGIS)
-11. Given an `er__` table with a categorical column (3 values) over overlapping polygons, the processor writes one MultiPolygon per (value, band); `featureCount` = source count; **`ST_IsValid`** on every stored geom.
-12. The two-phase union output equals a single `ST_Union` (same dissolved area within tolerance) — correctness, not plan.
-13. A column over `DISSOLVE_CARDINALITY_CEILING` is skipped and listed in `skippedHighCardinality`.
-14. Recompute replaces prior rows transactionally (a second run yields the same row count, not doubled; no window with zero rows — assert via a concurrent read or a post-count).
-15. Not acquiring the instance lock → `superseded`, no writes.
-16. A forced per-band failure sets `degraded`, still writes the other bands.
+10. Given a pin whose pipeline yields overlapping polygons + a 3-value categorical colorBy, the processor writes one MultiPolygon per (value, band); `featureCount` = source count; every geom `ST_IsValid`.
+11. **A joined/aggregated pipeline** (geometry from one view ⨝ a categorical metric from another) dissolves correctly — proves the pipeline-keyed model (not entity-keyed).
+12. Two-phase union output equals a single `ST_Union` (same dissolved area within tolerance) — correctness, not plan.
+13. colorBy over `DISSOLVE_CARDINALITY_CEILING` → `{ skipped: "over-cardinality" }`, no rows.
+14. Recompute replaces prior rows transactionally (second run: same count, not doubled; no zero-row window).
+15. Advisory lock not acquired → superseded no-op, no writes.
+16. A forced per-band failure → `degraded`, other bands written.
 
 ### Layer 4 — tile serve (integration)
-17. Dissolve hit: a low-zoom tile for a precomputed (entity, column) returns MVT features carrying the colorBy value as a property, sourced from `map_dissolve_geometries` (assert the pipeline SQL was *not* the source — e.g. drop/rename the underlying view and still get a tile).
-18. Dissolve miss (no precompute rows): falls back to `buildRawTileSql` (real polygons, simplified) + sets `X-Portal-Tile-Simplified`; **never** centroid bins.
-19. `z ≥ zoomThreshold` still uses the raw path (unchanged).
-20. Band selection maps representative zooms to the right `zoomBand`.
+17. Dissolve hit: a low-zoom **pin** tile returns MVT features carrying the colorBy value as a property, sourced from `map_dissolve_geometries` (assert the pipeline SQL was not the source — e.g. rename the underlying view and still get a tile).
+18. Dissolve miss (no rows): falls back to `buildRawTileSql` (real simplified polygons) + `X-Portal-Tile-Simplified`; **never** centroid bins.
+19. A **message** ref at low zoom → raw-simplify fallback (never precompute, never bins).
+20. `z ≥ zoomThreshold` → raw path unchanged; `bandForZoom` selects the right band below.
 
 ### Layer 5 — client (`apps/web`)
-21. `layerToMapLibre` for a tiled polygon dissolve layer emits a `-agg` **fill** using the colorBy expression (not the density ramp, no centroid layer) and gates the raw layer at `minzoom = threshold`.
-22. A tiled polygon layer *without* colorBy still uses `"bins"` (unchanged).
-23. Points with aggregation still use `"bins"`.
+21. `layerToMapLibre` for a tiled polygon dissolve layer emits a `-agg` **fill** with the colorBy expression (not density, no centroid layer), gating the raw layer at `minzoom = threshold`.
+22. Tiled polygon without colorBy still uses `"bins"`; points still use `"bins"`.
 
-### Layer 6 — enqueue + backfill
-24. A successful `connector_sync` enqueues one `dissolve_precompute` per geometry entity (spy on the queue); a failed enqueue sets `dissolveDegraded`, sync still `completed`.
-25. `dissolve-precompute-resync` enqueues one job per existing geometry entity.
+### Layer 6 — enqueue
+23. Pinning a geo polygon-with-colorBy block enqueues one `dissolve_precompute` (spy the queue); a non-polygon/no-colorBy pin enqueues nothing; a failed enqueue doesn't fail the pin.
+24. Refreshing such a pin re-enqueues for the same `portalResultId`.
 
-**Totals ≈ 25 cases** (6 core, 4 db, 6 processor, 4 serve, 3 web, 2 enqueue/backfill).
+**Totals ≈ 24 cases** (5 core, 4 db, 7 processor, 4 serve, 2 web, 2 enqueue).
 
 ## Acceptance criteria
 
 - [ ] A polygon choropleth below z14 renders as **real colored polygons**, not centroid bins, in the dev app.
-- [ ] With no precompute yet, the same map still renders real (simplified) polygons — never bins, never blank.
-- [ ] After a sync, `map_dissolve_geometries` holds one valid MultiPolygon per (categorical column ≤ ceiling, value, band); every geom is `ST_IsValid`.
-- [ ] The dissolve tile serve does **not** run the layer pipeline SQL (served from stored geometry); a low-zoom tile returns within the tile budget on the ~400K parcel layer.
-- [ ] Precompute runs off the request path, under the instance advisory lock, and never races or blocks a live sync; failure is non-fatal and flagged.
-- [ ] Recompute on each sync keeps geometry current; readers never see a half-built dimension.
+- [ ] A **joined/aggregated** choropleth (boundaries ⨝ a categorical metric) renders correctly at low zoom — the pipeline-keyed model serves it.
+- [ ] With no precompute yet (or an unpinned map), the same map still renders real simplified polygons — never bins, never blank.
+- [ ] After pinning/refresh, `map_dissolve_geometries` holds one valid MultiPolygon per (value, band) for the pin; every geom `ST_IsValid`.
+- [ ] The dissolve tile serve does **not** run the pin's pipeline SQL (served from stored geometry); a low-zoom tile returns within the tile budget on the ~400K parcel layer.
+- [ ] Precompute runs off the request path under the `portalResultId` advisory lock; two refreshes can't race; failure is non-fatal + flagged.
+- [ ] Recompute on refresh keeps geometry current; readers never see a half-built dimension.
 - [ ] `npm run lint && npm run type-check` clean; all suites green.
 
 ## Risks & rollback
 
 | Risk | Mitigation |
 |---|---|
-| **Bounded union still too slow** on ~400K polygons (the #475 failure, off-request). | Two-phase subdivided/grid union + off-request `statement_timeout`; **measure against the real parcel layer before finalizing the SQL** (Open Q3 / the plan's slice-2 gate). If still too slow, coarsen the grid / raise subdivide count / simplify-before-union at high bands. |
-| D6 entity link wrong/missing → serve can't find precompute. | Miss falls back to raw-simplify (correct polygons); no blank/incorrect map. Confirm D6 direction first. |
-| Precompute storage growth. | Bounded by ceiling × values × 3 bands × geometry cols; high-cardinality excluded by construction. |
-| Stale precompute between syncs. | Recompute every sync (Open Q5 accepts the cost; change-detection is a later optimization). |
-| Half-built dimension visible mid-recompute. | Delete-then-insert per entity in one transaction. |
+| **Bounded union still too slow** on ~400K polygons (the #475 failure, off-request). | Two-phase subdivided/grid union + off-request `statement_timeout`; **measure against the real parcel layer before finalizing the SQL** (slice-2 gate). If still too slow: coarsen grid / raise subdivide count / simplify-before-union at high bands. |
+| First low-zoom pin view degraded until the job lands (interacts with #371 tile-on-mount). | Fallback is correct real polygons (raw-simplify), not blank; dissolved geometry serves on the next fetch/refresh. Acceptable + stated (discovery Open Q6). |
+| Aggregated pipeline is expensive to run even once. | It runs **once** off-request (not per tile); the whole point of moving it off the request path. |
+| Half-built dimension mid-recompute. | Delete-then-insert per pin in one transaction. |
+| Storage growth. | Bounded by ceiling × bands per pinned choropleth; pins are few and deliberate. |
 
 **Rollback:** revert the migration (drop table) + `git revert`; serve falls back to raw-simplify with the treatment change reverted → prior behavior. Data-lossless (derived data only).
 
 ## Files touched
 
-**`packages/core`** — new: `models/map-dissolve-geometry.model.ts`; edit: `contracts/map-spec.contract.ts` (treatment enum, `resolveAggTreatment`, source `connectorEntityId`), `models/job.model.ts` (job type + schemas + `dissolveDegraded`), `constants/*` (bands + ceiling), `models/index.ts`. New tests under `__tests__`.
+**`packages/core`** — new: `models/map-dissolve-geometry.model.ts`; edit: `contracts/map-spec.contract.ts` (treatment enum + `resolveAggTreatment`), `models/job.model.ts` (job type + schemas), `constants/*` (bands + ceiling), `models/index.ts`. New tests.
 
-**`apps/api`** — new: `db/schema/map-dissolve-geometries.table.ts`, `queues/processors/dissolve-precompute.processor.ts`, `services/dissolve-precompute-resync.service.ts`, the migration, integration tests; edit: `db/schema/zod.ts`, `type-checks.ts`, `db/schema/index.ts`, `services/portal-map-tile.service.ts` (`TileAggregation`, `aggregationFromSpec`, `resolvePipeline`, `defaultRunTileQuery`), `queues/processors/connector-sync.processor.ts` (enqueue), `queues/jobs.worker.ts` (dispatch), the map tool (D6 lean).
+**`apps/api`** — new: `db/schema/map-dissolve-geometries.table.ts`, `queues/processors/dissolve-precompute.processor.ts`, the migration, integration tests; edit: `db/schema/zod.ts`, `type-checks.ts`, `db/schema/index.ts`, `services/portal-map-tile.service.ts` (`TileAggregation`, `aggregationFromSpec`, `resolvePipeline`, `defaultRunTileQuery`), `services/sync-lock.service.ts` (or a new `advisory-lock` helper for the `portalResultId` namespace), `routes/portal-results.router.ts` (enqueue on create + refresh), `queues/jobs.worker.ts` (dispatch), `constants/*` (statement timeout).
 
 **`apps/web`** — edit: `modules/MapWidget/utils/map-config.util.ts` (dissolve paint) + its test.
 
@@ -269,4 +258,4 @@ No new dependency; no env change (new tuning constants only).
 
 ## Next step
 
-`docs/PRECOMPUTED_POLYGON_DISSOLVE.plan.md` — 4 TDD slices: (1) contract + table + migration + type-checks + constants (green: schema/model tests); (2) precompute processor + union SQL under the lock + **the union measurement gate** (green: processor integration tests); (3) tile serve branch + fallback + client paint (green: serve + web tests); (4) enqueue on sync + backfill fan-out (green: enqueue tests). Each a compilable, green-tested commit on `fix/precomputed-polygon-dissolve`. Slices 1–2 are the risk; if the union measurement fails, we revisit the SQL before serve/client work.
+`docs/PRECOMPUTED_POLYGON_DISSOLVE.plan.md` — 4 TDD slices: (1) contract + table + migration + type-checks + constants; (2) precompute processor + union SQL under the advisory lock + **the union measurement gate**; (3) enqueue at pin create/refresh; (4) tile serve branch + fallback + client paint. Slices 1–2 are the risk; if the union measurement fails, revisit the SQL before serve/client work.
