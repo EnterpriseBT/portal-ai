@@ -417,9 +417,18 @@ describe("REST API connector — end-to-end sync", () => {
       );
     expect(live).toHaveLength(2);
 
-    // The bug: without the reap→wide-clean, this would be 4 (orphans). With
-    // the fix it stays at the current run's 2.
-    expect(await wideCount()).toBe(2);
+    // #450: the reap now MARKS reaped wide rows deleted (a tombstone the view
+    // filters out + retention drains) rather than physically deleting them.
+    // "Not orphaned" = the reaped rows are marked, not left live: only the
+    // current run's 2 rows are live, while all 4 rows persist on disk (2 live +
+    // 2 tombstones). Before #327 this would have been 4 *live* orphans.
+    const liveWide = (await db.execute(
+      sql.raw(
+        `SELECT count(*)::int AS n FROM "er__${entityId}" WHERE "deleted" IS NULL`
+      )
+    )) as unknown as Array<{ n: number }>;
+    expect(liveWide[0].n).toBe(2);
+    expect(await wideCount()).toBe(4);
   });
   it("backfills a wide row that went missing, without the blind re-upsert (#440)", async () => {
     // The per-record path re-upserted EVERY unchanged record's wide row on
