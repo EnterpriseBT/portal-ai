@@ -20,6 +20,14 @@ const quoteLit = (s: string) => `'${s.replace(/'/g, "''")}'`;
 const WKB_HEX_RE = /^[0-9A-Fa-f]+$/;
 
 /**
+ * Rows per re-encode round-trip (#371). A pin snapshot caps at a few thousand
+ * rows, and each geometry hex is bound as its own scalar param via a `VALUES`
+ * list — chunking keeps the serialized statement's AST shallow (the same
+ * bound that #436 hit marshalling an id list through `sql.join`).
+ */
+const REENCODE_CHUNK = 1000;
+
+/**
  * The reproject query is an INTERNAL render transform — its output goes to the
  * map widget, not the model's context — so the LLM-facing response caps
  * (`cellCap`/`payloadCap`/`rowCap`, meant to protect the context window) must
@@ -103,11 +111,15 @@ export async function geoInlineRows(
  * column), fixing only the geometry column's encoding — which is the sole thing
  * that differs from a correctly-rendered inline map.
  *
- * Per geometry column, the WKB-hex values are converted in one batched query
- * (`unnest($hex[], $idx[])` → `ST_AsGeoJSON(ST_GeomFromEWKB(decode(hex,'hex')))`),
- * so there is no id-list AST overflow (#436) and no per-row round-trip. Values
- * that aren't WKB-hex strings (already-GeoJSON objects, or null) pass through
- * untouched, so the transform is idempotent and safe on already-inline pins.
+ * Per geometry column, the WKB-hex values are converted in batched queries — a
+ * chunked `VALUES (idx, hex)` list feeding
+ * `ST_AsGeoJSON(ST_GeomFromEWKB(decode(hex,'hex')))` — so there is no per-row
+ * round-trip. A `VALUES` list (not `unnest(${jsArray}::text[])`) because
+ * drizzle's `sql` template does not bind a JS array as a Postgres array: it
+ * flattens the array to scalar params and the `::text[]` cast then fails at
+ * runtime — which surfaced as an opaque pin error (#371). Values that aren't
+ * WKB-hex strings (already-GeoJSON objects, or null) pass through untouched, so
+ * the transform is idempotent and safe on already-inline pins.
  */
 export async function geoReencodeRows(
   rows: Array<Record<string, unknown>>,
@@ -119,25 +131,34 @@ export async function geoReencodeRows(
   const out = rows.map((r) => ({ ...r }));
 
   for (const col of geometryColumns) {
-    const hexes: string[] = [];
-    const idxs: number[] = [];
+    const pairs: Array<[number, string]> = [];
     out.forEach((r, i) => {
       const v = r[col];
-      if (typeof v === "string" && WKB_HEX_RE.test(v)) {
-        hexes.push(v);
-        idxs.push(i);
-      }
+      if (typeof v === "string" && WKB_HEX_RE.test(v)) pairs.push([i, v]);
     });
-    if (hexes.length === 0) continue;
+    if (pairs.length === 0) continue;
 
-    const res = (await execute(sql`
-      SELECT t.idx AS idx,
-             ST_AsGeoJSON(ST_GeomFromEWKB(decode(t.hex, 'hex')))::jsonb AS gj
-      FROM unnest(${hexes}::text[], ${idxs}::int[]) AS t(hex, idx)
-    `)) as unknown as Array<{ idx: number; gj: unknown }>;
+    // A VALUES list of (idx, hex) pairs, chunked. `sql.join` binds each element
+    // as a scalar param — drizzle does NOT bind a JS array as a Postgres array
+    // (a bare `unnest(${jsArray}::text[])` flattens to scalars and the cast
+    // fails, which masked as a pin error, #371). Chunked at REENCODE_CHUNK to
+    // keep the serialized statement's AST shallow (#436).
+    for (let start = 0; start < pairs.length; start += REENCODE_CHUNK) {
+      const chunk = pairs.slice(start, start + REENCODE_CHUNK);
+      const values = sql.join(
+        chunk.map(([i, h]) => sql`(${i}, ${h})`),
+        sql`, `
+      );
+      const res = (await execute(sql`
+        SELECT t.idx AS idx,
+               ST_AsGeoJSON(ST_GeomFromEWKB(decode(t.hex, 'hex')))::jsonb AS gj
+        FROM (VALUES ${values}) AS t(idx, hex)
+      `)) as unknown as Array<{ idx: number | string; gj: unknown }>;
 
-    for (const { idx, gj } of res ?? []) {
-      if (out[idx]) out[idx][col] = gj;
+      for (const { idx, gj } of res ?? []) {
+        const i = Number(idx);
+        if (out[i]) out[i][col] = gj;
+      }
     }
   }
   return out;
