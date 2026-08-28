@@ -488,11 +488,16 @@ export function layerToMapLibre(
   // and add a bin fill below it — colored by the same colorBy `match` (dominant
   // category) when there's a colorBy, or a `_count` density ramp when there
   // isn't. Inline (non-tiled) layers are unaffected.
-  // #337: only "bins" kinds get square-grid aggregation. Line layers resolve to
-  // "none" — they render as raw (importance-ranked, server-side) lines at every
-  // zoom, so we skip the aggregate fill and don't zoom-gate the raw layer.
+  // #337/#472: only "bins" kinds get square-grid aggregation. Lines resolve to
+  // "none" (raw, importance-ranked at every zoom). A polygon choropleth
+  // (colorBy present) resolves to "dissolve" — the server serves real dissolved
+  // geometry at low zoom, so the base fill/outline render ungated at all zooms
+  // (painted by the same colorBy expression), exactly like the "none" path;
+  // there is no centroid-bin fill and no minzoom gate.
   const agg = layer.aggregation;
-  const treatment = resolveAggTreatment(layer.kind, agg?.treatment);
+  const treatment = resolveAggTreatment(layer.kind, agg?.treatment, {
+    hasColorBy: !!style.colorBy,
+  });
   if (opts.tiled && agg?.enabled !== false && treatment === "bins") {
     const threshold = agg?.zoomThreshold ?? AGG_ZOOM_THRESHOLD;
     for (const l of layers) l.minzoom = threshold;

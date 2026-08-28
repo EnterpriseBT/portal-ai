@@ -276,10 +276,19 @@ describe("resolveAggTreatment", () => {
   // #472 slice 1: the `hasColorBy` opts arg is accepted but does NOT yet flip
   // the polygon default — the routing change lands with the serve + client
   // consumers (slice 4) so the treatment never goes half-migrated.
-  it("accepts the hasColorBy opts without changing the polygon default (pre-slice-4)", () => {
+  // #472: a polygon layer WITH a colorBy dissolves at low zoom; without one it
+  // keeps "bins" (density overview). Points/heatmap/cluster are unaffected.
+  it("routes polygons+colorBy to 'dissolve', polygons without colorBy to 'bins'", () => {
     expect(
       resolveAggTreatment("polygons", undefined, { hasColorBy: true })
+    ).toBe("dissolve");
+    expect(
+      resolveAggTreatment("polygons", undefined, { hasColorBy: false })
     ).toBe("bins");
+    expect(resolveAggTreatment("polygons")).toBe("bins");
+    expect(resolveAggTreatment("points", undefined, { hasColorBy: true })).toBe(
+      "bins"
+    );
   });
 });
 

@@ -24,7 +24,11 @@ import {
   type MapLayerKind,
   type AggTreatment,
 } from "@portalai/core/contracts";
-import { AGG_ZOOM_THRESHOLD, AGG_GRID_PX } from "@portalai/core/constants";
+import {
+  AGG_ZOOM_THRESHOLD,
+  AGG_GRID_PX,
+  bandForZoom,
+} from "@portalai/core/constants";
 
 import { db } from "../db/client.js";
 import { ApiError } from "./http.service.js";
@@ -126,6 +130,7 @@ export interface RenderTileDeps {
     pipeline: VizPipeline;
     propertyColumns: string[];
     organizationId: string;
+    portalResultId: string | null;
     z: number;
     x: number;
     y: number;
@@ -173,6 +178,10 @@ export interface TileAggregation {
   colorByColumn: string | null;
   /** Representative layer kind (#337) — drives the per-kind treatment. */
   kind: MapLayerKind | null;
+  /** Resolved low-zoom treatment (#337/#472). `"dissolve"` ⇒ a polygon
+   *  choropleth served from precomputed real geometry (raw-simplify on a miss),
+   *  never centroid bins. */
+  treatment: AggTreatment;
   /** Raw path orders by `ST_Length` DESC so a capped tile keeps the major
    *  features, not an arbitrary subset (#337). True only for line layers. */
   rankByLength: boolean;
@@ -198,9 +207,6 @@ export function aggregationFromSpec(spec: unknown): TileAggregation {
     treatment?: AggTreatment;
   };
   const kind = (rep?.kind ?? null) as MapLayerKind | null;
-  // Per-kind treatment (#337): explicit `treatment` wins, else lines → raw,
-  // others → bins. "none" routes to the raw path via `enabled:false`.
-  const treatment = kind ? resolveAggTreatment(kind, agg.treatment) : "bins";
   let colorByColumn: string | null = null;
   for (const l of layers) {
     const c = (l?.style as { colorBy?: { column?: string } } | undefined)
@@ -210,6 +216,14 @@ export function aggregationFromSpec(spec: unknown): TileAggregation {
       break;
     }
   }
+  // Per-kind treatment (#337/#472): explicit `treatment` wins, else lines → raw,
+  // polygons + colorBy → dissolve (real geometry at low zoom), others → bins.
+  // "none" routes to the raw path via `enabled:false`.
+  const treatment = kind
+    ? resolveAggTreatment(kind, agg.treatment, {
+        hasColorBy: colorByColumn != null,
+      })
+    : "bins";
   return {
     enabled: treatment === "none" ? false : (agg.enabled ?? true),
     zoomThreshold:
@@ -220,6 +234,7 @@ export function aggregationFromSpec(spec: unknown): TileAggregation {
       typeof agg.gridSizePx === "number" ? agg.gridSizePx : AGG_GRID_PX,
     colorByColumn,
     kind,
+    treatment,
     rankByLength: kind === "lines",
   };
 }
@@ -406,6 +421,7 @@ export class PortalMapTileService {
     pipeline: VizPipeline;
     propertyColumns: string[];
     organizationId: string;
+    portalResultId: string | null;
     z: number;
     x: number;
     y: number;
@@ -417,6 +433,7 @@ export class PortalMapTileService {
       pipeline,
       propertyColumns,
       organizationId,
+      portalResultId,
       z,
       x,
       y,
@@ -425,7 +442,35 @@ export class PortalMapTileService {
       aggregation,
     } = args;
     const envelope = `ST_TileEnvelope(${z}, ${x}, ${y})`;
-    const aggregate = shouldAggregate(z, aggregation);
+    const lowZoom = shouldAggregate(z, aggregation);
+
+    // #472: a low-zoom polygon choropleth is served from precomputed dissolved
+    // geometry (a pin ref with a band + colorBy). A miss — no precompute yet,
+    // or a message ref — falls through to the RAW path (real simplified
+    // polygons), never centroid bins.
+    if (aggregation.treatment === "dissolve" && lowZoom) {
+      const band = bandForZoom(z);
+      if (
+        band !== null &&
+        portalResultId != null &&
+        aggregation.colorByColumn != null &&
+        (await this.hasDissolvePrecompute(
+          portalResultId,
+          aggregation.colorByColumn,
+          band
+        ))
+      ) {
+        return this.runDissolveTile(
+          portalResultId,
+          aggregation.colorByColumn,
+          band,
+          envelope
+        );
+      }
+    }
+
+    // "dissolve" that missed serves raw (real polygons), not bins.
+    const aggregate = lowZoom && aggregation.treatment !== "dissolve";
     const tileSql = aggregate
       ? this.buildAggregateTileSql(pipeline.sql, z, envelope, aggregation, cap)
       : this.buildRawTileSql(
@@ -490,6 +535,88 @@ export class PortalMapTileService {
     }
   }
 
+  /**
+   * Does a dissolve precompute exist for this pin's colorBy column at this band
+   * (#472)? A cheap, envelope-independent existence check on the lookup index —
+   * the signal for "serve stored geometry" vs "fall back to raw-simplify". An
+   * empty tile *within* a populated pin must still serve dissolve (empty MVT),
+   * so this cannot be inferred from a per-envelope count.
+   */
+  private static async hasDissolvePrecompute(
+    portalResultId: string,
+    colorByColumn: string,
+    band: number
+  ): Promise<boolean> {
+    const r = (await db.execute(sql`
+      SELECT EXISTS(
+        SELECT 1 FROM map_dissolve_geometries
+        WHERE portal_result_id = ${portalResultId}
+          AND column_name = ${colorByColumn}
+          AND zoom_band = ${band}
+          AND deleted IS NULL
+      ) AS e
+    `)) as unknown as Array<{ e: boolean }>;
+    return r[0]?.e === true;
+  }
+
+  /**
+   * Serve a low-zoom tile from precomputed dissolved geometry (#472). Clips the
+   * stored pieces for `(pin, colorBy column, band)` to the tile envelope and
+   * emits the colorBy value as a feature property so the client's `colorBy`
+   * paint matches. Reads `map_dissolve_geometries` directly — no pipeline SQL,
+   * no session views. The GiST index means only the pieces overlapping the
+   * envelope are touched, never the whole region.
+   */
+  private static async runDissolveTile(
+    portalResultId: string,
+    colorByColumn: string,
+    band: number,
+    envelope: string
+  ): Promise<TileQueryResult> {
+    try {
+      const rows = (await db.transaction(async (tx) => {
+        await tx.execute(
+          sql.raw(
+            `SET LOCAL statement_timeout = '${TILE_STATEMENT_TIMEOUT_MS}ms'`
+          )
+        );
+        await tx.execute(sql.raw("SET LOCAL transaction_read_only = on"));
+        return (await tx.execute(sql`
+          WITH lim AS (
+            SELECT ST_AsMVTGeom(ST_Transform(mdg.geom, 3857), ${sql.raw(
+              envelope
+            )}, ${TILE_EXTENT}, 64, true) AS geom,
+                   mdg.value AS ${sql.raw(quoteIdentTile(colorByColumn))}
+            FROM map_dissolve_geometries mdg
+            WHERE mdg.portal_result_id = ${portalResultId}
+              AND mdg.column_name = ${colorByColumn}
+              AND mdg.zoom_band = ${band}
+              AND mdg.deleted IS NULL
+              AND mdg.geom && ST_Transform(${sql.raw(envelope)}, 4326)
+          )
+          SELECT
+            (SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom')
+             FROM lim q WHERE q.geom IS NOT NULL) AS mvt,
+            (SELECT count(*) FROM lim WHERE geom IS NOT NULL)::int AS n
+        `)) as unknown as Array<{ mvt: Buffer | Uint8Array | null; n: number }>;
+      })) as Array<{ mvt: Buffer | Uint8Array | null; n: number }>;
+      const row = rows[0];
+      const raw = row?.mvt ?? null;
+      return {
+        mvt: raw ? Buffer.from(raw as Uint8Array) : null,
+        featureCount: row ? Number(row.n) : 0,
+        // Dissolved real geometry: not a clipped subset (never truncated) and not
+        // a bin aggregate — it renders as polygons with the simplified notice.
+        truncated: false,
+        aggregated: false,
+      };
+    } catch (err) {
+      const mapped = mapTileError(err);
+      if (mapped) throw mapped;
+      throw err;
+    }
+  }
+
   static async renderTile(
     params: RenderTileParams,
     deps: RenderTileDeps = {}
@@ -528,6 +655,9 @@ export class PortalMapTileService {
       pipeline,
       propertyColumns,
       organizationId,
+      // #472: only a pin ref addresses a dissolve precompute; a message ref
+      // falls back to raw-simplify at low zoom.
+      portalResultId: ref.kind === "pin" ? ref.portalResultId : null,
       z,
       x,
       y,

@@ -223,6 +223,7 @@ describe("aggregationFromSpec + shouldAggregate (#330)", () => {
       gridSizePx: 24,
       colorByColumn: null,
       kind: null,
+      treatment: "bins" as const,
       rankByLength: false,
     };
     expect(shouldAggregate(11, on)).toBe(true);

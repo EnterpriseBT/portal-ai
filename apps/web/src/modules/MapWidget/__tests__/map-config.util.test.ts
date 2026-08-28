@@ -475,9 +475,12 @@ describe("layerToMapLibre", () => {
 });
 
 describe("layerToMapLibre aggregation (#330)", () => {
+  // A points+colorBy layer exercises the bins mechanism: #472 routes
+  // polygons+colorBy to "dissolve", so bins now covers points+colorBy (and any
+  // layer with an explicit treatment:"bins").
   const catLayer = {
-    kind: "polygons",
-    source: { geometryColumn: "geom" },
+    kind: "points",
+    source: { latColumn: "lat", lngColumn: "lng" },
     style: { colorBy: { column: "c_city", stops: [["SLC", "#111"]] } },
   } as MapLayer;
 
@@ -590,6 +593,29 @@ describe("layerToMapLibre per-kind treatment (#337)", () => {
     const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
     expect(layers.some((l) => l.id === aggId)).toBe(false);
     expect(layers.every((l) => l.minzoom === undefined)).toBe(true);
+  });
+
+  // #472: a tiled polygon choropleth (colorBy present, no explicit treatment)
+  // resolves to "dissolve" — the server serves real dissolved geometry at low
+  // zoom, so the client renders the base fill/outline ungated (all zooms),
+  // colored by the same colorBy expression, with NO centroid-bin fill.
+  it("tiled polygon+colorBy → 'dissolve': real fill ungated, no -agg bin fill", () => {
+    const { layers } = layerToMapLibre(polyLayer, 0, [], { tiled: true });
+    expect(layers.some((l) => l.id === aggId)).toBe(false);
+    expect(layers.every((l) => l.minzoom === undefined)).toBe(true);
+    const fill = layers.find((l) => l.id === `${sourceIdFor(0)}-fill`)!;
+    expect(fill.type).toBe("fill");
+    // Colored by the colorBy match expression (not a density ramp).
+    expect((fill.paint["fill-color"] as unknown[])[0]).toBe("match");
+  });
+
+  it("tiled polygon WITHOUT colorBy stays 'bins' (density overview)", () => {
+    const layer = {
+      kind: "polygons",
+      source: { geometryColumn: "geom" },
+    } as MapLayer;
+    const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
+    expect(layers.some((l) => l.id === aggId)).toBe(true);
   });
 });
 

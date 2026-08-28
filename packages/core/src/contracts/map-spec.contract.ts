@@ -163,13 +163,15 @@ export function resolveAggTreatment(
   kind: MapLayerKind,
   treatment?: AggTreatment,
   // #472: `hasColorBy` gates the polygon `"dissolve"` default — a dissolve needs
-  // a categorical value to merge on. The routing that consumes it lands with the
-  // serve + client consumers (so the treatment never flips half-migrated); until
-  // then this is accepted but does not change the result.
-  _opts?: { hasColorBy?: boolean }
+  // a categorical value to merge on. A polygon choropleth (colorBy present)
+  // renders as real dissolved polygons at low zoom; a polygon layer without a
+  // colorBy keeps `"bins"` (density overview).
+  opts?: { hasColorBy?: boolean }
 ): AggTreatment {
   if (treatment) return treatment;
-  return kind === "lines" ? "none" : "bins";
+  if (kind === "lines") return "none";
+  if (kind === "polygons" && opts?.hasColorBy) return "dissolve";
+  return "bins";
 }
 
 // ── Spec ─────────────────────────────────────────────────────────────
