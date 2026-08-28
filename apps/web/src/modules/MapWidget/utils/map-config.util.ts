@@ -469,20 +469,8 @@ export function layerToMapLibre(
   // "none" — they render as raw (importance-ranked, server-side) lines at every
   // zoom, so we skip the aggregate fill and don't zoom-gate the raw layer.
   const agg = layer.aggregation;
-  // #472: pass the layer's colorBy so a polygon choropleth (categorical
-  // colorBy) resolves to "dissolve" — the same inputs the server tile query
-  // uses, so tile and paint agree. Dissolve reuses the colorBy fill branch
-  // below (it always has a colorBy), painting the server's real dissolved
-  // geometry instead of centroid squares.
-  const treatment = resolveAggTreatment(layer.kind, agg?.treatment, {
-    hasColorBy: !!style.colorBy?.column,
-    colorByScale: style.colorBy?.scale,
-  });
-  if (
-    opts.tiled &&
-    agg?.enabled !== false &&
-    (treatment === "bins" || treatment === "dissolve")
-  ) {
+  const treatment = resolveAggTreatment(layer.kind, agg?.treatment);
+  if (opts.tiled && agg?.enabled !== false && treatment === "bins") {
     const threshold = agg?.zoomThreshold ?? AGG_ZOOM_THRESHOLD;
     for (const l of layers) l.minzoom = threshold;
     layers.push({

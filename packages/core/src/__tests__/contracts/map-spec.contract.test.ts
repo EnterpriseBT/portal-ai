@@ -242,10 +242,6 @@ describe("MapLayerAggregationSchema — treatment (via MapSpecSchema)", () => {
     expect(withAgg({ treatment: "none" }).success).toBe(true);
   });
 
-  it("accepts treatment: 'dissolve' (#472)", () => {
-    expect(withAgg({ treatment: "dissolve" }).success).toBe(true);
-  });
-
   it("rejects an unknown treatment value", () => {
     expect(withAgg({ treatment: "grid" }).success).toBe(false);
   });
@@ -270,51 +266,6 @@ describe("resolveAggTreatment", () => {
   it("lets an explicit treatment override the per-kind default", () => {
     expect(resolveAggTreatment("lines", "bins")).toBe("bins");
     expect(resolveAggTreatment("polygons", "none")).toBe("none");
-    // Explicit wins even over the colorBy-aware dissolve routing.
-    expect(resolveAggTreatment("polygons", "bins", { hasColorBy: true })).toBe(
-      "bins"
-    );
-  });
-
-  // #472: polygons with a categorical colorBy dissolve at low zoom.
-  it("routes polygons with a categorical colorBy to 'dissolve'", () => {
-    expect(
-      resolveAggTreatment("polygons", undefined, { hasColorBy: true })
-    ).toBe("dissolve");
-    expect(
-      resolveAggTreatment("polygons", undefined, {
-        hasColorBy: true,
-        colorByScale: "categorical",
-      })
-    ).toBe("dissolve");
-  });
-
-  it("keeps polygons on 'bins' for a continuous colorBy or no colorBy", () => {
-    expect(
-      resolveAggTreatment("polygons", undefined, {
-        hasColorBy: true,
-        colorByScale: "step",
-      })
-    ).toBe("bins");
-    expect(
-      resolveAggTreatment("polygons", undefined, {
-        hasColorBy: true,
-        colorByScale: "interpolate",
-      })
-    ).toBe("bins");
-    expect(
-      resolveAggTreatment("polygons", undefined, { hasColorBy: false })
-    ).toBe("bins");
-  });
-
-  it("only polygons dissolve — points with a colorBy stay 'bins'", () => {
-    expect(resolveAggTreatment("points", undefined, { hasColorBy: true })).toBe(
-      "bins"
-    );
-  });
-
-  it("2-arg call is unchanged (back-compat): polygons → 'bins'", () => {
-    expect(resolveAggTreatment("polygons")).toBe("bins");
   });
 });
 
