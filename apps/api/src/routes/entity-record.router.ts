@@ -1357,9 +1357,13 @@ entityRecordRouter.delete(
           tx
         );
         await EntityRecordCountCache.invalidate(connectorEntityId);
-        await DbService.repository.wideTable.deleteByEntityRecordIds(
+        // #450: mark the wide row deleted (not physically delete) in the SAME
+        // tx as the record soft-delete, so the session view can filter locally
+        // and no orphan window exists.
+        await DbService.repository.wideTable.markDeletedByEntityRecordIds(
           connectorEntityId,
           [recordId],
+          Date.now(),
           tx
         );
       }).catch((error) => {
@@ -1479,9 +1483,12 @@ entityRecordRouter.delete(
           userId,
           tx
         );
-        await DbService.repository.wideTable.deleteByEntityRecordIds(
+        // #450: mark the wide rows deleted in the same tx as the record
+        // soft-delete (not physical delete), so the view filters locally.
+        await DbService.repository.wideTable.markDeletedByEntityRecordIds(
           connectorEntityId,
           ids,
+          Date.now(),
           tx
         );
         return ids.length;

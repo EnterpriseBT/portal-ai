@@ -548,9 +548,8 @@ export class LayoutPlanDraftService {
       // the repository's `wide-table.reap-cascade-failed` log only — noted
       // here so the asymmetry with the sync adapters is deliberate.
       if (reaped.length > 0) {
-        await DbService.repository.wideTable.deleteByEntityRecordIdsBestEffort(
-          connectorEntityId,
-          reaped
+        await DbService.repository.wideTable.markDeletedFromRecordsBestEffort(
+          connectorEntityId
         );
       }
     }

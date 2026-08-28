@@ -839,6 +839,7 @@ describe("Connector Entity Router", () => {
           "synced_at",
           "is_valid",
           "source_id",
+          "deleted",
         ])
       );
     });

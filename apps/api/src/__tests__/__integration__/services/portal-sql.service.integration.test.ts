@@ -469,7 +469,7 @@ describe("PortalSqlService integration tests", () => {
     });
 
     // Case 40
-    it("the view filters out soft-deleted entity_records rows", async () => {
+    it("the view filters out soft-deleted rows (#450: local wide.deleted, no join)", async () => {
       const live = generateId();
       const dead = generateId();
       await insertEntityRecord(contactsEntityId, live, "src-live");
@@ -478,15 +478,31 @@ describe("PortalSqlService integration tests", () => {
       await (db as ReturnType<typeof drizzle>).execute(
         sql`INSERT INTO ${sql.raw(`"er__${contactsEntityId}"`)} ("entity_record_id", "organization_id", "synced_at", "is_valid", "source_id", "c_email") VALUES (${live}, ${orgId}, ${now}, true, ${"src-live"}, ${"live@x.co"}), (${dead}, ${orgId}, ${now}, true, ${"src-dead"}, ${"dead@x.co"})`
       );
-      // Soft-delete the second row.
+      // Soft-delete the second row — the real delete paths mark BOTH the
+      // entity_records row and the wide row (#450), so the view can filter the
+      // wide row locally without joining entity_records.
       await (db as ReturnType<typeof drizzle>).execute(
         sql`UPDATE ${schema.entityRecords} SET deleted = ${now}, deleted_by = 'test' WHERE id = ${dead}`
+      );
+      await (db as ReturnType<typeof drizzle>).execute(
+        sql`UPDATE ${sql.raw(`"er__${contactsEntityId}"`)} SET "deleted" = ${now} WHERE "entity_record_id" = ${dead}`
       );
 
       const { rows } = await probeInsideTx<{ c_email: string }>(
         `SELECT "c_email" FROM "contacts" ORDER BY "c_email"`
       );
       expect(rows.map((r) => r.c_email)).toEqual(["live@x.co"]);
+    });
+
+    // Case 40b — the mechanism: local filter, no entity_records join (#450).
+    it("filters on the wide table's own deleted column, not a JOIN to entity_records", async () => {
+      const { ddlByEntity } = await probeInsideTx("SELECT 1");
+      const contactsDdl = ddlByEntity.get("contacts") ?? "";
+      // The 14.6x win: no join to entity_records in the view.
+      expect(contactsDdl.toLowerCase()).not.toContain("join entity_records");
+      expect(contactsDdl.toLowerCase()).not.toContain("entity_records er");
+      // Filtering is local to the wide row.
+      expect(contactsDdl).toMatch(/"deleted"\s+is\s+null/i);
     });
 
     // Case 41 — reconciler-added column appears on the next build.

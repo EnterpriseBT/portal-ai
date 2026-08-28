@@ -511,9 +511,8 @@ async function syncOneEndpoint(
   // wide-table write on this path already degrades; this was the one that
   // did not. The staleness rides out on `mirrorDegraded` instead.
   const cascade =
-    await DbService.repository.wideTable.deleteByEntityRecordIdsBestEffort(
-      endpoint.entity.id,
-      reaped
+    await DbService.repository.wideTable.markDeletedFromRecordsBestEffort(
+      endpoint.entity.id
     );
 
   return {
