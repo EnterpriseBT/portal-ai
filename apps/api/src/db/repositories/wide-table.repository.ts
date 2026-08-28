@@ -155,12 +155,14 @@ export class WideTableRepository {
       opts.limit !== undefined ? sql` LIMIT ${opts.limit}` : sql``;
     const whereExtra = opts.where ? sql` AND (${opts.where})` : sql``;
 
+    // #450: filter on the wide row's own `deleted` — no `JOIN entity_records`
+    // (see buildSessionViews). Every delete path marks it atomically with the
+    // record soft-delete.
     const rows = await (client as typeof db).execute(sql`
       SELECT ${sql.raw(colList)}
       FROM ${sql.raw(tableName)} w
-      JOIN entity_records er ON er.id = w."entity_record_id"
       WHERE w."organization_id" = ${opts.organizationId}
-        AND er.deleted IS NULL
+        AND w."deleted" IS NULL
         ${whereExtra}
       ${limitClause}
     `);
@@ -172,7 +174,7 @@ export class WideTableRepository {
    * is not preserved — Postgres decides.
    *
    * Chunked at `WIDE_TABLE_CHUNK_SIZE` for the same reason as
-   * `deleteByEntityRecordIds` (#436). Every chunk's rows are
+   * `markDeletedByEntityRecordIds` (#436). Every chunk's rows are
    * accumulated before returning, so the caller still sees one complete
    * result set — a partial read would be wrong, not merely slower.
    */
@@ -277,10 +279,17 @@ export class WideTableRepository {
       ...stmt.columns.map((c) => [c.columnName, c.pgType] as const),
     ]);
 
-    const setClauses = colsInOrder
-      .filter((c) => c !== "entity_record_id")
-      .map((c) => `"${c}" = EXCLUDED."${c}"`)
-      .join(", ");
+    const setClauses =
+      colsInOrder
+        .filter((c) => c !== "entity_record_id")
+        .map((c) => `"${c}" = EXCLUDED."${c}"`)
+        .join(", ") +
+      // Resurrection (#450): a previously soft-deleted `source_id` reappearing
+      // in a sync reuses its entity_record PK (see findBySourceIds
+      // includeDeleted), so this upsert hits the existing (marked) wide row —
+      // clear its tombstone. `deleted` is not an inserted column, so this is a
+      // literal, not EXCLUDED.
+      `, "deleted" = NULL`;
 
     for (let i = 0; i < rows.length; i += WIDE_TABLE_CHUNK_SIZE) {
       const chunk = rows.slice(i, i + WIDE_TABLE_CHUNK_SIZE);
@@ -623,60 +632,21 @@ export class WideTableRepository {
   }
 
   /**
-   * Best-effort reap cascade (#441 / #456) — delete the wide rows, and report
-   * rather than throw if that cannot be done.
+   * Mark the wide rows for the given entity-record ids soft-deleted, chunked
+   * (#436, #450). An `UPDATE … SET "deleted" = <deletedAt>` rather than a
+   * `DELETE`: the row persists as a tombstone so the session view can filter
+   * `w.deleted IS NULL` locally instead of joining `entity_records` (#450).
    *
-   * Every other wide-table write on the sync path is already best-effort:
-   * `mirrorBatchToWideTable` and the missing-row probe both log and continue,
-   * leaving the `entity_records` rows intact for the next reconcile. The reap
-   * cascade was the one operation that could still fail a sync — and it did,
-   * on a run that had already written all 397,960 of its records. A sync whose
-   * data landed has not failed.
-   *
-   * `degraded: true` is the caller's signal to surface the staleness on its
-   * result rather than swallow it: the wide table now holds rows pointing at
-   * deleted records, which is exactly the unbounded growth #327 exists to
-   * prevent, so it must not become invisible.
-   *
-   * **Only batch paths should use this.** The request paths in
-   * `entity-record.router.ts` keep the strict method below: a request can
-   * report failure honestly to a caller who can retry, where a sync that has
-   * already committed its rows cannot un-write them.
+   * Throws on failure. The **bounded request paths** (UI delete, layout) call
+   * this inside the same transaction as the `entity_records` soft-delete, so
+   * record + wide state commit together — zero orphan window. The unbounded
+   * **reap** uses `markDeletedFromRecordsBestEffort` below instead, to avoid a
+   * giant transaction.
    */
-  async deleteByEntityRecordIdsBestEffort(
+  async markDeletedByEntityRecordIds(
     connectorEntityId: string,
     ids: ReadonlyArray<string>,
-    client: DbClient = db
-  ): Promise<{ degraded: boolean }> {
-    if (ids.length === 0) return { degraded: false };
-    try {
-      await this.deleteByEntityRecordIds(connectorEntityId, ids, client);
-      return { degraded: false };
-    } catch (err) {
-      logger.error(
-        {
-          event: "wide-table.reap-cascade-failed",
-          connectorEntityId,
-          idCount: ids.length,
-          cause: err instanceof Error ? err.message : String(err),
-        },
-        "Reap cascade failed — entity_records rows are already deleted, so the wide table now holds rows pointing at them until the next reconcile"
-      );
-      return { degraded: true };
-    }
-  }
-
-  /**
-   * Hard-delete the wide rows for the given entity-record ids, chunked (#436).
-   *
-   * Named `delete`, not `softDelete`: it issues `DELETE FROM`. It was called
-   * `softDeleteByEntityRecordIds` and that cost real time during #435-#442 —
-   * it is why the wide table was believed to carry tombstones it never had.
-   * Throws on failure; batch callers wanting degradation use the wrapper above.
-   */
-  async deleteByEntityRecordIds(
-    connectorEntityId: string,
-    ids: ReadonlyArray<string>,
+    deletedAt: number,
     client: DbClient = db
   ): Promise<void> {
     if (ids.length === 0) return;
@@ -688,8 +658,83 @@ export class WideTableRepository {
         sql`, `
       );
       await (client as typeof db).execute(
-        sql`DELETE FROM ${sql.raw(tableName)} WHERE "entity_record_id" IN (${idList})`
+        sql`UPDATE ${sql.raw(tableName)} SET "deleted" = ${deletedAt}
+            WHERE "entity_record_id" IN (${idList}) AND "deleted" IS NULL`
       );
+    }
+  }
+
+  /**
+   * Self-healing reap mark (#450): mark every wide row whose `entity_records`
+   * row is soft-deleted but whose own `deleted` is still NULL, in chunks, by a
+   * server-side join `UPDATE … FROM entity_records` — ids never leave Postgres.
+   *
+   * This is NOT keyed to a specific reap's id set: it re-marks *any* unmarked
+   * orphan each run, so a failed mark (or a pre-existing best-effort-cascade
+   * orphan from before #450) converges on the next reap. It is deliberately
+   * not wrapped in the watermark soft-delete transaction — that reap can touch
+   * 100Ks of rows, and #440/#441/#456 split it from the cascade to avoid a
+   * giant transaction. Residual window: sub-second within the reap flow.
+   *
+   * Terminates for the same reason as `softDeleteBeforeWatermark`: each chunk
+   * sets `deleted`, and the candidate predicate requires `deleted IS NULL`, so
+   * every pass strictly shrinks the remaining set.
+   */
+  async markDeletedFromRecords(
+    connectorEntityId: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const tableName = `"${this.tableName(connectorEntityId)}"`;
+    let total = 0;
+    for (;;) {
+      const marked = (await (client as typeof db).execute(
+        sql`UPDATE ${sql.raw(tableName)} w
+            SET "deleted" = er."deleted"
+            FROM "entity_records" er
+            WHERE er."id" = w."entity_record_id"
+              AND er."deleted" IS NOT NULL
+              AND w."deleted" IS NULL
+              AND w."entity_record_id" IN (
+                SELECT w2."entity_record_id"
+                FROM ${sql.raw(tableName)} w2
+                JOIN "entity_records" er2 ON er2."id" = w2."entity_record_id"
+                WHERE er2."deleted" IS NOT NULL AND w2."deleted" IS NULL
+                LIMIT ${WIDE_TABLE_CHUNK_SIZE}
+              )
+            RETURNING w."entity_record_id"`
+      )) as unknown as Array<{ entity_record_id: string }>;
+      if (marked.length === 0) break;
+      total += marked.length;
+    }
+    return total;
+  }
+
+  /**
+   * Best-effort wrapper over `markDeletedFromRecords` for the reap path
+   * (#441/#456 posture): a sync whose data landed must not report `failed`
+   * because the mirror mark could not complete. `degraded: true` surfaces the
+   * staleness on the result; the next reap's self-healing mark re-attempts.
+   */
+  async markDeletedFromRecordsBestEffort(
+    connectorEntityId: string,
+    client: DbClient = db
+  ): Promise<{ degraded: boolean; marked: number }> {
+    try {
+      const marked = await this.markDeletedFromRecords(
+        connectorEntityId,
+        client
+      );
+      return { degraded: false, marked };
+    } catch (err) {
+      logger.error(
+        {
+          event: "wide-table.reap-mark-failed",
+          connectorEntityId,
+          cause: err instanceof Error ? err.message : String(err),
+        },
+        "Reap mark failed — wide rows for reaped records stay live until the next reap re-marks them (self-heals)"
+      );
+      return { degraded: true, marked: 0 };
     }
   }
 }

@@ -188,8 +188,22 @@ export class WideTableReconcilerService {
             `"organization_id" text NOT NULL, ` +
             `"synced_at" bigint NOT NULL, ` +
             `"is_valid" boolean NOT NULL, ` +
-            `"source_id" text NOT NULL` +
+            `"source_id" text NOT NULL, ` +
+            // Mirrors `entity_records.deleted` so the session view can filter
+            // soft-deletes locally instead of joining `entity_records` (#450).
+            // NULL = live; set = the record's soft-delete timestamp. Set atomic
+            // with the record soft-delete; cleared on resurrection.
+            `"deleted" bigint` +
             `)`
+        )
+      );
+      // Existing tables predate the column — `CREATE … IF NOT EXISTS` skips them,
+      // so add it idempotently. The 0084 migration backfills every existing
+      // table at deploy; this is the ongoing guarantee for any table the
+      // migration didn't cover (created between migrate and this code path).
+      await (tx as typeof db).execute(
+        sql.raw(
+          `ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS "deleted" bigint`
         )
       );
       await (tx as typeof db).execute(

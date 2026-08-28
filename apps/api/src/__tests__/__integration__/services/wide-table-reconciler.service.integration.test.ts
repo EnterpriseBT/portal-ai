@@ -242,7 +242,7 @@ describe("WideTableReconcilerService integration tests", () => {
 
   // ── Case 8 — ensureTable creates metadata columns ────────────────
 
-  it("ensureTable creates the five metadata columns", async () => {
+  it("ensureTable creates the metadata columns, including deleted (#450)", async () => {
     await reconciler.ensureTable(entityId, db);
     const cols = await infoSchemaColumns(`er__${entityId}`);
     expect(new Set(cols)).toEqual(
@@ -252,8 +252,17 @@ describe("WideTableReconcilerService integration tests", () => {
         "synced_at",
         "is_valid",
         "source_id",
+        "deleted",
       ])
     );
+  });
+
+  it("ensureTable adds deleted as bigint (#450)", async () => {
+    await reconciler.ensureTable(entityId, db);
+    const rows = (await db.execute(
+      sql`SELECT data_type FROM information_schema.columns WHERE table_name = ${`er__${entityId}`} AND column_name = 'deleted'`
+    )) as unknown as { data_type: string }[];
+    expect(rows[0]?.data_type).toBe("bigint");
   });
 
   // ── Case 9 — ensureTable idempotent ──────────────────────────────
@@ -262,7 +271,7 @@ describe("WideTableReconcilerService integration tests", () => {
     await reconciler.ensureTable(entityId, db);
     await reconciler.ensureTable(entityId, db);
     const cols = await infoSchemaColumns(`er__${entityId}`);
-    expect(cols).toHaveLength(5);
+    expect(cols).toHaveLength(6);
   });
 
   // ── Case 10 — reconcileEntity adds one column per mapping ────────
@@ -439,8 +448,8 @@ describe("WideTableReconcilerService integration tests", () => {
     await seedFieldMapping(fm1, { normalizedKey: "amount" });
     await reconciler.reconcileEntity(entityId, db);
 
-    // 5 metadata columns + 1 data column (c_amount).
-    expect(await infoSchemaColumns(`er__${entityId}`)).toHaveLength(6);
+    // 6 metadata columns (incl. deleted, #450) + 1 data column (c_amount).
+    expect(await infoSchemaColumns(`er__${entityId}`)).toHaveLength(7);
 
     await reconciler.dropTable(entityId, db);
 

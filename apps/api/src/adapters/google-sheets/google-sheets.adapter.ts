@@ -162,9 +162,8 @@ export const googleSheetsAdapter: ConnectorAdapter = {
       // whose records already landed.
       if (reaped.length > 0) {
         const cascade =
-          await DbService.repository.wideTable.deleteByEntityRecordIdsBestEffort(
-            connectorEntityId,
-            reaped
+          await DbService.repository.wideTable.markDeletedFromRecordsBestEffort(
+            connectorEntityId
           );
         if (cascade.degraded) mirrorDegraded = true;
       }

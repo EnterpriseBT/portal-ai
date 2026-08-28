@@ -589,6 +589,13 @@
       "when": 1787844827280,
       "tag": "0083_add-jobs-lost-executions",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1787863042647,
+      "tag": "0084_wide-table-deleted-column",
+      "breakpoints": true
     }
   ]
 }

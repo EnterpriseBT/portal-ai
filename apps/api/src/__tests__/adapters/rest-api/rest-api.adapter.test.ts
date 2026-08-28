@@ -119,10 +119,11 @@ jest.unstable_mockModule("../../../services/db.service.js", () => ({
       fieldMappings: { findMany: findFieldMappingsMock },
       wideTable: {
         upsertMany: upsertWideManyMock,
-        // #441/#456: the reap cascade is best-effort; a clean run reports
-        // `degraded: false`.
-        deleteByEntityRecordIdsBestEffort: jest.fn(async () => ({
+        // #441/#456/#450: the reap mark is best-effort + self-healing; a clean
+        // run reports `degraded: false`.
+        markDeletedFromRecordsBestEffort: jest.fn(async () => ({
           degraded: false,
+          marked: 0,
         })),
         selectMissingWideRowIds: jest.fn(async () => []),
       },
