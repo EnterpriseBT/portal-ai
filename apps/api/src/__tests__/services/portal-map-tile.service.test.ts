@@ -326,6 +326,9 @@ describe("buildDissolveTileSql — polygon choropleth (#472)", () => {
     const sql = q();
     expect(sql).toContain("GROUP BY");
     expect(sql).toContain("ST_Collect");
+    // #472 smoke: coerce to MULTIPOLYGON so MapLibre can fill it (a raw
+    // ST_Collect can yield a GEOMETRYCOLLECTION that won't render).
+    expect(sql).toContain("ST_CollectionExtract");
     expect(sql).toContain("ST_SimplifyPreserveTopology");
     expect(sql).toContain("ST_AsMVTGeom");
     // The colorBy column is both the group key and an emitted feature property.

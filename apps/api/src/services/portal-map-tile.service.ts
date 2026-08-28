@@ -450,7 +450,12 @@ export class PortalMapTileService {
     const qcol = quoteIdentTile(col);
     return (
       `WITH cells AS (` +
-      `SELECT src.${qcol} AS cat, ST_Collect(${geomExpr}) AS geom ` +
+      // ST_CollectionExtract(…, 3) forces a MULTIPOLYGON: ST_Collect of
+      // simplified polygons yields a GEOMETRYCOLLECTION when simplification
+      // degenerates a small parcel to a line/point, and MapLibre can't paint a
+      // collection as a fill (found in the #472 smoke — the choropleth would
+      // silently not render). `3` extracts the polygon components; empties drop.
+      `SELECT src.${qcol} AS cat, ST_CollectionExtract(ST_Collect(${geomExpr}), 3) AS geom ` +
       `FROM (${pipelineSql}) src ` +
       `WHERE src.geom && ST_Transform(${envelope}, 4326) ` +
       `GROUP BY src.${qcol} ` +
