@@ -13,6 +13,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { sql } from "drizzle-orm";
 
+import { geoReencodeRows } from "../../../tools/geo-delivery.util.js";
 import { WideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
 import { WideTableStatementCache } from "../../../services/wide-table-statement.cache.js";
 import { WideTableRepository } from "../../../db/repositories/wide-table.repository.js";
@@ -260,6 +261,69 @@ describe("Wide-table geometry storage (#316)", () => {
     };
     expect(back.type).toBe("Polygon");
     expect(back.coordinates).toEqual(POLYGON.coordinates);
+  });
+
+  // ── Handle-snapshot re-encode (#371) ────────────────────────────────
+  // A pin of a handle-backed map re-encodes the snapshot's WKB-hex geometry to
+  // GeoJSON in place via geoReencodeRows. This must run against the real driver:
+  // a fake `execute` would never catch that drizzle's `sql` template flattens a
+  // bound JS array to scalar params, which is what made `unnest($hex[])` throw
+  // and surfaced as an opaque pin failure (#371).
+  it("re-encodes a snapshot's WKB-hex geometry to GeoJSON through the real driver", async () => {
+    await reconciler.reconcileEntity(entityId, db);
+    const stmt = await statementCache.get(entityId, db);
+    const geomCol = stmt.columns[0].columnName;
+    const now = Date.now();
+
+    const erId = generateId();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.entityRecords)
+      .values({
+        id: erId,
+        organizationId: orgId,
+        connectorEntityId: entityId,
+        data: { boundary: POLYGON },
+        sourceId: "src-reenc",
+        checksum: "chk-reenc",
+        syncedAt: now,
+        origin: "sync",
+        validationErrors: null,
+        isValid: true,
+        created: now,
+        createdBy: "test-system",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    await connection.unsafe(stmt.insertSqlTemplate, [
+      erId,
+      orgId,
+      now,
+      true,
+      "src-reenc",
+      JSON.stringify(POLYGON),
+    ]);
+
+    // A handle snapshot stores the geometry as EWKB hex (the raw column as text),
+    // exactly what materialize() holds before re-encoding.
+    const rawRows = (await connection.unsafe(
+      `SELECT "${geomCol}"::text AS "${geomCol}", "entity_record_id" AS id FROM "er__${entityId}" WHERE "entity_record_id" = $1`,
+      [erId]
+    )) as unknown as Array<Record<string, unknown>>;
+    expect(typeof rawRows[0][geomCol]).toBe("string");
+    expect(rawRows[0][geomCol] as string).toMatch(/^[0-9A-Fa-f]+$/);
+
+    const out = await geoReencodeRows(rawRows, [geomCol], {
+      execute: (q) => db.execute(q),
+    });
+
+    expect(out).toHaveLength(1);
+    // Every non-geometry column rides through untouched.
+    expect(out[0].id).toBe(erId);
+    const gj = out[0][geomCol] as { type: string; coordinates: number[][][] };
+    expect(gj.type).toBe("Polygon");
+    expect(gj.coordinates).toEqual(POLYGON.coordinates);
   });
 
   it("plans a spatial predicate as an index scan", async () => {
