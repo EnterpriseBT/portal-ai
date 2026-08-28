@@ -8,10 +8,16 @@
  * stops the two paths from drifting.
  */
 
+import { sql, type SQL } from "drizzle-orm";
+
 import { AnalyticsService } from "../services/analytics.service.js";
+import { db } from "../db/client.js";
 
 const quoteIdent = (s: string) => `"${s.replace(/"/g, '""')}"`;
 const quoteLit = (s: string) => `'${s.replace(/'/g, "''")}'`;
+
+/** A geometry value stored as PostGIS EWKB hex, e.g. `0101000020E6100000…`. */
+const WKB_HEX_RE = /^[0-9A-Fa-f]+$/;
 
 /**
  * The reproject query is an INTERNAL render transform — its output goes to the
@@ -86,4 +92,53 @@ export async function geoInlineRows(
     }
     return (v ?? {}) as Record<string, unknown>;
   });
+}
+
+/**
+ * Re-encode a handle snapshot's geometry values **in place**, EWKB hex →
+ * GeoJSON (#371). Unlike `geoInlineRows`, this does NOT re-run the pipeline SQL
+ * — a handle-backed map is > `INLINE_ROWS_THRESHOLD` rows, so a re-run resolves
+ * to a handle and never reaches the inline conversion. It converts the exact
+ * rows the pin snapshot already holds (preserving count, order, and every other
+ * column), fixing only the geometry column's encoding — which is the sole thing
+ * that differs from a correctly-rendered inline map.
+ *
+ * Per geometry column, the WKB-hex values are converted in one batched query
+ * (`unnest($hex[], $idx[])` → `ST_AsGeoJSON(ST_GeomFromEWKB(decode(hex,'hex')))`),
+ * so there is no id-list AST overflow (#436) and no per-row round-trip. Values
+ * that aren't WKB-hex strings (already-GeoJSON objects, or null) pass through
+ * untouched, so the transform is idempotent and safe on already-inline pins.
+ */
+export async function geoReencodeRows(
+  rows: Array<Record<string, unknown>>,
+  geometryColumns: string[],
+  deps: { execute?: (q: SQL) => Promise<unknown> } = {}
+): Promise<Array<Record<string, unknown>>> {
+  if (geometryColumns.length === 0 || rows.length === 0) return rows;
+  const execute = deps.execute ?? ((q: SQL) => db.execute(q));
+  const out = rows.map((r) => ({ ...r }));
+
+  for (const col of geometryColumns) {
+    const hexes: string[] = [];
+    const idxs: number[] = [];
+    out.forEach((r, i) => {
+      const v = r[col];
+      if (typeof v === "string" && WKB_HEX_RE.test(v)) {
+        hexes.push(v);
+        idxs.push(i);
+      }
+    });
+    if (hexes.length === 0) continue;
+
+    const res = (await execute(sql`
+      SELECT t.idx AS idx,
+             ST_AsGeoJSON(ST_GeomFromEWKB(decode(t.hex, 'hex')))::jsonb AS gj
+      FROM unnest(${hexes}::text[], ${idxs}::int[]) AS t(hex, idx)
+    `)) as unknown as Array<{ idx: number; gj: unknown }>;
+
+    for (const { idx, gj } of res ?? []) {
+      if (out[idx]) out[idx][col] = gj;
+    }
+  }
+  return out;
 }

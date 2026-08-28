@@ -228,6 +228,103 @@ describe("PortalResultPinService.materialize", () => {
     expect(content.queryHandle).toBeUndefined();
   });
 
+  // ── geo pins: WKB → GeoJSON re-encode (#371) ────────────────────────
+
+  const geoSpec = {
+    layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
+  };
+
+  it("re-encodes a handle-backed geo pin's WKB geometry to GeoJSON", async () => {
+    const wkbRows = [
+      { geom: "0101000020E610000000000000000000000000000000000000", c_id: 1 },
+      { geom: "0101000020E610000000000000000000000000000000000000", c_id: 2 },
+    ];
+    const geoReencodeRows = jest.fn(
+      async (rows: Array<Record<string, unknown>>) =>
+        rows.map((r) => ({
+          ...r,
+          geom: { type: "Point", coordinates: [0, 0] },
+        }))
+    );
+    const result = await PortalResultPinService.materialize(
+      "geo",
+      {
+        queryHandle: "qh-geo",
+        spec: geoSpec,
+        rows: [],
+        sql: "SELECT geom, c_id FROM parcels",
+      },
+      SCOPE,
+      {
+        getSnapshot: jest.fn(async () => ({
+          rows: wkbRows,
+          total: 2,
+          offset: 0,
+          limit: PIN_SNAPSHOT_ROW_CAP,
+        })) as never,
+        geoReencodeRows: geoReencodeRows as never,
+      }
+    );
+    // Re-encode ran over the snapshot rows for the spec's geometry column.
+    expect(geoReencodeRows).toHaveBeenCalledWith(wkbRows, ["geom"]);
+    const content = result.content as Record<string, unknown>;
+    expect(content.rows).toEqual([
+      { geom: { type: "Point", coordinates: [0, 0] }, c_id: 1 },
+      { geom: { type: "Point", coordinates: [0, 0] }, c_id: 2 },
+    ]);
+  });
+
+  it("does not re-encode a non-geo (data-table) pin", async () => {
+    const geoReencodeRows = jest.fn(
+      async (rows: Array<Record<string, unknown>>) => rows
+    );
+    await PortalResultPinService.materialize(
+      "data-table",
+      {
+        queryHandle: "qh-dt",
+        rowCount: 2,
+        schema: [{ name: "a", type: "number" }],
+        sampled: false,
+        truncated: false,
+        samplePeek: [],
+        sql: "SELECT a FROM t",
+      },
+      SCOPE,
+      {
+        getSnapshot: fakeSnapshot(2) as never,
+        geoReencodeRows: geoReencodeRows as never,
+      }
+    );
+    expect(geoReencodeRows).not.toHaveBeenCalled();
+  });
+
+  it("materializes a geo pin with no rows without calling the re-encoder", async () => {
+    const geoReencodeRows = jest.fn(
+      async (rows: Array<Record<string, unknown>>) => rows
+    );
+    const result = await PortalResultPinService.materialize(
+      "geo",
+      {
+        queryHandle: "qh-geo-empty",
+        spec: geoSpec,
+        rows: [],
+        sql: "SELECT geom FROM t",
+      },
+      SCOPE,
+      {
+        getSnapshot: jest.fn(async () => ({
+          rows: [],
+          total: 0,
+          offset: 0,
+          limit: PIN_SNAPSHOT_ROW_CAP,
+        })) as never,
+        geoReencodeRows: geoReencodeRows as never,
+      }
+    );
+    expect(geoReencodeRows).not.toHaveBeenCalled();
+    expect((result.content as Record<string, unknown>).rows).toEqual([]);
+  });
+
   // ── handle-backed content, expired handle ───────────────────────────
 
   it("re-executes the pipeline when the handle has expired", async () => {
