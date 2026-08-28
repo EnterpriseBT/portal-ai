@@ -592,6 +592,65 @@ describe("layerToMapLibre per-kind treatment (#337)", () => {
   });
 });
 
+describe("layerToMapLibre dissolve (#472)", () => {
+  const aggId = `${sourceIdFor(0)}-agg`;
+  const choropleth = {
+    kind: "polygons",
+    source: { geometryColumn: "geom" },
+    style: { colorBy: { column: "c_class", stops: [["vacant", "#111"]] } },
+  } as MapLayer;
+
+  it("an explicit treatment:'dissolve' fires the low-zoom fill handoff", () => {
+    const layer = {
+      ...choropleth,
+      aggregation: { treatment: "dissolve" },
+    } as MapLayer;
+    const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
+    const agg = layers.find((l) => l.id === aggId)!;
+    // Real fill below threshold (paints the server's dissolved geometry),
+    // colored by the colorBy — never a _count density square.
+    expect(agg).toBeDefined();
+    expect(agg.type).toBe("fill");
+    expect(agg.maxzoom).toBe(AGG_ZOOM_THRESHOLD);
+    expect(JSON.stringify(agg.paint)).not.toContain("_count");
+    // Raw parcels gated to at/above the threshold.
+    expect(
+      layers
+        .filter((l) => l.id !== aggId)
+        .every((l) => l.minzoom === AGG_ZOOM_THRESHOLD)
+    ).toBe(true);
+  });
+
+  it("a polygons layer with a categorical colorBy defaults to the dissolve handoff", () => {
+    const { layers } = layerToMapLibre(choropleth, 0, [], { tiled: true });
+    const agg = layers.find((l) => l.id === aggId)!;
+    expect(agg).toBeDefined();
+    expect(agg.type).toBe("fill");
+    expect(JSON.stringify(agg.paint)).not.toContain("_count");
+  });
+
+  it("a continuous (interpolate) colorBy polygon stays on the bins path", () => {
+    const layer = {
+      kind: "polygons",
+      source: { geometryColumn: "geom" },
+      style: {
+        colorBy: {
+          column: "c_value",
+          scale: "interpolate",
+          stops: [
+            [0, "#000"],
+            [100, "#fff"],
+          ],
+        },
+      },
+    } as MapLayer;
+    // Still aggregates (an -agg fill exists) — this ticket doesn't change the
+    // continuous-colorBy path.
+    const { layers } = layerToMapLibre(layer, 0, [], { tiled: true });
+    expect(layers.some((l) => l.id === aggId)).toBe(true);
+  });
+});
+
 describe("buildLegend", () => {
   it("concatenates each layer's colorBy legend", () => {
     const spec = {

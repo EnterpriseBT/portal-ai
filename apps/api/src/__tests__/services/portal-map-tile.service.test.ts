@@ -216,6 +216,45 @@ describe("aggregationFromSpec + shouldAggregate (#330)", () => {
     expect(agg).toMatchObject({ enabled: false, rankByLength: false });
   });
 
+  // #472 — polygon choropleth dissolve routing.
+  it("routes a polygons layer with a categorical colorBy to treatment 'dissolve'", () => {
+    const agg = aggregationFromSpec({
+      layers: [
+        {
+          kind: "polygons",
+          source: { geometryColumn: "geom" },
+          style: { colorBy: { column: "c_zip" } },
+        },
+      ],
+    });
+    expect(agg).toMatchObject({
+      treatment: "dissolve",
+      enabled: true,
+      colorByColumn: "c_zip",
+      kind: "polygons",
+    });
+  });
+
+  it("keeps a polygons layer with a continuous (step) colorBy on 'bins'", () => {
+    const agg = aggregationFromSpec({
+      layers: [
+        {
+          kind: "polygons",
+          source: { geometryColumn: "geom" },
+          style: { colorBy: { column: "c_value", scale: "step" } },
+        },
+      ],
+    });
+    expect(agg.treatment).toBe("bins");
+  });
+
+  it("keeps a polygons layer with no colorBy on 'bins'", () => {
+    const agg = aggregationFromSpec({
+      layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
+    });
+    expect(agg.treatment).toBe("bins");
+  });
+
   it("shouldAggregate honours enabled + the zoom threshold", () => {
     const on = {
       enabled: true,
@@ -224,6 +263,7 @@ describe("aggregationFromSpec + shouldAggregate (#330)", () => {
       colorByColumn: null,
       kind: null,
       rankByLength: false,
+      treatment: "bins" as const,
     };
     expect(shouldAggregate(11, on)).toBe(true);
     expect(shouldAggregate(12, on)).toBe(false); // threshold is exclusive
@@ -260,6 +300,46 @@ describe("buildRawTileSql — importance ranking (#337)", () => {
     );
     // ranking sits inside the capped CTE — before the LIMIT.
     expect(q.indexOf("ORDER BY")).toBeLessThan(q.indexOf("LIMIT"));
+  });
+});
+
+describe("buildDissolveTileSql — polygon choropleth (#472)", () => {
+  const agg = {
+    enabled: true,
+    zoomThreshold: 14,
+    gridSizePx: 24,
+    colorByColumn: "c_zip",
+    kind: "polygons" as const,
+    rankByLength: false,
+    treatment: "dissolve" as const,
+  };
+  const q = () =>
+    PortalMapTileService.buildDissolveTileSql(
+      "SELECT geom, c_zip FROM parcels",
+      8,
+      "ST_TileEnvelope(8, 48, 96)",
+      agg,
+      MAP_TILE_FEATURE_CAP
+    );
+
+  it("groups by the colorBy column and collects simplified geometry", () => {
+    const sql = q();
+    expect(sql).toContain("GROUP BY");
+    expect(sql).toContain("ST_Collect");
+    // #472 smoke: coerce to MULTIPOLYGON so MapLibre can fill it (a raw
+    // ST_Collect can yield a GEOMETRYCOLLECTION that won't render).
+    expect(sql).toContain("ST_CollectionExtract");
+    expect(sql).toContain("ST_SimplifyPreserveTopology");
+    expect(sql).toContain("ST_AsMVTGeom");
+    // The colorBy column is both the group key and an emitted feature property.
+    expect(sql).toContain('"c_zip"');
+    expect(sql).toContain(`LIMIT ${MAP_TILE_FEATURE_CAP}`);
+  });
+
+  it("group + collect sit inside the capped CTE (before the outer MVT select)", () => {
+    const sql = q();
+    expect(sql.indexOf("GROUP BY")).toBeLessThan(sql.indexOf("ST_AsMVT("));
+    expect(sql.indexOf("ST_Collect")).toBeLessThan(sql.indexOf("LIMIT"));
   });
 });
 
