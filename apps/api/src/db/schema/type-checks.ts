@@ -90,6 +90,7 @@ import type { stationToolpacks } from "./station-toolpacks.table.js";
 import type { organizationToolpacks } from "./organization-toolpacks.table.js";
 import type { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
 import type { wideTableColumns } from "./wide-table-columns.table.js";
+import type { mapDissolveGeometries } from "./map-dissolve-geometries.table.js";
 import type { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
 import type { tiers } from "./tiers.table.js";
 import type { usage } from "./usage.table.js";
@@ -99,6 +100,7 @@ import type { InterpretationTrace, LayoutPlan } from "@portalai/core/contracts";
 import type {
   ConnectorInstanceLayoutPlanSelect,
   WideTableColumnSelect,
+  MapDissolveGeometrySelect,
   ApiEndpointConfigSelect,
 } from "./zod.js";
 
@@ -668,6 +670,27 @@ type _WtcSelectToInferred = IsAssignable<
   _WtcInferredRow
 >;
 const _wtcSelectToInferred: _WtcSelectToInferred = true;
+
+// ── MapDissolveGeometry (#472) ───────────────────────────────────────
+//
+// API-internal derived catalog — no domain model in `@portalai/core`. The
+// PostGIS `geom` column is added by migration DDL (not Drizzle), so it is
+// absent from both the inferred row and the drizzle-zod select — the two stay
+// in sync. Bidirectional assertion.
+
+type _MdgInferredRow = InferSelectModel<typeof mapDissolveGeometries>;
+
+type _MdgInferredToSelect = IsAssignable<
+  _MdgInferredRow,
+  MapDissolveGeometrySelect
+>;
+const _mdgInferredToSelect: _MdgInferredToSelect = true;
+
+type _MdgSelectToInferred = IsAssignable<
+  MapDissolveGeometrySelect,
+  _MdgInferredRow
+>;
+const _mdgSelectToInferred: _MdgSelectToInferred = true;
 
 // ── ApiEndpointConfig ────────────────────────────────────────────────
 //

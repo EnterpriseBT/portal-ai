@@ -242,6 +242,10 @@ describe("MapLayerAggregationSchema — treatment (via MapSpecSchema)", () => {
     expect(withAgg({ treatment: "none" }).success).toBe(true);
   });
 
+  it("accepts treatment: 'dissolve' (#472)", () => {
+    expect(withAgg({ treatment: "dissolve" }).success).toBe(true);
+  });
+
   it("rejects an unknown treatment value", () => {
     expect(withAgg({ treatment: "grid" }).success).toBe(false);
   });
@@ -266,6 +270,16 @@ describe("resolveAggTreatment", () => {
   it("lets an explicit treatment override the per-kind default", () => {
     expect(resolveAggTreatment("lines", "bins")).toBe("bins");
     expect(resolveAggTreatment("polygons", "none")).toBe("none");
+    expect(resolveAggTreatment("polygons", "dissolve")).toBe("dissolve");
+  });
+
+  // #472 slice 1: the `hasColorBy` opts arg is accepted but does NOT yet flip
+  // the polygon default — the routing change lands with the serve + client
+  // consumers (slice 4) so the treatment never goes half-migrated.
+  it("accepts the hasColorBy opts without changing the polygon default (pre-slice-4)", () => {
+    expect(
+      resolveAggTreatment("polygons", undefined, { hasColorBy: true })
+    ).toBe("bins");
   });
 });
 

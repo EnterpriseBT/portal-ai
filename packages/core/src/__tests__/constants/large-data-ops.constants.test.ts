@@ -11,6 +11,10 @@ import {
   COMPUTE_MAX_ROWS,
   VIZ_REFRESH_FRESHNESS_MS,
   VIZ_REFRESH_RATE_PER_MIN,
+  DISSOLVE_ZOOM_BANDS,
+  DISSOLVE_CARDINALITY_CEILING,
+  bandForZoom,
+  AGG_ZOOM_THRESHOLD,
 } from "../../constants/large-data-ops.constants.js";
 
 // Anchor test that locks the documented values from
@@ -36,5 +40,34 @@ describe("large-data-ops constants", () => {
     expect(VIZ_REFRESH_FRESHNESS_MS).toBeGreaterThanOrEqual(2 * 60 * 1000);
     expect(VIZ_REFRESH_FRESHNESS_MS).toBeLessThanOrEqual(5 * 60 * 1000);
     expect(VIZ_REFRESH_RATE_PER_MIN).toBe(120);
+  });
+
+  // #472 — precomputed polygon-dissolve zoom bands.
+  describe("dissolve bands (#472)", () => {
+    it("covers z0–13 with disjoint bands ending at the z14 raw handoff", () => {
+      expect(DISSOLVE_ZOOM_BANDS).toHaveLength(3);
+      expect(
+        DISSOLVE_ZOOM_BANDS[DISSOLVE_ZOOM_BANDS.length - 1].maxZoomExclusive
+      ).toBe(AGG_ZOOM_THRESHOLD);
+      // strictly increasing, disjoint, contiguous upper bounds
+      const uppers = DISSOLVE_ZOOM_BANDS.map((b) => b.maxZoomExclusive);
+      expect(uppers).toEqual([...uppers].sort((a, b) => a - b));
+    });
+
+    it("bandForZoom maps low zooms to a band and z>=14 to null", () => {
+      expect(bandForZoom(0)).toBe(0);
+      expect(bandForZoom(6)).toBe(0);
+      expect(bandForZoom(7)).toBe(0);
+      expect(bandForZoom(8)).toBe(1);
+      expect(bandForZoom(10)).toBe(1);
+      expect(bandForZoom(11)).toBe(2);
+      expect(bandForZoom(13)).toBe(2);
+      expect(bandForZoom(14)).toBeNull();
+      expect(bandForZoom(18)).toBeNull();
+    });
+
+    it("caps dissolve cardinality at 64", () => {
+      expect(DISSOLVE_CARDINALITY_CEILING).toBe(64);
+    });
   });
 });

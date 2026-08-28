@@ -31,6 +31,7 @@ import { organizationToolpacks } from "./organization-toolpacks.table.js";
 import { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
 import { fileUploads } from "./file-uploads.table.js";
 import { wideTableColumns } from "./wide-table-columns.table.js";
+import { mapDissolveGeometries } from "./map-dissolve-geometries.table.js";
 import { apiEndpointConfigs } from "./api-endpoint-configs.table.js";
 import { tiers } from "./tiers.table.js";
 import { usage } from "./usage.table.js";
@@ -426,6 +427,28 @@ export const WideTableColumnInsertSchema = createInsertSchema(wideTableColumns);
 /** Inferred types */
 export type WideTableColumnSelect = z.infer<typeof WideTableColumnSelectSchema>;
 export type WideTableColumnInsert = z.infer<typeof WideTableColumnInsertSchema>;
+
+// ── Map Dissolve Geometries (#472) ────────────────────────────────────
+
+/** Zod schema for a `map_dissolve_geometries` row returned by SELECT. The
+ *  PostGIS `geom` column is added by migration DDL, not Drizzle, so it is
+ *  absent here (read via raw SQL in the processor/serve path). */
+export const MapDissolveGeometrySelectSchema = createSelectSchema(
+  mapDissolveGeometries
+);
+
+/** Zod schema for inserting into `map_dissolve_geometries`. */
+export const MapDissolveGeometryInsertSchema = createInsertSchema(
+  mapDissolveGeometries
+);
+
+/** Inferred types */
+export type MapDissolveGeometrySelect = z.infer<
+  typeof MapDissolveGeometrySelectSchema
+>;
+export type MapDissolveGeometryInsert = z.infer<
+  typeof MapDissolveGeometryInsertSchema
+>;
 
 // ── API Endpoint Configs ──────────────────────────────────────────────
 
