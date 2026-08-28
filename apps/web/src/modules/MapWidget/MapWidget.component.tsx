@@ -14,6 +14,7 @@ import {
   boundsOf,
   buildLegend,
   featuresForLayer,
+  isTileBoundGeo,
   layerToMapLibre,
   pickMapRows,
   resolveBasemapStyle,
@@ -530,12 +531,12 @@ export const MapWidget: React.FC<MapWidgetProps> = ({
   }
 
   // A successful refresh's delivery overrides the persisted binding; the spec
-  // always comes from the block itself.
-  const freshInlineRows = fresh?.kind === "inline" ? fresh.rows : null;
-  const isHandle =
-    freshInlineRows == null &&
-    (fresh?.kind === "handle" ||
-      (fresh == null && "queryHandle" in parsedContent));
+  // always comes from the block itself. #371: a materialized pin drops the
+  // ephemeral `queryHandle`, so a large pin carries a durable `tiled` marker —
+  // `isTileBoundGeo` renders it through the pin's tile endpoint on mount (the
+  // full dataset), exactly as a refresh would, rather than the bounded inline
+  // snapshot.
+  const isHandle = isTileBoundGeo(fresh, parsedContent, blockRef != null);
   // Stable identity across renders (#341): the old inline `?? []` handed the
   // map-lifecycle effect a new array every unrelated re-render, remounting every
   // map. `pickMapRows` returns existing references only (shared `EMPTY_ROWS` for

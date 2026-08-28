@@ -272,6 +272,73 @@ describe("PortalResultPinService.materialize", () => {
       { geom: { type: "Point", coordinates: [0, 0] }, c_id: 1 },
       { geom: { type: "Point", coordinates: [0, 0] }, c_id: 2 },
     ]);
+    // Snapshot held every row (total 2 = rows 2), so it is not tile-backed.
+    expect(content.tiled).toBeUndefined();
+  });
+
+  // #371: a geo pin whose source outran the inline snapshot is marked `tiled`
+  // so the widget renders the full dataset via the pin's tile endpoint on mount.
+  it("marks a truncated, refreshable geo pin as tiled", async () => {
+    const geoReencodeRows = jest.fn(
+      async (rows: Array<Record<string, unknown>>) =>
+        rows.map((r) => ({
+          ...r,
+          geom: { type: "Point", coordinates: [0, 0] },
+        }))
+    );
+    const result = await PortalResultPinService.materialize(
+      "geo",
+      {
+        queryHandle: "qh-geo-big",
+        spec: geoSpec,
+        rows: [],
+        sql: "SELECT geom FROM parcels",
+      },
+      SCOPE,
+      {
+        getSnapshot: jest.fn(async () => ({
+          rows: [
+            { geom: "0101000020E610000000000000000000000000000000000000" },
+          ],
+          total: 100_001,
+          offset: 0,
+          limit: PIN_SNAPSHOT_ROW_CAP,
+        })) as never,
+        geoReencodeRows: geoReencodeRows as never,
+      }
+    );
+    const content = result.content as Record<string, unknown>;
+    expect(content.tiled).toBe(true);
+    // The inline rows persist as a fallback even when tile-backed.
+    expect((content.rows as unknown[]).length).toBe(1);
+  });
+
+  it("does not mark a truncated geo pin tiled when it has no pipeline", async () => {
+    const result = await PortalResultPinService.materialize(
+      "geo",
+      // No `sql` and no `pipeline` on the block → not refreshable.
+      { queryHandle: "qh-geo-static", spec: geoSpec, rows: [] },
+      SCOPE,
+      {
+        getSnapshot: jest.fn(async () => ({
+          rows: [
+            { geom: "0101000020E610000000000000000000000000000000000000" },
+          ],
+          total: 100_001,
+          offset: 0,
+          limit: PIN_SNAPSHOT_ROW_CAP,
+        })) as never,
+        // Meta read yields no sql → pipeline stays undefined → static snapshot.
+        getMeta: jest.fn(async () => ({})) as never,
+        geoReencodeRows: (async (rows: Array<Record<string, unknown>>) =>
+          rows.map((r) => ({
+            ...r,
+            geom: { type: "Point", coordinates: [0, 0] },
+          }))) as never,
+      }
+    );
+    const content = result.content as Record<string, unknown>;
+    expect(content.tiled).toBeUndefined();
   });
 
   it("does not re-encode a non-geo (data-table) pin", async () => {

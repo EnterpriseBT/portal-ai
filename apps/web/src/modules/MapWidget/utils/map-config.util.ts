@@ -52,6 +52,29 @@ export function pickMapRows(
   return EMPTY_ROWS;
 }
 
+/**
+ * Decide whether a geo block renders through vector **tiles** rather than
+ * inline rows (#314/#371). Tiles when: a fresh refresh delivered a handle; or,
+ * on mount (no refresh yet), the block is handle-backed — either a live message
+ * block still carrying a `queryHandle`, or a materialized pin marked `tiled`
+ * (its `queryHandle` was stripped at pin time) **and** a `blockRef` exists to
+ * build the tile URL from. A fresh inline delivery always renders inline. The
+ * `tiled` case requires `hasRef` on purpose: without a ref there is no tile URL,
+ * so an already-materialized pin falls back to its inline `rows` snapshot rather
+ * than the "too large — pin it" notice, which only fits an unpersisted handle.
+ */
+export function isTileBoundGeo(
+  fresh: WidgetRefreshResponse | null,
+  content: GeoBlockContent,
+  hasRef: boolean
+): boolean {
+  if (fresh?.kind === "inline") return false;
+  if (fresh?.kind === "handle") return true;
+  if (fresh != null) return false;
+  if ("queryHandle" in content) return true;
+  return (content as { tiled?: boolean }).tiled === true && hasRef;
+}
+
 export interface GeoFeature {
   type: "Feature";
   geometry: Record<string, unknown>;
