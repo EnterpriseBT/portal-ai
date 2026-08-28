@@ -20,12 +20,23 @@ import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { PortalSqlHandleService } from "./portal-sql-handle.service.js";
 import { resolveSqlDelivery as defaultResolveSqlDelivery } from "../tools/result-sink.js";
+import {
+  geometryColumnsFromSpec,
+  geoReencodeRows as defaultGeoReencodeRows,
+} from "../tools/geo-delivery.util.js";
 
 /** DI seam (test): the handle readers + the SQL delivery resolver. */
 export interface MaterializeDeps {
   getSnapshot?: typeof PortalSqlHandleService.getSnapshot;
   getMeta?: typeof PortalSqlHandleService.getMeta;
   resolveSqlDelivery?: typeof defaultResolveSqlDelivery;
+  /**
+   * Re-encode a handle snapshot's geometry from WKB hex to GeoJSON at pin time
+   * (#371) — a handle-backed map otherwise persists raw WKB, which MapLibre
+   * can't read, so the pin renders empty until a manual refresh. Injectable for
+   * unit tests; defaults to the real `geoReencodeRows`.
+   */
+  geoReencodeRows?: typeof defaultGeoReencodeRows;
 }
 
 export interface MaterializeScope {
@@ -69,24 +80,38 @@ function derivePipeline(
   return undefined;
 }
 
-function assemble(
+async function assemble(
   source: Record<string, unknown>,
   rows: Array<Record<string, unknown>>,
   total: number,
-  pipeline: VizPipeline | undefined
-): Record<string, unknown> {
+  pipeline: VizPipeline | undefined,
+  deps: MaterializeDeps
+): Promise<Record<string, unknown>> {
   const schemaNames = Array.isArray(source.schema)
     ? (source.schema as Array<{ name?: unknown }>)
         .map((c) => c?.name)
         .filter((n): n is string => typeof n === "string")
     : [];
   const columns = Array.isArray(source.columns) ? source.columns : schemaNames;
+
+  // #371: a handle snapshot carries geometry as raw PostGIS WKB hex, which
+  // MapLibre can't read — a pinned handle-backed map rendered empty until a
+  // manual refresh. Re-encode the geometry values to GeoJSON in place (the row
+  // set is already correct; only the encoding differs). A no-op for non-geo
+  // pins (`geometryColumnsFromSpec` → []) and for values that are already
+  // GeoJSON, so the inline path and data-table pins are untouched.
+  const geomCols = geometryColumnsFromSpec(source.spec);
+  const outRows =
+    geomCols.length > 0 && rows.length > 0
+      ? await (deps.geoReencodeRows ?? defaultGeoReencodeRows)(rows, geomCols)
+      : rows;
+
   return {
     ...source,
     columns,
-    rows,
+    rows: outRows,
     rowCount: total,
-    truncated: total > rows.length,
+    truncated: total > outRows.length,
     ...(pipeline ? { pipeline } : {}),
   };
 }
@@ -173,7 +198,7 @@ export class PortalResultPinService {
           // expired between the snapshot and meta reads — static pin
         }
       }
-      return assemble(source, snap.rows, snap.total, pipeline);
+      return await assemble(source, snap.rows, snap.total, pipeline, deps);
     } catch (err) {
       const expired =
         err instanceof ApiError && err.code === ApiCode.READ_HANDLE_EXPIRED;
@@ -196,13 +221,19 @@ export class PortalResultPinService {
           sample?: Array<Record<string, unknown>>;
         };
         const rows = result.rows ?? result.sample ?? [];
-        return assemble(source, rows, rows.length, pipeline);
+        return await assemble(source, rows, rows.length, pipeline, deps);
       }
       const snap = await getSnapshot(delivery.envelope.queryHandle, {
         offset: 0,
         limit: PIN_SNAPSHOT_ROW_CAP,
       });
-      return assemble(source, snap.rows, delivery.envelope.rowCount, pipeline);
+      return await assemble(
+        source,
+        snap.rows,
+        delivery.envelope.rowCount,
+        pipeline,
+        deps
+      );
     }
   }
 }

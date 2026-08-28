@@ -2,6 +2,7 @@ import { describe, it, expect } from "@jest/globals";
 
 import {
   geoInlineRows,
+  geoReencodeRows,
   geometryColumnsFromSpec,
 } from "../../tools/geo-delivery.util.js";
 
@@ -90,6 +91,52 @@ describe("geoInlineRows (#343 — inline geometry survives the reproject)", () =
     });
     expect(out).toEqual([]);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("geoReencodeRows (#371 — re-encode snapshot WKB to GeoJSON)", () => {
+  it("converts WKB-hex geometry values to the executor's GeoJSON output", async () => {
+    const calls: unknown[] = [];
+    const execute = async (q: unknown) => {
+      calls.push(q);
+      return [{ idx: 0, gj: { type: "Point", coordinates: [1, 2] } }];
+    };
+    const rows = [
+      { geom: "0101000020E6100000000000000000F03F0000000000000040", a: 1 },
+    ];
+    const out = await geoReencodeRows(rows, ["geom"], { execute });
+    expect(out).toEqual([
+      { geom: { type: "Point", coordinates: [1, 2] }, a: 1 },
+    ]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("leaves already-GeoJSON objects and nulls untouched (executor not called)", async () => {
+    let called = 0;
+    const execute = async () => {
+      called++;
+      return [];
+    };
+    const rows = [
+      { geom: { type: "Point" }, a: 1 },
+      { geom: null, a: 2 },
+    ];
+    const out = await geoReencodeRows(rows, ["geom"], { execute });
+    expect(out).toEqual(rows);
+    expect(called).toBe(0);
+  });
+
+  it("is a no-op for empty columns or empty rows", async () => {
+    let called = 0;
+    const execute = async () => {
+      called++;
+      return [];
+    };
+    expect(await geoReencodeRows([{ geom: "AB" }], [], { execute })).toEqual([
+      { geom: "AB" },
+    ]);
+    expect(await geoReencodeRows([], ["geom"], { execute })).toEqual([]);
+    expect(called).toBe(0);
   });
 });
 
