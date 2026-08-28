@@ -159,15 +159,20 @@ describe("map_dissolve_geometries storage (#472)", () => {
     expect(planText).toMatch(/index scan|bitmap index scan/);
   });
 
-  it("rejects a duplicate (portalResultId, columnName, value, zoomBand)", async () => {
+  it("stores many pieces per (value, zoomBand) — no unique key (subdivided region)", async () => {
+    // A dissolved region is ST_Subdivide'd into many bounded pieces, so multiple
+    // rows legitimately share the same (portalResultId, columnName, value, zoomBand).
     await insertRow({ value: "Private", zoomBand: 0 });
     await expect(
       insertRow({ value: "Private", zoomBand: 0 })
-    ).rejects.toThrow();
-    // A different band for the same value is fine.
-    await expect(
-      insertRow({ value: "Private", zoomBand: 1 })
     ).resolves.toBeDefined();
+    const rows = (await connection.unsafe(
+      `SELECT count(*)::int AS n FROM map_dissolve_geometries
+       WHERE portal_result_id = $1 AND column_name = 'c_own_type'
+         AND value = 'Private' AND zoom_band = 0`,
+      [portalResultId]
+    )) as unknown as Array<{ n: number }>;
+    expect(rows[0].n).toBe(2);
   });
 
   it("cascade-deletes rows when the pin is removed", async () => {

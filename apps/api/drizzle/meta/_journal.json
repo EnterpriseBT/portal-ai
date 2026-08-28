@@ -610,6 +610,13 @@
       "when": 1787947372961,
       "tag": "0086_add_dissolve_precompute_job_type",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1787950272646,
+      "tag": "0087_dissolve_pieces_index",
+      "breakpoints": true
     }
   ]
 }

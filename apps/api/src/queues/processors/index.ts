@@ -7,6 +7,7 @@ import { layoutPlanCommitProcessor } from "./layout-plan-commit.processor.js";
 import { bulkTransformProcessor } from "./bulk-transform.processor.js";
 import { bulkGeocodeProcessor } from "./bulk-geocode.processor.js";
 import { sqlQueryProcessor } from "./sql-query.processor.js";
+import { dissolvePrecomputeProcessor } from "./dissolve-precompute.processor.js";
 
 /**
  * Declarative processor map.
@@ -25,4 +26,5 @@ export const processors: Record<string, JobProcessor> = {
   bulk_transform: bulkTransformProcessor,
   bulk_geocode: bulkGeocodeProcessor,
   sql_query: sqlQueryProcessor,
+  dissolve_precompute: dissolvePrecomputeProcessor,
 };
