@@ -31,6 +31,20 @@ describe("PINNED_CONTENT_SCHEMAS", () => {
     expect(res.success).toBe(true);
   });
 
+  // #371: a large geo pin carries a durable `tiled` marker so the widget
+  // renders the full dataset via the pin's tile endpoint on mount.
+  it("geo schema keeps the tiled marker", () => {
+    const res = PINNED_CONTENT_SCHEMAS.geo!.safeParse({
+      spec: {
+        layers: [{ kind: "polygons", source: { geometryColumn: "geom" } }],
+      },
+      rows: [{ geom: { type: "Point", coordinates: [0, 0] } }],
+      tiled: true,
+    });
+    expect(res.success).toBe(true);
+    expect((res as { data: { tiled?: boolean } }).data.tiled).toBe(true);
+  });
+
   it("text schema accepts markdown and rejects the empty string", () => {
     expect(PINNED_CONTENT_SCHEMAS.text!.safeParse("## Summary").success).toBe(
       true

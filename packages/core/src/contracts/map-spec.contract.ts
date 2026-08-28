@@ -197,6 +197,16 @@ const GeoBaseContentSchema = z.object({
 /** Inline binding — GeoJSON-bearing rows baked into the block (small results). */
 export const GeoInlineContentSchema = GeoBaseContentSchema.extend({
   rows: z.array(z.record(z.string(), z.unknown())),
+  /**
+   * Materialized-pin marker (#371): the pinned source exceeded the inline
+   * snapshot cap, so the widget must render the **full** dataset through the
+   * pin's tile endpoint on mount — not the bounded `rows` subset (which would
+   * show a spatial fraction of a choropleth and read as missing data). Only
+   * set when the pin is refreshable (`pipeline` present), since the tile
+   * endpoint re-runs that pipeline; `rows` stay as an inline fallback for a
+   * render with no server-addressable ref. Absent/false ⇒ render inline.
+   */
+  tiled: z.boolean().optional(),
 });
 export type GeoInlineContent = z.infer<typeof GeoInlineContentSchema>;
 

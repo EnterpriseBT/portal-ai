@@ -106,12 +106,21 @@ async function assemble(
       ? await (deps.geoReencodeRows ?? defaultGeoReencodeRows)(rows, geomCols)
       : rows;
 
+  const truncated = total > outRows.length;
+  // #371: a geo pin whose source outran the inline snapshot must render the
+  // full dataset via the pin's tile endpoint on mount, not the bounded `rows`
+  // subset. Only mark it when refreshable — the tile endpoint re-runs the
+  // persisted `pipeline`, so without one there are no tiles to serve and the
+  // inline snapshot is all there is.
+  const tiled = geomCols.length > 0 && truncated && pipeline != null;
+
   return {
     ...source,
     columns,
     rows: outRows,
     rowCount: total,
-    truncated: total > outRows.length,
+    truncated,
+    ...(tiled ? { tiled: true } : {}),
     ...(pipeline ? { pipeline } : {}),
   };
 }

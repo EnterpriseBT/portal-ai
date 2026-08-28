@@ -16,6 +16,7 @@ import {
   buildLegend,
   EMPTY_ROWS,
   featuresForLayer,
+  isTileBoundGeo,
   layerToMapLibre,
   pickMapRows,
   resolveBasemapStyle,
@@ -730,5 +731,50 @@ describe("pickMapRows (#341 — stable rows identity)", () => {
 
   it("EMPTY_ROWS is empty", () => {
     expect(EMPTY_ROWS).toHaveLength(0);
+  });
+});
+
+describe("isTileBoundGeo (#371 — tile-on-mount decision)", () => {
+  const inline = {
+    spec: { layers: [] },
+    rows: [{ a: 1 }],
+  } as unknown as GeoBlockContent;
+  const handle = {
+    spec: { layers: [] },
+    queryHandle: "qh_abc",
+  } as unknown as GeoBlockContent;
+  const tiledPin = {
+    spec: { layers: [] },
+    rows: [{ a: 1 }],
+    tiled: true,
+  } as unknown as GeoBlockContent;
+
+  it("renders inline on mount for a plain inline pin (has ref)", () => {
+    expect(isTileBoundGeo(null, inline, true)).toBe(false);
+  });
+
+  it("tiles on mount for a live handle block, even without a ref", () => {
+    expect(isTileBoundGeo(null, handle, false)).toBe(true);
+  });
+
+  it("tiles on mount for a materialized tiled pin when a ref exists", () => {
+    expect(isTileBoundGeo(null, tiledPin, true)).toBe(true);
+  });
+
+  it("falls back to inline for a tiled pin with no ref (no tile URL)", () => {
+    expect(isTileBoundGeo(null, tiledPin, false)).toBe(false);
+  });
+
+  it("a fresh handle delivery tiles regardless of persisted content", () => {
+    const fresh = { kind: "handle" } as unknown as WidgetRefreshResponse;
+    expect(isTileBoundGeo(fresh, inline, true)).toBe(true);
+  });
+
+  it("a fresh inline delivery renders inline even over a tiled pin", () => {
+    const fresh = {
+      kind: "inline",
+      rows: [{ b: 2 }],
+    } as unknown as WidgetRefreshResponse;
+    expect(isTileBoundGeo(fresh, tiledPin, true)).toBe(false);
   });
 });
