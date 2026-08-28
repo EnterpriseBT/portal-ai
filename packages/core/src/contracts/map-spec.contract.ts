@@ -111,14 +111,13 @@ export const MapLayerAggregationSchema = z.object({
   gridSizePx: z.number().int().positive().max(128).optional(),
   zoomThreshold: z.number().int().min(0).max(22).optional(),
   /**
-   * Low-zoom shape (#337, #472). Absent ⇒ per-kind auto (see
-   * `resolveAggTreatment`): `lines` → `"none"`, a polygon choropleth (categorical
-   * colorBy) → `"dissolve"`, everything else → `"bins"`. `"bins"` draws square
-   * grid bins; `"none"` keeps raw importance-ranked features at all zooms;
-   * `"dissolve"` collects the polygons per colorBy value into one filled region
-   * per value (a correct low-zoom choropleth, bounded by #distinct values).
+   * Low-zoom shape (#337). Absent ⇒ per-kind auto: `lines` → `"none"`,
+   * everything else → `"bins"`. `"bins"` draws square grid bins; `"none"`
+   * keeps raw features at all zooms (line layers are importance-ranked by
+   * length so the per-tile cap keeps the major features, not an arbitrary
+   * subset). A future `"density"` value would add a length-weighted surface.
    */
-  treatment: z.enum(["bins", "none", "dissolve"]).optional(),
+  treatment: z.enum(["bins", "none"]).optional(),
 });
 export type MapLayerAggregation = z.infer<typeof MapLayerAggregationSchema>;
 export type AggTreatment = NonNullable<MapLayerAggregation["treatment"]>;
@@ -147,41 +146,20 @@ export const MapLayerSchema = z
 export type MapLayer = z.infer<typeof MapLayerSchema>;
 export type MapLayerKind = MapLayer["kind"];
 
-/** A colorBy colour scale (`style.colorBy.scale`); `step`/`interpolate` are
- *  continuous, `categorical` is discrete. */
-export type MapColorScale = "categorical" | "step" | "interpolate";
-
 /**
- * Resolve a layer's low-zoom aggregation treatment (#337, #472) — the single
- * source of truth shared by the server tile query (`aggregationFromSpec`) and
- * the web paint (`layerToMapLibre`). An explicit `treatment` always wins;
- * otherwise the per-kind default:
- *   - `lines` → `"none"` (raw + importance-ranked),
- *   - `polygons` with a **categorical** colorBy → `"dissolve"` (#472: one
- *     collected region per value — a correct low-zoom choropleth), and
- *   - everything else (polygons without a categorical colorBy, points, heatmap,
- *     cluster) → `"bins"` (square grid bins).
- *
- * "Categorical" = a colorBy is present and its scale is not continuous
- * (`step`/`interpolate`); an absent scale counts as categorical (the common
- * `{ column }` case). Deterministic — the fail-safe never depends on an LLM
- * guess. Both consumers MUST pass the same `opts` so tile and paint agree.
+ * Resolve a layer's low-zoom aggregation treatment (#337) — the single source
+ * of truth shared by the server tile query (`aggregationFromSpec`) and the web
+ * paint (`layerToMapLibre`). An explicit `treatment` always wins; otherwise the
+ * per-kind default: `lines` render raw + importance-ranked (`"none"`), every
+ * other kind gets square grid bins (`"bins"`). Deterministic — the fail-safe
+ * never depends on an LLM guess.
  */
 export function resolveAggTreatment(
   kind: MapLayerKind,
-  treatment?: AggTreatment,
-  opts?: { hasColorBy?: boolean; colorByScale?: MapColorScale }
+  treatment?: AggTreatment
 ): AggTreatment {
   if (treatment) return treatment;
-  if (kind === "lines") return "none";
-  if (kind === "polygons") {
-    const categorical =
-      opts?.hasColorBy === true &&
-      opts.colorByScale !== "step" &&
-      opts.colorByScale !== "interpolate";
-    return categorical ? "dissolve" : "bins";
-  }
-  return "bins";
+  return kind === "lines" ? "none" : "bins";
 }
 
 // ── Spec ─────────────────────────────────────────────────────────────

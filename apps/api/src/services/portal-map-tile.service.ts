@@ -23,7 +23,6 @@ import {
   type VizPipeline,
   type MapLayerKind,
   type AggTreatment,
-  type MapColorScale,
 } from "@portalai/core/contracts";
 import { AGG_ZOOM_THRESHOLD, AGG_GRID_PX } from "@portalai/core/constants";
 
@@ -177,10 +176,6 @@ export interface TileAggregation {
   /** Raw path orders by `ST_Length` DESC so a capped tile keeps the major
    *  features, not an arbitrary subset (#337). True only for line layers. */
   rankByLength: boolean;
-  /** Resolved low-zoom treatment (#472): `"bins"` (centroid squares),
-   *  `"dissolve"` (one collected region per colorBy value — a choropleth), or
-   *  `"none"` (raw). Drives the aggregate SQL builder branch. */
-  treatment: AggTreatment;
 }
 
 /**
@@ -203,20 +198,9 @@ export function aggregationFromSpec(spec: unknown): TileAggregation {
     treatment?: AggTreatment;
   };
   const kind = (rep?.kind ?? null) as MapLayerKind | null;
-  // Per-kind treatment (#337, #472): explicit `treatment` wins, else lines →
-  // raw, a polygon choropleth (categorical colorBy on the representative layer)
-  // → dissolve, others → bins. "none" routes to the raw path via `enabled:false`.
-  const repColorBy = (
-    rep?.style as
-      | { colorBy?: { column?: string; scale?: MapColorScale } }
-      | undefined
-  )?.colorBy;
-  const treatment = kind
-    ? resolveAggTreatment(kind, agg.treatment, {
-        hasColorBy: !!repColorBy?.column,
-        colorByScale: repColorBy?.scale,
-      })
-    : "bins";
+  // Per-kind treatment (#337): explicit `treatment` wins, else lines → raw,
+  // others → bins. "none" routes to the raw path via `enabled:false`.
+  const treatment = kind ? resolveAggTreatment(kind, agg.treatment) : "bins";
   let colorByColumn: string | null = null;
   for (const l of layers) {
     const c = (l?.style as { colorBy?: { column?: string } } | undefined)
@@ -237,7 +221,6 @@ export function aggregationFromSpec(spec: unknown): TileAggregation {
     colorByColumn,
     kind,
     rankByLength: kind === "lines",
-    treatment,
   };
 }
 
@@ -414,64 +397,6 @@ export class PortalMapTileService {
   }
 
   /**
-   * Low-zoom polygon-choropleth tile SQL (#472). Instead of centroid squares,
-   * it collects the polygons per colorBy value into one shape per value — a
-   * correct low-zoom choropleth whose feature count is bounded by #distinct
-   * values, not #rows. `GROUP BY` the colorBy column; `ST_Collect` of
-   * per-feature `ST_SimplifyPreserveTopology` (detail is invisible at overview
-   * zoom); emit the colorBy value under its own column so the client's
-   * `["get", col]` fill expression colours it with no new client code.
-   * `n_limited` = the group count so `>= cap` reports truncation (as raw does).
-   *
-   * Only used when `aggregation.treatment === "dissolve"`, which
-   * `aggregationFromSpec` sets only for a categorical colorBy — so
-   * `colorByColumn` is always present here; it falls back to the aggregate path
-   * defensively if not.
-   */
-  static buildDissolveTileSql(
-    pipelineSql: string,
-    z: number,
-    envelope: string,
-    aggregation: TileAggregation,
-    cap: number
-  ): string {
-    const col = aggregation.colorByColumn;
-    if (!col)
-      return this.buildAggregateTileSql(
-        pipelineSql,
-        z,
-        envelope,
-        aggregation,
-        cap
-      );
-    const tol = tileSimplifyTolerance(z);
-    const geomExpr =
-      tol > 0 ? `ST_SimplifyPreserveTopology(src.geom, ${tol})` : "src.geom";
-    const qcol = quoteIdentTile(col);
-    return (
-      `WITH cells AS (` +
-      // ST_CollectionExtract(…, 3) forces a MULTIPOLYGON: ST_Collect of
-      // simplified polygons yields a GEOMETRYCOLLECTION when simplification
-      // degenerates a small parcel to a line/point, and MapLibre can't paint a
-      // collection as a fill (found in the #472 smoke — the choropleth would
-      // silently not render). `3` extracts the polygon components; empties drop.
-      `SELECT src.${qcol} AS cat, ST_CollectionExtract(ST_Collect(${geomExpr}), 3) AS geom ` +
-      `FROM (${pipelineSql}) src ` +
-      `WHERE src.geom && ST_Transform(${envelope}, 4326) ` +
-      `GROUP BY src.${qcol} ` +
-      `LIMIT ${cap}` +
-      `) SELECT ` +
-      `(SELECT ST_AsMVT(q, 'default', ${TILE_EXTENT}, 'geom') FROM (` +
-      `SELECT cat AS ${qcol}, ` +
-      `ST_AsMVTGeom(ST_Transform(geom, 3857), ${envelope}, ${TILE_EXTENT}, 64, true) AS geom ` +
-      `FROM cells` +
-      `) q WHERE q.geom IS NOT NULL) AS mvt, ` +
-      `(SELECT count(*) FROM cells)::int AS n, ` +
-      `(SELECT count(*) FROM cells)::int AS n_limited`
-    );
-  }
-
-  /**
    * Default tile-query runner: `ST_AsMVT` over the pipeline SQL as a source
    * subquery, inside the read-only session-view transaction. Delegates SQL
    * shape to `buildRawTileSql` / `buildAggregateTileSql`; z/x/y are validated
@@ -501,17 +426,8 @@ export class PortalMapTileService {
     } = args;
     const envelope = `ST_TileEnvelope(${z}, ${x}, ${y})`;
     const aggregate = shouldAggregate(z, aggregation);
-    const dissolve = aggregate && aggregation.treatment === "dissolve";
     const tileSql = aggregate
-      ? dissolve
-        ? this.buildDissolveTileSql(pipeline.sql, z, envelope, aggregation, cap)
-        : this.buildAggregateTileSql(
-            pipeline.sql,
-            z,
-            envelope,
-            aggregation,
-            cap
-          )
+      ? this.buildAggregateTileSql(pipeline.sql, z, envelope, aggregation, cap)
       : this.buildRawTileSql(
           pipeline.sql,
           envelope,
@@ -556,13 +472,11 @@ export class PortalMapTileService {
         const limited = row ? Number(row.n_limited) : 0;
         const raw = row?.mvt ?? null;
         const mvt = raw ? Buffer.from(raw as Uint8Array) : null;
-        // The bins aggregate summarizes rather than clips, so it never
-        // truncates. The raw path and the dissolve path (#472) both cap their
-        // output, so `n_limited >= cap` is a real truncation there.
+        // The aggregate path summarizes rather than clips, so it never truncates.
         return {
           mvt,
           featureCount,
-          truncated: aggregate && !dissolve ? false : limited >= cap,
+          truncated: aggregate ? false : limited >= cap,
           aggregated: aggregate,
         };
       });
