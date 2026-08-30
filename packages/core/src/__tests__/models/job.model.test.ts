@@ -345,6 +345,8 @@ import {
   BulkTransformResultSchema,
   BulkTransformWriteSchema,
   JOB_TYPE_SCHEMAS,
+  DissolvePrecomputeMetadataSchema,
+  DissolvePrecomputeResultSchema,
 } from "../../models/job.model.js";
 import { DEFAULT_BULK_BATCH } from "../../constants/large-data-ops.constants.js";
 
@@ -579,6 +581,58 @@ describe("BulkTransform schemas (#85, #99)", () => {
     );
     expect(JOB_TYPE_SCHEMAS.bulk_transform.result).toBe(
       BulkTransformResultSchema
+    );
+  });
+});
+
+// ── dissolve_precompute (#472) ───────────────────────────────────────
+
+describe("DissolvePrecompute schemas (#472)", () => {
+  it("JobTypeEnum includes dissolve_precompute", () => {
+    expect(JobTypeEnum.safeParse("dissolve_precompute").success).toBe(true);
+  });
+
+  it("metadata parses portalResultId + organizationId", () => {
+    const r = DissolvePrecomputeMetadataSchema.safeParse({
+      portalResultId: "pr-1",
+      organizationId: "org-1",
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("result parses a full run and a skipped run", () => {
+    expect(
+      DissolvePrecomputeResultSchema.safeParse({
+        columnName: "c_own_type",
+        valuesDissolved: 3,
+        rowsWritten: 9,
+      }).success
+    ).toBe(true);
+    expect(
+      DissolvePrecomputeResultSchema.safeParse({
+        columnName: null,
+        valuesDissolved: 0,
+        rowsWritten: 0,
+        skipped: "over-cardinality",
+      }).success
+    ).toBe(true);
+    expect(
+      DissolvePrecomputeResultSchema.safeParse({
+        columnName: "c_zip",
+        valuesDissolved: 40,
+        rowsWritten: 120,
+        degraded: true,
+      }).success
+    ).toBe(true);
+  });
+
+  it("JOB_TYPE_SCHEMAS has a dissolve_precompute entry matching the exported schemas", () => {
+    expect(JOB_TYPE_SCHEMAS.dissolve_precompute).toBeDefined();
+    expect(JOB_TYPE_SCHEMAS.dissolve_precompute.metadata).toBe(
+      DissolvePrecomputeMetadataSchema
+    );
+    expect(JOB_TYPE_SCHEMAS.dissolve_precompute.result).toBe(
+      DissolvePrecomputeResultSchema
     );
   });
 });

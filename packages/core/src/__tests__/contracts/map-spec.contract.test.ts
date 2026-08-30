@@ -242,6 +242,10 @@ describe("MapLayerAggregationSchema — treatment (via MapSpecSchema)", () => {
     expect(withAgg({ treatment: "none" }).success).toBe(true);
   });
 
+  it("accepts treatment: 'dissolve' (#472)", () => {
+    expect(withAgg({ treatment: "dissolve" }).success).toBe(true);
+  });
+
   it("rejects an unknown treatment value", () => {
     expect(withAgg({ treatment: "grid" }).success).toBe(false);
   });
@@ -266,6 +270,25 @@ describe("resolveAggTreatment", () => {
   it("lets an explicit treatment override the per-kind default", () => {
     expect(resolveAggTreatment("lines", "bins")).toBe("bins");
     expect(resolveAggTreatment("polygons", "none")).toBe("none");
+    expect(resolveAggTreatment("polygons", "dissolve")).toBe("dissolve");
+  });
+
+  // #472 slice 1: the `hasColorBy` opts arg is accepted but does NOT yet flip
+  // the polygon default — the routing change lands with the serve + client
+  // consumers (slice 4) so the treatment never goes half-migrated.
+  // #472: a polygon layer WITH a colorBy dissolves at low zoom; without one it
+  // keeps "bins" (density overview). Points/heatmap/cluster are unaffected.
+  it("routes polygons+colorBy to 'dissolve', polygons without colorBy to 'bins'", () => {
+    expect(
+      resolveAggTreatment("polygons", undefined, { hasColorBy: true })
+    ).toBe("dissolve");
+    expect(
+      resolveAggTreatment("polygons", undefined, { hasColorBy: false })
+    ).toBe("bins");
+    expect(resolveAggTreatment("polygons")).toBe("bins");
+    expect(resolveAggTreatment("points", undefined, { hasColorBy: true })).toBe(
+      "bins"
+    );
   });
 });
 

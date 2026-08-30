@@ -45,6 +45,7 @@ export const JobTypeEnum = z.enum([
   "bulk_transform",
   "bulk_geocode",
   "sql_query",
+  "dissolve_precompute",
 ]);
 export type JobType = z.infer<typeof JobTypeEnum>;
 
@@ -497,6 +498,41 @@ export type SqlQueryJobMetadata = z.infer<typeof SqlQueryJobMetadataSchema>;
 export const SqlQueryJobResultSchema = QueryHandleEnvelopeSchema;
 export type SqlQueryJobResult = z.infer<typeof SqlQueryJobResultSchema>;
 
+/**
+ * dissolve_precompute — off-request dissolve of a pinned map's polygon
+ * choropleth (#472). Runs the pin's durable `pipeline` once, then dissolves the
+ * result per (colorBy value, zoom band) and stores the geometry keyed by the
+ * pin, so low-zoom tiles serve real polygons without re-running the pipeline.
+ *
+ * Locks: `portalResultId` (a session-scoped advisory lock, NOT the job-row
+ * entity lock) so two refreshes of one pin cannot race. Enqueued at pin create
+ * and on every pin refresh; recompute replaces the pin's rows transactionally.
+ */
+export const DissolvePrecomputeMetadataSchema = z.object({
+  portalResultId: z.string(),
+  organizationId: z.string(),
+});
+export type DissolvePrecomputeMetadata = z.infer<
+  typeof DissolvePrecomputeMetadataSchema
+>;
+
+export const DissolvePrecomputeResultSchema = z.object({
+  /** The colorBy column dissolved, or null when there was nothing to dissolve. */
+  columnName: z.string().nullable(),
+  valuesDissolved: z.number().int().nonnegative(),
+  rowsWritten: z.number().int().nonnegative(),
+  /** Why no dissolve ran (absent ⇒ it ran). */
+  skipped: z
+    .enum(["over-cardinality", "non-polygon", "no-colorby", "superseded"])
+    .optional(),
+  /** A band failed but others were written — non-fatal (mirror of the sync
+   *  result's `mirrorDegraded`). */
+  degraded: z.literal(true).optional(),
+});
+export type DissolvePrecomputeResult = z.infer<
+  typeof DissolvePrecomputeResultSchema
+>;
+
 // --- Type Map ---
 
 /**
@@ -533,6 +569,10 @@ export interface JobTypeMap {
   sql_query: {
     metadata: SqlQueryJobMetadata;
     result: SqlQueryJobResult;
+  };
+  dissolve_precompute: {
+    metadata: DissolvePrecomputeMetadata;
+    result: DissolvePrecomputeResult;
   };
 }
 
@@ -577,6 +617,10 @@ export const JOB_TYPE_SCHEMAS: {
   sql_query: {
     metadata: SqlQueryJobMetadataSchema,
     result: SqlQueryJobResultSchema,
+  },
+  dissolve_precompute: {
+    metadata: DissolvePrecomputeMetadataSchema,
+    result: DissolvePrecomputeResultSchema,
   },
 };
 

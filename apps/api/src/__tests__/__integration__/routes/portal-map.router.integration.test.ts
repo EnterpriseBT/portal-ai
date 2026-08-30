@@ -323,4 +323,124 @@ describe("Portal map tile route (#316)", () => {
       0
     );
   });
+
+  // ── #472: low-zoom dissolve serve + raw-simplify fallback ─────────────
+
+  const createColorByPin = async (
+    pipelineSql: string,
+    colorByColumn: string
+  ): Promise<string> => {
+    const id = generateId();
+    await (db as ReturnType<typeof drizzle>)
+      .insert(schema.portalResults)
+      .values({
+        id,
+        organizationId: orgId,
+        stationId,
+        portalId: null,
+        messageId: null,
+        blockIndex: null,
+        name: "Choropleth",
+        type: "geo",
+        content: {
+          spec: {
+            layers: [
+              {
+                kind: "polygons",
+                source: { geometryColumn: "geom" },
+                style: { colorBy: { column: colorByColumn } },
+              },
+            ],
+          },
+          pipeline: { sql: pipelineSql, stationId, organizationId: orgId },
+        },
+        snapshotUpdatedAt: null,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    return id;
+  };
+
+  const insertDissolveRow = (pin: string, col: string, band: number) =>
+    connection.unsafe(
+      `INSERT INTO map_dissolve_geometries
+         (id, created, created_by, organization_id, portal_result_id,
+          column_name, value, zoom_band, feature_count, geom)
+       VALUES ($1,$2,'SYSTEM_TEST',$3,$4,$5,'Private',$6,3,
+         ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($7),4326)))`,
+      [
+        generateId(),
+        Date.now(),
+        orgId,
+        pin,
+        col,
+        band,
+        JSON.stringify({
+          type: "MultiPolygon",
+          coordinates: [POLYGON.coordinates],
+        }),
+      ]
+    );
+
+  it("dissolve HIT: serves precomputed geometry, never running the pipeline", async () => {
+    // The pipeline references a view that does not exist — if the dissolve-hit
+    // path ran it, the tile would 500. It serves from the stored geometry instead.
+    const pin = await createColorByPin(
+      'SELECT "c_geom" AS geom, c_own_type FROM does_not_exist',
+      "c_own_type"
+    );
+    await insertDissolveRow(pin, "c_own_type", 0); // band 0 = z0
+
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    expect(res.aggregated).toBe(false); // real geometry, not centroid bins
+  });
+
+  it("dissolve MISS: falls back to raw simplified polygons, never bins", async () => {
+    // A polygon+colorBy pin (→ treatment dissolve) with NO precompute rows.
+    const pin = await createColorByPin(
+      `SELECT "c_geom" AS geom, 'Private'::text AS c_own_type FROM parcels`,
+      "c_own_type"
+    );
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 0,
+      x: 0,
+      y: 0,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).length).toBeGreaterThan(0);
+    // Raw simplified polygons — NOT the aggregate/bins path.
+    expect(res.aggregated).toBe(false);
+    expect(res.simplifiedTolerance).not.toBeNull();
+  });
+
+  it("z >= threshold uses the raw path regardless of precompute", async () => {
+    const pin = await createColorByPin(
+      `SELECT "c_geom" AS geom, 'Private'::text AS c_own_type FROM parcels`,
+      "c_own_type"
+    );
+    // z14 tile at lng≈5, lat≈5 (well inside the 0..10 polygon).
+    const res = await PortalMapTileService.renderTile({
+      ref: { kind: "pin", portalResultId: pin },
+      z: 14,
+      x: 8419,
+      y: 7964,
+      organizationId: orgId,
+    });
+    expect(res.status).toBe(200);
+    expect(res.aggregated).toBe(false);
+  });
 });

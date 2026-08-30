@@ -27,6 +27,7 @@ export const jobTypeEnum = pgEnum("job_type", [
   "bulk_transform",
   "bulk_geocode",
   "sql_query",
+  "dissolve_precompute",
 ]);
 
 /**

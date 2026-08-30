@@ -15,6 +15,7 @@ import { portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalResultPinService } from "../services/portal-result-pin.service.js";
 import { PortalVizRefreshService } from "../services/portal-viz-refresh.service.js";
+import { DissolvePrecomputeService } from "../services/dissolve-precompute.service.js";
 import { incrementRateWindow } from "../utils/rate-limit.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { DateFactory } from "@portalai/core/utils";
@@ -218,6 +219,16 @@ portalResultsRouter.post(
         "Portal result pinned"
       );
 
+      // #472: precompute the low-zoom dissolve for a polygon choropleth pin.
+      // Best-effort — never blocks or fails the pin.
+      await DissolvePrecomputeService.enqueueForPin({
+        portalResultId: portalResult.id,
+        organizationId,
+        userId,
+        type,
+        content: content as Record<string, unknown>,
+      });
+
       return HttpService.success(res, { portalResult }, 201);
     } catch (error) {
       logger.error(
@@ -327,6 +338,22 @@ portalResultsRouter.post(
         portalResultId: req.params.id,
         organizationId,
       });
+
+      // #472: recompute the low-zoom dissolve over the freshly-refreshed data.
+      // Best-effort; a non-polygon/no-colorBy pin is a no-op.
+      const pin = await DbService.repository.portalResults.findById(
+        req.params.id
+      );
+      if (pin) {
+        await DissolvePrecomputeService.enqueueForPin({
+          portalResultId: pin.id,
+          organizationId,
+          userId: req.application!.metadata.userId,
+          type: pin.type,
+          content: pin.content,
+        });
+      }
+
       return HttpService.success(res, payload);
     } catch (err) {
       return next(err);

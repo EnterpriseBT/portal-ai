@@ -116,8 +116,13 @@ export const MapLayerAggregationSchema = z.object({
    * keeps raw features at all zooms (line layers are importance-ranked by
    * length so the per-tile cap keeps the major features, not an arbitrary
    * subset). A future `"density"` value would add a length-weighted surface.
+   *
+   * `"dissolve"` (#472): a polygon choropleth rendered as real, colored
+   * polygons at low zoom — merged per `colorBy` value, served from a per-pin
+   * precomputed + per-zoom-simplified geometry (raw-simplified polygons when no
+   * precompute exists). Never centroid bins.
    */
-  treatment: z.enum(["bins", "none"]).optional(),
+  treatment: z.enum(["bins", "none", "dissolve"]).optional(),
 });
 export type MapLayerAggregation = z.infer<typeof MapLayerAggregationSchema>;
 export type AggTreatment = NonNullable<MapLayerAggregation["treatment"]>;
@@ -156,10 +161,17 @@ export type MapLayerKind = MapLayer["kind"];
  */
 export function resolveAggTreatment(
   kind: MapLayerKind,
-  treatment?: AggTreatment
+  treatment?: AggTreatment,
+  // #472: `hasColorBy` gates the polygon `"dissolve"` default — a dissolve needs
+  // a categorical value to merge on. A polygon choropleth (colorBy present)
+  // renders as real dissolved polygons at low zoom; a polygon layer without a
+  // colorBy keeps `"bins"` (density overview).
+  opts?: { hasColorBy?: boolean }
 ): AggTreatment {
   if (treatment) return treatment;
-  return kind === "lines" ? "none" : "bins";
+  if (kind === "lines") return "none";
+  if (kind === "polygons" && opts?.hasColorBy) return "dissolve";
+  return "bins";
 }
 
 // ── Spec ─────────────────────────────────────────────────────────────

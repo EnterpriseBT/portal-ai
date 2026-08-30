@@ -33,6 +33,7 @@ const catAgg: TileAggregation = {
   gridSizePx: 24,
   colorByColumn: "cat",
   kind: "polygons",
+  treatment: "bins",
   rankByLength: false,
 };
 const densityAgg: TileAggregation = { ...catAgg, colorByColumn: null };

@@ -15,6 +15,15 @@ const logger = createLogger({ module: "sync-lock" });
  */
 export const SYNC_LOCK_NAMESPACE = 0x5359_4e43;
 
+/**
+ * Advisory-lock namespace for the dissolve-precompute job (#472), keyed by
+ * `portalResultId` so two refreshes of one pin cannot dissolve concurrently.
+ * Distinct from `SYNC_LOCK_NAMESPACE` so a pin lock and an instance-sync lock
+ * never collide in Postgres's single advisory keyspace. `0x4453_4c56` is ASCII
+ * "DSLV".
+ */
+export const DISSOLVE_LOCK_NAMESPACE = 0x4453_4c56;
+
 export type SyncLockOutcome<T> =
   | { acquired: true; value: T }
   | { acquired: false };
@@ -64,6 +73,31 @@ export class SyncLockService {
     connectorInstanceId: string,
     fn: () => Promise<T>
   ): Promise<SyncLockOutcome<T>> {
+    return SyncLockService.withAdvisoryLock(
+      SYNC_LOCK_NAMESPACE,
+      connectorInstanceId,
+      fn,
+      { event: "sync-lock", subject: "connectorInstanceId" }
+    );
+  }
+
+  /**
+   * Run `fn` while holding a session-scoped Postgres advisory lock on
+   * `(namespace, hashtext(key))`. Returns `{ acquired: false }` **without
+   * running `fn`** when another live session holds it — the same fail-closed,
+   * non-blocking contract `withInstanceLock` documents, generalized so other
+   * off-request reapers/recomputers (e.g. `dissolve_precompute`, #472) can key
+   * on their own subject id without a second implementation.
+   */
+  static async withAdvisoryLock<T>(
+    namespace: number,
+    key: string,
+    fn: () => Promise<T>,
+    log: { event: string; subject: string } = {
+      event: "advisory-lock",
+      subject: "key",
+    }
+  ): Promise<SyncLockOutcome<T>> {
     // An advisory lock is session-scoped, so it must not be taken on a pooled
     // connection — the lock would be released back into the pool still held.
     const reserved = await reserveConnection();
@@ -72,28 +106,28 @@ export class SyncLockService {
     try {
       const rows = (await reserved.unsafe(
         `SELECT pg_try_advisory_lock($1, hashtext($2)) AS locked`,
-        [SYNC_LOCK_NAMESPACE, connectorInstanceId]
+        [namespace, key]
       )) as unknown as Array<{ locked: boolean }>;
       held = rows[0]?.locked === true;
 
       if (!held) {
         logger.warn(
-          { event: "sync-lock.refused", connectorInstanceId },
-          "Another live session holds this instance's sync lock — skipping this pass rather than reaping under a foreign owner"
+          { event: `${log.event}.refused`, [log.subject]: key },
+          "Another live session holds this advisory lock — skipping this pass rather than acting under a foreign owner"
         );
         return { acquired: false };
       }
 
       // `try`, never the blocking `pg_advisory_lock`: a pass that would block
       // is a pass that should abort. Blocking would hold a worker slot for the
-      // duration of someone else's sync, for a run whose work is redundant.
+      // duration of someone else's run, for work that is redundant.
       return { acquired: true, value: await fn() };
     } finally {
       if (held) {
         try {
           await reserved.unsafe(`SELECT pg_advisory_unlock($1, hashtext($2))`, [
-            SYNC_LOCK_NAMESPACE,
-            connectorInstanceId,
+            namespace,
+            key,
           ]);
         } catch (err) {
           // Swallowed deliberately, and only here. A failed unlock must not
@@ -102,7 +136,7 @@ export class SyncLockService {
           // unlock would be the real damage — a reserved connection that is
           // never released is permanently gone from the pool.
           logger.error(
-            { event: "sync-lock.unlock-failed", connectorInstanceId, err },
+            { event: `${log.event}.unlock-failed`, [log.subject]: key, err },
             "Advisory unlock failed; the lock will be released when this session ends"
           );
         }

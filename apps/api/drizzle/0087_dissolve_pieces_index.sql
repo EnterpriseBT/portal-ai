@@ -1,0 +1,2 @@
+DROP INDEX "map_dissolve_geometries_key_unique";--> statement-breakpoint
+CREATE INDEX "map_dissolve_geometries_lookup_idx" ON "map_dissolve_geometries" USING btree ("portal_result_id","column_name","zoom_band");
