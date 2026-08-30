@@ -46,6 +46,8 @@ Run: `cd packages/core && npm run test:unit -- --testPathPattern large-data-ops`
 4. Far-zoom still renders quickly and legibly (coarsest band ~444 pieces, unchanged).
 5. Precompute time is longer (~72s vs ~53s) but off-request — the pin/refresh HTTP returns immediately and the map stays usable (fallback) while it runs.
 
+**Signed off:** 2026-08-30 — Ben Turner — smoothness confirmed on my running stack (merged regions step down in smaller increments across z7/z8/z9/z11; no jarring z8 explode; merged-blob far-zoom look preserved).
+
 ## Out of scope
 
 - The z14 handoff to raw parcels (inherent; different concern).
