@@ -43,25 +43,29 @@ describe("large-data-ops constants", () => {
   });
 
   // #472 — precomputed polygon-dissolve zoom bands.
-  describe("dissolve bands (#472)", () => {
+  describe("dissolve bands (#472, retuned #478)", () => {
     it("covers z0–13 with disjoint bands ending at the z14 raw handoff", () => {
-      expect(DISSOLVE_ZOOM_BANDS).toHaveLength(3);
+      expect(DISSOLVE_ZOOM_BANDS).toHaveLength(5);
       expect(
         DISSOLVE_ZOOM_BANDS[DISSOLVE_ZOOM_BANDS.length - 1].maxZoomExclusive
       ).toBe(AGG_ZOOM_THRESHOLD);
       // strictly increasing, disjoint, contiguous upper bounds
       const uppers = DISSOLVE_ZOOM_BANDS.map((b) => b.maxZoomExclusive);
       expect(uppers).toEqual([...uppers].sort((a, b) => a - b));
+      expect(new Set(uppers).size).toBe(uppers.length); // no duplicates
+      // band indices are 0..n-1 in order
+      expect(DISSOLVE_ZOOM_BANDS.map((b) => b.band)).toEqual([0, 1, 2, 3, 4]);
     });
 
-    it("bandForZoom maps low zooms to a band and z>=14 to null", () => {
+    it("bandForZoom maps low zooms to a band and z>=14 to null (#478 5-band)", () => {
       expect(bandForZoom(0)).toBe(0);
       expect(bandForZoom(6)).toBe(0);
-      expect(bandForZoom(7)).toBe(0);
-      expect(bandForZoom(8)).toBe(1);
-      expect(bandForZoom(10)).toBe(1);
-      expect(bandForZoom(11)).toBe(2);
-      expect(bandForZoom(13)).toBe(2);
+      expect(bandForZoom(7)).toBe(1);
+      expect(bandForZoom(8)).toBe(2);
+      expect(bandForZoom(9)).toBe(3);
+      expect(bandForZoom(10)).toBe(3);
+      expect(bandForZoom(11)).toBe(4);
+      expect(bandForZoom(13)).toBe(4);
       expect(bandForZoom(14)).toBeNull();
       expect(bandForZoom(18)).toBeNull();
     });

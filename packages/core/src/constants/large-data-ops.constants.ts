@@ -120,18 +120,28 @@ export const AGG_GRID_PX = 24;
 export const AGG_DENSITY_MAX = 5000;
 
 /**
- * Precomputed polygon-dissolve zoom bands (#472). Below the z14 raw handoff, a
- * polygon choropleth is served from a per-pin dissolved + simplified geometry
- * (one MultiPolygon per colorBy value per band). Each band covers `[prev, maxZoomExclusive)`
- * and is simplified for its `representativeZoom` (the server derives the actual
- * tolerance from that zoom via `tileSimplifyTolerance`). Bands are disjoint and
- * cover z0–13; z≥14 stays the raw path (#450 already fast there). `bandForZoom`
- * returns `null` at/above the threshold.
+ * Precomputed polygon-dissolve zoom bands (#472, retuned #478). Below the z14
+ * raw handoff, a polygon choropleth is served from a per-pin dissolved +
+ * simplified geometry (one MultiPolygon per colorBy value per band). Each band
+ * covers `[prev, maxZoomExclusive)` and is dissolved+simplified for its
+ * `representativeZoom` (the server derives the tolerance via
+ * `tileSimplifyTolerance`). Bands are disjoint and cover z0–13; z≥14 stays the
+ * raw path (#450 already fast there). `bandForZoom` returns `null` at/above the
+ * threshold.
+ *
+ * #478: five bands (was three) so the merge-granularity steps gently across
+ * zoom (~2.7× per boundary) instead of one ~20× jump at z8 that visibly
+ * "exploded" a merged region into its parcels. The added bands are the *cheap*
+ * coarse ones (z7/z8 rep); the expensive fine unions (z9/z12 rep) are unchanged.
+ * Measured piece counts per rep zoom on a 397,960-parcel layer: z6≈444, z7≈1227,
+ * z8≈3272, z9≈8781, z12≈13336.
  */
 export const DISSOLVE_ZOOM_BANDS = [
-  { band: 0, maxZoomExclusive: 8, representativeZoom: 6 },
-  { band: 1, maxZoomExclusive: 11, representativeZoom: 9 },
-  { band: 2, maxZoomExclusive: AGG_ZOOM_THRESHOLD, representativeZoom: 12 },
+  { band: 0, maxZoomExclusive: 7, representativeZoom: 6 },
+  { band: 1, maxZoomExclusive: 8, representativeZoom: 7 },
+  { band: 2, maxZoomExclusive: 9, representativeZoom: 8 },
+  { band: 3, maxZoomExclusive: 11, representativeZoom: 9 },
+  { band: 4, maxZoomExclusive: AGG_ZOOM_THRESHOLD, representativeZoom: 12 },
 ] as const;
 
 /** Zoom → dissolve band index, or `null` at/above `AGG_ZOOM_THRESHOLD` (raw path). */
