@@ -88,8 +88,8 @@ Give the `dissolve_precompute` job a moment after pinning (~tens of seconds on a
 
 ## Sign-off
 
-- [ ] Every section above verified against my own running stack.
-- [ ] ______________________ (date + name) — confirmed.
+- [x] Every section above verified against my own running stack. (§6 joined/aggregated and the §7 two-refresh lock race are covered-by-integration-test; the lock was *also* observed firing live — a concurrent refresh returned `skipped: "superseded"`.)
+- [x] 2026-08-30 — Ben Turner — confirmed.
 
 ## Bug-filing template
 
