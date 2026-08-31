@@ -9,6 +9,7 @@ import {
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { sql } from "drizzle-orm";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
@@ -2504,6 +2505,68 @@ describe("Entity Record Router — Write Capability Deletes", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.payload.deleted).toBe(2);
+    });
+
+    // #451: the join-based cascade must clear BOTH entity_records and the
+    // er__<id> wide rows — the old id-list path materialised every id to do
+    // this; the count alone did not prove the wide table was cleared.
+    it("clears both entity_records and the wide table, and is an idempotent no-op on re-delete", async () => {
+      const { userId, organizationId, connectorEntityId } =
+        await seedWithCapabilities(db, {
+          definitionWrite: true,
+          enabledCapabilityFlags: { write: true },
+        });
+
+      const rows = ["Ivy", "Jon", "Kay"].map((name, i) =>
+        createEntityRecord(
+          organizationId,
+          connectorEntityId,
+          { name },
+          `src-${i}`,
+          userId
+        )
+      );
+      await insertEntityRecordsWithWide(
+        db as ReturnType<typeof drizzle>,
+        connectorEntityId,
+        rows
+      );
+
+      const liveRecordCount = async () => {
+        const r = (await (db as unknown as DbClient).execute(
+          sql`SELECT count(*)::int AS n FROM "entity_records"
+              WHERE "connector_entity_id" = ${connectorEntityId} AND "deleted" IS NULL`
+        )) as unknown as Array<{ n: number }>;
+        return Number(r[0].n);
+      };
+      const liveWideCount = async () => {
+        const r = (await (db as unknown as DbClient).execute(
+          sql`SELECT count(*)::int AS n
+              FROM ${sql.raw(`"er__${connectorEntityId}"`)} WHERE "deleted" IS NULL`
+        )) as unknown as Array<{ n: number }>;
+        return Number(r[0].n);
+      };
+
+      expect(await liveRecordCount()).toBe(3);
+      expect(await liveWideCount()).toBe(3);
+
+      const first = await request(app)
+        .delete(recordsUrl(connectorEntityId))
+        .set("Authorization", "Bearer test-token");
+      expect(first.status).toBe(200);
+      expect(first.body.payload.deleted).toBe(3);
+
+      // Both tables tombstoned — no live rows left in either.
+      expect(await liveRecordCount()).toBe(0);
+      expect(await liveWideCount()).toBe(0);
+
+      // Second delete finds nothing live → 0, no error.
+      const second = await request(app)
+        .delete(recordsUrl(connectorEntityId))
+        .set("Authorization", "Bearer test-token");
+      expect(second.status).toBe(200);
+      expect(second.body.payload.deleted).toBe(0);
+      expect(await liveWideCount()).toBe(0);
     });
   });
 });

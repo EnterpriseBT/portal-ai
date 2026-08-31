@@ -665,6 +665,41 @@ export class WideTableRepository {
   }
 
   /**
+   * Mark **every** wide row for `connectorEntityId` whose `entity_records`
+   * row is soft-deleted, in a single server-side join `UPDATE … FROM
+   * entity_records` — ids never leave Postgres (#451). This is the bounded
+   * delete-all cascade: the caller soft-deletes the entity's records
+   * (`entityRecords.softDeleteByConnectorEntityId`) and then calls this inside
+   * the **same transaction**, so record + wide state commit together with a
+   * zero orphan window (#450). The wide tombstone inherits `er.deleted`, so
+   * both sides carry the same timestamp.
+   *
+   * One statement, not chunked — it mirrors the record side, whose
+   * `softDeleteByConnectorEntityId` is itself one unbounded `UPDATE`; both run
+   * in the caller's tx, so locks are held until commit regardless of chunking.
+   * (The out-of-transaction reap that runs standalone is
+   * `markDeletedFromRecords` below, which chunks for exactly that reason.)
+   *
+   * Distinct from `markDeletedByEntityRecordIds`, which stays for the reap /
+   * layout callers that legitimately hold a bounded id list.
+   */
+  async markDeletedByConnectorEntity(
+    connectorEntityId: string,
+    client: DbClient = db
+  ): Promise<void> {
+    const tableName = `"${this.tableName(connectorEntityId)}"`;
+    await (client as typeof db).execute(
+      sql`UPDATE ${sql.raw(tableName)} w
+          SET "deleted" = er."deleted"
+          FROM "entity_records" er
+          WHERE er."id" = w."entity_record_id"
+            AND er."connector_entity_id" = ${connectorEntityId}
+            AND er."deleted" IS NOT NULL
+            AND w."deleted" IS NULL`
+    );
+  }
+
+  /**
    * Self-healing reap mark (#450): mark every wide row whose `entity_records`
    * row is soft-deleted but whose own `deleted` is still NULL, in chunks, by a
    * server-side join `UPDATE … FROM entity_records` — ids never leave Postgres.

@@ -1470,28 +1470,24 @@ entityRecordRouter.delete(
 
       const { userId } = req.application!.metadata;
       const deleted = await DbService.transaction(async (tx) => {
-        // Capture the affected ids so we can cascade to the wide table.
-        // softDeleteByConnectorEntityId returns a count today; switch to
-        // an inline UPDATE that returns the ids.
-        const liveIds = (await tx.execute(
-          sql`SELECT id FROM ${entityRecords} WHERE "connector_entity_id" = ${connectorEntityId} AND "deleted" IS NULL`
-        )) as unknown as Array<{ id: string }>;
-        if (liveIds.length === 0) return 0;
-        const ids = liveIds.map((r) => r.id);
-        await DbService.repository.entityRecords.softDeleteByConnectorEntityId(
-          connectorEntityId,
-          userId,
-          tx
-        );
+        // #451: soft-delete the records by `connector_entity_id` (no id list
+        // materialised) — the driver returns the affected count directly.
+        const count =
+          await DbService.repository.entityRecords.softDeleteByConnectorEntityId(
+            connectorEntityId,
+            userId,
+            tx
+          );
+        if (count === 0) return 0;
         // #450: mark the wide rows deleted in the same tx as the record
-        // soft-delete (not physical delete), so the view filters locally.
-        await DbService.repository.wideTable.markDeletedByEntityRecordIds(
+        // soft-delete (a tombstone, not a physical delete, so the view filters
+        // locally). #451: a single server-side join keyed on the just-deleted
+        // records — ids never leave Postgres.
+        await DbService.repository.wideTable.markDeletedByConnectorEntity(
           connectorEntityId,
-          ids,
-          Date.now(),
           tx
         );
-        return ids.length;
+        return count;
       }).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(

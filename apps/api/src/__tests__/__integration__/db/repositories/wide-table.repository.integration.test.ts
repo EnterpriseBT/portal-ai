@@ -580,6 +580,39 @@ describe("WideTableRepository integration tests", () => {
     expect(await readDeleted(r2)).toBeNull();
   });
 
+  // ── Case 6e — markDeletedByConnectorEntity: bounded delete-all cascade (#451) ──
+
+  it("markDeletedByConnectorEntity marks every orphaned wide row, inheriting er.deleted", async () => {
+    const r1 = generateId();
+    const r2 = generateId();
+    await seedTwoWideRows(r1, r2);
+    // Both records soft-deleted (as softDeleteByConnectorEntityId would leave
+    // them) with distinct timestamps, so the join is proven to inherit per row.
+    await db.execute(
+      sql`UPDATE "entity_records" SET "deleted" = 1000 WHERE "id" = ${r1}`
+    );
+    await db.execute(
+      sql`UPDATE "entity_records" SET "deleted" = 2000 WHERE "id" = ${r2}`
+    );
+
+    await repo.markDeletedByConnectorEntity(entityId, db);
+
+    expect(await readDeleted(r1)).toBe(1000);
+    expect(await readDeleted(r2)).toBe(2000);
+  });
+
+  it("markDeletedByConnectorEntity is a no-op while the records are live", async () => {
+    const r1 = generateId();
+    const r2 = generateId();
+    await seedTwoWideRows(r1, r2);
+
+    await repo.markDeletedByConnectorEntity(entityId, db);
+
+    // Nothing orphaned → both wide rows stay live.
+    expect(await readDeleted(r1)).toBeNull();
+    expect(await readDeleted(r2)).toBeNull();
+  });
+
   // ── Case 6d — retention purge cascade-drains wide tombstones (#450) ──
 
   it("retention purge cascade-drains wide tombstones past the window", async () => {
