@@ -29,6 +29,22 @@ export type SyncLockOutcome<T> =
   | { acquired: false };
 
 /**
+ * Thrown by {@link SyncLockService.withInstanceLockWait} when the wait budget
+ * elapses (#461). A distinct class so callers can tell "I never owned the
+ * work" apart from "the work failed": a commit pass that times out here must
+ * NOT run failure cleanup (e.g. the draft rollback) — the lock holder is
+ * still alive and still writing the very rows that cleanup would delete.
+ */
+export class SyncLockWaitTimeoutError extends Error {
+  constructor(timeoutMs: number, connectorInstanceId: string) {
+    super(
+      `Timed out after ${timeoutMs}ms waiting for the sync lock on connector instance ${connectorInstanceId}`
+    );
+    this.name = "SyncLockWaitTimeoutError";
+  }
+}
+
+/**
  * Ownership lock for the operations that reap by watermark (#460).
  *
  * **Why this exists.** A connector sync can be re-delivered by BullMQ while
@@ -79,6 +95,79 @@ export class SyncLockService {
       fn,
       { event: "sync-lock", subject: "connectorInstanceId" }
     );
+  }
+
+  /**
+   * Like {@link withInstanceLock}, but **waits** for the lock instead of
+   * aborting, polling the same try-acquire until `timeoutMs` elapses (#461).
+   *
+   * Exists for `layout_plan_commit` only: unlike a sync, a user is actively
+   * blocked in a live wizard, so a delayed commit beats a skipped one — and a
+   * pass that reported "superseded" would terminate the shared job row with a
+   * false result while the real pass is still writing. The non-blocking
+   * contract above stays the right call for syncs; do not migrate them here.
+   *
+   * Throws on timeout rather than returning an outcome: by then the holder is
+   * presumed dead but its session has not dropped, and handing the attempt
+   * back to BullMQ (via `statusForFailedAttempt`, #441) is the only honest
+   * move left. Always runs `fn` otherwise.
+   *
+   * The reserved connection is held for the whole wait — a session lock must
+   * be taken on the session that runs `fn`. Bounded by the jobs worker's
+   * concurrency, so it stays well inside the pool headroom `reserveConnection`
+   * documents.
+   */
+  static async withInstanceLockWait<T>(
+    connectorInstanceId: string,
+    fn: () => Promise<T>,
+    opts: { timeoutMs: number; pollMs?: number }
+  ): Promise<T> {
+    const pollMs = opts.pollMs ?? 5_000;
+    const deadline = Date.now() + opts.timeoutMs;
+    const reserved = await reserveConnection();
+    let held = false;
+
+    try {
+      for (;;) {
+        const rows = (await reserved.unsafe(
+          `SELECT pg_try_advisory_lock($1, hashtext($2)) AS locked`,
+          [SYNC_LOCK_NAMESPACE, connectorInstanceId]
+        )) as unknown as Array<{ locked: boolean }>;
+        held = rows[0]?.locked === true;
+        if (held) break;
+
+        if (Date.now() + pollMs > deadline) {
+          logger.warn(
+            { event: "sync-lock.wait-timeout", connectorInstanceId },
+            "Advisory lock not released within the wait budget — returning this attempt to the queue"
+          );
+          throw new SyncLockWaitTimeoutError(
+            opts.timeoutMs,
+            connectorInstanceId
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
+      }
+
+      return await fn();
+    } finally {
+      if (held) {
+        try {
+          await reserved.unsafe(`SELECT pg_advisory_unlock($1, hashtext($2))`, [
+            SYNC_LOCK_NAMESPACE,
+            connectorInstanceId,
+          ]);
+        } catch (err) {
+          // Same rationale as withAdvisoryLock: never mask fn's error, and the
+          // lock dies with the session — losing the connection would be worse.
+          logger.error(
+            { event: "sync-lock.unlock-failed", connectorInstanceId, err },
+            "Advisory unlock failed; the lock will be released when this session ends"
+          );
+        }
+      }
+      reserved.release();
+    }
   }
 
   /**

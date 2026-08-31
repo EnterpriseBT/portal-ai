@@ -180,3 +180,106 @@ describe("SyncLockService.withInstanceLock (#460)", () => {
     expect(sqls).not.toMatch(/\bpg_advisory_lock\(/);
   });
 });
+
+describe("SyncLockService.withInstanceLockWait (#461)", () => {
+  beforeEach(() => {
+    mockUnsafe.mockReset();
+    mockRelease.mockReset();
+    mockReserveConnection.mockReset().mockResolvedValue(reserved);
+  });
+
+  /** Queue try-lock responses; unlock and anything past the queue succeed. */
+  const lockSequence = (grants: boolean[]) => {
+    const queue = [...grants];
+    mockUnsafe.mockImplementation(async (sql: string) => {
+      if (sql.includes("pg_try_advisory_lock"))
+        return [{ locked: queue.shift() ?? false }];
+      return [{}]; // pg_advisory_unlock
+    });
+  };
+
+  it("runs fn immediately when the lock is free", async () => {
+    lockSequence([true]);
+
+    const value = await SyncLockService.withInstanceLockWait(
+      INSTANCE,
+      async () => 42,
+      { timeoutMs: 50, pollMs: 1 }
+    );
+
+    expect(value).toBe(42);
+    const tries = mockUnsafe.mock.calls.filter(([sql]) =>
+      sql.includes("pg_try_advisory_lock")
+    );
+    expect(tries).toHaveLength(1);
+  });
+
+  it("polls until the holder releases, then runs fn", async () => {
+    lockSequence([false, false, true]);
+
+    const value = await SyncLockService.withInstanceLockWait(
+      INSTANCE,
+      async () => "committed",
+      { timeoutMs: 5_000, pollMs: 1 }
+    );
+
+    expect(value).toBe("committed");
+    const tries = mockUnsafe.mock.calls.filter(([sql]) =>
+      sql.includes("pg_try_advisory_lock")
+    );
+    expect(tries).toHaveLength(3);
+  });
+
+  it("throws after timeoutMs without running fn, and still releases", async () => {
+    lockSequence([]); // never granted
+    const fn = jest.fn<() => Promise<number>>(async () => 1);
+
+    await expect(
+      SyncLockService.withInstanceLockWait(INSTANCE, fn, {
+        timeoutMs: 10,
+        pollMs: 2,
+      })
+    ).rejects.toThrow(/Timed out after 10ms/);
+
+    // The whole point of the wait design: a pass that never proved ownership
+    // did no work — BullMQ gets the attempt back via the throw (#441).
+    expect(fn).not.toHaveBeenCalled();
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+    const sqls = mockUnsafe.mock.calls.map((c) => c[0]).join(" ");
+    expect(sqls).not.toContain("pg_advisory_unlock"); // never held → no unlock
+  });
+
+  it("unlocks, releases, and rethrows when fn throws after a waited acquire", async () => {
+    lockSequence([false, true]);
+    const boom = new Error("commit blew up");
+
+    await expect(
+      SyncLockService.withInstanceLockWait(
+        INSTANCE,
+        async () => {
+          throw boom;
+        },
+        { timeoutMs: 5_000, pollMs: 1 }
+      )
+    ).rejects.toThrow(boom);
+
+    const sqls = mockUnsafe.mock.calls.map((c) => c[0]);
+    expect(sqls.some((s) => s.includes("pg_advisory_unlock"))).toBe(true);
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the whole wait on one reserved session", async () => {
+    // A session lock is only as good as the session that took it: acquiring
+    // on a different connection than the one that runs fn would hand the lock
+    // back to the pool mid-commit.
+    lockSequence([false, false, true]);
+
+    await SyncLockService.withInstanceLockWait(INSTANCE, async () => 1, {
+      timeoutMs: 5_000,
+      pollMs: 1,
+    });
+
+    expect(mockReserveConnection).toHaveBeenCalledTimes(1);
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+  });
+});
