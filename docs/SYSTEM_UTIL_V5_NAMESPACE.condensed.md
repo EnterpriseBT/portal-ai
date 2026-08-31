@@ -40,7 +40,7 @@ Two directions existed: (1) keep v5, make `NAMESPACE` a real UUID everywhere + v
 ## Smoke (manual, against your dev stack)
 
 1. From `apps/api/`, `npm run type-check` and `npm run test:unit -- --testPathPattern "system.util"` → both green; `SystemUtilities.id.v4` and `id.system` still present, `id.v5` gone.
-2. From repo root, `grep -rn "UUIDv5Factory\|id\.v5\|NAMESPACE" apps packages infra --include=*.ts --include=*.yml --include=*.example | grep -v node_modules | grep -v "/dist/" | grep -vi "sync_lock\|dissolve\|lock_namespace"` → no output (all v5/NAMESPACE surfaces removed; the unrelated `*_LOCK_NAMESPACE` advisory-lock constants remain).
+2. From repo root, `grep -rn "UUIDv5Factory\|id\.v5\|NAMESPACE" apps packages infra --include=*.ts --include=*.yml --include=*.example | grep -v node_modules | grep -v "/dist/" | grep -vi "sync.lock\|dissolve\|lock_namespace"` → no output (all v5/NAMESPACE surfaces removed; the unrelated `*_LOCK_NAMESPACE` advisory-lock constants remain).
 3. From `packages/devops-cli/`, `npm run test:unit -- --testPathPattern "catalog|vars"` → green (catalog no longer lists NAMESPACE).
 4. Boot the API against your local `.env` (with the NAMESPACE line removed) → starts clean; a system-actor write (e.g. trigger a seed/webhook path) still uses `id.system` = `"SYSTEM"`.
 5. Read `docs/PROD_PROVISIONING.runbook.md` §7 → no longer instructs provisioning NAMESPACE; SYSTEM_ID guidance intact; the id.system claim is corrected.
