@@ -30,14 +30,35 @@
  * fine; returning whole rows to call `.length` on them is the bug.
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect, jest } from "@jest/globals";
 
-import { EntityRecordsRepository } from "../../../db/repositories/entity-records.repository.js";
-import { EntityGroupMembersRepository } from "../../../db/repositories/entity-group-members.repository.js";
-import { EntityTagAssignmentsRepository } from "../../../db/repositories/entity-tag-assignments.repository.js";
-import { FieldMappingsRepository } from "../../../db/repositories/field-mappings.repository.js";
-import { ConnectorEntitiesRepository } from "../../../db/repositories/connector-entities.repository.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
+
+// The entity-records soft-deletes invalidate the record-count cache, which
+// reaches getRedisClient() and opens a real ioredis connection nothing in a
+// unit test closes — leaving the jest worker unable to exit gracefully (#377).
+// Mock it so this stays a pure unit test over the fake client below.
+jest.unstable_mockModule(
+  "../../../services/entity-record-count.cache.js",
+  () => ({
+    EntityRecordCountCache: {
+      invalidate: jest
+        .fn<(...a: unknown[]) => Promise<void>>()
+        .mockResolvedValue(undefined),
+    },
+  })
+);
+
+const { EntityRecordsRepository } =
+  await import("../../../db/repositories/entity-records.repository.js");
+const { EntityGroupMembersRepository } =
+  await import("../../../db/repositories/entity-group-members.repository.js");
+const { EntityTagAssignmentsRepository } =
+  await import("../../../db/repositories/entity-tag-assignments.repository.js");
+const { FieldMappingsRepository } =
+  await import("../../../db/repositories/field-mappings.repository.js");
+const { ConnectorEntitiesRepository } =
+  await import("../../../db/repositories/connector-entities.repository.js");
 
 /**
  * Minimal stand-in for the drizzle update chain.
