@@ -27,7 +27,6 @@ export default async function globalSetup() {
 
   // Set environment variables for tests
   process.env.DATABASE_URL = databaseUrl;
-  process.env.NAMESPACE ??= "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
   process.env.SYSTEM_ID ??= "SYSTEM_TEST";
   process.env.AUTH0_WEBHOOK_SECRET ??= "test-webhook-secret";
   process.env.AUTH0_DOMAIN ??= "test.auth0.com";
