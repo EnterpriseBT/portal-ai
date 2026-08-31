@@ -71,7 +71,6 @@ export const CATALOG: CatalogEntry[] = [
   ssm("AUTH0_AUDIENCE", "auth0-audience"),
   ssm("AUTH0_CLI_CLIENT_ID", "auth0-cli-client-id"), // #194 device-flow app
   ssm("CORS_ORIGIN", "cors-origin"),
-  ssm("NAMESPACE", "namespace"),
   ssm("SYSTEM_ID", "system-id"),
   // #311/#369: the business contact addresses. Baked into the marketing site
   // and the web app at build time — a `vars set` changes the stored value, and

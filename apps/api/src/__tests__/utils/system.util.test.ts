@@ -1,10 +1,5 @@
 import { describe, it, expect } from "@jest/globals";
-import { v5 } from "uuid";
-import {
-  UUIDv4Factory,
-  UUIDv5Factory,
-  DateFactory,
-} from "@portalai/core/utils";
+import { UUIDv4Factory, DateFactory } from "@portalai/core/utils";
 import { SystemUtilities } from "../../utils/system.util.js";
 import { environment } from "../../environment.js";
 
@@ -12,8 +7,6 @@ import { environment } from "../../environment.js";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const ENV_NAMESPACE = process.env.NAMESPACE!;
 
 // ── id ──────────────────────────────────────────────────────────────
 
@@ -40,43 +33,6 @@ describe("SystemUtilities.id", () => {
 
     it("system returns the SYSTEM_ID from environment", () => {
       expect(SystemUtilities.id.system).toBe(environment.SYSTEM_ID);
-    });
-  });
-
-  describe("v5", () => {
-    it("is a UUIDv5Factory instance", () => {
-      expect(SystemUtilities.id.v5).toBeInstanceOf(UUIDv5Factory);
-    });
-
-    it("generate(name) returns a valid UUID", () => {
-      expect(SystemUtilities.id.v5.generate("test")).toMatch(UUID_REGEX);
-    });
-
-    it("generate(name) is deterministic for the same input", () => {
-      const a = SystemUtilities.id.v5.generate("stable-key");
-      const b = SystemUtilities.id.v5.generate("stable-key");
-      expect(a).toBe(b);
-    });
-
-    it("generate(name) matches the uuid library directly", () => {
-      const name = "example.com";
-      expect(SystemUtilities.id.v5.generate(name)).toBe(
-        v5(name, ENV_NAMESPACE)
-      );
-    });
-
-    it("different names produce different UUIDs", () => {
-      const a = SystemUtilities.id.v5.generate("alpha");
-      const b = SystemUtilities.id.v5.generate("beta");
-      expect(a).not.toBe(b);
-    });
-
-    it("generate() without a name still returns a valid UUID", () => {
-      expect(SystemUtilities.id.v5.generate()).toMatch(UUID_REGEX);
-    });
-
-    it("returns the same singleton instance across accesses", () => {
-      expect(SystemUtilities.id.v5).toBe(SystemUtilities.id.v5);
     });
   });
 });

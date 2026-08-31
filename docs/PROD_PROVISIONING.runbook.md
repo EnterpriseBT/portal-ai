@@ -27,7 +27,7 @@ printf '%s' 'the-value' | portalops vars set SOME_KEY - --env $ENV $GUARD
 
 The `-` argument makes `vars set` read stdin, so the value never appears in your shell history or in `ps` output. `vars template` writes **every** value of an environment to a plaintext file — a real convenience on app-dev, and for a production environment it is a file containing every production secret on a laptop. It also cannot round-trip a fresh environment: `vars apply` rejects empty values, so a template of an unprovisioned env has to be hand-edited before it will apply at all. Per-key writes are also **resumable**, which matters because this runbook spans however long your vendor approvals take.
 
-**Nothing here is reversible by re-running it.** `NAMESPACE` and `SYSTEM_ID` in particular are write-once — see step 7.
+**Nothing here is reversible by re-running it.** `SYSTEM_ID` in particular is write-once — see step 7.
 
 **The guards are real.** Against a production environment every mutation needs `--yes --confirm-prod` (exit 5 without) and destructive operations are refused outright (exit 6). You cannot work around this with a `~/.portalai/environments.json` override; the registry refuses to shadow a built-in.
 
@@ -258,18 +258,18 @@ printf '%s' 'https://app.portalsai.io' | portalops vars set CORS_ORIGIN - --env 
 > **Order matters beyond CORS.** `billing.service.ts` derives Stripe checkout `success_url` / `cancel_url` and the billing-portal `return_url` from **the first entry** of `CORS_ORIGIN`. If you ever add origins, the app URL stays first.
 
 ```bash
-# A real UUID, not a word. See the note below.
-node -e "console.log(require('crypto').randomUUID())" | portalops vars set NAMESPACE - --env $ENV $GUARD
 node -e "console.log(require('crypto').randomUUID())" | portalops vars set SYSTEM_ID - --env $ENV $GUARD
 ```
 
-> **`NAMESPACE` must be a valid UUID, and in dev it is not.** `SystemUtilities.id.v5` builds a `UUIDv5Factory(environment.NAMESPACE)`, and the `uuid` package throws `Invalid UUID` unless the namespace is UUID-shaped. `app-dev` carries `portalai-dev-namespace`, so **`id.v5.generate()` throws there** — it has never been noticed because every call site uses `id.v4` and `id.v5` appears only in doc comments. Write a UUID here so prod is not carrying the same latent trap.
+> **`SYSTEM_ID` is the system-actor id.** `SystemUtilities.id.system` returns it, and it is written as `createdBy` / `updatedBy` on platform-initiated rows (seeds, webhook and billing writes, wide-table reconciliation). Outside prod it is the literal sentinel `"SYSTEM"`; prod gets a UUID so system-attributed rows are traceable to this environment.
 >
-> **These are less irreversible than earlier drafts of this runbook claimed.** They were described as write-once because they seed deterministic uuidv5 generation — but nothing consumes either value today (`id.v5` and `id.system` have no call sites), so changing them changes nothing. That stops being true the moment v5 is used to mint persisted ids, so treat them as write-once *in intent* and verify with a readback:
+> **Write-once in intent.** Changing it re-attributes only *future* writes — existing rows keep whichever value minted them — so treat it as write-once and verify with a readback:
 >
 > ```bash
-> aws ssm get-parameter --name /portalai/$ENV/namespace --query Parameter.Value --output text
+> aws ssm get-parameter --name /portalai/$ENV/system-id --query Parameter.Value --output text
 > ```
+>
+> `NAMESPACE` was removed in #396 — it fed the unused `UUIDv5Factory` (`id.v5`), which threw `Invalid UUID` on first use and had no callers. There is no NAMESPACE parameter to provision.
 
 ## 8 — Contact addresses
 
@@ -385,7 +385,6 @@ done
 | `MICROSOFT_OAUTH_CLIENT_ID` | ssm | Entra ID | 4 |
 | `MICROSOFT_OAUTH_TENANT` | ssm | `common` | 4 |
 | `CORS_ORIGIN` | ssm | the app URL | 7 |
-| `NAMESPACE` | ssm | **write-once** | 7 |
 | `SYSTEM_ID` | ssm | **write-once** | 7 |
 | `SUPPORT_EMAIL` | ssm | real inbox | 8 |
 | `SALES_EMAIL` | ssm | real inbox | 8 |

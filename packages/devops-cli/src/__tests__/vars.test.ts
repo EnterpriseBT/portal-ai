@@ -204,13 +204,13 @@ describe("applyVars", () => {
         "",
         'TAVILY_API_KEY="tvly-quoted"',
         "CORS_ORIGIN='https://x'",
-        "NAMESPACE=plain",
+        "AUTH0_DOMAIN=plain",
       ].join("\n")
     );
     const out = await applyVars(appDev, f, { yes: true });
     expect(out.applied.sort()).toEqual([
+      "AUTH0_DOMAIN",
       "CORS_ORIGIN",
-      "NAMESPACE",
       "TAVILY_API_KEY",
     ]);
     expect(mocks.putSecret).toHaveBeenCalledWith(

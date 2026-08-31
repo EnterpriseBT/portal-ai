@@ -413,7 +413,6 @@ Path prefix: `/portalai/<env>/`. Referenced directly by ARN in the task definiti
 | `AUTH0_DOMAIN` | `auth0-domain` | Auth0 tenant domain used to validate JWTs. |
 | `AUTH0_AUDIENCE` | `auth0-audience` | Auth0 API audience (`aud` claim) the API accepts. |
 | `CORS_ORIGIN` | `cors-origin` | Comma-separated list of allowed origins for browser callers. |
-| `NAMESPACE` | `namespace` | Logical environment namespace (used in deterministic UUID generation and as a logical tenant scope). |
 | `SYSTEM_ID` | `system-id` | Identity used for system-authored writes (audit `created_by` / `updated_by`). |
 
 ##### 3. CloudFormation literals — set per-deploy, mutable only by editing `infra/cloudformation/backend.yml`
