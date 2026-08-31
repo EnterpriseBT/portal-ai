@@ -22,7 +22,6 @@ import {
   EntityRecordPatchRequestBodySchema,
   type EntityRecordPatchResponsePayload,
   type EntityRecordDeleteOneResponsePayload,
-  type EntityRecordDeleteResponsePayload,
   encodeCursor,
   decodeCursor,
 } from "@portalai/core/contracts";
@@ -41,6 +40,7 @@ import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { JobLockService } from "../services/job-lock.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
+import { JobsService } from "../services/jobs.service.js";
 import { fieldMappingsRepo } from "../db/repositories/field-mappings.repository.js";
 import { columnDefinitionsRepo } from "../db/repositories/column-definitions.repository.js";
 import { EntityRecordCountCache } from "../services/entity-record-count.cache.js";
@@ -1412,7 +1412,13 @@ entityRecordRouter.delete(
  *     tags:
  *       - Entity Records
  *     summary: Clear all entity records
- *     description: Soft-deletes all records for a connector entity. Requires write capability on the connector instance.
+ *     description: >
+ *       Enqueues an `entity_record_clear` job that soft-deletes every record
+ *       for the connector entity plus its wide-table mirror (#453 — a 400K-row
+ *       clear measured 66s, so the work runs off-request). Requires write
+ *       capability on the connector instance. The job locks the whole
+ *       instance while non-terminal; observe completion via
+ *       `/api/sse/jobs/{id}/events`.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -1423,22 +1429,16 @@ entityRecordRouter.delete(
  *           type: string
  *         description: Connector entity ID
  *     responses:
- *       200:
- *         description: Records deleted
+ *       202:
+ *         description: Clear job enqueued
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 payload:
- *                   type: object
- *                   properties:
- *                     deleted:
- *                       type: integer
- *                       description: Number of records that were soft-deleted
+ *                 job: { $ref: '#/components/schemas/Job' }
+ *       409:
+ *         description: A non-terminal job locks the connector instance (`ENTITY_LOCKED_BY_JOB`) or a revalidation is active (`REVALIDATION_ACTIVE`)
  *       422:
  *         description: Write capability disabled on the connector instance
  *         content:
@@ -1468,43 +1468,29 @@ entityRecordRouter.delete(
       );
       await RevalidationService.assertNoActiveJob(connectorEntityId);
 
-      const { userId } = req.application!.metadata;
-      const deleted = await DbService.transaction(async (tx) => {
-        // #451: soft-delete the records by `connector_entity_id` (no id list
-        // materialised) — the driver returns the affected count directly.
-        const count =
-          await DbService.repository.entityRecords.softDeleteByConnectorEntityId(
-            connectorEntityId,
-            userId,
-            tx
-          );
-        if (count === 0) return 0;
-        // #450: mark the wide rows deleted in the same tx as the record
-        // soft-delete (a tombstone, not a physical delete, so the view filters
-        // locally). #451: a single server-side join keyed on the just-deleted
-        // records — ids never leave Postgres.
-        await DbService.repository.wideTable.markDeletedByConnectorEntity(
+      const { userId, organizationId } = req.application!.metadata;
+      // #453: the clear runs off-request as an `entity_record_clear` job —
+      // a 400K-row clear measured 66s and 1.5M-row entities are a real
+      // target, so the work cannot live inside an HTTP request. The job's
+      // JOB_LOCK_KEYS entry locks the whole instance while it runs, which
+      // is also what makes a duplicate DELETE hit the 409 guard above.
+      const job = await JobsService.create(userId, {
+        organizationId,
+        type: "entity_record_clear",
+        metadata: {
           connectorEntityId,
-          tx
-        );
-        return count;
-      }).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(
-          500,
-          ApiCode.ENTITY_RECORD_DELETE_FAILED,
-          error instanceof Error ? error.message : "Failed to delete records"
-        );
+          connectorInstanceId: entity.connectorInstanceId,
+          organizationId,
+          userId,
+        },
       });
 
       logger.info(
-        { connectorEntityId, deleted },
-        "Entity records soft-deleted"
+        { connectorEntityId, jobId: job.id },
+        "entity_record_clear job enqueued"
       );
 
-      return HttpService.success<EntityRecordDeleteResponsePayload>(res, {
-        deleted,
-      });
+      return HttpService.success(res, { job }, 202);
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },

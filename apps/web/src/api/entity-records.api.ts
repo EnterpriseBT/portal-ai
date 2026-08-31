@@ -6,7 +6,6 @@ import type {
   EntityRecordCreateResponsePayload,
   EntityRecordImportRequestBody,
   EntityRecordImportResponsePayload,
-  EntityRecordDeleteResponsePayload,
   EntityRecordGetResponsePayload,
   EntityRecordPatchRequestBody,
   EntityRecordPatchResponsePayload,
@@ -63,7 +62,9 @@ export const entityRecords = {
     }),
 
   clear: (connectorEntityId: string) =>
-    useAuthMutation<EntityRecordDeleteResponsePayload, void>({
+    // #453: the clear enqueues an entity_record_clear job (202 + { job });
+    // completion arrives via the job's SSE terminal event.
+    useAuthMutation<JobCreateResponsePayload, void>({
       url: recordsUrl(connectorEntityId),
       method: "DELETE",
     }),

@@ -96,7 +96,7 @@ Union of the two existing queries — `jobs.findRunningForConnectorInstance(conn
 
 ### Contracts — `packages/core/src/contracts/`
 
-- `entity-record.contract.ts`: `EntityRecordClearEnqueuedResponseSchema = z.object({ job: JobSchema })` (+ type; re-export from `contracts/index.ts`). `EntityRecordDeleteResponsePayloadSchema` (`:174`, `{ deleted }`) **stays** — the single-record delete route still returns it; the clear stops using it.
+- ~~A new `EntityRecordClearEnqueuedResponseSchema`~~ **Corrected in slice 2:** `JobCreateResponsePayloadSchema` (`job.contract.ts:43`, `{ job: JobSchema }`) already exists and is the enqueued shape every job route returns — the clear reuses it; no contract change lands. `EntityRecordDeleteResponsePayloadSchema` (`:174`, `{ deleted }`) **stays** — the single-record delete route still returns it; the clear stops using it.
 - `connector-entity.contract.ts`: `ConnectorEntityRunningJobsResponseSchema` — same shape as `ConnectorInstanceRunningJobsResponseSchema` (`connector-instance.contract.ts:208`), reusing its `RunningJobSummary` schema import rather than redefining it.
 
 ### Web SDK + keys
