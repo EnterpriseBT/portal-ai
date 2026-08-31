@@ -133,6 +133,14 @@ export const environment = {
     process.env.ENTITY_RECORD_ORPHAN_RETENTION_DAYS || "7",
     10
   ),
+  // How long a re-delivered layout_plan_commit pass waits for the instance
+  // sync lock before giving the attempt back to BullMQ (#461). Must exceed
+  // any plausible commit duration — a timeout here means the holder is
+  // presumed dead but its session has not dropped.
+  LAYOUT_PLAN_COMMIT_LOCK_WAIT_MS: parseInt(
+    process.env.LAYOUT_PLAN_COMMIT_LOCK_WAIT_MS || String(15 * 60 * 1000),
+    10
+  ),
   // Size cap for the legacy multipart POST /api/file-uploads/parse path.
   // The streaming pipeline (presigned-URL → S3 → server-side stream) does
   // not consult this; see UPLOAD_MAX_FILE_SIZE_BYTES instead.
