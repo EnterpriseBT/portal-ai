@@ -2,7 +2,6 @@ export const environment = {
   NODE_ENV: process.env.NODE_ENV || "development",
   BUILD_VERSION: process.env.BUILD_VERSION || "dev",
   BUILD_SHA: process.env.BUILD_SHA || "local",
-  NAMESPACE: process.env.NAMESPACE,
   PORT: process.env.PORT,
   CORS_ORIGIN: process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(",")
@@ -32,7 +31,7 @@ export const environment = {
   // visible downgrade); requires the account's origin address + default
   // tax_behavior in the Dashboard (see .env.example).
   STRIPE_AUTOMATIC_TAX: process.env.STRIPE_AUTOMATIC_TAX !== "false",
-  // System ID for deterministic UUID generation
+  // System-actor id used as createdBy/updatedBy for platform-initiated writes
   SYSTEM_ID: process.env.SYSTEM_ID,
   // Anthropic configuration
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,

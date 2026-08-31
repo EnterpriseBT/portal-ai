@@ -56,7 +56,6 @@ jest.unstable_mockModule("../../environment.js", () => ({
     NODE_ENV: "test",
     LOG_LEVEL: "silent",
     LOG_FORMAT: "json",
-    NAMESPACE: "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
     CORS_ORIGIN: ["http://app.test"],
   },
 }));

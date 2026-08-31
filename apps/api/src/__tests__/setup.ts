@@ -13,6 +13,5 @@ process.env.AUTH0_DOMAIN = "test.auth0.com";
 process.env.AUTH0_AUDIENCE = "https://test-api";
 process.env.LOG_LEVEL = "silent";
 process.env.DATABASE_URL = "postgresql://localhost:5432/test";
-process.env.NAMESPACE = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
 process.env.AUTH0_WEBHOOK_SECRET = "test-webhook-secret";
 process.env.SYSTEM_ID = "SYSTEM_ID_TEST";

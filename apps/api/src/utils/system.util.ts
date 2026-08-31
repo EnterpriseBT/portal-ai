@@ -12,19 +12,12 @@
  * // random UUID
  * const id = SystemUtilities.id.v4.generate();
  *
- * // deterministic UUID from a name
- * const stableId = SystemUtilities.id.v5.generate("some-key");
- *
  * // current UTC timestamp
  * const now = SystemUtilities.date.now();
  * ```
  */
 
-import {
-  UUIDv4Factory,
-  UUIDv5Factory,
-  DateFactory,
-} from "@portalai/core/utils";
+import { UUIDv4Factory, DateFactory } from "@portalai/core/utils";
 import { environment } from "../environment.js";
 
 /** Default timezone for the date factory. */
@@ -32,23 +25,19 @@ const DEFAULT_TIMEZONE = "UTC";
 
 export class SystemUtilities {
   private static readonly _v4Factory = new UUIDv4Factory();
-  private static readonly _v5Factory = new UUIDv5Factory(
-    environment.NAMESPACE!
-  );
   private static readonly _dateFactory = new DateFactory(DEFAULT_TIMEZONE);
 
   /**
    * ID generation factories.
    *
+   * - `system` — the system-actor id used as `createdBy`/`updatedBy` for
+   *   platform-initiated writes
    * - `v4` — random, cryptographically-secure UUIDs
-   * - `v5` — deterministic, namespace-based UUIDs (DNS namespace by default)
-   * - `createV5(namespace)` — create a UUIDv5Factory with a custom namespace
    */
   static get id() {
     return {
       system: environment.SYSTEM_ID!,
       v4: this._v4Factory,
-      v5: this._v5Factory,
     };
   }
 

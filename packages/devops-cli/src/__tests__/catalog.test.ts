@@ -33,7 +33,6 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
       "GOOGLE_OAUTH_CLIENT_ID",
       "MICROSOFT_OAUTH_CLIENT_ID",
       "MICROSOFT_OAUTH_TENANT",
-      "NAMESPACE",
       "SALES_EMAIL", // #311 public site-config contact
       "SUPPORT_EMAIL", // #311 public site-config contact
       "SYSTEM_ID",
