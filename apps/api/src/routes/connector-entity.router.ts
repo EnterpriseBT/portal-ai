@@ -329,6 +329,77 @@ connectorEntityRouter.get(
 
 /**
  * @openapi
+ * /api/connector-entities/{id}/running-jobs:
+ *   get:
+ *     tags: [Connector Entities]
+ *     summary: List non-terminal jobs that would block mutations against this entity
+ *     description: |
+ *       Union of the instance-level locks (`connector_sync`,
+ *       `layout_plan_commit`, `entity_record_clear`) and the entity-targeted
+ *       locks (`bulk_transform`, `bulk_geocode`) — exactly the set the 409
+ *       `ENTITY_LOCKED_BY_JOB` guard would reject (#453). Drives the entity
+ *       view's disabled actions + lock alert. Empty array means the entity is
+ *       free to mutate.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: List of running jobs (possibly empty)
+ *       404:
+ *         description: Connector entity not found
+ */
+connectorEntityRouter.get(
+  "/:id/running-jobs",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { organizationId } = req.application!.metadata;
+
+      const entity = await DbService.repository.connectorEntities.findById(id);
+      if (!entity || entity.organizationId !== organizationId) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
+          )
+        );
+      }
+
+      const runningJobs = await JobLockService.findRunningForConnectorEntity(
+        id,
+        entity.connectorInstanceId,
+        organizationId
+      );
+      return HttpService.success(res, { runningJobs });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to fetch running jobs for connector entity"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_ENTITY_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch running jobs"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
  * /api/connector-entities:
  *   post:
  *     tags:

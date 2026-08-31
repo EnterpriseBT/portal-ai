@@ -52,6 +52,8 @@ export const queryKeys = {
       [...queryKeys.connectorEntities.root, "get", id] as const,
     impact: (id: string) =>
       [...queryKeys.connectorEntities.root, "impact", id] as const,
+    runningJobs: (id: string) =>
+      [...queryKeys.connectorEntities.root, "running-jobs", id] as const,
   },
   connectorInstances: {
     root: ["connectorInstances"] as const,

@@ -69,6 +69,39 @@ export class JobLockService {
   }
 
   /**
+   * Every non-terminal job that would block a mutation against one
+   * connector entity (#453) — the union of the instance-level locks
+   * (`connector_sync`, `layout_plan_commit`, `entity_record_clear`)
+   * and the entity-targeted locks (`bulk_transform`, `bulk_geocode`),
+   * deduped by job id (an `entity_record_clear` names both its
+   * instance and its entity, so it matches both queries).
+   *
+   * This is exactly the set `assertConnectorEntityUnlocked` would
+   * reject — the parity that lets the entity view's disable-with-
+   * tooltip agree with the 409 the route would return.
+   */
+  static async findRunningForConnectorEntity(
+    connectorEntityId: string,
+    connectorInstanceId: string,
+    organizationId: string
+  ): Promise<RunningJobSummary[]> {
+    const [instanceRows, entityRows] = await Promise.all([
+      DbService.repository.jobs.findRunningForConnectorInstance(
+        connectorInstanceId,
+        organizationId
+      ),
+      DbService.repository.jobs.findRunningByTargetEntityIds(
+        [connectorEntityId],
+        organizationId
+      ),
+    ]);
+    const byId = new Map(
+      [...instanceRows, ...entityRows].map((row) => [row.id, row])
+    );
+    return [...byId.values()].map(toSummary);
+  }
+
+  /**
    * Return every non-terminal job in the organization, regardless of
    * type. Org deletion (#197) sweeps this list: queued jobs are
    * cancelled, an `active` one blocks the delete with 409.

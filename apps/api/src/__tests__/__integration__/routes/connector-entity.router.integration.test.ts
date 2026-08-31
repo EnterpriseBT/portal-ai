@@ -1291,3 +1291,142 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
     });
   });
 });
+
+// ── GET /:id/running-jobs (#453) ─────────────────────────────────────
+
+describe("GET /api/connector-entities/:id/running-jobs (#453)", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: ReturnType<typeof drizzle>;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+    await teardownOrg(db);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  async function seedEntity() {
+    const { organizationId } = await seedUserAndOrg(db, AUTH0_ID);
+    const { connectorInstanceId } = await seedConnectorInstance(
+      db,
+      organizationId
+    );
+    const entity = createConnEntity(organizationId, connectorInstanceId);
+    await db.insert(connectorEntities).values(entity as never);
+    return {
+      organizationId,
+      connectorInstanceId,
+      connectorEntityId: entity.id,
+    };
+  }
+
+  async function seedJob(
+    organizationId: string,
+    type: string,
+    status: string,
+    metadata: Record<string, unknown>
+  ) {
+    const id = generateId();
+    await db.insert(schema.jobs).values({
+      id,
+      organizationId,
+      type,
+      status,
+      progress: 10,
+      metadata,
+      result: null,
+      error: null,
+      startedAt: now,
+      completedAt: null,
+      bullJobId: null,
+      attempts: 1,
+      maxAttempts: 3,
+      lostExecutions: 0,
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    return id;
+  }
+
+  const url = (id: string) => `/api/connector-entities/${id}/running-jobs`;
+
+  it("returns instance-locking AND entity-targeted jobs, deduped, excluding terminal ones", async () => {
+    const { organizationId, connectorInstanceId, connectorEntityId } =
+      await seedEntity();
+
+    // Instance-level lock (connector_sync holds connectorInstanceId).
+    const syncJobId = await seedJob(
+      organizationId,
+      "connector_sync",
+      "active",
+      {
+        connectorInstanceId,
+        organizationId,
+      }
+    );
+    // Entity-level lock (bulk_transform targets the entity).
+    const bulkJobId = await seedJob(
+      organizationId,
+      "bulk_transform",
+      "pending",
+      { targetConnectorEntityIds: [connectorEntityId], organizationId }
+    );
+    // Overlap case: an entity_record_clear locks the instance AND names the
+    // entity — it must appear exactly once (the dedupe risk in the plan).
+    const clearJobId = await seedJob(
+      organizationId,
+      "entity_record_clear",
+      "active",
+      { connectorEntityId, connectorInstanceId, organizationId, userId: "u-1" }
+    );
+    // Terminal jobs never lock.
+    await seedJob(organizationId, "connector_sync", "completed", {
+      connectorInstanceId,
+      organizationId,
+    });
+
+    const res = await request(app)
+      .get(url(connectorEntityId))
+      .set("Authorization", "Bearer test-token");
+
+    expect(res.status).toBe(200);
+    const ids = (res.body.payload.runningJobs as Array<{ id: string }>).map(
+      (j) => j.id
+    );
+    expect(ids.sort()).toEqual([syncJobId, bulkJobId, clearJobId].sort());
+    // Dedupe: the clear appears once despite matching both queries.
+    expect(ids.filter((id) => id === clearJobId)).toHaveLength(1);
+  });
+
+  it("returns an empty array when the entity is idle", async () => {
+    const { connectorEntityId } = await seedEntity();
+
+    const res = await request(app)
+      .get(url(connectorEntityId))
+      .set("Authorization", "Bearer test-token");
+
+    expect(res.status).toBe(200);
+    expect(res.body.payload.runningJobs).toEqual([]);
+  });
+
+  it("404s for a foreign-org or unknown entity", async () => {
+    await seedEntity();
+
+    const res = await request(app)
+      .get(url(generateId()))
+      .set("Authorization", "Bearer test-token");
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+  });
+});
