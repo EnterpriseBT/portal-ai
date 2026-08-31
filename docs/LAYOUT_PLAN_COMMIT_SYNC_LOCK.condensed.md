@@ -47,9 +47,9 @@ Waiting occupies one of the jobs worker's 2 slots (`jobs.worker.ts:302`) for up 
 ## Smoke (manual, against your dev stack)
 
 1. Normal path unchanged: run a file-upload import end-to-end → commit completes, wizard finishes with entities visible.
-2. Contention: in psql, `SELECT pg_advisory_lock(1398361667, hashtext('<instanceId>'));` (ASCII "SYNC" namespace), then trigger a recommit for that instance → the job stays `active`/waiting, no reap occurs while held.
-3. `SELECT pg_advisory_unlock(1398361667, hashtext('<instanceId>'));` → the waiting commit acquires and completes normally; record counts correct, no rows lost.
-4. Timeout path: set `LAYOUT_PLAN_COMMIT_LOCK_WAIT_MS=10000`, hold the lock through a recommit → job goes `pending` (retry budget remaining) with the timeout message in `error`; release the lock → a later attempt completes.
+2. Contention: in psql, `SELECT pg_advisory_lock(1398361667, hashtext('<instanceId>'));` (ASCII "SYNC" namespace), then trigger a recommit for that instance → the job stays `active`/waiting, no reap occurs while held. **The recommit needs a FRESH, uncommitted upload session** — a successful commit deletes its session's S3 objects and workbook cache (`markSessionCommitted`), so re-upload the file and stop the wizard before its commit step, then POST the recommit with that new `uploadSessionId`.
+3. `SELECT pg_advisory_unlock(1398361667, hashtext('<instanceId>'));` (or end the psql session — the lock dies with it) → the waiting commit acquires and completes normally; record counts correct, no rows lost.
+4. Timeout path: set `LAYOUT_PLAN_COMMIT_LOCK_WAIT_MS=10000` (restart the dev stack so the env lands), hold the lock through a recommit → the job goes **`failed`** — not `pending`: `layout_plan_commit` is pinned to 1 attempt (`jobs.service.ts:29`) — with the `SyncLockWaitTimeoutError` message in `error`, and **no rollback runs**: the plan, instance, entity, and records all remain intact. Re-trigger the commit manually after releasing the lock.
 5. Regression: a plain connector sync on another instance is unaffected (non-blocking path untouched).
 
 ## Out of scope
