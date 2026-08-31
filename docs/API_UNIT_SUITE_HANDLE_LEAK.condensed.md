@@ -46,10 +46,11 @@ Two directions: (a) mock `entity-record-count.cache.js` in this one test so it s
 1. From `apps/api/`, `timeout 45 npm run test:unit -- --testPathPattern revalidation.processor` → exits within seconds (exit 0), 5 tests pass. Before the fix this hung until the timeout (exit 124).
 2. From `apps/api/`, `timeout 45 npm run test:unit -- --testPathPattern cascade-count-no-returning` → exits within seconds (exit 0), 18 tests pass. Before the fix this hung until the timeout (exit 124).
 3. From `apps/api/`, run the full suite a few times: `for i in 1 2 3; do npm run test:unit >/tmp/r$i.log 2>&1; grep -c "failed to exit gracefully" /tmp/r$i.log; done` → prints `0` each run.
-4. From the repo root, `npm run test:unit` → `@portalai/api#test:unit` passes, exit 0, no worker force-exit warning in the output.
+4. From the repo root, `npm run test:unit` → `@portalai/api#test:unit` passes, exit 0. Note: on a loaded machine the full-parallel root run can still *print* the force-exit warning (for api, core, and web alike) — that is contention-slowed worker shutdown, not a leak, and it does not fail the run. The leak signature is the warning **when a package's suite runs alone**, or a file that hangs when run by itself.
 
 ## Out of scope
 
 - **A guard that fails when any unit test opens a real Redis/DB socket** — would prevent recurrence of the whole class, but is its own design (async-hooks or a `getRedisClient` test-env assertion) and larger than this bug. Noted for a follow-up.
 - **`--forceExit` on the test script** — rejected; it hides real leaks rather than fixing them.
 - **The sibling `use-widget-refresh.util.test.ts` timeout flake** — filed separately, different cause.
+- **The `transform.util.test.ts` performance-smoke flake** — its 2000ms wall-clock budget (`applyTransform` over 10K records) can lose to CPU contention under the full-parallel root run (measured 2784ms once, passing on re-run). Different cause: a real-time budget vs. machine load, not a handle leak.
