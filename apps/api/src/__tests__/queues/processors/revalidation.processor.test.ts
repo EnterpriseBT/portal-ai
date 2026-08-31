@@ -44,6 +44,20 @@ jest.unstable_mockModule("../../../db/schema/index.js", () => ({
   fieldMappings: { connectorEntityId: "connectorEntityId" },
 }));
 
+// The processor invalidates the record-count cache on completion, which
+// reaches getRedisClient() and opens a real ioredis connection nothing in a
+// unit test closes — leaving the jest worker unable to exit gracefully (#377).
+// Mock it so this stays a pure unit test, matching the sibling processor tests.
+const mockCountCacheInvalidate = jest
+  .fn<(...a: unknown[]) => Promise<void>>()
+  .mockResolvedValue(undefined);
+jest.unstable_mockModule(
+  "../../../services/entity-record-count.cache.js",
+  () => ({
+    EntityRecordCountCache: { invalidate: mockCountCacheInvalidate },
+  })
+);
+
 const { revalidationProcessor } =
   await import("../../../queues/processors/revalidation.processor.js");
 
