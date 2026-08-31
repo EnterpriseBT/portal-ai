@@ -29,6 +29,22 @@ export type SyncLockOutcome<T> =
   | { acquired: false };
 
 /**
+ * Thrown by {@link SyncLockService.withInstanceLockWait} when the wait budget
+ * elapses (#461). A distinct class so callers can tell "I never owned the
+ * work" apart from "the work failed": a commit pass that times out here must
+ * NOT run failure cleanup (e.g. the draft rollback) — the lock holder is
+ * still alive and still writing the very rows that cleanup would delete.
+ */
+export class SyncLockWaitTimeoutError extends Error {
+  constructor(timeoutMs: number, connectorInstanceId: string) {
+    super(
+      `Timed out after ${timeoutMs}ms waiting for the sync lock on connector instance ${connectorInstanceId}`
+    );
+    this.name = "SyncLockWaitTimeoutError";
+  }
+}
+
+/**
  * Ownership lock for the operations that reap by watermark (#460).
  *
  * **Why this exists.** A connector sync can be re-delivered by BullMQ while
@@ -125,8 +141,9 @@ export class SyncLockService {
             { event: "sync-lock.wait-timeout", connectorInstanceId },
             "Advisory lock not released within the wait budget — returning this attempt to the queue"
           );
-          throw new Error(
-            `Timed out after ${opts.timeoutMs}ms waiting for the sync lock on connector instance ${connectorInstanceId}`
+          throw new SyncLockWaitTimeoutError(
+            opts.timeoutMs,
+            connectorInstanceId
           );
         }
         await new Promise((resolve) => setTimeout(resolve, pollMs));
