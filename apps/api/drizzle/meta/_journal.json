@@ -617,6 +617,13 @@
       "when": 1787950272646,
       "tag": "0087_dissolve_pieces_index",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1788215908214,
+      "tag": "0088_add-entity-record-clear-job-type",
+      "breakpoints": true
     }
   ]
 }

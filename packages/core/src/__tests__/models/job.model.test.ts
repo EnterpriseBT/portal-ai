@@ -636,3 +636,48 @@ describe("DissolvePrecompute schemas (#472)", () => {
     );
   });
 });
+
+// ── entity_record_clear (#453) ───────────────────────────────────────
+
+import {
+  EntityRecordClearMetadataSchema,
+  EntityRecordClearResultSchema,
+} from "../../models/job.model.js";
+
+describe("entity_record_clear schemas (#453)", () => {
+  const METADATA = {
+    connectorEntityId: "ce-1",
+    connectorInstanceId: "ci-1",
+    organizationId: "org-1",
+    userId: "user-1",
+  };
+
+  it("metadata parses a full object", () => {
+    expect(EntityRecordClearMetadataSchema.parse(METADATA)).toEqual(METADATA);
+  });
+
+  it("metadata rejects a missing connectorInstanceId", () => {
+    // The instance id is the lock key (JOB_LOCK_KEYS) — a clear job that
+    // cannot lock its instance must never be mintable.
+    const { connectorInstanceId: _omitted, ...rest } = METADATA;
+    expect(EntityRecordClearMetadataSchema.safeParse(rest).success).toBe(false);
+  });
+
+  it("result rejects a negative deleted count", () => {
+    expect(
+      EntityRecordClearResultSchema.safeParse({ deleted: -1 }).success
+    ).toBe(false);
+    expect(EntityRecordClearResultSchema.parse({ deleted: 0 })).toEqual({
+      deleted: 0,
+    });
+  });
+
+  it("is registered in JOB_TYPE_SCHEMAS", () => {
+    expect(JOB_TYPE_SCHEMAS.entity_record_clear.metadata).toBe(
+      EntityRecordClearMetadataSchema
+    );
+    expect(JOB_TYPE_SCHEMAS.entity_record_clear.result).toBe(
+      EntityRecordClearResultSchema
+    );
+  });
+});

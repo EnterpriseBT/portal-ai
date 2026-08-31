@@ -10,11 +10,21 @@ describe("JOB_LOCK_KEYS / jobTypesLocking", () => {
       .map((t) => t.type)
       .sort();
 
-  it("connectorInstanceId locks == connector_sync + layout_plan_commit", () => {
+  it("connectorInstanceId locks == connector_sync + entity_record_clear + layout_plan_commit", () => {
+    // entity_record_clear joined in #453: a running clear must exclude
+    // syncs/imports/other clears across the whole instance.
     expect(types("connectorInstanceId")).toEqual([
       "connector_sync",
+      "entity_record_clear",
       "layout_plan_commit",
     ]);
+  });
+
+  it("entity_record_clear declares the instance-id metadata key", () => {
+    expect(jobTypesLocking("connectorInstanceId")).toContainEqual({
+      type: "entity_record_clear",
+      metadataKey: "connectorInstanceId",
+    });
   });
 
   it("portalId locks == bulk_transform + bulk_geocode", () => {

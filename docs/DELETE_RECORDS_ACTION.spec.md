@@ -133,7 +133,7 @@ Behavior contract (Form & Dialog Pattern, full checklist): `Modal` with `slotPro
 
 ## Migration / Seed
 
-None — no schema change (the job row rides the existing `jobs` table). Say nothing more.
+**One migration, no seed** — `jobs.type` is a Postgres enum (`jobTypeEnum`, `apps/api/src/db/schema/jobs.table.ts:21`), so the new type needs `ALTER TYPE "job_type" ADD VALUE 'entity_record_clear'` (`drizzle/0088_add-entity-record-clear-job-type.sql`, generated via `npm run db:generate -- --name add-entity-record-clear-job-type`). No table, column, or seed changes. *(Corrected during slice 1 — the draft spec wrongly said "no migration"; the dual-schema type-check caught it.)*
 
 ## TDD test plan
 
