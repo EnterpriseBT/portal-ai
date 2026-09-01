@@ -733,7 +733,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
 
   const handleClearRecords = useCallback(() => {
     clearRecordsMutation.mutate(undefined, {
-      onSuccess: () => {
+      onSuccess: ({ job }) => {
         setClearRecordsDialogOpen(false);
         clearRecordsMutation.reset();
         toast.info("Deleting records… this can take a few minutes.");
@@ -742,9 +742,42 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
         queryClient.invalidateQueries({
           queryKey: queryKeys.connectorEntities.runningJobs(entityId),
         });
+        // Await THIS job directly rather than relying on the running-jobs
+        // effect: a small clear finishes in milliseconds — before the
+        // refetch above can even see it — so the effect never subscribes
+        // and completion would go unnoticed (#453 smoke finding: the count
+        // only updated on a manual reload). The SSE channel replays a
+        // snapshot on connect, so this resolves even for an already-
+        // terminal job. If the effect *does* also catch it, the toast
+        // provider's visible-duplicate dedupe drops the second toast and
+        // the invalidations are idempotent.
+        awaitJobCompletion(connectSseForLock, job.id)
+          .then(({ result }) => {
+            const deleted =
+              typeof result?.deleted === "number"
+                ? result.deleted.toLocaleString()
+                : "all";
+            toast.success(`Deleted ${deleted} records`);
+          })
+          .catch((err: unknown) => {
+            toast.error(
+              err instanceof Error ? err.message : "Deleting records failed"
+            );
+          })
+          .finally(() => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.connectorEntities.runningJobs(entityId),
+            });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.entityRecords.root,
+            });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.connectorEntities.root,
+            });
+          });
       },
     });
-  }, [clearRecordsMutation, queryClient, entityId, toast]);
+  }, [clearRecordsMutation, queryClient, entityId, toast, connectSseForLock]);
 
   const invalidateTags = useCallback(() => {
     queryClient.invalidateQueries({
