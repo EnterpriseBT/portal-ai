@@ -1,6 +1,9 @@
 import { Queue } from "bullmq";
 
 import { environment } from "../environment.js";
+import { createLogger } from "../utils/logger.util.js";
+
+const logger = createLogger({ module: "maintenance-queue" });
 
 /**
  * Maintenance queue (#179 D5) — internal repeatable housekeeping jobs.
@@ -43,6 +46,10 @@ export const getMaintenanceQueue = (): Queue => {
         removeOnComplete: { count: 30 },
         removeOnFail: { count: 30 },
       },
+    });
+    // #391: unhandled `error` events crash the process; log and stay up.
+    _maintenanceQueue.on("error", (err) => {
+      logger.warn({ err }, "Maintenance queue error (staying up)");
     });
   }
   return _maintenanceQueue;

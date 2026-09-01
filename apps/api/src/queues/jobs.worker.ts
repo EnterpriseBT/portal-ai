@@ -304,6 +304,16 @@ export const createJobsWorker = (
   );
 
   // Forward BullMQ progress events
+  // #391: BullMQ emits `error` for connection loss and for operations
+  // against jobs whose Redis keys vanished (a FLUSHALL mid-run). An
+  // unhandled `error` event on an EventEmitter crashes the process — which
+  // is how a Redis loss used to take the whole API down WITH the very
+  // executions it stranded, leaving nothing alive to reconcile them.
+  // Log and stay up; the reconciliation sweep repairs the rows.
+  worker.on("error", (err) => {
+    logger.warn({ err }, "Jobs worker error (staying up)");
+  });
+
   worker.on("progress", async (bullJob, progress) => {
     if (typeof progress === "number") {
       const JobEventsService = await getJobEventsService();

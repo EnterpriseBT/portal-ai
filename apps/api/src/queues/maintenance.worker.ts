@@ -39,6 +39,11 @@ export const createMaintenanceWorker = (): Worker => {
     }
   );
 
+  // #391: unhandled `error` events crash the process; log and stay up.
+  worker.on("error", (err) => {
+    logger.warn({ err }, "Maintenance worker error (staying up)");
+  });
+
   worker.on("failed", (job, err) => {
     logger.error({ name: job?.name, err }, "Maintenance job failed");
   });
