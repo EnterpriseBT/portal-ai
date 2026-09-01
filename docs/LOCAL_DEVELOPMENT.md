@@ -9,6 +9,17 @@ npm run dev          # all dev servers — web :3000, api :3001
 ```
 `apps/api`'s `dev` runs the server (nodemon) **and** an ngrok tunnel concurrently (`concurrently --names server,tunnel`). To run just the API without the tunnel: `npm run dev:server` (from `apps/api`).
 
+## Fresh reset → fully provisioned
+
+After a full local reset (`docker compose down -v` + devcontainer rebuild, or `portalops db reset --env local --yes`), **one command** provisions everything — pending migrations, the system seed (bootstrap `standard` tier + connector definitions), and the tier catalog with env-local Stripe price ids. The last step matters: `db:seed` alone is deliberately bootstrap-only (#218), so without it a freshly reset stack silently shows only the `standard` tier.
+
+```bash
+DATABASE_URL=postgresql://… STRIPE_SECRET_KEY=sk_test_… \
+  npx portalops local provision --env local --yes
+```
+
+Idempotent — a re-run reports every step `ok` (tier apply all-noop) and changes nothing. Add `--e2e-org` to also seed the `e2e-fixture` org (a bare flag reads the email from `E2E_AUTH0_USERNAME`; the test user must have logged in once via `e2e:auth`, which stays a separate, interactive step — see `packages/e2e/README.md`). Local-only by contract: `--env app-dev`/`prod` exit 2 — deployed envs are provisioned by CI/deploy. Full contract, per-step `--json` output, and failure semantics: [packages/devops-cli/COMMANDS.md → local](../packages/devops-cli/COMMANDS.md#local).
+
 ## Local Stripe webhook loop
 
 Forward live test-mode Stripe events to your local webhook endpoint and fire test events:

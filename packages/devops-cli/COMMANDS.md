@@ -169,3 +169,25 @@ portalai org set-tier <orgId> acme_enterprise --env app-dev --yes
 ```
 
 The card renders a **"Contact support"** CTA while the org is only *viewing* the tier as an upgrade, and its full policy once the org is *on* it (#241). Switching an org's tier is `portalai org set-tier` — not a portalops command (see `packages/admin-cli/COMMANDS.md`).
+
+## local
+
+### `portalops local provision --env local [--e2e-org [member-email]] [--yes] [--json]`
+Mutation, **local-only by contract** (#490) — `--env` accepts only `local`; anything else is a usage error (**exit 2**) before any env resolution. Deployed envs are provisioned by CI/deploy (`db:seed:ci` ECS one-off, nightly `tier apply`). One idempotent command for "fresh reset → fully provisioned": it composes the existing steps, in order, stopping at the first failure — nothing is reimplemented.
+
+| Step | Delegates to | Effect |
+|---|---|---|
+| `migrate` | apps/api `db:migrate` (spawned with `DATABASE_URL` injected) | applies pending drizzle migrations (no-op when current) |
+| `seed` | `portalops db seed` (local dispatch → `db:seed`) | system rows: bootstrap `standard` tier + connector definitions |
+| `tier-apply` | `portalops tier apply` | catalog tiers + env-local Stripe price ids (fail-closed on a missing price) |
+| `e2e-org` | apps/api `db:seed:org --name e2e-fixture --member-email <email>` | only with `--e2e-org`; otherwise reported `skipped` |
+
+`--e2e-org [member-email]`: an explicit value wins; a bare flag defaults from `E2E_AUTH0_USERNAME` in the process env; neither present → usage error (**exit 2**) before any step runs. The member user must already exist — it is created on the test user's first login (`e2e:auth`, see `packages/e2e/README.md`), which stays a separate step because it is interactive by nature.
+
+Shell prerequisites: `DATABASE_URL` (the local env connection) and `STRIPE_SECRET_KEY` (the tier step — missing key fails that step `ENV_NOT_CONFIGURED`, exit 3; a key whose account lacks a declared lookup key's price fails it `TIER_APPLY_MISSING_PRICES`, exit 8).
+
+`--json`: `{ "steps": [{ "name": "migrate"|"seed"|"tier-apply"|"e2e-org", "status": "ok"|"skipped"|"failed", "result"?: {…}, "error"?: { "code", "message" } }] }`
+
+> **Failure shape — a deliberate deviation.** Every other command emits either a payload or the `{"error":{…}}` envelope. Here a mid-run step failure emits the **steps payload** — earlier steps' results intact, the failed step carrying its `{code,message}` — and the process exit code is mapped from that code (e.g. a missing Stripe price exits 8 with the migrate + seed results still on stdout). For this command, branch on `steps[].status`, not on the envelope.
+
+Idempotent: safe to re-run against an already-provisioned local DB (each delegated step already is; a converged re-run reports every step `ok` with `tier-apply` all-noop). Audits one `local provision` line; the seed and tier-apply steps also audit individually.

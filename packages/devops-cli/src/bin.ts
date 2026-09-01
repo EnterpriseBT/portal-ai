@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { Command, CommanderError } from "commander";
+import { Command, CommanderError, Option } from "commander";
 
 import { getEnvironment, type EnvironmentDefinition } from "@portalai/cli-env";
 
@@ -36,6 +36,11 @@ import {
   tierDescription,
   type TierApplyResult,
 } from "./commands/tier.js";
+import {
+  localProvision,
+  type LocalProvisionResult,
+  type ProvisionStep,
+} from "./commands/local.js";
 import { exitCodeFor, jsonError, printBanner } from "./output.js";
 
 interface GlobalOpts {
@@ -369,7 +374,97 @@ export function buildProgram(): Command {
       })
   );
 
+  // ── local (#490) ───────────────────────────────────────────────────
+  const local = program
+    .command("local")
+    .description("local-env developer provisioning");
+
+  local
+    .command("provision")
+    .description(
+      "one-shot local provisioning: migrate → seed → tier apply (+ optional e2e fixture org)"
+    )
+    // NOT common(): --env is gated to `local` at the commander layer so
+    // app-dev/prod fail as usage errors (exit 2) before any env resolution.
+    .addOption(
+      new Option("--env <name>", "target environment (local only)")
+        .choices(["local"])
+        .makeOptionMandatory()
+    )
+    .option("--json", "machine-readable output on stdout")
+    .option("--yes", "confirm a mutating operation (staging and above)")
+    .option(
+      "--e2e-org [member-email]",
+      "also seed the e2e-fixture org; bare flag defaults the email from E2E_AUTH0_USERNAME"
+    )
+    .action(
+      async (o: GlobalOpts & { e2eOrg?: string | boolean }, cmd: Command) => {
+        let e2eOrgEmail: string | undefined;
+        if (o.e2eOrg !== undefined) {
+          e2eOrgEmail =
+            typeof o.e2eOrg === "string"
+              ? o.e2eOrg
+              : process.env.E2E_AUTH0_USERNAME;
+          if (!e2eOrgEmail) {
+            // Usage error (exit 2 via runCli) — before any step runs.
+            cmd.error(
+              "error: --e2e-org needs a member email — pass one, or export E2E_AUTH0_USERNAME"
+            );
+          }
+        }
+        return execute(
+          o,
+          async (def) => {
+            const res = await localProvision(def, {
+              ...flags(o),
+              e2eOrgEmail,
+            });
+            const failed = res.steps.find((s) => s.status === "failed");
+            if (failed?.error) {
+              process.exitCode = exitCodeFor({ code: failed.error.code });
+            }
+            return res;
+          },
+          renderLocalProvision as never
+        );
+      }
+    );
+
   return program;
+}
+
+/** One-line-per-step summary for the ok path. */
+function summarizeStep(step: ProvisionStep): string {
+  if (step.name === "tier-apply") {
+    const changes = (step.result as TierApplyResult | undefined)?.changes;
+    if (!changes) return "";
+    const count = (action: string) =>
+      changes.filter((c) => c.action === action).length;
+    return ` (${count("insert")} insert, ${count("update")} update, ${count("noop")} noop)`;
+  }
+  const script = (step.result as { script?: string } | undefined)?.script;
+  return script ? ` (${script})` : "";
+}
+
+/** Human render for `local provision` — per-step status + verdict. */
+function renderLocalProvision(result: LocalProvisionResult): string {
+  const lines = result.steps.map((step) => {
+    if (step.status === "failed" && step.error) {
+      return `${step.name}: FAILED — ${step.error.code}: ${step.error.message}`;
+    }
+    if (step.status === "skipped") {
+      const reason = (step.result as { reason?: string } | undefined)?.reason;
+      return `${step.name}: skipped${reason ? ` — ${reason}` : ""}`;
+    }
+    return `${step.name}: ok${summarizeStep(step)}`;
+  });
+  const failed = result.steps.find((s) => s.status === "failed");
+  lines.push(
+    failed
+      ? `provisioning failed at ${failed.name} — earlier steps' results stand`
+      : "local fully provisioned"
+  );
+  return lines.join("\n");
 }
 
 /** Human render for `tier apply` — per-slug field diff + unmanaged note. */

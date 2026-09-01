@@ -27,4 +27,14 @@ export {
   type MutateOptions,
 } from "./commands/vars.js";
 
+export {
+  localProvision,
+  E2E_FIXTURE_ORG_NAME,
+  type LocalProvisionOptions,
+  type LocalProvisionResult,
+  type LocalProvisionDeps,
+  type ProvisionStep,
+  type ProvisionStepName,
+} from "./commands/local.js";
+
 export { EXIT_CODES, exitCodeFor, printBanner, jsonError } from "./output.js";
