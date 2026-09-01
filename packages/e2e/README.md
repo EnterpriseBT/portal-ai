@@ -11,13 +11,17 @@ Playwright browser harness for **agent-guided UI smoke walks** against the local
 
 ## Environment
 
-Set in your dev shell only — **never commit these**:
+Put these in `packages/e2e/.env` (git-ignored — copy `.env.example`) so they load on every run, or export them in your dev shell; a shell export **overrides** the `.env` value. **Never commit the real values.**
 
 | Var | Purpose | Default |
 |---|---|---|
 | `E2E_AUTH0_USERNAME` | the Database-connection test user's email | — (required) |
 | `E2E_AUTH0_PASSWORD` | its password | — (required) |
 | `E2E_BASE_URL` | the running web app | `http://localhost:3000` |
+
+```bash
+cp packages/e2e/.env.example packages/e2e/.env   # then fill in the real values
+```
 
 ## Setup — run in this order
 

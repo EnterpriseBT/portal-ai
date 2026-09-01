@@ -14,8 +14,9 @@
  * Prerequisites (operator, not code — see packages/e2e/README.md):
  *   - the dev stack is running (`npm run dev`),
  *   - the dev Auth0 tenant has a Database connection with a test user,
- *   - env: E2E_AUTH0_USERNAME, E2E_AUTH0_PASSWORD (dev shell only; never
- *     committed), optional E2E_BASE_URL (default http://localhost:3000).
+ *   - env: E2E_AUTH0_USERNAME, E2E_AUTH0_PASSWORD — from packages/e2e/.env
+ *     (git-ignored; copy .env.example) or the dev shell (shell wins); never
+ *     committed. Optional E2E_BASE_URL (default http://localhost:3000).
  *
  * Selectors for the Auth0-hosted form are best-effort against New Universal
  * Login and may need a one-time tune on first run against the real tenant.
