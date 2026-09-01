@@ -9,7 +9,7 @@ import {
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
@@ -21,6 +21,8 @@ import {
   teardownOrg,
 } from "../utils/application.util.js";
 import { wideTableReconcilerService } from "../../../services/wide-table-reconciler.service.js";
+import { JobLockService } from "../../../services/job-lock.service.js";
+import { entityRecordClearProcessor } from "../../../queues/processors/entity-record-clear.processor.js";
 import { wideTableRepo } from "../../../db/repositories/wide-table.repository.js";
 import { wideTableStatementCache } from "../../../services/wide-table-statement.cache.js";
 import {
@@ -2503,13 +2505,16 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         .delete(recordsUrl(connectorEntityId))
         .set("Authorization", "Bearer test-token");
 
-      expect(res.status).toBe(200);
-      expect(res.body.payload.deleted).toBe(2);
+      // #453: the clear is now an enqueue — 202 + the job, nothing deleted
+      // synchronously.
+      expect(res.status).toBe(202);
+      expect(res.body.payload.job.type).toBe("entity_record_clear");
     });
 
     // #451: the join-based cascade must clear BOTH entity_records and the
     // er__<id> wide rows — the old id-list path materialised every id to do
     // this; the count alone did not prove the wide table was cleared.
+    // #453: the route now enqueues; this walks route → processor end-to-end.
     it("clears both entity_records and the wide table, and is an idempotent no-op on re-delete", async () => {
       const { userId, organizationId, connectorEntityId } =
         await seedWithCapabilities(db, {
@@ -2550,23 +2555,293 @@ describe("Entity Record Router — Write Capability Deletes", () => {
       expect(await liveRecordCount()).toBe(3);
       expect(await liveWideCount()).toBe(3);
 
-      const first = await request(app)
-        .delete(recordsUrl(connectorEntityId))
-        .set("Authorization", "Bearer test-token");
-      expect(first.status).toBe(200);
-      expect(first.body.payload.deleted).toBe(3);
+      const runClearViaRoute = async () => {
+        const res = await request(app)
+          .delete(recordsUrl(connectorEntityId))
+          .set("Authorization", "Bearer test-token");
+        expect(res.status).toBe(202);
+        const job = res.body.payload.job as {
+          id: string;
+          metadata: Record<string, unknown>;
+        };
+        const result = await entityRecordClearProcessor({
+          data: { jobId: job.id, type: "entity_record_clear", ...job.metadata },
+          updateProgress: () => undefined,
+        } as never);
+        // The pending job row still locks the instance (that is the point) —
+        // release it so a re-delete exercises idempotency, not the 409.
+        await (db as ReturnType<typeof drizzle>)
+          .update(schema.jobs)
+          .set({ status: "completed" })
+          .where(eq(schema.jobs.id, job.id));
+        return result as { deleted: number };
+      };
+
+      const first = await runClearViaRoute();
+      expect(first.deleted).toBe(3);
 
       // Both tables tombstoned — no live rows left in either.
       expect(await liveRecordCount()).toBe(0);
       expect(await liveWideCount()).toBe(0);
 
-      // Second delete finds nothing live → 0, no error.
-      const second = await request(app)
-        .delete(recordsUrl(connectorEntityId))
-        .set("Authorization", "Bearer test-token");
-      expect(second.status).toBe(200);
-      expect(second.body.payload.deleted).toBe(0);
+      // Second route→processor pass finds nothing live → 0, no error.
+      const second = await runClearViaRoute();
+      expect(second.deleted).toBe(0);
       expect(await liveWideCount()).toBe(0);
     });
+  });
+});
+
+// ── Clear-all enqueue (#453) ─────────────────────────────────────────
+
+describe("Entity Record Router — Clear-all enqueue (#453)", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: DbClient;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema }) as unknown as DbClient;
+    await teardownOrg(db as ReturnType<typeof drizzle>);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  const recordsUrl = (connectorEntityId: string) =>
+    `/api/connector-entities/${connectorEntityId}/records`;
+
+  /** Directly seed a non-terminal job row so tests don't race the queue. */
+  async function seedActiveJob(
+    organizationId: string,
+    type: string,
+    metadata: Record<string, unknown>
+  ) {
+    const id = generateId();
+    await (db as ReturnType<typeof drizzle>).insert(schema.jobs).values({
+      id,
+      organizationId,
+      type,
+      status: "active",
+      progress: 10,
+      metadata,
+      result: null,
+      error: null,
+      startedAt: now,
+      completedAt: null,
+      bullJobId: null,
+      attempts: 1,
+      maxAttempts: 3,
+      lostExecutions: 0,
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    return id;
+  }
+
+  async function seedWithRecords(count: number) {
+    const seeded = await seedFullStack(db as ReturnType<typeof drizzle>);
+    const rows = Array.from({ length: count }, (_, i) =>
+      createEntityRecord(
+        seeded.organizationId,
+        seeded.connectorEntityId,
+        { user_id: i, name: `r${i}` },
+        `src-${i}`,
+        seeded.userId
+      )
+    );
+    await insertEntityRecordsWithWide(
+      db as ReturnType<typeof drizzle>,
+      seeded.connectorEntityId,
+      rows
+    );
+    return seeded;
+  }
+
+  it("returns 202 with the job and persists a pending entity_record_clear row", async () => {
+    const { organizationId, connectorEntityId, userId } =
+      await seedWithRecords(3);
+
+    const res = await request(app)
+      .delete(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token");
+
+    expect(res.status).toBe(202);
+    expect(res.body.success).toBe(true);
+    expect(res.body.payload.job.type).toBe("entity_record_clear");
+
+    const [jobRow] = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(schema.jobs)
+      .where(eq(schema.jobs.id, res.body.payload.job.id));
+    expect(jobRow).toBeDefined();
+    expect(jobRow!.status).toBe("pending");
+    expect(jobRow!.metadata).toEqual({
+      connectorEntityId,
+      connectorInstanceId: expect.any(String),
+      organizationId,
+      userId,
+    });
+    // Enqueue-only: nothing is deleted synchronously anymore.
+    const [live] = await (db as ReturnType<typeof drizzle>)
+      .select({ n: sql<number>`count(*)::int` })
+      .from(entityRecords)
+      .where(
+        sql`${entityRecords.connectorEntityId} = ${connectorEntityId} AND ${entityRecords.deleted} IS NULL`
+      );
+    expect(live!.n).toBe(3);
+  });
+
+  it("refuses with 409 ENTITY_LOCKED_BY_JOB under a non-terminal connector_sync, creating no job", async () => {
+    const seeded = await seedWithRecords(1);
+    const [inst] = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(connectorEntities)
+      .where(eq(connectorEntities.id, seeded.connectorEntityId));
+    await seedActiveJob(seeded.organizationId, "connector_sync", {
+      connectorInstanceId: inst!.connectorInstanceId,
+      organizationId: seeded.organizationId,
+    });
+
+    const res = await request(app)
+      .delete(recordsUrl(seeded.connectorEntityId))
+      .set("Authorization", "Bearer test-token");
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
+
+    const clears = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(schema.jobs)
+      .where(eq(schema.jobs.type, "entity_record_clear"));
+    expect(clears).toHaveLength(0);
+  });
+
+  it("a non-terminal clear locks the whole instance: second clear AND the sync route's lock guard both refuse", async () => {
+    const seeded = await seedWithRecords(1);
+    const [inst] = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(connectorEntities)
+      .where(eq(connectorEntities.id, seeded.connectorEntityId));
+    const clearJobId = await seedActiveJob(
+      seeded.organizationId,
+      "entity_record_clear",
+      {
+        connectorEntityId: seeded.connectorEntityId,
+        connectorInstanceId: inst!.connectorInstanceId,
+        organizationId: seeded.organizationId,
+        userId: seeded.userId,
+      }
+    );
+
+    // Self-lock: a second clear through the real route.
+    const res = await request(app)
+      .delete(recordsUrl(seeded.connectorEntityId))
+      .set("Authorization", "Bearer test-token");
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe(ApiCode.ENTITY_LOCKED_BY_JOB);
+    expect(
+      (res.body.details?.runningJobs as Array<{ id: string }>).map((j) => j.id)
+    ).toContain(clearJobId);
+
+    // Resync exclusion (#453 review decision): the exact guard the sync
+    // route calls must see the clear job via its JOB_LOCK_KEYS entry.
+    await expect(
+      JobLockService.assertConnectorInstanceUnlocked(
+        inst!.connectorInstanceId,
+        seeded.organizationId
+      )
+    ).rejects.toMatchObject({ code: ApiCode.ENTITY_LOCKED_BY_JOB });
+  });
+
+  it("returns 422 when the instance write capability is off, creating no job", async () => {
+    const seeded = await seedWithRecords(1);
+    const [inst] = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(connectorEntities)
+      .where(eq(connectorEntities.id, seeded.connectorEntityId));
+    await (db as ReturnType<typeof drizzle>)
+      .update(connectorInstances)
+      .set({ enabledCapabilityFlags: { read: true, write: false } })
+      .where(eq(connectorInstances.id, inst!.connectorInstanceId));
+
+    const res = await request(app)
+      .delete(recordsUrl(seeded.connectorEntityId))
+      .set("Authorization", "Bearer test-token");
+
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+
+    const clears = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(schema.jobs)
+      .where(eq(schema.jobs.type, "entity_record_clear"));
+    expect(clears).toHaveLength(0);
+  });
+
+  it("processor end-to-end: tombstones both tables, parents untouched, reports the count", async () => {
+    const seeded = await seedWithRecords(4);
+    const [inst] = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(connectorEntities)
+      .where(eq(connectorEntities.id, seeded.connectorEntityId));
+
+    const bullJob = {
+      data: {
+        jobId: generateId(),
+        type: "entity_record_clear",
+        connectorEntityId: seeded.connectorEntityId,
+        connectorInstanceId: inst!.connectorInstanceId,
+        organizationId: seeded.organizationId,
+        userId: seeded.userId,
+      },
+      updateProgress: () => undefined,
+    };
+
+    const result = await entityRecordClearProcessor(bullJob as never);
+    expect(result).toEqual({ deleted: 4 });
+
+    const [liveRecords] = await (db as ReturnType<typeof drizzle>)
+      .select({ n: sql<number>`count(*)::int` })
+      .from(entityRecords)
+      .where(
+        sql`${entityRecords.connectorEntityId} = ${seeded.connectorEntityId} AND ${entityRecords.deleted} IS NULL`
+      );
+    expect(liveRecords!.n).toBe(0);
+
+    const [liveWide] = await (db as ReturnType<typeof drizzle>).execute(
+      sql`SELECT count(*)::int AS n FROM ${sql.identifier(`er__${seeded.connectorEntityId}`)} WHERE deleted IS NULL`
+    );
+    expect((liveWide as { n: number }).n).toBe(0);
+
+    // Parents untouched: entity, instance, field mappings all live.
+    const [entityRow] = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(connectorEntities)
+      .where(eq(connectorEntities.id, seeded.connectorEntityId));
+    expect(entityRow!.deleted).toBeNull();
+    const [instRow] = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(connectorInstances)
+      .where(eq(connectorInstances.id, inst!.connectorInstanceId));
+    expect(instRow!.deleted).toBeNull();
+    const liveMappings = await (db as ReturnType<typeof drizzle>)
+      .select()
+      .from(fieldMappings)
+      .where(
+        sql`${fieldMappings.connectorEntityId} = ${seeded.connectorEntityId} AND ${fieldMappings.deleted} IS NULL`
+      );
+    expect(liveMappings.length).toBeGreaterThan(0);
+
+    // Idempotent second pass — nothing left to delete.
+    const second = await entityRecordClearProcessor(bullJob as never);
+    expect(second).toEqual({ deleted: 0 });
   });
 });

@@ -1,6 +1,7 @@
 import type { JobProcessor } from "../jobs.worker.js";
 import { systemCheckProcessor } from "./system-check.processor.js";
 import { revalidationProcessor } from "./revalidation.processor.js";
+import { entityRecordClearProcessor } from "./entity-record-clear.processor.js";
 import { connectorSyncProcessor } from "./connector-sync.processor.js";
 import { fileUploadParseProcessor } from "./file-upload-parse.processor.js";
 import { layoutPlanCommitProcessor } from "./layout-plan-commit.processor.js";
@@ -20,6 +21,7 @@ import { dissolvePrecomputeProcessor } from "./dissolve-precompute.processor.js"
 export const processors: Record<string, JobProcessor> = {
   system_check: systemCheckProcessor,
   revalidation: revalidationProcessor,
+  entity_record_clear: entityRecordClearProcessor,
   connector_sync: connectorSyncProcessor,
   file_upload_parse: fileUploadParseProcessor,
   layout_plan_commit: layoutPlanCommitProcessor,

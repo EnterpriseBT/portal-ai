@@ -39,6 +39,7 @@ export const TERMINAL_JOB_STATUSES: JobStatus[] = [
 export const JobTypeEnum = z.enum([
   "system_check",
   "revalidation",
+  "entity_record_clear",
   "connector_sync",
   "file_upload_parse",
   "layout_plan_commit",
@@ -81,6 +82,36 @@ export const RevalidationResultSchema = z.object({
   ),
 });
 export type RevalidationResult = z.infer<typeof RevalidationResultSchema>;
+
+/**
+ * entity_record_clear (#453) — soft-deletes every record of one connector
+ * entity plus its `er__<id>` wide-table mirror, off-request (a 400K-row
+ * clear measured 66s; 1.5M-row entities are a real target, so the work
+ * cannot live inside an HTTP request).
+ *
+ * LOCKS: `connectorInstanceId` (via `JOB_LOCK_KEYS`) — a running clear
+ * must exclude syncs, imports, and other clears across the whole
+ * connector instance, not just the entity being cleared.
+ *
+ * `userId` rides the metadata so the processor is a pure function of
+ * `bullJob.data` (it stamps `deletedBy` on the tombstones).
+ */
+export const EntityRecordClearMetadataSchema = z.object({
+  connectorEntityId: z.string(),
+  connectorInstanceId: z.string(),
+  organizationId: z.string(),
+  userId: z.string(),
+});
+export type EntityRecordClearMetadata = z.infer<
+  typeof EntityRecordClearMetadataSchema
+>;
+
+export const EntityRecordClearResultSchema = z.object({
+  deleted: z.number().int().nonnegative(),
+});
+export type EntityRecordClearResult = z.infer<
+  typeof EntityRecordClearResultSchema
+>;
 
 /**
  * connector_sync — generic per-instance sync. The shared sync route
@@ -546,6 +577,10 @@ export type DissolvePrecomputeResult = z.infer<
 export interface JobTypeMap {
   system_check: { metadata: SystemCheckMetadata; result: SystemCheckResult };
   revalidation: { metadata: RevalidationMetadata; result: RevalidationResult };
+  entity_record_clear: {
+    metadata: EntityRecordClearMetadata;
+    result: EntityRecordClearResult;
+  };
   connector_sync: {
     metadata: ConnectorSyncMetadata;
     result: ConnectorSyncResult;
@@ -593,6 +628,10 @@ export const JOB_TYPE_SCHEMAS: {
   revalidation: {
     metadata: RevalidationMetadataSchema,
     result: RevalidationResultSchema,
+  },
+  entity_record_clear: {
+    metadata: EntityRecordClearMetadataSchema,
+    result: EntityRecordClearResultSchema,
   },
   connector_sync: {
     metadata: ConnectorSyncMetadataSchema,
@@ -651,6 +690,7 @@ export interface JobLockKeys {
 
 export const JOB_LOCK_KEYS: Partial<Record<JobType, JobLockKeys>> = {
   connector_sync: { connectorInstanceId: "connectorInstanceId" },
+  entity_record_clear: { connectorInstanceId: "connectorInstanceId" },
   layout_plan_commit: { connectorInstanceId: "connectorInstanceId" },
   bulk_transform: {
     targetConnectorEntityIds: "targetConnectorEntityIds",

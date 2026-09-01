@@ -79,8 +79,20 @@ export const PageSection = React.forwardRef<HTMLDivElement, PageSectionProps>(
           <Stack
             direction="row"
             spacing={1}
+            useFlexGap
             alignItems="center"
-            sx={{ flexShrink: 0 }}
+            // Wrap instead of spilling out of the section: `flexShrink: 0`
+            // pinned this cluster at its single-line width, which overflowed
+            // whenever the container narrowed (small screens, or a collapsed
+            // navbar — a container change no viewport media query can see).
+            // When there is room the rendering is identical; when tight the
+            // actions flow onto further right-aligned lines.
+            sx={{
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+              minWidth: 0,
+              rowGap: 1,
+            }}
           >
             {primaryAction}
             {hasSecondaryActions && <ActionsMenu items={secondaryActions} />}

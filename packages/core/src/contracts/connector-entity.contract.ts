@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ColumnDefinitionSchema } from "../models/column-definition.model.js";
+import { RunningJobSummarySchema } from "./connector-instance.contract.js";
 import { ConnectorEntitySchema } from "../models/connector-entity.model.js";
 import { ConnectorInstanceSchema } from "../models/connector-instance.model.js";
 import { FieldMappingSchema } from "../models/field-mapping.model.js";
@@ -155,4 +156,17 @@ export const ConnectorEntityImpactResponsePayloadSchema = z.object({
 
 export type ConnectorEntityImpactResponsePayload = z.infer<
   typeof ConnectorEntityImpactResponsePayloadSchema
+>;
+
+/**
+ * Response from `GET /api/connector-entities/:id/running-jobs` (#453).
+ * The union of instance-level and entity-targeted locks — empty means
+ * the entity is free to mutate. Same summary shape as the instance
+ * variant so the frontend reuses one renderer.
+ */
+export const ConnectorEntityRunningJobsResponseSchema = z.object({
+  runningJobs: z.array(RunningJobSummarySchema),
+});
+export type ConnectorEntityRunningJobsResponse = z.infer<
+  typeof ConnectorEntityRunningJobsResponseSchema
 >;

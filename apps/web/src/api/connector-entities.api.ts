@@ -13,6 +13,7 @@ import type {
   ConnectorEntityListWithMappingsResponsePayload,
   ConnectorEntityPatchRequestBody,
   ConnectorEntityPatchResponsePayload,
+  ConnectorEntityRunningJobsResponse,
 } from "@portalai/core/contracts";
 import type { ConnectorEntity } from "@portalai/core/models";
 import type { SelectOption } from "@portalai/core/ui";
@@ -69,6 +70,25 @@ export const connectorEntities = {
     useAuthQuery<ConnectorEntityImpactResponsePayload>(
       queryKeys.connectorEntities.impact(id),
       buildUrl(`${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}/impact`),
+      undefined,
+      options
+    ),
+
+  /**
+   * Non-terminal jobs that would block mutations against this entity
+   * (#453) — instance-level locks plus entity-targeted ones. Drives the
+   * entity view's disabled actions + lock alert; invalidated on each
+   * job's SSE terminal event (see `EntityDetail.view.tsx`).
+   */
+  runningJobs: (
+    id: string,
+    options?: QueryOptions<ConnectorEntityRunningJobsResponse>
+  ) =>
+    useAuthQuery<ConnectorEntityRunningJobsResponse>(
+      queryKeys.connectorEntities.runningJobs(id),
+      buildUrl(
+        `${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}/running-jobs`
+      ),
       undefined,
       options
     ),

@@ -1,4 +1,10 @@
-import React, { useCallback, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import type {
   ConnectorEntityGetResponsePayload,
@@ -9,6 +15,7 @@ import type {
   EntityRecordCountResponsePayload,
   FieldMappingListResponsePayload,
   AssignedEntityTag,
+  RunningJobSummary,
 } from "@portalai/core/contracts";
 import {
   Box,
@@ -23,6 +30,7 @@ import { AsyncSearchableSelect } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
+import Tooltip from "@mui/material/Tooltip";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -35,6 +43,12 @@ import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
 import type { ServerError } from "../utils/api.util";
 import DataResult from "../components/DataResult.component";
+import { ClearEntityRecordsDialog } from "../components/ClearEntityRecordsDialog.component";
+import { ConnectorInstanceLockAlertUI } from "../components/ConnectorInstanceLockAlert.component";
+import { joinRunningJobLabels } from "../utils/running-job-label.util";
+import { useToast } from "../utils/toast.context";
+import { sse } from "../api/sse.api";
+import { awaitJobCompletion } from "../utils/job-stream.util";
 import { DeleteConnectorEntityDialog } from "../components/DeleteConnectorEntityDialog.component";
 import { EditConnectorEntityDialog } from "../components/EditConnectorEntityDialog.component";
 import { CreateEntityRecordDialog } from "../components/CreateEntityRecordDialog.component";
@@ -156,6 +170,20 @@ export interface EntityDetailViewUIProps {
   /** Called when user clicks "Re-validate All". */
   onRevalidate?: () => void;
   isRevalidating?: boolean;
+  /**
+   * Non-terminal jobs that would block mutations against this entity
+   * (#453). Non-empty ⇒ the lock alert renders and the delete-records
+   * action disables with a tooltip naming the running work.
+   */
+  runningJobs?: RunningJobSummary[];
+  /** Clear-records dialog state (#453). */
+  clearRecordsDialogOpen?: boolean;
+  onOpenClearRecordsDialog?: () => void;
+  onCloseClearRecordsDialog?: () => void;
+  /** Fires after the typed confirmation validates — enqueues the clear. */
+  onClearRecords?: () => void;
+  isClearingRecords?: boolean;
+  clearRecordsServerError?: ServerError | null;
 }
 
 export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
@@ -192,8 +220,22 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   createRecordServerError,
   onRevalidate,
   isRevalidating,
+  runningJobs,
+  clearRecordsDialogOpen,
+  onOpenClearRecordsDialog,
+  onCloseClearRecordsDialog,
+  onClearRecords,
+  isClearingRecords,
+  clearRecordsServerError,
 }) => {
   const navigate = useNavigate();
+
+  const isLockedByJob = (runningJobs?.length ?? 0) > 0;
+  const clearDisabledReason = isLockedByJob
+    ? `${joinRunningJobLabels(runningJobs ?? [])} is running on this connector — deleting records is paused until it finishes.`
+    : !isWriteEnabled
+      ? "Writes are disabled for this connector."
+      : "";
 
   // Column definitions captured from the first successful API response.
   // Used to populate the advanced filter builder and validate persisted filters.
@@ -374,12 +416,47 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
             </Stack>
           )}
 
+        {/* Running-job lock notice (#453 / Async Job State rules) */}
+        {isLockedByJob && (
+          <ConnectorInstanceLockAlertUI runningJobs={runningJobs ?? []} />
+        )}
+
         {/* Data table */}
         <PageSection
           title="Records"
           icon={<Icon name={IconName.DataObject} />}
           primaryAction={
-            <Stack direction="row" spacing={1}>
+            // Wrap + right-align so the cluster reflows instead of spilling
+            // when the section narrows (layout is the view's job).
+            <Stack
+              direction="row"
+              spacing={1}
+              useFlexGap
+              sx={{ flexWrap: "wrap", justifyContent: "flex-end", rowGap: 1 }}
+            >
+              {onOpenClearRecordsDialog && (
+                <Tooltip
+                  title={clearDisabledReason}
+                  disableHoverListener={!clearDisabledReason}
+                >
+                  {/* span so the tooltip works on a disabled button */}
+                  <span>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      color="error"
+                      startIcon={<DeleteIcon />}
+                      onClick={onOpenClearRecordsDialog}
+                      disabled={
+                        isLockedByJob || !isWriteEnabled || isClearingRecords
+                      }
+                      data-testid="open-clear-entity-records"
+                    >
+                      {isClearingRecords ? "Deleting…" : "Delete records"}
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
               {onRevalidate && (
                 <Button
                   variant="outlined"
@@ -508,6 +585,20 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
             />
           )}
 
+        {clearRecordsDialogOpen !== undefined &&
+          onCloseClearRecordsDialog &&
+          onClearRecords && (
+            <ClearEntityRecordsDialog
+              open={!!clearRecordsDialogOpen}
+              entityLabel={entity.label}
+              recordCount={recordCount ?? 0}
+              isPending={!!isClearingRecords}
+              serverError={clearRecordsServerError ?? null}
+              onConfirm={onClearRecords}
+              onClose={onCloseClearRecordsDialog}
+            />
+          )}
+
         {deleteDialogOpen !== undefined && onCloseDeleteDialog && onDelete && (
           <DeleteConnectorEntityDialog
             open={!!deleteDialogOpen}
@@ -536,11 +627,13 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const toast = useToast();
   const { onSearch: handleSearchTags } = sdk.entityTags.search();
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [createRecordDialogOpen, setCreateRecordDialogOpen] = useState(false);
+  const [clearRecordsDialogOpen, setClearRecordsDialogOpen] = useState(false);
 
   const entityResult = sdk.connectorEntities.get(entityId);
   const connectorInstanceId =
@@ -550,6 +643,14 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   });
 
   const countResult = sdk.entityRecords.count(entityId);
+  const clearRecordsMutation = sdk.entityRecords.clear(entityId);
+  // SSE-driven, not polled (ConnectorInstance.view precedent): fetched once,
+  // then invalidated when each running job's terminal event lands.
+  const runningJobsQuery = sdk.connectorEntities.runningJobs(entityId);
+  const runningJobs = useMemo(
+    () => runningJobsQuery.data?.runningJobs ?? [],
+    [runningJobsQuery.data?.runningJobs]
+  );
   const revalidateMutation = sdk.entityRecords.revalidate(entityId);
   const createRecordMutation = sdk.entityRecords.create(entityId);
   const updateMutation = sdk.connectorEntities.update(entityId);
@@ -569,6 +670,114 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   const tagsResult = sdk.entityTagAssignments.listByEntity(entityId);
   const assignMutation = sdk.entityTagAssignments.assign(entityId);
   const unassignMutation = sdk.entityTagAssignments.unassign(entityId);
+
+  // Subscribe to each running job's SSE stream; on the terminal event,
+  // refresh the lock state + data and toast the clear's outcome (#453).
+  // Mirrors ConnectorInstance.view's lock-SSE effect.
+  const connectSseForLock = sse.create();
+  const lockSubscriptionsRef = useRef(new Map<string, AbortController>());
+  useEffect(() => {
+    const subs = lockSubscriptionsRef.current;
+    const runningIds = new Set(runningJobs.map((j) => j.id));
+    for (const [jobId, ac] of subs.entries()) {
+      if (!runningIds.has(jobId)) {
+        ac.abort();
+        subs.delete(jobId);
+      }
+    }
+    for (const job of runningJobs) {
+      if (subs.has(job.id)) continue;
+      const ac = new AbortController();
+      subs.set(job.id, ac);
+      awaitJobCompletion(connectSseForLock, job.id, { signal: ac.signal })
+        .then(({ result }) => {
+          // Completion toast only for the clear this view enqueues — other
+          // job types have their own surfaces (#453 double-toast decision).
+          if (job.type === "entity_record_clear") {
+            const deleted =
+              typeof result?.deleted === "number"
+                ? result.deleted.toLocaleString()
+                : "all";
+            toast.success(`Deleted ${deleted} records`);
+          }
+        })
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          if (job.type === "entity_record_clear") {
+            toast.error(
+              err instanceof Error ? err.message : "Deleting records failed"
+            );
+          }
+        })
+        .finally(() => {
+          if (subs.get(job.id) === ac) subs.delete(job.id);
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.connectorEntities.runningJobs(entityId),
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.entityRecords.root,
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.connectorEntities.root,
+          });
+        });
+    }
+  }, [runningJobs, entityId, connectSseForLock, queryClient, toast]);
+  useEffect(() => {
+    const subs = lockSubscriptionsRef.current;
+    return () => {
+      for (const ac of subs.values()) ac.abort();
+      subs.clear();
+    };
+  }, [entityId]);
+
+  const handleClearRecords = useCallback(() => {
+    clearRecordsMutation.mutate(undefined, {
+      onSuccess: ({ job }) => {
+        setClearRecordsDialogOpen(false);
+        clearRecordsMutation.reset();
+        toast.info("Deleting records… this can take a few minutes.");
+        // The lock alert + disabled action appear immediately rather than
+        // waiting for the first SSE event to land.
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.connectorEntities.runningJobs(entityId),
+        });
+        // Await THIS job directly rather than relying on the running-jobs
+        // effect: a small clear finishes in milliseconds — before the
+        // refetch above can even see it — so the effect never subscribes
+        // and completion would go unnoticed (#453 smoke finding: the count
+        // only updated on a manual reload). The SSE channel replays a
+        // snapshot on connect, so this resolves even for an already-
+        // terminal job. If the effect *does* also catch it, the toast
+        // provider's visible-duplicate dedupe drops the second toast and
+        // the invalidations are idempotent.
+        awaitJobCompletion(connectSseForLock, job.id)
+          .then(({ result }) => {
+            const deleted =
+              typeof result?.deleted === "number"
+                ? result.deleted.toLocaleString()
+                : "all";
+            toast.success(`Deleted ${deleted} records`);
+          })
+          .catch((err: unknown) => {
+            toast.error(
+              err instanceof Error ? err.message : "Deleting records failed"
+            );
+          })
+          .finally(() => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.connectorEntities.runningJobs(entityId),
+            });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.entityRecords.root,
+            });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.connectorEntities.root,
+            });
+          });
+      },
+    });
+  }, [clearRecordsMutation, queryClient, entityId, toast, connectSseForLock]);
 
   const invalidateTags = useCallback(() => {
     queryClient.invalidateQueries({
@@ -715,6 +924,13 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
             createRecordServerError={toServerError(createRecordMutation.error)}
             onRevalidate={handleRevalidate}
             isRevalidating={revalidateMutation.isPending}
+            runningJobs={runningJobs}
+            clearRecordsDialogOpen={clearRecordsDialogOpen}
+            onOpenClearRecordsDialog={() => setClearRecordsDialogOpen(true)}
+            onCloseClearRecordsDialog={() => setClearRecordsDialogOpen(false)}
+            onClearRecords={handleClearRecords}
+            isClearingRecords={clearRecordsMutation.isPending}
+            clearRecordsServerError={toServerError(clearRecordsMutation.error)}
           />
         );
       }}

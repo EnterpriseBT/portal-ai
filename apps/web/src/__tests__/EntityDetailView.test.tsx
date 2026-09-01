@@ -417,3 +417,114 @@ describe("BidirectionalConsistencyBannerUI (in EntityDetailView context)", () =>
     expect(screen.getByText(/2 of 10/)).toBeInTheDocument();
   });
 });
+
+// ── Delete records action (#453) ─────────────────────────────────────
+
+describe("EntityDetailViewUI — Delete records (#453)", () => {
+  beforeEach(() => {
+    mockRecordsList.mockReturnValue(emptyRecordsList);
+    mockRecordsCount.mockReturnValue(emptyQueryResult);
+    mockRecordsSync.mockReturnValue({ mutate: jest.fn(), isPending: false });
+    mockEntityGet.mockReturnValue(emptyQueryResult);
+    mockFieldMappingsValidate.mockReturnValue({ data: undefined });
+  });
+
+  const clearProps = {
+    isWriteEnabled: true,
+    recordCount: 42,
+    runningJobs: [] as Array<{
+      id: string;
+      type: string;
+      status: string;
+      startedAt: number | null;
+      created: number;
+    }>,
+    clearRecordsDialogOpen: false,
+    onOpenClearRecordsDialog: jest.fn(),
+    onCloseClearRecordsDialog: jest.fn(),
+    onClearRecords: jest.fn(),
+    isClearingRecords: false,
+    clearRecordsServerError: null,
+  };
+
+  const clearButton = () =>
+    screen.getByTestId("open-clear-entity-records") as HTMLButtonElement;
+
+  it("renders the action enabled when writable and idle, and opens the dialog", async () => {
+    const onOpen = jest.fn();
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        {...clearProps}
+        onOpenClearRecordsDialog={onOpen}
+      />
+    );
+    expect(clearButton()).not.toBeDisabled();
+    await userEvent.click(clearButton());
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the action while a job locks the entity (case 28)", () => {
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        {...clearProps}
+        runningJobs={[
+          {
+            id: "job-1",
+            type: "connector_sync",
+            status: "active",
+            startedAt: Date.now(),
+            created: Date.now(),
+          },
+        ]}
+      />
+    );
+    expect(clearButton()).toBeDisabled();
+    // The lock alert names the running work — the "why" behind the disable.
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("disables the action when the instance lacks write capability (case 29)", () => {
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        {...clearProps}
+        isWriteEnabled={false}
+      />
+    );
+    expect(clearButton()).toBeDisabled();
+  });
+
+  it("wires the dialog: typed confirm fires onClearRecords (case 30)", async () => {
+    const onClear = jest.fn();
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        {...clearProps}
+        clearRecordsDialogOpen={true}
+        onClearRecords={onClear}
+      />
+    );
+    const field = screen.getByLabelText(/Type "Contacts" to confirm/);
+    await userEvent.type(field, "Contacts");
+    await userEvent.click(screen.getByTestId("confirm-clear-entity-records"));
+    expect(onClear).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the dialog open with FormAlert on a server error (case 31)", () => {
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        {...clearProps}
+        clearRecordsDialogOpen={true}
+        clearRecordsServerError={{
+          message: "Connector instance is locked by an in-flight job",
+          code: "ENTITY_LOCKED_BY_JOB",
+        }}
+      />
+    );
+    expect(screen.getByText("Delete All Records")).toBeInTheDocument();
+    expect(screen.getByText(/locked by an in-flight job/)).toBeInTheDocument();
+  });
+});
