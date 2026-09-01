@@ -43,7 +43,9 @@ export const Authorized: React.FC<{ children: React.ReactNode }> = ({
   const { isLoading, error, isAuthenticated } = sdk.auth.session();
   return (
     <AuthorizedUI loading={isLoading} error={error}>
-      {!isAuthenticated && <Navigate to="/login" />}
+      {/* search must survive this redirect: the guarded dev-login affordance
+          (#304) is addressed as /?e2e=1 and lands here unauthenticated. */}
+      {!isAuthenticated && <Navigate to="/login" search={true} />}
       {isAuthenticated && children}
     </AuthorizedUI>
   );
