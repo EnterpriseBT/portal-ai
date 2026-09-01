@@ -52,7 +52,7 @@
 2. Re-run the same command → exit 0, every step `ok`/`noop`, `tier apply` reports no changes.
 3. `portalops local provision --env app-dev --yes` → exit 2, no banner/connection.
 4. With `STRIPE_SECRET_KEY` unset → tier step fails `ENV_NOT_CONFIGURED` (exit 3); with a key whose account lacks a declared lookup key's price → `TIER_APPLY_MISSING_PRICES` (exit 8). Either way `--json` stdout still carries the migrate + seed results with the tier step `failed`.
-5. `--e2e-org bogus@example.com` (user never logged in) → e2e-org step fails with the "User … not found" message; earlier steps' results intact. Bare `--e2e-org` with `E2E_AUTH0_USERNAME` exported (the real logged-in user) seeds `e2e-fixture`, and a re-run is a no-op; bare `--e2e-org` with the var unset → exit 2, nothing run.
+5. `--e2e-org bogus@example.com` (user never logged in) → e2e-org step fails with the "User … not found" message; earlier steps' results intact. **Caveat (observed on the walk):** this failure only manifests while the `e2e-fixture` org is absent — `seedOrganization` is idempotent-by-name and returns `existing: true` *before* validating the member email, so on an already-seeded DB the bogus email is short-circuited to `ok`. Bare `--e2e-org` with `E2E_AUTH0_USERNAME` exported (the real logged-in user) seeds `e2e-fixture`, and a re-run is a no-op; bare `--e2e-org` with the var unset → exit 2, nothing run.
 
 ## Out of scope
 
