@@ -1,11 +1,11 @@
 ---
 name: smoke
-description: Phase 5 of the Issue → PR workflow — scaffold the manual smoke-test checklist for a feature branch. Maps the spec's acceptance criteria to a docs/<SLUG>.smoke.md walkthrough the user runs against their own dev stack; the user's confirmation (plus green CI) is the merge gate. Invoke as /smoke [issue-number] after implementation.
+description: Phase 5 of the Issue → PR workflow — scaffold the smoke-test checklist for a feature branch. Maps the spec's acceptance criteria to a docs/<SLUG>.smoke.md walkthrough, tagging each step agent-walkable or manual-only; automatable steps are then run by /smoke-walk in a real browser for evidence, manual steps the human walks. The human's confirmation (plus green CI) is the merge gate. Invoke as /smoke [issue-number] after implementation.
 ---
 
 # /smoke — scaffold the manual smoke-test checklist
 
-You are scaffolding **phase 5** of the workflow in `CLAUDE.md` → "Issue → PR Workflow" — the last artifact before merge. A smoke doc is a **manual walkthrough the user performs against their own running servers**. It is never an automated script, never a jest suite, and never something you execute or check off yourself: the human confirmation is the point of the gate. The PR merges only after CI is green **and** the user has confirmed the walkthrough.
+You are scaffolding **phase 5** of the workflow in `CLAUDE.md` → "Issue → PR Workflow" — the last artifact before merge. A smoke doc is a checklist verified against a **running dev stack**, and the human's confirmation is the point of the gate. Automatable steps can be walked by the agent in a real browser via **`/smoke-walk`** (Playwright MCP, reusing the `@portalai/e2e` fixture), which produces a per-step **evidence report** the human reviews; manual-only steps (third-party redirects, payments, visual judgment, real vendor accounts) the human walks. It is never a jest suite, and **you never check a box or merge** — the agent produces evidence, the human confirms. The PR merges only after CI is green **and** the human has confirmed the walkthrough.
 
 ## Arguments
 
@@ -30,6 +30,7 @@ git log --oneline main..HEAD         # implementation commits must exist
 1. **The spec's Acceptance criteria** — the contract. **Coverage rule: every acceptance criterion maps to at least one walkthrough step.** This is the assertion the doc is built around.
 2. **The plan's slices** — the natural grouping for the `§` sections.
 3. **The branch diff** (`git diff main...HEAD --stat`) — a sweep for user-visible surfaces the spec under-specified (a new dialog, a changed helper text, a new CLI flag). Anything user-facing in the diff that no criterion covers gets its own step.
+4. **Automatability of each step** — decide whether the agent can drive it in a browser (navigate/click/read a rendered value) or it needs a human (third-party redirect, payment flow, visual/aesthetic judgment, real vendor account, email/SMS round-trip). Tag the human-only ones `— manual`; the rest are `/smoke-walk`-eligible. This tag is what `/smoke-walk` reads to know which steps to attempt vs. report `could-not-automate`.
 
 ### 3. Read one reference smoke doc
 
@@ -81,9 +82,9 @@ Section: · Expected: · Got: · Repro: · Identifiers (org/job/entity ids):
 
 **Hard rules:**
 
-- **Manual, never automated.** The doc instructs a human at their own dev stack (`npm run dev`, their Auth0 tenant, their DB). No script writes, no "run this test file".
-- **Every box scaffolds unchecked, and you never check one** — not even ones you're confident about. Checking boxes is the user's act of confirmation; a pre-checked box forges the gate.
-- **Coverage is complete:** every spec acceptance criterion → ≥ 1 step; every user-visible diff surface → ≥ 1 step. If a criterion can't be smoke-verified manually, say so in the doc rather than dropping it silently.
+- **Verified against a running stack; automatable steps agent-walkable.** The doc targets a real dev stack (`npm run dev`, the Auth0 tenant, the DB). Steps a browser can drive are walked by the agent via `/smoke-walk` for evidence; steps that need a human are tagged `— manual`. Either way it is not a jest suite — no "run this test file".
+- **Every box scaffolds unchecked, and you never check one** — not the agent, not `/smoke-walk`. The agent produces an evidence report; **checking boxes is the human's act of confirmation**, and a pre-checked box — or a `verified` the agent didn't truly observe — forges the gate.
+- **Coverage is complete:** every spec acceptance criterion → ≥ 1 step; every user-visible diff surface → ≥ 1 step. If a criterion can't be verified in a browser at all, tag it `— manual` (or say so in the doc) rather than dropping it silently.
 - **Steps are concrete:** exact prompts in quotes, exact commands, exact expected values or shapes — "works correctly" is not an expected result.
 - **No commit, no push** — the user reviews the checklist, walks it, checks boxes, and confirms.
 
@@ -93,6 +94,6 @@ Stop. Report: the doc and its section/step counts, the acceptance-criteria → s
 
 ## What this skill is not
 
-- It is not `/verify` or a test runner — nothing here executes the app.
+- It is not `/verify` or a test runner — `/smoke` scaffolds the checklist; **`/smoke-walk`** is the executor that drives the app in a browser for evidence. Neither runs jest/Playwright specs.
 - It is not the place to *fix* what the walkthrough will find — bugs found during the walk go through the doc's bug-filing template.
 - It does not merge the PR, check CI, or confirm anything on the user's behalf.

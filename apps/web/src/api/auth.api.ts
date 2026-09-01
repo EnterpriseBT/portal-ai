@@ -21,6 +21,20 @@ export const auth = {
             redirect_uri: window.location.origin,
           },
         }),
+      // Universal Login with NO pinned connection, so Auth0 offers every
+      // enabled connection (including a Database username/password one). This
+      // exists only for the guarded, dev/test-only E2E sign-in affordance
+      // (#304): the app's normal login is Google-only, which a headless test
+      // user can't drive, so the harness authenticates a Database-connection
+      // test user through this path. Never surfaced in production — see the
+      // guard in LoginForm.
+      withUniversal: () =>
+        loginWithRedirect({
+          openUrl: (url) => window.location.replace(url),
+          authorizationParams: {
+            redirect_uri: window.location.origin,
+          },
+        }),
     };
   },
 

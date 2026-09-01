@@ -552,7 +552,7 @@ Every non-trivial change lives on **one branch** with **one PR**. The five artif
 | 2. Discovery | `docs/<SLUG>.discovery.md` — survey + design space + decisions. | Anything that touches more than one package, introduces a new pattern, or changes a contract |
 | 3. Spec + plan | `docs/<SLUG>.spec.md` (contract) and `docs/<SLUG>.plan.md` (phased TDD slices). | Same threshold as discovery — when discovery is warranted, spec + plan follow |
 | 4. Implementation | Code + tests, one commit per testable slice from the plan. | Always |
-| 5. Smoke | `docs/<SLUG>.smoke.md` — manual walkthrough checklist mapped from the spec's acceptance criteria (see "The smoke gate"). | After implementation, before merge. Condensed tickets embed it in the single doc |
+| 5. Smoke | `docs/<SLUG>.smoke.md` — checklist mapped from the spec's acceptance criteria; automatable steps agent-walked for evidence via `/smoke-walk`, the rest manual (see "The smoke gate"). | After implementation, before merge. Condensed tickets embed it in the single doc |
 
 Each phase has a skill that executes it deterministically: `/ticket` → `/discovery` → `/spec` → `/plan` → `/smoke`, with `/epic` coordinating multi-ticket parents. **Implementation only starts after discovery/spec/plan are reviewed and confirmed** — the skills draft, the user confirms, then code lands.
 
@@ -654,7 +654,11 @@ Portals AI is an enterprise, multi-tenant, billing-facing product — a discover
 
 ### The smoke gate
 
-A PR merges only when **both** hold: CI is green, **and** the user has walked the ticket's manual smoke checklist (`docs/<SLUG>.smoke.md`, or the condensed doc's `## Smoke` section) against their own running stack and confirmed it. `/smoke` scaffolds the checklist from the spec's acceptance criteria with every box unchecked; checking boxes is the human's act — the agent never checks one and never merges on the user's behalf. Bugs found during the walk go through the smoke doc's bug-filing template, not ad-hoc fixes.
+A PR merges only when **both** hold: CI is green, **and** the human has confirmed the ticket's smoke checklist (`docs/<SLUG>.smoke.md`, or the condensed doc's `## Smoke` section). `/smoke` scaffolds the checklist from the spec's acceptance criteria with every box unchecked and tags each step *agent-walkable* or *manual-only*. **Automatable steps are walked by the agent in a real browser via `/smoke-walk`** (Playwright MCP against the running dev stack, reusing the `@portalai/e2e` auth fixture + seeded org), which produces a per-step **evidence report** — screenshots + observed values, each step marked `verified` / `mismatch` / `could-not-automate`. The **human reviews that evidence and checks the boxes**; **manual-only** steps (third-party redirects, payment flows, real vendor accounts, visual judgment) stay a human walk against their own stack. Checking boxes and confirming the merge remain the human's act — the agent produces evidence, it **never checks a box and never merges on the user's behalf** (a false `verified`, like a pre-checked box, forges the gate). Bugs found during the walk go through the smoke doc's bug-filing template, not ad-hoc fixes.
+
+### Agent-guided browser sessions
+
+The gate's agent walk runs on a shared harness (`@portalai/e2e`, #304): Playwright browsers baked into the devcontainer image, a reusable Auth0 session (`npm run --workspace @portalai/e2e e2e:auth` → git-ignored `storageState`, via a twice-guarded dev-only login affordance since the app is Google-only), a deterministic seeded org (`e2e:seed` → `db:seed:org`), and the **Playwright MCP** server (repo-root `.mcp.json`) that gives an in-container Claude session `mcp__playwright__*` tools — navigate, click, screenshot, read console/network. The same session serves day-to-day troubleshooting (reproduce a reported bug, inspect a broken render, confirm a fix in the real app), not only smoke walks. Automated `*.spec.ts` and CI runs are a **deferred** tier (a follow-up prod / app-dev login-verification ticket) — this is the local/agent harness. Setup + usage: `packages/e2e/README.md`.
 
 ### After merge
 

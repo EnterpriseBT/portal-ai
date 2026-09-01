@@ -81,7 +81,8 @@
       "Bash(portalai org list:*)",
       "Bash(portalai org get:*)",
       "Bash(portalai user list:*)",
-      "Bash(portalai user get:*)"
+      "Bash(portalai user get:*)",
+      "mcp__playwright"
     ]
   }
 }

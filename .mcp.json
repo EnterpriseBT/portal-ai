@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "--yes",
+        "@playwright/mcp@0.0.80",
+        "--browser",
+        "chromium",
+        "--headless",
+        "--isolated",
+        "--storage-state",
+        "packages/e2e/.auth/storageState.json",
+        "--output-dir",
+        "packages/e2e/test-results/mcp"
+      ]
+    }
+  }
+}

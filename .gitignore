@@ -14,6 +14,9 @@ coverage/
 *.lcov
 .nyc_output
 jest-results.json
+# Playwright MCP fallback output dir (.mcp.json points sessions at
+# packages/e2e/test-results/mcp, but ad-hoc/probe runs default here)
+.playwright-mcp/
 
 # Misc
 .DS_Store

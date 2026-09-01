@@ -23,7 +23,12 @@ packages/
   cli-env/              → CLI environment-access layer (env registry, AWS/Auth0 auth)
   devops-cli/           → `portalops` — infrastructure operator CLI
   admin-cli/            → `portalai` — customer-app-data operator CLI
+  e2e/                  → Playwright harness for agent-guided UI smoke walks
 ```
+
+### UI smoke walks & agent browser sessions
+
+An in-container Claude session can drive a real browser against the running dev stack (navigate, click, screenshot, read console/network) to walk a ticket's smoke checklist or troubleshoot the live UI — via the Playwright MCP server (`.mcp.json`) and the `@portalai/e2e` harness. One-time setup (test-user auth → reusable session, seeded fixture org) and usage are in [`packages/e2e/README.md`](packages/e2e/README.md); the `/smoke-walk` skill runs a checklist and produces a per-step evidence report. Automated specs + CI are a deferred tier (#304).
 
 ## Getting Started
 
