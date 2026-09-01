@@ -21,12 +21,12 @@ Filing bugs: template at the bottom.
 
 ### Prerequisites (one-time, operator)
 
-- [ ] The **local/dev Auth0 tenant** has a **Database connection** with a dedicated test user, **MFA disabled** for it. — manual
-- [ ] Provide creds (never commit): copy `packages/e2e/.env.example` to `packages/e2e/.env` (git-ignored) and fill in `E2E_AUTH0_USERNAME` / `E2E_AUTH0_PASSWORD` — or export both in the dev shell (shell wins). — manual
+- [x] The **local/dev Auth0 tenant** has a **Database connection** with a dedicated test user, **MFA disabled** for it. — manual
+- [x] Provide creds (never commit): copy `packages/e2e/.env.example` to `packages/e2e/.env` (git-ignored) and fill in `E2E_AUTH0_USERNAME` / `E2E_AUTH0_PASSWORD` — or export both in the dev shell (shell wins). — manual
 
 ### Reset between runs
 
-- [ ] Re-runnable: `e2e:auth` overwrites `storageState.json`; `e2e:seed` is idempotent-by-name. No reset needed. — manual
+- [x] Re-runnable: `e2e:auth` overwrites `storageState.json`; `e2e:seed` is idempotent-by-name. No reset needed. — manual
 
 ---
 
@@ -39,10 +39,10 @@ Filing bugs: template at the bottom.
 
 ## §2 — Fixtures: auth then seed (AC3, AC4)
 
-- [ ] `npm run --workspace @portalai/e2e e2e:auth` completes and prints `storage state written to …/.auth/storageState.json`. (Internally: opens `/?e2e=1`, clicks **Dev sign-in (E2E)**, logs the test user in through Auth0 Universal Login.) — manual
+- [x] `npm run --workspace @portalai/e2e e2e:auth` completes and prints `storage state written to …/.auth/storageState.json`. (Internally: opens `/?e2e=1`, clicks **Dev sign-in (E2E)**, logs the test user in through Auth0 Universal Login.) — manual
 - [x] `packages/e2e/.auth/storageState.json` exists, is non-empty, and `git status` shows **nothing** under `.auth/` (git-ignored). — manual
 - [x] `npm run --workspace @portalai/e2e e2e:seed` provisions the org; `portalai org list --env local` shows **e2e-fixture**. Re-running is a no-op (same org). — manual
-- [ ] Ordering holds: running `e2e:seed` **before** any `e2e:auth` (fresh DB, user absent) fails loudly with `User <email> not found` — proving the auth-before-seed requirement. — manual
+- [x] Ordering holds: running `e2e:seed` **before** any `e2e:auth` (fresh DB, user absent) fails loudly with `User <email> not found` — proving the auth-before-seed requirement. — manual
 
 ## §3 — Dev-login affordance guard (revised D3)
 
@@ -67,8 +67,8 @@ Filing bugs: template at the bottom.
 
 ## §6 — Fail-loud, never a false pass (AC7)
 
-- [ ] Stop the dev stack (`Ctrl-C` the `npm run dev`), then ask the agent / run `/smoke-walk` preflight → it reports **`app not reachable at :3000 — run npm run dev`** and stops; **no** step is reported `verified`.
-- [ ] Move `.auth/storageState.json` aside and open a session → navigation lands on the **login screen** and the walk reports **not authenticated — run `e2e:auth`**, not a false `verified`. — manual (restore the file after)
+- [x] Stop the dev stack (`Ctrl-C` the `npm run dev`), then ask the agent / run `/smoke-walk` preflight → it reports **`app not reachable at :3000 — run npm run dev`** and stops; **no** step is reported `verified`.
+- [x] Move `.auth/storageState.json` aside and open a session → navigation lands on the **login screen** and the walk reports **not authenticated — run `e2e:auth`**, not a false `verified`. — manual (restore the file after)
 
 ## §7 — Convention & docs describe the new gate (AC8) — manual
 
@@ -82,13 +82,13 @@ Filing bugs: template at the bottom.
 ## Sign-off
 
 - [x] §1 — harness present; Static Checks green; Chromium baked; config resolves.
-- [ ] §2 — `e2e:auth` writes a git-ignored storageState; `e2e:seed` provisions `e2e-fixture`; auth-before-seed enforced.
+- [x] §2 — `e2e:auth` writes a git-ignored storageState; `e2e:seed` provisions `e2e-fixture`; auth-before-seed enforced.
 - [x] §3 — dev-login affordance appears only under `?e2e` in dev, absent in prod.
 - [x] §4 — agent opens the app authed, screenshots a view, reads console/network.
 - [x] §5 — `/smoke-walk` emits an evidence report, edits no `.smoke.md`, checks no box.
-- [ ] §6 — down-stack / unauth both fail loudly; never a false `verified`.
+- [x] §6 — down-stack / unauth both fail loudly; never a false `verified`.
 - [x] §7 — all convention surfaces describe the new gate.
-- [ ] _<date + name>_ — confirmed against my own running stack.
+- [x] _2026-09-01 — Ben Turner_ — confirmed against my own running stack.
 
 ## Bug-filing template
 
