@@ -127,7 +127,7 @@ describe("JobReconciliationService — integration (#391)", () => {
   });
 
   it("leaves a fresh active row untouched (case 12)", async () => {
-    const id = await seedJob({ updated: FRESH(), created: FRESH() });
+    const id = await seedJob();
     await db
       .update(schema.jobs)
       .set({ updated: FRESH(), created: FRESH() })

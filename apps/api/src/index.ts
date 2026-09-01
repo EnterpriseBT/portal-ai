@@ -13,6 +13,7 @@ import {
 import { createMaintenanceWorker } from "./queues/maintenance.worker.js";
 import { processors } from "./queues/processors/index.js";
 import { FileUploadSessionService } from "./services/file-upload-session.service.js";
+import { JobReconciliationService } from "./services/job-reconciliation.service.js";
 import { wideTableReconcilerService } from "./services/wide-table-reconciler.service.js";
 import { ApiCode } from "./constants/api-codes.constants.js";
 
@@ -69,6 +70,30 @@ async function start() {
     .catch((err) => {
       logger.warn({ err }, "Startup file_uploads sweep failed");
     });
+
+  // Stranded-job reconciliation (#391): once at boot (covers "Redis died,
+  // then we deployed"), then every interval tick (covers a mid-life loss —
+  // deliberately an in-process timer, NOT a maintenance-queue job, because
+  // the repeatable scheduler lives in the very keyspace whose loss this
+  // repairs). Fail-open: a failed pass degrades to today's behavior.
+  // Multi-instance safety comes from the guarded transition, not
+  // coordination.
+  JobReconciliationService.sweepStrandedJobs()
+    .then((summary) => {
+      if (summary.reaped > 0 || summary.skipped > 0) {
+        logger.warn({ ...summary }, "Startup stranded-job sweep reaped jobs");
+      } else {
+        logger.info({ ...summary }, "Startup stranded-job sweep clean");
+      }
+    })
+    .catch((err) => {
+      logger.warn({ err }, "Startup stranded-job sweep failed");
+    });
+  setInterval(() => {
+    JobReconciliationService.sweepStrandedJobs().catch((err) => {
+      logger.warn({ err }, "Periodic stranded-job sweep failed");
+    });
+  }, environment.JOB_STRANDED_SWEEP_INTERVAL_MS).unref();
 
   return server;
 }
