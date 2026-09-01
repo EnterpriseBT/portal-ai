@@ -20,6 +20,21 @@ import { ApiCode } from "./constants/api-codes.constants.js";
 const jobsWorker = createJobsWorker(processors);
 const maintenanceWorker = createMaintenanceWorker();
 
+// #391: an unhandled promise rejection crashes Node by default, and the
+// job pipeline has legitimate fire-and-forget promises (e.g.
+// `void bullJob.updateProgress(...)`) that reject when a job's Redis keys
+// vanish mid-run (measured: `Missing key for job N. updateProgress` after a
+// FLUSHALL took the whole API down WITH the executions it stranded —
+// bypassing every worker/queue "error" handler, because a rejection is not
+// an EventEmitter event). Log loudly and stay up: one job's async noise
+// must not become a full multi-tenant outage, and the reconciliation sweep
+// repairs the job rows. `uncaughtException` deliberately keeps Node's
+// default crash — a synchronous escape means unknown process state, and
+// the orchestrator restart + boot sweep is the designed recovery there.
+process.on("unhandledRejection", (reason) => {
+  logger.error({ err: reason }, "Unhandled promise rejection (staying up)");
+});
+
 async function start() {
   await connectDatabase();
 
