@@ -73,14 +73,20 @@ ENV PATH="/root/.local/bin:${PATH}"
 # repo bind-mount — so pin PLAYWRIGHT_BROWSERS_PATH to a path the image keeps.
 # --with-deps pulls the system libraries headless Chromium needs.
 #
-# The pinned version MUST match packages/e2e's @playwright/test and the
-# @playwright/mcp pin in .mcp.json: two Playwright versions run different
-# browser builds, so a drift means the agent drives a browser the harness did
-# not install. node_modules is not present at image-build time, so install via
-# a pinned `npx` rather than the workspace binary. Chromium-only for now (the
-# agent walks one browser); the matrix widens when CI specs land.
+# Two consumers drive a browser, and each must get the exact build its own
+# Playwright shipped with — a Playwright launches only the browser revision it
+# bundles, so one shared install cannot serve both:
+#   1. packages/e2e's @playwright/test (1.62.1) — first RUN below, same pin.
+#   2. the @playwright/mcp pin in .mcp.json — second RUN below, which installs
+#      through the MCP package's own `install-browser` so the revision tracks
+#      that pin by construction (no third version literal to keep in sync).
+# Bumping either pin means updating its RUN line here and rebuilding.
+# node_modules is not present at image-build time, so install via a pinned
+# `npx` rather than the workspace binary. Chromium-only for now (the agent
+# walks one browser); the matrix widens when CI specs land.
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 RUN npx --yes playwright@1.62.1 install --with-deps chromium
+RUN npx --yes @playwright/mcp@0.0.80 install-browser chrome-for-testing
 
 # Put the Portal operator CLIs and turbo on PATH so developers run `portalops`
 # / `portalai` / `turbo` directly instead of `npx <tool>`. The bins are

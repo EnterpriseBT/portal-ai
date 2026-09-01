@@ -5,6 +5,8 @@
       "args": [
         "--yes",
         "@playwright/mcp@0.0.80",
+        "--browser",
+        "chromium",
         "--headless",
         "--isolated",
         "--storage-state",

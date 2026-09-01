@@ -10,9 +10,13 @@ import { defineConfig } from "@playwright/test";
  * login-verification ticket) — `testDir` is empty by design for now, and
  * `test:unit` / `test:integration` are no-ops in this package's scripts.
  *
- * The `@playwright/test` version here is kept in lockstep with the browser the
- * devcontainer `Dockerfile` bakes and the `@playwright/mcp` pin in `.mcp.json`:
- * a mismatch runs a different browser build than the package expects.
+ * Browser lockstep: a Playwright launches only the browser revision it
+ * bundles, and `@playwright/mcp` releases bundle Playwright alphas — so this
+ * package's `@playwright/test` pin and the `.mcp.json` MCP pin can never share
+ * one browser build. The devcontainer `Dockerfile` therefore bakes one build
+ * per consumer, each installed via its own pin. Bumping `@playwright/test`
+ * here or `@playwright/mcp` in `.mcp.json` means updating the matching
+ * Dockerfile RUN line and rebuilding the container.
  */
 export default defineConfig({
   testDir: "./src/specs",
