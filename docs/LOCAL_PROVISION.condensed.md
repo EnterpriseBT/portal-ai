@@ -51,7 +51,7 @@
 1. Wipe: `portalops db reset --env local --yes` (or a real `docker compose down -v` + rebuild + empty DB), then `DATABASE_URL=… STRIPE_SECRET_KEY=… portalops local provision --env local --yes` → exit 0; human output lists migrate/seed/tier-apply `ok`, e2e-org `skipped`; Settings → Subscription (or `db psql`) shows all four tiers with `plus`/`pro` carrying local price ids.
 2. Re-run the same command → exit 0, every step `ok`/`noop`, `tier apply` reports no changes.
 3. `portalops local provision --env app-dev --yes` → exit 2, no banner/connection.
-4. With `STRIPE_SECRET_KEY` unset → exit 8; `--json` stdout still carries migrate + seed results with the tier step `failed: TIER_APPLY_MISSING_PRICES`-family error.
+4. With `STRIPE_SECRET_KEY` unset → tier step fails `ENV_NOT_CONFIGURED` (exit 3); with a key whose account lacks a declared lookup key's price → `TIER_APPLY_MISSING_PRICES` (exit 8). Either way `--json` stdout still carries the migrate + seed results with the tier step `failed`.
 5. `--e2e-org bogus@example.com` (user never logged in) → e2e-org step fails with the "User … not found" message; earlier steps' results intact. Bare `--e2e-org` with `E2E_AUTH0_USERNAME` exported (the real logged-in user) seeds `e2e-fixture`, and a re-run is a no-op; bare `--e2e-org` with the var unset → exit 2, nothing run.
 
 ## Out of scope
