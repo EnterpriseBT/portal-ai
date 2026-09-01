@@ -1,0 +1,31 @@
+{
+  "name": "@portalai/e2e",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Playwright browser harness for agent-guided UI smoke walks against the local dev stack (#304). Auth fixture + seeded org baseline shared with future CI specs. Node-only.",
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write --no-error-on-unmatched-pattern \"src/**/*.{ts,json}\" \"playwright.config.ts\"",
+    "format:check": "prettier --check --no-error-on-unmatched-pattern \"src/**/*.{ts,json}\" \"playwright.config.ts\"",
+    "type-check": "tsc --noEmit",
+    "test:unit": "true",
+    "test:integration": "true",
+    "e2e:seed": "npm --workspace @portalai/api run db:seed:org -- --name e2e-fixture --member-email \"$E2E_AUTH0_USERNAME\"",
+    "e2e:auth": "tsx src/setup/auth.setup.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@types/node": "^22.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.55.0",
+    "@typescript-eslint/parser": "^8.55.0",
+    "eslint": "^9.39.2",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

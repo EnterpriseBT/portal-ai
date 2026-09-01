@@ -67,6 +67,21 @@ RUN curl -sSfL https://raw.githubusercontent.com/auth0/auth0-cli/main/install.sh
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"
 
+# Install the Playwright Chromium browser + its apt libraries, baked into an
+# image layer (#304). Browsers default to ~/.cache/ms-playwright, which is on
+# no persisted mount — only ~/.claude is bind-mounted, and /workspace is the
+# repo bind-mount — so pin PLAYWRIGHT_BROWSERS_PATH to a path the image keeps.
+# --with-deps pulls the system libraries headless Chromium needs.
+#
+# The pinned version MUST match packages/e2e's @playwright/test and the
+# @playwright/mcp pin in .mcp.json: two Playwright versions run different
+# browser builds, so a drift means the agent drives a browser the harness did
+# not install. node_modules is not present at image-build time, so install via
+# a pinned `npx` rather than the workspace binary. Chromium-only for now (the
+# agent walks one browser); the matrix widens when CI specs land.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN npx --yes playwright@1.62.1 install --with-deps chromium
+
 # Put the Portal operator CLIs and turbo on PATH so developers run `portalops`
 # / `portalai` / `turbo` directly instead of `npx <tool>`. The bins are
 # workspace symlinks npm creates under the root node_modules/.bin on `npm i`;

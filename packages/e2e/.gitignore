@@ -1,0 +1,7 @@
+# Reusable Auth0 session captured by `npm run e2e:auth`. Contains a live token —
+# never commit it. Regenerate any time with `npm run e2e:auth`.
+.auth/
+
+# Playwright traces / screenshots / videos and the agent smoke-walk reports.
+test-results/
+playwright-report/
