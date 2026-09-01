@@ -1,6 +1,9 @@
 import { Queue } from "bullmq";
 
 import { environment } from "../environment.js";
+import { createLogger } from "../utils/logger.util.js";
+
+const logger = createLogger({ module: "jobs-queue" });
 
 export const JOBS_QUEUE_NAME = "async-jobs";
 
@@ -31,6 +34,11 @@ export const getJobsQueue = (): Queue => {
         removeOnComplete: { age: 7 * 24 * 3600 }, // 7 days
         removeOnFail: { age: 30 * 24 * 3600 }, // 30 days
       },
+    });
+    // #391: an unhandled `error` event on the queue's connection crashes the
+    // process; log and stay up — the reconciliation sweep repairs job rows.
+    _jobsQueue.on("error", (err) => {
+      logger.warn({ err }, "Jobs queue error (staying up)");
     });
   }
   return _jobsQueue;

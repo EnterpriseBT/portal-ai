@@ -121,7 +121,15 @@ export const useJobStream = (
         return;
       }
 
-      if (cancelled) return;
+      if (cancelled) {
+        // The hook unmounted while the connect (a token fetch) was in
+        // flight — the EventSource was created for a consumer that no
+        // longer exists. Close it, or its native auto-reconnect (the
+        // server sets retry: 0) hammers the API forever from a zombie
+        // detached from every view (#391 smoke finding).
+        es.close();
+        return;
+      }
 
       eventSourceRef.current = es;
 
@@ -273,6 +281,16 @@ export async function awaitJobCompletion(
   }
 
   const es = await connect(`/api/sse/jobs/${encodeURIComponent(jobId)}/events`);
+
+  // The abort may have landed WHILE connect was awaiting the token — after
+  // the entry check above, but before the listener below could exist. An
+  // already-aborted signal never fires its event, so without this re-check
+  // the promise would never settle and the EventSource would leak, natively
+  // auto-reconnecting (retry: 0) forever (#391 smoke finding).
+  if (signal?.aborted) {
+    es.close();
+    throw new DOMException("Job wait aborted", "AbortError");
+  }
 
   return new Promise<JobCompletionResult>((resolve, reject) => {
     let settled = false;

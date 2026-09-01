@@ -10,10 +10,14 @@
  */
 
 import type { JobStatus } from "@portalai/core/models";
+import { TERMINAL_JOB_STATUSES } from "@portalai/core/models";
+import { and, eq, notInArray } from "drizzle-orm";
 import type { JobUpdateEvent } from "@portalai/core/contracts";
 
 import type { Redis } from "ioredis";
 
+import { jobs } from "../db/schema/index.js";
+import type { JobSelect } from "../db/schema/zod.js";
 import { getRedisClient } from "../utils/redis.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
@@ -116,6 +120,69 @@ export class JobEventsService {
     const redis = getRedisClient();
     await redis.publish(`${JOB_CHANNEL_PREFIX}${jobId}`, JSON.stringify(event));
     logger.debug({ jobId, status }, "Job event published");
+  }
+
+  /**
+   * Like {@link transition}, but applies ONLY while the row is still
+   * non-terminal (#391). Returns `true` when this call performed the
+   * transition, `false` when a terminal status already stood — in which
+   * case nothing is written and no event is published, so a losing writer
+   * never broadcasts a status the row never took. First terminal writer
+   * wins: concurrent reconciliation sweeps, a zombie execution finishing
+   * late, and a user cancel all converge under this guard.
+   *
+   * The SSE publish on the true path is BEST-EFFORT: Redis may be the very
+   * dependency whose failure the caller (the stranded-job sweep) exists to
+   * repair, and the row is the record of truth.
+   */
+  static async transitionIfNonTerminal(
+    jobId: string,
+    status: JobStatus,
+    patch: Parameters<typeof JobEventsService.transition>[2] = {}
+  ): Promise<boolean> {
+    const now = SystemUtilities.utc.now().getTime();
+    const dbPatch: Record<string, unknown> = {
+      status,
+      updated: now,
+      ...patch,
+    };
+    if (status === "active") dbPatch.startedAt = now;
+    if (status === "completed" || status === "failed")
+      dbPatch.completedAt = now;
+
+    const updated = await DbService.repository.jobs.updateWhere(
+      and(
+        eq(jobs.id, jobId),
+        notInArray(
+          jobs.status,
+          TERMINAL_JOB_STATUSES as unknown as JobSelect["status"][]
+        )
+      )!,
+      dbPatch
+    );
+    if (updated.length === 0) return false;
+
+    const event: JobUpdateEvent = {
+      jobId,
+      status,
+      progress: patch.progress ?? 0,
+      error: patch.error ?? null,
+      result: patch.result ?? null,
+      timestamp: now,
+    };
+    try {
+      const redis = getRedisClient();
+      await redis.publish(
+        `${JOB_CHANNEL_PREFIX}${jobId}`,
+        JSON.stringify(event)
+      );
+    } catch (err) {
+      logger.warn(
+        { jobId, status, err },
+        "Guarded transition applied but the event publish failed — the row is authoritative"
+      );
+    }
+    return true;
   }
 
   /**

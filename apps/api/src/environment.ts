@@ -133,6 +133,19 @@ export const environment = {
     process.env.ENTITY_RECORD_ORPHAN_RETENTION_DAYS || "7",
     10
   ),
+  // Stranded-job reconciliation (#391). A non-terminal job whose BullMQ
+  // entry is gone AND whose last write is older than the threshold is
+  // presumed dead and marked failed by the sweep; the sweep runs at boot
+  // and every interval tick. Threshold must exceed the longest legitimate
+  // quiet period between progress writes (minutes on a 400K sync batch).
+  JOB_STRANDED_THRESHOLD_MS: parseInt(
+    process.env.JOB_STRANDED_THRESHOLD_MS || String(15 * 60 * 1000),
+    10
+  ),
+  JOB_STRANDED_SWEEP_INTERVAL_MS: parseInt(
+    process.env.JOB_STRANDED_SWEEP_INTERVAL_MS || String(5 * 60 * 1000),
+    10
+  ),
   // How long a re-delivered layout_plan_commit pass waits for the instance
   // sync lock before giving the attempt back to BullMQ (#461). Must exceed
   // any plausible commit duration — a timeout here means the holder is

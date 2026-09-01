@@ -257,6 +257,10 @@ portalSqlHandleSseRouter.get(
       const { handleId } = req.params;
       const channel = streamChannelKey(handleId);
       const subscriber = getRedisClient().duplicate();
+      // #391: an unhandled ioredis `error` event crashes the process.
+      subscriber.on("error", (err) => {
+        logger.warn({ err }, "SQL-handle SSE subscriber error (staying up)");
+      });
 
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache, no-transform");

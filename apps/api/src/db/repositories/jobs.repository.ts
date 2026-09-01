@@ -238,6 +238,37 @@ export class JobsRepository extends Repository<
       .limit(1);
     return row?.uploadSessionId ?? undefined;
   }
+
+  /**
+   * Candidates for the stranded-job sweep (#391): non-terminal rows whose
+   * last write predates `olderThanMs`. `COALESCE(updated, created)` because
+   * a `pending` row that was never transitioned has `updated = NULL`.
+   * `awaiting_confirmation` is deliberately absent — its BullMQ entry is
+   * legitimately gone while the user decides, so the sweep's absence
+   * predicate would false-positive on it.
+   */
+  async findStrandedCandidates(
+    olderThanMs: number,
+    limit: number,
+    client: DbClient = db
+  ): Promise<JobSelect[]> {
+    return (await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          inArray(jobs.status, [
+            "pending",
+            "active",
+            "stalled",
+          ] as JobSelect["status"][]),
+          sql`COALESCE(${jobs.updated}, ${jobs.created}) < ${olderThanMs}`,
+          this.notDeleted()
+        )
+      )
+      .orderBy(jobs.created)
+      .limit(limit)) as JobSelect[];
+  }
 }
 
 /** Singleton instance — import this in route handlers / services. */

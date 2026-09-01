@@ -31,6 +31,8 @@ const mockUpsertJobScheduler = jest.fn<(...a: unknown[]) => Promise<unknown>>();
 class FakeQueue {
   upsertJobScheduler = mockUpsertJobScheduler;
   close = async () => undefined;
+  // #391: the lazy constructor attaches an "error" log handler.
+  on = () => undefined;
 }
 
 jest.unstable_mockModule("bullmq", () => ({

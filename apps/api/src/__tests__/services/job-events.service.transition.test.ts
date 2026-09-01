@@ -21,10 +21,15 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockUpdate = jest.fn<(...a: unknown[]) => Promise<unknown>>();
+const mockUpdateWhere = jest.fn<(...a: unknown[]) => Promise<unknown[]>>();
 const mockPublish = jest.fn<(...a: unknown[]) => Promise<unknown>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
-  DbService: { repository: { jobs: { update: mockUpdate } } },
+  DbService: {
+    repository: {
+      jobs: { update: mockUpdate, updateWhere: mockUpdateWhere },
+    },
+  },
 }));
 
 jest.unstable_mockModule("../../utils/redis.util.js", () => ({
@@ -130,5 +135,78 @@ describe("JobEventsService.transition — DB patch (#441)", () => {
     });
 
     expect(eventFor().error).toBe("Fetch failed");
+  });
+});
+
+// ── transitionIfNonTerminal (#391) ───────────────────────────────────
+
+describe("JobEventsService.transitionIfNonTerminal (#391)", () => {
+  beforeEach(() => {
+    mockUpdate.mockReset().mockResolvedValue(undefined);
+    mockUpdateWhere.mockReset();
+    mockPublish.mockReset().mockResolvedValue(1);
+  });
+
+  /** The patch handed to `jobs.updateWhere` (second positional arg). */
+  const wherePatch = (call = 0) =>
+    mockUpdateWhere.mock.calls[call][1] as Record<string, unknown>;
+
+  it("writes, stamps completedAt on failed, publishes, and returns true when the row is non-terminal", async () => {
+    mockUpdateWhere.mockResolvedValue([{ id: "job-1" }]); // guarded write landed
+
+    const did = await JobEventsService.transitionIfNonTerminal(
+      "job-1",
+      "failed",
+      { error: "Stranded: test reason" }
+    );
+
+    expect(did).toBe(true);
+    const patch = wherePatch();
+    expect(patch.status).toBe("failed");
+    expect(patch.completedAt).toBe(NOW);
+    expect(patch.updated).toBe(NOW);
+    expect(patch.error).toBe("Stranded: test reason");
+    expect(mockPublish).toHaveBeenCalledTimes(1);
+    expect(eventFor().status).toBe("failed");
+  });
+
+  it("returns false and publishes nothing when a terminal status already stands", async () => {
+    mockUpdateWhere.mockResolvedValue([]); // guard matched no row
+
+    const did = await JobEventsService.transitionIfNonTerminal(
+      "job-1",
+      "failed",
+      { error: "too late" }
+    );
+
+    // First terminal writer wins — a losing writer must not broadcast a
+    // status the row never took.
+    expect(did).toBe(false);
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it("still returns true when the publish throws — the row is the record of truth", async () => {
+    mockUpdateWhere.mockResolvedValue([{ id: "job-1" }]);
+    mockPublish.mockRejectedValue(new Error("redis is down"));
+
+    // Redis being down is the very failure mode the caller (the stranded-job
+    // sweep) exists to repair — the notification must never undo the repair.
+    await expect(
+      JobEventsService.transitionIfNonTerminal("job-1", "failed", {
+        error: "x",
+      })
+    ).resolves.toBe(true);
+  });
+
+  it("matches transition's patch semantics: omitted error leaves the column untouched", async () => {
+    mockUpdateWhere.mockResolvedValue([{ id: "job-1" }]);
+
+    await JobEventsService.transitionIfNonTerminal("job-1", "active", {
+      progress: 5,
+    });
+
+    const patch = wherePatch();
+    expect("error" in patch).toBe(false);
+    expect(patch.startedAt).toBe(NOW); // active stamps startedAt, like transition
   });
 });

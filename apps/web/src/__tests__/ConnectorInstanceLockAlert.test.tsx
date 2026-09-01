@@ -75,3 +75,65 @@ describe("ConnectorInstanceLockAlertUI", () => {
     expect(screen.getByText(/future_kind is running/i)).toBeInTheDocument();
   });
 });
+
+// ── Age line + stuck hint (#391) ─────────────────────────────────────
+
+describe("ConnectorInstanceLockAlertUI — age + stuck hint (#391)", () => {
+  it("shows 'started X ago' for a fresh job, with no stuck hint", () => {
+    render(
+      <ConnectorInstanceLockAlertUI
+        runningJobs={[job({ startedAt: Date.now() - 2 * 60_000 })]}
+      />
+    );
+    expect(screen.getByText(/started 2 min ago/i)).toBeInTheDocument();
+    expect(screen.queryByText(/may be stuck/i)).not.toBeInTheDocument();
+  });
+
+  it("adds the stuck hint and a View-job link once a job passes the hint threshold", () => {
+    render(
+      <ConnectorInstanceLockAlertUI
+        runningJobs={[
+          job({ id: "job-stuck", startedAt: Date.now() - 20 * 60_000 }),
+        ]}
+      />
+    );
+    expect(screen.getByText(/may be stuck/i)).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: /view job/i });
+    expect(link).toHaveAttribute("href", "/jobs/job-stuck");
+  });
+
+  it("hints only the stale job in a mixed list", () => {
+    render(
+      <ConnectorInstanceLockAlertUI
+        runningJobs={[
+          job({
+            id: "fresh",
+            type: "connector_sync",
+            startedAt: Date.now() - 60_000,
+          }),
+          job({
+            id: "old",
+            type: "layout_plan_commit",
+            startedAt: Date.now() - 60 * 60_000,
+          }),
+        ]}
+      />
+    );
+    expect(screen.getAllByText(/may be stuck/i)).toHaveLength(1);
+    expect(screen.getByRole("link", { name: /view job/i })).toHaveAttribute(
+      "href",
+      "/jobs/old"
+    );
+  });
+
+  it("falls back to `created` when startedAt is null", () => {
+    render(
+      <ConnectorInstanceLockAlertUI
+        runningJobs={[
+          job({ startedAt: null, created: Date.now() - 5 * 60_000 }),
+        ]}
+      />
+    );
+    expect(screen.getByText(/started 5 min ago/i)).toBeInTheDocument();
+  });
+});

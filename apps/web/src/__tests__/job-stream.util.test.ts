@@ -572,3 +572,62 @@ describe("awaitJobCompletion", () => {
     await expect(promise).rejects.toThrow(/SSE connection error/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Leak regression (#391 smoke finding): an EventSource created AFTER its
+// consumer already went away must be closed, or its native auto-reconnect
+// (server sets retry: 0) hammers the API forever — from every page, since
+// the zombie is detached from any mounted view.
+// ---------------------------------------------------------------------------
+
+describe("stream-leak regression (#391)", () => {
+  beforeEach(() => {
+    MockEventSource.reset();
+  });
+
+  it("useJobStream closes an EventSource whose connect resolved after unmount", async () => {
+    let resolveConnect!: (es: MockEventSource) => void;
+    mockConnect.mockImplementation(
+      (path: string) =>
+        new Promise<MockEventSource>((resolve) => {
+          resolveConnect = () =>
+            resolve(new MockEventSource(`https://api.test.com${path}`));
+        })
+    );
+
+    const { unmount } = renderHook(() => useJobStream("job-zombie"));
+    await waitFor(() => expect(mockConnect).toHaveBeenCalled());
+
+    unmount(); // consumer gone while the token fetch is still in flight
+    resolveConnect(undefined as never);
+
+    await waitFor(() => {
+      expect(MockEventSource.lastInstance).not.toBeNull();
+      expect(MockEventSource.lastInstance!.close).toHaveBeenCalled();
+    });
+  });
+
+  it("awaitJobCompletion closes and rejects when the signal aborted during connect", async () => {
+    let resolveConnect!: () => void;
+    mockConnect.mockImplementation(
+      (path: string) =>
+        new Promise<MockEventSource>((resolve) => {
+          resolveConnect = () =>
+            resolve(new MockEventSource(`https://api.test.com${path}`));
+        })
+    );
+
+    const controller = new AbortController();
+    const promise = awaitJobCompletion(
+      mockConnect as unknown as (path: string) => Promise<EventSource>,
+      "job-zombie",
+      { signal: controller.signal }
+    );
+
+    controller.abort(); // abort lands while connect is awaiting the token
+    resolveConnect();
+
+    await expect(promise).rejects.toThrow("aborted");
+    expect(MockEventSource.lastInstance!.close).toHaveBeenCalled();
+  });
+});
