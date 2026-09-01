@@ -426,7 +426,14 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
           title="Records"
           icon={<Icon name={IconName.DataObject} />}
           primaryAction={
-            <Stack direction="row" spacing={1}>
+            // Wrap + right-align so the cluster reflows instead of spilling
+            // when the section narrows (layout is the view's job).
+            <Stack
+              direction="row"
+              spacing={1}
+              useFlexGap
+              sx={{ flexWrap: "wrap", justifyContent: "flex-end", rowGap: 1 }}
+            >
               {onOpenClearRecordsDialog && (
                 <Tooltip
                   title={clearDisabledReason}
