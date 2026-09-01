@@ -57,9 +57,11 @@ The two setup commands. First slice against the running stack.
 
 **Files**
 
-- Edit: `packages/e2e/package.json` — `e2e:seed` (wraps `db:seed:org --name e2e-fixture --member-email $E2E_AUTH0_USERNAME`) + `e2e:auth` (`tsx src/setup/auth.setup.ts`).
-- New: `packages/e2e/src/setup/auth.setup.ts` — one-time Universal-Login → `.auth/storageState.json` (spec §Surface `auth.setup.ts`).
-- New: `packages/e2e/README.md` content — the `E2E_AUTH0_*` env, MFA-off prerequisite, and the seed↔auth ordering (filled here, referenced by slice 5).
+- Edit: `apps/web/src/api/auth.api.ts` — add `login().withUniversal()` (no pinned connection). *Revised D3: the app is Google-only, so the fixture needs a non-Google entry.*
+- Edit: `apps/web/src/components/LoginForm.component.tsx` — optional `onClickDevLogin` on the pure UI + the twice-guarded (`import.meta.env.DEV` ∧ `?e2e`) container wiring + `data-testid="e2e-dev-login"`.
+- New: `packages/e2e/src/setup/auth.setup.ts` — drives `/?e2e=1` → dev affordance → Universal Login → `.auth/storageState.json` (spec §Surface `auth.setup.ts`).
+- Edit: `packages/e2e/README.md` — `E2E_AUTH0_*` env, Database-connection + MFA-off prerequisite, the dev affordance, and the **auth-before-seed** ordering (confirmed: `seedOrganization` requires the user to exist).
+- (`e2e:seed` / `e2e:auth` scripts already landed in slice 1's `package.json`.)
 
 **Steps**
 

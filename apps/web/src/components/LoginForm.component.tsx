@@ -14,10 +14,15 @@ import {
 
 export interface LoginFormUIProps {
   onClickGoogleLogin: () => void;
+  /** Dev/test-only E2E sign-in (#304). Rendered only when provided — the
+   *  container supplies it solely under its dev guard, so it is absent for
+   *  normal users and in production bundles. */
+  onClickDevLogin?: () => void;
 }
 
 export const LoginFormUI: React.FC<LoginFormUIProps> = ({
   onClickGoogleLogin,
+  onClickDevLogin,
 }) => {
   return (
     <Container maxWidth="sm">
@@ -69,6 +74,19 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
               By continuing, you agree to our Terms of Service and Privacy
               Policy
             </Typography>
+
+            {onClickDevLogin && (
+              <Button
+                variant="text"
+                size="small"
+                fullWidth
+                onClick={onClickDevLogin}
+                data-testid="e2e-dev-login"
+                sx={{ textTransform: "none" }}
+              >
+                Dev sign-in (E2E)
+              </Button>
+            )}
           </Stack>
         </Paper>
       </Box>
@@ -77,11 +95,26 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
 };
 
 export const LoginForm = () => {
-  const { withGoogle } = sdk.auth.login();
+  const { withGoogle, withUniversal } = sdk.auth.login();
 
   const handleGoogleLogin = () => {
     withGoogle();
   };
 
-  return <LoginFormUI onClickGoogleLogin={handleGoogleLogin} />;
+  // Dev/test-only sign-in for the E2E harness (#304). The app's normal login
+  // is Google-only, which a headless test user can't drive; this guarded
+  // affordance triggers Auth0 Universal Login (no pinned connection) so a
+  // Database-connection test user can authenticate. Guarded twice: only in dev
+  // builds (`import.meta.env.DEV` — stripped from production bundles) AND only
+  // when explicitly requested via `?e2e`, so it never appears for normal users.
+  const showDevLogin =
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).has("e2e");
+
+  return (
+    <LoginFormUI
+      onClickGoogleLogin={handleGoogleLogin}
+      onClickDevLogin={showDevLogin ? () => withUniversal() : undefined}
+    />
+  );
 };

@@ -29,6 +29,11 @@ export default [
         NodeJS: "readonly",
         fetch: "readonly",
         globalThis: "readonly",
+        // Browser-context globals: Playwright evaluates page functions
+        // (waitForFunction/evaluate) in the page, where `window` etc. are real.
+        window: "readonly",
+        document: "readonly",
+        localStorage: "readonly",
       },
     },
     plugins: {

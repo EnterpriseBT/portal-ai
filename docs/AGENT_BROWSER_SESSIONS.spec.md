@@ -8,7 +8,7 @@ Pins the contract for a new `packages/e2e` Playwright harness, the devcontainer 
 
 1. **D1 — Playwright MCP** (`@playwright/mcp`, stdio, `.mcp.json`) is the agent's browser tool; `claude-in-chrome` is architecturally excluded (no desktop Chrome in a headless devcontainer).
 2. **D2 — `packages/e2e`** new workspace (not `apps/web/e2e`) so Playwright stays out of web's lint/tsc/build hashes.
-3. **D3 — one-time Universal-Login → `storageState`** (not password-grant / cache injection); a dedicated `e2e@` user with MFA disabled in the **local/dev tenant**.
+3. **D3 (revised at implementation) — one-time Universal-Login → `storageState`, reached through a guarded dev-only login affordance.** The app's normal login is **Google-OAuth-only** (`auth.api.ts` pins `connection: "google-oauth2"`), which a headless test user can't drive, and auth0-spa-js won't complete a hand-rolled authorize URL. So a small, **twice-guarded** affordance (`import.meta.env.DEV` **and** `?e2e`) triggers `loginWithRedirect` with no pinned connection, showing Universal Login for a **Database-connection** test user (MFA off) in the **local/dev tenant**. auth0-spa-js still owns the localStorage cache shape (nothing hand-assembled). *This supersedes the discovery's "no app-source change" assumption — user-ratified fork, see the revised Files touched.*
 4. **D4 — bake browsers into the image** at a fixed `PLAYWRIGHT_BROWSERS_PATH` (survives; `~/.cache` is not a persisted mount).
 5. **D5 — reuse `db:seed:org`** for the fixture org; no bespoke seeding.
 6. **D6 — new `/smoke-walk` skill** (leave `/smoke` as scaffolder); the agent produces an evidence report and **never checks a box** — the human accepts/denies the evidence and owns the merge confirmation (OQ#1, user-confirmed).
@@ -75,9 +75,16 @@ export default defineConfig({
 });
 ```
 
+### App dev-login affordance (revised — `apps/web`)
+
+Because the app is Google-only (D3), the fixture needs a non-Google entry:
+
+- **`apps/web/src/api/auth.api.ts`** — add `login().withUniversal()`: `loginWithRedirect` with **no** `connection` (Auth0 shows Universal Login).
+- **`apps/web/src/components/LoginForm.component.tsx`** — `LoginFormUIProps` gains optional `onClickDevLogin?`; when present the pure UI renders a `data-testid="e2e-dev-login"` button. The `LoginForm` container passes it **only** under `import.meta.env.DEV && new URLSearchParams(location.search).has("e2e")`, so it is absent for normal users and stripped from production bundles. Respects the Component File Policy (pure UI prop-driven; container owns the guard).
+
 ### `packages/e2e/src/setup/auth.setup.ts` (new) — the auth fixture
 
-Standalone runnable (not a Playwright "project dependency" yet — specs are deferred). Launches Chromium, drives the app's own Auth0 Universal Login **once**, persists the SPA session:
+Standalone runnable (not a Playwright "project dependency" yet — specs are deferred). Launches Chromium, navigates `/?e2e=1`, clicks the dev affordance, drives Auth0 Universal Login **once**, persists the SPA session:
 
 ```ts
 // Reads env: E2E_BASE_URL (default http://localhost:3000), E2E_AUTH0_USERNAME, E2E_AUTH0_PASSWORD.
@@ -172,7 +179,7 @@ Preflight: stack ✓ · storageState ✓ · fixture ✓
 None — no DB schema change. The fixture org is created by the existing `db:seed:org` path (`apps/api/src/db/seed-org.ts`), not a new migration.
 
 ## Seed
-No new seed *code*. `e2e:seed` invokes `db:seed:org --name e2e-fixture --member-email $E2E_AUTH0_USERNAME` (idempotent-by-name; provisions org + synthetic owner + sandbox connector + default station, and links the `e2e@` user as a member). **Sequencing:** the `e2e@` user row must exist before membership links — `e2e:auth` (first login auto-provisions the user) runs before, or `e2e:seed` re-runs after, the first login. Confirm `ApplicationService.seedOrganization`'s member-link behavior (creates-vs-requires-existing) at implementation and document the order in `packages/e2e/README.md`.
+No new seed *code*. `e2e:seed` invokes `db:seed:org --name e2e-fixture --member-email $E2E_AUTH0_USERNAME` (idempotent-by-name; provisions org + synthetic owner + sandbox connector + default station, and links the test user as a member). **Sequencing confirmed at implementation:** `ApplicationService.seedOrganization` **requires the member user to already exist** (`findByEmail` → throws `User <email> not found` at `application.service.ts:184-186`), so **`e2e:auth` must run before `e2e:seed`** — the first login auto-provisions the user row. Documented in `packages/e2e/README.md`.
 
 ## TDD test plan
 
@@ -212,8 +219,8 @@ No new seed *code*. `e2e:seed` invokes `db:seed:org --name e2e-fixture --member-
 ## Files touched
 
 **New:** `packages/e2e/{package.json,playwright.config.ts,tsconfig.json,.eslintrc*,.gitignore,README.md}`, `packages/e2e/src/setup/auth.setup.ts`, `.mcp.json`, `.claude/skills/smoke-walk/SKILL.md`, `docs/AGENT_BROWSER_SESSIONS.smoke.md`.
-**Edit:** `Dockerfile`, `.claude/settings.local.json`, `.claude/skills/smoke/SKILL.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, root `README.md` and/or `apps/web/README.md`. (`package-lock.json` updates for the new workspace + Playwright dep.)
-**No change:** `turbo.json` (new package inherits the pipeline; no per-task override needed), DB schema, seed *code*, app source.
+**Edit:** `Dockerfile`, `.claude/settings.local.json`, `.claude/skills/smoke/SKILL.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, root `README.md` and/or `apps/web/README.md`, and — for the dev-login affordance (revised D3) — `apps/web/src/api/auth.api.ts` + `apps/web/src/components/LoginForm.component.tsx`. (`package-lock.json` updates for the new workspace + Playwright dep.)
+**No change:** `turbo.json` (new package inherits the pipeline; no per-task override needed), DB schema, seed *code*. (App source changes are limited to the twice-guarded dev-login affordance above — a revision from the original "no app change", forced by the Google-only login.)
 
 ## Next step
 

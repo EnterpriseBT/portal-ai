@@ -73,6 +73,8 @@ The session must not re-drive Universal Login every run. Options for producing t
 
 **Lean: A.** A one-time Playwright login against the test tenant with a dedicated `e2e@…` user (MFA off in that tenant), saved as `packages/e2e/.auth/storageState.json` (git-ignored) via a Playwright **global-setup**/setup-project, reused by both the agent session and future specs. It's the canonical Playwright pattern and the SPA's localStorage cache is captured wholesale, so no SDK-internal shape is hand-built. Credentials come from env (`E2E_AUTH0_USERNAME/PASSWORD`), never committed.
 
+> **Reconciled at implementation (slice 2):** the app's login is **Google-OAuth-only** (`auth.api.ts` pins `connection: "google-oauth2"`) — there is no username/password form to drive, and this survey missed it. Option A still holds, but reaching Universal Login for a Database-connection user needs a **twice-guarded dev-only login affordance** in `apps/web` (`import.meta.env.DEV` ∧ `?e2e`). User-ratified change to the "no app-source change" premise; the spec's revised D3 + Files-touched carry it.
+
 ### Decision 4 — Browser binary persistence
 
 **Lean: bake into the image.** `RUN npx playwright install --with-deps chromium` in the `Dockerfile` with `ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright`, so browsers live in an image layer (survives, since neither `/workspace` nor `~/.cache` is a persisted mount) and there is no ad-hoc `npx playwright install` into a running container. Pin to Chromium only for now (agent smoke walks one browser); the full matrix can widen when specs land.
