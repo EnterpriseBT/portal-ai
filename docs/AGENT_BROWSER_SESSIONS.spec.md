@@ -28,6 +28,7 @@ Pins the contract for a new `packages/e2e` Playwright harness, the devcontainer 
 ### Out of scope
 - Automated `*.spec.ts` assertion specs and the `test:e2e` CI runner (packages/e2e ships `test:unit`/`test:integration` as no-ops now).
 - Ephemeral CI workflow, failure-artifact upload, unattended CI auth, required-check promotion.
+- **Browser-container topology** — the follow-up (CI tier) should decide whether the browser runs as its **own service** (official `mcr.microsoft.com/playwright:v<ver>` image, browsers + deps preinstalled + version-matched, connected via `--cdp-endpoint`) instead of baked into the single `dev` image. Keeps browser bytes out of the base image; trades cross-container networking (`E2E_BASE_URL=http://dev:3000`), an extra Auth0 Allowed-Callback-URL + a `storageState` **origin mismatch** with a human's `localhost` session, and MCP-over-CDP/SSE instead of stdio-local; **no CPU saving** (a headless browser costs the same wherever it runs). CI already runs services separately, so that tier is where the split pays off; local dev can adopt a compose **`profile`-gated** sibling service if `dev`-image bloat bites first. (See discovery → "What this doesn't decide".)
 - Visual-regression/screenshot-diff; broad flow coverage; retiring the 33 `.smoke.md` docs.
 
 ## Surface
