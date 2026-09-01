@@ -41,5 +41,13 @@ npm run --workspace @portalai/e2e e2e:seed      # db:seed:org --name e2e-fixture
 
 `e2e:auth` relies on a **dev/test-only** sign-in path (`apps/web`): visiting `/?e2e=1` in a **dev build** reveals a "Dev sign-in (E2E)" button that calls `loginWithRedirect` without pinning the Google connection, so Auth0 shows Universal Login. It is guarded twice — `import.meta.env.DEV` (stripped from production bundles) **and** the `?e2e` query param — so it never appears for normal users or in production.
 
-<!-- Session + walk instructions (drive via MCP / `/smoke-walk`) are filled in by
-     the MCP-wiring and convention slices. -->
+## Agent browser session & smoke walks
+
+Once the one-time setup above is done, an in-container Claude session drives the browser through the **Playwright MCP** server registered in the repo-root `.mcp.json` (`mcp__playwright__*` tools — navigate, click, type, screenshot, read console/network). It runs `--headless --isolated`, seeded from `.auth/storageState.json`, so every session starts from the reused authed state. Artifacts land under `packages/e2e/test-results/` (git-ignored).
+
+Two ways to use it:
+
+- **Ad-hoc troubleshooting** — ask the session to open a view, reproduce a reported bug, inspect a broken render, or confirm a fix in the real app.
+- **Smoke walks** — `/smoke-walk <issue-number>` reads the ticket's `docs/<SLUG>.smoke.md`, walks each automatable step in the browser, and writes a per-step **evidence report** (`verified` / `mismatch` / `could-not-automate`, with screenshots and observed values). It **never checks a box or merges** — you review the evidence and confirm the checklist.
+
+The `mcp__playwright__*` tools load at session start, so a session must be (re)started after `.mcp.json` changes. Browsers come from the devcontainer image (`PLAYWRIGHT_BROWSERS_PATH`); a freshly built image already has them — no `npx playwright install` in a running container.
