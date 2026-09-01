@@ -18,6 +18,8 @@ const mockClose = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
 class MockQueue {
   name: string;
   close = mockClose;
+  // #391: the lazy constructors attach an "error" log handler.
+  on = jest.fn();
   constructor(name: string) {
     this.name = name;
     constructions.push({ name });
