@@ -21,6 +21,7 @@ import DataResult from "../components/DataResult.component";
 import { JobDataItem } from "../components/Job.component";
 import { HighlightedCode } from "../components/HighlightedCode.component";
 import { sdk } from "../api/sdk";
+import { formatJobProgress } from "../utils/job-progress.util";
 
 const dates = new DateFactory("UTC");
 
@@ -46,6 +47,12 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                 const hasStreamData = stream.status !== null;
                 const status = (hasStreamData ? stream.status : job.status)!;
                 const progress = hasStreamData ? stream.progress : job.progress;
+                // #458: fraction when a total is known, count-without-percent
+                // when it isn't, plain percent for detail-less job types.
+                const progressDisplay = formatJobProgress(
+                  hasStreamData ? stream.progressDetail : job.progressDetail,
+                  progress
+                );
                 const error = hasStreamData ? stream.error : job.error;
                 const result = hasStreamData ? stream.result : job.result;
                 const startedAt = hasStreamData
@@ -97,7 +104,7 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                           { label: "Type", value: job.type },
                           {
                             label: "Progress",
-                            value: `${Math.round(progress)}%`,
+                            value: progressDisplay.label,
                           },
                           { label: "Created", value: formatDate(job.created) },
                           { label: "Started", value: formatDate(startedAt) },
@@ -126,7 +133,13 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
 
                     {status === "active" && (
                       <Progress
-                        value={progress}
+                        value={
+                          progressDisplay.kind === "count"
+                            ? 0
+                            : progressDisplay.barValue
+                        }
+                        indeterminate={progressDisplay.kind === "count"}
+                        showLabel={progressDisplay.kind !== "count"}
                         height={10}
                         color="info"
                         animated

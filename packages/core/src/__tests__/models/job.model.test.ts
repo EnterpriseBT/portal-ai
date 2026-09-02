@@ -1,6 +1,7 @@
 import {
   JobModel,
   JobModelFactory,
+  JobProgressDetailSchema,
   JobSchema,
   JobStatusEnum,
   JobTypeEnum,
@@ -38,6 +39,7 @@ function buildValidJob(overrides: Partial<Job> = {}): Partial<Job> {
     attempts: 0,
     maxAttempts: 3,
     lostExecutions: 0,
+    progressDetail: null,
     ...overrides,
   };
 }
@@ -276,6 +278,7 @@ describe("JobModelFactory", () => {
         attempts: 0,
         maxAttempts: 3,
         lostExecutions: 0,
+        progressDetail: null,
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -679,5 +682,61 @@ describe("entity_record_clear schemas (#453)", () => {
     expect(JOB_TYPE_SCHEMAS.entity_record_clear.result).toBe(
       EntityRecordClearResultSchema
     );
+  });
+});
+
+describe("JobProgressDetailSchema (#458)", () => {
+  it("accepts a count with an unknown total", () => {
+    const result = JobProgressDetailSchema.safeParse({
+      processed: 123954,
+      total: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a count with a known total", () => {
+    const result = JobProgressDetailSchema.safeParse({
+      processed: 123954,
+      total: 397960,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a negative processed count", () => {
+    expect(
+      JobProgressDetailSchema.safeParse({ processed: -1, total: null }).success
+    ).toBe(false);
+  });
+
+  it("rejects a zero or negative total", () => {
+    expect(
+      JobProgressDetailSchema.safeParse({ processed: 0, total: 0 }).success
+    ).toBe(false);
+    expect(
+      JobProgressDetailSchema.safeParse({ processed: 0, total: -5 }).success
+    ).toBe(false);
+  });
+
+  it("rejects non-integer counts", () => {
+    expect(
+      JobProgressDetailSchema.safeParse({ processed: 1.5, total: null }).success
+    ).toBe(false);
+  });
+
+  it("JobSchema parses with a null progressDetail", () => {
+    const result = JobSchema.safeParse(buildValidJob({ progressDetail: null }));
+    expect(result.success).toBe(true);
+  });
+
+  it("JobSchema parses with a populated progressDetail", () => {
+    const result = JobSchema.safeParse(
+      buildValidJob({ progressDetail: { processed: 50, total: 200 } })
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it("JobSchema rejects a job missing progressDetail (required, like lostExecutions)", () => {
+    const { progressDetail: _omit, ...withoutDetail } = buildValidJob();
+    expect(JobSchema.safeParse(withoutDetail).success).toBe(false);
   });
 });

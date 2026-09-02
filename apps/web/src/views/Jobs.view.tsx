@@ -98,6 +98,11 @@ export const JobsView = () => {
                                   ? stream.progress
                                   : undefined
                               }
+                              progressDetail={
+                                stream.status !== null
+                                  ? stream.progressDetail
+                                  : undefined
+                              }
                             />
                           )}
                         </JobDataStream>

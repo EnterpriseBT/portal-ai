@@ -268,8 +268,11 @@ describe("microsoftExcelAdapter.syncInstance", () => {
     expect(patch.lastErrorMessage).toBeNull();
     expect(patch.updatedBy).toBe("user-1");
 
-    // Progress milestones in expected order.
-    const reportedPercents = progress.mock.calls.map((c) => c[0]);
+    // Progress milestones in expected order — asserted `{ percent }` phase
+    // boundaries, unchanged by #458 (these are real milestones, not guesses).
+    const reportedPercents = progress.mock.calls.map(
+      (c) => (c[0] as { percent?: number }).percent
+    );
     expect(reportedPercents).toEqual([0, 10, 40, 80, 95, 100]);
   });
 

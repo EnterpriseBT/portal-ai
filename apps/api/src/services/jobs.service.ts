@@ -48,6 +48,10 @@ export class JobsService {
       type: params.type,
       status: "pending",
       progress: 0,
+      // A new job has reported no structured progress. The DB column is
+      // nullable, but this model is validated against the full JobSchema
+      // before the insert, so the field must be set here too (#458).
+      progressDetail: null,
       metadata: params.metadata ?? {},
       result: null,
       error: null,

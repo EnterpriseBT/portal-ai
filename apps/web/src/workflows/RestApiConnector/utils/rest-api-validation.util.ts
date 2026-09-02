@@ -107,6 +107,29 @@ export function paginationDraftToConfig(d: PaginationDraft): PaginationConfig {
   }
 }
 
+/**
+ * Project the endpoint form's flat totalCount fields (#458) into the
+ * config block, or `undefined` when the section is untouched.
+ *
+ * `params` is a URL-query-format string ("returnCountOnly=true&f=json");
+ * an empty params string with a set path is valid — some APIs carry the
+ * total on the plain response ("meta.totalCount") and need no override.
+ * The reverse (params without a path) is a validation error, handled in
+ * `validateEndpoint` — there'd be no way to read the count.
+ */
+export function totalCountDraftToConfig(
+  params: string,
+  path: string
+): { queryParams: Record<string, string>; responsePath: string } | undefined {
+  const trimmedPath = path.trim();
+  if (trimmedPath === "") return undefined;
+  const queryParams: Record<string, string> = {};
+  for (const [k, v] of new URLSearchParams(params.trim())) {
+    queryParams[k] = v;
+  }
+  return { queryParams, responsePath: trimmedPath };
+}
+
 // ── Templating lint ─────────────────────────────────────────────────
 
 const KNOWN_TEMPLATE_VARIABLES = new Set(["cursor", "pageNumber"]);
@@ -235,10 +258,21 @@ export function validateEndpoint(input: {
   idField: string;
   bodyTemplate?: string;
   pagination?: PaginationDraft;
+  totalCountParams?: string;
+  totalCountPath?: string;
 }): FormErrors {
   const errors: FormErrors = {};
   if (!input.key.trim()) errors.key = "Key is required";
   if (!input.label.trim()) errors.label = "Label is required";
+
+  // #458: count params without a response path leave the probe unreadable.
+  const totalCountParams = input.totalCountParams?.trim() ?? "";
+  const totalCountPath = input.totalCountPath?.trim() ?? "";
+  if (totalCountParams !== "" && totalCountPath === "") {
+    errors.totalCountPath =
+      "Count response path is required when count query params are set";
+  }
+  const totalCount = totalCountDraftToConfig(totalCountParams, totalCountPath);
 
   const pagination = input.pagination
     ? paginationDraftToConfig(input.pagination)
@@ -273,6 +307,7 @@ export function validateEndpoint(input: {
     idField: input.idField || null,
     ...(bodyTemplate !== undefined ? { bodyTemplate } : {}),
     pagination,
+    ...(totalCount !== undefined ? { totalCount } : {}),
   });
   if (!result.success) {
     return { ...errors, ...result.errors };

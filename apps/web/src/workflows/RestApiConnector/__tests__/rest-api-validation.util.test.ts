@@ -4,6 +4,7 @@ import {
   EMPTY_CREDENTIALS_DRAFT,
   EMPTY_PAGINATION_DRAFT,
   paginationDraftToConfig,
+  totalCountDraftToConfig,
   validateBasics,
   validateEndpoint,
   validateEndpointsList,
@@ -332,5 +333,62 @@ describe("validateColumnRows", () => {
     expect(errors["row-0-normalizedKey"]).toMatch(/duplicate/i);
     expect(errors["row-2-normalizedKey"]).toMatch(/duplicate/i);
     expect(errors["row-1-normalizedKey"]).toBeUndefined();
+  });
+});
+
+// #458 — totalCount probe draft handling.
+describe("totalCountDraftToConfig", () => {
+  it("parses a query string + path into the config block", () => {
+    expect(
+      totalCountDraftToConfig("returnCountOnly=true&f=json", "count")
+    ).toEqual({
+      queryParams: { returnCountOnly: "true", f: "json" },
+      responsePath: "count",
+    });
+  });
+
+  it("allows a path with no extra params (count field on the plain response)", () => {
+    expect(totalCountDraftToConfig("", "meta.totalCount")).toEqual({
+      queryParams: {},
+      responsePath: "meta.totalCount",
+    });
+  });
+
+  it("returns undefined when the section is untouched", () => {
+    expect(totalCountDraftToConfig("", "")).toBeUndefined();
+    expect(totalCountDraftToConfig("  ", " ")).toBeUndefined();
+  });
+});
+
+describe("validateEndpoint — totalCount (#458)", () => {
+  const base = {
+    key: "parcels",
+    label: "Parcels",
+    path: "/query",
+    method: "GET",
+    recordsPath: "",
+    idField: "",
+  };
+
+  it("errors when count params are set without a response path", () => {
+    const errors = validateEndpoint({
+      ...base,
+      totalCountParams: "returnCountOnly=true",
+      totalCountPath: "",
+    });
+    expect(errors.totalCountPath).toMatch(/response path is required/i);
+  });
+
+  it("accepts a fully configured probe", () => {
+    const errors = validateEndpoint({
+      ...base,
+      totalCountParams: "returnCountOnly=true",
+      totalCountPath: "count",
+    });
+    expect(errors).toEqual({});
+  });
+
+  it("accepts an untouched probe section", () => {
+    expect(validateEndpoint(base)).toEqual({});
   });
 });

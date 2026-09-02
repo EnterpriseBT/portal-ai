@@ -897,6 +897,17 @@ const options: swaggerJsdoc.Options = {
               description: "Progress percentage (0-100)",
               example: 0,
             },
+            progressDetail: {
+              type: ["object", "null"],
+              description:
+                "Structured progress (#458): cumulative records processed " +
+                "and the known total, or null total when the denominator " +
+                "is genuinely unknown. Null for jobs that never report one.",
+              properties: {
+                processed: { type: "integer", example: 123954 },
+                total: { type: ["integer", "null"], example: 397960 },
+              },
+            },
             metadata: {
               type: "object",
               additionalProperties: true,

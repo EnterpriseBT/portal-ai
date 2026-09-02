@@ -17,6 +17,7 @@ import {
 import { Redis } from "ioredis";
 
 import type { JobUpdateEvent } from "@portalai/core/contracts";
+import { JobUpdateEventSchema } from "@portalai/core/contracts";
 
 // ── Shared Redis URL for tests ───────────────────────────────────────────
 
@@ -24,8 +25,11 @@ const REDIS_URL = process.env.REDIS_URL || "redis://redis:6379";
 
 // ── Mock DbService to isolate Redis Pub/Sub behaviour ────────────────────
 
+// Returns the updated row (`Repository.update` uses `.returning()`); #458's
+// updateProgress publishes from that row, so tests that exercise the
+// detail-only path stub a concrete return value.
 const mockJobsUpdate = jest
-  .fn<() => Promise<void>>()
+  .fn<() => Promise<Record<string, unknown> | undefined>>()
   .mockResolvedValue(undefined);
 
 jest.unstable_mockModule("../../../services/db.service.js", () => ({
@@ -160,6 +164,7 @@ describe("JobEventsService Integration Tests", () => {
 
       mockJobsUpdate.mockImplementation(async () => {
         callOrder.push("db_update");
+        return undefined;
       });
 
       // Spy on publish to track ordering
@@ -239,7 +244,7 @@ describe("JobEventsService Integration Tests", () => {
 
       await ready;
 
-      await JobEventsService.updateProgress(jobId, 50);
+      await JobEventsService.updateProgress(jobId, { percent: 50 });
 
       await new Promise((r) => setTimeout(r, 200));
 
@@ -256,12 +261,118 @@ describe("JobEventsService Integration Tests", () => {
     it("should update the database with progress", async () => {
       const jobId = uniqueJobId();
 
-      await JobEventsService.updateProgress(jobId, 75);
+      await JobEventsService.updateProgress(jobId, { percent: 75 });
 
       expect(mockJobsUpdate).toHaveBeenCalledWith(
         jobId,
         expect.objectContaining({ progress: 75, updated: expect.any(Number) })
       );
+    });
+
+    // ── #458: structured progress ─────────────────────────────────────
+
+    it("derives the percent from processed/total and persists the detail", async () => {
+      const jobId = uniqueJobId();
+
+      await JobEventsService.updateProgress(jobId, {
+        processed: 50,
+        total: 200,
+      });
+
+      expect(mockJobsUpdate).toHaveBeenCalledWith(
+        jobId,
+        expect.objectContaining({
+          progress: 25,
+          progressDetail: { processed: 50, total: 200 },
+        })
+      );
+    });
+
+    it("caps the derived percent at 99 — only an asserted percent reads 100", async () => {
+      const jobId = uniqueJobId();
+
+      await JobEventsService.updateProgress(jobId, {
+        processed: 199_999,
+        total: 200_000,
+      });
+      await JobEventsService.updateProgress(jobId, {
+        processed: 200_000,
+        total: 200_000,
+      });
+
+      for (const call of mockJobsUpdate.mock.calls as unknown as [
+        string,
+        { progress: number },
+      ][]) {
+        expect(call[1].progress).toBe(99);
+      }
+    });
+
+    it("a detail-only update leaves the percent column unchanged and publishes the row's percent", async () => {
+      const jobId = uniqueJobId();
+      const channel = `job:events:${jobId}`;
+      const { events, ready, cleanup } = createTestSubscriber(channel);
+      await ready;
+
+      // The row is at 40% from an earlier asserted milestone.
+      mockJobsUpdate.mockResolvedValueOnce({
+        progress: 40,
+        progressDetail: { processed: 7, total: null },
+      });
+
+      await JobEventsService.updateProgress(jobId, { processed: 7 });
+
+      // No `progress` key in the SET — the column keeps its milestone value.
+      const patch = (
+        mockJobsUpdate.mock.calls.at(-1) as unknown as [
+          string,
+          Record<string, unknown>,
+        ]
+      )[1];
+      expect(patch).not.toHaveProperty("progress");
+      expect(patch.progressDetail).toEqual({ processed: 7, total: null });
+
+      await new Promise((r) => setTimeout(r, 200));
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        jobId,
+        status: "active",
+        progress: 40,
+        progressDetail: { processed: 7, total: null },
+      });
+
+      await cleanup();
+    });
+
+    it("publishes an event that parses against the widened JobUpdateEventSchema", async () => {
+      const jobId = uniqueJobId();
+      const channel = `job:events:${jobId}`;
+      const { events, ready, cleanup } = createTestSubscriber(channel);
+      await ready;
+
+      await JobEventsService.updateProgress(jobId, {
+        processed: 123_954,
+        total: 397_960,
+      });
+
+      await new Promise((r) => setTimeout(r, 200));
+      expect(events).toHaveLength(1);
+      const parsed = JobUpdateEventSchema.safeParse(events[0]);
+      expect(parsed.success).toBe(true);
+      expect(events[0].progressDetail).toEqual({
+        processed: 123_954,
+        total: 397_960,
+      });
+
+      await cleanup();
+    });
+
+    it("ignores an update carrying neither percent nor processed", async () => {
+      const jobId = uniqueJobId();
+
+      await JobEventsService.updateProgress(jobId, {});
+
+      expect(mockJobsUpdate).not.toHaveBeenCalled();
     });
   });
 

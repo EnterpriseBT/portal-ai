@@ -714,11 +714,29 @@ export function jobTypesLocking(
 
 // --- Schema ---
 
+/**
+ * Structured progress persisted per job (#458). `processed` is the cumulative
+ * count of records the job has handled; `total` is the known denominator, or
+ * `null` when it is genuinely unknown — surfaces must then render a count,
+ * never a synthetic percent. The scalar `progress` integer remains the
+ * coarse percent channel; when a total is known the transport derives it
+ * from this detail (capped at 99 until an asserted terminal percent).
+ */
+export const JobProgressDetailSchema = z.object({
+  processed: z.number().int().nonnegative(),
+  total: z.number().int().positive().nullable(),
+});
+export type JobProgressDetail = z.infer<typeof JobProgressDetailSchema>;
+
 export const JobSchema = CoreSchema.extend({
   organizationId: z.string(),
   type: JobTypeEnum,
   status: JobStatusEnum,
   progress: z.number(),
+  // Structured progress (#458). No Zod default — mirrors `lostExecutions`:
+  // the DB column is nullable, every selected row carries a concrete value,
+  // and the one creation site (JobsService.create) sets it explicitly.
+  progressDetail: JobProgressDetailSchema.nullable(),
   metadata: z.record(z.string(), z.unknown()),
   result: z.record(z.string(), z.unknown()).nullable(),
   error: z.string().nullable(),

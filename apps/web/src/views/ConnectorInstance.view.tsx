@@ -737,6 +737,7 @@ export const ConnectorInstanceView = ({
                     <ConnectorInstanceSyncFeedbackUI
                       jobStatus={syncState.jobStatus}
                       progress={syncState.progress}
+                      progressDetail={syncState.progressDetail}
                       recordCounts={syncState.recordCounts}
                       errorMessage={syncState.errorMessage}
                       onDismissResult={syncState.onDismissResult}

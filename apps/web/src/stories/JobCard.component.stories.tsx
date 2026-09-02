@@ -18,6 +18,7 @@ const baseJob: Job = {
   attempts: 0,
   maxAttempts: 3,
   lostExecutions: 0,
+  progressDetail: null,
   created: 1710000000000,
   createdBy: "user-1",
   updated: 1710000000000,

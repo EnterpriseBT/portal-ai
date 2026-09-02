@@ -18,6 +18,7 @@ let currentStreamState: JobStreamState = {
   jobId: null,
   status: null,
   progress: 0,
+  progressDetail: null,
   error: null,
   result: null,
   startedAt: null,
@@ -44,6 +45,7 @@ const makeJob = (overrides: Partial<Job> = {}): Job => ({
   type: "system_check",
   status: "completed",
   progress: 100,
+  progressDetail: null,
   metadata: {},
   result: { status: "healthy", checks: {}, durationMs: 500 },
   error: null,
@@ -77,6 +79,7 @@ describe("JobDetailView", () => {
       jobId: null,
       status: null,
       progress: 0,
+      progressDetail: null,
       error: null,
       result: null,
       startedAt: null,
@@ -195,6 +198,7 @@ describe("JobDetailView", () => {
       jobId: "job-1",
       status: "active",
       progress: 50,
+      progressDetail: null,
       error: null,
       result: null,
       startedAt: 1710000000000,
@@ -218,6 +222,7 @@ describe("JobDetailView", () => {
       jobId: "job-1",
       status: "active",
       progress: 60,
+      progressDetail: null,
       error: null,
       result: null,
       startedAt: 1710000000000,
@@ -229,6 +234,87 @@ describe("JobDetailView", () => {
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
     // Progress bar label and detail row both show the percentage
     expect(screen.getAllByText("60%").length).toBeGreaterThanOrEqual(1);
+  });
+
+  // #458 — when the stream carries structured detail, the fraction replaces
+  // the percent text, and an unknown total renders an indeterminate bar.
+  it("shows 'X of Y records' when the stream reports a known total", () => {
+    const job = makeJob({ status: "active", progress: 0 });
+    currentGetQuery = {
+      data: { job },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<GetQuery>;
+    currentStreamState = {
+      jobId: "job-1",
+      status: "active",
+      progress: 0,
+      progressDetail: { processed: 123954, total: 397960 },
+      error: null,
+      result: null,
+      startedAt: 1710000000000,
+      completedAt: null,
+      connectionStatus: "connected",
+    };
+
+    render(<JobDetailView jobId="job-1" />);
+    expect(
+      screen.getAllByText("123,954 of 397,960 records").length
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "31"
+    );
+  });
+
+  it("shows a count and an indeterminate bar when the total is unknown", () => {
+    const job = makeJob({ status: "active", progress: 0 });
+    currentGetQuery = {
+      data: { job },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<GetQuery>;
+    currentStreamState = {
+      jobId: "job-1",
+      status: "active",
+      progress: 0,
+      progressDetail: { processed: 123954, total: null },
+      error: null,
+      result: null,
+      startedAt: 1710000000000,
+      completedAt: null,
+      connectionStatus: "connected",
+    };
+
+    render(<JobDetailView jobId="job-1" />);
+    expect(
+      screen.getAllByText("123,954 records so far").length
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("progressbar")).not.toHaveAttribute(
+      "aria-valuenow"
+    );
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
+  });
+
+  it("renders persisted progressDetail with no stream open (#458)", () => {
+    const job = makeJob({
+      status: "active",
+      progress: 0,
+      progressDetail: { processed: 500, total: null },
+    });
+    currentGetQuery = {
+      data: { job },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<GetQuery>;
+    // Stream not yet connected — the view renders from the persisted row.
+    render(<JobDetailView jobId="job-1" />);
+    expect(
+      screen.getAllByText("500 records so far").length
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("should display error section when job has error", () => {

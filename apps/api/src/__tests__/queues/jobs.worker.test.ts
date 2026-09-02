@@ -10,13 +10,20 @@ import type { Job as BullJob } from "bullmq";
  */
 type Handler = (job: BullJob) => Promise<unknown>;
 let captured: Handler | undefined;
+/** Event handlers registered via `worker.on(...)`, keyed by event name —
+ *  lets the `progress` / `failed` hooks be invoked directly (#458). */
+let onHandlers = new Map<
+  string,
+  (...args: unknown[]) => Promise<void> | void
+>();
 
 jest.unstable_mockModule("bullmq", () => ({
   Worker: class {
     constructor(_name: string, handler: Handler) {
       captured = handler;
     }
-    on() {
+    on(event: string, handler: (...args: unknown[]) => Promise<void> | void) {
+      onHandlers.set(event, handler);
       return this;
     }
     close() {
@@ -37,10 +44,15 @@ const mockTransition = jest.fn<
   ) => Promise<void>
 >(async () => {});
 
+const mockUpdateProgress = jest.fn<
+  (jobId: string, update: Record<string, unknown>) => Promise<void>
+>(async () => {});
+
 jest.unstable_mockModule("../../services/job-events.service.js", () => ({
   JobEventsService: {
     transition: mockTransition,
     publishCustomEvent: jest.fn(async () => {}),
+    updateProgress: mockUpdateProgress,
   },
 }));
 
@@ -146,5 +158,57 @@ describe("jobs worker classifies batch outcomes (#410)", () => {
     expect((call?.[2] as { error?: string }).error).toContain(
       "provider exploded"
     );
+  });
+});
+
+/**
+ * #458 — the progress event used to guard `typeof progress === "number"`,
+ * silently dropping any object. Connector-sync now reports a structured
+ * `SyncProgressUpdate`; the handler normalizes numbers (every other
+ * processor) into `{ percent }` and passes objects through.
+ */
+describe("jobs worker forwards progress events (#458)", () => {
+  beforeEach(() => {
+    captured = undefined;
+    onHandlers = new Map();
+    mockTransition.mockClear();
+    mockUpdateProgress.mockClear();
+  });
+
+  const fireProgress = async (progress: unknown) => {
+    createJobsWorker({ bulk_geocode: async () => ({}) });
+    const handler = onHandlers.get("progress");
+    if (!handler) throw new Error("progress handler was not registered");
+    await handler(job("bulk_geocode"), progress);
+  };
+
+  it("normalizes a bare number into { percent }", async () => {
+    await fireProgress(42);
+    expect(mockUpdateProgress).toHaveBeenCalledWith("job-1", { percent: 42 });
+  });
+
+  it("passes a structured update through verbatim", async () => {
+    await fireProgress({ processed: 123954, total: 397960 });
+    expect(mockUpdateProgress).toHaveBeenCalledWith("job-1", {
+      processed: 123954,
+      total: 397960,
+    });
+  });
+
+  it("passes a processed-only update through (unknown total)", async () => {
+    await fireProgress({ processed: 500 });
+    expect(mockUpdateProgress).toHaveBeenCalledWith("job-1", {
+      processed: 500,
+    });
+  });
+
+  it("drops an empty-object update without calling the service", async () => {
+    await fireProgress({});
+    expect(mockUpdateProgress).not.toHaveBeenCalled();
+  });
+
+  it("drops a null update without calling the service", async () => {
+    await fireProgress(null);
+    expect(mockUpdateProgress).not.toHaveBeenCalled();
   });
 });

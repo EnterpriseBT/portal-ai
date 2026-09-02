@@ -19,6 +19,8 @@ function endpoint(overrides: Partial<EndpointDraft> = {}): EndpointDraft {
     idField: "id",
     bodyTemplate: "",
     pagination: EMPTY_PAGINATION_DRAFT,
+    totalCountParams: "",
+    totalCountPath: "",
     ...overrides,
   };
 }

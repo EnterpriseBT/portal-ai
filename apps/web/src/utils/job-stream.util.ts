@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { JobModel } from "@portalai/core/models";
-import type { JobStatus } from "@portalai/core/models";
+import type { JobProgressDetail, JobStatus } from "@portalai/core/models";
 import type {
   JobSnapshotEvent,
   JobUpdateEvent,
@@ -22,6 +22,8 @@ export interface JobStreamState {
   jobId: string | null;
   status: JobStatus | null;
   progress: number;
+  /** Structured progress (#458) — null until the job reports one. */
+  progressDetail: JobProgressDetail | null;
   error: string | null;
   result: Record<string, unknown> | null;
   startedAt: number | null;
@@ -33,6 +35,7 @@ const INITIAL_STATE: JobStreamState = {
   jobId: null,
   status: null,
   progress: 0,
+  progressDetail: null,
   error: null,
   result: null,
   startedAt: null,
@@ -140,6 +143,7 @@ export const useJobStream = (
           jobId: data.jobId,
           status: data.status,
           progress: data.progress,
+          progressDetail: data.progressDetail ?? null,
           error: data.error,
           result: data.result,
           startedAt: data.startedAt,
@@ -164,11 +168,21 @@ export const useJobStream = (
             prev.status === "awaiting_confirmation" && data.status === "active"
               ? prev.status
               : data.status;
+          // Same monotonic clamp as `progress` (#458): SSE events can arrive
+          // out of order after a reconnect, and a stale lower count would
+          // walk the meter backwards.
+          const progressDetail =
+            data.progressDetail != null &&
+            data.progressDetail.processed >=
+              (prev.progressDetail?.processed ?? -1)
+              ? data.progressDetail
+              : prev.progressDetail;
           return {
             ...prev,
             status,
             progress:
               data.progress > prev.progress ? data.progress : prev.progress,
+            progressDetail,
             error: data.error ?? prev.error,
             result: data.result ?? prev.result,
             connectionStatus: "connected",

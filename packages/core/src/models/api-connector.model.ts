@@ -197,6 +197,20 @@ export const ApiEndpointConfigBaseSchema = z.object({
   queryParams: z.record(z.string(), z.string()).optional(),
   bodyTemplate: z.string().optional(),
   pagination: PaginationConfigSchema,
+  /**
+   * Optional pre-sync total-count probe (#458): the endpoint is re-requested
+   * once before pagination with these query params merged over the endpoint's
+   * own (the probe's win), and an integer record count is read from the
+   * dotted `responsePath`. Strictly best-effort — any failure degrades the
+   * sync to an unknown total, never fails it. ArcGIS:
+   * `{ queryParams: { returnCountOnly: "true" }, responsePath: "count" }`.
+   */
+  totalCount: z
+    .object({
+      queryParams: z.record(z.string(), z.string()),
+      responsePath: z.string().min(1),
+    })
+    .optional(),
 });
 
 export const ApiEndpointConfigSchema = ApiEndpointConfigBaseSchema.refine(

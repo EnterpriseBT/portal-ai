@@ -42,6 +42,13 @@ export const jobs = pgTable("jobs", {
   type: jobTypeEnum("type").notNull(),
   status: jobStatusEnum("status").notNull().default("pending"),
   progress: integer("progress").notNull().default(0),
+  // Structured progress (#458): cumulative records processed + the known
+  // total (null = genuinely unknown). NULL for jobs that never report one.
+  // `progress` stays the coarse percent; surfaces prefer this when present.
+  progressDetail: jsonb("progress_detail").$type<{
+    processed: number;
+    total: number | null;
+  }>(),
   metadata: jsonb("metadata")
     .notNull()
     .default({})

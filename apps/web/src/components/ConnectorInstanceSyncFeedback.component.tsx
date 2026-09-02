@@ -7,15 +7,18 @@ import LinkOffIcon from "@mui/icons-material/LinkOff";
 
 import { Box, Progress, Stack, Typography } from "@portalai/core/ui";
 import { JobModel } from "@portalai/core/models";
-import type { JobStatus } from "@portalai/core/models";
+import type { JobProgressDetail, JobStatus } from "@portalai/core/models";
 
 import type { SyncRecordCounts } from "../utils/use-connector-instance-sync.util";
+import { formatJobProgress } from "../utils/job-progress.util";
 
 export interface ConnectorInstanceSyncFeedbackUIProps {
   /** Live job status from the SSE stream. */
   jobStatus: JobStatus | null;
   /** Live progress percent (0–100) from the SSE stream. */
   progress: number;
+  /** Structured progress from the SSE stream (#458), else null. */
+  progressDetail?: JobProgressDetail | null;
   /** Tally rendered when a job completes successfully. */
   recordCounts: SyncRecordCounts | null;
   /** Error message rendered on POST failure or stream failure. */
@@ -66,6 +69,7 @@ export interface ConnectorInstanceSyncFeedbackUIProps {
 export const ConnectorInstanceSyncFeedbackUI = ({
   jobStatus,
   progress,
+  progressDetail,
   recordCounts,
   errorMessage,
   onDismissResult,
@@ -79,12 +83,37 @@ export const ConnectorInstanceSyncFeedbackUI = ({
   // Snackbar requires exactly one child; pick the active phase.
   let body: React.ReactElement | null = null;
   if (isLive) {
+    // #458: fraction when the total is known, count + indeterminate bar
+    // when it isn't, plain percent for jobs that report no detail.
+    const display = formatJobProgress(progressDetail ?? null, progress);
     body = (
-      <Alert severity="info" variant="filled" sx={{ minWidth: 320 }}>
-        <Stack spacing={0.75}>
+      // Fixed width, not minWidth: the "X of Y records" line grows as the
+      // count climbs, and a content-sized Alert would reflow the progress
+      // bar's width on every update (#458 smoke finding).
+      <Alert
+        severity="info"
+        variant="filled"
+        // The message slot doesn't grow by default; without flexGrow the
+        // fixed-width Alert would shrink-wrap the bar to the text width.
+        sx={{ width: 360, "& .MuiAlert-message": { flexGrow: 1 } }}
+      >
+        <Stack spacing={0.75} sx={{ width: "100%" }}>
           <Typography variant="body2">Syncing…</Typography>
+          {display.kind !== "percent" && (
+            <Typography variant="body2">{display.label}</Typography>
+          )}
           <Box sx={{ width: "100%" }}>
-            <Progress value={progress} height={6} animated />
+            <Progress
+              value={display.kind === "count" ? 0 : display.barValue}
+              indeterminate={display.kind === "count"}
+              showLabel={display.kind !== "count"}
+              // `inherit` = the filled Alert's contrast color (white). The
+              // primary-palette bar and text.secondary label are both
+              // near-invisible on the filled `info` background (#458).
+              color="inherit"
+              height={6}
+              animated
+            />
           </Box>
         </Stack>
       </Alert>

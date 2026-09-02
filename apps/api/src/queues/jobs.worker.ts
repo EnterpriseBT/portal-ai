@@ -6,6 +6,7 @@ import {
   TERMINAL_JOB_STATUSES,
 } from "@portalai/core/models";
 
+import type { SyncProgressUpdate } from "../adapters/adapter.interface.js";
 import { environment } from "../environment.js";
 import { createLogger } from "../utils/logger.util.js";
 import { JOBS_QUEUE_NAME } from "./jobs.queue.js";
@@ -314,11 +315,20 @@ export const createJobsWorker = (
     logger.warn({ err }, "Jobs worker error (staying up)");
   });
 
+  // #458: connector-sync reports a structured `SyncProgressUpdate` object;
+  // every other processor still passes a bare percent, which normalizes to
+  // `{ percent }`. An update carrying neither field is dropped — BullMQ
+  // progress is untyped, so a stray shape must not reach the service.
   worker.on("progress", async (bullJob, progress) => {
-    if (typeof progress === "number") {
-      const JobEventsService = await getJobEventsService();
-      await JobEventsService.updateProgress(bullJob.data.jobId, progress);
+    const update =
+      typeof progress === "number"
+        ? { percent: progress }
+        : (progress as SyncProgressUpdate | null);
+    if (!update || (update.percent == null && update.processed == null)) {
+      return;
     }
+    const JobEventsService = await getJobEventsService();
+    await JobEventsService.updateProgress(bullJob.data.jobId, update);
   });
 
   // A death that never reaches the in-band catch — process kill, container

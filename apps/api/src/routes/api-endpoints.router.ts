@@ -104,6 +104,7 @@ function toWire(pair: ApiEndpoint): {
       queryParams:
         (pair.config.queryParams as Record<string, string> | null) ?? undefined,
       bodyTemplate: pair.config.bodyTemplate ?? undefined,
+      totalCount: pair.config.totalCount ?? undefined,
       pagination: reconstructPagination(
         pair.config.pagination,
         (pair.config.paginationConfig as Record<string, unknown> | null) ?? null
@@ -529,6 +530,7 @@ apiEndpointsRouter.post(
               headers: body.config.headers ?? null,
               queryParams: body.config.queryParams ?? null,
               bodyTemplate: body.config.bodyTemplate ?? null,
+              totalCount: body.config.totalCount ?? null,
               pagination: flattened.pagination,
               paginationConfig: flattened.paginationConfig,
             },

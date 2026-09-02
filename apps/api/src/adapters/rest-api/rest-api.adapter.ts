@@ -49,7 +49,9 @@ import type {
   ColumnDefinitionCatalogEntry,
   ColumnDefinitionClassifier,
 } from "./classifier.types.js";
+import { applyAuth } from "./auth.util.js";
 import { loadCredentials } from "./credentials.util.js";
+import { fetchJson } from "./fetch.util.js";
 import {
   fetchFirstPage,
   fetchOnePage,
@@ -225,7 +227,7 @@ async function syncInstance(
   // to `runStartedAt` for direct invocations (unit tests), which have no
   // job and no retry to converge with.
   const generationKey = opts?.jobId ?? String(runStartedAt);
-  progress?.(0);
+  progress?.({ percent: 0 });
 
   const endpoints = await DbService.repository.apiEndpoints.findByInstance(
     instance.id
@@ -252,18 +254,25 @@ async function syncInstance(
   // endpoints — one stale mirror is the whole run's mirror being stale.
   let mirrorDegraded = false;
 
-  // The 0-90% band is split evenly across endpoints. For each
-  // endpoint we hand `syncOneEndpoint` a per-page reporter that ticks
-  // an asymptotic curve toward the endpoint's slice without ever
-  // reaching it — so on a single-endpoint paginated sync the meter
-  // visibly advances during pagination instead of sitting at 0%
-  // (issue #94). We don't know the total page count upfront for
-  // cursor/link-paginated APIs, so the curve doesn't claim a real ETA.
-  const slicePct = 90 / endpoints.length;
+  // #458 (replaces the #94 asymptotic page curve): progress during the
+  // endpoint loop is a cumulative RECORD count, never a synthetic percent.
+  // The curve saturated at 90% from ~page 120 regardless of data volume —
+  // a confidently-wrong number that misdirected #435. `processedBase`
+  // carries completed endpoints' records so a multi-endpoint sync reports
+  // one monotonic count across the whole run.
+  //
+  // The denominator, when knowable, comes from the totalCount pre-flight:
+  // a sum makes sense only when EVERY endpoint yields a count, so the
+  // probes are skipped outright unless all endpoints configure one (and
+  // there's no reporter to feed without `progress`).
+  const grandTotal =
+    progress && endpoints.every((e) => e.config.totalCount != null)
+      ? await probeGrandTotal(endpoints, baseUrl, auth, credentials)
+      : undefined;
+  let processedBase = 0;
   for (let i = 0; i < endpoints.length; i++) {
     const endpoint = endpoints[i];
-    const basePct = (i / endpoints.length) * 90;
-    progress?.(Math.round(basePct));
+    let endpointProcessed = 0;
 
     const counts = await syncOneEndpoint(
       endpoint,
@@ -275,12 +284,16 @@ async function syncInstance(
       runStartedAt,
       generationKey,
       progress
-        ? (pagesEmitted: number) => {
-            const intra = 1 - Math.exp(-pagesEmitted / 20);
-            progress(Math.round(basePct + intra * slicePct));
+        ? (recordsProcessed: number) => {
+            endpointProcessed = recordsProcessed;
+            progress({
+              processed: processedBase + recordsProcessed,
+              ...(grandTotal !== undefined ? { total: grandTotal } : {}),
+            });
           }
         : undefined
     );
+    processedBase += endpointProcessed;
     totalCreated += counts.created;
     totalUpdated += counts.updated;
     totalUnchanged += counts.unchanged;
@@ -295,14 +308,12 @@ async function syncInstance(
     }
   }
 
-  progress?.(95);
-
   await DbService.repository.connectorInstances.update(instance.id, {
     lastSyncAt: Date.now(),
     lastErrorMessage: null,
     updatedBy: userId,
   });
-  progress?.(100);
+  progress?.({ percent: 100 });
 
   logger.info(
     {
@@ -340,6 +351,88 @@ async function syncInstance(
   };
 }
 
+/**
+ * #458: best-effort count pre-flight. Re-requests each endpoint once with
+ * its `totalCount.queryParams` merged over the endpoint's own (probe wins)
+ * and reads an integer from the dotted `responsePath`. Returns the summed
+ * total, or `undefined` when any endpoint's probe fails — an unknown total
+ * renders as a count with an indeterminate bar, which is strictly better
+ * than a wrong percent, so nothing here ever throws or retries.
+ *
+ * Template variables ({{cursor}}, {{pageNumber}}) are page-scoped and
+ * meaningless for a count, so the probe uses the raw configured params; a
+ * config that depends on them simply degrades to unknown.
+ */
+async function probeGrandTotal(
+  endpoints: ApiEndpoint[],
+  baseUrl: string,
+  auth: ApiAuthConfig,
+  credentials: ApiCredentials | null
+): Promise<number | undefined> {
+  const counts = await Promise.all(
+    endpoints.map((endpoint) =>
+      fetchEndpointTotalCount(endpoint, baseUrl, auth, credentials)
+    )
+  );
+  if (counts.some((c) => c === undefined)) return undefined;
+  const sum = (counts as number[]).reduce((a, b) => a + b, 0);
+  // A zero-record total renders no useful fraction (and the progress-detail
+  // contract requires a positive total) — report unknown instead.
+  return sum > 0 ? sum : undefined;
+}
+
+async function fetchEndpointTotalCount(
+  endpoint: ApiEndpoint,
+  baseUrl: string,
+  auth: ApiAuthConfig,
+  credentials: ApiCredentials | null
+): Promise<number | undefined> {
+  const probe = endpoint.config.totalCount;
+  if (!probe) return undefined;
+  try {
+    const requestUrl = buildUrl(baseUrl, endpoint.config.path, {
+      ...((endpoint.config.queryParams as Record<string, string> | null) ?? {}),
+      ...probe.queryParams,
+    });
+    const headers =
+      (endpoint.config.headers as Record<string, string> | null) ?? undefined;
+    const body = endpoint.config.bodyTemplate ?? undefined;
+    const baseInit: RequestInit = {
+      method: endpoint.config.method,
+      ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
+      ...(body !== undefined ? { body } : {}),
+    };
+    const { url, init } = applyAuth(requestUrl, baseInit, auth, credentials);
+    const result = await fetchJson(url, init);
+    const raw = walkRecordsPath(result.body, probe.responsePath);
+    // Accept a number or a numeric string — never coerce null/"" (Number()
+    // maps both to 0, which would fabricate a zero count).
+    const count =
+      typeof raw === "number"
+        ? raw
+        : typeof raw === "string" && raw.trim() !== ""
+          ? Number(raw)
+          : NaN;
+    if (!Number.isInteger(count) || count < 0) {
+      throw new Error(
+        `responsePath "${probe.responsePath}" resolved to a non-count value`
+      );
+    }
+    return count;
+  } catch (err) {
+    logger.warn(
+      {
+        event: "rest-api.sync.count-preflight-failed",
+        connectorEntityId: endpoint.entity.id,
+        responsePath: probe.responsePath,
+        err,
+      },
+      "Count pre-flight failed — sync proceeds with an unknown total"
+    );
+    return undefined;
+  }
+}
+
 async function syncOneEndpoint(
   endpoint: ApiEndpoint,
   instance: ConnectorInstance,
@@ -350,13 +443,11 @@ async function syncOneEndpoint(
   runStartedAt: number,
   /** Job-scoped identity generation for synthetic source ids (#439). */
   generationKey: string,
-  // Per-page progress reporter. Called with the running count of
-  // "pages" emitted for this endpoint (1, 2, …). Caller maps that
-  // count onto the meter via an asymptotic curve so the bar advances
-  // visibly during pagination without claiming a false ETA.
-  // Streaming-eligible endpoints emit one page at stream start and
-  // another after the stream drains — enough motion to signal liveness.
-  reportPage?: (pagesEmitted: number) => void
+  // Progress reporter (#458). Called with the cumulative count of records
+  // processed for THIS endpoint: once per page on the buffered path, and at
+  // least every `STREAM_PROGRESS_EVERY` records (plus once after the drain)
+  // on the streaming path. The caller lifts it onto the run-wide count.
+  reportProcessed?: (recordsProcessed: number) => void
 ): Promise<{
   created: number;
   updated: number;
@@ -441,7 +532,6 @@ async function syncOneEndpoint(
     counts,
   };
 
-  let pagesEmitted = 0;
   // #440: records are buffered and written in batches. `flush()` MUST run
   // before the watermark reap below — an unflushed record would have no
   // advanced `syncedAt` and the reaper would soft-delete it.
@@ -449,11 +539,15 @@ async function syncOneEndpoint(
   if (isStreamingEligible(endpoint)) {
     const streamStartedAt = Date.now();
     const page = await streamFetchOnePage(endpoint, baseUrl, auth, credentials);
-    pagesEmitted++;
-    reportPage?.(pagesEmitted);
     try {
       for await (const record of page.recordsStream) {
         await writer.add(record);
+        // #458: a single streamed page used to report only at start + drain,
+        // so a 400K-record stream showed no motion. `counts.recordIndex` is
+        // mutated by the shared writer — read it, don't keep a local count.
+        if (counts.recordIndex % STREAM_PROGRESS_EVERY === 0) {
+          reportProcessed?.(counts.recordIndex);
+        }
       }
       await writer.flush();
     } finally {
@@ -469,8 +563,7 @@ async function syncOneEndpoint(
         "Streaming page drained"
       );
     }
-    pagesEmitted++;
-    reportPage?.(pagesEmitted);
+    reportProcessed?.(counts.recordIndex);
   } else {
     let next = await iterator.next();
     while (!next.done) {
@@ -487,8 +580,7 @@ async function syncOneEndpoint(
         await writer.add(record);
       }
 
-      pagesEmitted++;
-      reportPage?.(pagesEmitted);
+      reportProcessed?.(counts.recordIndex);
       next = await iterator.next(fetched);
     }
     await writer.flush();
@@ -590,6 +682,11 @@ export interface UpsertContext {
 
 /** Cap on the number of rejected geometry sourceIds surfaced (bounded growth). */
 const GEOMETRY_REJECTED_SAMPLE_CAP = 20;
+
+// #458: streaming progress cadence — report cumulative records at least
+// this often while a stream drains. Matches the order of magnitude of the
+// buffered path's per-page reports (one DB write + Redis publish each).
+const STREAM_PROGRESS_EVERY = 1000;
 
 /**
  * Records buffered before a flush (#440). Matches the repositories'

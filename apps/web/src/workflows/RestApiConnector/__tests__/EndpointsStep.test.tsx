@@ -21,6 +21,8 @@ const ROW: EndpointRow = {
   idField: "id",
   bodyTemplate: "",
   pagination: EMPTY_PAGINATION_DRAFT,
+  totalCountParams: "",
+  totalCountPath: "",
 };
 
 function makeProps(

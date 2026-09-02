@@ -8,6 +8,7 @@ import {
 } from "@jest/globals";
 
 import { ApiCode } from "../../../constants/api-codes.constants.js";
+import type { SyncProgressUpdate } from "../../../adapters/adapter.interface.js";
 
 // ── DbService mock ───────────────────────────────────────────────────
 
@@ -29,6 +30,10 @@ type EndpointFixture = {
     bodyTemplate?: string | null;
     pagination: string;
     paginationConfig?: Record<string, unknown> | null;
+    totalCount?: {
+      queryParams: Record<string, string>;
+      responsePath: string;
+    } | null;
   };
 };
 
@@ -758,13 +763,13 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
     expect(recordsWritten()).toBe(4);
   });
 
-  // Regression for #94. Before the per-page progress wiring, a
-  // single-endpoint paginated sync called `progress` exactly twice:
-  // 0% at the top of the endpoint loop and 100% after the final
-  // updateInstance. The meter sat at 0% the whole sync. With the
-  // fix, `progress` ticks per page along an asymptotic curve toward
-  // the endpoint's slice of the 0-90% band.
-  it("ticks progress per page during a single-endpoint paginated sync", async () => {
+  // #458 (supersedes the #94 curve regression). Progress during pagination
+  // is a cumulative RECORD count, never a synthetic percent: the old
+  // asymptotic page curve read 90% at 31% of a 397,960-record layer. The
+  // only asserted percents are the real phase milestones (0 at start, 100
+  // after the final updateInstance) — everything in between is
+  // `{ processed }` with no percent and, absent a count probe, no total.
+  it("reports cumulative records processed per page — no curve, no synthetic percent (#458)", async () => {
     findByInstanceMock.mockResolvedValueOnce([
       {
         entity: { id: "e1", key: "users", label: "Users" },
@@ -789,27 +794,89 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
       .mockResolvedValueOnce(okResponse([{ id: "c" }, { id: "d" }]))
       .mockResolvedValueOnce(okResponse([]));
 
-    const progress = jest.fn<(percent: number) => void>();
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
     await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
 
-    // Per-page ticks lift the call count above the old start+end pair.
     const calls = progress.mock.calls.map((c) => c[0]);
-    expect(calls.length).toBeGreaterThan(2);
-    // Monotonic non-decreasing — the curve only ever moves the meter
-    // forward.
-    for (let i = 1; i < calls.length; i++) {
-      expect(calls[i]).toBeGreaterThanOrEqual(calls[i - 1]);
+    // Asserted milestones bracket the run.
+    expect(calls[0]).toEqual({ percent: 0 });
+    expect(calls[calls.length - 1]).toEqual({ percent: 100 });
+    // No 95 finalize tick, no percent anywhere between the milestones.
+    const between = calls.slice(1, -1);
+    expect(between.length).toBeGreaterThan(0);
+    for (const update of between) {
+      expect(update.percent).toBeUndefined();
+      expect(update.total).toBeUndefined();
+      expect(update.processed).toEqual(expect.any(Number));
     }
-    // Sync still ends at 100% after the final updateInstance.
-    expect(calls[calls.length - 1]).toBe(100);
-    // First tick is the endpoint's base — single endpoint starts at 0.
-    expect(calls[0]).toBe(0);
-    // The meter visibly advances during pagination — at least one
-    // tick lands strictly between the endpoint's start (0) and the
-    // post-loop wrap-up tick at 95. This is the regression-proof
-    // assertion: before the fix this gap stayed empty.
-    const intraPagination = calls.filter((v) => v > 0 && v < 95);
-    expect(intraPagination.length).toBeGreaterThan(0);
+    // Cumulative records, monotonic non-decreasing: pages of 2+2+0.
+    const processed = between.map((u) => u.processed!);
+    expect(processed[0]).toBe(2);
+    expect(Math.max(...processed)).toBe(4);
+    for (let i = 1; i < processed.length; i++) {
+      expect(processed[i]).toBeGreaterThanOrEqual(processed[i - 1]);
+    }
+  });
+
+  // #458: a multi-endpoint sync accumulates `processed` across endpoints —
+  // the second endpoint's reports include the first's records. (The old
+  // per-endpoint percent-band slicing died with the curve.)
+  it("accumulates processed across endpoints (#458)", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "users", label: "Users" },
+        config: {
+          path: "/users",
+          method: "GET",
+          recordsPath: "",
+          idField: "id",
+          pagination: "pageOffset",
+          paginationConfig: {
+            style: "page",
+            param: "page",
+            pageSize: 2,
+            startPage: 1,
+            stopOnShortPage: true,
+          },
+        },
+      },
+      {
+        entity: { id: "e2", key: "teams", label: "Teams" },
+        config: {
+          path: "/teams",
+          method: "GET",
+          recordsPath: "",
+          idField: "id",
+          pagination: "pageOffset",
+          paginationConfig: {
+            style: "page",
+            param: "page",
+            pageSize: 2,
+            startPage: 1,
+            stopOnShortPage: true,
+          },
+        },
+      },
+    ]);
+    fetchMock
+      // e1: one full page then a short page → 3 records.
+      .mockResolvedValueOnce(okResponse([{ id: "a" }, { id: "b" }]))
+      .mockResolvedValueOnce(okResponse([{ id: "c" }]))
+      // e2: one short page → 1 record.
+      .mockResolvedValueOnce(okResponse([{ id: "d" }]));
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
+
+    const processed = progress.mock.calls
+      .map((c) => c[0].processed)
+      .filter((p): p is number => p != null);
+    // e1 reports 2 then 3; e2's report sits on top of e1's 3 records.
+    expect(processed).toContain(3);
+    expect(Math.max(...processed)).toBe(4);
+    for (let i = 1; i < processed.length; i++) {
+      expect(processed[i]).toBeGreaterThanOrEqual(processed[i - 1]);
+    }
   });
 
   it("cursor: page 1 has no cursor; page 2 carries ?cursor=a; terminates on null", async () => {
@@ -1061,6 +1128,222 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
 });
 
 // ── testConnection ────────────────────────────────────────────────────
+
+// ── #458: totalCount pre-flight probe ────────────────────────────────
+//
+// When EVERY endpoint carries a `totalCount` config, the sync issues one
+// best-effort count request per endpoint before pagination and attaches the
+// summed total to each `{ processed }` update. Any failure — HTTP error,
+// non-numeric value, missing config on any endpoint — degrades to an
+// unknown total; it never fails or retries the sync.
+describe("restApiAdapter.syncInstance — totalCount probe (#458)", () => {
+  let originalFetch: typeof globalThis.fetch;
+  let fetchMock: jest.Mock<typeof globalThis.fetch>;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    fetchMock = jest.fn<typeof globalThis.fetch>();
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+    findBySourceIdsMock.mockResolvedValue([]);
+    upsertBySourceIdMock.mockResolvedValue(undefined);
+    bulkUpdateSyncedAtMock.mockResolvedValue(0);
+    softDeleteBeforeWatermarkMock.mockResolvedValue([]);
+    updateInstanceMock.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+
+  const PAGED = (
+    path: string,
+    extra: Partial<EndpointFixture["config"]> = {}
+  ) =>
+    ({
+      path,
+      method: "GET" as const,
+      recordsPath: "",
+      idField: "id",
+      pagination: "pageOffset",
+      paginationConfig: {
+        style: "page",
+        param: "page",
+        pageSize: 2,
+        startPage: 1,
+        stopOnShortPage: true,
+      },
+      ...extra,
+    }) as EndpointFixture["config"];
+
+  const ARCGIS_PROBE = {
+    queryParams: { returnCountOnly: "true" },
+    responsePath: "count",
+  };
+
+  it("attaches the probed total to every processed update; probe params merge over the endpoint's", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "parcels", label: "Parcels" },
+        config: PAGED("/query", {
+          queryParams: { f: "json" },
+          totalCount: ARCGIS_PROBE,
+        }),
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce(json({ count: 3 })) // probe
+      .mockResolvedValueOnce(json([{ id: "a" }, { id: "b" }]))
+      .mockResolvedValueOnce(json([{ id: "c" }]));
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
+
+    // The probe hit the same path with BOTH the endpoint's params and the
+    // probe's overrides; the data pages carry no probe params.
+    const probeUrl = new URL(fetchMock.mock.calls[0]![0] as string);
+    expect(probeUrl.pathname).toBe("/query");
+    expect(probeUrl.searchParams.get("returnCountOnly")).toBe("true");
+    expect(probeUrl.searchParams.get("f")).toBe("json");
+    const pageUrl = new URL(fetchMock.mock.calls[1]![0] as string);
+    expect(pageUrl.searchParams.get("returnCountOnly")).toBeNull();
+
+    const detailUpdates = progress.mock.calls
+      .map((c) => c[0])
+      .filter((u) => u.processed != null);
+    expect(detailUpdates.length).toBeGreaterThan(0);
+    for (const update of detailUpdates) {
+      expect(update.total).toBe(3);
+    }
+  });
+
+  it("reuses the endpoint's POST method and body for the probe", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "parcels", label: "Parcels" },
+        config: PAGED("/query", {
+          method: "POST",
+          bodyTemplate: '{"where":"1=1"}',
+          totalCount: ARCGIS_PROBE,
+        }),
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce(json({ count: 1 }))
+      .mockResolvedValueOnce(json([{ id: "a" }]));
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
+
+    const [, probeInit] = fetchMock.mock.calls[0]! as [string, RequestInit];
+    expect(probeInit.method).toBe("POST");
+    expect(probeInit.body).toBe('{"where":"1=1"}');
+  });
+
+  it("a failing probe degrades to unknown total and never fails the sync", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "parcels", label: "Parcels" },
+        config: PAGED("/query", { totalCount: ARCGIS_PROBE }),
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce(json({ error: "boom" }, 500)) // probe fails
+      .mockResolvedValueOnce(json([{ id: "a" }]));
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    const result = await restApiAdapter.syncInstance!(INSTANCE, "u1", {
+      progress,
+    });
+
+    expect(result.recordCounts.created).toBe(1);
+    for (const [update] of progress.mock.calls) {
+      expect(update.total).toBeUndefined();
+    }
+  });
+
+  it("a non-numeric probe value degrades to unknown total", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "parcels", label: "Parcels" },
+        config: PAGED("/query", { totalCount: ARCGIS_PROBE }),
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce(json({ count: "not-a-number" }))
+      .mockResolvedValueOnce(json([{ id: "a" }]));
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
+
+    for (const [update] of progress.mock.calls) {
+      expect(update.total).toBeUndefined();
+    }
+  });
+
+  it("no total when only some endpoints carry a probe config — and no probe is issued", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "parcels", label: "Parcels" },
+        config: PAGED("/a", { totalCount: ARCGIS_PROBE }),
+      },
+      {
+        entity: { id: "e2", key: "owners", label: "Owners" },
+        config: PAGED("/b"),
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce(json([{ id: "a" }]))
+      .mockResolvedValueOnce(json([{ id: "b" }]));
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
+
+    // Two data pages, zero probe requests.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const url of fetchMock.mock.calls.map((c) => c[0] as string)) {
+      expect(new URL(url).searchParams.get("returnCountOnly")).toBeNull();
+    }
+    for (const [update] of progress.mock.calls) {
+      expect(update.total).toBeUndefined();
+    }
+  });
+
+  it("sums both endpoints' counts into one total on every update", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "parcels", label: "Parcels" },
+        config: PAGED("/a", { totalCount: ARCGIS_PROBE }),
+      },
+      {
+        entity: { id: "e2", key: "owners", label: "Owners" },
+        config: PAGED("/b", { totalCount: ARCGIS_PROBE }),
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce(json({ count: 1 })) // probe e1
+      .mockResolvedValueOnce(json({ count: 1 })) // probe e2
+      .mockResolvedValueOnce(json([{ id: "a" }]))
+      .mockResolvedValueOnce(json([{ id: "b" }]));
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
+
+    const detailUpdates = progress.mock.calls
+      .map((c) => c[0])
+      .filter((u) => u.processed != null);
+    expect(detailUpdates.length).toBeGreaterThan(0);
+    for (const update of detailUpdates) {
+      expect(update.total).toBe(2);
+    }
+    expect(detailUpdates[detailUpdates.length - 1]!.processed).toBe(2);
+  });
+});
 
 describe("restApiAdapter.testConnection", () => {
   let originalFetch: typeof globalThis.fetch;
@@ -2149,6 +2432,45 @@ describe("restApiAdapter.syncInstance — streaming branch", () => {
     });
     // One outbound HTTP request — single-shot streaming page.
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // #458: a single streamed page used to report exactly twice (stream start
+  // + drain), so a 400K-record stream showed no motion at all. The stream
+  // loop now reports cumulative records at least every 1,000 and once after
+  // the drain.
+  it("reports processed at least every 1,000 records during a stream and once after drain (#458)", async () => {
+    const RECORDS = 2500;
+    findByInstanceMock.mockResolvedValue([
+      {
+        entity: { id: "e-big", key: "items", label: "Items" },
+        config: {
+          path: "/items",
+          method: "GET",
+          recordsPath: "items",
+          idField: "id",
+          ...NONE_PAGINATION,
+        },
+      },
+    ]);
+    const items = Array.from({ length: RECORDS }, (_, i) => ({ id: `r${i}` }));
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ items }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
+
+    const processed = progress.mock.calls
+      .map((c) => c[0].processed)
+      .filter((p): p is number => p != null);
+    // Intermediate reports fired mid-stream, not just at the end.
+    expect(processed).toContain(1000);
+    expect(processed).toContain(2000);
+    // The drain report carries the full count.
+    expect(processed[processed.length - 1]).toBe(RECORDS);
   });
 
   it("case 16: non-eligible endpoint (cursor pagination) falls through to the buffered iterator path", async () => {
