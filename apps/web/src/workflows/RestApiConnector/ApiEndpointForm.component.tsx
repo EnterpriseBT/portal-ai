@@ -45,6 +45,11 @@ export interface EndpointDraft {
   idField: string;
   bodyTemplate: string;
   pagination: PaginationDraft;
+  /** #458 — optional total-count probe: URL-query-format param overrides
+   *  ("returnCountOnly=true") merged over the endpoint's params. */
+  totalCountParams: string;
+  /** #458 — dotted path to the integer count in the probe response. */
+  totalCountPath: string;
 }
 
 export const EMPTY_DRAFT: EndpointDraft = {
@@ -56,6 +61,8 @@ export const EMPTY_DRAFT: EndpointDraft = {
   idField: "",
   bodyTemplate: "",
   pagination: EMPTY_PAGINATION_DRAFT,
+  totalCountParams: "",
+  totalCountPath: "",
 };
 
 // ── Pure UI ──────────────────────────────────────────────────────────
@@ -377,6 +384,42 @@ export const ApiEndpointFormUI: React.FC<ApiEndpointFormUIProps> = ({
           "e.g. id — leave empty for full replacement on each sync"
         )}
 
+        <Box
+          sx={{
+            border: 1,
+            borderColor: "divider",
+            borderRadius: 1,
+            p: 1.5,
+          }}
+        >
+          <FormLabel
+            component="legend"
+            sx={{ fontSize: 13, fontWeight: 500, mb: 0.5 }}
+          >
+            Record total (optional)
+          </FormLabel>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            component="p"
+            sx={{ mb: 1.5 }}
+          >
+            Lets the sync progress meter show &ldquo;X of Y records&rdquo;. The
+            endpoint is requested once before syncing with these query params
+            merged in, reading the total from the response path — e.g. ArcGIS:
+            params <code>returnCountOnly=true</code>, path <code>count</code>.
+            Leave empty to show a running record count instead.
+          </Typography>
+          <Stack spacing={2}>
+            {field(
+              "totalCountParams",
+              "Count query params",
+              "e.g. returnCountOnly=true"
+            )}
+            {field("totalCountPath", "Count response path", "e.g. count")}
+          </Stack>
+        </Box>
+
         {draft.method === "POST" ? (
           <BodyTemplateFieldUI
             value={draft.bodyTemplate}
@@ -603,6 +646,8 @@ export const ApiEndpointForm: React.FC<ApiEndpointFormProps> = ({
       recordsPath: true,
       idField: true,
       bodyTemplate: true,
+      totalCountParams: true,
+      totalCountPath: true,
       // Mark each pagination sub-field touched so its errors surface
       // (the strategy dropdown change doesn't auto-touch each input).
       strategy: true,

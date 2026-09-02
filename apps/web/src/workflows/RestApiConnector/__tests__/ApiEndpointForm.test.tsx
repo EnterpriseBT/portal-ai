@@ -646,3 +646,77 @@ describe("ApiEndpointForm — Suggest button + onSuggest wiring", () => {
     ).toHaveValue("stable");
   });
 });
+
+// #458 — the optional "Record total" probe section: a separate count request
+// (query-param overrides + a dotted response path) that gives the sync
+// progress meter its denominator.
+describe("ApiEndpointForm — record total probe (#458)", () => {
+  it("renders the two probe fields with the ArcGIS example in the helper copy", () => {
+    render(<ApiEndpointForm open onSubmit={jest.fn()} onClose={jest.fn()} />);
+    expect(screen.getByLabelText(/count query params/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/count response path/i)).toBeInTheDocument();
+    expect(screen.getByText(/returnCountOnly=true/i)).toBeInTheDocument();
+  });
+
+  it("submitted draft carries the probe fields", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "parcels",
+          label: "Parcels",
+          path: "/query",
+          totalCountParams: "returnCountOnly=true",
+          totalCountPath: "count",
+        })}
+        onSubmit={onSubmit}
+        onClose={jest.fn()}
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const submitted = onSubmit.mock.calls[0]![0] as EndpointDraft;
+    expect(submitted.totalCountParams).toBe("returnCountOnly=true");
+    expect(submitted.totalCountPath).toBe("count");
+  });
+
+  it("blocks submit when count params are set without a response path", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({
+          key: "parcels",
+          label: "Parcels",
+          path: "/query",
+          totalCountParams: "returnCountOnly=true",
+          totalCountPath: "",
+        })}
+        onSubmit={onSubmit}
+        onClose={jest.fn()}
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/response path is required/i)).toBeInTheDocument()
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("an untouched probe section submits cleanly", async () => {
+    const onSubmit = jest.fn();
+    render(
+      <ApiEndpointForm
+        open
+        initial={makeDraft({ key: "users", label: "Users", path: "/users" })}
+        onSubmit={onSubmit}
+        onClose={jest.fn()}
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+  });
+});

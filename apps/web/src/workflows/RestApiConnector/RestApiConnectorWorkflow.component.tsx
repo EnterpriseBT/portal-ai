@@ -39,6 +39,7 @@ import { ReviewStep } from "./ReviewStep.component";
 import {
   EMPTY_CREDENTIALS_DRAFT,
   paginationDraftToConfig,
+  totalCountDraftToConfig,
   validateBasics,
   validateColumnRows,
   validateEndpointsList,
@@ -635,6 +636,15 @@ export const RestApiConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
                 ? { bodyTemplate: ep.bodyTemplate }
                 : {}),
               pagination: paginationDraftToConfig(ep.pagination),
+              // #458: optional total-count probe — gives the sync progress
+              // meter its denominator.
+              ...(() => {
+                const totalCount = totalCountDraftToConfig(
+                  ep.totalCountParams,
+                  ep.totalCountPath
+                );
+                return totalCount !== undefined ? { totalCount } : {};
+              })(),
             } as never,
             // Materialize the workflow's per-endpoint column drafts as
             // column_definitions + field_mappings server-side, in the
