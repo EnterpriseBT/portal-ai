@@ -2,7 +2,7 @@
 
 The durable cost/margin model behind the production tier catalog (`packages/core/src/registries/tier-catalog.ts`) — what each tier costs Portals to serve, and the thresholds its price and allocations must clear. Born in #495; **re-run before any repricing** (§7). Decided dollar amounts appear here only as dated snapshots — **Stripe live is the pricing record of truth** (`plus_monthly` / `pro_monthly` lookup keys), never this file or the repo.
 
-Status of this revision (2026-09-02): §1–§3 populated from fetched sources and live prod reads; §5 pending the analysis pass; §6 baseline recorded (price amounts recovered from the baked marketing page — direct Stripe confirmation blocked by #496 and the absent live inspection key). Remaining `TODO(source)` marker: Stripe-side baseline confirmation (§6, blocked by #496 + absent inspection key). Auth0 is recorded as a bounded $0 assumption (§2) pending a dashboard check — prod-tenant billing is not API-readable.
+Status of this revision (2026-09-02): §1–§3 populated from fetched sources and live prod reads; §5 pending the analysis pass; §6 baseline recorded (price amounts recovered from the baked marketing page — direct Stripe confirmation blocked by #496 and the absent live inspection key). All `TODO(source)` markers are resolved: the Stripe baseline is operator-confirmed (§6), and Auth0 is a bounded $0 assumption (§2) pending a dashboard check (billing is not API-readable). §5's analysis can proceed once thresholds are confirmed.
 
 ## 1. Vendor rate table
 
@@ -117,7 +117,7 @@ Thresholds (proposed in the spec, **pending user confirmation** — the §5 arit
 
 > Amounts below are a **dated snapshot; Stripe live is authoritative.** Re-run this model (§7) before any repricing.
 
-- **Baseline (pre-decision), 2026-09-02:** **Plus $19/mo · Pro $49/mo** — recovered from the statically-baked `www.portalsai.io/pricing` (prices as of that page's last successful build; the live `GET /api/public/site-config` currently 500s — **#496**, which also blocks this ticket's rollout verification until fixed). Prod DB: both paid tier rows carry a `stripe_price_id`; **live subscriptions: 1** (`organizations.stripe_subscription_id`, the internal `pro` org). **TODO(source):** confirm amounts + subscription list Stripe-side with the read-only inspection key (`docs/PROD_STRIPE_LIVE.runbook.md` §3) once available — the baked page is evidence, not the record of truth.
+- **Baseline (pre-decision), 2026-09-02:** **Plus $19/mo · Pro $49/mo** — confirmed by the operator against the Stripe live account (2026-09-02), matching the statically-baked `www.portalsai.io/pricing`. (The live `GET /api/public/site-config` currently 500s — **#496** — which blocks this ticket's rollout verification until fixed.) Prod DB: both paid tier rows carry a `stripe_price_id`; **live subscriptions: 1** (`organizations.stripe_subscription_id`, the internal `pro` org).
 - **Decided amounts + allocations:** *(slice 2 output — pending)*
 - **Grandfather posture:** grandfather via `--transfer-lookup-key` (spec D4); executed posture recorded here with the subscriber count at rollout.
 - **Structural verdicts** (annual prices / top-up packs / agent-turn ceiling / `perToolCaps` enforcement): *(slice 2 output — each ends `implement-here | file-follow-up(#N) | rejected(reason)`)*
