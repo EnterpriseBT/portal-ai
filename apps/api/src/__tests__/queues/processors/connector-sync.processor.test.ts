@@ -92,16 +92,21 @@ describe("connectorSyncProcessor — jobId threading (#439)", () => {
     expect(opts.jobId).toBe(JOB_ID);
   });
 
-  it("still forwards progress to BullMQ", async () => {
+  it("forwards structured progress updates to BullMQ verbatim (#458)", async () => {
     const job = bullJob();
     await connectorSyncProcessor(job as never);
 
     const opts = mockSyncInstance.mock.calls[0][2] as {
-      progress?: (p: number) => void;
+      progress?: (update: Record<string, unknown>) => void;
     };
     expect(typeof opts.progress).toBe("function");
-    opts.progress?.(42);
-    expect(job.updateProgress).toHaveBeenCalledWith(42);
+    opts.progress?.({ processed: 123954, total: 397960 });
+    expect(job.updateProgress).toHaveBeenCalledWith({
+      processed: 123954,
+      total: 397960,
+    });
+    opts.progress?.({ percent: 100 });
+    expect(job.updateProgress).toHaveBeenCalledWith({ percent: 100 });
   });
 
   it("passes instance and userId unchanged", async () => {

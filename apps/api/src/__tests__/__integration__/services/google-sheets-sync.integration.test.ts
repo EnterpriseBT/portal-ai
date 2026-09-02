@@ -475,7 +475,7 @@ describe("googleSheetsAdapter.syncInstance", () => {
 
     const calls: number[] = [];
     await googleSheetsAdapter.syncInstance!(instance, userId, {
-      progress: (p: number) => calls.push(p),
+      progress: (u: { percent?: number }) => calls.push(u.percent!),
     });
 
     expect(calls.length).toBeGreaterThan(2);

@@ -8,6 +8,7 @@ import {
 } from "@jest/globals";
 
 import { ApiCode } from "../../../constants/api-codes.constants.js";
+import type { SyncProgressUpdate } from "../../../adapters/adapter.interface.js";
 
 // ── DbService mock ───────────────────────────────────────────────────
 
@@ -758,13 +759,13 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
     expect(recordsWritten()).toBe(4);
   });
 
-  // Regression for #94. Before the per-page progress wiring, a
-  // single-endpoint paginated sync called `progress` exactly twice:
-  // 0% at the top of the endpoint loop and 100% after the final
-  // updateInstance. The meter sat at 0% the whole sync. With the
-  // fix, `progress` ticks per page along an asymptotic curve toward
-  // the endpoint's slice of the 0-90% band.
-  it("ticks progress per page during a single-endpoint paginated sync", async () => {
+  // #458 (supersedes the #94 curve regression). Progress during pagination
+  // is a cumulative RECORD count, never a synthetic percent: the old
+  // asymptotic page curve read 90% at 31% of a 397,960-record layer. The
+  // only asserted percents are the real phase milestones (0 at start, 100
+  // after the final updateInstance) — everything in between is
+  // `{ processed }` with no percent and, absent a count probe, no total.
+  it("reports cumulative records processed per page — no curve, no synthetic percent (#458)", async () => {
     findByInstanceMock.mockResolvedValueOnce([
       {
         entity: { id: "e1", key: "users", label: "Users" },
@@ -789,27 +790,89 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
       .mockResolvedValueOnce(okResponse([{ id: "c" }, { id: "d" }]))
       .mockResolvedValueOnce(okResponse([]));
 
-    const progress = jest.fn<(percent: number) => void>();
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
     await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
 
-    // Per-page ticks lift the call count above the old start+end pair.
     const calls = progress.mock.calls.map((c) => c[0]);
-    expect(calls.length).toBeGreaterThan(2);
-    // Monotonic non-decreasing — the curve only ever moves the meter
-    // forward.
-    for (let i = 1; i < calls.length; i++) {
-      expect(calls[i]).toBeGreaterThanOrEqual(calls[i - 1]);
+    // Asserted milestones bracket the run.
+    expect(calls[0]).toEqual({ percent: 0 });
+    expect(calls[calls.length - 1]).toEqual({ percent: 100 });
+    // No 95 finalize tick, no percent anywhere between the milestones.
+    const between = calls.slice(1, -1);
+    expect(between.length).toBeGreaterThan(0);
+    for (const update of between) {
+      expect(update.percent).toBeUndefined();
+      expect(update.total).toBeUndefined();
+      expect(update.processed).toEqual(expect.any(Number));
     }
-    // Sync still ends at 100% after the final updateInstance.
-    expect(calls[calls.length - 1]).toBe(100);
-    // First tick is the endpoint's base — single endpoint starts at 0.
-    expect(calls[0]).toBe(0);
-    // The meter visibly advances during pagination — at least one
-    // tick lands strictly between the endpoint's start (0) and the
-    // post-loop wrap-up tick at 95. This is the regression-proof
-    // assertion: before the fix this gap stayed empty.
-    const intraPagination = calls.filter((v) => v > 0 && v < 95);
-    expect(intraPagination.length).toBeGreaterThan(0);
+    // Cumulative records, monotonic non-decreasing: pages of 2+2+0.
+    const processed = between.map((u) => u.processed!);
+    expect(processed[0]).toBe(2);
+    expect(Math.max(...processed)).toBe(4);
+    for (let i = 1; i < processed.length; i++) {
+      expect(processed[i]).toBeGreaterThanOrEqual(processed[i - 1]);
+    }
+  });
+
+  // #458: a multi-endpoint sync accumulates `processed` across endpoints —
+  // the second endpoint's reports include the first's records. (The old
+  // per-endpoint percent-band slicing died with the curve.)
+  it("accumulates processed across endpoints (#458)", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "users", label: "Users" },
+        config: {
+          path: "/users",
+          method: "GET",
+          recordsPath: "",
+          idField: "id",
+          pagination: "pageOffset",
+          paginationConfig: {
+            style: "page",
+            param: "page",
+            pageSize: 2,
+            startPage: 1,
+            stopOnShortPage: true,
+          },
+        },
+      },
+      {
+        entity: { id: "e2", key: "teams", label: "Teams" },
+        config: {
+          path: "/teams",
+          method: "GET",
+          recordsPath: "",
+          idField: "id",
+          pagination: "pageOffset",
+          paginationConfig: {
+            style: "page",
+            param: "page",
+            pageSize: 2,
+            startPage: 1,
+            stopOnShortPage: true,
+          },
+        },
+      },
+    ]);
+    fetchMock
+      // e1: one full page then a short page → 3 records.
+      .mockResolvedValueOnce(okResponse([{ id: "a" }, { id: "b" }]))
+      .mockResolvedValueOnce(okResponse([{ id: "c" }]))
+      // e2: one short page → 1 record.
+      .mockResolvedValueOnce(okResponse([{ id: "d" }]));
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
+
+    const processed = progress.mock.calls
+      .map((c) => c[0].processed)
+      .filter((p): p is number => p != null);
+    // e1 reports 2 then 3; e2's report sits on top of e1's 3 records.
+    expect(processed).toContain(3);
+    expect(Math.max(...processed)).toBe(4);
+    for (let i = 1; i < processed.length; i++) {
+      expect(processed[i]).toBeGreaterThanOrEqual(processed[i - 1]);
+    }
   });
 
   it("cursor: page 1 has no cursor; page 2 carries ?cursor=a; terminates on null", async () => {
@@ -2149,6 +2212,45 @@ describe("restApiAdapter.syncInstance — streaming branch", () => {
     });
     // One outbound HTTP request — single-shot streaming page.
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // #458: a single streamed page used to report exactly twice (stream start
+  // + drain), so a 400K-record stream showed no motion at all. The stream
+  // loop now reports cumulative records at least every 1,000 and once after
+  // the drain.
+  it("reports processed at least every 1,000 records during a stream and once after drain (#458)", async () => {
+    const RECORDS = 2500;
+    findByInstanceMock.mockResolvedValue([
+      {
+        entity: { id: "e-big", key: "items", label: "Items" },
+        config: {
+          path: "/items",
+          method: "GET",
+          recordsPath: "items",
+          idField: "id",
+          ...NONE_PAGINATION,
+        },
+      },
+    ]);
+    const items = Array.from({ length: RECORDS }, (_, i) => ({ id: `r${i}` }));
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ items }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
+
+    const processed = progress.mock.calls
+      .map((c) => c[0].processed)
+      .filter((p): p is number => p != null);
+    // Intermediate reports fired mid-stream, not just at the end.
+    expect(processed).toContain(1000);
+    expect(processed).toContain(2000);
+    // The drain report carries the full count.
+    expect(processed[processed.length - 1]).toBe(RECORDS);
   });
 
   it("case 16: non-eligible endpoint (cursor pagination) falls through to the buffered iterator path", async () => {

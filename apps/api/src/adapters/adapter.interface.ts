@@ -165,9 +165,10 @@ export interface SyncProgressUpdate {
 export interface SyncInstanceOptions {
   /**
    * The BullMQ processor's `bullJob.updateProgress` callback — fans out
-   * to SSE consumers.
+   * to SSE consumers (and, via the worker, into `jobs.progress` +
+   * `jobs.progress_detail`). Takes a structured `SyncProgressUpdate` (#458).
    */
-  progress?: (percent: number) => void;
+  progress?: (update: SyncProgressUpdate) => void;
   /**
    * The app-level job id (#439). Stable across BullMQ *attempts* of one
    * sync, which is what lets an adapter keep synthetic record identity

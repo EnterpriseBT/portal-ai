@@ -633,7 +633,7 @@ describe("microsoftExcelAdapter.syncInstance", () => {
 
     const calls: number[] = [];
     await microsoftExcelAdapter.syncInstance!(instance, userId, {
-      progress: (p: number) => calls.push(p),
+      progress: (u: { percent?: number }) => calls.push(u.percent!),
     });
     expect(calls[0]).toBe(0);
     expect(calls[calls.length - 1]).toBe(100);

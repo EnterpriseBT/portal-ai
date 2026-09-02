@@ -89,8 +89,10 @@ export const connectorSyncProcessor: TypedJobProcessor<
     connectorInstanceId,
     () =>
       adapter.syncInstance!(instance, userId, {
-        progress: (percent) => {
-          void bullJob.updateProgress(percent);
+        // #458: forwarded verbatim — the worker's progress handler persists
+        // the detail and derives the percent.
+        progress: (update) => {
+          void bullJob.updateProgress(update);
         },
         // #439: BullMQ attempts of one sync must share a record-identity
         // generation. Without this the adapter falls back to a per-run value

@@ -93,7 +93,7 @@ export const microsoftExcelAdapter: ConnectorAdapter = {
   ): Promise<SyncInstanceResult> {
     const progress = opts?.progress;
     const runStartedAt = Date.now();
-    progress?.(0);
+    progress?.({ percent: 0 });
 
     // 1. Defensive eligibility re-check — the shared sync route
     //    pre-flights this before enqueueing, but the BullMQ processor
@@ -118,7 +118,7 @@ export const microsoftExcelAdapter: ConnectorAdapter = {
         `No layout plan committed for instance ${instance.id}`
       );
     }
-    progress?.(10);
+    progress?.({ percent: 10 });
 
     // 2. Fetch the workbook fresh from Graph. The cache layer's
     //    refresh-token rotation persistence runs transparently inside
@@ -127,7 +127,7 @@ export const microsoftExcelAdapter: ConnectorAdapter = {
       instance.id,
       instance.organizationId
     );
-    progress?.(40);
+    progress?.({ percent: 40 });
 
     // 3. Run the commit pipeline with sync overrides:
     //    - syncedAt = runStartedAt so the watermark reaper can identify
@@ -144,7 +144,7 @@ export const microsoftExcelAdapter: ConnectorAdapter = {
       { workbook },
       { syncedAt: runStartedAt, skipDriftGate: true }
     );
-    progress?.(80);
+    progress?.({ percent: 80 });
 
     // 4. Per-entity reap: anything whose syncedAt is older than the
     //    run's watermark didn't appear in the fresh fetch — soft-delete
@@ -172,7 +172,7 @@ export const microsoftExcelAdapter: ConnectorAdapter = {
       }
       deleted += reaped.length;
     }
-    progress?.(95);
+    progress?.({ percent: 95 });
 
     // 5. Mark the instance as synced; clear any prior error.
     await DbService.repository.connectorInstances.update(instance.id, {
@@ -180,7 +180,7 @@ export const microsoftExcelAdapter: ConnectorAdapter = {
       lastErrorMessage: null,
       updatedBy: userId,
     });
-    progress?.(100);
+    progress?.({ percent: 100 });
 
     logger.info(
       {

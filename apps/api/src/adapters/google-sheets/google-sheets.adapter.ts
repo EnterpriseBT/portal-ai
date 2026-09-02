@@ -90,7 +90,7 @@ export const googleSheetsAdapter: ConnectorAdapter = {
   ): Promise<SyncInstanceResult> {
     const progress = opts?.progress;
     const runStartedAt = Date.now();
-    progress?.(0);
+    progress?.({ percent: 0 });
 
     // 1. Defensive eligibility gate. The shared sync route normally
     //    pre-flights this before enqueueing, but the processor can be
@@ -117,14 +117,14 @@ export const googleSheetsAdapter: ConnectorAdapter = {
         `No layout plan committed for instance ${instance.id}`
       );
     }
-    progress?.(10);
+    progress?.({ percent: 10 });
 
     // 2. Fetch the workbook fresh from Google.
     const workbook = await GoogleSheetsConnectorService.fetchWorkbookForSync(
       instance.id,
       instance.organizationId
     );
-    progress?.(40);
+    progress?.({ percent: 40 });
 
     // 3. Run the commit pipeline with sync overrides:
     //    - syncedAt = runStartedAt so the watermark reaper can identify
@@ -141,7 +141,7 @@ export const googleSheetsAdapter: ConnectorAdapter = {
       { workbook },
       { syncedAt: runStartedAt, skipDriftGate: true }
     );
-    progress?.(80);
+    progress?.({ percent: 80 });
 
     // 4. Per-entity reap: anything whose syncedAt is older than the
     //    run's watermark didn't appear in the fresh fetch — soft-delete
@@ -169,7 +169,7 @@ export const googleSheetsAdapter: ConnectorAdapter = {
       }
       deleted += reaped.length;
     }
-    progress?.(95);
+    progress?.({ percent: 95 });
 
     // 5. Mark the instance as synced; clear any prior error.
     await DbService.repository.connectorInstances.update(instance.id, {
@@ -177,7 +177,7 @@ export const googleSheetsAdapter: ConnectorAdapter = {
       lastErrorMessage: null,
       updatedBy: userId,
     });
-    progress?.(100);
+    progress?.({ percent: 100 });
 
     logger.info(
       {
