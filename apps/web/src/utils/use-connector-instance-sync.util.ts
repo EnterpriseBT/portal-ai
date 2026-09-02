@@ -78,6 +78,28 @@ export const useConnectorInstanceSync = (
   // Live SSE — `null` jobId disables the stream.
   const stream = sdk.jobs.stream(jobId);
 
+  // #493: re-latch onto a sync that is already running when this page
+  // mounts (reload mid-sync, or first visit during a sync). The lock-state
+  // query is already on the connector-instance view, so this subscription
+  // is deduped by React Query — no extra request. Seeding happens at most
+  // ONCE per mount (`seeded`, also set by the mutation/409 paths): after
+  // the user dismisses a finished toast, a stale not-yet-refetched
+  // running-jobs result must not re-open it. Render-phase adjustment
+  // (guarded setState during render), not an effect — the seed is derived
+  // state, and the guard flips in the same render that consumes it.
+  const runningJobsQuery =
+    sdk.connectorInstances.runningJobs(connectorInstanceId);
+  const [seeded, setSeeded] = useState(false);
+  if (!seeded && jobId === null) {
+    const runningSync = runningJobsQuery.data?.runningJobs?.find(
+      (j) => j.type === "connector_sync"
+    );
+    if (runningSync) {
+      setSeeded(true);
+      setJobId(runningSync.id);
+    }
+  }
+
   // Side-effect on job completion: refresh derived data so the UI
   // reflects the synced state (lastSyncAt on the instance, the records
   // list). Pure invalidation — no setState in the effect.
@@ -97,6 +119,7 @@ export const useConnectorInstanceSync = (
     setMutationError(null);
     syncMutation.mutate(undefined, {
       onSuccess: ({ jobId: newJobId }) => {
+        setSeeded(true);
         setJobId(newJobId);
         // Bump the jobs list so any open page picks up the new pending row.
         queryClient.invalidateQueries({ queryKey: queryKeys.jobs.root });
@@ -109,13 +132,14 @@ export const useConnectorInstanceSync = (
           err.code === "SYNC_ALREADY_RUNNING" &&
           typeof err.details?.jobId === "string"
         ) {
+          setSeeded(true);
           setJobId(err.details.jobId);
           return;
         }
         setMutationError(err.message);
       },
     });
-  }, [syncMutation, queryClient]);
+  }, [syncMutation, queryClient, setSeeded]);
 
   const onDismissResult = useCallback(() => {
     setMutationError(null);
