@@ -122,16 +122,16 @@ T1's "pass" is exactly as strong as the expected-turn assumption (130/400) — t
 > Amounts below are a **dated snapshot; Stripe live is authoritative.** Re-run this model (§7) before any repricing.
 
 - **Baseline (pre-decision), 2026-09-02:** **Plus $19/mo · Pro $49/mo** — confirmed by the operator against the Stripe live account (2026-09-02), matching the statically-baked `www.portalsai.io/pricing`. (The live `GET /api/public/site-config` currently 500s — **#496** — which blocks this ticket's rollout verification until fixed.) Prod DB: both paid tier rows carry a `stripe_price_id`; **live subscriptions: 1** (`organizations.stripe_subscription_id`, the internal `pro` org).
-- **Proposed amounts + allocations (2026-09-02 — PENDING operator confirmation, the slice-2 gate):**
+- **Decided amounts + allocations (2026-09-02 — operator-confirmed at the slice-2 gate):**
 
   | Tier | Price | metered (units / rpm) | expensive (units / rpm) | Entitlements |
   |---|---|---|---|---|
-  | standard | free (unchanged) | 500 / 10 (unchanged) | 100 / 2 (unchanged) | unchanged |
+  | standard | free (unchanged) | 500 / 10 (unchanged) | 100 / 2 (unchanged) | **+ `entity_management`** |
   | plus | **$29** (from $19) | **3,000** / 60 (from 5,000) | 2,000 / 10 (unchanged) | unchanged |
   | pro | **$99** (from $49) | **15,000** / 120 (from 50,000) | 20,000 / 30 (unchanged) | unchanged |
   | enterprise | contact (unchanged) | unlimited (unchanged) | unlimited (unchanged) | unchanged |
 
-  Rationale: prices are value-anchored on the org-level (multi-user, pre-#198-seats) ladder and sized so the 80%-margin bar survives a realistically active org (§5 finding 1); with exactly **one live subscriber (internal)**, repricing now is churn-free — the cheapest moment it will ever have. The metered cuts trim pure adversarial surface (all-`web_search` ceilings of $40/$400 → $24/$120) while staying far above observed usage (5 geocode calls, ever) and any plausible team month (3,000 ≈ 100 searches/day); expensive allocations stay geocode-sized on purpose — their adversarial exposure closes via the re-unit follow-up, not by making bulk geocoding unusable. Entitlement sets unchanged → no FAQ copy edits (spec case 5 not triggered).
+  Rationale: prices are value-anchored on the org-level (multi-user, pre-#198-seats) ladder and sized so the 80%-margin bar survives a realistically active org (§5 finding 1); with exactly **one live subscriber (internal)**, repricing now is churn-free — the cheapest moment it will ever have. The metered cuts trim pure adversarial surface (all-`web_search` ceilings of $40/$400 → $24/$120) while staying far above observed usage (5 geocode calls, ever) and any plausible team month (3,000 ≈ 100 searches/day); expensive allocations stay geocode-sized on purpose — their adversarial exposure closes via the re-unit follow-up, not by making bulk geocoding unusable. Entitlements: **`entity_management` added to `standard`** (operator decision, 2026-09-02) — margin-neutral, since the pack's sync writes are all `costHint: "free"` and its one gated tool (`transform_entity_records`) is own-compute; the paid ladder keeps `statistics` (plus) and visualize/gis/regression/financial + custom toolpacks (pro) as the upgrade story. Copy synced: the glossary "Plan Entitlement" example now illustrates gating with `gis` (Pro+) instead of the now-universal `entity_management`.
 
 - **Grandfather posture:** grandfather via `--transfer-lookup-key` (spec D4). Subscriber count at decision time: **1, internal** — posture is effectively moot; the internal sub may be manually switched to the new price at leisure via the Billing Portal.
 - **Structural verdicts (2026-09-02):**

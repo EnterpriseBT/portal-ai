@@ -92,6 +92,9 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
   z.array(TierCatalogEntrySchema).parse([
     {
       // Free entry tier (the default). Modest allocations, basic toolpacks.
+      // entity_management is included below the paywall on purpose (#495):
+      // its sync writes are all costHint "free" (never charged), so the
+      // entitlement is margin-neutral, and record editing is core-loop work.
       slug: "standard",
       displayName: "Standard",
       periodKind: "monthly",
@@ -105,7 +108,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       expensiveRatePerMin: 2,
       perToolCaps: null,
       selectable: true,
-      builtinToolpacks: ["data_query", "web_search"],
+      builtinToolpacks: ["data_query", "web_search", "entity_management"],
       customToolpacks: false,
       cta: "none",
       public: true,

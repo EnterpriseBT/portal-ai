@@ -43,7 +43,10 @@ describe("TIER_CATALOG (#218)", () => {
       expensiveRatePerMin: 2,
       perToolCaps: null,
       selectable: true,
-      builtinToolpacks: ["data_query", "web_search"],
+      // #495: entity_management on the free tier is deliberate — its sync
+      // writes are all costHint "free" (never charged), so the entitlement
+      // is margin-neutral; record-editing is part of the core product loop.
+      builtinToolpacks: ["data_query", "web_search", "entity_management"],
       customToolpacks: false,
       // #241: the free default has no card CTA.
       cta: "none",
