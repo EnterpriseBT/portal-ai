@@ -62,9 +62,14 @@ describe("TIER_CATALOG (#218)", () => {
       meteredUnitsPerPeriod: 3_000,
       expensiveUnitsPerPeriod: 2_000,
       selectable: true,
+      // #495: every pack except visualize/gis — those two plus custom
+      // toolpacks are Pro's exclusives; the rest are own-compute and
+      // margin-neutral (logistic_regression is expensive-class but vendor-$0).
       builtinToolpacks: [
         "data_query",
         "statistics",
+        "regression",
+        "financial",
         "web_search",
         "entity_management",
       ],

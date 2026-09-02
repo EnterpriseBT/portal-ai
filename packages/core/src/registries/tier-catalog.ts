@@ -130,9 +130,14 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       expensiveRatePerMin: 10,
       perToolCaps: null,
       selectable: true,
+      // Every pack except visualize/gis (#495) — those two and custom
+      // toolpacks are Pro's exclusives. regression/financial are own-compute
+      // (vendor-$0; logistic_regression charges the expensive allocation).
       builtinToolpacks: [
         "data_query",
         "statistics",
+        "regression",
+        "financial",
         "web_search",
         "entity_management",
       ],
