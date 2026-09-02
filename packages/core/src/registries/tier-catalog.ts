@@ -58,28 +58,33 @@ export type TierCatalogEntry = z.infer<typeof TierCatalogEntrySchema>;
  * The catalog — four self-serve tiers, ascending (#263): `standard` (free
  * default) < `plus` (paid) < `pro` (paid; everything allowed + generous) <
  * `enterprise` (public `contact`/contact-sales, no price). These are
- * **production** magnitudes (#325).
+ * **production, margin-tuned** magnitudes (#495): sized against the cost
+ * model in `docs/TIER_PRICING_MODEL.md` (2026-09-02 pass — vendor rates,
+ * fixed costs, per-tier margin thresholds, and the decision record live
+ * there; re-run the model before retuning anything here).
  *
- * They are **safety ceilings, not a pricing lever.** Tiering is capability-
- * based — which built-in toolpacks a tier entitles, and whether it may
- * register custom ones. The core query/visualise/refresh loop is never
- * charged, so an allocation exists to bound a runaway agent loop or an abuse
- * case, not to meter ordinary use. Every self-serve tier therefore bounds
- * BOTH axes: `…UnitsPerPeriod` caps the monthly vendor bill, `…RatePerMin`
- * caps how fast it can be run up. An unlimited (`null`) allocation on a tier
- * anyone can subscribe to is an unbounded vendor bill against a fixed price —
- * a guard test pins that none exists.
+ * Tiering is capability-based — which built-in toolpacks a tier entitles,
+ * and whether it may register custom ones. The core query/visualise/refresh
+ * loop is never charged, so an allocation exists to bound the monthly vendor
+ * bill against the tier's price, not to meter ordinary use. Every self-serve
+ * tier bounds BOTH axes: `…UnitsPerPeriod` caps the monthly bill,
+ * `…RatePerMin` caps how fast it can be run up. An unlimited (`null`)
+ * allocation on a tier anyone can subscribe to is an unbounded vendor bill
+ * against a fixed price — a guard test pins that none exists, and #495's
+ * invariants additionally pin the ladder's shape (metered/expensive ascent,
+ * entitlement monotonicity, rate-reaches-quota coherence).
  *
  * `expensive` is the Portal-billed class (`web_search`→Tavily, geocoding→
  * Mapbox), sized against real consumption: `bulk_geocode_records` charges one
  * unit per newly-geocoded row, so an allocation smaller than a realistic
- * column makes the feature unusable rather than metered.
+ * column makes the feature unusable rather than metered. (The class's
+ * adversarial ceiling is closed by the #495 follow-ups — per-tool unit
+ * re-costing — not by shrinking these below geocode scale.)
  *
  * `enterprise` here is the generic public contact card and stays unlimited on
  * purpose — no org self-serves onto it, and a real deal gets an org-scoped
- * custom tier (#241) with negotiated numbers. Tuning any of this for margin
- * against projected per-tier cost is a separate pass; changes land as
- * reviewed PRs, then reach an environment via
+ * custom tier (#241) with negotiated numbers, floored per the model's T4
+ * rule. Changes land as reviewed PRs, then reach an environment via
  * `portalops tier apply --env <e>` (paid tiers need their Stripe price created
  * first — apply fails closed on a missing lookup key).
  */
@@ -116,7 +121,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       overage: "hard-deny",
       freeUnitsPerPeriod: null,
       freeRatePerMin: null,
-      meteredUnitsPerPeriod: 5_000,
+      meteredUnitsPerPeriod: 3_000,
       meteredRatePerMin: 60,
       expensiveUnitsPerPeriod: 2_000,
       expensiveRatePerMin: 10,
@@ -135,8 +140,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       stripeLookupKey: "plus_monthly",
     },
     {
-      // Top self-serve tier: everything allowed + generous (metered unlimited);
-      // `expensive` stays finite-but-huge to bound Tavily/web_search cost.
+      // Top self-serve tier: everything allowed, ceilings margin-sized.
       slug: "pro",
       displayName: "Pro",
       periodKind: "monthly",
@@ -144,7 +148,7 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       overage: "hard-deny",
       freeUnitsPerPeriod: null,
       freeRatePerMin: null,
-      meteredUnitsPerPeriod: 50_000,
+      meteredUnitsPerPeriod: 15_000,
       meteredRatePerMin: 120,
       expensiveUnitsPerPeriod: 20_000,
       expensiveRatePerMin: 30,

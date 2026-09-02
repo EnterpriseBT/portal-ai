@@ -56,7 +56,7 @@ describe("TIER_CATALOG (#218)", () => {
     expect(plus).toMatchObject({
       slug: "plus",
       displayName: "Plus",
-      meteredUnitsPerPeriod: 5_000,
+      meteredUnitsPerPeriod: 3_000,
       expensiveUnitsPerPeriod: 2_000,
       selectable: true,
       builtinToolpacks: [
@@ -100,7 +100,7 @@ describe("TIER_CATALOG (#218)", () => {
       overage: "hard-deny",
       freeUnitsPerPeriod: null,
       freeRatePerMin: null,
-      meteredUnitsPerPeriod: 50_000,
+      meteredUnitsPerPeriod: 15_000,
       meteredRatePerMin: 120,
       expensiveUnitsPerPeriod: 20_000,
       expensiveRatePerMin: 30,
@@ -219,4 +219,47 @@ describe("no self-serve tier has an unlimited allocation (#325)", () => {
     expect(ent.cta).toBe("contact");
     expect(ent.meteredUnitsPerPeriod).toBeNull();
   });
+});
+
+// ── #495 — margin-pass invariants ─────────────────────────────────────
+// The magnitudes are tuned against docs/TIER_PRICING_MODEL.md. These pin
+// the ladder's *shape*, not the numbers, so a future retune stays coherent
+// without editing this block.
+
+describe("margin-pass invariants (#495)", () => {
+  const bounded = TIER_CATALOG.filter((t) => t.meteredUnitsPerPeriod !== null);
+
+  it("scales the metered class strictly with tier", () => {
+    // Mirror of the expensive-class ascent above — an inverted or flat
+    // metered ladder is a copy-paste slip either way.
+    const by = (slug: string) =>
+      TIER_CATALOG_BY_SLUG.get(slug)!.meteredUnitsPerPeriod!;
+    expect(by("standard")).toBeLessThan(by("plus"));
+    expect(by("plus")).toBeLessThan(by("pro"));
+  });
+
+  it("the entitlement ladder is monotonic — an upgrade never loses a pack", () => {
+    const packs = (slug: string) =>
+      new Set(TIER_CATALOG_BY_SLUG.get(slug)!.builtinToolpacks);
+    const isSubset = (a: Set<string>, b: Set<string>) =>
+      [...a].every((p) => b.has(p));
+    expect(isSubset(packs("standard"), packs("plus"))).toBe(true);
+    expect(isSubset(packs("plus"), packs("pro"))).toBe(true);
+  });
+
+  it.each(bounded)(
+    "$slug's burst rate can actually reach its monthly quota",
+    (tier) => {
+      // An over-tight ratePerMin silently shrinks the real allocation below
+      // the advertised unitsPerPeriod: the quota must be reachable inside a
+      // 28-day period (the shortest periodAnchorDay=1 month) at the rate cap.
+      const minutesPerPeriod = 60 * 24 * 28;
+      expect(tier.meteredRatePerMin! * minutesPerPeriod).toBeGreaterThanOrEqual(
+        tier.meteredUnitsPerPeriod!
+      );
+      expect(
+        tier.expensiveRatePerMin! * minutesPerPeriod
+      ).toBeGreaterThanOrEqual(tier.expensiveUnitsPerPeriod!);
+    }
+  );
 });
