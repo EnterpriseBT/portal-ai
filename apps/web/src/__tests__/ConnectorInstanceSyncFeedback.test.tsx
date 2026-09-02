@@ -86,6 +86,23 @@ describe("ConnectorInstanceSyncFeedbackUI", () => {
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 
+  it("renders the live bar in inherit color so it contrasts with the filled Alert (#458)", () => {
+    const { container } = render(
+      <ConnectorInstanceSyncFeedbackUI
+        {...baseProps}
+        jobStatus="active"
+        progress={0}
+        progressDetail={{ processed: 100, total: 400 }}
+      />
+    );
+
+    // The toast is a filled `info` Alert; a primary-palette bar and a
+    // text.secondary label are both near-invisible on it. Inherit takes the
+    // Alert's own contrast color (white) for the bar, track, and label.
+    const bar = container.querySelector('[role="progressbar"]');
+    expect(bar?.className).toContain("MuiLinearProgress-colorInherit");
+  });
+
   it("falls back to the plain percent bar when no detail is reported", () => {
     const { container } = render(
       <ConnectorInstanceSyncFeedbackUI

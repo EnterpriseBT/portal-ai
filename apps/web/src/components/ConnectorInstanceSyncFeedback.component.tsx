@@ -98,6 +98,10 @@ export const ConnectorInstanceSyncFeedbackUI = ({
               value={display.kind === "count" ? 0 : display.barValue}
               indeterminate={display.kind === "count"}
               showLabel={display.kind !== "count"}
+              // `inherit` = the filled Alert's contrast color (white). The
+              // primary-palette bar and text.secondary label are both
+              // near-invisible on the filled `info` background (#458).
+              color="inherit"
               height={6}
               animated
             />

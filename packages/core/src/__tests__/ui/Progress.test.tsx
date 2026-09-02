@@ -95,3 +95,25 @@ describe("Indeterminate mode (#458)", () => {
     );
   });
 });
+
+describe("Inherit color mode (#458 toast contrast)", () => {
+  it("renders the bar with MUI's colorInherit class", () => {
+    render(<Progress value={40} color="inherit" />);
+    expect(screen.getByRole("progressbar").className).toContain(
+      "MuiLinearProgress-colorInherit"
+    );
+  });
+
+  it("does not crash when animated (no palette lookup for inherit)", () => {
+    render(<Progress value={40} color="inherit" animated />);
+    expect(screen.getByRole("progressbar")).toBeInTheDocument();
+    expect(screen.getByText("40%")).toBeInTheDocument();
+  });
+
+  it("supports indeterminate + inherit together", () => {
+    render(<Progress value={0} color="inherit" indeterminate />);
+    const bar = screen.getByRole("progressbar");
+    expect(bar.className).toContain("MuiLinearProgress-colorInherit");
+    expect(bar).not.toHaveAttribute("aria-valuenow");
+  });
+});
