@@ -87,8 +87,17 @@ export const ConnectorInstanceSyncFeedbackUI = ({
     // when it isn't, plain percent for jobs that report no detail.
     const display = formatJobProgress(progressDetail ?? null, progress);
     body = (
-      <Alert severity="info" variant="filled" sx={{ minWidth: 320 }}>
-        <Stack spacing={0.75}>
+      // Fixed width, not minWidth: the "X of Y records" line grows as the
+      // count climbs, and a content-sized Alert would reflow the progress
+      // bar's width on every update (#458 smoke finding).
+      <Alert
+        severity="info"
+        variant="filled"
+        // The message slot doesn't grow by default; without flexGrow the
+        // fixed-width Alert would shrink-wrap the bar to the text width.
+        sx={{ width: 360, "& .MuiAlert-message": { flexGrow: 1 } }}
+      >
+        <Stack spacing={0.75} sx={{ width: "100%" }}>
           <Typography variant="body2">Syncing…</Typography>
           {display.kind !== "percent" && (
             <Typography variant="body2">{display.label}</Typography>

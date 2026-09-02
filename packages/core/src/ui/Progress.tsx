@@ -74,6 +74,15 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
               return {
                 height,
                 borderRadius: height / 2,
+                // Inherit mode runs on filled surfaces. MUI's colorInherit
+                // track is currentColor at 30% opacity — white-on-white next
+                // to the white bar. Replace it with a translucent black
+                // track, which darkens whatever fill is behind it, so bar
+                // (currentColor) vs track read unambiguously.
+                ...(color === "inherit" && {
+                  backgroundColor: "rgba(0, 0, 0, 0.25)",
+                  "&::before": { display: "none" },
+                }),
                 ...(animated &&
                   glow && {
                     "@keyframes barShadowPulse": {
