@@ -72,17 +72,15 @@ FROM (SELECT period_id, cost_class, organization_id, SUM(units) AS units
       FROM tool_usage_ledger GROUP BY 1,2,3) t GROUP BY 1,2;
 ```
 
-Three scenarios per tier — parameters to fill (ledger-justified where possible, else labeled estimates):
+**Per-turn Sonnet cost** (the unmetered exposure — #495 discovery Decision 1: nothing bounds turns per org; `stopWhen: stepCountIs(10)` bounds steps *per turn* only, `portal.service.ts:697-704`). Derivation, all estimates pending real token telemetry: a typical turn ≈ 12K cache-read ($0.0036) + 2K fresh input ($0.006) + 3K cache write ($0.0113) + 0.9K output ($0.0135) ≈ **$0.035/turn**; a heavy turn (multi-step tool use, long history) ≈ **$0.08/turn**; light ≈ $0.02.
 
-| Parameter | light | expected | heavy (ceiling driver) |
-|---|---|---|---|
-| Agent turns / org / mo | TODO | TODO | TODO |
-| Avg Sonnet tokens per turn (in cached / in uncached / out) | TODO | TODO | TODO |
-| Metered units / org / mo (mix: web_search vs geocode) | TODO | TODO | allocation ceiling |
-| Expensive units / org / mo (mix: bulk-geocode rows vs visualize_d3) | TODO | TODO | allocation ceiling at worst-rate |
-| `visualize_d3` calls / org / mo | TODO | TODO | TODO |
+Scenario parameters (2026-09-02 pass — **all estimates**; the ledger is pre-traction, so "expected" is a stated assumption about a plausibly-active org of each tier's kind, not a measurement):
 
-The **agent-turn LLM cost** is the unmetered exposure (#495 discovery Decision 1): nothing bounds turns per org — `stopWhen: stepCountIs(10)` bounds steps *per turn* only (`portal.service.ts:697-704`). Until the ledger snapshot lands, the working per-turn figure is an *estimate*: ~15K input (mostly cache-read after turn 1) + ~1.2K output ≈ **$0.02–$0.07/turn** Sonnet 4.6 depending on cache mix. The heavy scenario must state the turns/mo figure that, multiplied by this, it accepts per free org.
+| Parameter (per org / mo) | standard | plus | pro | heavy multiplier |
+|---|---|---|---|---|
+| Agent turns, expected | 100 | 130 | 400 | heavy: 600 / 2,000 / 6,000 |
+| Gated-tool cost, expected (mixed) | $0.35 | $1.00 | $5.00 | heavy: allocation ceiling × worst-rate |
+| Expected turn cost basis | $0.035 | $0.035 | $0.035 | heavy turns costed at $0.08 |
 
 ## 4. Formulas & thresholds
 
@@ -94,7 +92,7 @@ ceilingCost(tier)  = variableCost(tier, heavy) with gated classes at allocation 
 netRevenue(price)  = price − (0.029 × price + 0.30)                    (Stripe fee)
 ```
 
-Thresholds (proposed in the spec, **pending user confirmation** — the §5 arithmetic runs against the confirmed values):
+Thresholds (**confirmed by the operator 2026-09-02**, as proposed in the spec):
 
 - **T1** margin floor: `netRevenue(price) ≥ expectedCost / (1 − 0.80)`… stated precisely: `(netRevenue − expectedCost) / netRevenue ≥ 0.80` per paid tier.
 - **T2** ceiling exposure: `ceilingCost(tier) ≤ 2 × price` per paid tier.
@@ -102,25 +100,47 @@ Thresholds (proposed in the spec, **pending user confirmation** — the §5 arit
 - **T4** custom-deal floor: no org-scoped custom tier is quoted below `variableCost(negotiated allocations, heavy) + a stated fixed-cost share`.
 - Break-even line (fixed costs): `payingOrgs × avg(netRevenue − expectedCost) ≥ $185/mo`.
 
-## 5. Per-tier results
+## 5. Per-tier results (2026-09-02 pass)
 
-**TODO(analysis — slice 2 of `docs/TIER_PRICING_MARGIN.plan.md`):** blocked on §3's ledger snapshot, the §6 Stripe baseline, and threshold confirmation.
+Computed at the **proposed** prices and allocations in §6 (netRevenue: $29 → $27.86; $99 → $95.83). Three structural findings frame the table:
 
-| Tier | Price (snapshot) | expectedCost | ceilingCost | Margin @ expected | T1 | T2 | T3 |
-|---|---|---|---|---|---|---|---|
-| standard | — (free) | | | — | — | — | |
-| plus | TODO | | | | | | — |
-| pro | TODO | | | | | | — |
-| enterprise | contact | modeled per deal (T4) | — | — | — | — | — |
+1. **The unmetered agent loop, not tool spend, is the margin driver.** At $0.035/turn, LLM cost alone consumes a paid tier's entire net revenue at ≈ **800 turns/mo (plus @ $29)** and ≈ **2,750 turns/mo (pro @ $99)** — ordinary active-team volumes, not abuse. At the *current* prices the zero-margin points are 520 ($19) and 1,350 ($49) turns. T1's 80%-margin bar holds only below ≈ **160 (plus)** / **460 (pro)** turns+tools per month. Margin is therefore a function of an unbounded variable until a per-org turn ceiling exists.
+2. **T2's adversarial ceiling cannot pass at any defensible price this pass**, because the `expensive` class prices two tools 80× apart per unit: `visualize_d3` at 1 unit/call (≈$0.06 vendor) shares a class with bulk-geocode rows (≈$0.00075). 20,000 pro units spent adversarially on d3 = ~$1,200. Geocode-friendly allocations and a d3-proof ceiling are irreconcilable **within this ticket's levers** (allocations/prices only — `resolveCallCost`/`perToolCaps` are enforcement code, out of scope). Closure path: the two follow-ups in §6, with post-follow-up ceilings computed below.
+3. **T3's worst-case trigger fires**: a heavy free org models at ≈ $53/mo (600 turns × $0.08 + $4 metered + $0.075 expensive post-re-unit) > $25 — the un-charged agent-turn rate-ceiling follow-up is **mandatory** at close-out.
+
+| Tier | Price (proposed) | expectedCost | Margin @ expected | ceiling (adversarial, today) | ceiling (post-follow-ups) | T1 | T2 | T3 |
+|---|---|---|---|---|---|---|---|---|
+| standard | free | $3.85 | — | $58 | ≈ $25 (turn ceiling ~260/mo) | — | — | expected **pass** ($3.85 ≤ $5); worst-case **trigger fires** |
+| plus | **$29** | $5.55 | **80.1% pass** | $304 → **fail** | $58 budget → turn ceiling ~400/mo | pass | fail today / closes with follow-ups | — |
+| pro | **$99** | $19.00 | **80.2% pass** | $1,800 → **fail** | $198 budget → turn ceiling ~790/mo | pass | fail today / closes with follow-ups | — |
+| enterprise | contact | per deal | — | unbounded by design (#241 custom tiers carry negotiated numbers) | — | — | — | — |
+
+T1's "pass" is exactly as strong as the expected-turn assumption (130/400) — the sensitivity in finding 1 is the honest statement. **Break-even on fixed costs (~$185/mo): ≈ 3 paying orgs at the proposed prices** (e.g. 2 pro + 1 plus nets ≈ $176/mo margin at expected usage; 3 pro clears it).
 
 ## 6. Decision record
 
 > Amounts below are a **dated snapshot; Stripe live is authoritative.** Re-run this model (§7) before any repricing.
 
 - **Baseline (pre-decision), 2026-09-02:** **Plus $19/mo · Pro $49/mo** — confirmed by the operator against the Stripe live account (2026-09-02), matching the statically-baked `www.portalsai.io/pricing`. (The live `GET /api/public/site-config` currently 500s — **#496** — which blocks this ticket's rollout verification until fixed.) Prod DB: both paid tier rows carry a `stripe_price_id`; **live subscriptions: 1** (`organizations.stripe_subscription_id`, the internal `pro` org).
-- **Decided amounts + allocations:** *(slice 2 output — pending)*
-- **Grandfather posture:** grandfather via `--transfer-lookup-key` (spec D4); executed posture recorded here with the subscriber count at rollout.
-- **Structural verdicts** (annual prices / top-up packs / agent-turn ceiling / `perToolCaps` enforcement): *(slice 2 output — each ends `implement-here | file-follow-up(#N) | rejected(reason)`)*
+- **Proposed amounts + allocations (2026-09-02 — PENDING operator confirmation, the slice-2 gate):**
+
+  | Tier | Price | metered (units / rpm) | expensive (units / rpm) | Entitlements |
+  |---|---|---|---|---|
+  | standard | free (unchanged) | 500 / 10 (unchanged) | 100 / 2 (unchanged) | unchanged |
+  | plus | **$29** (from $19) | **3,000** / 60 (from 5,000) | 2,000 / 10 (unchanged) | unchanged |
+  | pro | **$99** (from $49) | **15,000** / 120 (from 50,000) | 20,000 / 30 (unchanged) | unchanged |
+  | enterprise | contact (unchanged) | unlimited (unchanged) | unlimited (unchanged) | unchanged |
+
+  Rationale: prices are value-anchored on the org-level (multi-user, pre-#198-seats) ladder and sized so the 80%-margin bar survives a realistically active org (§5 finding 1); with exactly **one live subscriber (internal)**, repricing now is churn-free — the cheapest moment it will ever have. The metered cuts trim pure adversarial surface (all-`web_search` ceilings of $40/$400 → $24/$120) while staying far above observed usage (5 geocode calls, ever) and any plausible team month (3,000 ≈ 100 searches/day); expensive allocations stay geocode-sized on purpose — their adversarial exposure closes via the re-unit follow-up, not by making bulk geocoding unusable. Entitlement sets unchanged → no FAQ copy edits (spec case 5 not triggered).
+
+- **Grandfather posture:** grandfather via `--transfer-lookup-key` (spec D4). Subscriber count at decision time: **1, internal** — posture is effectively moot; the internal sub may be manually switched to the new price at leisure via the Billing Portal.
+- **Structural verdicts (2026-09-02):**
+  - **Un-charged per-org agent-turn rate ceiling** — **file-follow-up (mandatory: T3 trigger fired, §5).** Sizing from the post-follow-up ceiling budgets: ≈ 260 (standard) / 400 (plus) / 790 (pro) turns/mo equivalent, enforced as a rate (per-hour/day) rather than a monthly quota; deny is un-charged and never mid-turn. Also the only path to a passing T2 (§5 finding 1).
+  - **Re-unit `visualize_d3` (≈80 units/call via `resolveCallCost`) or enforce `perToolCaps`** — **file-follow-up.** Closes T2's 80×-per-unit class mix (§5 finding 2); until it lands, T2 is recorded **fail-with-closure-path**.
+  - **Annual prices** — **rejected(premature):** one subscriber; checkout/site-config/plan cards assume one price per tier, so annual is real plumbing for zero retention benefit today. Revisit at ≥20 paying orgs.
+  - **Top-up credit packs** — **rejected(premature):** hard-deny + the upgrade ladder is sufficient until quota denials actually appear in the ledger. Revisit on first organic `TOOL_USAGE_QUOTA_EXCEEDED` from a paying org.
+  - **Per-seat pricing** — out of scope here (#198 RBAC), but noted as the durable fix: LLM cost scales with users, and org-flat pricing cannot track it forever.
+- **T4 custom-deal floor:** quote ≥ heavy-scenario variable cost at the negotiated allocations **+ $20/mo fixed share**, computed from this model at deal time.
 
 ## 7. Re-run procedure
 
