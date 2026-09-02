@@ -30,6 +30,10 @@ type EndpointFixture = {
     bodyTemplate?: string | null;
     pagination: string;
     paginationConfig?: Record<string, unknown> | null;
+    totalCount?: {
+      queryParams: Record<string, string>;
+      responsePath: string;
+    } | null;
   };
 };
 
@@ -1124,6 +1128,222 @@ describe("restApiAdapter.syncInstance — pagination + templating", () => {
 });
 
 // ── testConnection ────────────────────────────────────────────────────
+
+// ── #458: totalCount pre-flight probe ────────────────────────────────
+//
+// When EVERY endpoint carries a `totalCount` config, the sync issues one
+// best-effort count request per endpoint before pagination and attaches the
+// summed total to each `{ processed }` update. Any failure — HTTP error,
+// non-numeric value, missing config on any endpoint — degrades to an
+// unknown total; it never fails or retries the sync.
+describe("restApiAdapter.syncInstance — totalCount probe (#458)", () => {
+  let originalFetch: typeof globalThis.fetch;
+  let fetchMock: jest.Mock<typeof globalThis.fetch>;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    fetchMock = jest.fn<typeof globalThis.fetch>();
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+    findBySourceIdsMock.mockResolvedValue([]);
+    upsertBySourceIdMock.mockResolvedValue(undefined);
+    bulkUpdateSyncedAtMock.mockResolvedValue(0);
+    softDeleteBeforeWatermarkMock.mockResolvedValue([]);
+    updateInstanceMock.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+
+  const PAGED = (
+    path: string,
+    extra: Partial<EndpointFixture["config"]> = {}
+  ) =>
+    ({
+      path,
+      method: "GET" as const,
+      recordsPath: "",
+      idField: "id",
+      pagination: "pageOffset",
+      paginationConfig: {
+        style: "page",
+        param: "page",
+        pageSize: 2,
+        startPage: 1,
+        stopOnShortPage: true,
+      },
+      ...extra,
+    }) as EndpointFixture["config"];
+
+  const ARCGIS_PROBE = {
+    queryParams: { returnCountOnly: "true" },
+    responsePath: "count",
+  };
+
+  it("attaches the probed total to every processed update; probe params merge over the endpoint's", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "parcels", label: "Parcels" },
+        config: PAGED("/query", {
+          queryParams: { f: "json" },
+          totalCount: ARCGIS_PROBE,
+        }),
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce(json({ count: 3 })) // probe
+      .mockResolvedValueOnce(json([{ id: "a" }, { id: "b" }]))
+      .mockResolvedValueOnce(json([{ id: "c" }]));
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
+
+    // The probe hit the same path with BOTH the endpoint's params and the
+    // probe's overrides; the data pages carry no probe params.
+    const probeUrl = new URL(fetchMock.mock.calls[0]![0] as string);
+    expect(probeUrl.pathname).toBe("/query");
+    expect(probeUrl.searchParams.get("returnCountOnly")).toBe("true");
+    expect(probeUrl.searchParams.get("f")).toBe("json");
+    const pageUrl = new URL(fetchMock.mock.calls[1]![0] as string);
+    expect(pageUrl.searchParams.get("returnCountOnly")).toBeNull();
+
+    const detailUpdates = progress.mock.calls
+      .map((c) => c[0])
+      .filter((u) => u.processed != null);
+    expect(detailUpdates.length).toBeGreaterThan(0);
+    for (const update of detailUpdates) {
+      expect(update.total).toBe(3);
+    }
+  });
+
+  it("reuses the endpoint's POST method and body for the probe", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "parcels", label: "Parcels" },
+        config: PAGED("/query", {
+          method: "POST",
+          bodyTemplate: '{"where":"1=1"}',
+          totalCount: ARCGIS_PROBE,
+        }),
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce(json({ count: 1 }))
+      .mockResolvedValueOnce(json([{ id: "a" }]));
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
+
+    const [, probeInit] = fetchMock.mock.calls[0]! as [string, RequestInit];
+    expect(probeInit.method).toBe("POST");
+    expect(probeInit.body).toBe('{"where":"1=1"}');
+  });
+
+  it("a failing probe degrades to unknown total and never fails the sync", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "parcels", label: "Parcels" },
+        config: PAGED("/query", { totalCount: ARCGIS_PROBE }),
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce(json({ error: "boom" }, 500)) // probe fails
+      .mockResolvedValueOnce(json([{ id: "a" }]));
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    const result = await restApiAdapter.syncInstance!(INSTANCE, "u1", {
+      progress,
+    });
+
+    expect(result.recordCounts.created).toBe(1);
+    for (const [update] of progress.mock.calls) {
+      expect(update.total).toBeUndefined();
+    }
+  });
+
+  it("a non-numeric probe value degrades to unknown total", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "parcels", label: "Parcels" },
+        config: PAGED("/query", { totalCount: ARCGIS_PROBE }),
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce(json({ count: "not-a-number" }))
+      .mockResolvedValueOnce(json([{ id: "a" }]));
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
+
+    for (const [update] of progress.mock.calls) {
+      expect(update.total).toBeUndefined();
+    }
+  });
+
+  it("no total when only some endpoints carry a probe config — and no probe is issued", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "parcels", label: "Parcels" },
+        config: PAGED("/a", { totalCount: ARCGIS_PROBE }),
+      },
+      {
+        entity: { id: "e2", key: "owners", label: "Owners" },
+        config: PAGED("/b"),
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce(json([{ id: "a" }]))
+      .mockResolvedValueOnce(json([{ id: "b" }]));
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
+
+    // Two data pages, zero probe requests.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const url of fetchMock.mock.calls.map((c) => c[0] as string)) {
+      expect(new URL(url).searchParams.get("returnCountOnly")).toBeNull();
+    }
+    for (const [update] of progress.mock.calls) {
+      expect(update.total).toBeUndefined();
+    }
+  });
+
+  it("sums both endpoints' counts into one total on every update", async () => {
+    findByInstanceMock.mockResolvedValueOnce([
+      {
+        entity: { id: "e1", key: "parcels", label: "Parcels" },
+        config: PAGED("/a", { totalCount: ARCGIS_PROBE }),
+      },
+      {
+        entity: { id: "e2", key: "owners", label: "Owners" },
+        config: PAGED("/b", { totalCount: ARCGIS_PROBE }),
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce(json({ count: 1 })) // probe e1
+      .mockResolvedValueOnce(json({ count: 1 })) // probe e2
+      .mockResolvedValueOnce(json([{ id: "a" }]))
+      .mockResolvedValueOnce(json([{ id: "b" }]));
+
+    const progress = jest.fn<(update: SyncProgressUpdate) => void>();
+    await restApiAdapter.syncInstance!(INSTANCE, "u1", { progress });
+
+    const detailUpdates = progress.mock.calls
+      .map((c) => c[0])
+      .filter((u) => u.processed != null);
+    expect(detailUpdates.length).toBeGreaterThan(0);
+    for (const update of detailUpdates) {
+      expect(update.total).toBe(2);
+    }
+    expect(detailUpdates[detailUpdates.length - 1]!.processed).toBe(2);
+  });
+});
 
 describe("restApiAdapter.testConnection", () => {
   let originalFetch: typeof globalThis.fetch;
