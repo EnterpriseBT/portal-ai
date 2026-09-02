@@ -2,7 +2,7 @@
 
 The durable cost/margin model behind the production tier catalog (`packages/core/src/registries/tier-catalog.ts`) — what each tier costs Portals to serve, and the thresholds its price and allocations must clear. Born in #495; **re-run before any repricing** (§7). Decided dollar amounts appear here only as dated snapshots — **Stripe live is the pricing record of truth** (`plus_monthly` / `pro_monthly` lookup keys), never this file or the repo.
 
-Status of this revision (2026-09-02): §1–§3 populated from fetched sources and live prod reads; §5 pending the analysis pass; §6 baseline recorded (price amounts recovered from the baked marketing page — direct Stripe confirmation blocked by #496 and the absent live inspection key). Remaining `TODO(source)` markers: Auth0 plan fee (§2), Stripe-side baseline confirmation (§6, blocked by #496 + absent inspection key).
+Status of this revision (2026-09-02): §1–§3 populated from fetched sources and live prod reads; §5 pending the analysis pass; §6 baseline recorded (price amounts recovered from the baked marketing page — direct Stripe confirmation blocked by #496 and the absent live inspection key). Remaining `TODO(source)` marker: Stripe-side baseline confirmation (§6, blocked by #496 + absent inspection key). Auth0 is recorded as a bounded $0 assumption (§2) pending a dashboard check — prod-tenant billing is not API-readable.
 
 ## 1. Vendor rate table
 
@@ -52,7 +52,7 @@ Region us-east-1, on-demand, 730 h/mo. Sizes pinned by `deploy-prod.yml` paramet
 | CloudWatch logs, SES, ECR | misc | estimate | ≈ 3 |
 | **Total fixed** | | | **≈ $185/mo** |
 
-Rate sources: aws.amazon.com/fargate/pricing, /elasticloadbalancing/pricing, /route53/pricing; AWS Price List CSVs (AmazonRDS, AmazonEC2 NAT rows effective 2026-08-01, AmazonCloudFront); ElastiCache/S3 page-backing JSONs. All fetched 2026-09-02. Auth0: current plan/fee **TODO(source: Auth0 dashboard)** — likely free/B2C-essentials at current MAU, but the model must state it.
+Rate sources: aws.amazon.com/fargate/pricing, /elasticloadbalancing/pricing, /route53/pricing; AWS Price List CSVs (AmazonRDS, AmazonEC2 NAT rows effective 2026-08-01, AmazonCloudFront); ElastiCache/S3 page-backing JSONs. All fetched 2026-09-02. Auth0 (prod tenant `portalsai.us.auth0.com`): **$0/mo assumed** — MAU is single-digit (2 orgs), far inside Auth0's free-plan 25K-MAU ceiling, and the plan is not readable via the Management API (billing is dashboard-only; the CLI session here covers only the dev tenant). Even a paid Essentials plan would add ~$35/mo — bounded either way. Confirm in the Auth0 dashboard Billing page at the next §7 re-run.
 
 Fixed cost is **not** apportioned per org in T1 arithmetic while org count is small (it would dominate any per-org number and produce nonsense at n<50); it enters as a break-even line instead: `orgs × avg(price − variable cost) ≥ $185/mo`. Revisit apportionment at real scale (§7).
 
