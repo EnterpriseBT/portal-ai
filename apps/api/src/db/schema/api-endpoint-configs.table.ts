@@ -42,6 +42,12 @@ export const apiEndpointConfigs = pgTable(
     recordsPath: text("records_path").notNull().default(""),
     transform: text("transform"),
     idField: text("id_field"),
+    // Optional pre-sync total-count probe (#458) — see
+    // `ApiEndpointConfigBaseSchema.totalCount` in @portalai/core.
+    totalCount: jsonb("total_count").$type<{
+      queryParams: Record<string, string>;
+      responsePath: string;
+    }>(),
   },
   (table) => [
     uniqueIndex("api_endpoint_configs_entity_unique")

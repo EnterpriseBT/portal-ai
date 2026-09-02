@@ -252,3 +252,89 @@ describe("Jobs Router — GET /api/jobs", () => {
     expect(res.body.payload.jobs[0].organizationId).toBe(organizationId);
   });
 });
+
+/**
+ * #458 — the SSE snapshot carries the persisted `progressDetail`, so a
+ * reconnecting client (or a freshly opened JobDetail) sees the same counts
+ * as the live stream. A terminal job makes the stream close immediately
+ * after the snapshot, which lets supertest read the full body.
+ */
+describe("Jobs SSE — GET /api/sse/jobs/:id/events snapshot (#458)", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: DbClient;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+    await teardownOrg(db as ReturnType<typeof drizzle>);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  function snapshotFrom(body: string): Record<string, unknown> {
+    const match = body
+      .split("\n\n")
+      .find((chunk) => chunk.includes("event: snapshot"));
+    if (!match) throw new Error(`no snapshot event in body: ${body}`);
+    const data = match
+      .split("\n")
+      .find((line) => line.startsWith("data: "))!
+      .slice("data: ".length);
+    return JSON.parse(data);
+  }
+
+  it("includes a populated progressDetail", async () => {
+    const { organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const row = createJob(organizationId, {
+      status: "completed",
+      progress: 100,
+      progressDetail: { processed: 397960, total: 397960 },
+      completedAt: now,
+    });
+    await (db as ReturnType<typeof drizzle>)
+      .insert(jobs)
+      .values([row] as never);
+
+    const res = await request(app).get(
+      `/api/sse/jobs/${row.id}/events?token=test-token`
+    );
+
+    expect(res.status).toBe(200);
+    const snapshot = snapshotFrom(res.text);
+    expect(snapshot.progressDetail).toEqual({
+      processed: 397960,
+      total: 397960,
+    });
+  });
+
+  it("includes a null progressDetail for a job that never reported one", async () => {
+    const { organizationId } = await seedUserAndOrg(
+      db as ReturnType<typeof drizzle>,
+      AUTH0_ID
+    );
+    const row = createJob(organizationId, {
+      status: "completed",
+      progress: 100,
+      completedAt: now,
+    });
+    await (db as ReturnType<typeof drizzle>)
+      .insert(jobs)
+      .values([row] as never);
+
+    const res = await request(app).get(
+      `/api/sse/jobs/${row.id}/events?token=test-token`
+    );
+
+    expect(res.status).toBe(200);
+    const snapshot = snapshotFrom(res.text);
+    expect(snapshot).toHaveProperty("progressDetail", null);
+  });
+});

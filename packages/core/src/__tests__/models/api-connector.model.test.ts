@@ -475,3 +475,60 @@ describe("ApiEndpointConfigSchema", () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe("ApiEndpointConfigSchema.totalCount (#458)", () => {
+  const NONE = { strategy: "none" } as const;
+
+  it("accepts a valid totalCount block", () => {
+    const result = ApiEndpointConfigSchema.safeParse({
+      path: "/query",
+      method: "GET",
+      pagination: NONE,
+      totalCount: {
+        queryParams: { returnCountOnly: "true" },
+        responsePath: "count",
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("parses without totalCount (optional)", () => {
+    const result = ApiEndpointConfigSchema.safeParse({
+      path: "/query",
+      method: "GET",
+      pagination: NONE,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.totalCount).toBeUndefined();
+  });
+
+  it("rejects totalCount missing responsePath", () => {
+    const result = ApiEndpointConfigSchema.safeParse({
+      path: "/query",
+      method: "GET",
+      pagination: NONE,
+      totalCount: { queryParams: { returnCountOnly: "true" } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects totalCount with an empty responsePath", () => {
+    const result = ApiEndpointConfigSchema.safeParse({
+      path: "/query",
+      method: "GET",
+      pagination: NONE,
+      totalCount: { queryParams: {}, responsePath: "" },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects totalCount missing queryParams", () => {
+    const result = ApiEndpointConfigSchema.safeParse({
+      path: "/query",
+      method: "GET",
+      pagination: NONE,
+      totalCount: { responsePath: "count" },
+    });
+    expect(result.success).toBe(false);
+  });
+});

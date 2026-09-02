@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { JobSchema, JobStatusEnum, JobTypeEnum } from "../models/job.model.js";
+import {
+  JobProgressDetailSchema,
+  JobSchema,
+  JobStatusEnum,
+  JobTypeEnum,
+} from "../models/job.model.js";
 import {
   PaginatedResponsePayloadSchema,
   PaginationRequestQuerySchema,
@@ -63,6 +68,8 @@ export const JobSnapshotEventSchema = z.object({
   jobId: z.string(),
   status: JobStatusEnum,
   progress: z.number(),
+  /** Structured progress (#458) — null for jobs that never reported one. */
+  progressDetail: JobProgressDetailSchema.nullable(),
   error: z.string().nullable(),
   result: z.record(z.string(), z.unknown()).nullable(),
   startedAt: z.number().nullable(),
@@ -76,6 +83,8 @@ export const JobUpdateEventSchema = z.object({
   jobId: z.string(),
   status: JobStatusEnum,
   progress: z.number(),
+  /** Structured progress (#458) — optional: custom events omit it. */
+  progressDetail: JobProgressDetailSchema.nullable().optional(),
   error: z.string().nullable().optional(),
   result: z.record(z.string(), z.unknown()).nullable().optional(),
   timestamp: z.number(),

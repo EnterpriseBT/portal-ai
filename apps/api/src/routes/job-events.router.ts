@@ -77,6 +77,7 @@ jobEventsRouter.get(
         jobId: job.id,
         status: job.status,
         progress: job.progress,
+        progressDetail: job.progressDetail,
         error: job.error,
         result: job.result as Record<string, unknown> | null,
         startedAt: job.startedAt,

@@ -145,6 +145,23 @@ export type TestConnectionResult =
  * Options bag for `syncInstance`. A bag rather than positional params so
  * a future addition doesn't re-churn every adapter + test call site.
  */
+/**
+ * One progress report (#458). Exactly one of the two modes per call:
+ *
+ * - `{ percent }` — a phase milestone the adapter ASSERTS (0 at start, 100
+ *   at completion, or the sheets/excel-style fixed milestones). Never a
+ *   guess — the asymptotic page curve this replaced is the cautionary tale.
+ * - `{ processed, total? }` — cumulative records processed across the whole
+ *   run; `total` only when a count pre-flight succeeded for EVERY endpoint.
+ *   With no `total`, surfaces render a count and an indeterminate bar — a
+ *   missing number is the honest rendering of an unknown denominator.
+ */
+export interface SyncProgressUpdate {
+  percent?: number;
+  processed?: number;
+  total?: number;
+}
+
 export interface SyncInstanceOptions {
   /**
    * The BullMQ processor's `bullJob.updateProgress` callback — fans out

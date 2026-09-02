@@ -387,3 +387,104 @@ describe("DELETE /api/connector-instances/:instanceId/api-endpoints/:entityId", 
     expect(get.body.code).toBe(ApiCode.REST_API_ENDPOINT_NOT_FOUND);
   });
 });
+
+/**
+ * #458 — the optional `totalCount` probe config round-trips the
+ * `total_count` jsonb column through create / read / patch.
+ */
+describe("api-endpoints totalCount config (#458)", () => {
+  const TOTAL_COUNT = {
+    queryParams: { returnCountOnly: "true" },
+    responsePath: "count",
+  };
+
+  it("create persists totalCount and reads return it", async () => {
+    const created = await request(app)
+      .post(`/api/connector-instances/${restApiInstanceId}/api-endpoints`)
+      .send({
+        key: "parcels",
+        label: "Parcels",
+        config: {
+          path: "/query",
+          method: "GET",
+          recordsPath: "features",
+          pagination: { strategy: "none" },
+          totalCount: TOTAL_COUNT,
+        },
+      })
+      .expect(201);
+
+    expect(created.body.payload.config.totalCount).toEqual(TOTAL_COUNT);
+
+    const entityId = created.body.payload.entity.id;
+    const get = await request(app)
+      .get(
+        `/api/connector-instances/${restApiInstanceId}/api-endpoints/${entityId}`
+      )
+      .expect(200);
+    expect(get.body.payload.config.totalCount).toEqual(TOTAL_COUNT);
+  });
+
+  it("create without totalCount leaves it absent", async () => {
+    const created = await request(app)
+      .post(`/api/connector-instances/${restApiInstanceId}/api-endpoints`)
+      .send({
+        key: "plain",
+        label: "Plain",
+        config: {
+          path: "/plain",
+          method: "GET",
+          recordsPath: "",
+          pagination: { strategy: "none" },
+        },
+      })
+      .expect(201);
+
+    expect(created.body.payload.config.totalCount).toBeUndefined();
+  });
+
+  it("patch can add totalCount to an existing endpoint", async () => {
+    const created = await request(app)
+      .post(`/api/connector-instances/${restApiInstanceId}/api-endpoints`)
+      .send({
+        key: "patchable",
+        label: "Patchable",
+        config: {
+          path: "/p",
+          method: "GET",
+          recordsPath: "",
+          pagination: { strategy: "none" },
+        },
+      })
+      .expect(201);
+    const entityId = created.body.payload.entity.id;
+
+    const patched = await request(app)
+      .patch(
+        `/api/connector-instances/${restApiInstanceId}/api-endpoints/${entityId}`
+      )
+      .send({ config: { totalCount: TOTAL_COUNT } })
+      .expect(200);
+
+    expect(patched.body.payload.config.totalCount).toEqual(TOTAL_COUNT);
+  });
+
+  it("rejects an invalid totalCount (missing responsePath)", async () => {
+    const res = await request(app)
+      .post(`/api/connector-instances/${restApiInstanceId}/api-endpoints`)
+      .send({
+        key: "bad",
+        label: "Bad",
+        config: {
+          path: "/bad",
+          method: "GET",
+          recordsPath: "",
+          pagination: { strategy: "none" },
+          totalCount: { queryParams: { returnCountOnly: "true" } },
+        },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.REST_API_INVALID_CONFIG);
+  });
+});

@@ -16,6 +16,7 @@ import type { JobUpdateEvent } from "@portalai/core/contracts";
 
 import type { Redis } from "ioredis";
 
+import type { SyncProgressUpdate } from "../adapters/adapter.interface.js";
 import { jobs } from "../db/schema/index.js";
 import type { JobSelect } from "../db/schema/zod.js";
 import { getRedisClient } from "../utils/redis.util.js";
@@ -209,19 +210,47 @@ export class JobEventsService {
   }
 
   /**
-   * Update progress without a status transition.
+   * Update progress without a status transition (#458).
+   *
+   * The percent column is written only when one is known: asserted directly
+   * (`percent`) or derived from `processed / total` — capped at 99, because
+   * records-done still precedes finalization (reap / mirror cascade); only an
+   * asserted terminal `{ percent: 100 }` reads 100. A detail-only update
+   * (unknown total) leaves the percent column at its last milestone rather
+   * than fabricating one — the detail is the honest channel there.
+   *
+   * Publishes from the post-UPDATE row (`Repository.update` returns it via
+   * RETURNING), so a detail-only update broadcasts the row's real percent,
+   * not a stale or zero value.
    */
-  static async updateProgress(jobId: string, progress: number): Promise<void> {
+  static async updateProgress(
+    jobId: string,
+    update: SyncProgressUpdate
+  ): Promise<void> {
+    const derived =
+      update.percent ??
+      (update.processed != null && update.total != null && update.total > 0
+        ? Math.min(99, Math.round((update.processed / update.total) * 100))
+        : undefined);
+    const detail =
+      update.processed != null
+        ? { processed: update.processed, total: update.total ?? null }
+        : undefined;
+    if (derived == null && detail == null) return;
+
     const now = SystemUtilities.utc.now().getTime();
-    await DbService.repository.jobs.update(jobId, {
-      progress,
+    const row = await DbService.repository.jobs.update(jobId, {
+      ...(derived != null ? { progress: derived } : {}),
+      ...(detail != null ? { progressDetail: detail } : {}),
       updated: now,
     });
 
+    const progressDetail = row?.progressDetail ?? detail ?? null;
     const event: JobUpdateEvent = {
       jobId,
       status: "active",
-      progress,
+      progress: row?.progress ?? derived ?? 0,
+      ...(progressDetail != null ? { progressDetail } : {}),
       timestamp: now,
     };
     const redis = getRedisClient();
