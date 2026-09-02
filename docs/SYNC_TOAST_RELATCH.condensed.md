@@ -49,3 +49,5 @@ Chosen: **A**. One guard: seed **once per mount** (a `useRef` flag) — after th
 - Re-latching on other views (jobs list/detail already render persisted progress — #458).
 - Any backend change — `/running-jobs` and the SSE snapshot already carry what's needed.
 - Toast re-latch for non-sync job types (upload/commit flows own their expectations per CLAUDE.md's job-lock UX rules).
+
+**Smoke sign-off:** 2026-09-02, Ben Turner — confirmed against my own running stack (steps 1–3 also agent-walked live: reload re-latched at "350 of 1,000 records", second-tab first-visit at "300 of 1,000", no toast on an idle load).
