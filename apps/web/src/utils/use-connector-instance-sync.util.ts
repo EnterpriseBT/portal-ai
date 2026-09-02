@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { JobStatus } from "@portalai/core/models";
+import type { JobProgressDetail, JobStatus } from "@portalai/core/models";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { sdk, queryKeys } from "../api/sdk";
@@ -20,6 +20,8 @@ export interface ConnectorInstanceSyncState {
   jobStatus: JobStatus | null;
   /** Live progress percent (0–100) from the SSE stream. */
   progress: number;
+  /** Structured progress from the SSE stream (#458), else null. */
+  progressDetail: JobProgressDetail | null;
   /** Tally rendered when a job completes successfully (else null). */
   recordCounts: SyncRecordCounts | null;
   /** Error message rendered on POST failure or stream failure (else null). */
@@ -130,6 +132,7 @@ export const useConnectorInstanceSync = (
     isStarting: syncMutation.isPending,
     jobStatus: stream.status,
     progress: stream.progress,
+    progressDetail: stream.progressDetail,
     recordCounts,
     errorMessage,
     onSync,

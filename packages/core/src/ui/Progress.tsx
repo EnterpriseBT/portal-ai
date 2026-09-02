@@ -14,6 +14,12 @@ export interface ProgressProps {
   height?: number;
   /** Whether to show a pulsing glow animation to indicate active processing. */
   animated?: boolean;
+  /**
+   * Render MUI's indeterminate variant — for work whose extent is genuinely
+   * unknown (#458). `value` is ignored and the percent label is suppressed
+   * (an indeterminate bar has no honest number to print).
+   */
+  indeterminate?: boolean;
   className?: string;
   [key: `data-${string}`]: string;
 }
@@ -26,6 +32,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
       color = "primary",
       height = 8,
       animated = false,
+      indeterminate = false,
       className,
       ...rest
     },
@@ -44,8 +51,8 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
       >
         <Box sx={{ flex: 1 }}>
           <LinearProgress
-            variant="determinate"
-            value={clampedValue}
+            variant={indeterminate ? "indeterminate" : "determinate"}
+            {...(indeterminate ? {} : { value: clampedValue })}
             color={color}
             sx={(theme) => ({
               height,
@@ -71,7 +78,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
             })}
           />
         </Box>
-        {showLabel && (
+        {showLabel && !indeterminate && (
           <Typography
             variant="body2"
             color="text.secondary"

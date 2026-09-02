@@ -12,6 +12,7 @@ let currentStreamState: JobStreamState = {
   jobId: null,
   status: null,
   progress: 0,
+  progressDetail: null,
   error: null,
   result: null,
   startedAt: null,
@@ -37,6 +38,7 @@ const makeJob = (overrides: Partial<Job> = {}): Job => ({
   type: "system_check",
   status: "completed",
   progress: 100,
+  progressDetail: null,
   metadata: {},
   result: null,
   error: null,
@@ -46,7 +48,6 @@ const makeJob = (overrides: Partial<Job> = {}): Job => ({
   attempts: 1,
   maxAttempts: 3,
   lostExecutions: 0,
-  progressDetail: null,
   created: 1710000000000,
   createdBy: "user-1",
   updated: 1710000060000,
@@ -63,6 +64,7 @@ describe("JobsView", () => {
       jobId: null,
       status: null,
       progress: 0,
+      progressDetail: null,
       error: null,
       result: null,
       startedAt: null,
@@ -171,6 +173,7 @@ describe("JobsView", () => {
       jobId: "job-1",
       status: "active",
       progress: 72,
+      progressDetail: null,
       error: null,
       result: null,
       startedAt: 1710000000000,
@@ -181,6 +184,58 @@ describe("JobsView", () => {
     render(<JobsView />);
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
     expect(screen.getByText("72%")).toBeInTheDocument();
+  });
+
+  // #458 — cards render structured progress: determinate fraction bar when a
+  // total is known, indeterminate bar when it isn't. Persisted detail on the
+  // job row works with no stream connected.
+  it("renders a determinate fraction bar from stream progressDetail", () => {
+    const job = makeJob({ status: "active", progress: 0 });
+
+    currentListQuery = {
+      data: { jobs: [job], total: 1, limit: 20, offset: 0 },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<ListQuery>;
+
+    currentStreamState = {
+      jobId: "job-1",
+      status: "active",
+      progress: 0,
+      progressDetail: { processed: 1000, total: 4000 },
+      error: null,
+      result: null,
+      startedAt: 1710000000000,
+      completedAt: null,
+      connectionStatus: "connected",
+    };
+
+    render(<JobsView />);
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "25"
+    );
+  });
+
+  it("renders an indeterminate bar from persisted progressDetail with no total", () => {
+    const job = makeJob({
+      status: "active",
+      progress: 0,
+      progressDetail: { processed: 1000, total: null },
+    });
+
+    currentListQuery = {
+      data: { jobs: [job], total: 1, limit: 20, offset: 0 },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<ListQuery>;
+
+    render(<JobsView />);
+    const bar = screen.getByRole("progressbar");
+    expect(bar).not.toHaveAttribute("aria-valuenow");
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 
   it("should show updated status badge when stream reports completion", () => {
@@ -197,6 +252,7 @@ describe("JobsView", () => {
       jobId: "job-1",
       status: "completed",
       progress: 100,
+      progressDetail: null,
       error: null,
       result: null,
       startedAt: 1710000000000,

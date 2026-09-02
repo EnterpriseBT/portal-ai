@@ -76,3 +76,22 @@ describe("Progress Component", () => {
     });
   });
 });
+
+describe("Indeterminate mode (#458)", () => {
+  it("renders an indeterminate bar with no percent label", () => {
+    render(<Progress value={0} indeterminate />);
+    const bar = screen.getByRole("progressbar");
+    // MUI's indeterminate variant carries no aria-valuenow — there is no
+    // claimed position, which is the point.
+    expect(bar).not.toHaveAttribute("aria-valuenow");
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the determinate default when indeterminate is not set", () => {
+    render(<Progress value={40} />);
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "40"
+    );
+  });
+});

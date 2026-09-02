@@ -15,8 +15,9 @@ import {
   Progress,
 } from "@portalai/core/ui";
 import { JobModel } from "@portalai/core/models";
-import type { Job, JobStatus } from "@portalai/core/models";
+import type { Job, JobProgressDetail, JobStatus } from "@portalai/core/models";
 import { DateFactory } from "@portalai/core/utils";
+import { formatJobProgress } from "../utils/job-progress.util";
 import type { JobStreamState } from "../api/jobs.api";
 import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
@@ -66,13 +67,22 @@ export interface JobCardProps {
   job: Job;
   status?: JobStatus;
   progress?: number;
+  /** Live structured progress from a stream; falls back to the row's (#458). */
+  progressDetail?: JobProgressDetail | null;
 }
 
-export const JobCard = ({ job, status, progress }: JobCardProps) => {
+export const JobCard = ({
+  job,
+  status,
+  progress,
+  progressDetail,
+}: JobCardProps) => {
   const router = useRouter();
 
   const displayStatus = status ?? job.status;
   const displayProgress = progress ?? job.progress;
+  const displayDetail = progressDetail ?? job.progressDetail;
+  const display = formatJobProgress(displayDetail, displayProgress);
 
   return (
     <DetailCard
@@ -90,7 +100,13 @@ export const JobCard = ({ job, status, progress }: JobCardProps) => {
         </Typography>
         <Box sx={{ width: { xs: "100%", sm: 200 } }}>
           {displayStatus === "active" ? (
-            <Progress value={displayProgress} height={6} animated />
+            <Progress
+              value={display.kind === "count" ? 0 : display.barValue}
+              indeterminate={display.kind === "count"}
+              showLabel={display.kind !== "count"}
+              height={6}
+              animated
+            />
           ) : (
             <StatusBadge status={displayStatus} />
           )}

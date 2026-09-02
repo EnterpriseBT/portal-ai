@@ -124,6 +124,7 @@ describe("useJobStream", () => {
       jobId: null,
       status: null,
       progress: 0,
+      progressDetail: null,
       error: null,
       result: null,
       startedAt: null,
@@ -175,11 +176,86 @@ describe("useJobStream", () => {
       jobId: "job-123",
       status: "active",
       progress: 25,
+      progressDetail: null,
       error: null,
       result: null,
       startedAt: 1000,
       completedAt: null,
       connectionStatus: "connected",
+    });
+  });
+
+  // --- progressDetail (#458) ---
+
+  it("seeds progressDetail from the snapshot", async () => {
+    const { result } = renderHook(() => useJobStream("job-123"));
+    const es = await waitForConnection();
+
+    act(() => {
+      es.__emit("snapshot", {
+        ...SNAPSHOT_ACTIVE,
+        progressDetail: { processed: 1000, total: 4000 },
+      });
+    });
+
+    expect(result.current.progressDetail).toEqual({
+      processed: 1000,
+      total: 4000,
+    });
+  });
+
+  it("replaces progressDetail monotonically on updates — a stale lower count is ignored", async () => {
+    const { result } = renderHook(() => useJobStream("job-123"));
+    const es = await waitForConnection();
+
+    act(() => es.__emit("snapshot", SNAPSHOT_ACTIVE));
+    act(() => {
+      es.__emit("update", {
+        jobId: "job-123",
+        status: "active",
+        progress: 25,
+        progressDetail: { processed: 2000, total: null },
+        timestamp: 2000,
+      });
+    });
+    act(() => {
+      es.__emit("update", {
+        jobId: "job-123",
+        status: "active",
+        progress: 25,
+        progressDetail: { processed: 1500, total: null },
+        timestamp: 1500,
+      });
+    });
+
+    expect(result.current.progressDetail).toEqual({
+      processed: 2000,
+      total: null,
+    });
+  });
+
+  it("keeps the last progressDetail when an update omits it", async () => {
+    const { result } = renderHook(() => useJobStream("job-123"));
+    const es = await waitForConnection();
+
+    act(() => {
+      es.__emit("snapshot", {
+        ...SNAPSHOT_ACTIVE,
+        progressDetail: { processed: 500, total: null },
+      });
+    });
+    act(() => {
+      es.__emit("update", {
+        jobId: "job-123",
+        status: "active",
+        progress: 30,
+        timestamp: 2000,
+      });
+    });
+
+    expect(result.current.progressDetail).toEqual({
+      processed: 500,
+      total: null,
     });
   });
 

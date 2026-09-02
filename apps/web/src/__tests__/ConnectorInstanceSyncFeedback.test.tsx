@@ -53,6 +53,53 @@ describe("ConnectorInstanceSyncFeedbackUI", () => {
     expect(progressBar).not.toBeNull();
   });
 
+  // --- structured progress (#458) ---
+
+  it("shows 'X of Y records' with a determinate bar when a total is known", () => {
+    const { container } = render(
+      <ConnectorInstanceSyncFeedbackUI
+        {...baseProps}
+        jobStatus="active"
+        progress={0}
+        progressDetail={{ processed: 123954, total: 397960 }}
+      />
+    );
+
+    expect(screen.getByText("123,954 of 397,960 records")).toBeInTheDocument();
+    const bar = container.querySelector('[role="progressbar"]');
+    expect(bar).toHaveAttribute("aria-valuenow", "31");
+  });
+
+  it("shows a count with an indeterminate bar when the total is unknown — no percent anywhere", () => {
+    const { container } = render(
+      <ConnectorInstanceSyncFeedbackUI
+        {...baseProps}
+        jobStatus="active"
+        progress={0}
+        progressDetail={{ processed: 123954, total: null }}
+      />
+    );
+
+    expect(screen.getByText("123,954 records so far")).toBeInTheDocument();
+    const bar = container.querySelector('[role="progressbar"]');
+    expect(bar).not.toHaveAttribute("aria-valuenow");
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
+  });
+
+  it("falls back to the plain percent bar when no detail is reported", () => {
+    const { container } = render(
+      <ConnectorInstanceSyncFeedbackUI
+        {...baseProps}
+        jobStatus="active"
+        progress={42}
+        progressDetail={null}
+      />
+    );
+
+    const bar = container.querySelector('[role="progressbar"]');
+    expect(bar).toHaveAttribute("aria-valuenow", "42");
+  });
+
   it("shows the success summary when the job completes with recordCounts", () => {
     render(
       <ConnectorInstanceSyncFeedbackUI
