@@ -43,6 +43,8 @@ export const tiers = pgTable("tiers", {
   meteredRatePerMin: integer("metered_rate_per_min"),
   expensiveUnitsPerPeriod: integer("expensive_units_per_period"),
   expensiveRatePerMin: integer("expensive_rate_per_min"),
+  agentTurnsPerMin: integer("agent_turns_per_min"),
+  agentTurnsPerDay: integer("agent_turns_per_day"),
   perToolCaps:
     jsonb("per_tool_caps").$type<Record<string, { unitsPerPeriod: number }>>(),
   stripePriceId: text("stripe_price_id"),

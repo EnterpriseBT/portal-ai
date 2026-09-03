@@ -22,6 +22,7 @@ const policy = (tier: string): BillingTier["policy"] => ({
     expensive: { unitsPerPeriod: 300, ratePerMin: 5 },
   },
   perToolCaps: null,
+  agentTurns: { perMin: null, perDay: null },
   overage: "hard-deny",
   entitlements: { builtinToolpacks: ["data_query"], customToolpacks: true },
 });

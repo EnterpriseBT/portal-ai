@@ -22,6 +22,7 @@ const validPolicy = {
   },
   perToolCaps: null,
   overage: "hard-deny",
+  agentTurns: { perMin: 3, perDay: 9 },
   entitlements: {
     builtinToolpacks: ["data_query", "web_search"],
     customToolpacks: true,
@@ -40,6 +41,8 @@ const validRowFields = {
   meteredRatePerMin: 20,
   expensiveUnitsPerPeriod: 100,
   expensiveRatePerMin: 5,
+  agentTurnsPerMin: 3,
+  agentTurnsPerDay: 9,
   perToolCaps: null,
   stripePriceId: null,
   selectable: true,
@@ -273,5 +276,41 @@ describe("TierPolicySchema.entitlements (#214)", () => {
 
     const { entitlements: _entitlements, ...withoutEntitlements } = validPolicy;
     expect(TierPolicySchema.safeParse(withoutEntitlements).success).toBe(false);
+  });
+});
+
+// ── #498 — the un-charged agent-turn ceiling fields ───────────────────
+
+const validRowParseable = () =>
+  new TierModelFactory().create("SYSTEM").update(validRowFields).toJSON();
+
+describe("agent turn ceiling fields (#498)", () => {
+  it("TierPolicySchema requires agentTurns (top-level, not a cost class) and accepts nulls", () => {
+    expect(TierPolicySchema.safeParse(validPolicy).success).toBe(true);
+    expect(validPolicy.agentTurns).toBeDefined();
+    expect(
+      TierPolicySchema.safeParse({
+        ...validPolicy,
+        agentTurns: { perMin: null, perDay: null },
+      }).success
+    ).toBe(true);
+    const { agentTurns: _omitted, ...withoutTurns } = validPolicy;
+    expect(TierPolicySchema.safeParse(withoutTurns).success).toBe(false);
+  });
+
+  it("TierSchema rejects negative turn ceilings and accepts nulls", () => {
+    expect(
+      TierSchema.safeParse({
+        ...validRowParseable(),
+        agentTurnsPerMin: -1,
+      }).success
+    ).toBe(false);
+    expect(
+      TierSchema.safeParse({
+        ...validRowParseable(),
+        agentTurnsPerMin: null,
+        agentTurnsPerDay: null,
+      }).success
+    ).toBe(true);
   });
 });

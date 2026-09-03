@@ -79,6 +79,8 @@ const standardRow = (over: Record<string, unknown> = {}) => ({
   meteredRatePerMin: CATALOG_STANDARD.meteredRatePerMin,
   expensiveUnitsPerPeriod: CATALOG_STANDARD.expensiveUnitsPerPeriod,
   expensiveRatePerMin: CATALOG_STANDARD.expensiveRatePerMin,
+  agentTurnsPerMin: CATALOG_STANDARD.agentTurnsPerMin,
+  agentTurnsPerDay: CATALOG_STANDARD.agentTurnsPerDay,
   perToolCaps: CATALOG_STANDARD.perToolCaps,
   stripePriceId: null,
   selectable: CATALOG_STANDARD.selectable,

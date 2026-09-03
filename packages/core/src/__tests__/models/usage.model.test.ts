@@ -61,6 +61,7 @@ describe("OrganizationUsageGetResponseSchema", () => {
         },
         perToolCaps: null,
         overage: "hard-deny",
+        agentTurns: { perMin: 3, perDay: 9 },
         entitlements: {
           builtinToolpacks: ["data_query", "web_search"],
           customToolpacks: true,

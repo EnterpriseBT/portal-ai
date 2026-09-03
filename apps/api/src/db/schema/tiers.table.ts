@@ -38,6 +38,10 @@ export const tiers = pgTable(
     meteredRatePerMin: integer("metered_rate_per_min"),
     expensiveUnitsPerPeriod: integer("expensive_units_per_period"),
     expensiveRatePerMin: integer("expensive_rate_per_min"),
+    /** #498: un-charged agent-turn send ceiling (fixed UTC minute/day
+     *  windows). Null = unlimited (enterprise + custom tiers). */
+    agentTurnsPerMin: integer("agent_turns_per_min"),
+    agentTurnsPerDay: integer("agent_turns_per_day"),
     perToolCaps:
       jsonb("per_tool_caps").$type<
         Record<string, { unitsPerPeriod: number }>
@@ -117,7 +121,9 @@ export const tiers = pgTable(
         AND (${t.expensiveUnitsPerPeriod} IS NULL OR ${t.expensiveUnitsPerPeriod} >= 0)
         AND (${t.freeRatePerMin} IS NULL OR ${t.freeRatePerMin} >= 0)
         AND (${t.meteredRatePerMin} IS NULL OR ${t.meteredRatePerMin} >= 0)
-        AND (${t.expensiveRatePerMin} IS NULL OR ${t.expensiveRatePerMin} >= 0)`
+        AND (${t.expensiveRatePerMin} IS NULL OR ${t.expensiveRatePerMin} >= 0)
+        AND (${t.agentTurnsPerMin} IS NULL OR ${t.agentTurnsPerMin} >= 0)
+        AND (${t.agentTurnsPerDay} IS NULL OR ${t.agentTurnsPerDay} >= 0)`
     ),
   ]
 );

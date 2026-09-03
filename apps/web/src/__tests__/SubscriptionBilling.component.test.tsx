@@ -46,6 +46,7 @@ const policy = (tier: string) => ({
     expensive: { unitsPerPeriod: 300, ratePerMin: 5 },
   },
   perToolCaps: null,
+  agentTurns: { perMin: null, perDay: null },
   overage: "hard-deny" as const,
   entitlements: { builtinToolpacks: ["data_query"], customToolpacks: true },
 });

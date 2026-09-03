@@ -33,6 +33,11 @@ export const TierCatalogEntrySchema = z.object({
   meteredRatePerMin: z.number().int().nonnegative().nullable(),
   expensiveUnitsPerPeriod: z.number().int().nonnegative().nullable(),
   expensiveRatePerMin: z.number().int().nonnegative().nullable(),
+  /** #498: un-charged agent-turn send ceiling (fixed UTC minute/day
+   *  windows) — the fourth bound alongside the charge grid; null =
+   *  unlimited. Sized in docs/TIER_PRICING_MODEL.md. */
+  agentTurnsPerMin: z.number().int().nonnegative().nullable(),
+  agentTurnsPerDay: z.number().int().nonnegative().nullable(),
   perToolCaps: PerToolCapsSchema.nullable(),
   /** Listed in the self-serve plan list (#176). */
   selectable: z.boolean(),
@@ -72,7 +77,10 @@ export type TierCatalogEntry = z.infer<typeof TierCatalogEntrySchema>;
  * allocation on a tier anyone can subscribe to is an unbounded vendor bill
  * against a fixed price — a guard test pins that none exists, and #495's
  * invariants additionally pin the ladder's shape (metered/expensive ascent,
- * entitlement monotonicity, rate-reaches-quota coherence).
+ * entitlement monotonicity, rate-reaches-quota coherence). #498 adds the
+ * un-charged agent-turn send ceiling as the fourth bound — turns are never
+ * billed; the ceiling bounds the Anthropic bill the same way the grid
+ * bounds the tool vendors.
  *
  * `expensive` is the Portal-billed class (`web_search`→Tavily, geocoding→
  * Mapbox), sized against real consumption: `bulk_geocode_records` charges one
@@ -106,6 +114,8 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       meteredRatePerMin: 10,
       expensiveUnitsPerPeriod: 100,
       expensiveRatePerMin: 2,
+      agentTurnsPerMin: 3,
+      agentTurnsPerDay: 9,
       perToolCaps: null,
       selectable: true,
       builtinToolpacks: ["data_query", "web_search", "entity_management"],
@@ -128,6 +138,8 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       meteredRatePerMin: 60,
       expensiveUnitsPerPeriod: 2_000,
       expensiveRatePerMin: 10,
+      agentTurnsPerMin: 5,
+      agentTurnsPerDay: 13,
       perToolCaps: null,
       selectable: true,
       // Every pack except visualize/gis (#495) — those two and custom
@@ -160,6 +172,8 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       meteredRatePerMin: 120,
       expensiveUnitsPerPeriod: 20_000,
       expensiveRatePerMin: 30,
+      agentTurnsPerMin: 10,
+      agentTurnsPerDay: 26,
       perToolCaps: null,
       selectable: true,
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
@@ -184,6 +198,8 @@ export const TIER_CATALOG: readonly TierCatalogEntry[] = Object.freeze(
       meteredRatePerMin: null,
       expensiveUnitsPerPeriod: null,
       expensiveRatePerMin: null,
+      agentTurnsPerMin: null,
+      agentTurnsPerDay: null,
       perToolCaps: null,
       selectable: true,
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],

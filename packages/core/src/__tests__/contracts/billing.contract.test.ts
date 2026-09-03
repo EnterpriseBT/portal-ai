@@ -19,6 +19,7 @@ const policy = {
     expensive: { unitsPerPeriod: 300, ratePerMin: 5 },
   },
   perToolCaps: null,
+  agentTurns: { perMin: null, perDay: null },
   overage: "hard-deny",
   entitlements: { builtinToolpacks: ["data_query"], customToolpacks: true },
 };
@@ -144,6 +145,9 @@ describe("TierPolicySchema key pin (#214 contract guard)", () => {
   it("carries exactly the #172 keys + #214's entitlements — no billing fields leak into the gate contract", () => {
     expect(Object.keys(TierPolicySchema.shape).sort()).toEqual(
       [
+        // #498: the un-charged agent-turn ceiling rides the policy so the
+        // send gate and Settings read one contract.
+        "agentTurns",
         "allocations",
         "entitlements",
         "overage",

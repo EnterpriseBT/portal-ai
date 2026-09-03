@@ -70,6 +70,9 @@ export const CONVERGED_POLICY_FIELDS = [
   "meteredRatePerMin",
   "expensiveUnitsPerPeriod",
   "expensiveRatePerMin",
+  // #498: the un-charged agent-turn ceiling is catalog-owned policy.
+  "agentTurnsPerMin",
+  "agentTurnsPerDay",
   "perToolCaps",
   "selectable",
   "builtinToolpacks",

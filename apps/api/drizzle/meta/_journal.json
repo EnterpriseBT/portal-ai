@@ -631,6 +631,13 @@
       "when": 1788309585929,
       "tag": "0089_add-progress-detail-and-endpoint-total-count",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1788469502620,
+      "tag": "0090_add-agent-turn-ceilings",
+      "breakpoints": true
     }
   ]
 }

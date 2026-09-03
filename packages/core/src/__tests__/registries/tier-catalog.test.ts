@@ -41,6 +41,9 @@ describe("TIER_CATALOG (#218)", () => {
       meteredRatePerMin: 10,
       expensiveUnitsPerPeriod: 100,
       expensiveRatePerMin: 2,
+      // #498: un-charged send ceiling — budgets from TIER_PRICING_MODEL.md.
+      agentTurnsPerMin: 3,
+      agentTurnsPerDay: 9,
       perToolCaps: null,
       selectable: true,
       // #495: entity_management on the free tier is deliberate — its sync
@@ -61,6 +64,8 @@ describe("TIER_CATALOG (#218)", () => {
       displayName: "Plus",
       meteredUnitsPerPeriod: 3_000,
       expensiveUnitsPerPeriod: 2_000,
+      agentTurnsPerMin: 5,
+      agentTurnsPerDay: 13,
       selectable: true,
       // #495: every pack except visualize/gis — those two plus custom
       // toolpacks are Pro's exclusives; the rest are own-compute and
@@ -87,6 +92,8 @@ describe("TIER_CATALOG (#218)", () => {
       // Negotiated → unlimited across the board.
       meteredUnitsPerPeriod: null,
       expensiveUnitsPerPeriod: null,
+      agentTurnsPerMin: null,
+      agentTurnsPerDay: null,
       selectable: true,
       customToolpacks: true,
       cta: "contact",
@@ -112,6 +119,8 @@ describe("TIER_CATALOG (#218)", () => {
       meteredRatePerMin: 120,
       expensiveUnitsPerPeriod: 20_000,
       expensiveRatePerMin: 30,
+      agentTurnsPerMin: 10,
+      agentTurnsPerDay: 26,
       perToolCaps: null,
       selectable: true,
       builtinToolpacks: [...BuiltinToolpackSlugSchema.options],
@@ -208,6 +217,10 @@ describe("no self-serve tier has an unlimited allocation (#325)", () => {
       expect(tier.meteredRatePerMin).not.toBeNull();
       expect(tier.expensiveUnitsPerPeriod).not.toBeNull();
       expect(tier.expensiveRatePerMin).not.toBeNull();
+      // #498: the send ceiling is the fourth bound — an unbounded agent loop
+      // is an unbounded Anthropic bill against a fixed price.
+      expect(tier.agentTurnsPerMin).not.toBeNull();
+      expect(tier.agentTurnsPerDay).not.toBeNull();
     }
   );
 
@@ -242,6 +255,13 @@ describe("margin-pass invariants (#495)", () => {
     // metered ladder is a copy-paste slip either way.
     const by = (slug: string) =>
       TIER_CATALOG_BY_SLUG.get(slug)!.meteredUnitsPerPeriod!;
+    expect(by("standard")).toBeLessThan(by("plus"));
+    expect(by("plus")).toBeLessThan(by("pro"));
+  });
+
+  it("scales the agent-turn day ceiling strictly with tier (#498)", () => {
+    const by = (slug: string) =>
+      TIER_CATALOG_BY_SLUG.get(slug)!.agentTurnsPerDay!;
     expect(by("standard")).toBeLessThan(by("plus"));
     expect(by("plus")).toBeLessThan(by("pro"));
   });

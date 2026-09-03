@@ -47,6 +47,11 @@ export class TierService {
           ratePerMin: row.expensiveRatePerMin,
         },
       },
+      // #498: un-charged send ceiling — fixed UTC windows, never billed.
+      agentTurns: {
+        perMin: row.agentTurnsPerMin,
+        perDay: row.agentTurnsPerDay,
+      },
       perToolCaps: row.perToolCaps ?? null,
       // CHECK-constrained at the DB to the valid set.
       overage: row.overage as TierPolicy["overage"],
