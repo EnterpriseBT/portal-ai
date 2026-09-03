@@ -16,6 +16,7 @@ import {
 
 import { SUPPORT_MAILTO } from "../utils/contact.util";
 import {
+  formatAgentTurns,
   formatAllocation,
   formatOverage,
   formatPeriod,
@@ -104,6 +105,8 @@ export const TierCardUI: React.FC<TierCardUIProps> = ({
       label: "Expensive tools",
       value: formatAllocation(policy.allocations.expensive),
     },
+    // #498: the un-charged send ceiling — informational, never billed.
+    { label: "Agent turns", value: formatAgentTurns(policy.agentTurns) },
     { label: "Billing period", value: formatPeriod(policy.period) },
     { label: "When a limit is hit", value: formatOverage(policy.overage) },
     {

@@ -44,6 +44,16 @@ export const formatPeriod = (period: TierPolicy["period"]): string =>
 export const formatOverage = (overage: TierPolicy["overage"]): string =>
   overage === "hard-deny" ? "Stops at the limit" : "Alerts, keeps going";
 
+/** #498: the un-charged agent-turn send ceiling — "5/min · 13/day",
+ *  one-sided when only one window is set, "Unlimited" when neither is. */
+export const formatAgentTurns = (t: TierPolicy["agentTurns"]): string => {
+  const parts = [
+    t.perMin !== null ? `${nf.format(t.perMin)}/min` : null,
+    t.perDay !== null ? `${nf.format(t.perDay)}/day` : null,
+  ].filter((p): p is string => p !== null);
+  return parts.length > 0 ? parts.join(" · ") : "Unlimited";
+};
+
 /** Per-tool caps as display rows (empty when none). */
 export const formatPerToolCaps = (caps: TierPolicy["perToolCaps"]): string[] =>
   caps

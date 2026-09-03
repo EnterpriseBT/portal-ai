@@ -415,7 +415,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Subscription Plan",
     category: GlossaryCategory.System,
     definition:
-      "The plan your organization is on, which sets its monthly usage allocations. The organization owner can upgrade to a paid plan from Settings → Subscription & Billing; payment is handled by Stripe's secure checkout.",
+      "The plan your organization is on, which sets its monthly usage allocations and its portal-session send ceiling (a per-minute/per-day fair-use bound that never consumes credits). The organization owner can upgrade to a paid plan from Settings → Subscription & Billing; payment is handled by Stripe's secure checkout.",
     example:
       "Upgrading from Standard to a paid plan raises your monthly metered and expensive usage allocations.",
     relatedTerms: ["Organization", "Billing Portal"],

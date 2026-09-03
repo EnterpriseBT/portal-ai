@@ -54,6 +54,7 @@ describe("FAQ_ENTRIES", () => {
     "How do I connect my first data source?",
     "What is a Station and why do I need one?",
     "How do I start asking questions about my data?",
+    "Is there a limit on how many messages I can send?",
     "How do I upgrade my plan?",
     "Who can manage billing?",
     "My plan says it's managed — what does that mean?",
@@ -85,8 +86,8 @@ describe("FAQ_ENTRIES", () => {
     "Why did my job fail?",
   ];
 
-  it("includes every question listed in the audit doc (29 total)", () => {
-    expect(expectedQuestions).toHaveLength(29);
+  it("includes every question listed in the audit doc (30 total)", () => {
+    expect(expectedQuestions).toHaveLength(30);
     for (const question of expectedQuestions) {
       const match = FAQ_ENTRIES.find((e) => e.question === question);
       expect(match).toBeDefined();
@@ -330,6 +331,7 @@ describe("FAQ_ENTRIES source ordering", () => {
     // did before. Retagging them into Analytics & Portals would file "How do
     // I upgrade my plan?" under portals, which is wrong for the reader.
     const billing = [
+      "Is there a limit on how many messages I can send?",
       "How do I upgrade my plan?",
       "Who can manage billing?",
       "My plan says it's managed — what does that mean?",

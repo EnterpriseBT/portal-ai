@@ -22,6 +22,7 @@ import { FAQCategory } from "@portalai/core/content";
 import { sdk, queryKeys } from "../api/sdk";
 import { HelpTab } from "../utils/routes.util";
 import { usePortalStream } from "../utils/portal-stream.util";
+import { toServerError, type ApiError } from "../utils/api.util";
 import { ChatWindowUI, type ChatWindowHandle } from "./ChatWindow.component";
 import { usePortalChatLock } from "../utils/portal-chat-lock.util";
 import { useElapsed } from "../utils/use-elapsed.util";
@@ -31,6 +32,7 @@ import {
   shouldRenderViaWeb,
 } from "./PortalMessage.component";
 import { TypingIndicator } from "./TypingIndicator.component";
+import { TurnLimitNoticeUI } from "./TurnLimitNotice.component";
 import { ToolActivityStrip } from "./ToolActivityStrip.component";
 import { MessageTimestamp } from "./MessageTimestamp.component";
 
@@ -43,6 +45,8 @@ interface MessageListProps {
   onPinChange: () => void;
   streamingBlocks: PortalMessageBlock[] | null;
   streamError: string | null;
+  /** #498: an AGENT_TURN_LIMITED send denial to surface inline. */
+  turnLimitNotice?: { message: string; showUpgrade: boolean } | null;
   isStreaming: boolean;
   /** Send time of the in-flight turn (epoch ms), or null when idle — stamps
    *  the streaming assistant message (#180). */
@@ -61,6 +65,7 @@ const MessageList = React.memo<MessageListProps>(
     onPinChange,
     streamingBlocks,
     streamError,
+    turnLimitNotice = null,
     isStreaming,
     streamStartedAt = null,
     activeToolLabel = null,
@@ -69,7 +74,11 @@ const MessageList = React.memo<MessageListProps>(
     const hasStreamingContent =
       streamingBlocks !== null && streamingBlocks.length > 0;
     const isEmpty =
-      messages.length === 0 && !hasStreamingContent && !streamError;
+      messages.length === 0 &&
+      !hasStreamingContent &&
+      !streamError &&
+      // #498: a turn-limit denial on the very first send must still surface.
+      !turnLimitNotice;
     // Between user-send and the first delta the indicator is the only sign of
     // life. It also stays up for as long as a tool is running (#279): a tool
     // turn's first delta is usually a one-line preamble, after which the feed
@@ -126,6 +135,12 @@ const MessageList = React.memo<MessageListProps>(
         )}
 
         {streamError && <StatusMessage variant="error" message={streamError} />}
+        {turnLimitNotice && (
+          <TurnLimitNoticeUI
+            message={turnLimitNotice.message}
+            showUpgrade={turnLimitNotice.showUpgrade}
+          />
+        )}
       </>
     );
   }
@@ -188,6 +203,8 @@ export interface PortalSessionUIProps {
   onPinChange: () => void;
   streamingBlocks: PortalMessageBlock[] | null;
   streamError: string | null;
+  /** #498: an AGENT_TURN_LIMITED send denial to surface inline. */
+  turnLimitNotice?: { message: string; showUpgrade: boolean } | null;
   chatRef: React.Ref<ChatWindowHandle>;
   onSubmit: (message: string) => void;
   onReset: () => void;
@@ -211,6 +228,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
   onPinChange,
   streamingBlocks,
   streamError,
+  turnLimitNotice = null,
   chatRef,
   onSubmit,
   onReset,
@@ -246,6 +264,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
         onPinChange={onPinChange}
         streamingBlocks={streamingBlocks}
         streamError={streamError}
+        turnLimitNotice={turnLimitNotice}
         isStreaming={isStreaming}
         streamStartedAt={streamStartedAt}
         activeToolLabel={activeToolLabel}
@@ -326,6 +345,17 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
 
   const chatRef = useRef<ChatWindowHandle>(null);
   const sendMessage = sdk.portals.sendMessage(portalId);
+
+  // #498: an AGENT_TURN_LIMITED send denial surfaces inline (never the
+  // generic error banner); cleared by the next successful send. The usage
+  // query is deduped with Portal.view's identical one — no extra fetch.
+  const [turnLimitNotice, setTurnLimitNotice] = useState<{
+    message: string;
+    showUpgrade: boolean;
+  } | null>(null);
+  const { data: usageData } = sdk.organizations.usage();
+  const tierSlug = usageData?.tier.tier;
+  const showUpgrade = tierSlug !== "pro" && tierSlug !== "enterprise";
   const resetMessages = sdk.portals.resetMessages(portalId);
 
   // On session open: scroll to the target message (if opened from a pinned
@@ -422,9 +452,16 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
 
     try {
       await sendMessage.mutateAsync({ message });
-    } catch {
+      setTurnLimitNotice(null);
+    } catch (err) {
       // Remove the optimistic message if the send failed.
       streamActions.removeLocalMessage(optimisticId);
+      // #498: the turn-ceiling denial gets its own friendly surface; every
+      // other failure keeps the existing (silent-rollback) behavior.
+      const serverError = toServerError(err as ApiError);
+      if (serverError?.code === "AGENT_TURN_LIMITED") {
+        setTurnLimitNotice({ message: serverError.message, showUpgrade });
+      }
       return;
     }
 
@@ -450,6 +487,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       onPinChange={handlePinChange}
       streamingBlocks={streamState.streamingBlocks}
       streamError={streamState.streamError}
+      turnLimitNotice={turnLimitNotice}
       chatRef={chatRef}
       onSubmit={handleSubmit}
       onReset={handleReset}
