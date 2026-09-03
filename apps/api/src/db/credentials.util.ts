@@ -36,6 +36,17 @@ export interface DbPasswordResolver {
   invalidate(): void;
 }
 
+/** The DATABASE_URL's embedded password, decoded — the resolver's fail-open
+ *  floor. A malformed URL yields "" (the pool then fails exactly as it would
+ *  today with a broken DATABASE_URL — no new failure mode at boot). */
+export function fallbackPasswordFromUrl(databaseUrl: string): string {
+  try {
+    return decodeURIComponent(new URL(databaseUrl).password);
+  } catch {
+    return "";
+  }
+}
+
 export function createDbPasswordResolver(
   opts: DbPasswordResolverOptions
 ): DbPasswordResolver {

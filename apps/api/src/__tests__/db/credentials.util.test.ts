@@ -212,3 +212,22 @@ describe("with a master-secret ARN", () => {
     expect(mockSend).toHaveBeenCalledTimes(2);
   });
 });
+
+// ── fallbackPasswordFromUrl — the fail-open floor extraction ──────────
+
+describe("fallbackPasswordFromUrl", () => {
+  it("decodes the URL's percent-encoded password", async () => {
+    const { fallbackPasswordFromUrl } =
+      await import("../../db/credentials.util.js");
+    expect(fallbackPasswordFromUrl("postgresql://u:p%40ss%2Fw@h:5432/db")).toBe(
+      "p@ss/w"
+    );
+  });
+
+  it("yields an empty string for a malformed URL (no new boot failure mode)", async () => {
+    const { fallbackPasswordFromUrl } =
+      await import("../../db/credentials.util.js");
+    expect(fallbackPasswordFromUrl("not a url")).toBe("");
+    expect(fallbackPasswordFromUrl("")).toBe("");
+  });
+});
