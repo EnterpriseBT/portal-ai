@@ -273,7 +273,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     definition:
       "Which tool packs your subscription plan includes. A station can be *configured* with a pack that your plan doesn't include — usually because the plan changed after the station was set up — and that pack goes **inactive** rather than being removed: it stays attached, is marked \"Inactive on your plan\" wherever it appears, and its tools are simply absent from portal sessions. The assistant is told the difference, so it will say a capability isn't included in your plan instead of reporting it as missing from the product. Nothing is deleted by a downgrade, and nothing needs re-attaching after an upgrade — the pack becomes live again in the next portal session.",
     example:
-      "A station shows a dashed, greyed-out `entity_management` chip badged \"Inactive on your plan\". Asked to create records there, the assistant says record creation isn't included in the current plan and links to Settings → Subscription & Billing. Upgrading makes the same station's pack live again with no edit.",
+      "A station shows a dashed, greyed-out `gis` chip badged \"Inactive on your plan\". Asked to map records there, the assistant says mapping isn't included in the current plan and links to Settings → Subscription & Billing. Upgrading makes the same station's pack live again with no edit.",
     relatedTerms: ["Tool Pack", "Station", "Portal"],
   },
   {
