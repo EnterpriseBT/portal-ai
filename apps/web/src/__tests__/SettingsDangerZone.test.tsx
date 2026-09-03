@@ -76,6 +76,7 @@ const usageData = {
       expensive: { unitsPerPeriod: 100, ratePerMin: 5 },
     },
     perToolCaps: null,
+    agentTurns: { perMin: null, perDay: null },
     overage: "hard-deny",
   },
   usage: {

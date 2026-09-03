@@ -16,12 +16,18 @@ installMockEventSource();
 // ── Mocks ────────────────────────────────────────────────────────────
 
 const mockGetPortal = jest.fn<() => unknown>();
+const mockUsageData = jest.fn<() => unknown>(() => undefined);
 const mockSendMessage = jest.fn<() => Promise<unknown>>();
 const mockResetMessages = jest.fn<() => Promise<unknown>>();
 const mockPinPortalResult = jest.fn();
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
+    // #498: the container reads the org's tier to decide the upgrade CTA on
+    // the turn-limit notice (deduped with Portal.view's identical query).
+    organizations: {
+      usage: () => ({ data: mockUsageData(), isLoading: false, error: null }),
+    },
     portals: {
       get: mockGetPortal,
       sendMessage: () => ({
@@ -512,5 +518,61 @@ describe("PortalSession (container) via PortalSessionUI", () => {
     await waitFor(() => {
       expect(mockSendMessage).toHaveBeenCalledWith({ message: "Hello!" });
     });
+  });
+
+  // ── #498 — the turn-limit notice ─────────────────────────────────────
+
+  it("renders the turn-limit notice (with upgrade CTA) on AGENT_TURN_LIMITED and keeps the composer usable", async () => {
+    mockGetPortal.mockReturnValue(makeQueryResult([]));
+    mockUsageData.mockReturnValue({ tier: { tier: "standard" } });
+    mockSendMessage.mockRejectedValue(
+      Object.assign(
+        new Error(
+          "You've reached your plan's agent-turn limit for today. It resets at midnight UTC."
+        ),
+        {
+          code: "AGENT_TURN_LIMITED",
+        }
+      )
+    );
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />);
+
+    const input = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);
+    fireEvent.change(input, { target: { value: "One too many" } });
+    fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/agent-turn limit for today/i)
+      ).toBeInTheDocument();
+    });
+    // Upgrade CTA for a non-pro tier; composer stays enabled.
+    expect(screen.getByText("View plans")).toBeInTheDocument();
+    expect(input).toBeEnabled();
+    // The optimistic message was rolled back.
+    expect(screen.queryByText("One too many")).not.toBeInTheDocument();
+  });
+
+  it("a non-turn-limit send failure does NOT render the notice", async () => {
+    mockGetPortal.mockReturnValue(makeQueryResult([]));
+    mockSendMessage.mockRejectedValue(
+      Object.assign(new Error("boom"), { code: "PORTAL_NOT_FOUND" })
+    );
+
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
+    render(<PortalSession portalId="portal-1" />);
+
+    const input = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);
+    fireEvent.change(input, { target: { value: "Hi" } });
+    fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+
+    await waitFor(() => {
+      expect(mockSendMessage).toHaveBeenCalled();
+    });
+    expect(screen.queryByText(/agent-turn limit/i)).not.toBeInTheDocument();
   });
 });

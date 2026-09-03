@@ -13,6 +13,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
+import { AgentTurnCeilingService } from "../services/agent-turn-ceiling.service.js";
 import { portals, portalMessages, portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalService } from "../services/portal.service.js";
@@ -385,6 +386,12 @@ portalRouter.get(
  *                       type: string
  *                     deletedMessages:
  *                       type: number
+ *       429:
+ *         description: The tier's un-charged agent-turn send ceiling is exhausted (AGENT_TURN_LIMITED); Retry-After carries the window reset. Nothing is written or charged.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
  *         description: Portal not found
  *         content:
@@ -720,6 +727,25 @@ portalRouter.post(
       if (!portal || portal.organizationId !== organizationId) {
         return next(
           new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found")
+        );
+      }
+
+      // #498: the un-charged agent-turn ceiling gates HERE — before the
+      // user row is written and before any stream/model call exists, so a
+      // denial costs nothing and can never land mid-turn. (The SSE route
+      // stays ungated on purpose: it auto-reconnects.)
+      const admission =
+        await AgentTurnCeilingService.checkAdmission(organizationId);
+      if (!admission.allowed) {
+        res.set("Retry-After", String(admission.retryAfterSeconds));
+        return next(
+          new ApiError(
+            429,
+            ApiCode.AGENT_TURN_LIMITED,
+            admission.window === "day"
+              ? "You've reached your plan's agent-turn limit for today. It resets at midnight UTC."
+              : "You're sending messages too quickly. Try again in a moment."
+          )
         );
       }
 

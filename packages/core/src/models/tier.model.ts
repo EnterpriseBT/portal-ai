@@ -90,6 +90,13 @@ export const TierPolicySchema = z.object({
   overage: OverageSchema,
   /** Toolpack availability (#214). */
   entitlements: TierEntitlementsSchema,
+  /** #498: un-charged agent-turn send ceiling — fixed UTC-minute/day windows,
+   *  an abuse/exposure bound (never billed). Top-level, not an allocation:
+   *  turns are not a cost class. null = unlimited. */
+  agentTurns: z.object({
+    perMin: z.number().int().nonnegative().nullable(),
+    perDay: z.number().int().nonnegative().nullable(),
+  }),
 });
 export type TierPolicy = z.infer<typeof TierPolicySchema>;
 
@@ -110,6 +117,10 @@ export const TierSchema = CoreSchema.extend({
   meteredRatePerMin: z.number().int().nonnegative().nullable(),
   expensiveUnitsPerPeriod: z.number().int().nonnegative().nullable(),
   expensiveRatePerMin: z.number().int().nonnegative().nullable(),
+  /** #498: un-charged agent-turn ceiling (fixed UTC windows). null =
+   *  unlimited (enterprise + org-scoped custom tiers). */
+  agentTurnsPerMin: z.number().int().nonnegative().nullable(),
+  agentTurnsPerDay: z.number().int().nonnegative().nullable(),
   perToolCaps: PerToolCapsSchema.nullable(),
   /** Stripe price mapped to this tier (#176). Null = not purchasable
    *  (standard, bespoke). */

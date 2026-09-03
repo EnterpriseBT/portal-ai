@@ -67,6 +67,14 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   },
 
   {
+    question: "Is there a limit on how many messages I can send?",
+    answer:
+      "Each plan includes a send ceiling for portal sessions — a small per-minute burst limit and a daily limit that resets at midnight UTC. Sending a message never uses your tool-credit allocation; the ceiling is a separate fair-use bound, and hitting it just pauses new messages until the window resets (a notice in the session says exactly when). Higher plans raise the ceiling, and enterprise plans have none.",
+    category: FAQCategory.GettingStarted,
+    relatedGlossaryTerms: ["Portal", "Subscription Plan"],
+  },
+
+  {
     question: "How do I upgrade my plan?",
     answer:
       "Go to Settings → Subscription & Billing and pick a plan from the list — Subscribe takes you to Stripe's secure checkout. After you pay, your plan updates automatically within a few seconds (Stripe confirms the subscription to us directly). Your usage allocations reset on your new billing cycle from that point on. To change or cancel later, use Manage subscription on the same tab, which opens the Stripe billing portal.",

@@ -232,6 +232,7 @@ function makePolicy(
       expensive: { unitsPerPeriod: null, ratePerMin: null },
     },
     perToolCaps: null,
+    agentTurns: { perMin: null, perDay: null },
     overage: "hard-deny" as const,
     entitlements,
   };

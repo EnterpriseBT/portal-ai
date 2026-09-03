@@ -206,3 +206,23 @@ describe("TierService.periodIdFor", () => {
     ).toBe("2025-12");
   });
 });
+
+// ── #498 — agentTurns mapping ─────────────────────────────────────────
+
+describe("tierPolicyFromRow agentTurns (#498)", () => {
+  it("maps the two flat columns into policy.agentTurns", () => {
+    const p = TierService.tierPolicyFromRow({
+      ...standardRow,
+      agentTurnsPerMin: 5,
+      agentTurnsPerDay: 13,
+    } as never);
+    expect(p.agentTurns).toEqual({ perMin: 5, perDay: 13 });
+
+    const unlimited = TierService.tierPolicyFromRow({
+      ...standardRow,
+      agentTurnsPerMin: null,
+      agentTurnsPerDay: null,
+    } as never);
+    expect(unlimited.agentTurns).toEqual({ perMin: null, perDay: null });
+  });
+});

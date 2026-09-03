@@ -22,6 +22,7 @@ const policy = (tier: string): BillingTier["policy"] => ({
     expensive: { unitsPerPeriod: 300, ratePerMin: 5 },
   },
   perToolCaps: null,
+  agentTurns: { perMin: null, perDay: null },
   overage: "hard-deny",
   entitlements: { builtinToolpacks: ["data_query"], customToolpacks: true },
 });
@@ -72,6 +73,8 @@ describe("TierCardUI — subscribe", () => {
     ).toBeInTheDocument();
     // Grid dimensions present.
     expect(screen.getByText(/Metered tools:/)).toBeInTheDocument();
+    // #498: the un-charged send ceiling rides the same card.
+    expect(screen.getByText(/Agent turns:/)).toBeInTheDocument();
     expect(
       screen.getByText(/2,500 units \/ period · 20 \/ min/)
     ).toBeInTheDocument();

@@ -46,14 +46,32 @@ export async function incrementRateWindow(
   key: string,
   now: number = Date.now()
 ): Promise<number> {
+  return incrementFixedWindow(key, 60_000, WINDOW_TTL_SECONDS, now);
+}
+
+/**
+ * #498: the generalized fixed-window counter — same key format and
+ * semantics as the minute window above (which now delegates here), with a
+ * caller-chosen window. Used by the agent-turn ceiling's UTC-minute and
+ * UTC-day windows.
+ *
+ * Throws on Redis error/timeout — callers treat either as "allow".
+ *
+ * @param windowMs   window size; the bucket is `Math.floor(now / windowMs)`
+ * @param ttlSeconds key TTL, set on the window's first increment — size it
+ *                   to cover the window plus boundary slack
+ */
+export async function incrementFixedWindow(
+  key: string,
+  windowMs: number,
+  ttlSeconds: number,
+  now: number = Date.now()
+): Promise<number> {
   const redis = getRedisClient();
-  const windowKey = `usage:rate:${key}:${Math.floor(now / 60_000)}`;
+  const windowKey = `usage:rate:${key}:${Math.floor(now / windowMs)}`;
   const count = await withRedisTimeout(redis.incr(windowKey), "INCR");
   if (count === 1) {
-    await withRedisTimeout(
-      redis.expire(windowKey, WINDOW_TTL_SECONDS),
-      "EXPIRE"
-    );
+    await withRedisTimeout(redis.expire(windowKey, ttlSeconds), "EXPIRE");
   }
   return count;
 }

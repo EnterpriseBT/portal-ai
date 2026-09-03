@@ -113,3 +113,15 @@ describe("sortTiersForDisplay", () => {
     expect(input.map((t) => t.slug)).toEqual(before);
   });
 });
+
+// ── #498 — formatAgentTurns ───────────────────────────────────────────
+
+describe("formatAgentTurns", () => {
+  it("renders both windows, one-sided values, and Unlimited", async () => {
+    const { formatAgentTurns } = await import("../utils/tier-format.util");
+    expect(formatAgentTurns({ perMin: 5, perDay: 13 })).toBe("5/min · 13/day");
+    expect(formatAgentTurns({ perMin: null, perDay: 13 })).toBe("13/day");
+    expect(formatAgentTurns({ perMin: 5, perDay: null })).toBe("5/min");
+    expect(formatAgentTurns({ perMin: null, perDay: null })).toBe("Unlimited");
+  });
+});
