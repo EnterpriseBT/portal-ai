@@ -13,7 +13,11 @@ import { AnalyticsService } from "./analytics.service.js";
 import { DbService } from "./db.service.js";
 import { TierService } from "./tier.service.js";
 import { EntitlementService } from "./entitlement.service.js";
-import { wrapWithCostGate, type GateableTool } from "./cost-gate.service.js";
+import {
+  registerCostResolver,
+  wrapWithCostGate,
+  type GateableTool,
+} from "./cost-gate.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import type { CostHint } from "@portalai/core/models";
 
@@ -22,7 +26,10 @@ import { SqlQueryTool } from "../tools/sql-query.tool.js";
 import { DisplayEntityRecordsTool } from "../tools/display-entity-records.tool.js";
 import { StationContextTool } from "../tools/station-context.tool.js";
 import { PlatformHelpTool } from "../tools/platform-help.tool.js";
-import { VisualizeD3Tool } from "../tools/visualize-d3.tool.js";
+import {
+  VisualizeD3Tool,
+  VISUALIZE_D3_UNITS_PER_CALL,
+} from "../tools/visualize-d3.tool.js";
 import { VisualizeMapTool } from "../tools/visualize-map.tool.js";
 import { GeocodeTool } from "../tools/geocode.tool.js";
 import { ReverseGeocodeTool } from "../tools/reverse-geocode.tool.js";
@@ -524,6 +531,9 @@ export class ToolService {
     // independently of data_query.
     // -------------------------------------------------------------------
     if (enabledPacks.has("visualize")) {
+      // #499: charge the measured cost ratio, not the class default of 1 —
+      // idempotent registration, same shape as the geocoding resolvers below.
+      registerCostResolver("visualize_d3", () => VISUALIZE_D3_UNITS_PER_CALL);
       tools.visualize_d3 = new VisualizeD3Tool().build(
         stationId,
         organizationId

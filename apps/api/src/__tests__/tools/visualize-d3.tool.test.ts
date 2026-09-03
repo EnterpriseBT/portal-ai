@@ -233,3 +233,12 @@ describe("VisualizeD3Tool.execute — durable pipeline (#270)", () => {
     });
   });
 });
+
+// #499 — the re-unit: a d3 call charges its measured cost ratio, and says so.
+describe("visualize_d3 unit cost (#499)", () => {
+  it("exports the 80-unit charge and advertises it in the description", async () => {
+    const mod = await import("../../tools/visualize-d3.tool.js");
+    expect(mod.VISUALIZE_D3_UNITS_PER_CALL).toBe(80);
+    expect(new mod.VisualizeD3Tool().description).toContain("80 usage units");
+  });
+});

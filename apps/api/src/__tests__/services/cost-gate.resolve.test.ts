@@ -539,3 +539,13 @@ describe("checkAdmission charge context (#179)", () => {
     spy.mockRestore();
   });
 });
+
+// #499 — the default is 1 unit/call; per-tool resolvers (registered at tool
+// build) are the only thing that changes it.
+describe("resolveCallCost default (#499)", () => {
+  it("defaults to 1 unit for a tool with no registered resolver", async () => {
+    const { resolveCallCost } =
+      await import("../../services/cost-gate.service.js");
+    await expect(resolveCallCost("visualize_d3", {})).resolves.toBe(1);
+  });
+});

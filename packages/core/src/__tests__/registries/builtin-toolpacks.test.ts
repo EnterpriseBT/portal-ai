@@ -168,6 +168,10 @@ describe("visualize pack (#269)", () => {
   const pack = BUILTIN_TOOLPACKS.find((p) => p.slug === "visualize");
   const tool = pack?.tools.find((t) => t.name === "visualize_d3");
 
+  it("advertises the 80-unit charge in the mirror description (#499)", () => {
+    expect(tool!.description).toContain("80 usage units");
+  });
+
   it("exists with exactly the visualize_d3 tool", () => {
     expect(pack).toBeDefined();
     expect(pack!.tools).toHaveLength(1);

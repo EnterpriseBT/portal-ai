@@ -2,6 +2,9 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateText as defaultGenerateText } from "ai";
 import { ReadableStream } from "node:stream/web";
 import { environment } from "../environment.js";
+import { createLogger } from "../utils/logger.util.js";
+
+const logger = createLogger({ module: "ai-codegen" });
 
 const anthropic = createAnthropic({
   apiKey: environment.ANTHROPIC_API_KEY,
@@ -34,7 +37,16 @@ type GenerateTextFn = (args: {
   system: string;
   prompt: string;
   providerOptions: { anthropic: Record<string, unknown> };
-}) => Promise<{ text: string }>;
+}) => Promise<{
+  text: string;
+  /** AI-SDK usage; field names differ across majors, both tolerated below. */
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    promptTokens?: number;
+    completionTokens?: number;
+  };
+}>;
 
 export class AiService {
   static get DEFAULT_MODEL() {
@@ -67,8 +79,9 @@ export class AiService {
     generateText?: GenerateTextFn;
   }): Promise<string> {
     const gen = params.generateText ?? (defaultGenerateText as GenerateTextFn);
-    const { text } = await gen({
-      model: anthropic(params.model ?? CODEGEN_MODEL),
+    const model = params.model ?? CODEGEN_MODEL;
+    const { text, usage } = await gen({
+      model: anthropic(model),
       system: params.system,
       prompt: params.prompt,
       providerOptions: {
@@ -78,6 +91,17 @@ export class AiService {
         },
       },
     });
+    // #499: one line per codegen call — the measured input to the pricing
+    // model's per-call cost (replaces the modeled estimate at the next
+    // TIER_PRICING_MODEL.md re-run). Tolerant of both AI-SDK usage spellings.
+    logger.info(
+      {
+        model,
+        inputTokens: usage?.inputTokens ?? usage?.promptTokens,
+        outputTokens: usage?.outputTokens ?? usage?.completionTokens,
+      },
+      "codegen usage"
+    );
     return text;
   }
 }

@@ -76,11 +76,24 @@ function deriveShape(
   return { schema, samplePeek: rows.slice(0, 10), rows };
 }
 
+/**
+ * Units charged per successful call (#499). The class-baseline expensive unit
+ * is a bulk-geocode row (≈$0.00075 vendor); one d3 codegen is an Opus 4.8
+ * call (≈$0.06 modeled — see docs/TIER_PRICING_MODEL.md §1), an ~80× ratio.
+ * Charging the ratio keeps per-unit vendor cost uniform across the class,
+ * which is what makes the tier ceilings meaningful. Registered as a cost
+ * resolver at tool build (tools.service.ts). Retries within one call are NOT
+ * charged extra (charge is per successful call; total failures charge 0 —
+ * bill-on-success); `generateCode` logs actual token usage so the next
+ * pricing-model re-run can replace this modeled ratio with measurement.
+ */
+export const VISUALIZE_D3_UNITS_PER_CALL = 80;
+
 export class VisualizeD3Tool extends Tool<typeof InputSchema> {
   slug = "visualize_d3";
   name = "Visualize (D3)";
   description =
-    "Render an interactive D3 visualization from a SQL query. Describe the chart you want (type, encodings, emphasis) in `instruction`; the render program is generated for you. Do not add a LIMIT — result size is handled automatically (large results stream to the widget via a handle).";
+    "Render an interactive D3 visualization from a SQL query. Describe the chart you want (type, encodings, emphasis) in `instruction`; the render program is generated for you. Do not add a LIMIT — result size is handled automatically (large results stream to the widget via a handle). Each call charges 80 usage units from the organization's expensive allocation — the heaviest single charge in the catalog; prefer one well-specified call over iterating.";
 
   get schema() {
     return InputSchema;
