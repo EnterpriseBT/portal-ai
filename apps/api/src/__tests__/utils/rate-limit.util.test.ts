@@ -128,3 +128,43 @@ describe("incrementRateWindow", () => {
     process.removeListener("unhandledRejection", unhandled);
   });
 });
+
+// ── #498 — incrementFixedWindow (parameterized window) ────────────────
+
+describe("incrementFixedWindow (#498)", () => {
+  const DAY_MS = 86_400_000;
+
+  it("buckets by the caller's window and rolls exactly at the boundary", async () => {
+    mockIncr.mockResolvedValue(1);
+    const { incrementFixedWindow } =
+      await import("../../utils/rate-limit.util.js");
+    const t0 = DAY_MS * 20_000; // a clean UTC-day boundary
+    await incrementFixedWindow("org-1:day", DAY_MS, 90_000, t0);
+    await incrementFixedWindow("org-1:day", DAY_MS, 90_000, t0 + DAY_MS - 1);
+    await incrementFixedWindow("org-1:day", DAY_MS, 90_000, t0 + DAY_MS);
+    const keys = mockIncr.mock.calls.map((c) => c[0]);
+    expect(keys[0]).toBe(`usage:rate:org-1:day:20000`);
+    expect(keys[1]).toBe(keys[0]); // same window
+    expect(keys[2]).toBe(`usage:rate:org-1:day:20001`); // rolled
+  });
+
+  it("sets the caller's TTL only on the first increment of a window", async () => {
+    const { incrementFixedWindow } =
+      await import("../../utils/rate-limit.util.js");
+    mockIncr.mockResolvedValueOnce(1).mockResolvedValueOnce(2);
+    await incrementFixedWindow("k", DAY_MS, 90_000, 0);
+    await incrementFixedWindow("k", DAY_MS, 90_000, 1);
+    expect(mockExpire).toHaveBeenCalledTimes(1);
+    expect(mockExpire).toHaveBeenCalledWith(expect.any(String), 90_000);
+  });
+
+  it("incrementRateWindow delegates with the legacy minute key format, byte-identical", async () => {
+    mockIncr.mockResolvedValue(1);
+    const { incrementRateWindow } =
+      await import("../../utils/rate-limit.util.js");
+    const now = 90_000; // minute bucket 1
+    await incrementRateWindow("org-9:metered", now);
+    expect(mockIncr).toHaveBeenCalledWith("usage:rate:org-9:metered:1");
+    expect(mockExpire).toHaveBeenCalledWith(expect.any(String), 120);
+  });
+});
