@@ -635,6 +635,10 @@ export enum ApiCode {
   TOOL_USAGE_RATE_LIMITED = "TOOL_USAGE_RATE_LIMITED",
   /** The org's billing-period unit allocation for this cost class is exhausted. */
   TOOL_USAGE_QUOTA_EXCEEDED = "TOOL_USAGE_QUOTA_EXCEEDED",
+  /** #498: the tier's un-charged agent-turn send ceiling (fixed UTC
+   *  minute/day window) is exhausted. 429 with Retry-After; nothing is
+   *  written or charged. */
+  AGENT_TURN_LIMITED = "AGENT_TURN_LIMITED",
 
   // Tool usage ledger (#179)
   /** Malformed itemized-usage query (unknown sortBy / bad pagination). 400. */
