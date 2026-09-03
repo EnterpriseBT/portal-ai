@@ -1119,3 +1119,27 @@ describe("no shell comment sits inside a line continuation (#424)", () => {
     expect(sizing[0].split("--capabilities")[0]).toContain("Memory=");
   });
 });
+
+describe("rotation-proof db credentials wiring (#500)", () => {
+  // The app's runtime password resolution silently depends on exactly two
+  // infra lines; each pinned here so a template refactor can't drop them.
+
+  it("injects DB_MASTER_SECRET_ARN as a plain env var (ImportValue from the database stack)", () => {
+    expect(collectNames(container().Environment)).toContain(
+      "DB_MASTER_SECRET_ARN"
+    );
+  });
+
+  it("grants the TASK role (not just the execution role) GetSecretValue on rds!*", () => {
+    // Raw-text assertion: CFN short tags (!Sub) don't reliably survive
+    // toJS(), and what matters is the statement existing inside the
+    // TaskManagedPolicy block specifically.
+    const raw = fs.readFileSync(BACKEND_YML, "utf8");
+    const start = raw.indexOf("TaskManagedPolicy:");
+    const end = raw.indexOf("TaskRole:", start);
+    expect(start).toBeGreaterThan(-1);
+    const block = raw.slice(start, end);
+    expect(block).toContain("secretsmanager:GetSecretValue");
+    expect(block).toContain("secret:rds!*");
+  });
+});

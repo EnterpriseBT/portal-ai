@@ -308,21 +308,20 @@ Use a **restricted** key, not the account secret key. The operator/agent key for
 
 RDS creates **only** the `postgres` maintenance database — `database.yml` sets no `DBName` — so the application database is created by hand. Nothing in the repo does it; this is the only place the step is written down.
 
-`portalops db tunnel` / `db psql` resolve their connection from the `database-url` secret, which does not exist yet and cannot yet name a database that does not exist yet. `db url` breaks that cycle because it composes from the stack's exports instead.
+Since #500, `portalops db tunnel` / `db psql` compose their connection **live** from the stack's exports and the RDS-managed master secret on every invocation — they never read the stored `database-url` copy, so they always authenticate with the current (auto-rotating) password. They default to `portal_ai`, which does not exist yet at bootstrap; `--db-name postgres` reaches the maintenance DB.
 
 ```bash
-# a. point database-url at the maintenance DB, so psql has a way in
-portalops db url --env $ENV --db-name postgres --write $GUARD
+# a. create the application database (connect to the maintenance DB)
+portalops db psql --env $ENV $CONNECT --db-name postgres -- -c "CREATE DATABASE portal_ai"
 
-# b. create the application database
-portalops db psql --env $ENV $CONNECT -- -c "CREATE DATABASE portal_ai"
-
-# c. repoint database-url at the application database — the real value
+# b. write the database-url secret — the ECS bootstrap artifact
 portalops db url --env $ENV --write $GUARD
 ```
 
 - [ ] `portalops db psql --env $ENV $CONNECT -- -c "\l"` lists `portal_ai`.
-- [ ] Step (a)'s value is deliberately transient. Both writes are audited; `putSecret` is idempotent.
+- [ ] The write is audited; `putSecret` is idempotent.
+
+> **The stored `database-url` is a bootstrap artifact, not a live credential (#500).** ECS injects it at task start for host/user/dbname; the app resolves the *password* per new connection from the master secret (`DB_MASTER_SECRET_ARN`, imported from the database stack's export), TTL-cached and fail-open. The weekly managed rotation therefore requires **no** repair — no `db url --write` re-run, no task recycle. If the stored copy's password is stale, nothing cares.
 
 ## 11 — Capture the secret ARNs into GitHub
 
@@ -366,7 +365,8 @@ done
 
 | Key | Kind | Source | Step |
 |---|---|---|---|
-| `DATABASE_URL` | secret | `db url --write` | 10 |
+| `DATABASE_URL` | secret | `db url --write` (bootstrap artifact — password freshness comes from runtime resolution, #500) | 10 |
+| `DB_MASTER_SECRET_ARN` | plain env (CFN `!ImportValue`, not in the vars catalog) | database stack export (#384/#500) | — |
 | `ENCRYPTION_KEY` | secret | generated | 1 |
 | `OAUTH_STATE_SECRET` | secret | generated | 1 |
 | `AUTH0_WEBHOOK_SECRET` | secret | generated | 1 |

@@ -26,6 +26,9 @@ import type { MutateOptions } from "./vars.js";
 export interface ConnectOptions {
   confirmProd?: boolean;
   localPort?: number;
+  /** #500: database-name override for the composed connection — the §10
+   *  bootstrap escape hatch (`postgres` before `portal_ai` exists). */
+  dbName?: string;
 }
 
 /** Prod connect barrier: connecting to production requires --confirm-prod. */
@@ -55,7 +58,7 @@ export async function dbTunnel(
 ): Promise<TunnelHandle> {
   guardProdConnect(def, opts);
   const conn = await resolveEnvConnection(def.name);
-  const db = await conn.db();
+  const db = await conn.db({ dbName: opts.dbName });
   return {
     connectionString: db.connectionString,
     dispose: () => conn.dispose(),
@@ -180,7 +183,7 @@ export async function dbPsql(
   guardProdConnect(def, opts);
   const conn = await resolveEnvConnection(def.name);
   try {
-    const db = await conn.db();
+    const db = await conn.db({ dbName: opts.dbName });
     let exitCode: number;
     try {
       exitCode = await spawner("psql", [db.connectionString, ...opts.args]);

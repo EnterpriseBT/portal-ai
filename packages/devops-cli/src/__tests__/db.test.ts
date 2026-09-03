@@ -294,3 +294,20 @@ describe("dbUrl (#384, delegates to cli-env composeDatabaseUrl since #500)", () 
     expect(entry).not.toContain("postgresql://");
   });
 });
+
+describe("connect --db-name passthrough (#500)", () => {
+  it("dbPsql hands dbName to conn.db() — the bootstrap escape hatch", async () => {
+    const conn = connection();
+    mocks.resolveEnvConnection.mockResolvedValue(conn);
+    const spawner = jest.fn(async () => 0);
+    await dbPsql(appDev, { args: [], dbName: "postgres" }, spawner);
+    expect(conn.db).toHaveBeenCalledWith({ dbName: "postgres" });
+  });
+
+  it("dbTunnel hands dbName to conn.db()", async () => {
+    const conn = connection();
+    mocks.resolveEnvConnection.mockResolvedValue(conn);
+    await dbTunnel(appDev, { dbName: "postgres" });
+    expect(conn.db).toHaveBeenCalledWith({ dbName: "postgres" });
+  });
+});

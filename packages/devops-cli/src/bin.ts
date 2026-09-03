@@ -190,11 +190,16 @@ export function buildProgram(): Command {
     db.command("tunnel").description("open the DB tunnel and stay attached")
   )
     .option("--local-port <n>", "local port (default 15432)")
+    .option(
+      "--db-name <name>",
+      "database name override (bootstrap: `postgres` before portal_ai exists)"
+    )
     .action(async (o: GlobalOpts) =>
       execute(o, async (def) => {
         const t = await dbTunnel(def, {
           confirmProd: o.confirmProd,
           localPort: o.localPort ? Number(o.localPort) : undefined,
+          dbName: o.dbName,
         });
         process.stderr.write(
           `tunnel open — connect with:\n  psql "${t.connectionString}"\nCtrl+C to close\n`
@@ -238,12 +243,17 @@ export function buildProgram(): Command {
       .command("psql")
       .description("psql through the tunnel (args after -- pass through)")
       .argument("[args...]")
+      .option(
+        "--db-name <name>",
+        "database name override (bootstrap: `postgres` before portal_ai exists)"
+      )
       .allowUnknownOption(true)
   ).action(async (args: string[], o: GlobalOpts) =>
     execute(o, async (def) => {
       const { exitCode } = await dbPsql(def, {
         confirmProd: o.confirmProd,
         args: args ?? [],
+        dbName: o.dbName,
       });
       if (exitCode !== 0) process.exitCode = exitCode;
       return undefined;

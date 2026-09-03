@@ -116,3 +116,38 @@ describe("resolveEnvConnection", () => {
     expect(tunnelClose).toHaveBeenCalledTimes(1);
   });
 });
+
+// ── #500 addendum — dbName passthrough (the §10 bootstrap escape hatch) ─
+
+describe("db({ dbName }) passthrough", () => {
+  it("passes dbName to composeDatabaseUrl and bypasses the cached handle", async () => {
+    composeDatabaseUrlMock.mockResolvedValue({
+      url: "postgresql://u:p@h:5432/portal_ai?sslmode=require",
+    });
+    openDbTunnelMock.mockResolvedValue({
+      localPort: 15432,
+      close: tunnelClose,
+    });
+
+    const conn = await resolveEnvConnection("app-dev");
+    await conn.db();
+    expect(composeDatabaseUrlMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: "app-dev" }),
+      { dbName: undefined }
+    );
+
+    composeDatabaseUrlMock.mockResolvedValue({
+      url: "postgresql://u:p@h:5432/postgres?sslmode=require",
+    });
+    const maintenance = await conn.db({ dbName: "postgres" });
+    expect(composeDatabaseUrlMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: "app-dev" }),
+      { dbName: "postgres" }
+    );
+    expect(maintenance.connectionString).toContain("/postgres");
+
+    // dispose closes every tunnel opened along the way, once each.
+    await conn.dispose();
+    expect(tunnelClose).toHaveBeenCalledTimes(2);
+  });
+});

@@ -27,8 +27,11 @@ export interface EnvConnection {
   /** LAZY — local: DATABASE_URL from .env; AWS: composed LIVE from the RDS
    *  master secret (#500 — never the stale stored copy) + SSM tunnel,
    *  connection string rewritten to the tunnel's local port. Repeated calls
-   *  reuse the open handle. */
-  db(): Promise<DbHandle>;
+   *  reuse the open handle; a `dbName` override (the §10 bootstrap escape
+   *  hatch — reach the `postgres` maintenance DB before `portal_ai` exists)
+   *  re-composes and re-tunnels. Ignored on local (the .env URL is taken
+   *  as-is). */
+  db(opts?: { dbName?: string }): Promise<DbHandle>;
   /** LAZY — the env's cached device-flow access token (transparent refresh). */
   token(): Promise<string>;
   /** Close anything opened; idempotent. */
@@ -52,13 +55,15 @@ export async function resolveEnvConnection(
   const def = getEnvironment(name); // registry lookup only — no I/O
 
   let dbHandle: DbHandle | null = null;
-  let tunnel: Tunnel | null = null;
+  let dbHandleName: string | undefined;
+  // Every tunnel ever opened (a dbName override opens a second one); dispose
+  // closes them all, once each.
+  const tunnels: Tunnel[] = [];
 
   const dispose = async (): Promise<void> => {
-    const t = tunnel;
-    tunnel = null;
+    const open = tunnels.splice(0);
     dbHandle = null;
-    if (t) await t.close();
+    for (const t of open) await t.close();
   };
 
   return {
@@ -66,8 +71,8 @@ export async function resolveEnvConnection(
     kind: def.kind,
     apiBaseUrl: def.apiBaseUrl,
 
-    async db(): Promise<DbHandle> {
-      if (dbHandle) return dbHandle;
+    async db(opts?: { dbName?: string }): Promise<DbHandle> {
+      if (dbHandle && dbHandleName === opts?.dbName) return dbHandle;
 
       if (!def.aws) {
         const url = process.env.DATABASE_URL;
@@ -80,16 +85,20 @@ export async function resolveEnvConnection(
         return dbHandle;
       }
 
-      const { url: dbUrl } = await composeDatabaseUrl(def);
+      const { url: dbUrl } = await composeDatabaseUrl(def, {
+        dbName: opts?.dbName,
+      });
       const parsed = new URL(dbUrl);
-      tunnel = await openDbTunnel(def, {
+      const tunnel = await openDbTunnel(def, {
         remoteHost: parsed.hostname,
         remotePort: Number(parsed.port || 5432),
       });
+      tunnels.push(tunnel);
       dbHandle = {
         connectionString: rewriteToLocalhost(dbUrl, tunnel.localPort),
         close: dispose,
       };
+      dbHandleName = opts?.dbName;
       return dbHandle;
     },
 
