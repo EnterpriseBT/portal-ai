@@ -98,7 +98,19 @@ export const mocks = {
     jest.fn<
       (def: MockEnvDef, name: string, v: string, t?: string) => Promise<void>
     >(),
-  getDatabaseUrl: jest.fn<(def: MockEnvDef) => Promise<string>>(),
+  // #500 — the shared live-compose path `db url` delegates to.
+  composeDatabaseUrl: jest.fn<
+    (
+      def: MockEnvDef,
+      opts?: { dbName?: string; sslMode?: string }
+    ) => Promise<{
+      url: string;
+      redactedUrl: string;
+      endpoint: string;
+      port: number;
+      dbName: string;
+    }>
+  >(),
   // #384 — `db url` reads the stack's exports and the RDS-managed master
   // secret (whose name AWS chooses, hence by-ARN).
   getSecretByArn: jest.fn<(def: MockEnvDef, arn: string) => Promise<string>>(),

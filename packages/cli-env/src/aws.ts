@@ -147,11 +147,6 @@ export async function getParam(
   }
 }
 
-/** The env's DATABASE_URL secret (the DB path's connection source). */
-export function getDatabaseUrl(def: EnvironmentDefinition): Promise<string> {
-  return getSecret(def, "database-url");
-}
-
 /**
  * Update-or-create a secret (#192 — the write half of the vars catalog).
  * Returns `{ created: true }` when the secret didn't exist and was created —

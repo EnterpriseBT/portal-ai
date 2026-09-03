@@ -82,7 +82,7 @@ The `portalops` dispatch **never blocks the write**: the value is already commit
 
 ## db
 
-### `portalops db tunnel --env <env> [--local-port <n>] [--confirm-prod]`
+### `portalops db tunnel --env <env> [--local-port <n>] [--db-name <name>] [--confirm-prod]`
 Connect. Opens the env's DB path — `local`: prints the `.env` connection string; AWS envs: SSM port-forward via the bastion (default local port 15432). Prints a `psql` hint on stderr and **stays attached** until Ctrl+C (signal hooks close the tunnel; no orphaned plugin).
 
 ### `portalops db url --env <env> [--db-name <name>] [--ssl-mode <mode>] [--write] [--yes] [--confirm-prod] [--json]`
@@ -94,14 +94,13 @@ Without `--write` the password is **redacted** (`***`) — there is no flag that
 
 ```bash
 # after the database stack exists, before the app database does
-portalops db url --env prod --db-name postgres --write --yes --confirm-prod
-portalops db psql --env prod --confirm-prod -- -c "CREATE DATABASE portal_ai"
-portalops db url --env prod --write --yes --confirm-prod   # the real value
+portalops db psql --env prod --confirm-prod --db-name postgres -- -c "CREATE DATABASE portal_ai"
+portalops db url --env prod --write --yes --confirm-prod   # the ECS bootstrap artifact
 ```
 
 `--json`: `{ "connectionString", "endpoint", "port", "written": bool, "created": bool }`
 
-### `portalops db psql --env <env> [--confirm-prod] [-- <psql args…>]`
+### `portalops db psql --env <env> [--db-name <name>] [--confirm-prod] [-- <psql args…>]`
 Connect. psql against the env connection. No extra args → interactive REPL (inherited stdio). Args after `--` pass through for one-shot use:
 ```
 portalops db psql --env app-dev -- -tAc "select 1"

@@ -19,6 +19,15 @@ export const environment = {
   LOG_FORMAT: (process.env.LOG_FORMAT || "pretty") as "pretty" | "json",
   // Database configuration
   DATABASE_URL: process.env.DATABASE_URL || "",
+  // #500: ARN of the RDS-managed master secret (rds!…). Set in AWS envs via
+  // CFN ImportValue; absent locally — then the pool uses only the URL's
+  // embedded password and the AWS SDK is never touched.
+  DB_MASTER_SECRET_ARN: process.env.DB_MASTER_SECRET_ARN,
+  // #500: password-resolver cache TTL override (ms). Default 5 minutes —
+  // also the worst-case window of new-connection failures after a rotation.
+  DB_PASSWORD_CACHE_TTL_MS: process.env.DB_PASSWORD_CACHE_TTL_MS
+    ? Number(process.env.DB_PASSWORD_CACHE_TTL_MS)
+    : undefined,
   // Auth0 webhook
   AUTH0_WEBHOOK_SECRET: process.env.AUTH0_WEBHOOK_SECRET,
   // ── Stripe subscription billing (#176). Per-env keys — test mode

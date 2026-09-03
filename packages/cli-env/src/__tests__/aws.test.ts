@@ -39,14 +39,8 @@ jest.unstable_mockModule("@aws-sdk/client-ssm", () => ({
   },
 }));
 
-const {
-  getSecret,
-  getSecretByArn,
-  getParam,
-  getDatabaseUrl,
-  putSecret,
-  putParam,
-} = await import("../aws.js");
+const { getSecret, getSecretByArn, getParam, putSecret, putParam } =
+  await import("../aws.js");
 const { BUILTIN_ENVIRONMENTS } = await import("../registry.js");
 const { EnvNotAuthorizedError, EnvInfraError, EnvNotConfiguredError } =
   await import("../errors.js");
@@ -210,14 +204,5 @@ describe("putParam (#192)", () => {
     await putParam(appDev, "namespace", "portal");
     const cmd = ssmSend.mock.calls[0][0] as { input: { Type: string } };
     expect(cmd.input.Type).toBe("String");
-  });
-});
-
-describe("getDatabaseUrl", () => {
-  it("is getSecret('database-url')", async () => {
-    secretsSend.mockResolvedValue({ SecretString: "postgres://db" });
-    await expect(getDatabaseUrl(appDev)).resolves.toBe("postgres://db");
-    const cmd = secretsSend.mock.calls[0][0] as { input: { SecretId: string } };
-    expect(cmd.input.SecretId).toBe("portalai/dev/database-url");
   });
 });

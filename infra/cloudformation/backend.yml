@@ -360,6 +360,16 @@ Resources:
               - ssm:GetParameters
             Resource:
               - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/*"
+          # #500: runtime resolution of the DB password from the RDS-managed
+          # master secret (rds!…) — the execution role has the same grant for
+          # startup injection; the RUNNING container needs it too, because it
+          # re-fetches the password after each weekly managed rotation
+          # (apps/api/src/db/credentials.util.ts, fed by DB_MASTER_SECRET_ARN).
+          - Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+            Resource:
+              - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!*"
 
   TaskRole:
     Type: AWS::IAM::Role
@@ -568,6 +578,16 @@ Resources:
                     Fn::Sub: "${Environment}-RedisEndpoint"
                   Port: !ImportValue
                     Fn::Sub: "${Environment}-RedisPort"
+            # #500: ARN of the RDS-managed master secret (rds!…). The app
+            # resolves the DB password from it per NEW connection (TTL-cached,
+            # fail-open — apps/api/src/db/credentials.util.ts), so the weekly
+            # managed rotation is absorbed by RUNNING tasks; the injected
+            # DATABASE_URL below stays authoritative for host/user/dbname
+            # only. An ARN is an identifier, not a secret — plain env is
+            # deliberate.
+            - Name: DB_MASTER_SECRET_ARN
+              Value: !ImportValue
+                Fn::Sub: "${Environment}-DbMasterSecretArn"
           Secrets:
             - Name: DATABASE_URL
               ValueFrom: !Ref SecretArnDatabaseUrl

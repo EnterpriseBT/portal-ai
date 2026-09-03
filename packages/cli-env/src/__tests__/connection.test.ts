@@ -2,9 +2,11 @@ import { jest } from "@jest/globals";
 
 // ── Mocks: the composed modules (each already unit-tested) ───────────
 
-const getDatabaseUrlMock = jest.fn<() => Promise<string>>();
-jest.unstable_mockModule("../aws.js", () => ({
-  getDatabaseUrl: getDatabaseUrlMock,
+// #500: db() composes LIVE from the master secret via composeDatabaseUrl —
+// the stored database-url copy is never read for credentials (case 13).
+const composeDatabaseUrlMock = jest.fn<() => Promise<{ url: string }>>();
+jest.unstable_mockModule("../db-url.js", () => ({
+  composeDatabaseUrl: composeDatabaseUrlMock,
 }));
 
 const tunnelClose = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
@@ -28,7 +30,7 @@ const { resolveEnvConnection } = await import("../connection.js");
 const { EnvNotConfiguredError } = await import("../errors.js");
 
 beforeEach(() => {
-  getDatabaseUrlMock.mockReset();
+  composeDatabaseUrlMock.mockReset();
   openDbTunnelMock.mockReset();
   tunnelClose.mockClear();
   getTokenMock.mockReset();
@@ -41,7 +43,7 @@ describe("resolveEnvConnection", () => {
     expect(conn.env).toBe("app-dev");
     expect(conn.kind).toBe("staging");
     expect(conn.apiBaseUrl).toBe("https://api-dev.portalsai.io");
-    expect(getDatabaseUrlMock).not.toHaveBeenCalled();
+    expect(composeDatabaseUrlMock).not.toHaveBeenCalled();
     expect(openDbTunnelMock).not.toHaveBeenCalled();
     expect(getTokenMock).not.toHaveBeenCalled();
   });
@@ -53,7 +55,7 @@ describe("resolveEnvConnection", () => {
     expect(db.connectionString).toBe(
       "postgresql://u:p@localhost:5432/portalai"
     );
-    expect(getDatabaseUrlMock).not.toHaveBeenCalled();
+    expect(composeDatabaseUrlMock).not.toHaveBeenCalled();
     expect(openDbTunnelMock).not.toHaveBeenCalled();
   });
 
@@ -63,9 +65,9 @@ describe("resolveEnvConnection", () => {
   });
 
   it("AWS db(): parses the secret URL, tunnels to its endpoint, rewrites to localhost — and reuses the handle", async () => {
-    getDatabaseUrlMock.mockResolvedValue(
-      "postgresql://portal:s3cr%40t@db.cluster.internal:5432/portalai?sslmode=require"
-    );
+    composeDatabaseUrlMock.mockResolvedValue({
+      url: "postgresql://portal:s3cr%40t@db.cluster.internal:5432/portalai?sslmode=require",
+    });
     openDbTunnelMock.mockResolvedValue({
       localPort: 15432,
       close: tunnelClose,
@@ -99,7 +101,9 @@ describe("resolveEnvConnection", () => {
   });
 
   it("dispose() closes the tunnel and is idempotent", async () => {
-    getDatabaseUrlMock.mockResolvedValue("postgresql://u:p@h:5432/db");
+    composeDatabaseUrlMock.mockResolvedValue({
+      url: "postgresql://u:p@h:5432/db",
+    });
     openDbTunnelMock.mockResolvedValue({
       localPort: 15432,
       close: tunnelClose,
@@ -110,5 +114,40 @@ describe("resolveEnvConnection", () => {
     await conn.dispose();
     await conn.dispose();
     expect(tunnelClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── #500 addendum — dbName passthrough (the §10 bootstrap escape hatch) ─
+
+describe("db({ dbName }) passthrough", () => {
+  it("passes dbName to composeDatabaseUrl and bypasses the cached handle", async () => {
+    composeDatabaseUrlMock.mockResolvedValue({
+      url: "postgresql://u:p@h:5432/portal_ai?sslmode=require",
+    });
+    openDbTunnelMock.mockResolvedValue({
+      localPort: 15432,
+      close: tunnelClose,
+    });
+
+    const conn = await resolveEnvConnection("app-dev");
+    await conn.db();
+    expect(composeDatabaseUrlMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: "app-dev" }),
+      { dbName: undefined }
+    );
+
+    composeDatabaseUrlMock.mockResolvedValue({
+      url: "postgresql://u:p@h:5432/postgres?sslmode=require",
+    });
+    const maintenance = await conn.db({ dbName: "postgres" });
+    expect(composeDatabaseUrlMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: "app-dev" }),
+      { dbName: "postgres" }
+    );
+    expect(maintenance.connectionString).toContain("/postgres");
+
+    // dispose closes every tunnel opened along the way, once each.
+    await conn.dispose();
+    expect(tunnelClose).toHaveBeenCalledTimes(2);
   });
 });
