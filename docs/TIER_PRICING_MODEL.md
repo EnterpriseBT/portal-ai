@@ -30,10 +30,10 @@ Notes: Anthropic rates are default global routing (`inference_geo: "us"` would a
 | `web_search` | metered | 1/call | $0.008 — the tool passes no `searchDepth`, so the SDK default **basic** (1 credit) applies, with `includeAnswer: true` (`apps/api/src/tools/web-search.tool.ts:30-33`); re-check if depth or answer pricing changes | Tavily |
 | `geocode` / `reverse_geocode` | metered | 1/live call (cache hit = 0) | $0.00075 | Mapbox |
 | `bulk_geocode_records` | expensive | 1/newly-geocoded row | $0.00075 | Mapbox |
-| `visualize_d3` | expensive | 1/call | ≈ $0.06 *(estimate: ~6K in / 1.5K out Opus 4.8 per codegen call — replace with measured tokens)* | Anthropic Opus |
+| `visualize_d3` | expensive | **80/call** (#499 — the measured cost ratio; `VISUALIZE_D3_UNITS_PER_CALL`) | ≈ $0.06/call ⇒ ≈ **$0.00075/unit** *(ratio from the ~6K in / 1.5K out Opus 4.8 estimate; `generateCode` now logs actual tokens per call — refine at the next re-run)* | Anthropic Opus |
 | `transform_entity_records`, `cluster`, `logistic_regression` | expensive | 1/call | ≈ $0 vendor (own-compute) — the LLM cost of the turn that invokes them is counted in the turn model, not per unit | — |
 
-**Worst-rate per class** (used for ceiling exposure): metered = $0.008/unit (`web_search` basic; $0.016 if advanced — resolve the TODO), expensive = ≈$0.06/unit (`visualize_d3`).
+**Worst-rate per class** (used for ceiling exposure): metered = $0.008/unit (`web_search` basic), expensive = ≈**$0.00075/unit** — uniform since #499 re-united `visualize_d3` at 80 units/call (was ≈$0.06/unit, the 80× spread behind §5 finding 2).
 
 ## 2. Fixed monthly cost (prod)
 
@@ -137,7 +137,7 @@ T1's "pass" is exactly as strong as the expected-turn assumption (130/400) — t
 - **Grandfather posture:** grandfather via lookup-key transfer (spec D4), executed as above. Subscriber count at execution: **1, internal**, verified still attached to the $49 price post-transfer. Expected side effect: its future webhook events log "unmapped Stripe price; keeping the org's current tier" once tier apply moves the pro row — correct behavior, not a regression.
 - **Structural verdicts (2026-09-02):**
   - **Un-charged per-org agent-turn rate ceiling** — **file-follow-up → filed as #498 (mandatory: T3 trigger fired, §5).** Sizing from the post-follow-up ceiling budgets: ≈ 260 (standard) / 400 (plus) / 790 (pro) turns/mo equivalent, enforced as a rate (per-hour/day) rather than a monthly quota; deny is un-charged and never mid-turn. Also the only path to a passing T2 (§5 finding 1).
-  - **Re-unit `visualize_d3` (≈80 units/call via `resolveCallCost`) or enforce `perToolCaps`** — **file-follow-up → filed as #499.** Closes T2's 80×-per-unit class mix (§5 finding 2); until it lands, T2 is recorded **fail-with-closure-path**.
+  - **Re-unit `visualize_d3`** — **implemented (#499, 2026-09-03):** `registerCostResolver("visualize_d3", () => 80)` at tool build; `perToolCaps` stays inert (rejected — new enforcement machinery for the same outcome). Gated-tool adversarial ceilings recompute at $0.00075/unit: standard ≈ $4.08, plus ≈ $25.50, pro ≈ **$135** (vs $1,800) — **inside 2× price for the tool term**; T2's remaining gap is solely the unbounded LLM-turn term, which closes with #498's turn ceiling.
   - **Annual prices** — **rejected(premature):** one subscriber; checkout/site-config/plan cards assume one price per tier, so annual is real plumbing for zero retention benefit today. Revisit at ≥20 paying orgs.
   - **Top-up credit packs** — **rejected(premature):** hard-deny + the upgrade ladder is sufficient until quota denials actually appear in the ledger. Revisit on first organic `TOOL_USAGE_QUOTA_EXCEEDED` from a paying org.
   - **Per-seat pricing** — out of scope here (#198 RBAC), but noted as the durable fix: LLM cost scales with users, and org-flat pricing cannot track it forever.

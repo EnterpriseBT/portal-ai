@@ -262,6 +262,16 @@ describe("buildAnalyticsTools()", () => {
     mockFetch.mockReset();
   });
 
+  it("registers the visualize_d3 cost resolver at 80 units/call (#499)", async () => {
+    setupStationMocks(["visualize"]);
+    await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+    const { COST_RESOLVERS } =
+      await import("../../services/cost-gate.service.js");
+    await expect(
+      Promise.resolve(COST_RESOLVERS["visualize_d3"]?.({}))
+    ).resolves.toBe(80);
+  });
+
   // -----------------------------------------------------------------------
   // Pack gating
   // -----------------------------------------------------------------------
