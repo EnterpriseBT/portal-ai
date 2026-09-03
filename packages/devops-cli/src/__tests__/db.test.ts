@@ -7,7 +7,6 @@ import {
   BUILTIN_ENVIRONMENTS,
   EnvConfirmationRequiredError,
   EnvInfraError,
-  EnvNotConfiguredError,
   type MockEnvDef,
 } from "./helpers/cli-env-mock.js";
 
@@ -219,114 +218,43 @@ describe("dbResetSeed", () => {
 
 const prod = BUILTIN_ENVIRONMENTS["prod"];
 
-const stackExports = (
-  endpoint = "portalai-dev.abc.us-east-1.rds.amazonaws.com",
-  port = "5432",
-  arn = "arn:aws:secretsmanager:us-east-1:1:secret:rds!db-x-y2Ev1F"
-) => {
-  mocks.resolveExport.mockImplementation(async (_def, name) => {
-    if (name.endsWith("-DbEndpoint")) return endpoint;
-    if (name.endsWith("-DbPort")) return port;
-    if (name.endsWith("-DbMasterSecretArn")) return arn;
-    throw new EnvInfraError(`unexpected export ${name}`);
+const composed = (password = "s3cret") => {
+  mocks.composeDatabaseUrl.mockResolvedValue({
+    url: `postgresql://portalai:${password}@portalai-dev.abc.us-east-1.rds.amazonaws.com:5432/portal_ai?sslmode=require`,
+    redactedUrl:
+      "postgresql://portalai:***@portalai-dev.abc.us-east-1.rds.amazonaws.com:5432/portal_ai?sslmode=require",
+    endpoint: "portalai-dev.abc.us-east-1.rds.amazonaws.com",
+    port: 5432,
+    dbName: "portal_ai",
   });
 };
 
-const master = (password: string, username = "portalai") =>
-  mocks.getSecretByArn.mockResolvedValue(
-    JSON.stringify({ username, password })
-  );
-
-describe("dbUrl (#384)", () => {
-  // Composition is only observable unredacted on the write path, so the
-  // shape tests below go through it.
+describe("dbUrl (#384, delegates to cli-env composeDatabaseUrl since #500)", () => {
+  // Composition shape/encoding is pinned in cli-env's db-url tests — its new
+  // home. Here: delegation, redaction, guard ordering, audit hygiene.
   beforeEach(() => mocks.putSecret.mockResolvedValue({ created: false }));
 
-  // Composition is asserted on the value handed to putSecret, never on the
-  // return value: dbUrl redacts unconditionally, because `--json` serializes
-  // whatever it returns and that published the production password once.
-  const written = (): string =>
-    mocks.putSecret.mock.calls[0][2] as unknown as string;
-
-  it("composes the default shape — pinned against dev's live value", async () => {
-    stackExports();
-    master("s3cret");
-    await dbUrl(appDev, { write: true, yes: true });
-    expect(written()).toBe(
-      "postgresql://portalai:s3cret@portalai-dev.abc.us-east-1.rds.amazonaws.com:5432/portal_ai?sslmode=require"
-    );
-  });
-
-  it("never returns the password, even on the write path", async () => {
-    stackExports();
-    master("s3cret");
-    const out = await dbUrl(appDev, { write: true, yes: true });
-    expect(out.connectionString).toContain(":***@");
-    expect(JSON.stringify(out)).not.toContain("s3cret");
-  });
-
-  it("reads the three exports for the env's AWS name", async () => {
-    stackExports();
-    master("p");
-    await dbUrl(prod, { write: true, yes: true, confirmProd: true });
-    const asked = mocks.resolveExport.mock.calls.map((c) => c[1]);
-    expect(asked).toEqual([
-      "prod-DbEndpoint",
-      "prod-DbPort",
-      "prod-DbMasterSecretArn",
-    ]);
-  });
-
-  it("--db-name reaches the maintenance database (the bootstrap escape hatch)", async () => {
-    stackExports();
-    master("p");
-    const out = await dbUrl(appDev, {
+  it("delegates composition, passing dbName/sslMode through (case 14)", async () => {
+    composed();
+    await dbUrl(appDev, { dbName: "postgres", sslMode: "disable" });
+    expect(mocks.composeDatabaseUrl).toHaveBeenCalledWith(appDev, {
       dbName: "postgres",
-      write: true,
-      yes: true,
-    });
-    expect(out.connectionString).toContain("/postgres?sslmode=require");
-  });
-
-  it("--ssl-mode overrides the query segment", async () => {
-    stackExports();
-    master("p");
-    const out = await dbUrl(appDev, {
       sslMode: "disable",
-      write: true,
-      yes: true,
     });
-    expect(out.connectionString).toContain("?sslmode=disable");
-  });
-
-  it("URL-encodes a password containing @ : / # ?", async () => {
-    stackExports();
-    master("p@ss:w/rd#1?x");
-    await dbUrl(appDev, { write: true, yes: true });
-    // The bug this pins: an unencoded @ splits the authority and yields a
-    // string that parses to the wrong host without erroring.
-    expect(written()).toContain(
-      "postgresql://portalai:p%40ss%3Aw%2Frd%231%3Fx@"
-    );
-    expect(new URL(written()).password).toBe("p%40ss%3Aw%2Frd%231%3Fx");
   });
 
   it("REDACTS the password by default and writes nothing", async () => {
-    stackExports();
-    master("s3cret");
+    composed();
     const out = await dbUrl(appDev);
-    expect(out.connectionString).toBe(
-      "postgresql://portalai:***@portalai-dev.abc.us-east-1.rds.amazonaws.com:5432/portal_ai?sslmode=require"
-    );
+    expect(out.connectionString).toContain(":***@");
     expect(out.connectionString).not.toContain("s3cret");
-    expect(out.written).toBe(false);
+    expect(out).toMatchObject({ written: false, port: 5432 });
     expect(mocks.putSecret).not.toHaveBeenCalled();
     expect(mocks.assertOperationAllowed).not.toHaveBeenCalled();
   });
 
-  it("--write stores it at database-url and reports `created`", async () => {
-    stackExports();
-    master("s3cret");
+  it("--write stores the FULL url at database-url and reports `created`", async () => {
+    composed();
     mocks.putSecret.mockResolvedValue({ created: true });
     const out = await dbUrl(appDev, { write: true, yes: true });
     expect(mocks.putSecret).toHaveBeenCalledWith(
@@ -337,9 +265,14 @@ describe("dbUrl (#384)", () => {
     expect(out).toMatchObject({ written: true, created: true });
   });
 
+  it("never returns the password, even on the write path", async () => {
+    composed();
+    const out = await dbUrl(appDev, { write: true, yes: true });
+    expect(JSON.stringify(out)).not.toContain("s3cret");
+  });
+
   it("guards BEFORE writing — a rejected guard never calls putSecret", async () => {
-    stackExports();
-    master("s3cret");
+    composed();
     mocks.assertOperationAllowed.mockImplementation(() => {
       throw new EnvConfirmationRequiredError("needs --confirm-prod");
     });
@@ -352,21 +285,12 @@ describe("dbUrl (#384)", () => {
   });
 
   it("audits the write without the password or the composed string", async () => {
-    stackExports();
-    master("s3cret");
+    composed();
     mocks.putSecret.mockResolvedValue({ created: false });
     await dbUrl(prod, { write: true, yes: true, confirmProd: true });
     const entry = JSON.stringify(mocks.recordAudit.mock.calls[0][0]);
     expect(entry).toContain("db url");
-    expect(entry).toContain("portalai-dev.abc.us-east-1.rds.amazonaws.com");
     expect(entry).not.toContain("s3cret");
     expect(entry).not.toContain("postgresql://");
-  });
-
-  it("throws ENV_NOT_CONFIGURED for a local env with no AWS", async () => {
-    mocks.resolveExport.mockRejectedValue(
-      new EnvNotConfiguredError('"local" has no AWS config')
-    );
-    await expect(dbUrl(local)).rejects.toBeInstanceOf(EnvNotConfiguredError);
   });
 });

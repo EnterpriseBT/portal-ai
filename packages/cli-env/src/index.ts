@@ -40,10 +40,15 @@ export {
   getSecret,
   getSecretByArn,
   getParam,
-  getDatabaseUrl,
   putSecret,
   putParam,
 } from "./aws.js";
+
+export {
+  composeDatabaseUrl,
+  type ComposeDatabaseUrlOptions,
+  type ComposedDatabaseUrl,
+} from "./db-url.js";
 
 export {
   openDbTunnel,

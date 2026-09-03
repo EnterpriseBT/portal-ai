@@ -9,11 +9,10 @@ import { spawn } from "node:child_process";
 
 import {
   assertOperationAllowed,
-  getSecretByArn,
+  composeDatabaseUrl,
   putSecret,
   recordAudit,
   resolveEnvConnection,
-  resolveExport,
   runApiScript,
   EnvConfirmationRequiredError,
   EnvInfraError,
@@ -89,65 +88,34 @@ export interface DbUrlResult {
   created: boolean;
 }
 
-const DEFAULT_DB_NAME = "portal_ai";
-const DEFAULT_SSL_MODE = "require";
-
 /**
  * Compose the env's DATABASE_URL from the database stack's exports and the
- * RDS-managed master credential.
+ * RDS-managed master credential — via cli-env's `composeDatabaseUrl` (#500),
+ * the shared always-current path `connection.db()` also uses.
  *
  * Why this exists: `ManageMasterUserPassword` has RDS mint the password into
  * its own secret, so assembling the connection string by hand means routing a
  * production database password through a console, a clipboard and a shell.
  * Here it moves AWS-API to AWS-API and is never rendered — the default output
- * redacts it, and `--write` sends it straight to Secrets Manager.
+ * redacts it, and `--write` sends it straight to Secrets Manager. Since #500
+ * the stored `database-url` copy is a BOOTSTRAP artifact (ECS injects it for
+ * host/user/dbname; the app resolves the password at connect time), so its
+ * password going stale at the next rotation no longer degrades anything.
  */
 export async function dbUrl(
   def: EnvironmentDefinition,
   opts: DbUrlOptions = {}
 ): Promise<DbUrlResult> {
-  const envName = def.aws?.envName;
-  const endpoint = await resolveExport(
+  const { url, redactedUrl, endpoint, port, dbName } = await composeDatabaseUrl(
     def,
-    `${envName}-DbEndpoint`,
-    `is the database stack deployed for "${def.name}"?`
+    { dbName: opts.dbName, sslMode: opts.sslMode }
   );
-  const port = await resolveExport(def, `${envName}-DbPort`);
-  const masterArn = await resolveExport(
-    def,
-    `${envName}-DbMasterSecretArn`,
-    "redeploy the database stack; this export was added in #384"
-  );
-
-  const raw = await getSecretByArn(def, masterArn);
-  let master: { username?: string; password?: string };
-  try {
-    master = JSON.parse(raw) as typeof master;
-  } catch (err) {
-    throw new EnvInfraError(
-      `RDS master secret ${masterArn} is not JSON — cannot compose a connection string`,
-      { cause: err }
-    );
-  }
-  if (!master.username || !master.password) {
-    throw new EnvInfraError(
-      `RDS master secret ${masterArn} is missing username/password`
-    );
-  }
-
-  const dbName = opts.dbName ?? DEFAULT_DB_NAME;
-  const sslMode = opts.sslMode ?? DEFAULT_SSL_MODE;
-  // Both halves are encoded: a password containing @ : / # or ? would
-  // otherwise split the authority and silently yield a wrong-host URL.
-  const authority = `${encodeURIComponent(master.username)}:${encodeURIComponent(master.password)}`;
-  const compose = (auth: string) =>
-    `postgresql://${auth}@${endpoint}:${port}/${dbName}?sslmode=${sslMode}`;
 
   if (!opts.write) {
     return {
-      connectionString: compose(`${encodeURIComponent(master.username)}:***`),
+      connectionString: redactedUrl,
       endpoint,
-      port: Number(port),
+      port,
       written: false,
       created: false,
     };
@@ -159,7 +127,7 @@ export async function dbUrl(
     confirmed: !!opts.yes,
     prodConfirmed: !!opts.confirmProd,
   });
-  const { created } = await putSecret(def, "database-url", compose(authority));
+  const { created } = await putSecret(def, "database-url", url);
   await recordAudit({
     env: def.name,
     operator: "portalops",
@@ -173,9 +141,9 @@ export async function dbUrl(
   // returned, so returning it here published the production database password
   // to stdout and into any CI log that ran this command.
   return {
-    connectionString: compose(`${encodeURIComponent(master.username)}:***`),
+    connectionString: redactedUrl,
     endpoint,
-    port: Number(port),
+    port,
     written: true,
     created,
   };

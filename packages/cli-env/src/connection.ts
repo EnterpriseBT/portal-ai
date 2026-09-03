@@ -8,7 +8,7 @@
  * opened and is idempotent.
  */
 
-import { getDatabaseUrl } from "./aws.js";
+import { composeDatabaseUrl } from "./db-url.js";
 import { getToken } from "./auth0.js";
 import { EnvNotConfiguredError } from "./errors.js";
 import { getEnvironment, type EnvKind } from "./registry.js";
@@ -24,9 +24,10 @@ export interface EnvConnection {
   readonly env: string;
   readonly kind: EnvKind;
   readonly apiBaseUrl: string;
-  /** LAZY — local: DATABASE_URL from .env; AWS: database-url secret + SSM
-   *  tunnel, connection string rewritten to the tunnel's local port. Repeated
-   *  calls reuse the open handle. */
+  /** LAZY — local: DATABASE_URL from .env; AWS: composed LIVE from the RDS
+   *  master secret (#500 — never the stale stored copy) + SSM tunnel,
+   *  connection string rewritten to the tunnel's local port. Repeated calls
+   *  reuse the open handle. */
   db(): Promise<DbHandle>;
   /** LAZY — the env's cached device-flow access token (transparent refresh). */
   token(): Promise<string>;
@@ -79,7 +80,7 @@ export async function resolveEnvConnection(
         return dbHandle;
       }
 
-      const dbUrl = await getDatabaseUrl(def);
+      const { url: dbUrl } = await composeDatabaseUrl(def);
       const parsed = new URL(dbUrl);
       tunnel = await openDbTunnel(def, {
         remoteHost: parsed.hostname,
