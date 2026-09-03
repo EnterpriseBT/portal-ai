@@ -181,4 +181,4 @@ None — no schema change.
 Two contract refinements surfaced during implementation, both additive:
 
 1. **`--db-name` passthrough on the connect commands.** Composing live hardcoded `portal_ai`, which broke the §10 bootstrap (the maintenance DB must be reachable before `portal_ai` exists — previously done by temporarily re-pointing the stored copy, a path psql no longer reads). `EnvConnection.db(opts?: { dbName?: string })` + `db tunnel`/`db psql --db-name <name>` restore it; runbook §10 and COMMANDS.md rewritten to the simpler two-step bootstrap.
-2. **`DEPLOYED_ENV_CONFIG.md` not edited** — it documents local `.env.example` tiers, and `DB_MASTER_SECRET_ARN` is deliberately CFN-only (never a local key); its documentation row lives in the runbook's managed-keys appendix instead.
+2. **Env-var documentation landed in `.env.example` + the runbook appendix, not `DEPLOYED_ENV_CONFIG.md`** — the #382 parity guard requires every `environment.ts` key to appear in `.env.example` (CI caught the omission), so both new vars are documented there as commented AWS-only/tunable entries; `DEPLOYED_ENV_CONFIG.md` itself (a design doc about the tier structure) needed no edit.
