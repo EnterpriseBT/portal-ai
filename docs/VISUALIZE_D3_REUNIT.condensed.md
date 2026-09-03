@@ -39,7 +39,7 @@
 
 ## Smoke (manual, against your dev stack)
 
-1. On a visualize-entitled station, prompt a portal session: "chart total records per entity as a bar chart" → cost-ack fires → accept → chart renders.
+1. On a visualize-entitled station, prompt a portal session: "chart total records per entity as a bar chart" → chart renders. (No cost-ack: the ack handshake is a per-tool `acknowledgeCost` schema field — `transform_entity_records` carries it, `visualize_d3` does not; charging is independent of ack.)
 2. Settings → Subscription & Billing → Itemized usage: the `visualize_d3` row shows **80 units**; the expensive balance dropped by exactly 80.
 3. API log shows one `visualize-d3` token-usage line for the call (`inputTokens`/`outputTokens` present).
 4. Edge: set a test org's expensive allocation below 80 (`db psql` UPDATE on `tiers` clone or a custom tier), retry step 1 → typed `TOOL_USAGE_QUOTA_EXCEEDED` result relayed by the agent; ledger shows **no** charge.
