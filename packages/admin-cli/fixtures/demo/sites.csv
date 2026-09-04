@@ -1,0 +1,16 @@
+site_id,name,type,street_address,latitude,longitude
+SITE-001,Seattle warehouse,warehouse,"6819 Summit Rd, Seattle, WA 65745",47.7607,-122.2571
+SITE-002,Portland distribution-center,cross-dock,"6701 Cascade Rd, Portland, OR 27507",45.4286,-122.824
+SITE-003,San Francisco cross-dock,distribution-center,"6008 Meridian St, San Francisco, CA 97582",37.7264,-122.3765
+SITE-004,Los Angeles warehouse,warehouse,"2199 Riverside Rd, Los Angeles, CA 56378",33.9685,-118.3252
+SITE-005,Phoenix warehouse,distribution-center,"6174 Cedar Way, Phoenix, AZ 21819",33.6196,-112.1218
+SITE-006,Denver distribution-center,warehouse,"6025 Warehouse Blvd, Denver, CO 35872",39.5852,-104.8746
+SITE-007,Dallas distribution-center,warehouse,"2363 Lakeshore Rd, Dallas, TX 96174",32.6643,-96.8013
+SITE-008,Houston warehouse,cross-dock,"4347 Harbor Blvd, Houston, TX 96181",29.898,-95.3542
+SITE-009,Atlanta warehouse,warehouse,"3746 Summit Pkwy, Atlanta, GA 30066",33.9202,-84.2945
+SITE-010,Miami cross-dock,distribution-center,"7817 Cedar Rd, Miami, FL 88007",25.9405,-80.1772
+SITE-011,Charlotte cross-dock,cross-dock,"6935 Ironwood St, Charlotte, NC 93375",35.1302,-80.8072
+SITE-012,Chicago distribution-center,cross-dock,"6118 Summit Rd, Chicago, IL 98855",41.799,-87.6357
+SITE-013,Minneapolis cross-dock,cross-dock,"829 Commerce Pkwy, Minneapolis, MN 19423",44.8632,-93.132
+SITE-014,Columbus cross-dock,distribution-center,"8029 Lakeshore Pkwy, Columbus, OH 93330",39.949,-82.8277
+SITE-015,Kansas City cross-dock,cross-dock,"9782 Cedar Rd, Kansas City, MO 53672",39.2597,-94.674

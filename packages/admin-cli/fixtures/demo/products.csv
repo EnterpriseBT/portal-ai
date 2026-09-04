@@ -1,0 +1,121 @@
+product_id,name,category,unit_price,unit_cost
+PROD-0001,Northwind power-tools 0001,electrical,1098.5,734.29
+PROD-0002,Granite storage 0002,material-handling,1082.45,767.15
+PROD-0003,Coastal electrical 0003,storage,739.86,437.01
+PROD-0004,Summit fasteners 0004,outdoor,336.85,228.22
+PROD-0005,Harborview storage 0005,safety,771.26,457.99
+PROD-0006,Redwood material-handling 0006,power-tools,1248.55,772.62
+PROD-0007,Timberline storage 0007,outdoor,844.36,518.01
+PROD-0008,Coastal safety 0008,outdoor,589.45,351.91
+PROD-0009,Blue Ridge safety 0009,safety,210.91,168.19
+PROD-0010,Blue Ridge storage 0010,safety,387.51,320.79
+PROD-0011,Cascade safety 0011,safety,1065.97,753.87
+PROD-0012,Blue Ridge power-tools 0012,power-tools,113.58,77.16
+PROD-0013,Highland storage 0013,power-tools,564.93,478.35
+PROD-0014,Cascade electrical 0014,fasteners,95.61,70.61
+PROD-0015,Timberline storage 0015,storage,907.08,684.07
+PROD-0016,Anchor electrical 0016,power-tools,116.76,78.73
+PROD-0017,Blue Ridge safety 0017,storage,463.81,268.72
+PROD-0018,Anchor outdoor 0018,storage,223.46,157.81
+PROD-0019,Redwood fasteners 0019,storage,189.47,147.79
+PROD-0020,Silverline electrical 0020,power-tools,314.89,238.01
+PROD-0021,Harborview electrical 0021,material-handling,447.94,274.98
+PROD-0022,Northwind material-handling 0022,electrical,915.7,603.23
+PROD-0023,Blue Ridge storage 0023,safety,655.23,460.46
+PROD-0024,Anchor safety 0024,outdoor,272.62,179.59
+PROD-0025,Summit safety 0025,safety,911.64,555.88
+PROD-0026,Silverline electrical 0026,fasteners,398.57,239.67
+PROD-0027,Redwood fasteners 0027,outdoor,339.71,250.34
+PROD-0028,Granite safety 0028,power-tools,114.12,68.46
+PROD-0029,Granite safety 0029,power-tools,1305.95,860.31
+PROD-0030,Coastal outdoor 0030,safety,251.54,168.03
+PROD-0031,Granite outdoor 0031,power-tools,271.92,172.76
+PROD-0032,Ironwood power-tools 0032,safety,940.92,803.52
+PROD-0033,Harborview safety 0033,power-tools,873.26,722.3
+PROD-0034,Summit material-handling 0034,safety,178.48,125.25
+PROD-0035,Granite fasteners 0035,safety,201.87,165.47
+PROD-0036,Highland material-handling 0036,safety,704.35,469.88
+PROD-0037,Coastal safety 0037,safety,734.19,516.31
+PROD-0038,Ironwood fasteners 0038,fasteners,712.76,437.01
+PROD-0039,Redwood storage 0039,outdoor,127.42,104.96
+PROD-0040,Summit electrical 0040,outdoor,1303.73,814.83
+PROD-0041,Copper Creek fasteners 0041,power-tools,41.95,33.61
+PROD-0042,Highland storage 0042,material-handling,1363.21,837.35
+PROD-0043,Cascade electrical 0043,fasteners,259.67,178.1
+PROD-0044,Meridian storage 0044,power-tools,1060.72,899.68
+PROD-0045,Ironwood outdoor 0045,fasteners,174.06,100.73
+PROD-0046,Meridian outdoor 0046,material-handling,1139.64,782.72
+PROD-0047,Redwood outdoor 0047,storage,57.08,37.93
+PROD-0048,Silverline material-handling 0048,storage,1348.52,891.29
+PROD-0049,Northwind material-handling 0049,fasteners,890.26,628.27
+PROD-0050,Ironwood storage 0050,power-tools,1214.14,877.27
+PROD-0051,Meridian electrical 0051,electrical,46.94,40.43
+PROD-0052,Summit safety 0052,power-tools,142.4,120.88
+PROD-0053,Ironwood outdoor 0053,outdoor,281.48,229.59
+PROD-0054,Meridian power-tools 0054,power-tools,585.62,370.88
+PROD-0055,Highland fasteners 0055,material-handling,915.66,583.22
+PROD-0056,Summit fasteners 0056,safety,1234.68,790.45
+PROD-0057,Redwood safety 0057,material-handling,859.18,656.36
+PROD-0058,Meridian safety 0058,electrical,64.04,49.72
+PROD-0059,Meridian storage 0059,power-tools,364.12,247.03
+PROD-0060,Ironwood electrical 0060,power-tools,1366.04,898.12
+PROD-0061,Timberline power-tools 0061,electrical,773.31,601.33
+PROD-0062,Cascade storage 0062,electrical,1142.72,892.75
+PROD-0063,Silverline storage 0063,electrical,65.27,43.14
+PROD-0064,Timberline safety 0064,material-handling,1171.6,745.29
+PROD-0065,Cascade fasteners 0065,material-handling,157.54,125.23
+PROD-0066,Granite outdoor 0066,safety,967.42,596.07
+PROD-0067,Northwind fasteners 0067,power-tools,40,29.67
+PROD-0068,Highland fasteners 0068,electrical,342.68,262.79
+PROD-0069,Cascade power-tools 0069,storage,931.42,611.17
+PROD-0070,Coastal material-handling 0070,power-tools,1283.47,794.72
+PROD-0071,Meridian material-handling 0071,outdoor,776.77,448.22
+PROD-0072,Ironwood storage 0072,material-handling,779.3,462.77
+PROD-0073,Summit electrical 0073,electrical,335.19,284.78
+PROD-0074,Timberline power-tools 0074,electrical,896.09,639.15
+PROD-0075,Coastal material-handling 0075,outdoor,602.09,522.65
+PROD-0076,Ironwood storage 0076,fasteners,405.17,261.91
+PROD-0077,Summit electrical 0077,power-tools,621.5,528.94
+PROD-0078,Harborview storage 0078,power-tools,655.78,549.23
+PROD-0079,Cascade power-tools 0079,power-tools,510.99,308.38
+PROD-0080,Highland safety 0080,electrical,735.58,490.06
+PROD-0081,Granite power-tools 0081,safety,995.55,649.41
+PROD-0082,Meridian safety 0082,power-tools,971.41,735.36
+PROD-0083,Summit power-tools 0083,material-handling,754.78,482.29
+PROD-0084,Copper Creek power-tools 0084,material-handling,162.39,109.06
+PROD-0085,Granite outdoor 0085,outdoor,1218.03,731.55
+PROD-0086,Copper Creek fasteners 0086,material-handling,315.11,258.71
+PROD-0087,Granite safety 0087,safety,967.51,655.05
+PROD-0088,Northwind storage 0088,storage,388.14,237.54
+PROD-0089,Summit fasteners 0089,outdoor,565.32,351.13
+PROD-0090,Harborview fasteners 0090,fasteners,201.87,141.27
+PROD-0091,Granite electrical 0091,safety,55.46,33.92
+PROD-0092,Summit storage 0092,power-tools,765.93,503.24
+PROD-0093,Ironwood electrical 0093,power-tools,223.86,157.98
+PROD-0094,Redwood electrical 0094,electrical,576.59,344.03
+PROD-0095,Northwind electrical 0095,outdoor,727.91,593.73
+PROD-0096,Summit electrical 0096,fasteners,875.66,688.41
+PROD-0097,Copper Creek fasteners 0097,safety,407.22,327.35
+PROD-0098,Summit storage 0098,material-handling,234.18,144.29
+PROD-0099,Coastal fasteners 0099,fasteners,426.53,280.24
+PROD-0100,Anchor fasteners 0100,outdoor,336.46,200.87
+PROD-0101,Anchor outdoor 0101,storage,1262.89,794.77
+PROD-0102,Silverline outdoor 0102,storage,185.51,107.42
+PROD-0103,Anchor material-handling 0103,material-handling,344.06,206.89
+PROD-0104,Northwind electrical 0104,safety,859.07,590.83
+PROD-0105,Cascade material-handling 0105,power-tools,534.27,343.8
+PROD-0106,Highland outdoor 0106,material-handling,517.91,384.49
+PROD-0107,Anchor material-handling 0107,safety,40.84,27.86
+PROD-0108,Timberline material-handling 0108,outdoor,322.82,195.53
+PROD-0109,Cascade safety 0109,storage,220.2,162.63
+PROD-0110,Redwood outdoor 0110,electrical,481.15,352.23
+PROD-0111,Cascade electrical 0111,fasteners,628.36,404.87
+PROD-0112,Copper Creek electrical 0112,fasteners,914.75,577.86
+PROD-0113,Summit storage 0113,outdoor,1266.03,802.81
+PROD-0114,Copper Creek storage 0114,outdoor,30.05,23.03
+PROD-0115,Redwood storage 0115,electrical,456.47,299.52
+PROD-0116,Blue Ridge fasteners 0116,fasteners,226.74,155.73
+PROD-0117,Northwind storage 0117,electrical,571.32,454.51
+PROD-0118,Summit material-handling 0118,material-handling,656.81,439.34
+PROD-0119,Granite material-handling 0119,electrical,8.48,5.99
+PROD-0120,Granite safety 0120,storage,785.18,588.15

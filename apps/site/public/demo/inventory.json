@@ -1,0 +1,842 @@
+[
+  {
+    "product_id": "PROD-0001",
+    "sku": "SKU-00001",
+    "on_hand": 1073,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-15T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0002",
+    "sku": "SKU-00002",
+    "on_hand": 2111,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-22T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0003",
+    "sku": "SKU-00003",
+    "on_hand": 4695,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-13T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0004",
+    "sku": "SKU-00004",
+    "on_hand": 1110,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-11T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0005",
+    "sku": "SKU-00005",
+    "on_hand": 1699,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-21T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0006",
+    "sku": "SKU-00006",
+    "on_hand": 773,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-12T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0007",
+    "sku": "SKU-00007",
+    "on_hand": 2364,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-18T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0008",
+    "sku": "SKU-00008",
+    "on_hand": 3750,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-28T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0009",
+    "sku": "SKU-00009",
+    "on_hand": 491,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-15T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0010",
+    "sku": "SKU-00010",
+    "on_hand": 2781,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-23T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0011",
+    "sku": "SKU-00011",
+    "on_hand": 3343,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-31T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0012",
+    "sku": "SKU-00012",
+    "on_hand": 2050,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-28T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0013",
+    "sku": "SKU-00013",
+    "on_hand": 1981,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-15T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0014",
+    "sku": "SKU-00014",
+    "on_hand": 3122,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-14T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0015",
+    "sku": "SKU-00015",
+    "on_hand": 4596,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-12T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0016",
+    "sku": "SKU-00016",
+    "on_hand": 1590,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-16T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0017",
+    "sku": "SKU-00017",
+    "on_hand": 471,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-17T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0018",
+    "sku": "SKU-00018",
+    "on_hand": 4987,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-22T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0019",
+    "sku": "SKU-00019",
+    "on_hand": 1073,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-24T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0020",
+    "sku": "SKU-00020",
+    "on_hand": 2128,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-14T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0021",
+    "sku": "SKU-00021",
+    "on_hand": 114,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-24T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0022",
+    "sku": "SKU-00022",
+    "on_hand": 1380,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-20T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0023",
+    "sku": "SKU-00023",
+    "on_hand": 1294,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-24T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0024",
+    "sku": "SKU-00024",
+    "on_hand": 3758,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-26T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0025",
+    "sku": "SKU-00025",
+    "on_hand": 731,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-25T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0026",
+    "sku": "SKU-00026",
+    "on_hand": 3157,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-31T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0027",
+    "sku": "SKU-00027",
+    "on_hand": 4057,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-19T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0028",
+    "sku": "SKU-00028",
+    "on_hand": 2551,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-20T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0029",
+    "sku": "SKU-00029",
+    "on_hand": 1786,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-25T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0030",
+    "sku": "SKU-00030",
+    "on_hand": 4146,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-27T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0031",
+    "sku": "SKU-00031",
+    "on_hand": 4766,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-29T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0032",
+    "sku": "SKU-00032",
+    "on_hand": 352,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-27T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0033",
+    "sku": "SKU-00033",
+    "on_hand": 2643,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-21T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0034",
+    "sku": "SKU-00034",
+    "on_hand": 223,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-22T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0035",
+    "sku": "SKU-00035",
+    "on_hand": 1001,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-29T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0036",
+    "sku": "SKU-00036",
+    "on_hand": 812,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-30T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0037",
+    "sku": "SKU-00037",
+    "on_hand": 4987,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-30T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0038",
+    "sku": "SKU-00038",
+    "on_hand": 4825,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-11T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0039",
+    "sku": "SKU-00039",
+    "on_hand": 2169,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-16T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0040",
+    "sku": "SKU-00040",
+    "on_hand": 4730,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-19T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0041",
+    "sku": "SKU-00041",
+    "on_hand": 999,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-26T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0042",
+    "sku": "SKU-00042",
+    "on_hand": 3141,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-11T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0043",
+    "sku": "SKU-00043",
+    "on_hand": 2063,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-14T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0044",
+    "sku": "SKU-00044",
+    "on_hand": 2421,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-17T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0045",
+    "sku": "SKU-00045",
+    "on_hand": 3882,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-25T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0046",
+    "sku": "SKU-00046",
+    "on_hand": 4323,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-21T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0047",
+    "sku": "SKU-00047",
+    "on_hand": 521,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-30T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0048",
+    "sku": "SKU-00048",
+    "on_hand": 2689,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-26T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0049",
+    "sku": "SKU-00049",
+    "on_hand": 4703,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-16T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0050",
+    "sku": "SKU-00050",
+    "on_hand": 2556,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-15T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0051",
+    "sku": "SKU-00051",
+    "on_hand": 2698,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-29T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0052",
+    "sku": "SKU-00052",
+    "on_hand": 2453,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-11T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0053",
+    "sku": "SKU-00053",
+    "on_hand": 170,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-16T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0054",
+    "sku": "SKU-00054",
+    "on_hand": 314,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-21T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0055",
+    "sku": "SKU-00055",
+    "on_hand": 3458,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-29T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0056",
+    "sku": "SKU-00056",
+    "on_hand": 2455,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-20T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0057",
+    "sku": "SKU-00057",
+    "on_hand": 1909,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-29T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0058",
+    "sku": "SKU-00058",
+    "on_hand": 1866,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-13T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0059",
+    "sku": "SKU-00059",
+    "on_hand": 4707,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-13T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0060",
+    "sku": "SKU-00060",
+    "on_hand": 3931,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-15T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0061",
+    "sku": "SKU-00061",
+    "on_hand": 1531,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-11T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0062",
+    "sku": "SKU-00062",
+    "on_hand": 3100,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-20T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0063",
+    "sku": "SKU-00063",
+    "on_hand": 3442,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-28T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0064",
+    "sku": "SKU-00064",
+    "on_hand": 3638,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-18T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0065",
+    "sku": "SKU-00065",
+    "on_hand": 1440,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-12T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0066",
+    "sku": "SKU-00066",
+    "on_hand": 2783,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-19T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0067",
+    "sku": "SKU-00067",
+    "on_hand": 1401,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-19T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0068",
+    "sku": "SKU-00068",
+    "on_hand": 4854,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-29T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0069",
+    "sku": "SKU-00069",
+    "on_hand": 1987,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-19T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0070",
+    "sku": "SKU-00070",
+    "on_hand": 4500,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-29T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0071",
+    "sku": "SKU-00071",
+    "on_hand": 2069,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-25T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0072",
+    "sku": "SKU-00072",
+    "on_hand": 2569,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-16T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0073",
+    "sku": "SKU-00073",
+    "on_hand": 2364,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-29T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0074",
+    "sku": "SKU-00074",
+    "on_hand": 1877,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-19T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0075",
+    "sku": "SKU-00075",
+    "on_hand": 1283,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-28T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0076",
+    "sku": "SKU-00076",
+    "on_hand": 3749,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-19T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0077",
+    "sku": "SKU-00077",
+    "on_hand": 4263,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-19T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0078",
+    "sku": "SKU-00078",
+    "on_hand": 1150,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-16T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0079",
+    "sku": "SKU-00079",
+    "on_hand": 4200,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-30T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0080",
+    "sku": "SKU-00080",
+    "on_hand": 4180,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-16T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0081",
+    "sku": "SKU-00081",
+    "on_hand": 1023,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-25T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0082",
+    "sku": "SKU-00082",
+    "on_hand": 2758,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-16T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0083",
+    "sku": "SKU-00083",
+    "on_hand": 1759,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-31T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0084",
+    "sku": "SKU-00084",
+    "on_hand": 1648,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-19T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0085",
+    "sku": "SKU-00085",
+    "on_hand": 344,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-17T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0086",
+    "sku": "SKU-00086",
+    "on_hand": 412,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-31T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0087",
+    "sku": "SKU-00087",
+    "on_hand": 1849,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-24T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0088",
+    "sku": "SKU-00088",
+    "on_hand": 4167,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-16T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0089",
+    "sku": "SKU-00089",
+    "on_hand": 4927,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-24T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0090",
+    "sku": "SKU-00090",
+    "on_hand": 4196,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-26T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0091",
+    "sku": "SKU-00091",
+    "on_hand": 4712,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-18T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0092",
+    "sku": "SKU-00092",
+    "on_hand": 2557,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-18T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0093",
+    "sku": "SKU-00093",
+    "on_hand": 3345,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-13T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0094",
+    "sku": "SKU-00094",
+    "on_hand": 4767,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-30T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0095",
+    "sku": "SKU-00095",
+    "on_hand": 4697,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-25T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0096",
+    "sku": "SKU-00096",
+    "on_hand": 766,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-23T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0097",
+    "sku": "SKU-00097",
+    "on_hand": 373,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-23T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0098",
+    "sku": "SKU-00098",
+    "on_hand": 635,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-17T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0099",
+    "sku": "SKU-00099",
+    "on_hand": 2074,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-31T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0100",
+    "sku": "SKU-00100",
+    "on_hand": 1217,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-12T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0101",
+    "sku": "SKU-00101",
+    "on_hand": 3182,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-29T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0102",
+    "sku": "SKU-00102",
+    "on_hand": 3594,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-16T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0103",
+    "sku": "SKU-00103",
+    "on_hand": 3249,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-11T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0104",
+    "sku": "SKU-00104",
+    "on_hand": 3288,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-15T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0105",
+    "sku": "SKU-00105",
+    "on_hand": 2918,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-12T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0106",
+    "sku": "SKU-00106",
+    "on_hand": 2909,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-30T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0107",
+    "sku": "SKU-00107",
+    "on_hand": 1634,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-29T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0108",
+    "sku": "SKU-00108",
+    "on_hand": 2263,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-16T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0109",
+    "sku": "SKU-00109",
+    "on_hand": 3807,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-13T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0110",
+    "sku": "SKU-00110",
+    "on_hand": 3731,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-24T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0111",
+    "sku": "SKU-00111",
+    "on_hand": 3394,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-31T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0112",
+    "sku": "SKU-00112",
+    "on_hand": 1223,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-15T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0113",
+    "sku": "SKU-00113",
+    "on_hand": 198,
+    "warehouse": "Atlanta-DC",
+    "updated_at": "2026-08-28T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0114",
+    "sku": "SKU-00114",
+    "on_hand": 1206,
+    "warehouse": "Dallas-DC",
+    "updated_at": "2026-08-28T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0115",
+    "sku": "SKU-00115",
+    "on_hand": 4770,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-28T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0116",
+    "sku": "SKU-00116",
+    "on_hand": 4522,
+    "warehouse": "Seattle-DC",
+    "updated_at": "2026-08-30T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0117",
+    "sku": "SKU-00117",
+    "on_hand": 3619,
+    "warehouse": "Newark-DC",
+    "updated_at": "2026-08-12T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0118",
+    "sku": "SKU-00118",
+    "on_hand": 1282,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-27T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0119",
+    "sku": "SKU-00119",
+    "on_hand": 513,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-19T00:00:00Z"
+  },
+  {
+    "product_id": "PROD-0120",
+    "sku": "SKU-00120",
+    "on_hand": 3613,
+    "warehouse": "Chicago-DC",
+    "updated_at": "2026-08-22T00:00:00Z"
+  }
+]
