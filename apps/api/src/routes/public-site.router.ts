@@ -6,10 +6,10 @@
  * Two invariants make that safe, and both are pinned by tests:
  *
  * 1. **It serves no tenant data.** The payload is a presentation snapshot
- *    of *public* tier rows plus operator-authored contact routes — no org,
- *    user, or usage facts exist in the contract to leak
- *    (`site-config.contract.ts` is strict; the integration suite asserts
- *    an org-private tier is absent).
+ *    of *public* tier rows — the contract is `{ tiers, generatedAt }` (contact
+ *    routes were removed by #369) — so no org, user, or usage facts exist in
+ *    the contract to leak (`site-config.contract.ts` is strict; the
+ *    integration suite asserts an org-private tier is absent).
  * 2. **It is rate-limited per IP.** `publicRateLimit` bounds abuse; the
  *    service's TTL cache bounds what reaches Postgres/Stripe/SSM behind it.
  *

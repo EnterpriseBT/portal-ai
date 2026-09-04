@@ -51,7 +51,27 @@ exports[`LoginFormUI Component should match snapshot 1`] = `
         <span
           class="MuiTypography-root MuiTypography-caption css-1ha543j-MuiTypography-root"
         >
-          By continuing, you agree to our Terms of Service and Privacy Policy
+          By continuing, you agree to our
+           
+          <a
+            class="MuiTypography-root MuiTypography-inherit MuiLink-root MuiLink-underlineAlways css-drt9hv-MuiTypography-root-MuiLink-root"
+            href="https://www.portalsai.io/terms/"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Terms of Service
+          </a>
+           
+          and
+           
+          <a
+            class="MuiTypography-root MuiTypography-inherit MuiLink-root MuiLink-underlineAlways css-drt9hv-MuiTypography-root-MuiLink-root"
+            href="https://www.portalsai.io/privacy/"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Privacy Policy
+          </a>
         </span>
       </div>
     </div>

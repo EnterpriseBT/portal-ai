@@ -3,46 +3,96 @@ import Page from "../layouts/Page.astro";
 import { siteUrl, adminEmail } from "../lib/site-context.js";
 import { breadcrumbLd } from "../lib/jsonld.js";
 
-/**
- * STRUCTURE ONLY. The headings below are the sections a privacy policy for
- * this product has to cover; the text under them must be written or
- * reviewed by the business before any production release. The marker in the
- * markup is what the prod pipeline greps for.
- */
 // Data-controller contact is the admin address (#369), not support.
 
-const SECTIONS = [
+/** Effective/last-updated date, rendered from a single constant (#506). */
+const EFFECTIVE_DATE_ISO = "2026-09-04";
+const EFFECTIVE_DATE_LABEL = "September 4, 2026";
+
+/**
+ * A section body is a sequence of paragraphs (plain strings) and bullet
+ * lists (`{ list }`), so a section can mix prose and enumerations.
+ */
+type Block = string | { list: string[] };
+interface Section {
+  heading: string;
+  blocks: Block[];
+}
+
+const SECTIONS: Section[] = [
   {
     heading: "What we collect",
-    prompt:
-      "Account identity from Auth0, the data you connect through connectors, and operational telemetry about jobs and tool calls.",
+    blocks: [
+      "We collect the information needed to give you a working Portals AI workspace:",
+      {
+        list: [
+          "Account and identity information from our identity provider when you sign in — your name, email address, and the identifier that ties you to your organization.",
+          "The data you connect through connectors — the records, files, and spreadsheet content you import or link, and the credentials or authorizations you grant so we can access a source on your behalf.",
+          "Operational telemetry about how the Service runs for you — job activity, tool calls and their metered usage, and standard technical logs (such as timestamps and error diagnostics) used to operate and secure the Service.",
+        ],
+      },
+      "The marketing site itself sets no advertising or analytics cookies and runs no third-party tracking.",
+    ],
   },
   {
     heading: "How we use it",
-    prompt:
-      "To operate the workspace you asked for: syncing your sources, answering your portal questions, and metering tool usage against your plan.",
+    blocks: [
+      "We use your information solely to operate the workspace you asked for: to authenticate you, to sync your connected sources, to answer your portal questions through the AI agent, to meter tool usage against your plan, and to keep the Service secure and reliable.",
+      "We do not sell your data, and we do not use the content you connect to train models. Your Content is processed to provide the Service to you, not for our own unrelated purposes.",
+    ],
   },
   {
     heading: "Third parties we share it with",
-    prompt:
-      "Subprocessors required to run the service — cloud hosting, the model provider behind portal answers, the payment processor, and any third-party tool you explicitly enable.",
+    blocks: [
+      "We rely on a small set of subprocessors to run the Service. Each receives only the data needed for its function:",
+      {
+        list: [
+          "Amazon Web Services (AWS) — cloud hosting and storage, in the United States region where the Service runs.",
+          "Auth0 — identity and authentication (sign-in and account identity).",
+          "Stripe — payment processing and subscription billing for paid plans.",
+          "Google and Microsoft — OAuth-based connectors, used only for the sources you explicitly connect and only within the access you grant.",
+          "Anthropic — the AI model provider behind portal answers; the prompts and context needed to answer your questions are sent to generate a response.",
+          "Tavily — web search, when a portal question uses the web-search tool.",
+          "Mapbox — geocoding, when a portal question uses the geocoding tool.",
+        ],
+      },
+      "In addition, any custom webhook tool you register sends data to the endpoint you host and control; that endpoint is your responsibility, not a Portals AI subprocessor. We may also disclose information where required by law or to protect the rights, safety, and security of Portals AI, our users, and the public.",
+    ],
   },
   {
     heading: "Where your data lives and how long we keep it",
-    prompt:
-      "Storage region, retention windows for connected data and the usage audit ledger, and what deletion removes.",
+    blocks: [
+      "Your data is hosted with AWS in a United States region.",
+      "We keep data only as long as it is needed to provide the Service:",
+      {
+        list: [
+          "Connected records are retained while they are live and are purged approximately 30 days after they are removed from your workspace. Records whose parent connector has itself been deleted are purged sooner — approximately 7 days — because nothing can reference them again.",
+          "The usage audit ledger, which records metered tool activity for billing and accountability, is retained for approximately 24 months and then purged.",
+        ],
+      },
+      "Deleting a record, a connector, or an organization removes the associated data from the active Service and schedules it for purge on the windows above. Backups and logs age out on their own routine cycles.",
+    ],
   },
   {
     heading: "Your rights",
-    prompt:
-      "Access, correction, export, and deletion — and how to exercise them.",
+    blocks: [
+      "You can access, correct, export, and delete the data you hold in the Service directly from the app: records and connectors are editable and deletable in your workspace, and an organization owner can delete the entire organization.",
+      `Depending on where you live, you may have additional rights over your personal data, such as the right to access, correct, delete, or port it, or to object to or restrict certain processing. To exercise a right we cannot service in-app, or to ask a question about your data, contact us at ${adminEmail} and we will respond as required by applicable law.`,
+    ],
   },
   {
     heading: "Security",
-    prompt:
-      "Encryption in transit and at rest, credential handling for connectors, and how we scope access internally.",
+    blocks: [
+      "We protect your data with encryption in transit and at rest, and we handle connector credentials as secrets — stored encrypted and used only to access the sources you authorized.",
+      "Access to production systems and data is scoped to what is needed to operate the Service. No method of transmission or storage is perfectly secure, but we work to protect your information consistent with the sensitivity of the data and industry practice.",
+    ],
   },
-  { heading: "Changes to this policy", prompt: "How we notify you." },
+  {
+    heading: "Changes to this policy",
+    blocks: [
+      `We may update this policy as the Service evolves. When we make a material change, we will update the “Last updated” date below and, where appropriate, notify you. Questions about this policy can be sent to ${adminEmail}.`,
+    ],
+  },
 ];
 
 const jsonLd = [
@@ -53,26 +103,35 @@ const jsonLd = [
 ];
 ---
 
-<!-- business copy pending: blocks prod tag -->
 <Page
   title="Privacy policy — Portals AI"
   description="How Portals AI collects, uses, stores, and shares your data, and the rights you have over it."
   path="/privacy/"
   jsonLd={jsonLd}
-  noindex={true}
 >
   <h1>Privacy policy</h1>
 
-  <p class="pending" role="note">
-    <strong>Draft.</strong> This page is structural. The binding policy text is being
-    prepared and must replace every section below before Portals AI goes to production.
+  <p class="effective-date">
+    Last updated: <time datetime={EFFECTIVE_DATE_ISO}
+      >{EFFECTIVE_DATE_LABEL}</time
+    >
   </p>
 
   {
     SECTIONS.map((section) => (
       <section class="section">
         <h2>{section.heading}</h2>
-        <p class="muted">{section.prompt}</p>
+        {section.blocks.map((block) =>
+          typeof block === "string" ? (
+            <p>{block}</p>
+          ) : (
+            <ul>
+              {block.list.map((item) => (
+                <li>{item}</li>
+              ))}
+            </ul>
+          )
+        )}
       </section>
     ))
   }
@@ -84,11 +143,9 @@ const jsonLd = [
   </p>
 
   <style>
-    .pending {
-      padding: calc(var(--space-unit) * 2);
-      border: 1px solid var(--color-warning-main);
-      border-radius: var(--radius-base);
-      background: var(--color-background-paper);
+    .effective-date {
+      color: var(--color-text-secondary);
+      font-size: 0.95rem;
     }
   </style>
 </Page>

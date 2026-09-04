@@ -19,15 +19,9 @@ export default defineConfig({
   // what makes the dev server reachable from the host browser through the
   // devcontainer's published port. Same reason `apps/web` sets it (#311).
   server: { port: 3002, host: true },
-  integrations: [
-    sitemap({
-      // Keep the sitemap and the pages' own robots meta telling the same
-      // story. The legal pages are `noindex` while their copy is a draft,
-      // and listing a noindex URL in the sitemap is a contradictory signal
-      // ("don't index this" / "here, index this"). `verify-pages.mjs`
-      // asserts the two stay in agreement.
-      filter: (page) => !/\/(privacy|terms)\/$/.test(page),
-    }),
-  ],
+  // Every emitted route is indexable and belongs in the sitemap. If a page is
+  // ever made `noindex` again, it must also be excluded from the sitemap here —
+  // `verify-pages.mjs` asserts the two stay in agreement in both directions.
+  integrations: [sitemap()],
   build: { format: "directory" },
 });

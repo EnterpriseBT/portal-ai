@@ -1,4 +1,5 @@
 import React from "react";
+import MuiLink from "@mui/material/Link";
 import { sdk } from "../api/sdk";
 import {
   Box,
@@ -11,6 +12,8 @@ import {
   Icon,
   IconName,
 } from "@portalai/core/ui";
+
+import { TERMS_URL, PRIVACY_URL } from "../utils/site-origin.util";
 
 export interface LoginFormUIProps {
   onClickGoogleLogin: () => void;
@@ -71,8 +74,26 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
               color="text.secondary"
               sx={{ textAlign: "center", mt: 2 }}
             >
-              By continuing, you agree to our Terms of Service and Privacy
-              Policy
+              By continuing, you agree to our{" "}
+              <MuiLink
+                href={TERMS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                color="inherit"
+                underline="always"
+              >
+                Terms of Service
+              </MuiLink>{" "}
+              and{" "}
+              <MuiLink
+                href={PRIVACY_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                color="inherit"
+                underline="always"
+              >
+                Privacy Policy
+              </MuiLink>
             </Typography>
 
             {onClickDevLogin && (

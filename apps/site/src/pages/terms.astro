@@ -3,43 +3,99 @@ import Page from "../layouts/Page.astro";
 import { siteUrl, adminEmail } from "../lib/site-context.js";
 import { breadcrumbLd } from "../lib/jsonld.js";
 
-/**
- * STRUCTURE ONLY — see `privacy.astro`. Business-reviewed copy replaces
- * these sections before the production tag.
- */
 // Legal contact is the admin address (#369), not support.
 
-const SECTIONS = [
-  { heading: "Agreement to these terms", prompt: "Who is bound, and when." },
+/** Effective/last-updated date, rendered from a single constant (#506). */
+const EFFECTIVE_DATE_ISO = "2026-09-04";
+const EFFECTIVE_DATE_LABEL = "September 4, 2026";
+
+/**
+ * A section body is a sequence of paragraphs (plain strings) and bullet
+ * lists (`{ list }`), so a section can mix prose and enumerations.
+ */
+type Block = string | { list: string[] };
+interface Section {
+  heading: string;
+  blocks: Block[];
+}
+
+const SECTIONS: Section[] = [
+  {
+    heading: "Agreement to these terms",
+    blocks: [
+      "These Terms of Service (the “Terms”) are a binding agreement between Portals AI (“Portals AI”, “we”, “us”) and the organization and individuals who access or use the Portals AI service, including the web application, the marketing site, and the API (together, the “Service”).",
+      "By creating an account, signing in, or otherwise using the Service, you agree to these Terms on behalf of yourself and, where you act for an organization, that organization. If you do not agree, do not use the Service. If you are entering into these Terms for an organization, you represent that you are authorized to bind it.",
+    ],
+  },
   {
     heading: "Your account",
-    prompt: "Eligibility, organization ownership, and member responsibilities.",
+    blocks: [
+      "You sign in through our identity provider (Google) and must keep your credentials secure. You are responsible for activity under your account.",
+      "The Service is organized around organizations. The person who creates an organization is its owner. The owner can invite and remove members, manage the organization’s plan, and delete the organization. Deleting an organization removes its members’ access and schedules its data for deletion as described in our Privacy Policy.",
+      "Members may only use the organization’s workspace for that organization’s purposes, and are subject to these Terms and any rules the owner sets.",
+      "You must be able to form a binding contract to use the Service, and you may not use it if we have previously suspended or removed you.",
+    ],
   },
   {
     heading: "Acceptable use",
-    prompt:
-      "What you may not connect, ask, or automate — including the limits on custom webhook tools you register.",
+    blocks: [
+      "You agree not to use the Service to break the law, infringe others’ rights, or interfere with the Service’s operation or security. In particular, you will not:",
+      {
+        list: [
+          "connect data you do not have the right to access, upload, or process;",
+          "attempt to gain unauthorized access to the Service, other organizations’ data, or the systems of our providers;",
+          "probe, scan, overload, or circumvent the Service’s rate limits, credit allocations, or other technical controls;",
+          "use the Service to generate unlawful, harmful, or deceptive content, or to target or harass others.",
+        ],
+      },
+      "The Service lets you register custom webhook tools that call endpoints you host. You are solely responsible for those endpoints, for what they do with the data sent to them, and for the consequences of the agent invoking them. You will not register a tool that performs an activity prohibited above, and you will secure and monitor it as you would any production system of your own.",
+      "We may suspend access to features, or to the Service, if we reasonably believe use violates this section.",
+    ],
   },
   {
     heading: "Plans, credits, and billing",
-    prompt:
-      "How monthly tool-credit allocations work, what happens when a plan's allowance is exhausted, renewal, and cancellation.",
+    blocks: [
+      "The Service is offered on tiered plans (currently Standard, Plus, Pro, and Enterprise). The core workspace — connecting sources, asking your portals questions, and visualizing and refreshing results — is available on every plan and is not metered.",
+      "Certain tool usage that incurs third-party or heavy-compute cost is metered against a monthly credit allocation set by your plan. Allocations reset each month. When an allocation is exhausted, further metered calls are declined until the allocation resets or you move to a plan with a larger allocation; we do not silently bill overage. Rate limits additionally bound how quickly an allocation can be used.",
+      "Paid plans are billed in advance on a recurring monthly basis through our payment processor. Prices are those shown at checkout. Unless otherwise required by law, payments are non-refundable. You can cancel at any time; cancellation stops the next renewal and access continues until the end of the current paid period. We may change plan features or pricing on reasonable notice; changes to recurring charges take effect at your next renewal.",
+    ],
   },
   {
     heading: "Your data and your content",
-    prompt:
-      "You keep ownership; the licence you grant us is limited to operating the service.",
+    blocks: [
+      "As between you and us, you retain all rights to the data you connect and the content you create in the Service (“Your Content”). We do not claim ownership of it.",
+      "You grant us a limited, non-exclusive license to host, process, transmit, and display Your Content solely to operate and provide the Service to you — for example, to sync your connected sources, answer your portal questions, and meter usage against your plan. This license ends when Your Content is deleted from the Service, subject to the retention windows described in our Privacy Policy.",
+      "You are responsible for having the rights necessary to connect and process Your Content through the Service and its providers.",
+    ],
   },
   {
     heading: "Service availability and changes",
-    prompt: "Uptime expectations, and how we handle changes to features.",
+    blocks: [
+      "We aim to keep the Service available and reliable, but we provide it on an “as available” basis and do not guarantee uninterrupted operation. We may perform maintenance, and availability can be affected by factors outside our control, including third-party providers.",
+      "We continue to develop the Service and may add, change, or remove features. If we make a change that materially reduces core functionality of a paid plan, we will provide reasonable notice.",
+    ],
   },
   {
     heading: "Warranties and liability",
-    prompt: "Disclaimers and the limits on our liability.",
+    blocks: [
+      "The Service is provided “as is” and “as available”, without warranties of any kind, whether express or implied, including implied warranties of merchantability, fitness for a particular purpose, and non-infringement. Outputs generated by the Service’s AI agent may be inaccurate or incomplete, and you are responsible for reviewing them before relying on them.",
+      "To the maximum extent permitted by law, Portals AI will not be liable for any indirect, incidental, special, consequential, or punitive damages, or for lost profits, revenues, or data. Our total liability arising out of or relating to the Service will not exceed the amounts you paid us for the Service in the twelve months before the event giving rise to the claim.",
+    ],
   },
-  { heading: "Termination", prompt: "How either side ends the agreement." },
-  { heading: "Governing law", prompt: "Jurisdiction and dispute resolution." },
+  {
+    heading: "Termination",
+    blocks: [
+      "You may stop using the Service at any time, and an organization owner may cancel its plan or delete the organization from within the app.",
+      "We may suspend or terminate access if you breach these Terms, if required by law, or if continued provision poses a risk to the Service or others. On termination, your right to use the Service ends and your data is handled as described in our Privacy Policy. Terms that by their nature should survive — including ownership, disclaimers, limitations of liability, and governing law — survive termination.",
+    ],
+  },
+  {
+    heading: "Governing law",
+    blocks: [
+      "These Terms are governed by the laws of the State of Utah, United States, without regard to its conflict-of-laws rules, and you agree to the exclusive jurisdiction of the state and federal courts located in Utah for any dispute that is not resolved informally.",
+      `Questions about these Terms can be sent to ${adminEmail}. We may update these Terms from time to time; the “Last updated” date below reflects the current version, and your continued use of the Service after an update means you accept the revised Terms.`,
+    ],
+  },
 ];
 
 const jsonLd = [
@@ -50,26 +106,35 @@ const jsonLd = [
 ];
 ---
 
-<!-- business copy pending: blocks prod tag -->
 <Page
   title="Terms of service — Portals AI"
   description="The terms governing use of Portals AI, including accounts, acceptable use, plans and billing, and data ownership."
   path="/terms/"
   jsonLd={jsonLd}
-  noindex={true}
 >
   <h1>Terms of service</h1>
 
-  <p class="pending" role="note">
-    <strong>Draft.</strong> This page is structural. The binding terms are being prepared
-    and must replace every section below before Portals AI goes to production.
+  <p class="effective-date">
+    Last updated: <time datetime={EFFECTIVE_DATE_ISO}
+      >{EFFECTIVE_DATE_LABEL}</time
+    >
   </p>
 
   {
     SECTIONS.map((section) => (
       <section class="section">
         <h2>{section.heading}</h2>
-        <p class="muted">{section.prompt}</p>
+        {section.blocks.map((block) =>
+          typeof block === "string" ? (
+            <p>{block}</p>
+          ) : (
+            <ul>
+              {block.list.map((item) => (
+                <li>{item}</li>
+              ))}
+            </ul>
+          )
+        )}
       </section>
     ))
   }
@@ -81,11 +146,9 @@ const jsonLd = [
   </p>
 
   <style>
-    .pending {
-      padding: calc(var(--space-unit) * 2);
-      border: 1px solid var(--color-warning-main);
-      border-radius: var(--radius-base);
-      background: var(--color-background-paper);
+    .effective-date {
+      color: var(--color-text-secondary);
+      font-size: 0.95rem;
     }
   </style>
 </Page>
