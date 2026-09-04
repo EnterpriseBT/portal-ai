@@ -24,11 +24,47 @@ import {
 } from "@portalai/cli-env";
 
 import { dbSeed } from "./db.js";
-import { tierApply } from "./tier.js";
+import { tierApply, tierCreate, TierAlreadyExistsError } from "./tier.js";
 import type { MutateOptions } from "./vars.js";
 
 /** The fixture org `@portalai/e2e` walks against (see packages/e2e/README.md). */
 export const E2E_FIXTURE_ORG_NAME = "e2e-fixture";
+
+/** The standing custom demo tier (#511): free, unlimited, all toolpacks. */
+export const DEMO_TIER_SLUG = "demo";
+
+/**
+ * Create the local `demo` tier if absent (#511). `tierCreate`'s defaults are
+ * the demo posture already — allocations null (unlimited), all built-in +
+ * custom toolpacks, `cta contact`, `overage hard-deny`, no Stripe price, and
+ * `public=false` + unscoped (so it's `set-tier`-able onto any local org yet
+ * never appears on the marketing site's `site-config`). Idempotent: a second
+ * run finds the slug and reports `exists` rather than failing.
+ */
+export async function ensureDemoTier(
+  def: EnvironmentDefinition,
+  opts: MutateOptions,
+  create: typeof tierCreate = tierCreate
+): Promise<{ slug: string; action: "insert" | "exists" }> {
+  try {
+    await create(
+      def,
+      {
+        slug: DEMO_TIER_SLUG,
+        displayName: "Demo",
+        cta: "contact",
+        description: "Internal demo organization — free, unlimited usage.",
+      },
+      opts
+    );
+    return { slug: DEMO_TIER_SLUG, action: "insert" };
+  } catch (err) {
+    if (err instanceof TierAlreadyExistsError) {
+      return { slug: DEMO_TIER_SLUG, action: "exists" };
+    }
+    throw err;
+  }
+}
 
 export interface LocalProvisionOptions extends MutateOptions {
   /** Seed the e2e fixture org, linking this member email (the user row must
@@ -36,7 +72,12 @@ export interface LocalProvisionOptions extends MutateOptions {
   e2eOrgEmail?: string;
 }
 
-export type ProvisionStepName = "migrate" | "seed" | "tier-apply" | "e2e-org";
+export type ProvisionStepName =
+  | "migrate"
+  | "seed"
+  | "tier-apply"
+  | "demo-tier"
+  | "e2e-org";
 
 export interface ProvisionStep {
   name: ProvisionStepName;
@@ -53,6 +94,7 @@ export interface LocalProvisionDeps {
   runScript?: typeof runApiScript;
   seed?: typeof dbSeed;
   apply?: typeof tierApply;
+  demoTier?: typeof ensureDemoTier;
 }
 
 const stepError = (err: unknown): { code: string; message: string } => {
@@ -104,6 +146,12 @@ export async function localProvision(
     (await run("seed", () => (deps.seed ?? dbSeed)(def, opts, runScript))) &&
     (await run("tier-apply", () =>
       (deps.apply ?? tierApply)(def, {
+        yes: opts.yes,
+        confirmProd: opts.confirmProd,
+      })
+    )) &&
+    (await run("demo-tier", () =>
+      (deps.demoTier ?? ensureDemoTier)(def, {
         yes: opts.yes,
         confirmProd: opts.confirmProd,
       })
