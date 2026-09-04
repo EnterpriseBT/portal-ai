@@ -17,6 +17,38 @@ All dates are anchored to **2026-08-31** with **30 months** of history, so the t
 3. **Reset first.** Run `portalai demo reset --env <env> --org <orgId>` (app-dev/local) or a `portalai demo seed` re-run (prod — reset is guard-blocked there) so the org is at the checked-in state before you begin (#509).
 4. **Connectors.** Four populated instances: **Sandbox**, **File Upload** (CSV + XLSX), **Google Sheets**, **REST API**. (Microsoft 365 Excel is intentionally excluded — Google Sheets covers the identical file-based OAuth workflow.)
 
+## Provisioning (operator, #511)
+
+Stand up the demo org **once per environment** before it can be presented. Every step is a CLI command or a named console action; guards are server-enforced (`docs/CLI_OPERATIONS_CHARTER.md`).
+
+### The `demo` tier
+
+Free, unlimited, all toolpacks, `cta contact`, no Stripe price — a **custom tier outside the catalog** (`tier apply` never touches it). It is **not** on `GET /api/public/site-config` (it isn't marketing-public), yet any org can be `set-tier`'d onto it.
+
+- **Local:** created automatically by `portalops local provision --env local --yes` (the `demo-tier` step, idempotent). No manual step.
+- **App-dev:** once, scoped to the rehearsal org —
+  `portalops tier create --env app-dev --slug demo --display-name "Demo" --description "Internal demo organization — unlimited usage." --visible-to-org <app-dev demo orgId> --yes`
+- **Prod:** once, scoped to admin@'s org —
+  `portalops tier create --env prod --slug demo --display-name "Demo" --description "Internal demo organization — unlimited usage." --visible-to-org <prod orgId> --yes --confirm-prod`
+- Verify it stays unmanaged: `portalops tier apply --env <env> --dry-run` lists `demo` under `unmanaged`.
+
+### Local / app-dev rehearsal org
+
+1. Create the org: `portalai seed org --name demo --env <env> --yes` (local also gets the tier from `local provision`).
+2. Put it on the tier: `portalai org set-tier <orgId> demo --env <env> --yes`.
+3. Connect **Google Sheets** in the app (upload `customers_orders.xlsx` to the connecting account's Drive first; #508).
+4. Seed: `portalai demo seed --env <env> --org <orgId> --yes` (#509). Rehearse the presenter script.
+
+### Prod (admin@portalsai.io)
+
+1. **First login.** admin@portalsai.io signs in with Google on `app.portalsai.io`; the Auth0 post-login webhook creates the user + default org (`application.service.ts:125`). Nothing can target the org before this (`org create --owner-email` throws `User not found`).
+2. **Stripe check.** Read `organizations.stripe_subscription_id` for admin@'s org. If it carries the internal `pro` subscription (`docs/TIER_PRICING_MODEL.md:126`), **cancel it in Stripe** — the `customer.subscription.deleted` webhook reverts the org to `standard` and clears the id (`billing.service.ts:87-120`). **Never `--allow-stripe-desync`** (the grandfathered $49 price is unmapped since #497).
+3. **Tier.** Create the prod `demo` tier (above), then `portalai org set-tier <orgId> demo --env prod --yes --confirm-prod` (refused, exit 9, while a live subscription remains — that's why step 2 comes first).
+4. **OAuth.** admin@ connects **Google Sheets** (its Workspace Drive holds #508's sheet) against the prod callback URL. (No Microsoft/OneDrive step — Excel is out of scope.)
+5. **Toolpack URL.** Ensure `DEMO_TOOLPACK_URL` is set for prod (the shared #510 endpoint): `portalops vars set DEMO_TOOLPACK_URL <url> --env prod --yes --confirm-prod`, so the seeder registers the custom toolpack.
+6. **Seed.** `portalai demo seed --env prod --org <orgId> --yes --confirm-prod` (#509) — the documented prod refresh path (there is no prod `demo reset`; re-run `seed` to refresh).
+7. **Verify.** Settings → Subscription shows the **Demo** card (unlimited, no checkout CTA), `stripe_subscription_id` is null, and the four connector instances are `active`.
+
 ## The dataset
 
 Authored deterministically by `packages/admin-cli/fixtures/demo/generate.ts` (`npm run --workspace @portalai/admin-cli fixtures:demo`) from the shared module `packages/admin-cli/src/fixtures/demo-data.ts`.
