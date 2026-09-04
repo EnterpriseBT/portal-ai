@@ -26,6 +26,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,json}\"",
     "type-check": "tsc --project tsconfig.eslint.json --noEmit",
     "clean": "rm -rf dist",
+    "fixtures:demo": "tsx fixtures/demo/generate.ts",
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest",
     "test:integration": "true",
@@ -47,9 +48,11 @@
     "@typescript-eslint/eslint-plugin": "^8.55.0",
     "@typescript-eslint/parser": "^8.55.0",
     "eslint": "^9.39.2",
+    "exceljs": "^4.4.0",
     "jest": "^29.7.0",
     "prettier": "^3.4.2",
     "ts-jest": "^29.4.6",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },
   "engines": {
