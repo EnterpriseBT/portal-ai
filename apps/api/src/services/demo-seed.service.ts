@@ -16,6 +16,8 @@
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
+import { sql } from "drizzle-orm";
+
 import {
   ConnectorEntityModelFactory,
   ConnectorInstanceModelFactory,
@@ -153,6 +155,13 @@ export interface DemoSeedResult {
   durationMs: number;
 }
 
+export interface DemoResetResult {
+  orgId: string;
+  portalsDeleted: number;
+  entities: Array<{ key: string; deleted: number; reconverged: number }>;
+  durationMs: number;
+}
+
 export class DemoSeedService {
   static async seed(params: {
     orgId: string;
@@ -220,6 +229,98 @@ export class DemoSeedService {
       googleSheets: { present: false },
       durationMs: Date.now() - startedAt,
     };
+  }
+
+  /**
+   * Reset the demo org to the checked-in baseline: delete its portals
+   * (conversation history) and every demo entity's records, then re-seed.
+   * Leaves OAuth instances (Google Sheets, #511) and their tokens untouched.
+   * Destructive — the CLI blocks this on prod.
+   */
+  static async reset(params: {
+    orgId: string;
+    rows?: number;
+  }): Promise<DemoResetResult> {
+    const startedAt = Date.now();
+    const { orgId } = params;
+    logger.info({ orgId }, "demo reset starting");
+
+    const portalsDeleted = await DemoSeedService.deletePortals(orgId);
+
+    const demoKeys = [
+      ...DEMO_ENTITY_SPECS.map((s) => s.key),
+      TRANSACTIONS_ENTITY.key,
+    ];
+    const deletedByKey = new Map<string, number>();
+    for (const key of demoKeys) {
+      const deleted = await DemoSeedService.clearEntityRecords(orgId, key);
+      if (deleted !== null) deletedByKey.set(key, deleted);
+    }
+
+    // Re-converge to the checked-in dataset.
+    const seeded = await DemoSeedService.seed({ orgId, rows: params.rows });
+
+    const entities = seeded.entities.map((e) => ({
+      key: e.key,
+      deleted: deletedByKey.get(e.key) ?? 0,
+      reconverged: e.created,
+    }));
+
+    return {
+      orgId,
+      portalsDeleted,
+      entities,
+      durationMs: Date.now() - startedAt,
+    };
+  }
+
+  /** Hard-delete the org's portals (results → messages → portals). */
+  private static async deletePortals(orgId: string): Promise<number> {
+    return DbService.transaction(async (tx) => {
+      const before = (await tx.execute(
+        sql`SELECT count(*)::int AS count FROM portals WHERE organization_id = ${orgId}`
+      )) as unknown as Array<{ count: number }>;
+      await tx.execute(
+        sql`DELETE FROM portal_results WHERE organization_id = ${orgId}`
+      );
+      await tx.execute(
+        sql`DELETE FROM portal_messages WHERE organization_id = ${orgId}`
+      );
+      await tx.execute(
+        sql`DELETE FROM portals WHERE organization_id = ${orgId}`
+      );
+      return before[0]?.count ?? 0;
+    });
+  }
+
+  /**
+   * Hard-delete all records for one demo entity (both the `entity_records` rows
+   * and the wide `er__<id>` table), so a following re-seed is a clean baseline.
+   * Returns null if the entity does not exist yet.
+   */
+  private static async clearEntityRecords(
+    orgId: string,
+    key: string
+  ): Promise<number | null> {
+    const found = (await DbService.transaction(async (tx) =>
+      tx.execute(
+        sql`SELECT id FROM connector_entities WHERE organization_id = ${orgId} AND key = ${key} AND deleted IS NULL LIMIT 1`
+      )
+    )) as unknown as Array<{ id: string }>;
+    const entityId = found[0]?.id;
+    if (!entityId) return null;
+
+    return DbService.transaction(async (tx) => {
+      const before = (await tx.execute(
+        sql`SELECT count(*)::int AS count FROM entity_records WHERE connector_entity_id = ${entityId}`
+      )) as unknown as Array<{ count: number }>;
+      await tx.execute(
+        sql`DELETE FROM entity_records WHERE connector_entity_id = ${entityId}`
+      );
+      // Wide table is `er__<entityId>`; the id is a generated uuid (safe).
+      await tx.execute(sql.raw(`DELETE FROM "er__${entityId}"`));
+      return before[0]?.count ?? 0;
+    });
   }
 
   /**
