@@ -45,6 +45,8 @@ Why replay and not deny: **today the duplicate call is what delivers the user's 
 
 ## Smoke (manual, against your dev stack)
 
+**Confirmed passing — 2026-09-04** (Ben Turner), against the local dev stack. Agent evidence walk: `packages/e2e/test-results/smoke-walk-SSE_RECONNECT_INFLIGHT_TURN.md`. Decisive result: two concurrent `GET /stream` for one pending turn → **one** assistant row, **same `done` messageId** on both connections (one generated, one replayed); already-answered reconnect replays with no new row. Steps 1–4 verified (step 2's clean single-turn reconnect proven at the HTTP layer, since the app closes the EventSource on error); step 5 (Redis-down fail-open) covered by unit test, not walked live.
+
 1. Start the dev stack (`npm run dev`) and open a portal in the app (`localhost:3000`). Send a message; confirm a normal streamed answer renders and one assistant message persists.
 2. Send another message; **mid-stream, kill the network** (DevTools → Network → Offline for ~2s, then back online) to force an `EventSource` reconnect. Confirm: the answer still appears, exactly **one** assistant message is persisted for the turn, and the API log shows the reconnect took the **replay** path (no second `streamText`/Anthropic call).
 3. Repeat step 2 but toggle offline **after** the answer finished rendering but before closing the portal (simulates the post-`done` reconnect race). Confirm no duplicate message and no second model call.
