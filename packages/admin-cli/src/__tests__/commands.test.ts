@@ -263,6 +263,57 @@ describe("spawn-backed provisioning commands", () => {
     expect(spawner).not.toHaveBeenCalled();
     expect(mocks.resolveEnvConnection).not.toHaveBeenCalled();
   });
+
+  it("demo seed is non-destructive and spawns db:demo:seed with --org + --rows", async () => {
+    const { demoSeed } = await import("../commands/demo.js");
+    await demoSeed(
+      appDev,
+      { orgId: "o-1", rows: 5000 },
+      { yes: true },
+      spawner
+    );
+    expect(mocks.assertOperationAllowed).toHaveBeenCalledWith(appDev, {
+      destructive: false,
+      confirmed: true,
+      prodConfirmed: false,
+    });
+    expect(spawnerCalls[0].args).toEqual(
+      expect.arrayContaining(["db:demo:seed", "--org", "o-1", "--rows", "5000"])
+    );
+    expect(mocks.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "demo seed", operator: SUB })
+    );
+  });
+
+  it("demo seed omits --rows when not given", async () => {
+    const { demoSeed } = await import("../commands/demo.js");
+    await demoSeed(appDev, { orgId: "o-1" }, { yes: true }, spawner);
+    expect(spawnerCalls[0].args).not.toContain("--rows");
+  });
+
+  it("demo reset is destructive-class and spawns db:demo:reset", async () => {
+    const { demoReset } = await import("../commands/demo.js");
+    await demoReset(appDev, { orgId: "o-1" }, { yes: true }, spawner);
+    expect(mocks.assertOperationAllowed).toHaveBeenCalledWith(appDev, {
+      destructive: true,
+      confirmed: true,
+      prodConfirmed: false,
+    });
+    expect(spawnerCalls[0].args).toEqual(
+      expect.arrayContaining(["db:demo:reset", "--org", "o-1"])
+    );
+  });
+
+  it("demo reset guards BEFORE spawning — a blocked op never runs the script", async () => {
+    const { demoReset } = await import("../commands/demo.js");
+    mocks.assertOperationAllowed.mockImplementation(() => {
+      throw new EnvNotAuthorizedError("blocked");
+    });
+    await expect(
+      demoReset(appDev, { orgId: "o-1" }, {}, spawner)
+    ).rejects.toBeInstanceOf(EnvNotAuthorizedError);
+    expect(spawner).not.toHaveBeenCalled();
+  });
 });
 
 describe("member commands (email-resolved)", () => {
