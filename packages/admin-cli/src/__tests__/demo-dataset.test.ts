@@ -17,9 +17,14 @@ import ExcelJS from "exceljs";
 import {
   COUNTS,
   HEADERS,
+  LOAN,
+  generateCashFlows,
   generateCustomers,
+  generateInventory,
+  generateLoanSchedule,
   generateNotes,
   generateOrders,
+  generatePortfolio,
   generateProducts,
   generateShipments,
   generateSites,
@@ -131,6 +136,51 @@ describe("demo dataset — large-volume transactions synth", () => {
   });
 });
 
+describe("demo dataset — financials", () => {
+  it("cash flows span the history window with net = inflow − outflow", () => {
+    const cf = generateCashFlows(SEED);
+    expect(cf).toHaveLength(COUNTS.cashFlowMonths);
+    for (const row of cf) {
+      expect(row.net).toBeCloseTo(row.inflow - row.outflow, 2);
+    }
+  });
+
+  it("loan schedule amortizes to (near) zero and repays the principal", () => {
+    const schedule = generateLoanSchedule();
+    expect(schedule).toHaveLength(COUNTS.loanMonths);
+    expect(schedule[schedule.length - 1].balance).toBeLessThan(1);
+    const principalPaid = schedule.reduce((a, p) => a + p.principal, 0);
+    expect(principalPaid).toBeCloseTo(LOAN.principal, -1);
+  });
+
+  it("portfolio weights sum to 1", () => {
+    const holdings = generatePortfolio(SEED);
+    expect(holdings).toHaveLength(COUNTS.portfolioHoldings);
+    const sum = holdings.reduce((a, h) => a + h.weight, 0);
+    expect(sum).toBeCloseTo(1, 2);
+  });
+});
+
+describe("demo dataset — inventory (REST source)", () => {
+  const inventory = generateInventory(products, SEED);
+
+  it("has one row per product with a resolvable product_id", () => {
+    expect(inventory).toHaveLength(COUNTS.inventory);
+    for (const item of inventory) {
+      expect(productIds.has(item.product_id)).toBe(true);
+      expect(item.on_hand).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("uses only scalar fields (clean REST column inference)", () => {
+    for (const item of inventory) {
+      for (const v of Object.values(item)) {
+        expect(["string", "number"]).toContain(typeof v);
+      }
+    }
+  });
+});
+
 /** Split a committed CSV (no embedded newlines in fields) into header + rows. */
 function readCsv(name: string): { header: string; dataRows: number } {
   const text = readFileSync(`${FIXTURES}${name}`, "utf8");
@@ -171,5 +221,44 @@ describe("demo dataset — committed files match the generators", () => {
     });
     expect(total).toBe(COUNTS.orders);
     expect(wb.worksheets.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("financials.xlsx has the three named sheets with clean headers", async () => {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(`${FIXTURES}financials.xlsx`);
+    const sheets = wb.worksheets.map((ws) => ws.name);
+    expect(sheets).toEqual(["Cash Flows", "Loan Schedule", "Portfolio"]);
+    const headerOf = (name: string) =>
+      (wb.getWorksheet(name)!.getRow(1).values as unknown[]).slice(1);
+    expect(headerOf("Cash Flows")).toEqual([...HEADERS.cashFlows]);
+    expect(headerOf("Loan Schedule")).toEqual([...HEADERS.loanSchedule]);
+    expect(headerOf("Portfolio")).toEqual([...HEADERS.portfolio]);
+  });
+
+  it("customers_orders.xlsx carries Customers + Orders sheets", async () => {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(`${FIXTURES}customers_orders.xlsx`);
+    expect(wb.worksheets.map((ws) => ws.name)).toEqual(["Customers", "Orders"]);
+    expect(
+      (wb.getWorksheet("Customers")!.getRow(1).values as unknown[]).slice(1)
+    ).toEqual([...HEADERS.customers]);
+    expect(wb.getWorksheet("Customers")!.rowCount - 1).toBe(COUNTS.customers);
+  });
+
+  it("inventory.json is a flat array of scalar-only objects on the site", () => {
+    const path = fileURLToPath(
+      new URL(
+        "../../../../apps/site/public/demo/inventory.json",
+        import.meta.url
+      )
+    );
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    expect(Array.isArray(parsed)).toBe(true);
+    const arr = parsed as Record<string, unknown>[];
+    expect(arr).toHaveLength(COUNTS.inventory);
+    expect(Object.keys(arr[0])).toEqual([...HEADERS.inventory]);
+    for (const v of Object.values(arr[0])) {
+      expect(["string", "number"]).toContain(typeof v);
+    }
   });
 });

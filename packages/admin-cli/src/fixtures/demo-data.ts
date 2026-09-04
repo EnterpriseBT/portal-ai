@@ -365,6 +365,36 @@ export interface Transaction {
   channel: string;
 }
 
+export interface CashFlow {
+  month: string;
+  inflow: number;
+  outflow: number;
+  net: number;
+}
+
+export interface LoanPayment {
+  period: number;
+  payment: number;
+  principal: number;
+  interest: number;
+  balance: number;
+}
+
+export interface Holding {
+  ticker: string;
+  weight: number;
+  price: number;
+  expected_return: number;
+}
+
+export interface InventoryItem {
+  product_id: string;
+  sku: string;
+  on_hand: number;
+  warehouse: string;
+  updated_at: string;
+}
+
 /** Ordered header lists (the CSV/XLSX column order and dictionary order). */
 export const HEADERS = {
   customers: [
@@ -407,6 +437,10 @@ export const HEADERS = {
     "amount",
     "channel",
   ],
+  cashFlows: ["month", "inflow", "outflow", "net"],
+  loanSchedule: ["period", "payment", "principal", "interest", "balance"],
+  portfolio: ["ticker", "weight", "price", "expected_return"],
+  inventory: ["product_id", "sku", "on_hand", "warehouse", "updated_at"],
 } as const satisfies Record<string, readonly string[]>;
 
 // ---------------------------------------------------------------------------
@@ -422,7 +456,39 @@ export const COUNTS = {
   notes: 40,
   /** Rows in the committed transactions *sample* (the ~1M volume is #509). */
   transactionsSample: 5000,
+  cashFlowMonths: HISTORY_MONTHS,
+  loanMonths: 60,
+  portfolioHoldings: 10,
+  inventory: 120,
 } as const;
+
+/** Loan terms for the amortization schedule (financial toolpack story). */
+export const LOAN = {
+  principal: 500_000,
+  annualRate: 0.065,
+  months: 60,
+} as const;
+
+const TICKERS = [
+  "HRBV",
+  "CSCD",
+  "SMMT",
+  "IRNW",
+  "RDWD",
+  "GRNT",
+  "NRTH",
+  "CPPR",
+  "SLVR",
+  "TMBR",
+] as const;
+
+const WAREHOUSES = [
+  "Seattle-DC",
+  "Dallas-DC",
+  "Chicago-DC",
+  "Atlanta-DC",
+  "Newark-DC",
+] as const;
 
 const PAD = (n: number, width: number) => String(n).padStart(width, "0");
 
@@ -660,4 +726,83 @@ export function transactionRefs(
     productIds: products.map((p) => p.product_id),
     siteIds: sites.map((s) => s.site_id),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Financials — the financial toolpack story (NPV/IRR/XNPV, amortization).
+// ---------------------------------------------------------------------------
+
+/** Monthly cash flows across the history window — trends upward (net positive). */
+export function generateCashFlows(seed: string): CashFlow[] {
+  const rng = new Rng(`${seed}:cashflows`);
+  const out: CashFlow[] = [];
+  for (let m = 0; m < COUNTS.cashFlowMonths; m++) {
+    const monthMs = HISTORY_START_MS + m * 30 * DAY_MS;
+    // Inflow grows over time; outflow tracks it but leaves a positive net.
+    const growth = 1 + m * 0.015;
+    const inflow = Math.round(rng.range(180_000, 240_000) * growth * 100) / 100;
+    const outflow = Math.round(inflow * rng.range(0.72, 0.9, 3) * 100) / 100;
+    out.push({
+      month: isoDate(monthMs),
+      inflow,
+      outflow,
+      net: Math.round((inflow - outflow) * 100) / 100,
+    });
+  }
+  return out;
+}
+
+/** Fixed-payment amortization schedule for {@link LOAN} — pure, no randomness. */
+export function generateLoanSchedule(): LoanPayment[] {
+  const r = LOAN.annualRate / 12;
+  const n = LOAN.months;
+  const payment = (LOAN.principal * r) / (1 - Math.pow(1 + r, -n));
+  const out: LoanPayment[] = [];
+  let balance = LOAN.principal;
+  for (let period = 1; period <= n; period++) {
+    const interest = balance * r;
+    const principal = payment - interest;
+    balance -= principal;
+    out.push({
+      period,
+      payment: Math.round(payment * 100) / 100,
+      principal: Math.round(principal * 100) / 100,
+      interest: Math.round(interest * 100) / 100,
+      // Clamp the final rounding drift so the schedule closes at zero.
+      balance: Math.round(Math.max(balance, 0) * 100) / 100,
+    });
+  }
+  return out;
+}
+
+/** A small equity portfolio with weights summing to 1 (portfolio_metrics). */
+export function generatePortfolio(seed: string): Holding[] {
+  const rng = new Rng(`${seed}:portfolio`);
+  const raw = TICKERS.map(() => rng.range(0.5, 2, 4));
+  const total = raw.reduce((a, b) => a + b, 0);
+  return TICKERS.map((ticker, i) => ({
+    ticker,
+    weight: Math.round((raw[i] / total) * 10000) / 10000,
+    price: rng.range(12, 480),
+    expected_return: rng.range(0.03, 0.18, 4),
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Inventory — the REST API connector source (served as static JSON on the site).
+// ---------------------------------------------------------------------------
+
+/** One inventory row per product, keyed by product_id (REST recordsPath=""). */
+export function generateInventory(
+  products: Product[],
+  seed: string
+): InventoryItem[] {
+  const rng = new Rng(`${seed}:inventory`);
+  return products.map((p, i) => ({
+    product_id: p.product_id,
+    sku: `SKU-${PAD(i + 1, 5)}`,
+    on_hand: rng.int(0, 5000),
+    warehouse: rng.pick(WAREHOUSES),
+    updated_at: isoDateTime(ANCHOR_MS - rng.int(0, 20) * DAY_MS),
+  }));
 }

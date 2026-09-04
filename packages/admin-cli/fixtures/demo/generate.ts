@@ -9,7 +9,7 @@
  * regeneration produces content-equivalent files (zip timestamps aside).
  */
 
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -20,9 +20,13 @@ import {
   COMPANY_NAME,
   COUNTS,
   HEADERS,
+  generateCashFlows,
   generateCustomers,
+  generateInventory,
+  generateLoanSchedule,
   generateNotes,
   generateOrders,
+  generatePortfolio,
   generateProducts,
   generateShipments,
   generateSites,
@@ -121,6 +125,65 @@ async function main(): Promise<void> {
   await wb.xlsx.writeFile(join(OUT_DIR, "orders.xlsx"));
   console.log(
     `  ${"orders.xlsx".padEnd(24)} ${orders.length.toLocaleString()} rows across ${byYear.size} sheets`
+  );
+
+  // financials.xlsx — three sheets for the financial toolpack story.
+  const cashFlows = generateCashFlows(SEED);
+  const loan = generateLoanSchedule();
+  const portfolio = generatePortfolio(SEED);
+  const finWb = newWorkbook();
+  addSheet(
+    finWb,
+    "Cash Flows",
+    HEADERS.cashFlows,
+    cashFlows as unknown as Row[]
+  );
+  addSheet(
+    finWb,
+    "Loan Schedule",
+    HEADERS.loanSchedule,
+    loan as unknown as Row[]
+  );
+  addSheet(
+    finWb,
+    "Portfolio",
+    HEADERS.portfolio,
+    portfolio as unknown as Row[]
+  );
+  await finWb.xlsx.writeFile(join(OUT_DIR, "financials.xlsx"));
+  console.log(
+    `  ${"financials.xlsx".padEnd(24)} ${cashFlows.length}+${loan.length}+${portfolio.length} rows / 3 sheets`
+  );
+
+  // customers_orders.xlsx — the Google Sheet hand-upload source (#511). Same
+  // shape as the primary data: all customers + the most-recent orders.
+  const recentOrders = [...orders]
+    .sort((a, b) => b.order_date.localeCompare(a.order_date))
+    .slice(0, 2000);
+  const comboWb = newWorkbook();
+  addSheet(
+    comboWb,
+    "Customers",
+    HEADERS.customers,
+    customers as unknown as Row[]
+  );
+  addSheet(comboWb, "Orders", HEADERS.orders, recentOrders as unknown as Row[]);
+  await comboWb.xlsx.writeFile(join(OUT_DIR, "customers_orders.xlsx"));
+  console.log(
+    `  ${"customers_orders.xlsx".padEnd(24)} ${customers.length}+${recentOrders.length} rows / 2 sheets`
+  );
+
+  // inventory.json — REST API connector source, served as static site asset.
+  const inventory = generateInventory(products, SEED);
+  const siteDemoDir = join(OUT_DIR, "../../../../apps/site/public/demo");
+  mkdirSync(siteDemoDir, { recursive: true });
+  writeFileSync(
+    join(siteDemoDir, "inventory.json"),
+    JSON.stringify(inventory, null, 2) + "\n",
+    "utf8"
+  );
+  console.log(
+    `  ${"inventory.json".padEnd(24)} ${inventory.length} rows → apps/site/public/demo/`
   );
 
   console.log(`\nDone. Wrote to ${OUT_DIR}`);
