@@ -1815,3 +1815,85 @@ describe("resolveDisplayBlock → mutation-result", () => {
     expect(content.item).toEqual({ entityId: "r-1" });
   });
 });
+
+// ---------------------------------------------------------------------------
+// replayTurn (#504) — re-emit a persisted assistant turn over SSE with no
+// model call, so an EventSource reconnect renders the stored answer instead of
+// firing a duplicate Anthropic call.
+// ---------------------------------------------------------------------------
+
+describe("PortalService.replayTurn (#504)", () => {
+  const PORTAL = "portal-replay";
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("re-emits text as delta and a display tool-result as tool_result, then done — never calling the model", () => {
+    const message = {
+      id: "msg-asst-9",
+      role: "assistant",
+      blocks: [
+        { type: "text", content: "Here is the chart:" },
+        // tool-call parts have no render — must be skipped.
+        {
+          type: "tool-call",
+          toolCallId: "tc1",
+          toolName: "visualize_d3",
+          input: {},
+        },
+        {
+          type: "tool-result",
+          toolCallId: "tc1",
+          toolName: "visualize_d3",
+          content: { type: "d3", spec: { mark: "bar" } },
+        },
+        // The derived display block is reconstructed client-side from the
+        // tool_result event — replaying it too would double-render.
+        { type: "d3", content: { type: "d3", spec: { mark: "bar" } } },
+        { type: "text", content: "Let me know if you want changes." },
+      ],
+    };
+    const sse = makeSse();
+
+    PortalService.replayTurn(sse as any, message as any, PORTAL);
+
+    expect(mockStreamText).not.toHaveBeenCalled();
+    expect((sse.send as any).mock.calls).toEqual([
+      ["delta", { type: "delta", content: "Here is the chart:" }],
+      [
+        "tool_result",
+        {
+          type: "tool_result",
+          toolName: "visualize_d3",
+          result: { type: "d3", spec: { mark: "bar" } },
+        },
+      ],
+      ["delta", { type: "delta", content: "Let me know if you want changes." }],
+      ["done", { type: "done", portalId: PORTAL, messageId: "msg-asst-9" }],
+    ]);
+  });
+
+  it("skips a scalar tool-result that has no display shape", () => {
+    const message = {
+      id: "msg-asst-10",
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool-result",
+          toolCallId: "tc2",
+          toolName: "hypothesis_test",
+          content: { pValue: 0.03, statistic: 2.1 },
+        },
+      ],
+    };
+    const sse = makeSse();
+
+    PortalService.replayTurn(sse as any, message as any, PORTAL);
+
+    // Only the terminal done — a scalar result produces no tool_result.
+    expect((sse.send as any).mock.calls).toEqual([
+      ["done", { type: "done", portalId: PORTAL, messageId: "msg-asst-10" }],
+    ]);
+  });
+});

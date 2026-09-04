@@ -802,6 +802,73 @@ export class PortalService {
       "Portal stream complete"
     );
   }
+
+  // -------------------------------------------------------------------------
+  // replayTurn (#504)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Re-emit a persisted assistant turn over SSE **without calling the model**.
+   *
+   * The #504 reconnect guard uses this: when a dropped `EventSource`
+   * reconnects and the turn is already answered (or completes while the
+   * reconnect waits), the stored blocks are replayed as the same
+   * `delta` / `tool_result` events a live turn produces — closing the
+   * double-spend while keeping the answer visible with zero web change.
+   *
+   * It walks the same two block kinds `streamResponse` emits to the client:
+   * `text` parts become `delta`, and raw `tool-result` parts are routed
+   * through {@link resolveDisplayBlock} (identical to the live
+   * `handleToolResult` path) so a display result re-emits its `tool_result`.
+   * `tool-call` parts and the derived display blocks are skipped — the former
+   * has no render, the latter is reconstructed client-side from the
+   * `tool_result` event. No `tool_call` / `tool_call_end` steps are sent: the
+   * turn is already complete, so the transient activity spinner has nothing to
+   * show.
+   */
+  static replayTurn(
+    sse: SseUtil,
+    assistantMessage: PortalMessageSelect,
+    portalId: string
+  ): void {
+    for (const block of assistantMessage.blocks) {
+      const type = block.type as string | undefined;
+
+      if (type === "text" && typeof block.content === "string") {
+        const event: DeltaEvent = { type: "delta", content: block.content };
+        sse.send("delta", event);
+        continue;
+      }
+
+      if (type === "tool-result") {
+        const toolName = block.toolName as string | undefined;
+        if (!toolName) continue;
+        const content =
+          (block.content as Record<string, unknown> | undefined) ?? null;
+        const display = resolveDisplayBlock(toolName, content);
+        if (display) {
+          const event: ToolResultEvent = {
+            type: "tool_result",
+            toolName,
+            result: display.sseResult ?? content ?? undefined,
+          };
+          sse.send("tool_result", event);
+        }
+      }
+    }
+
+    const doneEvent: DoneEvent = {
+      type: "done",
+      portalId,
+      messageId: assistantMessage.id,
+    };
+    sse.send("done", doneEvent);
+
+    logger.info(
+      { portalId, messageId: assistantMessage.id },
+      "Portal turn replayed (no model call)"
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
