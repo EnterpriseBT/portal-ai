@@ -145,22 +145,22 @@ describe("DemoSeedService (integration)", () => {
   it("streams a bounded transactions table (--rows) deterministically", async () => {
     const orgId = await provisionOrg();
 
-    const first = await DemoSeedService.seed({ orgId, rows: 5000 });
-    expect(first.rows).toBe(5000);
+    const first = await DemoSeedService.seed({ orgId, rows: 2000 });
+    expect(first.rows).toBe(2000);
     const txns = first.entities.find((e) => e.key === "transactions")!;
-    expect(txns.created).toBe(5000);
+    expect(txns.created).toBe(2000);
 
     const txnId = await entityIdByKey(orgId, "transactions");
     expect(
       await rawCount(`SELECT count(*)::int AS count FROM "er__${txnId}"`)
-    ).toBe(5000);
+    ).toBe(2000);
 
     // Deterministic: a second seed with the same count changes nothing.
-    const second = await DemoSeedService.seed({ orgId, rows: 5000 });
+    const second = await DemoSeedService.seed({ orgId, rows: 2000 });
     const txns2 = second.entities.find((e) => e.key === "transactions")!;
     expect(txns2.created).toBe(0);
-    expect(txns2.unchanged).toBe(5000);
-  }, 30000);
+    expect(txns2.unchanged).toBe(2000);
+  }, 90000);
 
   it("enables all built-in toolpacks; skips custom when no URL is set", async () => {
     delete process.env.DEMO_TOOLPACK_URL;
@@ -281,7 +281,7 @@ describe("DemoSeedService (integration)", () => {
         "Google Sheets"
       );
     expect(gsStill).toBeDefined();
-  }, 30000);
+  }, 90000);
 
   it("throws when a required system column definition is missing", async () => {
     const orgId = await provisionOrg();

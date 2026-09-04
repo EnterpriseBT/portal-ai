@@ -453,11 +453,11 @@ export const HEADERS = {
 // ---------------------------------------------------------------------------
 
 export const COUNTS = {
-  customers: 800,
+  customers: 400,
   products: 120,
   sites: 15,
-  orders: 8000,
-  shipments: 2500,
+  orders: 2000,
+  shipments: 800,
   notes: 40,
   /** Rows in the committed transactions *sample* (the ~1M volume is #509). */
   transactionsSample: 5000,
