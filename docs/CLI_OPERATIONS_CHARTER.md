@@ -138,6 +138,7 @@ _Auth: `cli-env` — AWS-IAM (infra/DB) + Auth0 device-flow (app API); `--env` r
 | List / inspect users | maintenance | local · app-dev | portalai | `portalai user list --env app-dev --json` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
 | Seed / refresh the demo org's dataset | maintenance | local · app-dev · prod | portalai | `portalai demo seed --org <id> --env app-dev --yes` | yes | [#509](https://github.com/EnterpriseBT/portal-ai/issues/509) | covered (prod-refresh path with `--confirm-prod`) |
 | Reset the demo org to the checked-in baseline | maintenance | local · app-dev | portalai | `portalai demo reset --org <id> --env app-dev --yes` | yes | [#509](https://github.com/EnterpriseBT/portal-ai/issues/509) | covered (destructive — blocked in prod) |
+| Create the standing `demo` custom tier | configuration | local · app-dev · prod | portalops | `portalops tier create --env app-dev --slug demo --display-name "Demo" --visible-to-org <id> --yes` | yes | [#511](https://github.com/EnterpriseBT/portal-ai/issues/511) | covered (local via `local provision`; app-dev/prod one-time) |
 
 ## Common workflows
 
@@ -199,7 +200,7 @@ No other non-operable operations. Every inventoried operation carries a disposit
 
 Computed from the tables above (51 operations total).
 
-**Maintenance + configuration (the bar's denominator):** `D = 51`, of which `N = 48` are operable → **94.1%** (`48/51`) — clears the **≥ 90%** bar. The three non-operable ops are unchanged (#369's two out-of-band mail steps + the deploy-side secret wiring); #509 added two demo-org operations (`demo seed`/`demo reset`), both operable, which is why the figure ticks up from 93.9%.
+**Maintenance + configuration (the bar's denominator):** `D = 52`, of which `N = 49` are operable → **94.2%** (`49/52`) — clears the **≥ 90%** bar. The three non-operable ops are unchanged (#369's two out-of-band mail steps + the deploy-side secret wiring); #509 added two demo-org operations (`demo seed`/`demo reset`) and #511 the `demo` tier create, all operable, which is why the figure ticks up from 93.9%.
 
 **Logging (reported separately):** `6 / 6` operable → **100%**.
 
