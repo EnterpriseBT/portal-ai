@@ -138,9 +138,6 @@ GitHub Environment's required reviewers.
 
 ### Not yet done
 
-- Legal pages (`/privacy/`, `/terms/`) ship structure-only behind a
-  `<!-- business copy pending: blocks prod tag -->` marker and are `noindex`.
-  Business-reviewed copy must replace them before any production release.
 - `public/og-default.png` is a **generated placeholder** — an on-brand
   gradient card drawn from the theme palette by
   `scripts/generate-og-image.mjs`, with no wordmark (rendering text needs a

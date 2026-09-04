@@ -7,6 +7,7 @@ import {
   PortalService,
   buildStationContext,
 } from "../services/portal.service.js";
+import { PortalTurnGuardService } from "../services/portal-turn-guard.service.js";
 import { SseUtil } from "../utils/sse.util.js";
 import { sseAuth } from "../middleware/sse-auth.middleware.js";
 
@@ -82,43 +83,90 @@ portalEventsRouter.get(
     try {
       const { portalId } = req.params;
 
-      // Load portal and verify it exists
-      const { portal, coreMessages } = await PortalService.getPortal(portalId);
+      // Load portal + message history in one pass. The newest row tells us the
+      // turn's state (#504): an `assistant` row means the turn is already
+      // answered; a `user` row means a turn is pending.
+      const { portal, messages, coreMessages } =
+        await PortalService.getPortal(portalId);
+      const last = messages[messages.length - 1];
 
-      // Load station data (re-populates in-memory AlaSQL tables)
-      const station = await DbService.repository.stations.findById(
-        portal.stationId
-      );
-      if (!station) {
-        return next(
-          new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
-        );
+      // #504: already answered. This GET is an EventSource reconnect that
+      // landed after the original (orphaned) stream persisted its reply.
+      // Replay the stored assistant message — never call the model again.
+      if (last?.role === "assistant") {
+        sse = new SseUtil(res);
+        PortalService.replayTurn(sse, last, portalId);
+        sse.end();
+        return;
       }
 
-      // Rebuild context per message so newly-attached connectors,
-      // updated entity capabilities, and freshly-synced entities show
-      // up in this turn's system prompt (#95). The station's packs are read
-      // from `station_toolpacks` inside (#307).
-      const stationContext = await buildStationContext({
-        station: { id: station.id, name: station.name },
-        organizationId: portal.organizationId,
-      });
-
-      sse = new SseUtil(res);
-
-      await PortalService.streamResponse({
+      // Pending user turn. Claim it so a concurrent reconnect can't fire a
+      // second Anthropic call for the same turn (cross-instance via Redis).
+      const pendingUserMessageId = last?.id ?? "unknown";
+      const lockKey = PortalTurnGuardService.turnLockKey(
         portalId,
-        messages: coreMessages,
-        stationContext,
-        organizationId: portal.organizationId,
-        userId: portal.createdBy,
-        sse,
-      });
+        pendingUserMessageId
+      );
+      const acquired = await PortalTurnGuardService.acquireTurnLock(lockKey);
 
-      // Close the SSE connection after the stream completes so the
-      // browser's EventSource does not auto-reconnect and trigger
-      // duplicate Anthropic API calls.
-      sse.end();
+      // #504: another connection is already generating this turn. Wait,
+      // bounded, for its persisted answer and replay it — don't re-generate.
+      if (!acquired) {
+        sse = new SseUtil(res);
+        const answer = await PortalTurnGuardService.waitForAnswer(portalId);
+        if (answer) {
+          PortalService.replayTurn(sse, answer, portalId);
+          sse.end();
+        } else {
+          sse.sendError(
+            "This message is still being answered — reopen the portal to see the reply."
+          );
+        }
+        return;
+      }
+
+      try {
+        // Fresh turn — this connection owns it.
+
+        // Load station data (re-populates in-memory AlaSQL tables)
+        const station = await DbService.repository.stations.findById(
+          portal.stationId
+        );
+        if (!station) {
+          return next(
+            new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found")
+          );
+        }
+
+        // Rebuild context per message so newly-attached connectors,
+        // updated entity capabilities, and freshly-synced entities show
+        // up in this turn's system prompt (#95). The station's packs are read
+        // from `station_toolpacks` inside (#307).
+        const stationContext = await buildStationContext({
+          station: { id: station.id, name: station.name },
+          organizationId: portal.organizationId,
+        });
+
+        sse = new SseUtil(res);
+
+        await PortalService.streamResponse({
+          portalId,
+          messages: coreMessages,
+          stationContext,
+          organizationId: portal.organizationId,
+          userId: portal.createdBy,
+          sse,
+        });
+
+        // Close the SSE connection after the stream completes so the
+        // browser's EventSource does not auto-reconnect and trigger
+        // duplicate Anthropic API calls.
+        sse.end();
+      } finally {
+        // Release the turn the moment it ends (success or error); the TTL is
+        // only a backstop for a holder that dies mid-turn.
+        await PortalTurnGuardService.releaseTurnLock(lockKey);
+      }
     } catch (error) {
       const message =
         error instanceof ApiError
