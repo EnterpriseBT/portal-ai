@@ -3,20 +3,22 @@
  *
  * The single source of truth for the fictional "Harborview Supply Co." demo
  * company. Two consumers import from here:
- *   1. `fixtures/demo/generate.ts` (authoring script, run via tsx) emits the
- *      committed CSV/XLSX fixtures from these generators.
- *   2. `portalai demo seed` (#509) imports {@link synthesizeTransactions} to
- *      stream ~1M rows straight into the batch-upsert primitives at seed time.
+ *   1. `src/scripts/generate-demo-fixtures.ts` (authoring script, run via
+ *      `npm run --workspace @portalai/api fixtures:demo`) emits the committed
+ *      CSV/XLSX fixtures from these generators.
+ *   2. The `db:demo:seed` script / `DemoSeedService` (#509) imports
+ *      {@link synthesizeTransactions} to stream ~1M rows straight into the
+ *      batch-upsert primitives (`importRows`) at seed time.
  *
  * Because both paths share this module, the committed sample and the seeded
  * volume can never diverge, and the integrity test that runs on the sample
  * validates the logic that runs at scale.
  *
  * This module is intentionally **dependency-free** (built-in JS only, no
- * `Math.random`, no `Date.now`) so it stays fully deterministic and can be
- * relocated (e.g. into apps/api) without re-plumbing if #509 runs the large
- * synth server-side. Every column name below is the source-of-truth for the
- * data dictionary in `docs/DEMO_ORG.runbook.md`.
+ * `Math.random`, no `Date.now`) so it stays fully deterministic. It was
+ * authored under `packages/admin-cli` (#508) and relocated here (#509) once the
+ * seeder proved to be a server-side `apps/api` script. Every column name below
+ * is the source-of-truth for the data dictionary in `docs/DEMO_ORG.runbook.md`.
  */
 
 // ---------------------------------------------------------------------------
