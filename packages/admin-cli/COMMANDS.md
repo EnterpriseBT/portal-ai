@@ -22,8 +22,8 @@ Machine-oriented reference. Agent-operability contract (exit codes, server-enfor
 | Class | development | staging | production |
 |---|---|---|---|
 | read | — | — | — |
-| mutation (`org create/update/set-tier`, `member *`) | — | `--yes` **+ session** | `--yes --confirm-prod` **+ session** |
-| destructive (`org delete`, `org reset`, `seed org`) | — | `--yes` **+ session** | **refused** (exit 6) |
+| mutation (`org create/update/set-tier`, `member *`, `demo seed`) | — | `--yes` **+ session** | `--yes --confirm-prod` **+ session** |
+| destructive (`org delete`, `org reset`, `seed org`, `demo reset`) | — | `--yes` **+ session** | **refused** (exit 6) |
 
 Session = an active `portalai login` device-flow session for the env. Every mutation appends a JSONL audit line (`~/.portalai/audit.log`) attributed to the session's Auth0 `sub` (local: OS username); args carry ids/slugs only.
 
@@ -73,3 +73,12 @@ Mutations, email-resolved. `add`: live duplicate → 9; a previously-removed mem
 ### `portalai seed org --name <name> [--member-email <email>] --env <env> --yes [--json]`
 **Destructive** class (synthetic data — never prod; production orgs go through `org create`). Idempotent by live org name. Creates a synthetic owner (`seed|<uuid>`), runs the full app provisioning, and optionally adds a real user as a member so the org is enterable from the app (pair with `member switch`).
 `--json`: `{ "organizationId", "ownerUserId", "memberUserId"?, "existing": boolean }`
+
+---
+### `portalai demo seed --org <id> [--rows <n>] --env <env> --yes [--confirm-prod] [--json]`
+**Mutation** class (convergent, not destructive — so it runs on prod with `--yes --confirm-prod`; this is the documented **prod demo-refresh** path). Populates an **existing** org (from the demo-org epic #507) with the committed fictional-company dataset through the app's real import path: File Upload (CSV + XLSX) + REST connector instances, all their entities/records, all eight built-in toolpacks + the custom webhook toolpack, and the large-volume `transactions` table (`--rows`, default ≈1M; use a smaller count locally). Idempotent — a re-run reports every entity `unchanged`. Never touches OAuth (Google Sheets) instances. The custom toolpack registers from `DEMO_TOOLPACK_URL` (env / apps/api `.env`; managed per env via `portalops vars set DEMO_TOOLPACK_URL`); if unset, built-ins still enable and `custom` is `null`.
+`--json`: `{ "orgId", "rows", "instances":[{name,action}], "entities":[{key,created,updated,unchanged,invalid}], "toolpacks":{builtins,custom}, "googleSheets":{present}, "durationMs" }`
+
+### `portalai demo reset --org <id> [--rows <n>] --env <env> --yes [--json]`
+**Destructive** class (never prod, exit 6). Returns the demo org to the checked-in baseline: deletes its portals (conversation history) and every demo entity's records, then re-seeds. Leaves OAuth instances + tokens untouched. On prod, the refresh path is a `demo seed` re-run, not `reset`.
+`--json`: `{ "orgId", "portalsDeleted", "entities":[{key,deleted,reconverged}], "durationMs" }`
