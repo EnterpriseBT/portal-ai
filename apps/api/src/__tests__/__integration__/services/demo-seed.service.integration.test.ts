@@ -79,7 +79,7 @@ describe("DemoSeedService (integration)", () => {
   it("creates the File Upload + REST instances and seeds every entity at its count", async () => {
     const orgId = await provisionOrg();
 
-    const result = await DemoSeedService.seed({ orgId });
+    const result = await DemoSeedService.seed({ orgId, rows: 0 });
 
     // Instances created (Sandbox is not used until the transactions slice).
     expect(result.instances.map((i) => i.name).sort()).toEqual([
@@ -101,7 +101,7 @@ describe("DemoSeedService (integration)", () => {
 
   it("lands XLSX (orders) and JSON (inventory) rows in the wide tables", async () => {
     const orgId = await provisionOrg();
-    await DemoSeedService.seed({ orgId });
+    await DemoSeedService.seed({ orgId, rows: 0 });
 
     const ordersId = await entityIdByKey(orgId, "orders");
     expect(
@@ -116,9 +116,9 @@ describe("DemoSeedService (integration)", () => {
 
   it("is idempotent — a second seed leaves every entity unchanged", async () => {
     const orgId = await provisionOrg();
-    await DemoSeedService.seed({ orgId });
+    await DemoSeedService.seed({ orgId, rows: 0 });
 
-    const second = await DemoSeedService.seed({ orgId });
+    const second = await DemoSeedService.seed({ orgId, rows: 0 });
 
     expect(second.instances.every((i) => i.action === "existing")).toBe(true);
     for (const [key, count] of Object.entries(EXPECTED)) {
@@ -128,6 +128,26 @@ describe("DemoSeedService (integration)", () => {
       expect(entity.unchanged).toBe(count);
     }
   });
+
+  it("streams a bounded transactions table (--rows) deterministically", async () => {
+    const orgId = await provisionOrg();
+
+    const first = await DemoSeedService.seed({ orgId, rows: 5000 });
+    expect(first.rows).toBe(5000);
+    const txns = first.entities.find((e) => e.key === "transactions")!;
+    expect(txns.created).toBe(5000);
+
+    const txnId = await entityIdByKey(orgId, "transactions");
+    expect(
+      await rawCount(`SELECT count(*)::int AS count FROM "er__${txnId}"`)
+    ).toBe(5000);
+
+    // Deterministic: a second seed with the same count changes nothing.
+    const second = await DemoSeedService.seed({ orgId, rows: 5000 });
+    const txns2 = second.entities.find((e) => e.key === "transactions")!;
+    expect(txns2.created).toBe(0);
+    expect(txns2.unchanged).toBe(5000);
+  }, 30000);
 
   it("throws when a required system column definition is missing", async () => {
     const orgId = await provisionOrg();
@@ -140,6 +160,8 @@ describe("DemoSeedService (integration)", () => {
       SystemUtilities.id.system
     );
 
-    await expect(DemoSeedService.seed({ orgId })).rejects.toThrow(/address/);
+    await expect(DemoSeedService.seed({ orgId, rows: 0 })).rejects.toThrow(
+      /address/
+    );
   });
 });

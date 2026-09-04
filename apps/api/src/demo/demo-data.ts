@@ -114,6 +114,9 @@ function isoDateTime(ms: number): string {
 
 export const COMPANY_NAME = "Harborview Supply Co.";
 
+/** The fixed PRNG seed — the fixtures and the seeded transactions share it. */
+export const DATASET_SEED = "harborview";
+
 export const SEGMENTS = [
   "enterprise",
   "mid-market",

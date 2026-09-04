@@ -30,9 +30,19 @@ import { readXlsxRows } from "../demo/xlsx-reader.js";
 import { readJsonRows } from "../demo/json-reader.js";
 import {
   DEMO_ENTITY_SPECS,
+  TRANSACTIONS_ENTITY,
   type DemoEntitySpec,
   type DemoInstanceKind,
+  type DemoMapping,
 } from "../demo/dataset-manifest.js";
+import {
+  DATASET_SEED,
+  generateCustomers,
+  generateProducts,
+  generateSites,
+  synthesizeTransactions,
+  transactionRefs,
+} from "../demo/demo-data.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -40,6 +50,36 @@ const logger = createLogger({ module: "demo-seed" });
 
 /** The system actor all seeded rows are attributed to. */
 const SEED_USER = SystemUtilities.id.system;
+
+/** Default transactions row count when `--rows` is not given (CLI overrides). */
+const DEFAULT_TRANSACTION_ROWS = 1_000_000;
+
+/**
+ * Adapt the sync `synthesizeTransactions` generator to the async string-keyed
+ * row shape `importRows` consumes — lazily (one row at a time), so peak memory
+ * stays O(batch) even at ~1M rows.
+ */
+async function* transactionRows(
+  rowCount: number
+): AsyncGenerator<Record<string, string>> {
+  const refs = transactionRefs(
+    generateCustomers(DATASET_SEED),
+    generateProducts(DATASET_SEED),
+    generateSites(DATASET_SEED)
+  );
+  for (const t of synthesizeTransactions(rowCount, DATASET_SEED, refs)) {
+    yield {
+      transaction_id: t.transaction_id,
+      customer_id: t.customer_id,
+      product_id: t.product_id,
+      site_id: t.site_id,
+      occurred_at: t.occurred_at,
+      quantity: String(t.quantity),
+      amount: String(t.amount),
+      channel: t.channel,
+    };
+  }
+}
 
 /** apps/api/fixtures/demo — the committed fixtures this service reads. */
 const FIXTURES_DIR = join(
@@ -114,10 +154,15 @@ export class DemoSeedService {
   }): Promise<DemoSeedResult> {
     const startedAt = Date.now();
     const { orgId } = params;
-    logger.info({ orgId }, "demo seed starting");
+    const rowCount = params.rows ?? DEFAULT_TRANSACTION_ROWS;
+    logger.info({ orgId, rowCount }, "demo seed starting");
 
-    // Resolve (create if absent) every instance the manifest references.
+    // Resolve (create if absent) every instance the manifest references, plus
+    // Sandbox when the (synthesized) transactions table is being seeded.
     const usedKinds = [...new Set(DEMO_ENTITY_SPECS.map((s) => s.instance))];
+    if (rowCount > 0 && !usedKinds.includes("sandbox")) {
+      usedKinds.push("sandbox");
+    }
     const instanceIds = new Map<DemoInstanceKind, string>();
     const instances: InstanceSeedResult[] = [];
     for (const kind of usedKinds) {
@@ -135,17 +180,32 @@ export class DemoSeedService {
     const entities: EntitySeedResult[] = [];
     for (const spec of DEMO_ENTITY_SPECS) {
       entities.push(
-        await DemoSeedService.seedEntity(
+        await DemoSeedService.provisionAndImport(
           orgId,
           instanceIds.get(spec.instance)!,
-          spec
+          spec,
+          DemoSeedService.rowsFor(spec)
+        )
+      );
+    }
+
+    // Large-volume transactions — synthesized (not a file), streamed lazily
+    // into importRows. `rows: 0` skips it; the CLI passes an env-appropriate
+    // count (≈1M app-dev/prod, smaller locally).
+    if (rowCount > 0) {
+      entities.push(
+        await DemoSeedService.provisionAndImport(
+          orgId,
+          instanceIds.get("sandbox")!,
+          TRANSACTIONS_ENTITY,
+          transactionRows(rowCount)
         )
       );
     }
 
     return {
       orgId,
-      rows: 0,
+      rows: rowCount,
       instances,
       entities,
       toolpacks: { builtins: [], custom: null },
@@ -202,19 +262,24 @@ export class DemoSeedService {
     return { id: created.id, action: "created" };
   }
 
-  /** Provision one entity (entity → mappings → reconcile) then import its rows. */
-  private static async seedEntity(
+  /**
+   * Provision one entity (entity → mappings → reconcile) then dual-write the
+   * given lazy row source through the app's real import path. Shared by the
+   * file-backed base entities and the synthesized `transactions` table.
+   */
+  private static async provisionAndImport(
     orgId: string,
     connectorInstanceId: string,
-    spec: DemoEntitySpec
+    def: { key: string; label: string; mappings: DemoMapping[] },
+    rows: AsyncIterable<Record<string, string>>
   ): Promise<EntitySeedResult> {
     // 1. Connector entity (idempotent by key).
     const entityModel = new ConnectorEntityModelFactory().create(SEED_USER);
     entityModel.update({
       organizationId: orgId,
       connectorInstanceId,
-      key: spec.key,
-      label: spec.label,
+      key: def.key,
+      label: def.label,
     });
     const entity = await DbService.repository.connectorEntities.upsertByKey(
       entityModel.parse()
@@ -222,14 +287,14 @@ export class DemoSeedService {
     await wideTableReconcilerService.ensureTable(entity.id);
 
     // 2. Field mappings (idempotent by (entity, normalizedKey)).
-    for (const m of spec.mappings) {
+    for (const m of def.mappings) {
       const column = await DbService.repository.columnDefinitions.findByKey(
         orgId,
         m.columnKey
       );
       if (!column) {
         throw new Error(
-          `demo seed: system column definition '${m.columnKey}' missing for org ${orgId} (entity ${spec.key}.${m.sourceField})`
+          `demo seed: system column definition '${m.columnKey}' missing for org ${orgId} (entity ${def.key}.${m.sourceField})`
         );
       }
       const mappingModel = new FieldMappingModelFactory().create(SEED_USER);
@@ -256,14 +321,13 @@ export class DemoSeedService {
     await wideTableReconcilerService.reconcileEntity(entity.id);
 
     // 4. Dual-write the records through the app's real import path.
-    const rows = DemoSeedService.rowsFor(spec);
     const result = await importRows(rows, {
       connectorEntityId: entity.id,
       organizationId: orgId,
       userId: SEED_USER,
     });
-    logger.info({ orgId, entity: spec.key, ...result }, "entity seeded");
-    return { key: spec.key, ...result };
+    logger.info({ orgId, entity: def.key, ...result }, "entity seeded");
+    return { key: def.key, ...result };
   }
 
   /** The lazy row source for an entity, by fixture format. */

@@ -226,3 +226,26 @@ export const DEMO_ENTITY_SPECS: DemoEntitySpec[] = [
     ],
   },
 ];
+
+/**
+ * The large-volume `transactions` entity — synthesized (not a committed file),
+ * so it rides the Sandbox instance and is seeded separately by DemoSeedService.
+ */
+export const TRANSACTIONS_ENTITY: {
+  key: string;
+  label: string;
+  mappings: DemoMapping[];
+} = {
+  key: "transactions",
+  label: "Transactions",
+  mappings: [
+    pk("transaction_id"),
+    ref("customer_id", "customers", "customer_id"),
+    ref("product_id", "products", "product_id"),
+    ref("site_id", "sites", "site_id"),
+    col("occurred_at", "datetime"),
+    col("quantity", "quantity"),
+    col("amount", "currency"),
+    col("channel", "enum"),
+  ],
+};
