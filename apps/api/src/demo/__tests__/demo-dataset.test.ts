@@ -12,6 +12,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { describe, it, expect } from "@jest/globals";
 import ExcelJS from "exceljs";
 
 import {
@@ -30,11 +31,11 @@ import {
   generateSites,
   synthesizeTransactions,
   transactionRefs,
-} from "../fixtures/demo-data.js";
+} from "../demo-data.js";
 
 const SEED = "harborview";
 const FIXTURES = fileURLToPath(
-  new URL("../../fixtures/demo/", import.meta.url)
+  new URL("../../../fixtures/demo/", import.meta.url)
 );
 
 const customers = generateCustomers(SEED);
@@ -189,7 +190,7 @@ function readCsv(name: string): { header: string; dataRows: number } {
 }
 
 describe("demo dataset — committed files match the generators", () => {
-  it.each([
+  it.each<[string, readonly string[], number]>([
     ["customers.csv", HEADERS.customers, COUNTS.customers],
     ["products.csv", HEADERS.products, COUNTS.products],
     ["sites.csv", HEADERS.sites, COUNTS.sites],
@@ -200,14 +201,11 @@ describe("demo dataset — committed files match the generators", () => {
       HEADERS.transactions,
       COUNTS.transactionsSample,
     ],
-  ] as const)(
-    "%s has the right header and row count",
-    (name, headers, count) => {
-      const { header, dataRows } = readCsv(name);
-      expect(header).toBe(headers.join(","));
-      expect(dataRows).toBe(count);
-    }
-  );
+  ])("%s has the right header and row count", (name, headers, count) => {
+    const { header, dataRows } = readCsv(name);
+    expect(header).toBe(headers.join(","));
+    expect(dataRows).toBe(count);
+  });
 
   it("orders.xlsx carries all orders across year sheets with a clean header", async () => {
     const wb = new ExcelJS.Workbook();
@@ -248,7 +246,7 @@ describe("demo dataset — committed files match the generators", () => {
   it("inventory.json is a flat array of scalar-only objects on the site", () => {
     const path = fileURLToPath(
       new URL(
-        "../../../../apps/site/public/demo/inventory.json",
+        "../../../../../apps/site/public/demo/inventory.json",
         import.meta.url
       )
     );

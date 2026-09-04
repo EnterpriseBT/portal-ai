@@ -35,7 +35,10 @@
     "scripts:migrate-signing-secrets": "dotenv -e .env -- tsx src/scripts/migrate-signing-secrets.ts",
     "tunnel": "dotenv -e .env -- ngrok http 3001",
     "db:create-org": "dotenv -e .env -- tsx src/db/create-org.ts",
-    "db:seed:org": "dotenv -e .env -- tsx src/db/seed-org.ts"
+    "db:seed:org": "dotenv -e .env -- tsx src/db/seed-org.ts",
+    "db:demo:seed": "dotenv -e .env -- tsx src/db/demo-seed.ts",
+    "db:demo:reset": "dotenv -e .env -- tsx src/db/demo-reset.ts",
+    "fixtures:demo": "tsx src/scripts/generate-demo-fixtures.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",

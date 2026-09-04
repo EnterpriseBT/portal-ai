@@ -78,6 +78,10 @@ export const CATALOG: CatalogEntry[] = [
   ssm("AUTH0_CLI_CLIENT_ID", "auth0-cli-client-id"), // #194 device-flow app
   ssm("CORS_ORIGIN", "cors-origin"),
   ssm("SYSTEM_ID", "system-id"),
+  // #509: the shared demo custom-toolpack base URL the seeder registers the
+  // demo webhook toolpack from. Config (non-secret); the CLI resolves it and
+  // passes it to `db:demo:seed`. Same shared endpoint across demo envs (#510).
+  ssm("DEMO_TOOLPACK_URL", "demo-toolpack-url"),
   // #311/#369: the business contact addresses. Baked into the marketing site
   // and the web app at build time — a `vars set` changes the stored value, and
   // the next deploy (or the site-rebuild dispatch) is what publishes it.

@@ -1,12 +1,13 @@
 /**
- * Demo dataset emit script (#508) — authoring tooling, run via tsx:
- *   npm run --workspace @portalai/admin-cli fixtures:demo
+ * Demo dataset emit script (#508/#509) — authoring tooling, run via tsx:
+ *   npm run --workspace @portalai/api fixtures:demo
  *
- * Writes the committed fictional-company fixtures into this directory from the
- * deterministic generators in `src/fixtures/demo-data.ts`. Not part of the
- * built CLI (excluded from tsconfig.build / eslint src). CSV and JSON outputs
- * are byte-stable across runs; XLSX workbook dates are pinned to the anchor so
- * regeneration produces content-equivalent files (zip timestamps aside).
+ * Writes the committed fictional-company fixtures into apps/api/fixtures/demo
+ * from the deterministic generators in `src/demo/demo-data.ts`, and the REST
+ * source into apps/site/public/demo. Not part of the built server (a script).
+ * CSV and JSON outputs are byte-stable across runs; XLSX workbook dates are
+ * pinned to the anchor so regeneration produces content-equivalent files
+ * (zip timestamps aside).
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -32,9 +33,14 @@ import {
   generateSites,
   synthesizeTransactions,
   transactionRefs,
-} from "../../src/fixtures/demo-data.js";
+} from "../demo/demo-data.js";
 
-const OUT_DIR = dirname(fileURLToPath(import.meta.url));
+// This script lives in apps/api/src/scripts; the committed fixtures live in
+// apps/api/fixtures/demo.
+const OUT_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../fixtures/demo"
+);
 const SEED = "harborview";
 
 type Row = Record<string, string | number>;
@@ -83,6 +89,7 @@ function newWorkbook(): ExcelJS.Workbook {
 
 async function main(): Promise<void> {
   console.log(`Generating ${COMPANY_NAME} demo dataset (seed="${SEED}")\n`);
+  mkdirSync(OUT_DIR, { recursive: true });
 
   const customers = generateCustomers(SEED);
   const products = generateProducts(SEED);

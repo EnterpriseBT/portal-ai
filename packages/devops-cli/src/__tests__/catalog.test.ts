@@ -31,6 +31,7 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
       "AUTH0_CLI_CLIENT_ID", // provisioned by #194; the bash predates it
       "AUTH0_DOMAIN",
       "CORS_ORIGIN",
+      "DEMO_TOOLPACK_URL", // #509 shared demo custom-toolpack base URL
       "GOOGLE_OAUTH_CLIENT_ID",
       "MICROSOFT_OAUTH_CLIENT_ID",
       "MICROSOFT_OAUTH_TENANT",
