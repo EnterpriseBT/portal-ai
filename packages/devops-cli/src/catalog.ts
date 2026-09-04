@@ -63,6 +63,12 @@ export const CATALOG: CatalogEntry[] = [
   // `price.*` webhook moves an amount the site has baked into static HTML.
   // NOT marked `siteConfig`: rotating the token is not a published fact.
   secret("GITHUB_DISPATCH_TOKEN", "github-dispatch-token"),
+  // #510: the demo custom-toolpack signing-secret allow-list — the comma-joined
+  // set of whsec_ secrets Portal returns when the shared demo webhook toolpack
+  // is registered in each demo env. Consumed by the env-agnostic
+  // `portalai-demo-toolpack` Lambda (infra/cloudformation/demo-toolpack.yml),
+  // NOT by backend.yml — a catalog-only key (the parity test allows these).
+  secret("DEMO_TOOLPACK_SIGNING_SECRETS", "demo-toolpack-signing-secrets"),
   // ── SSM Parameter Store (config) ─
   ssm("GOOGLE_OAUTH_CLIENT_ID", "google-oauth-client-id"),
   ssm("MICROSOFT_OAUTH_CLIENT_ID", "microsoft-oauth-client-id"),

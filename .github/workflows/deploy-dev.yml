@@ -122,6 +122,34 @@ jobs:
             --parameter-overrides file://dns-email-params.json \
             --no-fail-on-empty-changeset
 
+      # Env-agnostic like the mail DNS stack above: ONE shared Lambda function
+      # URL serves every demo env's custom webhook toolpack (#510, epic #507).
+      # deploy-infra is otherwise AWS-CLI-only, so Node is set up here just to
+      # build + zip the zero-dependency handler and push it over the CFN
+      # placeholder. The signing-secret allow-list is NOT set here — it is
+      # populated post-registration (see packages/demo-toolpack/README.md).
+      - name: Set up Node (demo-toolpack bundle)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Deploy demo custom-toolpack stack (shared across demo envs)
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-demo-toolpack \
+            --template-file infra/cloudformation/demo-toolpack.yml \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset
+          npm ci
+          npm run --workspace @portalai/demo-toolpack build
+          printf '{"type":"module"}' > packages/demo-toolpack/dist/package.json
+          ( cd packages/demo-toolpack/dist && zip -qr ../function.zip . )
+          aws lambda update-function-code \
+            --function-name portalai-demo-toolpack \
+            --zip-file fileb://packages/demo-toolpack/function.zip \
+            >/dev/null
+
       - name: Deploy database stack
         run: |
           aws cloudformation deploy \
