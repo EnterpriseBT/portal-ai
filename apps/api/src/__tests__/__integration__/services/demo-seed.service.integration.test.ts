@@ -1,9 +1,9 @@
 /**
  * Integration tests for DemoSeedService (#509), against the postgres-test DB.
  *
- * Slice 2: the core provisioning + import pipeline for a single entity
- * (`customers`) — counts, wide-table projection, idempotency, and the
- * missing-column-definition guard.
+ * Slices 2–3: the provisioning + import pipeline for every base entity across
+ * the File Upload (CSV + XLSX) and REST instances — counts, wide-table
+ * projection, instance creation, idempotency, and the missing-column guard.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
@@ -20,6 +20,20 @@ import { SeedService } from "../../../services/seed.service.js";
 import { COUNTS } from "../../../demo/demo-data.js";
 import { SystemUtilities } from "../../../utils/system.util.js";
 import { generateId, teardownOrg } from "../utils/application.util.js";
+
+/** Expected imported row count per entity key. */
+const EXPECTED: Record<string, number> = {
+  customers: COUNTS.customers,
+  products: COUNTS.products,
+  sites: COUNTS.sites,
+  shipments: COUNTS.shipments,
+  notes: COUNTS.notes,
+  orders: COUNTS.orders,
+  cash_flows: COUNTS.cashFlowMonths,
+  loan_schedule: COUNTS.loanMonths,
+  portfolio: COUNTS.portfolioHoldings,
+  inventory: COUNTS.inventory,
+};
 
 describe("DemoSeedService (integration)", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -53,54 +67,66 @@ describe("DemoSeedService (integration)", () => {
     return rows[0].count;
   }
 
-  async function customersEntityId(orgId: string): Promise<string> {
-    const def =
-      await DbService.repository.connectorDefinitions.findBySlug("sandbox");
-    const instance =
-      await DbService.repository.connectorInstances.findByOrgDefinitionAndName(
-        orgId,
-        def!.id,
-        "Sandbox"
-      );
-    const entity = await DbService.repository.connectorEntities.findByKey(
-      instance!.id,
-      "customers"
-    );
-    return entity!.id;
+  async function entityIdByKey(orgId: string, key: string): Promise<string> {
+    const rows = (await db.execute(
+      sql.raw(
+        `SELECT id FROM connector_entities WHERE organization_id = '${orgId}' AND key = '${key}' AND deleted IS NULL LIMIT 1`
+      )
+    )) as unknown as Array<{ id: string }>;
+    return rows[0].id;
   }
 
-  it("seeds the customers entity with the fixture row count", async () => {
+  it("creates the File Upload + REST instances and seeds every entity at its count", async () => {
     const orgId = await provisionOrg();
 
     const result = await DemoSeedService.seed({ orgId });
 
-    const customers = result.entities.find((e) => e.key === "customers");
-    expect(customers).toBeDefined();
-    expect(customers!.created).toBe(COUNTS.customers);
-    expect(customers!.invalid).toBe(0);
+    // Instances created (Sandbox is not used until the transactions slice).
+    expect(result.instances.map((i) => i.name).sort()).toEqual([
+      "Demo REST API",
+      "File Upload — CSV",
+      "File Upload — XLSX",
+    ]);
+    expect(result.instances.every((i) => i.action === "created")).toBe(true);
 
-    // Records landed in entity_records AND the wide projection ran.
-    const entityId = await customersEntityId(orgId);
-    expect(
-      await rawCount(
-        `SELECT count(*)::int AS count FROM entity_records WHERE connector_entity_id = '${entityId}' AND deleted IS NULL`
-      )
-    ).toBe(COUNTS.customers);
-    expect(
-      await rawCount(`SELECT count(*)::int AS count FROM "er__${entityId}"`)
-    ).toBe(COUNTS.customers);
+    // Every entity imported at its expected row count.
+    for (const [key, count] of Object.entries(EXPECTED)) {
+      const entity = result.entities.find((e) => e.key === key);
+      expect(entity).toBeDefined();
+      expect(entity!.created).toBe(count);
+    }
+    // A no-reference entity has zero validation errors.
+    expect(result.entities.find((e) => e.key === "customers")!.invalid).toBe(0);
   });
 
-  it("is idempotent — a second seed leaves every row unchanged", async () => {
+  it("lands XLSX (orders) and JSON (inventory) rows in the wide tables", async () => {
+    const orgId = await provisionOrg();
+    await DemoSeedService.seed({ orgId });
+
+    const ordersId = await entityIdByKey(orgId, "orders");
+    expect(
+      await rawCount(`SELECT count(*)::int AS count FROM "er__${ordersId}"`)
+    ).toBe(COUNTS.orders);
+
+    const inventoryId = await entityIdByKey(orgId, "inventory");
+    expect(
+      await rawCount(`SELECT count(*)::int AS count FROM "er__${inventoryId}"`)
+    ).toBe(COUNTS.inventory);
+  });
+
+  it("is idempotent — a second seed leaves every entity unchanged", async () => {
     const orgId = await provisionOrg();
     await DemoSeedService.seed({ orgId });
 
     const second = await DemoSeedService.seed({ orgId });
 
-    const customers = second.entities.find((e) => e.key === "customers")!;
-    expect(customers.created).toBe(0);
-    expect(customers.updated).toBe(0);
-    expect(customers.unchanged).toBe(COUNTS.customers);
+    expect(second.instances.every((i) => i.action === "existing")).toBe(true);
+    for (const [key, count] of Object.entries(EXPECTED)) {
+      const entity = second.entities.find((e) => e.key === key)!;
+      expect(entity.created).toBe(0);
+      expect(entity.updated).toBe(0);
+      expect(entity.unchanged).toBe(count);
+    }
   });
 
   it("throws when a required system column definition is missing", async () => {

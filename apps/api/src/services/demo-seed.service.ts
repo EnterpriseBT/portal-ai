@@ -18,6 +18,7 @@ import { join } from "node:path";
 
 import {
   ConnectorEntityModelFactory,
+  ConnectorInstanceModelFactory,
   FieldMappingModelFactory,
 } from "@portalai/core/models";
 
@@ -25,9 +26,12 @@ import { DbService } from "./db.service.js";
 import { importRows } from "./record-import.util.js";
 import { wideTableReconcilerService } from "./wide-table-reconciler.service.js";
 import { readCsvRows } from "../demo/csv-reader.js";
+import { readXlsxRows } from "../demo/xlsx-reader.js";
+import { readJsonRows } from "../demo/json-reader.js";
 import {
   DEMO_ENTITY_SPECS,
   type DemoEntitySpec,
+  type DemoInstanceKind,
 } from "../demo/dataset-manifest.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -43,6 +47,43 @@ const FIXTURES_DIR = join(
   "../../fixtures/demo"
 );
 
+/** apps/site/public/demo — the REST source (served as a static site asset). */
+const SITE_DEMO_DIR = join(
+  FIXTURES_DIR,
+  "..",
+  "..",
+  "..",
+  "site",
+  "public",
+  "demo"
+);
+
+/** The connector instances the demo populates, keyed by manifest instance kind. */
+const INSTANCE_SPECS: Record<
+  DemoInstanceKind,
+  { slug: string; name: string; config: Record<string, unknown> }
+> = {
+  sandbox: { slug: "sandbox", name: "Sandbox", config: {} },
+  "file-upload-csv": {
+    slug: "file-upload",
+    name: "File Upload — CSV",
+    config: {},
+  },
+  "file-upload-xlsx": {
+    slug: "file-upload",
+    name: "File Upload — XLSX",
+    config: {},
+  },
+  "rest-api": {
+    slug: "rest-api",
+    name: "Demo REST API",
+    config: {
+      baseUrl: "https://www.portalsai.io/demo",
+      auth: { mode: "none" },
+    },
+  },
+};
+
 export interface EntitySeedResult {
   key: string;
   created: number;
@@ -51,9 +92,15 @@ export interface EntitySeedResult {
   invalid: number;
 }
 
+export interface InstanceSeedResult {
+  name: string;
+  action: "created" | "existing";
+}
+
 export interface DemoSeedResult {
   orgId: string;
   rows: number;
+  instances: InstanceSeedResult[];
   entities: EntitySeedResult[];
   toolpacks: { builtins: string[]; custom: string | null };
   googleSheets: { present: boolean };
@@ -69,21 +116,37 @@ export class DemoSeedService {
     const { orgId } = params;
     logger.info({ orgId }, "demo seed starting");
 
-    const sandboxInstanceId =
-      await DemoSeedService.resolveSandboxInstanceId(orgId);
+    // Resolve (create if absent) every instance the manifest references.
+    const usedKinds = [...new Set(DEMO_ENTITY_SPECS.map((s) => s.instance))];
+    const instanceIds = new Map<DemoInstanceKind, string>();
+    const instances: InstanceSeedResult[] = [];
+    for (const kind of usedKinds) {
+      const resolved = await DemoSeedService.resolveOrCreateInstance(
+        orgId,
+        kind
+      );
+      instanceIds.set(kind, resolved.id);
+      instances.push({
+        name: INSTANCE_SPECS[kind].name,
+        action: resolved.action,
+      });
+    }
 
     const entities: EntitySeedResult[] = [];
     for (const spec of DEMO_ENTITY_SPECS) {
-      // Slice 3 introduces dedicated File Upload instances; for now every
-      // entity rides the Sandbox instance.
       entities.push(
-        await DemoSeedService.seedEntity(orgId, sandboxInstanceId, spec)
+        await DemoSeedService.seedEntity(
+          orgId,
+          instanceIds.get(spec.instance)!,
+          spec
+        )
       );
     }
 
     return {
       orgId,
       rows: 0,
+      instances,
       entities,
       toolpacks: { builtins: [], custom: null },
       googleSheets: { present: false },
@@ -91,29 +154,52 @@ export class DemoSeedService {
     };
   }
 
-  /** Resolve the org's auto-provisioned "Sandbox" connector instance id. */
-  private static async resolveSandboxInstanceId(
-    orgId: string
-  ): Promise<string> {
+  /**
+   * Resolve the connector instance for a manifest kind, creating it if absent.
+   * "Sandbox" already exists (auto-provisioned); File Upload / REST instances
+   * are created here so the connector view shows the right connector types.
+   */
+  private static async resolveOrCreateInstance(
+    orgId: string,
+    kind: DemoInstanceKind
+  ): Promise<{ id: string; action: "created" | "existing" }> {
+    const { slug, name, config } = INSTANCE_SPECS[kind];
     const def =
-      await DbService.repository.connectorDefinitions.findBySlug("sandbox");
+      await DbService.repository.connectorDefinitions.findBySlug(slug);
     if (!def) {
       throw new Error(
-        "demo seed: 'sandbox' connector definition not found — seed connector definitions first"
+        `demo seed: '${slug}' connector definition not found — seed connector definitions first`
       );
     }
-    const instance =
+    const existing =
       await DbService.repository.connectorInstances.findByOrgDefinitionAndName(
         orgId,
         def.id,
-        "Sandbox"
+        name
       );
-    if (!instance) {
+    if (existing) return { id: existing.id, action: "existing" };
+
+    if (kind === "sandbox") {
       throw new Error(
         `demo seed: org ${orgId} has no Sandbox instance — provision the org first`
       );
     }
-    return instance.id;
+
+    const model = new ConnectorInstanceModelFactory().create(SEED_USER).update({
+      connectorDefinitionId: def.id,
+      organizationId: orgId,
+      name,
+      status: "active",
+      config,
+      credentials: null,
+      lastSyncAt: null,
+      lastErrorMessage: null,
+      enabledCapabilityFlags: { ...def.capabilityFlags },
+    });
+    const created = await DbService.repository.connectorInstances.create(
+      model.parse()
+    );
+    return { id: created.id, action: "created" };
   }
 
   /** Provision one entity (entity → mappings → reconcile) then import its rows. */
@@ -180,13 +266,18 @@ export class DemoSeedService {
     return { key: spec.key, ...result };
   }
 
-  /** The lazy row source for an entity (slice 3 adds xlsx). */
+  /** The lazy row source for an entity, by fixture format. */
   private static rowsFor(
     spec: DemoEntitySpec
   ): AsyncIterable<Record<string, string>> {
-    if (spec.format === "csv") {
-      return readCsvRows(join(FIXTURES_DIR, spec.file));
+    switch (spec.format) {
+      case "csv":
+        return readCsvRows(join(FIXTURES_DIR, spec.file));
+      case "xlsx":
+        return readXlsxRows(join(FIXTURES_DIR, spec.file), spec.sheet);
+      case "json":
+        // The REST source lives under the marketing site (served as an asset).
+        return readJsonRows(join(SITE_DEMO_DIR, spec.file));
     }
-    throw new Error(`demo seed: unsupported fixture format '${spec.format}'`);
   }
 }
