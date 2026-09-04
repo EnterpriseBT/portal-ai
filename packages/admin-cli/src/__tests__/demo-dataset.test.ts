@@ -23,6 +23,8 @@ import {
   generateProducts,
   generateShipments,
   generateSites,
+  synthesizeTransactions,
+  transactionRefs,
 } from "../fixtures/demo-data.js";
 
 const SEED = "harborview";
@@ -96,6 +98,39 @@ describe("demo dataset — generator invariants", () => {
   });
 });
 
+describe("demo dataset — large-volume transactions synth", () => {
+  const refs = transactionRefs(customers, products, sites);
+  const sample = [
+    ...synthesizeTransactions(COUNTS.transactionsSample, SEED, refs),
+  ];
+
+  it("yields the requested row count", () => {
+    expect(sample).toHaveLength(COUNTS.transactionsSample);
+  });
+
+  it("closes every foreign key against the base entities", () => {
+    for (const t of sample) {
+      expect(customerIds.has(t.customer_id)).toBe(true);
+      expect(productIds.has(t.product_id)).toBe(true);
+      expect(siteIds.has(t.site_id)).toBe(true);
+    }
+  });
+
+  it("is deterministic — same seed + refs reproduces rows in order", () => {
+    const again = [...synthesizeTransactions(200, SEED, refs)];
+    expect(again).toEqual(sample.slice(0, 200));
+  });
+
+  it("streams lazily without materializing the whole run", () => {
+    // Pulling one row from a 1e9-count generator must return immediately —
+    // proves #509 can stream ~1M rows without holding them all in memory.
+    const gen = synthesizeTransactions(1_000_000_000, SEED, refs);
+    const first = gen.next();
+    expect(first.done).toBe(false);
+    expect(first.value.transaction_id).toBe("TXN-000000001");
+  });
+});
+
 /** Split a committed CSV (no embedded newlines in fields) into header + rows. */
 function readCsv(name: string): { header: string; dataRows: number } {
   const text = readFileSync(`${FIXTURES}${name}`, "utf8");
@@ -110,6 +145,11 @@ describe("demo dataset — committed files match the generators", () => {
     ["sites.csv", HEADERS.sites, COUNTS.sites],
     ["shipments.csv", HEADERS.shipments, COUNTS.shipments],
     ["notes.csv", HEADERS.notes, COUNTS.notes],
+    [
+      "transactions.sample.csv",
+      HEADERS.transactions,
+      COUNTS.transactionsSample,
+    ],
   ] as const)(
     "%s has the right header and row count",
     (name, headers, count) => {

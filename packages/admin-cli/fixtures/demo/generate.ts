@@ -26,6 +26,8 @@ import {
   generateProducts,
   generateShipments,
   generateSites,
+  synthesizeTransactions,
+  transactionRefs,
 } from "../../src/fixtures/demo-data.js";
 
 const OUT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -90,6 +92,19 @@ async function main(): Promise<void> {
   writeCsv("sites.csv", HEADERS.sites, sites as unknown as Row[]);
   writeCsv("shipments.csv", HEADERS.shipments, shipments as unknown as Row[]);
   writeCsv("notes.csv", HEADERS.notes, notes as unknown as Row[]);
+
+  // transactions.sample.csv — a small slice of the large-volume table. #509
+  // streams ~1M of these from the same generator; here we emit only the sample.
+  const refs = transactionRefs(customers, products, sites);
+  const sample: Row[] = [];
+  for (const t of synthesizeTransactions(
+    COUNTS.transactionsSample,
+    SEED,
+    refs
+  )) {
+    sample.push(t as unknown as Row);
+  }
+  writeCsv("transactions.sample.csv", HEADERS.transactions, sample);
 
   // orders.xlsx — one sheet per calendar year (gives the layout wizard work).
   const byYear = new Map<string, Row[]>();

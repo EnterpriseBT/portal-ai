@@ -603,6 +603,61 @@ export function generateNotes(customers: Customer[], seed: string): Note[] {
 }
 
 // ---------------------------------------------------------------------------
-// Large-volume transactions — implemented in slice 2 (#508). Streaming synth.
+// Large-volume transactions — the demo's "handles big data" story.
 // ---------------------------------------------------------------------------
-// export function* synthesizeTransactions(...) — added in slice 2.
+
+/** Foreign keys the transaction synth references (seeded ids at scale). */
+export interface TransactionRefs {
+  customerIds: string[];
+  productIds: string[];
+  siteIds: string[];
+}
+
+/**
+ * Stream `rowCount` transaction rows lazily — a generator, so it never
+ * materializes a large array. The authoring script calls it with a small count
+ * to emit `transactions.sample.csv`; #509 calls it with ~1M and pipes the
+ * yielded rows straight into the batch-upsert primitives (chunked), so nothing
+ * is held whole in memory on the 512 MB app-dev task.
+ *
+ * Deterministic: the same `seed` + `refs` reproduces the same rows in order.
+ */
+export function* synthesizeTransactions(
+  rowCount: number,
+  seed: string,
+  refs: TransactionRefs
+): Generator<Transaction> {
+  const rng = new Rng(`${seed}:transactions`);
+  const span = ANCHOR_MS - HISTORY_START_MS;
+  const { customerIds, productIds, siteIds } = refs;
+  for (let i = 1; i <= rowCount; i++) {
+    // Skew occurrence toward recent months so the series trends upward.
+    const t = rng.float() ** 0.7;
+    const occurredMs = HISTORY_START_MS + Math.floor(t * span);
+    const quantity = rng.int(1, 40);
+    const amount = Math.round(quantity * rng.range(8, 400) * 100) / 100;
+    yield {
+      transaction_id: `TXN-${PAD(i, 9)}`,
+      customer_id: customerIds[rng.int(0, customerIds.length - 1)],
+      product_id: productIds[rng.int(0, productIds.length - 1)],
+      site_id: siteIds[rng.int(0, siteIds.length - 1)],
+      occurred_at: isoDateTime(occurredMs),
+      quantity,
+      amount,
+      channel: rng.pick(CHANNELS),
+    };
+  }
+}
+
+/** Convenience: build {@link TransactionRefs} from generated base entities. */
+export function transactionRefs(
+  customers: Customer[],
+  products: Product[],
+  sites: Site[]
+): TransactionRefs {
+  return {
+    customerIds: customers.map((c) => c.customer_id),
+    productIds: products.map((p) => p.product_id),
+    siteIds: sites.map((s) => s.site_id),
+  };
+}
