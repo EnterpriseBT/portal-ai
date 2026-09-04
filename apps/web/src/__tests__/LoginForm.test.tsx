@@ -50,11 +50,28 @@ describe("LoginFormUI Component", () => {
     ).toBeInTheDocument();
   });
 
-  it("should render terms and privacy notice", () => {
+  it("should render the terms and privacy consent notice", () => {
     render(<LoginFormUI onClickGoogleLogin={mockOnClickGoogleLogin} />);
     expect(
-      screen.getByText(/by continuing, you agree to our terms/i)
+      screen.getByText(/by continuing, you agree to our/i)
     ).toBeInTheDocument();
+  });
+
+  it("should link Terms of Service and Privacy Policy to the marketing site", () => {
+    render(<LoginFormUI onClickGoogleLogin={mockOnClickGoogleLogin} />);
+
+    const terms = screen.getByRole("link", { name: /terms of service/i });
+    const privacy = screen.getByRole("link", { name: /privacy policy/i });
+
+    // The resolver falls back to the prod origin when VITE_SITE_URL is unset,
+    // which is the case in the jest environment (no import.meta.env).
+    expect(terms).toHaveAttribute("href", "https://www.portalsai.io/terms/");
+    expect(privacy).toHaveAttribute(
+      "href",
+      "https://www.portalsai.io/privacy/"
+    );
+    expect(terms).toHaveAttribute("target", "_blank");
+    expect(terms).toHaveAttribute("rel", expect.stringContaining("noopener"));
   });
 
   it("should call onClickGoogleLogin when button is clicked", async () => {
