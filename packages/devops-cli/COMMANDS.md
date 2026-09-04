@@ -169,6 +169,8 @@ portalai org set-tier <orgId> acme_enterprise --env app-dev --yes
 
 The card renders a **"Contact support"** CTA while the org is only *viewing* the tier as an upgrade, and its full policy once the org is *on* it (#241). Switching an org's tier is `portalai org set-tier` — not a portalops command (see `packages/admin-cli/COMMANDS.md`).
 
+**The standing `demo` tier (#511)** is this pattern applied to the internal demo org (#507): free, unlimited, all toolpacks, `cta contact`, no Stripe price. In app-dev/prod it is created org-scoped (`--visible-to-org <demo orgId>`); **locally it is created automatically** by `local provision` (the `demo-tier` step, unscoped + non-public so it stays off `site-config` yet is `set-tier`-able onto any local org). `tier apply` leaves it `unmanaged` in every env. Provisioning runbook: `docs/DEMO_ORG.runbook.md`.
+
 ## local
 
 ### `portalops local provision --env local [--e2e-org [member-email]] [--yes] [--json]`
