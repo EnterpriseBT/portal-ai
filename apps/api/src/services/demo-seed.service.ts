@@ -20,11 +20,17 @@ import {
   ConnectorEntityModelFactory,
   ConnectorInstanceModelFactory,
   FieldMappingModelFactory,
+  OrganizationToolpackModelFactory,
+  type ToolpackToolDefinition,
 } from "@portalai/core/models";
+import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
 
 import { DbService } from "./db.service.js";
 import { importRows } from "./record-import.util.js";
 import { wideTableReconcilerService } from "./wide-table-reconciler.service.js";
+import { ToolpackRegistrationService } from "./toolpack-registration.service.js";
+import { BUILTIN_TOOL_NAMES } from "./tools.service.js";
+import { generateSigningSecret } from "../utils/webhook-signing.util.js";
 import { readCsvRows } from "../demo/csv-reader.js";
 import { readXlsxRows } from "../demo/xlsx-reader.js";
 import { readJsonRows } from "../demo/json-reader.js";
@@ -203,15 +209,106 @@ export class DemoSeedService {
       );
     }
 
+    const toolpacks = await DemoSeedService.seedToolpacks(orgId);
+
     return {
       orgId,
       rows: rowCount,
       instances,
       entities,
-      toolpacks: { builtins: [], custom: null },
+      toolpacks,
       googleSheets: { present: false },
       durationMs: Date.now() - startedAt,
     };
+  }
+
+  /**
+   * Enable all eight built-in toolpacks plus the demo custom webhook toolpack
+   * (#510) on the org's station. The custom pack is registered from the
+   * configured `DEMO_TOOLPACK_URL`; if that is unset or unreachable it is
+   * skipped (built-ins still enable) so seeding never fails on the toolpack.
+   */
+  private static async seedToolpacks(
+    orgId: string
+  ): Promise<{ builtins: string[]; custom: string | null }> {
+    const builtinSlugs = BUILTIN_TOOLPACKS.map((p) => p.slug);
+
+    const [station] =
+      await DbService.repository.stations.findByOrganizationId(orgId);
+    if (!station) {
+      throw new Error(
+        `demo seed: org ${orgId} has no station — provision the org first`
+      );
+    }
+
+    let custom: string | null = null;
+    const baseUrl = process.env.DEMO_TOOLPACK_URL;
+    if (baseUrl) {
+      try {
+        custom = await DemoSeedService.registerCustomToolpack(orgId, baseUrl);
+      } catch (err) {
+        logger.warn(
+          { orgId, baseUrl, err: (err as Error).message },
+          "custom toolpack registration failed — enabling built-ins only"
+        );
+      }
+    }
+
+    await DbService.repository.stationToolpacks.replaceForStation(
+      station.id,
+      {
+        builtinSlugs,
+        organizationToolpackIds: custom ? [custom] : [],
+      },
+      { userId: SEED_USER }
+    );
+
+    return { builtins: builtinSlugs, custom };
+  }
+
+  /** Register the demo custom webhook toolpack (mirrors POST /api/toolpacks). */
+  private static async registerCustomToolpack(
+    orgId: string,
+    baseUrl: string
+  ): Promise<string> {
+    const endpoints = {
+      schema: `${baseUrl}/schema`,
+      runtime: `${baseUrl}/runtime`,
+      metadata: `${baseUrl}/metadata`,
+    };
+    const signingSecret = generateSigningSecret();
+    const tools = await ToolpackRegistrationService.fetchSchema(
+      endpoints.schema,
+      undefined,
+      signingSecret
+    );
+    ToolpackRegistrationService.validateNoBuiltinCollision(
+      tools as ToolpackToolDefinition[],
+      BUILTIN_TOOL_NAMES
+    );
+    const metadata = await ToolpackRegistrationService.fetchMetadata(
+      endpoints.metadata,
+      undefined,
+      signingSecret
+    );
+    const now = Date.now();
+    const model = new OrganizationToolpackModelFactory().create(SEED_USER);
+    model.update({
+      organizationId: orgId,
+      name: "demo_supply_tools",
+      description: "Harborview Supply Co. vendor tools (shipping + credit).",
+      endpoints,
+      authHeaders: null,
+      signingSecret,
+      tools,
+      metadata,
+      schemaFetchedAt: now,
+      metadataFetchedAt: metadata !== null ? now : null,
+    });
+    const row = await DbService.repository.organizationToolpacks.create(
+      model.parse() as never
+    );
+    return row.id;
   }
 
   /**

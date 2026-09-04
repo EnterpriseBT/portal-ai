@@ -6,17 +6,26 @@
  * projection, instance creation, idempotency, and the missing-column guard.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  jest,
+} from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
 import postgres from "postgres";
 
+import { BUILTIN_TOOLPACKS } from "@portalai/core/registries";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApplicationService } from "../../../services/application.service.js";
 import { DemoSeedService } from "../../../services/demo-seed.service.js";
 import { DbService } from "../../../services/db.service.js";
 import { SeedService } from "../../../services/seed.service.js";
+import { ToolpackRegistrationService } from "../../../services/toolpack-registration.service.js";
 import { COUNTS } from "../../../demo/demo-data.js";
 import { SystemUtilities } from "../../../utils/system.util.js";
 import { generateId, teardownOrg } from "../utils/application.util.js";
@@ -148,6 +157,60 @@ describe("DemoSeedService (integration)", () => {
     expect(txns2.created).toBe(0);
     expect(txns2.unchanged).toBe(5000);
   }, 30000);
+
+  it("enables all built-in toolpacks; skips custom when no URL is set", async () => {
+    delete process.env.DEMO_TOOLPACK_URL;
+    const orgId = await provisionOrg();
+
+    const result = await DemoSeedService.seed({ orgId, rows: 0 });
+
+    expect(result.toolpacks.builtins.sort()).toEqual(
+      BUILTIN_TOOLPACKS.map((p) => p.slug).sort()
+    );
+    expect(result.toolpacks.builtins).toHaveLength(BUILTIN_TOOLPACKS.length);
+    expect(result.toolpacks.custom).toBeNull();
+    expect(
+      await rawCount(
+        `SELECT count(*)::int AS count FROM organization_toolpacks WHERE organization_id = '${orgId}' AND deleted IS NULL`
+      )
+    ).toBe(0);
+  });
+
+  it("registers the custom toolpack when DEMO_TOOLPACK_URL is set", async () => {
+    const orgId = await provisionOrg();
+    process.env.DEMO_TOOLPACK_URL = "https://demo-toolpack.test";
+    const schemaSpy = jest
+      .spyOn(ToolpackRegistrationService, "fetchSchema")
+      .mockResolvedValue([
+        {
+          name: "quote_shipping_rate",
+          description: "Quote a shipping rate.",
+          parameterSchema: { type: "object", properties: {} },
+        },
+      ] as never);
+    const metadataSpy = jest
+      .spyOn(ToolpackRegistrationService, "fetchMetadata")
+      .mockResolvedValue(null as never);
+
+    try {
+      const result = await DemoSeedService.seed({ orgId, rows: 0 });
+      expect(result.toolpacks.custom).toBeTruthy();
+      expect(schemaSpy).toHaveBeenCalledWith(
+        "https://demo-toolpack.test/schema",
+        undefined,
+        expect.any(String)
+      );
+      expect(
+        await rawCount(
+          `SELECT count(*)::int AS count FROM organization_toolpacks WHERE organization_id = '${orgId}' AND deleted IS NULL`
+        )
+      ).toBe(1);
+    } finally {
+      schemaSpy.mockRestore();
+      metadataSpy.mockRestore();
+      delete process.env.DEMO_TOOLPACK_URL;
+    }
+  });
 
   it("throws when a required system column definition is missing", async () => {
     const orgId = await provisionOrg();
