@@ -1,0 +1,98 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Portals AI — demo custom webhook toolpack (#510). One shared Lambda
+  function URL serving the custom-toolpack contract (GET /schema, GET /metadata,
+  POST /runtime) for every demo environment.
+
+# ── Two things to know before editing this file (#510) ────────────────
+#
+# 1. THIS STACK IS ENV-AGNOSTIC (like portalai-dns-email).
+#    One shared endpoint serves the local, app-dev and prod demo orgs (epic
+#    #507 decision), so the stack is named `portalai-demo-toolpack` with no
+#    environment segment and takes no `Environment` parameter. A Lambda
+#    function URL is public-internet reachable, so the prod demo org can call
+#    it regardless of which env deployed it. Deployed once from the deploy-dev
+#    workflow's deploy-infra job, exactly as portalai-dns-email is.
+#
+# 2. THE SIGNING SECRETS CANNOT EXIST WHEN THIS STACK IS FIRST DEPLOYED.
+#    Portal generates a signing secret (whsec_…) only *when the toolpack is
+#    registered*, which happens after this endpoint is live. So the allow-list
+#    starts empty and `POST /runtime` fails closed (401) until it is populated.
+#    After registering in each env, set the combined allow-list and redeploy /
+#    update-function-configuration (see packages/demo-toolpack/README.md). GET
+#    /schema + /metadata are served openly so registration can fetch the schema
+#    before any secret exists.
+#
+# The handler code shipped by CloudFormation below is a PLACEHOLDER. The real
+# code is pushed by `aws lambda update-function-code` in the deploy step, from
+# the built @portalai/demo-toolpack package (zero runtime deps).
+
+Parameters:
+  SigningSecrets:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: >-
+      Comma-separated PORTALAI_SIGNING_SECRETS allow-list (one whsec_ per demo
+      env registration). Empty on first deploy; set after registration.
+
+Resources:
+  FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  Function:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: portalai-demo-toolpack
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt FunctionRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          PORTALAI_SIGNING_SECRETS: !Ref SigningSecrets
+      # CommonJS placeholder (inline ZipFile is CJS by default). Replaced by
+      # the real ESM bundle via update-function-code in the deploy step.
+      Code:
+        ZipFile: |
+          exports.handler = async () => ({
+            statusCode: 503,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              error: "PLACEHOLDER",
+              detail: "Run aws lambda update-function-code with the built @portalai/demo-toolpack bundle.",
+            }),
+          });
+
+  Url:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt Function.Arn
+      # The HMAC signature on /runtime is the auth gate, not IAM.
+      AuthType: NONE
+
+  UrlInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Function
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+Outputs:
+  FunctionUrl:
+    Description: The shared demo-toolpack endpoint base URL (append /schema, /runtime, /metadata).
+    Value: !GetAtt Url.FunctionUrl
+    Export:
+      Name: demo-toolpack-url
