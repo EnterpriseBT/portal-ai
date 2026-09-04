@@ -14,6 +14,7 @@ describe("CATALOG (pin — mirrors api-cli.sh:77-98 + the #194 CLI client id)", 
       "ANTHROPIC_API_KEY",
       "AUTH0_WEBHOOK_SECRET",
       "DATABASE_URL",
+      "DEMO_TOOLPACK_SIGNING_SECRETS", // #510 shared demo webhook toolpack allow-list
       "ENCRYPTION_KEY",
       "GEOCODING_API_KEY", // #315 Mapbox; added to the catalog by #382
       "GITHUB_DISPATCH_TOKEN", // #311 API-side site-rebuild dispatch
