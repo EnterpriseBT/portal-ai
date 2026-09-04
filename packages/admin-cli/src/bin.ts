@@ -21,6 +21,7 @@ import {
   orgDelete,
 } from "./commands/org.js";
 import { orgCreate, orgReset, seedOrg } from "./commands/provision.js";
+import { demoSeed, demoReset } from "./commands/demo.js";
 import { userList, userGet } from "./commands/user.js";
 import { memberAdd, memberRemove, memberSwitch } from "./commands/member.js";
 import { exitCodeFor, jsonError, printBanner } from "./output.js";
@@ -272,6 +273,47 @@ export function buildProgram(): Command {
         {
           name: o.name as string,
           memberEmail: o.memberEmail as string | undefined,
+        },
+        flags(o)
+      )
+    )
+  );
+
+  // ── demo ───────────────────────────────────────────────────────────
+  const demo = program.command("demo").description("demo-org dataset seeding");
+
+  common(
+    demo
+      .command("seed")
+      .description("populate a demo org from the committed dataset")
+      .requiredOption("--org <id>", "target organization id")
+      .option("--rows <n>", "transactions row count (default ~1M)")
+  ).action(async (o: GlobalOpts) =>
+    execute(o, (def) =>
+      demoSeed(
+        def,
+        {
+          orgId: o.org as string,
+          rows: o.rows !== undefined ? Number(o.rows as string) : undefined,
+        },
+        flags(o)
+      )
+    )
+  );
+
+  common(
+    demo
+      .command("reset")
+      .description("reset a demo org to the checked-in baseline (never prod)")
+      .requiredOption("--org <id>", "target organization id")
+      .option("--rows <n>", "transactions row count on reconverge")
+  ).action(async (o: GlobalOpts) =>
+    execute(o, (def) =>
+      demoReset(
+        def,
+        {
+          orgId: o.org as string,
+          rows: o.rows !== undefined ? Number(o.rows as string) : undefined,
         },
         flags(o)
       )

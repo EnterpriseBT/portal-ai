@@ -26,7 +26,7 @@ export {
 } from "@portalai/cli-env";
 
 /** The script's JSON result is its last parseable stdout line. */
-function lastJsonLine(stdout: string): Record<string, unknown> {
+export function lastJsonLine(stdout: string): Record<string, unknown> {
   const lines = stdout.trim().split("\n").reverse();
   for (const line of lines) {
     try {

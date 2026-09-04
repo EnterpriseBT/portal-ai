@@ -23,16 +23,16 @@ Authored deterministically by `packages/admin-cli/fixtures/demo/generate.ts` (`n
 
 | Entity | File | Rows | Join keys |
 |---|---|---|---|
-| customers | `customers.csv` | 800 | `customer_id` (PK); ~12 near-duplicate names for identity resolution |
+| customers | `customers.csv` | 400 | `customer_id` (PK); ~12 near-duplicate names for identity resolution |
 | products | `products.csv` | 120 | `product_id` (PK) |
-| orders | `orders.xlsx` (one sheet per year) | 8,000 | `customer_id` → customers, `product_id` → products |
+| orders | `orders.xlsx` (one sheet per year) | 2,000 | `customer_id` → customers, `product_id` → products |
 | sites | `sites.csv` | 15 | `site_id` (PK) |
-| shipments | `shipments.csv` | 2,500 | `origin_site_id`/`dest_site_id` → sites, `customer_id` → customers |
+| shipments | `shipments.csv` | 800 | `origin_site_id`/`dest_site_id` → sites, `customer_id` → customers |
 | notes (**writable**) | `notes.csv` | 40 | `customer_id` → customers |
 | **transactions** (**large-volume**) | `transactions.sample.csv` (sample) | **~1,000,000 seeded** / 5,000 sample | `customer_id`, `product_id`, `site_id` |
 | financials | `financials.xlsx` (Cash Flows / Loan Schedule / Portfolio) | 30 / 60 / 10 | standalone |
 | inventory (REST) | `apps/site/public/demo/inventory.json` | 120 | `product_id` → products |
-| customers+orders | `customers_orders.xlsx` (Customers / Orders) | 800 / 2,000 | Google Sheet hand-upload source (#511) |
+| customers+orders | `customers_orders.xlsx` (Customers / Orders) | 400 / 2,000 | Google Sheet hand-upload source (#511) |
 
 **Invariants:** every `orders`/`transactions` `customer_id` and `product_id` resolves; every `shipments`/`transactions` `site_id` resolves; loan schedule closes at ~0; portfolio weights sum to 1. Enforced by `packages/admin-cli/src/__tests__/demo-dataset.test.ts`.
 

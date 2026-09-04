@@ -136,6 +136,8 @@ _Auth: `cli-env` — AWS-IAM (infra/DB) + Auth0 device-flow (app API); `--env` r
 | Set an org's tier | configuration | local · app-dev | portalai | `portalai org set-tier <org-id> <tier> --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
 | Add / remove an org member | configuration | local · app-dev | portalai | `portalai member add <email> --org <org-id> --env app-dev --yes` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
 | List / inspect users | maintenance | local · app-dev | portalai | `portalai user list --env app-dev --json` | yes | [#227](https://github.com/EnterpriseBT/portal-ai/issues/227) | covered |
+| Seed / refresh the demo org's dataset | maintenance | local · app-dev · prod | portalai | `portalai demo seed --org <id> --env app-dev --yes` | yes | [#509](https://github.com/EnterpriseBT/portal-ai/issues/509) | covered (prod-refresh path with `--confirm-prod`) |
+| Reset the demo org to the checked-in baseline | maintenance | local · app-dev | portalai | `portalai demo reset --org <id> --env app-dev --yes` | yes | [#509](https://github.com/EnterpriseBT/portal-ai/issues/509) | covered (destructive — blocked in prod) |
 
 ## Common workflows
 
@@ -197,7 +199,7 @@ No other non-operable operations. Every inventoried operation carries a disposit
 
 Computed from the tables above (51 operations total).
 
-**Maintenance + configuration (the bar's denominator):** `D = 49`, of which `N = 46` are operable → **93.9%** (`46/49`) — clears the **≥ 90%** bar. The drop from 97.8% is #369 adding two *out-of-band* operations (mailbox provisioning, DKIM retrieval); they are non-operable by nature rather than by omission, and recording them honestly is worth the percentage.
+**Maintenance + configuration (the bar's denominator):** `D = 51`, of which `N = 48` are operable → **94.1%** (`48/51`) — clears the **≥ 90%** bar. The three non-operable ops are unchanged (#369's two out-of-band mail steps + the deploy-side secret wiring); #509 added two demo-org operations (`demo seed`/`demo reset`), both operable, which is why the figure ticks up from 93.9%.
 
 **Logging (reported separately):** `6 / 6` operable → **100%**.
 

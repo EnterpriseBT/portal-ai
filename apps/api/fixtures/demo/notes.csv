@@ -1,0 +1,41 @@
+note_id,customer_id,note,follow_up_date,status,tag
+NOTE-0001,CUST-00125,Upsell opportunity: safety line — Copper Creek Contractors Partners,2026-09-15T00:00:00Z,open,billing
+NOTE-0002,CUST-00263,Follow up on renewal quote — Meridian Outfitters LLC,2026-08-26T00:00:00Z,open,onboarding
+NOTE-0003,CUST-00377,Contract up for renewal next quarter — Ironwood Contractors LLC,2026-09-26T00:00:00Z,open,renewal
+NOTE-0004,CUST-00037,Invoice dispute pending review — Anchor Works Co.,2026-09-08T00:00:00Z,resolved,billing
+NOTE-0005,CUST-00296,Contract up for renewal next quarter — Granite Supply Co.,2026-10-05T00:00:00Z,resolved,billing
+NOTE-0006,CUST-00116,Upsell opportunity: safety line — Copper Creek Hardware Co.,2026-08-17T00:00:00Z,in-progress,onboarding
+NOTE-0007,CUST-00357,Onboarding call scheduled — Cascade Provisions Partners,2026-09-12T00:00:00Z,open,support
+NOTE-0008,CUST-00059,Customer requested bulk pricing — Harborview Industrial Inc.,2026-08-24T00:00:00Z,in-progress,renewal
+NOTE-0009,CUST-00232,Escalated shipping delay — Harborview Provisions Co.,2026-09-26T00:00:00Z,in-progress,renewal
+NOTE-0010,CUST-00229,Invoice dispute pending review — Anchor Trading Inc.,2026-09-09T00:00:00Z,resolved,onboarding
+NOTE-0011,CUST-00328,Customer requested bulk pricing — Coastal Industrial Partners,2026-09-13T00:00:00Z,resolved,upsell
+NOTE-0012,CUST-00034,Contract up for renewal next quarter — Granite Trading Group,2026-09-20T00:00:00Z,in-progress,billing
+NOTE-0013,CUST-00149,Onboarding call scheduled — Coastal Distributors,2026-09-05T00:00:00Z,open,onboarding
+NOTE-0014,CUST-00200,Invoice dispute pending review — Blue Ridge Trading LLC,2026-08-26T00:00:00Z,resolved,support
+NOTE-0015,CUST-00348,Requested product catalog — Redwood Supply Partners,2026-09-09T00:00:00Z,resolved,onboarding
+NOTE-0016,CUST-00008,Customer requested bulk pricing — Blue Ridge Contractors Group,2026-09-30T00:00:00Z,open,renewal
+NOTE-0017,CUST-00358,Contract up for renewal next quarter — Granite Provisions Partners,2026-08-28T00:00:00Z,in-progress,onboarding
+NOTE-0018,CUST-00270,Upsell opportunity: safety line — Harborview Industrial Partners,2026-10-03T00:00:00Z,resolved,billing
+NOTE-0019,CUST-00071,Upsell opportunity: safety line — Highland Distributors Inc.,2026-08-18T00:00:00Z,resolved,onboarding
+NOTE-0020,CUST-00292,Upsell opportunity: safety line — Harborview Trading Group,2026-08-19T00:00:00Z,open,support
+NOTE-0021,CUST-00008,Follow up on renewal quote — Blue Ridge Contractors Group,2026-09-02T00:00:00Z,open,billing
+NOTE-0022,CUST-00306,Requested product catalog — Highland Logistics Partners,2026-09-20T00:00:00Z,open,onboarding
+NOTE-0023,CUST-00356,Invoice dispute pending review — Coastal Outfitters,2026-09-20T00:00:00Z,open,billing
+NOTE-0024,CUST-00202,Requested product catalog — Cascade Provisions Partners,2026-09-12T00:00:00Z,resolved,support
+NOTE-0025,CUST-00055,Follow up on renewal quote — Ironwood Distributors Inc.,2026-09-18T00:00:00Z,open,upsell
+NOTE-0026,CUST-00270,Follow up on renewal quote — Harborview Industrial Partners,2026-09-23T00:00:00Z,resolved,renewal
+NOTE-0027,CUST-00178,Customer requested bulk pricing — Copper Creek Works LLC,2026-10-09T00:00:00Z,in-progress,upsell
+NOTE-0028,CUST-00178,Requested product catalog — Copper Creek Works LLC,2026-08-18T00:00:00Z,resolved,billing
+NOTE-0029,CUST-00121,Customer requested bulk pricing — Copper Creek Supply Partners,2026-08-11T00:00:00Z,in-progress,onboarding
+NOTE-0030,CUST-00179,Upsell opportunity: safety line — Silverline Distributors LLC,2026-09-03T00:00:00Z,in-progress,renewal
+NOTE-0031,CUST-00030,Follow up on renewal quote — Harborview Outfitters LLC,2026-08-13T00:00:00Z,resolved,support
+NOTE-0032,CUST-00352,Escalated shipping delay — Highland Works Partners,2026-08-20T00:00:00Z,resolved,support
+NOTE-0033,CUST-00293,Onboarding call scheduled — Ironwood Industrial Partners,2026-08-11T00:00:00Z,resolved,billing
+NOTE-0034,CUST-00057,Follow up on renewal quote — Northwind Hardware,2026-10-11T00:00:00Z,resolved,billing
+NOTE-0035,CUST-00102,Contract up for renewal next quarter — Cascade Provisions Partners,2026-08-13T00:00:00Z,open,support
+NOTE-0036,CUST-00239,Customer requested bulk pricing — Anchor Hardware Partners,2026-10-10T00:00:00Z,open,billing
+NOTE-0037,CUST-00347,Upsell opportunity: safety line — Ironwood Provisions Inc.,2026-10-10T00:00:00Z,open,upsell
+NOTE-0038,CUST-00007,Customer requested bulk pricing — Cascade Provisions Group,2026-09-26T00:00:00Z,resolved,renewal
+NOTE-0039,CUST-00250,Invoice dispute pending review — Anchor Outfitters Co.,2026-09-12T00:00:00Z,in-progress,onboarding
+NOTE-0040,CUST-00096,Onboarding call scheduled — Copper Creek Contractors Inc.,2026-09-27T00:00:00Z,resolved,support
