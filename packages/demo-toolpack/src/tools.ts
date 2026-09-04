@@ -4,8 +4,8 @@
  * Both answers are **deterministic** (derived from a hash of the inputs) and
  * **not derivable from the loaded data** — a shipping quote and a credit score
  * come from the "vendor's" system, not from the entity records — which is the
- * whole point of a custom toolpack in the demo. Deterministic output lets
- * `docs/DEMO_ORG.runbook.md` state the expected result.
+ * whole point of a custom toolpack in the demo. Deterministic output lets the
+ * demo runbook and this package's README state the expected result.
  */
 
 export interface ToolDefinition {
