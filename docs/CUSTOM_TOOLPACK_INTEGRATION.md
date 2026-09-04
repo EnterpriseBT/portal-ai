@@ -4,6 +4,8 @@ This guide is for developers building a **toolpack server** — an HTTP service 
 
 A reference implementation lives at `apps/api/src/scripts/mock-toolpack-server.ts`. Run it with `npm run webhook:toolpack` from `apps/api/` and point a registration at `http://localhost:4100` to see the contract end-to-end.
 
+For a **deployable** worked example — a real, hosted endpoint conforming to this contract — see [`packages/demo-toolpack/`](../packages/demo-toolpack/README.md) (#510): a zero-dependency AWS Lambda function-URL handler serving `/schema`, `/metadata`, and an HMAC-verified `/runtime` with two deterministic tools. It's the demo org's custom toolpack and doubles as a copy-me template for the Lambda hosting path.
+
 ---
 
 ## Contract overview

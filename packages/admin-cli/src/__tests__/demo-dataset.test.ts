@@ -1,0 +1,264 @@
+/**
+ * Demo dataset integrity (#508).
+ *
+ * Two layers of coverage:
+ *   1. Generator invariants — call the synth functions and assert row counts,
+ *      cross-entity join-key closure, and near-duplicate names. This is the
+ *      logic #509 relies on when it streams the same generators at scale.
+ *   2. Committed-file sync — the checked-in CSV/XLSX match the generators, so a
+ *      "forgot to regenerate" diff fails CI rather than shipping stale data.
+ */
+
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+import ExcelJS from "exceljs";
+
+import {
+  COUNTS,
+  HEADERS,
+  LOAN,
+  generateCashFlows,
+  generateCustomers,
+  generateInventory,
+  generateLoanSchedule,
+  generateNotes,
+  generateOrders,
+  generatePortfolio,
+  generateProducts,
+  generateShipments,
+  generateSites,
+  synthesizeTransactions,
+  transactionRefs,
+} from "../fixtures/demo-data.js";
+
+const SEED = "harborview";
+const FIXTURES = fileURLToPath(
+  new URL("../../fixtures/demo/", import.meta.url)
+);
+
+const customers = generateCustomers(SEED);
+const products = generateProducts(SEED);
+const sites = generateSites(SEED);
+const orders = generateOrders(customers, products, SEED);
+const shipments = generateShipments(sites, customers, SEED);
+const notes = generateNotes(customers, SEED);
+
+const customerIds = new Set(customers.map((c) => c.customer_id));
+const productIds = new Set(products.map((p) => p.product_id));
+const siteIds = new Set(sites.map((s) => s.site_id));
+
+describe("demo dataset — generator invariants", () => {
+  it("produces the target row counts", () => {
+    expect(customers).toHaveLength(COUNTS.customers);
+    expect(products).toHaveLength(COUNTS.products);
+    expect(sites).toHaveLength(COUNTS.sites);
+    expect(orders).toHaveLength(COUNTS.orders);
+    expect(shipments).toHaveLength(COUNTS.shipments);
+    expect(notes).toHaveLength(COUNTS.notes);
+  });
+
+  it("has unique primary keys", () => {
+    expect(customerIds.size).toBe(customers.length);
+    expect(productIds.size).toBe(products.length);
+    expect(siteIds.size).toBe(sites.length);
+  });
+
+  it("closes every cross-entity join key", () => {
+    for (const o of orders) {
+      expect(customerIds.has(o.customer_id)).toBe(true);
+      expect(productIds.has(o.product_id)).toBe(true);
+    }
+    for (const s of shipments) {
+      expect(siteIds.has(s.origin_site_id)).toBe(true);
+      expect(siteIds.has(s.dest_site_id)).toBe(true);
+      expect(s.origin_site_id).not.toBe(s.dest_site_id);
+      expect(customerIds.has(s.customer_id)).toBe(true);
+    }
+    for (const n of notes) {
+      expect(customerIds.has(n.customer_id)).toBe(true);
+    }
+  });
+
+  it("includes deliberate near-duplicate customer names (identity story)", () => {
+    const uniqueNames = new Set(customers.map((c) => c.name));
+    expect(uniqueNames.size).toBeLessThan(customers.length);
+  });
+
+  it("keeps geospatial coordinates in North-American bounds", () => {
+    for (const c of customers) {
+      expect(c.latitude).toBeGreaterThan(24);
+      expect(c.latitude).toBeLessThan(50);
+      expect(c.longitude).toBeGreaterThan(-125);
+      expect(c.longitude).toBeLessThan(-66);
+    }
+  });
+
+  it("is deterministic — same seed reproduces the first rows exactly", () => {
+    const again = generateCustomers(SEED);
+    expect(again[0]).toEqual(customers[0]);
+    expect(again[COUNTS.customers - 1]).toEqual(
+      customers[customers.length - 1]
+    );
+  });
+});
+
+describe("demo dataset — large-volume transactions synth", () => {
+  const refs = transactionRefs(customers, products, sites);
+  const sample = [
+    ...synthesizeTransactions(COUNTS.transactionsSample, SEED, refs),
+  ];
+
+  it("yields the requested row count", () => {
+    expect(sample).toHaveLength(COUNTS.transactionsSample);
+  });
+
+  it("closes every foreign key against the base entities", () => {
+    for (const t of sample) {
+      expect(customerIds.has(t.customer_id)).toBe(true);
+      expect(productIds.has(t.product_id)).toBe(true);
+      expect(siteIds.has(t.site_id)).toBe(true);
+    }
+  });
+
+  it("is deterministic — same seed + refs reproduces rows in order", () => {
+    const again = [...synthesizeTransactions(200, SEED, refs)];
+    expect(again).toEqual(sample.slice(0, 200));
+  });
+
+  it("streams lazily without materializing the whole run", () => {
+    // Pulling one row from a 1e9-count generator must return immediately —
+    // proves #509 can stream ~1M rows without holding them all in memory.
+    const gen = synthesizeTransactions(1_000_000_000, SEED, refs);
+    const first = gen.next();
+    expect(first.done).toBe(false);
+    expect(first.value.transaction_id).toBe("TXN-000000001");
+  });
+});
+
+describe("demo dataset — financials", () => {
+  it("cash flows span the history window with net = inflow − outflow", () => {
+    const cf = generateCashFlows(SEED);
+    expect(cf).toHaveLength(COUNTS.cashFlowMonths);
+    for (const row of cf) {
+      expect(row.net).toBeCloseTo(row.inflow - row.outflow, 2);
+    }
+  });
+
+  it("loan schedule amortizes to (near) zero and repays the principal", () => {
+    const schedule = generateLoanSchedule();
+    expect(schedule).toHaveLength(COUNTS.loanMonths);
+    expect(schedule[schedule.length - 1].balance).toBeLessThan(1);
+    const principalPaid = schedule.reduce((a, p) => a + p.principal, 0);
+    expect(principalPaid).toBeCloseTo(LOAN.principal, -1);
+  });
+
+  it("portfolio weights sum to 1", () => {
+    const holdings = generatePortfolio(SEED);
+    expect(holdings).toHaveLength(COUNTS.portfolioHoldings);
+    const sum = holdings.reduce((a, h) => a + h.weight, 0);
+    expect(sum).toBeCloseTo(1, 2);
+  });
+});
+
+describe("demo dataset — inventory (REST source)", () => {
+  const inventory = generateInventory(products, SEED);
+
+  it("has one row per product with a resolvable product_id", () => {
+    expect(inventory).toHaveLength(COUNTS.inventory);
+    for (const item of inventory) {
+      expect(productIds.has(item.product_id)).toBe(true);
+      expect(item.on_hand).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("uses only scalar fields (clean REST column inference)", () => {
+    for (const item of inventory) {
+      for (const v of Object.values(item)) {
+        expect(["string", "number"]).toContain(typeof v);
+      }
+    }
+  });
+});
+
+/** Split a committed CSV (no embedded newlines in fields) into header + rows. */
+function readCsv(name: string): { header: string; dataRows: number } {
+  const text = readFileSync(`${FIXTURES}${name}`, "utf8");
+  const lines = text.replace(/\n$/, "").split("\n");
+  return { header: lines[0], dataRows: lines.length - 1 };
+}
+
+describe("demo dataset — committed files match the generators", () => {
+  it.each([
+    ["customers.csv", HEADERS.customers, COUNTS.customers],
+    ["products.csv", HEADERS.products, COUNTS.products],
+    ["sites.csv", HEADERS.sites, COUNTS.sites],
+    ["shipments.csv", HEADERS.shipments, COUNTS.shipments],
+    ["notes.csv", HEADERS.notes, COUNTS.notes],
+    [
+      "transactions.sample.csv",
+      HEADERS.transactions,
+      COUNTS.transactionsSample,
+    ],
+  ] as const)(
+    "%s has the right header and row count",
+    (name, headers, count) => {
+      const { header, dataRows } = readCsv(name);
+      expect(header).toBe(headers.join(","));
+      expect(dataRows).toBe(count);
+    }
+  );
+
+  it("orders.xlsx carries all orders across year sheets with a clean header", async () => {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(`${FIXTURES}orders.xlsx`);
+    let total = 0;
+    wb.eachSheet((ws) => {
+      const headerRow = ws.getRow(1).values as unknown[];
+      // ExcelJS row.values is 1-indexed (values[0] is undefined).
+      expect(headerRow.slice(1)).toEqual([...HEADERS.orders]);
+      total += ws.rowCount - 1;
+    });
+    expect(total).toBe(COUNTS.orders);
+    expect(wb.worksheets.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("financials.xlsx has the three named sheets with clean headers", async () => {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(`${FIXTURES}financials.xlsx`);
+    const sheets = wb.worksheets.map((ws) => ws.name);
+    expect(sheets).toEqual(["Cash Flows", "Loan Schedule", "Portfolio"]);
+    const headerOf = (name: string) =>
+      (wb.getWorksheet(name)!.getRow(1).values as unknown[]).slice(1);
+    expect(headerOf("Cash Flows")).toEqual([...HEADERS.cashFlows]);
+    expect(headerOf("Loan Schedule")).toEqual([...HEADERS.loanSchedule]);
+    expect(headerOf("Portfolio")).toEqual([...HEADERS.portfolio]);
+  });
+
+  it("customers_orders.xlsx carries Customers + Orders sheets", async () => {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(`${FIXTURES}customers_orders.xlsx`);
+    expect(wb.worksheets.map((ws) => ws.name)).toEqual(["Customers", "Orders"]);
+    expect(
+      (wb.getWorksheet("Customers")!.getRow(1).values as unknown[]).slice(1)
+    ).toEqual([...HEADERS.customers]);
+    expect(wb.getWorksheet("Customers")!.rowCount - 1).toBe(COUNTS.customers);
+  });
+
+  it("inventory.json is a flat array of scalar-only objects on the site", () => {
+    const path = fileURLToPath(
+      new URL(
+        "../../../../apps/site/public/demo/inventory.json",
+        import.meta.url
+      )
+    );
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    expect(Array.isArray(parsed)).toBe(true);
+    const arr = parsed as Record<string, unknown>[];
+    expect(arr).toHaveLength(COUNTS.inventory);
+    expect(Object.keys(arr[0])).toEqual([...HEADERS.inventory]);
+    for (const v of Object.values(arr[0])) {
+      expect(["string", "number"]).toContain(typeof v);
+    }
+  });
+});
