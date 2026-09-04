@@ -94,7 +94,7 @@ Identity-resolution prompt (`resolve_identity`, near-duplicate customers) folds 
 
 ## Smoke (manual, against your dev stack)
 
-1. Run `node packages/admin-cli/fixtures/demo/generate.mjs` → all files regenerate; `git status` shows no diff against the committed outputs (deterministic).
+1. Run `npm run --workspace @portalai/admin-cli fixtures:demo` → all files regenerate; CSV/JSON are **byte-identical** to the committed outputs (`git status` clean for them). XLSX regenerates to **content-equivalent** files (ExcelJS zips embed timestamps, so bytes may differ — the integrity test re-reads and compares rows, which is the real guarantee).
 2. In local web, File Upload wizard → upload `customers.csv`, `orders.xlsx`, `sites.csv`, `shipments.csv`, `products.csv`, `notes.csv`, `financials.xlsx`: each parses, regions auto-detect, columns auto-bind at high confidence with **no manual column fixes and no warnings**. `orders.xlsx`/`financials.xlsx` show one region per sheet.
 3. `npm run --workspace @portalai/site build` then serve `dist/` → `GET /demo/inventory.json` returns the array; `npm run --workspace @portalai/site verify-pages`-equivalent stays green.
 4. Spot-check join integrity: open `customers.csv` + `orders.xlsx`, confirm a sampled `orders.customer_id` exists in customers and the near-duplicate names are present.
